@@ -9,15 +9,26 @@
  * tmux server went down underneath it.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { dirname, join } from "node:path";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { ensureSystemdKillModeMixed, ensureSystemdUnitHardening, renderSystemdUnit, unitCoredumpFilterState, unitDropInCandidates } from "../src/service-installer.js";
+import { fakeBusctl } from "./support/fake-busctl.js";
 
+// What `agend restart`'s guard (#1450 C6) expects for a package that pins no runtime: its selection is the system Node,
+// reached through the package's launcher; the unit's PATH must find this very Node first. This checkout pins the
+// bundled runtime (#1450), so the built CLI runs from a copy of this build WITHOUT the pins (same dist/, launcher/).
+const PKG = mkdtempSync(join(tmpdir(), "agend-908-pkg-"));
+afterAll(() => rmSync(PKG, { recursive: true, force: true }));
+if (existsSync(join(process.cwd(), "dist", "cli.js"))) {
+  for (const dir of ["dist", "templates", "launcher"]) spawnSync("cp", ["-r", join(process.cwd(), dir), join(PKG, dir)]);
+  writeFileSync(join(PKG, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
+  symlinkSync(join(process.cwd(), "node_modules"), join(PKG, "node_modules"));
+}
 const vars = {
-  label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: "/home/u/.agend",
-  logPath: "/home/u/.agend/daemon.log", path: "/usr/local/bin:/usr/bin:/bin",
+  label: "com.agend.fleet", execPath: join(PKG, "dist", "cli.js"), launcherPath: join(PKG, "launcher", "agend"), workingDirectory: "/home/u/.agend",
+  logPath: "/home/u/.agend/daemon.log", path: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
 };
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -236,7 +247,7 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
 });
 
 describe("`agend restart` (what `agend update` spawns) fixes the unit before reloading it", () => {
-  const cli = join(process.cwd(), "dist", "cli.js");
+  const cli = join(PKG, "dist", "cli.js");
   /**
    * The built CLI's `agend restart` with a throwaway HOME and a recording stub
    * systemctl. The stub keeps what systemd has LOADED apart from the file, as
@@ -296,6 +307,9 @@ esac
 exit 0
 `);
     chmodSync(join(bin, "systemctl"), 0o755);
+    // The restart guard reads the LOADED unit over D-Bus: answered from the unit file, never the host's systemd.
+    writeFileSync(join(bin, "busctl"), fakeBusctl(join(home, "busctl.log"), unit));
+    chmodSync(join(bin, "busctl"), 0o755);
     // `system`: the CLI finds a system unit. Only that one path is redirected,
     // inside the child process, to the throwaway unit (and away from the user
     // unit, so the system branch is the one taken).
@@ -321,6 +335,17 @@ syncBuiltinESMExports();
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     return { r, calls, unit, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => (opts.system ? /^restart agend\b/ : /^--user restart com\.agend\.fleet/).test(c)) };
   }
+
+  // #1450 C6: the hop's failed step 4 leaves the 2.1 unit loaded — the entry as a script, its Node by PATH. The restart
+  // refuses before stopping anything (the old fleet keeps running); with the 2.2 unit it proceeds (the cases below).
+  it.skipIf(!existsSync(cli))("a 2.1-format unit (a script as ExecStart's argv[0]) is refused: nothing is restarted", () => {
+    const old = renderSystemdUnit(vars).replace(/^ExecStart=.*$/m, `ExecStart=${vars.execPath} fleet start`);
+    const { r, calls, out, restarted } = restart(old);
+    expect(restarted, out).toBe(false);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("a service starts the launcher");
+    expect(calls.some(c => /^--user (restart|stop|kill)/.test(c)), calls.join("\n")).toBe(false);
+  });
 
   it.skipIf(!existsSync(cli))("adds KillMode=mixed before `systemctl --user daemon-reload` (built CLI, stubbed systemctl)", () => {
     const { r, calls, out, restarted } = restart(legacyUnit());

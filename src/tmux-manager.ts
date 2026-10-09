@@ -1,8 +1,18 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { measureSyncWork } from "./sync-work-attribution.js";
 import type { TerminalConfig } from "./types.js";
+import { tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
 
-const exec = promisify(execFile);
+const execAsync = promisify(execFile);
+/**
+ * Every `tmux` call here. Starting the child process is synchronous on the fleet's loop (fork/exec of a large process),
+ * and a sweep starts one per instance in the same tick (the shared control client's 60 s safety sweep): the spawn is
+ * attributed so a stall made of N of them names itself (#1235). The promise itself is unchanged.
+ */
+const exec = ((...args: Parameters<typeof execAsync>) => measureSyncWork("tmux.spawn", () => execAsync(...args))) as typeof execAsync;
+/** `exec`, bounded when a timeout is given — and in exactly the old (file, args) form when it is not. */
+const execBounded = (args: string[], timeoutMs?: number) => timeoutMs ? exec("tmux", args, { timeout: timeoutMs }) : exec("tmux", args);
 /** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
 const EDITING_KEYS: ReadonlySet<string> = new Set(["C-a", "C-e", "C-u", "C-k", "BSpace", "DC", "Home", "End", "Left", "Right"]);
 
@@ -27,9 +37,9 @@ function isTransientLoadBufferError(err: unknown): boolean {
 }
 
 /** Feed a tmux buffer through stdin so payload bytes never become an argv element. */
-function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
+function execTmuxWithInput(tmuxArgs: string[], input: string, timeoutMs?: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = execFile("tmux", tmuxArgs, (error, _stdout, stderr) => {
+    const done = (error: Error | null, _stdout: string | Buffer, stderr: string | Buffer) => {
       if (!error) {
         resolve();
         return;
@@ -37,7 +47,11 @@ function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
       const detail = String(stderr || "").trim();
       if (detail && !error.message.includes(detail)) error.message = `${error.message}: ${detail}`;
       reject(error);
-    });
+    };
+    // Options only when a bound is asked for: every other caller keeps execFile's (file, args, callback) form.
+    const child = measureSyncWork("tmux.spawn", () => timeoutMs
+      ? execFile("tmux", tmuxArgs, { timeout: timeoutMs }, done)
+      : execFile("tmux", tmuxArgs, done));
     child?.stdin?.on("error", reject);
     child?.stdin?.end(input);
   });
@@ -95,6 +109,7 @@ export class TmuxManager {
     private sessionName: string,
     windowId: string,
     private logicalSize: TmuxLogicalSize = { ...DEFAULT_TMUX_LOGICAL_SIZE },
+    private readPort?: TmuxReadPort,
   ) {
     this.windowId = windowId;
   }
@@ -174,11 +189,11 @@ export class TmuxManager {
     }
   }
 
-  static async listWindows(sessionName: string): Promise<Array<{ id: string; name: string }>> {
+  static async listWindows(sessionName: string, readPort?: TmuxReadPort): Promise<Array<{ id: string; name: string }>> {
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, 10_000) : (await exec("tmux", TmuxManager.tmuxArgs([
         "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
-      ]));
+      ]))).stdout;
       return stdout.trim().split("\n").filter(Boolean).map(line => {
         const [id, name] = line.split("|||");
         return { id, name };
@@ -186,11 +201,12 @@ export class TmuxManager {
     } catch { return []; }
   }
 
-  /** Bounded, failing variant for the login/install path: a timeout or tmux error REJECTS instead of reading as "no windows". */
-  static async listWindowsStrict(sessionName: string): Promise<Array<{ id: string; name: string }>> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+  /** Bounded health/login read: errors REJECT instead of proving "no windows". */
+  static async listWindowsStrict(sessionName: string, readPort?: TmuxReadPort): Promise<Array<{ id: string; name: string }>> {
+    const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, LOGIN_TMUX_OP_TIMEOUT_MS)
+      : (await exec("tmux", TmuxManager.tmuxArgs([
       "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
-    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS })).stdout;
     return stdout.trim().split("\n").filter(Boolean).map(line => {
       const [id, name] = line.split("|||");
       return { id, name };
@@ -208,6 +224,16 @@ export class TmuxManager {
   }
 
   // === Instance window methods ===
+
+  private static portRead(port: TmuxReadPort, query: TmuxReadQuery, timeoutMs: number): Promise<string> {
+    if (!port.isFor(query.session, TmuxManager.socketName)) return Promise.reject(new Error("tmux read port scope mismatch"));
+    return port.read(query, timeoutMs);
+  }
+
+  private async read(query: TmuxReadQuery, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
+    if (this.readPort) return TmuxManager.portRead(this.readPort, query, timeoutMs);
+    return (await exec("tmux", TmuxManager.tmuxArgs(tmuxReadArgs(query)), { timeout: timeoutMs })).stdout;
+  }
 
   /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
   private pendingWindowName: string | null = null;
@@ -347,7 +373,7 @@ export class TmuxManager {
   async isWindowAlive(): Promise<boolean> {
     if (!this.windowId) return false;
     try {
-      const windows = await TmuxManager.listWindows(this.sessionName);
+      const windows = await TmuxManager.listWindows(this.sessionName, this.readPort);
       return windows.some(w => w.id === this.windowId);
     } catch { return false; }
   }
@@ -373,10 +399,7 @@ export class TmuxManager {
     // liveness recheck before classifying a crash.
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-          "list-panes", "-t", `${this.sessionName}:${this.windowId}`,
-          "-F", "#{pane_dead} #{pane_dead_status}",
-        ]));
+        const stdout = await this.read({ kind: "pane", session: this.sessionName, window: this.windowId, field: "status" });
         const line = stdout.trim().split("\n")[0];
         if (!line) return null;
         const parts = line.split(" ");
@@ -417,9 +440,7 @@ export class TmuxManager {
   async getPaneInputMode(): Promise<"raw" | "cooked" | "unknown"> {
     if (!this.windowId) return "unknown";
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-        "display-message", "-p", "-t", `${this.sessionName}:${this.windowId}`, "#{pane_tty}",
-      ]), { timeout: 2_000 });
+      const stdout = await this.read({ kind: "tty", session: this.sessionName, window: this.windowId }, 2_000);
       const tty = stdout.trim();
       if (!/^\/dev\/(?:pts\/\d+|tty\w*)$/.test(tty)) return "unknown";
       const flag = process.platform === "darwin" ? "-f" : "-F";
@@ -452,10 +473,10 @@ export class TmuxManager {
     } catch { return false; }
   }
 
-  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q"): Promise<boolean> {
+  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q", timeoutMs?: number): Promise<boolean> {
     this.lastSendSpecialKeyError = null;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]));
+      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]), timeoutMs);
       return true;
     } catch (err) {
       const stderr = err && typeof err === "object" && "stderr" in err
@@ -464,6 +485,15 @@ export class TmuxManager {
       this.lastSendSpecialKeyError = stderr || (err instanceof Error ? err.message : String(err));
       return false;
     }
+  }
+
+  /** Delete `count` characters before the cursor (a paste AgEnD must take back before submitting it). */
+  async deleteBackward(count: number, timeoutMs?: number): Promise<boolean> {
+    if (!Number.isInteger(count) || count <= 0) return true;
+    try {
+      await execBounded(TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, "-N", String(count), "BSpace"]), timeoutMs);
+      return true;
+    } catch { return false; }
   }
 
   /** Diagnostic from the most recent failed sendSpecialKey call. */
@@ -481,16 +511,23 @@ export class TmuxManager {
     return this.lastPasteFailureRecoverable;
   }
 
-  private async loadAndPaste(text: string): Promise<boolean> {
+  /**
+   * `guard`, when given, is asked before every step that touches tmux — each load attempt and the paste into the
+   * pane — so a caller that stopped waiting (its owner stopped, its deadline passed) is never followed by a late pane
+   * write. `timeoutMs` bounds each tmux call.
+   */
+  private async loadAndPaste(text: string, opts: { guard?: () => boolean; timeoutMs?: number } = {}): Promise<boolean> {
     const target = `${this.sessionName}:${this.windowId}`;
+    const allowed = () => !opts.guard || opts.guard();
     const bufName = `paste-${this.windowId}-${Date.now()}`;
     this.lastPasteError = null;
     this.lastPasteFailureRecoverable = false;
     let loadError: unknown;
     let loaded = false;
     for (let attempt = 1; attempt <= LOAD_BUFFER_MAX_ATTEMPTS; attempt++) {
+      if (!allowed()) return false;
       try {
-        await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text);
+        await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text, opts.timeoutMs);
         loaded = true;
         break;
       } catch (err) {
@@ -506,13 +543,22 @@ export class TmuxManager {
       this.lastPasteError = formatExecError(loadError);
       return false;
     }
+    let pasteStarted = false;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
-      return true;
-    } catch (err) {
-      this.lastPasteError = formatExecError(err);
-      this.lastPasteFailureRecoverable = true;
-      return false;
+      if (!allowed()) return false;
+      pasteStarted = true;
+      try {
+        await execBounded(TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]), opts.timeoutMs);
+        return true;
+      } catch (err) {
+        this.lastPasteError = formatExecError(err);
+        this.lastPasteFailureRecoverable = true;
+        return false;
+      }
+    } finally {
+      // Cancellation may return false or throw (e.g. a revoked consent capability).
+      // Both retain ownership of the loaded buffer and must dispose of it without a pane write.
+      if (!pasteStarted) void execBounded(TmuxManager.tmuxArgs(["delete-buffer", "-b", bufName]), opts.timeoutMs).catch(() => {});
     }
   }
 
@@ -553,8 +599,8 @@ export class TmuxManager {
    * Callers that need to verify the idle→busy transition before/after Enter use this
    * together with sendSpecialKey("Enter") so they control submit timing and retries.
    */
-  async pasteBuffer(text: string): Promise<boolean> {
-    return this.loadAndPaste(text);
+  async pasteBuffer(text: string, opts: { guard?: () => boolean; timeoutMs?: number } = {}): Promise<boolean> {
+    return this.loadAndPaste(text, opts);
   }
 
   async pipeOutput(logPath: string): Promise<void> {
@@ -572,19 +618,12 @@ export class TmuxManager {
   }
 
   async capturePane(timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`, "-p",
-    ]), { timeout: timeoutMs });
-    return stdout;
+    return this.read({ kind: "capture", session: this.sessionName, window: this.windowId }, timeoutMs);
   }
 
   /** Capture pane content including scrollback history (last N lines). */
   async capturePaneWithHistory(lines: number = 50, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
-      "-p", "-S", `-${lines}`,
-    ]), { timeout: timeoutMs });
-    return stdout;
+    return this.read({ kind: "capture", session: this.sessionName, window: this.windowId, history: lines }, timeoutMs);
   }
 
   /**
@@ -593,11 +632,7 @@ export class TmuxManager {
    * where URL reassembly matters more than screen-faithful geometry.
    */
   async capturePaneJoined(lines: number = 50): Promise<string> {
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
-      "-p", "-J", "-S", `-${lines}`,
-    ]));
-    return stdout;
+    return this.read({ kind: "capture", session: this.sessionName, window: this.windowId, history: lines, joined: true });
   }
 
   getWindowId(): string { return this.windowId; }

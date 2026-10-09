@@ -300,7 +300,10 @@ describe("the service-level commands, behind inert stubs", () => {
     mkdirSync(join(inert, "bin")); mkdirSync(join(inert, "home"));
     for (const command of ["systemctl", "npm", "sudo", "launchctl", "agend", "loginctl", "journalctl"]) {
       const path = join(inert, "bin", command);
-      writeFileSync(path, `#!/bin/sh\necho "${command} $@ ORIGIN=$AGEND_RESTART_ORIGIN" >> "${join(inert, "calls")}"\nexit 1\n`);
+      // npm also answers `prefix -g` (the scratch dir): the update locks that prefix before it installs (#1450 C1).
+      // …and `root -g` (nothing installed there): the update copies any installed package aside first (#1450 C6).
+      const prefixAnswer = command === "npm" ? `[ "$1 $2" = "prefix -g" ] && { echo '${inert}'; exit 0; }\n[ "$1 $2" = "root -g" ] && { echo '${join(inert, "lib", "node_modules")}'; exit 0; }\n` : "";
+      writeFileSync(path, `#!/bin/sh\n${prefixAnswer}echo "${command} $@ ORIGIN=$AGEND_RESTART_ORIGIN" >> "${join(inert, "calls")}"\nexit 1\n`);
       chmodSync(path, 0o755);
     }
   });
@@ -342,6 +345,22 @@ describe("the service-level commands, behind inert stubs", () => {
     expect(calls()).toContain("systemctl");
   });
 
+  // #1473 review: --force overrides the C6 restart guard — an operator's own decision only.
+  it.each([
+    ["a fleet agent's session, even confirmed with --yes", "agend-leader", {}],
+    ["a fleet-internal spawn (origin marker)", null, { AGEND_RESTART_ORIGIN: "agend-update" }],
+  ] as const)("`agend restart --force` from %s is refused before anything", async (_n, instance, extra) => {
+    const result = await run(["restart", "--yes", "--force"], instance, extra);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("--force is for an operator's own shell");
+    expect(calls()).toBe("");
+  });
+  it("control: an operator's own `agend restart --force` goes ahead (reaches the stubbed manager)", async () => {
+    const result = await run(["restart", "--force"], null);
+    expect(result.stderr).not.toContain("--force is for an operator");
+    expect(calls()).not.toBe("");
+  });
+
   it("control: with --yes `update` does reach the (stubbed) npm", async () => {
     await run(["update", "--yes"], "agend-leader");
     expect(calls()).toContain("npm install");
@@ -360,12 +379,45 @@ describe("the service-level commands, behind inert stubs", () => {
     const copy = join(inert, "copy");
     mkdirSync(copy);
     cpSync(join(process.cwd(), "src"), join(copy, "src"), { recursive: true });
+    cpSync(join(process.cwd(), "launcher"), join(copy, "launcher"), { recursive: true });   // its own selection (#1450 C2)
     cpSync(join(process.cwd(), "package.json"), join(copy, "package.json"));
     symlinkSync(join(process.cwd(), "node_modules"), join(copy, "node_modules"));
     const future = new Date(Date.now() + 3_600_000);
     utimesSync(join(copy, "src", "cli.ts"), future, future);
     const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version as string;
-    writeFileSync(join(inert, "bin", "npm"), `#!/bin/sh\n[ "$1" = view ] && { echo ${version}; exit 0; }\necho "npm $@" >> "${join(inert, "calls")}"\nexit 1\n`);
+    // The copy is also what npm reports as the installed global package (#1449: before restarting a fleet that
+    // predates the install, the update verifies that package and restarts through ITS `agend`): its bin is a wrapper
+    // that runs this source through tsx, and that is the `agend` on PATH.
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    // No runtime pins (#1450): this test is about authorisation, and the copy shares node_modules (with the bundled
+    // runtime package) but has no receipt of its own — a pinned copy would refuse to run before the restart step.
+    writeFileSync(join(copy, "package.json"), JSON.stringify({ ...manifest, bin: { agend: "bin/agend" }, optionalDependencies: undefined }));
+    mkdirSync(join(copy, "bin"));
+    // An installed package always has its canonical entry (#1450 C4); the update verifies it exists.
+    mkdirSync(join(copy, "dist"));
+    writeFileSync(join(copy, "dist", "cli.js"), "");
+    // `install` is a no-op here (no service in this scratch HOME: the restart takes the detached path, whose
+    // authorisation is what this test is about); everything else runs this source.
+    writeFileSync(join(copy, "bin", "agend"), `#!/bin/sh\n[ "$1" = install ] && exit 0\nexec '${process.execPath}' --import tsx '${join(copy, "src", "cli.ts")}' "$@"\n`);
+    chmodSync(join(copy, "bin", "agend"), 0o755);
+    const globalRoot = join(inert, "global", "lib", "node_modules");
+    mkdirSync(join(globalRoot, "@songsid"), { recursive: true });
+    symlinkSync(copy, join(globalRoot, "@songsid", "agend"));
+    mkdirSync(join(inert, "global", "bin"));
+    symlinkSync(join(copy, "bin", "agend"), join(inert, "global", "bin", "agend"));   // the bin link npm makes
+    rmSync(join(inert, "bin", "agend"));
+    symlinkSync(join(copy, "bin", "agend"), join(inert, "bin", "agend"));
+    for (const tool of ["sh", "readlink"]) symlinkSync(execFileSync("which", [tool], { encoding: "utf8" }).trim(), join(inert, "bin", tool));
+    symlinkSync(process.execPath, join(inert, "bin", "node"));
+    writeFileSync(join(inert, "bin", "npm"), `#!/bin/sh
+case "$1 $2" in
+  "view "*) echo ${version}; exit 0;;
+  "root -g") echo '${globalRoot}'; exit 0;;
+  "prefix -g") echo '${join(inert, "global")}'; exit 0;;
+esac
+echo "npm $@" >> "${join(inert, "calls")}"
+exit 1
+`);
     mkdirSync(join(inert, "home", ".agend"), { recursive: true });
     symlinkSync(execFileSync("which", ["ps"], { encoding: "utf8" }).trim(), join(inert, "bin", "ps"));   // process start time
     const decoy: ChildProcess = spawn("bash", ["-c", 'exec -a "agend fleet start" sleep 120'], { stdio: "ignore" });
@@ -374,7 +426,9 @@ describe("the service-level commands, behind inert stubs", () => {
       const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
         // NODE_OPTIONS so the restart child the update spawns (a plain `node cli.ts restart`) can run the .ts too
         execFile(process.execPath, [join(copy, "src", "cli.ts"), "update", "--yes"], {
-          env: { NODE_OPTIONS: "--import tsx", HOME: join(inert, "home"), AGEND_HOME: join(inert, "home", ".agend"), PATH: join(inert, "bin"), NOTIFY_SOCKET: "", AGEND_INSTANCE_NAME: "agend-leader" },
+          // The detached restart's own `fleet start` (#1450 C5: this Node on the copy's cli.ts) is recorded by the test
+          // process guard and never runs.
+          env: { NODE_OPTIONS: "--import tsx", HOME: join(inert, "home"), AGEND_HOME: join(inert, "home", ".agend"), PATH: join(inert, "bin"), NOTIFY_SOCKET: "", AGEND_INSTANCE_NAME: "agend-leader", AGEND_TEST_SELF_SPAWN_LOG: join(inert, "self-spawn.log") },
           timeout: 60_000,
         }, (error, stdout, stderr) => {
           if (!error) resolve({ code: 0, stdout, stderr });
@@ -382,13 +436,14 @@ describe("the service-level commands, behind inert stubs", () => {
           else reject(error);
         });
       });
-      expect(result.stdout).toContain("restarting it onto");               // it reached the restart step
+      expect(result.stdout + result.stderr, result.stdout + result.stderr).toContain("verified — restarting the fleet onto it"); // it reached the restart step
       expect(result.stderr).not.toContain("Refusing");
       const trail = readFileSync(join(inert, "home", ".agend", AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line) as AuditEntry);
       expect(trail.map(entry => [entry.action, entry.outcome, entry.detail])).toEqual([
         ["update", "allowed", "yes"],
         ["restart", "allowed", "origin"],                                  // the child restart, authorised by the update
       ]);
+      expect(readFileSync(join(inert, "self-spawn.log"), "utf8")).toBe("agend fleet start\n");   // …which restarted the fleet
     } finally {
       decoy.kill("SIGKILL");
     }

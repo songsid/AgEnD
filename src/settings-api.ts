@@ -1,3 +1,9 @@
+import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
+import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
+import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
+import { readBoundedWebBody } from "./web-body.js";
+import { validPublicLinkPatch } from "./public-web-link.js";
+import { permitWebContinuation } from "./web-continuation.js";
 /**
  * Settings Web API (`/settings`) — CRUD over fleet.yaml + classicBot.yaml.
  *
@@ -25,11 +31,12 @@
  * Writes are validated first (config-validator): any error → 400 and nothing is
  * written; warnings are non-blocking and returned alongside the result.
  */
+import { serveAppShell, type AppShellContext } from "./web-api.js";
+import { isSettingsPage } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import yaml from "js-yaml";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
@@ -57,9 +64,10 @@ import {
 
 
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export interface SettingsApiContext {
+export interface SettingsApiContext extends AppShellContext {
+  readonly webToken?: string | null;
+  readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
   configPath: string | null;
   dataDir: string;
@@ -74,7 +82,8 @@ export interface SettingsApiContext {
   isClassicInstance?(name: string): boolean;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number): Promise<void>;
-  restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[]): Promise<void>;
+  restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
+  captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
@@ -104,6 +113,7 @@ export interface SettingsApiContext {
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionSecretApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
   /** Generic provider API-key verifier registry (#861). */
@@ -120,6 +130,7 @@ export interface SettingsApiContext {
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: ProviderSecretApplyJob; reused: boolean } | { busy: ProviderSecretApplyJob | null } | { error: string };
   getProviderSecretApply?(jobId: string, sessionBinding: string): ProviderSecretApplyJob | null;
   verifyConnectionBinding?(input: {
@@ -133,6 +144,7 @@ export interface SettingsApiContext {
     verificationId: string;
     sessionBinding: string;
     idempotencyKey: string;
+    execution?: SettingsExecution;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionBindingApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
 }
@@ -154,17 +166,7 @@ function json(res: ServerResponse, code: number, body: unknown, noStore = false)
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > maxBytes) { reject(new Error("payload too large")); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
+  return readBoundedWebBody(req, maxBytes);
 }
 
 /**
@@ -185,7 +187,7 @@ function normalizeChannelIdValue(value: unknown, path: string):
 }
 
 export function isSettingsPath(path: string): boolean {
-  return path === "/settings" || path.startsWith("/api/settings/");
+  return isSettingsPage(path) || path.startsWith("/api/settings/");
 }
 
 const classicPath = (ctx: SettingsApiContext) => join(ctx.dataDir, "classicBot.yaml");
@@ -210,6 +212,7 @@ function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unk
   const target = classicPath(ctx);
   const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const mode = existsSync(target) ? statSync(target).mode : 0o600;
+  noteSettingsWrite(target, readClassic(ctx), classic);
   try {
     writeFileSync(temp, yaml.dump(classic, { lineWidth: -1 }), { encoding: "utf-8", mode });
     renameSync(temp, target);
@@ -220,6 +223,30 @@ function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unk
 }
 
 const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
+
+/**
+ * #1490 (Fable's 2.2 audit): the connection fields Settings writes. A PUT carries whole connections back, so a field
+ * outside these (one added by hand to fleet.yaml) passes through unchanged — but it is never added or changed here:
+ * an inline `bot_token`, or anything else, cannot reach fleet.yaml through this endpoint.
+ */
+const CHANNEL_FIELDS = new Set(["id", "type", "mode", "bot_token_env", "group_id", "access", "options", "telegram_api_root", "mirror_topic_id"]);
+const CHANNEL_ACCESS_FIELDS = new Set(["mode", "allowed_users", "max_pending_codes", "code_expiry_minutes"]);
+const CHANNEL_OPTION_FIELDS = new Set(["category_name", "general_channel_id", "topic_probe", "sticker_sets", "status_emojis"]);
+function unownedChannelField(candidate: Record<string, unknown>, previous: Record<string, unknown> | undefined): string | null {
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  const check = (fields: ReadonlySet<string>, next: Record<string, unknown>, prev: unknown, at: string): string | null => {
+    const before = record(prev) ? prev : {};
+    for (const key of Object.keys(next)) {
+      if (fields.has(key)) continue;
+      if (Object.hasOwn(before, key) && JSON.stringify(before[key]) === JSON.stringify(next[key])) continue;
+      return `${at}${key}`;
+    }
+    return null;
+  };
+  return check(CHANNEL_FIELDS, candidate, previous, "")
+    ?? (record(candidate.access) ? check(CHANNEL_ACCESS_FIELDS, candidate.access, previous?.access, "access.") : null)
+    ?? (record(candidate.options) ? check(CHANNEL_OPTION_FIELDS, candidate.options, previous?.options, "options.") : null);
+}
 
 /**
  * Reject a write only if it INTRODUCES new validation errors. Pre-existing
@@ -255,15 +282,10 @@ export function handleSettingsRequest(
   if (!isSettingsPath(path)) return false;
   const method = req.method ?? "GET";
 
-  // ── Static page ──
-  if (method === "GET" && path === "/settings") {
-    try {
-      const html = readFileSync(join(__dirname, "ui", "settings.html"), "utf-8");
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(html);
-    } catch {
-      json(res, 500, { error: "settings.html not found" });
-    }
+  // ── The page: the app shell, which mounts the Settings panel (#1408 step 3) ──
+  if (isSettingsPage(path)) {
+    if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "Method not allowed" }); return true; }
+    serveAppShell(req, res, ctx, "full");
     return true;
   }
 
@@ -277,6 +299,8 @@ export function handleSettingsRequest(
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.
       fleet_signature_mismatch: ctx.fleetSignatureMismatchKeys?.() ?? null,
+      // Whether the provider-secret routes exist on this fleet: the page reads them only then (no 404 on every load).
+      provider_secrets: ctx.providerSecretsEnabled?.() === true,
     });
     return true;
   }
@@ -308,6 +332,7 @@ export function handleSettingsRequest(
   }
   if (method === "POST" && path === "/api/settings/status-emojis/preview") {
     readBody(req, 64 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -388,6 +413,7 @@ export function handleSettingsRequest(
     if (!ctx.verifyProviderSecret) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }, true); }
@@ -412,6 +438,7 @@ export function handleSettingsRequest(
     if (!ctx.startProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }, true); }
@@ -420,7 +447,7 @@ export function handleSettingsRequest(
         ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
       if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
-      const result = ctx.startProviderSecretApply!({ specId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key });
+      const result = ctx.startProviderSecretApply!({ specId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key, execution: settingsRequestExecution(req) });
       if ("error" in result) return json(res, 422, { ok: false, error: "provider secret apply rejected" }, true);
       if ("busy" in result) return json(res, 409, { ok: false, result: "applying", job_id: result.busy?.id ?? null }, true);
       json(res, result.reused ? 200 : 202, { ok: true, result: result.job.result, job_id: result.job.id, reused: result.reused, stale_consumers: result.job.stale_consumers ?? [] }, true);
@@ -444,6 +471,7 @@ export function handleSettingsRequest(
     if (!verifyConnectionSecret) { json(res, 501, { error: "connection secret verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -478,6 +506,7 @@ export function handleSettingsRequest(
     if (!ctx.startConnectionSecretApply) { json(res, 501, { error: "connection secret apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -490,7 +519,7 @@ export function handleSettingsRequest(
         connectionId,
         verificationId,
         sessionBinding: requestSessionBinding(req),
-        idempotencyKey: key,
+        idempotencyKey: key, execution: settingsRequestExecution(req),
       });
       if ("error" in result) return json(res, 422, { ok: false, error: "secret apply rejected" }, true);
       if ("busy" in result) return json(res, 409, {
@@ -524,6 +553,7 @@ export function handleSettingsRequest(
     if (!ctx.verifyConnectionBinding) { json(res, 501, { error: "connection binding verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -559,6 +589,7 @@ export function handleSettingsRequest(
     if (!ctx.startConnectionBindingApply) { json(res, 501, { error: "connection binding apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
@@ -568,7 +599,7 @@ export function handleSettingsRequest(
       if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
       const result = ctx.startConnectionBindingApply!({
-        connectionId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key,
+        connectionId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key, execution: settingsRequestExecution(req),
       });
       if ("error" in result) return json(res, 422, { ok: false, error: "binding apply rejected" }, true);
       if ("busy" in result) return json(res, 409, { ok: false, result: "applying" satisfies SecretApplyResult, job_id: result.busy?.id ?? null }, true);
@@ -604,10 +635,40 @@ export function handleSettingsRequest(
     return true;
   }
 
+  // One hot web toggle; an unrelated Settings edit never materializes defaults.
+  if (method === "PUT" && path === "/api/settings/fleet/web") {
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      let body: unknown;
+      try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (!body || typeof body !== "object" || Array.isArray(body)
+        || Object.keys(body).some(key => key !== "echo_to_channel" && key !== "public_link")) return json(res, 400, { error: "unknown web field" });
+      const patch = body as { echo_to_channel?: unknown; public_link?: unknown };
+      if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return json(res, 400, { error: "echo_to_channel must be a boolean" });
+      if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return json(res, 400, { error: "invalid public_link settings" });
+      const changes: RawConfigPatch[] = [];
+      const web = { ...cfg.web };
+      if (typeof patch.echo_to_channel === "boolean") { web.echo_to_channel = patch.echo_to_channel; changes.push({ path: ["web", "echo_to_channel"], value: patch.echo_to_channel }); }
+      if (validPublicLinkPatch(patch.public_link)) {
+        if (Object.keys(patch.public_link).length) web.public_link = { ...web.public_link, ...patch.public_link };
+        for (const [key, value] of Object.entries(patch.public_link)) changes.push({ path: ["web", "public_link", key], value });
+      }
+      if (!changes.length) return json(res, 200, { ok: true });
+      const before = validateFleetConfig(cfg);
+      const after = validateFleetConfig({ ...cfg, web });
+      if (rejectIfWorse(res, before, after)) return;
+      settingsWrite(req, () => { cfg.web = web; ctx.saveFleetConfig(changes); });
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
   // ── Fleet defaults ──
   if (method === "PUT" && path === "/api/settings/fleet/defaults") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -618,8 +679,7 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
-      cfg.defaults = merged as typeof cfg.defaults;
-      ctx.saveFleetConfig();
+      settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults; ctx.saveFleetConfig(); });
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -629,6 +689,7 @@ export function handleSettingsRequest(
   if (method === "PUT" && path === "/api/settings/fleet/channels") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!Array.isArray(body)) return json(res, 400, { error: "expected an array of channels" });
@@ -659,6 +720,8 @@ export function handleSettingsRequest(
         const id = typeof candidate.id === "string" ? candidate.id
           : typeof candidate.type === "string" ? candidate.type : `channel-${index}`;
         const previous = currentById.get(id);
+        const unowned = unownedChannelField(candidate, previous as Record<string, unknown> | undefined);
+        if (unowned) return json(res, 400, { ok: false, error: `unsupported connection field: channels[${index}].${unowned}` }, true);
         const tokenEnv = typeof candidate.bot_token_env === "string" ? candidate.bot_token_env : null;
         if (tokenEnv && (providerRegistryEnvKeys().has(tokenEnv) || isReservedProviderEnvKey(tokenEnv))) {
           return json(res, 409, { ok: false, error: "bot token env conflicts with a protected provider secret key" }, true);
@@ -687,9 +750,19 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig(next);
       if (rejectIfWorse(res, before, after)) return;
-      cfg.channels = normalizedBody as FleetConfig["channels"];
-      delete (cfg as { channel?: unknown }).channel;
-      ctx.saveFleetConfig();
+      const previous = { channels: cfg.channels, channel: cfg.channel, hadChannel: "channel" in cfg };
+      try {
+        settingsWrite(req, () => {
+          cfg.channels = normalizedBody as FleetConfig["channels"];
+          delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
+        });
+      } catch (err) {
+        // #1056: the save refused (fleet.yaml unchanged): memory goes back to what the file still says.
+        cfg.channels = previous.channels;
+        if (previous.hadChannel) cfg.channel = previous.channel;
+        ctx.logger.warn({ err }, "settings: channels save refused");
+        return json(res, 500, { ok: false, error: (err as Error).message });
+      }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -698,6 +771,7 @@ export function handleSettingsRequest(
   // ── Classic defaults ──
   if (method === "PUT" && path === "/api/settings/classic/defaults") {
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -711,7 +785,7 @@ export function handleSettingsRequest(
       const after = validateClassicBotConfig({ ...classic, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
       classic.defaults = merged;
-      try { writeClassicAtomic(ctx, classic); }
+      try { settingsWrite(req, () => writeClassicAtomic(ctx, classic)); }
       catch (err) {
         ctx.logger.warn({ err }, "settings: failed to atomically update classicBot.yaml");
         return json(res, 500, { error: "failed to write classicBot.yaml" });
@@ -730,6 +804,7 @@ export function handleSettingsRequest(
     catch { json(res, 400, { error: "invalid channel key" }); return true; }
     if (!key || /[\\/\x00]/.test(key)) { json(res, 400, { error: "invalid channel key" }); return true; }
     readBody(req, 512 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
@@ -741,6 +816,7 @@ export function handleSettingsRequest(
         "context_lines",
         "tool_progress",
         "reply_completion_guard",
+        "web_echo",
       ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
@@ -764,13 +840,16 @@ export function handleSettingsRequest(
         && typeof body.reply_completion_guard !== "boolean") {
         return json(res, 400, { error: "reply_completion_guard must be a boolean" });
       }
+      if (body.web_echo !== undefined && typeof body.web_echo !== "boolean") {
+        return json(res, 400, { error: "web_echo must be a boolean" });
+      }
 
       let classic: Record<string, unknown>;
       try { classic = readClassic(ctx); }
       catch (err) { return json(res, 409, { error: (err as Error).message }); }
       const channels = classic.channels;
       if (!channels || typeof channels !== "object" || Array.isArray(channels)) return json(res, 404, { error: "classic channel not found" });
-      const current = (channels as Record<string, unknown>)[key];
+      const current = Object.hasOwn(channels, key) ? (channels as Record<string, unknown>)[key] : undefined;
       if (!current || typeof current !== "object" || Array.isArray(current)) return json(res, 404, { error: "classic channel not found" });
       const previous = structuredClone(classic);
       const merged = { ...(current as Record<string, unknown>), ...body };
@@ -782,28 +861,38 @@ export function handleSettingsRequest(
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
       if (rejectIfWorse(res, before, after)) return;
-      try { writeClassicAtomic(ctx, classic); }
+      try { settingsWrite(req, () => writeClassicAtomic(ctx, classic), false); }
       catch (err) {
         ctx.logger.warn({ err, key }, "settings: failed to atomically update classic channel");
         return json(res, 500, { error: "failed to write classicBot.yaml" });
       }
+      const undo = settingsUndo(classicPath(ctx), previous, classic, Object.keys(body).map(field => ["channels", key, field]));
+      const execution = settingsRequestExecution(req);
       const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
+      const restore = instanceName ? ctx.captureClassicSettingsRestoration?.(instanceName, Object.keys(body), execution) : undefined;
       try {
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+          if (execution) await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body), execution);
+          else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+          execution?.assert();
         }
       } catch (err) {
         // Keep disk and runtime consistent if the requested restart fails.
-        try { writeClassicAtomic(ctx, previous); } catch (rollbackErr) {
+        try {
+          const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
+          writeClassicAtomic(ctx, retained.value);
+          if (retained.conflicts) throw new Error("concurrent Classic edit retained");
+        } catch (rollbackErr) {
           ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
         }
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          try { await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
+          try { if (restore) await restore(); else await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
           catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, key, instanceName }, "settings: failed to restore classic instance after rollback"); }
         }
         ctx.logger.warn({ err, key, instanceName }, "settings: classic channel restart failed; config rolled back");
         return json(res, 409, { error: `classic instance restart failed: ${(err as Error).message}` });
       }
+      execution?.complete();
       ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
       const hotOnly = Object.keys(body).length > 0
         && Object.keys(body).every(field => CLASSIC_HOT_CONFIG_KEYS.has(field));
@@ -826,6 +915,7 @@ export function handleSettingsRequest(
   if (method === "POST" && path === "/api/settings/apply") {
     if (!ctx.startSettingsApply) { json(res, 501, { error: "apply jobs unavailable" }); return true; }
     readBody(req, 64 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown> = {};
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; } catch { /* key may come from the header */ }
       // The client generates the key before its first attempt. A server-minted
@@ -869,6 +959,7 @@ export function handleSettingsRequest(
   if (method === "POST" && path === "/api/settings/restart-fleet") {
     if (!ctx.requestSettingsSelfRestart) { json(res, 501, { error: "self restart unavailable" }); return true; }
     readBody(req, 64 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown> = {};
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; } catch { /* reported below */ }
       const header = req.headers["idempotency-key"];
@@ -922,10 +1013,6 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
-  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name", "status_emojis", "cross_instance_visibility"]);
-  const removesInstanceOverride = (key: string, value: unknown): boolean =>
-    nullableInstanceOverrides.has(key)
-    && (value === null || (key === "model" && typeof value === "string" && value.trim() === ""));
   const rawInstancePatches = (name: string, patch: Record<string, unknown>): RawConfigPatch[] => {
     const changes: RawConfigPatch[] = [];
     for (const [key, value] of Object.entries(patch)) {
@@ -944,27 +1031,17 @@ export function handleSettingsRequest(
     if (typeof body !== "object" || body === null || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
     const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
     const patch = body as Record<string, unknown>;
-    const mergedInst = { ...base, ...patch };
-    if (patch.hang_detector && typeof patch.hang_detector === "object" && !Array.isArray(patch.hang_detector)) {
-      const hangPatch = patch.hang_detector as Record<string, unknown>;
-      const mergedHang = { ...((base.hang_detector as Record<string, unknown>) ?? {}), ...hangPatch };
-      // Nested null removes only the timeout override while preserving any
-      // independently configured `enabled` override.
-      if (hangPatch.timeout_minutes === null) delete mergedHang.timeout_minutes;
-      if (Object.keys(mergedHang).length) mergedInst.hang_detector = mergedHang;
-      else delete mergedInst.hang_detector;
-    }
-    // JSON has no `undefined`; null is the PATCH sentinel for removing an
-    // optional override so the instance inherits the fleet default again.
-    for (const key of nullableInstanceOverrides) {
-      if (removesInstanceOverride(key, patch[key])) delete mergedInst[key];
-    }
+    let mergedInst: Record<string, any>;
+    try { mergedInst = normalizeSettingsInstancePatch(base, patch); }
+    catch { json(res, 400, { error: "unsupported_instance_null" }); return; }
     const before = validateFleetConfig(cfg!);
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
-    cfg!.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
-    if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
-    ctx.saveFleetConfig(rawInstancePatches(name, patch));
+    settingsWrite(req, () => {
+      Object.defineProperty(cfg!.instances, name, { value: mergedInst, writable: true, enumerable: true, configurable: true });
+      if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
+      ctx.saveFleetConfig(rawInstancePatches(name, patch));
+    });
     json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
   };
 
@@ -972,12 +1049,13 @@ export function handleSettingsRequest(
   if (method === "POST" && path === "/api/settings/fleet/instances") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const name = typeof body.name === "string" ? body.name.trim() : "";
       if (!validName(name)) return json(res, 400, { error: "missing or invalid instance name (provide `name` in the body)" });
-      if (cfg.instances[name]) return json(res, 409, { error: "instance already exists" });
+      if (Object.hasOwn(cfg.instances, name)) return json(res, 409, { error: "instance already exists" });
       const { name: _n, ...instBody } = body;
       commitInstance(name, false, instBody);
     }).catch(() => json(res, 400, { error: "bad request" }));
@@ -992,20 +1070,21 @@ export function handleSettingsRequest(
     if (!validName(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
 
     if (method === "DELETE") {
-      if (!cfg.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
+      if (!Object.hasOwn(cfg.instances, name)) { json(res, 404, { error: "instance not found" }); return true; }
       // DELETE never blocks on validation; surface any resulting warnings.
-      delete cfg.instances[name];
-      clearPausedMarker(join(ctx.dataDir, "instances", name));
-      ctx.saveFleetConfig();
+      settingsWrite(req, () => {
+        delete cfg.instances[name]; clearPausedMarker(join(ctx.dataDir, "instances", name)); ctx.saveFleetConfig();
+      });
       json(res, 200, { ok: true, warnings: validateFleetConfig(cfg).warnings });
       return true;
     }
 
     if (method === "POST" || method === "PATCH") {
-      const exists = !!cfg.instances[name];
+      const exists = Object.hasOwn(cfg.instances, name);
       if (method === "POST" && exists) { json(res, 409, { error: "instance already exists" }); return true; }
       if (method === "PATCH" && !exists) { json(res, 404, { error: "instance not found" }); return true; }
       readBody(req, 512 * 1024).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
         let body: Record<string, unknown>;
         try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
         commitInstance(name, exists, body);

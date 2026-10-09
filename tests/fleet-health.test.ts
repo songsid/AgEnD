@@ -142,6 +142,9 @@ describe("adapter hot restart", () => {
       start: vi.fn(async () => {}),
     });
 
+    // A restart belongs to the currently registered adapter, never a stale
+    // object from before a Settings rebind.
+    fm.adapters.set("discord", adapter);
     await fm.restartAdapter(adapter, "discord");
 
     expect(adapter.reconnectGateway).toHaveBeenCalledOnce();

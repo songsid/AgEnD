@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 // The root build compiles src/tips.ts before postbuild invokes this script.
 // Importing the compiled module keeps src/tips.ts as the single source of truth
-// without maintaining a second website-only copy of the 300 tips.
+// without maintaining a second website-only copy of the tips.
 const { TIPS } = await import(new URL("../dist/tips.js", import.meta.url));
 // Render helpers are compiled alongside other src/ modules so both the
 // generator and the test suite share exactly the same code.

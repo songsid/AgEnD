@@ -1,25 +1,32 @@
+import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-context.js";
 import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
+import {
+  csrfTokenFor,
+  labelFromUserAgent,
+  tokenEpoch,
+  type SessionRecord,
+  type WebSessionStore,
+} from "./web-session.js";
 
 export const WEB_TOKEN_INVALID_MESSAGE = "Token expired or invalid — run /dashboard again";
 /** No credential at all. Distinct from "wrong credential" so a browser that
  * silently drops cookies is diagnosable instead of looking like a bad token. */
 export const WEB_SESSION_REQUIRED_MESSAGE =
   "No session — open the dashboard link again (cookies must be enabled for this site)";
+/** A cookie was sent and the server no longer honours it: expired, signed out, revoked or rotated away. */
+export const WEB_SESSION_EXPIRED_MESSAGE = "Session expired or signed out — sign in again";
 export const WEB_CROSS_SITE_MESSAGE = "Cross-site request rejected";
-/** A URL token is redeemed for a session cookie on a GET; it is never a
- * credential for a write, where it would also survive in history and logs. */
-export const WEB_URL_TOKEN_WRITE_MESSAGE =
-  "URL tokens are only redeemed on GET — send X-Agend-Token for API writes";
 
 const WEB_TOKEN_PATTERN = /^[0-9a-f]{48}$/i;
 
+/** Plain over http (loopback); `__Host-` over https, which pins Secure + Path=/ + no Domain in the browser. */
 export const WEB_SESSION_COOKIE = "agend_session";
-/** 12h. The old model was "valid forever"; the panel is an escape hatch, so the
- * cookie outlives a working day and nothing more. `web-token rotate` kills every
- * issued cookie immediately regardless of this. */
-export const WEB_SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
+export const WEB_SESSION_COOKIE_SECURE = "__Host-agend_session";
+/** Sent by pages on every write; the value is `csrfTokenFor(sessionId)`, handed out by `GET /auth/session`. */
+export const WEB_CSRF_HEADER = "x-agend-csrf";
+export const WEB_CSRF_MESSAGE = "Write rejected — missing or wrong CSRF token (reload the page)";
 
 function readValidToken(path: string): string | null {
   try {
@@ -97,16 +104,6 @@ export function rotateWebToken(dataDir: string): string {
   return token;
 }
 
-/**
- * The cookie carries a derivation of the token, never the token itself: a
- * stolen cookie opens the panel but cannot be replayed as `?token=` /
- * `X-Agend-Token` (which also authorize /view writes and the CLI). Rotating
- * `web.token` changes the derivation, so every issued cookie dies with it.
- */
-export function webSessionCookieValue(token: string): string {
-  return createHash("sha256").update(`agend-web-session-v1:${token}`).digest("hex");
-}
-
 function constantTimeEquals(a: string, b: string): boolean {
   const left = Buffer.from(a, "utf8");
   const right = Buffer.from(b, "utf8");
@@ -136,9 +133,15 @@ export interface WebGateRequest {
 }
 
 export type WebGateDecision =
-  | { readonly kind: "allow" }
-  | { readonly kind: "exchange"; readonly setCookie: string; readonly location: string }
-  | { readonly kind: "reject"; readonly status: 401 | 403; readonly message: string };
+  | { readonly kind: "allow"; readonly via: "session"; readonly session: SessionRecord }
+  | { readonly kind: "allow"; readonly via: "header-token" }
+  | {
+      readonly kind: "reject";
+      readonly status: 401 | 403;
+      readonly message: string;
+      /** `no-credential` is "nothing was presented" — the case a browser navigation answers with the sign-in page. */
+      readonly reason: "closed" | "no-credential" | "invalid" | "cross-site" | "csrf";
+    };
 
 function headerValue(req: WebGateRequest, name: string): string | null {
   const raw = req.headers[name];
@@ -156,7 +159,9 @@ function headerValue(req: WebGateRequest, name: string): string | null {
  * caller, which is the same `X-Agend-Token` path the CLI uses.
  */
 export function isSameOriginRequest(req: WebGateRequest): boolean {
+  const gateway = gatewayRequestContext(req);
   const origin = headerValue(req, "origin");
+  if (gateway) return isWebRequestCurrent(req) && (!origin || origin === gateway.expectedOrigin);
   if (!origin) return true;
   const host = headerValue(req, "host");
   if (!host) return false;
@@ -173,93 +178,241 @@ export function isSameOriginRequest(req: WebGateRequest): boolean {
  * attribute. The health server is always plain HTTP, so the only signal is the
  * tunnel/proxy in front of it. A forged header can only make us set Secure on a
  * plain-HTTP response, which costs the forger their own cookie and nothing else. */
-function isSecureRequest(req: WebGateRequest): boolean {
+export function isSecureRequest(req: WebGateRequest): boolean {
+  if (gatewayRequestContext(req)) return true;
   const proto = headerValue(req, "x-forwarded-proto");
   if (!proto) return false;
   return proto.split(",")[0]!.trim().toLowerCase() === "https";
 }
 
-export function buildSessionCookie(token: string, secure: boolean): string {
+/**
+ * The session cookie for a freshly minted session.
+ *
+ * `Max-Age` is a courtesy so the browser forgets it when the server would; the
+ * server enforces the expiry itself and does not rely on the browser doing so.
+ */
+export function buildSessionCookie(sessionId: string, secure: boolean, maxAgeSeconds: number): string {
   const attrs = [
-    `${WEB_SESSION_COOKIE}=${webSessionCookieValue(token)}`,
+    `${secure ? WEB_SESSION_COOKIE_SECURE : WEB_SESSION_COOKIE}=${sessionId}`,
     "Path=/",
     "HttpOnly",
     // Strict, not Lax: the panel can restart instances, so a cross-site
-    // navigation must not arrive already authenticated.
+    // navigation must not arrive already authenticated. The sign-in page
+    // handles the resulting "landed from a chat link" case.
     "SameSite=Strict",
-    `Max-Age=${WEB_SESSION_MAX_AGE_SECONDS}`,
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
   ];
   if (secure) attrs.push("Secure");
   return attrs.join("; ");
 }
 
-export function hasValidSessionCookie(req: WebGateRequest, token: string): boolean {
-  const cookie = parseCookieHeader(headerValue(req, "cookie") ?? undefined).get(WEB_SESSION_COOKIE);
-  return !!cookie && constantTimeEquals(cookie, webSessionCookieValue(token));
+/** Expire the cookie under both names: which one was set depends on how the browser reached us. */
+export function buildClearedSessionCookies(): string[] {
+  return [
+    `${WEB_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0`,
+    `${WEB_SESSION_COOKIE_SECURE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Secure`,
+  ];
 }
 
-function hasValidHeaderToken(req: WebGateRequest, token: string): boolean {
+/** The presented session id, or undefined. A `__Host-` cookie wins: it cannot have been planted by a sibling site. */
+export function readSessionCookie(req: WebGateRequest): string | undefined {
+  const jar = parseCookieHeader(headerValue(req, "cookie") ?? undefined);
+  return gatewayRequestContext(req) ? jar.get(WEB_SESSION_COOKIE_SECURE) : jar.get(WEB_SESSION_COOKIE_SECURE) ?? jar.get(WEB_SESSION_COOKIE);
+}
+
+export function hasValidHeaderToken(req: WebGateRequest, token: string): boolean {
+  if (gatewayRequestContext(req)) return false;
   const provided = headerValue(req, "x-agend-token");
   return !!provided && constantTimeEquals(provided, token);
 }
 
-/** Same-origin relative target with the token stripped and every other query
- * parameter kept. Relative on purpose: an absolute Location built from
- * attacker-supplied Host would be an open redirect. */
-function locationWithoutToken(url: URL): string {
-  const stripped = new URL(url.href);
-  stripped.searchParams.delete("token");
-  return `${stripped.pathname}${stripped.search}`;
+function isSafeMethod(method: string): boolean {
+  return method === "GET" || method === "HEAD" || method === "OPTIONS";
+}
+
+/**
+ * The extra checks a write must pass when the only thing authorizing it is a
+ * cookie — an ambient credential the browser attaches to whatever page asks.
+ *
+ * Three independent ones, so that a gap in any single one (a browser without
+ * `Sec-Fetch-Site`, a same-site sibling that SameSite cannot tell from us) is
+ * not the whole defence:
+ * 1. `Origin` must be present and equal to `Host`. Present, unlike the read
+ *    path: every browser sends it on a same-origin write, and its absence on a
+ *    cookie-authenticated POST is a request nobody legitimate makes.
+ * 2. `Sec-Fetch-Site`, when the browser sends it, must say `same-origin`.
+ * 3. `X-Agend-CSRF` must equal the value derived from this session's id. A
+ *    cross-site page cannot set a custom header without a preflight this server
+ *    never approves, and cannot read the value.
+ */
+function passesCookieWriteChecks(req: WebGateRequest, sessionId: string): boolean {
+  if (!headerValue(req, "origin")) return false;
+  const site = headerValue(req, "sec-fetch-site");
+  if (site !== null && site !== "same-origin") return false;
+  const presented = headerValue(req, WEB_CSRF_HEADER);
+  return !!presented && constantTimeEquals(presented, csrfTokenFor(sessionId));
+}
+
+export type SessionAuthResult =
+  | { readonly kind: "ok"; readonly session: SessionRecord; readonly sessionId: string }
+  | { readonly kind: "reject"; readonly status: 401 | 403; readonly message: string };
+
+/**
+ * Session-only authorization, for the endpoints that are *about* the session
+ * (who am I, sign out, list devices). A header token is not a session and is not
+ * accepted here; everything else — Origin, expiry, rotation, and the write
+ * checks for an unsafe method — is the same as for any gated route.
+ */
+export function authorizeSession(
+  req: WebGateRequest,
+  token: string | null,
+  sessions: WebSessionStore | null | undefined,
+  opts: { touch?: boolean } = {},
+): SessionAuthResult {
+  if (!token || !isWebRequestCurrent(req)) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
+  if (!isSameOriginRequest(req)) return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE };
+  const cookie = readSessionCookie(req);
+  const session = sessions && cookie ? sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch !== false, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId }) : null;
+  if (!session || !cookie) {
+    return { kind: "reject", status: 401, message: cookie ? WEB_SESSION_EXPIRED_MESSAGE : WEB_SESSION_REQUIRED_MESSAGE };
+  }
+  const method = (req.method ?? "GET").toUpperCase();
+  if (!isSafeMethod(method) && !passesCookieWriteChecks(req, cookie)) {
+    return { kind: "reject", status: 403, message: WEB_CSRF_MESSAGE };
+  }
+  return { kind: "ok", session, sessionId: cookie };
+}
+
+interface AuthorizeOptions {
+  /** Whether a valid cookie counts as activity (slides the idle expiry). */
+  readonly touch: boolean;
+}
+
+function authorize(
+  req: WebGateRequest,
+  url: URL,
+  token: string | null,
+  sessions: WebSessionStore | null | undefined,
+  opts: AuthorizeOptions,
+): WebGateDecision {
+  // No token on disk means the panel is closed, not open to everyone. Without
+  // this, a null token compared against a missing credential authorizes.
+  if (!token || !isWebRequestCurrent(req)) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "closed" };
+
+  if (!isSameOriginRequest(req)) {
+    return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE, reason: "cross-site" };
+  }
+
+  const method = (req.method ?? "GET").toUpperCase();
+
+  // A header credential is not ambient — a page cannot make the browser add it —
+  // so it needs none of the cookie write checks, and is tried first: a request
+  // carrying both is the CLI's, not a forged form's.
+  if (hasValidHeaderToken(req, token)) return { kind: "allow", via: "header-token" };
+
+  const cookie = readSessionCookie(req);
+  if (sessions && cookie) {
+    const session = sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
+    if (session) {
+      if (!isSafeMethod(method) && !passesCookieWriteChecks(req, cookie)) {
+        return { kind: "reject", status: 403, message: WEB_CSRF_MESSAGE, reason: "csrf" };
+      }
+      return { kind: "allow", via: "session", session };
+    }
+  }
+
+  // A `?token=` in the URL is not a credential (it used to be redeemed for a cookie on a GET). A URL
+  // ends up in browser history, chat scrollback, screenshots and request logs; the dashboard now
+  // gives a one-time sign-in code instead, and the CLI and scripts send the X-Agend-Token header.
+  // A link that still carries one is answered like no credential at all: the sign-in page.
+
+  // A wrong header token is somebody presenting a credential and getting it wrong.
+  // A cookie that no longer works is the ordinary end of a session, not that: it is the same
+  // "you need to sign in" as no cookie at all, and a browser navigation should be answered
+  // with the sign-in page either way.
+  if (headerValue(req, "x-agend-token")) {
+    return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE, reason: "invalid" };
+  }
+  return {
+    kind: "reject",
+    status: 401,
+    message: cookie ? WEB_SESSION_EXPIRED_MESSAGE : WEB_SESSION_REQUIRED_MESSAGE,
+    reason: "no-credential",
+  };
+}
+
+/**
+ * Requests a page makes on its own timer, with nobody at it. They are authorized in full — session, expiry,
+ * revocation, token epoch — but never count as activity, or a tab left open would keep its session alive until the
+ * absolute cap and the idle limit would mean nothing (#1251 review; #1373 for /view and the stream).
+ *
+ * An explicit list of method + path, decided by the server. Never a header or a parameter the client sets: a page
+ * that could declare itself passive could also declare itself active.
+ *
+ * - `GET /ui/poll`: the dashboard's fallback poll, every 5 s while the stream is down.
+ * - `GET /ui/events`: the dashboard's live stream. The page opens it after it has loaded, and the browser reopens it
+ *   on its own whenever it drops; the page load that opened it already counted. (Its heartbeat re-check passes
+ *   `touch: false` itself.)
+ * - `GET /api/pane/<instance>`: `/view`'s terminal, every 0.8 s.
+ * - `GET /api/profiles`: `/view`'s roster, every 5 s.
+ * - `GET /api/ai-usage`: the usage panel, every minute while it is open.
+ *
+ * Everything else a session authorizes — a page load, a chat's history, any write — is the person, and slides the
+ * idle expiry. Only these matter when a session is required for them: `/view`'s reads and the usage panel are open by
+ * default and then touch nothing at all.
+ */
+const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage"]);
+const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
+
+export function isPassiveWebRead(method: string | undefined, path: string): boolean {
+  if ((method ?? "GET") !== "GET") return false;
+  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path);
 }
 
 /**
  * The single authorization decision for every gated web route.
  *
- * Accepts, in order: a session cookie, an `X-Agend-Token` header (CLI and
- * scripts), and — only to be redeemed for a cookie on a GET — a `?token=` in
- * the URL. After the redemption the token is gone from the address bar, from
- * browser history, and from anything that logs request URLs.
+ * Accepts, in order: an `X-Agend-Token` header (CLI and scripts) and a session
+ * cookie (made by signing in with a one-time code). Never a credential in the URL.
  */
-export function decideWebGate(req: WebGateRequest, url: URL, token: string | null): WebGateDecision {
-  // No token on disk means the panel is closed, not open to everyone. Without
-  // this, a null token compared against a missing credential authorizes.
-  if (!token) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
-
-  if (!isSameOriginRequest(req)) {
-    return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE };
-  }
-
-  if (hasValidSessionCookie(req, token)) return { kind: "allow" };
-  if (hasValidHeaderToken(req, token)) return { kind: "allow" };
-
-  const queryToken = url.searchParams.get("token");
-  if (queryToken && constantTimeEquals(queryToken, token)) {
-    const method = (req.method ?? "GET").toUpperCase();
-    if (method !== "GET" && method !== "HEAD") {
-      return { kind: "reject", status: 401, message: WEB_URL_TOKEN_WRITE_MESSAGE };
-    }
-    return {
-      kind: "exchange",
-      setCookie: buildSessionCookie(token, isSecureRequest(req)),
-      location: locationWithoutToken(url),
-    };
-  }
-
-  const presented = queryToken ?? headerValue(req, "x-agend-token") ?? headerValue(req, "cookie");
-  return {
-    kind: "reject",
-    status: 401,
-    message: presented ? WEB_TOKEN_INVALID_MESSAGE : WEB_SESSION_REQUIRED_MESSAGE,
-  };
+export function decideWebGate(
+  req: WebGateRequest,
+  url: URL,
+  token: string | null,
+  sessions: WebSessionStore | null | undefined,
+): WebGateDecision {
+  return authorize(req, url, token, sessions, { touch: !isPassiveWebRead(req.method, url.pathname) });
 }
 
-/** Defence in depth for handlers that run behind the gate: authorization only,
- * no cookie issuing (the gate already did that). */
-export function isWebRequestAuthorized(req: WebGateRequest, url: URL, token: string | null): boolean {
-  if (!token) return false;
-  if (!isSameOriginRequest(req)) return false;
-  if (hasValidSessionCookie(req, token)) return true;
-  if (hasValidHeaderToken(req, token)) return true;
-  const queryToken = url.searchParams.get("token");
-  return !!queryToken && constantTimeEquals(queryToken, token);
+/**
+ * The decision, for a handler that needs to say *why* it refused (401 vs the 403
+ * a cross-site or CSRF failure earns) rather than only whether. A `?token=` in the
+ * URL is not a credential here either. Counts as activity exactly when the gate
+ * does (`isPassiveWebRead`), unless `touch` says otherwise.
+ */
+export function evaluateWebRequest(
+  req: WebGateRequest,
+  url: URL,
+  token: string | null,
+  sessions?: WebSessionStore | null,
+  opts: { touch?: boolean } = {},
+): WebGateDecision {
+  // A handler re-checking a request the gate already let through must not count it as activity when the gate did not.
+  return authorize(req, url, token, sessions, { touch: opts.touch ?? !isPassiveWebRead(req.method, url.pathname) });
+}
+
+/**
+ * Defence in depth for handlers that run behind the gate: the same decision, as a boolean.
+ *
+ * `touch: false` is for a long-lived stream re-checking itself on a timer, which
+ * must be able to notice a revocation without counting as activity.
+ */
+export function isWebRequestAuthorized(
+  req: WebGateRequest,
+  url: URL,
+  token: string | null,
+  sessions?: WebSessionStore | null,
+  opts: { touch?: boolean } = {},
+): boolean {
+  return authorize(req, url, token, sessions, { touch: opts.touch ?? !isPassiveWebRead(req.method, url.pathname) }).kind === "allow";
 }

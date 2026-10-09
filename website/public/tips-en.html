@@ -51,7 +51,7 @@
 <body>
   <nav><div class="nav-inner"><a class="brand" href="./">AgEnD</a><div class="nav-actions"><a href="./">Home</a><a href="./tips-zh.html" hreflang="zh-TW">繁體中文</a></div></div></nav>
   <main>
-    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>300 practical notes, grouped from everyday use to advanced fleet operations.</p><div class="jump-links"><a href="#beginner">Beginner</a><a href="#intermediate">Intermediate</a><a href="#advanced">Advanced</a></div></header>
+    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>304 practical notes, grouped from everyday use to advanced fleet operations.</p><div class="jump-links"><a href="#beginner">Beginner</a><a href="#intermediate">Intermediate</a><a href="#advanced">Advanced</a></div></header>
     <section class="tips-section" id="beginner">
       <div class="section-heading">
         <div>
@@ -59,7 +59,7 @@
           <h2>Beginner</h2>
           <p>Everyday chat and core concepts</p>
         </div>
-        <span class="level-count">100 tips</span>
+        <span class="level-count">104 tips</span>
       </div>
       <div class="tips-grid">
         <article class="tip-card" id="tip-001" data-tip-id="tip-001" data-level="beginner">
@@ -268,11 +268,11 @@
           </article>
         <article class="tip-card" id="tip-051" data-tip-id="tip-051" data-level="beginner">
             <a class="tip-id" href="#tip-051">tip-051</a>
-            <p>`/dashboard` = links to View, Settings, and Web UI; it is an admin command because the edit links contain an access token.</p>
+            <p>`/dashboard` = a sign-in link and a one-time code for the web dashboard (web chat, View, Settings); it is an admin command because the code signs a browser in.</p>
           </article>
         <article class="tip-card" id="tip-052" data-tip-id="tip-052" data-level="beginner">
             <a class="tip-id" href="#tip-052">tip-052</a>
-            <p>View at `http://localhost:19280/view` = the live local dashboard by default; localhost means it normally opens only on the AgEnD machine.</p>
+            <p>`http://localhost:19280` = the web dashboard and web chat by default; localhost means it normally opens only on the AgEnD machine, so a phone needs a way in first (SSH, Tailscale or a tunnel).</p>
           </article>
         <article class="tip-card" id="tip-053" data-tip-id="tip-053" data-level="beginner">
             <a class="tip-id" href="#tip-053">tip-053</a>
@@ -472,6 +472,22 @@
             <a class="tip-id" href="#tip-100">tip-100</a>
             <p>A useful Tip should tell you what changes for you; press I don&#39;t understand when the wording does not make the consequence clear.</p>
           </article>
+        <article class="tip-card" id="tip-301" data-tip-id="tip-301" data-level="beginner">
+            <a class="tip-id" href="#tip-301">tip-301</a>
+            <p>Web chat = talk to an Agent from a browser; it is the same conversation as that Agent&#39;s Telegram or Discord chat, so you can switch between phone and computer mid-conversation.</p>
+          </article>
+        <article class="tip-card" id="tip-302" data-tip-id="tip-302" data-level="beginner">
+            <a class="tip-id" href="#tip-302">tip-302</a>
+            <p>Opening web chat = an admin sends `/dashboard`, opens the sign-in link and types the one-time code; that browser then stays signed in, so you do not repeat this every time.</p>
+          </article>
+        <article class="tip-card" id="tip-303" data-tip-id="tip-303" data-level="beginner">
+            <a class="tip-id" href="#tip-303">tip-303</a>
+            <p>Files in web chat = attach with 📎, paste, or drop them on the chat; the Agent receives them exactly like files sent from Telegram (up to 5 files, 10 MB each).</p>
+          </article>
+        <article class="tip-card" id="tip-304" data-tip-id="tip-304" data-level="beginner">
+            <a class="tip-id" href="#tip-304">tip-304</a>
+            <p>Stop in web chat = interrupt the Agent&#39;s current reply, like the cancel button in Telegram; messages still waiting are dropped, but the Agent itself keeps running.</p>
+          </article>
       </div>
     </section>
 <section class="tips-section" id="intermediate">
@@ -618,7 +634,7 @@
           </article>
         <article class="tip-card" id="tip-134" data-tip-id="tip-134" data-level="intermediate">
             <a class="tip-id" href="#tip-134">tip-134</a>
-            <p>Use `/dashboard` to obtain current View and Settings links. Links containing an access token should be treated like a password and not shared publicly.</p>
+            <p>Use `/dashboard` to get a sign-in link and a one-time code. The code works once and expires after 5 minutes; treat it like a password and do not post it where someone else could use it first.</p>
           </article>
         <article class="tip-card" id="tip-135" data-tip-id="tip-135" data-level="intermediate">
             <a class="tip-id" href="#tip-135">tip-135</a>
@@ -990,7 +1006,7 @@
           </article>
         <article class="tip-card" id="tip-224" data-tip-id="tip-224" data-level="advanced">
             <a class="tip-id" href="#tip-224">tip-224</a>
-            <p>The persistent web token keeps dashboard URLs valid across restarts. Run `agend web-token rotate` to invalidate every issued link and browser session at once; a running fleet applies it without a restart.</p>
+            <p>A browser stays signed in to the dashboard across fleet restarts (up to 12 hours). Send `/dashboard revoke`, or run `agend web-token rotate` on the host, to sign every browser out at once; a running fleet applies it without a restart.</p>
           </article>
         <article class="tip-card" id="tip-225" data-tip-id="tip-225" data-level="advanced">
             <a class="tip-id" href="#tip-225">tip-225</a>

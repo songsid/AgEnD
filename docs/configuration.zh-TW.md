@@ -59,10 +59,15 @@ health_port: 19280
 | `health_port` | number | `19280` | HTTP 健康檢查/API 伺服器埠 |
 | `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名稱：附加在 Discord slash 指令說明後面，並顯示在每個 backend 選單下方（`🖥 Fleet：…`）。同一個 guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行它的那個 fleet——這個標籤用來分辨它們。預設：本機主機名稱；AgEnD home 不是 `~/.agend` 時再加上該目錄名稱 |
 | `web` | object | — | `usage_panel: false` 隱藏 `/view` 的 AI 額度面板並停用 `/api/ai-usage`（預設 `true`）；`allowed_hosts: [name, …]` 加入反向代理或轉送使用的 Host 名稱。內建允許 `localhost`、`127.0.0.1`、`[::1]` 與設定的 `hostname`；其餘 Host 回 403，`/login` 瀏覽器終端也使用此清單 |
+| `needs_you` | object | — | **「等你處理」**（#1386）：一份列出所有在等人處理的事的清單——fleet 的提示（沒有回應／已結束／在終端機上等待）、instance 停在權限、危險指令、登入或其他對話框、因需要登入而暫停或已崩潰的 instance，以及 fleet 無法確認或無法送達的傳遞（最近 24 小時）。`needs_you.live_message`（預設 `true`）：每個 bot 在**自己的** General 維持一則即時訊息，只列出它負責的 instance——處理掉就編輯更新，有新的事就重新發一則（最多每分鐘一次）；每一行都連到該提示自己的按鈕或 instance 的討論串，無法確認或送達的傳遞會有**已確認**按鈕，限該 bot 的管理員使用。`needs_you.dm`（預設 `false`）：有新的事時也私訊該 bot 的管理員（終端機等待需持續 5 秒才通知；最多每分鐘一則）。網頁儀表板會顯示所有 bot 的項目。兩個設定都不需重啟即生效。 |
 | `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的公開連結，每次登入都會提供，除非設 `allow_public: false`；見下方「人不在機器旁完成 /login」 |
 
 ---
 
+
+### 臨時公開 dashboard 連結
+
+`web.public_link.allow_public` 預設 `true`（僅提供選項，必須由 General 管理員主動點選）、`ttl_minutes` 預設 `120`（1–480，從同意起固定期限）、`protocol` 預設 `http2`（也接受 `quic`／`auto`）。Settings 修改時不因無關編輯寫入預設值；停用會關現有入口。公開 Host 不持久化，該入口的 `/view` 需登入且不開 preview。私送、session 隔離與風險見 [web dashboard](web-dashboard.zh-TW.md#手機使用臨時公開連結)。
 
 ### 同一個 Discord guild 裡有多個 fleet
 
@@ -154,6 +159,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `locale` | `"en"` \| `"zh-TW"` | 依時區推算 | 使用者可見介面與通知的語言 |
 | `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息內容的 UTF-8 byte 上限。超限時會明確拒絕，並提示精簡內容或改傳檔案路徑。 |
 | `reply_overdue_minutes` | number | `15` | 距上次詢問／提醒多少分鐘後，通知寄件者一次：`requires_reply` 請求仍未回答，且負責的 instance 並非 working。`0` 只停用寄件者通知，不停用對負責者的提醒 |
+| `retention_days` | number | `30` | `delivery-outbox.db` 保留已完成投遞（`delivered`/`failed`）及 Task Board 已完成/已取消任務的天數。`uncertain` 與非終態的 row 永遠不會被清除。fleet 啟動時執行一次，之後每天執行，每次最多刪除 500 筆以免卡住 event loop。被清除的 delivery_id 在 `delivery_status` 工具中會回傳「早於保留期限，已清除」而非「找不到」 |
 | `tips` | boolean | `true` | General 每日提示與更新完成後的提示；不受 `daily_summary.enabled` 控制 |
 
 ### defaults.cost_guard
@@ -275,7 +281,7 @@ templates:
 |------|------|------|------|
 | `working_directory` | string | 自動 | 專案目錄路徑。省略時自動建立 `~/.agend/workspaces/<name>` |
 | `display_name` | string | — | Agent 顯示名稱（例："Kuro"）。用 `set_display_name` 設定 |
-| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`、`photo`、`attachment`（ClassicBot 存下圖片／檔案時的貼圖）。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值。Settings 可用選擇器編輯（Discord 會列出伺服器自訂 emoji），預覽與 bot 實際 react 的結果一致 |
+| `status_emojis` | object | — | 此 instance 自己的投遞狀態 emoji，逐鍵覆蓋 channel 的 `options.status_emojis`。鍵：`received`、`queued`、`processing`、`delivered`、`failed`、`progress_prefix`、`photo`、`attachment`（ClassicBot 存下圖片／檔案時的貼圖）。解析順序：instance → channel → 內建。Discord 可用伺服器自訂 emoji（`<:name:id>`、`<a:name:id>`、`name:id`）；Telegram 只接受固定反應集合，無效值只警告一次並退回內建值。Settings 可用選擇器編輯（Discord 會列出伺服器自訂 emoji），預覽與 bot 實際 react 的結果一致。連線層級的 `status_emojis` 修改會在 bot 下一次蓋戳記時生效，不需重啟（各 agent 的「避免使用」清單在它下次啟動時更新）。`progress_prefix` 不是反應，而是進度訊息開頭的 emoji |
 | `description` | string | — | 角色描述，加入 backend 原生指令中的 `## Role` |
 | `tags` | string[] | — | 用於探索 instance 能力的標籤 |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
@@ -340,7 +346,7 @@ MCP server instructions 提供精簡的身分、回覆與跨 instance 通訊契�
 |---------|-------------------|
 | Claude Code | Instance 內的 `fleet-instructions.md`，用附加式 `--append-system-prompt-file` 載入 |
 | Codex | 工作目錄 `AGENTS.md` 中由 AgEnD 管理的 marker 區塊 |
-| Kiro CLI | 工作目錄 `.kiro/steering/agend-<instance>.md` |
+| Kiro CLI | instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`；kiro-cli 2.21 以前，以及恢復的對話切換成自己的 agent 之前，用 steering 檔 `.kiro/steering/agend-<instance>.md` |
 | OpenCode | Instance 內的 `fleet-instructions.md`，加入專案 `opencode.json` 的 `instructions` 陣列 |
 | Antigravity | 工作目錄 `.agents/agents.md` 中的 marker 區塊 |
 | Grok／Muse | 工作目錄 `AGENTS.md` 中的 marker 區塊 |
@@ -422,10 +428,10 @@ channels:
 |------|------|------|
 | `defaults.model` | string | 所有 classic channel 的預設模型 |
 | `defaults.context_lines` | number | 每次訊息前注入的聊天記錄行數（預設 5，設 0 停用） |
-| `defaults.allowed_guilds` | string[] | 允許使用 ClassicBot 的 Discord 伺服器 ID（空 = 全部允許） |
-| `defaults.allowed_groups` | string[] | 允許使用 ClassicBot 的 Telegram 群組 ID |
-| `defaults.allowed_users` | string[] | 允許互動的使用者 ID |
-| `defaults.admin_users` | string[] | Classic 管理者 ID；平台間的指令 gate 不同，見[權限矩陣](permissions.md)。`/raw` 不是支援的指令 |
+| `defaults.allowed_guilds` | string[] | 獲准新啟動 ClassicBot 的 Discord 伺服器 ID（空白／省略會申請核准） |
+| `defaults.allowed_groups` | string[] | 獲准存取的 Telegram 群組 ID（空白／省略會申請核准） |
+| `defaults.allowed_users` | string[] | 獲准新啟動的 Telegram 私訊使用者 ID（空白／省略會申請核准） |
+| `defaults.admin_users` | string[] | Classic 管理者 ID；平台間的指令 gate 不同，見[指令介面矩陣](command-surface.zh-TW.md)。Classic Telegram `/raw` 目前被擋住；Fleet 隱藏 `/raw` 須有 owning bot 的 F |
 | `defaults.reply_completion_guard` | boolean | 個別 channel → Classic defaults → fleet defaults → `true`；仍需上述 backend capability |
 | `channels.<key>.channelId` | string | 真實 channel／chat ID；未填時使用 YAML key |
 | `channels.<key>.name` | string | 顯示名稱；未填時使用 channel ID |
@@ -436,6 +442,8 @@ channels:
 | `channels.<key>.reply_completion_guard` | boolean | 個別 channel 的人類回覆 guard 覆寫 |
 | `channels.<key>.collab` | boolean | @mention 觸發的協作模式（預設 `false`） |
 | `channels.<key>.pre_task_command` | string | 每次訊息前貼入的原始命令 |
+
+新啟動時，ClassicBot 管理員（`admin_users`）可直接啟動；其他使用者須有明確的伺服器／私訊使用者授權，否則透過 General 的「允許／允許＋設為管理員／忽略」按鈕申請。Telegram 私訊核准加入 `allowed_users`。Telegram 群組仍須由 ClassicBot 管理員啟動；「允許」只授權群組，「允許＋設為管理員」另提升申請者。既有已註冊頻道繼續運作，Discord DM 仍不支援。核准不會自動啟動 Agent，請再次 `/start`（群組用 `/start@OurBot`）。
 
 ### 手動管理
 
@@ -565,3 +573,9 @@ Codex profile **只換 `auth.json` 的來源**。Instance 仍使用自己的 COD
 | `instances/<name>/channel.sock` | IPC Unix socket |
 | `instances/<name>/statusline.json` | 最新 CLI 狀態 |
 | `instances/<name>/rotation-state.json` | 崩潰恢復 snapshot（之後啟動時一次性消費，不依 Context 用量輪替） |
+
+### Web chat 主題同步（2.2 web 線）
+
+fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 一般設定 → Web chat** 切換。同步文字使用 `🌐 web · web-user: …`，附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 與 ClassicBot 群組不做同步。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
+
+同步本文與附件名稱的 mention／command token 改成可見 ASCII 標籤，例如 `[mention: 200]`、`[at: botname]`、`[command: cmd at bot]`。先做相容正規化與 format-character 移除；URL、email local part 與一般路徑斜線保留。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。共用 ingress 在作者是該平台已設定的 fleet bot 帳號、且本文以固定 `🌐 web · ` 開頭時丟棄副本，不依賴 echo 開關或 send ACK。同平台只要還有任一已設定 world 的 bot 身分未知，也會在 trigger 判斷前丟棄帶平台 bot 作者旗標的前綴候選並記 debug。這段暫時隔離不影響人類貼上的前綴；身分全部就緒後，非 fleet bot 維持原 admission／collab 規則。不將未知作者當成 fleet bot，也不使用近期 message-ID cache。

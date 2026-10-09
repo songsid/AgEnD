@@ -14,6 +14,7 @@
  * it legitimately, and the attack does not depend on it.
  */
 import type { ServerResponse } from "node:http";
+import { randomBytes } from "node:crypto";
 
 export const WEB_HOST_REJECTED_MESSAGE =
   "Host not allowed — if you reach AgEnD through a reverse proxy or another name, add it to web.allowed_hosts in fleet.yaml";
@@ -46,6 +47,35 @@ export function hostnameOf(value: string): string | null {
   // either direction.
   return match[1]!.replace(/\.$/, "") || null;
 }
+
+/**
+ * What a page served here may load and where it may send anything.
+ *
+ * `script-src` is this origin only — no `'unsafe-inline'` (#1268): a panel's own inline
+ * script runs because the panel is served with a per-response nonce for it
+ * (sendPanelHtml), and no panel has an inline `on*=` handler. Injected markup can
+ * therefore not run script. `connect-src`, `img-src` and `form-action` are this
+ * origin, so nothing read can be posted elsewhere, and `base-uri`, `object-src` and
+ * `frame-ancestors` are closed. Styles are the same (#1300): `style-src 'self'`, and a
+ * panel's own `<style>` block carries the response's nonce. No panel has a `style="…"`
+ * attribute — what a script colours or sizes at run time goes through the style object
+ * (CSSOM), which the policy does not govern — so injected markup cannot add inline styles of its
+ * own (it can still carry the page's existing class names).
+ *
+ * Fonts, scripts and styles are all served from here; nothing loads from a CDN.
+ */
+export const WEB_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
 
 export interface HostGuardConfig {
   hostname?: string;
@@ -86,8 +116,37 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
   // These pages have buttons that restart instances and change configuration;
   // a page that can be framed can be clicked through.
   res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+  res.setHeader("Content-Security-Policy", WEB_CONTENT_SECURITY_POLICY);
   // Authorization now depends on a cookie, so a shared cache (a tunnel, a
   // corporate proxy) must not keep or replay any of it.
   res.setHeader("Cache-Control", "no-store");
+}
+
+/**
+ * The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's nonce for scripts and styles,
+ * and — for /ui only, when a preview origin was chosen for this load (#1306) — `frame-src <preview origin>/frame`:
+ * path-scoped, so nothing else of that origin can be framed or navigated to. Without it, frames fall back to
+ * default-src 'self'.
+ */
+export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string } = {}): string {
+  const policy = WEB_CONTENT_SECURITY_POLICY
+    .replace("script-src 'self'", `script-src 'self' 'nonce-${nonce}'`)
+    .replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`);
+  return opts.frameSrc ? `${policy}; frame-src ${opts.frameSrc}` : policy;
+}
+
+/**
+ * Send a panel page (/ui, /view, /settings, the sign-in page). Its own inline `<script>` and `<style>` blocks get a
+ * fresh nonce, and the response's CSP names that nonce and nothing else inline (#1268, #1300): a script or a style
+ * that was not in the file as served — anything injected into the page — has no nonce and does not apply.
+ */
+export function sendPanelHtml(res: ServerResponse, html: string, status = 200, headers: Record<string, string> = {}, csp: { frameSrc?: string } = {}): void {
+  const nonce = randomBytes(18).toString("base64");
+  res.setHeader("Content-Security-Policy", panelContentSecurityPolicy(nonce, csp));
+  res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", ...headers });
+  // Exactly the page's own bare `<script>` / `<style>` tags, as written in our files, get the nonce: a plain string
+  // match, not a tag filter. Any other spelling (`<SCRIPT>`, `<script src=…>`, `<script type=module>`) is left as is
+  // and so has no nonce: inline it is blocked, `src=` scripts load by 'self'. Widening the match would hand the
+  // nonce to more spellings; nothing here sanitises input.
+  res.end(html.split("<script>").join(`<script nonce="${nonce}">`).split("<style>").join(`<style nonce="${nonce}">`));
 }

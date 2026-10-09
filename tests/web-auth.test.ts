@@ -60,16 +60,42 @@ describe("persistent dashboard token", () => {
 
   it("uses live readiness and token state instead of reading a stale file", () => {
     const access = { ready: false, token: "a".repeat(48) };
+    let issued = 0;
     const commands = new TopicCommands({
       fleetConfig: { health_port: 19280, hostname: "fleet.example" },
       getDashboardAccess: () => access,
+      issueDashboardLogin: () => ({ display: `ABCD-EF0${++issued}`, expiresAt: Date.now() + 300_000, ttlMinutes: 5 }),
     } as any);
 
     expect(commands.getDashboardText()).toContain("Dashboard starting");
     expect(commands.getDashboardText()).not.toContain(access.token);
+    // A closed dashboard must not mint a code nobody can use.
+    expect(issued).toBe(0);
 
     access.ready = true;
-    expect(commands.getDashboardText()).toContain(`http://fleet.example:19280/ui?token=${access.token}`);
+    const text = commands.getDashboardText();
+    expect(text).toContain("http://fleet.example:19280/signin");
+    expect(text).not.toContain("ABCD-EF01");
+    // No link carries a credential any more, and the long-lived token is never in the message.
+    expect(text).not.toContain("token=");
+    expect(text).not.toContain(access.token);
+    // Rendering the shared menu never issues or retires a code. Private action tests cover issuance.
+    expect(commands.getDashboardText()).toBe(text);
+    expect(issued).toBe(0);
+  });
+
+  it("never includes a login code in shared Telegram menu copy", () => {
+    const commands = new TopicCommands({
+      fleetConfig: { health_port: 19280 },
+      getDashboardAccess: () => ({ ready: true, token: "a".repeat(48) }),
+      issueDashboardLogin: () => ({ display: "ABCD-EFGH", expiresAt: Date.now() + 300_000, ttlMinutes: 5 }),
+    } as any);
+
+    const text = commands.getDashboardText(true);
+    expect(text).not.toContain("ABCD-EFGH");
+    expect(text).not.toContain("<tg-spoiler>");
+    expect(text).toContain("http://localhost:19280/view");
+    expect(text).not.toMatch(/<tg-spoiler>[^<]*http/);
   });
 
   it("stays unavailable and notifies General when the health port remains occupied", async () => {

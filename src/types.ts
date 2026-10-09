@@ -259,6 +259,10 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
     retry_count?: number;
     retry_interval_ms?: number;
   };
+  /** #1335: retention for delivery-outbox.db and Task Board. Days to keep terminal
+   * deliveries (delivered/failed) and done/cancelled tasks. Default: 30.
+   * Uncertain and non-terminal rows are never pruned. */
+  retention_days?: number;
   startup?: {
     concurrency?: number;
     stagger_delay_ms?: number;
@@ -332,6 +336,10 @@ export interface FleetTemplate {
 
 /** Web UI feature toggles (fleet.yaml `web:` section). */
 export interface WebConfig {
+  /** Only menu availability; every exposure requires explicit admin consent. */
+  public_link?: { allow_public?: boolean; ttl_minutes?: number; protocol?: "http2" | "quic" | "auto" };
+  /** Echo web chat to the owning fleet topic (default true); never ClassicBot rooms. */
+  echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
   usage_panel?: boolean;
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
@@ -342,6 +350,26 @@ export interface WebConfig {
    * Names only (a port is ignored); anything not listed is refused with 403.
    */
   allowed_hosts?: string[];
+  /**
+   * Who may read /view (the page, the terminal capture, the roster, usage).
+   * `open` (default): anyone who can reach the listener — the page is a read-only dashboard on loopback.
+   * `session`: a signed-in web session or the CLI header token. Writes need a credential either way.
+   */
+  view_access?: "open" | "session";
+  /** Tell the admin channel when someone signs in to the web panel (default true). */
+  notify_login?: boolean;
+  /**
+   * #1306: HTML previews in the web chat (default true). false: no preview listener; cards show Source and
+   * Download only. Even when true, a browser runs a preview only after that device opted in.
+   */
+  preview?: boolean;
+  /** The preview listener's port on 127.0.0.1 (default health_port + 1, i.e. 19281). */
+  preview_port?: number;
+  /**
+   * A separate host name a proxy maps to the preview listener, as a bare origin (`https://preview.example.net`):
+   * previews through a tunnel or proxy need one. It must not be a name the dashboard answers to.
+   */
+  preview_origin?: string;
 }
 
 /** `login:` section — remote /login behaviour. */
@@ -395,6 +423,8 @@ export interface FleetConfig {
   profiles?: Record<string, ProfileConfig>;
   health_port?: number;
   web?: WebConfig;
+  /** #1386 "Needs you": the live list in each world's General (default on) and DMs to that world's admins (default off). */
+  needs_you?: { live_message?: boolean; dm?: boolean };
   /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
   hostname?: string;
   /**

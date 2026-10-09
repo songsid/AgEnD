@@ -21,7 +21,9 @@ import { WebTerminalHttpServer } from "../src/web-terminal-http.js";
  *   a replaced browser cannot type · startup failures leave no tmux server behind.
  */
 function have(bin: string): boolean {
-  try { execFileSync(bin, ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
+  // Even an availability probe must never address the operator's default
+  // socket. -V starts no server; resource cases below use their own sockets.
+  try { execFileSync(bin, ["-L", `agend-test-terminal-probe-${process.pid}`, "-V"], { stdio: "ignore" }); return true; } catch { return false; }
 }
 const tmuxAvailable = have("tmux");
 /** Cases that need the Linux /proc strong fingerprint (production deliberately has NONE elsewhere). */

@@ -91,6 +91,7 @@ async function rig(): Promise<Rig> {
   const tg = { id: "tg", type: "telegram", react: async () => {}, unreact: async () => {}, sendText, editMessage: async () => {}, sendWithKeyboard: async () => ({ messageId: "k", chatId: "x" }) };
   const tgCfg = { id: "tg", type: "telegram", mode: "topic", group_id: FLEET_CHAT, access: { mode: "locked", allowed_users: [FA, "999000"] }, bot_token_env: "X" };
   any.adapter = tg;
+  any.adapters.set("tg", tg);
   any.worlds.set("tg", { id: "tg", adapter: tg, channelConfig: tgCfg, groupId: FLEET_CHAT, botUsername: BOT });
   fm.fleetConfig = {
     defaults: { backend: "claude-code" }, channels: [tgCfg], channel: tgCfg,
@@ -138,8 +139,10 @@ async function rig(): Promise<Rig> {
   tc.getCtxText = async () => { reached.push("ctx"); return "ok:ctx"; };
   tc.getStatusText = async () => { reached.push("status"); return "ok:status"; };
   tc.getDashboardText = () => { reached.push("dashboard"); return "ok:dashboard"; };
+  any.dashboardMenu = async (msg: any) => { await tc.getReplyAdapter(msg).sendText(msg.chatId, tc.getDashboardText(), { threadId: msg.threadId }); };
   tc.sendSysInfo = async () => { reached.push("sysinfo"); };
   tc.handleTipsCommand = async () => { reached.push("tips"); };     // entry only: its `on|off` arguments are gated inside
+  any.startCpuProfile = async () => { reached.push("profile"); return { seconds: 60, done: new Promise(() => {}) }; };
   any.cancelInstance = () => { reached.push("cancel"); return true; };
   any.promptLoginBackends = async () => { reached.push("login"); };
   any.startLoginSession = async () => { reached.push("login"); return "ok"; };
@@ -188,6 +191,8 @@ const PASS_ = "pass" as const;
 const FA_ONLY: Person[] = ["fleetAdmin"];
 const CA_ONLY: Person[] = ["classicAdmin"];
 const FA_OR_CA: Person[] = ["fleetAdmin", "classicAdmin"];
+/** Refused for everyone, with a reply (#1148: a General-only command in an instance topic points to General). */
+const NOBODY: Person[] = [];
 
 /**
  * Telegram, typed, for EVERY command in the table: [text, what its handler records, who reaches it in a General topic /
@@ -203,13 +208,15 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "chat", text: "/chat hi", label: "agent", general: PASS_, fleet: PASS_, classic: ALL, none: "pass" },
   { name: "load", text: "/load f.json", label: "load", general: PASS_, fleet: PASS_, classic: PASS_, none: "pass" },
   // fleet topic: NO check; ClassicBot chat: a ClassicBot admin only (a fleet admin alone is refused)
-  { name: "compact", text: "/compact", label: "compact", general: ALL, fleet: ALL, classic: CA_ONLY, none: "refuse" },
-  { name: "save", text: "/save f.json", label: "save", general: ALL, fleet: ALL, classic: CA_ONLY, none: "refuse" },
+  // #754 audit: channel-admin on Telegram too, as the Discord slash command (was: anyone who may speak).
+  // #754: a fleet admin of the bot is a ClassicBot admin here too, as on Discord (channel-admin).
+  { name: "compact", text: "/compact", label: "compact", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  { name: "save", text: "/save f.json", label: "save", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   // fleet topic: NO check; ClassicBot chat: not a command
-  { name: "collab", text: "/collab", label: "collab", general: ALL, fleet: ALL, classic: PASS_, none: "pass" },
+  { name: "collab", text: "/collab", label: "collab", general: FA_ONLY, fleet: FA_ONLY, classic: PASS_, none: "pass" },
   // fleet admin in a fleet topic; ClassicBot admin ONLY in a ClassicBot chat
-  { name: "pause", text: "/pause", label: "pause", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
-  { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: CA_ONLY, none: "refuse" },
+  { name: "pause", text: "/pause", label: "pause", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   // a fleet admin, or in a ClassicBot chat also a ClassicBot admin (`isModelAdmin`)
   { name: "model", text: "/model x", label: "model", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   { name: "clear", text: "/clear", label: "clear", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
@@ -220,15 +227,17 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "cancel", text: "/cancel", label: "cancel", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
   { name: "ctx", text: "/ctx", label: "ctx", general: ALL, fleet: ALL, classic: ALL, none: "refuse" },
   // only the General topic has a handler
-  { name: "status", text: "/status", label: "status", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
-  { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "visibility", text: "/visibility", label: "visibility", general: FA_ONLY, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "sysinfo", text: "/sysinfo", label: "sysinfo", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
-  { name: "usage", text: "/usage", label: "usage", general: ALL, fleet: PASS_, classic: PASS_, none: "pass" },
+  // #1148: in an instance topic these General-only commands are refused with "use it in General", not handed to the agent.
+  { name: "status", text: "/status", label: "status", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "restart", text: "/restart x", label: "restart", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },   // "x" is no mode: an admin gets the usage line, nobody restarts
+  { name: "login", text: "/login", label: "login", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "profile", text: "/profile", label: "profile", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "update", text: "/update", label: "update", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "doctor", text: "/doctor", label: "doctor", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "dashboard", text: "/dashboard", label: "dashboard", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "visibility", text: "/visibility", label: "visibility", general: FA_ONLY, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "sysinfo", text: "/sysinfo", label: "sysinfo", general: ALL, fleet: NOBODY, classic: PASS_, none: "pass" },
+  { name: "usage", text: "/usage", label: "usage", general: ALL, fleet: NOBODY, classic: PASS_, none: "pass" },
   // General and an instance's topic; not a ClassicBot chat
   { name: "tips", text: "/tips", label: "tips", general: ALL, fleet: ALL, classic: PASS_, none: "pass" },
 ];
@@ -327,7 +336,9 @@ describe("the table's Telegram column says what those handlers do, for every com
   it("a pass-through cell is not a refusal and not a permission: the decision says so and asks nobody", () => {
     const asked: string[] = [];
     const spy = { fleetAdmin: () => { asked.push("f"); return "ok" as const; }, channelAdmin: () => { asked.push("c"); return true; }, classicAdmin: () => { asked.push("a"); return true; } };
-    expect(decideCommand(commandSpec("status")!, "fleet", spy, "telegram")).toEqual({ allow: false, passthrough: true });
+    expect(decideCommand(commandSpec("status")!, "classic", spy, "telegram")).toEqual({ allow: false, passthrough: true });
+    // #1148: in an instance topic a General-only command is a refusal that points to General, not a pass-through.
+    expect(decideCommand(commandSpec("status")!, "fleet", spy, "telegram")).toEqual({ allow: false, reply: ["cmd.use_in_general", "/status"] });
     expect(decideCommand(commandSpec("collab")!, "classic", spy, "telegram")).toEqual({ allow: false, passthrough: true });
     expect(asked).toEqual([]);
   });
@@ -342,7 +353,7 @@ describe("the table's Telegram column says what those handlers do, for every com
   });
 });
 
-describe("/start: not one level, and neither platform's real gate moved", () => {
+describe("/start: platform grants and ClassicBot admins (#1418)", () => {
   it("Telegram private chat: the user allowlist, no admin needed", async () => {
     const r = await rig();
     for (const [person, id] of Object.entries({ plain: PU, fleetAdmin: FA, classicAdmin: CA })) {
@@ -350,8 +361,8 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
       expect(r.reached, person).toEqual(["start"]);
     }
     await r.say("5560", STRANGER, "/start claude-code");
-    expect(r.reached, "a stranger").toEqual([]);
-    expect(r.replies).toEqual([t("classic.not_allowed_user")]);
+    expect(r.reached, "a stranger").toEqual(["approval"]);
+    expect(r.replies).toEqual([t("classic.access_requested")]);
   });
 
   it("Telegram group: an allowed group AND a ClassicBot admin — a fleet admin or a plain member is refused", async () => {
@@ -365,9 +376,11 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
     }
   });
 
-  it("Telegram group not on the allowlist: nobody, an admin included — an approval is asked of General instead", async () => {
+  it("Telegram group not on the allowlist: C starts directly; others ask General (#1418)", async () => {
     const r = await rig();
-    for (const id of [CA, FA, PU]) {
+    await r.say(OTHER_GROUP, CA, `/start@${BOT} claude-code`);
+    expect(r.reached).toEqual(["start"]);
+    for (const id of [FA, PU]) {
       await r.say(OTHER_GROUP, id, `/start@${BOT} claude-code`);
       expect(r.reached, id).toEqual(["approval"]);
       expect(r.replies, id).toEqual([t("classic.access_requested")]);
@@ -390,7 +403,10 @@ describe("/start: not one level, and neither platform's real gate moved", () => 
     expect(results).toEqual([t("classic.started"), t("classic.started"), t("classic.started")]);
     expect(r.reached).toEqual(["started", "started", "started"]);
     r.reached.length = 0;
-    expect(await start("chan-x", CA, "G-not-allowed"), "an admin in a guild that is not allowed").toBe(t("classic.not_authorized_guild"));
+    expect(await start("chan-x", CA, "G-not-allowed"), "C bypasses new-start admission (#1418)").toBe(t("classic.started"));
+    expect(r.reached).toEqual(["started"]);
+    r.reached.length = 0;
+    expect(await start("chan-y", PU, "G-not-allowed")).toBe(t("classic.access_requested"));
     expect(r.reached).toEqual(["approval"]);
   });
 

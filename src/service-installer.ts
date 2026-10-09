@@ -1,17 +1,31 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync, statSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
+import { canonicalCliEntry } from "./cli-entry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(__dirname, "..", "templates");
 
 interface ServiceVars {
   label: string;
+  /** The CLI the service starts: canonicalCliEntry(). */
   execPath: string;
+  /**
+   * The Node that runs it, NAMED in the definition (#1450 C6): the selected interpreter — this process's own, since
+   * `agend install` runs on what the launcher selected. Never left to `#!/usr/bin/env node` and the service's PATH.
+   */
+  nodePath?: string;
+  /**
+   * Instead of a named Node: the package's sh launcher, which finds Node at each start. Only for a SYSTEM Node (no
+   * bundled runtime on this host): a named system Node breaks when an nvm/brew upgrade removes its directory, while
+   * the bundled runtime's path only changes with an npm update, which re-renders the service (#1450 leader review).
+   */
+  launcherPath?: string;
   path?: string;
   workingDirectory: string;
   logPath: string;
@@ -45,9 +59,13 @@ function assertAbsolutePath(name: string, value: string): void {
   }
 }
 
-function validateVars(vars: ServiceVars & { path: string }): void {
+function validateVars(vars: ServiceVars & { path: string; nodePath: string; program: string[] }): void {
   assertSafeServiceValue("label", vars.label);
   assertSafeServiceValue("execPath", vars.execPath);
+  for (const word of vars.program) {
+    assertSafeServiceValue(vars.program.length === 1 ? "launcherPath" : "nodePath", word);
+    assertAbsolutePath(vars.program.length === 1 ? "launcherPath" : "nodePath", word);
+  }
   assertSafeServiceValue("workingDirectory", vars.workingDirectory);
   assertSafeServiceValue("logPath", vars.logPath);
   assertSafeServiceValue("path", vars.path);
@@ -65,16 +83,30 @@ function validateVars(vars: ServiceVars & { path: string }): void {
  * sudo/systemd. The npm-prefix inference is important for root+nvm installs:
  * `agend update` may run with sudo's secure_path even though Codex lives beside
  * the nvm-installed AgEnD binary.
+ *
+ * #1348: also strip any `node_modules` path segment, and deduplicate while
+ * preserving first-appearance order. `node_modules/.bin` entries (and npm's
+ * own `@npmcli/run-script/…/node-gyp-bin`) must never land in the service
+ * unit: they're process-local to an npm-script run and self-perpetuate across
+ * updates because each `agend install` copies the existing unit's PATH forward.
  */
 export function buildServicePath(
   basePath = process.env.PATH ?? "",
-  execPath = process.argv[1] ?? "",
+  execPath = canonicalCliEntry(),
   homeDir = homedir(),
+  /** The Node this process runs on: under AgEnD's bundled Node it lives in node_modules, and is never added (#1450). */
+  nodeExec = process.execPath,
 ): string {
+  const seen = new Set<string>();
   const dirs = basePath
     .split(":")
     .filter(Boolean)
-    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files"));
+    // Drop Windows/WSL mount noise and node_modules entries.
+    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files") && !p.includes("/node_modules/"))
+    // Only absolute entries: an empty or relative one resolves against the service's working directory (#1473 review).
+    .filter(p => p.startsWith("/"))
+    // Deduplicate, keeping the first occurrence.
+    .filter(p => { if (seen.has(p)) return false; seen.add(p); return true; });
   const moduleMarker = "/lib/node_modules/";
   const markerIndex = execPath.indexOf(moduleMarker);
   const npmPrefixBin = markerIndex >= 0
@@ -88,7 +120,7 @@ export function buildServicePath(
     }
   } catch { /* nvm is optional */ }
   const fallbacks = [
-    dirname(process.execPath),
+    dirname(nodeExec),
     npmPrefixBin,
     ...nvmBins,
     join(homeDir, ".local", "bin"),
@@ -99,14 +131,38 @@ export function buildServicePath(
   ];
 
   for (const candidate of fallbacks) {
-    if (candidate && !dirs.includes(candidate)) dirs.push(candidate);
+    // Apply the same node_modules predicate to fallback candidates: even
+    // dirname(process.execPath) can be e.g. /project/node_modules/node/bin
+    // when Node itself lives inside a node_modules tree.
+    if (candidate && !candidate.includes("/node_modules/") && !seen.has(candidate)) {
+      seen.add(candidate);
+      dirs.push(candidate);
+    }
   }
   return dirs.join(":");
 }
 
-function withDefaults(vars: ServiceVars): ServiceVars & { path: string } {
+/**
+ * What a service starts when the caller does not say: this package's own selection (launcher/runtime-select.cjs, C2)
+ * — the bundled runtime or an AGEND_NODE, named; a system Node, through the launcher. Anything that cannot be
+ * resolved (a file outside a package, a checkout without a launcher) names this process's Node, as before.
+ */
+export function defaultServiceProgram(execPath: string): { nodePath: string } | { launcherPath: string } {
+  try {
+    const launcherDir = join(dirname(dirname(execPath)), "launcher");
+    const select = createRequire(import.meta.url)(join(launcherDir, "runtime-select.cjs")) as { selectRuntime(dir: string): { ok: boolean; node?: string; source?: string } };
+    const chosen = select.selectRuntime(launcherDir);
+    if (chosen.ok && chosen.source === "system" && existsSync(join(launcherDir, "agend"))) return { launcherPath: join(launcherDir, "agend") };
+    if (chosen.ok && chosen.node) return { nodePath: chosen.node };
+  } catch { /* not inside a package with a launcher */ }
+  return { nodePath: process.execPath };
+}
+
+function withDefaults(vars: ServiceVars): ServiceVars & { path: string; nodePath: string; program: string[] } {
   const path = buildServicePath(vars.path, vars.execPath);
-  const full = { ...vars, path, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
+  const chosen = vars.nodePath || vars.launcherPath ? (vars.launcherPath ? { launcherPath: vars.launcherPath } : { nodePath: vars.nodePath! }) : defaultServiceProgram(vars.execPath);
+  const program = "launcherPath" in chosen ? [chosen.launcherPath] : [chosen.nodePath, vars.execPath];
+  const full = { ...vars, path, nodePath: "nodePath" in chosen ? chosen.nodePath : "", program, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
   validateVars(full);
   return full;
 }
@@ -118,7 +174,43 @@ export function renderLaunchdPlist(vars: ServiceVars): string {
 
 export function renderSystemdUnit(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "systemd.service.ejs"), "utf-8");
-  return render(template, withDefaults(vars));
+  return render(template, { ...withDefaults(vars), systemdQuote });
+}
+
+/**
+ * One word of a systemd command line, exactly (#1460 review): double-quoted, with `\` and `"` escaped inside, and
+ * systemd's own expansions neutralised — `%` (specifiers) as `%%`, `$` (variables) as `$$`. A path with spaces stays one
+ * argument.
+ */
+export function systemdQuote(word: string): string {
+  return `"${word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, "$$$$")}"`;
+}
+
+/** The words of a systemd command line as systemd splits them: quotes, backslash escapes, `%%` and `$$` undone. */
+export function systemdWords(line: string): string[] {
+  const words: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i]!)) i++;
+    if (i >= line.length) break;
+    let word = "";
+    let quote: string | null = null;
+    for (; i < line.length; i++) {
+      const c = line[i]!;
+      if (quote) {
+        if (c === quote) { quote = null; continue; }
+        if (c === "\\" && i + 1 < line.length) { word += line[++i]; continue; }
+        word += c;
+      } else {
+        if (/\s/.test(c)) break;
+        if (c === '"' || c === "'") { quote = c; continue; }
+        if (c === "\\" && i + 1 < line.length) { word += line[++i]; continue; }
+        word += c;
+      }
+    }
+    words.push(word.replace(/%%/g, "%").replace(/\$\$/g, "$"));
+  }
+  return words;
 }
 
 export interface ServiceInfo {
@@ -191,6 +283,43 @@ export function inspectService(label = SERVICE_LABEL): ServiceInfo {
   };
 }
 
+export interface LaunchdReloadDeps {
+  run(command: string, args: string[], inherit?: boolean): { status: number | null; signal: NodeJS.Signals | null };
+  sleep(ms: number): void;
+  /** Monotonic ms. */
+  now(): number;
+}
+const defaultLaunchdReloadDeps: LaunchdReloadDeps = {
+  run: (command, args, inherit) => {
+    const r = spawnSync(command, args, { stdio: inherit ? "inherit" : "ignore", timeout: 15_000 });
+    return { status: r.status, signal: r.signal };
+  },
+  sleep: ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  now: () => performance.now(),
+};
+
+/**
+ * `agend install`'s launchd (re)load: bootout whatever is loaded, then bootstrap — but only once launchd has
+ * CONFIRMED the job gone (`launchctl print` → 113). bootout returns before the job is unloaded (macOS 15: a bootstrap
+ * right after it fails with 5, EIO), so the wait is bounded (10 s, monotonic); a job still loaded, a print that times
+ * out or fails is not "gone" — nothing is bootstrapped, and the install says so (#1473 review).
+ */
+export function reloadLaunchdJob(domain: string, label: string, plistPath: string, deps: LaunchdReloadDeps = defaultLaunchdReloadDeps): void {
+  const target = `${domain}/${label}`;
+  deps.run("launchctl", ["bootout", target]);                      // not loaded is fine: confirmed below
+  const deadline = deps.now() + 10_000;
+  for (;;) {
+    const printed = deps.run("launchctl", ["print", target]);
+    if (printed.status === 113 && printed.signal === null) break;
+    if (deps.now() >= deadline) throw new Error(`launchd did not confirm that ${label} was unloaded within 10 s; nothing was loaded (retry: agend install)`);
+    deps.sleep(100);
+  }
+  const boot = deps.run("launchctl", ["bootstrap", domain, plistPath], true);
+  if (boot.status !== 0) throw new Error(`launchctl bootstrap ${domain} ${plistPath} failed (${boot.signal ?? `exit ${boot.status}`})`);
+  const enabled = deps.run("launchctl", ["enable", target], true);
+  if (enabled.status !== 0) throw new Error(`launchctl enable ${target} failed (${enabled.signal ?? `exit ${enabled.status}`})`);
+}
+
 export function uninstallService(label: string): boolean {
   const plat = detectPlatform();
   const path = servicePathForLabel(label);
@@ -224,14 +353,26 @@ export function uninstallService(label: string): boolean {
   return true;
 }
 
+/**
+ * The CLI file a unit starts: `ExecStart=<entry> fleet start`, or `ExecStart=<node> <entry> fleet start` (the explicit
+ * interpreter, #1450). "" when there is no ExecStart.
+ */
+export function unitCliEntry(unitText: string): string {
+  const words = systemdWords(unitText.match(/^ExecStart=(.*)$/m)?.[1] ?? "");
+  // The launcher form (a system Node, found at each start) starts its package's dist/cli.js.
+  if (words[0] && /\/launcher\/agend$/.test(words[0])) return join(dirname(dirname(words[0])), "dist", "cli.js");
+  return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
+}
+
+/** Where `agend install` keeps a launchd job: the user's LaunchAgents (the gui/<uid> domain of a logged-in user). */
+export function launchdPlistPath(label: string): string {
+  return join(process.env.HOME!, "Library/LaunchAgents", `${label}.plist`);
+}
+
 export function installService(vars: ServiceVars): string {
   const plat = detectPlatform();
   if (plat === "macos") {
-    const plistPath = join(
-      process.env.HOME!,
-      "Library/LaunchAgents",
-      `${vars.label}.plist`,
-    );
+    const plistPath = launchdPlistPath(vars.label);
     mkdirSync(dirname(plistPath), { recursive: true });
     writeFileSync(plistPath, renderLaunchdPlist(vars));
     return plistPath;
@@ -538,21 +679,36 @@ type SystemctlRunner = (
   options: { stdio: "inherit"; timeout: number },
 ) => unknown;
 
-export function restartSystemdService(
+/**
+ * What a `systemctl restart` came to (#1446 item 4). Only OUR wait running out is indeterminate: the Type=notify job
+ * may still finish and start a healthy replacement, which then settles the update marker. systemctl exiting with an
+ * error is a definite failure and must not be reported as success.
+ */
+export type SystemdRestartOutcome = "restarted" | "timed-out" | "failed";
+
+export function systemdRestartOutcome(
   label: string,
   user = true,
   run: SystemctlRunner = execFileSync,
-): boolean {
+): SystemdRestartOutcome {
   try {
     run(
       "systemctl",
       [...(user ? ["--user"] : []), "restart", label],
       { stdio: "inherit", timeout: SYSTEMD_RESTART_TIMEOUT_MS },
     );
-    return true;
-  } catch {
-    return false;
+    return "restarted";
+  } catch (err) {
+    return (err as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" ? "timed-out" : "failed";
   }
+}
+
+export function restartSystemdService(
+  label: string,
+  user = true,
+  run: SystemctlRunner = execFileSync,
+): boolean {
+  return systemdRestartOutcome(label, user, run) === "restarted";
 }
 
 export function getServicePath(): string | null {
@@ -641,10 +797,7 @@ export function activateService(plistPath: string, pidPath: string): void {
     const uid = process.getuid?.() ?? 501;
     const domain = `gui/${uid}`;
     const label = plistPath.replace(/.*\//, "").replace(/\.plist$/, "");
-    // Unload if previously loaded (ignore errors)
-    try { execSync(`launchctl bootout ${domain}/${label}`, { stdio: "ignore" }); } catch {}
-    execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
-    execSync(`launchctl enable ${domain}/${label}`, { stdio: "inherit" });
+    reloadLaunchdJob(domain, label, plistPath);
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
     execSync("systemctl --user daemon-reload", { stdio: "inherit" });

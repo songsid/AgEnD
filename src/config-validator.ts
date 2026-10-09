@@ -1,8 +1,10 @@
+import { validPublicLinkPatch } from "./public-web-link.js";
 import { validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
+import { previewOriginProblem } from "./web-preview.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -350,14 +352,47 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   }
 
   // ── Web UI ────────────────────────────────────────────────
+  // #1306: the preview listener defaults to health_port + 1, which does not exist above 65535.
+  if (config.health_port === 65535 && !(isObj(config.web) && (config.web.preview === false || config.web.preview_port !== undefined))) {
+    warn("web.preview_port", "health_port is 65535, so there is no default preview port (health_port + 1) — set web.preview_port, or previews are off");
+  }
+  if (config.needs_you !== undefined && !isObj(config.needs_you)) {
+    err("needs_you", "must be a mapping");
+  } else if (isObj(config.needs_you)) {
+    for (const key of Object.keys(config.needs_you)) {
+      if (key !== "live_message" && key !== "dm") err(`needs_you.${key}`, "unknown key (live_message, dm)");
+      else if (typeof (config.needs_you as Record<string, unknown>)[key] !== "boolean") err(`needs_you.${key}`, "must be a boolean");
+    }
+  }
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");
   } else if (isObj(config.web)) {
+    if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto");
+    if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
+      err("web.echo_to_channel", "must be a boolean");
+    }
     if (config.web.usage_panel !== undefined && typeof config.web.usage_panel !== "boolean") {
       err("web.usage_panel", "must be a boolean");
     }
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");
+    }
+    if (config.web.view_access !== undefined && config.web.view_access !== "open" && config.web.view_access !== "session") {
+      err("web.view_access", "must be open or session");
+    }
+    if (config.web.notify_login !== undefined && typeof config.web.notify_login !== "boolean") {
+      err("web.notify_login", "must be a boolean");
+    }
+    // #1306 HTML previews
+    if (config.web.preview !== undefined && typeof config.web.preview !== "boolean") err("web.preview", "must be a boolean");
+    if (config.web.preview_port !== undefined) {
+      const p = config.web.preview_port;
+      if (typeof p !== "number" || !Number.isInteger(p) || p < 1 || p > 65535) err("web.preview_port", "must be a port number (1-65535)");
+      else if (p === (typeof config.health_port === "number" ? config.health_port : 19280)) err("web.preview_port", "must differ from health_port");
+    }
+    if (config.web.preview_origin !== undefined) {
+      const problem = previewOriginProblem(config.web.preview_origin, config);
+      if (problem) err("web.preview_origin", problem);
     }
     if (config.web.allowed_hosts !== undefined) {
       if (!Array.isArray(config.web.allowed_hosts)) {
@@ -390,6 +425,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     const overdue = config.defaults.reply_overdue_minutes;
     if (overdue !== undefined && (typeof overdue !== "number" || !Number.isFinite(overdue) || overdue < 0)) {
       err("defaults.reply_overdue_minutes", "must be a non-negative number of minutes (0 turns the overdue notice off)");
+    }
+    const retentionDays = config.defaults.retention_days;
+    if (retentionDays !== undefined && (!Number.isInteger(retentionDays) || (retentionDays as number) < 1)) {
+      err("defaults.retention_days", "must be a positive integer (days to keep terminal deliveries and done/cancelled tasks; default 30)");
     }
     validateInstanceOptions(config.defaults, "defaults");
     // Merged into every instance, so it applies on every configured platform.
@@ -501,6 +540,9 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       }
       if (channel.reply_completion_guard !== undefined && typeof channel.reply_completion_guard !== "boolean") {
         err(`channels.${key}.reply_completion_guard`, "must be a boolean");
+      }
+      if (channel.web_echo !== undefined && typeof channel.web_echo !== "boolean") {
+        err(`channels.${key}.web_echo`, "must be a boolean");
       }
     }
   }

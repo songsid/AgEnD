@@ -6,6 +6,15 @@ import { applyNetworkReliabilityDefaults } from "./network-family.js";
 // premature-connect failure on WSL/VPN/high-load hosts (#658).
 applyNetworkReliabilityDefaults();
 
+// ── Runtime version guard ───────────────────────────────────────────────────
+// better-sqlite3 v13 requires Node-API 10 (>=22.14.0 / >=23.6.0 / >=24).
+// This MUST run at bootstrap so that even `agend --version` exits 1 on an
+// incompatible runtime. The old updater checks `agend --version` before
+// restarting; a non-zero exit makes it call failUpdate() and abort — the fleet
+// never restarts into a binary that would crash at the first native DB open.
+import { checkNodeVersion } from "./node-version-guard.js";
+checkNodeVersion();
+
 import { Command } from "commander";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -21,10 +30,11 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  realpathSync,
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
-import { spawn, execSync, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
@@ -39,7 +49,7 @@ import {
   processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
-import { describeSignalSource, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
+import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
@@ -51,6 +61,10 @@ import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import { DeliveryStatusArgs } from "./outbound-schemas.js";
+import type { CpuProfile } from "./cpu-profile.js";
+import { requestCpuProfile } from "./profile-control.js";
+import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
+import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -62,6 +76,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const DATA_DIR = getAgendHome();
+
+/** Real-filesystem, real-process deps for the launchd plan (service-plan.ts) and its activation. */
+function planDeps() {
+  return {
+    run: (command: string, args: string[]) => {
+      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
+      return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    },
+    readFile: (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } },
+    writeFile: (path: string, content: string) => writeFileSync(path, content),
+    removeFile: (path: string) => { try { unlinkSync(path); } catch { /* absent */ } },
+    realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
+    isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+    now: () => new Date(),
+  };
+}
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 
 // CLI commands run outside FleetManager. Honor an explicit fleet locale while
@@ -120,6 +150,43 @@ function signalFleetReload(): void {
 // === Fleet commands ===
 const fleet = program.command("fleet").description("Fleet management");
 
+const settingsCommand = program.command("settings").description("Confirm sensitive Settings changes on this host");
+settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive confirmation after printing the authoritative diff")
+  .action(async (id: string, options: { yes?: boolean }) => {
+    try {
+      const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
+      console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
+      let confirmed = options.yes === true;
+      if (!confirmed) {
+        if (!process.stdin.isTTY) throw new Error("Interactive confirmation required; --yes explicitly confirms the printed diff.");
+        const { createInterface } = await import("node:readline/promises");
+        const input = createInterface({ input: process.stdin, output: process.stdout });
+        try { confirmed = (await input.question("Apply this exact change? [y/N] ")).trim().toLowerCase() === "y"; } finally { input.close(); }
+      }
+      const result = await requestSettingsConfirmation(DATA_DIR, { action: confirmed ? "confirm" : "reject", ticket: inspected.ticket });
+      console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
+      if (result.pending_change.state !== "applied" && confirmed) process.exitCode = 1;
+    } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+  });
+settingsCommand.command("reject <id>").action(async (id: string) => {
+  try {
+    const inspected = await requestSettingsConfirmation(DATA_DIR, { action: "inspect", id }) as SettingsInspection;
+    console.log(`Source: ${inspected.pending_change.source}\nRequester: ${inspected.pending_change.requested_by}\n${inspected.pending_change.summary.join("\n")}`);
+    const result = await requestSettingsConfirmation(DATA_DIR, { action: "reject", ticket: inspected.ticket });
+    console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
+  } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+});
+
+program.command("profile")
+  .description("Record the running fleet's CPU profile (local operator only; no restart)")
+  .argument("[seconds]", "Recording duration, 1–1800 seconds", "60")
+  .action(async (seconds: string) => {
+    try {
+      const result = await requestCpuProfile(DATA_DIR, seconds);
+      console.log(result.path);
+    } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
+  });
+
 fleet
   .command("start")
   .description("Start fleet or specific instance")
@@ -174,6 +241,7 @@ fleet
 
     const { FleetManager } = await import("./fleet-manager.js");
     const fm = new FleetManager(DATA_DIR);
+    let cpuProfile: CpuProfile | null = null;
 
     // Register crash/signal handlers BEFORE startAll(). Startup routinely takes
     // minutes (sequential general spawn, staggered instances, warmup waits), and
@@ -185,6 +253,9 @@ fleet
       if (stopping) return; // SIGINT and SIGTERM share this, and crash paths call stopAll too
       stopping = true;
       console.log("\nStopping fleet...");
+      // stopAll fences new profile requests synchronously, before it awaits
+      // the shared owner's stop/save. Stopping the env handle first would leave
+      // the manager open to replacing that closed owner during the save.
       await fm.stopAll().catch(err => console.error("Shutdown error:", err));
       process.exit(0);
     };
@@ -230,6 +301,12 @@ fleet
         console.error("Failed to report unhandled rejection:", notifyErr);
       }
     });
+
+    await fm.startCpuProfileControl().catch(err => console.warn(`Local profile control unavailable: ${String(err)}`));
+    await fm.startSettingsConfirmationControl().catch(err => console.warn(`Local Settings confirmation unavailable: ${String(err)}`));
+    if (stopping) return;
+    cpuProfile = await fm.startEnvironmentCpuProfile();
+    if (stopping) { await cpuProfile?.stop("startup superseded by shutdown"); return; }
 
     if (instance) {
       const config = fm.loadConfig(FLEET_CONFIG_PATH);
@@ -922,11 +999,15 @@ backend
       const svcPath = join(homedir(), ".config/systemd/user/com.agend.fleet.service");
       if (existsSync(svcPath)) {
         const svc = readFileSync(svcPath, "utf-8");
-        const match = svc.match(/ExecStart=(\S+)/);
-        const svcBin = match?.[1] ?? "";
-        const currentBin = es("which agend", { stdio: "pipe" }).toString().trim();
-        if (svcBin === currentBin) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
-        else fail(`service ExecStart${" ".repeat(3)} ${svcBin} ≠ ${currentBin}`);
+        // The CLI the unit starts — `<entry> fleet start`, or `<node> <entry> fleet start` — against this CLI's own
+        // canonical entry (#1450: `agend` on PATH is the sh launcher, never what a unit records).
+        const { unitCliEntry } = await import("./service-installer.js");
+        const svcEntry = unitCliEntry(svc);
+        let svcReal = svcEntry;
+        try { svcReal = realpathSync(svcEntry); } catch { /* reported as is */ }
+        const current = canonicalCliEntry();
+        if (svcReal === current) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
+        else fail(`service ExecStart${" ".repeat(3)} ${svcEntry || "(none)"} ≠ ${current}`);
 
         // Check Restart=on-failure
         if (svc.includes("Restart=on-failure")) {
@@ -1338,7 +1419,7 @@ program
     const pkg = `@songsid/agend@${targetVersion ?? tag}`;
 
     // The restart stage, shared by a real update and by the stale-fleet case.
-    const restartFleetForUpdate = (command: string, args: string[], version: string): void => {
+    const restartFleetForUpdate = (command: string, args: string[], version: string): "restarted" | "pending" | "failed" => {
       console.log("  Restarting fleet...");
       setUpdateProgressStage(DATA_DIR, "stopping", { version });
       // `agend restart` may synchronously wait for a Type=notify service to finish
@@ -1352,12 +1433,99 @@ program
         // part of it, not a second command for the agent-session guard.
         env: withOrigin("agend-update"),
       });
-      if (!reportUpdateRestart(restartResult.status)) {
+      const restartOutcome = reportUpdateRestart(restartResult.status);
+      // "pending": systemd is still running the restart job; the replacement fleet settles the marker.
+      if (restartOutcome === "failed") {
         // No new fleet is coming up to clear the marker — do it here, or the next
         // 15 minutes of genuine crashes would go unreported.
         if (!setUpdateProgressStage(DATA_DIR, "failed", { error: "fleet restart failed" })) {
           clearUpdateMarker(DATA_DIR);
         }
+        process.exitCode = 1;
+      }
+      return restartOutcome;
+    };
+
+    const nvmSh = join(homedir(), ".nvm", "nvm.sh");
+    /**
+     * Activate a VERIFIED install (#1449 review), on both the update path and the already-installed retry: refresh the
+     * service through the verified binary, require the authoritative service definition to start code from the
+     * verified package, then restart through the verified binary — never through whatever invoked this command
+     * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
+     */
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null }; retireSystemCopy?: true }, viaNvm: boolean): Promise<void> => {
+      const { newAgendInvocation, retireSystemCopy, activationSettled } = await import("./update-install.js");
+      // What the restart came to — carried, never inferred from the exit code (pending ≠ restarted).
+      let restartResult: "restarted" | "pending" | "failed" | null = null;
+      const { activateService } = await import("./service-activation.js");
+      const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
+      const { accessSync, constants } = await import("node:fs");
+      const newAgend = newAgendInvocation({ viaNvm, nvmSh }, verified.agendPath);
+      // The authoritative manager, chosen as `agend restart` chooses: system unit > user unit / launchd plist > none.
+      const systemUnit = getSystemServicePath();
+      const ownService = systemUnit ? null : getServicePath();
+      const manager = systemUnit ? { kind: "systemd" as const, unit: "agend", user: false, unitPath: systemUnit }
+        : ownService && detectPlatform() === "macos" ? { kind: "launchd" as const, label: "com.agend.fleet", plistPath: ownService, domain: `gui/${process.getuid?.() ?? 501}` }
+        : ownService ? { kind: "systemd" as const, unit: "com.agend.fleet", user: true, unitPath: ownService }
+        : { kind: "detached" as const };
+      // C6: a failure before the fleet runs the new install puts the previous package back too (taken before npm).
+      const { restorePackagePreimage, prunePreimages } = await import("./package-preimage.js");
+      const rollback = verified.rollback;
+      const restorePackage = rollback?.preimage ? () => {
+        const back = restorePackagePreimage(rollback.root, rollback.prefix, rollback.preimage!);
+        return back.ok ? `The previous package (v${rollback.preimage!.version}) is back in place` : `The previous package could NOT be put back: ${back.reason}`;
+      } : undefined;
+      const capture = (command: string, args: string[]) => {
+        const result = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
+        return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+      };
+      const outcome = activateService(manager, verified, {
+        run: capture,
+        readFile: path => { try { return readFileSync(path, "utf-8"); } catch { return null; } },
+        writeFile: (path, content) => writeFileSync(path, content),
+        realpath: path => { try { return realpathSync(path); } catch { return null; } },
+        readFirstLine: path => { try { return readFileSync(path, "utf-8").split("\n", 1)[0] ?? null; } catch { return null; } },
+        isExecutable: path => { try { accessSync(path, constants.X_OK); return statSync(path).isFile(); } catch { return false; } },
+        // `agend install` activates by default; the update owns stop/start, so only the file is refreshed here.
+        refresh: () => {
+          const result = capture(newAgend.command, [...newAgend.args, "install", "--no-activate"]);
+          if (result.status === 0) console.log("  ✓ Service file refreshed");
+          return result;
+        },
+        // Through the verified binary: never this process's code, which may be the old version or another checkout.
+        restart: () => {
+          // The completion script embeds this version's subcommand names; --refresh only rewrites existing artifacts.
+          try { spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], { encoding: "utf-8", timeout: 15_000, stdio: "ignore" }); } catch { /* cosmetic */ }
+          restartResult = restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
+        },
+        log: message => console.log(message),
+        restorePackage,
+      });
+      // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
+      if (outcome.ok && rollback) prunePreimages(rollback.prefix, rollback.preimage);
+      // nvm transition: the old system copy is what the previous service ran. Only once the fleet POSITIVELY runs the
+      // new install (activationSettled) is it removed; pending, failed or refused, it stays, so the old unit still starts.
+      if (verified.retireSystemCopy) {
+        if (activationSettled(outcome, restartResult)) {
+          retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) });
+        } else {
+          console.log("  Note: the old system install was kept, since the new one is not running yet.");
+        }
+      }
+      // The refresh above (`install --no-activate`) records a launchd plan; this activation consumed it, whatever it
+      // came to — never leave one for a later `agend restart` to act on.
+      if (manager.kind === "launchd") {
+        const { planPath } = await import("./service-plan.js");
+        planDeps().removeFile(planPath(DATA_DIR));
+      }
+      if (outcome.ok && outcome.via === "launchd-activation") {
+        console.log("  ✓ Service restarted (launchd loaded the verified job)");
+        // The new fleet clears the update marker once it is up.
+        return;
+      }
+      if (!outcome.ok) {
+        console.error(outcome.message);
+        if (!setUpdateProgressStage(DATA_DIR, "failed", { error: outcome.message.trim() })) clearUpdateMarker(DATA_DIR);
         process.exitCode = 1;
       }
     };
@@ -1377,9 +1545,30 @@ program
         processStartMs: pid => processStartMs(pid),
         isFleetProcess: pid => isFleetStartCommandLine(readProcessCommandLine(pid)),
       })) {
-        console.log(`\n  ✓ v${pkgVersion} is installed, but the running fleet started before it was — restarting it onto v${pkgVersion}.\n`);
+        console.log(`\n  v${pkgVersion} is installed, but the running fleet started before it was — verifying it before restarting onto it.`);
+        // The earlier update may have stopped exactly because this install failed verification (#1449 review): a
+        // second `agend update` must not restart onto it unchecked.
+        const { verifyInstalledPackage } = await import("./update-install.js");
+        const verified = verifyInstalledPackage(
+          { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
+          {
+            run: (command, args, options = {}) => {
+              const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
+              return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+            },
+            log: message => console.log(message),
+          },
+        );
+        if (!verified.ok) {
+          const message = `${verified.message}\n  Not restarting the fleet onto it. Reinstall a working version: npm install -g @songsid/agend@<version>`;
+          console.error(message);
+          setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() });
+          process.exitCode = 1;
+          return;
+        }
+        console.log(`  ✓ v${pkgVersion} verified — restarting the fleet onto it.\n`);
         markUpdateInProgress(DATA_DIR);
-        restartFleetForUpdate(process.execPath, [process.argv[1]], pkgVersion);
+        await activateVerified(verified, false);
         return;
       }
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
@@ -1418,18 +1607,6 @@ program
     };
     setUpdateProgressStage(DATA_DIR, "downloading");
 
-    // Detect and remove stale npm link (local build that shadows global install)
-    try {
-      const agendPath = execSync("which agend", { encoding: "utf-8", stdio: "pipe" }).trim();
-      const resolved = execSync(`readlink -f "${agendPath}"`, { encoding: "utf-8", stdio: "pipe" }).trim();
-      if (resolved.includes("/Projects/") || resolved.includes("@songsid") || resolved.includes("@suzuke") || resolved.includes("/src/")) {
-        console.log(`  ⚠️  Detected local npm link: ${resolved}`);
-        console.log("  Removing link to allow global install...\n");
-        try { execSync("npm unlink -g @suzuke/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
-        try { execSync("npm unlink -g @songsid/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
-      }
-    } catch { /* which/readlink failed — no agend installed, fine */ }
-
     // ── Check if npm global needs sudo ──
     let needsSudo = false;
     try {
@@ -1440,8 +1617,6 @@ program
 
     if (needsSudo) {
       // ── nvm path: install without sudo ──
-      const nvmDir = join(homedir(), ".nvm");
-      const nvmSh = join(nvmDir, "nvm.sh");
       if (!existsSync(nvmSh)) {
         console.log("  Installing nvm (npm global requires sudo)...");
         try {
@@ -1451,86 +1626,58 @@ program
         }
       }
       console.log("  Using nvm to install Node 22...");
-      const nvmPrefix = `source ${nvmSh} && nvm install 22 && nvm use 22`;
-      try {
-        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}'`, { stdio: "inherit" });
-      } catch {
-        failUpdate("  Failed to install via nvm.");
-      }
-      // Try to remove old system binary
-      console.log("  Note: removing old system install (may require sudo)...");
-      // Never wait for a password in an agent/non-interactive terminal. This is
-      // best-effort cleanup; the new nvm install already succeeded.
-      spawnSync("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], {
-        stdio: "inherit",
-        timeout: 10_000,
-      });
-    } else {
-      // ── Direct install ──
-      try {
-        execSync(`npm install -g ${pkg}`, { stdio: "inherit" });
-      } catch {
-        failUpdate(`  Failed to update. Try: npm install -g ${pkg}`);
-      }
     }
 
-    // ── Verify installation ──
-    console.log("\n  Verifying installation...");
-    const nvmSh2 = join(homedir(), ".nvm", "nvm.sh");
-    const agendPath = needsSudo
-      ? spawnSync("bash", ["-c", `source ${nvmSh2} && nvm use 22 > /dev/null 2>&1 && which agend`], { encoding: "utf-8" }).stdout?.trim()
-      : spawnSync("which", ["agend"], { encoding: "utf-8" }).stdout?.trim();
-    if (!agendPath) {
-      if (needsSudo) console.error("  You may need to add nvm to your shell profile and restart.");
-      failUpdate("  ✗ Verification failed: agend not found in PATH after install.");
-    }
-    const verifyResult = spawnSync(agendPath, ["--version"], { encoding: "utf-8", timeout: 5000 });
-    if (verifyResult.status !== 0) {
-      failUpdate("  ✗ Verification failed: agend --version returned error.");
-    }
-    const newVersion = (verifyResult.stdout ?? "").trim();
-    console.log(`  ✓ Installed: ${newVersion}`);
-    setUpdateProgressStage(DATA_DIR, "installed", { version: newVersion.replace(/^v/, "") });
+    // ── Install, then verify, then clean up (#1446): nothing is removed before the new install is proven ──
+    // #1450 C6: npm replaces THIS package in place. Everything the rest of the update runs — verification, rollback,
+    // service work — is loaded now, before npm; a later import would load the NEW package's files into this process.
+    await Promise.all([
+      import("./service-activation.js"), import("./service-installer.js"), import("./service-plan.js"),
+      import("./restart-guard.js"), import("./package-preimage.js"), import("./install-lock.js"), import("./update-check.js"),
+    ]);
+    const { runUpdateInstall } = await import("./update-install.js");
+    // #1450 C1: this update owns the npm prefix from before npm runs until it settles (verify, service, restart) —
+    // released when this process exits, however it exits; a crash leaves a lock the next update reclaims.
+    const { acquireInstallLock } = await import("./install-lock.js");
+    const { randomBytes } = await import("node:crypto");
+    const { createRequire } = await import("node:module");
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null };
+    let releaseLock = (): void => {};
+    process.once("exit", () => releaseLock());
+    const installed = runUpdateInstall(
+      {
+        pkg, targetVersion, viaNvm: needsSudo, nvmSh, rollback: true,
+        lock: prefix => {
+          const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, {
+            pid: process.pid, processStart: admission.processStart, newToken: () => randomBytes(16).toString("hex"),
+            now: () => new Date(), log: message => console.log(message),
+          });
+          if (!lock.ok) return lock;
+          releaseLock = lock.release;
+          return { ok: true, token: lock.token };
+        },
+      },
+      {
+        run: (command, args, options = {}) => {
+          if (options.inherit) console.log("");
+          const result = spawnSync(command, args, {
+            encoding: "utf-8",
+            timeout: options.timeoutMs,
+            stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
+            ...(options.env ? { env: { ...process.env, ...options.env } } : {}),
+          });
+          return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+        },
+        log: message => console.log(message),
+      },
+    );
+    if (!installed.ok) return failUpdate(installed.message);
+    const agendPath = installed.agendPath;
+    const newVersion = installed.version;
+    console.log(`\n  ✓ Installed: v${newVersion} (${agendPath}; opened a database on its Node)`);
+    setUpdateProgressStage(DATA_DIR, "installed", { version: newVersion });
 
-    // ── Update service file ──
-    if (agendPath) {
-      try {
-        // Use the NEW binary to install service (old binary's templates may be deleted)
-        // `agend install` activates by default. During update the existing
-        // restart stage owns stop/start and progress reporting, so only refresh
-        // the service file here to avoid restarting the fleet twice.
-        const installResult = spawnSync(agendPath, ["install", "--no-activate"], { encoding: "utf-8", timeout: 15000 });
-        if (installResult.status === 0) {
-          console.log(`  ✓ Service updated`);
-        } else {
-          console.log(`  ⚠ Service file update failed (non-fatal): ${(installResult.stderr || installResult.stdout || "unknown error").trim()}`);
-        }
-      } catch (e) {
-        console.log(`  ⚠ Service file update failed (non-fatal): ${(e as Error).message}`);
-      }
-    }
-
-    // ── Refresh installed shell completions ──
-    // The completion script embeds this version's subcommand names, so a
-    // previously installed static file goes stale on update. --refresh only
-    // rewrites artifacts that already exist — an update never starts
-    // installing completions the user didn't ask for. Run through the NEW
-    // binary so the regenerated names are the new version's.
-    try {
-      spawnSync(agendPath, ["completion", "install", "--refresh"], {
-        encoding: "utf-8",
-        timeout: 15_000,
-        stdio: "ignore",
-      });
-    } catch { /* cosmetic — never block an update on completion refresh */ }
-
-    // ── Restart fleet ──
-    // Run the restart through the NEWLY-INSTALLED binary (agendPath), not inline.
-    // The inline restart would execute the OLD binary's code — exactly the logic
-    // that may be missing or buggy on the version being upgraded from. `agend
-    // restart` (new binary) does the 4-environment service detection (system
-    // systemd → user systemd → launchd → detached pid).
-    restartFleetForUpdate(agendPath, [], newVersion.replace(/^v/, ""));
+    await activateVerified(installed, needsSudo);
   });
 
 program
@@ -1559,17 +1706,39 @@ program
   .option("--activate", "Deprecated; service activation is now the default")
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
-    const { installService, activateService, detectPlatform } = await import(
+    const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath } = await import(
       "./service-installer.js"
     );
-    const execPath = process.argv[1];
-    const svcPath = installService({
+    const execPath = canonicalCliEntry();
+    const serviceVars = {
       label: "com.agend.fleet",
       execPath,
       path: process.env.PATH!,
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),
-    });
+    };
+    // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
+    // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
+    if (opts.activate === false && detectPlatform() === "macos") {
+      const { refreshLaunchdWithoutActivating, planPath } = await import("./service-plan.js");
+      // A refresh revokes any earlier plan first, whatever it comes to (a failed refresh leaves nothing to activate).
+      planDeps().removeFile(planPath(DATA_DIR));
+      const { expectedTuple } = await import("./restart-guard.js");
+      const expectation = expectedTuple();
+      if (!expectation.ok) { console.error(`  ✗ ${expectation.reason}`); process.exitCode = 1; return; }
+      const uid = process.getuid?.() ?? 501;
+      const plistPath = launchdPlistPath(serviceVars.label);
+      mkdirSync(dirname(plistPath), { recursive: true });
+      const outcome = refreshLaunchdWithoutActivating({
+        label: serviceVars.label, target: `gui/${uid}/${serviceVars.label}`, plistPath, newPlist: renderLaunchdPlist(serviceVars),
+        expected: expectation.expected, pkgDir: dirname(dirname(execPath)), agendHome: DATA_DIR,
+      }, planDeps());
+      if (!outcome.ok) { console.error(`  ✗ ${outcome.message}`); process.exitCode = 1; return; }
+      console.log(t("install.path", plistPath));
+      console.log(`  ${outcome.message}`);
+      return;
+    }
+    const svcPath = installService(serviceVars);
     console.log(t("install.path", svcPath));
     if (opts.activate !== false) {
       const pidPath = join(DATA_DIR, "fleet.pid");
@@ -1688,7 +1857,9 @@ program
     if (!userServicePath && !systemServicePath) {
       console.log("No service installed. Starting fleet directly...");
       const { spawn } = await import("node:child_process");
-      const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+      // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+      const start = selfCommand(["fleet", "start"]);
+      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
       child.unref();
       console.log("Fleet starting in background.");
       return;
@@ -1709,8 +1880,34 @@ program
   .command("restart")
   .description("Restart the AgEnD service (auto-detects systemd/launchd/detached)")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (opts: { yes?: boolean }) => {
+  .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
+  .action(async (opts: { yes?: boolean; force?: boolean }) => {
+    // --force overrides the C6 guard: an operator's own decision, never a fleet agent's or a fleet-internal spawn's.
+    if (opts.force && !forceAllowed()) {
+      console.error("  ✗ Not restarting: --force is for an operator's own shell, not a fleet agent session or the fleet's own commands. Nothing was stopped.");
+      process.exit(1);
+    }
     if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
+    // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
+    const guard = await import("./restart-guard.js");
+    const guardDeps = {
+      realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
+      isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+    };
+    const captureRun = (command: string, args: string[]) => {
+      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
+      return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    };
+    const expectation = guard.expectedTuple();
+    /** Refuse (nothing stopped) unless the definition about to run is proven; `--force` overrides for an operator. */
+    const refuses = (judged: { ok: true } | { ok: false; reason: string }): boolean => {
+      if (judged.ok) return false;
+      if (opts.force) { console.log(`  ⚠ --force: ${judged.reason}; restarting anyway.`); return false; }
+      console.error(`  ✗ Not restarting: ${judged.reason}. Nothing was stopped.`);
+      process.exitCode = 1;
+      return true;
+    };
+    if (!expectation.ok && refuses(expectation)) return;
     // Try each runtime environment in order and stop at the first that succeeds.
     // Don't gate on fleet.pid: a fleet under systemd/launchd writes its pid in the
     // service's own HOME, which may differ from what this command resolves (sudo,
@@ -1721,7 +1918,7 @@ program
       getServicePath,
       getSystemServicePath,
       getSystemdServiceState,
-      restartSystemdService,
+      systemdRestartOutcome,
       ensureSystemdUnitHardening,
       effectiveUnitDropIns,
       unitCoredumpFilterState,
@@ -1847,32 +2044,83 @@ program
         }
       }
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
+      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps))) return;
       // Clears the failed state AND the start-limit counter (#1113:
       // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
       // so an operator's restart is never refused by the limit.
       try {
         execSync(`systemctl${systemdTarget.user ? " --user" : ""} reset-failed ${systemdTarget.unit}`, { stdio: "pipe", timeout: 5000 });
       } catch { /* best effort */ }
-      if (restartSystemdService(systemdTarget.unit, systemdTarget.user)) {
+      const restartOutcome = systemdRestartOutcome(systemdTarget.unit, systemdTarget.user);
+      if (restartOutcome === "restarted") {
         console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
         return;
       }
       // An installed service remains authoritative even when this invocation
       // fails. Falling through would create a second detached fleet.
-      console.log(`  ⚠ ${scope} restart reported failure, but the service exists — systemd will auto-retry.`);
-      console.log(`  Check: ${statusCommand}`);
-      process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
+      if (restartOutcome === "timed-out") {
+        // The job may still finish: the replacement fleet settles the update marker, not this command.
+        console.log(`  ⚠ ${scope} restart is still running after ${Math.round(SYSTEMD_RESTART_TIMEOUT_MS / 60_000)} minutes; systemd keeps the job going.`);
+        console.log(`  Check: ${statusCommand}`);
+        process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
+        return;
+      }
+      console.error(`  ✗ ${scope} restart failed (systemctl reported an error). systemd may retry it on its own.`);
+      console.error(`  Check: ${statusCommand}`);
+      process.exitCode = 1;
       return;
     }
-    // 3. launchd (macOS)
+    // 3. launchd (macOS). "Loaded" is launchctl print's own answer (113 = not loaded); nothing here may fall through
+    // to the detached restart once a job is known to be loaded.
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
       const label = "com.agend.fleet";
-      try {
-        // print succeeds only if the service is loaded in launchd
-        execSync(`launchctl print gui/${uid}/${label}`, { stdio: "pipe", timeout: 5000 });
-        if (run(`launchctl kickstart -k gui/${uid}/${label}`)) { console.log("Service restarted."); return; }
-      } catch { /* not loaded — fall through */ }
+      const target = `gui/${uid}/${label}`;
+      const deps = planDeps();
+      const printed = deps.run("launchctl", ["print", target]);
+      if (printed.status === 0) {
+        const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
+        // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
+        const { readPlan, admitPlan, planPath } = await import("./service-plan.js");
+        const plan = opts.force ? null : readPlan(DATA_DIR, deps);
+        if (plan && expectation.ok) {
+          const pkgDir = dirname(dirname(expectation.expected.entry));
+          const admitted = admitPlan(plan, { target, expected: expectation.expected, pkgDir }, deps);
+          if (!admitted.ok) {
+            console.error(`  ✗ Not activating the planned launchd job: ${admitted.reason}. Nothing was stopped.`);
+            process.exitCode = 1;
+            return;
+          }
+          const { activateService } = await import("./service-activation.js");
+          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
+            { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
+              ...deps,
+              readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
+              isExecutable: path => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+              refresh: () => ({ status: 0, signal: null, stdout: "", stderr: "" }),
+              restart: () => {},
+              log: message => console.log(message),
+              launchdPreimage: plan.preimage.plist,
+            });
+          deps.removeFile(planPath(DATA_DIR));
+          if (outcome.ok) { console.log("Service restarted (launchd loaded the planned job)."); return; }
+          console.error(outcome.message);
+          process.exitCode = 1;
+          return;
+        }
+        // Path 1: an unchanged loaded job.
+        if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
+        if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
+        console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
+        process.exitCode = 1;
+        return;
+      }
+      const { LAUNCHD_NOT_LOADED } = await import("./service-plan.js");
+      if (!LAUNCHD_NOT_LOADED.includes(printed.status ?? -1) || printed.signal !== null) {
+        console.error(`  ✗ Could not tell whether ${label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); refusing a detached restart that could duplicate the fleet.`);
+        process.exitCode = 1;
+        return;
+      }
     }
     // 4. Detached process tracked by fleet.pid (no service manager)
     if (existsSync(pidPath)) {
@@ -1885,6 +2133,8 @@ program
         return isFleetStartCommandLine(readProcessCommandLine(oldPid));
       };
       if (oldPid && isOurFleet()) {
+        // The replacement is `<this Node> <entry> fleet start` (C5): this Node must be the selected one.
+        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
         try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
         for (let i = 0; i < 20; i++) {
           try { process.kill(oldPid, 0); } catch { break; }
@@ -1894,7 +2144,9 @@ program
         // during the wait.
         if (isOurFleet()) { try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ } }
         try { unlinkSync(pidPath); } catch { /* best effort */ }
-        const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+        // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+        const start = selfCommand(["fleet", "start"]);
+        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
         child.unref();
         console.log("Fleet restarting in background.");
         return;
@@ -2013,8 +2265,9 @@ program
 
 program
   .command("web")
-  .description("Open the Web UI dashboard in your browser")
-  .action(async () => {
+  .description("Open the Web UI sign-in page in your browser and print a one-time sign-in code")
+  .option("--code", "Only print the sign-in page and code; do not open a browser")
+  .action(async (opts: { code?: boolean }) => {
     const tokenPath = join(DATA_DIR, "web.token");
     if (!existsSync(tokenPath)) {
       console.error("Web token not found. Is the fleet running?");
@@ -2024,20 +2277,34 @@ program
     const { loadFleetConfig } = await import("./config.js");
     const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
     const port = fleet.health_port ?? 19280;
-    const url = `http://localhost:${port}/ui?token=${encodeURIComponent(token)}`;
-    console.log(`Opening ${url}`);
-    // The token is sensitive: passing it on argv would expose it via `ps`,
-    // and exec(`${cmd} "${url}"`) additionally goes through a shell. Instead,
-    // write a 0600-mode HTML redirect into a per-user temp dir and open that
-    // file path — the token only ever lives on disk under user-only perms.
-    const { mkdtempSync } = await import("node:fs");
-    const { tmpdir } = await import("node:os");
-    const tmpDir = mkdtempSync(join(tmpdir(), "agend-web-"));
-    const htmlPath = join(tmpDir, "open.html");
-    const htmlUrl = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-    writeFileSync(htmlPath, `<!doctype html><meta http-equiv="refresh" content="0; url=${htmlUrl}">`, { mode: 0o600 });
+    // The code is minted by the running fleet (it lives in that process's memory), so ask it — with
+    // the header token, the one credential a local script has. No credential ever goes into a URL:
+    // the browser is opened on the sign-in page and the code is typed there.
+    let code: string;
+    let minutes: number;
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
+        method: "POST",
+        headers: { "X-Agend-Token": token },
+        signal: AbortSignal.timeout(5000),
+      });
+      const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
+      if (!resp.ok || !body.code) {
+        console.error(`Could not get a sign-in code: ${body.error ?? resp.statusText}`);
+        process.exit(1);
+      }
+      code = body.code;
+      minutes = Math.max(1, Math.round(((body.expiresAt ?? Date.now()) - Date.now()) / 60_000));
+    } catch {
+      console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+      process.exit(1);
+    }
+    const signin = `http://localhost:${port}/signin`;
+    console.log(`Sign-in page: ${signin}`);
+    console.log(`Code:         ${code}   (works once, valid ~${minutes} min)`);
+    if (opts.code) return;
     const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-    const child = spawn(cmd, [htmlPath], { detached: true, stdio: "ignore" });
+    const child = spawn(cmd, [signin], { detached: true, stdio: "ignore" });
     child.unref();
   });
 
@@ -2057,7 +2324,7 @@ program
     console.log("Web token rotated.");
     console.log("Every previously issued dashboard link and browser session is now rejected.");
     console.log("A running fleet picks this up immediately — no restart needed.");
-    console.log("Get a new link with `agend web`, or /dashboard in your chat channel.");
+    console.log("Sign in again with `agend web` (prints a one-time code), or /dashboard in your chat channel.");
   });
 
   program

@@ -1,3 +1,5 @@
+import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
+installTmuxProcessFixture();
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FleetManager, resolveReplyThreadId } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
@@ -7,7 +9,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import yaml from "js-yaml";
 import { ClassicChannelManager, getClassicBackendChoices, readClassicLastActivityAt } from "../src/classic-channel-manager.js";
-import { KNOWN_BACKENDS } from "../src/config-validator.js";
+import { KNOWN_BACKENDS, validateFleetConfig } from "../src/config-validator.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 import type { InstanceConfig } from "../src/types.js";
 import { setUsageFetcherForTests } from "../src/usage/usage-api.js";
@@ -1524,6 +1526,7 @@ describe("FleetManager", () => {
     chmodSync(join(binDir, "codex"), 0o755);
     process.env.PATH = binDir;
     try {
+      writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("telegram");
@@ -1567,6 +1570,7 @@ describe("FleetManager", () => {
     symlinkSync(execFileSync("which", ["which"], { encoding: "utf8" }).trim(), join(binDir, "which"));
     process.env.PATH = binDir;
     try {
+      writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("discord");
@@ -1595,6 +1599,7 @@ describe("FleetManager", () => {
   });
 
   it("rejects a stale Discord /start without backend immediately instead of opening the legacy selector", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
     classicChannels.setPrimaryAdapterId("discord");
@@ -1620,6 +1625,7 @@ describe("FleetManager", () => {
   });
 
   it("persists a directly selected ClassicBot backend before starting", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
     classicChannels.setPrimaryAdapterId("telegram");
@@ -1634,6 +1640,7 @@ describe("FleetManager", () => {
   });
 
   it("accepts a pending backend choice only from the user who issued /start", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
     classicChannels.setPrimaryAdapterId("telegram");
@@ -1674,6 +1681,7 @@ describe("FleetManager", () => {
   it("expires backend selection without starting a default backend", async () => {
     vi.useFakeTimers();
     try {
+      writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
       fm.fleetConfig = { defaults: { backend: "kiro-cli" }, instances: {} };
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
@@ -2170,9 +2178,11 @@ instances:
   it("removes Telegram's /model keyboard and reuses its message for progress", async () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
+      // "admin" is a fleet admin of the telegram adapter: the click re-checks it (#754 audit).
+      channel: { type: "telegram", group_id: "chat-1", access: { mode: "locked", allowed_users: ["admin"] } },
       defaults: {},
-      instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6" }) },
-    };
+      instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6", topic_id: "topic-1" }) },
+    } as any;
     vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
       { id: "gpt-5.6", label: "GPT-5.6" },
       { id: "gpt-5.4", label: "GPT-5.4" },
@@ -2189,7 +2199,7 @@ instances:
       sendText,
     } as any;
 
-    await fm.promptModelMenu("worker", "admin", "topic-1", adapter, "chat-1", "topic-1");
+    await fm.promptModelMenu("worker", "admin", "topic-1", adapter, "chat-1", "topic-1", "telegram");
     const choice = promptUser.mock.calls[0][2].find(
       (item: { id: string }) => item.id.endsWith(":gpt-5.4"),
     );
@@ -2199,7 +2209,7 @@ instances:
       threadId: "topic-1",
       messageId: "menu-message",
       userId: "admin",
-    });
+    }, "telegram");
 
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
       "chat-1",
@@ -2310,6 +2320,95 @@ instances: {}
     expect(saved.channels).toBeUndefined();
     expect(saved.channel.access.allowed_users).toEqual([1, 2]);
     expect(saved.channel.custom_adapter_option).toBe("keep-me");
+  });
+
+  it("#1056: a Settings channels replace on a legacy channel writes the whole connection, never a bare channels[0]", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `channel:
+  type: discord
+  bot_token_env: BOT
+  group_id: "123456789012345678"
+  custom_adapter_option: keep-me
+  access:
+    mode: locked
+    allowed_users: [1]
+instances: {}
+`);
+    fm.loadConfig(configPath);
+    // What PUT /api/settings/fleet/channels does (settings-api.ts): the current connection plus its status emojis.
+    const cfg = fm.fleetConfig!;
+    cfg.channels = (cfg.channels ?? []).map(ch => ({ ...ch, options: { ...(ch.options ?? {}), status_emojis: { delivered: "✅" } } }));
+    delete (cfg as { channel?: unknown }).channel;
+    fm.saveFleetConfig();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.channel, "migrated to channels").toBeUndefined();
+    expect(saved.channels).toHaveLength(1);
+    expect(saved.channels[0]).toMatchObject({
+      type: "discord", bot_token_env: "BOT", group_id: "123456789012345678", custom_adapter_option: "keep-me",
+      access: { mode: "locked", allowed_users: [1] }, options: { status_emojis: { delivered: "✅" } },
+    });
+    const reloaded = new FleetManager(tmpDir);
+    reloaded.loadConfig(configPath);
+    expect(validateFleetConfig(reloaded.fleetConfig!).errors).toEqual([]);
+  });
+
+  it("#1056 review: the migration moves the connection as it is in the file now — a concurrent edit and an unknown key survive", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    const original = `channel:
+  type: discord
+  bot_token_env: BOT
+  group_id: "123456789012345678"
+  custom_adapter_option: keep-me
+  access:
+    mode: locked
+    allowed_users: [1]
+instances: {}
+`;
+    writeFileSync(configPath, original);
+    fm.loadConfig(configPath);
+    const cfg = fm.fleetConfig!;
+    cfg.channels = (cfg.channels ?? []).map(ch => ({ ...ch, options: { ...(ch.options ?? {}), status_emojis: { delivered: "✅" } } }));
+    delete (cfg as { channel?: unknown }).channel;
+    // Before the save: someone edits the raw connection (a known field, an unknown option, a new key).
+    writeFileSync(configPath, original
+      .replace("allowed_users: [1]", "allowed_users: [1, 2]")
+      .replace("custom_adapter_option: keep-me", "custom_adapter_option: changed-by-hand\n  added_by_hand: yes"));
+    fm.saveFleetConfig();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.channel).toBeUndefined();
+    expect(saved.channels).toHaveLength(1);
+    expect(saved.channels[0]?.access?.allowed_users, "the concurrent known-field edit").toEqual([1, 2]);
+    expect([saved.channels[0]?.custom_adapter_option, saved.channels[0]?.added_by_hand], "the unknown option and the new key").toEqual(["changed-by-hand", "yes"]);
+    expect(saved.channels[0]?.options, "this save's own change").toEqual({ status_emojis: { delivered: "✅" } });
+    expect([saved.channels[0]?.id, saved.channels[0]?.mode], "no normalized defaults written").toEqual([undefined, undefined]);
+  });
+
+  it("#1056 review control: with channels already in the file the same sequence keeps the same leaves", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    const original = `channels:
+  - type: discord
+    bot_token_env: BOT
+    custom_adapter_option: keep-me
+    access:
+      mode: locked
+      allowed_users: [1]
+instances: {}
+`;
+    writeFileSync(configPath, original);
+    fm.loadConfig(configPath);
+    const cfg = fm.fleetConfig!;
+    cfg.channels = (cfg.channels ?? []).map(ch => ({ ...ch, options: { ...(ch.options ?? {}), status_emojis: { delivered: "✅" } } }));
+    delete (cfg as { channel?: unknown }).channel;
+    writeFileSync(configPath, original.replace("allowed_users: [1]", "allowed_users: [1, 2]").replace("custom_adapter_option: keep-me", "custom_adapter_option: changed-by-hand"));
+    fm.saveFleetConfig();
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect([saved.channels[0].access.allowed_users, saved.channels[0].custom_adapter_option, saved.channels[0].options])
+      .toEqual([[1, 2], "changed-by-hand", { status_emojis: { delivered: "✅" } }]);
   });
 });
 

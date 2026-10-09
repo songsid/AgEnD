@@ -25,6 +25,11 @@ export const ReplyArgs = z.object({
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
   stickers: z.array(NonEmptyString).max(3).optional()
     .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
+  buttons: z.array(z.object({
+    label: z.string().min(1).max(80).describe("What the button says: one line of plain text, at most 80 characters."),
+    value: z.string().max(200).optional().describe("What you receive when it is clicked, if not the label (at most 200 characters; never shown on the platform)."),
+  })).min(1).max(10).optional()
+    .describe("Up to 10 buttons under the text (needs text; not with stickers). The first click by someone who may talk to you there answers for everyone and comes back to you as a message: `[button] <label>` (and `(value: …)` when it differs). Unanswered buttons expire after 24 h."),
 });
 
 export const ReactArgs = z.object({
@@ -89,7 +94,7 @@ export const DeleteScheduleArgs = z.object({
 // ── Fleet Task Board ────────────────────────────────────────────────────
 
 export const TaskBoardArgs = z.object({
-  action: z.enum(["create", "list", "claim", "done", "update"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create)"),
   description: z.string().optional().describe("Task details (create)"),
@@ -98,12 +103,18 @@ export const TaskBoardArgs = z.object({
   assignee: z.string().optional().describe("Instance name to assign (create/update)"),
   depends_on: z.array(z.string()).optional()
     .describe("Task IDs this depends on (create)"),
-  id: z.string().optional().describe("Task ID (claim/done/update)"),
+  id: z.string().optional().describe("Task ID or 8-hex id prefix (claim/done/update/get)"),
   result: z.string().optional().describe("Completion summary (done)"),
   status: z.enum(["open", "claimed", "done", "blocked", "cancelled"]).optional()
     .describe("New status (update)"),
   filter_assignee: z.string().optional().describe("Filter by assignee (list)"),
-  filter_status: z.string().optional().describe("Filter by status (list)"),
+  filter_status: z.union([
+    z.enum(["open", "claimed", "done", "blocked", "cancelled"]),
+    z.array(z.enum(["open", "claimed", "done", "blocked", "cancelled"])),
+  ]).optional()
+    .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked)."),
+  verbose: z.boolean().optional()
+    .describe("list: return full task records instead of compact rows (default false)"),
 });
 
 // ── Shared Decisions ────────────────────────────────────────────────────
@@ -172,7 +183,7 @@ export const SetPersonaEmojiArgs = z.object({
     "One emoji, or a Discord server emoji as <:name:id> from list_emojis. Empty string removes your override for that status.",
   ),
   status: z.enum(["received", "queued", "processing", "delivered", "failed", "progress_prefix", "photo", "attachment"]).optional()
-    .describe("Which of your status stamps to set (default: delivered, the one that stays on a handled message)"),
+    .describe("Which of your status stamps to set (default: delivered, the one that stays on a handled message). progress_prefix is not a reaction: it is the emoji at the start of your progress message."),
 });
 
 export const SetDescriptionArgs = z.object({

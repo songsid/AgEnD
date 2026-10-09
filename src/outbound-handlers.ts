@@ -18,7 +18,7 @@ import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
-import { backendSupportsSteer } from "./steer-capability.js";
+import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
@@ -114,12 +114,16 @@ export interface OutboundContext {
   }): { deliveryId: string; state: string; duplicate: boolean };
   /** Read-only status query scoped to a server-authenticated source/target. */
   queryDurableDeliveryStatus?(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage;
+  /** #1335: True when the delivery_id was pruned AND the caller is the source or target. */
+  wasDeliveryIdPrunedForCaller?(deliveryId: string, callerInstance: string): boolean;
   /** Current Daemon generation for authenticated HTTP/CLI ingress. */
   getDaemonBootId?(instanceName: string): string | undefined;
   /** True for the bounded stop/spawn window of an already planned replacement. */
   isInstanceRestarting?(instanceName: string): boolean;
   /** True while an earlier idle-gated delivery still owns this target's FIFO tail. */
   hasPendingIdleGatedDelivery?(instanceName: string): boolean;
+  /** The running launch's own steer capability (CliBackend.supportsSteer, #1405); undefined when it has none to give. */
+  instanceLaunchSupportsSteer?(instanceName: string): boolean | undefined;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
@@ -403,7 +407,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const steerCapable = steer === true
     && !isExternalSession
     && targetBackend !== undefined
-    && backendSupportsSteer(targetBackend);
+    && instanceSupportsSteer(targetBackend, ctx.instanceLaunchSupportsSteer?.(targetInstanceName));
   // A supplement must not jump ahead of the work it is meant to amend. The
   // facade publishes its idle-gated tail synchronously, so a send immediately
   // followed by steer observes the predecessor and joins the same FIFO queue.
@@ -1093,6 +1097,13 @@ function introducedErrors(before: ValidationResult, after: ValidationResult): Va
 }
 
 const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
+  // Privilege boundary (#804/#814): tool_set must be set via Settings or
+  // fleet.yaml, not through the MCP tool. Check the raw args before Zod
+  // strips unknown fields, so the field is never silently ignored.
+  if (typeof (rawArgs as any)?.config?.tool_set === "string" || (rawArgs as any)?.config?.tool_set !== undefined) {
+    respond(null, "tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)");
+    return;
+  }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   const inst = ctx.fleetConfig?.instances[v.data.name];
@@ -1895,6 +1906,14 @@ const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
     // token. Ignore any identity-like argument; the schema is strict as well.
     const page = ctx.queryDurableDeliveryStatus(meta.instanceName, selector);
     if (page.items.length === 0) {
+      // #1335: distinguish "never existed" from "pruned by retention".
+      // Only delivery_id lookups can use the pruned_ids index; operation_id /
+      // correlation_id / message_id queries fall back to "not found".
+      // Ownership-gated: only the original source or target sees "expired".
+      if (v.data.delivery_id && ctx.wasDeliveryIdPrunedForCaller?.(v.data.delivery_id, meta.instanceName)) {
+        respond(null, t("delivery.retention_expired"));
+        return;
+      }
       respond(null, t("delivery.not_found"));
       return;
     }

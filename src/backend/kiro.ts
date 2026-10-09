@@ -1,20 +1,32 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { getAgendHome } from "../paths.js";
 import {
   credentialHomeSpec,
   credentialProfileHome,
+  credentialProfileStoreHome,
   prepareCredentialProfileHome,
   resolveCredentialProfile,
 } from "./credential-profile.js";
+import {
+  type KiroAgentSpec, kiroAgentName, kiroFleetTag, writeKiroAgent, removeKiroAgent, writeSharedKiroMcpEntries,
+  removeSharedKiroMcpEntries, writeTaggedKiroSteering, removeTaggedKiroSteering, kiroSteeringOwnership,
+} from "./kiro-agent.js";
+import {
+  type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
+  kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
+} from "./kiro-identity.js";
+import { readKiroLedger } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
-import { resolveKiroV3Resume } from "./kiro-v3-identity.js";
+import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
@@ -32,11 +44,84 @@ export const KIRO_EFFORT_FLAG_MIN = "2.6.0";
 /** Oldest kiro-cli AgEnD claims: older ones still launch, with a warning. */
 export const KIRO_SUPPORTED_MIN = "2.21.0";
 /**
+ * Lowest version whose `--agent` and `--resume-id` the per-instance agent and conversation (#906) were verified on
+ * (2.21.0 and 2.28.0, docs/design/kiro-per-instance-agent.md). Below it an instance launches as before.
+ */
+export const KIRO_INSTANCE_AGENT_MIN = "2.21.0";
+/**
  * Newest kiro-cli run live under AgEnD. Above it the launch flags come from
  * the binary's own --help instead of the version table, and the operator is
  * told the version is unverified.
  */
 export const KIRO_TESTED_MAX = "2.27.0";
+
+/**
+ * kiro-cli versions, per TUI front-end, whose mid-turn steering AgEnD drives (#1405). Only kiro's TUI steers — typed
+ * input while a turn runs is injected into it ("steer", the default) or held for its end ("queue", Ctrl+S toggles); the
+ * legacy UI swallows it. A version/front-end is listed once a live run of it — a real account, a steer and a
+ * queued message mid-tool — has been captured (tests/fixtures/kiro-steer-1405, 2026-10-08: 2.27.1 `--tui
+ * --agent-engine=v2` and `--v3`, 2.28.0 `--tui --agent-engine=v2`; identical rows on all three). Any other version,
+ * 2.28.0's v3, the legacy UI and an undetected version all deliver a steer as an ordinary message after the turn.
+ */
+export const KIRO_STEER_VERIFIED: Readonly<Record<string, ReadonlyArray<"tui" | "v3">>> = {
+  "2.27.1": ["tui", "v3"],
+  "2.28.0": ["tui"],
+};
+
+/**
+ * The TUI composer's interrupt mode, read off its own row: the LAST row starting at column 0 with `›` (transcript user
+ * rows are indented), below which only blank rows or right-aligned hints (`/copy to clipboard`) may follow. Its text is
+ * the empty composer's placeholder (tui.js, identical in 2.21.0, 2.27.1 and 2.28.0; 2.21.0 shows no elapsed time):
+ *
+ *   `› Kiro is working · 12s · Type to steer · Ctrl+S to queue`   → "steer"
+ *   `› Kiro is working · 12s · Type to queue · Ctrl+S to steer`   → "queue"  (also `· Type to queue` alone: a spec task run)
+ *   `› ask a question or describe a task ↵`                        → "idle"  (exactly; also plan mode's and tangent's
+ *                                                                      complete forms — never a prefix of typed text)
+ *
+ * Any other text on the composer's row is typed text: "text" — positive evidence the box holds something. The goal,
+ * editing, initializing, spec-description and shell placeholders are other modes, and the ASCII glyph set (`.`/`enter`,
+ * never seen on a real pane of ours) is not read: null, like a screen with no composer row (a dialog) — null is never
+ * evidence of either an empty or a full box. The toggle key's label is whatever the user bound; it is read past, never
+ * pressed.
+ */
+function readKiroComposer(pane: string): { mode: SteerComposerMode; text: string } | null {
+  const rows = pane.split("\n").map(row => row.replace(/\s+$/, ""));
+  let i = rows.length - 1;
+  while (i >= 0 && (rows[i] === "" || /^[ \t]{20,}\S/.test(rows[i]))) i--;
+  // Typed text of more than one line continues below the `›` row, each row indented two spaces (live, 2.27.1 and
+  // 2.28.0, TUI v2 and v3): the composer starts at the `›` row above them.
+  let continued = 0;
+  while (i >= 0 && /^ {2,19}\S/.test(rows[i]!)) { i--; continued++; }
+  const row = rows[i];
+  if (row === undefined || !/^›[ \t]+\S/.test(row)) return null;
+  // A placeholder is one row: with continuation rows below it, this is typed text — unless its first row is another
+  // mode's placeholder, which is then not ours to read.
+  if (continued > 0) {
+    if (/^›[ \t]+(?:Kiro is working\b|ask a question or describe a task\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b)/.test(row)) return null;
+    return { mode: "text", text: row.replace(/^›[ \t]+/, "") };
+  }
+  const working = String.raw`^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+`;
+  const text = row.replace(/^›[ \t]+/, "");
+  if (new RegExp(`${working}Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$`).test(row)) return { mode: "steer", text };
+  if (new RegExp(`${working}Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$`).test(row)) return { mode: "queue", text };
+  const idle = String.raw`^›[ \t]+ask a question or describe a task`;
+  if (new RegExp(`${idle}[ \\t]+↵$`).test(row)
+    || new RegExp(`${idle}[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$`).test(row)
+    || new RegExp(`${idle}[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$`).test(row)) return { mode: "idle", text };
+  // Other placeholders (and anything the ASCII glyph set paints) are not typed text.
+  if (/^›[ \t]+(?:Kiro is working\b|Goal (?:Active|Paused):|Editing queued message \d|Initializing\b|describe what "|running shell command\b|ask a question or describe a task (?:\.|enter\b))/.test(row)) return null;
+  return { mode: "text", text };
+}
+
+export function readKiroSteerComposer(pane: string): SteerComposerMode | null {
+  return readKiroComposer(pane)?.mode ?? null;
+}
+
+/** The typed text on the composer's row when it reads "text" (its first row, as kiro paints it); else null. */
+export function readKiroComposerText(pane: string): string | null {
+  const c = readKiroComposer(pane);
+  return c?.mode === "text" ? c.text : null;
+}
 
 export interface KiroCliCompatibility {
   version?: string;
@@ -47,6 +132,11 @@ export interface KiroCliCompatibility {
   /** Values `--agent-engine` accepts; null when the flag does not exist. */
   agentEngines: readonly string[] | null;
   supportsEffortFlag: boolean;
+  /**
+   * `chat --agent` and `chat --resume-id` both exist: the per-instance agent and conversation can be used (#906).
+   * Absent means no — today's command.
+   */
+  supportsInstanceAgent?: boolean;
   source: "version" | "help" | "unknown";
 }
 
@@ -58,6 +148,7 @@ const UNKNOWN_KIRO_COMPATIBILITY: KiroCliCompatibility = {
   supportsV3: false,
   agentEngines: null,
   supportsEffortFlag: false,
+  supportsInstanceAgent: false,
   source: "unknown",
 };
 
@@ -92,23 +183,77 @@ function kiroModelPickerAtTail(pane: string): boolean {
   return tail.some(line => /^\s*[>❯›]\s*\*?\s*\S/.test(line));
 }
 
-/** Never navigate a stale trust phrase in scrollback or an unknown menu. */
-function kiroTrustDialogActive(pane: string): boolean {
-  if (kiroModelPickerAtTail(pane)) return false;
-  const lines = pane.replace(/\r/g, "").split("\n");
-  let selected = -1;
-  for (let index = lines.length - 1; index >= 0; index--) {
-    if (/^\s*[❯›]\s*No, exit\s*$/.test(lines[index])) {
-      selected = index;
-      break;
-    }
+const KIRO_TRUST_HEADER = "Warning: Kiro is running in trust all tools mode";
+const KIRO_TRUST_PATTERN = /^\s*(?:Warning: Kiro is running in trust all tools mode|Do you trust the files\?)\s*$/m;
+const KIRO_TRUST_OPTIONS = ["No, exit", "Yes, I accept", "Yes, and don't ask again"] as const;
+
+/**
+ * #849A: only the captured 2.27.1 TUI trust-all-tools layout can receive a
+ * key. Unknown layouts remain held. A live composer or model picker below
+ * the header makes it history, not a consent request. The old synthetic
+ * workspace-trust shape is observable but never auto-accepted.
+ */
+export function kiroTrustPromptState(pane: string): KiroLaunchPromptState {
+  const none: KiroLaunchPromptState = { active: false, cursor: null };
+  if (kiroModelPickerAtTail(pane)) return none;
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let header = -1;
+  for (let index = rows.length - 1; index >= 0; index--) {
+    if (KIRO_TRUST_PATTERN.test(rows[index])) { header = index; break; }
   }
-  if (selected < 0) return false;
-  const yes = lines.findIndex((line, index) => index > selected && index <= selected + 3
-    && /^\s*Yes, I accept\s*$/.test(line));
-  if (yes < 0) return false;
-  const afterChoices = lines.slice(yes + 1).filter(line => line.trim());
-  return afterChoices.every(line => /^\s*(?:enter|esc|press|use)\b/i.test(line));
+  if (header < 0) return none;
+  const body = rows.slice(header + 1);
+  if (body.some(row => KIRO_COMPOSER_ROW.test(row))) return none;
+  const choice = (row: string, label: string) => {
+    if (row.trim() === label) return { glyph: null };
+    const hit = /^\s*(\S)\s+(.+)$/.exec(row);
+    return hit?.[2] === label ? { glyph: hit[1] } : null;
+  };
+  const held: KiroLaunchPromptState = { active: true, cursor: null };
+  if (rows[header].trim() !== KIRO_TRUST_HEADER) {
+    // A question alone is not permission evidence. A structurally selected
+    // two-choice workspace prompt is held for a human, not navigated.
+    return body.some(row => choice(row, KIRO_TRUST_OPTIONS[0]))
+      && body.some(row => choice(row, KIRO_TRUST_OPTIONS[1])) ? held : none;
+  }
+  const first = body.findIndex(row => choice(row, KIRO_TRUST_OPTIONS[0]) !== null);
+  if (first < 0) return held;
+  if (body.slice(0, first).some(row => KIRO_TRUST_OPTIONS.some(label => choice(row, label)))) return held;
+  const options = body.slice(first).filter(row => row.trim());
+  // Exact labels/order, divider and key-hint tail from the native fixture.
+  // No inferred two-option layout, added option, or arbitrary output suffix.
+  if (options.length !== 5 || !/^─{3,}$/.test(options[3].trim())
+    || !/^esc to cancel\s*·\s*↑↓ to navigate\s*·\s*↵ to select$/.test(options[4].trim())) return held;
+  const hits = KIRO_TRUST_OPTIONS.map((label, index) => choice(options[index], label));
+  if (hits.some(hit => !hit)) return held;
+  const marked = hits.flatMap((hit, index) => hit!.glyph === null ? [] : [index]);
+  if (marked.length !== 1 || !KIRO_PROMPT_CURSOR.test(hits[marked[0]]!.glyph!)) return held;
+  return { active: true, cursor: marked[0] };
+}
+
+function kiroTrustPromptDialogs(trustAll: boolean): RuntimeDialog[] {
+  const guarded = { pattern: KIRO_TRUST_PATTERN, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, oncePerLaunch: true } as const;
+  const at = (pane: string, cursor: number) => {
+    const state = kiroTrustPromptState(pane);
+    return trustAll && state.active && state.cursor === cursor;
+  };
+  return [
+    {
+      ...guarded, keys: ["Down"], autoResolutionKey: "kiro-trust-all-tools-step",
+      description: "Kiro trust confirmation — one step off 'No, exit'",
+      isActive: pane => at(pane, 0),
+    },
+    {
+      ...guarded, keys: ["Enter"], autoResolutionKey: "kiro-trust-all-tools-confirm",
+      description: "Kiro trust confirmation — confirm per-session 'Yes, I accept'",
+      isActive: pane => at(pane, 1),
+    },
+    {
+      pattern: KIRO_TRUST_PATTERN, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true,
+      description: "Kiro trust confirmation — unsafe or unverified choice; holding for a human",
+      isActive: pane => kiroTrustPromptState(pane).active,
+    },
+  ];
 }
 
 /**
@@ -233,8 +378,8 @@ export function kiroLaunchPromptState(pane: string, spec: KiroLaunchPromptSpec):
   return { active: true, cursor: marked[0] };
 }
 
-/** kiro's input row: legacy `12% !>` / `[agent] 3% λ !>`, or a bare `>`/`❯`. */
-const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$/;
+/** Kiro's legacy input row, or the archived TUI's column-zero `›` composer (including typed text). */
+const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$|^›(?:[ \t]|$)/;
 
 /**
  * Launch prompts that would move an instance off its engine (#1109). Text
@@ -377,6 +522,7 @@ function compatibilityFromVersion(version: string, parsed: [number, number, numb
       : has("2.3.0") ? ["rust", "kas"]
       : null,
     supportsEffortFlag: has(KIRO_EFFORT_FLAG_MIN),
+    supportsInstanceAgent: has(KIRO_INSTANCE_AGENT_MIN),
     source: "version",
   };
 }
@@ -390,6 +536,10 @@ function compatibilityFromHelp(version: string | undefined, help: string): KiroC
     supportsV3: helpAdvertisesFlag(help, "--v3"),
     agentEngines: parseKiroAgentEngines(help),
     supportsEffortFlag: helpAdvertisesFlag(help, "--effort"),
+    // The flags are listed long before 2.21, but the behaviour #906 relies on was verified from 2.21 on: an unknown or
+    // older version keeps today's command.
+    supportsInstanceAgent: helpAdvertisesFlag(help, "--agent") && helpAdvertisesFlag(help, "--resume-id")
+      && (() => { const v = parseSemver(version); return !!v && versionAtLeast(v, KIRO_INSTANCE_AGENT_MIN); })(),
     source: "help",
   };
 }
@@ -403,12 +553,15 @@ function compatibilityFromHelp(version: string | undefined, help: string): KiroC
  */
 export function probeKiroCliCompatibility(
   binaryPath: string,
-  run: KiroProbeRunner = (binary, args) => execFileSync(binary, args, {
+  run: KiroProbeRunner = (binary, args) => measureSyncWork(args[0] === "--version" ? "kiro.version" : "kiro.help", () => execFileSync(binary, args, {
     encoding: "utf-8",
     timeout: 5000,
     stdio: ["ignore", "pipe", "ignore"],
-  }),
+  })),
 ): KiroCliCompatibility {
+  return measureSyncWork("kiro.compatibilitySync", () => probeKiroCliCompatibilitySync(binaryPath, run));
+}
+function probeKiroCliCompatibilitySync(binaryPath: string, run: KiroProbeRunner): KiroCliCompatibility {
   let version: string | undefined;
   try {
     version = run(binaryPath, ["--version"]).trim().split("\n")[0].slice(0, 80) || undefined;
@@ -445,6 +598,90 @@ export type KiroLaunchPlan =
  * and moving between them forks it one way, so a launch AgEnD cannot pin to
  * the instance's own engine is refused, never run on whatever kiro defaults to.
  */
+/** One attempt's launch plan (#906): see KiroBackend.planInstanceLaunch. */
+interface KiroInstanceLaunch {
+  cwd: string;
+  skipResume: boolean;
+  engine: "v1" | "v2" | "v3" | null;
+  credentialProfile: string | null;
+  mode: "legacy" | "resume" | "fresh";
+  /** Legacy mode's launch warning, if any. */
+  reason: string | null;
+  agent: string | null;
+  id?: string;
+  agentConfirmed: boolean;
+}
+
+/** Binary generations already told they cannot isolate (once each). */
+const warnedNoInstanceAgentKeys = new Set<string>();
+/** Instances already told about an untagged steering file (once each). */
+const warnedUntaggedSteering = new Set<string>();
+
+/** The classic (v1) conversation store an instance launches with: its credential profile's, else the shared one. */
+export function kiroV1DbPath(credentialProfile: string | null): string {
+  const home = credentialProfile
+    ? credentialProfileStoreHome(getAgendHome(), "kiro-cli", credentialProfile)
+    : join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "kiro-cli");
+  return join(home, "data.sqlite3");
+}
+
+/** The TUI (v2) session files: `<KIRO_HOME or ~/.kiro>/sessions/cli` — not per credential profile. */
+export function kiroV2SessionsDir(): string {
+  return join(process.env.KIRO_HOME?.trim() || join(homedir(), ".kiro"), "sessions", "cli");
+}
+
+/**
+ * Adoption evidence (#906 §2): the engine ledger shows this instance launched here — same directory, credential
+ * profile and engine — before #906 (no "--agent" in that launch). A new instance has no such record and starts fresh
+ * instead of taking a sibling's conversation.
+ */
+export function kiroLaunchedHereBefore(instance: string, workingDirectory: string, credentialProfile: string | null, engine: "v1" | "v2", ledgerPath?: string): boolean {
+  const entry = readKiroLedger(ledgerPath)[instance];
+  if (!entry || resolve(entry.workingDirectory) !== resolve(workingDirectory) || entry.credentialProfile !== credentialProfile) return false;
+  return entry.lastLaunch.ui === (engine === "v1" ? "legacy" : "tui") && !entry.lastLaunch.flags.includes("--agent");
+}
+
+/** The legacy UI's prompt row: an optional `[agent]`, the context percentage, an optional mode glyph, the marker. */
+const LEGACY_PROMPT_ROW = /^\s*(?:\[([^\]]+)\]\s*)?\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯|>)/;
+/** A TUI status row: `<agent> · <model> · …`. */
+const TUI_STATUS_ROW = /^\s*(\S+) · /;
+const RULE_ROW = /^[\s─━│┃╭╮╰╯┌┐└┘]*$/;
+/** The right-aligned hint under the TUI input row: far right, a slash command or two. */
+const TUI_HINT_ROW = /^\s{20,}\/[\w-]+(?: [\w-]+)*(?: · \/[\w-]+(?: [\w-]+)*)*$/;
+
+/**
+ * The agent the live layout shows (#906 §3) — never a name quoted in the conversation above it:
+ *  - legacy: the pane's last non-empty row, only when it is the prompt row; `[name]` on it, or the default agent;
+ *  - TUI / v3: the status row directly above the input row (the last `›` row; earlier `›` rows are the user's past
+ *    messages, which sit above it), skipping rule rows.
+ * Null when the layout cannot be read.
+ */
+export function readActiveKiroAgent(pane: string, ui: "legacy" | "tui" | "v3"): string | null {
+  const rows = pane.split("\n").map(r => r.replace(/\s+$/, ""));
+  if (ui === "legacy") {
+    const last = [...rows].reverse().find(r => r.trim() !== "");
+    const m = last ? LEGACY_PROMPT_ROW.exec(last) : null;
+    return m ? (m[1] ?? "kiro_default") : null;
+  }
+  let input = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (/^\s*›/.test(rows[i]!)) { input = i; break; }
+  if (input < 0) return null;
+  // The live bottom layout ends with the input row: below it only blank or rule rows and the right-aligned hint
+  // (`/copy to clipboard`, `/sessions to resume · …`). Anything else — a modal, a panel, output — means the pair
+  // above it is not the live one (#1416 review).
+  for (let i = input + 1; i < rows.length; i++) {
+    const row = rows[i]!;
+    if (row.trim() === "" || RULE_ROW.test(row) || TUI_HINT_ROW.test(row)) continue;
+    return null;
+  }
+  for (let i = input - 1; i >= 0; i--) {
+    if (RULE_ROW.test(rows[i]!)) continue;
+    const m = TUI_STATUS_ROW.exec(rows[i]!);
+    return m ? m[1]! : null;
+  }
+  return null;
+}
+
 export function planKiroLaunch(ui: "legacy" | "tui" | "v3", compat: KiroCliCompatibility): KiroLaunchPlan {
   const version = compat.version ?? "of unknown version";
   if (ui === "v3") return { kind: "launch", ui, flags: ["--v3"] };
@@ -585,6 +822,44 @@ export class KiroBackend implements CliBackend {
   private activeTrustAll = true;
   /** Version-gate notice for the launch just built (consumeLaunchWarning). */
   private launchWarning: string | null = null;
+  /**
+   * What this launch attempt resumes and as which agent (#906), resolved once per attempt in writeConfig — it claims
+   * conversations and records fresh starts — and read by the buildCommand that follows it.
+   */
+  private launchPlan: KiroInstanceLaunch | null = null;
+  /** The plan of the command last built: what agentSwitch() works from. */
+  private activePlan: KiroInstanceLaunch | null = null;
+  private preparedV2Store: { key: string; store: KiroStoreRead } | null = null;
+  private storePreparation = 0;
+  private storeKey(config: CliBackendConfig): string {
+    return JSON.stringify([config.instanceName, config.workingDirectory, kiroCanonicalDirectory(config.workingDirectory), config.kiroUi,
+      resolveCredentialProfile(config.backendOptions), !!config.skipResume, getAgendHome(), kiroV2SessionsDir(), kiroCanonicalDirectory(kiroV2SessionsDir())]);
+  }
+
+  private readPreparedV2Store(config: CliBackendConfig): KiroStoreRead {
+    if (this.preparedV2Store?.key !== this.storeKey(config)) {
+      throw new KiroIdentityError("v2 session discovery was not prepared for this launch");
+    }
+    return this.preparedV2Store.store;
+  }
+
+  /** Metadata only: identity claims/config writes remain synchronous, after
+   * the daemon rechecks its launch admission following this await. */
+  async prepareLaunch(config?: CliBackendConfig): Promise<void> {
+    const preparation = ++this.storePreparation;
+    this.preparedV2Store = null;
+    if (!config || config.kiroUi !== "tui") return;
+    if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
+    const key = this.storeKey(config);
+    const plan = planKiroLaunch("tui", this.compatibility);
+    if (plan.kind !== "launch" || !plan.flags.includes("--agent-engine=v2") || !this.compatibility.supportsInstanceAgent) return;
+    const opts = { instance: config.instanceName, engine: "v2" as const, workingDirectory: config.workingDirectory,
+      credentialProfile: resolveCredentialProfile(config.backendOptions), skipResume: config.skipResume, agendHome: getAgendHome() };
+    if (kiroIdentityNeedsStore(opts)) {
+      const store = await listKiroV2Sessions(config.workingDirectory, kiroV2SessionsDir());
+      if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Store = { key, store };
+    }
+  }
 
   constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
     this.binaryPath = resolveBinary("kiro-cli");
@@ -623,6 +898,24 @@ export class KiroBackend implements CliBackend {
     // `100% > done` — and never verified live. Both keep the silence gate until
     // their ready marker is verified.
     return this.activeUi === "legacy" && this.activeTrustAll;
+  }
+
+  /** #1405: the TUI front-end this instance was launched with, on a version listed in KIRO_STEER_VERIFIED. */
+  supportsSteer(): boolean {
+    if (this.activeUi === "legacy") return false;
+    // compatibility.version is kiro-cli's own `--version` line ("kiro-cli 2.27.1").
+    const version = parseSemver(this.compatibility.version)?.join(".");
+    return version !== undefined && Object.hasOwn(KIRO_STEER_VERIFIED, version)
+      && KIRO_STEER_VERIFIED[version].includes(this.activeUi);
+  }
+
+  /** #1405: the TUI composer's mode; never read on the legacy UI, whose prompt row has no such mode. */
+  readSteerComposer(pane: string): SteerComposerMode | null {
+    return this.activeUi === "legacy" ? null : readKiroSteerComposer(pane);
+  }
+
+  readSteerComposerText(pane: string): string | null {
+    return this.activeUi === "legacy" ? null : readKiroComposerText(pane);
   }
 
   /**
@@ -695,13 +988,21 @@ export class KiroBackend implements CliBackend {
     for (const flag of plan.flags) cmd += ` ${flag}`;
     this.noteVersionGate();
     const credentialProfile = resolveCredentialProfile(config.backendOptions);
+    // #906: the plan writeConfig resolved for this attempt (a direct buildCommand, as in tests, resolves its own).
+    const lp = this.launchPlan && this.launchPlan.cwd === config.workingDirectory && this.launchPlan.skipResume === !!config.skipResume
+      ? this.launchPlan : this.planInstanceLaunch(config);
+    this.launchPlan = null;
+    this.activePlan = lp;
+    this.activeSpec = lp.mode === "legacy" ? null : this.agentSpec(config);
+    this.activeInstance = config.instanceName;
     recordKiroLaunch({
       instance: config.instanceName,
       workingDirectory: config.workingDirectory,
       credentialProfile,
       kiroVersion: this.compatibility.version ?? null,
       ui,
-      flags: plan.flags,
+      // "--agent" marks a launch made after #906: such an instance is never adopted again (kiroLaunchedHereBefore).
+      flags: lp.mode !== "legacy" ? [...plan.flags, "--agent"] : plan.flags,
     });
     // Record what is actually being launched for the delivery gate (see
     // dropsEnterWhileBusy): the legacy prompt row exists only under
@@ -709,28 +1010,20 @@ export class KiroBackend implements CliBackend {
     this.activeUi = plan.flags.includes("--legacy-ui") ? "legacy" : ui === "v3" ? "v3" : "tui";
     this.activeTrustAll = config.skipPermissions !== false;
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
-    // --resume is boolean: Kiro auto-resumes latest conversation for this working directory.
-    //
-    // Deliberately NOT `--resume-id <SESSION_ID>`, which kiro-cli 2.22 also
-    // offers (alongside --resume-picker). Conversations live in the same
-    // data.sqlite3 as the login, keyed by working directory — so a credential
-    // profile has its own set of them, and a session id recorded under one
-    // profile does not exist under another. Holding an id would mean carrying a
-    // stale one across a subscription switch and resuming into nothing; the
-    // boolean form simply finds no conversation for this directory in a new
-    // store, which is the same thing every brand-new instance does on its first
-    // launch. Switching profiles also skips resume outright (crash-state
-    // resumeDisabled), so this never fires against a store that just changed.
-    //
-    // V3 is the exception, and resumes only the session it owns, by id: its
-    // `--resume` takes the newest conversation in the directory from ANY
-    // engine and converts a classic one into a new V3 copy — on every launch.
-    // A skipped resume is recorded there too, so the session given up is not
-    // taken back on the next launch. See kiro-v3-identity.ts.
-    if (ui === "v3") {
+    if (lp.mode !== "legacy") {
+      // Its own agent: on a fresh start it takes effect at once; on a resume kiro brings back the conversation's saved
+      // agent instead (E6), and the daemon switches it on screen (agentSwitch).
+      cmd += ` --agent ${shellQuote(lp.agent!)}`;
+      if (lp.mode === "resume") cmd += ` --resume-id ${shellQuote(lp.id!)}`;
+    } else if (ui === "v3") {
+      // Legacy mode, V3: it resumes only the session it owns, by id (kiro-v3-identity.ts) — its `--resume` would take
+      // the newest conversation in the directory from ANY engine and convert a classic one into a new V3 copy.
       const id = resolveKiroV3Resume(config.instanceName, config.workingDirectory, credentialProfile, { skipResume: config.skipResume });
       if (id) cmd += ` --resume-id ${shellQuote(id)}`;
     } else if (!config.skipResume) {
+      // Legacy mode, classic/TUI: the boolean form — kiro resumes the directory's newest conversation. Not isolated
+      // between instances sharing the directory (#1410); an instance launches like this only without the
+      // per-instance plan (an old kiro-cli, or a conversation store AgEnD could not read on adoption).
       cmd += " --resume";
     }
     if (config.model) {
@@ -797,7 +1090,8 @@ export class KiroBackend implements CliBackend {
     }
     if (!warning) return;
     warnedVersionGateCacheKeys.add(key);
-    this.launchWarning = warning;
+    // Appended: the launch's isolation warnings (#906, recorded by writeConfig) must not be overwritten by this one.
+    this.addLaunchWarning(warning);
   }
 
   consumeLaunchWarning(): string | null {
@@ -818,36 +1112,11 @@ export class KiroBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
-    // Kiro CLI reads workspace MCP config from .kiro/settings/mcp.json
-    // Format: { "mcpServers": { "name": { command, args, env } } }
-    //
-    // WORKAROUND: kiro-cli ignores the "env" block in mcp.json — the MCP server
-    // subprocess inherits the fleet manager's process env, which has a stale
-    // AGEND_SOCKET_PATH from whichever daemon wrote to it last.
-    // Fix: generate a wrapper script that exports the correct env vars before
-    // exec-ing the real MCP server.
-    const mcpDir = join(config.workingDirectory, ".kiro", "settings");
-    mkdirSync(mcpDir, { recursive: true });
-    const mcpConfigPath = join(mcpDir, "mcp.json");
-
-    let mcpConfig: Record<string, unknown> = {};
-    try { mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8")); } catch { /* new file */ }
-
-    const servers = (mcpConfig.mcpServers ?? {}) as Record<string, unknown>;
-    // Remove stale agend entries whose wrapper scripts no longer exist
-    for (const [key, val] of Object.entries(servers)) {
-      if (key.startsWith("agend-")) {
-        const cmd = (val as Record<string, unknown>)?.command;
-        if (typeof cmd === "string" && !existsSync(cmd)) {
-          delete servers[key];
-        }
-      }
-    }
+    // WORKAROUND: kiro-cli ignores the "env" block of an MCP server entry — the server subprocess inherits the fleet
+    // manager's env, with a stale AGEND_SOCKET_PATH from whichever daemon wrote last. Each server therefore runs
+    // through a wrapper script that exports this instance's env and execs the real server.
     for (const [name, entry] of Object.entries(config.mcpServers)) {
-      const instanceKey = `${name}-${config.instanceName}`;
       const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
-
-      // Write a wrapper script that sets env vars explicitly
       const wrapperPath = join(this.instanceDir, `mcp-wrapper-${name}.sh`);
       const envExports = Object.entries(allEnv)
         .map(([k, v]) => `export ${k}='${String(v).replace(/'/g, "'\\''")}'`)
@@ -857,33 +1126,168 @@ export class KiroBackend implements CliBackend {
       // to avoid a world-readable window between writeFileSync and chmodSync.
       writeFileSync(
         wrapperPath,
-        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${entry.command} ${entry.args.map((a: string) => JSON.stringify(a)).join(" ")}\n`,
+        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${[entry.command, ...entry.args].map(shellQuote).join(" ")}\n`,
         { mode: 0o700 },
       );
       // Re-chmod in case the file already existed with looser permissions (writeFileSync's
       // mode only applies on create).
       chmodSync(wrapperPath, 0o700);
-
-      servers[instanceKey] = {
-        command: wrapperPath,
-        args: [],
-      };
     }
-    // Clean up old non-namespaced key if present
-    delete servers["agend"];
-    mcpConfig.mcpServers = servers;
 
-    writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+    // #906: which conversation this attempt resumes, and as which agent — resolved once, here.
+    const plan = this.planInstanceLaunch(config);
+    this.preparedV2Store = null;
+    this.launchPlan = plan;
+    const spec = this.agentSpec(config);
+    const root = dirname(this.instanceDir);
+    if (plan.mode === "legacy") {
+      // Not isolated (an old kiro-cli, or adoption with an unreadable store): the shared files as before, each
+      // written only where it is free, and removed only by provenance.
+      if (plan.reason) this.addLaunchWarning(plan.reason);
+      this.noteShared("mcp.json", writeSharedKiroMcpEntries(spec));
+      if (config.instructions) this.noteShared("steering", writeTaggedKiroSteering(spec, config.instructions));
+      this.noteShared("mcp.json", removeSharedKiroMcpEntries(spec, root, false));
+      return;
+    }
+    // Throws when a file that is not this instance's agent is in the way: never overwritten, launch refused.
+    writeKiroAgent(spec, config.instructions);
+    if (plan.mode === "resume" && !plan.agentConfirmed) {
+      // The resumed conversation comes back as its saved agent (`--agent` is ignored on resume), so until the switch
+      // is confirmed on screen it gets its AgEnD server and instructions from the shared files (design §3).
+      this.noteShared("mcp.json", writeSharedKiroMcpEntries(spec));
+      if (config.instructions) this.noteShared("steering", writeTaggedKiroSteering(spec, config.instructions));
+      this.noteShared("mcp.json", removeSharedKiroMcpEntries(spec, root, false));
+      return;
+    }
+    // Running as its own agent: nothing of this instance belongs in the shared files any more.
+    this.noteShared("mcp.json", removeSharedKiroMcpEntries(spec, root, true));
+    this.noteShared("steering", removeTaggedKiroSteering(spec));
+  }
 
-    // Write fleet instructions to .kiro/steering/ (auto-loaded by Kiro CLI)
-    if (config.instructions) {
-      try {
-        const steeringDir = join(config.workingDirectory, ".kiro", "steering");
-        mkdirSync(steeringDir, { recursive: true });
-        writeFileSync(join(steeringDir, `agend-${config.instanceName}.md`), config.instructions);
-      } catch { /* best effort */ }
+  /** This instance's agent, by its fleet and its own wrapper scripts. */
+  private agentSpec(config: CliBackendConfig): KiroAgentSpec {
+    return {
+      workingDirectory: config.workingDirectory,
+      instance: config.instanceName,
+      fleet: kiroFleetTag(getAgendHome()),
+      instanceDir: this.instanceDir,
+      serverNames: Object.keys(config.mcpServers),
+    };
+  }
+
+  /** A shared file AgEnD could not bring to the state isolation needs: said, never reported as isolated. */
+  private noteShared(file: "mcp.json" | "steering", outcome: string): void {
+    if (outcome === "conflict") this.addLaunchWarning(t("kiro.shared_conflict", file));
+    else if (outcome === "unreadable" || outcome === "failed") this.addLaunchWarning(t("kiro.shared_unreadable", file));
+    else if (outcome === "untagged-legacy" && !warnedUntaggedSteering.has(this.instanceDir)) {
+      warnedUntaggedSteering.add(this.instanceDir);
+      this.addLaunchWarning(t("kiro.untagged_steering"));
     }
   }
+
+  private addLaunchWarning(message: string): void {
+    this.launchWarning = this.launchWarning ? `${this.launchWarning}\n${message}` : message;
+  }
+
+  /**
+   * The launch plan of one attempt (#906, design §2/§5): the engine the plan pins, and — when this kiro-cli has
+   * `--agent` and `--resume-id` — the conversation this instance owns and whether it already runs as its agent.
+   * Anything else is legacy mode: today's command, not isolated.
+   */
+  private planInstanceLaunch(config: CliBackendConfig): KiroInstanceLaunch {
+    const ui = config.kiroUi ?? "legacy";
+    if (!this.fixedCompatibility) {
+      const current = cachedKiroCliCompatibility(this.binaryPath);
+      this.compatibility = current.compatibility;
+      this.compatibilityCacheKey = current.cacheKey;
+    }
+    const plan = planKiroLaunch(ui, this.compatibility);
+    const flags = plan.kind === "launch" ? plan.flags : [];
+    const engine: KiroInstanceLaunch["engine"] = flags.includes("--agent-engine=v1") ? "v1"
+      : flags.includes("--agent-engine=v2") ? "v2" : ui === "v3" ? "v3" : null;
+    const credentialProfile = resolveCredentialProfile(config.backendOptions);
+    const base = { cwd: config.workingDirectory, skipResume: !!config.skipResume, engine, credentialProfile };
+    const legacy = (reason: string | null): KiroInstanceLaunch => ({ ...base, mode: "legacy", reason, agent: null, agentConfirmed: false });
+    if (plan.kind !== "launch" || this.compatibility.source === "unknown") return legacy(null); // buildCommand refuses
+    if (!this.compatibility.supportsInstanceAgent || !engine) {
+      const key = this.compatibilityCacheKey ?? this.binaryPath;
+      if (warnedNoInstanceAgentKeys.has(key)) return legacy(null);
+      warnedNoInstanceAgentKeys.add(key);
+      return legacy(t("kiro.no_instance_agent", this.compatibility.version ?? "?", KIRO_INSTANCE_AGENT_MIN));
+    }
+    const agent = kiroAgentName(config.instanceName, kiroFleetTag(getAgendHome()));
+    const agendHome = getAgendHome();
+    let decision: KiroIdentityDecision;
+    if (engine === "v3") {
+      // V3 keeps its own identity (kiro-v3-identity.ts); only whether it runs as the agent is recorded here.
+      const id = resolveKiroV3Resume(config.instanceName, config.workingDirectory, credentialProfile, { skipResume: config.skipResume });
+      decision = id
+        ? { mode: "resume", id, agentConfirmed: kiroAgentConfirmed(agendHome, config.instanceName, "v3", config.workingDirectory, credentialProfile, id) }
+        : { mode: "fresh" };
+    } else {
+      decision = resolveKiroIdentity({
+        instance: config.instanceName,
+        engine,
+        workingDirectory: config.workingDirectory,
+        credentialProfile,
+        skipResume: config.skipResume,
+        agendHome,
+        readStore: () => engine === "v1"
+          ? listKiroV1Sessions(config.workingDirectory, kiroV1DbPath(credentialProfile))
+          : this.readPreparedV2Store(config),
+        launchedBefore: () => kiroLaunchedHereBefore(config.instanceName, config.workingDirectory, credentialProfile, engine),
+      });
+    }
+    if (decision.mode === "legacy") return legacy(t("kiro.identity_legacy", decision.reason));
+    return decision.mode === "resume"
+      ? { ...base, mode: "resume", id: decision.id, agent, agentConfirmed: decision.agentConfirmed, reason: null }
+      : { ...base, mode: "fresh", agent, agentConfirmed: true, reason: null };
+  }
+
+  /**
+   * After a resume as the instance's agent (#906 §3): what the daemon needs to read the active agent off the live
+   * layout and, when it is not ours, switch to it with `/agent swap` and confirm. Null when there is nothing to do.
+   */
+  agentSwitch(): BackendAgentSwitch | null {
+    const plan = this.activePlan;
+    if (!plan || plan.mode !== "resume" || !plan.agent || !plan.id || !plan.engine) return null;
+    const { agent, id, engine, cwd, credentialProfile } = plan;
+    const ui = this.activeUi;
+    return {
+      agent,
+      alreadyConfirmed: plan.agentConfirmed,
+      readActive: (pane: string) => readActiveKiroAgent(pane, ui),
+      command: `/agent swap ${agent}`,
+      confirm: () => {
+        const warnings: string[] = [];
+        if (!this.activeInstance || !confirmKiroAgentSwitch(getAgendHome(), this.activeInstance, engine, cwd, credentialProfile, id)) {
+          warnings.push(t("kiro.switch_unrecorded"));
+          return warnings;
+        }
+        plan.agentConfirmed = true;
+        const spec = this.activeSpec;
+        if (spec) {
+          const mcp = removeSharedKiroMcpEntries(spec, dirname(this.instanceDir), true);
+          if (mcp === "unreadable" || mcp === "failed") warnings.push(t("kiro.shared_unreadable", "mcp.json"));
+          const steering = removeTaggedKiroSteering(spec);
+          if (steering === "failed" || steering === "unreadable") warnings.push(t("kiro.shared_unreadable", "steering"));
+        }
+        return warnings;
+      },
+    };
+  }
+
+  /**
+   * An instance running as its own agent reads its instructions from the agent file's prompt (#906). Until a resumed
+   * conversation's switch is confirmed it still runs as its saved agent, reading the steering file (the default).
+   */
+  instructionsSource(): string | null {
+    const plan = this.activePlan;
+    return plan && plan.mode !== "legacy" && plan.agent && plan.agentConfirmed ? `.kiro/agents/${plan.agent}.json (its "prompt" field)` : null;
+  }
+
+  private activeSpec: KiroAgentSpec | null = null;
+  private activeInstance: string | null = null;
 
   getReadyPattern(): RegExp {
     // Startup: trust/banner text. Daily prompt: "22% !>" / "8% ❯";
@@ -1087,13 +1491,7 @@ export class KiroBackend implements CliBackend {
   getStartupDialogs(): StartupDialog[] {
     return [
       ...KIRO_ENGINE_PROMPT_DIALOGS,
-      {
-        // Kiro CLI --trust-all-tools now shows a confirmation prompt.
-        // Default cursor is on "No, exit" — press Down then Enter to select "Yes, I accept".
-        pattern: /[❯›]\s*No, exit/m,
-        keys: ["Down", "Enter"],
-        description: "Kiro --trust-all-tools confirmation — navigate to 'Yes, I accept'",
-      },
+      ...kiroTrustPromptDialogs(this.activeTrustAll),
     ];
   }
 
@@ -1126,13 +1524,7 @@ export class KiroBackend implements CliBackend {
         inputBlocked: true,
         isActive: kiroModelPickerAtTail,
       },
-      {
-        // Same trust prompt can also appear mid-session if Kiro re-validates.
-        pattern: /Do you trust the files|Yes, I accept[\s\S]*No, exit/m,
-        keys: ["Down", "Enter"],
-        description: "Kiro trust confirmation dialog — auto-accept",
-        isActive: kiroTrustDialogActive,
-      },
+      ...kiroTrustPromptDialogs(this.activeTrustAll),
     ];
   }
 
@@ -1208,25 +1600,20 @@ export class KiroBackend implements CliBackend {
   getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["kiro-cli"].levels]; }
 
   cleanup(config: CliBackendConfig): void {
-    // Only remove namespaced keys — non-namespaced "agend" key may belong to
-    // another instance sharing this working directory.
+    // By provenance only (#906 §4/§6): the agent file and its .bak when they are this instance's, the shared mcp.json
+    // entries run by this instance's own wrappers, and a steering file carrying this fleet's tag for it. The user's,
+    // another fleet's, and untagged steering from before the tag existed are kept.
     try {
-      const mcpConfigPath = join(config.workingDirectory, ".kiro", "settings", "mcp.json");
-      if (existsSync(mcpConfigPath)) {
-        const mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
-        if (mcpConfig.mcpServers) {
-          for (const name of Object.keys(config.mcpServers)) {
-            delete mcpConfig.mcpServers[`${name}-${config.instanceName}`];
-          }
-          writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
-        }
-      }
+      const spec = this.agentSpec(config);
+      removeKiroAgent(spec);
+      removeSharedKiroMcpEntries(spec, dirname(this.instanceDir), true);
+      removeTaggedKiroSteering(spec);
     } catch { /* best effort */ }
+  }
 
-    // Remove fleet instructions steering file
-    try {
-      const steeringFile = join(config.workingDirectory, ".kiro", "steering", `agend-${config.instanceName}.md`);
-      if (existsSync(steeringFile)) unlinkSync(steeringFile);
-    } catch { /* best effort */ }
+  /** Delete or replace: forget which conversations this instance owns (they stay in kiro's store). */
+  forget(instanceName: string): void {
+    try { forgetKiroIdentity(getAgendHome(), instanceName); } catch { /* best effort */ }
+    try { forgetKiroV3Identity(instanceName, getAgendHome()); } catch { /* best effort */ }
   }
 }

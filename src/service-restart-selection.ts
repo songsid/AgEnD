@@ -1,12 +1,13 @@
 import type { ServiceState } from "./service-installer.js";
 
 /**
- * `restartSystemdService()` returns false for both a definitive command error
- * and its five-minute Type=notify timeout. The latter can still finish and
- * start a healthy replacement, so callers must leave the cross-process marker
- * pending for that replacement instead of declaring failure.
+ * Exit code for a `systemctl restart` that ran out of OUR five-minute wait
+ * (`systemdRestartOutcome()` → "timed-out"). The Type=notify job can still
+ * finish and start a healthy replacement, so callers leave the cross-process
+ * marker pending for that replacement instead of declaring failure. A
+ * definitive systemctl error ("failed") exits 1 (#1446 item 4).
  */
-export const SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE = 0;
+export const SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE = 75; // EX_TEMPFAIL: neither done nor failed
 
 export interface SystemdRestartSelectionInput {
   platform: "macos" | "linux";

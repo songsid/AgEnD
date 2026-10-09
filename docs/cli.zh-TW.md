@@ -8,10 +8,10 @@ Telegram fleet 選單（General 主題與實例主題，`setMyCommands`）列出
 |---------|-------------|----------------|------------|
 | `/status` | Fleet 表格：Backend、Model、Context、推理強度、花費、執行狀態 | — | 🔒 管理員 |
 | `/sysinfo` | 詳細系統診斷（版本、負載、IPC 狀態、各 backend CLI 版本）；Telegram 另可用 `/sys-info`、`/sys_info` | — | 所有人 |
-| `/dashboard` | 顯示 View/Settings/WebUI 網址（Telegram 上帶 token 的網址會 spoiler，Discord 為悄悄回覆） | — | 🔒 管理員 |
+| `/dashboard` | 登入網頁儀表板與網頁聊天：登入連結和一次性登入碼（Telegram 上登入碼會 spoiler，Discord 只有你看得到）。儀表板在 `localhost` 時，也會說明怎麼從手機連進來。`/dashboard revoke`（Discord 上是 `action: revoke` 選項）讓所有瀏覽器登出 | `[revoke]` | 🔒 管理員 |
 | `/ctx` | 顯示 Agent 的 Context 使用量 | — | 所有人 |
 | `/compact` | 壓縮 Agent 的 Context | `[instructions]`——指定摘要重點，僅 Claude Code | fleet 主題所有人 |
-| `/steer` | 插話到 Agent 正在進行的回合，不等閒置 | `<message>` 必填；僅 `claude-code`／`codex`／`grok` | 所有人 |
+| `/steer` | 插話到 Agent 正在進行的回合，不等閒置 | `<message>` 必填；`claude-code`／`codex`／`grok`／`muse`，以及以已驗證版本的 TUI 執行的 `kiro-cli`（[說明](commands.md#steer-btw-and-clear-backend-support)） | 所有人 |
 | `/btw` | 不中斷目前任務的旁支問題 | `<message>` 必填；僅 `claude-code` | 所有人 |
 | `/clear` | 完整重置對話（破壞性——會先問 Confirm/Cancel） | — | 🔒 管理員 |
 | `/model` | 切換 backend 模型 | 直接打名稱或用選單選 | 🔒 管理員 |
@@ -138,9 +138,10 @@ agend delivery scan-forged-envelopes --instance <name>  # 檢查 kiro instance �
 ## Web 儀表板 (Web Dashboard)
 
 ```bash
-agend web                       # 在瀏覽器開 Web UI 儀表板
+agend web                       # 印出一次性登入碼並開啟登入頁
+agend web --code                # 只印出登入頁和登入碼（不開瀏覽器）
 agend view                      # 在瀏覽器開唯讀 View 儀表板
-agend web-token rotate          # 作廢所有儀表板連結與瀏覽器 session
+agend web-token rotate          # 讓所有瀏覽器登出，並更換 CLI token
 agend setup                     # 引導式設定頁，fleet 還不存在時用
 agend setup --reset             # 允許 setup 在完成後再跑一次
 agend setup --tunnel            # ……並公開出去，讓手機也能開
@@ -219,6 +220,17 @@ agend import <file>             # 從匯出檔案匯入配置
 
 同一次遷移也會替舊的 unit 補上 #1113 的設定：`CoredumpFilter=0` 讓 crash dump 只有幾 KB（WSL 會把所有 crash 交給 WSL 的 crash collector，它不理會 `LimitCORE`；kiro-cli 和 fleet 本身都曾留下約 1GB 和 450MB 的 dump）；`LimitCORE=0` 適用於直接寫 core 檔的系統；`TimeoutStartSec=15min` 取代原本不設上限的啟動逾時；`StartLimitIntervalSec=30min` 搭配 `StartLimitBurst=4`，讓 fleet 在 30 分鐘內失敗 4 次後，systemd 就不再自動重啟。`agend restart` 會先執行 `systemctl reset-failed`，所以不受這個限制影響；直接用 `systemctl --user restart` 則會受限。部分 systemd 版本（包括 249）會忽略 unit 檔裡的 `CoredumpFilter=`，所以在 Linux 上 AgEnD 會自己把 `coredump_filter` 設為 0：fleet 行程在啟動時設，每個它啟動的 CLI 也會設（啟動指令會先在 pane 自己的 shell 裡設好，所以即使 tmux server 不是這個 fleet 起的也有效）。`AGEND_KEEP_COREDUMP_FILTER=1` 會關掉這兩處：行程改用繼承來的 mask（來自 systemd、tmux 或你的 shell），不一定是完整 dump。不論哪種情況 unit 檔都不會被修改；除非你選擇關閉，實際生效的 mask 都是 AgEnD 設的那個。你自己設定的值不會被更動。
 
+**服務用哪個 Node 執行，以及 `agend restart` 何時會拒絕（#1450）。**
+- 有 AgEnD 自帶的 Node（或驗證過的 `AGEND_NODE`）時，unit（`ExecStart=`）和 plist（`ProgramArguments`）會先寫那個 Node，接著是套件的 `dist/cli.js`，最後是 `fleet start`。自帶 Node 的路徑只會在 npm 更新 AgEnD 時改變，而 `agend update` 屆時會重寫服務。runtime 的目錄不會出現在任何服務的 PATH 上，各 coding CLI 照舊使用原本的 Node。
+- 沒有自帶 Node 的平台（glibc Linux 與 macOS 11 以上的 x64/arm64 以外），服務改為啟動套件的 launcher（`<套件>/launcher/agend fleet start`），由它在每次啟動時從服務的 PATH 找 Node。所以用 nvm 或 Homebrew 升級 Node（會刪掉舊版目錄）也不會讓服務壞掉；Node 太舊時會在啟動時拒絕，原因寫進服務的 log。
+- `agend restart` 在停止任何東西之前，會確認服務管理器**已載入**的定義正好是這樣：寫明選定的 Node、這次安裝的 entry、`fleet start`、沒有 `NODE_OPTIONS`/`NODE_PATH`，而且沒有待重新載入的變更。不符合就拒絕，什麼都不停止。
+  - 舊格式的定義（把 Node 交給 `#!/usr/bin/env node` 和服務的 PATH 決定）會因此被拒絕；請執行 `agend install` 重寫。
+  - `agend restart --force` 是給已自行檢查過服務的管理者用的；`agend update` 從不使用。
+- **macOS：** `agend install` 會寫入 `~/Library/LaunchAgents/com.agend.fleet.plist` 並載入 `gui/<uid>`，也就是你登入工作階段的 domain，LaunchAgents 會在登入時載入。
+  - 對 launchd 來說，載入 plist 就等於啟動 job。所以 `agend install --no-activate` 只會寫入並驗證新的 plist，並記錄一次「預定的啟用」；已載入的 job 照常執行。
+  - 下一次 `agend restart` 會執行這次啟用，只做一次：一次 `bootout`、一次 `bootstrap`。接著 `launchctl print` 必須顯示新的 job 正在執行；若沒有，會重新 bootstrap 先前的 plist 並確認。
+  - 只能用 SSH 連線、沒有人登入的 Mac 沒有 `gui/<uid>` domain（`launchctl` 回報錯誤 125）。在那裡 job 只能以 `LimitLoadToSessionType=Background` 載入 `user/<uid>`；`agend install` 不會這樣寫，這種 job 需要你自行管理。
+
 ## 環境變數 (Environment Variables)
 
 | 變數 | 描述 |
@@ -227,3 +239,13 @@ agend import <file>             # 從匯出檔案匯入配置
 | `GROQ_API_KEY` | 語音轉文字的 Groq API key（選填） |
 | `AGEND_TMUX_SESSION` | 覆寫 tmux session 名（預設 `agend`） |
 | `AGEND_HOME` | 覆寫資料目錄（預設 `~/.agend`） |
+
+## `agend settings`
+
+```bash
+agend settings confirm <id>        # 列出來源／請求人／完整遮蔽 diff，再詢問 y/N
+agend settings confirm <id> --yes  # 無 TTY 時明確確認剛檢查的 diff
+agend settings reject <id>
+```
+
+在 host 上以 fleet 或 SetupHost 的相同使用者執行。它不會啟動 fleet；確認由私有本機 socket 負責。Agent session（存在 `AGEND_INSTANCE_NAME`）不能使用。套用前會再次核對 id、socket owner generation，以及檢查過的 effect／summary。過期或 stale 請求需重新提出；pending 不會跨重啟保存。

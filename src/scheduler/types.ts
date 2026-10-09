@@ -19,6 +19,30 @@ export interface Schedule {
   last_status: string | null;
 }
 
+/**
+ * The one retry of an occurrence the 5h rate limit deferred (#1426), persisted so it survives a fleet restart. Times
+ * are wall clock (epoch ms): they must mean the same thing after a restart, and the cron occurrences they are compared
+ * with are wall-clock times too. The in-process wait to `due_at_ms` is a timer, i.e. monotonic.
+ */
+export interface ScheduleRetry {
+  schedule_id: string;
+  /** The deferred occurrence's stable run id (its scheduled instant): the retry delivers under the same id. */
+  run_id: string;
+  deferred_at_ms: number;
+  /** The 5h usage when it was deferred, for the label the agent sees. */
+  deferred_pct: number;
+  /** When the window that deferred it resets, when the statusline said; null = unknown (poll instead). */
+  resets_at_ms: number | null;
+  /** When the next attempt is due. */
+  due_at_ms: number;
+  /** It never runs at or after this: the next regular occurrence, or the wait cap when that comes first. */
+  deadline_ms: number;
+  /** Which of the two the deadline is. */
+  deadline_kind: "next_occurrence" | "cap";
+}
+
+export type ScheduleRetryDrop = "superseded" | "expired" | "deferred_again";
+
 export interface ScheduleRun {
   id: number;
   schedule_id: string;
@@ -120,6 +144,42 @@ export interface Task {
   result: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * #1336: Compact list row. Trims the heavy `description`, `result`,
+ * `created_by`, `depends_on` and `created_at` fields so a `list` returns the
+ * minimum a caller needs to triage. Use `verbose: true` (or the `get` action)
+ * to retrieve the full {@link Task}.
+ */
+export interface TaskCompact {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  assignee: string | null;
+  priority: TaskPriority;
+  updated_at: string;
+}
+
+/**
+ * #1336: Small write acknowledgement for create/update/claim/done. Returns the
+ * identifying fields instead of the full task body.
+ */
+export interface TaskWriteAck {
+  id: string;
+  status: TaskStatus;
+  updated_at: string;
+}
+
+export interface ListTasksOpts {
+  assignee?: string;
+  /** A single status, or a list of statuses (OR-matched). */
+  status?: TaskStatus | TaskStatus[] | string | string[];
+  /**
+   * Return full {@link Task} rows instead of compact {@link TaskCompact} rows.
+   * Defaults to false (compact).
+   */
+  verbose?: boolean;
 }
 
 export interface CreateTaskParams {

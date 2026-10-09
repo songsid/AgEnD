@@ -140,8 +140,9 @@ describe("2.28.0 keeps AgEnD's pins", () => {
     expect(compat.agentEngines).toEqual(["v2", "v1", "v3"]);
     expect(planKiroLaunch("legacy", compat)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
     expect(planKiroLaunch("tui", compat)).toEqual({ kind: "launch", ui: "tui", flags: ["--tui", "--agent-engine=v2"] });
+    // The same pins right after `chat`; 2.28 also runs the instance as its own agent (#906; a new instance: fresh).
     expect(new KiroBackend("/tmp/kiro-1308", compat).buildCommand(config()))
-      .toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools --resume$/);
+      .toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools --agent '[^']+'$/);
   });
 });
 

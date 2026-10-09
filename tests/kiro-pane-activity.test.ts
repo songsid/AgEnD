@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, expect, it } from "vitest";
 import { KiroBackend } from "../src/backend/kiro.js";
 
@@ -32,7 +33,7 @@ const IDLE = [
 ].join("\n");
 
 describe("KiroBackend.getPaneActivity", () => {
-  const backend = new KiroBackend("/tmp/test");
+  const backend = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT);
 
   it("reports the tool and its purpose while it is running", () => {
     expect(backend.getPaneActivity(RUNNING)).toBe("shell: Merge #419");

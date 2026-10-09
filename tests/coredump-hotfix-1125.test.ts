@@ -8,13 +8,33 @@
  * predates the installed package.
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { coredumpFilterLaunchPrefix, disableCoredumpMemory, limitFleetCoreDumps } from "../src/coredump-filter.js";
 import { processStartMs, runningFleetPredatesInstall } from "../src/update-check.js";
 import { renderSystemdUnit } from "../src/service-installer.js";
+import { fakeBusctl } from "./support/fake-busctl.js";
+
+/**
+ * The installed `agend` (#1449: the update proves the service runs it on the verified Node by its shebang): a node
+ * script that reports `version`, keeps the unit as it is (`install`), and runs this build for everything else.
+ */
+/**
+ * A global install of THIS build at `version`, as npm lays it out (#1450: `agend restart` checks that the loaded service
+ * starts the code that is running, so the installed package must really be the code that runs — not a stub that
+ * forwards to another file).
+ */
+function installedCopy(globalPkg: string, version: string): void {
+  mkdirSync(globalPkg, { recursive: true });
+  for (const dir of ["dist", "templates", "launcher"]) spawnSync("cp", ["-r", join(process.cwd(), dir), join(globalPkg, dir)]);
+  const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+  // bin: the sh launcher. No runtime pins (#1450): the copy shares node_modules (with the bundled runtime package) but
+  // has no receipt of its own, and these tests are about the restart, not the runtime — so it runs on this Node.
+  writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ ...manifest, version, optionalDependencies: undefined }));
+  symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+}
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -196,20 +216,29 @@ describe("`agend update` when the package is already current (built CLI copy, st
     mkdirSync(pkg);
     spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
     spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
-    spawnSync("cp", [join(process.cwd(), "package.json"), join(pkg, "package.json")]);
+    // No runtime pins, as in installedCopy (#1450).
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
     symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: agendHome,
-      logPath: join(agendHome, "daemon.log"), path: "/usr/bin:/bin",
+      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+      // service starts the verified install)
+      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
+      logPath: join(agendHome, "daemon.log"), path: `${join(home, "bin")}:/usr/bin:/bin`,
     }));
     const bin = join(home, "bin");
     mkdirSync(bin);
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version;
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; esac\nexit 0\n`);
+    // The global package npm reports as installed: before restarting a fleet that predates it, the update verifies
+    // it (#1449 review: version, bin on PATH, a database opens on its node).
+    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+    // The installed `agend`: this build — its `install --no-activate` refreshes the unit, its `restart` is the real one.
+    installedCopy(globalPkg, version);
+    symlinkSync(join(globalPkg, "launcher", "agend"), join(bin, "agend"));   // npm's bin link
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
     // systemd 249 as observed: CoredumpFilter stays 0x33 whatever the unit file says.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
@@ -218,6 +247,9 @@ case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
+    symlinkSync(process.execPath, join(bin, "node"));
+    writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+    chmodSync(join(bin, "busctl"), 0o755);
     chmodSync(join(bin, "npm"), 0o755);
     chmodSync(join(bin, "systemctl"), 0o755);
     const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", "--beta"], {
@@ -258,7 +290,7 @@ exit 0
   });
 });
 
-describe("detached `agend restart` signals only a confirmed fleet (built CLI; `agend` stubbed so no fleet starts)", () => {
+describe("detached `agend restart` signals only a confirmed fleet (built CLI; the self-spawn is recorded, no fleet starts)", () => {
   function detachedRestart(argv0: string | null, script?: string) {
     const home = tmp();
     const agendHome = join(home, ".agend");
@@ -269,13 +301,14 @@ describe("detached `agend restart` signals only a confirmed fleet (built CLI; `a
     mkdirSync(bin);
     const log = join(home, "calls.log");
     writeFileSync(log, "");
-    // The detached branch would `sh -c "agend fleet start"`: never a real fleet here.
-    writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\nexit 0\n`);
+    // The detached branch starts `<node> dist/cli.js fleet start` (#1450 C5): the test process guard records it in
+    // AGEND_TEST_SELF_SPAWN_LOG and runs nothing — never a real fleet here.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh\nexit 1\n`);
-    chmodSync(join(bin, "agend"), 0o755);
     chmodSync(join(bin, "systemctl"), 0o755);
+    // A detached restart must run on the Node this package selects (restart guard, #1450 C6). Once the checkout pins
+    // and verified its bundled runtime (npm ci), that is not this test's Node — AGEND_NODE names it as the selection.
     const r = spawnSync(process.execPath, [cli, "restart"], {
-      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}`, AGEND_TEST_SELF_SPAWN_LOG: log, AGEND_NODE: process.execPath },
       encoding: "utf8", timeout: 60_000,
     });
     spawnSync("sleep", ["0.5"]);
@@ -378,17 +411,22 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: agendHome,
-      logPath: join(agendHome, "daemon.log"), path: "/usr/bin:/bin",
+      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+      // service starts the verified install)
+      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
+      logPath: join(agendHome, "daemon.log"), path: `${join(home, "bin")}:/usr/bin:/bin`,
     }));
     const bin = join(home, "bin");
     mkdirSync(bin);
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     // npm: a newer version is published; install is a no-op that "lands" it.
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; esac\nexit 0\n`);
-    // `agend` on PATH = the freshly installed binary: this build.
-    writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\nexec '${process.execPath}' '${cli}' "$@"\n`);
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
+    // `agend` on PATH = the freshly installed binary: this build, inside a global package npm "installed" (#1446: the
+    // updater checks it reports the target version and that the package opens a database on its node).
+    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+    installedCopy(globalPkg, "99.0.0-beta.3");
+    symlinkSync(join(globalPkg, "launcher", "agend"), join(bin, "agend"));   // npm's bin link
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
@@ -396,7 +434,10 @@ case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
-    for (const f of ["npm", "agend", "systemctl"]) chmodSync(join(bin, f), 0o755);
+    symlinkSync(process.execPath, join(bin, "node"));
+    writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+    chmodSync(join(bin, "busctl"), 0o755);
+    for (const f of ["npm", "systemctl"]) chmodSync(join(bin, f), 0o755);
     const r = spawnSync(process.execPath, [cli, "update", "--beta"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 120_000,
@@ -405,9 +446,11 @@ exit 0
     const out = `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`;
     // The exact version `--beta` resolved to (#1182: a dist-tag can move between the check and the install).
     expect(calls.some(c => c === "npm install -g @songsid/agend@99.0.0-beta.3"), out).toBe(true);
-    const installedRestart = calls.findIndex(c => c === "agend restart");
-    expect(installedRestart, out).toBeGreaterThan(calls.findIndex(c => c.startsWith("npm install")));
-    expect(calls.findIndex(c => c.startsWith("systemctl --user restart com.agend.fleet")), out).toBeGreaterThan(installedRestart);
+    expect(calls.findIndex(c => c.startsWith("systemctl --user restart com.agend.fleet")), out).toBeGreaterThan(calls.findIndex(c => c.startsWith("npm install")));
+    // The installed copy refreshed the unit (its own entry, named Node), and its restart passed the guard on that unit.
+    const unitText = readFileSync(join(home, ".config", "systemd", "user", "com.agend.fleet.service"), "utf8");
+    // This build pins no runtime: a system Node, so the unit starts the package's launcher (#1450).
+    expect(unitText).toContain(`ExecStart="${join(realpathSync(globalPkg), "launcher", "agend")}" fleet start`);
     expect(r.status, out).toBe(0);
     expect(`${r.stdout}${r.stderr}`).not.toContain("Not restarting");
   });

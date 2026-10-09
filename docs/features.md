@@ -64,7 +64,7 @@ When an instance spawns, the daemon compares the fleet instructions it just buil
 
 - First spawn (nothing recorded yet): the instructions are recorded and nothing is sent.
 - Claude Code re-reads its instructions on resume, so it is never told.
-- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, `.kiro/steering/agend-<name>.md`, `.agents/agents.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
+- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, kiro's agent file or steering file, `.agents/agents.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
 
 No configuration is needed.
 
@@ -140,6 +140,26 @@ Agents can send stickers on Discord and Telegram (2.1.12). The tools look the sa
 
 Uploading stickers or creating sticker sets is not supported.
 
+### Reply buttons
+
+An agent can offer choices people click instead of typing (2.2). The same buttons appear in the web chat, on Telegram (an inline keyboard) and on Discord (message components).
+
+- **Sending:** `reply` takes `buttons`: 1–10 items, each `{ label, value? }`.
+  - A label is one line of plain text, at most 80 characters (Discord's limit, the strictest).
+  - `value` (at most 200 characters) is what the agent receives when it differs from the label. It stays in AgEnD and is never sent to a platform.
+  - Buttons need `text` and go on its last message. They cannot be combined with `stickers`; `files` are sent after the text as usual.
+  - An invalid `buttons` is the reply's error, and nothing is sent.
+- **A click** reaches the agent as an ordinary message from the person who clicked: `[button] Deploy`, or `[button] Deploy (value: deploy-prod)` when the value differs. It also shows in the web chat.
+- **One choice per reply.** The first permitted click answers for everyone. The buttons then show the choice and who made it on every surface: on Discord they are disabled with the choice marked, Telegram shows a single "✓ Deploy — alice" button, and the web chat disables them. A later click is told "Already answered."
+- **Who may click:** whoever may message that instance there.
+  - In a fleet topic, the connection's allowed users.
+  - In a ClassicBot room, anyone there.
+  - In the web chat, the signed-in user, or a visitor using the public link (who may send messages too).
+  - A bot's click never counts.
+- **Lifetime:** buttons expire after 24 hours and then say so. They survive an AgEnD restart: each set is a row in `reply-buttons.db`, matched to the exact message it was posted on and answered once, so a click cannot be replayed.
+- **Where buttons cannot be shown,** for example through `agend-agent reply`, the choices are added to the text as a numbered list for people to answer by writing back.
+- **Security:** a platform carries only an unguessable id and the button's index, never a label or value. Labels are always shown as plain text.
+
 ## Tool progress (`tool_progress`)
 
 `tool_progress` adds the agent's tool activity to the progress bubble, as a running list for the turn:
@@ -199,6 +219,11 @@ If you `send_to_instance` a stopped instance, the error tells you to use `start_
 ### Delivery tracking (`delivery_status`)
 
 A cross-instance send returns as soon as the fleet has accepted it (`{ sent, queued }`, with an `operation_id` / `delivery_id`); the fleet owns delivery from there, through a durable outbox. `delivery_status` reads where a delivery got to, by exactly one of `delivery_id`, `operation_id`, `correlation_id` or `message_id` (paged with `limit` up to 100 and `cursor`). A row moves through `queued`, `delivering`, `submission_started`, `reconciliation_pending`, `retry_wait` to `delivered`, `failed`, `uncertain` or `cancelled`. `uncertain` means it may have arrived: do not resend blindly.
+
+Each row also says how it was routed and what became of it after it reached the CLI (#1201):
+- `delivery_mode` is `steer` (into the live turn) or `idle_queue` (as the next message), as `send_to_instance` reported it.
+- `submission_mode` is how the latest attempt was written: `idle_submit`, `steer`, `native_queue_handoff` (into a busy CLI's own queue) or `raw_paste`.
+- `consumed_at` / `consumed_via`: a steer or a native-queue hand-off is accepted into the CLI's input long before the model reads it. Claude Code takes it at the next tool boundary or when the turn ends. When the CLI's transcript (claude-code, codex) shows the delivery's own marker taken, the row records when, and whether it came as its own turn (`turn`) or inside the running one (`mid_turn`). That is also the one thing that turns an `uncertain` row into `delivered`; a failure notice not yet sent to the sender is then withdrawn. No match never changes a row.
 
 An instance only sees rows it sent or received (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` is how an agent checks that a peer message really came through the fleet: "Delivery not found" means it did not. Every tool profile has `delivery_status`, `minimal` included.
 
@@ -334,9 +359,7 @@ with the counts. It never edits your config: which agents coordinate is a
 statement about how your fleet is organised, and an explicit `tool_set: full`
 stays exactly as you wrote it.
 
-**Today this can only be set through Settings or by editing `fleet.yaml`** —
-General's `update_instance_config` has no `tool_set` field yet, so a value sent
-that way is dropped.
+**`tool_set` can only be set through Settings or by editing `fleet.yaml`.** Sending `tool_set` through General's `update_instance_config` is refused with a privilege-boundary error (#804/#814) — an MCP tool that any coordinator-profile agent can call must not be able to widen profiles.
 
 ## Permission system
 
@@ -413,7 +436,15 @@ Uses multi-signal detection: checks both transcript activity and statusline fres
 
 ## Rate limit-aware scheduling
 
-When the 5-hour API rate limit exceeds 85%, scheduled triggers are automatically deferred instead of firing. A notification is posted to the instance's topic. Deferred schedules are not lost — they will fire on the next cron tick when rate limits are below threshold.
+When the target's 5-hour usage is over 85%, a scheduled trigger is deferred instead of firing, and the instance's topic says so. A reading whose window has already reset no longer counts: claude-code rewrites its statusline only when it renders, so an idle instance can show 100% long after the reset.
+
+A deferred run is retried **once**, after the window resets:
+- **When it runs.** At the reset time from the statusline (plus a minute). If the statusline gives no reset time, the retry checks every 15 minutes and runs at the first check below the threshold.
+- **What the agent sees.** The retry keeps the run's id, and its message starts with `[retry] originally due 21:00 (Asia/Taipei), deferred by the 5h rate limit at 100%`. A silent schedule pastes its raw command unchanged.
+- **Never twice.** A retry never runs at or after the schedule's next regular run, or after 5h15m. If the next run, a catch-up or a manual trigger comes first, the retry is dropped.
+- **Across restarts.** A pending retry survives a fleet restart.
+- **`last_status`.** It shows `deferred → delivered (retry)`, or `deferred → skipped (superseded | deferred again | expired)`.
+- **When it can't run.** If the retry is superseded, deferred again after the reset, or never gets a reset in time, the schedule's chat says so and @mentions that world's admins (the channel's `access.allowed_users`).
 
 ## Model failover
 
@@ -581,7 +612,9 @@ Simplified 4-question setup wizard for new users. Auto-detects installed backend
 
 ## Web Dashboard
 
-`agend web` launches a browser-based dashboard with live fleet monitoring via Server-Sent Events (SSE). Includes an integrated chat UI with bidirectional sync to Telegram — messages sent from the Web UI appear in Telegram and vice versa.
+The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web-user: …`, and the agent's replies show in both. Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
+
+Sign in with a one-time code: send `/dashboard` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
 ## Remote CLI sign-in (`/login`)
 
@@ -682,7 +715,7 @@ Configure `mirror_topic_id` in `fleet.yaml` to designate a Telegram topic for ob
 
 ## Codex session resume
 
-Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`~/.codex/state_5.sqlite`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
+Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`$CODEX_HOME/state_5.sqlite`, default: `~/.codex`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
 
 | Situation | Launch |
 |---|---|
@@ -691,7 +724,7 @@ Each Codex instance resumes **its own** conversation. At launch AgEnD reads Code
 | Session database unreadable, another Codex instance shares the git repo | a new conversation, plus a notice in the instance's topic |
 | Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
 
-AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared `~/.codex`, so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
+AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared Codex home (`$CODEX_HOME`, default: `~/.codex`), so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
 
 **Where `~/.codex` is.** Everywhere above, the shared Codex home is `$CODEX_HOME` when that is set in the fleet's environment, and `~/.codex` otherwise. Each instance itself runs with a private `CODEX_HOME` under `~/.agend/cx/<hash>/`: its own `config.toml` (your settings without other instances' AgEnD MCP entries, plus its own), with the login, sessions and caches linked back to the shared home.
 
@@ -757,7 +790,7 @@ Define reusable fleet configurations in `fleet.yaml` under the `templates` secti
 Fleet instructions are injected additively — they don't override the CLI's built-in system prompt. Each backend uses its native mechanism:
 
 - Claude Code: `--append-system-prompt-file` (the file is `fleet-instructions.md` in the instance directory)
-- Kiro CLI: its own steering file, `.kiro/steering/agend-<instance>.md`
+- Kiro CLI: the `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json` (see [Kiro instances in one working directory](#kiro-instances-in-one-working-directory)). On a kiro-cli older than 2.21, and for a resumed conversation until it is switched to its agent, the steering file `.kiro/steering/agend-<instance>.md` instead.
 - Codex, Grok Build, Meta Muse Code: a marked block in `AGENTS.md` in the working directory
 - Antigravity CLI: a marked block in `.agents/agents.md` in the working directory
 - OpenCode: `fleet-instructions.md` in the instance directory, added to the `instructions` list of `opencode.json` in the working directory
@@ -813,6 +846,18 @@ defaults:
 ```
 
 Instances sharing the same working directory are serialized within a group to avoid config file races.
+
+## Kiro instances in one working directory
+
+Each kiro instance runs as its own kiro agent, `.kiro/agents/agend-<instance>-<fleet>.json` in its working directory, and resumes its own conversation by id. That agent holds only this instance's AgEnD MCP server and its instructions, so kiro instances that share a working directory no longer start each other's AgEnD server, read each other's instructions, or resume each other's conversation. The details are in the [design](design/kiro-per-instance-agent.md). It needs kiro-cli 2.21 or newer; an older one runs as before and says so when the instance starts.
+
+- **Your own MCP servers stay.** The agent includes the global `~/.kiro/settings/mcp.json` and the workspace `.kiro/settings/mcp.json`. AgEnD no longer writes its own entries there.
+- **The switch, once per instance.** A conversation from before this version comes back as the agent it was saved under. On its first resume, AgEnD types `/agent swap <agent>` into the pane, checks the switch on screen, and only then removes that instance's old shared entries. If it cannot confirm the switch within 15 seconds, the old setup stays, a notice says so, and the next start tries again.
+- **When isolation is complete.** A removed entry is guaranteed gone from a running session only after its next start. Isolation in a directory is complete once every kiro instance there has confirmed its switch and started once more since: the switch at the first start after the upgrade, the completion at the start after that.
+- **Two instances, one old conversation.** At the upgrade, two existing instances in one directory both point at the directory's newest conversation. The first to start keeps it; the other starts a new one.
+- **An old instructions file.** A `.kiro/steering/agend-<instance>.md` written before this version carries no fleet tag. AgEnD cannot tell which fleet wrote it, so it keeps it and says so once. Delete it by hand once every fleet using that directory has upgraded; until then kiro still loads it for every agent there.
+- **Two fleets on one directory.** Two fleets updating the shared `.kiro/settings/mcp.json` at the same moment can bring back an entry the other just removed. That instance's next start removes it again.
+- **Grok** has no per-instance agent yet: Grok instances that share a working directory share its project-level MCP configuration. Run them from separate worktrees ([#1411](https://github.com/songsid/AgEnD/issues/1411)).
 
 ## Antigravity CLI backend
 
@@ -1051,3 +1096,18 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 - after a critical hold clears, starts ramp back up slowly for 30 seconds.
 
 `/health` always carries a `hostMemory` block (level, RAM and swap, trend); on Linux, pressure also marks it degraded, and a fleet notice is sent with a 10-minute cooldown (an escalation to critical is sent at once). On **macOS** the sample is written to the log only since #1257: nothing is slowed or held, no notice is sent, and `/health` does not report pressure, because macOS's free-memory and swap numbers alerted on machines with plenty of memory. Details: [memory-pressure.md](memory-pressure.md).
+
+## "Needs you" inbox (#1386 / #1398)
+
+A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
+
+## Web app shell (#1408)
+
+`/ui` is rebuilt as a single-page Preact + htm app (no build step; Preact and htm are bundled alongside the source at `src/ui/shared/vendor/`). Step 1 delivers the **Chat** panel at `/ui/chat/<instance>` and the **Fleet** panel at `/ui/fleet`. Step 2 delivers the **View** panel at `/view` and `/view/<instance>`, and step 3 the **Settings** panel at `/settings` and `/settings/<section>`. Typography and layout are modelled on ChatGPT's web UI (design language only — no OpenAI code or assets). The chat thread remains a keyed DOM renderer mounted by a Preact component. Step 4 adds the **Needs you** panel at `/ui/needs`. Design: [docs/design/1408-app-shell.md](design/1408-app-shell.md).
+
+Since then:
+- **Fleet → Org chart** (`/ui/fleet/org`, #1389): General, teams and instances, each with its live state and a link to its thread.
+- **Fleet → Cache** (`/ui/fleet/cache`, #1468): a per-instance prompt-cache expiry analysis with a keep-warm recommendation. It is read from local transcripts and priced at list price, and the check date is shown.
+- **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
+
+See [web-dashboard.md](web-dashboard.md).

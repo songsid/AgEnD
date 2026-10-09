@@ -1,3 +1,4 @@
+import { measureSyncWork } from "../sync-work-attribution.js";
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -59,6 +60,17 @@ export class UnsupportedCliError extends Error {
     super(message);
     this.name = "UnsupportedCliError";
   }
+}
+
+/** See CliBackend.agentSwitch. */
+export interface BackendAgentSwitch {
+  agent: string;
+  /** The switch was already confirmed for this conversation: the layout is only checked. */
+  alreadyConfirmed: boolean;
+  /** The agent the live layout shows, or null when it cannot be read. */
+  readActive(pane: string): string | null;
+  command: string;
+  confirm(): string[];
 }
 
 export interface CliBackendConfig {
@@ -143,6 +155,26 @@ export interface ModelOption {
   description?: string;
 }
 
+/** How long a cached CLI env (`<AGEND_HOME>/cli-env/<backend>.json`) is valid; after that nothing may read it. */
+export const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** What a CLI's input box holds (CliBackend.readInputRow). */
+export interface InputBox {
+  /** The typed text, rows joined with "\n", without the prompt glyph or continuation indent; "" when empty. */
+  text: string;
+  /** Pastes the CLI shows collapsed (`[Pasted text #3 +11 lines]`): the pasted text itself is NOT in `text`. */
+  collapsedPastes: number;
+  /**
+   * The CLI holds a queue of submitted messages attached to this box, as the reader can vouch for structurally
+   * (claude-code: the queued placeholder in the box and the queue marker right above it, #1169). Absent otherwise.
+   * A reader backend's queue evidence is this, never a marker matched anywhere on the pane.
+   */
+  queued?: boolean;
+}
+
+/** The composer's state (CliBackend.readSteerComposer, #1405): an empty composer's interrupt mode, or typed text in it. */
+export type SteerComposerMode = "steer" | "queue" | "idle" | "text";
+
 /** Result of probing a CLI backend's environment at startup (cached to disk). */
 export interface CliEnv {
   backend: string;
@@ -156,6 +188,11 @@ export interface CliEnv {
    * the quick-pick tier stays short.
    */
   apiModels?: ModelOption[];
+  /**
+   * Effort levels the CLI's own `--help` lists (antigravity, #1328), in AgEnD's canonical order. `[]`: the help was
+   * read and lists none (the fallback applies); absent: the help could not be read.
+   */
+  effortLevels?: string[];
   /** Epoch ms the probe ran (drives the cache TTL). */
   probedAt: number;
 }
@@ -286,6 +323,12 @@ export interface RuntimeDialog {
    * return a stable, non-secret value; never include pane contents or tokens.
    */
   autoResolutionKey?: string;
+  /**
+   * Each named safety phase is claimed once for the physical launch attempt, shared by startup and runtime.
+   * A redraw, a clear screen or an uncertain send ACK never releases it. Requires a code-owned autoResolutionKey.
+   * Absent retains the existing per-visible-dialog behavior.
+   */
+  oncePerLaunch?: boolean;
 }
 
 /**
@@ -347,6 +390,29 @@ export interface CliBackend {
   supportsQueuedInput?(): boolean;
 
   /**
+   * Whether THIS launch takes a busy paste+Enter into the running turn (/steer, send_to_instance steer:true) — for a
+   * backend where that depends on how the instance was launched (kiro: only its TUI front-ends, on a verified version;
+   * #1405). Absent, the backend-name table in steer-capability.ts decides.
+   */
+  supportsSteer?(): boolean;
+
+  /**
+   * What the composer does with typed input on this screen, for a CLI whose busy input either steers the running turn
+   * or waits for its end, by a mode the user switches (kiro TUI: Ctrl+S; #1405). The empty composer reads "steer"
+   * (busy, steers), "queue" (busy, waits for the turn's end) or "idle" (the empty idle prompt); "text" is positive
+   * evidence the box holds typed text; null is anything it cannot vouch for — a dialog, an unknown row — and never
+   * counts as either an empty or a full box. A steer is pasted only on "steer" (or, once the turn has ended, "idle"),
+   * never after switching the user's mode.
+   */
+  readSteerComposer?(pane: string): SteerComposerMode | null;
+
+  /**
+   * The typed text on the composer's row when readSteerComposer reads "text" (#1405), else null: what a steer's pre-Enter
+   * check matches against its own payload, so a draft that is not this delivery's paste is never taken for it.
+   */
+  readSteerComposerText?(pane: string): string | null;
+
+  /**
    * Whether every submission needs a defensive second Enter. Some TUIs swallow
    * Enter while still processing a paste (a startup redraw, or a large paste on
    * a slow host) while emitting output that looks like a successful idle→busy
@@ -390,6 +456,15 @@ export interface CliBackend {
    * enough to write into a pane that may still be changing terminal modes.
    */
   isDeliveryInputReadyPane?(pane: string): boolean;
+
+  /**
+   * A structural reader for the CLI's live input box (#1200, claude-code): what the box holds right now, or null when the
+   * current screen has no box it can vouch for (a dialog, an unknown layout). Unlike `getBottomReadyPattern` it reads
+   * the box as a region — the rows between its own frame — so the transcript above and the footer below are never
+   * mistaken for input. With it the daemon can tell a delivery that left the box (submitted) from one still sitting in
+   * it (stranded), where a backend without one can only say "unverifiable".
+   */
+  readInputRow?(pane: string): InputBox | null;
 
   /**
    * Marker the CLI paints when it has accepted input into its own pending
@@ -590,11 +665,22 @@ export interface CliBackend {
   readonly instructionsReloadedOnResume?: boolean;
 
   /**
-   * Optional: whatever the backend has to ASK its CLI before `buildCommand` (a `--help` probe, a version)
-   * — awaited by the daemon right before the launch command is built, so the answer is cached and
+   * Optional: async launch preparation before `writeConfig` (CLI probes or read-only session discovery)
+   * — the daemon passes this attempt's config, then rechecks launch admission before any config/identity writes, so
    * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
    */
-  prepareLaunch?(): Promise<void>;
+  prepareLaunch?(config?: CliBackendConfig): Promise<void>;
+
+  /**
+   * Optional (#906): after a launch that resumed a conversation, the agent it must run as and how to tell from the
+   * live layout which agent it runs as now. The daemon switches it with `command` when the layout shows another one,
+   * and calls `confirm` once the layout shows `agent` (returns warnings to surface). Null: nothing to check.
+   */
+  agentSwitch?(): BackendAgentSwitch | null;
+  /** Optional: where this launch's instructions live, when not the backend's usual file (kiro's agent, #906). */
+  instructionsSource?(): string | null;
+  /** Optional: the instance is being deleted or replaced — forget per-instance state kept outside its directory. */
+  forget?(instanceName: string): void;
 
   /** Pre-approve a working directory to skip trust dialogs on startup. */
   preTrust?(workingDirectory: string): void;
@@ -719,7 +805,7 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
-  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[] }>;
+  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[] }>;
 
   /**
    * Ask the CLI to refresh its OWN model catalog before the next probe reads it.
@@ -759,11 +845,11 @@ function commonBinaryDirs(): string[] {
 
   // Also cover custom npm prefixes such as ~/.npm-global.
   try {
-    const prefix = execFileSync("npm", ["prefix", "-g"], {
+    const prefix = measureSyncWork("backend.npmPrefix", () => execFileSync("npm", ["prefix", "-g"], {
       encoding: "utf-8",
       timeout: 3000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    }).trim());
     if (prefix) dirs.push(join(prefix, "bin"));
   } catch { /* npm may not be in the restricted PATH */ }
 
@@ -771,8 +857,11 @@ function commonBinaryDirs(): string[] {
 }
 
 export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
+  return measureSyncWork("backend.resolveBinary", () => resolveBinarySync(name, fallbackDirs));
+}
+function resolveBinarySync(name: string, fallbackDirs?: readonly string[]): string {
   try {
-    const resolved = execFileSync("which", [name], { encoding: "utf-8" }).trim();
+    const resolved = measureSyncWork("backend.which", () => execFileSync("which", [name], { encoding: "utf-8" }).trim());
     if (resolved) return resolved;
   } catch { /* search common absolute locations below */ }
 

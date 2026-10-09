@@ -74,6 +74,15 @@ export interface FleetContext {
   isFleetAdmin(userId: string, adapterId?: string): boolean;
   /** Whether the adapter has any fleet admin at all (an empty allowlist turns the admin commands off). */
   hasFleetAdmins(adapterId?: string): boolean;
+  /** Telegram-only General command; owns admin/route checks and completion notice. */
+  runProfileCommand?(msg: InboundMessage, seconds?: string): Promise<void>;
+  /**
+   * #1346: the adapter that owns an instance's topic. Text commands resolve
+   * permission and replies through the owner, never the adapter whose copy
+   * happened to win the cross-adapter dedup race. Optional so older stubs
+   * keep working (they fall back to the receiving adapter).
+   */
+  getInstanceAdapterId?(instanceName: string): string | undefined;
   changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle">;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
@@ -92,6 +101,15 @@ export interface FleetContext {
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Live dashboard auth/readiness; URLs must not be issued before the server listens. */
   getDashboardAccess?(): { ready: boolean; token: string | null };
+  /** A fresh single-use dashboard login code (`/dashboard`); null while the panel is closed. */
+  dashboardMenu?(msg: InboundMessage): Promise<void>;
+  issueDashboardLogin?(): { display: string; expiresAt: number; ttlMinutes: number } | null;
+  /**
+   * Sign every web session out and withdraw any unused login code (`/dashboard revoke`): how many sessions
+   * ended, and whether that is durable (false: the session file could not be updated or removed, so a
+   * restart may bring them back — the caller must say so, not report success).
+   */
+  revokeWebSessions?(): { count: number; durable: boolean };
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;
@@ -150,6 +168,8 @@ export interface FleetContext {
     adapter: import("./channel/types.js").ChannelAdapter,
     chatId: string,
     threadId?: string,
+    /** The adapter the menu is posted through: a click must come back through the same one (#754 audit). */
+    adapterId?: string,
   ): Promise<string | null>;
 
   /** Configured effort for an instance, for display (null when unset). */
@@ -166,6 +186,8 @@ export interface FleetContext {
     adapter: import("./channel/types.js").ChannelAdapter,
     chatId: string,
     threadId?: string,
+    /** The adapter the menu is posted through: a click must come back through the same one (#754 audit). */
+    adapterId?: string,
   ): Promise<string | null>;
 
   /**

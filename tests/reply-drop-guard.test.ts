@@ -715,6 +715,93 @@ describe("reply guard false idle edge (#1241)", () => {
     }));
   });
 
+  it("#1377 Case 1: settle that arrives after the idle edge but before the confirm window must not flag", async () => {
+    // Repro: human message → reply tool called (beginToolAttempt) → idle edge
+    // (arms 60s window, completionDelivered=false because settle not yet run) →
+    // settle (fleet_outbound_response) arrives after the edge → 60s elapses →
+    // should complete silently, not flag "no_valid_call".
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    // Reply tool is called mid-turn (beginToolAttempt fires), but settle
+    // is NOT yet run (IPC round-trip in flight).
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 99 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    expect(pending).toBeDefined();
+    // Now the idle edge fires — completionDelivered is still false because
+    // fleet_outbound_response has not returned yet.
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    // Settle arrives AFTER the idle edge (delayed IPC round-trip).
+    pending![1]({ result: { messageId: "sent-1" } });
+    // 60s elapses — confirm window fires.
+    await elapseConfirmWindow(daemon);
+    // A delivered reply must not produce a false positive.
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("#1377 Case 2: settle that arrives then a cross-instance busy/idle must not re-trigger the guard", async () => {
+    // Repro: human message → reply tool called (mid-turn, before idle edge) →
+    // idle edge (confirm window armed, settle not yet run) → settle arrives →
+    // 17 minutes later a cross-instance message causes busy→idle on the same
+    // instance → that idle edge must not revive the already-settled generation.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    // Reply tool called mid-turn; settle NOT yet run.
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 55 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    expect(pending).toBeDefined();
+    // Idle edge fires while settle is still in-flight.
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    // Settle arrives (before the 60s window elapses).
+    pending![1]({ result: { messageId: "sent-1" } });
+    // 17 minutes pass — a cross-instance message makes the pane busy→idle
+    // (no markTurnStarted because from_instance).
+    await vi.advanceTimersByTimeAsync(17 * 60_000);
+    daemon.applyInstanceStateSnapshot(working(Date.now()), "spinner…");
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "done\n❯");
+    await elapseConfirmWindow(daemon);
+    // The old (already-answered) generation must not fire recovery.
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("#1377 regression: a genuinely missing reply still triggers recovery after the confirm window", async () => {
+    // The fix must not suppress real recovery when no reply was delivered.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon);
+    // No reply tool call, no settle — genuine miss.
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+
   it("a wall-clock jump backward does not delay the elapsed deadline (R3)", async () => {
     vi.useFakeTimers();
     const daemon = makeDaemon();
@@ -761,5 +848,136 @@ describe("reply guard false idle edge (#1241)", () => {
       recoveryStarted: true,
     }));
     expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+});
+
+describe("#1377 P2 regression: late failure after idle edge with no busyObserved", () => {
+  it("a reply failure that arrives after an idle edge (busyObserved=false) is reported on the next steady-idle tick", async () => {
+    // Prism P2 repro: arm with no work observed (working snapshot predates arm
+    // or the turn is too short to get a working poll) → handleToolCall →
+    // beginToolAttempt (replyAttemptedAt=1) → idle edge → no confirm window
+    // (busyObserved=false → "no_busy_since_arm" → return) → IPC failure ACK
+    // arrives (replyAttemptFailed=true) → steady-idle tick → must report now.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    // No working snapshot → busyObserved=false.
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "maybe" }, requestId: 55 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    expect(pending).toBeDefined();
+    // Idle edge fires while IPC is pending.
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    // busyObserved=false → no confirm window, no recovery yet.
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("awaiting");
+    // IPC failure ACK arrives (provider timeout / adapter error).
+    pending![1]({ result: null, error: "provider timed out" });
+    // Steady-idle tick: must report the failure now that replyAttemptFailed=true.
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "reply_failed_or_unknown",
+      recoveryStarted: false,
+    }));
+    expect(daemon.deliverDaemonReply).toHaveBeenCalledWith(
+      expect.any(String), "replydrop", "Unconfirmed reply status", expect.any(Object), true,
+    );
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("a transport timeout (in-flight, not a definitive error) does not report until the confirm window or busy/idle", async () => {
+    // An in-flight reply whose IPC response has simply not returned must NOT be
+    // reported as failed on a steady-idle tick — only a definitive error does.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon); // busyObserved=true, confirm window armed
+    // Settle (success) never arrives — IPC is still in-flight.
+    // Steady-idle ticks with no error: must not report yet.
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    await daemon.pasteLock;
+    expect(detected).not.toHaveBeenCalled();
+    // Only after the confirm window elapses does recovery fire.
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call" }));
+  });
+});
+
+describe("#1377 mutation guards", () => {
+  /**
+   * Mutation (a): undo clearReplyGuardConfirm() from the settle path.
+   * With the fix, after settle the confirm window is null. Undo it → non-null.
+   * Case 1's elapseConfirmWindow then finds a live window and fires recovery.
+   */
+  it("mutation (a): after a successful settle, the confirm window is cleared", async () => {
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 11 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    pending![1]({ result: { messageId: "sent-1" } });
+    // Fix (a): replyGuardIdleConfirm must be null after settle.
+    expect((daemon as any).replyGuardIdleConfirm).toBeNull();
+    // Corollary: elapseConfirmWindow has nothing to fire.
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    await elapseConfirmWindow(daemon);
+    expect(detected).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Mutation (b): undo the maybeConfirmReplyGuardIdle completionDelivered check.
+   * With the fix, a steady-idle tick after settle (with no confirm window) calls
+   * complete(). Without it, the guard stays active and a later busy/idle can
+   * re-arm a window.
+   */
+  it("mutation (b): after a successful settle, a steady-idle tick completes the guard generation", async () => {
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.applyInstanceStateSnapshot(working(), "spinner…");
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 22 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.startsWith("tool_"));
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    pending![1]({ result: { messageId: "sent-1" } });
+    // After settle: confirm window cleared, guard still active (awaiting idle tick).
+    expect((daemon as any).replyGuardIdleConfirm).toBeNull();
+    expect(daemon.turnReplyGuard.snapshot()).not.toBeNull();
+    // Fix (b): steady-idle tick (the else-if branch) must complete the guard.
+    // Simulate a steady-idle monitor tick (no state transition — stays idle).
+    daemon.applyInstanceStateSnapshot(idle(Date.now()), "work finished\n❯");
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("mutation (regression check): a genuinely missing reply still triggers recovery", async () => {
+    // Unchanged from the main regression test — included here so mutations
+    // that accidentally suppress all recovery are caught in this describe.
+    vi.useFakeTimers();
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    busyThenIdleEdge(daemon);
+    await elapseConfirmWindow(daemon);
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "no_valid_call",
+      recoveryStarted: true,
+    }));
   });
 });

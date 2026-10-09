@@ -1,3 +1,4 @@
+import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
@@ -5,6 +6,7 @@ import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { createBackend } from "../src/backend/factory.js";
+import type { CliBackend } from "../src/backend/types.js";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -48,7 +50,7 @@ describe("Daemon", () => {
   });
 
   it("auto-confirms Kiro's clear prompt only after an armed /clear delivery", async () => {
-    const backend = createBackend("kiro-cli", "/tmp/kiro-clear-confirm-test");
+    const backend = new KiroBackend("/tmp/kiro-clear-confirm-test", TEST_KIRO_COMPAT);
     const daemon = new Daemon(
       "kiro-clear-confirm",
       makeConfig(),
@@ -320,6 +322,8 @@ describe("Daemon", () => {
       rootLogger,
     );
     expect((mcpDaemon as any).buildBackendConfig().mcpServers.agend).toBeDefined();
+    // #1450 C5: the CLIs start AgEnD's MCP server on the Node this daemon runs on, never a `node` from their PATH.
+    expect((mcpDaemon as any).buildBackendConfig().mcpServers.agend.command).toBe(process.execPath);
 
     const cliDaemon = new Daemon(
       "agy-cli",
@@ -335,12 +339,12 @@ describe("Daemon", () => {
 });
 
 describe("Daemon backend-native input queue delivery", () => {
-  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity", idle: boolean, pane = "", paneBeforePaste?: string) {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity" | "grok", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
 
-    const backend = createBackend(backendName, instanceDir);
+    const backend: CliBackend = backendName === "kiro-cli" ? new KiroBackend(instanceDir, TEST_KIRO_COMPAT) : createBackend(backendName, instanceDir);
     const control = {
       isIdle: vi.fn(() => idle),
       // Resolves true = the pane reached idle. It returns a boolean now so a wedged
@@ -427,7 +431,8 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("cancels a delivery that entered the idle wait but has not pasted yet", async () => {
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    // A backend that waits for idle (grok; claude-code hands a busy delivery to its own queue since #1169).
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false);
     let releaseIdleWait!: (idle: boolean) => void;
     control.waitUntilIdle.mockImplementation(() => new Promise<boolean>(resolve => {
       releaseIdleWait = resolve;
@@ -566,7 +571,8 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("keeps the idle gate and confirmation path for backends without a native queue", async () => {
-    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    // A backend with neither a native queue nor an input reader (grok; claude-code before #1200).
+    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false);
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
 
@@ -673,7 +679,7 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("does not add the Kiro retry to backends without the capability", async () => {
-    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", true);
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
     (daemon as any).firstDeliveryDelay = { consume: () => 500 };
@@ -690,7 +696,7 @@ describe("Daemon backend-native input queue delivery", () => {
     // waitUntilIdle used to have no timeout at all: a wedged pane held the
     // pasteLock forever and every message behind it queued silently, with no ❌ and
     // no log — the caller believed delivery was merely slow.
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false); // a backend that waits for idle (claude-code queues since #1169)
     control.waitUntilIdle.mockResolvedValue(false);
     const failed = vi.fn();
     daemon.on("message_failed", failed);
@@ -745,8 +751,9 @@ describe("Daemon backend-native input queue delivery", () => {
   it("reports a failure when both Enters are swallowed instead of claiming success", async () => {
     // The message is sitting UNSUBMITTED in the CLI's input box. This used to
     // return true, leaving the reaction at 👀 forever while the next delivery
-    // pasted on top — submitting two messages as one.
-    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    // pasted on top — submitting two messages as one. (The output-edge ladder of a readerless backend: grok; claude-code
+    // reads its input box since #1200 and is covered in claude-input-box-1200.test.ts.)
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", true);
     (daemon as any).confirmBusyAfterEnter = vi.fn().mockResolvedValue(false);
     const failed = vi.fn();
     const confirmed = vi.fn();
@@ -1201,8 +1208,16 @@ describe("Daemon error monitor recovery", () => {
   });
 });
 
+const CLAUDE_BUSY = readFileSync(join(__dirname, "fixtures", "claude-2.1.293-busy-empty.pane.txt"), "utf8");
+/** CLAUDE_BUSY with `text` taken into Claude's queue (2.1.293): the block above the spinner, the placeholder in the box. */
+const claudeQueued = (text: string) => {
+  const [first, ...rest] = text.split("\n");
+  const block = [`❯ ${first}`, ...rest.map(row => `  ${row}`), "  ctrl+x ctrl+s to send now"].join("\n");
+  return CLAUDE_BUSY.replace(/^(✻ Spelunking)/m, `${block}\n$1`).replace(/^❯\u00a0$/m, "❯\u00a0Press up to edit queued messages");
+};
+
 describe("Daemon /steer delivery", () => {
-  function makeSteerDaemon(backendName: "claude-code" | "codex", idle: boolean, pane = "", paneBeforePaste?: string) {
+  function makeSteerDaemon(backendName: "claude-code" | "codex" | "grok", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-steer-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@steer");
@@ -1242,12 +1257,13 @@ describe("Daemon /steer delivery", () => {
   }
 
   it("pastes into a BUSY non-queue CLI immediately instead of waiting for idle", async () => {
-    // The point of /steer: claude-code has no supportsQueuedInput, so a normal
+    // The point of /steer: grok has no supportsQueuedInput, so a normal
     // delivery would block on waitUntilIdle. steer takes the immediate-paste
     // transaction (the same one codex native-queue handoff uses), whose pane
-    // visibility check confirms the text landed.
+    // visibility check confirms the text landed. (claude-code queues natively
+    // since #1169 and needs its box readable to hand off: see below.)
     const { control, daemon, tmux } = makeSteerDaemon(
-      "claude-code", false,
+      "grok", false,
       "✻ thinking…\n[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]",
       "✻ thinking…",
     );
@@ -1269,7 +1285,8 @@ describe("Daemon /steer delivery", () => {
   it("falls back to the idle-gated queue when the busy TUI swallows the paste", async () => {
     // kiro-style swallow: the pasted text never shows up in the pane. The steer
     // must degrade to "next message after this turn", not vanish silently.
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, "✻ thinking… nothing else");
+    // A readerless CLI (grok; claude-code before #1200, which now reads its box: claude-input-box-1200.test.ts).
+    const { control, daemon, tmux } = makeSteerDaemon("grok", false, "✻ thinking… nothing else");
     const confirmed = vi.fn();
     daemon.on("message_confirmed", confirmed);
 
@@ -1286,7 +1303,7 @@ describe("Daemon /steer delivery", () => {
   }, 15_000);
 
   it("delivers steer to an IDLE pane exactly like a normal message", async () => {
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", true);
+    const { control, daemon, tmux } = makeSteerDaemon("grok", true);
     const result = await (daemon as any).deliverMessage("steer while idle", undefined, { steer: true });
     expect(result).toBe(true);
     expect(control.waitUntilIdle).not.toHaveBeenCalled();
@@ -1402,7 +1419,8 @@ describe("Daemon /steer delivery", () => {
 
   it("submits the BTW wrapper immediately to a busy Claude pane", async () => {
     const formatted = "[BTW — side question from the user.]\n[user:han] side question";
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, formatted, "✻ thinking…");
+    // A live busy frame (its box is readable — #1169 hands off only then), and the same frame with the wrapper queued.
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, claudeQueued(formatted), CLAUDE_BUSY);
 
     const result = await (daemon as any).deliverMessage(
       formatted,

@@ -20,11 +20,16 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 | `profiles` | object | no | — | Reusable backend/model presets |
 | `health_port` | number | no | `19280` | HTTP health endpoint port |
 | `fleet_label` | string | no | host name | How this fleet names itself in `/login`: appended to the Discord slash command description and shown under each backend picker (`🖥 Fleet: …`). Every AgEnD bot in a guild registers its own `/login`, and each one controls only the fleet that runs it — the label tells them apart. Default: the machine's host name, plus the AgEnD home's directory name when it is not `~/.agend` |
-| `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding; the `/login` browser terminal's listener uses the same list) |
+| `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`); `web.allowed_hosts: [name, …]` adds `Host` names the dashboard answers to when reached through a reverse proxy or port forward (default: `localhost`, `127.0.0.1`, `[::1]` and `hostname`; any other `Host` gets 403 — this is what stops DNS rebinding; the `/login` browser terminal's listener uses the same list); `web.view_access: session` closes `/view` to anyone who is not signed in (default `open`: reading is open on the loopback listener; **saving a profile always needs a sign-in**); `web.notify_login: false` stops the General topic being told about each web sign-in (default `true`); `web.preview: false` turns off HTML previews in the web chat — no preview listener, cards show Source and Download only (default `true`; even then a browser runs a preview only after that device opts in); `web.preview_port` is the preview listener's port on `127.0.0.1` (default `health_port + 1`, i.e. 19281 — forward it too when you use the dashboard over SSH); `web.preview_origin: https://preview.example.net` is a separate host name a proxy maps to the preview listener, needed for previews through a tunnel or proxy (a bare origin; not a name the dashboard answers to) |
+| `needs_you` | object | no | — | **"Needs you"** (#1386): one list of everything waiting on a person — fleet prompts (not responding / exited / waiting at its terminal), an instance at a permission, dangerous-command, sign-in or other dialog, an instance paused for sign-in or crashed, and deliveries the fleet could not confirm or deliver (last 24 h). `needs_you.live_message` (default `true`): each bot keeps one live message in **its own** General listing only the instances it owns — edited as things are resolved, re-posted (at most once a minute) when something new appears; each line links to the prompt's own buttons or the instance's thread, and an undeliverable/unconfirmed delivery gets an **Acknowledge** button for that bot's admins. `needs_you.dm` (default `false`): also DM that bot's admins when something new appears (a terminal wait only after 5 s; at most one DM a minute). The web dashboard shows every bot's items. Both keys apply without a restart. |
 | `web_terminal` | object | no | — | The browser terminal behind `/login` (sign-in and install): `enabled` (default `true`), `bind` (default `127.0.0.1`), `ttl_minutes` (1–20, default 10), and `tunnel` — a public link for `/login`, offered at each login unless `allow_public: false`, see [Finishing a /login away from the machine](#finishing-a-login-away-from-the-machine-public-link) |
 
 ---
 
+
+### Temporary public dashboard link
+
+`web.public_link.allow_public` defaults to `true` (offer only; explicit General admin click required), `ttl_minutes` to `120` (1–480, fixed from consent), and `protocol` to `http2` (`quic`/`auto` also accepted). Settings edits these without writing defaults on unrelated changes. Disabling closes an active link. The public host is ephemeral, `/view` requires sign-in and previews are disabled there. See [web dashboard](web-dashboard.md#temporary-public-link-from-a-phone) for private delivery, session scope and risks.
 
 ### Several fleets in one Discord guild
 
@@ -166,6 +171,8 @@ channels:
 - Reactions an AgEnD bot stamps from its own status set never reach an instance as a user reaction. Once every bot's user id is known, humans' reactions always pass, whatever emoji they use.
 - Each instance's instructions list its own status set as the emojis to avoid (the five delivery statuses; `photo`/`attachment` are stamps on a saved file, not part of that ladder).
 - **Settings** edits both maps: the connection's (Bots → Settings → Status emojis) and an agent's override (agent → Status emojis). The picker offers unicode emojis, Telegram's reaction set on a Telegram connection, and on Discord the server's own custom emojis, fetched with the bot token. The preview is resolved by AgEnD exactly as the bot will react.
+- A change to a connection's `status_emojis` applies at the bot's next stamp, with no restart. Each agent's "avoid these" list follows at its next start. The rest of a connection (binding, access, token) still needs an AgEnD restart.
+- `progress_prefix` is not a reaction: it is the emoji at the start of the progress message, so Telegram's reaction set does not limit it.
 
 ---
 
@@ -196,6 +203,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line / cancel button starts showing elapsed time. |
 | `max_cross_instance_message_bytes` | number | `12288` | Maximum UTF-8 byte size of a cross-instance message body. Oversized messages are rejected with guidance to shorten them or send a file path. |
 | `reply_overdue_minutes` | number | `15` | Minutes since the last ask/reminder before notifying the requester once that a `requires_reply` request is unanswered and its owner is not working. `0` disables requester notices, not owner reminders. |
+| `retention_days` | number | `30` | How many days to keep terminal deliveries (`delivered`/`failed`) in `delivery-outbox.db` and `done`/`cancelled` tasks on the Task Board. `uncertain` and non-terminal rows are never pruned. Pruning runs once at fleet startup and daily after that, in chunks of 500 rows so it never stalls the event loop. A `delivery_status` query for a pruned delivery_id returns "older than the retention window; record pruned" instead of "Delivery not found". |
 | `tips` | boolean | `true` | Daily General-topic tips and update-completion tips. Independent of `daily_summary.enabled`. |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
 
@@ -337,7 +345,7 @@ messaging contract. Full fleet guidance — role, workflow, selected decisions a
 |---------|------------------------|
 | Claude Code | Instance `fleet-instructions.md`, loaded with additive `--append-system-prompt-file` |
 | Codex | Managed AgEnD marker block in the workspace's `AGENTS.md` |
-| Kiro CLI | Workspace `.kiro/steering/agend-<instance>.md` |
+| Kiro CLI | The `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json`; the steering file `.kiro/steering/agend-<instance>.md` on kiro-cli < 2.21 and until a resumed conversation is switched to its agent |
 | OpenCode | Instance `fleet-instructions.md` appended to the project's `opencode.json` `instructions` array |
 | Antigravity | Managed marker block in workspace `.agents/agents.md` |
 | Grok / Muse | Managed marker block in workspace `AGENTS.md` |
@@ -386,11 +394,13 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 | `backend` | string | `"claude-code"` | Default backend for all classic channels |
 | `model` | string | — | Default model for all classic channels |
 | `context_lines` | number | `5` | Chat history lines injected before each message (0 = disable) |
-| `allowed_guilds` | string[] | `[]` | Discord server IDs allowed to use ClassicBot (empty = all) |
-| `allowed_groups` | string[] | `[]` | Telegram group IDs allowed |
-| `allowed_users` | string[] | `[]` | User IDs allowed to interact |
-| `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [permissions matrix](permissions.md). `/raw` is not a supported command. |
+| `allowed_guilds` | string[] | `[]` | Discord server IDs granted new ClassicBot starts; empty/unset requests approval |
+| `allowed_groups` | string[] | `[]` | Telegram group IDs granted access; empty/unset requests approval |
+| `allowed_users` | string[] | `[]` | Telegram private user IDs granted new starts; empty/unset requests approval |
+| `admin_users` | string[] | `[]` | Classic admin user IDs. Command gates differ by platform; see the [command surface matrix](command-surface.md). Classic Telegram `/raw` is currently blocked; hidden Fleet `/raw` requires the owning bot's F. |
 | `reply_completion_guard` | boolean | inherited | Per-channel → Classic defaults → fleet defaults → `true`; requires the backend capability described above. |
+
+New starts: ClassicBot admins (`admin_users`) may start directly. Other callers need an explicit guild/private-user grant; unlisted callers request General approval through **Allow / Allow+admin / Ignore** buttons. Telegram private approvals add the user to `allowed_users`. Telegram group starts still require a ClassicBot admin; Allow grants only the group, while Allow+admin also promotes the requester. Existing registered channels keep working, and Discord DMs remain unsupported. Approval does not start an agent: retry `/start` (groups: `/start@OurBot`).
 
 ### channels.\<channelId\>
 
@@ -532,3 +542,9 @@ An active Kiro profile without a readable login retains a signed-out hint.
 Visibility also depends on the provider: Codex rows without OAuth usage
 credentials, including API-key-only profiles, are omitted. Rows are not combined,
 and different profile names do not guarantee different billing accounts.
+
+### Web chat channel echo (2.2 web line)
+
+Web chat echoes are enabled by default for fleet-topic instances. Set `web.echo_to_channel: false` to disable them, or use **Settings → General → Web chat**. The copy goes to the instance's own Telegram or Discord topic as `🌐 web · web-user: …`, with attachment names and a note pointing to web chat for long text. It is display only: echoes never become a new agent turn. Web-only fleets and ClassicBot rooms are excluded. A failed echo is logged without failing or delaying web message delivery. Each echo has a five-second total ordering budget, including queue and admission waits. Replies proceed when the send settles or the budget expires. On expiry, queued copies are dropped with a warning; an already in-flight copy may land after the reply, and its late outcome is logged. No echo retry is attempted.
+
+Echo text and attachment names replace mention/command tokens with visible ASCII labels such as `[mention: 200]`, `[at: botname]` and `[command: cmd at bot]`. Compatibility normalisation and format-character removal happen first; URLs, email local parts and ordinary path slashes remain intact. Discord also sends with `allowedMentions: { parse: [] }`; Telegram sends plain text without mention entities. The common ingress drops the fixed `🌐 web · ` prefix when its author is one of the configured fleet bot accounts on that platform, independent of echo flags or send acknowledgements. While any configured world on the same platform has an unknown bot identity, bot-flagged prefix candidates are also dropped before trigger evaluation, with a debug log. This temporary quarantine never affects human copies; after all identities are known, non-fleet bots keep the existing admission/collab rules. No unknown author is classified as a fleet bot, and no recent-message cache is used.

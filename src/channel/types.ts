@@ -13,7 +13,7 @@ export interface InstanceStatusData {
 }
 
 export interface AlertData {
-  type: "hang" | "cost_warn" | "cost_limit" | "schedule_deferred" | "rotation" | "cancel" | "interactive_prompt" | "exit_restart" | "clear_confirm" | "tip" | "login" | "install" | "classic_approve";
+  type: "hang" | "cost_warn" | "cost_limit" | "schedule_deferred" | "rotation" | "cancel" | "interactive_prompt" | "exit_restart" | "clear_confirm" | "tip" | "login" | "install" | "classic_approve" | "needs_you";
   instanceName: string;
   message: string;
   choices?: Choice[];
@@ -77,6 +77,8 @@ export type TopicPresence =
 export interface ChannelAdapter extends EventEmitter {
   readonly type: string;
   readonly id: string;
+  /** Authenticated platform identity, cache-only; absent until login/init. */
+  getBotUserId?(): string | undefined;
 
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -112,6 +114,10 @@ export interface ChannelAdapter extends EventEmitter {
   editMessageRemoveButtons?(chatId: string, messageId: string, text: string, threadId?: string): Promise<void>;
   /** Remove a message's buttons while keeping its text untouched. */
   removeMessageButtons?(chatId: string, messageId: string, threadId?: string): Promise<void>;
+  /** #1266: this adapter puts `SendOpts.replyButtons` on the message it sends. */
+  readonly supportsReplyButtons?: boolean;
+  /** #1266: show a reply's buttons as ended — the choice and who made it, or expired — on the message carrying them. */
+  settleReplyButtons?(chatId: string, messageId: string, threadId: string | undefined, labels: readonly string[], outcome: ReplyButtonsOutcome): Promise<void>;
   /** Delete a message (e.g. retire the Cancel button message when done).
    * threadId locates the message when it lives in a topic/thread. */
   deleteMessage?(chatId: string, messageId: string, threadId?: string): Promise<void>;
@@ -225,18 +231,32 @@ export interface StickerList {
 export interface StickerPreview { bytes: Buffer; ext: "png" | "gif" | "webp" | "jpg" }
 
 export interface SendOpts {
+  /** Private dashboard controls; supported by sendDirect only. */
+  choices?: Choice[];
+  /** Discord entity suppression for display-only echoes; text must also be neutralised. */
+  allowedMentions?: { parse: Array<"roles" | "users" | "everyone"> };
   threadId?: string;
   replyTo?: string;
   format?: "text" | "html";
   chunkLimit?: number;
   /** Suppress the link/web-page preview for URLs in the message (Telegram). */
   disablePreview?: boolean;
+  /**
+   * #1266: an agent reply's buttons, on the text's last message (a long text is several). `id` is the platform
+   * callback (`rb:<set>:<index>`), never the label or value. Only adapters with `supportsReplyButtons` honour it.
+   */
+  replyButtons?: Array<{ id: string; label: string }>;
 }
+
+/** #1266: how a reply's buttons end — one chosen (by whom), or expired with none chosen. */
+export type ReplyButtonsOutcome = { chosenIndex: number; by: string } | { expired: true };
 
 export interface SentMessage {
   messageId: string;
   chatId: string;
   threadId?: string;
+  /** #1266: the message that carries `replyButtons` (the last part of a long text). */
+  buttonsMessageId?: string;
 }
 
 export interface OutboundMessage {

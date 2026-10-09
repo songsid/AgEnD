@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import Database from "better-sqlite3";
 
 export interface EventRow {
@@ -41,13 +42,16 @@ export class EventLog {
   private db: Database.Database;
   private insertStmt: Database.Statement;
 
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath);
+  /** busyTimeoutMs: how long a locked file is waited for, from the first statement on (#1490). */
+  constructor(dbPath: string, opts: { busyTimeoutMs?: number } = {}) {
+    // The busy timeout is applied from the first statement on (and again by the pragma below, unchanged). A lock that
+    // outlasts it surfaces as SQLITE_BUSY, which openEventLog reports instead of treating as corruption (#1490).
+    this.db = new Database(dbPath, { timeout: opts.busyTimeoutMs ?? 5000 });
     this.db.pragma("journal_mode = WAL");
     // The fleet writes this file while `agend events` / `agend activity` read it
     // from a separate process. Without a busy timeout, either side raises
     // SQLITE_BUSY immediately instead of waiting for the other's write to finish.
-    this.db.pragma("busy_timeout = 5000");
+    this.db.pragma(`busy_timeout = ${Math.max(0, Math.floor(opts.busyTimeoutMs ?? 5000))}`);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,10 +100,13 @@ export class EventLog {
   }
 
   insert(instance: string, type: string, payload?: Record<string, unknown>): void {
-    this.insertStmt.run(instance, type, payload != null ? JSON.stringify(payload) : null);
+    measureSyncWork("eventLog.insert", () => this.insertStmt.run(instance, type, payload != null ? JSON.stringify(payload) : null));
   }
 
   query(opts: QueryOpts = {}): EventRow[] {
+    return measureSyncWork("eventLog.query", () => this.querySync(opts));
+  }
+  private querySync(opts: QueryOpts): EventRow[] {
     const conditions: string[] = [];
     const params: unknown[] = [];
 

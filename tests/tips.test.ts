@@ -20,20 +20,20 @@ afterEach(() => {
 });
 
 describe("tips catalog and persistence", () => {
-  it("ships a 100/100/100 catalog and requires an explicit advanced unlock", () => {
+  it("ships a 104/100/100 catalog (web chat's four beginner tips are tip-301…304) and requires an explicit advanced unlock", () => {
     const beginner = TIPS.filter(t => t.level === "beginner");
     const intermediate = TIPS.filter(t => t.level === "intermediate");
-    expect(beginner).toHaveLength(100);
+    expect(beginner).toHaveLength(104);
     expect(intermediate).toHaveLength(100);
     expect(TIPS.filter(t => t.level === "advanced")).toHaveLength(100);
-    expect(new Set(TIPS.map(t => t.id)).size).toBe(300);
+    expect(new Set(TIPS.map(t => t.id)).size).toBe(304);
     expect(TIPS.every(t => t.text_en.trim() && t.text_zh.trim())).toBe(true);
     const backendTags = new Set([
       "claude-code", "codex", "kiro-cli", "grok", "antigravity", "opencode",
     ]);
     expect(TIPS.flatMap(tip => tip.tags ?? []).every(tag => backendTags.has(tag))).toBe(true);
     expect(TIPS.map(t => t.id)).toEqual(
-      Array.from({ length: 300 }, (_, index) => `tip-${String(index + 1).padStart(3, "0")}`),
+      Array.from({ length: 304 }, (_, index) => `tip-${String(index + 1).padStart(3, "0")}`),
     );
     expect(TIPS.every(t => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(t.text_en + t.text_zh))).toBe(true);
 
@@ -456,7 +456,8 @@ describe("tip button flow", () => {
       isAdvancedTipsUnlocked: vi.fn(() => false),
       unlockAdvancedTips,
     } };
-    fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
+    // The unlock is a persistent setting: only a fleet admin of the clicking adapter may confirm it (#754 audit).
+    fm.fleetConfig = { channels: [{ id: "discord-main", type: "discord", group_id: "fleet", access: { mode: "locked", allowed_users: ["owner"] } }], defaults: {}, instances: { general: { general_topic: true } } } as any;
 
     expect(await (fm as any).promptAdvancedTipUnlock(
       "general", adapter, "fleet", "general-topic",
@@ -471,10 +472,10 @@ describe("tip button flow", () => {
       chatId: "fleet",
       threadId: "general-topic",
       messageId: "unlock-message",
-      userId: "reader",
+      userId: "owner",
     }, "discord-main", adapter);
 
-    expect(unlockAdvancedTips).toHaveBeenCalledWith("reader");
+    expect(unlockAdvancedTips).toHaveBeenCalledWith("owner");
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
       "fleet", "unlock-message", expect.stringContaining("unlocked"), "general-topic",
     );

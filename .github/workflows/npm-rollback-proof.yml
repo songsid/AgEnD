@@ -1,0 +1,45 @@
+# #1450 PR 0 gate: AgEnD's private Node runtime (docs/design/1450-private-node-runtime.md, option A) relies on npm
+# rolling a global install back when the package's own lifecycle refuses. This proves it on every npm the 2.1.12 →
+# 2.2 hop can meet (9, the 10.8.2 that Node 20.19 ships, 11), on Node 20.19.0, on Linux and macOS. Inert and offline:
+# local tarballs, a scratch prefix/cache/npmrc, an unreachable registry. Every selected cell must pass; Mac cells run at release/manual/weekly time.
+name: npm rollback proof
+
+on:
+  push:
+    branches: [main, 'release/**']
+    tags: ['v*']
+  pull_request:
+    paths:
+      - scripts/ci/npm-rollback-proof.sh
+      - .github/workflows/npm-rollback-proof.yml
+      - package.json
+  workflow_dispatch:
+  schedule:
+    - cron: '37 3 * * 1'
+
+# Superseded PR work releases runners; branch/release/weekly runs are retained.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    strategy:
+      fail-fast: false
+      matrix:
+        # No skipped Mac check-runs on a PR/main head; deferred events add them.
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) && '["ubuntu-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
+        npm: ["9.9.4", "10.8.2", "11.6.2"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+      - name: npm ${{ matrix.npm }} beside Node 20.19.0
+        run: npm install --prefix "$RUNNER_TEMP/npm-${{ matrix.npm }}" "npm@${{ matrix.npm }}"
+      - name: A refused global install leaves the previous version
+        run: bash scripts/ci/npm-rollback-proof.sh "$(command -v node)" "$RUNNER_TEMP/npm-${{ matrix.npm }}/node_modules/npm/bin/npm-cli.js"

@@ -234,7 +234,8 @@ describe("crash respawn inside the health tick", () => {
   it("looks the session up (bounded) before it respawns, and respawns after", async () => {
     vi.spyOn(TmuxManager, "sessionExists").mockResolvedValue(true);
     vi.spyOn(TmuxManager, "getServerPid").mockResolvedValue(4242);
-    vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([] as never);          // the window is gone, the server is alive
+    vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([] as never);
+    vi.spyOn(TmuxManager, "listWindowsStrict").mockResolvedValue([] as never);          // the window is gone, the server is alive
     const id = { current: "ses_cached" as string | null };
     const { backend } = backendWith("opencode", "none", id);
     const order: string[] = [];
@@ -259,6 +260,7 @@ describe("a crash tick that is already past the health check when stop() / pause
     vi.spyOn(TmuxManager, "sessionExists").mockResolvedValue(true);
     vi.spyOn(TmuxManager, "getServerPid").mockResolvedValue(4242);
     vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([] as never);
+    vi.spyOn(TmuxManager, "listWindowsStrict").mockResolvedValue([] as never);
     const id = { current: "ses_cached" as string | null };
     const { backend, release } = backendWith(backendKind, "none", id);
     const order: string[] = [];
@@ -280,7 +282,7 @@ describe("a crash tick that is already past the health check when stop() / pause
     d.checkMcpServerAlive = () => {};
     d.spawnClaudeWindow = vi.fn(async () => { order.push("respawn"); return true; });
     d.writeRotationSnapshot = vi.fn(); d.injectSnapshotMessage = async () => {};
-    d.transcriptMonitor = { resetOffset: vi.fn(), stop: () => {} };
+    d.transcriptMonitor = { resetOffset: vi.fn(), initialize: vi.fn(async () => {}), stop: () => {} };
     return { d, order, releaseLookup: () => release2(), killWindow };
   }
 
@@ -329,6 +331,7 @@ describe("a crash tick that is already past the health check when stop() / pause
     vi.spyOn(TmuxManager, "sessionExists").mockResolvedValue(true);
     vi.spyOn(TmuxManager, "getServerPid").mockResolvedValue(4242);
     vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([] as never);
+    vi.spyOn(TmuxManager, "listWindowsStrict").mockResolvedValue([] as never);
     const id = { current: "ses_cached" as string | null };
     const { backend } = backendWith("opencode", "none", id);
     let releaseLookup!: () => void;
@@ -345,7 +348,7 @@ describe("a crash tick that is already past the health check when stop() / pause
     d.setProcessStatus("running");
     d.checkMcpServerAlive = () => {};
     d.writeRotationSnapshot = vi.fn(); d.injectSnapshotMessage = async () => {};
-    d.transcriptMonitor = { resetOffset: vi.fn(), stop: () => {} };
+    d.transcriptMonitor = { resetOffset: vi.fn(), initialize: vi.fn(async () => {}), stop: () => {} };
     d.spawnClaudeWindow = async () => { await d.trySpawn(false); return true; };    // the real trySpawn → the real gate
     const started: string[] = [];
     d.trySpawnInsideGate = async () => { started.push("cli-started"); return true; };

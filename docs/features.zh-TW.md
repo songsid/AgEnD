@@ -64,7 +64,7 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 - 第一次啟動（還沒有任何紀錄）：只記錄指示，不送任何東西。
 - Claude Code 在 resume 時會自己重讀指示，所以永遠不用通知它。
-- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、`.kiro/steering/agend-<name>.md`、`.agents/agents.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
+- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、kiro 的 agent 檔或 steering 檔、`.agents/agents.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
 
 不需要任何設定。
 
@@ -140,6 +140,26 @@ agent 可以在 Discord 和 Telegram 傳送貼圖（2.1.12 起）。兩個平台
 
 不支援上傳貼圖或建立貼圖包。
 
+### 回覆按鈕
+
+agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組按鈕會出現在網頁聊天、Telegram（inline keyboard）與 Discord（message components）。
+
+- **送出：** `reply` 接受 `buttons`：1–10 個 `{ label, value? }`。
+  - label 是一行純文字，最多 80 個字元（Discord 的上限，三者中最嚴格）。
+  - `value`（最多 200 字元）是與 label 不同時 agent 收到的內容；它只存在 AgEnD 內，不會送到任何平台。
+  - 按鈕必須搭配 `text`，放在文字的最後一則訊息上。不能與 `stickers` 一起使用；`files` 照常在文字之後送出。
+  - `buttons` 不合規時，該次回覆會回傳錯誤，且不會送出任何東西。
+- **點擊** 會以點擊者發出的一般訊息送給 agent：`[button] Deploy`，value 不同時為 `[button] Deploy (value: deploy-prod)`。它也會顯示在網頁聊天裡。
+- **每則回覆只有一個選擇。** 第一個有權限的點擊就代表所有人。之後各處的按鈕都會顯示選了什麼、誰選的：Discord 上按鈕停用並標出選項，Telegram 顯示單一個「✓ Deploy — alice」按鈕，網頁聊天則停用按鈕。之後的點擊會收到「已經有人回答了」。
+- **誰能點：** 能在那裡對該 instance 發訊息的人。
+  - fleet topic：該連線允許的使用者。
+  - ClassicBot 房間：房間裡的任何人。
+  - 網頁聊天：已登入的使用者，或透過公開連結的訪客（他們也能發訊息）。
+  - bot 的點擊一律不算。
+- **有效期：** 按鈕 24 小時後過期，並會標示出來。AgEnD 重啟後按鈕仍有效：每組按鈕是 `reply-buttons.db` 裡的一列，只對應原本那則訊息，而且只能回答一次，所以點擊無法被重放。
+- **無法顯示按鈕的地方**（例如 `agend-agent reply`）：選項會以編號清單附在文字後，讓人直接回覆。
+- **安全：** 平台上只帶不可猜的 id 與按鈕的序號，不帶 label 或 value；label 一律以純文字顯示。
+
 ## 工具進度（`tool_progress`）
 
 `tool_progress` 會把 agent 的工具活動加進進度泡泡，以這一輪的累積清單呈現：
@@ -199,6 +219,11 @@ agent 可以在 Discord 和 Telegram 傳送貼圖（2.1.12 起）。兩個平台
 ### 投遞追蹤（`delivery_status`）
 
 跨 instance 的傳送只要 fleet 一接手就會立刻回傳（`{ sent, queued }`，附上 `operation_id` / `delivery_id`）；之後由 fleet 透過持久化的 outbox 負責投遞。`delivery_status` 可以查出某次投遞進行到哪裡，查詢時要剛好指定 `delivery_id`、`operation_id`、`correlation_id` 或 `message_id` 其中之一（可用 `limit` 分頁，最多 100 筆，搭配 `cursor`）。一筆紀錄會經過 `queued`、`delivering`、`submission_started`、`reconciliation_pending`、`retry_wait`，最後變成 `delivered`、`failed`、`uncertain` 或 `cancelled`。`uncertain` 代表訊息可能已經送達，不要貿然重送。
+
+每筆紀錄也會說明它怎麼被投遞、到了 CLI 之後怎麼了（#1201）：
+- `delivery_mode`：`steer`（插進進行中的回合）或 `idle_queue`（作為下一則訊息），與 `send_to_instance` 回報的一致。
+- `submission_mode`：最近一次嘗試的寫入方式：`idle_submit`、`steer`、`native_queue_handoff`（交給忙碌中 CLI 自己的佇列）或 `raw_paste`。
+- `consumed_at` / `consumed_via`：steer 或交給原生佇列的訊息，早在模型讀到之前就已被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。當 CLI 的 transcript（claude-code、codex）顯示這則投遞自己的 marker 被取用，就記下時間，以及它是作為自己的回合（`turn`）還是併入進行中的回合（`mid_turn`）。這也是唯一能把 `uncertain` 變成 `delivered` 的情況；此時尚未寄給寄件者的失敗通知會被撤回。找不到 marker 絕不改變任何紀錄。
 
 instance 只看得到自己送出或收到的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet：回傳「Delivery not found」就代表不是。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
 
@@ -311,7 +336,7 @@ instances:
 
 升級後第一次啟動時，AgEnD 會讀取最近三十天的活動，列出實際用過 worker 已拿不到之工具的 instance，以及使用次數。它絕不會修改你的設定：哪些 agent 負責協調，是你怎麼組織 fleet 的決定；明確寫上的 `tool_set: full` 也會原封不動保留。
 
-**目前只能透過 Settings 或直接編輯 `fleet.yaml` 設定**：General 的 `update_instance_config` 還沒有 `tool_set` 欄位，從那裡送出的值會被丟掉。
+**`tool_set` 只能透過 Settings 或直接編輯 `fleet.yaml` 設定。** 透過 General 的 `update_instance_config` 傳入 `tool_set` 會收到權限邊界錯誤（#804/#814）——任何 coordinator 設定檔的 agent 都能呼叫的 MCP 工具，不能被用來擴大設定檔的權限。
 
 ## 權限系統 (Permission system)
 
@@ -386,7 +411,15 @@ instance 連續 15 分鐘（可設定）沒有任何活動時，daemon 會發出
 
 ## 感知頻率限制的排程 (Rate limit-aware scheduling)
 
-5 小時 API 頻率限制的用量超過 85% 時，排程觸發會自動延後，而不是照常執行，並在 instance 的 topic 發出通知。延後的排程不會遺失，會在頻率限制回到門檻以下後的下一個 cron 時間點執行。
+目標 instance 的 5 小時用量超過 85% 時，排程觸發會延後，不照常執行，並在 instance 的 topic 通知。如果讀數所屬的額度視窗已經重置，就不再算數：claude-code 只在畫面更新時才改寫 statusline，所以閒置的 instance 可能在重置後很久還顯示 100%。
+
+延後的那次會在額度重置後**補跑一次**：
+- **什麼時候跑。** statusline 有重置時間時，在重置時間（加一分鐘）補跑；沒有的話，每 15 分鐘檢查一次，第一次低於門檻時就跑。
+- **agent 看到什麼。** 補跑沿用原本那次的 run id，訊息開頭是 `[retry] originally due 21:00 (Asia/Taipei), deferred by the 5h rate limit at 100%`。silent 排程則原封不動貼上它的指令。
+- **絕不跑兩次。** 補跑絕不會在下一次正常排程的時間點或之後執行，也不會超過 5 小時 15 分。下一次排程、catch-up 或手動觸發先到的話，補跑就取消。
+- **跨重啟。** 等待中的補跑在 fleet 重啟後仍會保留。
+- **`last_status`。** 會顯示 `deferred → delivered (retry)`，或 `deferred → skipped (superseded | deferred again | expired)`。
+- **補跑不成時。** 被下一次取代、重置後又被延後，或一直等不到重置，排程所在的聊天會說明，並 @ 該 world 的管理員（頻道的 `access.allowed_users`）。
 
 ## 模型備援切換 (Model failover)
 
@@ -554,7 +587,9 @@ resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力�
 
 ## Web Dashboard
 
-`agend web` 會啟動瀏覽器儀表板，透過 Server-Sent Events (SSE) 即時監看 fleet。內建的聊天介面和 Telegram 雙向同步：從 Web UI 傳的訊息會出現在 Telegram，反之亦然。
+Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web-user: …` 出現在 topic，Agent 的回覆兩邊都看得到。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
+
+用一次性登入碼登入：傳 `/dashboard`（fleet 管理員），或在主機上執行 `agend web`。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
 
 ## 遠端登入 CLI（`/login`）
 
@@ -655,7 +690,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 ## Codex session 恢復 (Codex session resume)
 
-每個 Codex instance 恢復的都是**自己的**對話。啟動時，AgEnD 以唯讀方式讀取 Codex 共用的 session 資料庫（`~/.codex/state_5.sqlite`），挑出記錄的工作目錄和 instance 完全相同的最新互動 session，再執行 `codex resume <id>`。AgEnD 不用 `codex resume --last`：從 Codex 0.157 起，它會挑整個 git repository 裡最新的 session，於是同一個 repo 不同 worktree 上的 instance 會互相搶走對方的 session（#984）。
+每個 Codex instance 恢復的都是**自己的**對話。啟動時，AgEnD 以唯讀方式讀取 Codex 共用的 session 資料庫（`$CODEX_HOME/state_5.sqlite`，預設值：`~/.codex`），挑出記錄的工作目錄和 instance 完全相同的最新互動 session，再執行 `codex resume <id>`。AgEnD 不用 `codex resume --last`：從 Codex 0.157 起，它會挑整個 git repository 裡最新的 session，於是同一個 repo 不同 worktree 上的 instance 會互相搶走對方的 session（#984）。
 
 | 情況 | 啟動方式 |
 |---|---|
@@ -664,7 +699,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 | 讀不到 session 資料庫，且同一個 git repo 裡有其他 Codex instance | 新對話，並在該 instance 的 topic 發通知 |
 | 讀不到 session 資料庫，且 repo 裡沒有其他 Codex instance | `codex resume --last`，並發通知 |
 
-AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 `~/.codex`，所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
+AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
 
 **`~/.codex` 在哪裡。** 上面提到的共用 Codex home，在 fleet 的環境有設定 `$CODEX_HOME` 時就是它，否則就是 `~/.codex`。每個 instance 本身則以 `~/.agend/cx/<hash>/` 底下的私有 `CODEX_HOME` 執行：裡面有它自己的 `config.toml`（你的設定，去掉其他 instance 的 AgEnD MCP 項目，再加上它自己的），登入資訊、session 和快取則連回共用的 home。
 
@@ -730,7 +765,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。每個後端都用它原生的機制：
 
 - Claude Code：`--append-system-prompt-file`（檔案是 instance 目錄裡的 `fleet-instructions.md`）
-- Kiro CLI：它自己的 steering 檔，`.kiro/steering/agend-<instance>.md`
+- Kiro CLI：instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`（見[同一個工作目錄裡的 kiro instance](#同一個工作目錄裡的-kiro-instance)）。kiro-cli 2.21 以前，以及恢復的對話切換成自己的 agent 之前，改用 steering 檔 `.kiro/steering/agend-<instance>.md`。
 - Codex、Grok Build、Meta Muse Code：工作目錄裡 `AGENTS.md` 中一段有標記的區塊
 - Antigravity CLI：工作目錄裡 `.agents/agents.md` 中一段有標記的區塊
 - OpenCode：instance 目錄裡的 `fleet-instructions.md`，加進工作目錄中 `opencode.json` 的 `instructions` 清單
@@ -786,6 +821,18 @@ defaults:
 ```
 
 在同一批裡，共用同一個工作目錄的 instance 會依序啟動，避免設定檔的競爭狀況。
+
+## 同一個工作目錄裡的 kiro instance
+
+每個 kiro instance 都以自己的 kiro agent 執行（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示，所以共用工作目錄的 kiro instance 不再啟動彼此的 AgEnD server、讀到彼此的指示，或恢復到彼此的對話。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
+
+- **你自己的 MCP server 都還在。** agent 會納入全域的 `~/.kiro/settings/mcp.json` 和工作目錄的 `.kiro/settings/mcp.json`；AgEnD 不再把自己的項目寫進去。
+- **每個 instance 切換一次。** 這個版本以前的對話，恢復時會回到它當初存檔時的 agent。第一次恢復時，AgEnD 會在 pane 裡輸入 `/agent swap <agent>`，在畫面上確認切換成功後，才移除該 instance 舊的共用設定。如果 15 秒內無法確認，就保留舊設定、發出通知，下次啟動再試。
+- **什麼時候算完全隔離。** 被移除的項目，保證在執行中的 session 下次啟動後才會消失。一個目錄裡所有 kiro instance 都確認切換、且之後又啟動過一次，隔離才算完整：升級後第一次啟動時切換，再下一次啟動時完成。
+- **兩個 instance、同一段舊對話。** 升級時，同目錄的兩個既有 instance 都會指向這個目錄最新的對話。先啟動的保留它，另一個開新的對話。
+- **舊的指示檔。** 這個版本以前寫的 `.kiro/steering/agend-<instance>.md` 沒有 fleet 標記。AgEnD 無法判斷是哪個 fleet 寫的，所以保留它並提醒一次。等所有使用這個目錄的 fleet 都升級後請手動刪除；在那之前，kiro 仍會讓該目錄的每個 agent 都載入它。
+- **兩個 fleet 共用一個目錄。** 兩個 fleet 同時更新共用的 `.kiro/settings/mcp.json` 時，可能把對方剛移除的項目寫回來；該 instance 下次啟動會再移除。
+- **Grok** 還沒有每個 instance 自己的 agent：共用工作目錄的 Grok instance 會共用它的專案層級 MCP 設定。請用不同的 worktree 執行它們（[#1411](https://github.com/songsid/AgEnD/issues/1411)）。
 
 ## Antigravity CLI 後端 (Antigravity CLI backend)
 
@@ -1016,3 +1063,18 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 - critical 解除後，啟動速度會在 30 秒內慢慢回升。
 
 `/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢）；在 Linux 上，記憶體壓力也會讓它標成 degraded，並發出 fleet 通知，冷卻時間 10 分鐘（升級到 critical 會立刻通知）。在 **macOS** 上，從 #1257 起樣本只寫進日誌：不會放慢或擋下任何東西、不發通知，`/health` 也不回報壓力，因為 macOS 的可用記憶體和 swap 數字，在記憶體充裕的機器上也會觸發警示。詳見英文版 [memory-pressure.md](memory-pressure.md)。
+
+## 「需要你處理」收件匣（#1386 / #1398）
+
+每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。在 `/ui` 中，**等你處理**（`/ui/needs`）是一個附側欄標記與可選桌面通知的面板（#1408 第 4 步）。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
+
+## 網頁應用程式外殼（#1408）
+
+`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`），第三步提供 **Settings** 面板（`/settings` 及 `/settings/<section>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。第四步加入 **等你處理** 面板（`/ui/needs`）。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。
+
+之後陸續加入：
+- **Fleet → 組織圖**（`/ui/fleet/org`，#1389）：General、team 與 instance，各自附上即時狀態與討論串連結。
+- **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。
+- **聊天的指令與快速動作**（#1269）：打 `/` 即可透過相同的處理程式與指令表，執行 instance 自己 topic 的指令。超過 4,000 字元的貼上會改成文字檔附加，內容變長時聊天會停在最新訊息。
+
+詳見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。

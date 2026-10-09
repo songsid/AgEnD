@@ -26,7 +26,9 @@ afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true 
  * means the lookup fails); `npm publish … --tag latest` writes the run's VERSION to it, so two runs can share a
  * registry. `steps(until)` runs the next steps up to (not including) the named one; `steps()` runs to Publish.
  */
-function release(tag: string, registry: string, ref = `refs/tags/${tag}`) {
+/** What `npm pack` packs: by default a manifest that pins the bundled runtime (#1488), as a 2.2 release must. */
+const PINNED = { name: "@songsid/agend", optionalDependencies: Object.fromEntries(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].map(id => [`@songsid/agend-node-${id}`, "22.23.3"])) };
+function release(tag: string, registry: string, ref = `refs/tags/${tag}`, packed: object = PINNED) {
   const dir = mkdtempSync(join(tmpdir(), "agend-publish-1259-"));
   dirs.push(dir);
   const bin = join(dir, "bin"), log = join(dir, "npm.log"), envFile = join(dir, "github.env");
@@ -35,12 +37,17 @@ function release(tag: string, registry: string, ref = `refs/tags/${tag}`) {
   const stub = [
     "#!/bin/bash",
     `echo "$(basename "$0") $*" >> "${log}"`,
+    // npm pack → a real .tgz of the test's manifest in the destination (the last argument), as npm prints it (#1488).
+    `if [ "$1" = pack ]; then d="\${@: -1}"; mkdir -p "${dir}/pack/package"; cp "${dir}/packed.json" "${dir}/pack/package/package.json"; tar -czf "$d/agend-pack.tgz" -C "${dir}/pack" package; echo '[{"filename":"agend-pack.tgz"}]'; exit 0; fi`,
+    // The runtime packages a pinned manifest names are on this registry.
+    `if [ "$1" = view ] && [[ "$2" == @songsid/agend-node-* ]]; then printf '"%s"\\n' "\${2##*@}"; exit 0; fi`,
     `if [ "$1" = view ]; then v="$(cat "${registry}" 2>/dev/null)"; [ -n "$v" ] || exit 1; echo "$v"; fi`,
     `if [ "$1" = publish ] && [[ " $* " == *" --tag latest "* ]]; then echo "$VERSION" > "${registry}"; fi`,
     "exit 0", "",
   ].join("\n");
   for (const name of ["npm", "npx"]) { writeFileSync(join(bin, name), stub); chmodSync(join(bin, name), 0o755); }
-  const env: Record<string, string> = { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: dir, GITHUB_REF: ref, GITHUB_ENV: envFile };
+  writeFileSync(join(dir, "packed.json"), JSON.stringify(packed));
+  const env: Record<string, string> = { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: dir, GITHUB_REF: ref, GITHUB_ENV: envFile, RUNNER_TEMP: dir };
   const runnable = steps.filter(step => step.run && !step.uses);
   let next = 0, failedStep: string | null = null, stderr = "";
   const runSteps = (until?: string) => {
@@ -67,12 +74,12 @@ function release(tag: string, registry: string, ref = `refs/tags/${tag}`) {
 }
 
 /** A whole run against a registry whose latest is `latest` (null: the lookup fails). */
-function publish(tag: string, latest: string | null) {
+function publish(tag: string, latest: string | null, packed: object = PINNED) {
   const dir = mkdtempSync(join(tmpdir(), "agend-registry-1259-"));
   dirs.push(dir);
   const registry = join(dir, "latest");
   writeFileSync(registry, latest ?? "");
-  const run = release(tag, registry);
+  const run = release(tag, registry, `refs/tags/${tag}`, packed);
   run.steps();
   return run.outcome();
 }
@@ -87,7 +94,7 @@ describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1
     ["v2.1.12", null, "latest"],              // no current latest (lookup failed): only the backwards check is skipped
   ])("%s publishes to %s… → --tag %s", (tag, latest, distTag) => {
     const run = publish(tag, latest);
-    expect(run.failedStep).toBeNull();
+    expect(run.failedStep, run.stderr).toBeNull();
     expect(run.published).toBe(`npm publish --access public --tag ${distTag}`);
     expect(run.npm).toContain(`npm pkg set version=${tag.slice(1)}`);
   });
@@ -101,6 +108,17 @@ describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1
     expect(run.stderr).toContain("refusing to guess a dist-tag");
     expect(run.published).toBeNull();
     expect(run.npm.some(line => /^npm (ci|run build)|^npx tsc/.test(line))).toBe(false);
+  });
+
+  // #1488: a package that would ship without its bundled Node is never published.
+  it.each([
+    ["no pins at all", { name: "@songsid/agend" }],
+    ["a pin missing", { name: "@songsid/agend", optionalDependencies: { "@songsid/agend-node-linux-x64": "22.23.3" } }],
+  ])("the packed manifest has %s → the job fails at the pin check; npm publish never runs", (_n, packed) => {
+    const run = publish("v2.2.0-alpha.2", "2.1.12", packed);
+    expect(run.failedStep).toBe("The packed package pins its bundled Node, as published runtime packages");
+    expect(run.stderr).toContain("would ship without its bundled Node");
+    expect(run.published).toBeNull();
   });
 
   it("a stable older than the current latest fails the job (latest never moves backwards)", () => {

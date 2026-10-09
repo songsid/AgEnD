@@ -15,6 +15,7 @@
  */
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { atomicWriteFileSync } from "./atomic-write.js";
 
 /**
  * How long a marker is believed. Long enough for a slow npm install plus a
@@ -76,13 +77,10 @@ function readMarker(dataDir: string): UpdateMarker | null {
 
 function writeMarker(dataDir: string, marker: UpdateMarker): boolean {
   const path = markerPath(dataDir);
-  const temp = `${path}.${process.pid}.${Date.now()}.tmp`;
   try {
-    writeFileSync(temp, JSON.stringify(marker), { mode: 0o600 });
-    renameSync(temp, path);
+    atomicWriteFileSync(path, JSON.stringify(marker), { mode: 0o600 });
     return true;
   } catch {
-    try { unlinkSync(temp); } catch { /* best effort */ }
     return false;
   }
 }

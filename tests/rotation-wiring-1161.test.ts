@@ -72,7 +72,8 @@ describe("the health tick does not wait for a rotation (#1161)", () => {
   it("a dead pane takes the window-loss path, not the rotation (they are different branches)", async () => {
     const d = daemon();
     d.tmux = { getPaneStatus: vi.fn(async () => null), getWindowId: () => "@1", capturePaneWithHistory: vi.fn(async () => ""), killWindow: vi.fn(async () => {}) };
-    vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([{ id: "@1", name: "worker" }] as never);   // the window is still there
+    vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([{ id: "@1", name: "worker" }] as never);
+    vi.spyOn(TmuxManager, "listWindowsStrict").mockResolvedValue([{ id: "@1", name: "worker" }] as never);   // the window is still there
     d.startHealthCheck();
     await vi.advanceTimersByTimeAsync(2_500);
     expect(rotation.calls).toEqual([]);

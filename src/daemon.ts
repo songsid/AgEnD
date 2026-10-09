@@ -24,11 +24,12 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
-import type { CliBackend, CliBackendConfig, ErrorPattern, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
+import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
 import { shellQuote, UnsupportedCliError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import { parseReplyButtons, replyButtonsFallbackText } from "./reply-buttons.js";
 import { HangDetector } from "./hang-detector.js";
 import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
@@ -40,15 +41,18 @@ import {
   renderCrossInstanceHandoffMetadata,
 } from "./cross-instance-envelope.js";
 import type { SpawnGate } from "./spawn-gate.js";
-import { bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
+import { agendMessageInInput, bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
+import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
-import { scanTranscriptForDeliveryMarker } from "./delivery-reconciliation.js";
+import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
+import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
+import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -96,8 +100,13 @@ const REPLY_GUARD_IDLE_CONFIRM_MS = 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
-export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
-  const source = binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
+/** The outbox evidence for a delivery the CLI's transcript shows taken (#758; #1201 absorbed). */
+function transcriptMarkerEvidence(kind: TranscriptMarkerKind): string {
+  return kind === "user" ? "transcript-marker" : kind === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
+}
+
+export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string, backendSource?: string | null): string {
+  const source = backendSource ? backendSource : binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
     ? "AGENTS.md"
     : binaryName === "kiro-cli"
       ? `.kiro/steering/agend-${instanceName}.md`
@@ -568,6 +577,15 @@ interface PaneEvidence {
   payload: number;
   /** Whether the input area ALREADY showed that signature. */
   strandedInput: boolean;
+  /**
+   * Pastes the input box shows collapsed (claude-code's `[Pasted text #3 +11 lines]`, #1200): the pasted text is not on
+   * screen, so the signature cannot be seen in the box. One more than before our paste is our paste, still in the box.
+   */
+  collapsedPastes: number;
+  /** Whether this snapshot had an input box/prompt region the backend could read. */
+  inputReadable: boolean;
+  /** The composer's interrupt mode on this snapshot (CliBackend.readSteerComposer, #1405); null when not readable. */
+  steerComposer: SteerComposerMode | null;
 }
 
 /**
@@ -578,6 +596,24 @@ interface PaneEvidence {
 interface SubmissionSignature {
   value: string;
   unique: boolean;
+  /**
+   * The CLI's own record of this delivery (set once the durable begin has a transcript checkpoint): the transcript from
+   * the checkpoint, read for this delivery's exact `[agend-delivery-id:…]` marker. A marker there is the CLI having
+   * taken the message — whatever the pane shows at that moment (a box still painting the paste, an echo already
+   * scrolled away by the reply). Positive only: no marker proves nothing either way.
+   */
+  transcript?: {
+    /** Bounded, incremental looks from the attempt's checkpoint (each ≤256 KiB, ≤250 ms). */
+    reader: TranscriptDeltaReader;
+    /**
+     * The write's fence: its spawn and launch, not stopping, and the caller's own fence. Asked after every await
+     * before a hit is used — a look that returns after a stop or respawn proves nothing for the replacement.
+     */
+    current: () => boolean;
+    /** Set on the first hit (later looks reuse it); the write records it as its evidence. */
+    provenBy?: TranscriptMarkerKind;
+    onProof?: (kind: TranscriptMarkerKind) => void;
+  };
 }
 
 interface KiroPendingDelivery {
@@ -724,6 +760,10 @@ type DeliveryVerdict = {
   fenced?: boolean;
   /** Where this attempt's transcript stood before the paste (#758), for a delivery only the output edge vouches for. */
   transcriptCheckpoint?: { backend: string; path: string; offset: number };
+  /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
+  submissionMode?: DurableSubmissionMode;
+  /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
+  transcriptProof?: TranscriptMarkerKind;
 };
 
 /**
@@ -735,10 +775,13 @@ type DeliveryVerdict = {
 type DeliveryStatus = { chatId: string; messageId: string; threadId?: string };
 
 /** Build a status holder from channel metadata, keeping chat and thread apart. */
-function channelStatus(meta: Record<string, string>): DeliveryStatus | undefined {
+export function channelStatus(meta: Record<string, string>): DeliveryStatus | undefined {
   const chatId = meta.chat_id;
   const messageId = meta.message_id;
-  if (!chatId || !messageId) return undefined;
+  // A web chat message has no platform chat when the fleet has no channel, and still gets its reports:
+  // they are the dashboard's ticks (the fleet routes them by the message id, never to a platform).
+  if (!messageId || (!chatId && meta.source !== "web")) return undefined;
+  if (!chatId) return { chatId: "", messageId };
   const threadId = meta.thread_id || undefined;
   return threadId ? { chatId, messageId, threadId } : { chatId, messageId };
 }
@@ -746,6 +789,21 @@ const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
 const NATIVE_QUEUE_PASTE_VERIFY_MS = 2_000;
+/** #1405: how long a steer's paste gets to show in a mode-switched composer before its one Enter (captures included). */
+const STEER_PASTE_VISIBLE_MS = 2_000;
+
+/** `promise`'s value if it settles within `ms`, else undefined — the late answer is dropped, never awaited (#1405). */
+async function withinMs<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  if (ms <= 0) { promise.catch(() => {}); return undefined; }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), ms); })]);
+  } catch {
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 /** Enter-confirmation poll: 10 × 200ms ≈ 2s of observed silence before giving up. */
 const CONFIRM_BUSY_POLLS = 10;
 const CONFIRM_BUSY_POLL_MS = 200;
@@ -1331,6 +1389,8 @@ export class Daemon extends EventEmitter {
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
   private autoResolvedDialogGeneration = 0;
+  /** Per-launch safety phases survive startup handoff, redraws and failed/uncertain key ACKs. */
+  private launchDialogClaims: { spawn: number; attempt: number; keys: Set<string> } | null = null;
   /**
    * (#1103) Proof that THIS spawn's Codex went onto Luna Reserve: AgEnD saw (and
    * answered) the usage-limit menu that codex shows when it switches itself to
@@ -1945,6 +2005,7 @@ export class Daemon extends EventEmitter {
     delivery: { deliveryId: string; attemptNo: number } | null,
     outcome: "delivered" | "failed" | "uncertain",
     evidence?: string,
+    verdict?: DeliveryVerdict,
   ): void {
     if (!delivery) return;
     // Delivered or uncertain means the pane write started: the work reached
@@ -1952,6 +2013,39 @@ export class Daemon extends EventEmitter {
     // not — a pre-write failure never gets here; it is retried before begin.
     if (outcome !== "failed") this.noteWorkActivity();
     this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
+    if (verdict && outcome !== "failed") this.startConsumedWatch(delivery, verdict);
+  }
+
+  /**
+   * #1201: a steer or a native-queue hand-off was accepted into the CLI's input (or may have been) — not read. Watch
+   * the transcript from this attempt's checkpoint for the moment the CLI takes it, and record that on the delivery;
+   * an `uncertain` row becomes `delivered` then. Only claude-code and codex write a transcript AgEnD can read. The
+   * watch belongs to this CLI: a stop, pause or respawn ends it (restart reconciliation owns the row after that).
+   */
+  private startConsumedWatch(delivery: { deliveryId: string; attemptNo: number }, verdict: DeliveryVerdict): void {
+    const checkpoint = verdict.transcriptCheckpoint;
+    const outbox = this.deliveryOutbox;
+    if (!checkpoint || !outbox?.markConsumed) return;
+    if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
+    if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, boot = this.bootId;
+    consumedWatches.start({
+      deliveryId: delivery.deliveryId,
+      attemptNo: delivery.attemptNo,
+      backend: checkpoint.backend,
+      path: checkpoint.path,
+      offset: checkpoint.offset,
+      current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch,
+      consumed: (via, evidence) => {
+        try {
+          const result = outbox.markConsumed!(delivery.deliveryId, boot, delivery.attemptNo, via, evidence);
+          this.logger.info({ deliveryId: delivery.deliveryId, via, result }, "The CLI's transcript shows the delivery consumed");
+        } catch (err) {
+          this.logger.warn({ err, deliveryId: delivery.deliveryId }, "Could not record the consumed signal (the row keeps its state)");
+        }
+      },
+      logger: this.logger,
+    });
   }
 
   private finishDurableSubmission(
@@ -1962,7 +2056,7 @@ export class Daemon extends EventEmitter {
     // claim submission. Keep that row inspectable instead of recording a false
     // delivered state; reconciliation can classify it in a later phase.
     if (verdict.proof === "unverified") {
-      this.finishDurableDelivery(delivery, "uncertain", `${verdict.phase ?? "submission"}:unverified`);
+      this.finishDurableDelivery(delivery, "uncertain", `${verdict.phase ?? "submission"}:unverified`, verdict);
       return;
     }
     // A steer into a busy pane of a CLI whose input row cannot be read: the paste and the one Enter went through and the
@@ -1970,7 +2064,14 @@ export class Daemon extends EventEmitter {
     // it", and delivery_status carries delivery_mode=steer — and it is all this class of backend can ever show for a steer
     // (#1197). Labelled, so it is never mistaken for a proof that the input row was cleared.
     if (verdict.proof === "steer-marker-on-pane") {
-      this.finishDurableDelivery(delivery, "delivered", "steer-accepted-marker-on-pane; input-row-unreadable");
+      this.finishDurableDelivery(delivery, "delivered", "steer-accepted-marker-on-pane; input-row-unreadable", verdict);
+      return;
+    }
+    // A steer into a mode-switched composer (kiro TUI, #1405): the box held the paste before the one Enter and read as
+    // its empty placeholder after it — taken by the CLI (steered into the turn, held for its end on "queue", or a new
+    // turn on "idle"). Accepted, not read; labelled with what the composer showed.
+    if (verdict.proof?.startsWith("steer-composer-")) {
+      this.finishDurableDelivery(delivery, "delivered", `steer-accepted; composer emptied (${verdict.proof.slice("steer-composer-".length)})`, verdict);
       return;
     }
     // A backend whose input row cannot be read: all that vouched for this delivery is that the pane printed something
@@ -1985,7 +2086,8 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "delivered", OUTPUT_EDGE_ONLY_EVIDENCE);
       return;
     }
-    this.finishDurableDelivery(delivery, "delivered", "positive submission proof");
+    this.finishDurableDelivery(delivery, "delivered", verdict.transcriptProof
+      ? `positive submission proof; ${transcriptMarkerEvidence(verdict.transcriptProof)}` : "positive submission proof", verdict);
   }
 
   /**
@@ -2015,9 +2117,9 @@ export class Daemon extends EventEmitter {
       for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
         if (this.deliveryWritesStopping) return; // reconciliation owns the row now
         const found = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, delivery.deliveryId);
-        if (found === "user" || found === "queued") {
+        if (found === "user" || found === "absorbed" || found === "queued") {
           outcome = "delivered";
-          evidence = found === "user" ? "transcript-marker" : "transcript-marker-queued";
+          evidence = transcriptMarkerEvidence(found);
           break;
         }
         last = found;
@@ -2075,6 +2177,15 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * Whether this launch takes a steer into a running turn, for a backend that answers per launch (kiro's TUI vs its
+   * legacy UI, #1405); undefined for every other backend, whose name decides (steer-capability.ts). The backend reads
+   * what it last launched — no probe, no fork, safe on the fleet loop.
+   */
+  launchSupportsSteer(): boolean | undefined {
+    return this.backend?.supportsSteer?.();
+  }
+
+  /**
    * Phase 2b (design §1.4): why this awake instance is not taking input, in
    * words for a notice, or null when nothing known holds it. Read from the
    * daemon's own state only; it never inspects the pane itself.
@@ -2114,7 +2225,14 @@ export class Daemon extends EventEmitter {
     });
   }
 
-  async start(): Promise<void> {
+  private startupAdmission: (() => void) | undefined;
+  async start(admission?: () => void): Promise<void> {
+    this.startupAdmission = admission;
+    try { admission?.(); await this.startAdmitted(); admission?.(); }
+    finally { this.startupAdmission = undefined; }
+  }
+
+  private async startAdmitted(): Promise<void> {
     ensureInstanceDir(this.instanceDir);
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -2166,7 +2284,7 @@ export class Daemon extends EventEmitter {
       this.logger.error({ err, name: this.name }, "IPC server error");
       this.emit("error", err);
     });
-    await this.ipcServer.listen();
+    await this.ipcServer.listen(); this.startupAdmission?.();
     ipcListening = true;
 
     // Permanent IPC dispatcher: routes responses to pending requests by type+id key
@@ -2230,11 +2348,12 @@ export class Daemon extends EventEmitter {
     });
 
     // 2. Tmux — ensure session, create window if not alive
-    await TmuxManager.ensureSession(this.tmuxSessionName);
+    await TmuxManager.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
     this.tmux = new TmuxManager(
       this.tmuxSessionName,
       "",
       resolveTmuxLogicalSize(this.config.terminal),
+      this.controlClient,
     );
 
     // Strategy A: always start fresh Claude window (MCP server has no reconnection)
@@ -2245,17 +2364,18 @@ export class Daemon extends EventEmitter {
       if (savedId) {
         const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
-          await this.checkpointSessionId();
-          await oldTmux.killWindow();
+          this.startupAdmission?.();
+          await this.checkpointSessionId(); this.startupAdmission?.();
+          await oldTmux.killWindow(); this.startupAdmission?.();
           this.logger.info({ savedId }, "Killed old tmux window for fresh start");
         }
       }
     }
 
-    const resumed = await this.spawnClaudeWindow();
+    const resumed = await this.spawnClaudeWindow(); this.startupAdmission?.();
     this.isNewSession = !resumed;
     if (!resumed) {
-      await this.injectSnapshotMessage();
+      await this.injectSnapshotMessage(this.startupAdmission); this.startupAdmission?.();
     } else {
       // Clean up stale snapshot file — resume restored full context, snapshot not needed
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
@@ -2277,7 +2397,7 @@ export class Daemon extends EventEmitter {
       // previous stuck splash (hundreds of MB of ANSI frames) is truncated before
       // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
       // keeps the writer attached after size resets.
-      await this.attachPipePaneLog();
+      await this.attachPipePaneLog(); this.startupAdmission?.();
 
       // 4. Transcript monitor. claude-code is handled inside the monitor
       // (statusline transcript); codex/kiro/opencode read their CLI's own
@@ -2292,6 +2412,15 @@ export class Daemon extends EventEmitter {
           this.credentialProfileStore(),
         ),
       );
+      const transcriptMonitor = this.transcriptMonitor;
+      const transcriptFence = this.launchFenceEpoch;
+      // Baseline in the isolate before this daemon accepts new work. A
+      // stopped/replaced launch may never re-arm polling after this await.
+      await transcriptMonitor.initialize(); this.startupAdmission?.();
+      if (this.startupAborted || this.launchFenceEpoch !== transcriptFence || this.transcriptMonitor !== transcriptMonitor) {
+        transcriptMonitor.stop();
+        return;
+      }
 
       // 5. Wire transcript events
       const ackIfPending = () => {
@@ -2795,7 +2924,7 @@ export class Daemon extends EventEmitter {
           // Stop the loop permanently — otherwise every tick triggers a respawn, whose
           // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
           // spamming errors every ~30s forever.
-          if (!existsSync(this.instanceDir)) {
+          if (!measureSyncWork("daemon.healthCheck", () => existsSync(this.instanceDir))) {
             this.logger.warn({ instanceDir: this.instanceDir }, "Instance directory missing — stopping health check");
             this.healthCheckPaused = true;
             this.healthCheckTimer = null;
@@ -2807,18 +2936,26 @@ export class Daemon extends EventEmitter {
             return;
           }
           // The CLI owns the MCP server process, so the daemon can only observe it.
-          this.checkMcpServerAlive();
+          measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
 
           // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
           const cliLabel = this.backend?.binaryName ?? "CLI";
+          const healthTmux = this.tmux;
+          const healthOwner = this.interactionOwner();
+          const healthCurrent = () => this.tmux === healthTmux
+            && sameInteractionOwner(healthOwner, this.interactionOwner())
+            && !this.runtimeMonitorsFrozen && !this.healthCheckPaused && !this.spawning
+            && !this.isPaused && this.pauseWakeState !== "waking";
+          const discardStaleHealth = () => {
+            if (healthCurrent()) return false;
+            scheduleNext();
+            return true;
+          };
 
-          let paneStatus = await this.tmux.getPaneStatus();
+          let paneStatus = await healthTmux.getPaneStatus();
           // Auto-pause intentionally exits the pane process. A health tick that
           // began just before pause must not classify that exit as a crash.
-          if (this.isPaused || this.pauseWakeState === "waking") {
-            scheduleNext();
-            return;
-          }
+          if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
             this.windowQueryFailureTicks = 0;
             this.stormWindow?.noteWindowAlive(this.name);
@@ -2828,7 +2965,7 @@ export class Daemon extends EventEmitter {
             // 10–100 MiB log runs off the event loop, and this tick must not wait for
             // it (#1161) — scheduleNext() below is not delayed by a rotation.
             if (!this.config.lightweight) {
-              void rotateLogIfNeededAsync(join(this.instanceDir, "output.log"));
+              void measureSyncWork("daemon.healthCheck", () => rotateLogIfNeededAsync(join(this.instanceDir, "output.log")));
             }
             scheduleNext();
             return;
@@ -2841,7 +2978,9 @@ export class Daemon extends EventEmitter {
           // and needs no recheck.
           if (paneStatus === null) {
             await new Promise(r => setTimeout(r, 1500));
-            paneStatus = await this.tmux.getPaneStatus();
+            if (discardStaleHealth()) return;
+            paneStatus = await healthTmux.getPaneStatus();
+            if (discardStaleHealth()) return;
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
               this.windowQueryFailureTicks = 0;
@@ -2858,12 +2997,15 @@ export class Daemon extends EventEmitter {
 
           // Normal exit (e.g. user Ctrl+C or /exit) — no crash, no respawn
           if (paneStatus && exitCode === 0) {
-            this.setProcessStatus("stopped");
             // Status 0 is not proof of a clean exit: a codex that hits a quota
             // wall exits 0 too. Capture what it printed before the window goes.
-            this.logPaneDeath(cliLabel, exitCode, await this.capturePaneOutput());
+            const output = await this.capturePaneOutput();
+            if (discardStaleHealth()) return;
+            this.setProcessStatus("stopped");
+            this.logPaneDeath(cliLabel, exitCode, output);
             this.logger.info("CLI exited normally (code 0) — pausing health check");
-            await this.tmux.killWindow();
+            await healthTmux.killWindow();
+            if (discardStaleHealth()) return;
             this.healthCheckPaused = true;
             this.emitSupervisionEnded(
               "the CLI exited normally (code 0)",
@@ -2880,12 +3022,13 @@ export class Daemon extends EventEmitter {
           let nullReason: string | undefined;
           if (!paneStatus) {
             const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
+            if (discardStaleHealth()) return;
             // A server may have already restarted before this daemon's health
             // tick. The new PID is the durable generation boundary: treat it as
             // a fleet storm even though `has-session` is true again.
-            const generationChanged = serverAlive
-              ? this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName)) === true
-              : false;
+            const serverPid = serverAlive ? await TmuxManager.getServerPid(this.tmuxSessionName) : null;
+            if (discardStaleHealth()) return;
+            const generationChanged = serverAlive && this.stormWindow?.observeServerAlive(serverPid) === true;
             if (generationChanged) this.emit("tmux_server_crash", this.name);
             if (!serverAlive || generationChanged || this.stormWindow?.needsRecovery(this.name)) {
               crashType = "server";
@@ -2900,12 +3043,14 @@ export class Daemon extends EventEmitter {
               // The fleet breaker owns the delay and extends it on every new
               // server generation. Do not schedule a competing fixed timer.
               await this.stormWindow?.waitForSpawnAllowed();
+              if (discardStaleHealth()) return;
             } else {
               // null but server alive: window-level disappearance. Probe whether
               // the window truly no longer exists vs a transient query glitch.
               nullReason = "no_window";
               try {
-                const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+                const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName, this.controlClient);
+                if (discardStaleHealth()) return;
                 this.windowQueryFailureTicks = 0;
                 const currentWindowId = this.tmux.getWindowId();
                 if (windows.some(w => w.id === currentWindowId)) {
@@ -2947,23 +3092,25 @@ export class Daemon extends EventEmitter {
           } else {
             this.logger.warn({ exitCode }, `${cliLabel} process exited`);
           }
-          this.setProcessStatus("crashed");
 
           // Capture last output before killing. Best-effort even when the pane is
           // gone (paneStatus null) — gives the crash record something to diagnose
           // from instead of an empty lastOutput.
           let lastOutput: string | undefined;
           try {
-            const raw = await this.tmux.capturePaneWithHistory(50);
+            const raw = await healthTmux.capturePaneWithHistory(50);
             // Strip ANSI escape codes for readability
             const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
             lastOutput = cleaned.trimEnd() || undefined;
           } catch { /* best effort — pane may already be gone */ }
+          if (discardStaleHealth()) return;
+          this.setProcessStatus("crashed");
           this.logPaneDeath(cliLabel, exitCode, lastOutput);
 
           // Kill the dead window (remain-on-exit keeps it around) before respawn
           if (paneStatus) {
-            await this.tmux.killWindow();
+            await healthTmux.killWindow();
+            if (discardStaleHealth()) return;
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
@@ -3091,7 +3238,11 @@ export class Daemon extends EventEmitter {
             // past that check and must not clear the process/window or respawn an instance that
             // was just stopped or paused (#1160 review).
             if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
-            this.transcriptMonitor?.resetOffset();
+            // Reset is synchronous for file sources, but Kiro's baseline is
+            // read off-thread. Finish it before starting the replacement CLI,
+            // otherwise its first work could become part of that baseline.
+            if (!await this.resetTranscriptBeforeAdmission()) return;
+            if (this.runtimeMonitorsFrozen || this.healthCheckPaused) return;
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.
             try {
@@ -3256,7 +3407,8 @@ export class Daemon extends EventEmitter {
     const busyPattern = this.backend.getBusyPattern?.() ?? null;
 
     this.errorMonitorTimer = setInterval(async () => {
-      if (!this.tmux || this.spawning) return;
+      if (!this.tmux || this.spawning || this.deliveryWritesStopping) return;
+      const pollTmux = this.tmux;
       // This poll belongs to the spawn and the monitors it started under. Every await below can outlive them (a stop,
       // a pause, a respawn); a stale poll must not touch state a newer one owns, so it checks before committing.
       const pollSpawn = this.spawnGeneration;
@@ -3265,14 +3417,19 @@ export class Daemon extends EventEmitter {
       const captureOrder = ++this.interactionCaptureSerial;
       const captureMono = performance.now();
       const stale = (): boolean => pollSpawn !== this.spawnGeneration || pollFence !== this.launchFenceEpoch
-        || !sameInteractionOwner(pollOwner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning;
+        || !sameInteractionOwner(pollOwner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning
+        || this.deliveryWritesStopping || this.tmux !== pollTmux;
+      let scanStartedAt: number | null = null;
+      const endScan = () => { if (scanStartedAt !== null) noteSyncWork("daemon.errorMonitorScan", scanStartedAt); scanStartedAt = null; };
       try {
-        const alive = await this.tmux.isWindowAlive();
+        const alive = await pollTmux.isWindowAlive();
         if (stale()) return;
         if (!alive) return;
 
         const captureAt = Date.now();
-        const pane = await this.tmux.capturePane();
+        const pane = await pollTmux.capturePane();
+        // The scan of this pane is synchronous until it answers a dialog (an await) or ends: attributed (#1235).
+        scanStartedAt = performance.now();
         if (stale()) return;
         if (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureAt) {
           this.unverifyInteraction(captureMono, captureOrder);
@@ -3347,9 +3504,7 @@ export class Daemon extends EventEmitter {
             continue;
           }
           const autoKey = dialog.autoResolutionKey;
-          if (dialog.verifyAfterKeys && autoKey
-            && this.autoResolvedDialogGeneration === this.spawnGeneration
-            && this.autoResolvedDialogKey === autoKey) {
+          if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) {
             // A previous poll sent the safety choice but the CLI has not
             // repainted yet. Never send another Enter into the same screen.
             continue;
@@ -3360,6 +3515,7 @@ export class Daemon extends EventEmitter {
           // (not queue) when the pane is busy: this poller runs every 5s, and the
           // dialog will still be on screen next tick.
           let resolved = false;
+          endScan();
           const dismissed = await this.paneWriteLock.tryRun(async () => {
             // Re-read under the lock: the first capture may have gone stale
             // while a delivery was finishing. A stale danger menu must never
@@ -3367,7 +3523,7 @@ export class Daemon extends EventEmitter {
             const currentAt = Date.now();
             const currentMono = performance.now();
             const currentOrder = ++this.interactionCaptureSerial;
-            const currentPane = await this.tmux!.capturePane();
+            const currentPane = await pollTmux.capturePane();
             // Every await below can outlive the spawn / monitors this poll started under: after each one, before
             // any state is touched or any further key is sent, `stale()` (fixed at the poll's start) is asked again.
             if (stale()) return;
@@ -3388,25 +3544,21 @@ export class Daemon extends EventEmitter {
             // too only when the backend vouches for the identity — an unrecognised difference (a timer, a spinner) is
             // not evidence that the old request was answered, and the one-minute fallback must keep running.
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
-            if (dialog.verifyAfterKeys && autoKey
-              && this.autoResolvedDialogGeneration === this.spawnGeneration
-              && this.autoResolvedDialogKey === autoKey) return;
-            if (dialog.verifyAfterKeys && autoKey) {
-              this.autoResolvedDialogGeneration = this.spawnGeneration;
-              this.autoResolvedDialogKey = autoKey;
-            }
+            if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) return;
+            if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
             this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
+              if (stale()) return;
               let sent = false;
               if (SPECIAL_KEYS.has(key)) {
-                sent = await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+                sent = await pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
               } else {
-                sent = await this.tmux!.pasteText(key, this.systemPasteOptions());
+                sent = await pollTmux.pasteText(key, this.systemPasteOptions());
               }
               if (stale()) return;
               if (!sent) {
-                if (dialog.verifyAfterKeys && autoKey) {
+                if (dialog.verifyAfterKeys && autoKey && !dialog.oncePerLaunch) {
                   this.autoResolvedDialogGeneration = 0;
                   this.autoResolvedDialogKey = null;
                 }
@@ -3420,7 +3572,7 @@ export class Daemon extends EventEmitter {
               const afterKeysAt = Date.now();
               const afterKeysMono = performance.now();
               const afterKeysOrder = ++this.interactionCaptureSerial;
-              const afterKeysPane = await this.tmux!.capturePane();
+              const afterKeysPane = await pollTmux.capturePane();
               if (stale()) return;
               const dialogStillActive = dialog.inputBlocked
                 ? dialogs.some(candidate => candidate.inputBlocked && Daemon.dialogMatches(candidate, afterKeysPane))
@@ -3446,7 +3598,7 @@ export class Daemon extends EventEmitter {
               // backend-named identity any difference on the screen (a ticking timer) proves nothing either way: nothing
               // is reported and the parked clock is left alone. Two requests that look exactly alike cannot be told apart.
               await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
-              const afterPane = await this.tmux!.capturePane();
+              const afterPane = await pollTmux.capturePane();
               if (stale()) return;                           // (nothing was touched since the last check: only a read)
               const stillThere = Daemon.dialogMatches(dialog, afterPane);
               const same = stillThere && Daemon.screenOf(dialog, afterPane) === before;
@@ -3476,6 +3628,8 @@ export class Daemon extends EventEmitter {
       } catch {
         if (!stale()) this.unverifyInteraction(captureMono, captureOrder);
         // capturePane can fail if window is transitioning — ignore
+      } finally {
+        endScan();
       }
     }, 5_000); // Check every 5 seconds (runtime dialogs need fast response)
   }
@@ -4467,44 +4621,68 @@ export class Daemon extends EventEmitter {
     // concurrency coordination, first output + idle is `budgetMs`, the dialog
     // scan is STARTUP_DIALOG_BUDGET_MS — so the outcome is always trySpawn's
     // own verdict. A soft timer only makes a slow wake visible in the log.
-    const transition = this.autoPauseController.wakeOnDeliver(async () => {
-      const slow = setTimeout(() => {
-        this.logger.warn({ budgetMs }, "Wake is exceeding its budget — still waiting for the spawn (it cannot be cancelled)");
-      }, budgetMs + STARTUP_DIALOG_BUDGET_MS);
-      slow.unref?.();
+    const wakeFence = this.launchFenceEpoch;
+    const wakeGeneration = this.spawnGeneration;
+    const isCurrent = () => !this.startupAborted && this.launchFenceEpoch === wakeFence
+      && this.spawnGeneration === wakeGeneration && this.pauseWakeState === "waking";
+    // The shared transition covers baseline initialization as well as spawn.
+    // Every wake().then(deliver) caller must wait for the same admission edge.
+    const transition = (async () => {
       try {
-        const ready = await this.trySpawn(true, budgetMs);
-        if (!ready) throw new Error(`Wake failed: the CLI did not become ready (budget ${budgetMs}ms)`);
+        await this.autoPauseController.wakeOnDeliver(async () => {
+          const slow = setTimeout(() => {
+            this.logger.warn({ budgetMs }, "Wake is exceeding its budget — still waiting for the spawn (it cannot be cancelled)");
+          }, budgetMs + STARTUP_DIALOG_BUDGET_MS);
+          slow.unref?.();
+          try {
+            const ready = await this.trySpawn(true, budgetMs);
+            if (!ready) throw new Error(`Wake failed: the CLI did not become ready (budget ${budgetMs}ms)`);
+          } finally {
+            clearTimeout(slow);
+          }
+        });
+        if (!isCurrent()) throw new Error("Wake cancelled: the launch was superseded");
+        if (!await this.resetTranscriptBeforeAdmission() || !isCurrent()) {
+          throw new Error("Wake cancelled: transcript initialization was superseded");
+        }
+        this.pauseWakeState = "active";
+        this.healthCheckPaused = false;
+        this.pauseRequested = false;
+        // trySpawn resolved only after the new CLI reached its ready prompt.
+        // Discard any recovery gate retained while monitors were frozen.
+        this.clearErrorRecoveryGate();
+        clearPausedMarker(this.instanceDir);
+        this.resumeRuntimeMonitors();
+        this.logger.info("Instance auto-woke");
+        this.ipcServer?.broadcast({
+          type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
+        });
+        this.emit("auto_woke", { name: this.name });
+      } catch (err) {
+        if (isCurrent()) {
+          this.pauseWakeState = "paused";
+          this.healthCheckPaused = true;
+        }
+        this.logger.error({ err: (err as Error).message }, "Instance wake failed");
+        throw err;
       } finally {
-        clearTimeout(slow);
+        this.endSpawn();
       }
-    });
+    })();
     this.pauseWakeTransition = transition;
-    try {
-      await transition;
-      this.pauseWakeState = "active";
-      this.healthCheckPaused = false;
-      this.pauseRequested = false;
-      // trySpawn resolved only after the new CLI reached its ready prompt.
-      // Discard any recovery gate retained while monitors were frozen.
-      this.clearErrorRecoveryGate();
-      clearPausedMarker(this.instanceDir);
-      this.transcriptMonitor?.resetOffset();
-      this.resumeRuntimeMonitors();
-      this.logger.info("Instance auto-woke");
-      this.ipcServer?.broadcast({
-        type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
-      });
-      this.emit("auto_woke", { name: this.name });
-    } catch (err) {
-      this.pauseWakeState = "paused";
-      this.healthCheckPaused = true;
-      this.logger.error({ err: (err as Error).message }, "Instance wake failed");
-      throw err;
-    } finally {
-      this.endSpawn();
+    try { await transition; } finally {
       if (this.pauseWakeTransition === transition) this.pauseWakeTransition = null;
     }
+  }
+
+  /** A reset baseline must settle before a launch admits new work. */
+  private async resetTranscriptBeforeAdmission(): Promise<boolean> {
+    const monitor = this.transcriptMonitor;
+    const fence = this.launchFenceEpoch, generation = this.spawnGeneration;
+    monitor?.resetOffset();
+    await monitor?.initialize();
+    return !this.startupAborted && this.launchFenceEpoch === fence
+      && this.spawnGeneration === generation && this.transcriptMonitor === monitor;
   }
 
   /**
@@ -4840,7 +5018,24 @@ export class Daemon extends EventEmitter {
    */
   private maybeConfirmReplyGuardIdle(pane?: string): void {
     const pending = this.replyGuardIdleConfirm;
-    if (!pending || this.isPaused || performance.now() < pending.confirmAt) return;
+    // #1377: if a successful settle already cleared the confirmation window,
+    // check if completionDelivered became true — if so, complete the guard
+    // on the next steady-idle tick so the guard doesn't persist indefinitely.
+    // Also handle a late failure ACK (replyAttemptFailed) that arrived after
+    // an idle edge with busyObserved=false: no confirm window was armed at that
+    // edge (no_busy_since_arm returned early), so failure must be reported here.
+    if (!pending) {
+      const turn = this.turnReplyGuard.snapshot();
+      if (!turn || turn.cancelledByUser || turn.phase !== "awaiting") return;
+      if (turn.completionDelivered) {
+        this.turnReplyGuard.complete(turn.generation);
+      } else if (turn.replyAttemptFailed) {
+        this.turnReplyGuard.complete(turn.generation);
+        this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      }
+      return;
+    }
+    if (this.isPaused || performance.now() < pending.confirmAt) return;
     this.maybeProxyReplyOnTurnEnd(pane, true);
   }
 
@@ -4932,15 +5127,6 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (turn.replyAttempted) {
-      // A provider timeout can be "applied, then timed out". Retrying it would
-      // risk a duplicate; report the unknown result and stop here.
-      this.clearReplyGuardConfirm();
-      this.turnReplyGuard.complete(turn.generation);
-      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
-      return;
-    }
-
     // #1241: an idle edge is not proof the turn ended. Two gates before the
     // recovery prompt goes anywhere near the CLI's input:
     // 1. work must have been observed after this generation armed — otherwise
@@ -4949,6 +5135,14 @@ export class Daemon extends EventEmitter {
     // 2. the edge must persist: the first qualifying edge only arms a
     //    confirmation window, and recovery starts only when steady idle past
     //    the window still shows no reply and no further work.
+    // Exception (#1377): a definitively failed reply (adapter returned an
+    // error) is known-bad now — no need to observe busy or wait 60s.
+    if (turn.replyAttemptFailed) {
+      this.clearReplyGuardConfirm();
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      return;
+    }
     if (!turn.busyObserved) {
       this.logger.info({
         correlationId: turn.target.correlationId,
@@ -4980,6 +5174,15 @@ export class Daemon extends EventEmitter {
       return;
     }
     this.clearReplyGuardConfirm();
+    if (turn.replyAttempted) {
+      // A reply was attempted but its deliver result is unknown (in-flight
+      // IPC or a provider timeout). Retrying risks a duplicate; report the
+      // unknown result and stop here. (#1377: moved after the confirm window
+      // so an in-flight settle gets the same 60s deferral as a no-reply turn.)
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      return;
+    }
     this.startReplyRecovery(turn, "no_valid_call");
   }
 
@@ -5335,21 +5538,26 @@ export class Daemon extends EventEmitter {
       return;
     }
     this.statePollInFlight = true;
+    let evaluationStartedAt: number | null = null;
     const captureStartedAt = Date.now();
     const interactionCaptureAt = performance.now();
     const interactionCaptureOrder = ++this.interactionCaptureSerial;
     const interactionOwner = this.interactionOwner();
+    const captureTmux = this.tmux;
     const captureEpoch = `${this.spawnGeneration}:${this.launchAttempt}`;
-    const currentDeliveryCapture = () => captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
+    const currentDeliveryCapture = () => this.tmux === captureTmux && captureEpoch === `${this.spawnGeneration}:${this.launchAttempt}`
       && !this.spawning && !this.runtimeMonitorsFrozen && this.instanceStateMonitorActive;
     try {
       const pane = reason === "interaction_confirmation"
-        ? await this.tmux.capturePane(1_000) : await this.tmux.capturePane();
+        ? await captureTmux.capturePane(1_000) : await captureTmux.capturePane();
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
       // Delivery's unknown-footer proof also awaits the TTY mode. Validate
       // output and launch freshness AFTER both awaits, before accepting it.
       const deliveryCandidate = reason === "delivery_idle_gate"
         ? await this.probeDeliveryIdleFallback(pane) : null;
+      // Everything from here to the finally is synchronous: the evaluation of this pane (#1235 attribution — a sweep
+      // runs it for every instance in a row).
+      evaluationStartedAt = performance.now();
       // An old capture must not retire a new launch's transient guard either.
       // This check is only live here, after the probe's await: the identical
       // check before the probe was dead (no await in between, so the early
@@ -5572,6 +5780,7 @@ export class Daemon extends EventEmitter {
       this.logger.debug({ err: (err as Error).message, reason }, "Instance state capture failed");
     } finally {
       this.statePollInFlight = false;
+      if (evaluationStartedAt !== null) noteSyncWork(`daemon.stateEvaluate:${reason}`, evaluationStartedAt);
     }
   }
 
@@ -6094,7 +6303,7 @@ export class Daemon extends EventEmitter {
           this.finishDurableSubmission(durableAttempt, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
           this.abortDurableDelivery(durableAttempt, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "no-pane-write"}`);
         } else if (durableAttempt) {
@@ -6104,7 +6313,8 @@ export class Daemon extends EventEmitter {
           this.reportCrossInstanceDeliveryFailure(meta, verdict);
         }
       } catch (err) {
-        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message);
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message, verdict);
         else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         throw err;
@@ -6217,7 +6427,7 @@ export class Daemon extends EventEmitter {
     if (this.pasteQueueDepth > 3) {
       this.logger.warn({ depth: this.pasteQueueDepth }, "Message delivery queue backing up");
     }
-    if (wasQueued && chatId && messageId) {
+    if (wasQueued) {
       const queuedStatus = channelStatus(meta);
       if (queuedStatus) this.emit("message_queued", queuedStatus);
     }
@@ -6237,7 +6447,7 @@ export class Daemon extends EventEmitter {
         if (this.pendingInstructionsNotice) {
           this.pendingInstructionsNotice = false;
           await this.deliverMessage(
-            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
             undefined,
             { deliveryEpoch },
           );
@@ -6263,7 +6473,7 @@ export class Daemon extends EventEmitter {
           this.finishDurableSubmission(durable, verdict);
           this.markTurnStarted(meta, formatted, deliveryEpoch);
         } else if (durableAttempt && verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
           this.abortDurableDelivery(durable, `${verdict.phase ?? "delivery"}:${verdict.proof ?? "no-pane-write"}`);
         } else if (durableAttempt) {
@@ -6279,12 +6489,13 @@ export class Daemon extends EventEmitter {
         } else if (verdict.reached) {
           this.finishDurableDelivery(durable, "failed", `${verdict.phase ?? "delivery"}:${verdict.proof ?? "failed"}`);
         } else if (verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else {
           this.abortDurableDelivery(durable, "delivery did not reach pane submission");
         }
       } catch (err) {
-        if (durable && verdict.paneWriteStarted) this.finishDurableDelivery(durable, "uncertain", (err as Error).message);
+        // The verdict goes along: a write that started and then threw is still a hand-off the CLI may consume (#1201).
+        if (durable && verdict.paneWriteStarted) this.finishDurableDelivery(durable, "uncertain", (err as Error).message, verdict);
         else if (durable && verdict.durableBeginCommitted) this.abortDurableDelivery(durable, (err as Error).message);
         else if (durable) this.retryDurableDeliveryBeforeBegin(durable, (err as Error).message);
         else throw err;
@@ -6388,7 +6599,8 @@ export class Daemon extends EventEmitter {
       const canHandOff = (supportsQueuedInput || opts?.steer)
         && readiness === "busy"
         && (await this.probeBlockingDialog()).state === "clear"
-        && await this.hasPositiveDeliveryInput();
+        && await this.hasPositiveDeliveryInput(true)
+        && (!opts?.steer || (this.launchTakesSteer() && await this.steerComposerAdmits(false)));
       if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
@@ -6480,7 +6692,12 @@ export class Daemon extends EventEmitter {
           const probe = await this.probeBlockingDialog();
           if (probe.state !== "clear") return "dialog";
         }
-        if (!(await this.hasPositiveDeliveryInput())) return "dialog";
+        if (!(await this.hasPositiveDeliveryInput(handingOffToNativeQueue))) return "dialog";
+        // #1405: a launch that no longer takes a steer is not the one the gate saw — redo from the top (bounded), where
+        // the gate sends it down the idle path. The composer can also have changed mode since (the user's Ctrl+S), or
+        // the turn ended.
+        if (handingOffToNativeQueue && opts?.steer && !this.launchTakesSteer()) return "spawn-started";
+        if (handingOffToNativeQueue && opts?.steer && !(await this.steerComposerAdmits(true))) return "dialog";
         // #829: a CLI that restores a cancelled prompt into its input box would
         // have this message pasted onto it and both submitted as one. Clear it
         // first, or do not write at all. From here every await is fenced: a
@@ -6509,6 +6726,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
         );
+        // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
+        if (written === "handoff-box-unread") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
@@ -6744,6 +6963,32 @@ export class Daemon extends EventEmitter {
     return active;
   }
 
+  private hasAutoDialogClaim(dialog: RuntimeDialog): boolean {
+    const key = dialog.autoResolutionKey;
+    if (!key) return false;
+    if (dialog.oncePerLaunch) {
+      const claims = this.launchDialogClaims;
+      return claims !== null && claims.spawn === this.spawnGeneration && claims.attempt === this.launchAttempt
+        && claims.keys.has(key);
+    }
+    return this.autoResolvedDialogGeneration === this.spawnGeneration && this.autoResolvedDialogKey === key;
+  }
+
+  private claimAutoDialog(dialog: RuntimeDialog): void {
+    const key = dialog.autoResolutionKey;
+    if (!key) return;
+    if (dialog.oncePerLaunch) {
+      if (!this.launchDialogClaims || this.launchDialogClaims.spawn !== this.spawnGeneration
+        || this.launchDialogClaims.attempt !== this.launchAttempt) {
+        this.launchDialogClaims = { spawn: this.spawnGeneration, attempt: this.launchAttempt, keys: new Set() };
+      }
+      this.launchDialogClaims.keys.add(key);
+      return;
+    }
+    this.autoResolvedDialogGeneration = this.spawnGeneration;
+    this.autoResolvedDialogKey = key;
+  }
+
   /** Whether a runtime prompt currently owns the pane's stdin. */
   public isInputBlocked(): boolean {
     return this.inputBlockedDialogKey !== null;
@@ -6791,8 +7036,7 @@ export class Daemon extends EventEmitter {
       // this spawn is not what the screen is waiting on any more — the entry
       // after it (typically a hold) describes it.
       if (dialog.verifyAfterKeys && dialog.autoResolutionKey
-        && this.autoResolvedDialogGeneration === this.spawnGeneration
-        && this.autoResolvedDialogKey === dialog.autoResolutionKey
+        && this.hasAutoDialogClaim(dialog)
         && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
       this.trackDialogParked(dialog);
       return { state: "dialog", dialog };
@@ -7039,8 +7283,82 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
-  /** Codex can paint a prompt before the TTY enters raw mode. Both are required. */
-  private async hasPositiveDeliveryInput(): Promise<boolean> {
+  /**
+   * #1405: a steer is handed to the busy pane only if THIS launch takes one — asked of the backend again at delivery,
+   * not just by the hub when it was sent: a durable steer can outlive the launch it was meant for (a restart onto a
+   * legacy UI or an unverified version), and must then wait for the idle prompt like any message. Backends that do not
+   * answer per launch leave it to the hub's name table.
+   */
+  private launchTakesSteer(): boolean {
+    return this.backend?.supportsSteer?.() !== false;
+  }
+
+  /**
+   * #1405: a steer into a CLI whose busy input steers or queues by a mode the user switches (kiro TUI) goes in only
+   * while a fresh capture reads its composer as "steer" — or "idle" once the turn has ended (`allowIdle`, the pre-write
+   * re-check). "queue" (the user's choice), text in the box, or a screen it cannot read: not now — the caller waits for
+   * the idle prompt as for any message. AgEnD never switches the mode. Backends without the reader are not asked.
+   */
+  private async steerComposerAdmits(allowIdle: boolean): Promise<boolean> {
+    const read = this.backend?.readSteerComposer;
+    if (!read) return true;
+    if (!this.tmux) return false;
+    let mode: SteerComposerMode | null;
+    try { mode = read.call(this.backend, await this.tmux.capturePane()); } catch { return false; }
+    return mode === "steer" || (allowIdle && mode === "idle");
+  }
+
+  /**
+   * #1405: one look at a mode-switched composer for a steer's own proof: on the tmux of this write, inside `deadline`
+   * (monotonic) — the capture is raced against the time left and a late answer dropped — and `current` asked after the
+   * await. Null when unreadable, late or no longer this write's: never evidence of an empty or a full box. The pane
+   * comes back with the mode, so what follows judges the same capture.
+   */
+  private async steerComposerWithin(tmux: TmuxManager, deadline: number, current: () => boolean): Promise<{ mode: SteerComposerMode; pane: string } | null> {
+    const read = this.backend?.readSteerComposer;
+    const left = deadline - performance.now();
+    if (!read || left <= 0 || !current()) return null;
+    const pane = await withinMs(tmux.capturePane(Math.ceil(left)), left);
+    if (pane === undefined || performance.now() > deadline || !current()) return null;
+    const mode = read.call(this.backend, pane);
+    return mode === null ? null : { mode, pane };
+  }
+
+  /**
+   * #1405: the composer's text is THIS delivery's paste. kiro paints a multi-line paste's first line on the `›` row (live,
+   * 2.27.1 and 2.28.0, TUI v2 and v3); that row must show the payload's first line COMPLETE — for a durable steer that
+   * is its `[agend-delivery-id:<this attempt's id>]` marker, so a draft, someone else's paste, our paste appended to a
+   * draft, or a marker cut short (wrapped, collapsed, truncated) is never taken for it: not attributable, no Enter.
+   */
+  private steerPasteIsOurs(pane: string, formatted: string): boolean {
+    const shown = this.backend?.readSteerComposerText?.(pane);
+    if (!shown) return false;
+    const norm = (t: string) => t.replace(/\s+/g, " ").trim();
+    const first = norm(formatted.split("\n").find(line => line.trim() !== "") ?? "");
+    if (first === "") return false;
+    const row = norm(shown);
+    // The marker line holds nothing but the marker: the row is exactly it.
+    if (/^\[agend-delivery-id:[^\]\s]+\]$/.test(first)) return row === first;
+    return row === first || row.startsWith(`${first} `);
+  }
+
+  /**
+   * Codex can paint a prompt before the TTY enters raw mode. Both are required.
+   *
+   * A hand-off into a busy pane (native queue or steer) pastes and presses Enter at once, so a backend with a structural
+   * box reader must see its box on a fresh capture first: a pane whose box cannot be read — a modal the dialog table
+   * does not know, a frame the reader refuses, a failed capture — is not one to type into (#1169 review). Asked
+   * before the hand-off is chosen and again under the pane lock, right before the write; false waits for readiness.
+   */
+  private async hasPositiveDeliveryInput(handOff = false): Promise<boolean> {
+    if (handOff && this.backend?.readInputRow) {
+      if (!this.tmux) return false;
+      try {
+        if (this.backend.readInputRow(await this.tmux.capturePane()) === null) return false;
+      } catch {
+        return false;
+      }
+    }
     if (!this.needsStartupInputProof()) return true;
     const check = this.backend?.isDeliveryInputReadyPane;
     if (!check || !this.tmux) return !check;
@@ -7605,6 +7923,15 @@ export class Daemon extends EventEmitter {
     durableAttempt?: DurableDeliveryAttempt,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
+    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt);
+  }
+
+  /** Write half only: callers must finish the availability wait before any final recovery ownership proof. */
+  private async sendDeliveryEnterAfterAvailability(
+    phase: string,
+    stillCurrent?: () => boolean,
+    durableAttempt?: DurableDeliveryAttempt,
+  ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn
     // replaced the delivery. Check at the last point before the tmux write.
     if (this.deliveryWritesStopping || (stillCurrent && !stillCurrent())) return false;
@@ -7641,12 +7968,18 @@ export class Daemon extends EventEmitter {
     // #829: the caller's fence, asked once more after the last await before the
     // first side effect. Stale means unwritten: false, with no failure verdict.
     stillCurrent?: () => boolean,
-  ): Promise<boolean | KiroPendingDelivery> {
+    // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
+  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
     const signature = this.submissionSignature(formatted, submissionId);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     let windowId = initialWindowId;
     // The spawn this write belongs to: acceptance evidence is only read while it is still the current one (#1197).
     const spawnAtWrite = this.spawnGeneration;
+    // #1405: a composer-proven steer is bound to this write's tmux and launch: every read, the Enter and the proof ask
+    // this after each await (a respawn swaps this.tmux; a stop, pause or cancel ends the caller's fence).
+    const tmuxAtWrite = this.tmux;
+    const steerCurrent = () => (!stillCurrent || stillCurrent()) && !this.deliveryWritesStopping
+      && this.tmux === tmuxAtWrite && this.spawnGeneration === spawnAtWrite;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
     const maxAttempts = 3;
@@ -7659,6 +7992,27 @@ export class Daemon extends EventEmitter {
       // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
       // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
       if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      // A hand-off pastes and presses Enter into a busy pane: the box must still be readable on this, the last capture
+      // before the write (#1169 review) — a modal that appeared after the under-lock check would take that Enter. Before
+      // the durable begin the caller waits for readiness outside the lock and tries again; after it (a paste retry),
+      // nothing was written and the attempt ends like a paste that failed.
+      if (handingOffToNativeQueue && this.backend?.readInputRow && !pasteBaseline?.inputReadable) {
+        if (!verdict.durableBeginCommitted) return "handoff-box-unread";
+        return this.failDelivery(verdict, status, "paste", "handoff-input-unreadable");
+      }
+      // #1405: on that same last capture a mode-switched composer (kiro TUI) must still read "steer" — or "idle", the
+      // turn over. "queue", text in the box or an unreadable row: not written; handled as the unread box above.
+      if (handingOffToNativeQueue && steer && this.backend?.readSteerComposer
+        && pasteBaseline?.steerComposer !== "steer" && pasteBaseline?.steerComposer !== "idle") {
+        if (!verdict.durableBeginCommitted) return "handoff-box-unread";
+        return this.failDelivery(verdict, status, "paste", "steer-composer-not-steering");
+      }
+      // …and the launch must still take a steer (see launchTakesSteer). Not written: before the durable begin the row
+      // is retried, as a steer the gate will then send down the idle path.
+      if (handingOffToNativeQueue && steer && !this.launchTakesSteer()) {
+        verdict.fenced = !verdict.durableBeginCommitted;
+        return false;
+      }
       // Readiness, idle-gate, dialog, spawn and pane-lock waits have all ended.
       // Commit the submission fence at the last possible point before the
       // first side effect; a crash during those waits remains safely replayable.
@@ -7684,12 +8038,19 @@ export class Daemon extends EventEmitter {
           return false;
         }
         verdict.durableBeginCommitted = true;
+        verdict.submissionMode = attemptEvidence.submissionMode;
         if (attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
           verdict.transcriptCheckpoint = {
             backend: attemptEvidence.backend,
             path: attemptEvidence.transcriptPath,
             offset: attemptEvidence.transcriptOffset,
           };
+          // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
+          // reply, or still be painting the paste) — this delivery's exact marker only.
+          if (["claude-code", "codex"].includes(attemptEvidence.backend)) {
+            signature.transcript = this.transcriptProofFor(verdict.transcriptCheckpoint, durableAttempt.deliveryId, spawnAtWrite,
+              stillCurrent, kind => { verdict.transcriptProof = kind; });
+          }
         }
       }
       if (rawPaste) verdict.paneWriteStarted = true;
@@ -7748,10 +8109,45 @@ export class Daemon extends EventEmitter {
         await new Promise(r => setTimeout(r, fallbackMs));
         settle = { settleMs: fallbackMs, observedPostPasteOutput: false, capHit: false, usedFallback: true };
       }
+      // #1405: a steer into a mode-switched composer (kiro TUI) is proven by the box alone — before the Enter it must
+      // positively hold typed text, and after it be the empty placeholder again. The empty placeholder here means the
+      // paste never reached the box; an unreadable box (a failed or late capture, a dialog) proves nothing: no Enter.
+      const steerComposerProof = handingOffToNativeQueue && steer && !!this.backend?.readSteerComposer && tmuxAtWrite !== null;
+      let steerEnterDeadline = Infinity;
+      if (steerComposerProof) {
+        const deadline = performance.now() + STEER_PASTE_VISIBLE_MS;
+        let before: { mode: SteerComposerMode; pane: string } | null = null;
+        for (;;) {
+          before = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
+          if (before !== null || !steerCurrent() || performance.now() >= deadline) break;
+          await new Promise(r => setTimeout(r, Math.min(POST_ENTER_PROOF_POLL_MS, Math.max(0, deadline - performance.now()))));
+        }
+        if (!steerCurrent()) {
+          // Written but not entered, and no longer this write's pane to judge: uncertain, never retried here.
+          verdict.phase = "steer-paste";
+          verdict.proof = "fenced-before-enter";
+          return false;
+        }
+        // The caller's own receipt is inside the budget too: a reading whose continuation ran late is not used.
+        if (performance.now() > deadline) return this.failDelivery(verdict, status, "steer-paste", "box-read-late");
+        if (before?.mode !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before.mode}`);
+        if (!this.steerPasteIsOurs(before.pane, formatted)) return this.failDelivery(verdict, status, "steer-paste", "box-not-this-paste");
+        // …and so is the Enter: the key is sent only while the reading is still within it.
+        steerEnterDeadline = deadline;
+      }
       let enterAt = Date.now();
-      if (!(await this.sendDeliveryEnter("initial-submit", undefined, durableAttempt))) {
+      const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt))) {
+        if (steerComposerProof && !steerCurrent()) {
+          verdict.phase = "submit-enter";
+          verdict.proof = "fenced-before-enter";
+          return false;
+        }
+        if (steerComposerProof && performance.now() > steerEnterDeadline) return this.failDelivery(verdict, status, "submit-enter", "pre-enter-deadline");
         return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
+      // The proof's whole budget, from the Enter: every capture and dialog probe inside it, a late answer dropped.
+      const steerProofDeadline = performance.now() + NATIVE_QUEUE_PASTE_VERIFY_MS + POST_ENTER_PROOF_WINDOW_MS;
 
       // Kiro's legacy TUI can swallow Enter while it is still processing a large
       // paste — not only during the post-ready redraw (#479): on slower hosts it
@@ -7766,7 +8162,9 @@ export class Daemon extends EventEmitter {
       // re-baselined to the second Enter so leftover paste-render output between
       // the two cannot be what "confirms" the submission.
       let enterRetry = false;
-      if (!rawPaste && this.backend?.requiresDeliveryEnterRetry?.() === true) {
+      // Not after a composer-proven steer: what a bare Enter does in kiro's TUI composer mid-turn is unverified, and the
+      // box itself shows whether the one Enter took the text.
+      if (!rawPaste && !steerComposerProof && this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
         const retryAt = Date.now();
         if (await this.sendDeliveryEnter("queue-less-defensive-retry")) {
@@ -7790,6 +8188,39 @@ export class Daemon extends EventEmitter {
       // can silently swallow it). Idle submissions keep the swallowed-Enter path.
       if (handingOffToNativeQueue) {
         await new Promise(r => setTimeout(r, NATIVE_QUEUE_PASTE_VERIFY_MS));
+        if (steerComposerProof) {
+          // #1405: the box is its empty placeholder again — "steer" (taken into the turn), "queue" (the user switched
+          // mode meanwhile: held for the turn's end) or "idle" (the turn over: it started one) — with no dialog and the
+          // same spawn and window. Kiro paints late, so a bounded poll on a monotonic deadline. Still not empty: the
+          // Enter did not take it — uncertain, never re-pasted and never sent another Enter. Every capture and dialog
+          // probe runs inside the budget set at the Enter; the deadline and this write's fence are asked again,
+          // synchronously, right before it is accepted.
+          const deadline = steerProofDeadline;
+          for (;;) {
+            const look = await this.steerComposerWithin(tmuxAtWrite!, deadline, steerCurrent);
+            const after = look?.mode;
+            if (after === "steer" || after === "queue" || after === "idle") {
+              const probe = await withinMs(this.probeBlockingDialog(), deadline - performance.now());
+              if (probe?.state === "clear" && performance.now() <= deadline && steerCurrent() && this.getWindowId() === windowId) {
+                verdict.phase = "steer-accepted";
+                verdict.proof = `steer-composer-${after}`;
+                if (status) this.emit("message_confirmed", status); // ✅ taken from the box
+                return true;
+              }
+            }
+            if (performance.now() >= deadline) break;
+            await new Promise(r => setTimeout(r, Math.min(POST_ENTER_PROOF_POLL_MS, Math.max(0, deadline - performance.now()))));
+          }
+          if (!steerCurrent()) {
+            verdict.phase = "steer-proof";
+            verdict.proof = "fenced";
+            return false;
+          }
+          this.logger.warn("Steer: the composer was not shown empty after the Enter in time — outcome uncertain, not re-sent");
+          verdict.phase = "steer-proof";
+          verdict.proof = "composer-not-emptied";
+          return false;
+        }
         const proof = await this.confirmSubmitted(signature, pasteBaseline);
         if (proof === "submitted") {
           if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
@@ -7868,7 +8299,7 @@ export class Daemon extends EventEmitter {
           // The recovery Enter can be accepted before Codex paints its new
           // transcript. One immediate capture is not a failure verdict: give
           // that echo/queue a bounded chance to appear, without re-pasting.
-          const afterEnter = this.backend?.isDeliveryInputReadyPane
+          const afterEnter = this.structuredInputEvidence()
             ? await this.lateCodexSubmissionProof(signature, pasteBaseline, true)
             : await this.confirmSubmitted(signature, pasteBaseline);
           if (afterEnter === "submitted") {
@@ -7881,9 +8312,9 @@ export class Daemon extends EventEmitter {
           // another turn's output — and treating that as proof re-confirms a
           // message nobody submitted. Output is corroboration; text sitting in
           // the input row is disqualifying, and disqualifying evidence wins.
-          if (this.backend?.isDeliveryInputReadyPane && afterEnter !== "stranded") {
+          if (this.structuredInputEvidence() && afterEnter !== "stranded") {
             this.logger.warn({ phase: "native-queue-submit", proof: afterEnter, strandedAt },
-              "Codex recovery Enter outcome uncertain — no hard failure or duplicate paste");
+              `${this.cliLabel()} recovery Enter outcome uncertain — no hard failure or duplicate paste`);
             verdict.phase = "native-queue-submit";
             verdict.proof = afterEnter;
             return false;
@@ -7892,12 +8323,16 @@ export class Daemon extends EventEmitter {
           return this.failDelivery(verdict, status, "native-queue-submit", afterEnter);
         }
 
-        if (this.backend?.isDeliveryInputReadyPane) {
+        // A structural box reader (claude-code, #1200) is in the same position as Codex once the turn has run: the
+        // message may have been taken and its echo scrolled out, the queue drained, the box empty — or the capture
+        // failed. None of that proves the paste was lost, so nothing short of positive evidence is a reason to paste
+        // again (#1353 review); "unverifiable" used to, and could submit the message twice.
+        if (this.backend?.isDeliveryInputReadyPane || this.backend?.readInputRow) {
           // In Codex a missing viewport echo is inconclusive, not a proof of
           // loss. Another paste could run the same request twice. Leave the
           // already-pasted delivery at 👀 and let the next observation decide.
           this.logger.warn({ phase: "native-queue-proof", proof: settled },
-            "Codex native-queue outcome uncertain — not re-pasting");
+            `${this.cliLabel()} native-queue outcome uncertain — not re-pasting`);
           verdict.phase = "native-queue-proof";
           verdict.proof = settled;
           return false;
@@ -7993,20 +8428,20 @@ export class Daemon extends EventEmitter {
           // transcript-proof wait would hold a steer to `uncertain` whenever the CLI files no transcript marker (#1207 P2).
           if (!rawPaste && !steer && !this.canProveSubmission()) verdict.proof = "output-edge";
         } else {
-          const proof = this.backend?.isDeliveryInputReadyPane
+          const proof = this.structuredInputEvidence()
             ? await this.lateCodexSubmissionProof(signature, pasteBaseline)
             : await this.confirmSubmitted(signature, pasteBaseline);
           if (proof === "submitted") {
             if (status) this.emit("message_confirmed", status);
             return true;
           }
-          if (this.backend?.isDeliveryInputReadyPane && proof !== "stranded") {
+          if (this.structuredInputEvidence() && proof !== "stranded") {
             // This is the observed #910 race: the CLI processed the message
             // although its echo had not appeared within the proof window. A
             // missing viewport signature cannot establish non-delivery; keep
             // 👀 and never emit the sender's hard ❌ or re-paste blindly.
             this.logger.warn({ phase: "post-submit-proof", proof },
-              "Codex delivery outcome uncertain — no hard failure or duplicate paste");
+              `${this.cliLabel()} delivery outcome uncertain — no hard failure or duplicate paste`);
             verdict.phase = "post-submit-proof";
             verdict.proof = proof;
             return false;
@@ -8078,7 +8513,7 @@ export class Daemon extends EventEmitter {
   }
 
   private canProveSubmission(): boolean {
-    return !!this.backend?.getBottomReadyPattern?.();
+    return this.readsInput();
   }
 
   /** Positive submission retires the startup transient guard for this spawn. */
@@ -8123,17 +8558,21 @@ export class Daemon extends EventEmitter {
       return busy;
     }
 
-    if (this.backend?.isDeliveryInputReadyPane) {
+    if (this.structuredInputEvidence()) {
       // Codex's first post-wake redraw may hide the echo for a few seconds.
       // Absence from a viewport is NOT proof the paste was lost, so only a
       // positively identified strand authorizes another Enter. Never re-paste
       // here: the CLI may already be processing the unique message_id.
       let proof: SubmitProof = "unproven";
       const firstDeadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+      // A structural box reader (claude-code) sees its box still holding the paste for a moment after an Enter it did
+      // take — Claude paints the submit late (captured live on 2.1.293: ~40 captures in a row). So for it a strand
+      // proves a swallowed Enter only once it outlasts the window; an early one is polled through. Codex keeps its rule.
+      const strandMustPersist = !!this.backend?.readInputRow;
       for (;;) {
         proof = await this.confirmSubmitted(signature, baseline);
         if (proof === "submitted") return true;
-        if (proof === "stranded" || Date.now() >= firstDeadline) break;
+        if ((proof === "stranded" && !strandMustPersist) || Date.now() >= firstDeadline) break;
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
       if (proof !== "stranded" || !allowRecoveryEnter) return false;
@@ -8171,8 +8610,65 @@ export class Daemon extends EventEmitter {
 
   private async confirmSubmitted(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
     if (!this.tmux) return "unproven";
-    let pane: string;
-    try { pane = await this.tmux.capturePane(); } catch { return "unproven"; }
+    let pane: string | null = null;
+    try { pane = await this.tmux.capturePane(); } catch { /* the transcript may still say */ }
+    const onPane = pane === null ? "unproven" : this.judgeSubmission(pane, signature, baseline);
+    if (onPane === "submitted") return onPane;
+    const t = signature.transcript;
+    const found = await this.transcriptLook(signature);
+    // One synchronous stretch from here: the fence is asked after the last await, and only then is the hit kept and the
+    // spawn's guard retired — a stop or respawn that lands between the look and this line leaves both untouched.
+    if (!found || !t?.current()) return onPane;
+    if (!t.provenBy) { t.provenBy = found; t.onProof?.(found); }
+    return this.submittedProof();
+  }
+
+  /**
+   * The CLI's transcript, from this attempt's checkpoint, holds this delivery's exact marker: a user entry (read), an
+   * entry Claude absorbed mid-turn, or one it queued (taken into its queue). Any of them is the CLI having taken the
+   * message, so it outranks the pane — including a box that still shows the paste a moment after Enter (Claude paints
+   * the submit late, captured live on 2.1.293), which on its own reads as a strand. Positive only; never a downgrade.
+   */
+  private async transcriptLook(signature: SubmissionSignature): Promise<TranscriptMarkerKind | null> {
+    const t = signature.transcript;
+    if (!t || !t.current()) return null;
+    if (t.provenBy) return t.provenBy;
+    const found = await t.reader.look();
+    // No side effect here: the caller keeps the hit and retires the guard only after its own fence check.
+    return found === "user" || found === "absorbed" || found === "queued" ? found : null;
+  }
+
+  /**
+   * A write's transcript proof: bounded looks from its checkpoint, fenced to the write — its spawn and launch, a stop,
+   * and the caller's own fence — so a look that lands after any of them is never used (#1380 review).
+   */
+  private transcriptProofFor(
+    checkpoint: { backend: string; path: string; offset: number },
+    deliveryId: string,
+    spawnAtWrite: number,
+    stillCurrent: (() => boolean) | undefined,
+    onProof: (kind: TranscriptMarkerKind) => void,
+  ): NonNullable<SubmissionSignature["transcript"]> {
+    const launchAtWrite = this.launchFenceEpoch;
+    return {
+      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, deliveryId),
+      current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
+        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true),
+      onProof,
+    };
+  }
+
+  /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */
+  private cliLabel(): string {
+    return this.config.backend ?? this.backend?.binaryName ?? "CLI";
+  }
+
+  /**
+   * The verdict one snapshot supports — the live viewport, or (for a unique signature) the scrollback a late proof
+   * reads. One judge for both, so a history read cannot vouch for what the live one refuses: an unreadable box, or our
+   * text still in it (#1353 review).
+   */
+  private judgeSubmission(pane: string, signature: SubmissionSignature, baseline: PaneEvidence | null): SubmitProof {
 
     // Without a way to tell the input row from the transcript, "the text is on
     // screen" cannot distinguish submitted from stranded — that ambiguity IS
@@ -8183,8 +8679,7 @@ export class Daemon extends EventEmitter {
     // for the first and recovers on the second, which is what it did before —
     // the fix here is for backends that CAN be read, not a new guess for those
     // that cannot.
-    const prompt = this.backend?.getBottomReadyPattern?.();
-    if (!prompt) {
+    if (!this.readsInput()) {
       const seen = this.paneEvidence(pane, signature);
       if (signature.unique && seen.payload > 0) return "unverifiable";
       return seen.payload > (baseline?.payload ?? Infinity) || seen.queued > (baseline?.queued ?? Infinity)
@@ -8201,6 +8696,11 @@ export class Daemon extends EventEmitter {
       && !this.backend.getBusyPattern?.()?.test(pane)) {
       return after.payload > 0 ? "unverifiable" : "unproven";
     }
+    // A structural reader (claude-code) that finds no input box on this screen — a dialog in front of it, a layout it
+    // does not know — cannot place our text on either side of the box: the same verdicts as a readerless backend.
+    if (this.backend?.readInputRow && !after.inputReadable) {
+      return after.payload > 0 ? "unverifiable" : "unproven";
+    }
 
     // 1. Disqualifying evidence, checked FIRST and never overridden by the
     //    corroborating evidence below: our text is sitting in the input row, so
@@ -8212,7 +8712,20 @@ export class Daemon extends EventEmitter {
     //    Otherwise an older stranded message with the same opening would be
     //    read as ours, we would press Enter to "recover" it, and the turn IT
     //    starts would confirm a message that never reached the pane.
-    if (after.strandedInput && (signature.unique || baseline?.strandedInput === false)) return "stranded";
+    //
+    //    Structured evidence (Claude's box and Codex's current input/footer pair) requires both snapshots to be READ.
+    //    An unreadable baseline says nothing about what the box held; treating it as empty would claim an older draft
+    //    as ours and press Enter on it (#1353/#1359). Codex's native warning viewer can ignore the paste and first Enter,
+    //    then reveal an older draft when the user dismisses it. Row-only backends retain their existing attribution.
+    const attributable = baseline != null
+      && (!this.structuredInputEvidence() || (baseline.inputReadable && after.inputReadable));
+    if (after.strandedInput && (signature.unique || (attributable && baseline!.strandedInput === false))) return "stranded";
+    //    A paste the CLI shows collapsed carries no signature at all. One the box did not hold before we pasted is
+    //    ours, and it is still in the box — whatever echo or output is on screen (#1200).
+    if (attributable && after.collapsedPastes > baseline!.collapsedPastes) return "stranded";
+    //    Something sits in the box that cannot be attributed either way. Only a unique signature seen outside the box
+    //    (below) can still prove this delivery; nothing else on screen may.
+    const unattributedResidue = !attributable && (after.strandedInput || after.collapsedPastes > 0);
 
     // 2. Positive evidence. A unique signature needs no baseline: no earlier
     //    message can carry this delivery's message_id, so finding it outside
@@ -8220,13 +8733,16 @@ export class Daemon extends EventEmitter {
     //    failure to read the pane BEFORE pasting cannot turn a delivered
     //    message into a re-paste.
     if (signature.unique && after.payload > 0) return this.submittedProof();
+    if (unattributedResidue) return "unverifiable";
 
     // 3. Otherwise the evidence must be NEW relative to the pane as it was
     //    before we pasted: a queue marker left by an earlier message, or an
     //    older transcript entry that opens the same way, are on screen either
     //    way and would otherwise confirm a paste that never landed.
     if (baseline) {
-      if (after.queued > baseline.queued) return this.submittedProof();
+      // A queue is new only against a box that was read before the paste (a reader backend): an unreadable baseline
+      // says nothing about whether the queue was already there.
+      if (after.queued > baseline.queued && (!this.backend?.readInputRow || baseline.inputReadable)) return this.submittedProof();
       if (after.payload > baseline.payload) return this.submittedProof();
       // 4. Nothing new of ours anywhere: the paste was swallowed by a redraw.
       return "unproven";
@@ -8255,12 +8771,10 @@ export class Daemon extends EventEmitter {
       if (proof === "submitted" || (proof === "stranded" && !waitThroughStranded)) return proof;
       if (signature.unique && this.tmux?.capturePaneWithHistory) {
         try {
+          // Scrollback can hold the echo the viewport lost — but it is judged exactly like the viewport: a box that
+          // cannot be read, or that still holds our text, is never upgraded by an echo further up.
           const history = await this.tmux.capturePaneWithHistory(300);
-          const seen = this.paneEvidence(history, signature);
-          const known = !this.backend?.isDeliveryInputReadyPane
-            || this.backend.isDeliveryInputReadyPane(history)
-            || this.backend.getBusyPattern?.()?.test(history);
-          if (known && seen.payload > 0 && !seen.strandedInput) return this.submittedProof();
+          if (this.judgeSubmission(history, signature, baseline) === "submitted") return this.submittedProof();
         } catch { /* a failed history read proves neither delivery nor loss */ }
       }
       if (Date.now() >= deadline) return proof;
@@ -8281,9 +8795,8 @@ export class Daemon extends EventEmitter {
       try {
         const pane = await this.tmux.capturePane();
         const evidence = this.paneEvidence(pane, signature);
-        const prompt = this.backend?.getBottomReadyPattern?.();
-        if (prompt && (!this.backend?.isDeliveryInputReadyPane || this.backend.isDeliveryInputReadyPane(pane))
-          && strandedAgendMessageInInput(pane, prompt)) {
+        const input = this.inputRegion(pane);
+        if (input && agendMessageInInput(input.text)) {
           // Whatever we paste now lands after it, and one Enter submits both as
           // a single message. Nothing here can undo that; saying so beats
           // letting two messages silently merge.
@@ -8301,15 +8814,46 @@ export class Daemon extends EventEmitter {
   }
 
   private paneEvidence(pane: string, signature: SubmissionSignature): PaneEvidence {
-    const marker = this.backend?.getQueuedInputMarker?.();
-    const prompt = this.backend?.getBottomReadyPattern?.();
-    const input = prompt && (!this.backend?.isDeliveryInputReadyPane || this.backend.isDeliveryInputReadyPane(pane))
-      ? inputAreaText(pane, prompt) : null;
+    const input = this.inputRegion(pane);
+    // A structural box reader vouches for the queue itself (InputBox.queued): a marker's words elsewhere on the pane —
+    // a reply quoting it, an old block — are not a queue (#1169 review). Other backends count their marker rows.
+    const marker = this.backend?.readInputRow ? null : this.backend?.getQueuedInputMarker?.();
     return {
-      queued: marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
+      queued: this.backend?.readInputRow
+        ? (input?.queued ? 1 : 0)
+        : marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
       payload: countOccurrences(pane.replace(/\s+/g, ""), signature.value),
-      strandedInput: input != null && inputShowsPastedText(input, signature.value),
+      strandedInput: input != null && inputShowsPastedText(input.text, signature.value),
+      collapsedPastes: input?.collapsedPastes ?? 0,
+      inputReadable: input != null,
+      steerComposer: this.backend?.readSteerComposer?.(pane) ?? null,
     };
+  }
+
+  /**
+   * The input box as it stands on this screen: the backend's structural reader when it has one (claude-code, #1200),
+   * else the prompt-row heuristic (codex — only on a screen it vouches for — and kiro). null: no box to read here.
+   */
+  private inputRegion(pane: string): InputBox | null {
+    if (this.backend?.readInputRow) return this.backend.readInputRow(pane);
+    const prompt = this.backend?.getBottomReadyPattern?.();
+    if (!prompt || (this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane))) return null;
+    const text = inputAreaText(pane, prompt);
+    return text == null ? null : { text, collapsedPastes: 0 };
+  }
+
+  /** Whether this backend's input box can be read at all (a given screen may still have none). */
+  private readsInput(): boolean {
+    return !!this.backend?.readInputRow || !!this.backend?.getBottomReadyPattern?.();
+  }
+
+  /**
+   * Backends whose pane evidence is structured (codex's input/footer pair, a structural box reader): there, our text
+   * missing from the viewport is inconclusive — an echo can arrive late or scroll away — and never a loss to re-paste
+   * over. Only text positively seen in the box (a strand) authorizes another Enter.
+   */
+  private structuredInputEvidence(): boolean {
+    return !!this.backend?.isDeliveryInputReadyPane || !!this.backend?.readInputRow;
   }
 
   /**
@@ -8348,28 +8892,45 @@ export class Daemon extends EventEmitter {
    * is asked again after every await that precedes a write, so a cancelled paste adds no further paste and no key
    * (the retries included). Without a guard it is exactly the old unconditional path.
    */
-  private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }): Promise<boolean> {
+  private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }, admission?: () => void): Promise<boolean> {
+    const current = guard || admission ? () => { admission?.(); return guard?.current() ?? true; } : undefined;
+    if (current && !current()) return false;
     if (!this.tmux) return false;
     const signature = this.submissionSignature(text);
     let baseline: PaneEvidence | null;
     if (guard) {
       let pane: string;
       try { pane = await this.tmux.capturePane(); } catch { return false; }
-      if (!guard.current() || !guard.accept(pane)) return false;
+      if (!current!() || !guard.accept(pane)) return false;
       baseline = this.paneEvidence(pane, signature);
     } else {
       baseline = await this.capturePaneEvidence(signature);
     }
+    if (current && !current()) return false;
     const pasteGeneration = this.spawnGeneration;
-    if (!(await this.tmux.pasteBuffer(text))) {
+    const pasted = current ? await this.tmux.pasteBuffer(text, { guard: current }) : await this.tmux.pasteBuffer(text);
+    if (!pasted) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }
+    if (current && !current()) return false;
     this.rememberPaste(text, pasteGeneration);
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-    if (!(await this.sendDeliveryEnter(label, guard?.current))) return false;
+    if (!(await this.sendDeliveryEnter(label, current))) return false;
 
     let proof = await this.confirmSubmitted(signature, baseline);
+    if (current && !current()) return false;
+    // A structural box reader sees the paste in the box until the CLI digests the Enter (claude-code repaints a moment
+    // later): give that a bounded window before calling it stranded or lost, as the delivery ladder does.
+    if (this.backend?.readInputRow) {
+      const deadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+      while (proof !== "submitted" && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+        if (current && !current()) return false;
+        proof = await this.confirmSubmitted(signature, baseline);
+        if (current && !current()) return false;
+      }
+    }
     if (proof === "unverifiable") {
       if (this.backend?.isDeliveryInputReadyPane) {
         // A Codex screen without a structurally current input/footer pair is
@@ -8385,17 +8946,35 @@ export class Daemon extends EventEmitter {
       // exists to remove — visible text is also what a strand looks like.
       if (this.systemPasteOptions().retryEnter) {
         await new Promise(r => setTimeout(r, 1_000));
-        await this.sendDeliveryEnter(`${label}-defensive-retry`, guard?.current);
+        await this.sendDeliveryEnter(`${label}-defensive-retry`, current);
       }
       return true; // best effort, exactly as before — nothing here is verified
     }
     if (proof !== "submitted") {
-      // A bare Enter is a no-op at an empty prompt, so this is safe even if the
-      // first one did land; when the text is still in the input row it is the
-      // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
-      if (!(await this.sendDeliveryEnter(`${label}-retry`, guard?.current))) return false;
+      if (current && !current()) return false;
+      const retryPhase = `${label}-retry`;
+      if (this.structuredInputEvidence()) {
+        // Both the retry delay and the Enter availability wait may outlive the
+        // paste. Complete those waits BEFORE the last ownership/positive proof.
+        if (!(await this.waitForInputTransientToClear(retryPhase))) return false;
+        if (this.deliveryWritesStopping || (current && !current())) return false;
+        proof = await this.confirmSubmitted(signature, baseline);
+        if (this.deliveryWritesStopping || (current && !current())) return false;
+        if (proof === "submitted") return true;
+        if (proof !== "stranded") {
+          this.logger.warn({ label, proof }, "System paste recovery input could not be attributed");
+          return false;
+        }
+        // No further availability wait may invalidate this proof. The write
+        // half retains the same stopping/admission fence immediately before IPC.
+        if (!(await this.sendDeliveryEnterAfterAvailability(retryPhase, current))) return false;
+      } else {
+        // Row-only backends retain their ordinary availability wait and retry.
+        if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
+      }
       proof = await this.confirmSubmitted(signature, baseline);
+      if (current && !current()) return false;
     }
     if (proof !== "submitted") {
       this.logger.warn({ label, proof }, "System paste may not have been submitted");
@@ -8406,24 +8985,32 @@ export class Daemon extends EventEmitter {
 
   /** Re-resolve this instance's tmux window by name (stale id after crash/respawn). */
   private async recoverWindow(): Promise<string | undefined> {
+    const previousTmux = this.tmux;
+    const recoveryOwner = this.interactionOwner();
+    const recoveryCurrent = () => !this.runtimeMonitorsFrozen
+      && sameInteractionOwner(recoveryOwner, this.interactionOwner());
     const previousWindowId = this.tmux?.getWindowId();
     try {
-      const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+      const windows = await TmuxManager.listWindows(this.tmuxSessionName, this.controlClient);
+      if (!recoveryCurrent() || this.tmux !== previousTmux) return undefined;
       const match = windows.find(w => w.name === this.name);
       if (!match) return undefined;
       this.tmux = new TmuxManager(
         this.tmuxSessionName,
         match.id,
         resolveTmuxLogicalSize(this.config.terminal),
+        this.controlClient,
       );
+      const recoveredTmux = this.tmux;
       writeFileSync(join(this.instanceDir, "window-id"), match.id);
       // The window we were talking to is gone; leaving it registered means the
-      // control client re-resolves a dead id — one tmux subprocess — on every
+      // control client re-resolves a dead id — one bounded read — on every
       // reconnect, for the life of the fleet process.
       if (previousWindowId && previousWindowId !== match.id) {
         this.controlClient?.unregisterWindow(previousWindowId);
       }
       await this.controlClient?.registerWindow(match.id);
+      if (!recoveryCurrent() || this.tmux !== recoveredTmux) return undefined;
       this.bindInstanceStateOutputListener(match.id);
       this.logger.info({ windowId: match.id }, "Recovered window ID for message delivery");
       return match.id;
@@ -8538,6 +9125,30 @@ export class Daemon extends EventEmitter {
         // this, a restart in the reply-to-idle window would re-inject a
         // continuation for an already-answered turn.
         if (replyAttempt?.completionAction) clearInFlightTurnMarker(this.instanceDir);
+        // #1377: a confirmed completion action (reply/react/edit_message) ends
+        // the human-facing obligation immediately — the idle edge does not need
+        // to confirm it.  Clear any pending confirmation window so a later
+        // cross-instance busy→idle cycle cannot re-arm and fire false recovery.
+        // The guard itself completes on the next steady-idle tick via
+        // maybeConfirmReplyGuardIdle (which checks completionDelivered when
+        // replyGuardIdleConfirm is null) or at the next busy→idle edge.
+        // Cancelled turns are excluded: their completion semantics are handled
+        // by the idle edge's cancelledByUser check.
+        // An older reply that satisfied an earlier obligation but not the latest
+        // one (latestObligation > token.obligation) leaves completionDelivered
+        // false and must not clear the window either.
+        if (replyAttempt?.completionAction) {
+          const snap = this.turnReplyGuard.snapshot();
+          if (snap?.generation === replyAttempt.generation && snap.phase === "awaiting"
+            && snap.completionDelivered && !snap.cancelledByUser) {
+            this.clearReplyGuardConfirm();
+          }
+        }
+      } else if ((error || result == null) && replyAttempt?.reply && TURN_OUTBOUND_TOOLS.has(tool)) {
+        // #1377: the adapter returned a definitive error — record this so the
+        // confirm window can distinguish "in-flight" (unknown) from "known
+        // failed" and report unknown immediately rather than starting recovery.
+        this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
       const sent = this.ipcServer?.send(socket, { requestId, result, error, operationId }) ?? false;
       if (!sent) {
@@ -8764,7 +9375,14 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (!routeToolCall(adapter, tool, args, this.lastThreadId, respond)) {
+    // #1266: without the fleet there is no button store: buttons are checked, then offered as text.
+    let routed = args;
+    if (tool === "reply") {
+      const buttons = parseReplyButtons(args.buttons, args);
+      if (buttons && "error" in buttons) { respond(null, `reply: ${buttons.error}`); return; }
+      if (buttons) { routed = { ...args, text: `${String(args.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}` }; delete routed.buttons; }
+    }
+    if (!routeToolCall(adapter, tool, routed, this.lastThreadId, respond)) {
       respond(null, `Unknown tool: ${tool}`);
     }
   }
@@ -8922,7 +9540,8 @@ export class Daemon extends EventEmitter {
       instanceName: this.name,
       mcpServers: isCliMode ? {} : {
         "agend": {
-          command: "node",
+          // The Node this daemon runs on (#1450 C5): the CLIs start the MCP server with it, not a `node` from PATH.
+          command: process.execPath,
           args: [serverJs],
           env: mcpEnv,
         },
@@ -8945,7 +9564,8 @@ export class Daemon extends EventEmitter {
    * user input so the agent picks up where the previous session left off.
    * This replaces the old system-prompt injection approach.
    */
-  private async injectSnapshotMessage(): Promise<void> {
+  private async injectSnapshotMessage(admission?: () => void): Promise<void> {
+    admission?.();
     if (this.snapshotConsumed) return;
     const snapshot = this.buildSnapshotPrompt();
     if (!snapshot || !this.tmux) return;
@@ -8955,11 +9575,15 @@ export class Daemon extends EventEmitter {
     }
     // Small delay to let the CLI fully render its ready prompt
     await new Promise(r => setTimeout(r, 1_000));
+    admission?.();
     try {
       // Messages can arrive during a restart and be queued on pasteLock before the
       // snapshot lands; both write to the pane, so both go through the same lock.
       const restoreNotice = `[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`;
-      const injected = await this.paneWriteLock.run(() => this.submitSystemPaste(restoreNotice, "session-snapshot-restore"));
+      const injected = await this.paneWriteLock.run(() => {
+        admission?.(); return this.submitSystemPaste(restoreNotice, "session-snapshot-restore", undefined, admission);
+      });
+      admission?.();
       if (!injected) {
         // rotation-state.json was deleted when the prompt was built, so there is
         // nothing left to retry from: the restore is gone either way. Say so —
@@ -9182,12 +9806,13 @@ export class Daemon extends EventEmitter {
     // Fresh start or not: the owner is recorded below once this CLI is up, so an
     // id it does not own must be out of the way first, or it would be recorded
     // as this backend's and resumed by the next start.
-    this.setAsideForeignSession();
+    this.startupAdmission?.(); this.setAsideForeignSession();
     const attemptedResume = !this.skipResume;
     // A resume launch may get a longer budget than a fresh one (kiro: the
     // conversation must come back from the backend before anything paints).
     const resumeBudget = attemptedResume ? this.startupBudgetFor(true) : undefined;
     let alive = await this.trySpawn(false, resumeBudget);
+      this.startupAdmission?.();
 
     if (!alive && attemptedResume) {
       // Resume failed. Before abandoning the session:
@@ -9199,15 +9824,22 @@ export class Daemon extends EventEmitter {
       //  2. Otherwise, for backends that ask for it, retry resume ONCE — the
       //     first miss is usually slowness, not a broken session.
       await this.noteStartupPaneForBackendOutage();
+      this.startupAdmission?.();
       await this.failStartupIfBackendUnreachable();
+      this.startupAdmission?.();
       if (this.backend.retriesResumeOnStartupFailure?.() !== false) {
         this.logger.warn("Resume startup failed — retrying resume once before abandoning the session");
         await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
         await this.tmux!.killWindow();
+      this.startupAdmission?.();
         alive = await this.trySpawn(false, resumeBudget);
+      this.startupAdmission?.();
         if (!alive) {
           await this.noteStartupPaneForBackendOutage();
+      this.startupAdmission?.();
           await this.failStartupIfBackendUnreachable();
+      this.startupAdmission?.();
         }
       }
     }
@@ -9227,7 +9859,9 @@ export class Daemon extends EventEmitter {
           // Keep the session and fail this attempt; the fleet retries with
           // backoff, which is also how the backend-outage path behaves.
           await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
           await this.tmux!.killWindow();
+      this.startupAdmission?.();
           throw new Error(
             `CLI startup failed with a session to resume (attempt ${failures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
             + "— session kept, will retry",
@@ -9249,12 +9883,17 @@ export class Daemon extends EventEmitter {
       // a session: nothing about a failed fresh launch says the stored
       // conversation is unusable.
       await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
       await this.tmux!.killWindow();
+      this.startupAdmission?.();
 
       const retryAlive = await this.trySpawn(false, this.startupBudgetFor(false));
+      this.startupAdmission?.();
       if (!retryAlive) {
         await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
+      this.startupAdmission?.();
         await this.tmux!.killWindow();
+      this.startupAdmission?.();
         throw new Error("CLI failed to start after retry");
       }
     } else if (attemptedResume) {
@@ -9274,6 +9913,111 @@ export class Daemon extends EventEmitter {
       this.endSpawn();
     }
     return resumedSuccessfully;
+  }
+
+  /** The whole agent switch after a resume, on the monotonic clock (#906 §3). */
+  private static readonly AGENT_SWITCH_BUDGET_MS = 15_000;
+  private static readonly AGENT_SWITCH_POLL_MS = 500;
+  /** Each tmux call of the write (load, paste, Enter, take-back) is bounded by this. */
+  private static readonly AGENT_SWITCH_TMUX_OP_MS = 1_000;
+  /**
+   * The paste is started only with this much budget left, checked at the paste itself: the load and the paste, the
+   * settle, the Enter — each bounded by AGENT_SWITCH_TMUX_OP_MS — fit in it.
+   */
+  private static readonly AGENT_SWITCH_WRITE_RESERVE_MS = 4_000;
+  /** Between the paste and its Enter, as tmux pastes elsewhere (pasteText). */
+  private static readonly AGENT_SWITCH_PASTE_SETTLE_MS = 500;
+
+  /**
+   * #906 §3: after a resume, make the CLI run as this instance's own agent. Reads the agent off the live layout
+   * (backend.agentSwitch().readActive — the supported bottom layout only, never a name quoted in the conversation);
+   * when it is another one, types the switch command ONCE, under the pane-write lock, and only when ONE final capture
+   * taken there shows the live layout naming another agent AND an idle, input-ready pane (ready, not busy, no
+   * blocking dialog, no input transient) — after the delivery path's own readiness check. It confirms only on a
+   * later capture of the live layout naming ours.
+   *
+   * Fenced like a delivery, from entry on: the spawn generation, launch fence, the pause/wake phase it started in,
+   * the same tmux window, not aborted, writes not stopping — re-checked after every await, and between the paste and
+   * its Enter. The whole step, every await included, ends at one monotonic deadline: a late capture never confirms
+   * and a late admission never writes; a paste whose Enter would land past it is taken back. Not confirmed in time:
+   * the old setup stays, a launch warning says so, the next launch tries again. A stop, pause or respawn ends it
+   * silently, confirming and removing nothing. Never throws into the spawn.
+   */
+  private async ensureBackendAgent(): Promise<void> {
+    let sw: ReturnType<NonNullable<CliBackend["agentSwitch"]>> | null = null;
+    try { sw = this.backend?.agentSwitch?.() ?? null; } catch { sw = null; }
+    const tmux = this.tmux;
+    if (!sw || !tmux || !this.backend) return;
+    const windowId = tmux.getWindowId();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, phase = this.pauseWakeState;
+    const fenced = () => !this.startupAborted && !this.deliveryWritesStopping && !this.fatalStartupBlocked
+      && (phase === "active" || phase === "waking") && this.pauseWakeState === phase
+      && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && this.tmux === tmux;
+    const deadline = performance.now() + Daemon.AGENT_SWITCH_BUDGET_MS;
+    const live = () => { this.startupAdmission?.(); return fenced() && performance.now() < deadline; };
+    if (!live()) return;
+    const TIMEOUT = Symbol("deadline");
+    const within = <T>(work: Promise<T>): Promise<T | typeof TIMEOUT> => {
+      const left = deadline - performance.now();
+      if (left <= 0) { work.catch(() => {}); return Promise.resolve(TIMEOUT); }
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([work, new Promise<typeof TIMEOUT>(r => { timer = setTimeout(() => r(TIMEOUT), left); })])
+        .finally(() => clearTimeout(timer));
+    };
+    const capture = () => within(tmux.capturePane().catch(() => null));
+    let wroteAt: number | null = null;
+    try {
+      while (live()) {
+        const capturedAt = performance.now();
+        const pane = await capture();
+        if (pane === TIMEOUT || !live()) break;
+        const active = pane === null ? null : sw.readActive(pane);
+        if (active === sw.agent && (wroteAt === null || capturedAt > wroteAt)) {
+          if (sw.alreadyConfirmed && wroteAt === null) return; // already ours, already on record
+          for (const warning of sw.confirm()) this.emit("backend_launch_warning", { name: this.name, message: warning });
+          this.logger.info({ agent: sw.agent, switched: wroteAt !== null }, "The resumed conversation runs as this instance's agent");
+          return;
+        }
+        if (wroteAt === null && active !== null && active !== sw.agent) {
+          const wrote = await within(this.paneWriteLock.run(async () => {
+            // The whole write is one owned transaction under the lock. Every await is bounded; a take-back of a paste
+            // whose Enter would land past the deadline happens here, before the lock is released, so it can never
+            // edit a write admitted after this one.
+            if (!live()) return false;
+            const readiness = await within(this.paneReadinessForDelivery(windowId));
+            if (readiness !== "ready" || !live()) return false;
+            const final = await capture();
+            if (final === TIMEOUT || final === null || !live()) return false;
+            const now = sw!.readActive(final);
+            if (now === null || now === sw!.agent || this.inputTransientInPane(final) || !this.paneAuthoritativelyIdle(final)) return false;
+            // The reserve, at the paste boundary — after the final proof, which may have used some of the budget.
+            if (deadline - performance.now() < Daemon.AGENT_SWITCH_WRITE_RESERVE_MS) return false;
+            const op = Daemon.AGENT_SWITCH_TMUX_OP_MS;
+            // live() is asked before every tmux mutation inside the paste, so a stop, pause, respawn or the deadline
+            // between its load and its paste never reaches the pane.
+            const pasted = await tmux.pasteBuffer(sw!.command, { guard: live, timeoutMs: op });
+            if (!pasted) return false;
+            await new Promise(r => setTimeout(r, Daemon.AGENT_SWITCH_PASTE_SETTLE_MS));
+            if (live()) return tmux.sendSpecialKey("Enter", op);
+            // Same CLI, but no time left to see it through: take the command back out of its input row (bounded).
+            if (fenced()) await tmux.deleteBackward(sw!.command.length, op);
+            return false;
+          }));
+          if (wrote === true) {
+            wroteAt = performance.now();
+            this.logger.info({ agent: sw.agent, was: active }, "Switching the resumed conversation to this instance's agent");
+          }
+        }
+        if (!live()) break;
+        await within(new Promise(r => setTimeout(r, Math.min(Daemon.AGENT_SWITCH_POLL_MS, Math.max(0, deadline - performance.now())))));
+      }
+      if (!fenced()) return; // a stop, pause or respawn: nothing to say, nothing to do
+      this.logger.warn({ agent: sw.agent, typed: wroteAt !== null }, "The resumed conversation did not switch to this instance's agent in time");
+      this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000) });
+    } catch (err) {
+      this.startupAdmission?.();
+      this.logger.warn({ err }, "The agent switch after resume failed — the shared entries stay; the next launch tries again");
+    }
   }
 
   /**
@@ -9399,12 +10143,18 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    if (!this.spawnGate) return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
-    return this.spawnGate.run({
+    const ready = !this.spawnGate ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs) : await this.spawnGate.run({
       instanceName: this.name,
       workingDirectory: this.config.working_directory,
       reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
     }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    // #906: a resumed kiro conversation comes back as the agent it was saved under. Every launch path that reaches a
+    // ready CLI (start, recovery, wake) switches it to this instance's own agent here, while the spawn still holds
+    // deliveries — and outside the spawn gate, which it does not need.
+    this.startupAdmission?.();
+    if (ready) await this.ensureBackendAgent();
+    this.startupAdmission?.();
+    return ready;
   }
 
   /**
@@ -9574,7 +10324,7 @@ export class Daemon extends EventEmitter {
       // delivery is already in flight or queued. Without the lock the notice and
       // that delivery race into the same pane.
       const told = await this.paneWriteLock.run(() => this.submitSystemPaste(
-        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+        buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir, this.backend?.instructionsSource?.()),
         "instruction-reload-notice",
       ));
       if (!told) {
@@ -9594,6 +10344,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
 
@@ -9628,9 +10379,10 @@ export class Daemon extends EventEmitter {
 
     // A backend that has to ask its CLI something before the launch command exists (OpenCode: does
     // this binary take --auto?) does it here, off the event loop, bounded, and never fails the launch.
-    try { await this.backend!.prepareLaunch?.(); } catch { /* unknown capability → the backend's conservative form */ }
+    try { await this.backend!.prepareLaunch?.(backendConfig); } catch { /* unknown capability → the backend's conservative form */ }
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
+    this.startupAdmission?.();
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
@@ -9690,6 +10442,7 @@ export class Daemon extends EventEmitter {
     // The CLI's own shell sets a zero coredump_filter first (#1113): this pane
     // may belong to a tmux server the fleet did not start, which would hand
     // the CLI its own (full) filter instead of the fleet's.
+    this.startupAdmission?.();
     const cmd = coredumpFilterLaunchPrefix() + `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
@@ -9712,6 +10465,7 @@ export class Daemon extends EventEmitter {
     if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
       this.emit("tmux_server_crash", this.name);
     }
+    this.startupAdmission?.();
     let windowId: string;
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
@@ -9724,6 +10478,7 @@ export class Daemon extends EventEmitter {
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
+    this.startupAdmission?.();
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
@@ -9833,8 +10588,8 @@ export class Daemon extends EventEmitter {
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Resume session picker — start fresh" },
     ];
 
-    const deadline = Date.now() + budgetMs;
-    const remaining = () => deadline - Date.now();
+    const deadline = performance.now() + budgetMs;
+    const remaining = () => deadline - performance.now();
     const sleep = async () => { if (remaining() > 0) await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(remaining(), 0)))); };
     let cleanReadyPolls = 0;
     let lastDialog: StartupDialog | null = null;
@@ -9845,12 +10600,25 @@ export class Daemon extends EventEmitter {
     // repainted after Enter, let the following hold-only entry report it
     // instead of sending a second Enter into a possibly changed screen.
     const attemptedSafetyChoices = new Set<string>();
+    // The scan belongs to this launch: its tmux, spawn and launch fence. A respawn, pause or stop that replaces any of
+    // them retires it — a key meant for this launch's dialog must never reach the replacement (#1435 review).
+    const ownerTmux = this.tmux;
+    const ownerSpawn = this.spawnGeneration;
+    const ownerFence = this.launchFenceEpoch;
+    const owned = () => !this.deliveryWritesStopping && this.tmux === ownerTmux
+      && this.spawnGeneration === ownerSpawn && this.launchFenceEpoch === ownerFence;
     do {
+      this.startupAdmission?.();
       attempts++;
+      if (!owned()) {
+        this.logger.info("Startup dialog scan superseded by a newer launch, pause or stop — retiring without answering");
+        return true;
+      }
       let pane: string;
       try {
-        pane = await this.tmux!.capturePane();
+        pane = await this.tmux!.capturePane(); this.startupAdmission?.();
       } catch (err) {
+        this.startupAdmission?.();
         // Transient tmux trouble is not evidence about the CLI. Returning false
         // here would clear the session; retry within the budget instead.
         captureFailures++;
@@ -9881,8 +10649,7 @@ export class Daemon extends EventEmitter {
           if (Daemon.dialogMatches(dialog, pane)) {
             if (dialog.autoResolutionKey
               && (attemptedSafetyChoices.has(dialog.autoResolutionKey)
-                || (this.autoResolvedDialogGeneration === this.spawnGeneration
-                  && this.autoResolvedDialogKey === dialog.autoResolutionKey))) continue;
+                || this.hasAutoDialogClaim(dialog))) continue;
             lastDialog = dialog;
             this.noteCodexReserveDialog(dialog, pane);
             cleanReadyPolls = 0;
@@ -9926,20 +10693,28 @@ export class Daemon extends EventEmitter {
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.
             const sent = await this.paneWriteLock.run(async () => {
+              this.startupAdmission?.();
               // The capture above may have gone stale while waiting for the
               // write lock. Trust/other safety prompts must still be the
               // CURRENT menu, with the same safe cursor, at the instant of
-              // the key send. A changed pane falls through to the next scan.
+              // the key send. A changed pane falls through to the next scan;
+              // a pane that is no longer this launch's is not read or keyed.
+              if (!owned()) return false;
               if (dialog.inputBlocked) {
-                const currentPane = await this.tmux!.capturePane();
+                const currentPane = await this.tmux!.capturePane(); this.startupAdmission?.();
+                // The capture is an await too: a replacement launched during it must find no answer recorded as its own.
+                if (!owned()) return false;
                 if (!Daemon.dialogMatches(dialog, currentPane)) return false;
               }
               if (dialog.autoResolutionKey) {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
-                this.autoResolvedDialogGeneration = this.spawnGeneration;
-                this.autoResolvedDialogKey = dialog.autoResolutionKey;
+                this.claimAutoDialog(dialog);
               }
               for (const key of dialog.keys) {
+                this.startupAdmission?.();
+                // Before every key, synchronously: the lock wait, the capture and the gap after the previous key can
+                // each have seen a respawn, pause or stop.
+                if (!owned()) return false;
                 if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
                   if (!await this.tmux!.sendSpecialKey(key)) return false;
                 } else {
@@ -10014,6 +10789,7 @@ export class Daemon extends EventEmitter {
         // like Kiro's "agent X not found, using default")
         if (/command not found|: not found$/m.test(pane)) return false;
       } catch (err) {
+        this.startupAdmission?.();
         // Key sends / isWindowAlive failing: same rule — log, retry within the budget.
         this.logger.warn({ err }, "startup dialog scan step failed — retrying");
         if ((await this.paneLiveness()) === "dead") return false;
@@ -10031,6 +10807,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ attempts, budgetMs, captureFailures },
         "Startup scan exhausted without a ready prompt or a known dialog — assuming ready (unknown CLI screen)");
     }
+    this.startupAdmission?.();
     return true;
   }
 

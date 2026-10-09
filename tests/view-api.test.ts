@@ -25,7 +25,6 @@ describe("parsePaneSize", () => {
 
 function fakeCtx(dataDir: string): ViewApiContext {
   return {
-    viewToken: null,
     webToken: "wt",
     dataDir,
     fleetConfig: { instances: { alpha: {} } } as unknown as ViewApiContext["fleetConfig"],
@@ -90,7 +89,7 @@ describe("GET /api/pane/:instance", () => {
     const session = getTmuxSession();
     const tmux = (...args: string[]) =>
       execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf-8" });
-    try { execFileSync("tmux", ["-V"], { stdio: "ignore" }); } catch { return; }  // no tmux → skip
+    try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }  // no tmux → skip
 
     try {
       tmux("new-session", "-d", "-s", session, "-x", "120", "-y", "36", "sleep 60");
@@ -123,7 +122,6 @@ describe("/api/profiles new fields (B2 wiring)", () => {
 
   it("returns model_source, effort_source, display_name in roster", async () => {
     const ctx: ViewApiContext = {
-      viewToken: null,
       webToken: "wt",
       dataDir,
       fleetConfig: {

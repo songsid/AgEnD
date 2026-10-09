@@ -8,6 +8,7 @@ import {
   RUNTIME_READ_FLEET_KEYS,
   STARTUP_ONLY_FLEET_KEYS,
 } from "../src/fleet-level-config.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import type { FleetConfig } from "../src/types.js";
 
 const src = (file: string) => readFileSync(
@@ -34,6 +35,8 @@ describe("which fleet settings only a new process can adopt", () => {
       "defaults.daily_summary",
       "defaults.scheduler.max_schedules",
       "defaults.scheduler.default_timezone",
+      "web.preview_port",
+      "web.preview_origin",
     ]);
   });
 
@@ -85,6 +88,24 @@ describe("the fleet-level signature", () => {
 
     expect(fleetLevelSignature(runtimeChange)).toBe(fleetLevelSignature(base));
     expect(fleetLevelSignature(startupChange)).not.toBe(fleetLevelSignature(base));
+  });
+
+  it("#1056: a connection's status_emojis alone is not a pending restart; the rest of the connection still is", () => {
+    const ch = { id: "dc", type: "discord", bot_token_env: "T", group_id: "1", options: { general_channel_id: "2" } };
+    const base = config({ channels: [ch] });
+    const emojis = config({ channels: [{ ...ch, options: { ...ch.options, status_emojis: { delivered: "🦉" } } }] });
+    const general = config({ channels: [{ ...ch, options: { general_channel_id: "3" } }] });
+    const legacy = config({ channel: { ...ch, options: { status_emojis: { delivered: "🦉" } } } });
+    const legacyBase = config({ channel: { ...ch, options: {} } });
+    expect(fleetLevelSignature(emojis)).toBe(fleetLevelSignature(base));
+    expect(fleetLevelDifferences(base, emojis)).toEqual([]);
+    expect(fleetLevelSignature(general)).not.toBe(fleetLevelSignature(base));
+    expect(fleetLevelSignature(legacy)).toBe(fleetLevelSignature(legacyBase));
+    expect(fleetLevelSignature(config({ channels: [{ ...ch, group_id: "9", options: { ...ch.options, status_emojis: { delivered: "🦉" } } }] })),
+      "a binding change with it still is").not.toBe(fleetLevelSignature(base));
+    // …and Settings says so: the edit's label matches what Apply will do (no "restart AgEnD" for it).
+    expect(buildSettingsImpactSchema().impacts["fleet.channel.options.status_emojis"]).toBe("now");
+    expect(buildSettingsImpactSchema().impacts["fleet.channels"]).toBe("fleet");
   });
 
   it("ignores key order, so a rewritten file is not a pending restart", () => {

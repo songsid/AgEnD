@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 import Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -22,7 +23,18 @@ export interface DaemonDeliveryPort {
    * Optional — the concrete DeliveryOutbox already satisfies it via get().
    */
   get?(deliveryId: string): { state: OutboxState } | undefined;
+  /** #1201: the CLI's transcript shows this attempt's delivery consumed (see DeliveryOutbox.markConsumed). */
+  markConsumed?(deliveryId: string, targetBootId: string, attemptNo: number, via: ConsumedVia, evidence: string): MarkConsumedResult;
 }
+
+/** #1201: how the CLI took the delivery — as its own turn, or absorbed into the running turn at a tool boundary. */
+export type ConsumedVia = "turn" | "mid_turn";
+/**
+ * `marked`: a delivered row now carries consumed_at; `upgraded`: an uncertain row is delivered (its unsent failure
+ * notice cancelled); `already`: it was marked before; `ignored`: a state a transcript hit does not change (failed, a
+ * newer attempt, another boot's attempt).
+ */
+export type MarkConsumedResult = "marked" | "upgraded" | "already" | "ignored";
 
 export type OutboxState =
   | "queued"
@@ -160,6 +172,17 @@ export interface DeliveryStatusItem {
    * other query, and operator reads, stay redacted as before (#982).
    */
   content?: string | null;
+  /**
+   * How the message was routed, in send_to_instance's own words: `steer` (into the live turn) or `idle_queue` (as the
+   * next message). The fleet decided this at admission; it is the row's kind.
+   */
+  delivery_mode: "steer" | "idle_queue";
+  /** How the latest attempt was written to the pane (`native_queue_handoff`: into the CLI's own queue); null before any. */
+  submission_mode: DurableSubmissionMode | null;
+  /** #1201: when the CLI's transcript showed it consumed — accepted is not read; null until then (or never seen). */
+  consumed_at: string | null;
+  /** #1201: `turn` (taken as its own turn) or `mid_turn` (absorbed into a running turn at a tool boundary). */
+  consumed_via: ConsumedVia | null;
   /** #926: the reply this request is owed, when it asked for one. */
   reply_obligation?: { state: "open" | "answered"; opened_at: string; last_asked_at: string; nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null } | null;
 }
@@ -220,6 +243,23 @@ export interface DeliveryReconciliationCandidate extends OutboxDelivery {
     queueResumePolicy: QueueResumePolicy | null;
     enterStartedAt: string | null;
   };
+}
+
+/** The exact statement `needsAttention` runs; exported so the plan test checks this text and no copy of it. */
+export const NEEDS_ATTENTION_SQL = `
+  SELECT delivery_id, state, source_instance, target_instance, kind, finished_at, last_error
+  FROM deliveries INDEXED BY idx_delivery_attention
+  WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL AND finished_at >= ?
+  ORDER BY finished_at DESC LIMIT ?`;
+
+export interface NeedsAttentionDelivery {
+  deliveryId: string;
+  state: "uncertain" | "failed";
+  sourceInstance: string;
+  targetInstance: string;
+  kind: string;
+  finishedAt: string;
+  lastError: string | null;
 }
 
 interface OutboxRow {
@@ -363,12 +403,19 @@ function queryStatusPage(
     params.push(...cursorParams);
   }
   const limit = selector.deliveryId ? 1 : Math.max(1, Math.min(100, selector.limit ?? 20));
+  // Read-only operator reads may open a database written before #1201's columns.
+  const consumedColumns = hasColumn(db, "deliveries", "consumed_at")
+    ? "d.consumed_at, d.consumed_via" : "NULL AS consumed_at, NULL AS consumed_via";
+  const submissionMode = hasColumn(db, "delivery_attempts", "submission_mode")
+    ? "(SELECT a.submission_mode FROM delivery_attempts a WHERE a.delivery_id=d.delivery_id ORDER BY a.attempt_no DESC LIMIT 1)"
+    : "NULL";
   const rows = db.prepare(`
     SELECT d.delivery_id,d.operation_id,d.correlation_id,d.source_instance,d.target_instance,
       d.kind,
       CASE WHEN d.state='submission_started' AND d.reconciliation_pending=1
         THEN 'reconciliation_pending' ELSE d.state END AS state,
-      d.attempt_no,d.created_at,d.updated_at,d.last_error,d.payload_json
+      d.attempt_no,d.created_at,d.updated_at,d.last_error,d.payload_json,
+      ${consumedColumns}, ${submissionMode} AS submission_mode
     FROM deliveries d
     WHERE ${where.join(" AND ")}
     ORDER BY d.created_seq
@@ -386,6 +433,9 @@ function queryStatusPage(
     updated_at: string;
     last_error: string | null;
     payload_json: string;
+    consumed_at: string | null;
+    consumed_via: ConsumedVia | null;
+    submission_mode: DurableSubmissionMode | null;
   }>;
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
@@ -404,6 +454,10 @@ function queryStatusPage(
       status_summary: statusSummary(row.state),
       error_summary: safeErrorSummary(row.last_error, row.state),
       safe_to_retry: safeToRetry(row.state),
+      delivery_mode: row.kind === "steer" ? "steer" as const : "idle_queue" as const,
+      submission_mode: row.submission_mode ?? null,
+      consumed_at: row.consumed_at ?? null,
+      consumed_via: row.consumed_via ?? null,
       // Text only for the explicit verification query (#856), and only to the
       // row's own source/target; every other query keeps #982's redaction.
       ...rowContentEvidence(row.payload_json, callerInstance !== null && !!selector.messageId),
@@ -552,12 +606,39 @@ export class DeliveryOutbox extends EventEmitter {
     // receiver acting on a message nobody sent.
     this.ensureColumn("deliveries", "message_id", "TEXT");
     this.ensureColumn("deliveries", "content_sha256", "TEXT");
+    // #1201: the CLI's transcript showed the delivery consumed (when, and as its own turn or mid-turn).
+    this.ensureColumn("deliveries", "consumed_at", "TEXT");
+    this.ensureColumn("deliveries", "consumed_via", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_content_sha256", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_bytes_sha256", "TEXT");
     this.ensureColumn("delivery_attempts", "content_digest_mismatch", "INTEGER NOT NULL DEFAULT 0");
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_delivery_message_id ON deliveries(message_id)");
     this.backfillMessageEvidence();
     this.db.pragma("user_version = 4");
+    // #1335: watermark for retention. pruned_ids records the delivery_ids that
+    // were pruned so delivery_status can distinguish "expired" (pruned) from
+    // "Delivery not found" (never existed). Ownership columns enforce that only
+    // the source or target of a delivery can learn it was pruned (#1340 P2 🔒).
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pruned_ids (
+        delivery_id     TEXT PRIMARY KEY,
+        source_instance TEXT NOT NULL DEFAULT '',
+        target_instance TEXT NOT NULL DEFAULT '',
+        pruned_at       TEXT NOT NULL
+      )
+    `);
+    // Additive migration: existing pruned_ids tables (from beta/alpha installs)
+    // gain the ownership columns with a safe default; old tombstones with ''
+    // will not match any caller and safely return "not found" (conservative).
+    this.ensureColumn("pruned_ids", "source_instance", "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn("pruned_ids", "target_instance", "TEXT NOT NULL DEFAULT ''");
+    // #1386: an operator acknowledged an uncertain/failed delivery ("Needs you"). The partial index is what
+    // bounds needsAttention()'s scan to the recent, unacknowledged rows — required there with INDEXED BY.
+    this.ensureColumn("deliveries", "acknowledged_at", "TEXT");
+    this.ensureColumn("deliveries", "acknowledged_by", "TEXT");
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_delivery_attention ON deliveries(finished_at)
+      WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL`);
+    this.db.pragma("user_version = 5");
   }
 
   /**
@@ -836,6 +917,9 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   listPending(): OutboxDelivery[] {
+    return measureSyncWork("outbox.listPending", () => this.listPendingSync());
+  }
+  private listPendingSync(): OutboxDelivery[] {
     const rows = this.db.prepare(`
       SELECT * FROM deliveries
       WHERE state IN ('queued','delivering','submission_started','retry_wait')
@@ -845,6 +929,37 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Rows addressed to `target` in any of `states` (indexed: target_instance, state). */
+  /**
+   * #1386: the deliveries an operator should look at — `uncertain` or `failed`, not acknowledged, finished at or
+   * after `sinceIso` — newest first, at most `limit`. Acknowledged rows are excluded before the cap, and the scan
+   * is held to that time range by requiring the partial index: without `INDEXED BY`, SQLite picks
+   * idx_delivery_state_seq and sorts every uncertain/failed row however old (uncertain rows are never pruned).
+   * A database the migration never reached fails here, loudly, instead of scanning.
+   */
+  needsAttention(sinceIso: string, limit = 50): NeedsAttentionDelivery[] {
+    const rows = this.db.prepare(NEEDS_ATTENTION_SQL).all(sinceIso, limit) as Array<{
+      delivery_id: string; state: "uncertain" | "failed"; source_instance: string; target_instance: string;
+      kind: string; finished_at: string; last_error: string | null;
+    }>;
+    return rows.map(r => ({
+      deliveryId: r.delivery_id, state: r.state, sourceInstance: r.source_instance, targetInstance: r.target_instance,
+      kind: r.kind, finishedAt: r.finished_at, lastError: r.last_error,
+    }));
+  }
+
+  /**
+   * #1386: record that `by` looked at this delivery. One statement, so it is atomic: true only when this call
+   * acknowledged it — false when it was already acknowledged, is no longer uncertain/failed (delivered by later
+   * proof), or does not exist. A write error throws; nothing is remembered as acknowledged elsewhere.
+   */
+  acknowledge(deliveryId: string, by: string, atIso: string = new Date().toISOString()): boolean {
+    const result = this.db.prepare(`
+      UPDATE deliveries SET acknowledged_at=?, acknowledged_by=?
+      WHERE delivery_id=? AND state IN ('uncertain','failed') AND acknowledged_at IS NULL
+    `).run(atIso, by, deliveryId);
+    return result.changes === 1;
+  }
+
   countForTarget(target: string, states: readonly OutboxState[]): number {
     if (states.length === 0) return 0;
     const row = this.db.prepare(`
@@ -868,6 +983,9 @@ export class DeliveryOutbox extends EventEmitter {
     targetBootIdFor: (target: string) => string | null,
     blockedTargets: ReadonlySet<string>,
   ): ClaimedOutboxDelivery | undefined {
+    return measureSyncWork("outbox.claimNext", () => this.claimNextSync(managerBootId, targetBootIdFor, blockedTargets));
+  }
+  private claimNextSync(managerBootId: string, targetBootIdFor: (target: string) => string | null, blockedTargets: ReadonlySet<string>): ClaimedOutboxDelivery | undefined {
     const now = new Date().toISOString();
     const rows = this.db.prepare(`
       SELECT * FROM deliveries WHERE state IN ('queued','retry_wait')
@@ -1055,6 +1173,65 @@ export class DeliveryOutbox extends EventEmitter {
     const result = transaction();
     if (result.changed) this.emit("state", { deliveryId, state: outcome });
     return result.accepted;
+  }
+
+  /**
+   * #1201: the CLI's own transcript shows this attempt's delivery consumed — its exact `[agend-delivery-id:<id>]`
+   * marker in a user entry or a queued-command prompt, read by the late watcher. Positive evidence only: nothing calls
+   * this on a miss, so it can never downgrade a row.
+   *
+   * - `delivered` → stays delivered, gains consumed_at/consumed_via (no state event: nothing about it changed).
+   * - `uncertain` → `delivered`: last_error cleared, the attempt marked delivered, the reply obligation it never opened
+   *   opened, and its failure notice cancelled — but only while that notice is still unsent (queued / retry_wait). One
+   *   the pump already took is left alone: the protocol tells the sender to check delivery_status after an uncertain
+   *   outcome, which now says delivered.
+   * - anything else (failed, an attempt that is not this one) → `ignored`.
+   *
+   * Fenced like complete(): the row must still be on this boot's attempt.
+   */
+  markConsumed(deliveryId: string, targetBootId: string, attemptNo: number, via: ConsumedVia, evidence: string): MarkConsumedResult {
+    const now = new Date().toISOString();
+    const transaction = this.db.transaction((): { result: MarkConsumedResult; cancelledNotice: string | null } => {
+      const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as (OutboxRow & { consumed_at?: string | null }) | undefined;
+      if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo) return { result: "ignored", cancelledNotice: null };
+      if (row.consumed_at) return { result: "already", cancelledNotice: null };
+      if (row.state === "delivered") {
+        const marked = this.db.prepare(`
+          UPDATE deliveries SET consumed_at=?,consumed_via=?,updated_at=?
+          WHERE delivery_id=? AND state='delivered' AND consumed_at IS NULL AND target_daemon_boot_id=? AND attempt_no=?
+        `).run(now, via, now, deliveryId, targetBootId, attemptNo);
+        return { result: marked.changes === 1 ? "marked" : "ignored", cancelledNotice: null };
+      }
+      if (row.state !== "uncertain") return { result: "ignored", cancelledNotice: null };
+      const upgraded = this.db.prepare(`
+        UPDATE deliveries SET state='delivered',last_error=NULL,consumed_at=?,consumed_via=?,updated_at=?
+        WHERE delivery_id=? AND state='uncertain' AND target_daemon_boot_id=? AND attempt_no=?
+      `).run(now, via, now, deliveryId, targetBootId, attemptNo);
+      if (upgraded.changes !== 1) return { result: "ignored", cancelledNotice: null };
+      this.db.prepare(`
+        UPDATE delivery_attempts SET state='delivered',evidence=substr(COALESCE(evidence || '; ', '') || ?, 1, 300)
+        WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='uncertain'
+      `).run(evidence, deliveryId, targetBootId, attemptNo);
+      this.openReplyObligation(row, now);
+      // Withdraw the notice only while nobody has taken it: a conditional UPDATE on its pending state, so it is never
+      // both sent and cancelled — whichever of the pump's claim and this lands first wins, in one statement each.
+      const notice = this.db.prepare("SELECT notice_delivery_id FROM failure_notices WHERE parent_delivery_id=?").get(deliveryId) as { notice_delivery_id: string } | undefined;
+      let cancelledNotice: string | null = null;
+      if (notice) {
+        const cancelled = this.db.prepare(`
+          UPDATE deliveries SET state='cancelled',updated_at=?,finished_at=?,last_error=?
+          WHERE delivery_id=? AND state IN ('queued','retry_wait')
+        `).run(now, now, "withdrawn: the parent delivery was proven consumed", notice.notice_delivery_id);
+        if (cancelled.changes === 1) cancelledNotice = notice.notice_delivery_id;
+      }
+      return { result: "upgraded", cancelledNotice };
+    });
+    const { result, cancelledNotice } = transaction();
+    if (result === "upgraded") {
+      this.emit("state", { deliveryId, state: "delivered" });
+      if (cancelledNotice) this.emit("state", { deliveryId: cancelledNotice, state: "cancelled" });
+    }
+    return result;
   }
 
   /** Transient pre-submit failure: state is retryable and the same row keeps its FIFO position. */
@@ -1396,6 +1573,109 @@ export class DeliveryOutbox extends EventEmitter {
   /** False once the database connection is closed: callers on timers check it before reading. */
   get isOpen(): boolean {
     return this.db.open;
+  }
+
+  /**
+   * #1335: Prune terminal deliveries (delivered/failed) older than `days`.
+   * `uncertain` and all non-terminal states are NEVER pruned.
+   * Deliveries with still-open reply obligations are skipped — pruning the
+   * parent while its obligation is open would orphan it, preventing the normal
+   * close path from collecting the answered row on the next prune.
+   * Deletes in chunks of 500 rows; yields between chunks via `setImmediate`
+   * so the event loop stays live. Durations use `performance.now`.
+   * Records (delivery_id, source_instance, target_instance) in `pruned_ids` so
+   * `delivery_status` can return "expired" for a pruned row — but only to the
+   * original source or target (ownership check, #1340 P2 🔒).
+   */
+  async prune(days: number): Promise<{ pruned: number; durationMs: number }> {
+    const { performance } = await import("node:perf_hooks");
+    const t0 = performance.now();
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+    const now = new Date().toISOString();
+    // Prunable states: only terminal rows the retry logic will never revisit.
+    // `cancelled`: a failure notice withdrawn because its parent was proven delivered (#1201) — terminal too.
+    const PRUNABLE = "('delivered','failed','cancelled')";
+    const CHUNK = 500;
+    let total = 0;
+
+    for (;;) {
+      if (!this.db.open) break;
+      // Fetch one chunk of prunable rows, skipping any that still have an open
+      // reply obligation. A delivered request can have an open obligation if the
+      // target has not yet replied (transport completion ≠ reply).
+      const rows = this.db.prepare(`
+        SELECT delivery_id, source_instance, target_instance
+        FROM deliveries
+        WHERE state IN ${PRUNABLE}
+          AND COALESCE(finished_at, updated_at) < ?
+          AND (
+            NOT EXISTS (SELECT 1 FROM reply_obligations WHERE request_delivery_id = delivery_id AND state = 'open')
+          )
+        ORDER BY created_seq
+        LIMIT ${CHUNK}
+      `).all(cutoff) as Array<{ delivery_id: string; source_instance: string; target_instance: string }>;
+
+      if (rows.length === 0) break;
+
+      const ids = rows.map(r => r.delivery_id);
+      const placeholders = ids.map(() => "?").join(",");
+
+      this.db.transaction(() => {
+        // Record (delivery_id, source, target) so delivery_status can return
+        // "expired" to the row's own source/target (ownership-gated).
+        const insertPruned = this.db.prepare(
+          "INSERT OR IGNORE INTO pruned_ids(delivery_id, source_instance, target_instance, pruned_at) VALUES (?, ?, ?, ?)",
+        );
+        for (const row of rows) insertPruned.run(row.delivery_id, row.source_instance, row.target_instance, now);
+
+        // Delete child rows first.
+        this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
+        // Only closed reply_obligations (answered): open ones were excluded above.
+        if (hasTable(this.db, "reply_obligations")) {
+          this.db.prepare(`
+            DELETE FROM reply_obligations
+            WHERE request_delivery_id IN (${placeholders}) AND state = 'answered'
+          `).run(...ids);
+        }
+        this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
+        this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
+        this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
+      })();
+
+      total += rows.length;
+      if (rows.length < CHUNK) break;
+      // Yield between chunks so the event loop can turn.
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+
+    // Self-prune pruned_ids after 2× the retention window — chunked (Fix 4).
+    if (this.db.open) {
+      const oldCutoff = new Date(Date.now() - 2 * days * 24 * 60 * 60_000).toISOString();
+      for (;;) {
+        const r = this.db.prepare(`
+          DELETE FROM pruned_ids WHERE delivery_id IN (
+            SELECT delivery_id FROM pruned_ids WHERE pruned_at < ? LIMIT ${CHUNK}
+          )
+        `).run(oldCutoff);
+        if (r.changes < CHUNK) break;
+        await new Promise<void>(resolve => setImmediate(resolve));
+      }
+    }
+
+    return { pruned: total, durationMs: performance.now() - t0 };
+  }
+
+  /**
+   * #1335: True if this delivery_id was pruned by retention AND the caller is
+   * the original source or target of that delivery (ownership gated, #1340 P2 🔒).
+   * Returns false for a never-admitted id so "not found" stays accurate.
+   */
+  wasDeliveryIdPrunedForCaller(deliveryId: string, callerInstance: string): boolean {
+    if (!this.db.open) return false;
+    const row = this.db.prepare(
+      "SELECT 1 FROM pruned_ids WHERE delivery_id = ? AND (source_instance = ? OR target_instance = ?)",
+    ).get(deliveryId, callerInstance, callerInstance) as unknown;
+    return row != null;
   }
 
   /** Must be called inside the same SQLite transaction as the terminal transition. */

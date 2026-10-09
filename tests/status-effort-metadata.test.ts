@@ -45,8 +45,8 @@ vi.mock("../src/topic-commands.js", async importOriginal => ({
 vi.mock("node:http", async importOriginal => ({
   ...await importOriginal<typeof import("node:http")>(),
   createServer: vi.fn((handler: (req: IncomingMessage, res: ServerResponse) => void) => {
-    guards.httpHandler = handler;
-    return { on: vi.fn(), listen: vi.fn() }; // No socket/listener/lifecycle starts.
+    guards.httpHandler ??= handler;           // the web listener's: it is created first (the #1306 preview listener after it)
+    return { on: vi.fn(), listen: vi.fn(), close: vi.fn() }; // No socket/listener/lifecycle starts.
   }),
 }));
 
@@ -262,7 +262,6 @@ describe("FleetManager status composers", () => {
   it("serves the real /api/fleet enrichment with pure effort metadata", () => {
     const fm = fleet(); const token = "a".repeat(48);
     vi.spyOn(fm as unknown as { readonly webToken: string | null }, "webToken", "get").mockReturnValue(token);
-    Object.assign(fm, { viewToken: "b".repeat(48) });
     vi.spyOn(fm, "getSysInfo").mockReturnValue({ instances: Object.keys(fm.fleetConfig!.instances).map(name => ({ name, status: "stopped" })) } as never);
     fm["startHealthServer"](0); // createServer and listen are stubbed above.
     const req = { method: "GET", url: "/api/fleet", headers: { host: "localhost", "x-agend-token": token } } as unknown as IncomingMessage;
@@ -292,13 +291,18 @@ describe("FleetManager status composers", () => {
       }
       vi.advanceTimersByTime(30_000);
       for (const { res } of clients) {
-        expect(res.write).toHaveBeenCalledTimes(4);
+        // On connect: a status, the ticks (`deliveries`, #1253 review), the open prompts (C4) and "Needs you" (#1386);
+        // then a status every 10s.
+        expect(res.write).toHaveBeenCalledTimes(7);
+        expect(String(res.write.mock.calls[1]![0])).toMatch(/^event: deliveries\n/);
+        expect(String(res.write.mock.calls[2]![0])).toMatch(/^event: prompts\n/);
+        expect(String(res.write.mock.calls[3]![0])).toMatch(/^event: needs\n/);
         const first = String(res.write.mock.calls[0]![0]);
         expect(first).toContain('"effort":"max"');
         expect(first).toContain('"effort":"high"');
       }
       assertPure();
-    } finally { for (const { req } of clients) req.emit("close"); }
+    } finally { for (const { res } of clients) res.emit("close"); }   // the response closing ends a stream (#1018 review: not the request's)
     expect(fm["sseClients"].size).toBe(0); expect(vi.getTimerCount()).toBe(0);
   });
 });

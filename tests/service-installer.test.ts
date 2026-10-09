@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
+import { join } from "node:path";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import {
   buildServicePath,
+  reloadLaunchdJob,
   classifySystemdServiceState,
   renderLaunchdPlist,
   renderSystemdUnit,
@@ -8,6 +13,10 @@ import {
   uninstallService,
   restartSystemdService,
   SYSTEMD_RESTART_TIMEOUT_MS,
+  unitCliEntry,
+  systemdQuote,
+  systemdWords,
+  defaultServiceProgram,
 } from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
@@ -27,7 +36,9 @@ describe("ServiceInstaller", () => {
   it("renders launchd plist with correct values", () => {
     const plist = renderLaunchdPlist(vars);
     expect(plist).toContain("<string>com.claude-channel-daemon</string>");
-    expect(plist).toContain("<string>/usr/local/bin/claude-channel-daemon</string>");
+    // #1450 C6: the interpreter is named first — this process's Node unless given — then the CLI, then `fleet start`.
+    expect(plist).toMatch(new RegExp(`<string>${process.execPath}</string>\\s*<string>/usr/local/bin/claude-channel-daemon</string>\\s*<string>fleet</string>\\s*<string>start</string>`));
+    expect(renderLaunchdPlist({ ...vars, nodePath: "/opt/rt/bin/node" })).toContain("<string>/opt/rt/bin/node</string>");
     expect(plist).toContain("<string>fleet</string>");
     expect(plist).toContain("<string>start</string>");
     expect(plist).toContain("<string>/usr/local/bin:/usr/bin:/bin:");
@@ -35,7 +46,10 @@ describe("ServiceInstaller", () => {
 
   it("renders systemd unit with correct values", () => {
     const unit = renderSystemdUnit(vars);
-    expect(unit).toContain("ExecStart=/usr/local/bin/claude-channel-daemon fleet start");
+    expect(unit).toContain(`ExecStart="${process.execPath}" "/usr/local/bin/claude-channel-daemon" fleet start`);
+    expect(renderSystemdUnit({ ...vars, nodePath: "/opt/rt/bin/node" })).toContain('ExecStart="/opt/rt/bin/node" "/usr/local/bin/claude-channel-daemon" fleet start');
+    expect(() => renderSystemdUnit({ ...vars, nodePath: "node" })).toThrow("nodePath must be an absolute path");
+    expect(() => renderSystemdUnit({ ...vars, nodePath: "/opt/rt/bin/node\nExecStartPost=/bin/rm" })).toThrow("control characters");
     expect(unit).toContain("WorkingDirectory=/Users/test/project");
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
     expect(unit).toContain("TimeoutStartSec=15min");
@@ -79,10 +93,64 @@ describe("ServiceInstaller", () => {
   });
 
   it("falls back to process.env.PATH when path is omitted", () => {
+    // Feed a known polluted PATH that includes a clean entry we can assert on.
+    // The PATH value in the rendered plist must contain the clean entry,
+    // have no node_modules entries, and have no duplicates.
     const { path: _, ...varsWithoutPath } = vars;
-    const plist = renderLaunchdPlist(varsWithoutPath);
-    expect(plist).toContain("<key>PATH</key>");
-    expect(plist).toContain(process.env.PATH!);
+    const distinctClean = "/home/test-distinctive/bin";
+    const pollutedEnvPath = `/home/test/node_modules/.bin:${distinctClean}:/usr/bin`;
+    const original = process.env.PATH;
+    process.env.PATH = pollutedEnvPath;
+    try {
+      const plist = renderLaunchdPlist(varsWithoutPath);
+      expect(plist).toContain("<key>PATH</key>");
+      // The clean entry must be present.
+      expect(plist).toContain(distinctClean);
+      // No node_modules entries may appear.
+      expect(plist).not.toContain("/node_modules/");
+    } finally {
+      process.env.PATH = original;
+    }
+  });
+
+  // ── #1348 regressions: fallbacks must not reintroduce node_modules ────────
+
+  it("fallback dirname(process.execPath) under node_modules is not appended (#1348 P2)", () => {
+    // The fallback appends dirname(process.execPath), so we must mock
+    // process.execPath itself — the second argument to buildServicePath only
+    // controls npmPrefixBin, not the runtime-dir fallback.
+    const saved = process.execPath;
+    (process as unknown as Record<string, unknown>).execPath = "/project/node_modules/node/bin/node";
+    try {
+      const result = buildServicePath(
+        "/usr/bin:/bin",
+        // ordinary agend execPath — no /lib/node_modules/ → npmPrefixBin = undefined
+        "/home/test/.nvm/versions/node/v22.22.0/lib/node_modules/@songsid/agend/dist/cli.js",
+        "/home/test",
+      );
+      const entries = result.split(":");
+      const remaining = entries.filter(e => e.includes("/node_modules/"));
+      expect(remaining, `node_modules runtime-dir fallback must be excluded, found: ${remaining.join(", ")}`).toEqual([]);
+      // Normal entries still present.
+      expect(entries).toContain("/usr/bin");
+    } finally {
+      (process as unknown as Record<string, unknown>).execPath = saved;
+    }
+  });
+
+  it("fallback npmPrefixBin under node_modules is not appended (#1348 P2)", () => {
+    // execPath contains /lib/node_modules/ → npmPrefixBin = /project/node_modules/tool/bin
+    const execPath = "/project/node_modules/tool/lib/node_modules/@songsid/agend/dist/cli.js";
+    const result = buildServicePath(
+      "/usr/bin:/bin",
+      execPath,
+      "/home/test",
+    );
+    const entries = result.split(":");
+    const remaining = entries.filter(e => e.includes("/node_modules/"));
+    expect(remaining, `npmPrefixBin node_modules entry must be excluded, found: ${remaining.join(", ")}`).toEqual([]);
+    // Normal entries are still there.
+    expect(entries).toContain("/usr/bin");
   });
 
   it("appends root user and nvm npm-prefix bins omitted by sudo PATH", () => {
@@ -124,5 +192,190 @@ describe("ServiceInstaller", () => {
       ...vars,
       label: "com.agend; /bin/sh",
     })).toThrow(/label must match/);
+  });
+
+  // ── #1348: node_modules/.bin entries must be stripped and deduped ─────────
+
+  /**
+   * The live polluted PATH from the real unit (redacted): it contains:
+   *   - the muse worktree .bin twice
+   *   - npm's own node-gyp-bin runner
+   *   - duplicates of ~/.local/bin
+   *   - the real nvm bin (must be preserved — agend and node live there)
+   */
+  const POLLUTED_PATH = [
+    "/home/han/Projects/AgEnD-agend-dev-muse/node_modules/.bin",
+    "/home/han/Projects/AgEnD-agend-dev-muse/node_modules/.bin", // duplicate
+    "/home/han/Projects/node_modules/.bin",
+    "/home/han/node_modules/.bin",
+    "/home/node_modules/.bin",
+    "/node_modules/.bin",
+    "/home/han/.nvm/versions/node/v22.22.2/lib/node_modules/npm/node_modules/@npmcli/run-script/lib/node-gyp-bin",
+    "/home/han/.local/bin",
+    "/home/han/.local/bin", // duplicate
+    "/home/han/bin",
+    "/home/han/.grok/bin",
+    "/home/han/.nvm/versions/node/v22.22.2/bin", // nvm — must be kept
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/local/bin", // duplicate
+    "/usr/bin",
+    "/bin",
+  ].join(":");
+
+  it("strips node_modules/.bin entries from the PATH (#1348)", () => {
+    const result = buildServicePath(POLLUTED_PATH, "", "/home/han");
+    const entries = result.split(":");
+    // No entry may contain /node_modules/
+    const remaining = entries.filter(e => e.includes("/node_modules/"));
+    expect(remaining, `node_modules entries must be removed, found: ${remaining.join(", ")}`).toEqual([]);
+  });
+
+  it("preserves the nvm bin directory after stripping node_modules (#1348)", () => {
+    const result = buildServicePath(POLLUTED_PATH, "", "/home/han");
+    const entries = result.split(":");
+    expect(entries).toContain("/home/han/.nvm/versions/node/v22.22.2/bin");
+  });
+
+  it("deduplicates entries while preserving first-appearance order (#1348)", () => {
+    const result = buildServicePath(POLLUTED_PATH, "", "/home/han");
+    const entries = result.split(":");
+    const unique = [...new Set(entries)];
+    expect(entries, "result must have no duplicates").toEqual(unique);
+    // The first non-node_modules entry in POLLUTED_PATH is /home/han/.local/bin
+    const lbIdx = entries.indexOf("/home/han/.local/bin");
+    const binIdx = entries.indexOf("/home/han/bin");
+    expect(lbIdx, ".local/bin must appear before /home/han/bin (order preserved)").toBeLessThan(binIdx);
+  });
+
+  it("mutation proof: removing the node_modules filter admits node_modules entries → test goes red", () => {
+    // Verify the filter acts on entries that would otherwise appear.
+    // Without the filter, the first entry of POLLUTED_PATH would be in the result.
+    const poisoned = "/home/han/Projects/test/node_modules/.bin:/usr/bin:/bin";
+    const result = buildServicePath(poisoned, "", "/home/han");
+    const entries = result.split(":");
+    expect(entries).not.toContain("/home/han/Projects/test/node_modules/.bin");
+    // Mutant (remove filter): the entry would be present.
+  });
+
+  it("mutation proof: removing the dedup emits duplicates → test goes red", () => {
+    const duped = "/usr/bin:/usr/bin:/bin";
+    const result = buildServicePath(duped, "", "/home/han");
+    const entries = result.split(":");
+    const seen = new Set<string>();
+    for (const e of entries) {
+      expect(seen.has(e), `duplicate entry: ${e}`).toBe(false);
+      seen.add(e);
+    }
+    // Mutant (remove dedup): /usr/bin would appear twice.
+  });
+});
+
+describe("ExecStart keeps a path as ONE argument (#1460 review: a canonical entry may contain spaces)", () => {
+  const vars = { label: "com.agend.fleet", execPath: "/x", path: "/usr/bin:/bin", workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" };
+  it.each([
+    ["/home/u/My Projects/agend/dist/cli.js"],
+    ["/opt/a%hb/$HOME/x\"y\\z/cli.js"],
+    ["/plain/dist/cli.js"],
+  ])("%s renders, and parses back, as exactly one word", (path) => {
+    const unit = renderSystemdUnit({ ...vars, execPath: path });
+    const line = unit.match(/^ExecStart=(.*)$/m)![1]!;
+    expect(systemdWords(line)).toEqual([process.execPath, path, "fleet", "start"]);   // the named Node first (#1450 C6)
+    expect(unitCliEntry(unit)).toBe(path);
+  });
+  it("systemd's expansions are neutralised: % as %%, $ as $$", () => {
+    expect(systemdQuote("/a%h/$X")).toBe('"/a%%h/$$X"');
+  });
+  it("words: quotes, escapes and plain words, as systemd splits them", () => {
+    expect(systemdWords(`"/a b/node" '/c d/cli.js' fleet  start`)).toEqual(["/a b/node", "/c d/cli.js", "fleet", "start"]);
+    expect(systemdWords(String.raw`/x\ y/z fleet`)).toEqual(["/x y/z", "fleet"]);
+  });
+});
+
+describe("unitCliEntry (#1450: doctor compares the unit's CLI with this CLI's canonical entry)", () => {
+  it.each([
+    ["ExecStart=/usr/lib/node_modules/@songsid/agend/dist/cli.js fleet start", "/usr/lib/node_modules/@songsid/agend/dist/cli.js"],
+    ["ExecStart=/opt/rt/bin/node /usr/lib/node_modules/@songsid/agend/dist/cli.js fleet start", "/usr/lib/node_modules/@songsid/agend/dist/cli.js"],
+    ["[Service]\nType=notify\nExecStart=/a/node /b/cli.js fleet start\nRestart=on-failure", "/b/cli.js"],
+    ["[Service]\nType=simple", ""],
+  ])("%j → %j", (unit, entry) => {
+    expect(unitCliEntry(unit)).toBe(entry);
+  });
+});
+
+describe("#1450: a system Node is not named — the service starts the launcher, which finds Node at each start", () => {
+  const base = { label: "com.agend.fleet", execPath: "/usr/lib/node_modules/@songsid/agend/dist/cli.js", path: "/usr/bin:/bin", workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" };
+  it("launcherPath renders `<launcher> fleet start` in the unit and the plist; doctor maps it back to the package's CLI", () => {
+    const launcher = "/usr/lib/node_modules/@songsid/agend/launcher/agend";
+    const unit = renderSystemdUnit({ ...base, launcherPath: launcher });
+    expect(unit).toContain(`ExecStart="${launcher}" fleet start`);
+    expect(unitCliEntry(unit)).toBe(base.execPath);
+    expect(renderLaunchdPlist({ ...base, launcherPath: launcher })).toMatch(new RegExp(`<string>${launcher}</string>\\s*<string>fleet</string>\\s*<string>start</string>`));
+  });
+  it("defaultServiceProgram: this package's own selection decides — a system Node (no runtime pinned) → the launcher", () => {
+    // A package that pins no runtime (a copy of this one without its pins): its selection is the system Node.
+    const pkg = mkdtempSync(join(tmpdir(), "agend-svc-unpinned-"));
+    try {
+      cpSync(join(process.cwd(), "launcher"), join(pkg, "launcher"), { recursive: true });
+      const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+      delete manifest.optionalDependencies;
+      writeFileSync(join(pkg, "package.json"), JSON.stringify(manifest, null, 2));
+      mkdirSync(join(pkg, "dist"));
+      writeFileSync(join(pkg, "dist", "cli.js"), "");
+      expect(defaultServiceProgram(join(pkg, "dist", "cli.js"))).toEqual({ launcherPath: join(pkg, "launcher", "agend") });
+    } finally { rmSync(pkg, { recursive: true, force: true }); }
+    expect(defaultServiceProgram("/nowhere/dist/cli.js")).toEqual({ nodePath: process.execPath });
+  });
+  it("defaultServiceProgram: this checkout pins the runtime (#1450) — whatever its own selection says is what is named", () => {
+    const select = createRequire(import.meta.url)("../launcher/runtime-select.cjs") as { selectRuntime(dir: string): { ok: boolean; node?: string; source?: string } };
+    const chosen = select.selectRuntime(join(process.cwd(), "launcher"));
+    const expected = chosen.ok && chosen.source === "system" ? { launcherPath: join(process.cwd(), "launcher", "agend") }
+      : chosen.ok && chosen.node ? { nodePath: chosen.node } : { nodePath: process.execPath };
+    expect(defaultServiceProgram(join(process.cwd(), "dist", "cli.js"))).toEqual(expected);
+  });
+});
+
+describe("#1473 review r2: agend install's launchd reload bootstraps only after launchd CONFIRMED the job gone", () => {
+  /** launchctl answers by verb; `print` answers in turn (the last one repeats). */
+  function launchctl(prints: Array<{ status: number | null; signal?: NodeJS.Signals | null }>) {
+    const calls: string[] = [];
+    let clock = 0, i = 0;
+    const deps = {
+      run: (command: string, args: string[]) => {
+        calls.push([command, ...args].join(" "));
+        if (args[0] === "print") { const p = prints[Math.min(i++, prints.length - 1)]!; return { status: p.status, signal: p.signal ?? null }; }
+        return { status: 0, signal: null };
+      },
+      sleep: (ms: number) => { clock += ms; },
+      now: () => clock,
+    };
+    return { deps, calls, bootstraps: () => calls.filter(c => c.startsWith("launchctl bootstrap")).length };
+  }
+  it.each([
+    ["the job stays loaded", [{ status: 0 }]],
+    ["launchctl print times out", [{ status: null, signal: "SIGTERM" as NodeJS.Signals }]],
+    ["launchctl print fails another way", [{ status: 5 }]],
+  ] as const)("not confirmed (%s): refused, nothing bootstrapped or enabled", (_n, prints) => {
+    const l = launchctl([...prints]);
+    expect(() => reloadLaunchdJob("gui/501", "com.agend.fleet", "/p.plist", l.deps)).toThrow(/did not confirm that com.agend.fleet was unloaded/);
+    expect(l.bootstraps()).toBe(0);
+    expect(l.calls.some(c => c.startsWith("launchctl enable"))).toBe(false);
+  });
+  it.each([
+    ["at once", [{ status: 113 }]],
+    ["after the job lingered", [{ status: 0 }, { status: 0 }, { status: 113 }]],
+  ] as const)("confirmed %s: exactly one bootstrap, then enable", (_n, prints) => {
+    const l = launchctl([...prints]);
+    reloadLaunchdJob("gui/501", "com.agend.fleet", "/p.plist", l.deps);
+    expect(l.bootstraps()).toBe(1);
+    expect(l.calls.at(-1)).toBe("launchctl enable gui/501/com.agend.fleet");
+  });
+});
+
+describe("#1473 review r2: the service PATH has only absolute entries", () => {
+  it("empty and relative entries (cwd-dependent lookups) are dropped", () => {
+    const path = buildServicePath(":/opt/node22/bin:./bin:node_modules/.bin::/usr/bin", "/opt/x/dist/cli.js", "/nonexistent-home", "/opt/node22/bin/node").split(":");
+    expect(path.every(entry => entry.startsWith("/"))).toBe(true);
+    expect(path).toContain("/opt/node22/bin");
   });
 });

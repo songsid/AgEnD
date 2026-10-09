@@ -1,35 +1,220 @@
 name: CI
 
 on:
+  # release/** are maintenance lines (release/2.1: 2.1.x fixes cherry-picked from main). Their PRs and pushes
+  # get the same checks as main's.
   push:
-    branches: [main]
+    branches: [main, 'release/**']
+    tags: ['v*']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1' # Weekly Mac signal; never a PR/main required run.
+
+# Cancel in-progress runs for the same PR when a new commit arrives. Push runs on
+# main/release/** are deliberately NOT cancelled — they are needed for release tagging.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  # ── docs-only guard ──────────────────────────────────────────────────────────
+  # Detect whether this run touches only docs/changes/markdown. The result is
+  # consumed by every downstream job so none of them repeat the diff. Running
+  # as its own job avoids a checkout + diff in each parallel shard.
+  #
+  # We use a job output rather than paths-ignore so the `build` check always
+  # exists and can satisfy the gate even for a pure docs commit. paths-ignore
+  # would make the check missing and the gate would block.
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      docs-only: ${{ steps.check.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect whether this is a docs-only change
+        id: check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # For pull_request events github.sha is the synthetic merge commit,
+          # not the PR branch head. Use the PR head SHA for an accurate diff.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # A push to main/release always runs the full suite — the gate needs CI.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Collect the diff once and hold it in a variable. This avoids
+          # SIGPIPE on the git side when grep exits early (pipefail would
+          # otherwise see git's non-zero exit and fail-open, treating any
+          # large diff as docs-only). A git failure is fail-closed: run full CI.
+          if ! diff_files=$(git diff --name-only "$BASE_SHA...$HEAD_SHA"); then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Write to a temp file and grep the file directly. When grep exits
+          # early after a -q match, it simply stops reading — no echo or printf
+          # process is left behind to receive SIGPIPE. A diff larger than the
+          # pipe buffer would cause echo "$diff_files" | grep -q to SIGPIPE
+          # and fail-open (docs-only=true) for any large src/ change.
+          _diff_f=$(mktemp)
+          trap 'rm -f "$_diff_f"' EXIT
+          printf '%s\n' "$diff_files" > "$_diff_f"
+          # .github/** changes must always run the full suite.
+          if grep -qE '^\.github/' "$_diff_f"; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Any file outside docs/, changes/, or a root *.md triggers full CI.
+          if grep -qvE '^(docs|changes)/|^[^/]+\.md$' "$_diff_f"; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs-only=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── changelog guards (no install needed) ────────────────────────────────────
+  # Runs unconditionally: docs/changes/ PRs can add unpaired fragments or edit
+  # CHANGELOG directly. The guards have no npm dependency, so they are cheap
+  # enough to always run — including for docs-only PRs.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # CHANGELOG fragments (docs/development.md): every changes/*.md parses
+      # and has its zh-TW pair, and a PR adds fragments instead of editing
+      # docs/CHANGELOG*.md. Only the assemble commit (trailer
+      # "Changelog: assemble") edits those. Neither script needs npm ci.
+      - name: CHANGELOG fragments are valid
+        run: node scripts/changelog-assemble.mjs --check
+      - name: CHANGELOG is assembled, not edited
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/changelog-guard.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+
+  # ── setup: install, typecheck, build — shared across all shards ─────────────
+  # Always runs so gate-merge.sh always sees a `success` result (not `skipped`).
+  # For docs-only PRs the heavy steps are skipped via a step condition and the
+  # job succeeds immediately.
+  setup:
+    runs-on: ubuntu-latest
+    needs: detect-changes
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
-      - run: npx tsc --noEmit
-      # The test suites are excluded from tsconfig.json (it emits dist/ from
-      # src/ only), so nothing above sees them. Without this line the check
-      # exists in package.json and runs nowhere, which is how it drifted to
-      # 308 errors before anyone looked.
-      - run: npm run typecheck:tests
-      - run: npm run build
-      - run: npm test
-      # Real tmux/child-process suites run in one worker. The unit suite above
-      # remains file-parallel, while this bounded serial invocation prevents
-      # host scheduler contention from turning diagnostic timing into flakes.
-      - run: npm run test:integration
+          cache: npm
+      - name: Install, typecheck and build
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npx tsc --noEmit
+          # The test suites are excluded from tsconfig.json (it emits dist/ from
+          # src/ only), so nothing above sees them. Without this line the check
+          # exists in package.json and runs nowhere, which is how it drifted to
+          # 308 errors before anyone looked.
+          npm run typecheck:tests
+          npm run build
+
+  # ── test shards ──────────────────────────────────────────────────────────────
+  # Always runs; each shard skips heavy work for docs-only PRs and exits 0 so
+  # the gate always sees `success`.
+  test-shard:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run test shard ${{ matrix.shard }}/4
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          npx vitest run --shard=${{ matrix.shard }}/4
+
+  # ── integration tests (serial, real-resource) ────────────────────────────────
+  # Always runs; skips heavy work for docs-only PRs.
+  test-integration:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, setup]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run integration tests
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          # Real tmux/child-process suites run in one worker. The unit suite above
+          # remains file-parallel, while this bounded serial invocation prevents
+          # host scheduler contention from turning diagnostic timing into flakes.
+          npm run test:integration
+
+  # ── aggregate ────────────────────────────────────────────────────────────────
+  # The gate requires a check named exactly "build". This job aggregates every
+  # upstream job; it fails when any upstream job fails. All upstream jobs always
+  # run (no job-level `if:`), so gate-merge.sh always sees `success` conclusions,
+  # never `skipped`.
+  build:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, changelog, setup, test-shard, test-integration, install-smoke, node20-rollback-smoke]
+    if: always()
+    steps:
+      - name: Check all jobs succeeded
+        env:
+          DOCS_ONLY: ${{ needs.detect-changes.outputs.docs-only }}
+          CHANGELOG: ${{ needs.changelog.result }}
+          SETUP: ${{ needs.setup.result }}
+          SHARD: ${{ needs.test-shard.result }}
+          INTEGRATION: ${{ needs.test-integration.result }}
+          SMOKE: ${{ needs.install-smoke.result }}
+          ROLLBACK: ${{ needs.node20-rollback-smoke.result }}
+        run: |
+          set -euo pipefail
+          # changelog always runs; verify it first regardless of docs-only.
+          if [ "$CHANGELOG" != "success" ]; then
+            echo "changelog job failed (result=$CHANGELOG)" >&2
+            exit 1
+          fi
+          if [ "$DOCS_ONLY" = "true" ]; then
+            echo "Docs-only change — changelog passed, heavy steps skipped. build passes."
+            exit 0
+          fi
+          failed=()
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
+            name="${name_result%%:*}"
+            result="${name_result##*:}"
+            if [ "$result" != "success" ]; then
+              failed+=("$name ($result)")
+            fi
+          done
+          if [ "${#failed[@]}" -gt 0 ]; then
+            echo "Failed jobs: ${failed[*]}" >&2
+            exit 1
+          fi
+          echo "All jobs succeeded."
 
       # Tell Discord how this run ended, whichever way it ended.
       #
@@ -53,7 +238,10 @@ jobs:
           # case, and a channel that announces every one of them buries the
           # red ones it exists for.
           NOTIFY_ON: failure
-          STATUS: ${{ job.status }}
+          # In a multi-job workflow, job.status reflects only this aggregate
+          # job's exit, not the upstream failures. Use needs.*.result to
+          # collect the real outcome across all jobs.
+          STATUS: ${{ contains(needs.*.result, 'failure') && 'failure' || contains(needs.*.result, 'cancelled') && 'cancelled' || 'success' }}
           WORKFLOW: ${{ github.workflow }}
           REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
@@ -129,3 +317,181 @@ jobs:
             -H "Content-Type: application/json" \
             -d @payload.json \
             "$DISCORD_WEBHOOK"
+
+  # ── install smoke ─────────────────────────────────────────────────────────────
+  # Packs the npm tarball and installs it globally on every platform × Node
+  # combination we claim to support. Verifies that `agend --version` runs and
+  # that the native better-sqlite3 prebuild loads correctly. This job never
+  # starts a fleet or touches tmux — it only does a brief in-process check.
+  #
+  # PR/branch-push runs create only Linux cells: the gate rejects skipped checks.
+  # Release tags, manual runs and the weekly schedule also create Mac cells.
+  # Keeping optional Mac cells absent avoids their queue without dropping the
+  # required build aggregate or changing the smoke steps.
+  install-smoke:
+    runs-on: ${{ matrix.os }}
+    needs: [detect-changes, setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) && '["ubuntu-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
+        # '22' resolves to the latest 22.x (already >=22.14 on current runners).
+        # '22.14.0' is the exact minimum required for N-API 10 / better-sqlite3 v13.
+        # '24' and '26' cover the current and upcoming release lines.
+        node: ['22.14.0', '22', '24', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Skip on docs-only PRs
+        if: needs.detect-changes.outputs.docs-only == 'true'
+        run: echo "Docs-only — skipping install smoke."
+      - name: Pack and install globally
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          # Pack to a tarball so we test the published surface, not the dev tree.
+          TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
+          # Install to an explicit prefix so the bin directory is predictable
+          # regardless of nvm/brew/system npm prefix configuration.
+          SMOKE_PREFIX="$RUNNER_TEMP/agend-smoke"
+          npm install --global --prefix "$SMOKE_PREFIX" "./$TGZ"
+          echo "$SMOKE_PREFIX/bin" >> "$GITHUB_PATH"
+      - name: agend --version
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: agend --version
+      - name: Verify incompatible runtime is rejected before native open
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        env:
+          SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
+        run: |
+          # Run the production isNodeCompatible() from the INSTALLED package.
+          # If the guard is removed or its boundaries change, this step fails.
+          # Removing the production function turns this red (not an inline copy).
+          node - <<'JS'
+          const path = require('path');
+          const lib = process.env.SMOKE_PREFIX + '/lib/node_modules';
+          // Load the guard from the installed agend package (production path).
+          let isNodeCompatible;
+          try {
+            ({ isNodeCompatible } = require(path.join(lib, '@songsid/agend/dist/node-version-guard.js')));
+          } catch {
+            ({ isNodeCompatible } = require(path.join(lib, 'better-sqlite3/../@songsid/agend/dist/node-version-guard.js')));
+          }
+          if (typeof isNodeCompatible !== 'function') {
+            console.error('isNodeCompatible not found in installed package');
+            process.exit(1);
+          }
+          const cases = [
+            // N-API 9 — must reject
+            { v: '22.0.0',  ok: false },
+            { v: '22.13.0', ok: false },
+            { v: '23.0.0',  ok: false },
+            { v: '23.5.9',  ok: false },
+            // N-API 10 — must accept
+            { v: '22.14.0', ok: true },
+            { v: '23.6.0',  ok: true },
+            { v: '24.0.0',  ok: true },
+          ];
+          let failed = 0;
+          for (const c of cases) {
+            const got = isNodeCompatible(c.v);
+            if (got !== c.ok) { console.error(`FAIL: isNodeCompatible(${c.v}) = ${got}, want ${c.ok}`); failed++; }
+          }
+          if (failed > 0) process.exit(1);
+          console.log('Production runtime guard: all boundary cases correct');
+          JS
+      - name: better-sqlite3 in-memory open
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        env:
+          SMOKE_PREFIX: ${{ runner.temp }}/agend-smoke
+        run: |
+          # Confirm the N-API prebuild loads on this OS + Node combination.
+          # better-sqlite3 may be hoisted to the prefix root or nested under
+          # the agend package, depending on npm's dedup behaviour. Try both.
+          node - <<'JS'
+          const path = require('path');
+          const prefix = process.env.SMOKE_PREFIX;
+          const lib = path.join(prefix, 'lib/node_modules');
+          // Try hoisted first, then nested under agend.
+          let Database;
+          try {
+            Database = require(path.join(lib, 'better-sqlite3'));
+          } catch {
+            Database = require(path.join(lib, '@songsid/agend/node_modules/better-sqlite3'));
+          }
+          const db = new Database(':memory:');
+          db.exec('CREATE TABLE smoke (v TEXT)');
+          db.prepare('INSERT INTO smoke VALUES(?)').run('ok');
+          const row = db.prepare('SELECT v FROM smoke').get();
+          if (row.v !== 'ok') process.exit(1);
+          console.log('better-sqlite3 N-API prebuild ok on Node', process.version);
+          JS
+
+  # ── Node 20 preinstall rollback smoke ────────────────────────────────────────
+  # Proves that on Node 20 (incompatible with N-API 10), npm install of the new
+  # package over an existing 2.1.12 install rolls back and keeps 2.1.12.
+  # Uses an isolated global prefix — never touches the host global npm.
+  node20-rollback-smoke:
+    runs-on: ubuntu-latest
+    needs: [setup, detect-changes]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      # Two tarballs of this build: as released (pinning its bundled Node), and the same package WITHOUT the pins — what
+      # a host no runtime covers gets (#1450): there an old Node must be refused, and npm must roll the upgrade back.
+      - name: Pack tarballs on Node 22 (pinned, and without a runtime)
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          npm ci
+          npm run build
+          TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
+          mv "$TGZ" "pinned-$TGZ"
+          npm pkg delete optionalDependencies
+          npm pack --json >/dev/null
+          mv "$TGZ" "noruntime-$TGZ"
+          git checkout -- package.json
+          echo "TGZ=pinned-$TGZ" >> "$GITHUB_ENV"
+          echo "TGZ_NORUNTIME=noruntime-$TGZ" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        with:
+          node-version: '20'
+      - name: Rollback proof — Node 20 is refused a package with no runtime for it; 2.1.12 stays
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/node20-rollback-prefix"
+          mkdir -p "$PREFIX"
+          # Install old baseline
+          npm install --global --prefix "$PREFIX" @songsid/agend@2.1.12
+          BEFORE=$("$PREFIX/bin/agend" --version)
+          echo "Before: $BEFORE"
+          [ "$BEFORE" = "2.1.12" ] || { echo "baseline install failed"; exit 1; }
+          # The package without a runtime: Node 20 is older than engines, the preinstall refuses, npm rolls back.
+          if npm install --global --prefix "$PREFIX" "./$TGZ_NORUNTIME"; then
+            echo "ERROR: npm install of a package with no runtime should have failed on Node 20 but succeeded" >&2
+            exit 1
+          fi
+          AFTER=$("$PREFIX/bin/agend" --version)
+          echo "After the refused upgrade: $AFTER"
+          [ "$AFTER" = "2.1.12" ] || { echo "ROLLBACK FAILED: version is $AFTER, expected 2.1.12" >&2; exit 1; }
+          echo "Rollback confirmed: 2.1.12 is still installed after a refused upgrade on Node 20"
+      - name: Bundled install — Node 20 installs the pinned package, which runs on its own Node
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/node20-rollback-prefix"
+          # #1450 (user rule): where a runtime applies the system Node's version is never a reason to refuse.
+          npm install --global --prefix "$PREFIX" "./$TGZ"
+          WANT=$(node -p 'require("./package.json").version')
+          GOT=$("$PREFIX/bin/agend" --version)
+          [ "$GOT" = "$WANT" ] || { echo "ERROR: agend --version is $GOT, expected $WANT" >&2; exit 1; }
+          "$PREFIX/bin/agend" --agend-select-json | node -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log("selection:", s.source, s.node); if (s.source !== "runtime") process.exit(1)'
+          echo "Node 20 upgraded to $GOT, running on the bundled Node"

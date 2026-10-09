@@ -37,7 +37,7 @@ class FakeClient extends EventEmitter {
   destroy() { this.ws.status = Status.Disconnected; }
 }
 
-async function register(setImpl?: () => Promise<unknown>) {
+async function register(setImpl?: (commands: any) => Promise<unknown>) {
   let client!: FakeClient;
   const adapter = new DiscordAdapter({
     id: "discord", botToken: "x", accessManager: {} as any, inboxDir: scratch(), guildId: "g", registerCommands: true,
@@ -50,6 +50,22 @@ async function register(setImpl?: () => Promise<unknown>) {
   await adapter.stop();
   return outcomes[0] as Record<string, unknown>;
 }
+
+describe("/dashboard is registered with its revoke action (#1260)", () => {
+  it.each(["en", "zh-TW"] as const)("%s: an optional `action` whose one choice is revoke, described within Discord's 100 characters", async (locale) => {
+    const { setLocale } = await import("../src/locale.js");
+    setLocale(locale);
+    try {
+      let sent: Array<{ name: string; options?: Array<{ name: string; description: string; required?: boolean; choices?: unknown[] }> }> = [];
+      await register(async (commands: typeof sent) => { sent = commands; return new Map(); });
+      const dashboard = sent.find(c => c.name === "dashboard")!;
+      expect(dashboard.options).toHaveLength(1);
+      expect(dashboard.options![0]).toMatchObject({ name: "action", required: false, choices: [{ name: "revoke", value: "revoke" }] });
+      expect(dashboard.options![0]!.description.length).toBeGreaterThan(0);
+      expect(dashboard.options![0]!.description.length).toBeLessThanOrEqual(100);
+    } finally { setLocale("en"); }
+  });
+});
 
 describe("the Discord adapter reports every registration", () => {
   it("success, with how many commands Discord now has", async () => {

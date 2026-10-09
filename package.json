@@ -1,11 +1,11 @@
 {
   "name": "@songsid/agend",
   "version": "1.22.0",
-  "description": "Multi-agent fleet daemon — run any coding CLI (Claude, Gemini, Codex, OpenCode) from Telegram",
+  "description": "Multi-agent fleet daemon \u2014 run any coding CLI (Claude, Gemini, Codex, OpenCode) from Telegram",
   "type": "module",
   "bin": {
-    "agend": "./dist/cli.js",
-    "agend-agent": "./dist/agent-cli.js"
+    "agend": "./launcher/agend",
+    "agend-agent": "./launcher/agend-agent"
   },
   "exports": {
     ".": "./dist/cli.js",
@@ -21,14 +21,17 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.config.integration.ts && node scripts/check-integration-config.mjs",
+    "test:codex-e2e": "vitest run --config vitest.config.codex-e2e.ts",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config e2e/vitest.config.e2e.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "preinstall": "node scripts/preinstall-guard.cjs",
+    "postinstall": "node launcher/postinstall.cjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^22.14.0 || ^23.6.0 || >=24"
   },
   "license": "MIT",
   "repository": {
@@ -51,11 +54,13 @@
     "dist/",
     "templates/",
     "README.md",
-    "README.zh-TW.md"
+    "README.zh-TW.md",
+    "launcher/",
+    "scripts/preinstall-guard.cjs"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "better-sqlite3": "^12.8.0",
+    "better-sqlite3": "^13.0.3",
     "commander": "^14.0.3",
     "croner": "^10.0.1",
     "discord.js": "^14.25.1",
@@ -68,6 +73,12 @@
     "undici": "6.24.1",
     "yaml": "^2.9.0",
     "zod": "^4.3.6"
+  },
+  "optionalDependencies": {
+    "@songsid/agend-node-darwin-arm64": "22.23.3",
+    "@songsid/agend-node-darwin-x64": "22.23.3",
+    "@songsid/agend-node-linux-arm64": "22.23.3",
+    "@songsid/agend-node-linux-x64": "22.23.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

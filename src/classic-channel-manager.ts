@@ -1,3 +1,4 @@
+import { mergeSettingsDelta, noteSettingsWrite } from "./settings-transaction.js";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, copyFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
@@ -60,6 +61,12 @@ export interface ClassicChannel {
   toolProgress?: InstanceConfig["tool_progress"];
   replyCompletionGuard?: boolean;
   /**
+   * Echo owner web-chat messages into this channel (#1320 part B).
+   * Default off; only an explicit `true` opts in. Load/save preserve it;
+   * anything non-boolean in YAML reads as off (the validator rejects it).
+   */
+  webEcho?: boolean;
+  /**
    * Per-backend options, as in fleet.yaml (#1220). Only `credential_profile`
    * is read today: it puts this channel's agent on a second subscription.
    */
@@ -100,6 +107,7 @@ interface ClassicBotYaml {
     tool_progress?: InstanceConfig["tool_progress"];
     reply_completion_guard?: boolean;
     backend_options?: unknown;
+    web_echo?: unknown;
     collab?: boolean;
     pre_task_command?: string;
     createdBy?: string;
@@ -167,6 +175,8 @@ export class ClassicChannelManager {
   private defaults: ClassicDefaults = {};
   private readonly configPath: string;
   private lastMtime = 0;
+  private savedProjection: ClassicBotYaml = { defaults: {}, channels: {} };
+  private sourceDocument: ClassicBotYaml = { defaults: {}, channels: {} };
   /** The primary (channels[0]) adapter id. It names without a suffix. */
   private primaryAdapterId?: string;
   /** Config-order adapter identities, used to migrate legacy rows by platform. */
@@ -273,6 +283,7 @@ export class ClassicChannelManager {
     try {
       const raw = yaml.load(readFileSync(this.configPath, "utf-8")) as ClassicBotYaml | null;
       if (!raw) return false;
+      this.sourceDocument = structuredClone(raw);
       this.defaults = raw.defaults ?? {};
       this.reportUnquotedIds();
       this.channels.clear();
@@ -312,6 +323,7 @@ export class ClassicChannelManager {
               contextLines: val.context_lines,
               toolProgress: val.tool_progress,
               replyCompletionGuard: val.reply_completion_guard,
+              webEcho: val.web_echo === true,
               backendOptions: this.readBackendOptions(val.backend_options, key),
               createdAt: val.createdAt ?? "",
               createdBy: val.createdBy ?? "",
@@ -397,6 +409,7 @@ export class ClassicChannelManager {
       }
       this.rebuildChannelIds();
       this.lastMtime = statSync(this.configPath).mtimeMs;
+      this.savedProjection = structuredClone(repaired ? raw : this.document());
       this.logger.info({ count: this.channels.size }, "Loaded classic channels");
       return repaired;
     } catch (err) {
@@ -405,17 +418,18 @@ export class ClassicChannelManager {
     }
   }
 
-  private save(): void {
-    mkdirSync(this.dataDir, { recursive: true });
-    const obj: ClassicBotYaml = { defaults: this.defaults, channels: {} };
+  private document(): ClassicBotYaml {
+    const obj: ClassicBotYaml = { ...this.sourceDocument, defaults: this.defaults, channels: {} };
     for (const ch of this.channels.values()) {
       const entry: Record<string, unknown> = {
+        ...this.sourceDocument.channels?.[this.compositeKey(ch.channelId, ch.adapterId)],
         channelId: ch.channelId,
         instanceName: ch.instanceName,
         name: ch.name,
         createdBy: ch.createdBy,
         createdAt: ch.createdAt,
       };
+      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
@@ -425,12 +439,25 @@ export class ClassicChannelManager {
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.toolProgress !== undefined) entry.tool_progress = ch.toolProgress;
       if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
+      if (ch.webEcho) entry.web_echo = true;
       if (ch.backendOptions && Object.keys(ch.backendOptions).length > 0) entry.backend_options = ch.backendOptions;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
     }
-    writeFileSync(this.configPath, YAML_HEADER + yaml.dump(obj, { lineWidth: -1 }));
+    return obj;
+  }
+
+  private save(): void {
+    mkdirSync(this.dataDir, { recursive: true });
+    const projected = this.document();
+    const fresh = existsSync(this.configPath) ? yaml.load(readFileSync(this.configPath, "utf8")) as ClassicBotYaml : { defaults: {}, channels: {} };
+    if (fresh !== null && (typeof fresh !== "object" || Array.isArray(fresh))) throw new Error("invalid Classic configuration");
+    const next = mergeSettingsDelta(this.savedProjection, projected, fresh ?? {});
+    noteSettingsWrite(this.configPath, this.savedProjection, projected);
+    writeFileSync(this.configPath, YAML_HEADER + yaml.dump(next, { lineWidth: -1 }));
+    this.savedProjection = structuredClone(projected);
+    this.sourceDocument = structuredClone(next);
     this.lastMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
   }
 
@@ -453,10 +480,10 @@ export class ClassicChannelManager {
 
   getDefaults(): Readonly<ClassicDefaults> { return this.defaults; }
 
-  /** Check if a guild is allowed. Empty/unset/non-array allowed_guilds = allow all (backward compat). */
+  /** Check if a guild is allowed. Empty/unset/non-array lists require an access request. */
   isGuildAllowed(guildId: string): boolean {
     const list = this.defaults.allowed_guilds;
-    if (!Array.isArray(list) || list.length === 0) return true;
+    if (!Array.isArray(list) || list.length === 0) return false;
     // String comparison, matching isAdmin. A hand-edited config can hold an
     // UNQUOTED id, which YAML parses as a number; a strict includes() then
     // never matches the string an adapter supplies, and the chat is locked out
@@ -467,10 +494,10 @@ export class ClassicChannelManager {
     return list.some(entry => String(entry) === String(guildId));
   }
 
-  /** Check if a Telegram group is allowed. Empty/unset/non-array = allow all. */
+  /** Check if a Telegram group is allowed. Empty/unset/non-array lists require an access request. */
   isGroupAllowed(groupId: string): boolean {
     const list = this.defaults.allowed_groups;
-    if (!Array.isArray(list) || list.length === 0) return true;
+    if (!Array.isArray(list) || list.length === 0) return false;
     // String comparison, matching isAdmin. A hand-edited config can hold an
     // UNQUOTED id, which YAML parses as a number; a strict includes() then
     // never matches the string an adapter supplies, and the chat is locked out
@@ -481,10 +508,10 @@ export class ClassicChannelManager {
     return list.some(entry => String(entry) === String(groupId));
   }
 
-  /** Check if a Telegram user (private chat) is allowed. Empty/unset/non-array = allow all. */
+  /** Check if a Telegram user (private chat) is allowed. Empty/unset/non-array lists require an access request. */
   isUserAllowed(userId: string): boolean {
     const list = this.defaults.allowed_users;
-    if (!Array.isArray(list) || list.length === 0) return true;
+    if (!Array.isArray(list) || list.length === 0) return false;
     // String comparison, matching isAdmin. A hand-edited config can hold an
     // UNQUOTED id, which YAML parses as a number; a strict includes() then
     // never matches the string an adapter supplies, and the chat is locked out
@@ -498,7 +525,7 @@ export class ClassicChannelManager {
   /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */
   isAdmin(userId: string): boolean {
     const list = this.defaults.admin_users;
-    return !!list && list.length > 0 && list.some(id => String(id) === String(userId));
+    return Array.isArray(list) && list.some(id => String(id) === String(userId));
   }
 
   /**
@@ -510,19 +537,19 @@ export class ClassicChannelManager {
    * loses precision as a YAML integer, after which the strict `includes()` in
    * the isAllowed checks stops matching it.
    *
-   * "already-open" is not a no-op for tidiness — it is a guard. An empty
-   * allowed_guilds/allowed_groups means allow-all, so writing the FIRST entry
-   * would flip the fleet to an allow-list and lock out every other guild that
-   * works today. The caller asked to allow this one, not to restrict the rest.
+   * Empty lists now admit nobody (#1418), so the first grant must be persisted.
    */
   private grantTo(
-    field: "allowed_guilds" | "allowed_groups" | "admin_users",
+    field: "allowed_guilds" | "allowed_groups" | "allowed_users" | "admin_users",
     id: string,
-  ): "added" | "already" | "already-open" {
+  ): "added" | "already" {
+    // Additive chat grants must start from current disk, not an old manager's
+    // array projection (a confirmed Settings edit may have added another ID).
+    const fresh = existsSync(this.configPath) ? yaml.load(readFileSync(this.configPath, "utf8")) as ClassicBotYaml : null;
+    if (fresh?.defaults && Object.hasOwn(fresh.defaults, field)) this.defaults[field] = structuredClone(fresh.defaults[field]);
+    else delete this.defaults[field];
     const value = String(id);
     const list = this.defaults[field];
-    // admin_users has no allow-all semantics: empty means nobody is admin.
-    if (field !== "admin_users" && (!Array.isArray(list) || list.length === 0)) return "already-open";
     // A truncated entry can never equal the real id, so this comparison will
     // not treat it as a duplicate: the correct quoted id is ADDED ALONGSIDE the
     // broken one, which stays until a human removes it. That is the right
@@ -613,17 +640,22 @@ export class ClassicChannelManager {
   }
 
   /** Allow a Discord guild to use ClassicBot. */
-  allowGuild(guildId: string): "added" | "already" | "already-open" {
+  allowGuild(guildId: string): "added" | "already" {
     return this.grantTo("allowed_guilds", guildId);
   }
 
   /** Allow a Telegram group to use ClassicBot. */
-  allowGroup(groupId: string): "added" | "already" | "already-open" {
+  allowGroup(groupId: string): "added" | "already" {
     return this.grantTo("allowed_groups", groupId);
   }
 
+  /** Allow a Telegram private-chat user to start ClassicBot. */
+  allowUser(userId: string): "added" | "already" {
+    return this.grantTo("allowed_users", userId);
+  }
+
   /** Promote a user to ClassicBot admin (start/stop/model on classic channels). */
-  addAdminUser(userId: string): "added" | "already" | "already-open" {
+  addAdminUser(userId: string): "added" | "already" {
     return this.grantTo("admin_users", userId);
   }
 

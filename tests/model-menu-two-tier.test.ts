@@ -15,8 +15,10 @@ describe("/model two-tier menu", () => {
   function setup(backend = "claude-code") {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
+      // "admin" is a fleet admin of the telegram adapter: a menu click re-checks it (#754 audit).
+      channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } },
       defaults: {},
-      instances: { worker: { working_directory: "/tmp", backend } },
+      instances: { worker: { working_directory: "/tmp", backend, topic_id: "chan" } },
     } as any;
     const promptUser = vi.fn().mockResolvedValue("menu-1");
     const sendText = vi.fn().mockResolvedValue({ messageId: "m1" });
@@ -51,7 +53,7 @@ describe("/model two-tier menu", () => {
 
     const consumed = await (fm as any).handleModelSelection({
       callbackData: moreId, userId: "admin", chatId: "chan", threadId: undefined, messageId: "menu-1",
-    });
+    }, "telegram");
     expect(consumed).toBe(true);
     expect(promptUser).toHaveBeenCalledTimes(2);
     const expanded = promptUser.mock.calls[1][2] as Array<{ id: string; label: string }>;
@@ -67,7 +69,7 @@ describe("/model two-tier menu", () => {
     const moreId = (promptUser.mock.calls[0][2] as Array<{ id: string }>).at(-1)!.id;
     await (fm as any).handleModelSelection({
       callbackData: moreId, userId: "admin", chatId: "chan", threadId: undefined, messageId: "menu-1",
-    });
+    }, "telegram");
     expect(promptUser).toHaveBeenCalledTimes(1); // no second menu
     expect(String(sendText.mock.calls.at(-1)![1])).toContain("/model");
   });

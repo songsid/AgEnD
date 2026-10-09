@@ -1,13 +1,21 @@
 name: Gitleaks
 
 on:
+  # release/** are maintenance lines (release/2.1: 2.1.x fixes cherry-picked from main). Their PRs and pushes
+  # get the same checks as main's.
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'release/**']
 
 permissions:
   contents: read
+
+# Cancel in-progress runs for the same PR when a new commit arrives. Push runs on
+# main/release/** are deliberately NOT cancelled — they are needed for release tagging.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   scan:

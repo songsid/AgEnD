@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,6 +16,18 @@ import {
 import type { InstanceConfig } from "../src/types.js";
 
 const dirs: string[] = [];
+
+/** The keys the agent and ClassicBot forms write (the Settings panel's form patches; see settings-dialogs.js). */
+const agentFormKeys = [
+  "agent_mode", "auto_pause_after", "backend", "channel_id", "cross_instance_visibility", "description",
+  "display_name", "general_topic", "hang_detector", "lightweight",
+  "log_level", "model", "model_failover", "reply_completion_guard",
+  "status_emojis", "systemPrompt", "tags", "tool_progress", "tool_set", "working_directory",
+];
+const classicFormKeys = [
+  "auto_pause_after", "backend", "collab", "context_lines", "model",
+  "reply_completion_guard", "tool_progress", "web_echo",
+];
 
 /**
  * Top-level property names of an interface in src/types.ts.
@@ -248,6 +260,7 @@ describe("settings impact schema", () => {
 });
 
 describe("GET /api/settings/schema", () => {
+  let enabled = false;
   function request(path: string): Promise<{ status: number; body: Record<string, unknown> }> {
     return new Promise((resolve, reject) => {
       const req = { method: "GET", destroy: () => undefined };
@@ -271,6 +284,7 @@ describe("GET /api/settings/schema", () => {
       getRawFleetConfig: () => ({}),
       saveFleetConfig: vi.fn(),
       lifecycle: { isPaused: vi.fn(() => false), pause: vi.fn(), wake: vi.fn() },
+      providerSecretsEnabled: () => enabled,
     } as unknown as SettingsApiContext;
   }
 
@@ -285,6 +299,13 @@ describe("GET /api/settings/schema", () => {
     expect(impacts["fleet.spawn_concurrency"]).toBe("fleet");
   });
 
+  it("says whether this fleet offers provider secrets (alpha.2 sweep: the page reads them only then)", async () => {
+    const res = await request("/api/settings/schema");
+    expect(res.body.provider_secrets).toBe(false);
+    enabled = true;
+    try { expect((await request("/api/settings/schema")).body.provider_secrets).toBe(true); } finally { enabled = false; }
+  });
+
   it("follows the hot set rather than a table of its own", () => {
     // Shrinking the authority has to shrink the served schema, or the page keeps
     // promising "applied immediately" for a key that now needs a restart.
@@ -295,35 +316,48 @@ describe("GET /api/settings/schema", () => {
 });
 
 describe("the settings page reads impacts instead of hard-coding them", () => {
-  const html = readFileSync(
-    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "ui", "settings.html"),
-    "utf8",
-  );
+  // The Settings UI is the app shell's panel and its modules (#1408 step 3); settings.html is gone. Its source is read
+  // as text, the way the old page was: the literal impact paths it asks for, and what it hard-codes.
+  const uiSource = ["panel-settings.js", "settings-dialogs.js", "settings-model.js", "settings-wizard.js"]
+    .map(file => readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "ui", file), "utf8"))
+    .join("\n");
   const schema = buildSettingsImpactSchema();
+  let uiBatchImpact: (schema: { order: string[] }, keys: string[], impactFor: (key: string) => string) => string;
+  beforeAll(async () => { ({ batchImpact: uiBatchImpact } = await import("/ui/js/settings-model.js")); });
 
   it("asks for a field path the server actually publishes", () => {
-    const paths = [...html.matchAll(/impact(?:Of)?\("([^"]+)"\)/g)].map(m => m[1]!);
-    expect(paths.length).toBeGreaterThan(40);
-    for (const path of paths) {
-      expect(schema.impacts, `settings.html asks for "${path}"`).toHaveProperty(path);
+    // Literal paths the page names.
+    const literal = [...uiSource.matchAll(/impact(?:Of)?\(\s*(?:schema,\s*)?"([^"]+)"/g)].map(m => m[1]!);
+    expect(literal.length).toBeGreaterThan(0);
+    for (const path of literal) {
+      expect(schema.impacts, `settings UI asks for "${path}"`).toHaveProperty(path);
     }
+    // Paths built from a form's keys (`instance.${k}`): every key the agent and ClassicBot forms can write.
+    const built = [...agentFormKeys.map(k => `instance.${k}`), ...classicFormKeys.map(k => `classic.${k}`)];
+    for (const path of built) {
+      expect(schema.impacts, `the form asks for "${path}"`).toHaveProperty(path);
+    }
+    // Not vacuous: the form lists the loop above checks are the panel's real ones.
+    expect(built.length).toBe(agentFormKeys.length + classicFormKeys.length);
   });
 
   it("carries no hard-coded impact kind and no copy of the hot set", () => {
-    expect(html).not.toMatch(/impact\("(now|instance|fleet)"\)/);
-    expect(html).not.toMatch(/impact:\s*"(now|instance|fleet)"/);
-    expect(html).not.toContain("HOT_FIELDS");
+    expect(uiSource).not.toMatch(/impact\("(now|instance|fleet)"\)/);
+    expect(uiSource).not.toMatch(/impact:\s*"(now|instance|fleet)"/);
+    expect(uiSource).not.toContain("HOT_FIELDS");
     // The two classic hot-only checks used to name the fields inline.
-    expect(html).not.toMatch(/key === "tool_progress" \|\| key === "reply_completion_guard"/);
+    expect(uiSource).not.toMatch(/key === "tool_progress" \|\| key === "reply_completion_guard"/);
   });
 
   it("loads the schema before rendering", () => {
-    expect(html).toContain('api("/api/settings/schema")');
+    expect(uiSource).toContain('"/api/settings/schema"');
   });
 
   it("costs a batch with the order the server ships, not one of its own", () => {
-    expect(html).toContain("const order = state.schema.order;");
-    expect(html).not.toMatch(/=== "fleet" \? "fleet" : "instance"/);
+    // The model reads the order off the schema it is given: a different order from the server is the one used.
+    expect(uiBatchImpact({ order: ["fleet", "instance", "now"] }, ["x"], () => "instance")).toBe("instance");
+    expect(uiBatchImpact({ order: ["a", "b", "c"] }, ["x", "y"], k => (k === "x" ? "b" : "c"))).toBe("c");
+    expect(uiSource).not.toMatch(/=== "fleet" \? "fleet" : "instance"/);
   });
 
   it("classifies every key a classic patch can carry", () => {

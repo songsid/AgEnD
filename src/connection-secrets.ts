@@ -1,3 +1,4 @@
+import { settingsRequestBinding } from "./settings-request-capability.js";
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { redactProviderError } from "./provider-probe.js";
@@ -20,6 +21,8 @@ export interface ProviderSecretChallenge {
   operation: "provider-secret.apply";
   idempotencyKey: string;
   expiresAt: number;
+  /** Monotonic verification lifetime; wall timestamp is display-only. */
+  deadline?: number;
   /** Retained in memory only until the one-shot apply consumes it. */
   secret: string;
 }
@@ -75,6 +78,8 @@ export interface BindingChallenge {
   operation: "binding.apply";
   idempotencyKey: string;
   expiresAt: number;
+  /** Monotonic verification lifetime; wall timestamp is display-only. */
+  deadline?: number;
   binding: ConnectionBinding;
   probe: BindingProbe;
 }
@@ -87,6 +92,8 @@ export interface SecretChallenge {
   operation: "secret.apply";
   idempotencyKey: string;
   expiresAt: number;
+  /** Monotonic verification lifetime; wall timestamp is display-only. */
+  deadline?: number;
   /** Kept only in memory until the apply job consumes it. */
   secret: string;
 }
@@ -103,6 +110,7 @@ export interface SecretApplyJob {
 }
 
 export function requestSessionBinding(req: IncomingMessage): string {
+  const approved = settingsRequestBinding(req); if (approved) return approved;
   // The raw credential is never retained or logged. A digest is enough to bind
   // a challenge to the authenticated Settings session (or CLI header).
   const cookie = typeof req.headers.cookie === "string" ? req.headers.cookie : "";

@@ -135,6 +135,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     profiles?: FleetConfig["profiles"];
     health_port?: number;
     web?: FleetConfig["web"];
+    needs_you?: unknown;
     hostname?: string;
     fleet_label?: string;
     login?: FleetConfig["login"];
@@ -198,11 +199,21 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     profiles: parsed.profiles,
     health_port: parsed.health_port,
     web: parsed.web,
+    needs_you: needsYouConfig(parsed.needs_you),
     hostname: parsed.hostname,
     fleet_label: parsed.fleet_label,
     login: validateLoginConfig(parsed.login),
     web_terminal: validateWebTerminalConfig(parsed.web_terminal),
   };
+}
+
+/** #1386: only the two known booleans; anything else is dropped (the validator reports it). */
+function needsYouConfig(raw: unknown): FleetConfig["needs_you"] {
+  if (!isPlainObject(raw)) return undefined;
+  const out: NonNullable<FleetConfig["needs_you"]> = {};
+  if (typeof raw.live_message === "boolean") out.live_message = raw.live_message;
+  if (typeof raw.dm === "boolean") out.dm = raw.dm;
+  return out;
 }
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {

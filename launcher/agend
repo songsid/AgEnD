@@ -1,0 +1,110 @@
+#!/bin/sh
+# #1450: the `agend` and `agend-agent` npm bins (this file and launcher/agend-agent are identical). POSIX sh, so AgEnD
+# starts with no Node on PATH at all: it execs this release's bundled Node on the JS launcher, which is the one place
+# that decides and verifies the interpreter (launcher/runtime-select.cjs). A `node` on PATH is used only when the
+# bundled Node is not installed; the JS launcher then decides whether that Node qualifies. Native Windows is not
+# supported (WSL is), as with tmux.
+
+# This file's real location: npm's global bin is a symlink, possibly relative, possibly to another link. A readlink
+# loop, not `readlink -f` (older macOS lacks it; GNU is not assumed).
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self") || break
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+dir=$(cd "$(dirname "$self")" && pwd -P) || exit 1
+pkg=$(dirname "$dir")
+launcher=$dir/$(basename "$self").cjs
+
+sys=$(uname -s) || sys=unknown
+mach=$(uname -m) || mach=unknown
+case $sys in
+  Linux) os=linux ;;
+  Darwin) os=darwin ;;
+  *) os=unsupported ;;
+esac
+case $mach in
+  x86_64 | amd64) cpu=x64 ;;
+  aarch64 | arm64) cpu=arm64 ;;
+  *) cpu=unsupported ;;
+esac
+node_pkg=$pkg/node_modules/@songsid/agend-node-$os-$cpu
+node=$node_pkg/bin/node
+receipt=$pkg/.agend-runtime.json
+repair="npm install -g @songsid/agend"
+refuse() { echo "AgEnD cannot start: $1." >&2; echo "To repair: $2" >&2; exit "${3:-1}"; }
+
+# 1. AGEND_NODE, the operator's explicit choice: absolute and executable, then it runs the JS launcher, whose probe
+#    refuses one that does not qualify. Never a silent fallback to another Node.
+if [ -n "${AGEND_NODE:-}" ]; then
+  case $AGEND_NODE in
+    /*) ;;
+    *) refuse "AGEND_NODE must be an absolute path (got $AGEND_NODE)" "unset AGEND_NODE, or point it at a Node 22.14+" ;;
+  esac
+  [ -f "$AGEND_NODE" ] && [ -x "$AGEND_NODE" ] || refuse "AGEND_NODE ($AGEND_NODE) is not an executable file" "unset AGEND_NODE, or point it at a Node 22.14+"
+  exec "$AGEND_NODE" "$launcher" "$@"
+fi
+
+# 2. The bundled Node, only when its ADMISSION KEY (launcher/runtime-select.cjs, "THE ADMISSION KEY") is exactly what
+#    this shell measures now — nothing parsed, the bytes rebuilt and compared: the host's os and cpu (never its
+#    version: an OS update must not lock AgEnD out), the Node's realpath, size and mtime, and the POSIX cksum of both
+#    manifests and of the receipt. The JS selection requires the same key, so a
+#    change to any bound file keeps BOTH from running the candidate.
+# Every measurement must itself complete: a value printed by a command that then fails is no measurement (#1460 r4).
+admissible() {
+  [ -f "$pkg/.agend-runtime.key" ] && [ -f "$node" ] && [ ! -L "$node" ] && [ -x "$node" ] || return 1
+  case $os in linux | darwin) ;; *) return 1 ;; esac
+  real=$(cd "${node%/*}" 2>/dev/null && pwd -P) || return 1
+  real=$real/node
+  size=$(wc -c < "$node") || return 1
+  set -- $size
+  size=${1:-}
+  case $size in '' | *[!0-9]*) return 1 ;; esac
+  if mtime=$(stat -c %Y "$node" 2>/dev/null); then :; elif mtime=$(stat -f %m "$node" 2>/dev/null); then :; else return 1; fi
+  case $mtime in '' | *[!0-9]*) return 1 ;; esac
+  sum_package=$(cksum < "$pkg/package.json") || return 1
+  sum_runtime=$(cksum < "$node_pkg/package.json") || return 1
+  sum_receipt=$(cksum < "$receipt") || return 1
+  printf 'agend-runtime-key 2\nos %s\ncpu %s\nnode %s\nsize %s\nmtime %s\npackage %s\nruntime %s\nreceipt %s\n' \
+    "$os" "$cpu" "$real" "$size" "$mtime" "$sum_package" "$sum_runtime" "$sum_receipt" | cmp -s - "$pkg/.agend-runtime.key"
+}
+# This host, measured fresh, must still be one the bundled Node supports (launcher/runtime-platform.cjs
+# runtimeSupport: glibc >= 2.28 on Linux, Darwin kernel >= 20) — minimums, never a pinned version. A stored or copied
+# runtime on a host that no longer qualifies never runs; the JS launcher then picks a system Node or refuses.
+supported() {
+  case $os in
+    linux)
+      v=$(getconf GNU_LIBC_VERSION 2>/dev/null) || return 1
+      case $v in "glibc "*) v=${v#glibc } ;; *) return 1 ;; esac
+      major=${v%%.*}
+      minor=${v#*.}
+      minor=${minor%%.*}
+      case $major in '' | *[!0-9]*) return 1 ;; esac
+      case $minor in '' | *[!0-9]*) return 1 ;; esac
+      [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 28 ]; }
+      ;;
+    darwin)
+      r=$(uname -r) || return 1
+      kernel=${r%%.*}
+      case $kernel in '' | *[!0-9]*) return 1 ;; esac
+      [ "$kernel" -ge 20 ]
+      ;;
+    *) return 1 ;;
+  esac
+}
+if supported && admissible; then
+  exec "$node" "$launcher" "$@"
+fi
+
+# 3. Not admitted here, so that candidate never runs. A node on PATH runs the JS launcher: it explains a refusal, or
+#    is itself the choice when the runtime was skipped altogether (and it qualifies).
+if command -v node >/dev/null 2>&1; then
+  exec node "$launcher" "$@"
+fi
+if [ -e "$receipt" ] || [ -e "$node" ] || [ -L "$node" ]; then
+  refuse "its bundled Node ($node) is missing, incomplete or changed since it was verified, and there is no node on PATH" "$repair"
+fi
+refuse "its bundled Node is not installed and there is no node on PATH" "$repair" 127

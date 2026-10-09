@@ -36,6 +36,7 @@ function stubCodex(behaviour: "refetch" | "fail") {
       : `printf '%s' '${catalog("gpt-6-astra", "gpt-5.6-sol")}' > "$CODEX_HOME/models_cache.json"`,
   ].join("\n"));
   chmodSync(join(bin, "codex"), 0o755);
+  registerExecutableFixture(join(bin, "codex"));
 }
 
 beforeEach(() => {
@@ -99,3 +100,4 @@ describe("CodexBackend.refreshModelCatalog", () => {
     await expect(new CodexBackend(join(root, "instance")).refreshModelCatalog()).rejects.toThrow();
   });
 });
+import { registerExecutableFixture } from "./support/process-guard.js";

@@ -1,4 +1,4 @@
-import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels } from "./effort-metadata.js";
 import { dirname, join } from "node:path";
 import { ensureInstanceDir } from "../private-dir.js";
 import { homedir } from "node:os";
@@ -31,6 +31,85 @@ import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
 /** Parse `agy models`, which may emit TSV slug/display pairs or legacy single-column names. */
+/**
+ * agy's logged-out startup screen, as the CLI paints it (captured offline from 1.0.10 and 1.3.1):
+ *
+ *   Welcome to the Antigravity CLI. You are currently not signed in.
+ *   Select login method:
+ *   > 1. Google OAuth
+ *     2. Use a Google Cloud project
+ *   ↑/↓ Navigate · enter Select            (1.0.10: [Use arrow keys to navigate, Enter to select])
+ *
+ * Bottom-anchored: the not-signed-in line, then the title, then only numbered option rows and at most one key-hint
+ * row. A transcript that quotes the screen has the prompt below it, so it never matches. ("not logged into
+ * Antigravity", the old pattern, is only ever written to agy's log file, never to the pane.)
+ */
+export function agyLoginScreenActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, "")).filter(row => row.trim() !== "");
+  let title = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Select login method:$/.test(rows[i]!)) { title = i; break; }
+  if (title < 1 || !/You are currently not signed in\.?$/.test(rows[title - 1]!)) return false;
+  const below = rows.slice(title + 1);
+  let options = 0;
+  while (options < below.length && /^[ \t]*(?:[>❯›][ \t]*)?\d\.[ \t]+\S/.test(below[options]!)) options++;
+  const rest = below.slice(options);
+  return options >= 2 && (rest.length === 0 || (rest.length === 1 && /navigate/i.test(rest[0]!) && /select/i.test(rest[0]!)));
+}
+
+/** The reconstructed (#415-era incident) busy row: star/dot glyph, verb, ellipsis, and a timer or "(esc to cancel)". */
+const AGY_LEGACY_BUSY_ROW = /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))/mu;
+/**
+ * #1328, agy 1.3.1's live working row (see getBusyPattern): a braille frame at column 0 + verb + ellipsis, directly
+ * above the live composer box (separator, 1–8 input rows, separator), then at most 3 footer rows and the pane's end.
+ */
+const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
+  "^[\\u2800-\\u28FF][ \\t]+\\p{L}[^\\n]*?(?:…|\\.\\.\\.)[ \\t]*(?:\\(esc to cancel\\)|\\d+(?:\\.\\d+)?s)?[ \\t]*\\r?\\n"
+  + "(?:[ \\t]*\\r?\\n)*─{20,}[ \\t]*\\r?\\n(?:[^\\n]*\\r?\\n){1,8}?─{20,}[ \\t]*(?:\\r?\\n[^\\n]*){0,3}?\\s*(?![\\s\\S])",
+  "mu",
+);
+
+/**
+ * agy's trust prompt, bottom-anchored (captured live, 1.3.1):
+ *
+ *   Do you trust the contents of this project?
+ *   Antigravity CLI requires permission to read, edit, and execute files here.
+ *   > Yes, I trust this folder
+ *     No, exit
+ *     ↑/↓ Navigate · enter Confirm
+ *                                                   Gemini 3.8 Flash · high
+ *
+ * "yes": the prompt is the live screen and the one cursor is on "Yes, I trust this folder"; "other": it is the live
+ * screen but the cursor is elsewhere, missing or doubled; null: not the live screen (not present, or something other
+ * than its own hint/status rows follows the options — a quoted copy in a conversation).
+ */
+export function agyTrustDialogState(pane: string): "yes" | "other" | null {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, "")).filter(row => row.trim() !== "");
+  let title = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Do you trust the contents of this project\?$/.test(rows[i]!)) { title = i; break; }
+  if (title < 0) return null;
+  const below = rows.slice(title + 1);
+  const yes = below.findIndex(row => /^[ \t]*(?:\S[ \t]+)?Yes, I trust this folder$/.test(row));
+  if (yes < 0 || yes > 2 || !/^[ \t]*(?:\S[ \t]+)?No, exit$/.test(below[yes + 1] ?? "")) return null;
+  const tail = below.slice(yes + 2);
+  if (tail.length > 2 || !tail.every(row => /Navigate|Confirm|·/.test(row))) return null;
+  const cursorOn = (row: string) => /^[ \t]*[>❯›][ \t]/.test(row);
+  return cursorOn(below[yes]!) && !cursorOn(below[yes + 1]!) ? "yes" : "other";
+}
+
+/**
+ * The levels on the `--effort` row of `agy --help`, in AgEnD's canonical order, or null when the row or its
+ * `(a|b|…)` list is absent. 1.3.1: "--effort   Reasoning effort for the current CLI session (low|medium|high|xhigh|max)";
+ * 1.0.10 has no --effort at all. Unknown names are dropped.
+ */
+export function parseAgyEffortLevels(help: string): string[] | null {
+  const row = help.split("\n").find(line => /^\s*--effort\b/.test(line));
+  const list = row ? /\(([A-Za-z]+(?:\|[A-Za-z]+)+)\)/.exec(row) : null;
+  if (!list) return null;
+  const offered = new Set(list[1].toLowerCase().split("|"));
+  const levels = CANONICAL_EFFORT.filter(level => offered.has(level));
+  return levels.length > 0 ? levels : null;
+}
+
 export function parseAntigravityModelsOutput(output: string): import("./types.js").ModelOption[] {
   const models: import("./types.js").ModelOption[] = [];
   const seen = new Set<string>();
@@ -232,12 +311,13 @@ export class AntigravityBackend implements CliBackend {
     try {
       // (Re)write our statusline script each launch so it stays current. agy
       // pipes JSON telemetry on stdin; we emit "Context N% used" (matches
-      // parseContextPercent). Uses node (always present in an AgEnD env) rather
-      // than jq (not guaranteed); a parse error prints nothing (empty footer).
+      // parseContextPercent). Uses AgEnD's own Node (process.execPath, #1450 C5) rather than jq (not guaranteed) or a
+      // `node` from PATH (maybe absent, maybe too old for `?.`); a parse error prints nothing (empty footer).
       const scriptPath = join(this.agendHome, "agy-statusline.sh");
+      const js = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log('Context '+(Math.round(j.context_window?.used_percentage||0))+'% used')}catch{}})";
       const script = `#!/bin/bash
 # AgEnD-generated agy statusline — prints "Context N% used" for /ctx to scrape.
-node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log('Context '+(Math.round(j.context_window?.used_percentage||0))+'% used')}catch{}})"
+exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
 `;
       try {
         mkdirSync(this.agendHome, { recursive: true });
@@ -295,19 +375,22 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
    * "thinking" verb, and a live seconds timer, e.g. `✢ Thinking… 12s` /
    * `· Reasoning... (esc to cancel)`.
    *
-   * IMPORTANT CAVEAT, deliberately on the record: unlike claude-code (#415) and
-   * grok (#430), this pattern is NOT derived from a pane I captured myself.
-   * There is no antigravity instance in this fleet and no agy pipe-pane
-   * recording on this machine (the closest candidates turned out to be kiro's
-   * TUI). The shape comes from the incident observation plus the same
-   * asymmetric-cost rules as the other backends: anchored to a line-leading
-   * glyph that does not occur in prose, requiring a verb AND a live marker
-   * (seconds timer or the esc-to-cancel suffix). A miss falls back to today's
-   * behaviour; a false positive on a stable pane would pin `working`, so
-   * narrow wins. Verify against a real pane when an agy instance next exists.
+   * The first alternative was reconstructed from that incident report, never captured.
+   *
+   * #1328, captured live from a signed-in agy 1.3.1 (tests/fixtures/agy-1.3.1-busy-generating*.pane.txt): the
+   * working row is a BRAILLE spinner frame, a verb and an ellipsis, and nothing else — `⣯  Generating...` — with no
+   * timer and no `(esc to cancel)` on it, so the first alternative never matched and agy was always seen as idle.
+   * Under AgEnD's own statusLine the footer is blank while working (no `esc to cancel` hint either), so this row is
+   * the one signal. It is gone once the reply is written.
+   *
+   * Only the CLI's own row counts, by where it is: in all 84 captured working frames it starts at column 0 (agy
+   * indents the reply two columns, `  40`) and is the last row above the live composer box — separator, input
+   * row(s), separator, at most a footer, then the end of the pane. The same text quoted in a reply (indented), in
+   * the scrollback, or anywhere but right above the composer does not count, so a finished turn that talks about the
+   * spinner is still idle.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))/mu;
+    return new RegExp(`${AGY_LEGACY_BUSY_ROW.source}|${AGY_WORKING_ROW_ABOVE_COMPOSER.source}`, "mu");
   }
 
   // agy periodically reruns and repaints its statusLine hook even when the
@@ -341,11 +424,11 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   // Escape also stops streams and can't exit the app, so it's the safer cancel.
   getCancelKey(): string { return "Escape"; }
 
-  // `agy --help`: "--effort  Reasoning effort for the current CLI session
-  // (low|medium|high)" — three levels only, so xhigh/max clamp to high, which
-  // the caller reports rather than swallowing.
+  // The levels come from the binary's own `--help` ("--effort … (low|medium|high|xhigh|max)" in 1.3.1), read by the
+  // CLI env probe (probeCLIEnv, in its bounded worker) and cached with the rest of the CLI env; until a probe has run,
+  // or when the help lists none, low|medium|high, so xhigh/max then clamp to high, which the caller reports.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return EFFORT_CAPABILITIES["antigravity"].strategy; }
-  getEffortLevels(): string[] { return [...EFFORT_CAPABILITIES["antigravity"].levels]; }
+  getEffortLevels(): string[] { return agyEffortLevels(); }
 
   // agy's model switch is an interactive TUI change → restart to apply reliably.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
@@ -378,7 +461,15 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
       // Settings picker use the TSV slug. Keep an already-slug value unchanged.
       currentModel = models.find(model => model.label === currentModel)?.id ?? currentModel;
     }
-    return { version: probeCliVersion(this.binaryPath), models, currentModel };
+    // The effort levels this binary takes, from its own --help (#1328). Runs here, in the probe worker, never on a
+    // tool path. A help that lists none gives [] (the fallback applies); one that could not be read leaves them out,
+    // and the cache keeps the previous levels only for the same version (persistCliEnvProbeResult).
+    let effortLevels: string[] | undefined;
+    try {
+      const help = execFileSync(this.binaryPath, ["--help"], { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      effortLevels = parseAgyEffortLevels(help) ?? [];
+    } catch { /* no help → previous value for the same version, else the fallback */ }
+    return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}) };
   }
 
   getErrorPatterns(): ErrorPattern[] {
@@ -411,8 +502,34 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
 
   getStartupDialogs(): StartupDialog[] {
     return [
-      { pattern: /Do you trust.*folder|Yes, I trust/i, keys: ["Enter"], description: "Trust folder prompt" },
+      // #1328, captured live from agy 1.3.1 (tests/fixtures/agy-1.3.1-trust-dialog.pane.txt): the title is "Do you
+      // trust the contents of this project?", then "> Yes, I trust this folder" / "  No, exit". Enter confirms the
+      // row under the cursor, so it is sent once, and only when the cursor is verified on "Yes"; a prompt still up
+      // after that, or one with the cursor anywhere else, is held for a human (the hold that follows).
+      {
+        pattern: /Yes, I trust this folder/,
+        isActive: pane => agyTrustDialogState(pane) === "yes",
+        keys: ["Enter"],
+        description: "Trust folder prompt",
+        blocksDelivery: true,
+        inputBlocked: true,
+        autoResolutionKey: "antigravity-folder-trust",
+      },
+      this.trustHoldDialog(),
     ];
+  }
+
+  /** Any live agy trust prompt that is not being answered: never keyed, deliveries held (startup and runtime). */
+  private trustHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /Do you trust the contents of this project/,
+      isActive: pane => agyTrustDialogState(pane) !== null,
+      keys: [],
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      description: "Antigravity folder trust needs human confirmation",
+    };
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
@@ -424,6 +541,7 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
         keys: ["0"],
         description: "Antigravity feedback survey — skip",
       },
+      this.trustHoldDialog(),
     ];
   }
 }

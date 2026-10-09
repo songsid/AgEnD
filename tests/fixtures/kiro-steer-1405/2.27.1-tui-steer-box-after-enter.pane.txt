@@ -1,0 +1,50 @@
+  70 71 72 73 74 75 76 77 78 79 80 PROBE-A-DONE
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › [agend-delivery-id:probe-1405-a]
+    [STEERING — mid-task course correction. Fold this into the CURRENT work.]
+    [from:probe] after PROBE-A-DONE, also write the single word BANANA.
+    (message_id: probe-1 | correlation_id: probe-1)
+
+• BANANA
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › Without using any tools, count from 1 to 80 again, one number per line. Then write the line PROBE-B-DONE.
+
+• 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69
+  70 71 72 73 74 75 76 77 78 79 80 PROBE-B-DONE
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › [agend-delivery-id:probe-1405-b]
+    [from:probe] Queued: reply with the single word CHERRY.
+    (message_id: probe-2 | correlation_id: probe-2)
+
+• CHERRY
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › Use the shell tool to run exactly: sleep 20; echo SLEPT-C   Then reply with the line PROBE-C-DONE.
+
+• Shell sleep 20; echo SLEPT-C
+    SLEPT-C
+
+• PROBE-C-DONE
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › [agend-delivery-id:probe-1405-c]
+    [from:probe] Queued during the sleep: reply with the single word DATE.
+    (message_id: probe-3 | correlation_id: probe-3)
+
+• DATE
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  › Use the shell tool to run exactly: sleep 20; echo SLEPT-D   Then reply with the line PROBE-D-DONE.
+
+• Shell sleep 20; echo SLEPT-D
+  esc to cancel
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Trust All Tools active, confirmations are off · /quit to exit
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+kiro_default · auto · ◔ 2%                                                                    ~/kiro-steer-probe
+
+› [agend-delivery-id:probe-1405-d]
+  [STEERING — mid-task course correction. Fold this into the CURRENT work.]
+  [from:probe] After PROBE-D-DONE, also write the single word EGGPLANT.
+  (message_id: probe-4 | correlation_id: probe-4)
+
+
+

@@ -4,204 +4,171 @@
  * PATCH / PUT, even when fleet.yaml holds a value the picker cannot show. What the page sends goes through the real
  * settings API into a scratch fleet.yaml and comes back on the next load.
  *
- * The page's own code runs in a vm with a minimal DOM whose <select> behaves like a browser's (its value is the
- * selected option's, else the first option's). No server process, no fleet.
+ * #1408 step 3: the agent editor and the General defaults are rendered in the mini DOM (fake fetch for the server);
+ * the round trip below is the real settings API against a scratch fleet.yaml, as before.
  */
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import vm from "node:vm";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 import { crossInstanceVisibility } from "../src/cross-instance-notice.js";
 
-const html = readFileSync(new URL("../src/ui/settings.html", import.meta.url), "utf8");
-const slice = (from: string, to: string) => {
-  const a = html.indexOf(from), b = html.indexOf(to, a);
-  expect(a, from).toBeGreaterThan(-1); expect(b, to).toBeGreaterThan(a);
-  return html.slice(a, b);
+interface Sent { method: string; path: string; body: any }
+const schema = buildSettingsImpactSchema();
+let p: AppPage;
+let fleet: any;
+let sent: Sent[] = [];
+
+const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
+  const method = init.method ?? "GET";
+  sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
+  const body = (() => {
+    if (method !== "GET") return method === "POST" ? { id: "job-1", status: "done", targets: [] } : { ok: true };
+    if (path === "/api/settings/schema") return schema;
+    if (path === "/api/settings/fleet/raw") return fleet;
+    if (path === "/api/settings/classic") return { channels: {}, defaults: {} };
+    if (path === "/api/settings/connections") return [];
+    if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
+    if (path === "/api/fleet") return { version: "2.1.12", instances: [{ name: "worker", status: "running" }] };
+    return [];
+  })();
+  return { ok: true, status: 200, json: async () => body };
 };
-const line = (marker: string) => { const l = html.split("\n").find(x => x.includes(marker)); expect(l, marker).toBeTruthy(); return l!; };
 
-class FakeEl {
-  children: Array<FakeEl | string> = [];
-  attrs: Record<string, string> = {};
-  listeners: Record<string, Array<() => void>> = {};
-  parent: FakeEl | null = null;
-  className = ""; style: Record<string, string> = {};
-  selected = false; checked = false; disabled = false; type = ""; open = false; hidden = false;
-  onclick: (() => unknown) | null = null; onchange: (() => unknown) | null = null;
-  classList = { toggle: () => {}, add: () => {}, remove: () => {} };
-  private ownValue = "";
-  constructor(public tag: string) {}
-  get value(): string {
-    if (this.tag !== "select") return this.ownValue;
-    const options = this.all(e => e.tag === "option");
-    return (options.find(o => o.selected) ?? options[0])?.value ?? "";
-  }
-  set value(v: string) {
-    if (this.tag !== "select") { this.ownValue = String(v); return; }
-    for (const o of this.all(e => e.tag === "option")) o.selected = o.value === String(v);
-  }
-  setAttribute(k: string, v: string) { this.attrs[k] = String(v); if (k === "value") this.value = String(v); if (k === "type") this.type = String(v); }
-  getAttribute(k: string) { return this.attrs[k]; }
-  addEventListener(type: string, fn: () => void) { (this.listeners[type] ??= []).push(fn); }
-  append(...kids: Array<FakeEl | string>) { for (const k of kids) { if (k instanceof FakeEl) k.parent = this; this.children.push(k); } }
-  remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
-  set innerHTML(_v: string) { this.children = []; }
-  get textContent(): string { return this.children.map(c => typeof c === "string" ? c : c.textContent).join(""); }
-  set textContent(v: string) { this.children = [String(v)]; }
-  fire(type: string) { for (const fn of this.listeners[type] ?? []) fn(); if (type === "change") this.onchange?.(); }
-  all(pred: (e: FakeEl) => boolean): FakeEl[] {
-    const out: FakeEl[] = [];
-    for (const c of this.children) if (c instanceof FakeEl) { if (pred(c)) out.push(c); out.push(...c.all(pred)); }
-    return out;
-  }
-  querySelector(sel: string) { const cls = sel.replace(/^\./, ""); return this.all(e => e.className.split(" ").includes(cls))[0] ?? null; }
-}
+const realFetch = (globalThis as any).fetch;
+beforeAll(() => {
+  p = page({ url: "http://127.0.0.1:19280/settings" });
+  (globalThis as any).fetch = fakeFetch;
+});
+afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
+beforeEach(() => {
+  fleet = { defaults: { locale: "en" }, instances: {}, channels: [] };
+  sent = [];
+  (globalThis as any).confirm = () => true;
+  p.window.confirm = () => true;
+});
+afterEach(async () => {
+  await p.unmount();
+  const { resetOperation } = await import("/ui/js/settings-apply.js");
+  const { resetConfirmations } = await import("/ui/js/settings-confirm.js");
+  resetOperation(); resetConfirmations();
+});
 
-/** The visibility picker: the select whose options are exactly the three modes. */
-const pickerIn = (box: FakeEl) => {
-  const found = box.all(e => e.tag === "select" && e.all(o => o.tag === "option").map(o => o.value).join() === "full,summary,hidden");
-  expect(found).toHaveLength(1);
-  return found[0]!;
+const mountSection = async (section: "agents" | "general") => {
+  const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  await p.unmount();
+  await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}` }));
+  await settle(12);
 };
-/** The "inherit default" checkbox in the same row as the picker. */
-const inheritToggleOf = (picker: FakeEl) => picker.parent!.all(e => e.tag === "input" && e.attrs.type === "checkbox")[0]!;
+const button = (label: string, root: any = p.root) => {
+  const found = root.querySelectorAll("button").filter((b: any) => b.textContent.trim() === label);
+  expect(found.length, `button ${label}`).toBeGreaterThan(0);
+  return found[0];
+};
+const click = async (el: any) => { fire(el, "click"); await settle(); };
+const choose = async (el: any, value: string) => { el.value = value; fire(el, "change"); await settle(); };
+const check = async (el: any, on: boolean) => { el.checked = on; fire(el, "change"); await settle(); };
+const type = async (el: any, value: string) => { el.value = value; fire(el, "input"); await settle(); };
+const writes = () => sent.filter(s => s.method !== "GET");
+/** The visibility picker: the select that offers the three modes (a value it does not offer is listed first, too). */
+const visibilityPicker = (root: any = p.root) => root.querySelectorAll("select").filter((s: any) => {
+  const values = s.querySelectorAll("option").map((o: any) => o.value);
+  return ["full", "summary", "hidden"].every(m => values.includes(m));
+});
+/** The "Inherit from defaults" checkbox in the same field as the picker. */
+const inheritOf = (picker: any) => picker.closest(".field").querySelector("input[type=checkbox]");
 
-const PAGE_HELPERS = () => [
-  line("const el = (tag, attrs = {}, ...kids) =>"),
-  line("const BACKENDS = ["),
-  line("function select(value, options) {"),
-  // #1294: the backend pickers are built by backendSelect, a page-level helper next to select().
-  slice("  /**\n   * The backend picker keeps", "  const impactText"),
-  slice("  const hasOwn = ", "  function setValidation("),
-  slice("  function setValidation(", "  function confirmAccessChange("),
-];
-
-function sandbox(extra: Record<string, unknown>) {
-  const staged: Array<{ key: string; change: { apply(): Promise<unknown> } }> = [];
-  const sent: Array<{ path: string; method: string; body: unknown }> = [];
-  const box: Record<string, unknown> = {
-    document: { createElement: (tag: string) => new FakeEl(tag) },
-    t: (k: string) => k, tf: (k: string, ...v: unknown[]) => `${k}:${v.join(",")}`, esc: (s: string) => s,
-    setTimeout, clearTimeout, structuredClone, confirm: () => true,
-    api: async (path: string, opts: { method?: string; body?: string } = {}) => {
-      if (opts.method) sent.push({ path, method: opts.method, body: JSON.parse(opts.body ?? "{}") });
-      return { ok: true, status: 200, body: {} };
-    },
-    channelIds: () => ["tg"], chById: () => ({ id: "tg", type: "telegram" }), chLabel: () => "tg",
-    chipList: () => new FakeEl("div"),
-    drawer: (...kids: FakeEl[]) => { const d = new FakeEl("details"); d.append(...kids.slice(1)); return d; },
-    impact: () => new FakeEl("span"), impactOf: () => "now", batchImpact: () => "now",
-    shortName: (n: string) => n, renderAgents: () => {}, AGENT_MODAL_FIELDS: [],
-    stageChange: (key: string, change: { apply(): Promise<unknown> }) => staged.push({ key, change }),
-    statusEmojiEditor: () => ({ box: new FakeEl("div"), value: () => undefined, baseline: () => undefined, refresh: () => {} }),
-    ...extra,
-  };
-  return { box, staged, sent };
+async function openAgent(inst: Record<string, unknown>, defaults: Record<string, unknown> = {}) {
+  fleet = { defaults: { locale: "en", ...defaults }, instances: { worker: inst }, channels: [] };
+  await mountSection("agents");
+  await click(button("Settings"));
+  const pickers = visibilityPicker(p.root);
+  expect(pickers).toHaveLength(1);
+  return { picker: pickers[0]!, inherit: inheritOf(pickers[0]!) };
 }
-
-async function agentForm(inst: Record<string, unknown>, defaults: Record<string, unknown> = {}) {
-  const { box, staged, sent } = sandbox({ state: { fleet: { defaults, instances: { worker: inst }, channels: [{ id: "tg", type: "telegram" }] } } });
-  vm.runInNewContext([...PAGE_HELPERS(), slice("  function agentEditForm(name, inst) {", "  /** Every field the agent modal shows"), "this.agentEditForm = agentEditForm;"].join("\n"), box);
-  const form = (box.agentEditForm as (n: string, i: unknown) => { box: FakeEl; stage(): boolean })("worker", inst);
-  await new Promise(r => setTimeout(r, 0));
-  const patch = async () => {
-    expect(form.stage()).toBe(true);
-    await staged.at(-1)!.change.apply();
-    return sent.at(-1)!;
-  };
-  return { form, picker: pickerIn(form.box), patch };
+/** Stage the agent dialog, then Apply; the PATCH it sent for the agent. */
+async function saveAgent() {
+  sent = [];
+  await click(button("Stage change"));
+  await click(button("Apply changes", p.root.querySelector("[role=region]")));
+  return writes().find(s => s.path === "/api/settings/fleet/instances/worker") ?? null;
 }
-
-async function general(visibilityDefaults: Record<string, unknown>) {
-  // The language picker has no "auto" option, so with `locale` unset it falls to its first option and a save writes
-  // `locale: en` (a separate, older issue). A set locale keeps these tests about this one key.
-  const defaults = { locale: "en", ...visibilityDefaults };
-  const host = new FakeEl("div");
-  const { box, staged, sent } = sandbox({
-    $: (id: string) => (id === "general" ? host : new FakeEl("div")),
-    state: { fleet: { defaults, instances: {}, channels: [] }, classic: { defaults: {} } },
-    channels: () => [],
-  });
-  vm.runInNewContext([...PAGE_HELPERS(), slice("  function renderGeneral() {", "\n  // ── What's New ──"), "this.renderGeneral = renderGeneral;"].join("\n"), box);
-  (box.renderGeneral as () => void)();
-  const save = host.all(e => e.tag === "button" && e.className === "primary")[0]!;
+async function openGeneral(defaults: Record<string, unknown>) {
+  // The language picker is set, so a save writes only this one key's neighbours (the locale picker is #1310's).
+  fleet = { defaults: { locale: "en", ...defaults }, instances: {}, channels: [] };
+  await mountSection("general");
+  const picker = visibilityPicker(p.root.querySelector(".s-general")!)[0]!;
+  /** Review, then Apply: the defaults PUT it sends (null when nothing differs). */
   const review = async () => {
-    staged.length = 0;
-    await save.onclick!();
-    const defaultsChange = staged.find(s => s.key === "defaults:fleet");
-    if (!defaultsChange) return null;
-    await defaultsChange.change.apply();
-    return sent.at(-1)!;
+    sent = [];
+    await click(button("Review changes"));
+    const region = p.root.querySelector("[role=region]");
+    if (!region) return null;
+    await click(button("Apply changes", region));
+    return sent.find(s => s.path === "/api/settings/fleet/defaults") ?? null;
   };
-  const selects = host.all(e => e.tag === "select" && e.all(o => o.tag === "option").map(o => o.value).join() === "full,summary,hidden");
-  expect(selects).toHaveLength(1);
-  return { picker: selects[0]!, host, review };
+  return { picker, review };
 }
-
-const editDescription = (form: { box: FakeEl }, from: string) => {
-  const desc = form.box.all(e => e.tag === "input" && e.value === from)[0]!;
-  desc.value = "new desc"; desc.fire("input");
-};
 
 describe("the agent editor", () => {
   it("unset: shows the fleet default as inherited, and an unrelated edit sends nothing for it", async () => {
-    const { form, picker, patch } = await agentForm({ working_directory: "/w", description: "old" }, { cross_instance_visibility: "summary" });
+    const { picker } = await openAgent({ working_directory: "/w", description: "old" }, { cross_instance_visibility: "summary" });
     expect(picker.value).toBe("summary");
     expect(picker.disabled).toBe(true);
-    editDescription(form, "old");
-    expect(await patch()).toEqual({ path: "/api/settings/fleet/instances/worker", method: "PATCH", body: { description: "new desc" } });
+    await type(p.root.querySelector("#ag-desc"), "new desc");
+    expect(await saveAgent()).toEqual({ method: "PATCH", path: "/api/settings/fleet/instances/worker", body: { description: "new desc" } });
   });
 
   it("a value the picker cannot show (a typo in fleet.yaml) is not rewritten by an unrelated edit", async () => {
-    const { form, picker, patch } = await agentForm({ working_directory: "/w", description: "old", cross_instance_visibility: "verbose" });
+    const { picker } = await openAgent({ working_directory: "/w", description: "old", cross_instance_visibility: "verbose" });
     expect(picker.value).toBe("full");                          // what the fleet does with it: unknown reads as unset
-    editDescription(form, "old");
-    expect((await patch()).body).toEqual({ description: "new desc" });
+    await type(p.root.querySelector("#ag-desc"), "new desc");
+    expect((await saveAgent())!.body).toEqual({ description: "new desc" });
   });
 
   it("override, change and back to inherit", async () => {
-    const set = await agentForm({ working_directory: "/w" });
-    inheritToggleOf(set.picker).checked = false; inheritToggleOf(set.picker).fire("change");
-    set.picker.value = "hidden"; set.picker.fire("change");
-    expect((await set.patch()).body).toEqual({ cross_instance_visibility: "hidden" });
+    const set = await openAgent({ working_directory: "/w" });
+    await check(set.inherit, false);
+    await choose(set.picker, "hidden");
+    expect((await saveAgent())!.body).toEqual({ cross_instance_visibility: "hidden" });
 
-    const change = await agentForm({ working_directory: "/w", cross_instance_visibility: "hidden" });
+    const change = await openAgent({ working_directory: "/w", cross_instance_visibility: "hidden" });
     expect(change.picker.value).toBe("hidden");
     expect(change.picker.disabled).toBe(false);
-    change.picker.value = "summary"; change.picker.fire("change");
-    expect((await change.patch()).body).toEqual({ cross_instance_visibility: "summary" });
+    await choose(change.picker, "summary");
+    expect((await saveAgent())!.body).toEqual({ cross_instance_visibility: "summary" });
 
-    const inherit = await agentForm({ working_directory: "/w", cross_instance_visibility: "hidden" });
-    inheritToggleOf(inherit.picker).checked = true; inheritToggleOf(inherit.picker).fire("change");
-    expect((await inherit.patch()).body).toEqual({ cross_instance_visibility: null });
+    const inherit = await openAgent({ working_directory: "/w", cross_instance_visibility: "hidden" });
+    await check(inherit.inherit, true);
+    expect((await saveAgent())!.body).toEqual({ cross_instance_visibility: null });
   });
 });
 
 describe("the fleet defaults", () => {
   it("unset: shows full, and saving other defaults sends nothing for it", async () => {
-    const g = await general({ tool_progress: "off" });
+    const g = await openGeneral({ tool_progress: "off" });
     expect(g.picker.value).toBe("full");
-    const toolProgress = g.host.all(e => e.tag === "select" && e.all(o => o.tag === "option").some(o => o.value === "verbose"))[0]!;
-    toolProgress.value = "verbose";
+    await choose(p.root.querySelector("#g-tp")!, "verbose");
     expect((await g.review())!.body).toEqual({ tool_progress: "verbose" });
   });
 
   it("untouched: nothing staged at all; a value the picker cannot show is left alone", async () => {
-    expect(await (await general({})).review()).toBeNull();
-    expect(await (await general({ cross_instance_visibility: "loud" })).review()).toBeNull();
-    expect(await (await general({ cross_instance_visibility: "hidden" })).review()).toBeNull();
+    expect(await (await openGeneral({})).review()).toBeNull();
+    expect(await (await openGeneral({ cross_instance_visibility: "loud" })).review()).toBeNull();
+    expect(await (await openGeneral({ cross_instance_visibility: "hidden" })).review()).toBeNull();
   });
 
   it("changed: one PUT with the new mode", async () => {
-    const g = await general({ cross_instance_visibility: "hidden" });
+    const g = await openGeneral({ cross_instance_visibility: "hidden" });
     expect(g.picker.value).toBe("hidden");
-    g.picker.value = "summary";
-    expect(await g.review()).toEqual({ path: "/api/settings/fleet/defaults", method: "PUT", body: { cross_instance_visibility: "summary" } });
+    await choose(g.picker, "summary");
+    expect(await g.review()).toEqual({ method: "PUT", path: "/api/settings/fleet/defaults", body: { cross_instance_visibility: "summary" } });
   });
 });
 

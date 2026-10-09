@@ -45,7 +45,8 @@ function seedCache(backend: string, models: Array<{ id: string; label: string }>
 
 function setup(backend = "codex") {
   const fm = new FleetManager(dataDir);
-  fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: "/tmp", backend } } } as any;
+  // "admin" is a fleet admin of the telegram adapter: a menu click re-checks it (#754 audit).
+  fm.fleetConfig = { channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } }, defaults: {}, instances: { worker: { working_directory: "/tmp", backend, topic_id: "chan" } } } as any;
   const promptUser = vi.fn().mockResolvedValue("menu-1");
   const sendText = vi.fn().mockResolvedValue({ messageId: "m1" });
   const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
@@ -60,7 +61,7 @@ async function openAndRefresh(ctx: ReturnType<typeof setup>) {
   const refreshId = (ctx.promptUser.mock.calls[0][2] as Array<{ id: string }>)[0].id;
   const consumed = await (ctx.fm as any).handleModelSelection({
     callbackData: refreshId, userId: "admin", chatId: "chan", threadId: undefined, messageId: "menu-1",
-  });
+  }, "telegram");
   expect(consumed).toBe(true);
   return {
     text: ctx.promptUser.mock.calls[1]?.[1] as string | undefined,

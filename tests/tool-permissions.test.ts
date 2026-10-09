@@ -253,6 +253,8 @@ describe("sink 1 — the fleet's outbound IPC", () => {
       logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
       instanceIpcClients: new Map([["worker", { send: (m: Record<string, unknown>) => { sent.push(m); return true; } }]]),
       worlds: new Map(),
+      // A fleet with a channel whose adapters are not up yet (a web-only fleet answers a reply itself).
+      isWebOnlyFleet: () => false,
       touchActivity: () => {},
       setTopicIcon: () => {},
       eventLog: null,
@@ -425,7 +427,7 @@ describe("sink 3 — the agent endpoint", () => {
     const body = cli.slice(cli.indexOf("switch (op)"));
     const ops = [...body.matchAll(/^\s*(?:\/\/ .*\n\s*)?case "([a-z][a-z-]*)":/gm)].map(m => m[1]!);
     // The task sub-actions are arguments, not ops.
-    const subActions = new Set(["create", "list", "claim", "done", "update"]);
+    const subActions = new Set(["create", "list", "claim", "done", "update", "get"]);
 
     const unnamed = [...new Set(ops)].filter(op => !subActions.has(op) && toolForAgentOp(op) === null);
 

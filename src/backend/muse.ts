@@ -190,6 +190,34 @@ export function museDraftShows(rows: readonly string[], width: number, text: str
 }
 
 /**
+ * muse's logged-out menu (1.4.3): the two choices, then the key hint, as the last rows of the pane, with any cursor
+ * glyph allowed in front of a choice.
+ */
+export function museLoginScreenActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/\s+$/, "")).filter(row => row.trim() !== "");
+  if (rows.length < 3) return false;
+  const [browser, apiKey, hint] = rows.slice(-3) as [string, string, string];
+  const choice = (row: string, label: string) => new RegExp(`^[ \\t]*(?:[❯›>▸][ \\t]*)?${label}\\b`).test(row);
+  return choice(browser, "Log in with browser") && choice(apiKey, "Set an API key") && /to select\b.*\bEsc to quit$/.test(hint);
+}
+
+/**
+ * The logged-out menu as a dialog (#1328): 1.4.3 paints "Log in with browser · Enter to choose" / "Set an API key" /
+ * "↓↑ to select · Esc to quit". The older login wording matches none of it, and the ready pattern (`Muse Code \d`)
+ * matched the header, so a logged-out muse passed as ready. Held — a human has to log in — with deliveries blocked,
+ * in the startup scan and at runtime; the parked-dialog report tells them. Bottom-anchored (museLoginScreenActive).
+ */
+const MUSE_LOGIN_MENU: RuntimeDialog = {
+  pattern: /Log in with browser|Set an API key/,
+  isActive: museLoginScreenActive,
+  keys: [],
+  holdOnly: true,
+  blocksDelivery: true,
+  inputBlocked: true,
+  description: "Muse login menu — waiting for a human to log in (never answered)",
+};
+
+/**
  * Meta Muse Code — the `muse` CLI (v1.3.0 verified).
  *
  * Everything below was confirmed against live sessions on 2026-09-22 rather
@@ -378,7 +406,7 @@ export class MuseBackend implements CliBackend {
       // 0o700: the wrapper inlines sensitive env (tokens, socket paths).
       writeFileSync(
         wrapperPath,
-        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${entry.command} ${entry.args.map((a: string) => JSON.stringify(a)).join(" ")}\n`,
+        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${[entry.command, ...entry.args].map(shellQuote).join(" ")}\n`,
         { mode: 0o700 },
       );
       chmodSync(wrapperPath, 0o700);
@@ -589,11 +617,13 @@ export class MuseBackend implements CliBackend {
         keys: [],
         description: "Muse login — wait for the user to authenticate (no auto-dismiss)",
       },
+      MUSE_LOGIN_MENU,
     ];
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      MUSE_LOGIN_MENU,
       // Net for a tool-approval prompt arriving despite --disable-approval (an
       // enterprise policy can pin approval on). Muse's menus are numbered with
       // the first option preselected, same shape as the trust dialog.

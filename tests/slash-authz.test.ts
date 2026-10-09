@@ -12,6 +12,12 @@ vi.mock("node:child_process", async importOriginal => {
 });
 
 const created = vi.hoisted(() => [] as Array<{ id: string }>);
+// /update dispatches the INSTALLED agend found through npm (#1450 C5): a fixed, verified install here — never the
+// host's own global npm state.
+vi.mock("../src/update-dispatch.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-dispatch.js")>();
+  return { ...real, resolveInstalledAgend: vi.fn(async () => ({ ok: true, agend: "/opt/agend-test/bin/agend", version: "2.2.0" })) };
+});
 vi.mock("../src/channel/factory.js", async () => {
   const { EventEmitter: EE } = await import("node:events");
   class FakeAdapter extends EE {
@@ -38,6 +44,7 @@ vi.mock("../src/channel/factory.js", async () => {
 import { FleetManager } from "../src/fleet-manager.js";
 import { decideSlash, type SlashFacts } from "../src/slash-authz.js";
 import { setLocale, t } from "../src/locale.js";
+import { tokenEpoch } from "../src/web-session.js";
 
 /**
  * Discord registers its slash commands globally, so every guild and every DM shows the same menu and the handler is
@@ -292,7 +299,9 @@ describe("a slash command is refused before it does anything", () => {
   it("the policy that applies is the owning adapter's, not the one the command arrived on", async () => {
     // The instance belongs to "second" (locked, only ops); the command arrives on "discord" (open to everyone).
     const r = await rig({ primary: OPEN, second: LOCKED, instanceChannel: "second" });
-    expect(await slash(r, "discord", { command: "ctx", userId: "member" })).toEqual([t("not_authorized")]);
+    // #754: arriving on "discord" in a channel "second" owns, the command is refused outright — "discord"'s open
+    // policy can never decide it.
+    expect(await slash(r, "discord", { command: "ctx", userId: "member" })).toEqual([t("slash.other_bot")]);
     expect(r.ctx).not.toHaveBeenCalled();
   });
 
@@ -366,6 +375,37 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
     expect(await slash(r, "second", { command: "update", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("update.disabled")]);
     expect(await slash(r, "second", { command: "dashboard", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("dashboard.disabled")]);
     expect(spawned).toHaveLength(0);
+  });
+
+  it("/dashboard action:revoke signs every browser out — the Discord form of the typed /dashboard revoke (#1260)", async () => {
+    const r = await rig({ primary: OPEN });
+    const fm = r.fm as unknown as {
+      initializeWebAuthTokens(): void; initializeWebSessions(): void; readonly webToken: string | null;
+      webSessions: { create(o: object): { sessionId: string }; authenticate(id: string, epoch: string, o?: object): unknown; ops: Record<string, unknown> };
+    };
+    fm.initializeWebAuthTokens();
+    fm.initializeWebSessions();
+    const epoch = tokenEpoch(fm.webToken!);
+    const signIn = () => fm.webSessions.create({ tier: "admin", surface: "local", label: "Firefox on Linux", tokenEpoch: epoch }).sessionId;
+    const alive = (id: string) => fm.webSessions.authenticate(id, epoch, { touch: false }) !== null;
+    const a = signIn(), b = signIn();
+
+    // Not a fleet admin: refused, and nothing is signed out.
+    expect(await slash(r, "discord", { command: "dashboard", userId: "member", options: { action: "revoke" } })).toEqual([t("not_authorized")]);
+    // No action: the sign-in text, nothing signed out.
+    const shown = await slash(r, "discord", { command: "dashboard", userId: "admin" });
+    expect(shown[0]).not.toBe(t("dashboard.revoked", 2));
+    expect([alive(a), alive(b)]).toEqual([true, true]);
+
+    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([t("dashboard.revoked", 2)]);
+    expect([alive(a), alive(b)], "both browsers are signed out").toEqual([false, false]);
+
+    // A revocation that could not be saved says so — never "done".
+    const c = signIn();
+    fm.webSessions.ops.renameSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+    fm.webSessions.ops.unlinkSync = () => { throw Object.assign(new Error("EACCES"), { code: "EACCES" }); };
+    expect(await slash(r, "discord", { command: "dashboard", userId: "admin", options: { action: "revoke" } })).toEqual([t("dashboard.revoked_not_durable", 1)]);
+    expect(alive(c)).toBe(false);
   });
 
   it("/collab in a fleet channel needs a fleet admin too", async () => {

@@ -1,3 +1,5 @@
+import { installTmuxProcessFixture } from "./helpers/tmux-process-stub.js";
+installTmuxProcessFixture();
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

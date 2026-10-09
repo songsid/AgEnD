@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import { CPU_PROFILE_MAX_SECONDS } from "../../cpu-profile.js";
 import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
 import { t } from "../../locale.js";
@@ -7,6 +8,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createWriteStream } from "node:fs";
+import { Agent as UndiciAgent } from "undici";
 import {
   Client,
   GatewayIntentBits,
@@ -35,6 +37,7 @@ import type {
   ChannelAdapter,
   ApprovalHandle,
   SendOpts,
+  ReplyButtonsOutcome,
   SentMessage,
   PermissionPrompt,
   Choice,
@@ -135,6 +138,39 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
 
 /** #1231: a slash command acknowledged this late (of Discord's 3000 ms) gets a log line saying where the time went. */
 const SLASH_ACK_SLOW_MS = 1_500;
+
+/**
+ * #1235 part 2: the discord.js REST connection survives idle gaps.
+ * undici's default keepAliveTimeout is 4 s, so the first deferReply after any
+ * pause pays a fresh TLS handshake to discord.com. 60 s keeps one socket
+ * warm across typical human command gaps. Best effort, not a ceiling:
+ * keepAliveTimeout is the fallback when the server sends no Keep-Alive hint;
+ * a hinted idle timeout overrides it (observed: timeout=120 → effective
+ * 118 s). keepAliveMaxTimeout stays at undici's default — a maximum
+ * server-hinted idle timeout, not a socket-age cap — so no new pinning
+ * policy is introduced here. Scoped to this adapter's own REST manager
+ * only; the global dispatcher is untouched.
+ */
+export const DISCORD_REST_KEEP_ALIVE_MS = 60_000;
+
+/**
+ * #1235 part 2 R5 (leader decision): one process-lifetime REST dispatcher,
+ * shared by every Discord adapter, never closed. Per-adapter teardown was
+ * removed deliberately: in locked undici 6.24.1 no public primitive tears
+ * down a mid-response-wedged socket (verified: close hangs, destroy and
+ * request timeouts settle the request but leave the socket server-visible),
+ * so per-adapter close/destroy accounting could never prove what Prism
+ * asked. Never closing is no worse than the pre-PR baseline, where the
+ * global dispatcher was likewise never closed on stop; idle sockets age
+ * out by keep-alive and in-flight requests finish or time out as before.
+ */
+let sharedRestAgent: UndiciAgent | null = null;
+function discordRestAgent(): UndiciAgent {
+  if (!sharedRestAgent) {
+    sharedRestAgent = new UndiciAgent({ keepAliveTimeout: DISCORD_REST_KEEP_ALIVE_MS });
+  }
+  return sharedRestAgent;
+}
 
 /**
  * A nonce-armed prompt button (`postNonceButtonPrompt`): `<prefix>:<32 hex>:<action>`.
@@ -246,6 +282,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       ],
       // Events for messages/reactions created before this process started are partial.
       partials: [Partials.Message, Partials.Reaction, Partials.User],
+      // #1235 part 2: the shared process-lifetime dispatcher.
+      rest: { agent: discordRestAgent() },
     });
   }
 
@@ -610,11 +648,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           }
           this.emitFromClient(client, generation, "callback_query", {
             callbackData: interaction.customId,
-            chatId: this.guildId,
-            threadId: interaction.channelId,
+            chatId: interaction.guildId ? this.guildId : interaction.channelId,
+            threadId: interaction.guildId ? interaction.channelId : undefined,
             messageId: interaction.message.id,
             userId: interaction.user.id,
+            username: interaction.user.username,
             ack: privateNotice(interaction, this.id),
+            ...(interaction.customId.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
+              const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
+              return { chatId: interaction.channelId, messageId: sent.id };
+            } } : {}),
           });
           return;
         }
@@ -635,11 +678,15 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           if (!callbackData) return;
           this.emitFromClient(client, generation, "callback_query", {
             callbackData,
-            chatId: this.guildId,
-            threadId: interaction.channelId,
+            chatId: interaction.guildId ? this.guildId : interaction.channelId,
+            threadId: interaction.guildId ? interaction.channelId : undefined,
             messageId: interaction.message.id,
             userId: interaction.user.id,
             ack: privateNotice(interaction, this.id),
+            ...(callbackData.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
+              const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
+              return { chatId: interaction.channelId, messageId: sent.id };
+            } } : {}),
           });
           return;
         }
@@ -684,9 +731,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             });
           } else {
             // Extract options as key-value pairs for fleet-manager
-            const options: Record<string, string | boolean> = {};
+            const options: Record<string, string | boolean | number> = {};
             for (const opt of interaction.options.data) {
-              options[opt.name] = opt.value as string | boolean;
+              options[opt.name] = opt.value as string | boolean | number;
             }
             this.emitFromClient(client, generation, "slash_command", {
               command: interaction.commandName,
@@ -699,6 +746,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
               dismissResponse: async () => {
                 try { await interaction.deleteReply(); } catch { /* interaction may already be gone */ }
+              },
+              respondButtons: async (text: string, choices: Choice[]) => {
+                const sent = await interaction.editReply({ content: text, components: buttonRows(choices), allowedMentions: { parse: [] } });
+                return sent.id;
               },
               respondChoices: async (text: string, choices: Choice[]) => {
                 const select = new StringSelectMenuBuilder()
@@ -991,6 +1042,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const done = this.now();
     const ageAtReceipt = receivedAt - interaction.createdTimestamp;
     const deferMs = done - receivedAt;
+    // #1235 part 2: every acknowledgement reports its split at debug level,
+    // so cold (fresh TLS) vs reused-connection latency can be compared even
+    // when the total stays under the slow warn threshold below.
+    console.debug(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
+      + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge)`);
     if (done - interaction.createdTimestamp >= SLASH_ACK_SLOW_MS) {
       console.warn(`[discord:${this.id}] /${interaction.commandName} acknowledged ${done - interaction.createdTimestamp}ms after it was sent `
         + `(${ageAtReceipt}ms before AgEnD saw it, ${deferMs}ms to acknowledge) — Discord allows 3000ms`);
@@ -1057,8 +1113,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.generationNonReadySince = 0;
     this.shardNonReadySince.clear();
     try {
-      // Register classic bot slash commands (skipped for a secondary bot sharing
-      // a guild with the primary — only the primary owns the guild's commands).
+      // Register each bot application's own menu, including siblings in the same guild.
       if (this.registerCommands) try {
         const registered = await client.application?.commands.set([
           {
@@ -1086,7 +1141,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "status", description: slashLock("status") + t("slash.status") },
           { name: "sysinfo", description: slashLock("sysinfo") + t("slash.sysinfo") },
-          { name: "dashboard", description: slashLock("dashboard") + t("slash.dashboard") },
+          {
+            name: "dashboard", description: slashLock("dashboard") + t("slash.dashboard"),
+            options: [{
+              name: "action", description: t("slash.option.dashboard_action"),
+              type: ApplicationCommandOptionType.String, required: false,
+              choices: [{ name: "revoke", value: "revoke" }],
+            }],
+          },
           { name: "ctx", description: slashLock("ctx") + t("slash.ctx") },
           {
             name: "restart", description: slashLock("restart") + t("slash.restart"),
@@ -1099,6 +1161,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             }],
           },
           { name: "update", description: slashLock("update") + t("slash.update") },
+          { name: "profile", description: slashLock("profile") + t("slash.profile"),
+            options: [{ name: "seconds", description: t("slash.option.profile_seconds"),
+              type: ApplicationCommandOptionType.Integer, required: false, minValue: 1, maxValue: CPU_PROFILE_MAX_SECONDS }] },
           { name: "doctor", description: slashLock("doctor") + t("slash.doctor") },
           {
             name: "visibility", description: slashLock("visibility") + t("slash.visibility"),
@@ -1264,11 +1329,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return message.id;
   }
 
+  getBotUserId(): string | undefined { return this.client.user?.id; }
+
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const user = await this.client.users.fetch(userId);
     const dm = await user.createDM();
-    const sent = await dm.send(opts?.disablePreview ? { content: text, flags: MessageFlags.SuppressEmbeds } : text);
+    const sent = await dm.send({ content: text, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.choices ? { components: buttonRows(opts.choices) } : {}), allowedMentions: { parse: [] } });
     return { messageId: sent.id, chatId: dm.id };
   }
 
@@ -1284,18 +1351,43 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // first chunk was awaited and later chunks were fire-and-forget queue items,
     // so the reply tool could return success for a silently truncated message.
     let first: Awaited<ReturnType<typeof channel.send>> | undefined;
-    for (const chunk of chunks) {
-      const sent = await channel.send(opts?.disablePreview
-        ? { content: chunk, flags: MessageFlags.SuppressEmbeds }
+    let last: Awaited<ReturnType<typeof channel.send>> | undefined;
+    // #1266: a reply's buttons go on the last part (built first: too many buttons is an error before anything is sent).
+    const replyRows = opts?.replyButtons?.length ? buttonRows(opts.replyButtons) : null;
+    for (const [i, chunk] of chunks.entries()) {
+      const components = replyRows && i === chunks.length - 1 ? { components: replyRows } : {};
+      const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions || replyRows
+        ? { content: chunk, ...(opts?.disablePreview ? { flags: MessageFlags.SuppressEmbeds } : {}), ...(opts?.allowedMentions ? { allowedMentions: opts.allowedMentions } : {}), ...components }
         : chunk);
       first ??= sent;
+      last = sent;
     }
 
     return {
       messageId: first!.id,
       chatId,
       threadId: opts?.threadId,
+      ...(replyRows ? { buttonsMessageId: last!.id } : {}),
     };
+  }
+
+  /** #1266: this adapter puts a reply's buttons (message components) on its last message. */
+  get supportsReplyButtons(): boolean { return true; }
+
+  /** #1266: the same buttons, all disabled; the chosen one is marked and names who chose it. */
+  async settleReplyButtons(chatId: string, messageId: string, threadId: string | undefined, labels: readonly string[], outcome: ReplyButtonsOutcome): Promise<void> {
+    const channel = await this._fetchTextChannel(threadId ?? chatId);
+    const msg = await channel.messages.fetch(messageId);
+    const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+    for (let i = 0; i < labels.length; i += BUTTONS_PER_ROW) {
+      rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(labels.slice(i, i + BUTTONS_PER_ROW).map((label, j) => {
+        const chosen = "chosenIndex" in outcome && outcome.chosenIndex === i + j;
+        const text = chosen ? t("reply_buttons.chosen", label, (outcome as { by: string }).by) : label;
+        return new ButtonBuilder().setCustomId(`rb:closed:${i + j}`).setLabel(text.length > 80 ? `${text.slice(0, 79)}…` : text)
+          .setStyle(chosen ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(true);
+      })));
+    }
+    await msg.edit({ components: rows });
   }
 
   async sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage> {

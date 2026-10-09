@@ -89,6 +89,9 @@ temporary data directories, private sockets, test ports and cleanup.
 
 ## Verifying before a PR
 
+Before requesting review, check the applicable contracts in the
+[review checklist](dev/review-checklist.md) and include their evidence in the PR.
+
 ```bash
 npm run typecheck        # tsc --noEmit
 npm run typecheck:tests  # tsc --noEmit -p tsconfig.test.json
@@ -102,19 +105,128 @@ regardless of the above.
 
 ## Releases and CI
 
-Four workflows live in `.github/workflows/`.
+Regular checks and publishing workflows live in `.github/workflows/`.
 
 | Workflow | Runs on | Does |
 |---|---|---|
-| `ci.yml` | push and pull request to `main` | `npm ci`, `tsc --noEmit`, `npm run typecheck:tests`, `npm run build`, `npm test`, `npm run test:integration` (Node 22) |
-| `gitleaks.yml` | push and pull request to `main` | Secret scan of the full history |
+| `ci.yml` | PR/branch push to `main` or `release/**`; `v*` tag; manual; weekly | CHANGELOG fragments, typecheck/build, four unit shards and integration (Node 22), install smoke and Node 20 rollback. PR/branch runs use Linux; tag/manual/weekly also test macOS. |
+| `gitleaks.yml` | PR/branch push to `main` or `release/**` | Secret scan of the full history |
+| `data-downgrade.yml` | push and pull request to `main` | Linux scratch-store current → published 2.1.12 → current roundtrip |
+| `npm-rollback-proof.yml` | relevant PRs; branch push; `v*` tag; manual; weekly | npm 9/10/11 refused-install rollback proof on Linux; deferred events also test macOS |
 | `deploy-website.yml` | push to `main` touching `website/**`, `src/tips.ts`, the tips generator or the package files; manual | Builds and deploys the GitHub Pages site |
 | `publish.yml` | push of a tag matching `v*` | Publishes `@songsid/agend` to npm |
 
-Each workflow ends with a Discord notification (secret `DISCORDWEBHOOK`;
-skipped when unset). `ci.yml`, `gitleaks.yml` and `deploy-website.yml` post
+See [CI coverage and scheduling](ci.md) ([繁體中文](ci.zh-TW.md)) for runner
+selection, PR cancellation and the gate's absent-versus-skipped distinction.
+Runtime acceptance and runtime publishing have separate workflows.
+
+`ci.yml`, `gitleaks.yml`, `deploy-website.yml` and `publish.yml` end with a
+Discord notification (secret `DISCORDWEBHOOK`; skipped when unset).
+`ci.yml`, `gitleaks.yml` and `deploy-website.yml` post
 only failures; `publish.yml` posts every outcome. The notification never
 changes the run's result.
+
+### CHANGELOG fragments
+
+A PR does not edit [`CHANGELOG.md`](CHANGELOG.md) or
+[`CHANGELOG.zh-TW.md`](CHANGELOG.zh-TW.md). It adds its entry as two files in
+`changes/`, and the entries are moved into the CHANGELOG in one commit, so two
+PRs never conflict on it. `changes/1328.md`:
+
+```markdown
+---
+section: Fixed
+---
+- **A working agy is seen as working (#1328).** agy's working row is …
+```
+
+`changes/1328.zh-TW.md`:
+
+```markdown
+---
+section: Fixed
+---
+- **工作中的 agy 會被看成工作中（#1328）。** agy 工作中的那一列是 …
+```
+
+- A PR that changes nothing a package user would notice (CI, tests, these
+  docs) adds no fragment.
+- The name is `<issue>.md`, or `<issue>-<slug>.md` for a second entry on the
+  same issue, and its zh-TW pair is the same name with `.zh-TW.md`. Both are
+  required.
+- `section` is one of `Upgrade Notes`, `Added`, `Changed`, `Fixed` or
+  `Security`, and both languages name the same one. There is no other key.
+- The body is one or more list items, written exactly as they should appear,
+  following [CHANGELOG entries](#changelog-entries). No headings: the
+  subsection comes from `section`. Indent the lines that continue an item.
+  Text after a blank line that is neither indented nor a new `- ` item is
+  refused, because it would land outside the list.
+
+[`scripts/changelog-assemble.mjs`](../scripts/changelog-assemble.mjs) moves
+them:
+
+```bash
+node scripts/changelog-assemble.mjs                                 # into ## [Unreleased]
+node scripts/changelog-assemble.mjs --release X.Y.Z --date YYYY-MM-DD  # into ## [X.Y.Z] - YYYY-MM-DD
+node scripts/changelog-assemble.mjs --check                         # validate only
+```
+
+- It validates every fragment first, and one bad fragment writes nothing.
+- Entries go to the top of their subsection, ordered by issue number. A
+  missing subsection is created in the order below. A missing release section
+  is created right under `[Unreleased]`.
+- It deletes the fragments it moved. An entry already in the target section
+  (the whole entry, not a line that starts the same) is not added twice, so
+  rerunning it is harmless. If a run stopped between deleting the two halves
+  of a pair, `--check` reports the half left behind, and running the assembler
+  again with the same target removes it.
+- Commit its result with the trailer `Changelog: assemble` on a line of its
+  own; the script prints it.
+
+`ci.yml` checks both rules, before `npm ci`:
+
+- `changelog-assemble.mjs --check` fails on a fragment that does not parse,
+  names an unknown section, or has no pair.
+- On a pull request,
+  [`scripts/changelog-guard.mjs`](../scripts/changelog-guard.mjs) counts from
+  the merge-base, so what a merge-sync brought in from `main` is not the PR's
+  change. It fails when:
+  - a commit of the PR edits `docs/CHANGELOG*.md` without the
+    `Changelog: assemble` trailer;
+  - an entry the PR adds to or removes from them came from no marked commit.
+    That covers an edit slipped into a merge, or a conflict resolved to one
+    side that dropped the other side's entries. A merge that resolves a
+    CHANGELOG conflict on purpose carries the trailer too;
+  - a fragment the PR deletes does not have its entry in the CHANGELOG.
+
+#### A long-lived line landing on `main`
+
+A feature line that kept its own CHANGELOG section, such as
+`feature/2.2-web` and its `## [2.2.0] - unreleased (web line, …)`, gets no
+exemption from the guard. The PR that lands it on `main` converts that
+section into fragments:
+
+1. Merge-sync the line with `main` first.
+2. For each entry the line added, add `changes/<issue>.md` and
+   `changes/<issue>.zh-TW.md` with the same text and the section it was
+   under. An entry without an issue number uses the landing PR's number with
+   a slug, for example `changes/1262-web-chat-markdown.md`.
+   [`scripts/changelog-split.mjs`](../scripts/changelog-split.mjs) does this
+   for a whole release section, removing it from both files:
+   `node scripts/changelog-split.mjs --release 2.2.0 --issue <landing PR> --dry-run`,
+   then the same without `--dry-run`. It pairs the en and zh-TW entries per
+   subsection, in order. It refuses, writing nothing, when the counts differ,
+   when the two halves of a pair name different issues, or when a target file
+   already exists (unless `--force`).
+3. Drop the fragments for entries that only concerned the line itself, such
+   as its temporary CI.
+4. Put both CHANGELOGs back to `main`'s version, so the PR no longer changes
+   them:
+   `git checkout origin/main -- docs/CHANGELOG.md docs/CHANGELOG.zh-TW.md`.
+5. `node scripts/changelog-assemble.mjs --check` and commit.
+
+The guard counts from the merge-base, so the line's old commits that edited
+the CHANGELOG no longer matter once the files equal `main`'s.
 
 ### Cut the CHANGELOG section before tagging
 
@@ -123,19 +235,26 @@ Entries collect under `## [Unreleased]` in both
 A stable release moves them into its own section in the same PR that prepares
 the tag, so the tagged commit already carries its notes:
 
-1. Add `## [X.Y.Z] - YYYY-MM-DD` under `## [Unreleased]` in both files, dated
-   the day the tag is pushed (`git log -1 --format=%cs vX.Y.Z` afterwards).
-2. Move every entry whose change is in the release into it, Upgrade Notes
-   included. When in doubt, an entry belongs to the first tag whose history
-   contains the commit that added it:
-   `git merge-base --is-ancestor <sha> vX.Y.Z`.
+1. Assemble the fragments first:
+   `node scripts/changelog-assemble.mjs --release X.Y.Z --date YYYY-MM-DD`,
+   dated the day the tag is pushed. This creates `## [X.Y.Z] - YYYY-MM-DD`
+   under `## [Unreleased]` in both files and moves every fragment into it.
+   Leave out a fragment whose change is not in the release by moving it out
+   of `changes/` first. Commit with the `Changelog: assemble` trailer. Check
+   the date afterwards with `git log -1 --format=%cs vX.Y.Z`.
+2. Move every entry already under `[Unreleased]` whose change is in the
+   release into the new section, Upgrade Notes included, in the same commit.
+   When in doubt, an entry belongs to the first tag whose history contains the
+   commit that added it: `git merge-base --is-ancestor <sha> vX.Y.Z`.
 3. Order its subsections `### Upgrade Notes`, `### Added`, `### Changed`,
-   `### Fixed`, `### Security`, leaving out empty ones. The zh-TW file uses the
-   same subsections (`升級注意事項 (Upgrade Notes)` and so on) and the same entries.
+   `### Fixed`, `### Security`, leaving out empty ones. The assembler already
+   does this for what it adds. The zh-TW file uses the same subsections
+   (`升級注意事項 (Upgrade Notes)` and so on) and the same entries.
 4. Leave only unreleased work under `## [Unreleased]`.
 
-Betas and alphas do not get their own section; their entries stay under
-`[Unreleased]` until the stable release that ships them.
+Betas and alphas do not get their own section. Before tagging one, run the
+assembler without `--release`, so its fragments land under `[Unreleased]`
+until the stable release that ships them.
 
 ### Publishing
 
@@ -176,6 +295,34 @@ publishes nothing; re-run it or push its tag again.
 
 The workflow does not create a GitHub Release, and there is no separate
 Discord plugin package to build: Discord is built into the main package.
+
+### Publishing the runtime packages
+
+AgEnD's own Node ships as `@songsid/agend-node-<os>-<cpu>` (#1450), published by
+`publish-runtime.yml` only when the pinned Node changes, never per AgEnD
+release. It is run by hand (`workflow_dispatch`) with the Node version, an
+optional repack number and `dry_run` (default on). Each package is built from the
+GPG-signed official release and published with `--provenance` and
+`--tag latest`. A version already on the registry is skipped, so a run that
+published some packages and then failed can be run again.
+
+Authentication is trusted publishing (OIDC), as for the main package, except for
+the **first publish of a package name**. npm cannot create a new package through
+OIDC (it answers `E404 PUT … could not be found or you do not have permission`).
+The first time:
+
+1. Create a granular npm access token with read and write access to the
+   `@songsid` scope, expiring in one day.
+2. Store it as the repository secret `NPM_TOKEN`. The workflow passes it as
+   `NODE_AUTH_TOKEN`, and npm uses it where OIDC cannot publish. Without the
+   secret, the workflow uses OIDC only.
+3. Run `publish-runtime.yml` with `dry_run` off, and confirm with `npm view
+   @songsid/agend-node-<os>-<cpu>@<version>` that all four packages are there.
+4. On npmjs.com, configure the trusted publisher (this repository,
+   `publish-runtime.yml`) for each of the four packages.
+5. Delete the `NPM_TOKEN` secret and revoke the token.
+
+After that, a new pinned Node publishes through OIDC alone.
 
 ### Channels
 
@@ -249,3 +396,140 @@ Modelled on [Outline's releases](https://github.com/outline/outline/releases):
 - The compare link runs from the previous release on the same channel to this
   one, for example
   [`v2.1.8...v2.1.9`](https://github.com/songsid/AgEnD/compare/v2.1.8...v2.1.9).
+
+## Merge gate
+
+A reviewed PR is merged by
+[`scripts/gate-merge.sh`](../scripts/gate-merge.sh), not by hand. The
+coordinator runs an installed copy, `~/.agend/scripts/gate-merge.sh`, when the
+reviewer's approval arrives:
+
+```bash
+# delivery_status is an MCP tool: save its result for the approval message and pipe it in.
+gate-merge.sh [--dry-run] [--delivery-json <file>|-] <pr> <approved-sha> <approval-message-id>
+```
+
+**The approval is a line of its own.** The reviewer writes the verdict at the
+start of a line, binding the PR and the full head SHA together:
+
+```
+APPROVE — PR #1334 @d719d476b28ae36067f8815b6956162a5e1c27ed
+```
+
+The dash, `PR` and `@` are optional, and one message may carry several such
+lines for several PRs. A mention anywhere else (another line, a quote, another
+PR's verdict) grants nothing.
+
+**The delivery JSON is trusted input.** The caller must pass exactly what its
+own `delivery_status` call returned. `content_sha256` is checked against the
+content, but a hash does not prove where the message came from.
+
+Run the gate from a clone whose `origin` is the repository. It fetches into
+`refs/gate/*` only and never moves a local branch. It merges only when all of
+these hold:
+
+1. **The approval is verified.** The delivery has that message id, comes from
+   one of the reviewer prefixes (`GATE_APPROVER`, comma-separated; default
+   `agend-reviewer,claude-fable-`), its content
+   matches its `content_sha256`, and it has the verdict line above for this PR
+   and SHA.
+2. **The PR is open** and not a draft, and the fetched `refs/pull/<n>/head` is
+   the head gh reports.
+3. **The head is the approved SHA**, or a descendant of it whose own change is
+   unchanged:
+   - **Identical tree.**
+   - **The same fingerprint of its own change.** That is its diff from the
+     merge-base with the base branch, every byte of whitespace kept, with only
+     `index` lines and hunk line numbers normalised. So a merge-sync carries
+     the approval, and a whitespace change inside a string does not.
+
+   This is compared on every path except `docs/` and `changes/`. Anything else
+   prints `NEEDS_REVIEW <paths>`, and the reviewer re-confirms.
+4. **The base branch tip is an ancestor**, or the base and PR changed entirely
+   disjoint paths since their merge-base. Both rename ends, deletions, docs and
+   fragments count. If the base changed root `package.json`, `package-lock.json`
+   or any `.github/**` path, it always requires merge-sync. Any overlap or
+   failed read blocks. A disjoint merge prints `merged behind main, disjoint`
+   on stderr; it still requires the original approved exact head and green CI.
+5. **CI passed in full on the exact head.** Every required check has a run, and
+   every run (the latest of each name) is completed with `success`. A skipped
+   or neutral run does not count. The required checks are
+   `GATE_REQUIRED_CHECKS` (default: `main`'s gate, `build`, `scan`, `CodeQL`,
+   `Analyze (javascript-typescript)` and `Analyze (actions)`) plus any that a
+   ruleset on the base branch requires.
+
+It then retargets open PRs based on this branch to this PR's base, and
+squash-merges with `--match-head-commit`. It deletes the branch only when no
+open PR is based on it any more.
+
+**A gh write that reports failure is read back before anything else
+happens.**
+- A retarget or merge that did happen counts as done.
+- One that did not is rolled back: the retargets go back to this branch.
+- If the read-back fails too, the result is `BLOCKED uncertain: …` and nothing
+  more is changed or reverted.
+
+Any git or gh read that fails blocks.
+
+The output is one line: `MERGED <merge sha>` (exit 0), `WOULD_MERGE <head>`
+with `--dry-run` (exit 0, nothing changed), `BLOCKED <reason>` (exit 1) or
+`NEEDS_REVIEW <paths>` (exit 3).
+
+### Main CI after landing
+
+The gate records an operation receipt in the clone's Git common directory,
+`agend-gate/` (0700 directory, 0600 files). It binds the repository, original
+PR, approved/head SHA and a random operation marker in the squash message.
+Only a verified single-parent squash merged by this gate is eligible; older
+merges without receipts and manually merged commits are not. The marker alone
+is not authority. This is a same-user operator boundary, like the supplied
+approval JSON; it is not protection against the owner editing private state.
+
+Run the following command again as CI progresses; it does not install a timer:
+
+```bash
+gate-merge.sh --post-merge-check <full-gate-squash-sha>
+```
+
+It reads the latest exact-SHA **push to main** run of each Actions workflow. `HEALTHY` and
+`PENDING` cause no action. `HEALTHY` also requires every required and present
+check on that main SHA to pass; early workflow success with checks not yet
+registered stays `PENDING`. Missing, partial, unreadable, cancelled or otherwise
+uncertain results are `BLOCKED`, also with no action. A completed `failure`
+permits one generated `git revert <sha>` in a detached private worktree and one
+revert PR into main. The failed commit may be behind main; conflicts block
+before pushing. No arbitrary edits or multiple-commit reverts are authorized.
+
+`REVERT_PENDING #<pr> <head>` waits for every required and present check on that
+exact revert head to succeed (skipped is still not green). Run the command
+again to finish: it rechecks the original failure, recorded branch/tree/parent
+and exact CI. After those network reads, it rechecks the full recorded PR
+identity (repository, number, state, draft, head, branch and main destination),
+refreshes main, and validates squash ancestry and path overlap before merging
+with `--match-head-commit`. This one generated revert requires no reviewer approval.
+It prints `REVERTED <sha>`, and subsequent runs do not create another PR. A
+lost create/merge response is read back; an uncertain result blocks instead of
+blindly creating a new proposal. Main changes overlapping the revert, changed
+revert branches, failed checks and unavailable reads require operator action.
+The revert is not itself eligible for recursive automatic reversion.
+
+The GitHub merge API pins the head but does not atomically pin the base or main
+tip. A change after the final snapshots can still race the remote operation.
+The merge readback must retain the same full PR identity and main destination
+before `REVERTED` is recorded. A changed destination is `BLOCKED`, leaves the
+receipt unsettled, and requires inspection of the remote effect; a retry cannot
+adopt that wrong-base merge.
+
+The private receipt and per-target lock must stay with the clone. Do not delete
+or copy them to bypass a failure. A terminated operator command can leave a lock
+or private worktree; inspect the remote PR/ref and the receipt before manually
+recovering that state. This tool reports CI when invoked; the coordinator must
+invoke it after each gate merge and again when a pending run completes.
+
+After changing the gate, deploy **both files together** (the helper is loaded
+relative to the script):
+
+```bash
+install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh
+install -m 644 scripts/gate-support.mjs ~/.agend/scripts/gate-support.mjs
+```

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>AgEnD — Sign in</title>
+<script src="/assets/theme.js"></script>
+<link rel="stylesheet" href="/assets/tokens.css">
+<style>
+  /* #1408 step 5: the app's tokens (tokens.css), light and dark like every page (theme.js before paint). */
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+         background: var(--bg); color: var(--text); font: var(--fw-regular) var(--fs-md)/var(--lh-md) var(--font-ui); -webkit-font-smoothing: antialiased; }
+  main { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 28px 24px; }
+  .brand { margin: 0 0 18px; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+  h1 { margin: 0 0 6px; font-size: var(--fs-xl); font-weight: var(--fw-semibold); }
+  p { margin: 0 0 18px; color: var(--text-2); }
+  label { display: block; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-medium); }
+  input { width: 100%; padding: 12px; font: 600 22px/1 var(--font-mono); letter-spacing: .18em; text-align: center;
+          text-transform: uppercase; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); }
+  input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
+  button { width: 100%; margin-top: 14px; padding: 12px; font: var(--fw-semibold) var(--fs-md) var(--font-ui); color: var(--on-accent); background: var(--accent-fill);
+           border: 0; border-radius: var(--r-full); cursor: pointer; }
+  button:hover:not(:disabled) { opacity: .88; }
+  button:disabled { opacity: .6; cursor: default; }
+  #msg { min-height: 1.5em; margin-top: 14px; font-size: var(--fs-sm); color: var(--danger); }
+  .hint { margin-top: 18px; font-size: var(--fs-xs); color: var(--text-3); }
+  .hint code { white-space: nowrap; font-family: var(--font-mono); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">AgEnD</div>
+  <div id="checking" data-i18n="checking">Checking your session…</div>
+  <form id="form" hidden autocomplete="off">
+    <h1 data-i18n="title">Sign in to AgEnD</h1>
+    <p data-i18n="lead">Enter the one-time code from your chat channel.</p>
+    <label for="code" data-i18n="label">One-time code</label>
+    <input id="code" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters"
+           autocorrect="off" spellcheck="false" maxlength="12" placeholder="XXXX-XXXX" required>
+    <button id="go" type="submit" data-i18n="submit">Sign in</button>
+    <div id="msg" role="alert" aria-live="polite"></div>
+    <div class="hint" data-i18n="hint">Send /dashboard to your AgEnD bot, or run “<code>agend web --code</code>” on the host. A code works once and expires in 5 minutes.</div>
+  </form>
+  <noscript>This page needs JavaScript to sign you in.</noscript>
+</main>
+<script src="/assets/signin.js"></script>
+</body>
+</html>

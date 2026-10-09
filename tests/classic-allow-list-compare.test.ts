@@ -50,10 +50,11 @@ describe("allow-lists compare as strings", () => {
     expect(m.isGuildAllowed("g2")).toBe(false);
   });
 
-  it("keeps allow-all when the list is empty or absent", () => {
+  it("requires a grant when the list is empty or absent", () => {
     const { m } = makeManager('defaults:\n  admin_users: ["1"]\n');
-    expect(m.isGuildAllowed("anything")).toBe(true);
-    expect(m.isGroupAllowed("anything")).toBe(true);
+    expect(m.isGuildAllowed("anything")).toBe(false);
+    expect(m.isGroupAllowed("anything")).toBe(false);
+    expect(m.isUserAllowed("anything")).toBe(false);
   });
 
   it("does NOT invent a match for a snowflake YAML already truncated", () => {

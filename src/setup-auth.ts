@@ -21,11 +21,16 @@
  *
  * See `docs/design/setup-host-tunnel.zh-TW.md` §3.8 and envelope rule 28.
  */
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import {
+  constantTimeMatches,
+  formatOneTimeCode,
+  generateOneTimeCode,
+  normalizeOneTimeCode,
+  ONE_TIME_CODE_LENGTH,
+} from "./auth/one-time-code.js";
 
-/** RFC 4648 base32, minus nothing: the digits 0/1 are absent from it already. */
-const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-export const SETUP_CODE_LENGTH = 8;
+export const SETUP_CODE_LENGTH = ONE_TIME_CODE_LENGTH;
 
 /**
  * Five, not three.
@@ -38,42 +43,12 @@ export const MAX_SETUP_ATTEMPTS = 5;
 
 export const SETUP_COOKIE_NAME = "agend_setup";
 
-export function generateSetupCode(): string {
-  let code = "";
-  for (let i = 0; i < SETUP_CODE_LENGTH; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
-  return code;
-}
-
-/** `ABCD-EFGH` — a shape that survives being read aloud and retyped. */
-export function formatSetupCode(code: string): string {
-  return `${code.slice(0, 4)}-${code.slice(4)}`;
-}
-
-/**
- * What the person typed, as the code it was meant to be.
- *
- * Case and the dash are presentation. Rejecting `abcd efgh` would be rejecting
- * a correct answer, and the person retyping it has no idea which detail was
- * wrong — so they spend attempts on formatting.
- */
-export function normalizeSetupCode(input: string): string {
-  return input.replace(/[^0-9A-Za-z]/g, "").toUpperCase();
-}
-
-/**
- * Fixed-length constant-time compare.
- *
- * Both sides are padded to the same length first: `timingSafeEqual` throws on a
- * mismatch, and returning early on one leaks the length through timing.
- */
-export function constantTimeMatches(provided: string, expected: string): boolean {
-  const width = Math.max(provided.length, expected.length, 1);
-  const a = Buffer.alloc(width);
-  const b = Buffer.alloc(width);
-  a.write(provided, "utf8");
-  b.write(expected, "utf8");
-  return timingSafeEqual(a, b) && provided.length === expected.length;
-}
+// The code primitives live in `auth/one-time-code.ts`; these names stay because
+// the setup page and its tests already speak them.
+export const generateSetupCode = generateOneTimeCode;
+export const formatSetupCode = formatOneTimeCode;
+export const normalizeSetupCode = normalizeOneTimeCode;
+export { constantTimeMatches };
 
 /** The cookie carries a hash of the secret, never the secret itself. */
 export function setupCookieValue(secret: string): string {
@@ -115,6 +90,9 @@ export class SetupCredentials {
   readonly sid: string;
   readonly code: string;
   private secret: string | null = null;
+  private sessionOwner: { id: string } | null = null;
+  get sessionIdentity(): { readonly id: string } | null { return this.lockedOut ? null : this.sessionOwner; }
+  isSessionCurrent(owner: object): boolean { return !this.lockedOut && !!this.secret && this.sessionOwner === owner; }
   private failures = 0;
 
   constructor(opts: { sid?: string; code?: string } = {}) {
@@ -134,7 +112,7 @@ export class SetupCredentials {
    */
   revoke(): void {
     this.revoked = true;
-    this.secret = null;
+    this.secret = null; this.sessionOwner = null;
   }
 
   get revokedNow(): boolean { return this.revoked; }
@@ -176,6 +154,7 @@ export class SetupCredentials {
     // session. One exchange, then the code is dead.
     if (this.secret) return { kind: "rejected", attemptsLeft: this.attemptsLeft };
     this.secret = randomBytes(32).toString("hex");
+    this.sessionOwner = { id: randomBytes(16).toString("hex") };
     return { kind: "ok", secret: this.secret };
   }
 

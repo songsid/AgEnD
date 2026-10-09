@@ -19,6 +19,8 @@ import type { OutboundContext } from "./outbound-handlers.js";
 import { outboundHandlers } from "./outbound-handlers.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { replyDedupText } from "./reply-dedup.js";
+import { parseReplyButtons, replyButtonsFallbackText } from "./reply-buttons.js";
+import { readBoundedWebBody } from "./web-body.js";
 import {
   EARLY_AGENT_OP_TOOLS,
   mayUseTool,
@@ -157,11 +159,71 @@ export function handleAgentRequest(
     return;
   }
 
-  let body = "";
-  req.on("data", (chunk: Buffer) => { body += chunk; });
-  req.on("end", async () => {
+  // ── (1) Validate token BEFORE reading the body ──────────────────────────
+  // Reading an unbounded body before authentication lets any local process
+  // exhaust memory by sending a large unauthenticated request. Extract the
+  // instance from the header, then verify the token before touching the body.
+  //
+  // Header format: "X-Agend-Instance-Token: <encodedInstance>:<token>"
+  // where <encodedInstance> is encodeURIComponent(instanceName). The daemon
+  // writes a fresh token (token only, no instance name) to
+  // <instanceDir>/agent.token; agend-agent reads it and assembles the full
+  // header as encodeURIComponent(AGEND_INSTANCE_NAME) + ":" + token.
+  const rawHeader = req.headers["x-agend-instance-token"];
+  const headerValue = typeof rawHeader === "string" ? rawHeader
+    : Array.isArray(rawHeader) ? rawHeader[0] : undefined;
+
+  // Fast-path rejection: header absent.
+  if (!headerValue) {
+    req.resume(); // drain the socket so the client isn't left hanging
+    res.writeHead(401);
+    res.end(JSON.stringify({ error: "Missing instance token" }));
+    return;
+  }
+
+  // The header carries "<encodedInstance>:<token>" — split on the first colon
+  // only (the token is a hex string that never contains a colon; the colon in
+  // the encoded instance name would be %3A so splitting on the first literal
+  // colon is unambiguous).
+  const colonIdx = headerValue.indexOf(":");
+  const encodedInstance = colonIdx > 0 ? headerValue.slice(0, colonIdx) : "";
+  const tokenFromHeader = colonIdx > 0 ? headerValue.slice(colonIdx + 1) : headerValue;
+
+  let instanceFromHeader: string;
+  try {
+    instanceFromHeader = decodeURIComponent(encodedInstance);
+  } catch {
+    // Malformed percent-encoding → treat as invalid token.
+    req.resume();
+    res.writeHead(401);
+    res.end(JSON.stringify({ error: "Invalid or missing instance token" }));
+    return;
+  }
+
+  if (!instanceFromHeader || !verifyInstanceToken(ctx, instanceFromHeader, tokenFromHeader)) {
+    req.resume();
+    res.writeHead(401);
+    res.end(JSON.stringify({ error: "Invalid or missing instance token" }));
+    return;
+  }
+
+  // ── (2) Read body with a size limit ─────────────────────────────────────
+  // The web API uses 512 KiB for JSON requests; the agent endpoint uses the
+  // same limit. Agent CLI payloads are small (instance name, op, and args
+  // for a single MCP-like call) so 512 KiB is generous.
+  const MAX_AGENT_BODY = 512 * 1024; // 512 KiB — same as web-api.ts:243
+  void (async () => {
+    let bodyBuf: Buffer;
     try {
-      const { instance, op, args = {} } = JSON.parse(body) as {
+      bodyBuf = await readBoundedWebBody(req, MAX_AGENT_BODY);
+    } catch {
+      res.writeHead(413);
+      res.end(JSON.stringify({ error: "Request body too large" }));
+      return;
+    }
+
+    try {
+      const { instance, op, args = {} } = JSON.parse(bodyBuf.toString("utf8")) as {
         instance: string;
         op: string;
         args?: Record<string, unknown>;
@@ -173,13 +235,12 @@ export function handleAgentRequest(
         return;
       }
 
-      const headerToken = req.headers["x-agend-instance-token"];
-      const providedToken = typeof headerToken === "string"
-        ? headerToken
-        : Array.isArray(headerToken) ? headerToken[0] : undefined;
-      if (!verifyInstanceToken(ctx, instance, providedToken)) {
-        res.writeHead(403);
-        res.end(JSON.stringify({ error: "Invalid or missing instance token" }));
+      // Re-verify that the body's instance matches the header's instance.
+      // This prevents a valid token for instance A from being used to act
+      // on instance B by putting B in the body.
+      if (instance !== instanceFromHeader) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: "Instance in body does not match token" }));
         return;
       }
 
@@ -201,7 +262,7 @@ export function handleAgentRequest(
       res.writeHead(status);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
-  });
+  })();
 }
 
 /** An op this endpoint has never heard of: the caller's mistake, answered 400. */
@@ -347,6 +408,13 @@ export async function dispatchAgentOperation(
       const adapter = (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined)
         ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
 
+      // #1266: this path has no clickable buttons — they are checked as on the MCP path, then offered as text.
+      if (tool === "reply") {
+        const replyArgs = fullArgs as Record<string, unknown>;
+        const buttons = parseReplyButtons(replyArgs.buttons, replyArgs);
+        if (buttons && "error" in buttons) return { error: `reply: ${buttons.error}` };
+        if (buttons) { replyArgs.text = `${String(replyArgs.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}`; delete replyArgs.buttons; }
+      }
       // The same pre-check as the MCP path, before anything is sent: a sticker this channel cannot send
       // (another server's, an id that is not Telegram's) is the reply's error, not a reply without it.
       if (tool === "reply" && ctx.replyStickerProblem) {

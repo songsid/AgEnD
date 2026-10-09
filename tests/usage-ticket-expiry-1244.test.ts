@@ -5,11 +5,11 @@
  * no fleet. Expectations written out by hand; the clock is fixed, and every time is mid-day UTC so the date is the
  * same in any host time zone from UTC-5 to UTC+12.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { page, h, type AppPage } from "./helpers/app-harness.js";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import vm from "node:vm";
 import Database from "better-sqlite3";
 import { codexTicketsNearestExpiry, DEFAULT_PROVIDER_DEADLINE_MS, fetchAllUsage, fetchCodexUsage, fetchKiroUsage, setUsageProvidersForTests } from "../src/usage/providers.js";
 import { setLocale } from "../src/locale.js";
@@ -257,36 +257,49 @@ describe("expiry ≠ reset is kept (#1233): Kiro bonus credits are still marked 
 });
 
 describe("the View usage panel (its own renderer, run as served)", () => {
-  // The panel's usage functions, cut from view.html as they are, run with the page's own en/zh strings.
-  function panel(lang: "en" | "zh-TW") {
-    const html = readFileSync(join(process.cwd(), "src/ui/view.html"), "utf8");
-    const start = html.indexOf("  function usageResetText(iso)");
-    const end = html.indexOf("  const USAGE_ICON");
-    expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
-    const enStart = html.indexOf("en: {"), zhStart = html.indexOf('"zh-TW": {', enStart);
-    const map = html.slice(lang === "en" ? enStart : zhStart, lang === "en" ? zhStart : html.indexOf("\n  };\n  let lang", zhStart));
-    const strings: Record<string, string> = {};
-    for (const [, k, v] of map.matchAll(/"([a-z_.]+|usage[A-Za-z]+)":\s*"([^"]*)"/g)) strings[k!] = v!;
-    const ctx = vm.createContext({ Date, Math, isNaN, T: (k: string) => strings[k] ?? k, esc: (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;") });
-    vm.runInContext(`${html.slice(start, end)}\nthis.usageMetricHtml = usageMetricHtml;`, ctx);
-    return (m: UsageMetric) => (ctx.usageMetricHtml as (m: UsageMetric) => string)(m);
+  // The panel's own metric row (UsageMetric from panel-view.js), mounted in the fake DOM with the page's en/zh strings.
+  let p: AppPage;
+  let view: typeof import("/assets/panel-view.js");
+  let i18n: typeof import("/assets/app-i18n.js");
+  beforeAll(async () => {
+    p = page({ url: "http://127.0.0.1:19280/view/alpha", storage: { agend_tour_done: "1" } });
+    view = await import("/assets/panel-view.js");
+    i18n = await import("/assets/app-i18n.js");
+  });
+  afterAll(() => { p.restore(); i18n.setLang("en"); });
+  afterEach(async () => { await p.unmount(); i18n.setLang("en"); });
+  /** The row as the page draws it, in `lang`. */
+  async function row(m: UsageMetric, lang: "en" | "zh-TW" = "en") {
+    i18n.setLang(lang);
+    await p.mount(h(view.UsageMetric, { m: m as never }));
+    return p.root.querySelector(".u-metric")!;
   }
+  const subs = (el: { querySelectorAll(s: string): Array<{ textContent: string }> }) => el.querySelectorAll(".u-sub").map(s => s.textContent);
 
-  it("the ticket row has the expiry under it, en and zh-TW", () => {
-    expect(panel("en")(tickets("2026-10-22T06:00:00Z"))).toContain('<div class="u-sub">🎫 Nearest expiry: 10/22 (in 16d 6h)</div>');
-    expect(panel("zh-TW")(tickets("2026-10-22T06:00:00Z"))).toContain('<span class="u-label">額度重置券</span><span class="u-val">2 可用</span></div><div class="u-sub">🎫 最近過期：10/22（16d6h 後）</div>');
+  it("the ticket row has the expiry under it, en and zh-TW", async () => {
+    const en = await row(tickets("2026-10-22T06:00:00Z"));
+    expect(en.querySelector(".u-label")!.textContent).toBe("Rate limit resets");
+    expect(en.querySelector(".u-val")!.textContent).toBe("2 available");
+    expect(subs(en)).toEqual(["🎫 Nearest expiry: 10/22 (in 16d 6h)"]);
+    const zh = await row(tickets("2026-10-22T06:00:00Z"), "zh-TW");
+    expect(zh.querySelector(".u-label")!.textContent).toBe("額度重置券");
+    expect(zh.querySelector(".u-val")!.textContent).toBe("2 可用");
+    expect(subs(zh)).toEqual(["🎫 最近過期：10/22（16d6h 後）"]);
   });
 
-  it("no expiry, or a past one: the row as before, no sub-line", () => {
+  it("no expiry, or a past one: the row as before, no sub-line", async () => {
     for (const m of [tickets(null), tickets("2026-10-05T06:00:00Z")]) {
-      expect(panel("en")(m)).toBe('<div class="u-metric"><div class="u-row"><span class="u-label">Rate limit resets</span><span class="u-val">2 available</span></div></div>');
+      const el = await row(m);
+      expect(el.innerHTML).toBe('<div class="u-row"><span class="u-label">Rate limit resets</span><span class="u-val">2 available</span></div>');
+      expect(subs(el)).toEqual([]);
     }
   });
 
-  it("a window's own 'resets in' is unchanged, and there is no ⏳ top line any more", () => {
-    expect(panel("en")(weekly)).toContain('<div class="u-sub">resets in 2d 3h</div>');
-    const html = readFileSync(join(process.cwd(), "src/ui/view.html"), "utf8");
-    expect(html).not.toContain("⏳");
-    expect(html).not.toContain("nextResetAt");
+  it("a window's own 'resets in' is unchanged, and the usage panel shows no ⏳ top line any more", async () => {
+    expect(subs(await row(weekly))).toEqual(["resets in 2d 3h"]);
+    expect(subs(await row(weekly, "zh-TW"))).toEqual(["2d3h 後重置"]);
+    const panelSource = readFileSync(join(process.cwd(), "src", "ui", "shared", "panel-view.js"), "utf8");
+    expect(panelSource).not.toContain("⏳");
+    expect(panelSource).not.toContain("nextResetAt");
   });
 });

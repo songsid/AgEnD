@@ -1,3 +1,4 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
 /**
  * Per-backend tool-event sources for the transcript monitor.
  *
@@ -26,11 +27,15 @@
  *     one found silently goes blind when the CLI starts a new session.
  */
 
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, realpathSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
 import Database from "better-sqlite3";
+import { sharedKiroTranscriptLane, type KiroDbLane, type KiroDbLease } from "./kiro-transcript-lane.js";
+import type { KiroDbCursor } from "./kiro-db-reader.js";
+export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
 import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
 
 export interface ToolUseEvent { name: string; input: unknown }
@@ -51,6 +56,8 @@ export interface TranscriptCheckpoint {
 export interface TranscriptSource {
   /** Read events that appeared since the previous call. Invoked serially. */
   poll(): Promise<TranscriptEvents>;
+  /** Asynchronous baseline barrier, awaited before startup becomes accepting. */
+  initialize?(): Promise<void>;
   /** Forget the current position; the next poll re-resolves and re-baselines. */
   reset(): void;
   /** Optional durable-delivery checkpoint taken immediately before pane paste. */
@@ -273,6 +280,14 @@ export function readKiroConversationStatus(
   /** False = metadata only (no value read, no JSON parse): the poll fast path. */
   includeHistory = true,
 ): KiroConversationRead {
+  return measureSyncWork("kiro.conversationStatus", () => readKiroConversationStatusSync(dbPath, workingDirectory, includeHistory));
+}
+function readKiroConversationStatusSync(
+  dbPath: string,
+  workingDirectory: string,
+  /** False = metadata only (no value read, no JSON parse): the poll fast path. */
+  includeHistory = true,
+): KiroConversationRead {
   if (!existsSync(dbPath)) return { status: "error", reason: `kiro store not found: ${dbPath}` };
   let db: Database.Database | undefined;
   try {
@@ -314,210 +329,80 @@ export function readKiroConversationStatus(
   }
 }
 
-/** Strings a kiro assistant turn can carry: plain response + tool-call text. */
-export function extractKiroAssistantStrings(entry: unknown): string[] {
-  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-  const assistant = (entry as Record<string, unknown>).assistant;
-  if (!assistant || typeof assistant !== "object" || Array.isArray(assistant)) return [];
-  const out: string[] = [];
-  const record = assistant as Record<string, unknown>;
-  const response = record.Response as Record<string, unknown> | undefined;
-  if (response && typeof response.content === "string" && response.content.trim()) out.push(response.content);
-  const toolUse = record.ToolUse as Record<string, unknown> | undefined;
-  if (toolUse && typeof toolUse.content === "string" && toolUse.content.trim()) out.push(toolUse.content);
-  return out;
-}
-
 /**
  * Follows the newest Kiro conversation whose cwd matches this instance.
  * Kiro 2.19 moved primary conversations to conversations_v2 in data.sqlite3;
  * legacy releases use <uuid>.jsonl plus sibling <uuid>.json metadata.
  */
+/** The Kiro legacy fallback's scan bounds (#1490): see KiroSessionSource.resolveActiveSession. */
+export const KIRO_FULL_SCAN_MS = 30_000;
+export const KIRO_QUIET_MS = 10 * 60_000;
+export const KIRO_SCAN_CONCURRENCY = 16;
+const KIRO_HOT_DIR_MS = 2_000;
+
+/** Run `task(0..count-1)`, at most `limit` at a time. */
+async function forEachLimited(count: number, limit: number, task: (index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async (): Promise<void> => { while (next < count) await task(next++); };
+  await Promise.all(Array.from({ length: Math.min(limit, count) }, worker));
+}
+
 export class KiroSessionSource implements TranscriptSource {
   private currentFile: string | null = null;
   private byteOffset = 0;
   private readonly createdAt: number;
-  private dbConversationId: string | null = null;
-  private dbHistoryCursor = 0;
-  private dbSignature = "";
-  private dbToolNames = new Map<string, string>();
-  /**
-   * One read-only handle for the life of the poll loop (#1048). Kiro's store
-   * is one database for every conversation — ~1 GB on a lived-in machine —
-   * and opening it per poll, for every kiro instance every 2 s, ran on the
-   * fleet's event loop.
-   */
-  private db: Database.Database | null = null;
-  /** The store file the handle was opened on; a replaced file is reopened. */
-  private dbIno = 0;
-  private newestRowStmt: Database.Statement | null = null;
-  private historyStmt: Database.Statement | null = null;
-  private createdAtStmt: Database.Statement | null = null;
+  private generation = 0;
+  private cursor: KiroDbCursor | undefined;
+  private lease: KiroDbLease | null = null;
+  private ready: Promise<void> | null = null;
+  private needsBaseline = true;
 
   constructor(
     private workingDirectory: string,
     private sessionsDir = join(homedir(), ".kiro", "sessions", "cli"),
     now = Date.now(),
     private dbPath = kiroStoreDbPath(),
+    private lane: KiroDbLane = sharedKiroTranscriptLane,
   ) {
     this.createdAt = now;
-    this.snapshotDbBaseline();
+    void this.initialize();
   }
-
+  initialize(): Promise<void> {
+    if (this.ready) return this.ready;
+    this.lease ??= this.lane.acquire();
+    const lease = this.lease, generation = this.generation;
+    if (!this.needsBaseline) return Promise.resolve();
+    this.ready = lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: true }).then(reply => {
+      if (generation !== this.generation || this.lease !== lease) return;
+      this.cursor = reply?.cursor;
+      this.needsBaseline = false;
+    });
+    return this.ready;
+  }
   reset(): void {
     this.close();
-    this.dbKeys = null;
     this.currentFile = null;
     this.byteOffset = 0;
-    this.dbConversationId = null;
-    this.dbHistoryCursor = 0;
-    this.dbSignature = "";
-    this.dbToolNames.clear();
-    this.snapshotDbBaseline();
+    this.cursor = undefined;
+    this.needsBaseline = true;
+    void this.initialize();
   }
-
-  /** Resolved once per baseline: realpath is a syscall, and this runs every poll. */
-  private dbKeys: string[] | null = null;
-  private workingDirectoryKeys(): string[] {
-    if (this.dbKeys) return this.dbKeys;
-    const keys = new Set([this.workingDirectory, resolve(this.workingDirectory)]);
-    try { keys.add(realpathSync(this.workingDirectory)); } catch { /* keep literal/absolute cwd */ }
-    this.dbKeys = [...keys];
-    return this.dbKeys;
-  }
-
   close(): void {
-    try { this.db?.close(); } catch { /* already closed */ }
-    this.db = null;
-    this.newestRowStmt = null;
-    this.historyStmt = null;
-    this.createdAtStmt = null;
+    this.generation++;
+    this.lease?.close();
+    this.lease = null;
+    this.ready = null;
   }
-
-  /** The shared handle, opened on first use; null while the store is absent. */
-  private openDb(): Database.Database | null {
-    let ino: number;
-    try { ino = statSync(this.dbPath).ino; } catch { this.close(); return null; }
-    // A handle keeps reading the file it opened: if kiro replaced the store,
-    // that is a stale copy that never errors, so follow the path instead.
-    if (this.db && ino === this.dbIno) return this.db;
-    this.close();
-    this.db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
-    this.dbIno = ino;
-    return this.db;
-  }
-
-  /**
-   * The newest conversation for this workspace and its change signal. The
-   * size is `octet_length`, which SQLite answers from the record header:
-   * `length()` on TEXT counts characters, so it read every conversation in
-   * full on every poll (#1048) — 56 ms a round across 13 real kiro
-   * workspaces, against 0.05 ms for this. The size stays in the signature
-   * because two saves inside one millisecond share an `updated_at`.
-   * No `created_at` either: it is stored after `value`, so reading it walks
-   * the whole conversation too (9 ms for one 18 MB row); `updated_at` comes
-   * from the key index. `conversationCreatedAt()` reads it on a switch.
-   */
-  private newestDbRow(db: Database.Database): { conversation_id: string; updated_at: number; size: number } | undefined {
-    const keys = this.workingDirectoryKeys();
-    if (!this.newestRowStmt || this.newestRowStmt.database !== db) {
-      this.newestRowStmt = db.prepare(
-        `SELECT conversation_id, updated_at, octet_length(value) AS size
-         FROM conversations_v2 WHERE key IN (?, ?, ?)
-         ORDER BY updated_at DESC LIMIT 1`,
-      );
-    }
-    // Always three parameters, so one prepared statement serves every call.
-    const [a, b = a, c = b] = keys;
-    return this.newestRowStmt.get(a, b, c) as { conversation_id: string; updated_at: number; size: number } | undefined;
-  }
-
-  /** When a conversation began; read only when the poll switches to it. */
-  private conversationCreatedAt(db: Database.Database, conversationId: string): number {
-    if (!this.createdAtStmt || this.createdAtStmt.database !== db) {
-      this.createdAtStmt = db.prepare(
-        "SELECT created_at FROM conversations_v2 WHERE conversation_id = ? ORDER BY updated_at DESC LIMIT 1",
-      );
-    }
-    const row = this.createdAtStmt.get(conversationId) as { created_at: number } | undefined;
-    return row?.created_at ?? 0;
-  }
-
-  /** The whole history, read only when the signature says it changed. */
-  private readDbHistory(db: Database.Database, conversationId: string): unknown[] | null {
-    if (!this.historyStmt || this.historyStmt.database !== db) {
-      this.historyStmt = db.prepare(
-        "SELECT value FROM conversations_v2 WHERE conversation_id = ? ORDER BY updated_at DESC LIMIT 1",
-      );
-    }
-    const row = this.historyStmt.get(conversationId) as { value: string } | undefined;
-    if (!row) return null;
-    try {
-      const parsed = JSON.parse(row.value) as { history?: unknown };
-      return Array.isArray(parsed.history) ? parsed.history : [];
-    } catch { return null; }
-  }
-
-  /**
-   * Kiro 2.19 moved primary conversations into data.sqlite3. Snapshot the
-   * active row synchronously at monitor creation so its existing history is
-   * never replayed as live tool progress.
-   */
-  private snapshotDbBaseline(): void {
-    try {
-      const db = this.openDb();
-      if (!db) return;
-      const row = this.newestDbRow(db);
-      if (!row) return;
-      const history = this.readDbHistory(db, row.conversation_id);
-      if (!history) return;
-      this.dbConversationId = row.conversation_id;
-      this.dbHistoryCursor = history.length;
-      this.dbSignature = `${row.updated_at}:${row.size}`;
-    } catch {
-      // Old Kiro schema or busy DB — legacy JSONL remains available.
-      this.close();
-    }
-  }
-
-  private pollDb(): TranscriptEvents | null {
-    try {
-      const db = this.openDb();
-      if (!db) return null;
-      const row = this.newestDbRow(db);
-      if (!row) return null;
-      const signature = `${row.updated_at}:${row.size}`;
-      if (row.conversation_id === this.dbConversationId && signature === this.dbSignature) return EMPTY;
-
-      const history = this.readDbHistory(db, row.conversation_id);
-      if (!history) return EMPTY;
-      if (row.conversation_id !== this.dbConversationId) {
-        this.dbConversationId = row.conversation_id;
-        this.dbToolNames.clear();
-        // A conversation created after this monitor belongs to this daemon;
-        // an older conversation selected by --resume is history to baseline.
-        this.dbHistoryCursor = this.conversationCreatedAt(db, row.conversation_id) >= this.createdAt ? 0 : history.length;
-      }
-      if (history.length < this.dbHistoryCursor) {
-        // Compaction can replace history with a shorter summary. Treat the new
-        // compacted body as a baseline instead of waiting for it to grow past
-        // the old cursor (or replaying retained history).
-        this.dbHistoryCursor = history.length;
-        this.dbSignature = signature;
-        return EMPTY;
-      }
-      const events = emptyEvents();
-      for (const entry of history.slice(this.dbHistoryCursor)) {
-        collectKiroDbEvents(entry, events, this.dbToolNames);
-      }
-      this.dbHistoryCursor = history.length;
-      this.dbSignature = signature;
-      return events;
-    } catch {
-      // A replaced or corrupted store: drop the handle so the next poll reopens.
-      this.close();
-      return null;
-    }
+  private async pollDb(): Promise<TranscriptEvents | null> {
+    const generation = this.generation;
+    await this.initialize();
+    if (generation !== this.generation || !this.lease) return EMPTY;
+    const lease = this.lease;
+    const reply = await lease.read({ workingDirectory: this.workingDirectory, dbPath: this.dbPath, createdAt: this.createdAt, baseline: false, cursor: this.cursor });
+    if (generation !== this.generation || this.lease !== lease) return EMPTY;
+    if (!reply) return null;
+    this.cursor = reply.cursor;
+    return reply.events;
   }
 
   /**
@@ -527,21 +412,47 @@ export class KiroSessionSource implements TranscriptSource {
    * `null` = the file does not concern us (another cwd, or a subagent child).
    */
   private metaCache = new Map<string, { mtimeMs: number; size: number; meta: { updated: number; created: number } | null }>();
+  /** The sessions directory as last listed: re-listed only when its mtime moves (a session added or removed). */
+  private sessionsListing: { mtimeMs: number; names: string[]; hotWhenRead: boolean } | null = null;
+  private fullScanAt = Number.NEGATIVE_INFINITY;
+  /** Monotonic clock for the full-scan spacing; wall clock for comparing with file times. Test hooks. */
+  private mono = (): number => performance.now();
+  private wall = (): number => Date.now();
 
-  private resolveActiveSession(): { jsonlPath: string; createdAtMs: number } | null {
-    let entries: string[];
-    try { entries = readdirSync(this.sessionsDir); } catch { return null; }
-    let best: { jsonlPath: string; updated: number; createdAtMs: number } | null = null;
-    const seen = new Set<string>();
-    for (const e of entries) {
-      if (!e.endsWith(".json") || e.endsWith(".jsonl")) continue;
-      const metaPath = join(this.sessionsDir, e);
-      seen.add(metaPath);
+  /**
+   * The newest session of this working directory, from its metadata (#1490). It used to run `readdirSync` plus a
+   * `statSync` of every metadata file on the event loop, on every 2 s poll while the store had no row for us: 16–18 ms
+   * per instance with 5,000 sessions. Now it is asynchronous and bounded:
+   *   - the directory is listed again only when its mtime moved, or when it was read right after a change (file
+   *     times are coarse: a session created in the same tick would share that mtime), or on a full scan;
+   *   - a metadata file quiet for KIRO_QUIET_MS is not stat'ed again until the next full scan, so a poll costs one
+   *     stat of the directory plus the recently active files; an old session resumed is seen within KIRO_FULL_SCAN_MS;
+   *   - every full scan (each KIRO_FULL_SCAN_MS) re-stats everything, KIRO_SCAN_CONCURRENCY at a time.
+   */
+  private async resolveActiveSession(): Promise<{ jsonlPath: string; createdAtMs: number } | null> {
+    const now = this.wall();
+    const full = this.mono() - this.fullScanAt >= KIRO_FULL_SCAN_MS;
+    let dirMtimeMs: number;
+    try { dirMtimeMs = (await stat(this.sessionsDir)).mtimeMs; } catch { return null; }
+    let listing = this.sessionsListing;
+    if (full || !listing || listing.mtimeMs !== dirMtimeMs || listing.hotWhenRead) {
+      let entries: string[];
+      try { entries = await readdir(this.sessionsDir); } catch { return null; }
+      listing = { mtimeMs: dirMtimeMs, names: entries.filter(e => e.endsWith(".json") && !e.endsWith(".jsonl")).sort(), hotWhenRead: now - dirMtimeMs < KIRO_HOT_DIR_MS };
+      this.sessionsListing = listing;
+    }
+    if (full) this.fullScanAt = this.mono();
+
+    const verdicts = new Array<{ updated: number; created: number } | null>(listing.names.length).fill(null);
+    const names = listing.names;
+    await forEachLimited(names.length, KIRO_SCAN_CONCURRENCY, async (i) => {
+      const metaPath = join(this.sessionsDir, names[i]!);
+      let cached = this.metaCache.get(metaPath);
+      if (!full && cached && now - cached.mtimeMs > KIRO_QUIET_MS) { verdicts[i] = cached.meta; return; }
       try {
-        const st = statSync(metaPath);
-        let cached = this.metaCache.get(metaPath);
+        const st = await stat(metaPath);
         if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
-          const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+          const meta = JSON.parse(await readFile(metaPath, "utf-8"));
           // Subagent sessions are children of a turn already being reported.
           const ours = meta.cwd === this.workingDirectory && meta.session_created_reason !== "subagent";
           cached = {
@@ -553,27 +464,35 @@ export class KiroSessionSource implements TranscriptSource {
           };
           this.metaCache.set(metaPath, cached);
         }
-        if (!cached.meta) continue;
-        if (!best || cached.meta.updated > best.updated) {
-          const jsonlPath = join(this.sessionsDir, e.replace(/\.json$/, ".jsonl"));
-          best = { jsonlPath, updated: cached.meta.updated, createdAtMs: cached.meta.created };
-        }
-      } catch { /* partially written metadata — next poll */ }
-    }
+        verdicts[i] = cached.meta;
+      } catch { /* partially written metadata, or deleted meanwhile — next poll */ }
+    });
+    const seen = new Set(names.map(e => join(this.sessionsDir, e)));
     for (const known of this.metaCache.keys()) if (!seen.has(known)) this.metaCache.delete(known);
-    return best && existsSync(best.jsonlPath)
-      ? { jsonlPath: best.jsonlPath, createdAtMs: best.createdAtMs }
-      : null;
+
+    let best: { jsonlPath: string; updated: number; createdAtMs: number } | null = null;
+    names.forEach((e, i) => {
+      const meta = verdicts[i];
+      if (meta && (!best || meta.updated > best.updated)) {
+        best = { jsonlPath: join(this.sessionsDir, e.replace(/\.json$/, ".jsonl")), updated: meta.updated, createdAtMs: meta.created };
+      }
+    });
+    const chosen = best as { jsonlPath: string; createdAtMs: number } | null;
+    if (!chosen) return null;
+    try { await stat(chosen.jsonlPath); } catch { return null; }
+    return { jsonlPath: chosen.jsonlPath, createdAtMs: chosen.createdAtMs };
   }
 
   async poll(): Promise<TranscriptEvents> {
     // Current Kiro stores the primary session in SQLite; JSONL is now mostly
     // used for subagents. Keep the legacy path as a compatibility fallback.
-    const dbEvents = this.pollDb();
+    const generation = this.generation;
+    const dbEvents = await this.pollDb();
+    if (generation !== this.generation) return EMPTY;
     if (dbEvents !== null) return dbEvents;
 
-    const active = this.resolveActiveSession();
-    if (!active) return EMPTY;
+    const active = await this.resolveActiveSession();
+    if (generation !== this.generation || !active) return EMPTY;
 
     if (active.jsonlPath !== this.currentFile) {
       if (active.createdAtMs >= this.createdAt) {
@@ -584,6 +503,7 @@ export class KiroSessionSource implements TranscriptSource {
         // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
         let offset: number;
         try { offset = await lastLineBoundary(active.jsonlPath); } catch { return EMPTY; }
+        if (generation !== this.generation) return EMPTY;
         this.currentFile = active.jsonlPath;
         this.byteOffset = offset;
         return EMPTY;
@@ -591,6 +511,7 @@ export class KiroSessionSource implements TranscriptSource {
     }
 
     const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
+    if (generation !== this.generation) return EMPTY;
     this.byteOffset = newOffset;
 
     const events = emptyEvents();
@@ -600,40 +521,6 @@ export class KiroSessionSource implements TranscriptSource {
       collectKiroEvents(entry, events);
     }
     return events;
-  }
-}
-
-function collectKiroDbEvents(entry: unknown, out: TranscriptEvents, toolNames: Map<string, string>): void {
-  if (!entry || typeof entry !== "object") return;
-  const record = entry as Record<string, unknown>;
-  // Assistant text is observable too (#995 scans it for fabricated peer
-  // envelopes — the #856 forgery lived in a ToolUse content string).
-  for (const text of extractKiroAssistantStrings(entry)) out.assistantTexts.push(text);
-  const assistant = record.assistant as Record<string, unknown> | undefined;
-  const toolUse = assistant?.ToolUse as Record<string, unknown> | undefined;
-  const uses = toolUse?.tool_uses;
-  if (Array.isArray(uses)) {
-    for (const raw of uses) {
-      if (!raw || typeof raw !== "object") continue;
-      const use = raw as Record<string, unknown>;
-      const name = String(use.name ?? use.orig_name ?? "unknown");
-      const id = typeof use.id === "string" ? use.id : undefined;
-      if (id) toolNames.set(id, name);
-      out.toolUses.push({ name, input: use.args ?? use.orig_args });
-    }
-  }
-
-  const user = record.user as Record<string, unknown> | undefined;
-  const content = user?.content as Record<string, unknown> | undefined;
-  const resultsContainer = content?.ToolUseResults as Record<string, unknown> | undefined;
-  const results = resultsContainer?.tool_use_results;
-  if (Array.isArray(results)) {
-    for (const raw of results) {
-      if (!raw || typeof raw !== "object") continue;
-      const result = raw as Record<string, unknown>;
-      const id = typeof result.tool_use_id === "string" ? result.tool_use_id : "";
-      out.toolResults.push({ name: toolNames.get(id) ?? "toolResult" });
-    }
   }
 }
 

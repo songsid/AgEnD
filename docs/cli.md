@@ -8,10 +8,10 @@ The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lis
 |---------|-------------|----------------|------------|
 | `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
-| `/dashboard` | Show View/Settings/WebUI URLs (token-bearing URLs spoilered on Telegram, ephemeral on Discord) | — | 🔒 admin |
+| `/dashboard` | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/dashboard revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
 | `/ctx` | Show agent context usage | — | All |
 | `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | All in fleet topics |
-| `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok` only | All |
+| `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI ([details](commands.md#steer-btw-and-clear-backend-support)) | All |
 | `/btw` | Side question without interrupting the current task | `<message>` required; `claude-code` only | All |
 | `/clear` | Full conversation reset (destructive — asks Confirm/Cancel) | — | 🔒 admin |
 | `/model` | Switch backend model | Name or inline keyboard/select menu | 🔒 admin |
@@ -163,9 +163,10 @@ agend delivery scan-forged-envelopes --instance <name>  # Check a kiro instance'
 ## Web Dashboard
 
 ```bash
-agend web                       # Open Web UI dashboard in browser
+agend web                       # Print a one-time sign-in code and open the sign-in page
+agend web --code                # Only print the sign-in page and code (no browser)
 agend view                      # Open the read-only View dashboard in browser
-agend web-token rotate          # Revoke every dashboard link and browser session
+agend web-token rotate          # Sign every browser out and rotate the CLI token
 agend setup                     # Guided setup page, before a fleet exists
 agend setup --reset             # Allow setup to run again after it completed
 agend setup --tunnel            # …and expose it publicly, so a phone can open it
@@ -241,17 +242,61 @@ place — this page writes the file by dumping the loaded configuration, which i
 right for a file it creates and would flatten comments and freeze defaults in
 one somebody already has.
 
-Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
-and redirects to the same page without the token, so the credential stays out of
-the address bar, browser history and any log that records request URLs. The
-cookie lasts 12 hours. `agend web-token rotate` invalidates every issued link and
-cookie at once — a running fleet picks it up with no restart.
+A user guide to the whole dashboard (panels, chat, files, Stop, sessions, reaching it from elsewhere) is in
+[web-dashboard.md](web-dashboard.md).
 
-**If the page says "No session"** right after you followed a link from web
-Telegram or Discord, reload once. The session cookie is `SameSite=Strict`, and a
-browser that declines to send it on the first cross-site hop will send it on the
-reload, which is same-site. (Verified on Chromium; Firefox and WebKit have not
-been measured.)
+The dashboard signs in with a **one-time code**, not a link that carries a
+credential. Send `/dashboard` to your bot (or run `agend web --code` on the host)
+and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
+typed with or without the dash, in any case. Type it into the sign-in page and
+you are signed in to `/ui`, `/view` and `/settings` for as long as the session
+lasts, with nothing in the address bar, the browser history or any log that
+records request URLs.
+
+- **The code works once and expires after 5 minutes.** Only the newest code
+  works: asking again replaces the previous one. Five wrong tries use up that one
+  code (ask for another); enough wrong tries across codes pause sign-in for a few
+  minutes. While no code has been issued there is nothing to guess.
+- **A session is an opaque server-side record**, not a value derived from
+  `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
+  hours without use, whichever comes first — the server decides, not the
+  browser. It survives a fleet restart (Settings can restart the fleet).
+- **`/dashboard revoke`** in the chat (on Discord, the `/dashboard` slash command with `action: revoke`) signs every browser out and withdraws any
+  unused code. `agend web-token rotate` does the same and also rotates the token
+  the CLI uses; a running fleet picks it up with no restart. The sign-in
+  endpoints also list your signed-in devices and end one or all of them
+  (`GET/DELETE /auth/sessions`).
+- **Each sign-in is announced** in the General topic ("New web sign-in: Chrome on
+  macOS"). If it was not you, send `/dashboard revoke`. Turn this off with
+  `web.notify_login: false`.
+- **Writes need more than the cookie.** The panels add a per-session
+  `X-Agend-CSRF` header to every write, and the server also requires a matching
+  `Origin`; a cookie alone cannot change anything.
+- **One navigation across the panels.** `/ui`, `/view` and `/settings` share a
+  *Dashboard · View · Settings* bar and a **Session** menu (which browser you are,
+  when the session ends, your other signed-in devices with a Sign-out each, and
+  Sign out everywhere). `/` opens the dashboard. If the dashboard's live stream is
+  silent — a proxy that buffers it, or a path that cannot carry SSE such as a
+  Cloudflare Quick Tunnel — it polls `/ui/poll` every 5 seconds until the stream
+  speaks again.
+- **`/view` reads are open by default** (it is a read-only dashboard on a loopback
+  listener) — including the live terminal capture, so anyone who can reach the
+  port can watch your agents. Set `web.view_access: session` in `fleet.yaml` to
+  require a sign-in for the page, the capture, the roster and usage. **Editing a
+  profile or avatar always needs a signed-in session** (or `X-Agend-Token` from a
+  script): the Edit button on `/view` sends a signed-out visitor to sign in and
+  back. The old "paste your web.token to save" box is gone, and `/view?token=…` no
+  longer authorizes anything.
+- **No credential ever goes into a URL.** A `/ui?token=…` link (as older versions
+  printed, and as `agend web` used to open) is no longer a way in: it gets the
+  sign-in page. `agend web` now prints a code and opens `/signin`; scripts keep
+  using the `X-Agend-Token` header.
+
+Following a link from Telegram or Discord into a panel lands on the sign-in page
+first if the browser did not send the cookie on that cross-site hop
+(`SameSite=Strict`); the page checks for a session from inside the site and
+carries on to the panel you asked for by itself. (Verified on Chromium; Firefox
+and WebKit have not been measured.)
 
 ### Applying settings changes
 
@@ -368,6 +413,31 @@ On Linux the systemd unit uses `KillMode=mixed`, so stopping or updating the ser
 
 The same migration also adds the #1113 settings to an older unit. `CoredumpFilter=0` keeps a crash dump to a few KB: on WSL every crash is piped to the WSL crash collector, which ignores `LimitCORE`, and kiro-cli and the fleet itself had left dumps of about 1 GB and 450 MB. `LimitCORE=0` covers systems that write core files directly. `TimeoutStartSec=15min` replaces the old unlimited start timeout, and `StartLimitIntervalSec=30min` with `StartLimitBurst=4` stops systemd from restarting a fleet that failed four times in 30 minutes. `agend restart` runs `systemctl reset-failed` first, so it is never blocked by that limit; a plain `systemctl --user restart` is. Some systemd versions (249 among them) ignore `CoredumpFilter=` in a unit file, so on Linux AgEnD sets `coredump_filter` to 0 itself: the fleet process at startup, and each CLI it launches (the launch command sets it in the pane's own shell first, so it applies even in a tmux server the fleet did not start). `AGEND_KEEP_COREDUMP_FILTER=1` turns both off: processes then keep the mask they inherit (from systemd, tmux or your shell), which is not necessarily a full dump. The unit file is left as it is either way; whatever it says, the runtime mask is what AgEnD sets unless you opt out.
 
+**Which Node the service runs, and when `agend restart` refuses (#1450).**
+- With AgEnD's bundled Node (or a validated `AGEND_NODE`), the unit (`ExecStart=`) and the plist (`ProgramArguments`)
+  name that Node first, then the package's `dist/cli.js`, then `fleet start`. The bundled Node's path changes only when
+  npm updates AgEnD, and `agend update` rewrites the service then. The runtime's directory is on no service PATH, so the
+  coding CLIs keep the Node they had.
+- Where AgEnD has no bundled Node (any platform other than glibc Linux and macOS 11+ on x64/arm64), the service starts
+  the package's launcher (`<package>/launcher/agend fleet start`) instead. The launcher finds Node on the service's
+  PATH at each start, so upgrading Node with nvm or Homebrew, which removes the old version's directory, does not break
+  the service. A Node that is too old is refused at start, and the reason goes to the service log.
+- Before stopping anything, `agend restart` checks that the definition the service manager has **loaded** starts
+  exactly that: the selected Node named, this install's entry, `fleet start`, no `NODE_OPTIONS`/`NODE_PATH`, and no
+  reload pending. Otherwise it refuses and stops nothing.
+  - An older definition that leaves Node to `#!/usr/bin/env node` and the service's PATH is refused this way. Run
+    `agend install` to rewrite it.
+  - `agend restart --force` is for operators who have checked the service themselves. `agend update` never uses it.
+- **macOS:** `agend install` writes `~/Library/LaunchAgents/com.agend.fleet.plist` and loads it into `gui/<uid>`.
+  That is the domain of your login session, where LaunchAgents are loaded at login.
+  - For launchd, loading a plist is starting the job. So `agend install --no-activate` only writes and proves the new
+    plist and records a planned activation; the job already loaded keeps running.
+  - The next `agend restart` performs that activation once: one `bootout`, one `bootstrap`. Then `launchctl print`
+    must show the new job running. If it does not, the previous plist is bootstrapped again and checked.
+  - A Mac reached only over SSH, with nobody logged in, has no `gui/<uid>` domain (`launchctl` reports error 125).
+    There a job can only be loaded into `user/<uid>`, with `LimitLoadToSessionType=Background`. `agend install` does
+    not write that; such a job is yours to manage.
+
 ## Environment variables
 
 | Variable | Description |
@@ -376,3 +446,13 @@ The same migration also adds the #1113 settings to an older unit. `CoredumpFilte
 | `GROQ_API_KEY` | Groq API key for voice transcription (optional) |
 | `AGEND_TMUX_SESSION` | Override tmux session name (default: `agend`) |
 | `AGEND_HOME` | Override data directory (default: `~/.agend`) |
+
+## `agend settings`
+
+```bash
+agend settings confirm <id>        # Print source/requester/full redacted diff, then ask y/N
+agend settings confirm <id> --yes  # Explicitly confirm that inspected diff without a TTY
+agend settings reject <id>
+```
+
+Run on the host as the same user as the fleet or SetupHost. This never starts a fleet; a private local socket owns confirmation. Agent sessions (`AGEND_INSTANCE_NAME` present) cannot use it. The id, socket owner generation and inspected effect/summary are checked again before applying. A stale/expired request must be submitted again; pending requests are not persisted across restart.

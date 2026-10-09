@@ -7,7 +7,7 @@
     <a href="https://songsid.github.io/AgEnD"><img src="https://img.shields.io/badge/Website-songsid.github.io/AgEnD-blue" alt="Website"></a>
     <a href="https://www.npmjs.com/package/@songsid/agend"><img src="https://img.shields.io/npm/v/@songsid/agend" alt="npm"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-    <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D%2020-green.svg" alt="Node.js >= 20"></a>
+    <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D%2022.14.0-green.svg" alt="Node.js >= 22.14.0"></a>
   </p>
 </p>
 
@@ -150,7 +150,7 @@ graph LR
 
 ## 系統需求
 
-- Node.js >= 20
+- Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - 以下任一 AI coding CLI（需安裝並完成認證）
 - Telegram bot token（[@BotFather](https://t.me/BotFather)）或 Discord bot token
@@ -166,6 +166,8 @@ graph LR
 > appendWindowsPath=false
 > ```
 > 然後重新啟動 WSL（`wsl --shutdown`）。安裝指令：`curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash`
+
+> **不支援原生 Windows**：`agend` 與 `agend-agent` 指令是 POSIX `sh` 啟動腳本，而且 AgEnD 的 instance 都跑在 tmux 裡。在 Windows 上請於 WSL 內安裝與執行 AgEnD。
 
 ## 文件
 

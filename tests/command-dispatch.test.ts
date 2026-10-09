@@ -93,6 +93,7 @@ const EXPECTED: Record<string, Row> = {
   restart: everywhere(FLEET_ADMIN),
   login: everywhere(FLEET_ADMIN),
   update: everywhere(FLEET_ADMIN),
+  profile: { general: FLEET_ADMIN, fleet: refuse("profile.general_only"), classic: refuse("profile.general_only"), none: refuse("profile.general_only") },
   doctor: everywhere(FLEET_ADMIN),
   dashboard: everywhere(FLEET_ADMIN),
   visibility: everywhere(FLEET_ADMIN),
@@ -177,6 +178,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
   anyFm.handleLoginSlash = marks("login");
   anyFm.handleRestartSlash = marks("restart");
   anyFm.handleUpdateSlash = marks("update");
+  anyFm.handleProfileSlash = marks("profile");
   anyFm.handleTipsSlash = marks("tips");
   anyFm.handleVisibilitySlash = marks("visibility");
   anyFm.runBackendDoctor = async () => { reached.push("doctor"); return "ok:doctor"; };
@@ -209,6 +211,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
       options: { message: "go", filename: "f.json", instructions: "", instance: "worker" }, text: "go",
       respond: async (text: string) => { replies.push(text); return "m1"; },
       respondChoices: async (text: string) => { replies.push(text); return "m2"; },
+      respondButtons: async (text: string) => { replies.push(text); return "m3"; },
     });
     await vi.waitFor(() => expect(replies.length).toBeGreaterThan(0), { timeout: 2000 });
     await new Promise<void>(res => setImmediate(res));
@@ -322,10 +325,14 @@ describe("the pure rule", () => {
   it("a Telegram override applies only on Telegram; the Discord answer for the same cell is unchanged", () => {
     const classicAdminOnly: CommandChecks = { ...nobody, classicAdmin: () => true };
     const fleetAdminInClassic: CommandChecks = { ...nobody, channelAdmin: () => true };    // what `isModelAdmin` says of a fleet admin
+    // #754: Telegram ClassicBot /pause is channel-admin now, as on Discord — a fleet admin passes on both.
     expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "discord")).toEqual({ allow: true });
-    expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: false, reply: ["permission.denied"] });
-    expect(decideCommand(commandSpec("pause")!, "classic", classicAdminOnly, "telegram")).toEqual({ allow: true });
-    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("pause")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: true });
+    expect(decideCommand(commandSpec("pause")!, "classic", classicAdminOnly, "telegram")).toEqual({ allow: false, reply: ["permission.denied"] });
+    // A Telegram override that remains: /stop in a ClassicBot chat is the ClassicBot admin's alone on both platforms.
+    expect(decideCommand(commandSpec("stop")!, "classic", fleetAdminInClassic, "telegram")).toEqual({ allow: false, reply: ["classic.admin_only_stop"] });
+    // #754 audit: Telegram /compact in a fleet topic is admin-gated now, like Discord — the two platforms agree here.
+    expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "telegram")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
     expect(decideCommand(commandSpec("compact")!, "fleet", nobody, "discord")).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });
     expect(decideCommand(commandSpec("compact")!, "fleet", nobody)).toEqual({ allow: false, reply: ["cmd.admin_required", "/compact"] });      // the default platform is Discord
   });
@@ -369,7 +376,7 @@ describe("the lock emoji is generated from the table", () => {
   it("is on exactly the commands that ask for more than 'anyone' somewhere", () => {
     const locked = COMMANDS.filter(isLocked).map(c => c.name).sort();
     expect(locked).toEqual(
-      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "pause", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
+      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "pause", "profile", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
     );
     for (const spec of COMMANDS) expect(slashLock(spec.name), spec.name).toBe(isLocked(spec) ? "🔒 " : "");
     expect(slashLock("not-a-command")).toBe("");

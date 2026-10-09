@@ -1,3 +1,6 @@
+import { measureSyncWork } from "./sync-work-attribution.js";
+import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
+import { WEB_REMOTE_DOCS_URL } from "./upgrade-notices.js";
 import { readFileSync, existsSync } from "node:fs";
 import { exec, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -14,7 +17,7 @@ import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t, getLocale } from "./locale.js";
-import { telegramMenu, type TelegramMenu } from "./command-table.js";
+import { commandSpec, decideCommand, telegramMenu, type TelegramMenu } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import type { ChannelConfig } from "./types.js";
 import {
@@ -24,10 +27,11 @@ import {
   type TokenContextRatio,
 } from "./context-percent.js";
 import { isGeneralInstance } from "./general-instance.js";
-import { backendSupportsSteer } from "./steer-capability.js";
+import { instanceSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
-import { UPDATE_COMMAND } from "./update-check.js";
+import { resolveInstalledAgend, updateCommand } from "./update-dispatch.js";
+import { selfCommand } from "./cli-entry.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -37,6 +41,8 @@ const TELEGRAM_COMMANDS_TIMEOUT_MS = 10_000;
 
 type ExecutionFleetContext = FleetContext & {
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
+  /** The running launch's own steer capability (CliBackend.supportsSteer, #1405); undefined when it has none to give. */
+  instanceLaunchSupportsSteer?(instanceName: string): boolean | undefined;
 };
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
@@ -237,7 +243,7 @@ let cachedTmuxVersion: string | null = null;
 function tmuxVersion(): string {
   if (cachedTmuxVersion === null) {
     try {
-      cachedTmuxVersion = execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: 3000 }).trim();
+      cachedTmuxVersion = measureSyncWork("topic.tmuxVersion", () => execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: 3000 }).trim());
     } catch {
       cachedTmuxVersion = "not found";
     }
@@ -359,6 +365,9 @@ export function formatContextUsageLine(context: number, tokenRatio: TokenContext
 
 /** Claude Code statusline.json context used % (null if missing / unreadable). */
 export function readStatuslineContextPct(dataDir: string, instanceName: string): number | null {
+  return measureSyncWork("topic.readStatuslineContextPct", () => readStatuslineContextPctSync(dataDir, instanceName));
+}
+function readStatuslineContextPctSync(dataDir: string, instanceName: string): number | null {
   try {
     const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
     if (!existsSync(statusFile)) return null;
@@ -376,6 +385,9 @@ export function readStatuslineContextPct(dataDir: string, instanceName: string):
  * plan-gated model and keeps using its previous/default model.
  */
 export function readStatuslineModel(dataDir: string, instanceName: string): string | null {
+  return measureSyncWork("topic.readStatuslineModel", () => readStatuslineModelSync(dataDir, instanceName));
+}
+function readStatuslineModelSync(dataDir: string, instanceName: string): string | null {
   try {
     const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
     if (!existsSync(statusFile)) return null;
@@ -401,11 +413,11 @@ export function scrapePaneContext(
     // Scrollback (-S -60) so a recent footer/statusline is kept even mid-output.
     const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
     const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
-    const pane = execFileSync("tmux", tmuxArgs, {
+    const pane = measureSyncWork("topic.scrapePaneContext", () => execFileSync("tmux", tmuxArgs, {
       encoding: "utf-8",
       timeout: 2000,
       stdio: ["pipe", "pipe", "pipe"],
-    });
+    }));
     const tokenRatio = backend === "grok" ? parseTokenContextRatio(pane) : null;
     const context = tokenRatio?.percentage ?? parseContextPercent(pane);
     return { context, tokenRatio };
@@ -502,10 +514,90 @@ export function resolveInstanceContext(
   return hit ? { context: hit.context, tokenRatio: hit.tokenRatio } : { context: null, tokenRatio: null };
 }
 
+const PROFILE_RE = /^\/profile(?:@\w+)?(?:\s+([\s\S]*))?$/;
+const RESTART_RE = /^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i;
+const LEGACY_INSTALL_RE = /^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/;
+const VISIBILITY_RE = /^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i;
+/** `/name` or `/name@bot`. */
+const bare = (name: string) => (text: string) => text === `/${name}` || text.startsWith(`/${name}@`);
+/** `/name`, `/name@bot`, or `/name <args>`. */
+const withArgs = (name: string) => (text: string) => bare(name)(text) || text.startsWith(`/${name} `);
+type TypedForms = ReadonlyArray<readonly [string, (text: string, source: string | undefined) => boolean]>;
+
+/**
+ * The typed forms each dispatcher runs, in its order. The one recognizer for both the command-table gate and the
+ * dispatch (#1399 review): a form no handler runs (`/STATUS`, `/status report`, `/pause one two`) is text for the
+ * agent, and the table never answers it either.
+ */
+const GENERAL_FORMS: TypedForms = [
+  ["profile", (text, source) => source === "telegram" && PROFILE_RE.test(text)],
+  ["status", bare("status")],
+  ["restart", text => RESTART_RE.test(text)],
+  ["sysinfo", text => bare("sysinfo")(text) || text === "/sys-info" || text === "/sys_info"],
+  ["doctor", bare("doctor")],
+  ["usage", bare("usage")],
+  ["tips", withArgs("tips")],
+  ["login", withArgs("login")],
+  ["install-cli", text => LEGACY_INSTALL_RE.test(text)],
+  ["update", bare("update")],
+  ["dashboard", withArgs("dashboard")],
+  ["visibility", text => VISIBILITY_RE.test(text)],
+];
+const INSTANCE_FORMS: TypedForms = [
+  ["tips", withArgs("tips")],
+  ["pause", text => parsePauseWakeCommand(text)?.action === "pause"],
+  ["wake", text => parsePauseWakeCommand(text)?.action === "wake"],
+  ["collab", bare("collab")],
+  ["effort", withArgs("effort")],
+  ["model", withArgs("model")],
+  ["compact", text => parseCompactCommand(text) !== null],
+  ["steer", withArgs("steer")],
+  ["btw", withArgs("btw")],
+  ["clear", bare("clear")],
+  ["cancel", bare("cancel")],
+  ["save", withArgs("save")],
+  ["raw", text => text === "/raw" || text.startsWith("/raw ")],
+  ["ctx", bare("ctx")],
+];
+const typedCommand = (forms: TypedForms, text: string, source: string | undefined): string | undefined =>
+  forms.find(([, matches]) => matches(text, source))?.[0];
+/** A typed name that is another spelling of a command-table entry. */
+const TELEGRAM_COMMAND_ALIASES: Readonly<Record<string, string>> = { "install-cli": "login" };
+
 export class TopicCommands {
   constructor(private ctx: ExecutionFleetContext) {}
 
   /** Get the adapter that should reply to a given inbound message */
+  /**
+   * #754: who may run a typed Telegram command is decided by the command table — the same rule a Discord slash
+   * command goes through (`decideCommand`), here with its Telegram column — before any handler runs. `msg.adapterId`
+   * is the topic's owning adapter (ownedCopy), so the admin it asks about is that bot's. A command the table does not
+   * know (`/raw`) or does not handle here (a passthrough cell) is left to the handlers below. `command` is what the
+   * dispatcher recognized (GENERAL_FORMS / INSTANCE_FORMS), so the table judges exactly what would run.
+   *
+   * Synchronous on purpose (#1399 review): the decision, the handler's own checks and the command's effect run in one
+   * stretch, so the instance cannot be rebound to another bot between the check and the act. The refusal, if any.
+   */
+  private tableRefusal(msg: InboundMessage, command: string | undefined, scope: "general" | "fleet"): [string, ...unknown[]] | null {
+    const spec = command ? commandSpec(TELEGRAM_COMMAND_ALIASES[command] ?? command) : undefined;
+    if (!spec) return null;
+    const fleetAdmin = (): "ok" | "disabled" | "denied" => this.ctx.isFleetAdmin(msg.userId, msg.adapterId) ? "ok"
+      : this.ctx.hasFleetAdmins && !this.ctx.hasFleetAdmins(msg.adapterId) ? "disabled" : "denied";
+    const decision = decideCommand(spec, scope, {
+      fleetAdmin,
+      // In a fleet topic the channel's own admin IS the owning bot's fleet admin.
+      channelAdmin: () => fleetAdmin() === "ok",
+      classicAdmin: () => false,
+    }, "telegram");
+    if (decision.allow || "passthrough" in decision) return null;
+    return decision.reply as [string, ...unknown[]];
+  }
+
+  private async sendRefusal(msg: InboundMessage, [key, ...args]: [string, ...unknown[]]): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (adapter) await adapter.sendText(msg.chatId, t(key, ...(args as never[])), { threadId: msg.threadId }).catch(() => {});
+  }
+
   private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
     if (msg.adapterId && this.ctx.adapters) {
       return this.ctx.adapters.get(msg.adapterId) ?? this.ctx.adapter;
@@ -513,45 +605,73 @@ export class TopicCommands {
     return this.ctx.adapter;
   }
 
+  /**
+   * #1346: keep only the owning adapter's copy. When several bots share a
+   * guild they each receive the same message; the copy that wins the
+   * cross-adapter dedup race is arbitrary, so commands must not follow the
+   * receiver. A non-owner copy runs no command and answers nothing (null) —
+   * the message falls through to normal delivery, which canonicalizes
+   * routing to the owner. Replies and permission checks below then use the
+   * owner automatically. Without an instance (or owner info) there is
+   * nothing to judge by and the copy proceeds as before.
+   */
+  private ownedCopy(msg: InboundMessage, instanceName?: string): InboundMessage | null {
+    if (!instanceName) return msg;
+    const owner = this.ctx.getInstanceAdapterId?.(instanceName);
+    if (!msg.adapterId || !owner || msg.adapterId === owner) {
+      return !msg.adapterId && owner ? { ...msg, adapterId: owner } : msg;
+    }
+    return null;
+  }
+
   /** Parse and dispatch commands from the General topic */
-  async handleGeneralCommand(msg: InboundMessage): Promise<boolean> {
+  async handleGeneralCommand(msg: InboundMessage, instanceName?: string): Promise<boolean> {
+    const owned = this.ownedCopy(msg, instanceName);
+    if (!owned) return false;
+    msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
+    const command = typedCommand(GENERAL_FORMS, text, msg.source);
+    const refusal = this.tableRefusal(msg, command, "general");
+    if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
-    if (text === "/status" || text === "/status@" || text.startsWith("/status@")) {
+    if (command === "profile") {
+      await this.ctx.runProfileCommand?.(msg, text.match(PROFILE_RE)![1]?.trim());
+      return true;
+    }
+
+    if (command === "status") {
       await this.handleStatusCommand(msg);
       return true;
     }
 
-    const restart = text.match(/^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i);
-    if (restart) {
-      const mode = restart[1]?.trim().toLowerCase();
+    if (command === "restart") {
+      const mode = text.match(RESTART_RE)![1]?.trim().toLowerCase();
       await this.handleRestartCommand(msg, mode);
       return true;
     }
 
-    if (text === "/sysinfo" || text === "/sysinfo@" || text.startsWith("/sysinfo@")
-        || text === "/sys-info" || text === "/sys_info") {
+    if (command === "sysinfo") {
       await this.handleSysInfoCommand(msg);
       return true;
     }
 
-    if (text === "/doctor" || text.startsWith("/doctor@")) {
+    if (command === "doctor") {
       await this.handleDoctorCommand(msg);
       return true;
     }
 
-    if (text === "/usage" || text.startsWith("/usage@")) {
+    if (command === "usage") {
       await this.handleUsageCommand(msg);
       return true;
     }
 
-    if (text === "/tips" || text.startsWith("/tips ") || text.startsWith("/tips@")) {
+    if (command === "tips") {
       await this.handleTipsCommand(msg);
       return true;
     }
 
-    if (text === "/login" || text.startsWith("/login ") || text.startsWith("/login@")) {
+    if (command === "login") {
       await this.handleLoginCommand(msg);
       return true;
     }
@@ -559,8 +679,8 @@ export class TopicCommands {
     // `/install-cli` became part of `/login` (#1131). Typed, it still works for
     // one release (2.1.10) — with a line saying where it went — and is in no
     // command menu. Both spellings: Telegram command names cannot contain "-".
-    const legacyInstall = text.match(/^\/install[-_]cli(?:@\S+)?(?:\s+([\s\S]*))?$/);
-    if (legacyInstall) {
+    if (command === "install-cli") {
+      const legacyInstall = text.match(LEGACY_INSTALL_RE)!;
       const adapter = this.getReplyAdapter(msg);
       if (adapter) await adapter.sendText(msg.chatId, t("login.install_cli_moved"), { threadId: msg.threadId }).catch(() => {});
       const rest = (legacyInstall[1] ?? "").trim();
@@ -570,19 +690,18 @@ export class TopicCommands {
     }
 
 
-    if (text === "/update" || text.startsWith("/update@")) {
+    if (command === "update") {
       await this.handleUpdateCommand(msg);
       return true;
     }
 
-    if (text === "/dashboard" || text.startsWith("/dashboard@")) {
+    if (command === "dashboard") {
       await this.handleDashboardCommand(msg);
       return true;
     }
 
-    const visibility = text.match(/^\/visibility(?:@\S+)?(?:\s+([\s\S]*))?$/i);
-    if (visibility) {
-      await this.handleVisibilityCommand(msg, visibility[1] ?? "");
+    if (command === "visibility") {
+      await this.handleVisibilityCommand(msg, text.match(VISIBILITY_RE)![1] ?? "");
       return true;
     }
 
@@ -590,34 +709,33 @@ export class TopicCommands {
   }
 
   /**
-   * Build the dashboard URL text (View / Settings / Web UI). The Settings/Web UI
-   * URLs carry the web token; when `htmlSpoiler` is set they're wrapped in a
-   * Telegram HTML spoiler (`<tg-spoiler>`) so the token isn't shown in the clear
-   * in a shared topic (the caller must send with format: "html"). /view is
-   * public, so it's never spoilered. DC uses the plain form (ephemeral reply).
+   * Pure, secret-free dashboard/menu copy. Issuance belongs to the private
+   * delivery action; rendering or previewing this text cannot retire a code.
    */
-  getDashboardText(htmlSpoiler = false): string {
+  getDashboardText(_htmlSpoiler = false, showRemoteHint = true): string {
     const port = this.ctx.fleetConfig?.health_port ?? 19280;
     const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
     const access = this.ctx.getDashboardAccess?.();
     if (!access?.ready || !access.token) return t("dashboard.starting");
-    const token = access.token;
     const base = `http://${host}:${port}`;
-    const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
     return [
       t("dashboard.title"),
       "",
-      `• View:     ${base}/view`,
-      `• View (edit): ${hide(`${base}/view?token=${token}`)}`,
-      `• Settings: ${hide(`${base}/settings?token=${token}`)}`,
-      `• Web UI:   ${hide(`${base}/ui?token=${token}`)}`,
+      t("dashboard.signin", base),
+      "",
+      `• View:      ${base}/view`,
+      `• Dashboard: ${base}/ui`,
+      `• Settings:  ${base}/settings`,
+      "",
+      t("dashboard.code_help"),
+      // #1366: a loopback address does not open on a phone — say where the way in is documented.
+      ...(showRemoteHint && (LOOPBACK_HOST_NAMES.includes(host.toLowerCase()) || host === "::1") ? ["", t("dashboard.remote_hint", WEB_REMOTE_DOCS_URL)] : []),
     ].join("\n");
   }
 
   /**
-   * /dashboard (TG): admin-only. Replies directly in the topic; the token-
-   * bearing URLs are wrapped in a Telegram HTML spoiler so they aren't shown in
-   * the clear (the adapter supports plain/HTML, not MarkdownV2's `||…||`).
+   * /dashboard (TG): admin-only menu in General; codes are sent privately.
+   * `/dashboard revoke` also closes the public link and signs browsers out.
    */
   private async handleDashboardCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
@@ -628,24 +746,43 @@ export class TopicCommands {
     if (!this.ctx.hasFleetAdmins(msg.adapterId)) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
     if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
 
-    await adapter.sendText(chatId, this.getDashboardText(true), { threadId, format: "html" });
+    const arg = (msg.text ?? "").trim().replace(/^\/dashboard(?:@\S+)?/i, "").trim().toLowerCase();
+    if (arg === "revoke") {
+      const result = this.ctx.revokeWebSessions?.() ?? { count: 0, durable: true };
+      // Not durable: they are signed out now, but a restart may bring them back — say so, never "done".
+      await adapter.sendText(chatId, result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count), { threadId });
+      return;
+    }
+
+    if (msg.source === "telegram") await this.ctx.dashboardMenu?.(msg);
+    else await adapter.sendText(chatId, this.getDashboardText(), { threadId });
   }
 
   /** Handle /ctx or /compact in any instance topic — returns true if handled */
   async handleInstanceCommand(msg: InboundMessage, instanceName: string): Promise<boolean> {
+    const owned = this.ownedCopy(msg, instanceName);
+    if (!owned) return false;
+    msg = owned;
     const text = msg.text?.trim();
     if (!text) return false;
+    const inGeneral = !!this.ctx.fleetConfig?.instances[instanceName]?.general_topic;
+    // A General command typed in an instance topic is recognized too, in its General forms only: the table points it
+    // to General (#1148) instead of handing it to the agent. No branch below runs it.
+    const command = typedCommand(INSTANCE_FORMS, text, msg.source)
+      ?? (inGeneral ? undefined : typedCommand(GENERAL_FORMS, text, msg.source));
+    const refusal = this.tableRefusal(msg, command, inGeneral ? "general" : "fleet");
+    if (refusal) { await this.sendRefusal(msg, refusal); return true; }
 
     // Tips are informational and should appear where requested, including a
     // worker topic. This also keeps Telegram text commands aligned with
     // Discord's channel-local slash-command behavior.
-    if (text === "/tips" || text.startsWith("/tips ") || text.startsWith("/tips@")) {
+    if (command === "tips") {
       await this.handleTipsCommand(msg);
       return true;
     }
 
-    const pauseWake = parsePauseWakeCommand(text);
-    if (pauseWake) {
+    if (command === "pause" || command === "wake") {
+      const pauseWake = parsePauseWakeCommand(text)!;
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -653,7 +790,7 @@ export class TopicCommands {
         return true;
       }
 
-      const isGeneral = !!this.ctx.fleetConfig?.instances[instanceName]?.general_topic;
+      const isGeneral = inGeneral;
       if (isGeneral && !pauseWake.instance) {
         await adapter.sendText(msg.chatId, t(`${pauseWake.action}.usage`), { threadId: msg.threadId });
         return true;
@@ -661,6 +798,11 @@ export class TopicCommands {
       const target = isGeneral ? pauseWake.instance! : instanceName;
       if (!this.ctx.fleetConfig?.instances[target]) {
         await adapter.sendText(msg.chatId, t("instance.not_found", target), { threadId: msg.threadId });
+        return true;
+      }
+      // #754 audit: a General speaks for its own bot's instances only — an admin of this bot is not one of another's.
+      if (isGeneral && this.ctx.getInstanceAdapterId && this.ctx.getInstanceAdapterId(target) !== msg.adapterId) {
+        await adapter.sendText(msg.chatId, t("instance.other_bot", target), { threadId: msg.threadId });
         return true;
       }
       if (pauseWake.action === "pause" && isGeneralInstance(this.ctx.fleetConfig, target)) {
@@ -671,9 +813,14 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/collab" || text.startsWith("/collab@")) {
+    if (command === "collab") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
+      // Channel-admin, as the Discord slash command (#754 audit): it changes how the instance is reached.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
       const isCollab = this.ctx.toggleFleetCollab(instanceName);
       await adapter.sendText(msg.chatId, isCollab
         ? t("collab.on")
@@ -682,7 +829,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/effort" || text.startsWith("/effort ") || text.startsWith("/effort@")) {
+    if (command === "effort") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -697,14 +844,14 @@ export class TopicCommands {
       } else if (this.ctx.promptEffortMenu) {
         // No arg → inline keyboard menu (TG), same shape as /model.
         const fallback = await this.ctx.promptEffortMenu(
-          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId,
+          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId, msg.adapterId,
         );
         if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       }
       return true;
     }
 
-    if (text === "/model" || text.startsWith("/model ") || text.startsWith("/model@")) {
+    if (command === "model") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -718,7 +865,7 @@ export class TopicCommands {
       } else if (this.ctx.promptModelMenu) {
         // No arg → inline keyboard menu (TG)
         const fallback = await this.ctx.promptModelMenu(
-          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId,
+          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId, msg.adapterId,
         );
         if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       } else {
@@ -727,16 +874,21 @@ export class TopicCommands {
       return true;
     }
 
-    const compact = parseCompactCommand(text);
-    if (compact) {
+    if (command === "compact") {
+      const compact = parseCompactCommand(text)!;
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
+      // Channel-admin, as the Discord slash command (#754 audit): it rewrites the instance's context.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
       const result = await this.sendCompact(instanceName, compact.instructions);
       await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
       return true;
     }
 
-    if (text === "/steer" || text.startsWith("/steer ") || text.startsWith("/steer@")) {
+    if (command === "steer") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Deliberately NOT admin-gated: anyone who can speak in this topic can
@@ -753,7 +905,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/btw" || text.startsWith("/btw ") || text.startsWith("/btw@")) {
+    if (command === "btw") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       // Like /steer, /btw is not admin-gated: anyone who can send the agent a
@@ -769,7 +921,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/clear" || text.startsWith("/clear@")) {
+    if (command === "clear") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
@@ -791,7 +943,7 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/cancel" || text.startsWith("/cancel@")) {
+    if (command === "cancel") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       const ok = this.ctx.cancelInstance(instanceName);
@@ -799,9 +951,14 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
+    if (command === "save") {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
+      // Channel-admin, as the Discord slash command (#754 audit): it writes a file in the instance's directory.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
       const filename = parseSaveFilename(text);
       if (!filename) {
         await adapter.sendText(msg.chatId, t("save.usage"), { threadId: msg.threadId });
@@ -816,7 +973,16 @@ export class TopicCommands {
       return true;
     }
 
-    if (text !== "/ctx" && !text.startsWith("/ctx@")) return false;
+    // `/raw <text>` is pasted into the CLI as typed, with no [user:] envelope (daemon.ts): it is CLI input, so only
+    // the owning bot's fleet admin may send it (#754 audit). An admin's falls through to delivery unchanged.
+    if (command === "raw") {
+      if (this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) return false;
+      const adapter = this.getReplyAdapter(msg);
+      if (adapter) await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+      return true;
+    }
+
+    if (command !== "ctx") return false;
 
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return false;
@@ -980,7 +1146,8 @@ export class TopicCommands {
    * Backends whose TUI accepts a busy-pane paste as steering input,
    * live-verified: claude-code and codex buffer-then-submit at the turn
    * boundary, grok accepts it in its input line. kiro's legacy TUI swallows
-   * the paste outright, and opencode/antigravity are unverified — for those
+   * the paste outright; its TUI front-ends steer, so kiro answers per launch
+   * (#1405). opencode/antigravity are unverified — for those
    * the user gets an honest "not supported" instead of a silent queue
    * fallback that looks like a steer but behaves like a normal message.
    */
@@ -990,8 +1157,10 @@ export class TopicCommands {
     msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
   ): string {
     const backend = this.effectiveBackend(instanceName);
-    if (!backendSupportsSteer(backend)) {
-      return t("steer.unsupported", backend);
+    const launchSupportsSteer = this.ctx.instanceLaunchSupportsSteer?.(instanceName);
+    if (!instanceSupportsSteer(backend, launchSupportsSteer)) {
+      // A backend that answers per launch (kiro, #1405) can steer, just not as this instance runs now.
+      return launchSupportsSteer === false ? t("steer.unsupported_launch", backend) : t("steer.unsupported", backend);
     }
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) return t("steer.not_connected");
@@ -1470,12 +1639,18 @@ export class TopicCommands {
     const sent = await adapter.sendText(chatId, t("update.progress.preparing", 0), { threadId });
     this.ctx.beginUpdateProgress?.(adapter, chatId, threadId, sent.messageId);
 
-    // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND.
-    const updateCmd = UPDATE_COMMAND;
+    // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND. #1450 C5: the INSTALLED
+    // agend, verified by identity, by absolute path — or a refusal, never whatever `agend` is first on PATH.
+    const installed = await resolveInstalledAgend();
+    if (!installed.ok) {
+      this.ctx.failUpdateProgress?.(`/update cannot verify the installed AgEnD (${installed.reason}). Run \`agend update\` from a shell.`);
+      return;
+    }
     const { spawn } = await import("node:child_process");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);
-    const child = spawn("sh", ["-c", `sleep 2 && ${updateCmd}`], {
+    const { command, args } = updateCommand(installed.agend);
+    const child = spawn(command, args, {
       detached: true, stdio: "ignore", env: withOrigin(origin),
     });
     child.once("error", err => this.ctx.failUpdateProgress?.(err.message));
@@ -1517,7 +1692,9 @@ export class TopicCommands {
     try {
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
-      const { stdout } = await promisify(execFile)("agend", ["backend", "doctor", backend], {
+      // This CLI on this Node, not whichever `agend` is first on PATH (#1450 C5).
+      const doctor = selfCommand(["backend", "doctor", backend]);
+      const { stdout } = await promisify(execFile)(doctor.command, doctor.args, {
         timeout: 30_000,
         encoding: "utf-8",
       });

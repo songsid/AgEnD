@@ -58,18 +58,24 @@ export interface StatuslineRateLimits {
   observedAtMs: number;
 }
 
+/** A statusline window's `resets_at` as epoch ms, or null when it has no usable reset time. */
+export function statuslineResetsAtMs(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    // Seconds in practice; tolerate milliseconds so a format change is not an outage.
+    return Math.abs(value) < 1e10 ? value * 1000 : value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value).getTime();
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return null;
+}
+
 function parseWindow(raw: unknown, now: number): StatuslineWindow | null {
   const w = raw as { used_percentage?: unknown; resets_at?: unknown } | undefined;
   if (typeof w?.used_percentage !== "number" || !Number.isFinite(w.used_percentage)) return null;
 
-  let resetsAtMs: number | null = null;
-  if (typeof w.resets_at === "number" && Number.isFinite(w.resets_at)) {
-    // Seconds in practice; tolerate milliseconds so a format change is not an outage.
-    resetsAtMs = Math.abs(w.resets_at) < 1e10 ? w.resets_at * 1000 : w.resets_at;
-  } else if (typeof w.resets_at === "string" && w.resets_at.trim()) {
-    const parsed = new Date(w.resets_at).getTime();
-    if (!Number.isNaN(parsed)) resetsAtMs = parsed;
-  }
+  const resetsAtMs = statuslineResetsAtMs(w.resets_at);
 
   // A window whose reset time has passed has rolled over: the percentage in the
   // file describes a window that no longer exists. Reporting it would show a

@@ -155,7 +155,8 @@ describe("P1: the launch pins the instance's UI and engine", () => {
 
   it("the command puts the pin right after `chat`", () => {
     const cmd = new KiroBackend("/tmp/kiro-1109", probe("2.27.0", null).compat).buildCommand(config());
-    expect(cmd).toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools --resume$/);
+    // The engine pin comes first; what follows it (#906: the instance's agent) is not this test's subject.
+    expect(cmd).toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools /);
   });
 });
 
@@ -250,6 +251,7 @@ function writeKiroStub(dir: string, version: string, helpText: string): void {
     "",
   ].join("\n"));
   chmodSync(path, 0o755);
+  registerExecutableFixture(path); // pin each deliberately rewritten fake binary
 }
 
 describe("P2: a kiro-cli replaced in place is re-read at every launch (Prism #2)", () => {
@@ -601,3 +603,4 @@ describe("compatibility shape", () => {
     expect(c).toMatchObject({ supportsLegacyUi: true, supportsTui: true, supportsV3: true, supportsEffortFlag: true, source: "help" });
   });
 });
+import { registerExecutableFixture } from "./support/process-guard.js";

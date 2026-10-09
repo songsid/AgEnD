@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import { DarwinMemoryProbe, parseDarwinAvailable, parseDarwinSwap, type MemoryCommand } from "../src/darwin-memory.js";
+import { DarwinMemoryProbe, parseDarwinAvailable, parseDarwinSwap, parseDarwinPressureLevel, type MemoryCommand } from "../src/darwin-memory.js";
 import { MemoryPressure } from "../src/memory-pressure.js";
 import { SpawnGate } from "../src/spawn-gate.js";
 import { StormWindow } from "../src/storm-window.js";
@@ -16,10 +16,10 @@ function harness() {
     const command = { result: result.promise, stopped: stopped.promise, kill: vi.fn(), output: result.resolve, close: () => stopped.resolve() };
     commands.push(command); return command;
   });
-  const probe = new DarwinMemoryProbe({ run, totalmem: () => total, now: Date.now });
-  const complete = (index = 0, vm = healthy, swapText: string | null = swap) => {
-    commands[index].output(vm); commands[index + 1].output(swapText);
-    commands[index].close(); commands[index + 1].close();
+  const probe = new DarwinMemoryProbe({ includePressure: true, run, totalmem: () => total, now: Date.now });
+  const complete = (index = 0, vm = healthy, swapText: string | null = swap, pressureText: string | null = "kern.memorystatus_vm_pressure_level: 1\n") => {
+    commands[index].output(vm); commands[index + 1].output(swapText); commands[index + 2].output(pressureText);
+    commands[index].close(); commands[index + 1].close(); commands[index + 2].close();
   };
   return { run, commands, probe, complete };
 }
@@ -66,14 +66,14 @@ describe("macOS native memory formats", () => {
 describe("bounded macOS reader", () => {
   it("single-flights parallel calls, caches 30 seconds and returns independent values", async () => {
     const h = harness(); cleanups.push(() => h.probe.stop());
-    const a = h.probe.read(), b = h.probe.read(); expect(h.run.mock.calls).toEqual([["/usr/bin/vm_stat", []], ["/usr/sbin/sysctl", ["vm.swapusage"]]]);
+    const a = h.probe.read(), b = h.probe.read(); expect(h.run.mock.calls).toEqual([["/usr/bin/vm_stat", []], ["/usr/sbin/sysctl", ["vm.swapusage"]], ["/usr/sbin/sysctl", ["kern.memorystatus_vm_pressure_level"]]]);
     h.complete(); const value = await a;
     expect(await b).toEqual(value); value.availableBytes = 0;
-    const cached = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(2);
+    const cached = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(3);
     expect((await cached).availableBytes).toBe(3121.6875 * MiB);
-    await vi.advanceTimersByTimeAsync(29_999); await h.probe.read(); expect(h.run).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(1); const c = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(4);
-    h.complete(2); await c;
+    await vi.advanceTimersByTimeAsync(29_999); await h.probe.read(); expect(h.run).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1); const c = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(6);
+    h.complete(3); await c;
   });
   it("returns by two seconds while timers run, retains children until close and rejects late output", async () => {
     const h = harness(); cleanups.push(() => h.probe.stop());
@@ -82,45 +82,45 @@ describe("bounded macOS reader", () => {
     await vi.advanceTimersByTimeAsync(1999); expect(tick).toHaveBeenCalledOnce(); expect(done).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); expect(done).toHaveBeenCalledOnce(); expect(await a).toMatchObject({ availableKind: "unknown", availableBytes: null });
     expect(h.commands.every(command => (command.kill as any).mock.calls.length === 1)).toBe(true);
-    await vi.advanceTimersByTimeAsync(30_000); const retained = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(2); expect((await retained).availableKind).toBe("unknown");
+    await vi.advanceTimersByTimeAsync(30_000); const retained = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(3); expect((await retained).availableKind).toBe("unknown");
     h.commands[0].output(healthy); h.commands[1].output(swap); await vi.advanceTimersByTimeAsync(0);
     expect((await h.probe.read()).availableKind).toBe("unknown");
-    h.commands[0].close(); await vi.advanceTimersByTimeAsync(0); const partialClose = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(2); await partialClose;
-    h.commands[1].close(); await vi.advanceTimersByTimeAsync(0);
-    const next = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(4); h.complete(2); await next;
+    h.commands[0].close(); await vi.advanceTimersByTimeAsync(0); const partialClose = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(3); await partialClose;
+    h.commands[1].close(); h.commands[2].close(); await vi.advanceTimersByTimeAsync(0);
+    const next = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(6); h.complete(3); await next;
   });
   it("stop fences old output and restart retains physical reservations", async () => {
     const h = harness(); cleanups.push(() => h.probe.stop());
     const old = h.probe.read(); h.probe.stop();
     expect((await old).availableKind).toBe("unknown");
-    const retained = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(2); expect((await retained).availableKind).toBe("unknown");
+    const retained = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(3); expect((await retained).availableKind).toBe("unknown");
     h.complete(); await vi.advanceTimersByTimeAsync(0);
-    const next = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(4);
-    h.complete(2, healthy.replace("180253", "10")); expect((await next).availableBytes).toBe((13765 + 5770 + 1509) * 16384);
+    const next = h.probe.read(); expect(h.run).toHaveBeenCalledTimes(6);
+    h.complete(3, healthy.replace("180253", "10")); expect((await next).availableBytes).toBe((13765 + 5770 + 1509) * 16384);
   });
   it("uses reliable RAM when swap fails, but valid swap cannot rescue invalid RAM", async () => {
     const h = harness(); cleanups.push(() => h.probe.stop()); const value = h.probe.read(); h.complete(0, healthy, null);
     expect(await value).toMatchObject({ availableKind: "available", swapTotalBytes: null, swapFreeBytes: null });
-    await vi.advanceTimersByTimeAsync(30_000); const invalid = h.probe.read(); h.complete(2, "broken", swap);
+    await vi.advanceTimersByTimeAsync(30_000); const invalid = h.probe.read(); h.complete(3, "broken", swap);
     expect(await invalid).toMatchObject({ availableKind: "unknown", swapTotalBytes: null });
   });
   it("retains physical ownership when cleanup rejects or kill throws", async () => {
     const result = deferred<string | null>(); const stopped = deferred<void>();
     const run = vi.fn(() => ({ result: result.promise, stopped: stopped.promise, kill: () => { throw new Error("kill unavailable"); } }));
-    const probe = new DarwinMemoryProbe({ run, totalmem: () => total, now: Date.now }); cleanups.push(() => probe.stop());
+    const probe = new DarwinMemoryProbe({ includePressure: true, run, totalmem: () => total, now: Date.now }); cleanups.push(() => probe.stop());
     const pending = probe.read(); stopped.resolve();
     await vi.advanceTimersByTimeAsync(2000); expect((await pending).availableKind).toBe("unknown");
     // Separate rejected cleanup contract, not a real rejected child close.
     const rejectedRun = vi.fn(() => ({ result: result.promise, stopped: Promise.reject(new Error("unconfirmed close")), kill: () => {} }));
-    const rejected = new DarwinMemoryProbe({ run: rejectedRun, totalmem: () => total, now: Date.now });
+    const rejected = new DarwinMemoryProbe({ includePressure: true, run: rejectedRun, totalmem: () => total, now: Date.now });
     cleanups.push(() => rejected.stop()); const other = rejected.read(); await vi.advanceTimersByTimeAsync(2000); await other;
-    await vi.advanceTimersByTimeAsync(30_000); const retained = rejected.read(); expect(rejectedRun).toHaveBeenCalledTimes(2); expect((await retained).availableKind).toBe("unknown");
+    await vi.advanceTimersByTimeAsync(30_000); const retained = rejected.read(); expect(rejectedRun).toHaveBeenCalledTimes(3); expect((await retained).availableKind).toBe("unknown");
     expect((rejected as any).flight).not.toBeNull();
   });
 
   it("checks the monotonic deadline even when its timer has not fired", async () => {
     let now = 0; const h = harness();
-    const probe = new DarwinMemoryProbe({ run: h.run, now: () => now, totalmem: () => total }); cleanups.push(() => probe.stop());
+    const probe = new DarwinMemoryProbe({ includePressure: true, run: h.run, now: () => now, totalmem: () => total }); cleanups.push(() => probe.stop());
     const pending = probe.read(); now = 2000; h.complete();
     expect((await pending).availableKind).toBe("unknown");
   });
@@ -136,25 +136,27 @@ describe("native sampler and real SpawnGate", () => {
     const run = (name: string) => { const promise = gate.run({ instanceName: name, workingDirectory: `/${name}`, reason: "wake" }, operation); void promise.catch(() => {}); runs.push(promise); };
     return { ...h, pressure, gate, operation, run, runs, blocked };
   }
-  it("admission never waits for the native probe (#1256): work starts at once, the background sample still runs", async () => {
+  it("admission joins the periodic sampler without starting a native probe itself", async () => {
     const h = make(); h.pressure.start(); h.run("a"); h.run("b"); h.run("c");
-    expect(h.operation).toHaveBeenCalledTimes(3);   // synchronously: admission did not wait
+    expect(h.operation).not.toHaveBeenCalled(); // waiting on the existing sampler flight
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.commands).toHaveLength(2);           // the one background flight from start(), none for admission
+    expect(h.commands).toHaveLength(3);           // the one background flight from start(), none for admission
     h.complete(); await vi.advanceTimersByTimeAsync(0);
     expect(h.pressure.snapshot().level).toBe("normal");
-    for (let i = 0; i < 100; i++) h.pressure.snapshot(); expect(h.commands).toHaveLength(2);
+    expect(h.operation).toHaveBeenCalledTimes(3);
+    for (let i = 0; i < 100; i++) h.pressure.snapshot(); expect(h.commands).toHaveLength(3);
     h.blocked.resolve(); await Promise.all(h.runs);
   });
-  it("a critical native sample is recorded but never holds work", async () => {
+  it("a critical kernel sample holds work, independent of RAM estimates", async () => {
     const h = make(); h.pressure.start(); await vi.advanceTimersByTimeAsync(0);
     const critical = healthy.replace("13765", "0").replace("180253", "0").replace("1509", "0").replace("5770", "0");
-    h.complete(0, critical); await vi.advanceTimersByTimeAsync(0);
+    h.complete(0, critical, swap, "kern.memorystatus_vm_pressure_level: 4\n"); await vi.advanceTimersByTimeAsync(0);
     expect(h.pressure.snapshot().level).toBe("critical");
     h.run("a"); h.run("b");
-    expect(h.operation).toHaveBeenCalledTimes(2);
-    expect((h.gate as any).pressureHeld).toBe(false);
-    h.blocked.resolve(); await Promise.all(h.runs);
+    expect(h.operation).not.toHaveBeenCalled();
+    expect((h.gate as any).pressureHeld).toBe(true);
+    h.gate.shutdown();
+    h.blocked.resolve(); await Promise.allSettled(h.runs);
   });
   it("coalesces first admission/background samples before native completion", async () => {
     const held = deferred<any>(); const native = { read: vi.fn(() => held.promise), stop: vi.fn() };
@@ -174,7 +176,7 @@ describe("native sampler and real SpawnGate", () => {
     old.resolve({ totalBytes: total, availableKind: "available", availableBytes: 0, swapTotalBytes: 0, swapFreeBytes: 0 });
     await vi.advanceTimersByTimeAsync(0);
     expect(pressure.snapshot().sampledAt).toBeNull(); expect(notice).not.toHaveBeenCalled(); expect((pressure as any).nativeFlight).toBe(flight);
-    next.resolve({ totalBytes: total, availableKind: "available", availableBytes: 4000 * MiB, swapTotalBytes: 0, swapFreeBytes: 0 });
+    next.resolve({ totalBytes: total, availableKind: "available", availableBytes: 4000 * MiB, swapTotalBytes: 0, swapFreeBytes: 0, darwinPressureLevel: 1 });
     await vi.advanceTimersByTimeAsync(0); expect(pressure.snapshot().level).toBe("normal"); expect(notice).toHaveBeenCalledOnce();
   });
 

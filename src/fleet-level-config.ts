@@ -32,6 +32,8 @@ export const STARTUP_ONLY_FLEET_KEYS = [
   "defaults.daily_summary",               // new DailySummary(...)
   "defaults.scheduler.max_schedules",     // Scheduler ctor config
   "defaults.scheduler.default_timezone",  // Scheduler ctor config
+  "web.preview_port",                     // #1306: the preview listener binds it once (web.preview itself is hot)
+  "web.preview_origin",                   // #1306: built into the listener's shim and headers once
 ] as const;
 
 /**
@@ -57,12 +59,31 @@ export const RUNTIME_READ_FLEET_KEYS = [
   // Read on every schedule trigger, unlike the two Scheduler ctor keys.
   "defaults.scheduler.retry_count",
   "defaults.scheduler.retry_interval_ms",
-  // Read when the value is used; no construction captures them.
+  // Read when the value is used; no construction captures them — except web.preview_port / web.preview_origin, split
+  // out above like defaults.scheduler's two ctor keys (web.preview, the on/off switch, is applied on reload).
   "web",
   "hostname",
   "login",
   "web_terminal",
+  // #1386: read on every "Needs you" recompute.
+  "needs_you",
 ] as const;
+
+/**
+ * #1056: inside a connection, `options.status_emojis` is read at the point of use (every stamp resolves it from the
+ * live config, fleet-manager resolveStatusEmojisFor), so a change to it alone is not a pending restart. The rest of
+ * the connection — binding, access, token, other options — is still what createAdapter() took at startup.
+ */
+const RUNTIME_READ_CHANNEL_OPTIONS = ["status_emojis"] as const;
+function withoutRuntimeOptions(channel: unknown): unknown {
+  if (!channel || typeof channel !== "object" || Array.isArray(channel)) return channel;
+  const options = (channel as { options?: unknown }).options;
+  if (!options || typeof options !== "object" || Array.isArray(options)) return channel;
+  const kept = { ...(options as Record<string, unknown>) };
+  for (const key of RUNTIME_READ_CHANNEL_OPTIONS) delete kept[key];
+  const { options: _options, ...rest } = channel as Record<string, unknown>;
+  return Object.keys(kept).length ? { ...rest, options: kept } : rest;
+}
 
 function pick(source: unknown, path: string): unknown {
   let value: unknown = source;
@@ -70,6 +91,8 @@ function pick(source: unknown, path: string): unknown {
     if (value === null || typeof value !== "object") return undefined;
     value = (value as Record<string, unknown>)[segment];
   }
+  if (path === "channel") return withoutRuntimeOptions(value);
+  if (path === "channels" && Array.isArray(value)) return value.map(withoutRuntimeOptions);
   return value;
 }
 

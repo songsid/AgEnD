@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import type { Schedule, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, CreateTaskParams, UpdateTaskParams } from "./types.js";
+import type { Schedule, ScheduleRetry, ScheduleRun, CreateScheduleParams, UpdateScheduleParams, Decision, CreateDecisionParams, UpdateDecisionParams, Task, TaskCompact, ListTasksOpts, CreateTaskParams, UpdateTaskParams } from "./types.js";
 
 export class SchedulerDb {
   private db: Database.Database;
@@ -95,6 +95,21 @@ export class SchedulerDb {
         this.db.exec("ALTER TABLE schedules ADD COLUMN reply_adapter_id TEXT");
       }
     }
+
+    // #1426: the pending retry of a rate-limit-deferred occurrence, at most one per schedule. Created after the
+    // schedules migrations above (the timing migration rebuilds that table).
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schedule_retries (
+        schedule_id    TEXT PRIMARY KEY REFERENCES schedules(id) ON DELETE CASCADE,
+        run_id         TEXT NOT NULL,
+        deferred_at_ms INTEGER NOT NULL,
+        deferred_pct   REAL NOT NULL,
+        resets_at_ms   INTEGER,
+        due_at_ms      INTEGER NOT NULL,
+        deadline_ms    INTEGER NOT NULL,
+        deadline_kind  TEXT NOT NULL
+      );
+    `);
 
     // Migration: add scope column to existing decisions tables that lack it
     const cols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
@@ -276,8 +291,40 @@ export class SchedulerDb {
   }
 
   recordRun(scheduleId: string, status: string, detail?: string): void {
-    this.db.prepare("INSERT INTO schedule_runs (schedule_id, status, detail) VALUES (?, ?, ?)").run(scheduleId, status, detail ?? null);
-    this.db.prepare("UPDATE schedules SET last_triggered_at = datetime('now'), last_status = ? WHERE id = ?").run(status, scheduleId);
+    // Both writes must be atomic: a crash between the INSERT and the UPDATE
+    // would leave a run record without an updated last_triggered_at / last_status.
+    this.db.transaction(() => {
+      this.db.prepare("INSERT INTO schedule_runs (schedule_id, status, detail) VALUES (?, ?, ?)").run(scheduleId, status, detail ?? null);
+      this.db.prepare("UPDATE schedules SET last_triggered_at = datetime('now'), last_status = ? WHERE id = ?").run(status, scheduleId);
+    })();
+  }
+
+  /** #1426: record (or replace) a schedule's pending retry. */
+  putRetry(retry: ScheduleRetry): void {
+    this.db.prepare(`
+      INSERT INTO schedule_retries (schedule_id, run_id, deferred_at_ms, deferred_pct, resets_at_ms, due_at_ms, deadline_ms, deadline_kind)
+      VALUES (@schedule_id, @run_id, @deferred_at_ms, @deferred_pct, @resets_at_ms, @due_at_ms, @deadline_ms, @deadline_kind)
+      ON CONFLICT(schedule_id) DO UPDATE SET run_id = excluded.run_id, deferred_at_ms = excluded.deferred_at_ms,
+        deferred_pct = excluded.deferred_pct, resets_at_ms = excluded.resets_at_ms, due_at_ms = excluded.due_at_ms,
+        deadline_ms = excluded.deadline_ms, deadline_kind = excluded.deadline_kind
+    `).run(retry);
+  }
+
+  getRetry(scheduleId: string): ScheduleRetry | null {
+    const row = this.db.prepare("SELECT * FROM schedule_retries WHERE schedule_id = ?").get(scheduleId) as ScheduleRetry | undefined;
+    return row ?? null;
+  }
+
+  listRetries(): ScheduleRetry[] {
+    return this.db.prepare("SELECT * FROM schedule_retries ORDER BY due_at_ms").all() as ScheduleRetry[];
+  }
+
+  /** Remove a pending retry; true when this call removed it (the caller owns what follows), false when none was there. */
+  deleteRetry(scheduleId: string, runId?: string): boolean {
+    const result = runId === undefined
+      ? this.db.prepare("DELETE FROM schedule_retries WHERE schedule_id = ?").run(scheduleId)
+      : this.db.prepare("DELETE FROM schedule_retries WHERE schedule_id = ? AND run_id = ?").run(scheduleId, runId);
+    return result.changes > 0;
   }
 
   getRuns(scheduleId: string, limit = 50): ScheduleRun[] {
@@ -286,6 +333,49 @@ export class SchedulerDb {
 
   pruneOldRuns(days = 30): void {
     this.db.prepare("DELETE FROM schedule_runs WHERE triggered_at < datetime('now', '-' || ? || ' days')").run(days);
+  }
+
+  /**
+   * #1335: Prune done/cancelled tasks older than `days`. Open, claimed and
+   * blocked tasks are never pruned regardless of age.
+   * Cancelled tasks that appear in a live task's `depends_on` are also kept:
+   * pruning a cancelled dep would silently un-block a task whose prerequisite
+   * was explicitly cancelled (claimTask treats a missing dep as satisfied).
+   * Runs in async chunks of 500 rows with setImmediate yields (#1340 P4).
+   */
+  async pruneOldTasks(days = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+    const CHUNK = 500;
+    let total = 0;
+
+    for (;;) {
+      // Find a batch of eligible ids: done/cancelled, old, and not a
+      // dependency of any live (non-terminal) task.
+      const rows = this.db.prepare(`
+        SELECT id FROM tasks
+        WHERE status IN ('done', 'cancelled')
+          AND updated_at < ?
+          AND id NOT IN (
+            SELECT DISTINCT je.value
+            FROM tasks AS live
+            CROSS JOIN json_each(live.depends_on) AS je
+            WHERE live.status NOT IN ('done', 'cancelled')
+              AND live.depends_on IS NOT NULL
+              AND live.depends_on != '[]'
+          )
+        ORDER BY updated_at
+        LIMIT ?
+      `).all(cutoff, CHUNK) as Array<{ id: string }>;
+
+      if (rows.length === 0) break;
+      const ids = rows.map(r => r.id);
+      const placeholders = ids.map(() => "?").join(",");
+      this.db.prepare(`DELETE FROM tasks WHERE id IN (${placeholders})`).run(...ids);
+      total += rows.length;
+      if (rows.length < CHUNK) break;
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+    return total;
   }
 
   // ── Tips ───────────────────────────────────────────────────
@@ -488,13 +578,68 @@ export class SchedulerDb {
     return row ? this.rowToTask(row) : null;
   }
 
-  listTasks(opts?: { assignee?: string; status?: string }): Task[] {
+  /** #1336: project a full Task down to the compact list row. */
+  private toCompact(t: Task): TaskCompact {
+    return {
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      assignee: t.assignee,
+      priority: t.priority,
+      updated_at: t.updated_at,
+    };
+  }
+
+  /**
+   * #1336: Resolve a task by an 8-hex (or longer) id prefix. A full 36-char
+   * UUID is matched exactly first. Throws on ambiguous or not-found so the
+   * caller surfaces a clear error instead of silently acting on the wrong row.
+   */
+  getTaskByPrefix(prefix: string): Task {
+    const p = (prefix ?? "").trim();
+    if (!p) throw new Error("Task id is required");
+    // Exact match wins — avoids an "ambiguous" error when one id is a prefix
+    // of another and the caller passed the full id.
+    const exact = this.getTask(p);
+    if (exact) return exact;
+    if (!/^[0-9a-f]{8,}$/i.test(p)) {
+      throw new Error(`Task "${p}" not found`);
+    }
+    const rows = this.db.prepare(
+      "SELECT * FROM tasks WHERE id LIKE ? || '%' LIMIT 2",
+    ).all(p.toLowerCase()) as Record<string, unknown>[];
+    if (rows.length === 0) throw new Error(`Task "${p}" not found`);
+    if (rows.length > 1) throw new Error(`Task id prefix "${p}" is ambiguous — matches multiple tasks; use the full id`);
+    return this.rowToTask(rows[0]);
+  }
+
+  /**
+   * #1336: list tasks. Returns compact rows by default; pass `verbose: true`
+   * for full {@link Task} rows. `status` accepts a single value or an array
+   * (OR-matched). No implicit live-only filtering happens here — the caller
+   * decides the default status set.
+   */
+  listTasks(opts?: ListTasksOpts & { verbose: true }): Task[];
+  listTasks(opts?: ListTasksOpts): TaskCompact[];
+  listTasks(opts?: ListTasksOpts): Task[] | TaskCompact[] {
     let sql = "SELECT * FROM tasks WHERE 1=1";
     const values: unknown[] = [];
     if (opts?.assignee) { sql += " AND assignee = ?"; values.push(opts.assignee); }
-    if (opts?.status) { sql += " AND status = ?"; values.push(opts.status); }
+    const statuses = this.normalizeStatuses(opts?.status);
+    if (statuses.length > 0) {
+      sql += ` AND status IN (${statuses.map(() => "?").join(",")})`;
+      values.push(...statuses);
+    }
     sql += " ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, created_at";
-    return (this.db.prepare(sql).all(...values) as Record<string, unknown>[]).map(r => this.rowToTask(r));
+    const tasks = (this.db.prepare(sql).all(...values) as Record<string, unknown>[]).map(r => this.rowToTask(r));
+    return opts?.verbose ? tasks : tasks.map(t => this.toCompact(t));
+  }
+
+  /** Normalize a status filter (string | string[] | undefined) to a deduped non-empty array. */
+  private normalizeStatuses(status: ListTasksOpts["status"]): string[] {
+    if (status === undefined || status === null) return [];
+    const arr = Array.isArray(status) ? status : [status];
+    return [...new Set(arr.map(s => String(s).trim()).filter(s => s.length > 0))];
   }
 
   updateTask(id: string, params: UpdateTaskParams): Task {
@@ -530,7 +675,12 @@ export class SchedulerDb {
   completeTask(id: string, result?: string): Task {
     const task = this.getTask(id);
     if (!task) throw new Error(`Task "${id}" not found`);
-    if (task.status !== "claimed") throw new Error(`Task "${id}" is ${task.status}, cannot complete (must be claimed first)`);
+    // #1336: allow completing a task straight from `open` (not just `claimed`)
+    // — a worker that finishes without a separate claim step can still mark it
+    // done. Terminal/blocked states are rejected.
+    if (task.status !== "claimed" && task.status !== "open") {
+      throw new Error(`Task "${id}" is ${task.status}, cannot complete (must be open or claimed)`);
+    }
     return this.updateTask(id, { status: "done", result: result ?? undefined });
   }
 

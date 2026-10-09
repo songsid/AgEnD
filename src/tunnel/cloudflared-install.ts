@@ -78,6 +78,8 @@ const DOWNLOAD_TIMEOUT_MS = 5 * 60_000;
 export interface EnsureCloudflaredOptions {
   /** AgEnD's data directory (`AGEND_HOME`); the binary goes in `<dataDir>/bin`. */
   dataDir: string;
+  /** Public web refuses arbitrary PATH executables; existing callers retain their policy. */
+  pinnedOnly?: boolean;
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   arch?: string;
@@ -106,7 +108,7 @@ const inFlight = new Map<string, Promise<EnsureCloudflaredResult>>();
 /** A cloudflared to run: the user's own on PATH, else AgEnD's verified copy (downloaded when needed). */
 export async function ensureCloudflared(opts: EnsureCloudflaredOptions): Promise<EnsureCloudflaredResult> {
   throwIfCancelled(opts.signal);
-  const onPath = resolveBinary("cloudflared", opts.env ?? process.env);
+  const onPath = opts.pinnedOnly ? null : resolveBinary("cloudflared", opts.env ?? process.env);
   if (onPath) return { path: onPath, source: "path" };
   const dir = join(opts.dataDir, "bin");
   const running = inFlight.get(dir);
