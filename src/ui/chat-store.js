@@ -15,7 +15,7 @@ const R = () => globalThis.AgendChatRender;
 export function createChatStore(deps) {
   const s = {
     msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {},
-    prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(),
+    prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
     exec: {}, awaiting: {}, current: null,
     // #1269: the last chat command per instance — { command, busy, text?, error?, choices? } — shown above the composer.
     commands: {},
@@ -80,6 +80,24 @@ export function createChatStore(deps) {
     }
     for (const i of touched) changed(i, "msgs");
   }
+  /** #1266: a reply's buttons ended — its message shows it. */
+  function applyReplyButtons(u) {
+    if (!u || typeof u.instance !== "string") return;
+    const before = s.msgs[u.instance];
+    s.msgs[u.instance] = R().applyReplyButtons(before, u.buttons);
+    if (s.msgs[u.instance] !== before) changed(u.instance, "msgs");
+  }
+  /** #1266: click one of a reply's buttons (the first click anywhere answers for everyone). */
+  async function clickReplyButton(instance, id, index) {
+    if (s.rbBusy.has(id)) return;
+    s.rbBusy.add(id); changed(instance, "msgs");
+    let r;
+    try { r = await api("POST", "/ui/reply-button", { instance, id, index }); }
+    catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
+    s.rbBusy.delete(id); changed(instance, "msgs");
+    if (!r || !r.answered) deps.toast(r && r.error ? r.error : t("chat.disconnected"), false);
+  }
+
   /** Read an instance's history once per page (the first time a person opens its chat). */
   async function openHistory(name, lease) {
     if (s.historyRead.has(name)) return false;
@@ -304,6 +322,7 @@ export function createChatStore(deps) {
     stream.on("prompt", onPrompt);
     stream.on("prompts", applyPrompts);
     stream.on("prompt_resolved", resolvePrompt);
+    stream.on("reply_buttons", applyReplyButtons);
   }
 
   return {
@@ -312,6 +331,7 @@ export function createChatStore(deps) {
     setCurrent(name) { s.current = name; },
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
+    applyReplyButtons, clickReplyButton,
     uploadFile, send, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
   };

@@ -7,7 +7,7 @@ import { join, extname, basename } from "node:path";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
-import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy, StickerInfo, StickerList, StickerPreview, StickerTarget } from "../types.js";
+import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy, StickerInfo, StickerList, StickerPreview, StickerTarget, ReplyButtonsOutcome } from "../types.js";
 import { downloadStickerImage } from "../sticker-download.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
@@ -554,6 +554,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           : undefined,
         messageId: String(ctx.callbackQuery.message?.message_id ?? ""),
         userId: String(ctx.callbackQuery.from.id),
+        username: ctx.callbackQuery.from.username ?? ctx.callbackQuery.from.first_name,
         ack: answer,
       });
     });
@@ -811,7 +812,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return { messageId: String(msg.message_id), chatId: String(userId) };
   }
 
+  /** #1266: this adapter puts a reply's buttons (an inline keyboard) on its last message. */
+  get supportsReplyButtons(): boolean { return true; }
+
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    if (opts?.replyButtons?.length) return this.sendTextWithReplyButtons(chatId, text, opts, opts.replyButtons);
     // Try rich message for content with tables, code blocks, headings, etc.
     if (this.needsRichMessage(text)) {
       const sendRichMessage = (this.bot.api as any).raw?.sendRichMessage;
@@ -880,6 +885,40 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           resolve(result);
         })
         .catch(reject);
+    });
+  }
+
+  /**
+   * #1266: a reply with buttons. Every part is sent and awaited here — not queued — so the keyboard goes on the part
+   * that really is last, and the caller learns which message carries it. Plain messages, not a rich message: a
+   * keyboard is a sendMessage parameter.
+   */
+  private async sendTextWithReplyButtons(chatId: string, text: string, opts: SendOpts, buttons: NonNullable<SendOpts["replyButtons"]>): Promise<SentMessage> {
+    const keyboard = telegramReplyKeyboard(buttons);
+    const chunkLimit = opts.chunkLimit ?? 4096;
+    const chunks: string[] = [];
+    for (let offset = 0; offset < text.length; offset += chunkLimit) chunks.push(text.slice(offset, offset + chunkLimit));
+    if (!chunks.length) throw new Error("Empty text");
+    const parseMode = opts.format === "html" ? "HTML" as const : undefined;
+    let first: string | undefined, last = "";
+    for (const [i, chunk] of chunks.entries()) {
+      const msg = await this.bot.api.sendMessage(Number(chatId), chunk, {
+        ...threadOptions(opts.threadId),
+        parse_mode: parseMode,
+        ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+        ...(i === chunks.length - 1 ? { reply_markup: { inline_keyboard: keyboard } } : {}),
+      });
+      first ??= String(msg.message_id);
+      last = String(msg.message_id);
+    }
+    return { messageId: first!, chatId, threadId: opts.threadId, buttonsMessageId: last };
+  }
+
+  /** #1266: the keyboard becomes one inert button saying how it ended (Telegram cannot disable a button). */
+  async settleReplyButtons(chatId: string, messageId: string, _threadId: string | undefined, labels: readonly string[], outcome: ReplyButtonsOutcome): Promise<void> {
+    const label = "expired" in outcome ? t("reply_buttons.expired") : t("reply_buttons.chosen", labels[outcome.chosenIndex] ?? "?", outcome.by);
+    await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
+      reply_markup: { inline_keyboard: [[{ text: label.length > 64 ? `${label.slice(0, 63)}…` : label, callback_data: REPLY_BUTTONS_CLOSED }]] },
     });
   }
 
@@ -1495,4 +1534,22 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async confirmPairing(code: string, callerUserId?: string): Promise<boolean> {
     return this.accessManager.confirmCode(code, callerUserId);
   }
+}
+
+/** #1266: the callback a settled reply-button set carries — inert (the fleet answers it "closed"). */
+export const REPLY_BUTTONS_CLOSED = "rb:closed";
+/** Telegram's limit on callback_data. */
+const TELEGRAM_CALLBACK_DATA_MAX = 64;
+/**
+ * #1266: a reply's buttons as an inline keyboard: short labels three to a row, otherwise one per row (a long label
+ * is cut to fit a narrow button). A callback over Telegram's 64 bytes is an error, never a silently broken button.
+ */
+export function telegramReplyKeyboard(buttons: ReadonlyArray<{ id: string; label: string }>): Array<Array<{ text: string; callback_data: string }>> {
+  for (const b of buttons) {
+    if (Buffer.byteLength(b.id, "utf8") > TELEGRAM_CALLBACK_DATA_MAX) throw new Error(`callback_data over ${TELEGRAM_CALLBACK_DATA_MAX} bytes`);
+  }
+  const perRow = buttons.every(b => b.label.length <= 18) ? 3 : 1;
+  const rows: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (let i = 0; i < buttons.length; i += perRow) rows.push(buttons.slice(i, i + perRow).map(b => ({ text: b.label, callback_data: b.id })));
+  return rows;
 }

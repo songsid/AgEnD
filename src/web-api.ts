@@ -208,6 +208,8 @@ export interface WebApiContext {
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
+  /** #1266: a click on an agent reply's button. */
+  clickWebReplyButton?(instance: string, id: string, index: number): Promise<{ status: number; error?: string }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -350,6 +352,8 @@ export function handleWebRequest(
       // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
       // activity; this poll does not (isPassiveWebRead).
       deliveries: history ? history.deliveries() : [],
+      // #1266: a reply's buttons that ended after the page saw the reply (the message itself is not sent again).
+      reply_buttons: history ? history.buttonStates() : [],
       // And the fleet prompts open on the dashboard (C4): prompt events are stream-only too.
       prompts: ctx.listWebPrompts?.() ?? [],
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll.
@@ -492,6 +496,29 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web prompt answer failed");
       try { json(res, 500, { error: "Prompt answer failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // #1266: a click on an agent reply's button. The set id travels in the body; the public link may click too (a click
+  // is a message, and the public link may send messages).
+  if (method === "POST" && path === "/ui/reply-button") {
+    if (!ctx.clickWebReplyButton) { json(res, 404, { error: "No buttons here" }); return true; }
+    const click = ctx.clickWebReplyButton.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const { instance, id, index } = (body ?? {}) as Record<string, unknown>;
+      if (typeof instance !== "string" || typeof id !== "string" || typeof index !== "number") {
+        json(res, 400, { error: "instance, id and index required" });
+        return;
+      }
+      const r = await click(instance, id, index);
+      json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
+      try { json(res, 500, { error: "Click failed" }); } catch { /* already answered */ }
     });
     return true;
   }
