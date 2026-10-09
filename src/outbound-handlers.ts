@@ -1116,7 +1116,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
   const beforeFields: Record<string, unknown> = {};
-  for (const key of ["backend", "model", "auto_pause_after", "display_name", "description"] as const) {
+  for (const key of ["backend", "model", "auto_pause_after", "display_name", "description", "tool_set"] as const) {
     if (patch[key] !== undefined) beforeFields[key] = (inst as any)[key];
   }
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
@@ -1124,6 +1124,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
   if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
   if (patch.description !== undefined) (inst as any).description = patch.description;
+  if (patch.tool_set !== undefined) (inst as any).tool_set = patch.tool_set;
   // backend_options is read when the CLI is launched, so a change to it is not
   // in effect until the instance restarts. Merged per backend namespace so
   // setting a kiro option cannot silently drop a codex one.
