@@ -992,7 +992,7 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     let joined = false;
     routes.push(r => {
       if (r.url !== "/api/settings/quickstart/probe") return undefined;
-      if (r.body?.action === "verify") return { body: { identity: { valid: true, username: "hhv_bot", id: "777" }, invite_url: "https://discord.com/oauth2/authorize?client_id=777&scope=bot%20applications.commands&permissions=277025754192", portal_url: "https://discord.com/developers/applications/777/bot" } };
+      if (r.body?.action === "verify") return { body: { identity: { valid: true, username: "hhv_bot", id: "777" }, invite_url: "https://discord.com/oauth2/authorize?client_id=777&scope=bot%20applications.commands&permissions=274878270544", portal_url: "https://discord.com/developers/applications/777/bot" } };
       if (r.body?.action === "guilds") return { body: { guilds: [{ id: "111", name: "Old" }, ...(joined ? [{ id: "555", name: "HHV" }] : [])] } };
       if (r.body?.action === "channels") return { body: { channels: r.body.guild_id === "555" ? [{ id: "9", name: "random" }, { id: "8", name: "general" }] : [] } };
       return undefined;
@@ -1006,7 +1006,7 @@ describe("#1519 P1: a bot token entered in the browser", () => {
       btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(8);
       const invite = dlg().querySelector(".discord-setup a.btn");
       expect([invite?.textContent, invite?.getAttribute("href"), invite?.getAttribute("target"), invite?.getAttribute("rel")])
-        .toEqual(["Invite @hhv_bot to your server", "https://discord.com/oauth2/authorize?client_id=777&scope=bot%20applications.commands&permissions=277025754192", "_blank", "noopener noreferrer"]);
+        .toEqual(["Invite @hhv_bot to your server", "https://discord.com/oauth2/authorize?client_id=777&scope=bot%20applications.commands&permissions=274878270544", "_blank", "noopener noreferrer"]);
       expect(dlg().querySelector(".discord-setup p.note a")?.getAttribute("href"), "the Message Content note links the portal's Bot page").toBe("https://discord.com/developers/applications/777/bot");
       const guildReads = () => reqs.filter(r => r.body?.action === "guilds").length;
       const before = guildReads();
@@ -1026,6 +1026,90 @@ describe("#1519 P1: a bot token entered in the browser", () => {
       await vi.waitFor(() => expect(reqs.some(r => r.url === "/api/settings/quickstart/commit")).toBe(true));
       expect(reqs.find(r => r.url === "/api/settings/quickstart/commit")!.body).toMatchObject({ guild_id: "555", general_channel_id: "8" });
     } finally { vi.useRealTimers(); }
+  });
+
+  describe("#1533 review: every answer belongs to the operation that asked", () => {
+    type Held = { p: Promise<{ body: unknown }>; open: (v: { body: unknown }) => void };
+    let channelAnswers: Array<{ guild: string; held: Held }> = [];
+    let guildAnswers: Held[] = [];
+    let guildList: Array<{ id: string; name: string }> = [];
+    const holdNext = { channels: false, guilds: false };
+    const setup = async () => {
+      channelAnswers = []; guildAnswers = []; guildList = [{ id: "111", name: "One" }, { id: "222", name: "Two" }];
+      routes.push(r => {
+        if (r.url !== "/api/settings/quickstart/probe") return undefined;
+        if (r.body?.action === "verify") return { body: { identity: { valid: true, username: "b", id: "7" }, invite_url: "https://discord.com/oauth2/authorize?client_id=7", portal_url: "https://x" } };
+        if (r.body?.action === "guilds") {
+          if (holdNext.guilds) { const g = gate<{ body: unknown }>(); guildAnswers.push(g); return g.p; }
+          return { body: { guilds: guildList } };
+        }
+        if (r.body?.action === "channels") {
+          if (holdNext.channels) { const g = gate<{ body: unknown }>(); channelAnswers.push({ guild: r.body.guild_id, held: g }); return g.p; }
+          return { body: { channels: r.body.guild_id === "111" ? [{ id: "101", name: "general" }] : [{ id: "201", name: "random" }] } };
+        }
+        return undefined;
+      });
+      routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord", token_env: "AGEND_DISCORD_TOKEN", env_keys: [], warnings: [] } } : undefined));
+      await mount("bots", "settings:bots|1|en"); await settle(6);
+      btn(p.root, "New connection").click(); await settle(4);
+      const token = p.root.querySelector("dialog #nb-token"); token.value = "dc-token"; fire(token, "input"); await settle(2);
+      btn(p.root.querySelector("dialog .token-field"), "Verify").click(); await settle(8);
+    };
+    const dlg = () => p.root.querySelector("dialog");
+    const choose = async (id: string, value: string) => { const el = dlg().querySelector(id); el.value = value; fire(el, el.tagName === "SELECT" ? "change" : "input"); await settle(6); };
+    const commitBody = async () => { btn(dlg(), "Save").click(); await settle(8); await vi.waitFor(() => expect(reqs.some(r => r.url === "/api/settings/quickstart/commit")).toBe(true)); return reqs.find(r => r.url === "/api/settings/quickstart/commit")!.body; };
+    afterEach(() => { holdNext.channels = false; holdNext.guilds = false; vi.useRealTimers(); });
+
+    it("another server takes the old General with it — the commit never pairs server 222 with 111's channel", async () => {
+      await setup();
+      await choose("#nb-guild", "111");
+      expect(dlg().querySelector("#nb-gen").value, "control: general picked for 111").toBe("101");
+      await choose("#nb-guild", "222");
+      expect(dlg().querySelector("#nb-gen").value).toBe("");
+      const body = await commitBody();
+      expect([body.guild_id, body.general_channel_id ?? null]).toEqual(["222", null]);
+    });
+    it("a General picked while the list is on its way is not replaced by the first choice", async () => {
+      await setup();
+      holdNext.channels = true;
+      await choose("#nb-guild", "111");
+      await choose("#nb-gen", "109");
+      channelAnswers[0]!.held.open({ body: { channels: [{ id: "101", name: "general" }, { id: "109", name: "dev" }] } }); await settle(8);
+      expect(dlg().querySelector("#nb-gen").value).toBe("109");
+    });
+    it("A → B → A: the first A's late answer never replaces the second A's", async () => {
+      await setup();
+      holdNext.channels = true;
+      await choose("#nb-guild", "111");                  // A, held
+      holdNext.channels = false;
+      await choose("#nb-guild", "222");                  // B
+      await choose("#nb-guild", "111");                  // A again: answered at once (101)
+      expect(dlg().querySelector("#nb-gen").value).toBe("101");
+      await choose("#nb-gen", "");                        // an empty choice, so a late "first choice" would show
+      channelAnswers[0]!.held.open({ body: { channels: [{ id: "199", name: "general" }] } }); await settle(8);
+      expect([...dlg().querySelectorAll("#nb-gen option")].map((o: any) => o.value), "the list is the second A's").toEqual(["", "101"]);
+      expect(dlg().querySelector("#nb-gen").value).toBe("");
+    });
+    it("a poll answer that lands after the 2-minute limit, or after the person chose a server, picks nothing", async () => {
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
+      await setup();
+      const invite = dlg().querySelector(".discord-setup a.btn");
+      invite.onclick ? invite.onclick({}) : fire(invite, "click"); await settle(2);
+      await vi.advanceTimersByTimeAsync(118_000); await settle(2);
+      holdNext.guilds = true;
+      await vi.advanceTimersByTimeAsync(2_000); await settle(2);          // the last read inside the limit, held
+      await vi.advanceTimersByTimeAsync(4_000); await settle(2);          // the limit passes
+      guildList = [...guildList, { id: "555", name: "Joined" }];
+      guildAnswers.at(-1)!.open({ body: { guilds: guildList } }); await settle(8);
+      expect(dlg().querySelector("#nb-guild").value, "late: not picked").toBe("");
+      // Within the limit, but the person chose meanwhile.
+      holdNext.guilds = true;
+      invite.onclick ? invite.onclick({}) : fire(invite, "click"); await settle(2);
+      await vi.advanceTimersByTimeAsync(2_000); await settle(2);
+      await choose("#nb-guild", "222");
+      guildAnswers.at(-1)!.open({ body: { guilds: [...guildList, { id: "777", name: "Another" }] } }); await settle(8);
+      expect(dlg().querySelector("#nb-guild").value, "the person's choice stays").toBe("222");
+    });
   });
 
   it("#1519 P3: polling stops after 2 minutes; Check again asks once more; a new token drops what was being waited for", async () => {

@@ -2,7 +2,8 @@
  * #1519 P3 (docs/design/ux-onboarding-walkthrough.md §5.3): the one permission set an AgEnD Discord bot is invited with —
  * the CLI's persona invite and Settings' invite button both use it. Each bit is here because an adapter call needs it
  * (tests/discord-permissions-1519.test.ts maps every call to its bits); nothing is asked for "just in case", and never
- * Administrator.
+ * Administrator. Slash commands need no bit: registering them is authorized by the applications.commands scope the invite
+ * carries (Use Application Commands is a member's permission to USE commands — #1533 review).
  */
 export const DISCORD_PERMISSION_BITS = {
   ADD_REACTIONS: 6n,              // status reactions (reactions/@me)
@@ -12,7 +13,6 @@ export const DISCORD_PERMISSION_BITS = {
   READ_MESSAGE_HISTORY: 16n,      // messages.fetch before editing/deleting/reacting to its own messages
   USE_EXTERNAL_EMOJIS: 18n,       // a status emoji from another server the bot is in (#1056)
   MANAGE_CHANNELS: 4n,            // the topic category and topic channels (createTopic, deleteTopic)
-  USE_APPLICATION_COMMANDS: 31n,  // the slash commands
   SEND_MESSAGES_IN_THREADS: 38n,  // a reply into a thread
 } as const;
 

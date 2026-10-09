@@ -28,7 +28,6 @@ const CALLS: Array<[string, RegExp, bigint[]]> = [
   ["react / unreact (REST reactions/@me)", /reactions\/\$\{encoded\}\/@me/, [B.VIEW_CHANNEL, B.READ_MESSAGE_HISTORY, B.ADD_REACTIONS, B.USE_EXTERNAL_EMOJIS]],
   ["create the topic category and topic channels", /guild\.channels\.create\(/, [B.MANAGE_CHANNELS]],
   ["delete a topic channel it created", /\(channel as \{ delete\(\): Promise<unknown> \}\)\.delete\(\)/, [B.MANAGE_CHANNELS]],
-  ["register the slash commands", /application\?\.commands\.set\(/, [B.USE_APPLICATION_COMMANDS]],
 ];
 
 describe("the one Discord permission set", () => {
@@ -40,7 +39,9 @@ describe("the one Discord permission set", () => {
     const needed = new Set(CALLS.flatMap(([, , bits]) => bits));
     expect(Object.entries(B).filter(([, bit]) => !needed.has(bit)).map(([name]) => name), "replies in threads need SEND_MESSAGES_IN_THREADS").toEqual(["SEND_MESSAGES_IN_THREADS"]);
     expect(has(DISCORD_ADMINISTRATOR_BIT)).toBe(false);
-    expect(DISCORD_BOT_PERMISSIONS, "bits 4, 6, 10, 11, 15, 16, 18, 31, 38").toBe("277025754192");
+    expect(DISCORD_BOT_PERMISSIONS, "bits 4, 6, 10, 11, 15, 16, 18, 38").toBe("274878270544");
+    // Slash commands: no bit — registering them is authorized by the applications.commands scope (#1533 review).
+    expect([has(31n), /application\?\.commands\.set\(/.test(ADAPTER), discordInviteUrl("1").includes("scope=bot%20applications.commands")]).toEqual([false, true, true]);
   });
   it("the invite and the portal page", () => {
     expect(discordInviteUrl("123456789")).toBe(`https://discord.com/oauth2/authorize?client_id=123456789&scope=bot%20applications.commands&permissions=${DISCORD_BOT_PERMISSIONS}`);
