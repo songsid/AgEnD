@@ -274,7 +274,7 @@ describe("ExecStart keeps a path as ONE argument (#1460 review: a canonical entr
   ])("%s renders, and parses back, as exactly one word", (path) => {
     const unit = renderSystemdUnit({ ...vars, execPath: path });
     const line = unit.match(/^ExecStart=(.*)$/m)![1]!;
-    expect(systemdWords(line)).toEqual([path, "fleet", "start"]);
+    expect(systemdWords(line)).toEqual([process.execPath, path, "fleet", "start"]);   // the named Node first (#1450 C6)
     expect(unitCliEntry(unit)).toBe(path);
   });
   it("systemd's expansions are neutralised: % as %%, $ as $$", () => {
