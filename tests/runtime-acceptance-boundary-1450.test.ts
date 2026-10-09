@@ -311,6 +311,8 @@ describe("#1460 r5: the boundary judges the command WITH its effective environme
     ["/usr/bin/env <private manager> (shell)", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync(${JSON.stringify(`/usr/bin/env '${p.manager}' --user restart private-unit`)})`],
     ["2>file <private manager> (shell)", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync(${JSON.stringify(`2>'${p.dir}/err' '${p.manager}' --user restart private-unit`)})`],
     ["bash --rcfile <file> -ic 'printf harmless'", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('bash', ['--rcfile', ${JSON.stringify(p.rc)}, '-ic', 'printf harmless'])`],
+    ["execSync('systemctl …') with env PATH=<private>", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync('systemctl --user restart private-unit', { env: { PATH: ${JSON.stringify(p.dir)} } })`],
+    ["spawnSync('<private manager> …', { shell: true })", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync(${JSON.stringify(`'${p.manager}' --user restart private-unit`)}, { shell: true })`],
     ["async spawn('systemctl') with env PATH=<private>", (p: ReturnType<typeof privateManager>) => `require('child_process').spawn('systemctl', ['--user', 'restart', 'private-unit'], { env: { PATH: ${JSON.stringify(p.dir)} } })`],
     ["BASH_ENV=<file> in a spawn's env", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('bash', ['-c', 'true'], { env: { ...process.env, BASH_ENV: ${JSON.stringify(p.rc)} } })`],
   ])("refused, the private manager never runs: %s", (_n, script) => {
