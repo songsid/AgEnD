@@ -87,6 +87,12 @@ const state={pid:process.pid,updater:child.pid,scope};writeFileSync(dir+'/main.j
       state.mainBirth = owner(state.pid)?.birth; state.updaterBirth = owner(state.updater)?.birth;
       check("owned_births_readable", !!state.mainBirth && !!state.updaterBirth && !!outsideBirth);
       check(scoped ? "scoped_updater_has_independent_cgroup" : "detached_updater_inherits_unit_cgroup", (readFileSync(`/proc/${state.pid}/cgroup`, "utf8") === readFileSync(`/proc/${state.updater}/cgroup`, "utf8")) === !scoped);
+      if (scoped) {
+        const childCgroup = readFileSync(`/proc/${state.updater}/cgroup`, "utf8");
+        check("scope_is_outside_fleet_unit_subtree", !childCgroup.split("/").some(part => part.replace(/\n$/, "") === unit));
+        const scopeGroup = sd("show", state.scope, "-p", "ControlGroup", "--value");
+        check("scope_membership_matches_owned_unit", success(scopeGroup) && childCgroup.trimEnd().endsWith(":" + scopeGroup.stdout.trim()));
+      }
       check("outside_control_has_other_cgroup", readFileSync(`/proc/${state.pid}/cgroup`, "utf8") !== readFileSync(`/proc/${outside.pid}/cgroup`, "utf8"));
       const runtime = readSystemdRuntime(run, true, unit);
       check("production_reader_native_running", systemdRunning(runtime) && runtime.pid === state.pid && runtime.killMode === "mixed");
