@@ -83,9 +83,9 @@ describe(".gitleaks.toml release-keys commit allowlist", () => {
   const allowed = releaseKeys ? compile(releaseKeys) : /(?!)/;
   const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
 
-  it("is one of the match-target regexes, next to the WebSocket one", () => {
+  it("is one of the match-target regexes, next to the WebSocket and token-env-name ones", () => {
     expect(releaseKeys).toBeDefined();
-    expect(patterns).toHaveLength(2);
+    expect(patterns).toHaveLength(3);
   });
 
   it("allows only RELEASE_KEYS_COMMIT with a 40-hex value", () => {
@@ -98,6 +98,29 @@ describe(".gitleaks.toml release-keys commit allowlist", () => {
     ["the same hex under another name", () => `${apiKey} = "${hex(40)}"`],
     ["the constant followed by more text", () => `RELEASE_KEYS_COMMIT = "${hex(40)}"; ${apiKey} = "${secret(32)}"`],
     ["a lower-case look-alike name", () => `release_keys_commit = "${hex(40)}"`],
+  ])("still reports %s", (_name, match) => {
+    expect(allowed.test(match())).toBe(false);
+  });
+});
+
+describe(".gitleaks.toml token env NAME allowlist (#1519)", () => {
+  const tokenEnv = patterns.find(p => p.startsWith("token_env"));
+  const allowed = tokenEnv ? compile(tokenEnv) : /(?!)/;
+
+  it("lets the name of a token's env var through, as gitleaks 8.24.3 reported it", () => {
+    expect(tokenEnv).toBeDefined();
+    // The Match value of the real finding (tests/hot-add-connection-1519.test.ts:20), and the shapes fleet.yaml uses.
+    for (const match of ['bot_token_env: "AGEND_TEST_P6_PRIMARY"', 'bot_token_env: "AGEND_DISCORD_2_TOKEN"', "bot_token_env: AGEND_TELEGRAM_TOKEN", 'token_env": "TG_MAIN"']) {
+      expect(allowed.test(match), match).toBe(true);
+    }
+  });
+
+  it.each([
+    ["a token under the name's key", () => `bot_token_env: "${secret(40)}"`],
+    ["an upper-case key with no underscore (AWS-shaped)", () => `bot_token_env: "AKIA${secret(16).toUpperCase().replace(/[^A-Z0-9]/g, "Q")}"`],
+    ["a Telegram-shaped token", () => `bot_token_env: "123456:${secret(35)}"`],
+    ["the name followed by a real key", () => `bot_token_env: "AGEND_X_TOKEN", ${apiKey}: "${secret(32)}"`],
+    ["the same value under another key", () => `${apiKey}: "AGEND_TEST_P6_PRIMARY"`],
   ])("still reports %s", (_name, match) => {
     expect(allowed.test(match())).toBe(false);
   });
