@@ -106,6 +106,7 @@ describe("Apply: an appended connection starts without a restart", () => {
     const { fm, configPath } = fleet(dir, [primary]);
     writeFileSync(configPath, yaml([primary, second]));
     fm.loadConfig(configPath);
+    writeFileSync(join(dir, ".env"), "AGEND_TEST_P6_TOKEN=fake-second-token\n");   // startable — only "already running" stops it
     const running = Object.assign(new EventEmitter(), { stop: vi.fn() });
     fm.adapters.set("discord-2", running);
     await fm.reconcileInstances(() => {});
@@ -127,8 +128,14 @@ describe("a token stored for a stopped connection", () => {
   it("the primary, or a fleet with no running connection: still the next start (false)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-p6-")); dirs.push(dir);
     const { fm } = fleet(dir, [primary, second]);
+    process.env.AGEND_TEST_P6_PRIMARY = "fake-primary";
+    // The primary stopped while another connection runs: still the next start (a fresh process sets the primary up).
     fm.adapters.delete("primary");
-    expect(await fm.rebuildAdapterForSecret("primary", primary)).toBe(false);
+    fm.adapters.set("other", Object.assign(new EventEmitter(), { stop: vi.fn() }));
+    fm.startSingleAdapter = vi.fn(async () => {});
+    await expect(fm.rebuildAdapterForSecret("primary", primary)).resolves.toBe(false);
+    expect(fm.startSingleAdapter).not.toHaveBeenCalled();
+    fm.adapters.clear();
     expect(await fm.rebuildAdapterForSecret("discord-2", second), "no connection running").toBe(false);
     expect(fm.startAdditionalAdapter).not.toHaveBeenCalled();
   });
