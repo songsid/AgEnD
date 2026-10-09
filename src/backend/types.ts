@@ -659,11 +659,11 @@ export interface CliBackend {
   readonly instructionsReloadedOnResume?: boolean;
 
   /**
-   * Optional: whatever the backend has to ASK its CLI before `buildCommand` (a `--help` probe, a version)
-   * — awaited by the daemon right before the launch command is built, so the answer is cached and
+   * Optional: async launch preparation before `writeConfig` (CLI probes or read-only session discovery)
+   * — the daemon passes this attempt's config, then rechecks launch admission before any config/identity writes, so
    * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
    */
-  prepareLaunch?(): Promise<void>;
+  prepareLaunch?(config?: CliBackendConfig): Promise<void>;
 
   /**
    * Optional (#906): after a launch that resumed a conversation, the agent it must run as and how to tell from the

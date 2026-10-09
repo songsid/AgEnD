@@ -10322,7 +10322,7 @@ export class Daemon extends EventEmitter {
 
     // A backend that has to ask its CLI something before the launch command exists (OpenCode: does
     // this binary take --auto?) does it here, off the event loop, bounded, and never fails the launch.
-    try { await this.backend!.prepareLaunch?.(); } catch { /* unknown capability → the backend's conservative form */ }
+    try { await this.backend!.prepareLaunch?.(backendConfig); } catch { /* unknown capability → the backend's conservative form */ }
     // Thrown, not `false`: a false verdict reads as "the CLI failed to start" and sends the startup path
     // into its resume-retry / set-the-session-aside handling, for an instance somebody just stopped.
     this.startupAdmission?.();
