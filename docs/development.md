@@ -110,7 +110,7 @@ Regular checks and publishing workflows live in `.github/workflows/`.
 | Workflow | Runs on | Does |
 |---|---|---|
 | `ci.yml` | PR/branch push to `main` or `release/**`; `v*` tag; manual; weekly | CHANGELOG fragments, typecheck/build, four unit shards and integration (Node 22), install smoke and Node 20 rollback. PR/branch runs use Linux; tag/manual/weekly also test macOS. |
-| `gitleaks.yml` | push and pull request to `main` | Secret scan of the full history |
+| `gitleaks.yml` | PR/branch push to `main` or `release/**` | Secret scan of the full history |
 | `data-downgrade.yml` | push and pull request to `main` | Linux scratch-store current → published 2.1.12 → current roundtrip |
 | `npm-rollback-proof.yml` | relevant PRs; branch push; `v*` tag; manual; weekly | npm 9/10/11 refused-install rollback proof on Linux; deferred events also test macOS |
 | `deploy-website.yml` | push to `main` touching `website/**`, `src/tips.ts`, the tips generator or the package files; manual | Builds and deploys the GitHub Pages site |

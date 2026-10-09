@@ -4,7 +4,7 @@
 
 ## 一般檢查
 
-PR 與 branch push 使用 Linux runner。macOS 安裝檢查移到 release tag、手動執行與每週排程，避免 Mac runner 排隊拖慢一般 merge。這只改變 Mac 覆蓋的執行時機；測試步驟與支援的 Node/npm 版本不變。
+一般的 `ci.yml` 與 `npm-rollback-proof.yml` 在 PR、branch push 使用 Linux runner。這兩份 workflow 的 macOS 安裝檢查在 release tag、手動執行與每週排程執行。一般事件完全不建立 Mac 格；測試步驟與支援的 Node/npm 版本維持相同。
 
 | Workflow | PR / branch push | `v*` tag / 手動 / 每週 |
 | --- | --- | --- |

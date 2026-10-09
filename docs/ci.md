@@ -4,10 +4,10 @@
 
 ## Routine checks
 
-PRs and branch pushes use Linux runners. macOS install jobs are deferred to
-release tags, manual runs and a weekly schedule, so the Mac runner queue does
-not delay a routine merge. This changes when Mac coverage runs, not its test
-steps or supported Node/npm versions.
+The regular `ci.yml` and `npm-rollback-proof.yml` jobs use Linux runners on
+PRs and branch pushes. Their macOS install jobs run on release tags, manual
+runs and a weekly schedule. Routine runs therefore create no Mac cells;
+the test steps and supported Node/npm versions stay the same.
 
 | Workflow | PR / branch push | `v*` tag / manual / weekly |
 | --- | --- | --- |
