@@ -339,9 +339,7 @@ with the counts. It never edits your config: which agents coordinate is a
 statement about how your fleet is organised, and an explicit `tool_set: full`
 stays exactly as you wrote it.
 
-**Today this can only be set through Settings or by editing `fleet.yaml`** —
-General's `update_instance_config` has no `tool_set` field yet, so a value sent
-that way is dropped.
+**`tool_set` can only be set through Settings or by editing `fleet.yaml`.** Sending `tool_set` through General's `update_instance_config` is refused with a privilege-boundary error (#804/#814) — an MCP tool that any coordinator-profile agent can call must not be able to widen profiles.
 
 ## Permission system
 
