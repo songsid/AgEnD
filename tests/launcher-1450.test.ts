@@ -438,14 +438,15 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
    * THE RECEIPT CONTRACT, both sides (#1460 r2): for each state, the sh bin admits the candidate (it RUNS — its marker
    * appears, with no node on PATH) exactly when the JS selection does, and both give the expected answer.
    */
-  /** toolsOnly, with some tools replaced by liars: each prints the given value, then exits 17. */
-  const liars = (lies: Record<string, string>) => {
+  /** toolsOnly, with some tools replaced by liars: each prints the given value — or, for null, runs the real tool — then exits 17. */
+  const liars = (lies: Record<string, string | null>) => {
     const dir = mkdtempSync(join(tmpdir(), "agend liars-"));
     roots.push(dir);
     for (const name of readdirSync(toolsOnly)) symlinkSync(realpathSync(join(toolsOnly, name)), join(dir, name));
     for (const [name, out] of Object.entries(lies)) {
+      const real = realpathSync(join(toolsOnly, name));
       rmSync(join(dir, name));
-      writeFileSync(join(dir, name), `#!/bin/sh\nprintf '%s\\n' '${out}'\nexit 17\n`);
+      writeFileSync(join(dir, name), out === null ? `#!/bin/sh\n'${real}' "$@"\nexit 17\n` : `#!/bin/sh\nprintf '%s\\n' '${out}'\nexit 17\n`);
       chmodSync(join(dir, name), 0o755);
     }
     return dir;
@@ -455,8 +456,8 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
     it.skipIf(!ON_FIXTURE_HOST).each([
       ["wc prints the receipted size, then fails (the candidate was resized, mtime restored)", "wc", "size", (f: ReturnType<typeof fixture>, node: string) => { const st = statSync(node); writeFileSync(node, readFileSync(node, "utf8") + "# grown\n"); utimesSync(node, st.atime, st.mtime); void f; }],
       ["stat prints the receipted mtime, then fails (the candidate was touched)", "stat", "mtime", (_f: ReturnType<typeof fixture>, node: string) => { const t = new Date(Date.now() + 60_000); utimesSync(node, t, t); }],
-      ["cksum prints the receipted sum, then fails (the receipt was edited)", "cksum", "receipt", (f: ReturnType<typeof fixture>) => { const file = join(f.pkg, ".agend-runtime.json"); writeFileSync(file, readFileSync(file, "utf8").replace(/"verifiedAt": "(\d)/, '"verifiedAt": "9')); }],
-      ["getconf prints the host's glibc, then fails", "getconf", "host", () => {}],
+      ["cksum prints the true sums, then fails", "cksum", null, () => {}],
+      ["getconf prints the host's glibc, then fails", "getconf", null, () => {}],
       ["uname prints the host, then fails", "uname", null, () => {}],
     ] as const)("%s: the candidate never runs", (_n, tool, line, change) => {
       const f = fixture({ runtime: "ok", npmLayout: true });
@@ -465,7 +466,7 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
       expect(postinstall(f).status).toBe(0);
       rmSync(mark, { force: true });
-      const lie = tool === "uname" ? "Linux" : tool === "cksum" ? keyLine(f, "receipt") : keyLine(f, line!).replace(/^glibc /, "glibc ");
+      const lie = line === null ? null : keyLine(f, line);
       (change as (f: ReturnType<typeof fixture>, node: string) => void)(f, node);
       bin(f, "agend", liars({ [tool]: lie }));
       expect(existsSync(mark)).toBe(false);
