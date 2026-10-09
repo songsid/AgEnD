@@ -276,6 +276,22 @@ describe("the View panel's work belongs to its lease", () => {
     } finally { await s.done(); }
   });
 
+  it("alpha.2: clicking another instance keeps the roster section — it is not taken away and set again (its list would jump to the top)", async () => {
+    const s = await setup();
+    try {
+      await mount(s, "alpha", "view:alpha|1|en");
+      const entry = s.shell.shellStore.get().side;
+      expect(entry).not.toBeNull();
+      const sides: unknown[] = [];
+      const off = s.shell.shellStore.subscribe((st: any) => sides.push(st.side));
+      await mount(s, "beta", "view:beta|2|en");                  // another instance: a new navigation, a new lease
+      await mount(s, "gamma", "view:gamma|3|en");
+      off();
+      expect(s.shell.shellStore.get().side, "the same section entry").toBe(entry);
+      expect(sides.filter(x => x !== entry), "never removed in between").toEqual([]);
+    } finally { await s.done(); }
+  });
+
   it("the usage dialog refreshes every 60 s only while it is open", async () => {
     const s = await setup();
     try {

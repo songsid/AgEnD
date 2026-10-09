@@ -10,7 +10,7 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./a
 import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { useLease } from "./app-ctx.js";
-import { PanelHeader, setTitle, setSideSection, closeDrawer, onPanelKey, signInHref } from "./app-shell.js";
+import { PanelHeader, setTitle, setSideSection, closeDrawer, onPanelKey, signInHref, keepActiveInView } from "./app-shell.js";
 import { navigate } from "./app-nav.js";
 import { viewPath } from "./app-route.js";
 import { Dialog } from "./ui-dialog.js";
@@ -198,6 +198,8 @@ function persistOrder(groupNames, instByGroup) {
 function ViewRoster() {
   const v = useStore(viewStore);
   const filterRef = useRef(null);
+  const list = useRef(null);
+  useLayoutEffect(() => { keepActiveInView(list.current); }, [v.current, v.loaded]);
   const drag = useRef(null);
   const rosterByName = byName(v.roster);
   const { groupNames, instByGroup } = computeOrder(v.roster, v.order);
@@ -235,7 +237,7 @@ function ViewRoster() {
   };
   // The list scrolls; the filter under it stays in view (#999), so it sits outside the scrolling section.
   return html`<div class="view-roster">
-    <div class="side-section" id="instanceList">
+    <div class="side-section" id="instanceList" ref=${list}>
     <h2 class="side-label">${tn("instancesLabel")}</h2>
     ${!v.loaded ? html`<${Skeleton} lines=${4} />` : !v.roster.length ? html`<p class="side-empty">${tn("noInstances")}</p>` : null}
     ${shown.groups.map(({ group: g, names }) => {
@@ -317,8 +319,10 @@ export function ViewPanel({ route, navKey }) {
   const name = route.instance;
   const it = name ? v.roster.find((r) => r.instance_name === name) : null;
 
-  // The roster is the sidebar's section while View is mounted.
-  useEffect(() => lease.hold(setSideSection(ViewRoster)), [lease]);
+  // The roster is the sidebar's section while View is mounted — once per mount, not per navigation (alpha.2): the lease
+  // changes with every instance clicked, and releasing and re-setting the section remounted the roster, so its list
+  // jumped back to the top on every click.
+  useEffect(() => setSideSection(ViewRoster), []);
   useEffect(() => { viewStore.set({ current: name }); }, [name]);
   useEffect(() => { setTitle(it ? (it.display_name || it.instance_name) : tn("title")); }, [name, it && it.display_name, navKey]);
   if (name && it) store("agend_last_view", name);
