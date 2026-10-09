@@ -1,0 +1,2 @@
+{"recorded_at": 1791560371911163, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3", "event": {"kind": "started", "prompt": "cancel me"}}}
+{"recorded_at": 1791560372190117, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3", "event": {"kind": "terminal", "reason": "cancelled during end-of-turn reminder wait"}}}
