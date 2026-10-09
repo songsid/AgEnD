@@ -8,16 +8,16 @@
 // - Acknowledge on a delivery (POST /ui/needs/ack), which clears it everywhere;
 // - Open: that instance's chat.
 // Something resolved anywhere (Discord, Telegram, the web) leaves the list by itself.
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
-import { appStore, useStore } from "/assets/app-store.js";
+import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { notifyOn, notifySupport, reasonText, setNotify } from "/assets/app-needs.js";
+import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { store as chatStore } from "./panel-chat.js";
 
 register("needs", {
@@ -47,6 +47,30 @@ register("needs", {
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
+
+/**
+ * The page's claims on what Needs you writes, kept for the life of the page — not of a panel or a render (#1463
+ * review): a second click in the same turn, the panel left and opened again, or a list that has not caught up yet all
+ * see the same claim.
+ * - `acks[id]`: "busy" while its POST is out, "done" once the server took it, until the server's next list drops the
+ *   item (then forgotten); a failure gives it back.
+ * - `prompts[nonce]`: the same, for a prompt answered while the chat store is not there yet (only before Chat boots);
+ *   otherwise the chat store's own prompt is the claim (answerByNonce).
+ */
+export const claims = createStore({ acks: {}, prompts: {} });
+appStore.subscribe((st) => {
+  const items = Array.isArray(st.needs) ? st.needs : [];
+  const listed = new Set(items.map((i) => i.id)), nonces = new Set(items.map((i) => i.nonce).filter(Boolean));
+  const c = claims.get();
+  const acks = Object.fromEntries(Object.entries(c.acks).filter(([id, v]) => v === "busy" || listed.has(id)));
+  const prompts = Object.fromEntries(Object.entries(c.prompts).filter(([n, v]) => v === "busy" || nonces.has(n)));
+  if (Object.keys(acks).length !== Object.keys(c.acks).length || Object.keys(prompts).length !== Object.keys(c.prompts).length) claims.set({ acks, prompts });
+});
+const setClaim = (kind, key, value) => claims.set((c) => {
+  const next = { ...c[kind] };
+  if (value) next[key] = value; else delete next[key];
+  return { ...c, [kind]: next };
+});
 
 const ICON = { prompt: "chat", awaiting_input: "clock", instance: "alert", delivery: "send" };
 const BAD = new Set(["crashed", "delivery_failed", "hang", "exited"]);
@@ -97,36 +121,39 @@ export function NeedsPanel({ navKey }) {
 }
 
 function NeedsItem({ item, nowMs }) {
-  const lease = useLease(`needs-item:${item.id}`);
-  const [acking, setAcking] = useState(false);
-  const [answering, setAnswering] = useState(false);
+  const c = useStore(claims);
+  // A prompt: the chat store's prompt is the one claim (Chat and Needs you, any panel, any render).
   const p = item.type === "prompt" && item.nonce && chatStore ? chatStore.state.prompts[item.nonce] : null;
-  const promptBusy = p ? p.busy || p.resolved : answering;
+  const fallback = item.nonce ? c.prompts[item.nonce] : undefined;
+  const promptBusy = p ? p.busy || p.resolved : !!fallback;
   const answer = async (action) => {
-    // The chat store's own prompt when it has it: one busy state and one claim with the chat panel.
-    if (p) { chatStore.answerPrompt(p, action); return; }
-    if (answering) return;
-    setAnswering(true);
+    if (chatStore) { chatStore.answerByNonce(item, action); return; }
+    // Only before Chat has booted: the page's own claim on this nonce, taken now (synchronously), kept until the
+    // server's list drops the prompt (or the answer fails).
+    if (claims.get().prompts[item.nonce]) return;
+    setClaim("prompts", item.nonce, "busy");
     let r = null;
     try {
       const res = await fetch("/ui/prompt", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ instance: item.instance, nonce: item.nonce, action }) });
       r = await res.json().catch(() => ({}));
     } catch (err) { r = { error: err && err.message ? err.message : t("app.failed") }; }
-    if (!(r && r.answered)) toast((r && r.error) || t("app.failed"), false);
-    if (lease.current()) setAnswering(false);
+    if (r && r.answered) { setClaim("prompts", item.nonce, "done"); return; }
+    setClaim("prompts", item.nonce, null);
+    toast((r && r.error) || t("app.failed"), false);
   };
+  const ack = c.acks[item.id];
   const acknowledge = async () => {
-    if (acking) return;
-    setAcking(true);
+    if (claims.get().acks[item.id]) return;                       // the page's claim, taken synchronously
+    setClaim("acks", item.id, "busy");
     let res = null, body = null;
     try {
       res = await fetch("/ui/needs/ack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) });
       body = await res.json().catch(() => ({}));
     } catch { body = { error: t("app.failed") }; }
-    // It leaves the list when the server's next `needs` says so — here, everywhere at once.
+    // Taken: it stays claimed until the server's next `needs` drops it — here, everywhere at once. Refused: free again.
+    setClaim("acks", item.id, res && res.ok ? "done" : null);
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
-    if (lease.current()) setAcking(false);
   };
   return html`<article class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
@@ -135,33 +162,27 @@ function NeedsItem({ item, nowMs }) {
       ${item.detail ? html`<p class="n-detail">${item.detail}</p>` : null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
-            disabled=${promptBusy} onClick=${() => answer(a.id)}>${promptBusy && p && p.busy ? tn("answering") : a.label}</button>`) : null}
-        ${item.type === "delivery" ? html`<button type="button" class="btn btn-sm" disabled=${acking} onClick=${acknowledge}>
-            <${Icon} name="check" size=${14} />${acking ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
+        ${item.type === "delivery" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
+            <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         <a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn("open")}</a>
       </div>
     </div>
   </article>`;
 }
 
+/** The device's choice, as the page knows it (app-needs.js notifyStore): every mounted toggle shows the same. */
 function NotifyToggle() {
   const support = notifySupport();
-  const [on, setOn] = useState(() => notifyOn());
-  const [denied, setDenied] = useState(false);
-  const busy = useRef(false);
-  const toggle = async () => {
-    if (busy.current) return;
-    busy.current = true;
-    const state = await setNotify(!on);
-    busy.current = false;
-    setOn(state === "on");
-    setDenied(state === "denied");
-  };
+  const { state, asking } = useStore(notifyStore);
+  useEffect(() => { refreshNotify(); }, []);
+  const on = state === "on";
+  const toggle = () => { setNotify(!on); };
   const note = support === "mobile" ? tn("notifyMobile") : support === "insecure" ? tn("notifyInsecure")
-    : support !== "ok" ? tn("notifyUnsupported") : denied ? tn("notifyDenied") : on ? tn("notifyOn") : tn("notifyOff");
+    : support !== "ok" ? tn("notifyUnsupported") : state === "denied" ? tn("notifyDenied") : on ? tn("notifyOn") : tn("notifyOff");
   return html`<section class="card n-notify"><h3>${tn("notifyTitle")}</h3>
     <p class="note">${note}</p>
-    ${support === "ok" ? html`<div><button type="button" class=${`btn btn-sm${on ? "" : " btn-primary"}`} aria-pressed=${on ? "true" : "false"} onClick=${toggle}>
+    ${support === "ok" ? html`<div><button type="button" class=${`btn btn-sm${on ? "" : " btn-primary"}`} aria-pressed=${on ? "true" : "false"} disabled=${asking} onClick=${toggle}>
       <${Icon} name="bell" size=${14} />${on ? tn("turnOff") : tn("turnOn")}</button></div>` : null}
   </section>`;
 }

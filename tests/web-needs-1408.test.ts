@@ -124,7 +124,8 @@ describe("its writes are a person's", () => {
     ack().click(); await settle(2);
     expect(reqs).toEqual([{ method: "POST", url: "/ui/needs/ack", body: { id: "delivery:d1" } }]);
     open(); await settle(4);
-    expect(ack().disabled).toBe(false);                            // still listed until the server says otherwise
+    expect(ack().disabled).toBe(true);                             // taken: claimed until the server's list drops it (#1463 review)
+    expect(ack().textContent.trim()).toBe("Acknowledge");
     app.appStore.set({ needs: ITEMS.filter(i => i.id !== "delivery:d1") }); await settle(4);
     expect(p.root.querySelectorAll(".n-item")).toHaveLength(3);
     expect(reqs).toHaveLength(1);
@@ -274,5 +275,129 @@ describe("desktop notifications (#1386 §6.3)", () => {
     const card = p.root.querySelector(".n-notify");
     expect(card.querySelector("button")).toBeNull();
     expect(card.textContent).toContain("This browser cannot show notifications.");
+  });
+});
+
+// ── #1463 review: claims belong to the page, not to a render or a mount ──
+
+describe("#1463 review: one claim per prompt and per acknowledgement, for the life of the page", () => {
+  const held = () => { let open!: (v: unknown) => void; const p = new Promise(r => { open = r; }); return { p, open }; };
+  const item = () => p.root.querySelectorAll(".n-item")[0];
+  const nPosts = (url: string) => reqs.filter(r => r.method === "POST" && r.url === url).length;
+  beforeEach(() => { for (const n of Object.keys(chat.store.state.prompts)) delete chat.store.state.prompts[n]; N.claims.set({ acks: {}, prompts: {} }); });
+
+  it("a prompt: two clicks in the same turn send one answer", async () => {
+    const h1 = held();
+    answer = (r) => (r.url === "/ui/prompt" ? h1.p : {});
+    await mount(); await settle(4);
+    btn(item(), "Ask General").click(); btn(item(), "Myself").click();
+    await settle(2);
+    expect(nPosts("/ui/prompt")).toBe(1);
+    h1.open({ answered: true }); await settle(4);
+  });
+
+  it("a prompt: Chat learning of it while its answer is out does not free it", async () => {
+    const h1 = held();
+    answer = (r) => (r.url === "/ui/prompt" ? h1.p : {});
+    await mount(); await settle(4);
+    btn(item(), "Ask General").click(); await settle(2);
+    chat.store.applyPrompts([{ instance: "api-server", nonce: "n1", text: "Ask General to help?", actions: ITEMS[0]!.actions, expiresAt: Date.now() + 60_000 }]);
+    chat.store.onPrompt({ instance: "api-server", nonce: "n1", text: "Ask General to help?", actions: ITEMS[0]!.actions, expiresAt: Date.now() + 60_000 });
+    await settle(4);
+    expect(btn(item(), "Myself") ?? btn(item(), "Answering")).toHaveProperty("disabled", true);
+    (btn(item(), "Myself") ?? btn(item(), "Answering")).click(); await settle(2);
+    expect(nPosts("/ui/prompt")).toBe(1);
+    h1.open({ answered: true }); await settle(4);
+  });
+
+  it("a prompt: answered, and the list has not caught up yet — still taken; the server's outcome settles it", async () => {
+    answer = (r) => (r.url === "/ui/prompt" ? { answered: true } : {});
+    await mount(); await settle(4);
+    btn(item(), "Ask General").click(); await settle(6);
+    btn(item(), "Myself")?.click(); btn(item(), "Answering")?.click(); await settle(4);
+    expect(nPosts("/ui/prompt")).toBe(1);
+    chat.store.resolvePrompt({ nonce: "n1", outcome: "answered" }); await settle(4);
+    expect(nPosts("/ui/prompt")).toBe(1);
+  });
+
+  it("Acknowledge: two clicks in the same turn send one", async () => {
+    const h1 = held();
+    answer = (r) => (r.url === "/ui/needs/ack" ? h1.p : {});
+    await mount(); await settle(4);
+    const ack = () => btn(p.root.querySelectorAll(".n-item")[3], "Acknowledg");
+    ack().click(); ack().click();
+    await settle(2);
+    expect(nPosts("/ui/needs/ack")).toBe(1);
+    h1.open({ acknowledged: true, message: "Acknowledged." }); await settle(4);
+  });
+
+  it("Acknowledge: leaving Needs you and opening it again while it is out finds it taken", async () => {
+    const h1 = held();
+    answer = (r) => (r.url === "/ui/needs/ack" ? h1.p : {});
+    await mount(); await settle(4);
+    btn(p.root.querySelectorAll(".n-item")[3], "Acknowledg").click(); await settle(2);
+    await p.unmount();
+    await mount("needs:|2|en"); await settle(4);
+    const again = btn(p.root.querySelectorAll(".n-item")[3], "Acknowledg");
+    expect(again.disabled).toBe(true);
+    again.click(); await settle(2);
+    expect(nPosts("/ui/needs/ack")).toBe(1);
+    h1.open({ __status: 500, error: "could not record" }); await settle(4);
+    expect(btn(p.root.querySelectorAll(".n-item")[3], "Acknowledg").disabled).toBe(false);   // refused: free again
+  });
+
+  it("the notification choice: a toggle mounted while the browser was asking learns the answer", async () => {
+    const notifier = await import("/assets/app-needs.js");
+    let grant!: (v: string) => void;
+    class FakeNotification { static permission = "default"; static requestPermission() { return new Promise<string>(r => { grant = (v) => { FakeNotification.permission = v; r(v); }; }); } }
+    const real = { N: (globalThis as any).Notification, secure: (globalThis as any).isSecureContext, ua: (globalThis as any).navigator };
+    (globalThis as any).Notification = FakeNotification; (globalThis as any).isSecureContext = true;
+    (globalThis as any).navigator = { userAgent: "Mozilla/5.0 (X11; Linux x86_64) Chrome/140", language: "en" };
+    p.storage.delete("agend_needs_notify");
+    notifier.notifyStore.set({ state: "off", asking: false });
+    try {
+      await mount(); await settle(4);
+      btn(p.root.querySelector(".n-notify"), "Turn on").click(); await settle(2);
+      await p.unmount();
+      await mount("needs:|3|en"); await settle(4);
+      expect(btn(p.root.querySelector(".n-notify"), "Turn on").disabled).toBe(true);     // the browser is asking
+      grant("granted"); await settle(6);
+      expect(p.storage.get("agend_needs_notify")).toBe("1");
+      expect(btn(p.root.querySelector(".n-notify"), "Turn off")).toBeDefined();
+      expect(p.root.querySelector(".n-notify .note").textContent).toContain("Notifications are on");
+    } finally {
+      (globalThis as any).Notification = real.N; (globalThis as any).isSecureContext = real.secure; (globalThis as any).navigator = real.ua;
+      notifier.notifyStore.set({ state: "off", asking: false });
+    }
+  });
+});
+
+describe("#1463 review: before Chat has booted, the page's own claim", () => {
+  it("one answer for a prompt, kept across a remount until the list drops it", async () => {
+    vi.resetModules();
+    vi.doMock("/ui/js/panel-chat.js", () => ({ store: null }));
+    const fresh = await import("/ui/js/panel-needs.js");
+    const appFresh = await import("/assets/app-store.js");
+    appFresh.appStore.set({ needs: [ITEMS[0]] });
+    let open!: (v: unknown) => void;
+    answer = (r) => (r.url === "/ui/prompt" ? new Promise(res => { open = res; }) : {});
+    // A fresh module graph has its own Preact: render with it (the harness's render is the first graph's).
+    const P = await import("/assets/preact.module.js");
+    P.options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
+    const mountFresh = async (k: string) => { P.render(P.h(fresh.NeedsPanel, { route: { panel: "needs" }, navKey: k }), p.root); await settle(); };
+    const unmountFresh = async () => { P.render(null, p.root); await settle(); };
+    try {
+      await mountFresh("f1"); await settle(4);
+      btn(p.root.querySelector(".n-item"), "Ask General").click(); btn(p.root.querySelector(".n-item"), "Myself").click();
+      await settle(2);
+      await unmountFresh(); await mountFresh("f2"); await settle(4);
+      btn(p.root.querySelector(".n-item"), "Myself")?.click(); await settle(2);
+      expect(reqs.filter(r => r.url === "/ui/prompt")).toHaveLength(1);
+      open({ answered: true }); await settle(4);
+      btn(p.root.querySelector(".n-item"), "Myself")?.click(); await settle(2);
+      expect(reqs.filter(r => r.url === "/ui/prompt")).toHaveLength(1);
+      appFresh.appStore.set({ needs: [] }); await settle(2);
+      expect(fresh.claims.get().prompts).toEqual({});
+    } finally { await unmountFresh(); vi.doUnmock("/ui/js/panel-chat.js"); vi.resetModules(); }
   });
 });

@@ -9,7 +9,7 @@
 // - tag = item id, so the same item never stacks; a click focuses the tab and opens that instance's chat.
 // The toggle asks Notification.requestPermission() on that click only. Not offered on a phone (the constructor is
 // missing or throws there; Discord's notification is the one to rely on) or on a plain-HTTP LAN address.
-import { appStore } from "./app-store.js";
+import { appStore, createStore } from "./app-store.js";
 import { t } from "./app-i18n.js";
 
 const STORE_KEY = "agend_needs_notify";
@@ -33,17 +33,30 @@ export function notifyOn(env = globalThis) {
   return notifySupport(env) === "ok" && stored() && env.Notification.permission === "granted";
 }
 
+/**
+ * The choice as the page knows it, for every toggle mounted now or later (#1463 review: a toggle that mounted while a
+ * permission request was open must still learn its answer). `state`: "on" | "off" | "denied"; `asking` while the
+ * browser's permission prompt is open (the toggle is off meanwhile, and a second click asks nothing).
+ */
+export const notifyStore = createStore({ state: (() => { try { return notifyOn() ? "on" : "off"; } catch { return "off"; } })(), asking: false });
+export function refreshNotify(env = globalThis) {
+  notifyStore.set((s) => ({ ...s, state: notifyOn(env) ? "on" : s.state === "denied" ? "denied" : "off" }));
+}
+
 /** The toggle: asks the browser on this click only. Resolves to the state after it ("on", "denied", "off"). */
 export async function setNotify(on, env = globalThis) {
-  if (!on) { store(false); return "off"; }
+  if (notifyStore.get().asking) return notifyStore.get().state;
+  if (!on) { store(false); notifyStore.set({ state: "off", asking: false }); return "off"; }
   if (notifySupport(env) !== "ok") return "off";
   let permission = env.Notification.permission;
   if (permission !== "granted") {
+    notifyStore.set((s) => ({ ...s, asking: true }));
     try { permission = await env.Notification.requestPermission(); } catch { permission = "denied"; }
   }
-  if (permission !== "granted") { store(false); return "denied"; }
-  store(true);
-  return "on";
+  const state = permission === "granted" ? "on" : "denied";
+  store(state === "on");
+  notifyStore.set({ state, asking: false });
+  return state;
 }
 
 export const reasonText = (item) => t(`app.needs_reason_${item.reason}`);
