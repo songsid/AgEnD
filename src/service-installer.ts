@@ -554,21 +554,36 @@ type SystemctlRunner = (
   options: { stdio: "inherit"; timeout: number },
 ) => unknown;
 
-export function restartSystemdService(
+/**
+ * What a `systemctl restart` came to (#1446 item 4). Only OUR wait running out is indeterminate: the Type=notify job
+ * may still finish and start a healthy replacement, which then settles the update marker. systemctl exiting with an
+ * error is a definite failure and must not be reported as success.
+ */
+export type SystemdRestartOutcome = "restarted" | "timed-out" | "failed";
+
+export function systemdRestartOutcome(
   label: string,
   user = true,
   run: SystemctlRunner = execFileSync,
-): boolean {
+): SystemdRestartOutcome {
   try {
     run(
       "systemctl",
       [...(user ? ["--user"] : []), "restart", label],
       { stdio: "inherit", timeout: SYSTEMD_RESTART_TIMEOUT_MS },
     );
-    return true;
-  } catch {
-    return false;
+    return "restarted";
+  } catch (err) {
+    return (err as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" ? "timed-out" : "failed";
   }
+}
+
+export function restartSystemdService(
+  label: string,
+  user = true,
+  run: SystemctlRunner = execFileSync,
+): boolean {
+  return systemdRestartOutcome(label, user, run) === "restarted";
 }
 
 export function getServicePath(): string | null {

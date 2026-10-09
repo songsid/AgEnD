@@ -7,7 +7,7 @@ import { Toasts } from "./ui-toast.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, viewPath, routeKey } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 
@@ -144,7 +144,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
         : html`<p class="side-empty">${t("app.noInstances")}</p>`}
     </div>`}
     <div class="side-foot">
-      <a class="side-row" href="/settings"><${Icon} name="settings" /><span>${t("app.settings")}</span></a>
+      ${navLink("settings", settingsPath(), "settings", t("app.settings"))}
       ${shell.footer.map(({ key, Component }) => html`<${Component} key=${key} />`)}
       <${Prefs} />
       <${SessionMenu} />
@@ -197,7 +197,7 @@ function BottomTabs({ route, viewOnly }) {
     ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
     ${tab("/ui/fleet", "fleet", t("app.fleet"), route && route.panel === "fleet")}
     ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
-    ${tab("/settings", "settings", t("app.settings"), false)}
+    ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
   </nav>`;
 }
 
@@ -211,6 +211,55 @@ function ConnectionLine() {
   if (connection === "live" || connection === "none") return null;
   const text = connection === "polling" ? t("app.connPolling") : connection === "down" ? t("app.connDown") : null;
   return text ? html`<div class="conn" role="status">${text}</div>` : null;
+}
+
+const NOW = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+function useTick(on, ms = 1000) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!on) return undefined;
+    const h = setInterval(() => tick(n => n + 1), ms);
+    return () => clearInterval(h);
+  }, [on, ms]);
+}
+const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+/**
+ * #1423: Settings writes an admin has to confirm, from whichever panel made them (settings-confirm.js publishes them to
+ * appStore.pendingChanges). What it asks, how to confirm it, the countdown, Withdraw — in any panel.
+ */
+function PendingChanges() {
+  const { pendingChanges } = useStore(appStore);
+  const list = pendingChanges || [];
+  useTick(list.some(p => p.state === "pending"));
+  if (!list.length) return null;
+  return html`<div class="pending-stack" role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} class=${`pending-card ${p.state}`} role="status">
+    <div class="pending-head"><${Icon} name=${p.state === "applied" ? "check" : p.state === "pending" || p.state === "applying" ? "clock" : "alert"} size=${16} />
+      <strong>${t(`app.pending_${p.state}`)}</strong>
+      ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
+      ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
+    ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
+    ${p.state === "pending" ? html`<p class="note">${p.confirmation && p.confirmation.kind === "host_cli" ? t("app.pendingHost", `agend settings confirm ${p.id}`) : t("app.pendingChat")}</p>` : null}
+    ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
+    ${p.withdraw ? html`<div class="pending-actions"><button type="button" class="btn btn-sm" onClick=${p.withdraw}>${t("app.withdraw")}</button></div>` : null}
+  </section>`)}</div>`;
+}
+
+/** Settings' Apply, followed from another panel: one line, and the way back to it (§5: progress shows in any panel). */
+function OperationLine({ route }) {
+  const { settingsOp: op } = useStore(appStore);
+  if (!op || (route && route.panel === "settings")) return null;
+  const waiting = op.steps.some(s => s.status === "waiting");
+  const done = op.steps.filter(s => s.status === "done").length;
+  const restart = op.job && op.job.targets && op.job.targets.some(r => r.status === "restart-required");
+  const failedRows = op.job && op.job.targets && op.job.targets.some(r => r.status === "failed");
+  const text = op.phase === "writing" ? (waiting ? t("app.opWaiting") : t("app.opWriting", done, op.steps.length))
+    : op.phase === "posting" || op.phase === "watching" ? t("app.opApplying")
+    : op.phase === "failed" ? t("app.opFailed") : restart ? t("app.opRestart") : failedRows ? t("app.opPartial") : t("app.opDone");
+  const busy = op.phase === "writing" || op.phase === "posting" || op.phase === "watching";
+  return html`<div class=${`conn op-line${busy ? "" : op.phase === "failed" || restart || failedRows ? " bad" : " ok"}`} role="status">
+    <span>${text}</span> <a class="btn btn-sm" href=${settingsPath()}>${t("app.openSettings")}</a></div>`;
 }
 
 /**
@@ -263,10 +312,12 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
+      ${viewOnly ? null : html`<${OperationLine} route=${nav.route} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
+    ${viewOnly ? null : html`<${PendingChanges} />`}
     <${Toasts} />
   </div>`;
 }

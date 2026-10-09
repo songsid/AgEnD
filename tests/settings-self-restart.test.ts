@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { APPLY_FLEET_TARGET, ApplyJobStore, type ApplyJob } from "../src/apply-job.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
@@ -14,6 +14,7 @@ import {
   SELF_RESTART_MIN_INTERVAL_MS,
   SELF_RESTART_WINDOW_MS,
 } from "../src/self-restart-limit.js";
+import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
 const dirs: string[] = [];
 
@@ -504,23 +505,83 @@ describe("GET /api/settings/schema", () => {
 });
 
 describe("the settings page keeps the two restarts apart", () => {
-  const html = readFileSync(join(process.cwd(), "src", "ui", "settings.html"), "utf8");
+  // Ported to the app shell: the Settings panel's restart button (settings-apply.js restartFleet, rendered by the
+  // operation card) is the only place a restart is asked for. The page's own confirm() answers it here.
+  let p: AppPage;
+  let runner: any, settings: any, tr: (k: string, ...a: unknown[]) => string, toastMod: any;
+  const tn = (k: string, ...a: unknown[]) => tr(`settings.${k}`, ...a);
+  const JOB = "33333333-3333-4333-8333-333333333333";
+  const row = { target: "fleet", kind: "restart", status: "restart-required" };
+  const job = { id: JOB, key: "k", status: "done", startedAt: 1, deadlineMs: 120000, pid: 1, elapsed_ms: 1000, overdue: false, message: "", targets: [row] };
+  let restartAnswer: { ok: boolean; status: number; body: unknown; headers?: Record<string, string> } = { ok: true, status: 202, body: { job_id: JOB, restarting: true } };
+  let mismatch = false;                                // the schema's fleet_signature_mismatch for the page under test
+  const sent: Array<{ path: string; method: string; headers: Record<string, string>; body: string | undefined }> = [];
 
-  it("asks for its own confirmation and its own key", () => {
-    expect(html).toContain('confirm(t("restartFleetConfirm"))');
-    expect(html).toContain('api("/api/settings/restart-fleet"');
-    expect(html).toContain('confirm: "restart-agend"');
-    // Not reachable from applyPendingChanges: a single Apply must not carry it.
-    expect(html).not.toMatch(/applyPendingChanges[\s\S]{0,800}restart-fleet/);
+  beforeAll(async () => {
+    p = page({ url: "http://127.0.0.1:19280/settings" });
+    (globalThis as any).fetch = async (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
+      const method = init.method ?? "GET";
+      sent.push({ path, method, headers: init.headers ?? {}, body: init.body });
+      if (path === "/api/settings/restart-fleet") return { ok: restartAnswer.ok, status: restartAnswer.status, json: async () => restartAnswer.body };
+      if (method === "POST" && path === "/api/settings/apply") return { ok: true, status: 202, json: async () => job };
+      if (path === `/api/settings/apply/${JOB}`) return { ok: true, status: 200, json: async () => job };
+      if (path === "/api/fleet") return { ok: true, status: 200, json: async () => ({ instances: [], version: "2.0.0" }) };
+      if (path === "/api/settings/fleet/raw") return { ok: true, status: 200, json: async () => ({ defaults: {}, instances: {} }) };
+      if (path === "/api/settings/schema") return { ok: true, status: 200, json: async () => ({ fleet_signature_mismatch: mismatch ? ["defaults.locale"] : undefined }) };
+      return { ok: false, status: 404, json: async () => null };
+    };
+    ({ t: tr } = await import("/assets/app-i18n.js"));
+    runner = await import("/ui/js/settings-apply.js");
+    settings = await import("/ui/js/panel-settings.js");
+    toastMod = await import("/assets/ui-toast.js");
+  });
+  afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
+  beforeEach(async () => {
+    sent.length = 0; mismatch = false; restartAnswer = { ok: true, status: 202, body: { job_id: JOB, restarting: true } };
+    (globalThis as any).confirm = vi.fn(() => true);
+    runner.resetOperation(); await p.unmount();
+  });
+  afterEach(async () => { runner.resetOperation(); await p.unmount(); });
+
+  async function settingsWithPendingRestart(schemaMismatch = false) {
+    mismatch = schemaMismatch;
+    await p.mount(h("div", null,
+      h(settings.SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general|1|en" }),
+      h(toastMod.Toasts, null)));
+    runner.startOperation([]);
+    await vi.waitFor(() => expect(runner.operationActive()).toBe(false));
+    await settle();
+    return p.root.querySelector(".s-op") as any;
+  }
+  const restartButton = (card: any) => (card.querySelectorAll("button") as any[]).find(b => b.textContent === tn("restartFleetButton"));
+
+  it("asks for its own confirmation and its own key", async () => {
+    const card = await settingsWithPendingRestart();
+    restartButton(card).click();
+    await settle();
+
+    expect((globalThis as any).confirm).toHaveBeenCalledWith(tn("restartFleetConfirm"));
+    const post = sent.find(c => c.path === "/api/settings/restart-fleet")!;
+    expect(post.method).toBe("POST");
+    expect(post.headers["Idempotency-Key"]).toBeTruthy();
+    expect(JSON.parse(post.body!)).toMatchObject({ job_id: JOB, confirm: "restart-agend" });
   });
 
-  it("hides the button when a restart could not clear the row", () => {
-    expect(html).toContain("if (needsRestart && !mismatch)");
-    expect(html).toContain("signatureMismatch");
+  it("hides the button when a restart could not clear the row", async () => {
+    const card = await settingsWithPendingRestart(true);
+
+    expect(restartButton(card)).toBeUndefined();
+    expect(card.querySelector("p.note").textContent).toBe(tn("signatureMismatch", "defaults.locale"));
   });
 
-  it("shows how long to wait when the limit refuses", () => {
-    expect(html).toContain("retry_after_seconds");
-    expect(html).toContain("restartFleetRateLimited");
+  it("shows how long to wait when the limit refuses", async () => {
+    restartAnswer = { ok: false, status: 429, body: { error: "too soon", retry_after_seconds: 420 } };
+    const card = await settingsWithPendingRestart();
+    restartButton(card).click();
+    await settle();
+
+    // The toast stack is the page's, so an earlier test's toast may still be on screen: the newest one is last.
+    const toasts = p.root.querySelectorAll(".toast") as any[];
+    expect(toasts.at(-1)!.textContent).toBe(tn("restartFleetRateLimited", "too soon", 7));
   });
 });

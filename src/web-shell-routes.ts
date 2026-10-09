@@ -7,17 +7,20 @@
  *
  * Client routes take only first segments the server's data routes never use (chat, fleet), so a page and a data
  * read can never be confused (a test checks both directions). /view and /view/<name> are the View panel (step 2;
- * view-api.ts serves them, open to anyone when `web.view_access` is open). /settings is still a page of its own until
- * step 3; it is a navigation here so the sign-in fallback keeps covering it.
+ * view-api.ts serves them, open to anyone when `web.view_access` is open). /settings and /settings/<section> are the
+ * Settings panel (step 3; settings-api.ts serves them, signed in only).
  */
 
 export const FLEET_TABS = ["tasks", "schedules", "teams", "config"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
+export const SETTINGS_SECTIONS = ["agents", "bots", "classic", "general", "advanced"] as const;
+export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 
 export type ShellRoute =
   | { panel: "chat"; instance: string | null }
   | { panel: "fleet"; tab: FleetTab }
-  | { panel: "view"; instance: string | null };
+  | { panel: "view"; instance: string | null }
+  | { panel: "settings"; section: SettingsSection };
 
 /** What a path is: the app shell (with its route), a malformed shell path (400), or not the shell at all (null). */
 export type ShellMatch = { kind: "shell"; route: ShellRoute } | { kind: "malformed" } | null;
@@ -58,8 +61,20 @@ export function shellRoute(method: string, path: string): ShellMatch {
     const name = decodeSegment(view[1]!);
     return name !== null && isSafeInstanceName(name) ? { kind: "shell", route: { panel: "view", instance: name } } : { kind: "malformed" };
   }
+  if (path === "/settings") return { kind: "shell", route: { panel: "settings", section: "agents" } };
+  const settings = /^\/settings\/([^/]+)$/.exec(path);
+  if (settings) {
+    return (SETTINGS_SECTIONS as readonly string[]).includes(settings[1]!)
+      ? { kind: "shell", route: { panel: "settings", section: settings[1] as SettingsSection } } : null;
+  }
   // `/ui/chat` with nothing after it, or more than one segment: not a page (404 like any unknown path).
   return null;
+}
+
+/** The Settings panel's pages: what settings-api.ts serves (behind the session gate). */
+export function isSettingsPage(path: string): boolean {
+  const m = shellRoute("GET", path);
+  return m !== null && m.kind === "shell" && m.route.panel === "settings";
 }
 
 /** The View panel's pages: what view-api.ts serves, and what `web.view_access: open` lets anyone read. */
@@ -69,11 +84,10 @@ export function isViewPage(path: string): boolean {
 }
 
 /**
- * A browser navigation to a page of the web app: the shell's routes, plus /settings (still its own page until step 3).
- * The gate answers these, signed out, with the sign-in page instead of a JSON 401.
+ * A browser navigation to a page of the web app: the shell's routes. The gate answers these, signed out, with the
+ * sign-in page instead of a JSON 401.
  */
 export function isWebPageNavigation(path: string): boolean {
-  if (path === "/settings") return true;
   return shellRoute("GET", path) !== null;
 }
 
