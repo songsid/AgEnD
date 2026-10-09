@@ -91,7 +91,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * a permanent per-reconnect cost — but are not forgotten: their state is unknown, and unknown is not idle. A caller's
    * question retries the resolve (at most every LOST_WINDOW_RETRY_MS); success registers the window again.
    */
-  private lostWindows = new Map<string, { lastTryAt: number; token: number }>();
+  private lostWindows = new Map<string, { lastTryAt: number; token: number; inFlight: boolean }>();
   /** Monotonic time a lost window resolved again: until it has been silent this long, it is not idle. */
   private recoveredAt = new Map<string, number>();
   /** Monotonic clock for retry spacing and the recovery silence (elapsed budgets, never wall time). */
@@ -226,7 +226,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     const token = this.registrationTokens.get(windowId);
     const owner = this.attachment;
     const current = () => !this.stopped && this.registeredWindows.has(windowId)
-      && this.registrationTokens.get(windowId) === token && this.attachment === owner;
+      && this.registrationTokens.get(windowId) === token && this.admissible(owner);
     try {
       const paneId = (await this.read({ kind: "pane", session: this.sessionName, window: windowId, field: "id" })).trim();
       if (!current()) return;
@@ -244,7 +244,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
         // outright made isIdle answer "idle" forever, and a delivery pasted into a generating CLI.
         this.logger?.warn({ windowId, failures }, "Window has not resolved for several attempts — treating it as busy until it resolves again");
         this.unregisterWindow(windowId);
-        this.lostWindows.set(windowId, { lastTryAt: this.mono(), token: 0 });
+        this.lostWindows.set(windowId, { lastTryAt: this.mono(), token: 0, inFlight: false });
         return;
       }
       this.logger?.debug({ windowId, failures }, "Failed to resolve pane ID for window");
@@ -260,7 +260,20 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private resetPaneObservations(): void {
     this.paneToWindow.clear();
     this.lastOutputAt.clear();
+    // A recovered window's "silent since it came back" is an observation too: kept, it would vouch for whatever pane
+    // the window re-resolves to inside the new grace (#1494 review).
+    this.recoveredAt.clear();
     this.observationResetAt = Date.now();
+  }
+
+  /**
+   * Whether a read started on `owner` may still commit what it learned: the same attachment, not retired. A retired
+   * attachment stays in `this.attachment` until its child exits, and a completed frame followed by `%exit` in one
+   * chunk resolves the read before the retirement is visible to identity alone (#1494 review). A read started with
+   * no attachment (the fallback lane) counts while there is still none.
+   */
+  private admissible(owner: Attachment | null): boolean {
+    return this.attachment === owner && !owner?.retired;
   }
 
   /**
@@ -321,17 +334,22 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    */
   private retryLostWindow(windowId: string): void {
     const lost = this.lostWindows.get(windowId);
-    if (!lost || this.stopped) return;
+    // One attempt at a time per lost record: superseding a slow but healthy read every spacing meant a window whose
+    // reads take longer than the spacing could never come back (#1494 review). Reads are bounded, so it settles.
+    if (!lost || lost.inFlight || this.stopped) return;
     const at = this.mono();
     // The first retry also waits: the window has just failed RESOLVE_FAILURES_BEFORE_DROP times.
     if (at - lost.lastTryAt < LOST_WINDOW_RETRY_MS) return;
     lost.lastTryAt = at;
+    lost.inFlight = true;
     const token = ++this.registrationSerial;
     lost.token = token;
     const owner = this.attachment;
     const current = () => !this.stopped && this.lostWindows.get(windowId) === lost && lost.token === token
-      && this.attachment === owner;
-    this.read({ kind: "pane", session: this.sessionName, window: windowId, field: "id" }).then((output) => {
+      && this.admissible(owner);
+    this.read({ kind: "pane", session: this.sessionName, window: windowId, field: "id" }).finally(() => {
+      lost.inFlight = false;
+    }).then((output) => {
       const paneId = output.trim();
       if (!current() || !paneId) return;
       this.lostWindows.delete(windowId);

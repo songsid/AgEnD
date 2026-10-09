@@ -16,6 +16,7 @@ const RETRY_MS = 5_000;
 
 type Internals = {
   registeredWindows: Set<string>;
+  recoveredAt: Map<string, number>;
   lostWindows: Map<string, unknown>;
   paneToWindow: Map<string, string>;
   lastOutputAt: Map<string, number>;
@@ -193,5 +194,99 @@ describe("a lost window comes back on demand", () => {
     nextRead().resolve("%3\n");
     await p;
     expect(internals.paneToWindow.get("%3")).toBe("@7");
+  });
+});
+
+/** Recover @7 onto %3 through the on-demand retry. */
+async function recover(client: TmuxControlClient, internals: Internals): Promise<void> {
+  await loseWindow(client, internals);
+  clock += RETRY_MS;
+  client.isIdle("@7");
+  nextRead().resolve("%3\n");
+  await flush();
+  expect(internals.paneToWindow.get("%3"), "recovered").toBe("@7");
+}
+
+describe("recovery evidence ends with the observations it was part of (#1494 review)", () => {
+  it("a matured recovery does not vouch for the pane a reconnect re-resolves; the new grace applies", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { client, internals } = makeClient();
+    await recover(client, internals);
+    clock += SILENCE_MS;
+    expect(client.isIdle("@7"), "silent for silenceMs since it came back").toBe(true);
+
+    internals.resetPaneObservations();           // a reconnect: every observation dropped, grace armed
+    expect(internals.recoveredAt.has("@7"), "the recovery timestamp went with them").toBe(false);
+    const p = internals.resolvePane.call(client, "@7");
+    nextRead().resolve("%4\n");                 // a fresh mapping, nothing observed on it yet
+    await p;
+    expect(internals.paneToWindow.get("%4")).toBe("@7");
+    expect(client.isIdle("@7"), "inside the new grace: unknown, not idle").toBe(false);
+
+    vi.setSystemTime(Date.now() + SILENCE_MS);   // control: the grace's own silence still settles to idle
+    expect(client.isIdle("@7")).toBe(true);
+  });
+});
+
+describe("a retry's answer counts only on an admissible attachment (#1494 review)", () => {
+  it("is dropped when the attachment it ran on retired before the answer was committed", async () => {
+    const { client, internals } = makeClient();
+    await loseWindow(client, internals);
+    const owner = { retired: false };
+    internals.attachment = owner;                // retained until its child exits, so identity alone still matches
+    clock += RETRY_MS;
+    client.isIdle("@7");
+
+    nextRead().resolve("%3\n");                 // the frame completed ...
+    owner.retired = true;                        // ... and %exit retired the owner in the same chunk
+    await flush();
+
+    expect(internals.lostWindows.has("@7"), "still lost").toBe(true);
+    expect(internals.paneToWindow.has("%3")).toBe(false);
+    expect(client.isIdle("@7")).toBe(false);
+  });
+
+  it("is kept on the same live attachment (control)", async () => {
+    const { client, internals } = makeClient();
+    await loseWindow(client, internals);
+    internals.attachment = { retired: false };
+    clock += RETRY_MS;
+    client.isIdle("@7");
+    nextRead().resolve("%3\n");
+    await flush();
+    expect(internals.lostWindows.has("@7")).toBe(false);
+    expect(internals.paneToWindow.get("%3")).toBe("@7");
+  });
+});
+
+describe("one retry at a time per lost window (#1494 review)", () => {
+  it("a healthy read slower than the spacing is not superseded, and its answer brings the window back", async () => {
+    const { client, internals } = makeClient();
+    await loseWindow(client, internals);
+    clock += RETRY_MS;                           // t = 5 s: the retry starts
+    client.isIdle("@7");
+    expect(reads.length).toBe(1);
+    clock += RETRY_MS;                           // t = 10 s: asked again while that read is still running
+    client.isIdle("@7");
+    expect(reads.length, "no second read while the first is pending").toBe(1);
+
+    clock += 1_000;                              // t = 11 s: the first read answers, within its own budget
+    nextRead().resolve("%3\n");
+    await flush();
+    expect(internals.lostWindows.has("@7"), "recovered").toBe(false);
+    expect(internals.paneToWindow.get("%3")).toBe("@7");
+  });
+
+  it("asks again after the spacing once a pending retry has failed", async () => {
+    const { client, internals } = makeClient();
+    await loseWindow(client, internals);
+    clock += RETRY_MS;
+    client.isIdle("@7");
+    clock += RETRY_MS;
+    client.isIdle("@7");                         // in flight: nothing new
+    nextRead().reject(commandFailure());
+    await flush();
+    client.isIdle("@7");                         // spacing since that attempt began has passed
+    expect(reads.length, "the next attempt starts once the failed one settled").toBe(1);
   });
 });
