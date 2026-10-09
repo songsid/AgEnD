@@ -258,37 +258,24 @@ describe("the View panel's work belongs to its lease", () => {
     } finally { await s.done(); }
   });
 
-  it("the sidebar gets View's roster while it is mounted, and the instance list back after; 50 mounts leave nothing", async () => {
+  it("View sets no sidebar section of its own (alpha.2, N1: the shell's one list is on every page); 50 mounts leave nothing", async () => {
     const s = await setup();
     try {
       await settle();
       const base = { leases: s.ctx.leaseCount(), doc: s.p.document.listenerCount(), win: (s.p.window as any).listenerCount() };
+      const sides: unknown[] = [];
+      const off = s.shell.shellStore.subscribe((st: any) => sides.push(st.side));
       await mount(s, "alpha", "view:alpha|1|en");
-      expect(s.shell.shellStore.get().side).not.toBeNull();
-      await s.p.unmount();
+      await mount(s, "beta", "view:beta|2|en");                  // another instance: a new navigation, a new lease
       expect(s.shell.shellStore.get().side).toBeNull();
+      await s.p.unmount();
       for (let i = 0; i < 50; i++) { await mount(s, i % 2 ? "alpha" : "beta", `view:${i}`); await s.p.unmount(); }
+      off();
+      expect(sides.filter(x => x !== null), "never set").toEqual([]);
       expect(s.ctx.leaseCount()).toBe(base.leases);
       expect(s.p.document.listenerCount()).toBe(base.doc);
       expect((s.p.window as any).listenerCount()).toBe(base.win);
       expect(s.observers()).toBe(0);
-      expect(s.shell.shellStore.get().side).toBeNull();
-    } finally { await s.done(); }
-  });
-
-  it("alpha.2: clicking another instance keeps the roster section — it is not taken away and set again (its list would jump to the top)", async () => {
-    const s = await setup();
-    try {
-      await mount(s, "alpha", "view:alpha|1|en");
-      const entry = s.shell.shellStore.get().side;
-      expect(entry).not.toBeNull();
-      const sides: unknown[] = [];
-      const off = s.shell.shellStore.subscribe((st: any) => sides.push(st.side));
-      await mount(s, "beta", "view:beta|2|en");                  // another instance: a new navigation, a new lease
-      await mount(s, "gamma", "view:gamma|3|en");
-      off();
-      expect(s.shell.shellStore.get().side, "the same section entry").toBe(entry);
-      expect(sides.filter(x => x !== entry), "never removed in between").toEqual([]);
     } finally { await s.done(); }
   });
 
@@ -315,9 +302,9 @@ describe("the View panel's work belongs to its lease", () => {
   it("'/' focuses the filter while View is mounted, never while typing, and does nothing after it goes", async () => {
     const s = await setup();
     try {
-      // The shell renders the sidebar slot; here the roster component is rendered next to the panel.
-      const { useStore } = await import("/assets/app-store.js");
-      const Slot = () => { const { side } = useStore(s.shell.shellStore); return side ? h(side.Component, {}) : null; };
+      // The shell renders the sidebar's list; here the list is rendered next to the panel.
+      const nav = await import("/assets/instance-nav.js");
+      const Slot = () => h(nav.RosterNav, {});
       await s.p.mount(h("div", {}, h(s.view.ViewPanel, { route: { panel: "view", instance: "alpha" }, navKey: "k1" }), h(Slot, {})));
       await settle(4);
       const main = s.p.document.createElement("main"); main.id = "main"; s.p.document.body.appendChild(main);

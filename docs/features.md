@@ -1056,7 +1056,7 @@ Both mechanisms are suppressed during intentional shutdown (`agend stop` / fleet
 
 ## Parallel instance stop
 
-Fleet shutdown (`agend fleet stop`, `agend stop`) stops instances in parallel batches whose size scales with the fleet: 5 at a time for fewer than 10 instances, 10 for 10–30, and 15 for more than 30. The systemd unit bounds the whole stop with `TimeoutStopSec=60`.
+Fleet shutdown (`agend fleet stop`, `agend stop`) stops instances in parallel batches whose size scales with the fleet: 5 at a time for fewer than 10 instances, 10 for 10–30, and 15 for more than 30. The systemd unit bounds the whole stop with `TimeoutStopSec=300`, allowing several busy-Kiro batches; arbitrary fleet size or slow/stuck I/O can still exceed it. Detached restart uses the same five-minute grace. [Restart migration and custom timeout policy](cli.md#service-management) describe how existing units are handled.
 
 Since 2.1.9 the systemd unit uses `KillMode=mixed`: systemd signals only the fleet, which then quits each CLI in turn. Before this, every CLI got SIGTERM at the same moment, and on WSL kiro-cli aborted into a core dump of about 1 GB each time (#908). `agend restart` adds the line to an older unit; see [CLI reference](cli.md#setup--installation).
 
