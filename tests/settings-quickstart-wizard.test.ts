@@ -396,18 +396,25 @@ describe("POST /api/settings/quickstart/commit", () => {
     expect(ctx.fleetConfig).toEqual(before);
   });
 
-  it("replaces the connection that already owns the variable instead of adding a second", async () => {
+  it("always adds a new connection when the new bot has a different group_id", async () => {
+    // Two bots with the same env name but different group_ids are distinct connections.
+    // With the old env-only match they would replace each other; the S1 fix
+    // matches by platform + env + group_id, so different groups are always added.
     const dir = tempDir();
     const { ctx } = context(dir);
     (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [
-      { id: "telegram", type: "telegram", bot_token_env: "AGEND_BOT_TOKEN", group_id: "-1" },
+      // A different valid Telegram group than the one in `valid` (-100123)
+      { id: "telegram", type: "telegram", bot_token_env: "AGEND_BOT_TOKEN",
+        group_id: "-100999", mode: "topic", access: { mode: "locked", allowed_users: ["99"] } },
     ];
 
     await request("/api/settings/quickstart/commit", ctx, "POST", valid);
 
     const channels = (ctx.fleetConfig as unknown as { channels: Array<Record<string, unknown>> }).channels;
-    expect(channels).toHaveLength(1);
-    expect(channels[0]).toMatchObject({ bot_token_env: "AGEND_BOT_TOKEN", group_id: "-100123" });
+    // Both channels are present (original + new, different groups)
+    expect(channels).toHaveLength(2);
+    expect(channels.find((c: any) => c.group_id === "-100999")).toBeTruthy();
+    expect(channels.find((c: any) => c.group_id === "-100123")).toBeTruthy();
   });
 
   it.each([

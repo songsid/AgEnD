@@ -15,16 +15,21 @@ const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = 4;
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }).catch(() => ({ ok: false, status: 0, body: { error: tn("failed") } }));
 
-/** Return the platform-specific default token_env, or keep the current value if it was manually typed.
- * Ensures each platform gets a distinct env variable name so adding a second connection never
- * replaces the first (S1 data-overwrite fix). */
-function defaultTokenEnv(currentEnv, newPlatform) {
-  const knownDefaults = ["AGEND_TELEGRAM_TOKEN", "AGEND_DISCORD_TOKEN",
-    "AGEND_TELEGRAM_TOKEN_2", "AGEND_DISCORD_TOKEN_2", "AGEND_BOT_TOKEN"];
-  if (!currentEnv || knownDefaults.includes(currentEnv)) {
-    return newPlatform === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN";
+/** Return a unique platform-specific token_env that is not yet used by any existing connection.
+ * Starts with AGEND_TELEGRAM_TOKEN / AGEND_DISCORD_TOKEN and appends _2, _3, …
+ * Keeps the current value if it was manually typed (not a wizard-auto default). */
+function defaultTokenEnv(currentEnv, newPlatform, existingConnections) {
+  const base = newPlatform === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN";
+  const knownDefaults = ["AGEND_TELEGRAM_TOKEN", "AGEND_DISCORD_TOKEN", "AGEND_BOT_TOKEN"];
+  const isAutoValue = !currentEnv || knownDefaults.includes(currentEnv)
+    || /^AGEND_(?:TELEGRAM|DISCORD)_TOKEN(?:_\d+)?$/.test(currentEnv);
+  if (!isAutoValue) return currentEnv;
+  var taken = new Set((existingConnections || []).map(function(c) { return c.token_env; }).filter(Boolean));
+  if (!taken.has(base)) return base;
+  for (var n = 2; ; n++) {
+    var candidate = base + "_" + n;
+    if (!taken.has(candidate)) return candidate;
   }
-  return currentEnv;
 }
 
 export function SetupWizard({ ctx, onClose }) {
@@ -38,7 +43,7 @@ export function SetupWizard({ ctx, onClose }) {
       if (!lease.current()) return;
       const e = (env && env.body) || { backends: [], channels: [], has_fleet: false };
       setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: "agent-1",
-        platform: "telegram", token: "", token_env: "AGEND_TELEGRAM_TOKEN", group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
+        platform: "telegram", token: "", token_env: defaultTokenEnv("", "telegram", e.channels || []), group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
         identity: null, guilds: [], plan: null, offset: 0 });
     })();
   }, [lease]);
@@ -116,7 +121,7 @@ export function SetupWizard({ ctx, onClose }) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
           onClick=${() => setW((x) => ({ ...x, platform: p, identity: null,
-            token_env: defaultTokenEnv(x.token_env, p) }))}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
+            token_env: defaultTokenEnv(x.token_env, p, (x.env && x.env.channels) || []) }))}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
       <p class="note">${w.platform === "telegram" ? tn("wizardTelegramHint") : tn("wizardDiscordHint")}</p>`;
   } else if (w.step === 3) {
     body = html`<div class="field"><label for="wz-token">${tn("wizardToken")}</label>

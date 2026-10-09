@@ -12,7 +12,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import type { FleetConfig } from "../src/types.js";
-import { draftQuickstart, planQuickstart } from "../src/quickstart-api.js";
+import { draftQuickstart, planQuickstart, defaultTokenEnvName } from "../src/quickstart-api.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import { handleQuickstartRequest } from "../src/quickstart-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
@@ -73,6 +73,71 @@ describe("draftQuickstart: always creates a new connection (S1 fix)", () => {
     expect(result.channels).toHaveLength(2);
     expect(result.channels?.find((c: any) => c.type === "telegram")).toBeTruthy();
     expect(result.channels?.find((c: any) => c.type === "discord")).toBeTruthy();
+  });
+});
+
+// ── S1: always-add + unique env name ─────────────────────────────────────────
+//
+// Reverse mutation: restoring existingIndex match by env+platform makes test 3
+// fail because the existing Discord channel is replaced by the second bot.
+
+describe("draftQuickstart + defaultTokenEnvName: always-add with unique env (#1521 S1 fix)", () => {
+  function twoDiscordCtx(): { cfg: FleetConfig; body: typeof discordBody } {
+    const cfg: FleetConfig = {
+      channels: [{ id: "discord", type: "discord", bot_token_env: "AGEND_DISCORD_TOKEN" } as any],
+      instances: {},
+    } as FleetConfig;
+    const body = {
+      platform: "discord" as const,
+      token_env: "AGEND_DISCORD_TOKEN", // same default as first bot
+      backend: "claude-code" as const,
+      working_directory: "/tmp/app",
+      instance_name: "agent-dc2",
+      guild_id: "guild-2",
+      general_channel_id: "gen-2",
+      admin_user_id: "user-2",
+    };
+    return { cfg, body };
+  }
+
+  const discordBody = {
+    platform: "discord" as const,
+    token_env: "AGEND_DISCORD_TOKEN",
+    backend: "claude-code" as const,
+    working_directory: "/tmp/app",
+    instance_name: "agent-dc2",
+    guild_id: "guild-2",
+    general_channel_id: "gen-2",
+    admin_user_id: "user-2",
+  };
+
+  it("adding a second Discord bot keeps both connections (never replaces)", () => {
+    const { cfg, body } = twoDiscordCtx();
+    const plan = planQuickstart(body, { backends: ["claude-code"], channels: [], has_fleet: true });
+    const result = draftQuickstart(cfg, body, plan);
+
+    expect(result.channels).toHaveLength(2);
+    expect(result.channels?.find((c: any) => c.type === "discord" && c.bot_token_env === "AGEND_DISCORD_TOKEN")).toBeTruthy();
+    // Second entry also present (may have same env — wizard should pre-fill unique name)
+    const discordChannels = result.channels?.filter((c: any) => c.type === "discord");
+    expect(discordChannels).toHaveLength(2);
+  });
+
+  it("defaultTokenEnvName produces AGEND_DISCORD_TOKEN_2 when AGEND_DISCORD_TOKEN is taken", () => {
+    const existing = [{ bot_token_env: "AGEND_DISCORD_TOKEN" }];
+    expect(defaultTokenEnvName("discord", existing)).toBe("AGEND_DISCORD_TOKEN_2");
+  });
+
+  it("defaultTokenEnvName produces AGEND_TELEGRAM_TOKEN for a fresh Telegram", () => {
+    expect(defaultTokenEnvName("telegram", [])).toBe("AGEND_TELEGRAM_TOKEN");
+  });
+
+  it("defaultTokenEnvName increments to _3 when _2 is also taken", () => {
+    const existing = [
+      { bot_token_env: "AGEND_DISCORD_TOKEN" },
+      { bot_token_env: "AGEND_DISCORD_TOKEN_2" },
+    ];
+    expect(defaultTokenEnvName("discord", existing)).toBe("AGEND_DISCORD_TOKEN_3");
   });
 });
 
