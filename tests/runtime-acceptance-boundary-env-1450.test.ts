@@ -138,6 +138,12 @@ describe("remaining effective environment contract witnesses", () => {
     const child = run(`const r=require('child_process').spawnSync(process.execPath,${JSON.stringify(w.childArgs)});${relay}`);
     refuse({ result: child, markerRan: existsSync(w.mark), journal: readFileSync(w.log, "utf8"), stubRan: existsSync(w.stubMark) });
   });
+  it("a backslash-escaped quoted --require is decoded as Node decodes it: still the boundary's preload", () => {
+    const w = world(), target = join(w.root, "harmless"), escaped = boundary.replace(/\//g, "\\/");
+    const r = spawnSync(process.execPath, ["-e", `require('fs').writeFileSync(${JSON.stringify(target)},'ok')`],
+      { encoding: "utf8", timeout: 10_000, cwd: w.root, env: { ...w.env, NODE_OPTIONS: `--require="${guard}" --require="${escaped}"` } });
+    assert.equal(r.status, 0, r.stderr); assert.equal(readFileSync(target, "utf8"), "ok"); assert.equal(readFileSync(w.log, "utf8"), "");
+  });
   // #1460 r7: with no PATH the native lookup is the platform default, not cwd: a bare manager is refused.
   it("a bare manager with no PATH in its environment is refused, even from the stubs directory", () => {
     const w = world();

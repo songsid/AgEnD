@@ -195,8 +195,7 @@ function judgeWords(words, env, cwd, shell, depth, text) {
         i++;
         continue;
       }
-      if (a.text === "-") return "a lone - for " + name + " (env: clears the environment): " + text;
-      if (a.text.charAt(0) !== "-") break;
+      if (a.text.charAt(0) !== "-") break;                         // a lone "-" (env's -i) is an option: judged below
       if ((spec.lookup || []).indexOf(a.text) >= 0) return null;                    // command -v: looks up, runs nothing
       if ((spec.flags || []).indexOf(a.text) >= 0) { i++; continue; }
       if ((spec.unset || []).indexOf(a.text) >= 0) {
