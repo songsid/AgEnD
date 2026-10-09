@@ -323,6 +323,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pv-newer { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm);
   background: var(--surface); font-size: var(--fs-xs); }
 .pv-newer > span { flex: 1; min-width: 0; }
+.pv-newer > .pv-newer-note { flex-basis: 100%; color: var(--text-3); }
 .pv-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--s-3) var(--s-3); }
 .pv-panel-body .pv-holder { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; }
 .pv-panel-body.show-code .pv-holder { display: none; }

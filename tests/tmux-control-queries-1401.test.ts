@@ -195,6 +195,9 @@ describe("#1401 deadlines and physical process ownership", () => {
   it("holds control reservation after kill across reads/reconnect/stop/start until exit", async () => {
     fallback(); const { client, proc, manager } = opened();
     const stuck = manager.capturePane(); await vi.advanceTimersByTimeAsync(2_000); expect(await stuck).toBe("fallback\n");
+    // #1490: a slow read is drained, not a reason to retire; a stream silent for the drain limit is.
+    expect(proc.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(proc.kill).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(8_000);
     expect(await manager.capturePane()).toBe("fallback\n");
@@ -228,7 +231,9 @@ describe("#1401 deadlines and physical process ownership", () => {
   it("validates attempt deadline at receipt even when timer has not run", async () => {
     fallback(); const { proc, manager } = opened(); const result = manager.capturePane();
     const now = vi.spyOn(performance, "now").mockReturnValue(2_001); answer(proc, "late\n");
-    expect(await result).toBe("fallback\n"); expect(proc.kill).toHaveBeenCalled(); now.mockRestore();
+    expect(await result).toBe("fallback\n");
+    // #1490: the late frame is complete, so the stream is in step: drained, not retired.
+    expect(proc.kill).not.toHaveBeenCalled(); now.mockRestore();
   });
 
   it.each([500, 501])("does not write a read if nonce preparation reaches its attempt deadline (%sms)", async now => {
@@ -237,7 +242,8 @@ describe("#1401 deadlines and physical process ownership", () => {
     mocks.randomUUID.mockImplementationOnce(() => { clock.mockReturnValue(now); return "expired"; });
     const result = manager.capturePane(1_000); void result.catch(() => {});
     expect(proc.stdin.write).not.toHaveBeenCalled();
-    expect(proc.kill).toHaveBeenCalledOnce();
+    // #1490: nothing reached the stream, so nothing needs retiring.
+    expect(proc.kill).not.toHaveBeenCalled();
     expect(await result).toBe("fallback\n");
     expect(mocks.execFile.mock.calls[0][2].timeout).toBe(1_000 - now);
     clock.mockRestore();

@@ -223,7 +223,8 @@ describe("recovery evidence ends with the observations it was part of (#1494 rev
     expect(internals.paneToWindow.get("%4")).toBe("@7");
     expect(client.isIdle("@7"), "inside the new grace: unknown, not idle").toBe(false);
 
-    vi.setSystemTime(Date.now() + SILENCE_MS);   // control: the grace's own silence still settles to idle
+    vi.setSystemTime(Date.now() + SILENCE_MS);   // control: silence since the new mapping settles to idle
+    clock += SILENCE_MS;
     expect(client.isIdle("@7")).toBe(true);
   });
 });
