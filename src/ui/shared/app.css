@@ -579,7 +579,7 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
   /* A text button in Needs you lines up with the text above it, first in its row or wrapped onto a line of its own;
      a row's trailing Delete sits at the right. */
   .n-actions > .btn-ghost { padding-left: 0; padding-right: 0; margin-left: -1px; }
-  .row-item > .btn-ghost:last-child { margin-left: auto; }
+  .row-item > .btn-ghost:last-child { margin-left: auto; margin-right: calc(-1 * var(--s-3) - 1px); }
 }
 .s-pending { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-3) var(--s-5);
   background: var(--bg); border-top: 1px solid var(--border); box-shadow: var(--shadow-2); }
