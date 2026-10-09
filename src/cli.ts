@@ -2092,7 +2092,8 @@ program
         process.exitCode = 1;
         return;
       }
-      if (printed.status !== 113) {
+      const { LAUNCHD_NOT_LOADED } = await import("./service-plan.js");
+      if (!LAUNCHD_NOT_LOADED.includes(printed.status ?? -1) || printed.signal !== null) {
         console.error(`  ✗ Could not tell whether ${label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); refusing a detached restart that could duplicate the fleet.`);
         process.exitCode = 1;
         return;

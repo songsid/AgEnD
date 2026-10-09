@@ -38,6 +38,12 @@ export interface PlanDeps extends Pick<TupleDeps, "realpath"> {
 }
 
 export const planPath = (agendHome: string) => join(agendHome, SERVICE_PLAN_FILE);
+/**
+ * `launchctl print` exits that CONFIRM nothing is loaded: 113, no such service; 125, this session has no such domain
+ * (an SSH login on a Mac nobody is logged in to has no gui/<uid>, so nothing can be loaded there). Anything else that
+ * is not a readable job is uncertainty.
+ */
+export const LAUNCHD_NOT_LOADED = [113, 125];
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 const completed = (r: CommandResult) => r.status !== null && r.signal === null;
 
@@ -73,7 +79,7 @@ export function refreshLaunchdWithoutActivating(
     if (!onDisk || !sameJob(loaded.tuple, onDisk)) {
       return { ok: false, message: `the job launchd has loaded for ${o.label} is not the one ${o.plistPath} describes, so there is no job to roll back to; nothing was changed` };
     }
-  } else if (!(completed(printed) && printed.status === 113)) {
+  } else if (!(completed(printed) && LAUNCHD_NOT_LOADED.includes(printed.status ?? -1))) {
     return { ok: false, message: `could not tell whether ${o.label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); nothing was changed` };
   }
 

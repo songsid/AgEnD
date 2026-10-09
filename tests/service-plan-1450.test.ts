@@ -56,10 +56,15 @@ describe("the refresh that must not activate (agend install --no-activate on lau
     expect(w.calls.some(c => /bootout|bootstrap|kickstart/.test(c))).toBe(false);
   });
 
-  it("no job loaded (113): the plist is written, nothing is planned", () => {
-    const w = world({}, [[/print/, { status: 113 }]]);
+  it.each([[113, "no such service"], [125, "no gui domain in this session (SSH, nobody logged in)"]])("nothing loaded (%s, %s): the plist is written, nothing is planned", (status) => {
+    const w = world({}, [[/print/, { status }]]);
     expect(refresh(w)).toMatchObject({ ok: true, planned: false });
     expect(w.files[planPath(HOME)]).toBeUndefined();
+  });
+  it("any other print exit is uncertainty: refused, nothing written", () => {
+    const w = world({ [PLIST]: plist(OLD_ARGS) }, [[/print/, { status: 5 }]]);
+    expect(refresh(w)).toMatchObject({ ok: false, message: expect.stringContaining("could not tell") });
+    expect(w.files[PLIST]).toBe(plist(OLD_ARGS));
   });
 
   it.each([
