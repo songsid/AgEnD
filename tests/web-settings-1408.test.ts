@@ -767,3 +767,86 @@ describe("Developer: only what changed (#1408 step 5)", () => {
     expect(model.fullModelRequests(model.fromYaml(model.toYaml(model.fleetModel(fleet))), fleet)).toEqual([]);
   });
 });
+
+// ── #1465 review: a yes given after the asking view went does nothing; removal by id from the list as it is now ──
+
+describe("#1465 review: confirmations that outlive their view", () => {
+  const confirmMod = () => import("/assets/ui-confirm.js");
+  const headId = async () => { const C = await confirmMod(); return C.confirmStore.get().queue[0]?.id; };
+  const yes = async () => { const C = await confirmMod(); const id = await headId(); C.answerConfirm(id, true); };
+  beforeEach(() => { (globalThis as any).confirm = undefined; });
+
+  it("Restart AgEnD answered after the panel went sends no restart", async () => {
+    const REQ = { id: "job1", status: "done", targets: [{ target: "fleet", kind: "cold", status: "restart-required" }] };
+    routes.push(r => (r.url === "/api/settings/apply" && r.method === "POST" ? { body: REQ } : r.url === "/api/settings/apply/job1" ? { body: REQ } : undefined));
+    await mount(); await settle(6);
+    apply.startOperation([]);
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    await settle(4);
+    btn(p.root.querySelector(".s-op"), "Restart AgEnD").click(); await settle(2);
+    expect(await headId()).toBeDefined();
+    await p.unmount();
+    await yes(); await settle(6);
+    expect(writes().filter(r => r.url === "/api/settings/restart-fleet")).toEqual([]);
+  }, 10_000);
+
+  it("Restart AgEnD confirmed for one job never restarts for the job that replaced it", async () => {
+    const REQ = { id: "job1", status: "done", targets: [{ target: "fleet", kind: "cold", status: "restart-required" }] };
+    expect((await apply.restartFleet({ opId: 999, jobId: "job1" })).ok).toBe(false);
+    routes.push(r => (r.url === "/api/settings/apply" && r.method === "POST" ? { body: REQ } : r.url === "/api/settings/apply/job1" ? { body: REQ } : undefined));
+    apply.startOperation([]);
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    const res = await apply.restartFleet({ opId: op().id + 1, jobId: "job1" });
+    expect(res).toMatchObject({ ok: false, stale: true });
+    expect(writes().filter(r => r.url === "/api/settings/restart-fleet")).toEqual([]);
+  }, 10_000);
+
+  it("Delete agent answered after the panel went stages nothing and says nothing", async () => {
+    const T = await import("/assets/ui-toast.js");
+    await p.mount(h("div", {}, h(S.SettingsPanel, { route: { panel: "settings", section: "agents" }, navKey: "settings:agents|1|en" }), h(T.Toasts, {})));
+    await settle(6);
+    p.root.querySelector(".s-row .menu > button").click(); await settle(2);
+    p.root.querySelectorAll(".menu-item").find((b: any) => b.textContent.includes("Delete agent")).click(); await settle(2);
+    const toastsBefore = p.root.querySelectorAll(".toast").length;
+    await p.mount(h("div", {}, h(T.Toasts, {})));                     // the panel goes, the toasts stay
+    await yes(); await settle(6);
+    expect(p.root.querySelectorAll(".toast").length).toBe(toastsBefore);
+  });
+
+  it("Apply's questions stop when the panel goes: the next one is never asked, nothing is said", async () => {
+    const two = [{ id: "main", type: "discord", bot_token_env: "B", access: { mode: "locked", allowed_users: ["2"] } },
+      { id: "persona", type: "telegram", bot_token_env: "C", access: { mode: "locked", allowed_users: ["3"] } }];
+    routes.push(r => (r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), channels: structuredClone(two) } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    // Two staged access changes, each with its own confirmation: locking a connection with nobody allowed.
+    for (const id of ["main", "persona"]) {
+      btn(p.root.querySelectorAll(".s-row").find((r: any) => r.textContent.includes(id)), "Settings").click(); await settle(4);
+      for (const x of [...p.root.querySelectorAll("dialog .chip-x")]) { x.click(); await settle(1); }
+      btn(p.root.querySelector("dialog"), "Stage change").click(); await settle(4);
+    }
+    expect(p.root.querySelector(".s-pending")?.textContent).toContain("2");
+    const C = await confirmMod();
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click(); await settle(2);
+    expect(C.confirmStore.get().queue).toHaveLength(1);
+    await p.unmount();
+    await yes(); await settle(6);
+    expect(C.confirmStore.get().queue).toEqual([]);                  // no second question
+    expect(writes()).toEqual([]);
+  });
+
+  it("removing a connection while the list changed under the question removes only that one, from the list as it is now", async () => {
+    let channels: any[] = [{ id: "main", type: "discord", bot_token_env: "B", access: { mode: "locked", allowed_users: ["2"] } },
+      { id: "persona", type: "telegram", bot_token_env: "C", access: { mode: "locked", allowed_users: ["3"] } }];
+    routes.push(r => (r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), channels: structuredClone(channels) } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(p.root.querySelectorAll(".s-row").find((r: any) => r.textContent.includes("persona")), "Settings").click(); await settle(4);
+    p.root.querySelector("dialog details:last-of-type").open = true;
+    btn(p.root.querySelector("dialog"), "Delete this bot").click(); await settle(2);
+    // Meanwhile a reload brings a third connection.
+    channels = [...channels, { id: "added", type: "discord", bot_token_env: "D", access: { mode: "locked", allowed_users: ["4"] } }];
+    app.appStore.set({ pendingChanges: [{ id: "z".repeat(32), state: "applied" }] }); await settle(8); app.appStore.set({ pendingChanges: [] }); await settle(2);
+    await yes(); await settle(8);
+    const put = writes().find(r => r.method === "PUT" && r.url === "/api/settings/fleet/channels");
+    expect(put?.body.map((c: any) => c.id)).toEqual(["main", "added"]);
+  });
+});

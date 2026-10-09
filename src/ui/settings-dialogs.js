@@ -327,6 +327,8 @@ export function BotDialog({ id, ctx, onClose }) {
   // later, when the close below has run (#1453 review). Revocation is for good: every disappearance starts a new epoch,
   // and a flow belongs to the epoch it began in, so the same id coming back does not revive it.
   const epoch = useRef(0), present = useRef(!!ch);
+  const latest = useRef(ctx);
+  latest.current = ctx;
   if (present.current && !ch) epoch.current++;
   present.current = !!ch;
   useEffect(() => { if (!ch) onClose(); }, [!ch]);
@@ -374,9 +376,13 @@ export function BotDialog({ id, ctx, onClose }) {
   };
   const remove = async () => {
     if (!ch) return;
+    const asked = epoch.current;
     if (!(await ask(tn("removeBot", `${type} (${chLabel(index)})`), { confirmLabel: tn("deleteBot"), danger: true }))) return;
-    if (!lease.current()) return;
-    const next = chs.filter((_, j) => j !== index);
+    if (!lease.current() || !present.current || epoch.current !== asked) return;
+    // The list as it is now (a reload may have changed it while the question was open): only this connection goes.
+    const now = channelsOf(latest.current.fleet);
+    if (!now.some((c, j) => channelId(c, j) === id)) return;
+    const next = now.filter((c, j) => channelId(c, j) !== id);
     const res = await confirmedWrite("/api/settings/fleet/channels", { method: "PUT", body: next, label: tn("removeBotLabel", id) }).catch(() => ({ ok: false, body: {} }));
     if (!res.ok) { toast((res.body && res.body.error) || tn("failed"), false); return; }
     toast(tn("saved"));

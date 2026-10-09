@@ -107,3 +107,18 @@ describe("no browser dialogs in the app", () => {
     }
   });
 });
+
+describe("#1465 review: the test bridge answers each question once, in order", () => {
+  it("two questions queued together: confirm() is asked A then B, and each gets its own answer", async () => {
+    await p.unmount();
+    const asked: string[] = [];
+    const replies = [false, true];
+    (globalThis as any).confirm = (m: string) => { asked.push(m); return replies.shift(); };
+    try {
+      const a = C.confirmDialog({ message: "A?" });
+      const b = C.confirmDialog({ message: "B?" });
+      expect([await a, await b]).toEqual([false, true]);
+      expect(asked).toEqual(["A?", "B?"]);
+    } finally { (globalThis as any).confirm = undefined; }
+  });
+});

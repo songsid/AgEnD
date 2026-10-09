@@ -14,10 +14,20 @@ options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
  * answered with it (the message, then its answer), exactly as confirm() was. A test that drives the dialog itself sets
  * `globalThis.confirm = undefined` and clicks the buttons (tests/web-confirm-1408.test.ts).
  */
+// One answer per question: a question is scheduled once (by id), and answered only if it is still the one shown.
+let scheduled = 0;
 confirmStore.subscribe((s: { queue: Array<{ id: number; message: string }> }) => {
   const head = s.queue[0];
   const answer = (globalThis as { confirm?: unknown }).confirm;
-  if (head && typeof answer === "function") queueMicrotask(() => answerConfirm(head.id, !!(answer as (m: string) => unknown)(head.message)));
+  if (!head || typeof answer !== "function" || head.id === scheduled) return;
+  scheduled = head.id;
+  queueMicrotask(() => {
+    const now = confirmStore.get().queue[0];
+    if (!now || now.id !== head.id) return;
+    const reply = (globalThis as { confirm?: unknown }).confirm;
+    if (typeof reply !== "function") { scheduled = 0; return; }   // the test took over: the dialog answers
+    answerConfirm(head.id, !!(reply as (m: string) => unknown)(head.message));
+  });
 });
 
 export { settle };

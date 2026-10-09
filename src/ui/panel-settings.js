@@ -181,8 +181,13 @@ export function SettingsPanel({ route, navKey }) {
     // ones pending (a surprising partial apply).
     applying.current = true;
     try {
+      // A panel that went while a question was open asks nothing more, and says nothing.
       for (const c of [...stagedRef.current.values()]) {
-        for (const k of c.confirms || []) if (!(await ask(tn(k)))) { toast(tn("accessChangeCancelled"), false); return; }
+        for (const k of c.confirms || []) {
+          const yes = await ask(tn(k));
+          if (!mount.current()) return;
+          if (!yes) { toast(tn("accessChangeCancelled"), false); return; }
+        }
       }
     } finally { applying.current = false; }
     if (!mount.current() || operationActive()) return;
@@ -190,7 +195,7 @@ export function SettingsPanel({ route, navKey }) {
     if (startOperation(list)) setStaged(new Map());
   };
 
-  const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive) : null;
+  const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive, () => mount.current()) : null;
   const sectionBody = !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
@@ -236,7 +241,7 @@ function renderDialog(d, ctx, close) {
 }
 
 /** What the sections and dialogs work with: the data, and the ways to change it (staging, or a direct write). */
-function makeCtx(data, setData, stage, unstage, reload, reloadLive) {
+function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive) {
   const { fleet, classic, schema } = data;
   const chs = channelsOf(fleet);
   const edit = (fn) => setData((d) => { const next = structuredClone(d); fn(next); return next; });
@@ -266,6 +271,7 @@ function makeCtx(data, setData, stage, unstage, reload, reloadLive) {
     },
     async deleteAgent(name) {
       if (!(await ask(tn("deleteAgent", name), { confirmLabel: tn("deleteAgentMenu"), danger: true }))) return;
+      if (!alive()) return;                          // the panel went while it asked: nothing staged, nothing said
       edit((d) => { delete d.fleet.instances[name]; });
       stage(`agent:${name}`, { label: tn("deleteAgentLabel", name), impact: impactOf(schema, "instance.delete"),
         request: { method: "DELETE", url: `/api/settings/fleet/instances/${encodeURIComponent(name)}` } });
@@ -699,10 +705,15 @@ function OperationCard({ op, schema }) {
     : fleetRestarting ? tn("restartFleetWaiting") : op.lostJob ? tn("applyLostJob")
     : job && job.overdue ? tn("applyStillWorking", Math.round((job.elapsed_ms || 0) / 1000))
     : mismatch && needsRestart ? tn("signatureMismatch", mismatch.join(", ")) : needsRestart ? tn("applyRestartHint") : "";
+  const lease = useLease("operation-card");
   const restart = async () => {
+    // The yes is for the job this card shows: it restarts AgEnD for that job only, and only while the card stands.
+    const forJob = { opId: op.id, jobId: op.job && op.job.id };
     if (!(await ask(tn("restartFleetConfirm"), { title: tn("restartFleetButton"), confirmLabel: tn("restartFleetButton"), danger: true }))) return;
+    if (!lease.current()) return;
     setRestarting(true);
-    const res = await restartFleet();
+    const res = await restartFleet(forJob);
+    if (!lease.current()) return;
     setRestarting(false);
     if (!res.ok) {
       const secs = res.body && res.body.retry_after_seconds;

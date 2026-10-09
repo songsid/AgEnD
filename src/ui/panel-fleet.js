@@ -143,6 +143,7 @@ function Schedules({ lease }) {
   const state = useLoad(lease, "/ui/schedules", version);
   async function del(id) {
     if (!(await confirmDialog({ message: t("fleet.deleteSchedule"), confirmLabel: t("fleet.delete"), danger: true }))) return;
+    if (!lease.current()) return;                   // answered after this tab went: the question no longer stands
     const r = await api("DELETE", `/ui/schedules/${encodeURIComponent(id)}`);
     if (r.error) toast(r.error, false); else { toast(t("fleet.scheduleDeleted")); setVersion(v => v + 1); }
   }
@@ -166,6 +167,7 @@ function Teams({ lease }) {
   const state = useLoad(lease, "/ui/teams", version);
   async function del(name) {
     if (!(await confirmDialog({ message: t("fleet.deleteTeam", name), confirmLabel: t("fleet.delete"), danger: true }))) return;
+    if (!lease.current()) return;
     const r = await api("DELETE", `/ui/teams/${encodeURIComponent(name)}`);
     if (r.error) toast(r.error, false); else { toast(t("fleet.teamDeleted")); setVersion(v => v + 1); }
   }
