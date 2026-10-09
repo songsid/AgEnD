@@ -238,6 +238,13 @@ function fleet(): FleetManager {
   return fm;
 }
 describe("FleetManager status composers", () => {
+  it("alpha.2 (N1): every status row carries its tags — the sidebar groups by them on every page; a ClassicBot room is 'classic'", () => {
+    const fm = fleet(); config(shared, "model"); cache(shared, [["model", five]]);
+    (fm.fleetConfig as any).instances.worker.tags = ["AgEnD", 7, "web"];
+    const rows = (fm.getUiStatus() as { instances: Array<Record<string, unknown>> }).instances;
+    const tags = Object.fromEntries(rows.map(r => [r.name, r.tags]));
+    expect([tags.worker, tags.claude, tags.classic]).toEqual([["AgEnD", "web"], [], ["classic"]]);
+  });
   it("renders repeated fleet/Classic status without constructors, probes or home mutation", () => {
     const fm = fleet(); config(shared, "model"); cache(shared, [["model", five]]);
     arm();

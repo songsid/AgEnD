@@ -494,6 +494,19 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .v-filter-box input::placeholder { color: var(--text-3); }
 .v-filter-clear { width: 28px; height: 28px; }
 .v-filter .note { padding: var(--s-1) var(--s-1) 0; font-variant-numeric: tabular-nums; }
+/* alpha.2 (N1): status and CLI chips under the filter box — each a <details> with checkboxes. */
+.nav-facets { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); padding: var(--s-2) var(--s-1) 0; }
+.nav-facet { font-size: var(--fs-xs); color: var(--text-2); }
+.nav-facet > summary { cursor: pointer; list-style: none; padding: 2px var(--s-2); border-radius: var(--r-sm); }
+.nav-facet > summary::-webkit-details-marker { display: none; }
+.nav-facet > summary::after { content: " ▾"; color: var(--text-3); }
+.nav-facet[open] > summary::after { content: " ▴"; }
+.nav-facet > summary:hover { background: var(--hover); }
+.nav-facet > summary:focus-visible { outline: 2px solid var(--accent); }
+.nav-facet-n { display: inline-block; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent, #fff); text-align: center; font-variant-numeric: tabular-nums; }
+.nav-facet-list { display: flex; flex-direction: column; gap: 2px; padding: var(--s-1) var(--s-2); }
+.nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
+.nav-facet-reset { font-size: var(--fs-xs); }
 
 .p-view .panel-actions .btn { gap: var(--s-1); }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }

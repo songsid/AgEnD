@@ -18211,6 +18211,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       .map(ch => ch.instanceName)
       .filter(name => !fleetNames.includes(name));
     const names = [...fleetNames, ...classicOnly];
+    // Tags group the sidebar's list on every page (alpha.2, N1), as /api/profiles groups View's: a ClassicBot room
+    // without its own tags is "classic".
+    const classicRooms = new Set((this.classicChannels?.getAll() ?? []).map(ch => ch.instanceName));
 
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
@@ -18264,6 +18267,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         backend,
         effort,
         effort_source,
+        tags: (this.fleetConfig?.instances[name]?.tags ?? (classicRooms.has(name) ? ["classic"] : [])).filter((t): t is string => typeof t === "string"),
         ...this.instancePresentation(name),
       };
     });

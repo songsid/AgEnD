@@ -14,6 +14,7 @@ type Store = typeof import("/assets/app-store.js");
 let p: AppPage;
 let view: View;
 let shell: typeof import("/assets/app-shell.js");
+let nav: typeof import("/assets/instance-nav.js");
 let i18n: typeof import("/assets/app-i18n.js");
 let useStore: Store["useStore"];
 const g = globalThis as any;
@@ -36,17 +37,18 @@ beforeAll(async () => {
   };
   view = await import("/assets/panel-view.js");
   shell = await import("/assets/app-shell.js");
+  nav = await import("/assets/instance-nav.js");
   i18n = await import("/assets/app-i18n.js");
   useStore = (await import("/assets/app-store.js")).useStore;
   roster = ROSTER;
 });
 afterAll(async () => { await p.unmount(); p.restore(); i18n.setLang("en"); delete g.fetch; });
-afterEach(async () => { await p.unmount(); p.storage.clear(); roster = ROSTER; i18n.setLang("en"); });
+// The filter is the page's (and this browser's): each test starts from a page that has just loaded.
+afterEach(async () => { await p.unmount(); p.storage.clear(); nav.navStore.set({ filter: { q: "", status: [], cli: [] } }); roster = ROSTER; i18n.setLang("en"); });
 
-/** The shell's sidebar slot: whatever section the mounted panel has set (View's roster), re-read from the store. */
+/** The sidebar's list as the page shows it with View open (alpha.2, N1: one list on every page), fed by View's roster. */
 function Slot() {
-  const s = useStore(shell.shellStore);
-  return s.side ? h(s.side.Component, {}) : null;
+  return h(nav.RosterNav, {});
 }
 const mountView = () => p.mount(h("div", {}, h(view.ViewPanel, { route: { panel: "view", instance: "agend-dev-claude" }, navKey: "view:x|1|en" }), h(Slot, {})));
 const rowNames = () => p.root.querySelectorAll(".v-inst").map((a: any) => a.querySelector(".inst-name")!.textContent);
