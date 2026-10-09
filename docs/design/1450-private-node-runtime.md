@@ -326,21 +326,44 @@ Uses:
 - the render proof (C6.4), using the rendered file's tuple;
 - **the restart guard below.**
 
-### Restart refuses an unverified transition (the hop, Prism v2-6, v3)
+### Restart refuses an unverified transition (the hop, Prism v2-6, v3, v4)
 
-2.2's `agend restart` compares the **loaded** activation tuple of the authoritative service with the expected tuple
-**before stopping anything**. On any mismatch it exits non-zero and signals, stops and activates nothing:
-- a script as argv[0];
-- another interpreter or entry;
-- other arguments;
-- disallowed environment;
-- the loaded definition differing from the file.
+`agend restart` runs one of two admitted paths, decided **before stopping anything**. Anything else exits non-zero and
+signals, stops and activates nothing. `--force` exists for operators, and it is never used by an updater.
 
-`--force` exists for operators, and it is never used by an updater.
+1. **Restart an unchanged loaded job** (systemd after its reload, launchd with nothing pending, detached):
+   - the loaded activation tuple must equal the expected tuple, and the loaded definition must equal the file;
+   - then the ordinary restart (systemd) or `kickstart -k` (launchd: the job is unchanged, so nothing needs
+     reloading).
+2. **launchd planned activation:** the old job is still loaded, and the proven new plist waits on disk.
+   - A launchd refresh (C6.6, or hop step 4) never bootstraps. When its proofs pass, it writes a **planned-activation
+     record** to `$AGEND_HOME/service-plan.json`:
+     - `{label, plistPath, the new plist's content hash and tuple, the preimage (plist content and the loaded tuple at
+       planning time), pkgDir, the C1 token or "operator", createdAt}`;
+     - any failed step 4 deletes the record and restores the preimage plist, so **there is no record after a failure**.
+   - `agend restart` admits the activation only if **all** of these hold:
+     - a record exists;
+     - the file on disk matches the record's hash, and its tuple equals the expected tuple, freshly computed by C2;
+     - the **currently loaded** tuple and PID equal the record's preimage, so the owner has not changed since
+       planning;
+     - the record's `pkgDir` is this package.
+   - The new tuple is **not** required to be loaded before the operation that loads it.
+   - Then a **single** `bootout` + `bootstrap` of the new plist, with no separate kickstart.
+   - After the bootstrap, `launchctl print` must show the new expected tuple and a running PID. If not: C6.6's
+     recovery (bootout, restore the package and plist preimages, bootstrap the preimage, check it is loaded and
+     running), and one `failed` outcome.
+   - The record is deleted once the activation settles, whether it succeeded or failed.
 
-This covers every caller, including the old 2.1.12 updater, whose final `agend restart` follows a refresh that failed
-silently: the old-format unit, even when it points inside the new package, has a script as argv[0] and PATH's Node 20
-as its interpreter. That is a mismatch, so it is refused.
+Every other combination refuses:
+- a file that does not match the record, or no record;
+- a loaded tuple that is neither the expected one nor the record's preimage;
+- a record for another package.
+
+This covers the old 2.1.12 updater's final `agend restart`:
+- on **systemd**, a failed step 4 leaves the 2.1 tuple loaded (a script as argv[0], Node 20), so path 1 refuses;
+- on **launchd**, a failed step 4 leaves no record, so path 2 refuses and path 1 refuses (the loaded tuple is the
+  old one);
+- a **successful** step 4 on launchd leaves the record, so path 2 performs exactly one activation.
 
 ### Tests (actual package and service state, not only render)
 
@@ -396,14 +419,16 @@ The old updater has **two branches**, both reachable (sol 7):
   2. `npm install -g <2.2>` under Node 20. npm fetches agend, its deps and the matching runtime package. preinstall
      passes; postinstall verifies the runtime (main thread + worker DB) and writes the receipt.
   3. `which agend`; `agend --version` (5 s, exit code only): the launcher spawns the runtime, which prints the version.
-  4. `agend install --no-activate`: 2.2 code on the runtime refreshes the authoritative owner with C6's proofs (render,
-     target check, systemd `daemon-reload` plus the loaded check; for launchd, only the proven plist on disk, because
-     launchd's reload is an activation). On failure it restores the service preimage and exits non-zero, which 2.1.12
-     ignores.
+  4. `agend install --no-activate`: 2.2 code on the runtime refreshes the authoritative owner with C6's proofs (render
+     and tuple proof; systemd: `daemon-reload` plus the loaded check; launchd: the proven plist on disk plus a
+     **planned-activation record**, and no bootstrap, because launchd's reload is an activation). On failure it
+     restores the service preimage, deletes any record, and exits non-zero, which 2.1.12 ignores.
   5. `agend completion install --refresh`.
-  6. `agend restart`: 2.2's restart **first runs the restart guard** (C6), comparing the loaded activation tuple. If
-     step 4 failed, the authoritative service still has the 2.1 tuple (a script as argv[0], PATH's Node 20), even
-     when it points inside the replaced package, so the restart **refuses before stopping anything**. The 2.1.12 fleet
+  6. `agend restart`: 2.2's restart decides its admitted path first (C6).
+     - On systemd, a failed step 4 leaves the 2.1 tuple loaded (a script as argv[0], PATH's Node 20), even when it
+       points inside the replaced package, so the restart refuses before stopping anything.
+     - On launchd, a failed step 4 leaves no planned-activation record: refused.
+     - A successful step 4 on launchd is admitted as exactly one bootout and bootstrap. The 2.1.12 fleet
      keeps running on its in-memory code, and the recovery line is printed. If step 4 succeeded, it restarts (systemd)
      or performs the single launchd activation.
   - **CI:** the hop's failure leg runs the **real** 2.1.12 updater through its final restart:
@@ -413,6 +438,11 @@ The old updater has **two branches**, both reachable (sol 7):
     - It asserts that nothing was stopped or activated: the stand-in PID is alive, and there are no systemctl
       restart, launchctl or signal calls.
     - The **control** leg, with a refresh that succeeds, restarts onto the expected tuple.
+    - **macOS, private launchd label** (a 2.1-format plist loaded, with a stand-in long-running program):
+      - failed step 4 → the old updater's final restart leaves the existing PID alive, with no bootout, bootstrap or
+        kickstart;
+      - successful step 4 (old tuple loaded, new tuple on disk, a planned-activation record) → exactly one bootout
+        and one bootstrap, no kickstart, ending on the expected new tuple with a new PID, and the record deleted.
 - **Non-writable prefix** (needs sudo): the old updater installs **nvm and its Node 22**, then installs on it. This
   design cannot prevent that branch; the no-nvm goal only holds on the writable branch. On that branch the runtime is
   still installed and preferred, and the nvm Node only runs npm.
