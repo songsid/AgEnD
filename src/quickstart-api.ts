@@ -20,6 +20,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import type { SecretWriteResult } from "./secret-file.js";
 import { SecretStore } from "./secret-store.js";
+import { discordBotPortalUrl, discordInviteUrl } from "./discord-permissions.js";
 import { EnvFileUnreadableError, envFileKeys, generateTokenEnvName, generatedTokenEnvStale, newTokenEnvConflict, takenTokenEnvNames, TOKEN_ENV_PATTERN } from "./token-env-name.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import type { FleetConfig } from "./types.js";
@@ -27,6 +28,7 @@ import {
   awaitTelegramGroupStart,
   detectInstalledBackends,
   listDiscordGuilds,
+  listDiscordTextChannels,
   TelegramPollConflictError,
   verifyDiscordToken,
   verifyTelegramToken,
@@ -185,10 +187,12 @@ export function writeQuickstartSecret(dataDir: string, key: string, value: strin
 export type ProbeRequest =
   | { action: "verify"; platform: "telegram" | "discord"; token: string }
   | { action: "guilds"; token: string }
+  | { action: "channels"; token: string; guild_id: string }
   | { action: "await-telegram-start"; token: string; offset?: number };
 
 export type ProbeResult =
-  | { ok: true; identity: BotIdentity }
+  | { ok: true; identity: BotIdentity; invite_url?: string; portal_url?: string }
+  | { ok: true; channels: Array<{ id: string; name: string }> }
   | { ok: true; guilds: DiscordGuild[] }
   | { ok: true; found: { groupId: number; userId: number } | null; offset: number }
   | { ok: false; error: string; conflict?: true };
@@ -209,10 +213,18 @@ export async function runProviderProbe(
     const identity = request.platform === "discord"
       ? await verifyDiscordToken(request.token)
       : await verifyTelegramToken(request.token);
+    // #1519 P3: a verified Discord bot comes with its invite (the one permission set) and its portal page.
+    if (request.platform === "discord" && identity.valid && identity.id) {
+      return { ok: true, identity, invite_url: discordInviteUrl(identity.id), portal_url: discordBotPortalUrl(identity.id) };
+    }
     return { ok: true, identity };
   }
   if (request.action === "guilds") {
     return { ok: true, guilds: await listDiscordGuilds(request.token) };
+  }
+  if (request.action === "channels") {
+    const listed = await listDiscordTextChannels(request.token, request.guild_id);
+    return listed.ok ? { ok: true, channels: listed.channels } : { ok: false, error: listed.error };
   }
   if (opts.isTokenInUse?.(request.token)) {
     return {
@@ -355,7 +367,7 @@ export function handleQuickstartRequest(
       const token = typeof body.token === "string" ? body.token : "";
       if (!token) return json(res, 400, { error: "token required" });
       const action = String(body.action ?? "");
-      if (action !== "verify" && action !== "guilds" && action !== "await-telegram-start") {
+      if (action !== "verify" && action !== "guilds" && action !== "channels" && action !== "await-telegram-start") {
         return json(res, 400, { error: "unknown probe" });
       }
       const platform = body.platform === "discord" ? "discord" : "telegram";
@@ -363,7 +375,7 @@ export function handleQuickstartRequest(
       // logged and never echoed back in the response.
       ctx.logger.info({ action, platform }, "settings: quickstart probe");
       const result = await runProviderProbe(
-        { action, platform, token, offset: typeof body.offset === "number" ? body.offset : 0 } as never,
+        { action, platform, token, offset: typeof body.offset === "number" ? body.offset : 0, guild_id: typeof body.guild_id === "string" ? body.guild_id : "" } as never,
         { isTokenInUse: candidate => ctx.isBotTokenInUse?.(candidate) ?? false },
       );
       json(res, result.ok ? 200 : 409, result);

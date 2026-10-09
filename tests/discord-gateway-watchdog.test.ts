@@ -221,6 +221,16 @@ describe("Discord gateway watchdog", () => {
     await h.adapter.stop();
   });
 
+  it("#1519 P3: a shard closed with 4014 (disallowed intents) is recorded as such in the health snapshot; another close code is not", async () => {
+    const h = harness();
+    await h.adapter.start();
+    h.clients[1].emit("shardDisconnect", { code: 4000, reason: "unknown error" }, 0);
+    expect(h.adapter.getHealthSnapshot().lastReconnectReason ?? "").not.toMatch(/disallowed intents/);
+    h.clients[1].emit("shardDisconnect", { code: 4014, reason: "" }, 0);
+    expect(h.adapter.getHealthSnapshot()).toMatchObject({ status: "retrying", lastReconnectReason: "Used disallowed intents (4014)" });
+    await h.adapter.stop();
+  });
+
   it("lets discord.js RESUME transient shard errors before the watchdog rebuilds", async () => {
     const h = harness();
     await h.adapter.start();
