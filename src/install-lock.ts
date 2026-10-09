@@ -6,9 +6,11 @@
  * the prefix — what npm changes — so two fleets with different AGEND_HOMEs on one prefix exclude each other, and two
  * prefixes (two nvm Nodes, a user prefix and /usr/local) never do.
  *
- * Ownership is evidence: a lock is replaced only when its recorded pid is dead or is now another process (a different
- * start time), and a file that cannot be read or parsed is never taken — it blocks, naming itself. Release removes the
- * file only while it is still exactly ours.
+ * Ownership is evidence: a lock is replaced only when its holder is PROVEN gone — no such pid, or the pid is now a
+ * process with another start time — and an unreadable file or an unreadable holder never counts as stale: it blocks,
+ * naming itself. Replacing a stale lock is itself owned: only the holder of `<lock>.reclaim` (claimed with wx) may move
+ * the lock file, so no updater can ever move a lock another one just claimed (#1472 review). Release removes a file only
+ * while it is still exactly ours.
  */
 import { linkSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -31,6 +33,11 @@ export interface InstallLockDeps {
   pid: number;
   /** `ps -o lstart= -p <pid>`, trimmed; null when the process does not exist or cannot be read. */
   processStart(pid: number): string | null;
+  /** Does the pid exist (false only for a definite "no such process")? Default: process.kill(pid, 0). */
+  exists?(pid: number): boolean;
+  /** Test seams (another updater's turn): after a lock was judged stale; after it was moved aside. */
+  afterStaleJudged?(): void;
+  afterStaleMoved?(): void;
   newToken(): string;
   now(): Date;
   log(message: string): void;
@@ -51,9 +58,19 @@ export function parseInstallLock(text: string): InstallLockRecord | null {
     ? r as InstallLockRecord : null;
 }
 
-/** Is the recorded holder still that very process? */
-export function holderIsLive(record: InstallLockRecord, deps: Pick<InstallLockDeps, "processStart">): boolean {
-  return deps.processStart(record.pid) === record.processStart;
+const pidExists = (pid: number): boolean => {
+  try { process.kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException).code !== "ESRCH"; }
+};
+
+/**
+ * The recorded holder: "live" (that very process), "stale" (PROVEN gone: no such pid, or the pid now belongs to a
+ * process that started at another time), or "unknown" (it exists, but its start time cannot be read) — which blocks.
+ */
+export function holderState(record: { pid: number; processStart: string }, deps: Pick<InstallLockDeps, "processStart" | "exists">): "live" | "stale" | "unknown" {
+  if (!(deps.exists ?? pidExists)(record.pid)) return "stale";
+  const seen = deps.processStart(record.pid);
+  if (seen === null) return "unknown";
+  return seen === record.processStart ? "live" : "stale";
 }
 
 const readOrNull = (path: string): string | null => { try { return readFileSync(path, "utf8"); } catch { return null; } };
@@ -84,27 +101,51 @@ export function acquireInstallLock(prefix: string, target: { spec: string; agend
   if (seen === null) return { ok: false, path, reason: `another install is starting on ${canonical} (its lock ${path} appeared and went); retry` };
   const holder = parseInstallLock(seen);
   if (!holder) return { ok: false, path, reason: `the install lock ${path} cannot be read as a lock; if no other \`agend update\` is running, remove it and retry` };
-  if (holderIsLive(holder, deps)) {
+  const state = holderState(holder, deps);
+  if (state === "live") {
     return { ok: false, path, reason: `another AgEnD install is running on ${canonical} (pid ${holder.pid}, installing ${holder.targetSpec} for ${holder.agendHome}); wait for it to finish` };
   }
-  // Stale: set it aside and check that what was set aside is the stale lock just judged — another updater may have
-  // replaced it in between, and that one is live: put it back (link fails rather than overwrite) and refuse.
-  const aside = `${path}.stale-${deps.pid}-${record.token.slice(0, 8)}`;
-  try { renameSync(path, aside); } catch { return { ok: false, path, reason: `another install is starting on ${canonical}; retry` }; }
-  const moved = readOrNull(aside);
-  if (moved !== seen) {
-    try { linkSync(aside, path); } catch { /* yet another claim landed: theirs stays */ }
-    try { unlinkSync(aside); } catch { /* best effort */ }
-    return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
+  if (state === "unknown") {
+    return { ok: false, path, reason: `whether the install that holds ${path} (pid ${holder.pid}) is still running cannot be told; retry, or remove the lock once no \`agend update\` runs` };
   }
-  try { unlinkSync(aside); } catch { /* best effort */ }
-  deps.log(`  Replaced a stale install lock (pid ${holder.pid} is gone, was installing ${holder.targetSpec}).`);
+
+  // Stale. Moving the lock file is owned too: only the holder of the reclaim marker may do it. Without that, an updater
+  // that judged an old stale lock could move a lock another updater has just claimed in its place (#1472 review).
+  const marker = `${path}.reclaim`;
+  deps.afterStaleJudged?.();
+  try { writeFileSync(marker, serialized, { flag: "wx", mode: 0o600 }); }
+  catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") return { ok: false, path, reason: `the reclaim marker ${marker} could not be created (${(err as Error).message})` };
+    const other = parseInstallLock(readOrNull(marker) ?? "");
+    const otherState = other ? holderState(other, deps) : "unknown";
+    // A marker is held for a few file operations; one left by a crash in that window is never taken automatically.
+    return otherState === "live"
+      ? { ok: false, path, reason: `another install is replacing the stale lock on ${canonical}; retry` }
+      : { ok: false, path, reason: `a reclaim marker ${marker} was left behind (pid ${other?.pid ?? "unknown"}); if no \`agend update\` runs, remove it and retry` };
+  }
   try {
-    if (claim()) return ours;
-  } catch (err) {
-    return { ok: false, path, reason: `the install lock ${path} could not be created (${(err as Error).message})` };
+    // Under the marker the lock can change only by its live owner's release — and its holder is proven gone — so the
+    // file judged above is still the one to move; re-read anyway and refuse on any difference.
+    if (readOrNull(path) !== seen) return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
+    const aside = `${path}.stale-${deps.pid}-${record.token.slice(0, 8)}`;
+    try { renameSync(path, aside); } catch { return { ok: false, path, reason: `another install is starting on ${canonical}; retry` }; }
+    deps.afterStaleMoved?.();
+    if (readOrNull(aside) !== seen) {
+      // Cannot happen under the marker; if it ever does, theirs goes back (link never overwrites) and nothing is deleted.
+      try { linkSync(aside, path); unlinkSync(aside); } catch { deps.log(`  ⚠ An install lock changed while it was being replaced; left at ${aside}.`); }
+      return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
+    }
+    try { unlinkSync(aside); } catch { /* best effort */ }
+    deps.log(`  Replaced a stale install lock (pid ${holder.pid} is gone, was installing ${holder.targetSpec}).`);
+    try {
+      if (claim()) return ours;
+    } catch (err) {
+      return { ok: false, path, reason: `the install lock ${path} could not be created (${(err as Error).message})` };
+    }
+    return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
+  } finally {
+    releaseIfOurs(marker, serialized, deps);
   }
-  return { ok: false, path, reason: `another install is starting on ${canonical}; retry` };
 }
 
 /** Remove the lock only while it is still exactly the one this process wrote; never another owner's. */

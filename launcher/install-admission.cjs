@@ -27,12 +27,16 @@ function globalPrefix(pkgDir) {
 /** ps by absolute path when it is where the OS keeps it: a service's or a test's PATH may not reach it. */
 var PS = ["/bin/ps", "/usr/bin/ps"].filter(function (p) { try { fs.accessSync(p, fs.constants.X_OK); return true; } catch (e) { return false; } })[0] || "ps";
 
-/** As the updater reads it: `ps -o lstart=` under LC_ALL=C (same TZ, inherited). */
+/**
+ * A process's start time as one canonical text: `ps -o lstart=` under LC_ALL=C and TZ=UTC, so every caller — whatever
+ * its own locale or time zone — reads the same text for the same process. null: it could not be read.
+ */
 function processStart(pid) {
   try {
     var env = {};
     Object.keys(process.env).forEach(function (k) { env[k] = process.env[k]; });
     env.LC_ALL = "C";
+    env.TZ = "UTC";
     var r = childProcess.spawnSync(PS, ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 5000, env: env, stdio: ["ignore", "pipe", "ignore"] });
     var text = String(r.stdout || "").trim();
     return r.status === 0 && text ? text : null;
@@ -41,18 +45,37 @@ function processStart(pid) {
   }
 }
 
+/** The record, exactly as the updater validates it (src/install-lock.ts parseInstallLock), or null. */
+/** Does `pid` exist? Only a definite "no such process" is no. */
+function exists(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code !== "ESRCH"; }
+}
+
+/**
+ * The lock holder's state: "live" (that very process), "stale" (PROVEN gone: no such pid, or the pid is now a process
+ * that started at another time), or "unknown" (it exists but its start time cannot be read) — which blocks, never
+ * counts as stale. deps (tests): exists, processStart.
+ */
+function holderState(lock, deps) {
+  var d = deps || {};
+  if (!(d.exists || exists)(lock.pid)) return "stale";
+  var seen = (d.processStart || processStart)(lock.pid);
+  if (seen === null || seen === undefined) return "unknown";
+  return seen === lock.processStart ? "live" : "stale";
+}
+
 function parse(text) {
   var r;
   try { r = JSON.parse(text); } catch (e) { return null; }
-  return r && typeof r.pid === "number" && r.pid > 0 && typeof r.processStart === "string" && r.processStart
-    && typeof r.token === "string" && /^[0-9a-f]{32,}$/.test(r.token) && typeof r.prefix === "string" ? r : null;
+  return r && typeof r === "object" && Number.isSafeInteger(r.pid) && r.pid > 0 && typeof r.processStart === "string" && r.processStart
+    && typeof r.prefix === "string" && typeof r.token === "string" && /^[0-9a-f]{32,}$/.test(r.token)
+    && typeof r.targetSpec === "string" && typeof r.agendHome === "string" && typeof r.createdAt === "string" ? r : null;
 }
 
 /** { ok: true, why } or { ok: false, reason }. deps (tests): env, processStart. */
 function admit(pkgDir, deps) {
   var d = deps || {};
   var env = d.env || process.env;
-  var start = d.processStart || processStart;
   var token = env[TOKEN_ENV] || "";
   var real;
   try { real = fs.realpathSync(pkgDir); } catch (e) { real = pkgDir; }
@@ -69,8 +92,9 @@ function admit(pkgDir, deps) {
   }
   var lock = parse(text);
   if (!lock) return { ok: false, reason: "the install lock " + lockPath + " cannot be read as a lock; if no `agend update` is running, remove it and retry" };
-  var live = start(lock.pid) === lock.processStart;
-  if (!live) {
+  var state = holderState(lock, d);
+  if (state === "unknown") return { ok: false, reason: "whether the AgEnD update that holds " + lockPath + " (pid " + lock.pid + ") is still running cannot be told; retry" };
+  if (state === "stale") {
     return token ? { ok: false, reason: "the AgEnD update that held " + lockPath + " is gone, so its token cannot authorise this install" } : { ok: true, why: "a stale lock and no token: an external install" };
   }
   if (lock.prefix !== prefix) return { ok: false, reason: "the install lock " + lockPath + " names another prefix (" + lock.prefix + ")" };
@@ -78,4 +102,4 @@ function admit(pkgDir, deps) {
   return { ok: false, reason: "an `agend update` (pid " + lock.pid + ") is installing into " + prefix + " right now; wait for it, then retry" };
 }
 
-module.exports = { LOCK: LOCK, TOKEN_ENV: TOKEN_ENV, admit: admit, globalPrefix: globalPrefix, processStart: processStart };
+module.exports = { LOCK: LOCK, TOKEN_ENV: TOKEN_ENV, admit: admit, globalPrefix: globalPrefix, processStart: processStart, exists: exists, holderState: holderState, parse: parse };

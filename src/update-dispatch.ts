@@ -42,11 +42,17 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
     return { ok: false, reason: "npm could not say where AgEnD is installed" };
   }
   const pkgDir = join(last(root.stdout), "@songsid", "agend");
-  let manifest: { name?: string; version?: string; bin?: string | Record<string, string> };
-  try { manifest = JSON.parse(await deps.readFile(join(pkgDir, "package.json"))); }
-  catch { return { ok: false, reason: `${pkgDir} is not an installed AgEnD package` }; }
-  const binRel = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.agend;
-  if (manifest.name !== "@songsid/agend" || !manifest.version || !binRel) return { ok: false, reason: `${pkgDir} is not an installed AgEnD package` };
+  const notAgend = { ok: false as const, reason: `${pkgDir} is not an installed AgEnD package` };
+  let parsed: unknown;
+  try { parsed = JSON.parse(await deps.readFile(join(pkgDir, "package.json"))); }
+  catch { return notAgend; }
+  // Whatever parsed (null, an array, a string…) is judged by shape, never dereferenced blindly.
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return notAgend;
+  const manifest = parsed as { name?: unknown; version?: unknown; bin?: unknown };
+  const bin = manifest.bin;
+  const binRel = typeof bin === "string" ? bin
+    : typeof bin === "object" && bin !== null && !Array.isArray(bin) && typeof (bin as Record<string, unknown>).agend === "string" ? (bin as Record<string, string>).agend : null;
+  if (manifest.name !== "@songsid/agend" || typeof manifest.version !== "string" || !manifest.version || !binRel) return notAgend;
   const agend = join(last(prefix.stdout), "bin", "agend");
   let target: string, linked: string;
   try { [target, linked] = await Promise.all([deps.realpath(join(pkgDir, binRel)), deps.realpath(agend)]); }

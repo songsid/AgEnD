@@ -1388,6 +1388,8 @@ export class Daemon extends EventEmitter {
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
   private autoResolvedDialogGeneration = 0;
+  /** Per-launch safety phases survive startup handoff, redraws and failed/uncertain key ACKs. */
+  private launchDialogClaims: { spawn: number; attempt: number; keys: Set<string> } | null = null;
   /**
    * (#1103) Proof that THIS spawn's Codex went onto Luna Reserve: AgEnD saw (and
    * answered) the usage-limit menu that codex shows when it switches itself to
@@ -3404,7 +3406,8 @@ export class Daemon extends EventEmitter {
     const busyPattern = this.backend.getBusyPattern?.() ?? null;
 
     this.errorMonitorTimer = setInterval(async () => {
-      if (!this.tmux || this.spawning) return;
+      if (!this.tmux || this.spawning || this.deliveryWritesStopping) return;
+      const pollTmux = this.tmux;
       // This poll belongs to the spawn and the monitors it started under. Every await below can outlive them (a stop,
       // a pause, a respawn); a stale poll must not touch state a newer one owns, so it checks before committing.
       const pollSpawn = this.spawnGeneration;
@@ -3413,16 +3416,17 @@ export class Daemon extends EventEmitter {
       const captureOrder = ++this.interactionCaptureSerial;
       const captureMono = performance.now();
       const stale = (): boolean => pollSpawn !== this.spawnGeneration || pollFence !== this.launchFenceEpoch
-        || !sameInteractionOwner(pollOwner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning;
+        || !sameInteractionOwner(pollOwner, this.interactionOwner()) || this.runtimeMonitorsFrozen || this.spawning
+        || this.deliveryWritesStopping || this.tmux !== pollTmux;
       let scanStartedAt: number | null = null;
       const endScan = () => { if (scanStartedAt !== null) noteSyncWork("daemon.errorMonitorScan", scanStartedAt); scanStartedAt = null; };
       try {
-        const alive = await this.tmux.isWindowAlive();
+        const alive = await pollTmux.isWindowAlive();
         if (stale()) return;
         if (!alive) return;
 
         const captureAt = Date.now();
-        const pane = await this.tmux.capturePane();
+        const pane = await pollTmux.capturePane();
         // The scan of this pane is synchronous until it answers a dialog (an await) or ends: attributed (#1235).
         scanStartedAt = performance.now();
         if (stale()) return;
@@ -3499,9 +3503,7 @@ export class Daemon extends EventEmitter {
             continue;
           }
           const autoKey = dialog.autoResolutionKey;
-          if (dialog.verifyAfterKeys && autoKey
-            && this.autoResolvedDialogGeneration === this.spawnGeneration
-            && this.autoResolvedDialogKey === autoKey) {
+          if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) {
             // A previous poll sent the safety choice but the CLI has not
             // repainted yet. Never send another Enter into the same screen.
             continue;
@@ -3520,7 +3522,7 @@ export class Daemon extends EventEmitter {
             const currentAt = Date.now();
             const currentMono = performance.now();
             const currentOrder = ++this.interactionCaptureSerial;
-            const currentPane = await this.tmux!.capturePane();
+            const currentPane = await pollTmux.capturePane();
             // Every await below can outlive the spawn / monitors this poll started under: after each one, before
             // any state is touched or any further key is sent, `stale()` (fixed at the poll's start) is asked again.
             if (stale()) return;
@@ -3541,25 +3543,21 @@ export class Daemon extends EventEmitter {
             // too only when the backend vouches for the identity — an unrecognised difference (a timer, a spinner) is
             // not evidence that the old request was answered, and the one-minute fallback must keep running.
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
-            if (dialog.verifyAfterKeys && autoKey
-              && this.autoResolvedDialogGeneration === this.spawnGeneration
-              && this.autoResolvedDialogKey === autoKey) return;
-            if (dialog.verifyAfterKeys && autoKey) {
-              this.autoResolvedDialogGeneration = this.spawnGeneration;
-              this.autoResolvedDialogKey = autoKey;
-            }
+            if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) return;
+            if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
             this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
+              if (stale()) return;
               let sent = false;
               if (SPECIAL_KEYS.has(key)) {
-                sent = await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+                sent = await pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
               } else {
-                sent = await this.tmux!.pasteText(key, this.systemPasteOptions());
+                sent = await pollTmux.pasteText(key, this.systemPasteOptions());
               }
               if (stale()) return;
               if (!sent) {
-                if (dialog.verifyAfterKeys && autoKey) {
+                if (dialog.verifyAfterKeys && autoKey && !dialog.oncePerLaunch) {
                   this.autoResolvedDialogGeneration = 0;
                   this.autoResolvedDialogKey = null;
                 }
@@ -3573,7 +3571,7 @@ export class Daemon extends EventEmitter {
               const afterKeysAt = Date.now();
               const afterKeysMono = performance.now();
               const afterKeysOrder = ++this.interactionCaptureSerial;
-              const afterKeysPane = await this.tmux!.capturePane();
+              const afterKeysPane = await pollTmux.capturePane();
               if (stale()) return;
               const dialogStillActive = dialog.inputBlocked
                 ? dialogs.some(candidate => candidate.inputBlocked && Daemon.dialogMatches(candidate, afterKeysPane))
@@ -3599,7 +3597,7 @@ export class Daemon extends EventEmitter {
               // backend-named identity any difference on the screen (a ticking timer) proves nothing either way: nothing
               // is reported and the parked clock is left alone. Two requests that look exactly alike cannot be told apart.
               await new Promise(r => setTimeout(r, DIALOG_ANSWER_SETTLE_MS));
-              const afterPane = await this.tmux!.capturePane();
+              const afterPane = await pollTmux.capturePane();
               if (stale()) return;                           // (nothing was touched since the last check: only a read)
               const stillThere = Daemon.dialogMatches(dialog, afterPane);
               const same = stillThere && Daemon.screenOf(dialog, afterPane) === before;
@@ -6964,6 +6962,32 @@ export class Daemon extends EventEmitter {
     return active;
   }
 
+  private hasAutoDialogClaim(dialog: RuntimeDialog): boolean {
+    const key = dialog.autoResolutionKey;
+    if (!key) return false;
+    if (dialog.oncePerLaunch) {
+      const claims = this.launchDialogClaims;
+      return claims !== null && claims.spawn === this.spawnGeneration && claims.attempt === this.launchAttempt
+        && claims.keys.has(key);
+    }
+    return this.autoResolvedDialogGeneration === this.spawnGeneration && this.autoResolvedDialogKey === key;
+  }
+
+  private claimAutoDialog(dialog: RuntimeDialog): void {
+    const key = dialog.autoResolutionKey;
+    if (!key) return;
+    if (dialog.oncePerLaunch) {
+      if (!this.launchDialogClaims || this.launchDialogClaims.spawn !== this.spawnGeneration
+        || this.launchDialogClaims.attempt !== this.launchAttempt) {
+        this.launchDialogClaims = { spawn: this.spawnGeneration, attempt: this.launchAttempt, keys: new Set() };
+      }
+      this.launchDialogClaims.keys.add(key);
+      return;
+    }
+    this.autoResolvedDialogGeneration = this.spawnGeneration;
+    this.autoResolvedDialogKey = key;
+  }
+
   /** Whether a runtime prompt currently owns the pane's stdin. */
   public isInputBlocked(): boolean {
     return this.inputBlockedDialogKey !== null;
@@ -7011,8 +7035,7 @@ export class Daemon extends EventEmitter {
       // this spawn is not what the screen is waiting on any more — the entry
       // after it (typically a hold) describes it.
       if (dialog.verifyAfterKeys && dialog.autoResolutionKey
-        && this.autoResolvedDialogGeneration === this.spawnGeneration
-        && this.autoResolvedDialogKey === dialog.autoResolutionKey
+        && this.hasAutoDialogClaim(dialog)
         && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
       this.trackDialogParked(dialog);
       return { state: "dialog", dialog };
@@ -10548,7 +10571,8 @@ export class Daemon extends EventEmitter {
     const ownerTmux = this.tmux;
     const ownerSpawn = this.spawnGeneration;
     const ownerFence = this.launchFenceEpoch;
-    const owned = () => this.tmux === ownerTmux && this.spawnGeneration === ownerSpawn && this.launchFenceEpoch === ownerFence;
+    const owned = () => !this.deliveryWritesStopping && this.tmux === ownerTmux
+      && this.spawnGeneration === ownerSpawn && this.launchFenceEpoch === ownerFence;
     do {
       this.startupAdmission?.();
       attempts++;
@@ -10591,8 +10615,7 @@ export class Daemon extends EventEmitter {
           if (Daemon.dialogMatches(dialog, pane)) {
             if (dialog.autoResolutionKey
               && (attemptedSafetyChoices.has(dialog.autoResolutionKey)
-                || (this.autoResolvedDialogGeneration === this.spawnGeneration
-                  && this.autoResolvedDialogKey === dialog.autoResolutionKey))) continue;
+                || this.hasAutoDialogClaim(dialog))) continue;
             lastDialog = dialog;
             this.noteCodexReserveDialog(dialog, pane);
             cleanReadyPolls = 0;
@@ -10651,8 +10674,7 @@ export class Daemon extends EventEmitter {
               }
               if (dialog.autoResolutionKey) {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
-                this.autoResolvedDialogGeneration = ownerSpawn;
-                this.autoResolvedDialogKey = dialog.autoResolutionKey;
+                this.claimAutoDialog(dialog);
               }
               for (const key of dialog.keys) {
                 this.startupAdmission?.();

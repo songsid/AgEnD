@@ -9,7 +9,7 @@
  *
  * Every command goes through an injected runner, so the sequence is testable without npm, nvm or a fleet.
  */
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { rmSync } from "node:fs";
 import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
 
@@ -50,6 +50,11 @@ export interface UpdateInstallPlan {
    */
   rollback?: boolean;
   now?(): Date;
+  /**
+   * nvm's Node 22 bin directory, resolved ONCE (runUpdateInstall sets it): locking, installing and verifying then run
+   * on that exact selection, never on a fresh `nvm use 22` that could pick another Node 22 in between (#1472 review).
+   */
+  nvmBin?: string;
 }
 
 export type UpdateInstallOutcome =
@@ -65,6 +70,10 @@ export type UpdateInstallOutcome =
 export const NVM_RUN_SCRIPT = 'n=$1; shift; . "$n" --no-use >/dev/null 2>&1 && nvm use 22 >/dev/null 2>&1 && "$@"';
 /** Getting nvm's Node 22, before its prefix can be locked and installed into: `$1` = nvm.sh, as data. */
 export const NVM_PREPARE_SCRIPT = 'n=$1; . "$n" --no-use && nvm install 22';
+/** Which Node `nvm use 22` selects: its absolute path, printed once. `$1` = nvm.sh, as data. */
+export const NVM_SELECT_SCRIPT = 'n=$1; . "$n" --no-use >/dev/null 2>&1 && nvm use 22 >/dev/null 2>&1 && command -v node';
+/** Run the remaining arguments with a frozen nvm bin directory first on PATH (`$1`, as data). */
+export const NVM_BIN_SCRIPT = 'd=$1; shift; PATH="$d:$PATH"; export PATH; exec "$@"';
 
 /**
  * Run `argv` in the environment the new `agend` will run in: the parent's PATH for a direct install, nvm's Node 22
@@ -72,6 +81,7 @@ export const NVM_PREPARE_SCRIPT = 'n=$1; . "$n" --no-use && nvm install 22';
  */
 function inInstallEnv(runner: CommandRunner, plan: UpdateInstallPlan, argv: string[], options: { inherit?: boolean; timeoutMs?: number; env?: Record<string, string> } = {}): CommandResult {
   if (!plan.viaNvm) return runner.run(argv[0]!, argv.slice(1), options);
+  if (plan.nvmBin) return runner.run("bash", ["-c", NVM_BIN_SCRIPT, "bash", plan.nvmBin, ...argv], options);
   return runner.run("bash", ["-c", NVM_RUN_SCRIPT, "bash", plan.nvmSh, ...argv], options);
 }
 
@@ -218,6 +228,13 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
 
   if (plan.viaNvm && runner.run("bash", ["-c", NVM_PREPARE_SCRIPT, "bash", plan.nvmSh], { inherit: true }).status !== 0) {
     return { ok: false, stage: "install", message: "  Failed to install Node 22 via nvm. The current install was not touched." };
+  }
+  if (plan.viaNvm) {
+    // Freeze the selection: the prefix that is locked is the prefix npm installs into and the one verified.
+    const selected = runner.run("bash", ["-c", NVM_SELECT_SCRIPT, "bash", plan.nvmSh], { timeoutMs: 30_000 });
+    const node = selected.stdout.trim().split("\n").pop()?.trim() ?? "";
+    if (selected.status !== 0 || !node.startsWith("/")) return { ok: false, stage: "install", message: "  Could not tell which Node `nvm use 22` selects. The current install was not touched." };
+    plan = { ...plan, nvmBin: dirname(node) };
   }
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
   const env: Record<string, string> = {};
