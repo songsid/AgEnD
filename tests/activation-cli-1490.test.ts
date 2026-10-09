@@ -130,3 +130,30 @@ describe("system-source runtime mismatch recovery reaches the actual CLI refusal
     else { expect(text).toContain("Environment=PATH"); expect(text).toContain("systemctl daemon-reload"); expect(text).toContain("writes only a user service"); }
   });
 });
+
+describe("the hosted native acceptance callback uses the new outcome contract", () => {
+  it.each([
+    [0, null, 0, null, "active", "restarted"],
+    [1, null, 0, null, "active", "failed"],
+    [null, "SIGTERM", 0, null, "active", "failed"],
+    [0, null, 1, null, "active", "failed"],
+    [0, null, 0, "SIGTERM", "active", "failed"],
+    [0, null, 0, null, "inactive", "failed"],
+  ])("restart %s/%s and state %s/%s/%s → %s", (status, signal, stateStatus, stateSignal, state, expected) => {
+    const source = fs.readFileSync(new URL("../scripts/ci/runtime-acceptance/native-c6.mjs", import.meta.url), "utf8");
+    const ast = ts.createSourceFile("native-c6.mjs", source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.JS);
+    let callback: string | undefined;
+    function visit(node: ts.Node): void {
+      if (ts.isPropertyAssignment(node) && node.name.getText(ast) === "restart" && node.initializer.getText(ast).includes('sd("restart"')) callback = node.initializer.getText(ast);
+      ts.forEachChild(node, visit);
+    }
+    visit(ast); expect(callback).toBeDefined();
+    const sd = vi.fn((command: string) => command === "restart" ? { status, signal } : { status: stateStatus, signal: stateSignal, stdout: `${state}\n` });
+    const context = createContext({ sd, unit: "private-inert" });
+    expect(runInContext(`let restarts = 0; (${callback})()`, context)).toBe(expected);
+    expect(runInContext("restarts", context)).toBe(1);
+    expect(sd).toHaveBeenNthCalledWith(1, "restart", "private-inert.service");
+    if (status === 0 && signal === null) expect(sd).toHaveBeenNthCalledWith(2, "is-active", "private-inert.service");
+    else expect(sd).toHaveBeenCalledTimes(1);
+  });
+});
