@@ -66,7 +66,8 @@ async function loadAll(lease) {
   const connections = await read(lease, "/api/settings/connections");
   if (!lease.current()) return null;
   out.connections = connections.ok && Array.isArray(connections.body) ? connections.body : [];
-  const secrets = await read(lease, "/api/settings/provider-secrets");
+  // Only where the fleet offers them (the schema says so): otherwise the route is a 404 and there is nothing to show.
+  const secrets = out.schema && out.schema.provider_secrets === false ? { ok: false } : await read(lease, "/api/settings/provider-secrets");
   if (!lease.current()) return null;
   out.providerOk = secrets.ok;
   out.providerSecrets = secrets.ok && Array.isArray(secrets.body) ? secrets.body : [];
@@ -329,7 +330,7 @@ function Agents({ ctx, search, openDialog }) {
     setBusy((b) => new Map(b).set(name, action));
     try { await work(); } finally { setBusy((b) => { const n = new Map(b); n.delete(name); return n; }); }
   };
-  const head = html`<div class="list-head"><span>${tn("countAgents", Object.keys(insts).length)}</span>
+  const head = html`<div class="list-head"><span>${Object.keys(insts).length === 1 ? tn("countAgent") : tn("countAgents", Object.keys(insts).length)}</span>
     <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button></div>`;
   if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />`;
   if (!groups.length) return html`${head}<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
@@ -370,7 +371,7 @@ function Bots({ ctx, search, openDialog }) {
   const all = channelsOf(ctx.fleet);
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
-  const head = html`<div class="list-head"><span>${tn("countBots", all.length)}</span>
+  const head = html`<div class="list-head"><span>${all.length === 1 ? tn("countBot") : tn("countBots", all.length)}</span>
     <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "newBot" })}><${Icon} name="plus" size=${16} />${tn("newBot")}</button></div>`;
   return html`${head}
     ${!rows.length ? html`<${Empty} icon="plug" title=${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")} />` : html`<div class="s-list">${rows.map(({ ch, i }) => {
@@ -464,7 +465,7 @@ function Classic({ ctx, search, openDialog }) {
     .sort((a, b) => ((STATUS_ORDER[ctx.classicRuntime(a.instanceName).status] ?? 9) - (STATUS_ORDER[ctx.classicRuntime(b.instanceName).status] ?? 9))
       || String(a.name || "").localeCompare(String(b.name || "")));
   if (!list.length) return html`<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
-  return html`<div class="list-head"><span>${tn("countRooms", rooms.length)}</span></div><div class="s-list">${list.map((c) => {
+  return html`<div class="list-head"><span>${rooms.length === 1 ? tn("countRoom") : tn("countRooms", rooms.length)}</span></div><div class="s-list">${list.map((c) => {
     const rt = ctx.classicRuntime(c.instanceName);
     const sum = effectiveSummary(ctx.live[c.instanceName] || {}, c, ctx.fleet.defaults || {}, (ctx.classic && ctx.classic.defaults) || {});
     const adapter = c.adapterId || "discord";

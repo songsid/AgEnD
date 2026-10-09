@@ -6,7 +6,7 @@ AgEnD 的 web dashboard 是 fleet 自己跑的一個小型 web server，上面�
 
 | 面板 | 用途 |
 |---|---|
-| **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/config`）；**等你處理** 在 `/ui/needs` |
+| **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/org`、`…/cache`、`…/config`）；**等你處理** 在 `/ui/needs` |
 | **`/view`** | 以讀取為主的總覽：每個 agent 的即時終端、名單、用量，也可以編輯 agent 的個人檔案與頭像 |
 | **`/settings`** | fleet 設定——agent、連線、ClassicBot、預設值、`fleet.yaml`——可以套用並重啟。每個分頁都有自己的網址：`/settings/bots`、`…/classic`、`…/general`、`…/advanced`（`/settings` 是 Agent） |
 
@@ -152,6 +152,20 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
 - **快速動作**：
   - 聊天標題列上的模型與推理強度，點了會開啟可選清單。
   - instance 的 context 用到 70% 時，輸入框上方會出現 **壓縮** 和 **清空…**。
+
+## Fleet（`/ui/fleet`）
+fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
+- **Tasks**、**排程**、**Teams**：任務看板、cron 排程和 team。可以在這裡建立、認領和刪除。
+- **組織圖**（`/ui/fleet/org`）：最上方是 General，下面是 `fleet.yaml` 的各個 team，最後是未加入 team 的 instance。
+  - 每個 instance 顯示名稱、它負責的工作、backend 與模型，以及即時狀態（工作中、閒置、等你回應、似乎卡住、已暫停、已停止、已當掉）。
+  - 也附上它的 Discord 討論串或 Telegram topic 連結，以及聊天連結。
+  - 組織圖唯讀：操作請在 Discord 或聊天裡進行。
+- **快取**（`/ui/fleet/cache`）：在 24 小時、7 天或 30 天內，每個 Claude Code 與 Codex instance 的提示快取在兩次請求之間過期的頻率、重寫的成本，以及保溫 ping 是否划算。
+  - 資料來自本機的 transcript，不呼叫任何供應商 API；每個 instance 只保存一份小摘要（`cache-ledger.json`）。
+  - 成本以單一價目表的牌價計算，並顯示查證日期。
+  - transcript 有記錄快取寫入時就採用它；沒有記錄時（部分 Codex session），改以未快取的輸入估算重寫量，數字會標示為估算；快取存活時間只能假定時也會標示為估算。
+  - Kiro 與其他 CLI 顯示「不提供」。
+- **設定**：fleet 的頻道、存取權限與預設值。
 
 ## 等你處理（`/ui/needs`）
 
