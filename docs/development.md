@@ -394,7 +394,8 @@ Run the gate from a clone whose `origin` is the repository. It fetches into
 these hold:
 
 1. **The approval is verified.** The delivery has that message id, comes from
-   the reviewer (`GATE_APPROVER`, default `agend-reviewer`), its content
+   one of the reviewer prefixes (`GATE_APPROVER`, comma-separated; default
+   `agend-reviewer,claude-fable-`), its content
    matches its `content_sha256`, and it has the verdict line above for this PR
    and SHA.
 2. **The PR is open** and not a draft, and the fetched `refs/pull/<n>/head` is
@@ -409,7 +410,12 @@ these hold:
 
    This is compared on every path except `docs/` and `changes/`. Anything else
    prints `NEEDS_REVIEW <paths>`, and the reviewer re-confirms.
-4. **The base branch tip is an ancestor** of the head.
+4. **The base branch tip is an ancestor**, or the base and PR changed entirely
+   disjoint paths since their merge-base. Both rename ends, deletions, docs and
+   fragments count. If the base changed root `package.json`, `package-lock.json`
+   or any `.github/**` path, it always requires merge-sync. Any overlap or
+   failed read blocks. A disjoint merge prints `merged behind main, disjoint`
+   on stderr; it still requires the original approved exact head and green CI.
 5. **CI passed in full on the exact head.** Every required check has a run, and
    every run (the latest of each name) is completed with `success`. A skipped
    or neutral run does not count. The required checks are
@@ -434,5 +440,61 @@ The output is one line: `MERGED <merge sha>` (exit 0), `WOULD_MERGE <head>`
 with `--dry-run` (exit 0, nothing changed), `BLOCKED <reason>` (exit 1) or
 `NEEDS_REVIEW <paths>` (exit 3).
 
-After changing the script, install it again:
-`install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh`.
+### Main CI after landing
+
+The gate records an operation receipt in the clone's Git common directory,
+`agend-gate/` (0700 directory, 0600 files). It binds the repository, original
+PR, approved/head SHA and a random operation marker in the squash message.
+Only a verified single-parent squash merged by this gate is eligible; older
+merges without receipts and manually merged commits are not. The marker alone
+is not authority. This is a same-user operator boundary, like the supplied
+approval JSON; it is not protection against the owner editing private state.
+
+Run the following command again as CI progresses; it does not install a timer:
+
+```bash
+gate-merge.sh --post-merge-check <full-gate-squash-sha>
+```
+
+It reads the latest exact-SHA **push to main** run of each Actions workflow. `HEALTHY` and
+`PENDING` cause no action. `HEALTHY` also requires every required and present
+check on that main SHA to pass; early workflow success with checks not yet
+registered stays `PENDING`. Missing, partial, unreadable, cancelled or otherwise
+uncertain results are `BLOCKED`, also with no action. A completed `failure`
+permits one generated `git revert <sha>` in a detached private worktree and one
+revert PR into main. The failed commit may be behind main; conflicts block
+before pushing. No arbitrary edits or multiple-commit reverts are authorized.
+
+`REVERT_PENDING #<pr> <head>` waits for every required and present check on that
+exact revert head to succeed (skipped is still not green). Run the command
+again to finish: it rechecks the original failure, recorded branch/tree/parent
+and exact CI. After those network reads, it rechecks the full recorded PR
+identity (repository, number, state, draft, head, branch and main destination),
+refreshes main, and validates squash ancestry and path overlap before merging
+with `--match-head-commit`. This one generated revert requires no reviewer approval.
+It prints `REVERTED <sha>`, and subsequent runs do not create another PR. A
+lost create/merge response is read back; an uncertain result blocks instead of
+blindly creating a new proposal. Main changes overlapping the revert, changed
+revert branches, failed checks and unavailable reads require operator action.
+The revert is not itself eligible for recursive automatic reversion.
+
+The GitHub merge API pins the head but does not atomically pin the base or main
+tip. A change after the final snapshots can still race the remote operation.
+The merge readback must retain the same full PR identity and main destination
+before `REVERTED` is recorded. A changed destination is `BLOCKED`, leaves the
+receipt unsettled, and requires inspection of the remote effect; a retry cannot
+adopt that wrong-base merge.
+
+The private receipt and per-target lock must stay with the clone. Do not delete
+or copy them to bypass a failure. A terminated operator command can leave a lock
+or private worktree; inspect the remote PR/ref and the receipt before manually
+recovering that state. This tool reports CI when invoked; the coordinator must
+invoke it after each gate merge and again when a pending run completes.
+
+After changing the gate, deploy **both files together** (the helper is loaded
+relative to the script):
+
+```bash
+install -m 755 scripts/gate-merge.sh ~/.agend/scripts/gate-merge.sh
+install -m 644 scripts/gate-support.mjs ~/.agend/scripts/gate-support.mjs
+```
