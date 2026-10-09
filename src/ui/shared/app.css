@@ -340,7 +340,7 @@ a { color: inherit; text-decoration: none; }
 /* #1266: an agent reply's buttons — choices under the text; one answers for everyone. */
 .rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
 .rb-btn { max-width: 100%; white-space: normal; text-align: left; }
-.rb-btn.chosen { border-color: var(--ok); color: var(--text); }
+.rb-btn.chosen, .rb-btn.chosen:disabled { border-color: var(--ok); color: var(--text); background: color-mix(in srgb, var(--ok) 14%, transparent); font-weight: var(--fw-semibold); opacity: 1; }
 .rb-btn:disabled:not(.chosen) { opacity: 0.55; }
 .rb-note { font-size: var(--fs-xs); color: var(--text-3); }
 .pv-menu { position: relative; }
