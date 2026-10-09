@@ -12,6 +12,8 @@ description = "Confirmed false positives: a fake JWT fixture, public WebSocket h
 paths = [
   # Known fake JWT used to verify progress-log redaction
   '''^tests/tool-progress\.test\.ts$''',
+  # Agent endpoint auth tests — tokens are makeCtx() fixture values, not real credentials
+  '''^tests/agent-endpoint-auth-1489\.test\.ts$''',
   # Vendored third-party xterm.js (minified high-entropy strings, not secrets)
   '''^src/ui/web-terminal/vendor/.*\.js$''',
 ]

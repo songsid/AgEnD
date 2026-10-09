@@ -61,7 +61,7 @@ This check limits DNS rebinding from a browser. It is **not authentication**: an
 
 ## Agent HTTP token
 
-`POST /agent` bypasses the dashboard gate and requires `X-Agend-Instance-Token`, checked against the claimed instance's `agent.token`. The daemon writes a fresh token on each CLI spawn, with mode `0600`; permission-restriction failures are logged and do not necessarily stop startup. The server also enforces that instance's AgEnD tool permissions. A web token is not a substitute for this token. As with the IPC socket, a process running as the same Unix user can read the credential; this is not isolation between mutually untrusted local agents.
+`POST /agent` bypasses the dashboard gate and requires `X-Agend-Instance-Token`. The header value is `<encodedInstance>:<token>`, where `<encodedInstance>` is `encodeURIComponent(instanceName)` and `<token>` is the 64-character hex token the daemon writes to `<instanceDir>/agent.token` (mode `0600`) on each CLI spawn. The endpoint decodes the instance name, verifies the token before reading the request body (missing or wrong token returns 401 without consuming the body), and caps the body at 512 KiB (413 if exceeded). The server also enforces that instance's AgEnD tool permissions. A web token is not a substitute for this token. As with the IPC socket, a process running as the same Unix user can read the credential; this is not isolation between mutually untrusted local agents.
 
 ## Secrets storage
 

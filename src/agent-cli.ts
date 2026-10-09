@@ -26,6 +26,19 @@ function readInstanceToken(): string | null {
   }
 }
 
+/**
+ * Build the `X-Agend-Instance-Token` header value for a given instance and token.
+ *
+ * The instance name is percent-encoded so non-ASCII names (e.g. "鬥破開發-opus-…")
+ * and names containing ":" survive HTTP header transmission without throwing
+ * ERR_INVALID_CHAR. The endpoint reverses this with `decodeURIComponent`.
+ *
+ * Exported so tests call the real encoding logic instead of duplicating it.
+ */
+export function agentTokenHeader(instance: string, token: string): string {
+  return `${encodeURIComponent(instance)}:${token}`;
+}
+
 function post(op: string, args: Record<string, unknown>): Promise<string> {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({ instance: INSTANCE, op, args });
@@ -34,7 +47,11 @@ function post(op: string, args: Record<string, unknown>): Promise<string> {
       "Content-Type": "application/json",
       "Content-Length": Buffer.byteLength(body),
     };
-    if (token) headers["X-Agend-Instance-Token"] = token;
+    // Include the instance name in the header so the endpoint can verify the
+    // token before reading the body (security fix, #1489). The instance name
+    // is percent-encoded so non-ASCII names (e.g. "鬥破開發-opus-…") and names
+    // containing ":" survive HTTP header transmission.
+    if (token) headers["X-Agend-Instance-Token"] = agentTokenHeader(INSTANCE, token);
     const req = request({
       hostname: "127.0.0.1",
       port: PORT,
@@ -219,5 +236,8 @@ async function main(): Promise<void> {
   }
 }
 
-main();
-
+// Only run main() when this file is the entrypoint, not when imported as a module
+// (e.g. in tests that import agentTokenHeader).
+if (import.meta.url === new URL(process.argv[1], "file:").href) {
+  main();
+}
