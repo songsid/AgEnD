@@ -16,6 +16,12 @@ type Meta = { cwd: string | null; subagent: boolean; id: string; updatedAt: numb
 const cache = new Map<string, { signature: string; meta: Meta | null; bytes: number }>();
 const signature = (s: Stats) => `${s.dev}:${s.ino}:${s.size}:${s.mtimeMs}:${s.ctimeMs}`;
 
+// Do not retain a sliced string backed by the entire parsed history buffer.
+const ownString = (value: string): string => Buffer.from(value, "utf16le").toString("utf16le");
+function fileSignature(path: string): string | null {
+  try { return signature(statSync(path)); } catch { return null; }
+}
+
 function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): KiroV2StoreReply {
   let names: string[];
   try { names = readdirSync(sessionsDir); } catch (err) {
@@ -29,8 +35,8 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
     if (!name.endsWith(".json")) continue;
     const path = join(sessionsDir, name);
     try {
-      const before = signature(statSync(path));
-      let entry = cache.get(path);
+      const before = fileSignature(path);
+      let entry = before === null ? undefined : cache.get(path);
       if (!entry || entry.signature !== before) {
         let meta: Meta | null = null;
         try {
@@ -39,12 +45,12 @@ function scan({ keys, sessionsDir }: KiroV2StoreInput, deadlineAt: number): Kiro
           reads++;
           const value = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
           const created = Date.parse(String(value.created_at ?? ""));
-          meta = { cwd: typeof value.cwd === "string" ? value.cwd : null, subagent: value.session_created_reason === "subagent",
-            id: typeof value.session_id === "string" ? value.session_id : name.slice(0, -5),
+          meta = { cwd: typeof value.cwd === "string" ? ownString(value.cwd) : null, subagent: value.session_created_reason === "subagent",
+            id: typeof value.session_id === "string" ? ownString(value.session_id) : name.slice(0, -5),
             updatedAt: Date.parse(String(value.updated_at ?? "")) || 0, createdAt: Number.isFinite(created) ? created : null };
         } catch { /* partly written, as before */ }
-        entry = { signature: before, meta, bytes: 2 * (path.length + before.length + (meta?.cwd?.length ?? 0) + (meta?.id.length ?? 0)) + 128 };
-        if (signature(statSync(path)) === before) {
+        entry = { signature: before ?? "", meta, bytes: 2 * (path.length + (before?.length ?? 0) + (meta?.cwd?.length ?? 0) + (meta?.id.length ?? 0)) + 128 };
+        if (before !== null && fileSignature(path) === before) {
           drop(path);
           if (entry.bytes <= CACHE_BYTES) {
             cache.set(path, entry); cacheBytes += entry.bytes;

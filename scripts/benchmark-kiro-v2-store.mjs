@@ -1,4 +1,5 @@
 /** #1417 fixture-only benchmark; baseline is the exact selector at 7b0a71a7. Run after npm run build. */
+import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -48,7 +49,10 @@ try {
   const cold = await measure(() => lane.read({ keys: kiroDirectoryKeys(cwd), sessionsDir: dir }));
   const warm = [];
   for (let i = 0; i < 3; i++) warm.push(await measure(() => lane.read({ keys: kiroDirectoryKeys(cwd), sessionsDir: dir })));
-  if (cold.result.kind !== "ok" || cold.result.sessions[0]?.id !== "mine") throw new Error("selector mismatch");
+  const expected = before(cwd, dir);
+  assert.equal(cold.result.kind, "ok");
+  assert.deepEqual(cold.result.sessions.map(({ id, updatedAt }) => ({ id, updatedAt })), expected.sessions);
+  for (const row of cold.result.sessions) assert.equal(row.createdAt, expected.createdAt(row.id));
   console.log(JSON.stringify({ fixture: { files: 5, unrelatedHistoryBytes: 64 * 1024 * 1024 },
     before: old, afterCold: cold, afterWarm: warm,
     note: "Wall time, not production attribution. One warm worker; full-body parse in worker, metadata-only cache. maxGap includes worker startup/GC and machine scheduling." }, null, 2));

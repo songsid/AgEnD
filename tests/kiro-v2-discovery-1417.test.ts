@@ -87,6 +87,10 @@ describe("real private worker, exact JSON metadata semantics", () => {
     expect(result.sessions.find(s => s.id === "fallback")?.updatedAt).toBe(0); expect(result.createdAt("fallback")).toBeNull();
     expect(result.createdAt("last")).toBe(Date.parse("2026-10-08T11:00:00Z"));
   });
+  it("copies metadata without changing UTF-16 code units", async () => {
+    const id = "id-\ud800"; file("unicode", { session_id: id });
+    expect(await listKiroV2Sessions(cwd, dir)).toMatchObject({ kind: "ok", sessions: [{ id }] });
+  });
   it("caches only metadata, invalidates changes/replacement and retries repaired malformed files", async () => {
     const lane = new KiroV2StoreLane(); lanes.push(lane); const p = file("a"); const request = { keys: [cwd], sessionsDir: dir };
     const cold = await lane.read(request); expect(cold.kind === "ok" && cold.diagnostics.reads).toBe(1);
