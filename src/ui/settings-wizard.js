@@ -15,15 +15,11 @@ const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = 4;
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }).catch(() => ({ ok: false, status: 0, body: { error: tn("failed") } }));
 
-/** Return a unique platform-specific token_env that is not yet used by any existing connection.
- * Starts with AGEND_TELEGRAM_TOKEN / AGEND_DISCORD_TOKEN and appends _2, _3, …
- * Keeps the current value if it was manually typed (not a wizard-auto default). */
-function defaultTokenEnv(currentEnv, newPlatform, existingConnections) {
+/** Return a unique platform-specific token_env for the given platform.
+ * Only called when the value is still wizard-auto (is_auto flag is true).
+ * User-typed values are preserved by the caller. */
+function computeAutoTokenEnv(newPlatform, existingConnections) {
   const base = newPlatform === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN";
-  const knownDefaults = ["AGEND_TELEGRAM_TOKEN", "AGEND_DISCORD_TOKEN", "AGEND_BOT_TOKEN"];
-  const isAutoValue = !currentEnv || knownDefaults.includes(currentEnv)
-    || /^AGEND_(?:TELEGRAM|DISCORD)_TOKEN(?:_\d+)?$/.test(currentEnv);
-  if (!isAutoValue) return currentEnv;
   var taken = new Set((existingConnections || []).map(function(c) { return c.token_env; }).filter(Boolean));
   if (!taken.has(base)) return base;
   for (var n = 2; ; n++) {
@@ -43,7 +39,7 @@ export function SetupWizard({ ctx, onClose }) {
       if (!lease.current()) return;
       const e = (env && env.body) || { backends: [], channels: [], has_fleet: false };
       setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: "agent-1",
-        platform: "telegram", token: "", token_env: defaultTokenEnv("", "telegram", e.channels || []), group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
+        platform: "telegram", token: "", token_env: computeAutoTokenEnv("telegram", e.channels || []), token_env_is_auto: true, group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
         identity: null, guilds: [], plan: null, offset: 0 });
     })();
   }, [lease]);
@@ -121,13 +117,15 @@ export function SetupWizard({ ctx, onClose }) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
           onClick=${() => setW((x) => ({ ...x, platform: p, identity: null,
-            token_env: defaultTokenEnv(x.token_env, p, (x.env && x.env.channels) || []) }))}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
+            token_env: x.token_env_is_auto
+              ? computeAutoTokenEnv(p, (x.env && x.env.channels) || [])
+              : x.token_env }))}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
       <p class="note">${w.platform === "telegram" ? tn("wizardTelegramHint") : tn("wizardDiscordHint")}</p>`;
   } else if (w.step === 3) {
     body = html`<div class="field"><label for="wz-token">${tn("wizardToken")}</label>
         <input id="wz-token" type="password" autocomplete="new-password" placeholder="123456:ABC-DEF…" value=${w.token} onInput=${(e) => setW({ ...w, token: e.target.value.trim(), identity: null })} />
         <p class="note">${w.platform === "telegram" ? tn("wizardTokenTelegram") : tn("wizardTokenDiscord")}</p></div>
-      <div class="field"><label for="wz-env">${tn("tokenEnv")}</label><input id="wz-env" type="text" value=${w.token_env} onInput=${(e) => set("token_env")(e.target.value.trim())} /></div>
+      <div class="field"><label for="wz-env">${tn("tokenEnv")}</label><input id="wz-env" type="text" value=${w.token_env} onInput=${(e) => setW((x) => ({ ...x, token_env: e.target.value.trim(), token_env_is_auto: false }))} /></div>
       <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${verify}>${tn("wizardVerify")}</button>
         ${w.identity ? html`<span class=${`feedback${w.identity.valid ? "" : " error"}`} role="status">${w.identity.valid ? (w.identity.username || tn("verified")) : (w.identity.reason || tn("verifyFailed"))}</span>` : null}</div>
       ${w.platform === "discord" ? html`
