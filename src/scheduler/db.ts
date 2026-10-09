@@ -291,8 +291,12 @@ export class SchedulerDb {
   }
 
   recordRun(scheduleId: string, status: string, detail?: string): void {
-    this.db.prepare("INSERT INTO schedule_runs (schedule_id, status, detail) VALUES (?, ?, ?)").run(scheduleId, status, detail ?? null);
-    this.db.prepare("UPDATE schedules SET last_triggered_at = datetime('now'), last_status = ? WHERE id = ?").run(status, scheduleId);
+    // Both writes must be atomic: a crash between the INSERT and the UPDATE
+    // would leave a run record without an updated last_triggered_at / last_status.
+    this.db.transaction(() => {
+      this.db.prepare("INSERT INTO schedule_runs (schedule_id, status, detail) VALUES (?, ?, ?)").run(scheduleId, status, detail ?? null);
+      this.db.prepare("UPDATE schedules SET last_triggered_at = datetime('now'), last_status = ? WHERE id = ?").run(status, scheduleId);
+    })();
   }
 
   /** #1426: record (or replace) a schedule's pending retry. */

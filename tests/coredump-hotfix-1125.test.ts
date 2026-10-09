@@ -30,7 +30,9 @@ function installedCopy(globalPkg: string, version: string): void {
   mkdirSync(globalPkg, { recursive: true });
   for (const dir of ["dist", "templates", "launcher"]) spawnSync("cp", ["-r", join(process.cwd(), dir), join(globalPkg, dir)]);
   const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
-  writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ ...manifest, version }));   // bin: the sh launcher
+  // bin: the sh launcher. No runtime pins (#1450): the copy shares node_modules (with the bundled runtime package) but
+  // has no receipt of its own, and these tests are about the restart, not the runtime — so it runs on this Node.
+  writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ ...manifest, version, optionalDependencies: undefined }));
   symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
 }
 
@@ -214,7 +216,8 @@ describe("`agend update` when the package is already current (built CLI copy, st
     mkdirSync(pkg);
     spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
     spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
-    spawnSync("cp", [join(process.cwd(), "package.json"), join(pkg, "package.json")]);
+    // No runtime pins, as in installedCopy (#1450).
+    writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
     symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
@@ -303,12 +306,14 @@ describe("detached `agend restart` signals only a confirmed fleet (built CLI; th
     // AGEND_TEST_SELF_SPAWN_LOG and runs nothing — never a real fleet here.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh\nexit 1\n`);
     chmodSync(join(bin, "systemctl"), 0o755);
+    // A detached restart must run on the Node this package selects (restart guard, #1450 C6). Once the checkout pins
+    // and verified its bundled runtime (npm ci), that is not this test's Node — AGEND_NODE names it as the selection.
     // Real inert orphan ownership/signals, accelerated monotonic budget: the five-minute
     // grace is modelled in ~10s, without changing production or waiting five minutes.
     const clock = join(home, "monotonic-clock.mjs");
     writeFileSync(clock, `const now = performance.now.bind(performance); Object.defineProperty(performance, "now", { value: () => now() * 30 });`);
     const r = spawnSync(process.execPath, ["--import", `file://${clock}`, cli, "restart"], {
-      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}`, AGEND_TEST_SELF_SPAWN_LOG: log },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}`, AGEND_TEST_SELF_SPAWN_LOG: log, AGEND_NODE: process.execPath },
       encoding: "utf8", timeout: 60_000,
     });
     spawnSync("sleep", ["0.5"]);

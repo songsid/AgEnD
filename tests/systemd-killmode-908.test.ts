@@ -9,17 +9,25 @@
  * tmux server went down underneath it.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { ensureSystemdKillModeMixed, ensureSystemdUnitHardening, renderSystemdUnit, unitCoredumpFilterState, unitDropInCandidates } from "../src/service-installer.js";
 import { fakeBusctl } from "./support/fake-busctl.js";
 
-// What `agend restart`'s guard (#1450 C6) expects for this checkout: it pins no runtime, so its selection is the
-// system Node, reached through the package's launcher; the unit's PATH must find this very Node first.
+// What `agend restart`'s guard (#1450 C6) expects for a package that pins no runtime: its selection is the system Node,
+// reached through the package's launcher; the unit's PATH must find this very Node first. This checkout pins the
+// bundled runtime (#1450), so the built CLI runs from a copy of this build WITHOUT the pins (same dist/, launcher/).
+const PKG = mkdtempSync(join(tmpdir(), "agend-908-pkg-"));
+afterAll(() => rmSync(PKG, { recursive: true, force: true }));
+if (existsSync(join(process.cwd(), "dist", "cli.js"))) {
+  for (const dir of ["dist", "templates", "launcher"]) spawnSync("cp", ["-r", join(process.cwd(), dir), join(PKG, dir)]);
+  writeFileSync(join(PKG, "package.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")), optionalDependencies: undefined }));
+  symlinkSync(join(process.cwd(), "node_modules"), join(PKG, "node_modules"));
+}
 const vars = {
-  label: "com.agend.fleet", execPath: join(process.cwd(), "dist", "cli.js"), launcherPath: join(process.cwd(), "launcher", "agend"), workingDirectory: "/home/u/.agend",
+  label: "com.agend.fleet", execPath: join(PKG, "dist", "cli.js"), launcherPath: join(PKG, "launcher", "agend"), workingDirectory: "/home/u/.agend",
   logPath: "/home/u/.agend/daemon.log", path: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
 };
 const dirs: string[] = [];
@@ -239,7 +247,7 @@ describe("#1113: crash dumps, start timeout and start limit", () => {
 });
 
 describe("`agend restart` (what `agend update` spawns) fixes the unit before reloading it", () => {
-  const cli = join(process.cwd(), "dist", "cli.js");
+  const cli = join(PKG, "dist", "cli.js");
   /**
    * The built CLI's `agend restart` with a throwaway HOME and a recording stub
    * systemctl. The stub keeps what systemd has LOADED apart from the file, as
