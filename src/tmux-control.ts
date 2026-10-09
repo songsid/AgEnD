@@ -285,7 +285,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     // A recovered window's "silent since it came back" is an observation too: kept, it would vouch for whatever pane
     // the window re-resolves to inside the new grace (#1494 review).
     this.recoveredAt.clear();
-    this.observationResetAt = Date.now();
+    this.observationResetAt = this.mono();
   }
 
   /**
@@ -313,7 +313,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * An actively generating pane re-registers well inside it.
    */
   private inObservationGrace(): boolean {
-    return this.observationResetAt > 0 && Date.now() < this.observationResetAt + this.silenceMs;
+    return this.observationResetAt > 0 && this.mono() < this.observationResetAt + this.silenceMs;
   }
 
   /**
@@ -361,7 +361,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       if (mapped !== undefined && this.mono() - mapped < this.silenceMs) return false;
       return !this.inObservationGrace();
     }
-    return Date.now() - last >= this.silenceMs;
+    return this.mono() - last >= this.silenceMs;
   }
 
   /**
@@ -452,11 +452,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     if (this.isIdle(windowId)) return Promise.resolve(true);
     return new Promise((resolve) => {
       const check = setInterval(() => {
-        if (this.stopped || this.isIdle(windowId)) {
-          clearInterval(check);
-          clearTimeout(timer);
-          resolve(true);
-        }
+        if (this.stopped) { clearInterval(check); clearTimeout(timer); resolve(false); return; }
+        if (this.isIdle(windowId)) { clearInterval(check); clearTimeout(timer); resolve(true); }
       }, 200);
       const timer = setTimeout(() => {
         clearInterval(check);
@@ -703,7 +700,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     if (line.startsWith("%output ")) {
       const match = line.match(/^%output (%\d+) /);
       if (match) {
-        const at = Date.now();
+        const at = this.mono();
         const paneId = match[1];
         const windowId = this.paneToWindow.get(paneId);
         this.lastOutputAt.set(paneId, at);
