@@ -36,11 +36,34 @@ Goals:
 
 Non-goals: Windows; replacing the user's Node or nvm; changing how backend CLIs are installed.
 
-## Decision needed: where the runtime comes from
+## Where the runtime comes from: **option A, decided** (leader, 2026-10-09)
 
-The brief said "download official Node to `~/.agend/runtime`". Writing it out, a second shape removes most of the
-hard parts, so both are given here with a recommendation. **Leader: please choose; the rest of the document holds
-for either, and the differences are marked.**
+The brief said "download official Node to `~/.agend/runtime`". The location was never a hard requirement; the
+requirement is "upgrade only agend's own Node, never the system Node". **Option A** was chosen for the reason in
+"Why A is safer for the hop". Option B is kept below as the record of what was weighed. Where the rest of this
+document says "option A / option B", only A applies.
+
+Constraints that came with the decision:
+1. **Versioning.**
+   - Runtime packages are keyed to the Node version: `@songsid/agend-node-linux-x64@22.23.3`, with a `-agend.N`
+     suffix only for a repack of the same Node.
+   - agend's `package.json` pins exact versions.
+   - They are republished only when Node is bumped, never per agend release.
+   - CI builds them from GPG/SHASUMS-verified nodejs.org tarballs and publishes them with `--provenance`.
+2. **Size**, measured for linux-x64 node v22.23.3: about 45 MB packed and 125 MB unpacked (`bin/node`, `LICENSE`,
+   `package.json`). That is within what the npm registry serves for single-binary packages. The first publish is a
+   dry run (`npm publish --dry-run`) plus a real publish of the linux-x64 package before the agend change depends on
+   it. Verdaccio's default `max_body_size` (10 MB) must be raised in the CI hop job.
+3. **Optional deps skipped** (`--omit=optional`, `--no-optional`, unsupported os/cpu): use the system Node only if it
+   satisfies `engines`. Otherwise refuse, in postinstall, with the one-line recovery, so npm rolls back. Never leave
+   a half-install.
+4. **musl / Alpine: not now.** It gets the clear refusal unless its system Node qualifies. Reopen if a user asks.
+5. **Precedence:** a capable system Node never beats the version's own runtime. `AGEND_NODE` overrides it, and the
+   fleet logs the override once at start.
+6. **#1442** merges as-is, as the interim net for the Node≥22.14-only alpha. The runtime PRs change it to sol's
+   rule, with tests.
+7. **The CI matrix must prove npm's rollback on a failing root postinstall** (npm 9 / 10.8.2 / 11 × Node 20.19.0 ×
+   Linux and macOS) **before any runtime PR merges.** If any cell fails, work stops and goes back to the leader.
 
 ### Option A (recommended): the runtime is an npm dependency (the esbuild pattern)
 
@@ -317,8 +340,11 @@ explicitly:
 
 ## Delivery plan (PRs)
 
-1. Runtime packages and their publish workflow (option A) or the downloader (option B), with tests. No behaviour
-   change yet.
+0. **The rollback proof (gate):** a CI matrix job, npm 9 / 10.8.2 / 11 × Node 20.19.0 × ubuntu and macos. Over an
+   installed inert v1, it installs an inert v2 whose root postinstall fails, and asserts that v1's package and bin
+   are intact. It also covers a failing preinstall, and an optional dependency that fails to fetch (the root
+   postinstall then refuses). Nothing below merges until every cell passes.
+1. Runtime packages and their publish workflow, with tests. No behaviour change yet.
 2. Launchers and `bin` switch; postinstall; the #1442 guard reworked. Coordinate with dev1: #1442 is theirs, and
    this changes its contract. The dependency-script test.
 3. Services for all four kinds, with #1446 item 2.
@@ -337,10 +363,8 @@ explicitly:
   refusal on a plain `npm install -g`, and it is documented. With the 2.1.12 updater, step 1 has already run, so the
   result is the same as any other refusal in the hop.
 
-## Open questions
+## Settled questions
 
-1. **Option A or B** (above).
-2. Musl/Alpine: Node's `linux-x64-musl` build is listed on nodejs.org. Should we publish a fifth package, selected with
-   npm's `libc` field, or leave musl on "bring your own Node ≥22.14"?
-3. Should a capable system Node beat the version's own runtime (smaller install, follows the user's Node), or not (as
-   proposed: reproducible, unaffected by `nvm use`)? `AGEND_NODE` covers the exception either way.
+- Option A (leader, 2026-10-09).
+- No musl package for now.
+- The version's own runtime beats a capable system Node; `AGEND_NODE` overrides, logged once.
