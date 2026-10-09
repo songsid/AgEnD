@@ -43,7 +43,12 @@ function makeDaemon() {
   daemon.tmux = original;
   daemon.waitForInputTransientToClear = async () => true;
   const proofsOn: string[] = [];
-  daemon.confirmSubmitted = async () => { proofsOn.push(daemon.tmux.getWindowId()); return "stranded"; };
+  // Honours the attempt's fence as the real confirmSubmitted does (pinned below against the real one).
+  daemon.confirmSubmitted = async (_s: unknown, _b: unknown, owned?: () => boolean) => {
+    if (owned && !owned()) return "unproven";
+    proofsOn.push(daemon.tmux.getWindowId());
+    return "stranded";
+  };
   /** recoverWindow, as it lands in the middle of a wait: a new window behind this.tmux. */
   const recover = () => { daemon.tmux = recovered; };
   return { daemon, original, recovered, recover, proofsOn };
@@ -138,4 +143,117 @@ describe("a recovery Enter after a wait goes only to the window it was for (#149
     expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
     expect(enters(h)).toBe(0);
   });
+});
+
+describe("a proof is owned by its window too (#1514 review)", () => {
+  /** A proof whose capture is held; while it is held the window may be replaced, then it answers. */
+  function heldProof(h: ReturnType<typeof makeDaemon>, script: Array<{ answer: string; recoverDuring?: boolean }>) {
+    let i = 0;
+    h.daemon.confirmSubmitted = async () => {
+      const step = script[Math.min(i++, script.length - 1)];
+      if (step.recoverDuring) h.recover();
+      return step.answer;
+    };
+  }
+
+  for (const path of ["structured", "plain"] as const) {
+    it(`${path}: a proof whose window was replaced during its capture is not accepted, even if it reads "submitted"`, async () => {
+      const h = makeDaemon();
+      h.daemon.canProveSubmission = () => true;
+      h.daemon.structuredInputEvidence = () => path === "structured";
+      h.daemon.backend = undefined;
+      h.daemon.waitForPaneReadyForDelivery = async () => true;
+      // First look: stranded. After the recovery Enter: the capture is held, the window replaced, and it reads submitted.
+      heldProof(h, [{ answer: "stranded" }, { answer: "stranded" }, { answer: "submitted", recoverDuring: true }]);
+      expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
+    });
+
+    it(`${path}: the same proof on the same window is accepted (control)`, async () => {
+      const h = makeDaemon();
+      h.daemon.canProveSubmission = () => true;
+      h.daemon.structuredInputEvidence = () => path === "structured";
+      h.daemon.backend = undefined;
+      h.daemon.waitForPaneReadyForDelivery = async () => true;
+      heldProof(h, [{ answer: "stranded" }, { answer: "stranded" }, { answer: "submitted" }]);
+      expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(true);
+    });
+  }
+
+  it("structured: a replacement during the first poll's delay cannot confirm on the next capture", async () => {
+    const h = makeDaemon();
+    h.daemon.canProveSubmission = () => true;
+    h.daemon.structuredInputEvidence = () => true;
+    h.daemon.backend = undefined;
+    heldProof(h, [{ answer: "unproven", recoverDuring: true }, { answer: "submitted" }]);
+    expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
+  });
+
+  it("busy signal after a replacement is not accepted", async () => {
+    const h = makeDaemon();
+    h.daemon.canProveSubmission = () => false;
+    h.daemon.confirmBusyAfterEnter = async () => { h.recover(); return true; };
+    expect(await h.daemon.confirmAfterEnter("@7", Date.now(), SIG, null, "fence-retry")).toBe(false);
+  });
+
+  it("the real confirmSubmitted does not judge a capture taken across a replacement", async () => {
+    const h = makeDaemon();
+    const judge = vi.fn(() => "submitted");
+    h.daemon.judgeSubmission = judge;
+    h.daemon.confirmSubmitted = Object.getPrototypeOf(h.daemon).confirmSubmitted;   // the real one
+    h.original.capturePane.mockImplementation(async () => { h.recover(); return "a pane"; });
+    const tmux = h.daemon.tmux, generation = h.daemon.spawnGeneration;
+    const owned = () => h.daemon.tmux === tmux && h.daemon.spawnGeneration === generation;
+    expect(await h.daemon.confirmSubmitted(SIG, null, owned)).toBe("unproven");
+    expect(judge, "not judged: judging can retire the spawn's input guard").not.toHaveBeenCalled();
+    // control: the same capture without a replacement is judged
+    const h2 = makeDaemon();
+    const judge2 = vi.fn(() => "submitted");
+    h2.daemon.judgeSubmission = judge2;
+    h2.daemon.confirmSubmitted = Object.getPrototypeOf(h2.daemon).confirmSubmitted;
+    h2.original.capturePane.mockImplementation(async () => "a pane");
+    const t2 = h2.daemon.tmux, g2 = h2.daemon.spawnGeneration;
+    expect(await h2.daemon.confirmSubmitted(SIG, null, () => h2.daemon.tmux === t2 && h2.daemon.spawnGeneration === g2)).toBe("submitted");
+    expect(judge2).toHaveBeenCalledOnce();
+  });
+});
+
+describe("a fenced confirmation is not revived by the caller's late proof (#1514 review)", () => {
+  function deliveryHarness(path: "structured" | "plain", replaceDuringWait: boolean) {
+    const h = makeDaemon();
+    const control = {
+      lastOutputAt: undefined as number | undefined, observationResetAt: 0,
+      getLastOutputAt() { return this.lastOutputAt; }, getObservationResetAt() { return this.observationResetAt; },
+      hasOutputSince() { return false; }, isIdle: () => true, waitUntilIdle: async () => true,
+    };
+    h.daemon.controlClient = control;
+    Object.assign(h.original, { pasteBuffer: vi.fn(async () => true) });
+    Object.assign(h.recovered, { pasteBuffer: vi.fn(async () => true) });
+    h.daemon.canProveSubmission = () => true;
+    h.daemon.structuredInputEvidence = () => path === "structured";
+    h.daemon.capturePaneEvidence = async () => null;
+    h.daemon.waitForPaneReadyForDelivery = async () => { if (replaceDuringWait) h.recover(); return true; };
+    // The pane answers by window: the original keeps the paste stranded, the replacement reads "submitted".
+    h.daemon.confirmSubmitted = async (_s: unknown, _b: unknown, owned?: () => boolean) =>
+      (owned && !owned()) ? "unproven" : (h.daemon.tmux === h.recovered ? "submitted" : "stranded");
+    h.daemon.lateCodexSubmissionProof = async (s: unknown, b: unknown, _w: boolean, owned?: () => boolean) => h.daemon.confirmSubmitted(s, b, owned);
+    const confirmed: unknown[] = [];
+    h.daemon.on("message_confirmed", (s: unknown) => confirmed.push(s));
+    return { h, confirmed };
+  }
+
+  for (const path of ["structured", "plain"] as const) {
+    it(`${path}: the window replaced during the recovery wait — no ✅ from the replacement's pane`, async () => {
+      vi.useFakeTimers();
+      try {
+        const { h, confirmed } = deliveryHarness(path, true);
+        const verdict: any = { reached: false };
+        const pending = h.daemon.writeMessageToPane("hello", "@7", false, { chatId: "c", messageId: "m" }, undefined, verdict);
+        for (let i = 0; i < 400 && !(await Promise.race([pending.then(() => true), Promise.resolve(false)])); i++) await vi.advanceTimersByTimeAsync(100);
+        expect(await pending).toBe(false);
+        expect(confirmed, "the old delivery is not confirmed by the new window").toEqual([]);
+        expect(verdict.proof).toBe("window-replaced");
+        expect(h.recovered.sendSpecialKey, "no Enter into the replacement").not.toHaveBeenCalled();
+      } finally { vi.useRealTimers(); }
+    });
+  }
 });
