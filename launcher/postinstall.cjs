@@ -23,9 +23,12 @@ var PROOF = [
   "const dir = process.argv[1];",
   "const open = () => { const D = createRequire(require('node:path').join(dir, 'package.json'))('better-sqlite3'); const db = new D(':memory:'); const one = db.prepare('select 1 as one').get().one; db.close(); return one; };",
   "if (open() !== 1) process.exit(3);",
-  "const w = new Worker(`const { createRequire } = require('node:module'); const D = createRequire(require('node:path').join(${JSON.stringify(dir)}, 'package.json'))('better-sqlite3'); const db = new D(':memory:'); require('node:worker_threads').parentPort.postMessage(db.prepare('select 1 as one').get().one); db.close();`, { eval: true });",
-  "w.on('message', one => { if (one !== 1) process.exit(4); process.stdout.write(JSON.stringify({ node: process.versions.node, napi: Number(process.versions.napi), platform: process.platform, arch: process.arch })); process.exit(0); });",
+  "const w = new Worker(`const { createRequire } = require('node:module'); const D = createRequire(require('node:path').join(${JSON.stringify(dir)}, 'package.json'))('better-sqlite3'); const db = new D(':memory:'); const one = db.prepare('select 1 as one').get().one; db.close(); require('node:worker_threads').parentPort.postMessage(one);`, { eval: true });",
+  // The worker's answer AND its clean exit (the database closed inside it): any other end fails the proof.
+  "let answer = null;",
+  "w.on('message', one => { answer = one; });",
   "w.on('error', () => process.exit(5));",
+  "w.on('exit', code => { if (code !== 0 || answer !== 1) process.exit(4); process.stdout.write(JSON.stringify({ node: process.versions.node, napi: Number(process.versions.napi), platform: process.platform, arch: process.arch })); process.exit(0); });",
 ].join("\n");
 
 function refuse(reason, recovery) {
@@ -41,6 +44,13 @@ function main(deps) {
   var d = deps || {};
   var pkg = select.packageDir(d.launcherDir || __dirname);
   if (!pkg) refuse("the installed package is not @songsid/agend", "npm install -g @songsid/agend");
+  // A receipt describes THIS install's verification and nothing else: whatever is there now (one npm left behind, one
+  // copied in) goes first, so selection and installation see the same state (runtime-select.cjs).
+  var receiptPath = path.join(pkg.dir, select.RECEIPT);
+  if (!select.absent(receiptPath)) {
+    try { fs.unlinkSync(receiptPath); } catch (e) { /* checked below */ }
+    if (!select.absent(receiptPath)) refuse("an old runtime receipt at " + receiptPath + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
+  }
   // C1: an `agend update` owns this prefix right now → only its own npm child may install (install-admission.cjs).
   var admitted = admission.admit(pkg.dir, { env: d.env, processStart: d.processStart });
   if (!admitted.ok) refuse(admitted.reason, "Never run two installs of @songsid/agend into one prefix at once, or one while `agend update` runs.");

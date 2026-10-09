@@ -46,8 +46,16 @@ check_installed() {
     const [pkg, file] = process.argv.slice(1);
     const main = addRow(pkg, file);
     const w = new Worker(`${addRow}; require("node:worker_threads").parentPort.postMessage(addRow(${JSON.stringify(pkg)}, ${JSON.stringify(file)}))`, { eval: true });
-    w.on("message", n => { console.log(`  main thread: ${main} row(s); then the worker: ${n}`); process.exit(n === main + 1 ? 0 : 1); });
+    // Only a validated answer from the worker passes: an exit before it — even exit 0 — fails, and so does silence.
+    let answer = null;
+    w.on("message", n => { answer = n; });
     w.on("error", e => { console.error(e); process.exit(1); });
+    w.on("exit", code => {
+      if (answer !== main + 1) { console.error(`  the worker exited ${code} with ${answer === null ? "no answer" : `${answer} row(s), not ${main + 1}`}`); process.exit(1); }
+      console.log(`  main thread: ${main} row(s); then the worker: ${answer}`);
+      process.exit(0);
+    });
+    setTimeout(() => { console.error("  the worker did not finish within 30 s"); process.exit(1); }, 30_000).unref();
   ' "$pkg" "$WORK/acceptance-$RANDOM.db" || fail "better-sqlite3 did not open a database on the bundled Node"
 
   step "the system Node is untouched, and the runtime is on no PATH"

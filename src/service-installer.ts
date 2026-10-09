@@ -135,7 +135,43 @@ export function renderLaunchdPlist(vars: ServiceVars): string {
 
 export function renderSystemdUnit(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "systemd.service.ejs"), "utf-8");
-  return render(template, withDefaults(vars));
+  return render(template, { ...withDefaults(vars), systemdQuote });
+}
+
+/**
+ * One word of a systemd command line, exactly (#1460 review): double-quoted, with `\` and `"` escaped inside, and
+ * systemd's own expansions neutralised — `%` (specifiers) as `%%`, `$` (variables) as `$$`. A path with spaces stays one
+ * argument.
+ */
+export function systemdQuote(word: string): string {
+  return `"${word.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%").replace(/\$/g, "$$$$")}"`;
+}
+
+/** The words of a systemd command line as systemd splits them: quotes, backslash escapes, `%%` and `$$` undone. */
+export function systemdWords(line: string): string[] {
+  const words: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i]!)) i++;
+    if (i >= line.length) break;
+    let word = "";
+    let quote: string | null = null;
+    for (; i < line.length; i++) {
+      const c = line[i]!;
+      if (quote) {
+        if (c === quote) { quote = null; continue; }
+        if (c === "\\" && i + 1 < line.length) { word += line[++i]; continue; }
+        word += c;
+      } else {
+        if (/\s/.test(c)) break;
+        if (c === '"' || c === "'") { quote = c; continue; }
+        if (c === "\\" && i + 1 < line.length) { word += line[++i]; continue; }
+        word += c;
+      }
+    }
+    words.push(word.replace(/%%/g, "%").replace(/\$\$/g, "$"));
+  }
+  return words;
 }
 
 export interface ServiceInfo {
@@ -246,7 +282,7 @@ export function uninstallService(label: string): boolean {
  * interpreter, #1450). "" when there is no ExecStart.
  */
 export function unitCliEntry(unitText: string): string {
-  const words = unitText.match(/^ExecStart=(.*)$/m)?.[1]?.trim().split(/\s+/) ?? [];
+  const words = systemdWords(unitText.match(/^ExecStart=(.*)$/m)?.[1] ?? "");
   return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
 }
 

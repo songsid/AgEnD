@@ -126,7 +126,8 @@ by the postinstall, and by the updater's probe of a target package.
    - minimums for the official Node 22 builds: glibc ≥ 2.28; macOS ≥ 11, i.e. darwin kernel ≥ 20.
    - A host outside that set is **unsupported**. Its runtime package, if one is present anyway (older npm without
      `libc` filtering, or a copied tree), is **excluded**, and it does not count as corrupt.
-3. **Verified receipt.** The postinstall runs the candidate once, with a 5 s bound:
+3. **Verified receipt.** The postinstall runs the candidate once, with a 30 s bound (a cold first start opens the
+   database twice, main thread and worker, and waits for the worker to exit cleanly):
    - `process.version` must equal the pin, `process.versions.napi` must be ≥ 10, and platform/arch must match;
    - it must open a better-sqlite3 `:memory:` DB from `pkgDir` and run `select 1`, **in the main thread and in a
      `worker_threads` worker** (sol: the kiro transcript lane opens SQLite in a worker);
