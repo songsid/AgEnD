@@ -14,6 +14,22 @@ const cli = join(process.cwd(), "dist", "cli.js");
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
+/** A systemctl stub: logs every call; `show -p ExecStart …` reports the unit file's ExecStart/Environment as loaded. */
+export function systemctlStub(log: string, unitPath: string): string {
+  return `#!/bin/sh
+echo "systemctl $*" >> '${log}'
+case "$*" in
+  *"show -p ExecStart"*)
+    ex=$(sed -n 's/^ExecStart=//p' '${unitPath}' | tail -1)
+    envl=$(sed -n 's/^Environment=//p' '${unitPath}' | tr '\\n' ' ')
+    echo "ExecStart={ path=\${ex%% *} ; argv[]=$ex ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }"
+    echo "Environment=$envl"
+    echo "NeedDaemonReload=no";;
+esac
+exit 0
+`;
+}
+
 /** Run `agend update <args>` from an install of `installed`, with npm's tags pointing at `tags`. */
 function update(installed: string, tags: { beta: string; latest: string }, args: string[], opts: { brokenNative?: boolean; staleFleet?: boolean; unitExec?: (paths: { globalCli: string; runningCli: string }) => string } = {}) {
   const home = mkdtempSync(join(tmpdir(), "agend-update-cli-"));
@@ -59,11 +75,19 @@ case "$*" in
 esac
 exit 0
 `);
-  writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\necho "agend $*" >> '${log}'\ncase "$*" in --version) cat '${installedVersion}';; esac\nexit 0\n`);
+  // A node script like the real bin (`#!/usr/bin/env node`): the service check resolves its interpreter by shebang.
+  writeFileSync(join(globalPkg, "dist", "cli.js"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    `fs.appendFileSync(${JSON.stringify(log)}, 'agend ' + process.argv.slice(2).join(' ') + '\\n');`,
+    `if (process.argv[2] === '--version') process.stdout.write(fs.readFileSync(${JSON.stringify(installedVersion)}, 'utf8'));`,
+  ].join("\n") + "\n");
   chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
   symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
   symlinkSync(process.execPath, join(bin, "node"));
-  for (const tool of ["systemctl", "launchctl"]) writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> '${log}'\nexit 0\n`);
+  writeFileSync(join(bin, "launchctl"), `#!/bin/sh\necho "launchctl $*" >> '${log}'\nexit 0\n`);
+  // systemctl: logs; `show -p ExecStart …` answers what a reloaded manager would report for the user unit on disk.
+  writeFileSync(join(bin, "systemctl"), systemctlStub(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
   for (const f of ["npm", "systemctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
   // An existing user unit (the authoritative service here), recording whatever executable the case says.
   let unitPath: string | null = null;
@@ -71,7 +95,8 @@ exit 0
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     unitPath = join(unitDir, "com.agend.fleet.service");
-    writeFileSync(unitPath, `[Service]\nExecStart=${opts.unitExec({ globalCli: join(globalPkg, "dist", "cli.js"), runningCli: join(pkg, "dist", "cli.js") })} fleet start\n`);
+    // The unit's PATH resolves `node` to this harness's node — the interpreter the verification ran on.
+    writeFileSync(unitPath, `[Service]\nExecStart=${opts.unitExec({ globalCli: join(globalPkg, "dist", "cli.js"), runningCli: join(pkg, "dist", "cli.js") })} fleet start\nEnvironment=PATH=${bin}:/usr/bin:/bin\n`);
   }
   const unitBefore = unitPath ? readFileSync(unitPath, "utf8") : null;
   let fleetPid: number | null = null;
@@ -195,7 +220,7 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
     const { r, out, calls, fleetAlive, unitBefore, unitAfter } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
       { staleFleet: true, unitExec: ({ runningCli }) => runningCli });
     expect(r.status, out).toBe(1);
-    expect(out).toContain("not the verified install");
+    expect(out).toContain("does not start the verified install");
     expect(calls).not.toContain("agend restart");
     expect(unitAfter).toBe(unitBefore);
     expect(fleetAlive).toBe(true);
@@ -204,8 +229,8 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
   it("control: a unit that starts the verified install (by its bin link) is restarted onto", { timeout: 60_000 }, () => {
     const { out, calls } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
       { staleFleet: true, unitExec: ({ globalCli }) => globalCli });
-    expect(out).toContain("verified — restarting the fleet onto it");
-    expect(calls).toContain("agend restart");
+    expect(out, `${out}\n${calls.join("\n")}`).toContain("verified — restarting the fleet onto it");
+    expect(calls, `${out}\n${calls.join("\n")}`).toContain("agend restart");
   });
 });
 

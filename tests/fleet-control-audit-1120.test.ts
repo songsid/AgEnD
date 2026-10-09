@@ -371,7 +371,9 @@ describe("the service-level commands, behind inert stubs", () => {
     const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
     writeFileSync(join(copy, "package.json"), JSON.stringify({ ...manifest, bin: { agend: "bin/agend" } }));
     mkdirSync(join(copy, "bin"));
-    writeFileSync(join(copy, "bin", "agend"), `#!/bin/sh\nexec '${process.execPath}' --import tsx '${join(copy, "src", "cli.ts")}' "$@"\n`);
+    // `install` is a no-op here (no service in this scratch HOME: the restart takes the detached path, whose
+    // authorisation is what this test is about); everything else runs this source.
+    writeFileSync(join(copy, "bin", "agend"), `#!/bin/sh\n[ "$1" = install ] && exit 0\nexec '${process.execPath}' --import tsx '${join(copy, "src", "cli.ts")}' "$@"\n`);
     chmodSync(join(copy, "bin", "agend"), 0o755);
     const globalRoot = join(inert, "global", "lib", "node_modules");
     mkdirSync(join(globalRoot, "@songsid"), { recursive: true });
