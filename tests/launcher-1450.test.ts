@@ -66,10 +66,11 @@ function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" |
   mkdirSync(join(pkg, "dist"), { recursive: true });
   cpSync(LAUNCHER, join(pkg, "launcher"), { recursive: true });
   const pin = opts.pin === undefined ? process.versions.node : opts.pin;
+  // As npm publishes it (2-space JSON): the sh bins read the pin from this layout.
   writeFileSync(join(pkg, "package.json"), JSON.stringify({
     name: "@songsid/agend", version: "2.2.0", engines: { node: "^22.14.0 || ^23.6.0 || >=24" },
     ...(pin ? { optionalDependencies: { [`@songsid/agend-node-${HOST.id}`]: pin } } : {}),
-  }));
+  }, null, 2) + "\n");
   // The CLI reports which Node ran it, its argv[1], and whether the launcher spawned it; exits with $CLI_EXIT. With
   // $CLI_WAIT it stays up, its SIGTERM handler in place BEFORE it reports (the test signals as soon as it reads).
   for (const cli of ["cli.js", "agent-cli.js"]) writeFileSync(join(pkg, "dist", cli), [
@@ -91,7 +92,7 @@ function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" |
   if ((opts.runtime ?? "none") !== "none") {
     mkdirSync(join(runtimeHome, "bin"), { recursive: true });
     const version = opts.runtime === "wrong-version" ? "1.0.0" : pin!;
-    writeFileSync(join(runtimeHome, "package.json"), JSON.stringify({ name: `@songsid/agend-node-${HOST.id}`, version }));
+    writeFileSync(join(runtimeHome, "package.json"), JSON.stringify({ name: `@songsid/agend-node-${HOST.id}`, version }, null, 2) + "\n");
     // A regular-file stand-in for the bundled node: this test's Node, marked so the CLI can tell.
     writeFileSync(join(runtimeHome, "bin", "node"), `#!/bin/sh\nFAKE_RUNTIME=1 exec '${process.execPath}' "$@"\n`);
     chmodSync(join(runtimeHome, "bin", "node"), 0o755);
@@ -336,7 +337,7 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
   const toolsOnly = (() => {
     const dir = mkdtempSync(join(tmpdir(), "agend tools-"));
     roots.push(dir);
-    for (const tool of ["sh", "readlink", "dirname", "basename", "uname", "sed", "wc", "tr", "find"]) {
+    for (const tool of ["sh", "readlink", "dirname", "basename", "uname", "sed", "wc", "tr", "find", "grep", "stat", "head"]) {
       symlinkSync(spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim(), join(dir, tool));
     }
     return dir;
@@ -429,6 +430,48 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
     const r = bin(f, "agend", toolsOnly);
     expect(r.status).toBe(1);
     expect(existsSync(mark)).toBe(false);
+  });
+
+  /**
+   * THE RECEIPT CONTRACT, both sides (#1460 r2): for each state, the sh bin admits the candidate (it RUNS — its marker
+   * appears, with no node on PATH) exactly when the JS selection does, and both give the expected answer.
+   */
+  describe("the sh bin and the JS selection agree, state by state", () => {
+    const receiptFile = (f: ReturnType<typeof fixture>) => join(f.pkg, ".agend-runtime.json");
+    const edit = (file: string, fn: (text: string) => string) => writeFileSync(file, fn(readFileSync(file, "utf8")));
+    const keepTimes = (file: string, fn: () => void) => { const st = statSync(file); fn(); utimesSync(file, st.atime, st.mtime); };
+    it.skipIf(!ON_FIXTURE_HOST).each([
+      ["control: as verified", () => {}, true],
+      ["same size, changed bytes, mtime moved back a minute", (f: ReturnType<typeof fixture>, node: string) => {
+        const st = statSync(node);
+        writeFileSync(node, readFileSync(node, "utf8").replace("ran", "RAN"));
+        utimesSync(node, st.atime, new Date(st.mtime.getTime() - 60_000));
+      }, false],
+      ["same size, changed bytes, mtime restored to the second (both admit: the contract binds size+mtime, not bytes)", (f: ReturnType<typeof fixture>, node: string) => {
+        keepTimes(node, () => writeFileSync(node, readFileSync(node, "utf8").replace("ran", "RAN")));
+      }, true],
+      ["a malformed receipt whose path/size lines are still readable", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/\n}\n$/, ",\n}\n"))],
+      ["a receipt that is valid JSON in another layout (minified)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => JSON.stringify(JSON.parse(t)) + "\n")],
+      ["a receipt with a leading-zero size", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"size": (\d+)/, '"size": 0$1'))],
+      ["a receipt with a trailing blank line (valid JSON, not the contract's text)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t + "\n")],
+      ["a receipt with a space after its closing brace", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/}\n$/, "} \n"))],
+      ["a receipt for another pin", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"pinnedVersion": "[^"]*"/, '"pinnedVersion": "22.0.0"'))],
+      ["a runtime package of another version", (f: ReturnType<typeof fixture>) => edit(join(f.runtimeHome, "package.json"), t => t.replace(/"version": "[^"]*"/, '"version": "22.0.0"'))],
+      ["a receipt of the old shape (mtimeMs, no receipt key)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => { const r = JSON.parse(t); delete r.receipt; r.mtimeMs = r.mtime * 1000; delete r.mtime; return JSON.stringify(r, null, 2) + "\n"; })],
+    ].map(([n, fn, ok = false]) => [n, fn, ok] as const))("%s → admitted: %s", (_n, change, expected) => {
+      const f = fixture({ runtime: "ok", npmLayout: true });
+      const node = join(f.runtimeHome, "bin", "node");
+      const mark = join(f.root, "candidate-ran");
+      writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+      expect(postinstall(f).status).toBe(0);
+      rmSync(mark, { force: true });
+      (change as (f: ReturnType<typeof fixture>, node: string) => void)(f, node);
+      const js = choose(f, { host: HOST });
+      const jsAdmits = js.ok === true && js.source === "runtime";
+      bin(f, "agend", toolsOnly);
+      const shAdmits = existsSync(mark);
+      expect({ jsAdmits, shAdmits }).toEqual({ jsAdmits: expected, shAdmits: expected });
+    });
   });
 
   it("a valid AGEND_NODE starts AgEnD with no bundled Node and no node on PATH", () => {

@@ -29,7 +29,8 @@ case $(uname -m) in
   aarch64 | arm64) cpu=arm64 ;;
   *) cpu=unsupported ;;
 esac
-node=$pkg/node_modules/@songsid/agend-node-$os-$cpu/bin/node
+node_pkg=$pkg/node_modules/@songsid/agend-node-$os-$cpu
+node=$node_pkg/bin/node
 receipt=$pkg/.agend-runtime.json
 repair="npm install -g @songsid/agend"
 refuse() { echo "AgEnD cannot start: $1." >&2; echo "To repair: $2" >&2; exit "${3:-1}"; }
@@ -45,15 +46,41 @@ if [ -n "${AGEND_NODE:-}" ]; then
   exec "$AGEND_NODE" "$launcher" "$@"
 fi
 
-# 2. The bundled Node, only while it is still exactly what the postinstall verified: the receipt names this very file
-#    and its size, and the file is not newer than the receipt. (The JS launcher checks the receipt again, fully.)
-if [ -f "$receipt" ] && [ -f "$node" ] && [ ! -L "$node" ] && [ -x "$node" ]; then
-  want_path=$(sed -n 's/^  "nodePath": "\(.*\)",$/\1/p' "$receipt")
-  want_size=$(sed -n 's/^  "size": \([0-9][0-9]*\),$/\1/p' "$receipt")
-  size=$(wc -c < "$node" | tr -d ' ')
-  if [ "$want_path" = "$node" ] && [ "$want_size" = "$size" ] && [ -z "$(find "$node" -newer "$receipt" 2>/dev/null)" ]; then
-    exec "$node" "$launcher" "$@"
-  fi
+# 2. The bundled Node, only when it is admissible by the SAME contract the JS launcher applies
+#    (launcher/runtime-select.cjs, "THE RECEIPT CONTRACT"), checked before anything runs:
+#    - this release pins it (package.json), and the runtime package is that version;
+#    - the receipt is exactly the contract's form, for that pin;
+#    - the file is a regular file at the receipted realpath, with the receipted size and mtime (whole seconds).
+#    A receipt in any other shape, or a candidate that differs in any of these, is never executed here.
+admissible() {
+  pin=$(sed -n "s/^    \"@songsid\/agend-node-$os-$cpu\": \"\([0-9][0-9.]*\(-agend\.[0-9][0-9]*\)\{0,1\}\)\",\{0,1\}\$/\1/p" "$pkg/package.json" | head -n 1)
+  [ -n "$pin" ] || return 1
+  version=$(sed -n 's/^  "version": "\([^"]*\)",\{0,1\}$/\1/p' "$node_pkg/package.json" | head -n 1)
+  [ "$version" = "$pin" ] || return 1
+  [ -f "$receipt" ] && [ -f "$node" ] && [ ! -L "$node" ] && [ -x "$node" ] || return 1
+  [ "$(wc -l < "$receipt" | tr -d ' ')" = 13 ] || return 1
+  [ "$(sed -n 1p "$receipt")" = "{" ] && [ "$(sed -n 2p "$receipt")" = '  "receipt": 2,' ] && [ "$(sed -n 13p "$receipt")" = "}" ] || return 1
+  r_pin=$(sed -n '3s/^  "pinnedVersion": "\([0-9][0-9.]*\(-agend\.[0-9][0-9]*\)\{0,1\}\)",$/\1/p' "$receipt")
+  r_path=$(sed -n '4s/^  "nodePath": "\(\/[^"\\]*\)",$/\1/p' "$receipt")
+  r_size=$(sed -n '5s/^  "size": \([0-9][0-9]*\),$/\1/p' "$receipt")
+  r_mtime=$(sed -n '6s/^  "mtime": \([0-9][0-9]*\),$/\1/p' "$receipt")
+  # ERE (grep -E) for alternation: BSD sed's basic regexes have none.
+  sed -n 7p "$receipt" | grep -Eq '^  "sha256": "[0-9a-f]{64}",$' || return 1
+  sed -n 8p "$receipt" | grep -Eq '^  "napi": (0|[1-9][0-9]*),$' || return 1
+  sed -n 9p "$receipt" | grep -Eq '^  "platform": "[^"\\]+",$' || return 1
+  sed -n 10p "$receipt" | grep -Eq '^  "arch": "[^"\\]+",$' || return 1
+  sed -n 11p "$receipt" | grep -Eq '^  "libc": ("glibc"|null),$' || return 1
+  sed -n 12p "$receipt" | grep -Eq '^  "verifiedAt": "[^"\\]+"$' || return 1
+  [ -n "$r_pin" ] && [ -n "$r_path" ] && [ -n "$r_size" ] && [ -n "$r_mtime" ] || return 1
+  # (A leading-zero size/mtime, which JSON forbids, can never equal what wc and stat print below.)
+  [ "$r_pin" = "$pin" ] || return 1
+  [ "$(cd "$(dirname "$node")" 2>/dev/null && pwd -P)/node" = "$r_path" ] || return 1
+  [ "$(wc -c < "$node" | tr -d ' ')" = "$r_size" ] || return 1
+  mtime=$(stat -c %Y "$node" 2>/dev/null) || mtime=$(stat -f %m "$node" 2>/dev/null) || return 1
+  [ "$mtime" = "$r_mtime" ]
+}
+if admissible; then
+  exec "$node" "$launcher" "$@"
 fi
 
 # 3. Not admitted here, so that candidate never runs. A node on PATH runs the JS launcher: it explains a refusal, or

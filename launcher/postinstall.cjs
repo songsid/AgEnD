@@ -78,13 +78,15 @@ function main(deps) {
         refuse("the bundled Node did not pass its check (" + (seen ? "Node " + seen.node + ", N-API " + seen.napi + ", " + seen.platform + "-" + seen.arch : "exit " + (r.status === null ? r.signal : r.status) + ": " + String(r.stderr || "").trim().split("\n").pop()) + ")", "npm install -g @songsid/agend@" + pkg.manifest.version);
       }
       var real = fs.realpathSync(candidate.node);
+      // The receipt contract (runtime-select.cjs) keeps every string plain, so a shell can check it exactly too.
+      if (!select.PLAIN.test(real)) refuse("AgEnD's install path " + JSON.stringify(real) + " contains a quote, backslash or control character", "install it under a plain path");
       var finalStat = fs.statSync(real);
       var receipt = {
-        pinnedVersion: pin.version, nodePath: real, size: finalStat.size, mtimeMs: finalStat.mtimeMs, sha256: sha256(real),
+        receipt: 2, pinnedVersion: pin.version, nodePath: real, size: finalStat.size, mtime: Math.floor(finalStat.mtimeMs / 1000), sha256: sha256(real),
         napi: seen.napi, platform: host.platform, arch: host.arch, libc: host.glibc ? "glibc" : null, verifiedAt: new Date().toISOString(),
       };
       var tmp = path.join(pkg.dir, select.RECEIPT + "." + process.pid + ".tmp");
-      fs.writeFileSync(tmp, JSON.stringify(receipt, null, 2) + "\n");
+      fs.writeFileSync(tmp, select.receiptText(receipt));
       fs.renameSync(tmp, path.join(pkg.dir, select.RECEIPT));
       log("  ✓ AgEnD will run on its bundled Node " + seen.node + " (verified: N-API " + seen.napi + ", a database opened in the main thread and a worker)");
       return 0;

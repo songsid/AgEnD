@@ -50,7 +50,8 @@ check_boundary() {
   step "[$1] the process boundary held"
   if [ -s "$AGEND_BOUNDARY_LOG" ]; then cat "$AGEND_BOUNDARY_LOG"; fail "a fleet start or a service manager by path was attempted"; fi
   echo "  stubbed manager calls:"; sed 's/^/    /' "$WORK/guard.log"; [ -s "$WORK/guard.log" ] || echo "    none"
-  if grep -E '^(systemctl|launchctl)( --user)? +(restart|start|stop|kill|kickstart|bootstrap|bootout|load|unload|enable)\b' "$WORK/guard.log"; then
+  # Judged after `sudo` and the manager's own options (manager-activations.cjs), not by position.
+  if ! node "$HERE/manager-activations.cjs" "$WORK/guard.log"; then
     fail "a service manager was asked to activate something"
   fi
 }
