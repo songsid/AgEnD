@@ -136,6 +136,32 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
   };
 }
 
+/**
+ * What a click on a component needs when its message is private. An ephemeral message cannot be fetched from its
+ * channel (10008 Unknown Message), so the only way to edit it is through an interaction: the click's own (its token is
+ * fresh for 15 minutes) for the clicked message, and the one that posted it for a follow-up.
+ */
+function privateComponentReplies(interaction: {
+  message: { flags?: { has(flag: MessageFlags): boolean } | null };
+  channelId: string | null;
+  editReply(options: { content: string; components: []; allowedMentions: { parse: [] }; message?: string }): Promise<unknown>;
+  followUp(options: { content: string; flags: number; allowedMentions: { parse: [] }; components: ReturnType<typeof buttonRows> }): Promise<{ id: string }>;
+}, callbackData: string): {
+  editClicked?: (text: string) => Promise<void>;
+  respondPrivate?: (text: string, choices?: Choice[]) => Promise<SentMessage & { retire: (text: string) => Promise<void> }>;
+} {
+  const edit = async (text: string, message?: string): Promise<void> => {
+    await interaction.editReply({ content: truncatePreview(text, DISCORD_MAX_LENGTH), components: [], allowedMentions: { parse: [] }, ...(message ? { message } : {}) });
+  };
+  return {
+    ...(interaction.message.flags?.has(MessageFlags.Ephemeral) ? { editClicked: (text: string) => edit(text) } : {}),
+    ...(callbackData.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
+      const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
+      return { chatId: interaction.channelId ?? "", messageId: sent.id, retire: (outcome: string) => edit(outcome, sent.id) };
+    } } : {}),
+  };
+}
+
 /** #1231: a slash command acknowledged this late (of Discord's 3000 ms) gets a log line saying where the time went. */
 const SLASH_ACK_SLOW_MS = 1_500;
 
@@ -654,10 +680,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             userId: interaction.user.id,
             username: interaction.user.username,
             ack: privateNotice(interaction, this.id),
-            ...(interaction.customId.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
-              const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
-              return { chatId: interaction.channelId, messageId: sent.id };
-            } } : {}),
+            ...privateComponentReplies(interaction, interaction.customId),
           });
           return;
         }
@@ -683,10 +706,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             messageId: interaction.message.id,
             userId: interaction.user.id,
             ack: privateNotice(interaction, this.id),
-            ...(callbackData.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
-              const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
-              return { chatId: interaction.channelId, messageId: sent.id };
-            } } : {}),
+            ...privateComponentReplies(interaction, callbackData),
           });
           return;
         }
@@ -750,6 +770,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               respondButtons: async (text: string, choices: Choice[]) => {
                 const sent = await interaction.editReply({ content: text, components: buttonRows(choices), allowedMentions: { parse: [] } });
                 return sent.id;
+              },
+              // The reply is ephemeral: a channel fetch cannot see it (10008), only this interaction can edit it.
+              retireButtons: async (text: string) => {
+                await interaction.editReply({ content: truncatePreview(text, DISCORD_MAX_LENGTH), components: [], allowedMentions: { parse: [] } });
               },
               respondChoices: async (text: string, choices: Choice[]) => {
                 const select = new StringSelectMenuBuilder()
