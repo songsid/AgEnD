@@ -19,7 +19,9 @@ afterEach(() => { for (const c of caps.splice(0)) c.close(); for (const root of 
 function hold<T = void>() { let resolve!: (v: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 function fleet() {
   const root = mkdtempSync(join(tmpdir(), "agend-test-lifecycle-consent-")); roots.push(root); vi.stubEnv("AGEND_HOME", root);
-  const configPath = join(root, "fleet.yaml"); writeFileSync(configPath, "instances: {}\n");
+  // The "primary" world below is a configured connection, as every world is in production: a save that names it must
+  // validate (#1056: the saver refuses a fleet.yaml that adds an error, such as an instance on an unknown channel).
+  const configPath = join(root, "fleet.yaml"); writeFileSync(configPath, "channels:\n  - id: primary\n    type: discord\n    bot_token_env: FAKE_TOKEN\ninstances: {}\n");
   const fm = new FleetManager(root) as any; fm.loadConfig(configPath);
   const remove = vi.fn(async () => {}); fm.worlds.set("primary", { adapter: { deleteTopic: remove } });
   vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined);
