@@ -11,6 +11,13 @@ import yaml from "js-yaml";
 import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
 import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
+import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
+
+/** `fleet restart --reload` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH). */
+const delayedRestart = (): [string, string[]] => {
+  const c = delayedSelfCommand(2, ["fleet", "restart", "--reload"]);
+  return [c.command, c.args];
+};
 export { SETUP_GUIDE_URLS, setupGuideUrl } from "./setup-guide.js";
 
 const DATA_DIR = getAgendHome();
@@ -346,7 +353,7 @@ async function restartFleetIfRunning(): Promise<void> {
     execSync("systemctl --user restart com.agend.fleet", { stdio: "pipe" });
     console.log(`  ${green("✓")} Fleet restarted via systemd.`);
   } catch {
-    const child = spawn("sh", ["-c", "sleep 2 && agend fleet restart --reload"], { detached: true, stdio: "ignore" });
+    const child = spawn(...delayedRestart(), { detached: true, stdio: "ignore" });
     child.unref();
     console.log(`  ${green("✓")} Fleet restart scheduled (2s).`);
   }
@@ -626,7 +633,7 @@ export async function runQuickstart(): Promise<void> {
               usedSystemd = true;
               console.log(`  ${green("✓")} Fleet restarted via systemd.`);
             } catch {
-              const child = spawn("sh", ["-c", "sleep 2 && agend fleet restart --reload"], { detached: true, stdio: "ignore" });
+              const child = spawn(...delayedRestart(), { detached: true, stdio: "ignore" });
               child.unref();
               console.log(`  ${green("✓")} Fleet restart scheduled (2s). New platform will be available shortly.`);
             }
@@ -814,7 +821,7 @@ export async function runQuickstart(): Promise<void> {
         const { join } = await import("node:path");
         const svcPath = installService({
           label: "com.agend.fleet",
-          execPath: process.argv[1],
+          execPath: canonicalCliEntry(),
           path: process.env.PATH!,
           workingDirectory: DATA_DIR,
           logPath: join(DATA_DIR, "fleet.log"),
@@ -855,7 +862,7 @@ export async function runQuickstart(): Promise<void> {
             if (!rcAnswer || rcAnswer.toLowerCase() === "y" || rcAnswer.toLowerCase() === "yes") args.push("--modify-rc");
           }
           const { spawnSync } = await import("node:child_process");
-          spawnSync(process.execPath, [process.argv[1], ...args], { stdio: "inherit", timeout: 15_000 });
+          spawnSync(process.execPath, [canonicalCliEntry(), ...args], { stdio: "inherit", timeout: 15_000 });
         }
       }
     } catch (err) {

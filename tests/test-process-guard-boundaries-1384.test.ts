@@ -96,6 +96,31 @@ describe("process guard child execution boundaries", () => {
     expect(processGuard.takeViolations()).toEqual([expect.stringContaining("real backend Node entry forbidden")]);
   });
 
+  // #1450 C5: AgEnD restarts itself as `<node> <repo>/dist/cli.js fleet start`, so a test can no longer stub an
+  // `agend` on PATH; the guard must stop that spawn itself. Scratch HOME/AGEND_HOME as a second line of defence.
+  it("a real `fleet start` of this repo's CLI is refused; with AGEND_TEST_SELF_SPAWN_LOG it is recorded and inert", () => {
+    const guard = createRequire(import.meta.url)("./support/process-guard.cjs") as { selfFleetStart(file: string, argv: string[], cwd: string): string | null };
+    const cli = resolve("dist/cli.js");
+    expect(guard.selfFleetStart(process.execPath, [cli, "fleet", "start"], process.cwd())).toBe("fleet start");
+    expect(guard.selfFleetStart(process.execPath, [cli, "fleet", "restart", "--reload"], process.cwd())).toBeNull();   // talks to a running fleet; tests drive it
+    expect(guard.selfFleetStart(process.execPath, [cli, "backend", "doctor"], process.cwd())).toBeNull();
+    expect(guard.selfFleetStart(process.execPath, [join(scratch(), "dist", "cli.js"), "fleet", "start"], process.cwd())).toBeNull();
+    if (!existsSync(cli)) return;
+    const root = scratch(), log = join(root, "self-spawn.log");
+    // A Node child (guard preloaded) attempts the detached self-start, as cli.ts does.
+    const attempt = (env: Record<string, string>) => spawnSync(process.execPath, ["-e", `
+      const cp = require('node:child_process');
+      try { cp.spawn(process.execPath, [${JSON.stringify(cli)}, 'fleet', 'start'], { detached: true, stdio: 'ignore' }).unref(); console.log('spawned'); }
+      catch (e) { console.log('refused: ' + e.message); }`], { encoding: "utf8", env: { ...process.env, HOME: root, AGEND_HOME: join(root, ".agend"), ...env } });
+    const refused = attempt({});
+    expect(refused.stdout).toContain("refused: [test process guard] a real `agend fleet start` from a test is forbidden");
+    expect(processGuard.drainJournal(process.env.AGEND_TEST_GUARD_LOG!)).toEqual([expect.stringContaining("agend fleet start")]);
+    const recorded = attempt({ AGEND_TEST_SELF_SPAWN_LOG: log });
+    expect(recorded.stdout.trim()).toBe("spawned");
+    expect(readFileSync(log, "utf8")).toBe("agend fleet start\n");
+    expect(existsSync(join(root, ".agend", "fleet.pid"))).toBe(false);
+  });
+
   it("does not bootstrap a fixture from the parent cwd when child PATH is absent", () => {
     const dir = scratch(), file = join(dir, "codex"); inert(file); registerExecutableFixture(file);
     expect(() => checkTestProcess("codex", [], {}, dir)).toThrow(/real backend CLI forbidden/);

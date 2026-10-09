@@ -292,7 +292,7 @@ exit 0
   });
 });
 
-describe("detached `agend restart` signals only a confirmed fleet (built CLI; `agend` stubbed so no fleet starts)", () => {
+describe("detached `agend restart` signals only a confirmed fleet (built CLI; the self-spawn is recorded, no fleet starts)", () => {
   function detachedRestart(argv0: string | null, script?: string) {
     const home = tmp();
     const agendHome = join(home, ".agend");
@@ -303,13 +303,12 @@ describe("detached `agend restart` signals only a confirmed fleet (built CLI; `a
     mkdirSync(bin);
     const log = join(home, "calls.log");
     writeFileSync(log, "");
-    // The detached branch would `sh -c "agend fleet start"`: never a real fleet here.
-    writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\nexit 0\n`);
+    // The detached branch starts `<node> dist/cli.js fleet start` (#1450 C5): the test process guard records it in
+    // AGEND_TEST_SELF_SPAWN_LOG and runs nothing — never a real fleet here.
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh\nexit 1\n`);
-    chmodSync(join(bin, "agend"), 0o755);
     chmodSync(join(bin, "systemctl"), 0o755);
     const r = spawnSync(process.execPath, [cli, "restart"], {
-      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
+      env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}`, AGEND_TEST_SELF_SPAWN_LOG: log },
       encoding: "utf8", timeout: 60_000,
     });
     spawnSync("sleep", ["0.5"]);

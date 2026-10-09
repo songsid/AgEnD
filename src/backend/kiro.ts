@@ -1041,7 +1041,7 @@ export class KiroBackend implements CliBackend {
       // to avoid a world-readable window between writeFileSync and chmodSync.
       writeFileSync(
         wrapperPath,
-        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${entry.command} ${entry.args.map((a: string) => JSON.stringify(a)).join(" ")}\n`,
+        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${[entry.command, ...entry.args].map(shellQuote).join(" ")}\n`,
         { mode: 0o700 },
       );
       // Re-chmod in case the file already existed with looser permissions (writeFileSync's

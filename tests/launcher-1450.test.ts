@@ -284,13 +284,19 @@ describe("the launcher, end to end", () => {
     const f = fixture({ runtime: "ok" });
     expect(postinstall(f).status).toBe(0);
     const mark = join(f.root, "cli-got-signal");
-    const child = spawn(process.execPath, [join(f.launcherDir, "agend.cjs"), "fleet", "start"], { env: { ...process.env, CLI_WAIT: mark }, stdio: ["ignore", "pipe", "pipe"] });
-    const seen = JSON.parse(String(await new Promise(r => child.stdout.once("data", r))));
-    expect(seen).toMatchObject({ fakeRuntime: true, spawned: true });             // the CLI is a separate process
-    child.kill("SIGTERM");
-    const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>(r => child.once("exit", (c, s) => r([c, s])));
-    expect(readFileSync(mark, "utf8")).toBe("SIGTERM");                           // forwarded, not just the launcher dying
-    expect([code, signal]).toEqual([143, null]);                                  // the launcher waited for the CLI's own exit
+    // Not `fleet start`: a long-lived stand-in must not look like a fleet to AgEnD's fleet detection (or pgrep). Its
+    // own process group, killed whatever happens, so a failure never leaves the CLI running.
+    const child = spawn(process.execPath, [join(f.launcherDir, "agend.cjs"), "wait-for-signal"], { env: { ...process.env, CLI_WAIT: mark }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    try {
+      const seen = JSON.parse(String(await new Promise(r => child.stdout.once("data", r))));
+      expect(seen).toMatchObject({ fakeRuntime: true, spawned: true });             // the CLI is a separate process
+      child.kill("SIGTERM");
+      const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>(r => child.once("exit", (c, s) => r([c, s])));
+      expect(readFileSync(mark, "utf8")).toBe("SIGTERM");                           // forwarded, not just the launcher dying
+      expect([code, signal]).toEqual([143, null]);                                  // the launcher waited for the CLI's own exit
+    } finally {
+      try { process.kill(-child.pid!, "SIGKILL"); } catch { /* the group is gone */ }
+    }
   });
 });
 

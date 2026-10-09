@@ -9483,7 +9483,8 @@ export class Daemon extends EventEmitter {
       instanceName: this.name,
       mcpServers: isCliMode ? {} : {
         "agend": {
-          command: "node",
+          // The Node this daemon runs on (#1450 C5): the CLIs start the MCP server with it, not a `node` from PATH.
+          command: process.execPath,
           args: [serverJs],
           env: mcpEnv,
         },

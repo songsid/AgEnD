@@ -327,7 +327,7 @@ describe("KiroBackend", () => {
       expect(existsSync(wrapperPath)).toBe(true);
       const wrapperContent = readFileSync(wrapperPath, "utf-8");
       expect(wrapperContent).toContain("AGEND_SOCKET_PATH");
-      expect(wrapperContent).toContain("exec node");
+      expect(wrapperContent).toContain("exec 'node' '/path/to/mcp-server.js'");
     });
 
     it("uses instance-namespaced key to avoid conflicts", () => {

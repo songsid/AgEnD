@@ -5,6 +5,7 @@ import { execFileSync, execSync, spawnSync } from "node:child_process";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
+import { canonicalCliEntry } from "./cli-entry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(__dirname, "..", "templates");
@@ -74,7 +75,7 @@ function validateVars(vars: ServiceVars & { path: string }): void {
  */
 export function buildServicePath(
   basePath = process.env.PATH ?? "",
-  execPath = process.argv[1] ?? "",
+  execPath = canonicalCliEntry(),
   homeDir = homedir(),
 ): string {
   const seen = new Set<string>();

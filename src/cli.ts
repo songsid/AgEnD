@@ -64,6 +64,7 @@ import { DeliveryStatusArgs } from "./outbound-schemas.js";
 import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
+import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -1634,7 +1635,7 @@ program
     const { installService, activateService, detectPlatform } = await import(
       "./service-installer.js"
     );
-    const execPath = process.argv[1];
+    const execPath = canonicalCliEntry();
     const svcPath = installService({
       label: "com.agend.fleet",
       execPath,
@@ -1760,7 +1761,9 @@ program
     if (!userServicePath && !systemServicePath) {
       console.log("No service installed. Starting fleet directly...");
       const { spawn } = await import("node:child_process");
-      const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+      // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+      const start = selfCommand(["fleet", "start"]);
+      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
       child.unref();
       console.log("Fleet starting in background.");
       return;
@@ -1974,7 +1977,9 @@ program
         // during the wait.
         if (isOurFleet()) { try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ } }
         try { unlinkSync(pidPath); } catch { /* best effort */ }
-        const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+        // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+        const start = selfCommand(["fleet", "start"]);
+        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
         child.unref();
         console.log("Fleet restarting in background.");
         return;
