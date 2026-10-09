@@ -3,7 +3,7 @@ import type { BackendProbeInput } from "../src/backend/cli-env-probe.js";
 const { createBackend, listModels, probeCLIEnv, refreshModelCatalog } = vi.hoisted(() => ({
   createBackend: vi.fn(), listModels: vi.fn(), probeCLIEnv: vi.fn(), refreshModelCatalog: vi.fn(),
 }));
-vi.mock("../src/backend/factory.js", () => ({ createBackend, createBackendAsync: createBackend }));
+vi.mock("../src/backend/factory.js", () => ({ createBackend }));
 import { runBackendProbe } from "../src/backend/cli-env-probe.js";
 const input: BackendProbeInput = { mode: "env", backend: "codex", instanceDir: "/scratch/probe", refreshVendorCatalog: false,
   config: { workingDirectory: "/scratch/project", instanceDir: "/scratch/probe", instanceName: "alpha", model: "custom", backendOptions: { provider: "private" }, mcpServers: {} } };

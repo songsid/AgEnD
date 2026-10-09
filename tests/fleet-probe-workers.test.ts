@@ -6,7 +6,7 @@ import { FakeProbeWorker } from "./helpers/probe-worker.js";
 vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({ createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger, rotateLogIfNeeded: vi.fn() }));
 const { createBackend } = vi.hoisted(() => ({ createBackend: vi.fn(() => { throw new Error("parent backend construction forbidden"); }) }));
-vi.mock("../src/backend/factory.js", () => ({ createBackend, createBackendAsync: createBackend }));
+vi.mock("../src/backend/factory.js", () => ({ createBackend }));
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
 vi.mock("node:child_process", async original => {
   const actual = await original<typeof import("node:child_process")>();

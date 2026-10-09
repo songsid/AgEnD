@@ -25,7 +25,6 @@ import { FakeProbeWorker } from "./helpers/probe-worker.js";
 const probeCLIEnv = vi.fn();
 vi.mock("../src/backend/factory.js", () => ({
   createBackend: () => { throw new Error("backend constructor on fleet thread"); },
-  createBackendAsync: () => { throw new Error("backend constructor on fleet thread"); },
 }));
 
 /**

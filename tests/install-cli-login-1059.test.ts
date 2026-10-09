@@ -102,7 +102,7 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
     const { fm, chat } = fleet();
     process.env.PATH = `${profileBin}:/usr/bin:/bin`;
     await fm.startInstallSession("grok", chat).catch(() => {}); // already installed now
-    const located = await (fm as any).locateBinaryOnLoginShell("grok");
+    const located = (fm as any).locateBinaryOnLoginShell("grok");
     (fm as any).adoptBinaryDirectory(located, "grok");
     expect(process.env.PATH).toBe(`${profileBin}:/usr/bin:/bin`);
   });
@@ -131,17 +131,17 @@ describe("every way an install ends is reported, with the next step (#1059)", ()
 });
 
 describe("locateBinaryOnLoginShell accepts only a real executable", () => {
-  it("an alias or a function the profile defines is not a binary", async () => {
+  it("an alias or a function the profile defines is not a binary", () => {
     const { fm } = fleet();
     rmSync(join(profileBin, "grok"));
     writeFileSync(join(home, ".bash_profile"), "alias grok='echo hi'\ngrok2() { :; }\n");
-    expect(await (fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
-    expect(await (fm as any).locateBinaryOnLoginShell("grok2")).toBeNull();
+    expect((fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
+    expect((fm as any).locateBinaryOnLoginShell("grok2")).toBeNull();
   });
 
-  it("a file without the execute bit is not a binary", async () => {
+  it("a file without the execute bit is not a binary", () => {
     const { fm } = fleet();
     chmodSync(join(profileBin, "grok"), 0o644);
-    expect(await (fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
+    expect((fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
   });
 });

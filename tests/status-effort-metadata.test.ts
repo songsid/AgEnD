@@ -12,7 +12,7 @@ const guards = vi.hoisted(() => ({
   subprocess: vi.fn(() => { throw new Error("subprocess forbidden in this harness"); }),
   httpHandler: null as null | ((req: IncomingMessage, res: ServerResponse) => void),
 }));
-vi.mock("../src/backend/factory.js", () => ({ createBackend: guards.createBackend, createBackendAsync: guards.createBackend }));
+vi.mock("../src/backend/factory.js", () => ({ createBackend: guards.createBackend }));
 vi.mock("node:child_process", async importOriginal => ({
   ...await importOriginal<typeof import("node:child_process")>(),
   execFileSync: guards.subprocess, execSync: guards.subprocess, spawnSync: guards.subprocess,

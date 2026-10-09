@@ -26,7 +26,7 @@ describe("/login auth pre-check", () => {
     fm.fleetConfig = { defaults: {}, instances: {} } as any;   // the sign-in itself (the web terminal) is covered by login-controller.test.ts
     // Sign-in paths under test: the CLIs count as installed whatever this host
     // has on PATH (CI has none — /login would install first, #1131).
-    vi.spyOn(fm, "isCliInstalled").mockResolvedValue(true);
+    vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
     const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
       messageId: "prompt-1", chatId, threadId: opts?.threadId,
     }));

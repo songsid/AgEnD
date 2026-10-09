@@ -24,9 +24,9 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
 });
 // The already-installed guard must not depend on what this machine has on PATH.
 const installedBinaries = new Set<string>();
-vi.mock("../src/backend/binary-discovery.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/backend/binary-discovery.js")>();
-  return { ...real, checkBinaryInstalledAsync: async (binary: string) => installedBinaries.has(binary) };
+vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/instance-lifecycle.js")>();
+  return { ...real, checkBinaryInstalled: (binary: string) => installedBinaries.has(binary) };
 });
 
 import { FleetManager } from "../src/fleet-manager.js";

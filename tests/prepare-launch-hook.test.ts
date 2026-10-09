@@ -13,18 +13,17 @@ afterEach(() => { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: tr
 
 function launch(prepareLaunch?: () => Promise<void>) {
   const order: string[] = [];
-  const backend = {
+  const daemon: any = new Daemon("worker", {
+    working_directory: dir, backend: "opencode", log_level: "silent",
+    restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+    context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+  } as any, join(dir, "instance"), false, undefined, undefined, pino({ level: "silent" }) as any);
+  daemon.backend = {
     binaryName: "opencode",
     writeConfig: vi.fn(() => { order.push("writeConfig"); }),
     buildCommand: vi.fn(() => { order.push("buildCommand"); return "opencode"; }),
     ...(prepareLaunch ? { prepareLaunch: vi.fn(async () => { order.push("prepareLaunch:start"); await prepareLaunch(); order.push("prepareLaunch:done"); }) } : {}),
   };
-  const daemon: any = new Daemon("worker", {
-    working_directory: dir, backend: "opencode", log_level: "silent",
-    restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
-    context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
-  } as any, join(dir, "instance"), false, backend as any, undefined, pino({ level: "silent" }) as any);
-
   vi.spyOn(TmuxManager, "ensureSession").mockRejectedValue(new Error("stop after the command is built"));
   return { daemon, order };
 }

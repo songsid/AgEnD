@@ -1,87 +1,92 @@
-import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CostGuard } from "./cost-guard.js";
 import type { Logger } from "./logger.js";
 
-export interface RateLimitData { five_hour_pct: number; seven_day_pct: number; }
+export interface RateLimitData {
+  five_hour_pct: number;
+  seven_day_pct: number;
+}
+
 export interface StatuslineWatcherContext {
   readonly logger: Logger;
   readonly costGuard: CostGuard | null;
   getInstanceDir(name: string): string;
-  /** Pure lifecycle/daemon generation token; null while unavailable or stopping. */
-  getStatuslineOwner(name: string): string | null;
   notifyInstanceTopic(name: string, text: string): void;
   checkModelFailover(name: string, fiveHourPct: number): void;
 }
-interface WatchRegistration { timer: ReturnType<typeof setInterval>; pending: boolean; }
 
-/** Async per-instance reads, at most four physical reads and one pending read per registration. */
+/**
+ * Periodically reads statusline.json for each instance to track
+ * cost usage and rate limit status.
+ */
 export class StatuslineWatcher {
-  private watchers = new Map<string, WatchRegistration>();
+  private watchers = new Map<string, ReturnType<typeof setInterval>>();
   private rateLimits = new Map<string, RateLimitData>();
-  private queue: Array<{ name: string; registration: WatchRegistration }> = [];
-  private active = 0;
   private static readonly POLL_MS = 10_000;
-  private static readonly CONCURRENCY = 4;
+
   constructor(private ctx: StatuslineWatcherContext) {}
 
+  /** Start watching an instance's statusline.json. */
   watch(name: string): void {
     if (this.watchers.has(name)) return;
-    const registration: WatchRegistration = { timer: setInterval(() => {
-      if (registration.pending) return;
-      registration.pending = true;
-      this.queue.push({ name, registration });
-      this.pump();
-    }, StatuslineWatcher.POLL_MS), pending: false };
-    this.watchers.set(name, registration);
-  }
 
-  private pump(): void {
-    while (this.active < StatuslineWatcher.CONCURRENCY && this.queue.length) {
-      const { name, registration } = this.queue.shift()!;
-      if (this.watchers.get(name) !== registration) continue;
-      this.active++;
-      void this.poll(name, registration).finally(() => {
-        this.active--;
-        registration.pending = false;
-        this.pump();
-      });
-    }
-  }
+    const statusFile = join(this.ctx.getInstanceDir(name), "statusline.json");
+    const timer = setInterval(() => {
+      try {
+        const data = JSON.parse(readFileSync(statusFile, "utf-8"));
 
-  private async poll(name: string, registration: WatchRegistration): Promise<void> {
-    try {
-      const owner = this.ctx.getStatuslineOwner(name);
-      if (owner === null) return;
-      const raw = await readFile(join(this.ctx.getInstanceDir(name), "statusline.json"), "utf8");
-      // An unwatch/rewatch is a new instance generation even under the same name.
-      if (this.watchers.get(name) !== registration || this.ctx.getStatuslineOwner(name) !== owner) return;
-      const data = JSON.parse(raw);
-      if (data.cost?.total_cost_usd != null) this.ctx.costGuard?.updateCost(name, data.cost.total_cost_usd);
-      const rl = data.rate_limits;
-      if (rl) {
-        const prev = this.rateLimits.get(name);
-        const newSevenDay = rl.seven_day?.used_percentage ?? 0;
-        if (prev?.seven_day_pct === 100 && newSevenDay < 100) {
-          this.ctx.notifyInstanceTopic(name, `✅ ${name} weekly usage limit has reset — instance is available again.`);
-          this.ctx.logger.info({ name }, "Weekly rate limit recovered");
+        // Cost tracking
+        if (data.cost?.total_cost_usd != null) {
+          this.ctx.costGuard?.updateCost(name, data.cost.total_cost_usd);
         }
-        this.rateLimits.set(name, { five_hour_pct: rl.five_hour?.used_percentage ?? 0, seven_day_pct: newSevenDay });
-        this.ctx.checkModelFailover(name, rl.five_hour?.used_percentage ?? 0);
-      }
-    } catch { /* absent, mid-write, or unavailable file: next scheduled poll */ }
+
+        // Rate limit tracking
+        const rl = data.rate_limits;
+        if (rl) {
+          const prev = this.rateLimits.get(name);
+          const newSevenDay = rl.seven_day?.used_percentage ?? 0;
+
+          // Notify on recovery
+          if (prev?.seven_day_pct === 100 && newSevenDay < 100) {
+            this.ctx.notifyInstanceTopic(name, `✅ ${name} weekly usage limit has reset — instance is available again.`);
+            this.ctx.logger.info({ name }, "Weekly rate limit recovered");
+          }
+
+          this.rateLimits.set(name, {
+            five_hour_pct: rl.five_hour?.used_percentage ?? 0,
+            seven_day_pct: newSevenDay,
+          });
+
+          this.ctx.checkModelFailover(name, rl.five_hour?.used_percentage ?? 0);
+        }
+      } catch { /* file may not exist yet or be mid-write */ }
+    }, StatuslineWatcher.POLL_MS);
+
+    this.watchers.set(name, timer);
   }
 
-  getRateLimits(name: string): RateLimitData | undefined { return this.rateLimits.get(name); }
-  has(name: string): boolean { return this.watchers.has(name); }
+  /** Get rate limit data for an instance. */
+  getRateLimits(name: string): RateLimitData | undefined {
+    return this.rateLimits.get(name);
+  }
+
+  /** Check if an instance has an active watcher. */
+  has(name: string): boolean {
+    return this.watchers.has(name);
+  }
+
+  /** Stop watcher for a specific instance. */
   unwatch(name: string, preserveRateLimits = false): void {
-    const registration = this.watchers.get(name);
-    if (registration) { clearInterval(registration.timer); this.watchers.delete(name); }
-    this.queue = this.queue.filter(item => item.name !== name);
+    const timer = this.watchers.get(name);
+    if (timer) { clearInterval(timer); this.watchers.delete(name); }
     if (!preserveRateLimits) this.rateLimits.delete(name);
   }
+
+  /** Stop all watchers and clear data. */
   stopAll(): void {
-    for (const registration of this.watchers.values()) clearInterval(registration.timer);
-    this.watchers.clear(); this.queue = []; this.rateLimits.clear();
+    for (const [, timer] of this.watchers) clearInterval(timer);
+    this.watchers.clear();
+    this.rateLimits.clear();
   }
 }

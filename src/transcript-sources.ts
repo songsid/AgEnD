@@ -1,4 +1,3 @@
-import { measureSyncWork } from "./sync-work-attribution.js";
 /**
  * Per-backend tool-event sources for the transcript monitor.
  *
@@ -274,14 +273,6 @@ export function readKiroConversationStatus(
   /** False = metadata only (no value read, no JSON parse): the poll fast path. */
   includeHistory = true,
 ): KiroConversationRead {
-  return measureSyncWork("kiro.conversationStatus", () => readKiroConversationStatusSync(dbPath, workingDirectory, includeHistory));
-}
-function readKiroConversationStatusSync(
-  dbPath: string,
-  workingDirectory: string,
-  /** False = metadata only (no value read, no JSON parse): the poll fast path. */
-  includeHistory = true,
-): KiroConversationRead {
   if (!existsSync(dbPath)) return { status: "error", reason: `kiro store not found: ${dbPath}` };
   let db: Database.Database | undefined;
   try {
@@ -490,9 +481,6 @@ export class KiroSessionSource implements TranscriptSource {
   }
 
   private pollDb(): TranscriptEvents | null {
-    return measureSyncWork("kiro.transcriptPollDb", () => this.pollDbSync());
-  }
-  private pollDbSync(): TranscriptEvents | null {
     try {
       const db = this.openDb();
       if (!db) return null;

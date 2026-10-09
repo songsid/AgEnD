@@ -17,9 +17,9 @@ vi.mock("../src/login-manager.js", async (importOriginal) => {
   }
   return { ...real, LoginSession: FakeLoginSession };
 });
-vi.mock("../src/backend/binary-discovery.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../src/backend/binary-discovery.js")>();
-  return { ...real, checkBinaryInstalledAsync: async () => false };
+vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/instance-lifecycle.js")>();
+  return { ...real, checkBinaryInstalled: () => false };
 });
 import { FleetManager } from "../src/fleet-manager.js";
 import { LoginController } from "../src/login-controller.js";
@@ -52,7 +52,7 @@ describe("/login dispatch and exclusivity", () => {
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
     // These are sign-in paths: the CLIs count as installed (on a host without
     // them, /login would install first — covered in login-one-entry-1131).
-    vi.spyOn(fm, "isCliInstalled").mockResolvedValue(true);
+    vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
     const adapter = {
       id: "discord", type: "discord",
       sendText: vi.fn().mockResolvedValue({ messageId: "m1" }),

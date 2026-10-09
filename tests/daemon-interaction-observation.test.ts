@@ -21,7 +21,7 @@ vi.mock("node:http", async original => ({ ...await original<typeof import("node:
     hooks.http = handler; return { on: vi.fn(), listen: vi.fn() };
   },
 }));
-vi.mock("../src/backend/factory.js", () => ({ createBackend: hooks.forbidden, createBackendAsync: hooks.forbidden }));
+vi.mock("../src/backend/factory.js", () => ({ createBackend: hooks.forbidden }));
 vi.mock("../src/topic-commands.js", async original => ({ ...await original<typeof import("../src/topic-commands.js")>(),
   resolveInstanceContext: () => ({ context: null, tokenRatio: null }),
 }));

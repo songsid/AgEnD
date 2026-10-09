@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, constants as fsConstants, type Dirent } from "node:fs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { discoveryOutput, executableFile, checkBinaryInstalledAsync } from "./backend/binary-discovery.js";
+import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -52,9 +52,7 @@ import { IpcClient } from "./channel/ipc-bridge.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
-import { createBackendAsync } from "./backend/factory.js";
-import { resolveAntigravityWorkingDirectory } from "./backend/antigravity.js";
-import { measureSyncWork } from "./sync-work-attribution.js";
+import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
@@ -77,6 +75,7 @@ import {
   type TransitionHandle,
   BACKEND_INSTALLATION_INFO,
   type BackendInstallationInfo,
+  checkBinaryInstalled,
   type LifecycleContext,
 } from "./instance-lifecycle.js";
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
@@ -3136,7 +3135,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
         oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
       }
-      if (!measureSyncWork("fleet.classicConfigReload", () => this.classicChannels!.checkReload())) return;
+      if (!this.classicChannels.checkReload()) return;
       // A reload can introduce a bad id (hand edit) or clear one; the
       // throttle keeps a repeated report from flooding the topic.
       this.reportClassicUnrecoverableIds();
@@ -3243,7 +3242,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // managed independently from fleet-topic workers.
       try {
         const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-        measureSyncWork("fleet.workerSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "worker"));
+        this.syncRoleSkills(skillsWorkDir, backend, "worker");
       } catch (err) {
         // Skill publishing is additive. A read-only or temporarily unavailable
         // workspace must not turn an otherwise valid worker startup into a
@@ -3559,10 +3558,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `/login` must see it without requiring a restart or an explicit cache
    * invalidation call.
    */
-  private async probeInstalledBackends(): Promise<Set<string>> {
+  private probeInstalledBackends(): Set<string> {
     const installed = new Set<string>();
     for (const [backend, info] of Object.entries(BACKEND_INSTALLATION_INFO)) {
-      if (await checkBinaryInstalledAsync(info.binary)) installed.add(backend);
+      if (checkBinaryInstalled(info.binary)) installed.add(backend);
     }
     return installed;
   }
@@ -7886,13 +7885,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.statuslineWatcher.watch(name);
   }
 
-  getStatuslineOwner(name: string): string | null {
-    const daemon = this.daemons.get(name);
-    if (!daemon || daemon.isPaused || this.shuttingDown || this.stopsInFlight.has(name) || this.restartsInFlight.has(name)) return null;
-    const owner = daemon.getInteractionSnapshot().owner;
-    return `${this.lifecycle.epochOf(name)}:${owner.bootId}:${owner.spawnGeneration}:${owner.launchAttempt}:${owner.launchFenceEpoch}`;
-  }
-
   stopStatuslineWatcher(name: string): void {
     // Pausing stops I/O but retains the last observed limits for status views.
     this.statuslineWatcher.unwatch(name, true);
@@ -10756,7 +10748,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const name of this.configuredBackendInstanceNames()) {
       configured.add(this.backendNameOf(name));
     }
-    const installed = await this.probeInstalledBackends();
+    const installed = this.probeInstalledBackends();
     // One entry point for "get this CLI working" (#1131): a backend that is
     // not installed is offered too, and the click installs it first, then
     // signs in (startLoginSession routes it).
@@ -10969,7 +10961,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     // A removed backend (#1280) is neither installed nor signed into: say what replaces it.
     if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
-    if (BACKEND_INSTALLATION_INFO[wanted] && !(await this.isCliInstalled(wanted))) {
+    if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
       return this.startInstallSession(wanted, chat);
@@ -11206,9 +11198,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
-    if (await checkBinaryInstalledAsync(info.binary)) return t("install.already", backend, info.binary);
-    // Reserve the fleet-wide window before any tmux/lifecycle await. Discovery
-    // has no shared side effects; the claim also rejects a shutdown meanwhile.
+    if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
+    // Reserve the fleet-wide window before the first await (shared with web
+    // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return this.loginWindow.busyMessage();
 
@@ -11233,80 +11225,62 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     const session = new LoginSession(flow, tmux, {
       onDone: async ({ ok, detail, cleanupFailed }) => {
-        if (ok && !this.loginWindow.isCurrent(claim)) return;
+        this.activeInstall = null;
+        this.loginWindow.release(claim);
+        if (cleanupFailed) {
+          await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
+        }
+        if (!ok) {
+          // A cancel is user-initiated — the cancel command's own reply already
+          // said so; a second message here would be a duplicate.
+          if (detail !== "cancelled") {
+            await chat.adapter.sendText(chat.chatId, t("install.failed", backend, detail),
+              { threadId: chat.threadId }).catch(() => {});
+          }
+          return;
+        }
+        // The installer may only have added the binary to a profile PATH; a
+        // fresh login shell sees that, the fleet process's PATH may not.
+        const installedAt = this.locateBinaryOnLoginShell(info.binary) ?? this.locateInInstallerBinDirs(info);
+        if (!installedAt) {
+          await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
+            { threadId: chat.threadId }).catch(() => {});
+          return;
+        }
+        // #1059: make it reachable from this process too. `/login` lists what
+        // `which` finds on the fleet's own PATH, and instances resolve their
+        // binary the same way, so a binary only a login shell could see was
+        // installed, reported as verified, and then offered nowhere.
+        this.adoptBinaryDirectory(installedAt, backend);
+        if (!LOGIN_FLOWS[backend]) {
+          await chat.adapter.sendText(chat.chatId, t("install.success_no_login", backend),
+            { threadId: chat.threadId }).catch(() => {});
+          return;
+        }
+        // The button is deliberately best-effort: it is a short-lived
+        // capability and can be lost during an adapter reconnect.  Always
+        // publish a durable completion line first so a successful install can
+        // never look like it silently disappeared.  Include the binary that
+        // passed the fresh-login-shell verification and the exact next step.
+        // Between the install ending and the sign-in starting there is no
+        // session to cancel; this hand-off is what `/login cancel` stops.
         const handoff = { backend, cancelled: false };
-        if (ok) this.installHandoff = handoff;
-        try {
-          if (this.activeInstall?.session === session) this.activeInstall = null;
-          // Hold the claim through asynchronous install verification.
-          if (!ok) {
-            this.loginWindow.release(claim);
-            if (cleanupFailed) {
-              await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
-            }
-            // A cancel is user-initiated — the cancel command's own reply already
-            // said so; a second message here would be a duplicate.
-            if (detail !== "cancelled") {
-              await chat.adapter.sendText(chat.chatId, t("install.failed", backend, detail),
-                { threadId: chat.threadId }).catch(() => {});
-            }
-            return;
-          }
-          // The installer may only have added the binary to a profile PATH; a
-          // fresh login shell sees that, the fleet process's PATH may not.
-          const installedAt = await this.locateBinaryOnLoginShell(info.binary) ?? this.locateInInstallerBinDirs(info);
-          if (handoff.cancelled || this.installHandoff !== handoff || !this.loginWindow.isCurrent(claim)) return;
-          this.loginWindow.release(claim);
-          // Adapter notifications must not hold the launch claim. Keep the
-          // original notice ordering, then recheck cancel/shutdown after it.
-          if (cleanupFailed) {
-            await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
-          }
-          if (handoff.cancelled || this.installHandoff !== handoff || this.loginWindow.isClosed) return;
-          if (!installedAt) {
-            this.loginWindow.release(claim);
-            await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
-              { threadId: chat.threadId }).catch(() => {});
-            return;
-          }
-          // #1059: make it reachable from this process too. `/login` lists what
-          // `which` finds on the fleet's own PATH, and instances resolve their
-          // binary the same way, so a binary only a login shell could see was
-          // installed, reported as verified, and then offered nowhere.
-          this.adoptBinaryDirectory(installedAt, backend);
-          if (!LOGIN_FLOWS[backend]) {
-            this.loginWindow.release(claim);
-            await chat.adapter.sendText(chat.chatId, t("install.success_no_login", backend),
-              { threadId: chat.threadId }).catch(() => {});
-            return;
-          }
-          // The button is deliberately best-effort: it is a short-lived
-          // capability and can be lost during an adapter reconnect.  Always
-          // publish a durable completion line first so a successful install can
-          // never look like it silently disappeared.  Include the binary that
-          // passed the fresh-login-shell verification and the exact next step.
-          // Between the install ending and the sign-in starting there is no
-          // session to cancel; this hand-off is what `/login cancel` stops.
-          this.loginWindow.release(claim);
-          await chat.adapter.sendText(chat.chatId, t("install.success", backend, info.binary),
-            { threadId: chat.threadId }).catch(err => this.logger.warn({ err, backend },
-              "Failed to send durable install success notification"));
-          if (handoff.cancelled || this.installHandoff !== handoff || this.loginWindow.isClosed) return;
-          this.installHandoff = null;
-          // The user asked `/login` for a working CLI: sign in straight away
-          // (#1131). The login has its own confirmation, so nothing starts
-          // without a click.
-          // launchSignIn, not startLoginSession: if the new binary were still
-          // not visible, startLoginSession would route straight back to an install.
-          const next = await this.launchSignIn(backend, chat, {}).catch((err: unknown) =>
-            t("login.failed", backend, (err as Error)?.message ?? String(err)));
-          if (next) {
-            await chat.adapter.sendText(chat.chatId, next, { threadId: chat.threadId })
-              .catch(err => this.logger.warn({ err, backend }, "Could not post the sign-in step after an install"));
-          }
-        } finally {
-          this.loginWindow.release(claim);
-          if (this.installHandoff === handoff) this.installHandoff = null;
+        this.installHandoff = handoff;
+        await chat.adapter.sendText(chat.chatId, t("install.success", backend, info.binary),
+          { threadId: chat.threadId }).catch(err => this.logger.warn({ err, backend },
+            "Failed to send durable install success notification"));
+        if (handoff.cancelled || this.installHandoff !== handoff) return;
+        this.installHandoff = null;
+        // The user asked `/login` for a working CLI: sign in straight away
+        // (#1131). The login has its own confirmation, so nothing starts
+        // without a click.
+        // launchSignIn, not startLoginSession: if the new binary were still
+        // not visible, startLoginSession would route straight back to an install.
+        const next = await this.launchSignIn(backend, chat, {}).catch((err: unknown) =>
+          t("login.failed", backend, (err as Error)?.message ?? String(err)));
+        if (next) {
+          await chat.adapter.sendText(chat.chatId, next, { threadId: chat.threadId })
+            .catch(err => this.logger.warn({ err, backend }, "Could not post the sign-in step after an install"));
         }
       },
     }, this.logger);
@@ -11335,9 +11309,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Whether this backend's CLI is on the fleet's PATH (what `/login` installs when it is not). */
-  async isCliInstalled(backend: string): Promise<boolean> {
+  isCliInstalled(backend: string): boolean {
     const info = BACKEND_INSTALLATION_INFO[backend];
-    return !!info && await checkBinaryInstalledAsync(info.binary);
+    return !!info && checkBinaryInstalled(info.binary);
   }
 
   /** Abort the active install (`/login cancel`) and remove its window. */
@@ -11354,12 +11328,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * a real executable file counts: `command -v` also answers with an alias
    * definition or a function name, neither of which a spawn could run.
    */
-  private async locateBinaryOnLoginShell(binary: string): Promise<string | null> {
+  private locateBinaryOnLoginShell(binary: string): string | null {
     try {
-      const stdout = await discoveryOutput("bash", ["-lc", `command -v ${binary}`], 10_000);
-      const path = stdout.trim().split("\n").pop()?.trim() ?? "";
-      return isAbsolute(path) && await executableFile(path) ? path : null;
-    } catch { return null; }
+      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" });
+      if (result.status !== 0) return null;
+      const path = String(result.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
+      if (!isAbsolute(path)) return null;
+      accessSync(path, fsConstants.X_OK);
+      return statSync(path).isFile() ? path : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -11605,9 +11584,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
-    measureSyncWork("fleet.generalInstructions", () => this.ensureGeneralInstructionsSync(workDir, backendName, instanceName));
-  }
-  private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
@@ -11622,11 +11598,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Resolve the workspace path a backend actually uses before publishing knowledge. */
-  private resolveKnowledgeWorkDir(workDir: string, backend: string, _instanceName?: string): string {
-    // Only agy prepares a workspace. Other backends have no cwd override; do
-    // not construct one just to discover that (which/Kiro probe/Codex home).
-    try { return backend === "antigravity" ? resolveAntigravityWorkingDirectory(workDir) : workDir; }
-    catch { return workDir; }
+  private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
+    // Backend resolution may create/normalize the real cwd. Instructions and
+    // skills must land where the CLI actually runs, not an assumed path.
+    try {
+      const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
+        .resolveWorkingDirectory?.(workDir, instanceName);
+      if (resolved) workDir = resolved;
+    } catch { /* unknown backend name — keep the raw path */ }
+    return workDir;
   }
 
   /**
@@ -13195,7 +13175,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     let strategy: "runtime" | "restart" | "unsupported" = "unsupported";
     let supported: string[] = [];
     try {
-      const backend = await createBackendAsync(backendName, this.getInstanceDir(instanceName));
+      const backend = createBackend(backendName, this.getInstanceDir(instanceName));
       strategy = backend.getEffortStrategy?.() ?? "unsupported";
       supported = backend.getEffortLevels?.() ?? [];
     } catch { /* treated as unsupported below */ }
@@ -13233,7 +13213,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" = "restart";
     try {
-      strategy = (await createBackendAsync(backendName, this.getInstanceDir(instanceName))).getModelSwitchStrategy?.(model) ?? "restart";
+      strategy = createBackend(backendName, this.getInstanceDir(instanceName)).getModelSwitchStrategy?.(model) ?? "restart";
     } catch { /* default restart */ }
     const warn = isModelCompatible(backendName, model) ? "" : t("model.pattern_warning", model, backendName);
 
@@ -13325,15 +13305,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return undefined;
   }
 
-  private async isBackendInstalled(backend: string): Promise<boolean> {
+  private isBackendInstalled(backend: string): boolean {
     const installation = BACKEND_INSTALLATION_INFO[backend];
-    return !!installation && await checkBinaryInstalledAsync(installation.binary);
+    return !!installation && checkBinaryInstalled(installation.binary);
   }
 
-  private async getMissingBackendWarning(backend: string | undefined): Promise<string | undefined> {
+  private getMissingBackendWarning(backend: string | undefined): string | undefined {
     if (!backend) return undefined;
     const installation = BACKEND_INSTALLATION_INFO[backend];
-    if (!installation || await this.isBackendInstalled(backend)) return undefined;
+    if (!installation || this.isBackendInstalled(backend)) return undefined;
     return t("classic.backend_not_installed", backend, installation.binary, installation.install);
   }
 
@@ -13350,7 +13330,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
 
-    const warning = await this.getMissingBackendWarning(requestedBackend);
+    const warning = this.getMissingBackendWarning(requestedBackend);
     // Keep the deferred ephemeral response useful even if daemon startup later
     // fails because the executable is absent. This is advisory, not a gate.
     if (warning) await data.respond(warning);
@@ -13375,11 +13355,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
 
     const nonce = randomBytes(6).toString("hex");
-    const choices = await Promise.all(getClassicBackendChoices().map(async choice => ({
+    const choices = getClassicBackendChoices().map(choice => ({
       id: `${CLASSIC_BACKEND_CALLBACK_PREFIX}${nonce}:${choice.id}`,
-      label: `${await this.isBackendInstalled(choice.id) ? "✅" : "❌"} ${choice.label}`,
-    })));
-    if (this.shuttingDown) { await data.respond(t("login.web_shutting_down")); return; }
+      label: `${this.isBackendInstalled(choice.id) ? "✅" : "❌"} ${choice.label}`,
+    }));
     const complete = data.respondChoices
       ? async (text: string) => { await data.respond(text); }
       : async (text: string, messageId?: string) => {
@@ -13453,7 +13432,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       ?? this.classicChannels?.getDefaults().backend
       ?? this.fleetConfig?.defaults?.backend
       ?? "claude-code";
-    const warning = await this.getMissingBackendWarning(effectiveBackend);
+    const warning = this.getMissingBackendWarning(effectiveBackend);
     // Show the warning before starting so it survives a missing-binary startup
     // failure. The selected backend is still attempted as requested.
     if (warning) await pending.complete(warning, pending.messageId);
@@ -15824,9 +15803,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   getUiStatus(): unknown {
-    return measureSyncWork("fleet.uiStatus", () => this.getUiStatusSync());
-  }
-  private getUiStatusSync(): unknown {
     const fleetNames = Object.keys(this.fleetConfig?.instances ?? {});
     // Classic rooms live only in classicBot.yaml — /api/profiles merges them into
     // the View roster, but previously getUiStatus skipped them so context_pct was

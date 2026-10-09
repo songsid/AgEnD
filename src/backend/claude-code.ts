@@ -617,8 +617,8 @@ export class ClaudeCodeBackend implements CliBackend {
   }
   private binaryPath: string;
 
-  constructor(private instanceDir: string, resolvedBinary?: string) {
-    this.binaryPath = resolvedBinary ?? resolveBinary("claude");
+  constructor(private instanceDir: string) {
+    this.binaryPath = resolveBinary("claude");
   }
 
   buildCommand(config: CliBackendConfig): string {

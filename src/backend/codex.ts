@@ -873,8 +873,8 @@ export class CodexBackend implements CliBackend {
   /** Set by writeConfig when the status_line could not be made verifiable (#931). */
   private statusLineWarning: string | null = null;
 
-  constructor(private instanceDir: string, resolvedBinary?: string) {
-    this.binaryPath = resolvedBinary ?? resolveBinary("codex");
+  constructor(private instanceDir: string) {
+    this.binaryPath = resolveBinary("codex");
     this.sharedCodexHome = resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
     this.isolatedCodexHome = CodexBackend.resolveShortHome(instanceDir);
   }
