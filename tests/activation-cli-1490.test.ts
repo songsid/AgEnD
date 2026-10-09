@@ -63,7 +63,7 @@ function rig(status: number | null, kind: "systemd" | "detached" = "systemd") {
   runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText.replaceAll("import(", "load("), context);
   const activate = runInContext("activateVerified", context) as (verified: unknown, viaNvm: boolean) => Promise<void>;
   const refuses = runInContext("refuses", context) as (result: unknown) => boolean;
-  const verified = { ...w.verified, agendPath: w.entry, version: "2.2.0", rollback: { root: w.npmRoot, prefix: w.prefix, preimage: w.preimage }, retireSystemCopy: true };
+  const verified = { ...w.verified, agendPath: w.entry, version: "2.2.0", rollback: { root: w.npmRoot, prefix: w.prefix, preimage: w.preimage }, retireSystemCopy: true, npmPath: "/usr/local/bin/npm" };
   return { w, process, console, stages, commands, activate, refuses, verified, prune, restore, spawnSync };
 }
 

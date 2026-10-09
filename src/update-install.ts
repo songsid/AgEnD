@@ -58,7 +58,7 @@ export interface UpdateInstallPlan {
 }
 
 export type UpdateInstallOutcome =
-  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null }; /** nvm transition: retire the old system copy once activation settles. */ retireSystemCopy?: true }
+  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null }; /** nvm transition: retire the old system copy once activation settles. */ retireSystemCopy?: true; /** Absolute path of the npm binary used to install this version — same binary passed to sudo for retirement. */ npmPath?: string }
   | { ok: false; stage: "lock" | "install" | "verify"; message: string };
 
 /**
@@ -236,6 +236,11 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     if (selected.status !== 0 || !node.startsWith("/")) return { ok: false, stage: "install", message: "  Could not tell which Node `nvm use 22` selects. The current install was not touched." };
     plan = { ...plan, nvmBin: dirname(node) };
   }
+  // Resolve the npm path that will be used for this install (and for retirement).
+  // For nvm: npm lives alongside node in nvmBin. For system: resolve from PATH.
+  const resolvedNpmPath: string | null = plan.nvmBin
+    ? join(plan.nvmBin, "npm")
+    : (() => { const r = runner.run("sh", ["-c", "command -v npm"], { timeoutMs: 5_000 }); const p = r.stdout?.trim() ?? ""; return p.startsWith("/") ? p : null; })();
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
   const env: Record<string, string> = {};
   let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
@@ -283,7 +288,7 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   if (rollback) Object.assign(verified, { rollback });
   // The old system copy an nvm install leaves behind is what the current service still runs: it is removed only once
   // the activation has settled on the new install (retireSystemCopy, called by the caller), never here.
-  if (plan.viaNvm) Object.assign(verified, { retireSystemCopy: true });
+  if (plan.viaNvm) Object.assign(verified, { retireSystemCopy: true, npmPath: resolvedNpmPath ?? undefined });
   return verified;
 }
 
@@ -304,16 +309,29 @@ export function activationSettled(
  * After an nvm transition's activation SETTLED (the fleet runs the new install): remove the old system copy. Best
  * effort, and never waits for a password. Before that point the old copy is the rollback for the old service.
  */
-export function retireSystemCopy(runner: CommandRunner): void {
+export type RetireSystemCopyResult =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+/**
+ * Remove the old system npm global after an nvm transition.
+ * @param npmPath - The absolute npm path used during this install (from UpdateInstallOutcome.npmPath).
+ *   Passing undefined or a non-absolute path is a caller error and results in a failure.
+ */
+export function retireSystemCopy(runner: CommandRunner, npmPath?: string): RetireSystemCopyResult {
   runner.log("  Note: removing old system install (may require sudo)...");
-  // Resolve npm's absolute path using the same PATH the runner operates under,
-  // so sudo -n sees the same npm binary that performed this install rather than
-  // whatever sudo's secure_path happens to contain (which may differ or be absent).
-  const npmPathResult = runner.run("sh", ["-c", "command -v npm"], { timeoutMs: 5_000 });
-  const npmPath = npmPathResult.stdout?.trim() || npmPathResult.status === 0 && "";
-  if (!npmPath || npmPathResult.status !== 0 || !npmPath.startsWith("/")) {
-    runner.log(`  ⚠️  Could not resolve npm absolute path (got: ${JSON.stringify(npmPath)}); skipping old-copy removal. You may remove it manually: sudo npm uninstall -g @songsid/agend`);
-    return;
+  // Use the exact npm binary that performed this install, so retirement uses the
+  // same identity rather than re-querying a potentially-different sudo secure_path.
+  if (!npmPath || !npmPath.startsWith("/")) {
+    const reason = `npm path not available (${JSON.stringify(npmPath)}); cannot remove old system copy. Remove it manually: sudo npm uninstall -g @songsid/agend`;
+    runner.log(`  ✗ ${reason}`);
+    return { ok: false, reason };
   }
-  runner.run("sudo", ["-n", npmPath, "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
+  const result = runner.run("sudo", ["-n", npmPath, "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
+  if (result.status !== 0) {
+    const reason = `sudo npm uninstall failed (status ${result.status})`;
+    runner.log(`  ⚠️  ${reason}; the old system copy may still exist.`);
+    return { ok: false, reason };
+  }
+  return { ok: true };
 }

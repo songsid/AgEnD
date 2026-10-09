@@ -384,7 +384,7 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     // #1473 review: the old system copy is what the current service still runs — an activation that fails later
     // must find it in place. The caller retires it once the fleet runs the new install.
     expect(calls.some(line => /uninstall/.test(line))).toBe(false);
-    retireSystemCopy(w.runner);
+    retireSystemCopy(w.runner, join(w.tools, "npm"));
     const retireCall = w.callLog().at(-1) ?? "";
     // sudo must use the absolute npm path (resolved by "command -v npm"), not bare "npm"
     expect(retireCall).toMatch(/^sudo -n \/.*npm uninstall -g @songsid\/agend$/);
@@ -396,7 +396,7 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     // Reverse mutation: passing bare "npm" instead of the resolved absolute path
     // makes this test fail because the resolved npm path starts with "/".
     const w = world();
-    retireSystemCopy(w.runner);
+    retireSystemCopy(w.runner, join(w.tools, "npm"));
     const sudoCall = w.callLog().find(line => line.startsWith("sudo ")) ?? "";
     const parts = sudoCall.split(" ");
     const nIdx = parts.indexOf("-n");
@@ -404,6 +404,36 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     // Must be absolute path to the same npm stub the runner uses on PATH
     expect(npmArg).toMatch(/^\//);
     expect(npmArg).toBe(join(w.tools, "npm"));
+  });
+
+  it("retireSystemCopy uses the nvm npm path (not parent PATH) when nvmBin is set (#1490 P3)", () => {
+    // P1 witness: nvm install uses <nvmBin>/npm; retirement must use the same path,
+    // not the parent PATH npm which could be a different binary.
+    const w = world();
+    // Set up a fake nvm npm stub distinct from the system npm
+    const nvmBin = join(w.root, "nvm-bin");
+    const { mkdirSync, writeFileSync, chmodSync } = require("fs");
+    mkdirSync(nvmBin, { recursive: true });
+    writeFileSync(join(nvmBin, "npm"), w.npmStub(w.prefix), "utf8");
+    chmodSync(join(nvmBin, "npm"), 0o755);
+    const nvmNpmPath = join(nvmBin, "npm");
+    const systemNpmPath = join(w.tools, "npm");
+    // retirement must use nvmNpmPath (the install npm), not systemNpmPath
+    retireSystemCopy(w.runner, nvmNpmPath);
+    const sudoCall = w.callLog().find(line => line.startsWith("sudo ")) ?? "";
+    const parts = sudoCall.split(" ");
+    const nIdx = parts.indexOf("-n");
+    const npmArg = nIdx >= 0 ? parts[nIdx + 1] : "";
+    expect(npmArg).toBe(nvmNpmPath);
+    expect(npmArg).not.toBe(systemNpmPath);
+  });
+
+  it("retireSystemCopy returns {ok:false} when npmPath is missing (#1490 P3)", () => {
+    const w = world();
+    const result = retireSystemCopy(w.runner, undefined);
+    expect(result.ok).toBe(false);
+    expect((result as any).reason).toMatch(/npm path not available/);
+    expect(w.callLog().some(l => l.startsWith("sudo"))).toBe(false); // sudo not called
   });
 
   // #1472 review: one `nvm use 22` selection, frozen — locking, installing and verifying all happen in that prefix.
