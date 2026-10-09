@@ -202,14 +202,11 @@ describe("/ and the shared assets", () => {
     await stop(h.fm);
   }, 30_000);
 
-  it("serves the shell script and stylesheet, and nothing else beside them", async () => {
+  // #1408 step 5: the old shell (shell.js, shell.css) is retired — every page is the app or the sign-in page.
+  it("no longer serves the old shell's script or stylesheet; the theme script is still served", async () => {
     const h = await startFleet();
-    const js = await raw(h.port, "GET", "/assets/shell.js");
-    expect(js.status).toBe(200);
-    expect(js.headers["content-type"]).toContain("text/javascript");
-    const css = await raw(h.port, "GET", "/assets/shell.css");
-    expect(css.status).toBe(200);
-    expect(css.headers["content-type"]).toContain("text/css");
+    expect((await raw(h.port, "GET", "/assets/shell.js")).status).toBe(404);
+    expect((await raw(h.port, "GET", "/assets/shell.css")).status).toBe(404);
     const theme = await raw(h.port, "GET", "/assets/theme.js");                       // #1307: light / dark before paint
     expect(theme.status).toBe(200);
     expect(theme.headers["content-type"]).toContain("text/javascript");
@@ -303,8 +300,8 @@ describe("the panels adopt the shell", () => {
     }
   });
 
-  it("never builds markup from a string in the shell — labels are other browsers' User-Agents", () => {
-    const js = ui("shared/shell.js");
+  it("never builds markup from a string in the session menu — labels are other browsers' User-Agents", () => {
+    const js = ui("shared/app-session.js");
     expect(js).not.toMatch(/\.innerHTML\s*=/);
     expect(js).not.toContain("insertAdjacentHTML");
     expect(js).not.toContain("document.write");

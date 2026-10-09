@@ -6,28 +6,33 @@
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>AgEnD — Sign in</title>
+<script src="/assets/theme.js"></script>
+<link rel="stylesheet" href="/assets/tokens.css">
 <style>
-  :root { --bg:#080b12; --panel:#161b22; --border:#30363d; --fg:#f0f6fc; --dim:#8b949e; --accent:#2AABEE; --err:#f85149; }
+  /* #1408 step 5: the app's tokens (tokens.css), light and dark like every page (theme.js before paint). */
   * { box-sizing: border-box; }
-  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;
-         background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { width:100%; max-width:360px; background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:28px 24px; }
-  h1 { margin:0 0 6px; font-size:20px; }
-  p { margin:0 0 18px; color:var(--dim); }
-  label { display:block; margin-bottom:6px; font-size:13px; color:var(--dim); }
-  input { width:100%; padding:12px; font:600 22px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing:.18em; text-align:center;
-          text-transform:uppercase; background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:8px; }
-  input:focus { outline:2px solid var(--accent); outline-offset:1px; }
-  button { width:100%; margin-top:14px; padding:12px; font:600 15px system-ui, sans-serif; color:#04121b; background:var(--accent);
-           border:0; border-radius:8px; cursor:pointer; }
-  button:disabled { opacity:.6; cursor:default; }
-  #msg { min-height:1.5em; margin-top:14px; font-size:14px; color:var(--err); }
-  .hint { margin-top:18px; font-size:12px; color:var(--dim); }
-  [hidden] { display:none !important; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
+         background: var(--bg); color: var(--text); font: var(--fw-regular) var(--fs-md)/var(--lh-md) var(--font-ui); -webkit-font-smoothing: antialiased; }
+  main { width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 28px 24px; }
+  .brand { margin: 0 0 18px; font-size: var(--fs-lg); font-weight: var(--fw-bold); }
+  h1 { margin: 0 0 6px; font-size: var(--fs-xl); font-weight: var(--fw-semibold); }
+  p { margin: 0 0 18px; color: var(--text-2); }
+  label { display: block; margin-bottom: 6px; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-medium); }
+  input { width: 100%; padding: 12px; font: 600 22px/1 var(--font-mono); letter-spacing: .18em; text-align: center;
+          text-transform: uppercase; background: var(--bg); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); }
+  input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
+  button { width: 100%; margin-top: 14px; padding: 12px; font: var(--fw-semibold) var(--fs-md) var(--font-ui); color: var(--on-accent); background: var(--accent-fill);
+           border: 0; border-radius: var(--r-full); cursor: pointer; }
+  button:hover:not(:disabled) { opacity: .88; }
+  button:disabled { opacity: .6; cursor: default; }
+  #msg { min-height: 1.5em; margin-top: 14px; font-size: var(--fs-sm); color: var(--danger); }
+  .hint { margin-top: 18px; font-size: var(--fs-xs); color: var(--text-3); }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
 <main>
+  <div class="brand">AgEnD</div>
   <div id="checking" data-i18n="checking">Checking your session…</div>
   <form id="form" hidden autocomplete="off">
     <h1 data-i18n="title">Sign in to AgEnD</h1>

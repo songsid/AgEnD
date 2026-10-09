@@ -17,6 +17,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
@@ -41,10 +42,14 @@ function announce(text) {
   announceTimer = setTimeout(() => { el.textContent = text; }, 60);
 }
 
-/** This device's preview opt-in: asks once and says what it means; turning it off stops every running preview. */
-export function setPreviewOptIn(on) {
-  if (on && !P().optedIn() && !confirm(t("chat.pvConfirm"))) on = false;
+/**
+ * This device's preview opt-in: asks once (the app's dialog) and says what it means; turning it off stops every
+ * running preview. Resolves to the choice in force.
+ */
+export async function setPreviewOptIn(on) {
+  if (on && !P().optedIn() && !(await confirmDialog({ message: t("chat.pvConfirm"), confirmLabel: t("chat.pvAllowButton") }))) on = false;
   P().setOptIn(on);
+  return P().optedIn();
 }
 
 /** Once per page, in "full" mode: the store on the app's stream, previews (#1306), the sidebar's chat controls. */
@@ -66,7 +71,7 @@ export function boot({ stream, boot: bootData, deps = {} }) {
 function PreviewOptIn() {
   const [on, setOn] = useState(P() ? P().optedIn() : false);
   useEffect(() => (P() ? P().onChange(() => setOn(P().optedIn())) : undefined), []);
-  return html`<label class="side-row toggle"><input type="checkbox" checked=${on} onChange=${(e) => { setPreviewOptIn(e.target.checked); setOn(P().optedIn()); }} />
+  return html`<label class="side-row toggle"><input type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
     <span>${t("chat.previews")}</span></label>`;
 }
 function TourButton() {

@@ -488,6 +488,17 @@ describe("the pages themselves", () => {
     expect(signin).toContain('<script src="/assets/signin.js"></script>');
   });
 
+  it("is on the app's tokens, light and dark: the theme before paint, tokens.css, and no colour of its own (#1408 step 5)", () => {
+    const html = readFileSync(join(process.cwd(), "src", "ui", "signin.html"), "utf8");
+    const head = html.slice(0, html.indexOf("</head>"));
+    expect(head.indexOf('<script src="/assets/theme.js"></script>')).toBeGreaterThan(-1);
+    expect(head.indexOf('<link rel="stylesheet" href="/assets/tokens.css">')).toBeGreaterThan(head.indexOf("/assets/theme.js"));
+    const style = head.slice(head.indexOf("<style>"), head.indexOf("</style>")).replace(/\/\*[\s\S]*?\*\//g, "");   // comments name issues (#1408)
+    expect(style).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+    expect(style).not.toMatch(/--[a-z-]+\s*:/);                      // no palette of its own
+    for (const token of ["var(--bg)", "var(--surface)", "var(--text)", "var(--accent-fill)", "var(--danger)"]) expect(style, token).toContain(token);
+  });
+
   it("only ever navigates to one of the three panels after signing in", () => {
     const js = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8");
     expect(js).toContain("(ui|view|settings)");

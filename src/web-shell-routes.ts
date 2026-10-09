@@ -11,7 +11,7 @@
  * Settings panel (step 3; settings-api.ts serves them, signed in only).
  */
 
-export const FLEET_TABS = ["tasks", "schedules", "teams", "config"] as const;
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "config"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 export const SETTINGS_SECTIONS = ["agents", "bots", "classic", "general", "advanced"] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
@@ -20,7 +20,8 @@ export type ShellRoute =
   | { panel: "chat"; instance: string | null }
   | { panel: "fleet"; tab: FleetTab }
   | { panel: "view"; instance: string | null }
-  | { panel: "settings"; section: SettingsSection };
+  | { panel: "settings"; section: SettingsSection }
+  | { panel: "needs" };
 
 /** What a path is: the app shell (with its route), a malformed shell path (400), or not the shell at all (null). */
 export type ShellMatch = { kind: "shell"; route: ShellRoute } | { kind: "malformed" } | null;
@@ -48,6 +49,9 @@ export function shellRoute(method: string, path: string): ShellMatch {
   if (method !== "GET" && method !== "HEAD") return null;
   if (path === "/ui") return { kind: "shell", route: { panel: "chat", instance: null } };
   if (path === "/ui/fleet") return { kind: "shell", route: { panel: "fleet", tab: "tasks" } };
+  // #1386 part (b): the Needs you list. A page, not a read of the list — that arrives only over SSE `needs` and
+  // /ui/poll (#1374: no new read for it).
+  if (path === "/ui/needs") return { kind: "shell", route: { panel: "needs" } };
   const fleet = /^\/ui\/fleet\/([^/]+)$/.exec(path);
   if (fleet) return (FLEET_TABS as readonly string[]).includes(fleet[1]!) ? { kind: "shell", route: { panel: "fleet", tab: fleet[1] as FleetTab } } : null;
   const chat = /^\/ui\/chat\/([^/]+)$/.exec(path);

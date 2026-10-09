@@ -22,7 +22,7 @@ function request(path: string, method = "GET", headers: Record<string, string> =
     setHeader() {}, writeHead: (code: number) => { status = code; }, end: (text = "") => { body = text; },
     write: (chunk: string) => { writes.push(chunk); return true; }, destroy: vi.fn(),
   });
-  return { req, res, writes, status: () => status, json: () => JSON.parse(body),
+  return { req, res, writes, status: () => status, json: () => JSON.parse(body), body: () => body,
     feed: (value: unknown) => { req.emit("data", Buffer.from(JSON.stringify(value))); req.emit("end"); } };
 }
 const flush = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
@@ -58,14 +58,21 @@ describe("the list rides the existing passive channels only", () => {
     expect(h.json().needs).toEqual(ITEMS);
   });
 
-  it("no new GET route, and the passive allowlist is exactly what it was (#1374)", () => {
+  it("no new GET route for the list, and the passive allowlist is exactly what it was (#1374)", () => {
     const store = new WebSessionStore();
     const s = store.create({ tier: "admin", surface: "local", label: "t", tokenEpoch: tokenEpoch(token) });
-    for (const path of ["/ui/needs", "/ui/needs/ack", "/ui/needs/list"]) {
+    for (const path of ["/ui/needs/ack", "/ui/needs/list"]) {
       const h = request(path, "GET", { cookie: `agend_session=${s.sessionId}` });
       handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, local), ctx(store));
       expect(h.status(), path).not.toBe(200);
     }
+    // #1408 step 4: /ui/needs is a page of the app — the shell's HTML, a navigation. It never carries the list (which
+    // still arrives only over SSE `needs` and /ui/poll), and it is not a passive read.
+    const page = request("/ui/needs", "GET", { cookie: `agend_session=${s.sessionId}`, accept: "text/html" });
+    handleWebRequest(page.req as never, page.res as never, new URL(page.req.url, local), ctx(store));
+    expect(page.status()).toBe(200);
+    expect(page.body()).toContain('<script type="module" src="/assets/app.js"></script>');
+    for (const item of ITEMS) expect(page.body(), item.id).not.toContain(item.id);
     const passive = ["/ui/poll", "/ui/events", "/api/pane/x", "/api/profiles", "/api/ai-usage"];
     for (const p of passive) expect(isPassiveWebRead("GET", p), p).toBe(true);
     for (const p of ["/ui/needs", "/ui/needs/ack"]) { expect(isPassiveWebRead("GET", p), p).toBe(false); expect(isPassiveWebRead("POST", p), p).toBe(false); }
@@ -112,9 +119,11 @@ describe("POST /ui/needs/ack", () => {
 describe("the public link (#1367): exactly this route, under its own session and exposure", () => {
   it("the manifest has POST /ui/needs/ack and nothing more", () => {
     expect(isPublicWebRoute("POST", "/ui/needs/ack")).toBe(true);
-    for (const [m, p] of [["GET", "/ui/needs/ack"], ["DELETE", "/ui/needs/ack"], ["POST", "/ui/needs/ack/x"], ["POST", "/ui/needs"], ["GET", "/ui/needs"]] as const) {
+    for (const [m, p] of [["GET", "/ui/needs/ack"], ["DELETE", "/ui/needs/ack"], ["POST", "/ui/needs/ack/x"], ["POST", "/ui/needs"], ["GET", "/ui/needs/list"]] as const) {
       expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
     }
+    // #1408 step 4: the page itself is a shell route, admitted like every page of the app (the classifier decides).
+    expect(isPublicWebRoute("GET", "/ui/needs")).toBe(true);
   });
 
   function gatewayAck(current: () => boolean, withCsrf = true) {

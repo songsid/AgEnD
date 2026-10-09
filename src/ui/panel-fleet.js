@@ -15,11 +15,13 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite } from "./settings-confirm.js";
+import { OrgChart } from "./fleet-org.js";
 
 register("fleet", {
   en: {
-    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", config: "Config",
+    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", config: "Config",
     newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
     noTasks: "No tasks yet", noTasksHint: "Create one to coordinate fleet work.", noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
     noTeams: "No teams yet", noTeamsHint: "Group instances for coordinated work.", countTasks: "{0} tasks", countSchedules: "{0} schedules", countTeams: "{0} teams",
@@ -39,7 +41,7 @@ register("fleet", {
     fleetDefault: "Use the fleet default", notInstalled: "(not installed)", deprecated: "(deprecated)", instanceCreated: "Instance created",
   },
   "zh-TW": {
-    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", config: "設定",
+    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", config: "設定",
     newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
     noTasks: "還沒有 task", noTasksHint: "建立一個來協調 fleet 的工作。", noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
     noTeams: "還沒有 team", noTeamsHint: "把 instance 分組一起工作。", countTasks: "{0} 個 task", countSchedules: "{0} 個排程", countTeams: "{0} 個 team",
@@ -60,7 +62,7 @@ register("fleet", {
   },
 });
 
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", config: "sliders" };
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", config: "sliders" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -96,12 +98,12 @@ export function FleetPanel({ route, navKey }) {
   const lease = useLease(navKey);
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
-  const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, config: Config }[tab] || Tasks;
+  const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, config: Config }[tab] || Tasks;
   return html`<div class="panel p-fleet">
     <${PanelHeader} title=${t("fleet.title")} />
     <nav class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
-    <div class="panel-body"><div class="col"><${Body} lease=${lease} /></div></div>
+    <div class="panel-body"><div class=${`col${tab === "org" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }
 
@@ -141,7 +143,8 @@ function Schedules({ lease }) {
   const [creating, setCreating] = useState(false);
   const state = useLoad(lease, "/ui/schedules", version);
   async function del(id) {
-    if (!confirm(t("fleet.deleteSchedule"))) return;
+    if (!(await confirmDialog({ message: t("fleet.deleteSchedule"), confirmLabel: t("fleet.delete"), danger: true }))) return;
+    if (!lease.current()) return;                   // answered after this tab went: the question no longer stands
     const r = await api("DELETE", `/ui/schedules/${encodeURIComponent(id)}`);
     if (r.error) toast(r.error, false); else { toast(t("fleet.scheduleDeleted")); setVersion(v => v + 1); }
   }
@@ -164,7 +167,8 @@ function Teams({ lease }) {
   const [creating, setCreating] = useState(false);
   const state = useLoad(lease, "/ui/teams", version);
   async function del(name) {
-    if (!confirm(t("fleet.deleteTeam", name))) return;
+    if (!(await confirmDialog({ message: t("fleet.deleteTeam", name), confirmLabel: t("fleet.delete"), danger: true }))) return;
+    if (!lease.current()) return;
     const r = await api("DELETE", `/ui/teams/${encodeURIComponent(name)}`);
     if (r.error) toast(r.error, false); else { toast(t("fleet.teamDeleted")); setVersion(v => v + 1); }
   }
@@ -178,6 +182,13 @@ function Teams({ lease }) {
 `;
   }}</${Loaded}>
   ${creating ? html`<${CreateTeam} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
+}
+
+/** #1389: the org chart — its structure read once per opening, its live state from the app store (fleet-org.js). */
+function Org({ lease }) {
+  const state = useLoad(lease, "/ui/org", 0);
+  const app = useStore(appStore);
+  return html`<${Loaded} state=${state}>${(org) => html`<${OrgChart} org=${org} app=${app} />`}</${Loaded}>`;
 }
 
 function Secret({ id, value, onInput, label }) {

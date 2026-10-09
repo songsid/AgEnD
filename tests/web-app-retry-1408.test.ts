@@ -208,3 +208,27 @@ describe("Retry after a failed first load of the chat", () => {
     expect(s.conn()).toBeNull();
   }, 25_000);
 });
+
+describe("#1463 review: Needs you uses the chat store the page recovered", () => {
+  it("first chat import failed, Retry loaded it: Needs you opens, answers through that store, and Chat sees the claim", async () => {
+    const s = await scenario([answer(SNAPSHOT)]);
+    s.retry();
+    await vi.waitFor(() => expect(s.cards()).toEqual([{ text: "still open", done: false, buttons: [true] }]));
+    const recovered = await import("/ui/js/panel-chat.js?retry=1");
+    s.send("needs", { items: [{ id: `prompt:${P1}`, type: "prompt", instance: "alpha", reason: "assist", detail: "still open", since: Date.now() - 60_000,
+      nonce: P1, actions: [{ id: "ok", label: "OK" }] }] });
+    const nav = await import("/assets/app-nav.js");
+    nav.navigate("/ui/needs");
+    await vi.waitFor(() => expect(!!(s.app.querySelector(".n-item") || s.app.querySelector(".error-state"))).toBe(true));
+    expect(!!s.app.querySelector(".error-state"), "Needs you must open on the recovered chat, not fail on the first import").toBe(false);
+    const { appStore } = await import("/assets/app-store.js");
+    expect(appStore.get().chatOwner).toBe(recovered.store);        // the store the Retry booted is the page's owner
+    s.requests.length = 0;
+    const button = () => s.app.querySelectorAll(".n-item button").find((b: any) => b.textContent.trim() === "OK" || b.textContent.trim() === "Answering…");
+    button()!.click();
+    expect(recovered.store.state.prompts[P1].busy).toBe(true);    // the claim is the recovered store's: Chat's card is taken too
+    button()!.click();
+    await settle(4);
+    expect(s.requests.filter(r => r.startsWith("POST /ui/prompt"))).toHaveLength(1);
+  }, 20_000);
+});

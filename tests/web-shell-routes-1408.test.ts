@@ -45,6 +45,7 @@ const CASES: Array<[string, string]> = [
   ["/ui/fleet/tasks", "fleet:tasks"],
   ["/ui/fleet/schedules", "fleet:schedules"],
   ["/ui/fleet/teams", "fleet:teams"],
+  ["/ui/fleet/org", "fleet:org"],
   ["/ui/fleet/config", "fleet:config"],
   ["/ui/fleet/bogus", "none"],
   ["/ui/", "none"],
@@ -55,6 +56,8 @@ const CASES: Array<[string, string]> = [
   ["/view/a%2Fb", "malformed"],
   ["/view/%E0%A4", "malformed"],
   ["/view/a/b", "none"],
+  ["/ui/needs", "needs:"],
+  ["/ui/needs/x", "none"],
   ["/settings", "settings:agents"],
   ["/settings/agents", "settings:agents"],
   ["/settings/bots", "settings:bots"],
@@ -68,7 +71,7 @@ const CASES: Array<[string, string]> = [
 ];
 // Every data route under /ui the server answers (web-api.ts), by shape.
 const DATA_ROUTES = ["/ui/poll", "/ui/events", "/ui/history", "/ui/file/abc", "/ui/prompts", "/ui/instance/web-dev", "/ui/instances",
-  "/ui/tasks", "/ui/tasks/t1", "/ui/schedules", "/ui/schedules/s1", "/ui/teams", "/ui/teams/x", "/ui/config", "/ui/backends", "/ui/js/app.js",
+  "/ui/tasks", "/ui/tasks/t1", "/ui/schedules", "/ui/schedules/s1", "/ui/teams", "/ui/teams/x", "/ui/config", "/ui/org", "/ui/backends", "/ui/js/app.js",
   "/ui/needs/ack", "/ui/send", "/ui/upload", "/ui/prompt", "/ui/cancel/x", "/ui/stop/x", "/ui/start/x", "/ui/restart/x", "/ui/instances/x/delete"];
 
 function describeServer(path: string): string {
@@ -77,6 +80,7 @@ function describeServer(path: string): string {
   if (m.kind === "malformed") return "malformed";
   if (m.route.panel === "fleet") return `fleet:${m.route.tab}`;
   if (m.route.panel === "settings") return `settings:${m.route.section}`;
+  if (m.route.panel === "needs") return "needs:";
   return `${m.route.panel}:${m.route.instance ?? ""}`;
 }
 function describeClient(path: string): string {
@@ -84,6 +88,7 @@ function describeClient(path: string): string {
   if (!r) return "none";
   if (r.panel === "fleet") return `fleet:${r.tab}`;
   if (r.panel === "settings") return `settings:${r.section}`;
+  if (r.panel === "needs") return "needs:";
   return `${r.panel}:${r.instance ?? ""}`;
 }
 
