@@ -1,0 +1,12 @@
+---
+section: Fixed
+---
+- **Web app: layout follow-ups from the alpha.2 sweep.**
+  - In Settings, a change waiting for an admin's confirmation shows in the page, right under the operation, instead of as a card covering it. Other panels keep the card in the corner.
+  - On a phone:
+    - Settings → Developer keeps its toolbar on one row of icon buttons;
+    - the YAML editor scrolls sideways instead of wrapping lines, and a shadow at the edge shows there is more;
+    - the agent's profile line in View wraps to two lines instead of being cut;
+    - every agent row in Settings wraps its tags the same way;
+    - the buttons in **Needs you** and in Teams line up with the text above them.
+  - The docs say why the sign-in page logs one 401 before you sign in.

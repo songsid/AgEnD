@@ -104,6 +104,8 @@
     // navigation; going round again would loop, so stop and let the person type a code.
     if (recentlyBounced()) return false;
     try {
+      // Signed out, this answers 401 — and the browser logs that request in red in DevTools. That is expected: the
+      // probe asks "is there a session?", and no is a normal answer here (decided against reshaping the auth API).
       const r = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store" });
       return r.ok;
     } catch { return false; }

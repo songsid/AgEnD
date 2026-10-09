@@ -274,6 +274,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | "Your session has ended" | 2 hours without use, 12 hours since sign-in, or someone revoked. Sign in again. |
 | The dashboard briefly says "disconnected", then keeps updating | The live stream is blocked on your path, so it switched to polling every 5 seconds. Nothing to do. |
 | `/dashboard` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
+| The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 
 ### Confirming sensitive changes
 
