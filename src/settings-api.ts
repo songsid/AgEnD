@@ -31,12 +31,12 @@ import { permitWebContinuation } from "./web-continuation.js";
  * Writes are validated first (config-validator): any error → 400 and nothing is
  * written; warnings are non-blocking and returned alongside the result.
  */
-import { sendPanelHtml } from "./web-host-guard.js";
+import { serveAppShell, type AppShellContext } from "./web-api.js";
+import { isSettingsPage } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import yaml from "js-yaml";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
@@ -64,9 +64,8 @@ import {
 
 
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export interface SettingsApiContext {
+export interface SettingsApiContext extends AppShellContext {
   readonly webToken?: string | null;
   readonly webSessions?: import("./web-session.js").WebSessionStore | null;
   fleetConfig: FleetConfig | null;
@@ -188,7 +187,7 @@ function normalizeChannelIdValue(value: unknown, path: string):
 }
 
 export function isSettingsPath(path: string): boolean {
-  return path === "/settings" || path.startsWith("/api/settings/");
+  return isSettingsPage(path) || path.startsWith("/api/settings/");
 }
 
 const classicPath = (ctx: SettingsApiContext) => join(ctx.dataDir, "classicBot.yaml");
@@ -259,14 +258,10 @@ export function handleSettingsRequest(
   if (!isSettingsPath(path)) return false;
   const method = req.method ?? "GET";
 
-  // ── Static page ──
-  if (method === "GET" && path === "/settings") {
-    try {
-      const html = readFileSync(join(__dirname, "ui", "settings.html"), "utf-8");
-      sendPanelHtml(res, html);
-    } catch {
-      json(res, 500, { error: "settings.html not found" });
-    }
+  // ── The page: the app shell, which mounts the Settings panel (#1408 step 3) ──
+  if (isSettingsPage(path)) {
+    if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "Method not allowed" }); return true; }
+    serveAppShell(req, res, ctx, "full");
     return true;
   }
 

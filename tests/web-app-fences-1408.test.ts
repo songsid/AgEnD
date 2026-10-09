@@ -7,8 +7,10 @@
  * 3. A Fleet refresh keeps an open create dialog and its draft; a form that went away never closes its replacement.
  * 4. New instance: Create waits for the backend list; a failed list keeps the explicit "fleet default".
  * 5. The skip link is the browser's: not taken over, not a navigation.
+ * 6. #1423: a create or a delete that needs a fleet admin's confirmation closes its dialog at once and is followed by
+ *    the app (appStore.pendingChanges); a delete that is only pending never navigates.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
@@ -19,8 +21,10 @@ let handler: Handler = () => ({});
 const requests: string[] = [];
 const fetchFake = async (path: string, init: { method?: string; body?: string } = {}) => {
   requests.push(`${init.method ?? "GET"} ${path}${init.body ? ` ${init.body}` : ""}`);
-  const body = await handler(path, init);
-  return { ok: true, status: 200, json: async () => body };
+  const body: any = await handler(path, init);
+  // `__status` lets a handler answer like the confirmation gate does (202 pending_confirmation).
+  const status = body && typeof body.__status === "number" ? body.__status : 200;
+  return { ok: status >= 200 && status < 300, status, json: async () => body };
 };
 const gate = () => { let open!: () => void; const p = new Promise<void>(r => { open = r; }); return { p, open }; };
 const stream = { on() { return () => {}; } };
@@ -280,4 +284,98 @@ describe("5. the skip link is the browser's", () => {
     expect(e2.defaultPrevented).toBe(true);
     expect(nav.navStore.get().seq).toBe(seq + 1);
   });
+});
+
+describe("6. #1423: a write waiting for a fleet admin's confirmation", () => {
+  const ID = "e".repeat(32);
+  const view = (state: string) => ({ id: ID, state, section: "access", requested_at: 1, requested_by: "Chrome", expires_at: 2, remaining_ms: 280_000,
+    source: "web_session", summary: ["instance: create demo"], confirmation: { kind: "chat" }, can_withdraw: state === "pending", outcome: state === "applied" ? { state, result: { ok: true } } : null });
+  const pending = { __status: 202, ok: true, result: "pending_confirmation", pending_change: view("pending") };
+  let confirmMod: any;
+  beforeAll(async () => { confirmMod = await import("/ui/js/settings-confirm.js"); });
+  afterEach(() => confirmMod.resetConfirmations());
+
+  it("New instance: the dialog goes at once, the request is followed, and nothing says 'created' while it waits", async () => {
+    let decided = "pending";
+    handler = async (path) => {
+      if (path === "/ui/backends") return { backends: [{ name: "codex", installed: true }] };
+      if (path === "/ui/instances") return pending;
+      if (path === `/api/settings/pending/${ID}`) return view(decided);
+      return {};
+    };
+    let closed = 0;
+    await p.mount(h(fleet.CreateInstanceDialog, { onClose() { closed++; } })); await settle(4);
+    const topic = p.root.querySelectorAll("dialog input")[1]; topic.value = "demo"; fire(topic, "input"); await settle();
+    [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent === "Create")!.click(); await settle(4);
+    expect(closed).toBe(1);
+    expect(app.appStore.get().pendingChanges.map((x: any) => [x.id, x.state, x.label])).toEqual([[ID, "pending", "New instance"]]);
+    decided = "applied";
+    await vi.waitFor(() => expect(app.appStore.get().pendingChanges[0]?.state).toBe("applied"), { timeout: 5000 });
+    expect(closed).toBe(1);                                    // a dialog that went is never closed again
+  }, 10_000);
+
+  it("Delete: only pending — the dialog goes, the page stays where it is", async () => {
+    handler = async (path) => {
+      if (path.endsWith("/delete")) return pending;
+      if (path === `/api/settings/pending/${ID}`) return view("pending");
+      return path.startsWith("/ui/history") ? { messages: [] } : {};
+    };
+    nav.navigate("/ui/chat/alpha");
+    await p.mount(h(chat.ChatPanel, { route: { panel: "chat", instance: "alpha" }, navKey: "chat:alpha|9|en" }));
+    p.root.querySelector(".panel-head .menu > button").click(); await settle();
+    [...p.root.querySelectorAll(".menu-item")].find((b: any) => b.textContent.includes("Delete"))!.click(); await settle();
+    const input = p.root.querySelector("dialog input");
+    input.value = "delete alpha"; fire(input, "input"); await settle();
+    [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent === "Delete")!.click(); await settle(4);
+    expect(p.root.querySelector("dialog")).toBeNull();
+    expect(p.window.location.pathname).toBe("/ui/chat/alpha");
+    expect(app.appStore.get().pendingChanges.map((x: any) => x.state)).toEqual(["pending"]);
+  });
+
+  it("Fleet config: an older save decided late never unlocks the form under a newer save still on its way (#1453 review)", async () => {
+    let decided = "pending", posts = 0;
+    const second = gate();
+    handler = async (path, init) => {
+      if (path === "/ui/config" && init.method !== "POST") return { channel: { type: "discord", group_id: "1", access: { mode: "locked", allowed_users: ["2"] } }, defaults: { backend: "codex" }, project_roots: [] };
+      if (path === "/ui/config") { posts++; if (posts === 1) return pending; await second.p; return { ok: true }; }
+      if (path === `/api/settings/pending/${ID}`) return view(decided);
+      return {};
+    };
+    nav.navigate("/ui/fleet/config");
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "config" }, navKey: "fleet:config|1|en" }));
+    await settle(6);
+    const save = () => [...p.root.querySelectorAll(".save-row .btn")].find((b: any) => b.textContent.includes("Save"))!;
+    save().click(); await settle(4);                               // A: pending — the form is free again
+    expect(save().disabled).toBe(false);
+    save().click(); await settle(4);                               // B: on its way
+    expect(save().disabled).toBe(true);
+    decided = "applied";                                           // A is decided now
+    await vi.waitFor(() => expect(app.appStore.get().pendingChanges[0]?.state).toBe("applied"), { timeout: 5000 });
+    await settle(4);
+    expect(save().disabled).toBe(true);                            // still B's
+    second.open(); await settle(6);
+    expect(save().disabled).toBe(false);
+  }, 10_000);
+
+  it("Delete, then confirmed while the page is still on that chat: the dialog that handed over does not navigate", async () => {
+    let decided = "pending";
+    handler = async (path) => {
+      if (path.endsWith("/delete")) return pending;
+      if (path === `/api/settings/pending/${ID}`) return view(decided);
+      return path.startsWith("/ui/history") ? { messages: [] } : {};
+    };
+    nav.navigate("/ui/chat/alpha");
+    await p.mount(h(chat.ChatPanel, { route: { panel: "chat", instance: "alpha" }, navKey: "chat:alpha|10|en" }));
+    p.root.querySelector(".panel-head .menu > button").click(); await settle();
+    [...p.root.querySelectorAll(".menu-item")].find((b: any) => b.textContent.includes("Delete"))!.click(); await settle();
+    const input = p.root.querySelector("dialog input");
+    input.value = "delete alpha"; fire(input, "input"); await settle();
+    [...p.root.querySelectorAll("dialog .btn")].find((b: any) => b.textContent === "Delete")!.click(); await settle(4);
+    const seq = nav.navStore.get().seq;
+    decided = "applied";
+    await vi.waitFor(() => expect(app.appStore.get().pendingChanges[0]?.state).toBe("applied"), { timeout: 5000 });
+    await settle(4);
+    expect(nav.navStore.get().seq).toBe(seq);
+    expect(p.window.location.pathname).toBe("/ui/chat/alpha");
+  }, 10_000);
 });

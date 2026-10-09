@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -238,16 +238,14 @@ describe("/ and the shared assets", () => {
 });
 
 describe("the panels adopt the shell", () => {
-  // #1408 step 2: /view is the app shell on its View panel (view.html is gone), so settings is the only panel that
-  // still loads the old shell.js and places its own nav.
-  it("settings loads the stylesheet and both scripts, and places one nav marked with its own name", () => {
-    for (const [file, current] of [["settings.html", "settings"]] as const) {
-      const html = ui(file);
-      expect(html, file).toContain('<link rel="stylesheet" href="/assets/shell.css">');
-      expect(html, file).toContain('<script src="/assets/agend-auth.js"></script>');
-      expect(html, file).toContain('<script src="/assets/shell.js" defer></script>');
-      expect(html.match(/data-agend-nav/g), file).toHaveLength(1);
-      expect(html, file).toContain(`data-current="${current}"`);
+  // #1408 step 3: /settings is the app shell on its Settings panel (settings.html is gone, as view.html went in step 2),
+  // so no page loads the old shell.js or places its own nav any more.
+  it("no page of the app is its own page any more: no HTML file under src/ui but the shell and sign-in", () => {
+    const pages = readdirSync(join(process.cwd(), "src", "ui")).filter(f => f.endsWith(".html")).sort();
+    expect(pages).toEqual(["app.html", "signin.html"]);
+    for (const file of pages) {
+      expect(ui(file), file).not.toContain("/assets/shell.js");
+      expect(ui(file), file).not.toContain("data-agend-nav");
     }
   });
 
@@ -266,17 +264,15 @@ describe("the panels adopt the shell", () => {
     expect(html).not.toContain("data-agend-nav");
   });
 
-  it("/ui and /view are the app shell, /view/<name> too; settings stays its own page", async () => {
+  it("/ui, /view and /settings are the app shell, with their sub-pages", async () => {
     const h = await startFleet();
     try {
-      for (const path of ["/ui", "/view", "/view/alpha"]) {
+      for (const path of ["/ui", "/view", "/view/alpha", "/settings", "/settings/general"]) {
         const r = await raw(h.port, "GET", path, { cookie: h.cookie, accept: "text/html" });
         expect(r.status, path).toBe(200);
         expect(r.body, path).toContain('<script type="module" src="/assets/app.js"></script>');
         expect(r.body, path).not.toContain("/assets/shell.js");
       }
-      const settings = await raw(h.port, "GET", "/settings", { cookie: h.cookie, accept: "text/html" });
-      expect(settings.body).toContain('<script src="/assets/shell.js" defer></script>');
     } finally { await stop(h.fm); }
   }, 30_000);
 
@@ -286,7 +282,14 @@ describe("the panels adopt the shell", () => {
       expect(ui(file), file).not.toMatch(/["'`(=]\s*https?:\/\//i);
       expect(ui(file), file).not.toMatch(/\bimport\(\s*["'`]https?:/i);
     }
-    for (const file of ["app.html", "settings.html", "signin.html"]) {
+    // Settings' modules: nothing is loaded from another origin (its one external URL is a link to the release notes).
+    for (const file of ["panel-settings.js", "settings-dialogs.js", "settings-wizard.js", "settings-apply.js", "settings-confirm.js", "settings-model.js", "settings-strings.js"]) {
+      const src = ui(file);
+      expect(src, file).not.toMatch(/\b(?:import|fetch)\(\s*["'`]https?:/i);
+      expect(src, file).not.toMatch(/\bsrc=\$?\{?\s*["'`]https?:/i);
+      expect([...src.matchAll(/https?:\/\/[^\s"'`]+/g)].map(m => m[0]), file).toEqual(file === "panel-settings.js" ? ["https://github.com/songsid/AgEnD/releases"] : []);
+    }
+    for (const file of ["app.html", "signin.html"]) {
       const html = ui(file);
       expect(html, file).not.toMatch(/<(?:link|script|img)[^>]+(?:href|src)=["']https?:/i);
       expect(html, file).not.toContain("fonts.googleapis.com");

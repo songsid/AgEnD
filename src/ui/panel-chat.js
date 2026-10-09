@@ -18,6 +18,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
+import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread } from "./chat-thread.js";
 import { installTour, refreshTourSpot, startTour } from "./chat-tour.js";
@@ -385,12 +386,18 @@ function DeleteDialog({ name, onClose }) {
   async function go() {
     if (typed !== want || busy) return;
     setBusy(true);
-    let r;
-    try { const res = await fetch(`/ui/instances/${encodeURIComponent(name)}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: typed }) }); r = await res.json(); }
-    catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
-    if (r && r.error) { toast(r.error, false); if (lease.current()) setBusy(false); return; }
+    let r, handedOver = false;
+    // Deleting an instance may need a fleet admin's confirmation (#1423): then the dialog goes at once and the shell
+    // follows the request. From then on the dialog is done: the decision is said in a toast, and it never closes or
+    // navigates anything (the person may be anywhere by then).
+    try {
+      const res = await confirmedWrite(`/ui/instances/${encodeURIComponent(name)}/delete`, { method: "POST", body: { confirm: typed }, label: t("chat.deleteTitle", name),
+        onPending: () => { handedOver = true; toast(t("app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
+      r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
+    } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
+    if (r && r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }
     toast(t("chat.instanceDeleted", name));
-    if (!lease.current()) return;
+    if (handedOver || !lease.current()) return;
     setBusy(false);
     onClose();
     navigate("/ui");

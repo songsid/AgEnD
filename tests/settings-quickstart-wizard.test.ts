@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import {
   nextChannelId,
@@ -15,11 +15,8 @@ import {
   type WizardPlanInput,
 } from "../src/quickstart-api.js";
 import { awaitTelegramGroupStart, detectInstalledBackends, TelegramPollConflictError } from "../src/provider-probe.js";
-
-const html = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "..", "src", "ui", "settings.html"),
-  "utf8",
-);
+import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -441,18 +438,6 @@ describe("POST /api/settings/quickstart/commit", () => {
   });
 });
 
-/** A whole function body from the page script, brace-balanced. */
-function wizardFunction(name: string): string {
-  const start = html.indexOf(`function ${name}(`);
-  expect(start, `function ${name} not found`).toBeGreaterThan(-1);
-  let depth = 0;
-  for (let i = html.indexOf("{", start); i < html.length; i++) {
-    if (html[i] === "{") depth++;
-    else if (html[i] === "}" && --depth === 0) return html.slice(start, i + 1);
-  }
-  throw new Error(`unbalanced body for ${name}`);
-}
-
 describe("the CLI quickstart", () => {
   const cli = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "..", "src", "quickstart.ts"),
@@ -470,48 +455,172 @@ describe("the CLI quickstart", () => {
 });
 
 describe("the wizard in the panel", () => {
-  it("is four steps, with one flow whether or not a fleet exists", () => {
-    expect(html).toContain("const WIZARD_STEPS = 4;");
-    // No second menu for "a fleet already exists" — the same modal, pre-filled.
-    expect(html).toContain('subtitle: wiz.env.has_fleet ? t("wizardRerun") : ""');
-    expect(html).toContain('$("wizardBtn").onclick = () => openWizard();');
+  // Ported to the app shell: the wizard is settings-wizard.js (SetupWizard), mounted in the fake DOM against scripted
+  // answers. Finishing hands over to the app's Apply runner (settings-apply.js), which posts the apply and watches it.
+  let p: AppPage;
+  let wizard: any, runner: any, store: any, tr: (k: string, ...a: unknown[]) => string;
+  const tn = (k: string, ...a: unknown[]) => tr(`settings.${k}`, ...a);
+  const JOB = "44444444-4444-4444-8444-444444444444";
+  let env: { backends: string[]; channels: unknown[]; has_fleet: boolean };
+  const sent: Array<{ path: string; method: string; headers: Record<string, string>; body: any }> = [];
+  let commitAnswer: { ok: boolean; status: number; body: unknown } = { ok: true, status: 200, body: { ok: true, secret_mode_ok: true } };
+  let applyStatus = 202;
+
+  beforeAll(async () => {
+    p = page({ url: "http://127.0.0.1:19280/settings/general" });
+    (globalThis as any).fetch = async (path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
+      const method = init.method ?? "GET";
+      sent.push({ path, method, headers: init.headers ?? {}, body: init.body ? JSON.parse(init.body) : undefined });
+      const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
+      if (path === "/api/settings/quickstart/environment") return json(env);
+      if (path === "/api/settings/quickstart/probe") return json({ identity: { valid: true, username: "bot_one" } });
+      if (path === "/api/settings/quickstart/plan") return json({
+        channel: { type: "telegram", group_id: "-100123", access: { mode: "locked", allowed_users: ["42"] } },
+        instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code" },
+        env_keys: ["AGEND_BOT_TOKEN"], warnings: [],
+      });
+      if (path === "/api/settings/quickstart/commit") return json(commitAnswer.body, commitAnswer.status);
+      if (method === "POST" && path === "/api/settings/apply") return json({ id: JOB, key: "k", status: "done", startedAt: 1, deadlineMs: 1, pid: 1, elapsed_ms: 1, overdue: false, message: "", targets: [] }, applyStatus);
+      return json(null, 404);
+    };
+    ({ t: tr } = await import("/assets/app-i18n.js"));
+    wizard = await import("/ui/js/settings-wizard.js");
+    runner = await import("/ui/js/settings-apply.js");
+    store = await import("/assets/app-store.js");
+  });
+  afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
+  beforeEach(async () => {
+    sent.length = 0; env = { backends: ["claude-code"], channels: [], has_fleet: false };
+    commitAnswer = { ok: true, status: 200, body: { ok: true, secret_mode_ok: true } }; applyStatus = 202;
+    runner.resetOperation(); await p.unmount();
+  });
+  afterEach(async () => { runner.resetOperation(); await p.unmount(); });
+
+  const mountWizard = async () => {
+    const onClose = vi.fn();
+    await p.mount(h(wizard.SetupWizard, { onClose }));
+    await vi.waitFor(() => expect(p.root.querySelector("#wz-wd")).not.toBeNull());
+    return onClose;
+  };
+  const button = (label: string) => (p.root.querySelectorAll("button") as any[]).find(b => b.textContent === label)!;
+  const field = (id: string) => p.root.querySelector(`#${id}`) as any;
+  const type = async (id: string, value: string) => { field(id).value = value; fire(field(id), "input"); await settle(); };
+  const next = async () => { button(tn("wizardNext")).click(); await settle(); };
+  const finish = async () => { button(tn("wizardFinish")).click(); await settle(); };
+  /** Step 1 → 2 → 3, with a verified token, so Next reaches the plan. */
+  async function toStepThree() {
+    await type("wz-wd", "/tmp/app");
+    await next();
+    await next();                                             // Telegram is the default platform
+    await type("wz-token", "123456:ABC");
+    button(tn("wizardVerify")).click(); await settle();
+    await vi.waitFor(() => expect(p.root.querySelector(".feedback")?.textContent).toBe("bot_one"));
+  }
+
+  it("is four steps, with one flow whether or not a fleet exists", async () => {
+    await mountWizard();
+    expect(p.root.textContent).toContain(tn("wizardStep", 1, 4));
+    expect(p.root.textContent).not.toContain(tn("wizardRerun"));
+    await p.unmount();
+
+    env = { ...env, has_fleet: true };
+    await mountWizard();
+    // No second menu for "a fleet already exists" — the same dialog, with the note.
+    expect(p.root.textContent).toContain(tn("wizardRerun"));
+    expect(p.root.textContent).toContain(tn("wizardStep", 1, 4));
   });
 
-  it("finishes through the ordinary apply job, not a silent write", () => {
-    const body = wizardFunction("finishWizard");
+  it("finishes through the ordinary apply job, not a silent write", async () => {
+    const onClose = await mountWizard();
+    await toStepThree();
+    await next();                                             // to the plan
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    await finish();
 
-    expect(body).toContain('api("/api/settings/quickstart/commit"');
-    expect(body).toContain('api("/api/settings/apply"');
-    expect(body).toContain('"Idempotency-Key": key');
-    expect(body).toContain("await watchApplyJob(started.body)");
-    // The 409 the apply job answers when a reconcile owns the slot.
-    expect(body).toContain("started.status === 409");
+    await vi.waitFor(() => expect(sent.some(c => c.path === "/api/settings/apply")).toBe(true));
+    const commit = sent.findIndex(c => c.path === "/api/settings/quickstart/commit");
+    const apply = sent.findIndex(c => c.path === "/api/settings/apply");
+    expect(commit).toBeGreaterThanOrEqual(0);
+    expect(commit).toBeLessThan(apply);
+    expect(sent[apply]!.method).toBe("POST");
+    expect(sent[apply]!.headers["Idempotency-Key"]).toBeTruthy();
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it("asks each platform only for the ids it has", () => {
-    const body = wizardFunction("wizardCredentialsStep");
+  it("a reconcile that owns the slot is said so, not silently ignored", async () => {
+    applyStatus = 409;
+    await mountWizard();
+    await toStepThree();
+    await next();
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    await finish();
 
-    expect(body).toContain('if (wiz.platform === "discord")');
-    expect(body).toContain('t("guildIdField")');
-    expect(body).toContain('t("wizardGeneralChannel")');
-    expect(body).toContain('t("groupIdField")');
-    expect(body).toContain('t("wizardDetect")');
+    await vi.waitFor(() => expect(sent.some(c => c.path === "/api/settings/apply")).toBe(true));
+    // The operation in hand says it was refused as busy: the card shows the "try Apply again" note.
+    await vi.waitFor(() => expect(store.appStore.get().settingsOp).toMatchObject({ phase: "failed", error: "busy" }));
+    expect(runner.operationActive()).toBe(false);
   });
 
-  it("verifies the token with the provider before letting the user continue", () => {
-    expect(html).toContain('if (!wiz.identity?.valid) { showBanner(t("wizardNeedVerify"), true); return; }');
-    expect(html).toContain('action: "verify"');
+  it("asks each platform only for the ids it has", async () => {
+    await mountWizard();
+    await toStepThree();
+    expect(p.root.textContent).toContain(tn("groupIdField"));
+    expect(p.root.textContent).toContain(tn("wizardDetect"));
+    expect(field("wz-guild")).toBeNull();
+
+    // Discord: its own ids, and no Telegram group field.
+    await p.unmount();
+    await mountWizard();
+    await type("wz-wd", "/tmp/app");
+    await next();
+    button("Discord").click(); await settle();
+    await next();
+    await type("wz-token", "123456:ABC");
+    button(tn("wizardVerify")).click(); await settle();
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("guildIdField")));
+    expect(p.root.textContent).toContain(tn("wizardGeneralChannel"));
+    expect(p.root.textContent).not.toContain(tn("groupIdField"));
   });
 
-  it("shows what will be written before writing it", () => {
-    expect(html).toContain('api("/api/settings/quickstart/plan"');
-    expect(html).toContain('t("wizardWillWrite")');
-    expect(html).toContain("wiz.plan.env_keys");
+  it("verifies the token with the provider before letting the user continue", async () => {
+    await mountWizard();
+    await type("wz-wd", "/tmp/app");
+    await next(); await next();
+    await type("wz-token", "123456:ABC");
+    await next();                                             // Next without Verify
+
+    expect(p.root.textContent).toContain(tn("wizardNeedVerify"));
+    expect(sent.some(c => c.path === "/api/settings/quickstart/plan")).toBe(false);
+    expect(sent.some(c => c.path === "/api/settings/quickstart/probe" && c.body.action === "verify")).toBe(false);
+    button(tn("wizardVerify")).click(); await settle();
+    expect(sent.some(c => c.path === "/api/settings/quickstart/probe" && c.body.action === "verify")).toBe(true);
   });
 
-  it("keeps the token out of the URL and out of the page after use", () => {
-    expect(html).toContain('el("input", { type: "password", value: wiz.token');
+  it("shows what will be written before writing it", async () => {
+    await mountWizard();
+    await toStepThree();
+    await next();
+
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    expect(sent.some(c => c.path === "/api/settings/quickstart/plan")).toBe(true);
+    expect(sent.some(c => c.path === "/api/settings/quickstart/commit")).toBe(false);   // a preview writes nothing
+    expect(p.root.textContent).toContain(tn("wizardEnvKeys", "AGEND_BOT_TOKEN"));
+  });
+
+  it("keeps the token out of the URL and out of the page after use", async () => {
+    await mountWizard();
+    await toStepThree();
+    expect(field("wz-token").getAttribute("type")).toBe("password");
+    expect(field("wz-token").value).toBe("123456:ABC");
+    await next();
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    await finish();
+
+    await vi.waitFor(() => expect(sent.some(c => c.path === "/api/settings/quickstart/commit")).toBe(true));
     // Sent in a body, never a query string.
-    expect(html).not.toMatch(/quickstart\/[a-z-]+\?[^"]*token/);
+    const commit = sent.find(c => c.path === "/api/settings/quickstart/commit")!;
+    expect(commit.method).toBe("POST");
+    expect(commit.body.token).toBe("123456:ABC");
+    expect(sent.every(c => !c.path.includes("123456:ABC"))).toBe(true);
   });
 });
