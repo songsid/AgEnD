@@ -36,18 +36,31 @@ export function cpuProfileSeconds(env: NodeJS.ProcessEnv): number | null {
 export async function saveCpuProfile(dataDir: string, profile: unknown, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
   // Guard the event loop: a V8 CPU profile with many nodes/samples can exceed
-  // 20 MiB when serialised. We estimate from the structural counts before
+  // 20 MiB when serialised. We estimate from the structural data before
   // allocating the full string, so an oversize profile is rejected without
   // blocking the event loop for O(n) stringify time.
   //
-  // Estimate: each node object averages ~200 bytes JSON; each sample entry
-  // averages ~8 bytes. Use 150 bytes/node as the conservative floor.
-  const BYTES_PER_NODE = 150;
+  // Estimate accounts for variable-length fields:
+  //  - callFrame.url        (the dominant contributor — can be 300+ chars each)
+  //  - callFrame.functionName (typically short, budget 50 bytes)
+  //  - fixed overhead per node: id, hitCount, children array refs (~100 bytes)
+  //  - timeDeltas: one number per sample (~8 bytes)
+  // A node without a long URL is estimated at ~200 bytes fixed; URL bytes are
+  // counted separately per-node so a profile with many long URLs is caught early.
   const p = profile as Record<string, unknown> | null;
-  const estimatedBytes = (
-    (Array.isArray(p?.nodes) ? p!.nodes.length : 0) * BYTES_PER_NODE +
-    (Array.isArray(p?.samples) ? p!.samples.length * 8 : 0)
-  );
+  const nodes = Array.isArray(p?.nodes) ? p!.nodes as Array<Record<string, unknown>> : [];
+  const samples = Array.isArray(p?.samples) ? p!.samples as unknown[] : [];
+  const timeDeltas = Array.isArray((p as any)?.timeDeltas) ? (p as any).timeDeltas : [];
+  const NODE_FIXED = 100; // id, hitCount, children, JSON punctuation
+  const FRAME_FIXED = 50; // functionName (short), scriptId, lineNumber, columnNumber
+  let estimatedBytes = timeDeltas.length * 8; // timeDeltas
+  estimatedBytes += samples.length * 8;        // samples array
+  for (const node of nodes) {
+    const frame = (node.callFrame ?? {}) as Record<string, unknown>;
+    const urlLen = typeof frame.url === "string" ? frame.url.length : 0;
+    const fnLen = typeof frame.functionName === "string" ? frame.functionName.length : 0;
+    estimatedBytes += NODE_FIXED + FRAME_FIXED + urlLen + fnLen;
+  }
   if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
     throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);
   }

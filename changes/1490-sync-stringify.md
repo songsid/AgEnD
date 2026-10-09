@@ -1,5 +1,5 @@
 ---
 section: Fixed
 ---
-- **`saveCpuProfile`: large profiles rejected before `JSON.stringify`.** A V8 CPU profile with enough nodes to exceed the 20 MiB cap is now estimated structurally (node count × ~150 bytes/node) and rejected immediately, without synchronously serialising the full profile on the event loop. (#1490 P3)
-- **`CacheService`: ledger saves throttled to at most once per 5 seconds.** Multiple rapid `kick()` calls within the throttle window are merged into one write. `stop()` bypasses the throttle to flush any pending dirty writes immediately. (#1490 P3)
+- **`saveCpuProfile`: large profiles rejected before `JSON.stringify`.** The size estimate now accounts for variable-length fields: `callFrame.url`, `callFrame.functionName`, `timeDeltas`, and per-node fixed overhead. A profile with 70,001 nodes and 336-character URLs is correctly rejected without serialising the full string. (#1490 P3)
+- **`CacheService.stop()`: returns a `Promise` and flushes dirty data before setting `stopped = true`.** The previous `void` return type meant dirty data could be silently discarded on shutdown. The flush (if any dirty data is pending) now completes before the service is marked stopped. (#1490 P3)
