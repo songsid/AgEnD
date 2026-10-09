@@ -457,6 +457,7 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       ["wc prints the receipted size, then fails (the candidate was resized, mtime restored)", "wc", "size", (f: ReturnType<typeof fixture>, node: string) => { const st = statSync(node); writeFileSync(node, readFileSync(node, "utf8") + "# grown\n"); utimesSync(node, st.atime, st.mtime); void f; }],
       ["stat prints the receipted mtime, then fails (the candidate was touched)", "stat", "mtime", (_f: ReturnType<typeof fixture>, node: string) => { const t = new Date(Date.now() + 60_000); utimesSync(node, t, t); }],
       ["cksum prints the true sums, then fails", "cksum", null, () => {}],
+      ["cksum fails only on the receipt (after printing its true sum)", "cksum", "receipt-only", () => {}],
       ["getconf prints the host's glibc, then fails", "getconf", null, () => {}],
       ["uname prints the host, then fails", "uname", null, () => {}],
     ] as const)("%s: the candidate never runs", (_n, tool, line, change) => {
@@ -466,7 +467,18 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
       expect(postinstall(f).status).toBe(0);
       rmSync(mark, { force: true });
-      const lie = line === null ? null : keyLine(f, line);
+      const lie = line === null || line === "receipt-only" ? null : keyLine(f, line);
+      if (line === "receipt-only") {
+        const dir = liars({});
+        const real = realpathSync(join(toolsOnly, "cksum"));
+        const which = (t: string) => spawnSync("sh", ["-c", `command -v ${t}`], { encoding: "utf8" }).stdout.trim();
+        rmSync(join(dir, "cksum"));
+        writeFileSync(join(dir, "cksum"), `#!/bin/sh\nt=$('${which("mktemp")}')\n'${which("cat")}' > "$t"\n'${real}' < "$t"\nif '${which("grep")}' -q '"receipt": 2' "$t"; then rc=17; else rc=0; fi\n'${which("rm")}' -f "$t"\nexit $rc\n`);
+        chmodSync(join(dir, "cksum"), 0o755);
+        bin(f, "agend", dir);
+        expect(existsSync(mark)).toBe(false);
+        return;
+      }
       (change as (f: ReturnType<typeof fixture>, node: string) => void)(f, node);
       bin(f, "agend", liars({ [tool]: lie }));
       expect(existsSync(mark)).toBe(false);
