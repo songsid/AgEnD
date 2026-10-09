@@ -232,7 +232,7 @@ import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener } from "./web-preview.js";
-import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
+import { fleetLevelDifferences, fleetLevelSignature, appendedConnections } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
 import {
@@ -16279,7 +16279,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // this process came up on: a Settings edit mutates this.fleetConfig in place
     // before the reload, so comparing the pre-load copy sees nothing at all.
     const newFleetLevel = this.fleetLevelSignature();
-    if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== newFleetLevel) {
+    // #1519 P6: connections appended to a running fleet start now — no restart. Only once every one is running does
+    // this process count the configuration as applied; otherwise the row says a restart is still needed.
+    if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== newFleetLevel && this.canHotAddConnections(this.fleetConfig)) {
+      observe?.(APPLY_FLEET_TARGET, "hot", "running");
+      if (await this.hotAddConnections(appendedConnections(this.startupFleetConfig, this.fleetConfig)!)) {
+        this.startupFleetConfig = structuredClone(this.fleetConfig);
+        this.appliedFleetLevel = newFleetLevel;
+        observe?.(APPLY_FLEET_TARGET, "hot", "done");
+      } else {
+        observe?.(APPLY_FLEET_TARGET, "restart", "restart-required");
+      }
+    } else if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== newFleetLevel) {
       this.logger.warn({
         keys: fleetLevelDifferences(this.startupFleetConfig, this.fleetConfig),
       }, "Fleet-level config changed — restart AgEnD for it to take effect");
@@ -17370,7 +17381,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const check = (): void => { execution?.assert(); if (!current()) throw new Error("adapter operation superseded"); };
     check();
     const old = this.adapters.get(connectionId);
-    if (!old && !force) return false; // The secret is valid on disk; the next start adopts it.
+    // No adapter: a connection that is not the primary, in a fleet already running connections, starts now (#1519 P6);
+    // otherwise the secret is valid on disk and the next start adopts it.
+    if (!old && !force && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    if (!old) { const pending = this.adapterState.get(connectionId)?.retryTimer; if (pending) clearTimeout(pending); }
     const primary = this.getPrimaryAdapterId() === connectionId;
     const previousState = this.adapterState.get(connectionId);
     this.adapterState.set(connectionId, { status: "retrying", retryCount: previousState?.retryCount ?? 0 });
@@ -17425,6 +17439,66 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * the reconcile reports as it works. A target the forecast missed (a Classic
    * instance inheriting a changed default) is added when it is first touched.
    */
+  /**
+   * #1519 P6: whether `next` differs from what this process started with only by connections appended to it, while it
+   * runs connections already (a fleet's first connection becomes its primary: a fresh process sets that up).
+   */
+  private canHotAddConnections(next: FleetConfig | null): boolean {
+    return this.adapters.size > 0 && appendedConnections(this.startupFleetConfig, next) !== null;
+  }
+
+  /**
+   * #1519 P6: start connections appended to a running fleet. Each token is read from .env (that key only, under the
+   * file's lease — Settings wrote it there, and this process read .env once at start); a connection already running (a
+   * token Replace started it) is left alone. True only when every one is running; one that failed to start is retried in
+   * the background like any other, and the Apply row says a restart is still needed.
+   */
+  private async hotAddConnections(added: ChannelConfig[]): Promise<boolean> {
+    const envPath = join(this.dataDir, ".env");
+    const lease = trySettingsLease([settingsFileResource(envPath)]);
+    if (!lease) return false;
+    try { this.loadEnvKeys(new Set(added.map(c => c.bot_token_env)), lease.owner); }
+    finally { lease.release(); }
+    let all = true;
+    for (const channel of added) {
+      const id = channel.id ?? channel.type;
+      if (this.adapters.has(id)) continue;
+      if (!process.env[channel.bot_token_env]) { all = false; continue; }
+      const pending = this.adapterState.get(id)?.retryTimer;
+      if (pending) clearTimeout(pending);
+      try {
+        await this.startAdditionalAdapter(channel);
+        if (!this.adapters.has(id)) { all = false; continue; }
+        this.adapterState.set(id, { status: "connected", retryCount: 0 });
+        this.logger.info({ adapterId: id }, "Connection started without a restart");
+      } catch (err) {
+        all = false;
+        const message = (err as Error)?.message ?? String(err);
+        this.adapterState.set(id, { status: "retrying", retryCount: 0, lastError: message });
+        this.scheduleAdapterRetry(id, channel);
+      }
+    }
+    this.classicChannels?.configureAdapters(this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []));
+    this.routing.rebuild(this.fleetConfig!);
+    this.reregisterClassicChannels();
+    return all;
+  }
+
+  /** Set the named keys of the data dir's .env into this process's environment (the file's lease held by `owner`). */
+  private loadEnvKeys(keys: ReadonlySet<string>, owner: symbol): void {
+    const envPath = join(this.dataDir, ".env");
+    if (!existsSync(envPath)) return;
+    assertSettingsLease(settingsFileResource(envPath), owner);
+    for (const line of readFileSync(envPath, "utf-8").split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq < 0) continue;
+      const key = trimmed.slice(0, eq).replace(/^export\s+/, "").trim();
+      if (keys.has(key)) process.env[key] = trimmed.slice(eq + 1).replace(/^["'](.*)["']$/, "$1");
+    }
+  }
+
   planConfigApply(): Array<{ target: string; kind: ApplyTargetKind }> {
     const rows: Array<{ target: string; kind: ApplyTargetKind }> = [];
     const nextConfig = this.nextFleetConfig();
@@ -17443,7 +17517,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!(name in next) && !classicNames.has(name)) rows.push({ target: name, kind: "restart" });
     }
     if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== this.fleetLevelSignature(nextConfig)) {
-      rows.push({ target: APPLY_FLEET_TARGET, kind: "restart" });
+      // #1519 P6: connections appended to a running fleet start now; anything else at fleet level waits for a restart.
+      rows.push({ target: APPLY_FLEET_TARGET, kind: this.canHotAddConnections(nextConfig) ? "hot" : "restart" });
     }
     return rows;
   }
