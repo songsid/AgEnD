@@ -35,6 +35,22 @@ export function cpuProfileSeconds(env: NodeJS.ProcessEnv): number | null {
 /** Bounded artifacts, not a bound on V8's native recording memory or JSON allocation. */
 export async function saveCpuProfile(dataDir: string, profile: unknown, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
+  // Guard the event loop: a V8 CPU profile with many nodes/samples can exceed
+  // 20 MiB when serialised. We estimate from the structural counts before
+  // allocating the full string, so an oversize profile is rejected without
+  // blocking the event loop for O(n) stringify time.
+  //
+  // Estimate: each node object averages ~200 bytes JSON; each sample entry
+  // averages ~8 bytes. Use 150 bytes/node as the conservative floor.
+  const BYTES_PER_NODE = 150;
+  const p = profile as Record<string, unknown> | null;
+  const estimatedBytes = (
+    (Array.isArray(p?.nodes) ? p!.nodes.length : 0) * BYTES_PER_NODE +
+    (Array.isArray(p?.samples) ? p!.samples.length * 8 : 0)
+  );
+  if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
+    throw new Error(`CPU profile is too large to save (estimated ≥${Math.round(estimatedBytes / 1_048_576)} MiB, cap is 20 MiB); discarded`);
+  }
   const json = JSON.stringify(profile);
   if (json === undefined || Buffer.byteLength(json) > CPU_PROFILE_MAX_BYTES) throw new Error("CPU profile exceeds the 20 MiB artifact cap; discarded");
   const directory = join(dataDir, "profiles");

@@ -82,6 +82,10 @@ export class CacheService {
   private running: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  /** Epoch of the last successful save, for debouncing. */
+  private lastSaveAt = 0;
+  /** Minimum interval between saves (merged writes, not per-instance). */
+  private static readonly SAVE_THROTTLE_MS = 5_000;
   private pending = { bytes: 0, files: 0 };
   private caughtUp = false;
   private readonly now: () => number;
@@ -106,6 +110,11 @@ export class CacheService {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    // Flush any pending dirty writes immediately on shutdown.
+    if (this.dirty.size > 0 || this.metaDirty) {
+      this.lastSaveAt = 0; // bypass throttle for the final flush
+      void this.kick();
+    }
   }
 
   scanning(): CacheReport["scanning"] {
@@ -278,8 +287,13 @@ export class CacheService {
     return out;
   }
 
-  /** Write what changed; whatever fails to write stays dirty and is written by a later pass. */
+  /** Write what changed; whatever fails to write stays dirty and is written by a later pass.
+   * Throttled to at most once per SAVE_THROTTLE_MS to avoid serialising the full ledger
+   * on every catchUp() cycle when many files are updated rapidly. */
   private async save(insts: CacheInstance[]): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastSaveAt < CacheService.SAVE_THROTTLE_MS) return;
+    this.lastSaveAt = now;
     const byName = new Map(insts.map((i) => [i.name, i]));
     for (const name of [...this.dirty]) {
       const inst = byName.get(name), l = this.ledgers.get(name);
