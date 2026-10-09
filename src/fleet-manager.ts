@@ -4252,12 +4252,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * binary to PATH while the fleet process remains alive, and the next bare
    * `/login` must see it without requiring a restart or an explicit cache
    * invalidation call. The fresh answers also refresh the shared cache that
-   * `/ui/backends` reads. #1490: async PATH walk, no `which` fork on the loop.
+   * `/ui/backends` reads. #1490: async and bounded, never `which` on the event loop; a probe with no answer in time
+   * counts as not installed, as the old timeout did.
    */
   private async probeInstalledBackends(): Promise<Set<string>> {
     const entries = Object.entries(BACKEND_INSTALLATION_INFO);
     const found = await Promise.all(entries.map(([, info]) => binaryProbe.probe(info.binary, { fresh: true })));
-    return new Set(entries.filter((_, i) => found[i] !== null).map(([backend]) => backend));
+    return new Set(entries.filter((_, i) => { const r = found[i]; return r.known && r.path !== null; }).map(([backend]) => backend));
   }
 
   /**

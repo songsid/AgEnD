@@ -318,11 +318,14 @@ export function handleWebRequest(
       { name: "grok", binary: "grok" },
       { name: "muse", binary: "muse" },
     ];
-    // #1490: no `which` per request. The shared probe walks PATH with async fs (no fork, never on the event loop)
-    // and reuses an answer for BINARY_PROBE_TTL_MS; seven sequential 2 s `execFileSync` calls used to block here.
+    // #1490: seven sequential 2 s `execFileSync("which")` calls used to block the event loop here. The shared probe
+    // runs `which` as bounded async children and reuses an answer for BINARY_PROBE_TTL_MS. `unknown`: no answer in
+    // time (shown as not installed, as the old timeout was).
     void Promise.all(BACKENDS.map(async (b) => {
-      const binPath = await binaryProbe.probe(b.binary);
-      return { name: b.name, binary: b.binary, installed: binPath !== null, path: binPath ?? "", deprecated: b.deprecated ?? false };
+      const found = await binaryProbe.probe(b.binary);
+      const path = found.known ? found.path : null;
+      return { name: b.name, binary: b.binary, installed: path !== null, path: path ?? "", deprecated: b.deprecated ?? false,
+        ...(found.known ? {} : { unknown: true }) };
     })).then(
       (backends) => { if (!res.headersSent) json(res, 200, { backends }); },
       () => { if (!res.headersSent) json(res, 500, { error: "backend probe failed" }); },
