@@ -152,6 +152,7 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
           ...good.provider,
           stale: true,
           hint: `cached ${ageMin}m ago — ${p.hint}`,
+          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
         };
       }
       return p;
@@ -197,6 +198,7 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
           ...good.provider,
           stale: true,
           hint: `cached ${ageMin}m ago — live query failed, will retry`,
+          hintI18n: { key: "usage.stale_rate_limited" as import("./i18n-keys.js").UsageI18nKey, args: [ageMin] },
         };
       }
     }

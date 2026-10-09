@@ -233,3 +233,36 @@ describe("stale data at high usage — must not show 🔴", () => {
     expect(md).not.toContain("🔴");
   });
 });
+
+const TRANSIENT_FAIL: UsagePayload = {
+  fetchedAt: "2026-08-02T12:05:00Z",
+  providers: [{
+    id: "claude", name: "Claude", status: "error",
+    error: "Could not reach api.anthropic.com.", metrics: [],
+  }],
+};
+
+describe("stale data on transient non-429 failure (#1528 P2)", () => {
+  // Reverse mutation: removing hintI18n from the isTransientFailure stale path
+  // makes this test fail because hintI18n would be undefined.
+
+  it("transient fetch failure with stale data: shows 🟡, hintI18n key, stale flag", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(OK)
+      .mockResolvedValueOnce(TRANSIENT_FAIL);
+    setUsageFetcherForTests(fetcher);
+
+    await getUsageSnapshot();
+    const result = await forceAfterFloor();
+
+    const claude = result.providers[0];
+    expect(claude.stale).toBe(true);
+    expect(claude.hintI18n?.key).toBe("usage.stale_rate_limited");
+    expect(claude.hintI18n?.args?.[0]).toBeGreaterThan(0); // ageMin > 0
+
+    const { renderUsageMarkdown } = await import("../src/usage/format-rich.js");
+    const md = renderUsageMarkdown(result);
+    expect(md).toContain("🟡");
+    expect(md).not.toContain("🔴");
+  });
+});
