@@ -133,12 +133,24 @@ async function systemd() {
       const judged = guardSystemd(run, true, `${unit}.service`, expected, deps);
       assert.equal(judged.ok, false); assert.match(judged.reason, /not the selected Node/);
     });
-    await step("restart guard refuses: the unit file changed but not reloaded", () => {
+    await step("restart guard refuses: the unit file of a RUNNING unit changed but not reloaded", async () => {
+      // Only a unit systemd keeps loaded (here: running) can differ from its file; an inactive, unreferenced unit is
+      // garbage-collected and read from disk again on the next query (systemd 255) — then the new file is what is
+      // judged, as the next check shows.
       const unit = `agend-${ID}-stale`;
       write(unit, `${NODE} ${entry} fleet start`); reload();
+      assert.equal(sd("start", `${unit}.service`).status, 0);
+      await sleep(300);
       write(unit, `${NODE} ${entry} fleet start --changed`);
       const judged = guardSystemd(run, true, `${unit}.service`, expected, deps);
       assert.equal(judged.ok, false); assert.match(judged.reason, /not reloaded/);
+    });
+    await step("…an inactive unit whose file changed is judged by that file (systemd reads it again): refused", () => {
+      const unit = `agend-${ID}-gc`;
+      write(unit, `${NODE} ${entry} fleet start`); reload();
+      write(unit, `${NODE} ${entry} fleet start --changed`);
+      const judged = guardSystemd(run, true, `${unit}.service`, expected, deps);
+      assert.equal(judged.ok, false); assert.match(judged.reason, /its arguments|not reloaded/);
     });
     await step("…and the running control was never signalled (same pid, still active)", () => {
       assert.equal(mainPid(ctl), pid);
