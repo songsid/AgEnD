@@ -29,6 +29,7 @@ import { shellQuote, UnsupportedCliError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import { parseReplyButtons, replyButtonsFallbackText } from "./reply-buttons.js";
 import { HangDetector } from "./hang-detector.js";
 import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
@@ -9374,7 +9375,14 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    if (!routeToolCall(adapter, tool, args, this.lastThreadId, respond)) {
+    // #1266: without the fleet there is no button store: buttons are checked, then offered as text.
+    let routed = args;
+    if (tool === "reply") {
+      const buttons = parseReplyButtons(args.buttons, args);
+      if (buttons && "error" in buttons) { respond(null, `reply: ${buttons.error}`); return; }
+      if (buttons) { routed = { ...args, text: `${String(args.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}` }; delete routed.buttons; }
+    }
+    if (!routeToolCall(adapter, tool, routed, this.lastThreadId, respond)) {
       respond(null, `Unknown tool: ${tool}`);
     }
   }

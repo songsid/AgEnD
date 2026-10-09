@@ -52,6 +52,8 @@ export function routeToolCall(
   args: Record<string, unknown>,
   threadId: string | undefined,
   respond: (result: unknown, error?: string) => void,
+  /** #1266: a reply's buttons, prepared by the fleet (never read from the agent's arguments). */
+  extra: { replyButtons?: Array<{ id: string; label: string }> } = {},
 ): boolean {
   const chatId = args.chat_id as string ?? "";
 
@@ -77,7 +79,7 @@ export function routeToolCall(
         respond(null, "reply: this channel cannot send stickers");
         return true;
       }
-      const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format };
+      const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format, ...(extra.replyButtons?.length ? { replyButtons: extra.replyButtons } : {}) };
       const sending = stickers.length
         ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text: (args.text as string | undefined) ?? "" })
         : adapter.sendText(chatId, args.text as string ?? "", sendOpts);

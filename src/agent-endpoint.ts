@@ -19,6 +19,7 @@ import type { OutboundContext } from "./outbound-handlers.js";
 import { outboundHandlers } from "./outbound-handlers.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { replyDedupText } from "./reply-dedup.js";
+import { parseReplyButtons, replyButtonsFallbackText } from "./reply-buttons.js";
 import { readBoundedWebBody } from "./web-body.js";
 import {
   EARLY_AGENT_OP_TOOLS,
@@ -407,6 +408,13 @@ export async function dispatchAgentOperation(
       const adapter = (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined)
         ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
 
+      // #1266: this path has no clickable buttons — they are checked as on the MCP path, then offered as text.
+      if (tool === "reply") {
+        const replyArgs = fullArgs as Record<string, unknown>;
+        const buttons = parseReplyButtons(replyArgs.buttons, replyArgs);
+        if (buttons && "error" in buttons) return { error: `reply: ${buttons.error}` };
+        if (buttons) { replyArgs.text = `${String(replyArgs.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}`; delete replyArgs.buttons; }
+      }
       // The same pre-check as the MCP path, before anything is sent: a sticker this channel cannot send
       // (another server's, an id that is not Telegram's) is the reply's error, not a reply without it.
       if (tool === "reply" && ctx.replyStickerProblem) {

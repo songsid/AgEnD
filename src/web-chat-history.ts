@@ -43,9 +43,31 @@ export function nextDeliveryState(prev: WebDeliveryState | undefined, next: WebD
 export type WebChatRole = "agent" | "user" | "status";
 const ROLES: ReadonlySet<string> = new Set(["agent", "user", "status"]);
 
+/** #1266: an agent reply's buttons as the page shows them (labels only — never the values). */
+export interface WebChatButtons {
+  id: string;
+  labels: string[];
+  state: "open" | "chosen" | "expired";
+  chosen?: number;
+  by?: string;
+}
+function webChatButtons(raw: unknown): WebChatButtons | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const b = raw as Record<string, unknown>;
+  if (typeof b.id !== "string" || !/^[0-9a-f]{32}$/.test(b.id) || !Array.isArray(b.labels)) return undefined;
+  const state = b.state === "chosen" || b.state === "expired" ? b.state : "open";
+  return {
+    id: b.id, labels: b.labels.slice(0, 10).map(l => String(l).slice(0, 80)), state,
+    ...(state === "chosen" && typeof b.chosen === "number" ? { chosen: b.chosen } : {}),
+    ...(state === "chosen" && typeof b.by === "string" ? { by: b.by.slice(0, 64) } : {}),
+  };
+}
+
 export interface WebChatMessage {
   /** Files shown with the message (absent when none). */
   attachments?: WebChatAttachment[];
+  /** #1266: an agent reply's buttons (agent messages only). */
+  buttons?: WebChatButtons;
   /** The fleet process generation the id belongs to. */
   boot: string;
   /** Where a web user's message has got (absent: nothing reported yet, or not the web user's). */
@@ -111,7 +133,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown }): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
@@ -124,6 +146,8 @@ export class WebChatHistory {
       ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime })) } : {}),
       ...(typeof msg.messageId === "string" && msg.messageId ? { messageId: msg.messageId.slice(0, 64) } : {}),
     };
+    const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
+    if (buttons) entry.buttons = buttons;
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
     slot.messages.push(entry);
@@ -132,6 +156,30 @@ export class WebChatHistory {
       slot.chars -= slot.messages.shift()!.text.length;
     }
     return entry;
+  }
+
+  /**
+   * #1266: a reply's buttons ended (or changed): the recorded message shows it too, so a page that loads the history
+   * later, or polls it (the public link), sees the same state. Returns the message it changed, if it is still kept.
+   */
+  updateButtons(instance: string, raw: unknown): WebChatMessage | null {
+    const next = webChatButtons(raw);
+    const slot = this.byInstance.get(instance);
+    if (!next || !slot) return null;
+    for (let i = slot.messages.length - 1; i >= 0; i--) {
+      const m = slot.messages[i]!;
+      if (m.buttons?.id === next.id) { m.buttons = next; return m; }
+    }
+    return null;
+  }
+
+  /** #1266: every kept reply whose buttons have ended — what a polling page applies (a stream page hears it live). */
+  buttonStates(): Array<{ instance: string; buttons: WebChatButtons }> {
+    const out: Array<{ instance: string; buttons: WebChatButtons }> = [];
+    for (const [instance, slot] of this.byInstance) {
+      for (const m of slot.messages) if (m.buttons && m.buttons.state !== "open") out.push({ instance, buttons: m.buttons });
+    }
+    return out;
   }
 
   /** The most recent `limit` messages of one instance, oldest first. */

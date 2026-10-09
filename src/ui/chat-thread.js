@@ -44,7 +44,23 @@ export function createThread(list, scroller, opts) {
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${R().attachmentsHtml(x.attachments)}</div>${tools}</div>`;
+    const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${R().attachmentsHtml(x.attachments)}${buttons}</div>${tools}</div>`;
+  }
+  /**
+   * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
+   * nothing else. Ended (chosen / expired) or a click in flight: every button off; the chosen one marked, and who.
+   */
+  function replyButtonsHtml(b) {
+    if (!b || typeof b.id !== "string" || !Array.isArray(b.labels) || !b.labels.length) return "";
+    const busy = !!(opts.replyButtonBusy && opts.replyButtonBusy(b.id));
+    const off = b.state !== "open" || busy;
+    const items = b.labels.map((label, i) => {
+      const chosen = b.state === "chosen" && b.chosen === i;
+      return `<button type="button" class="btn btn-sm rb-btn${chosen ? " chosen" : ""}" data-act="replyButton" data-arg="${escAttr(`${b.id}:${i}`)}"${off ? " disabled" : ""}>${escAttr(chosen ? `✓ ${label}` : label)}</button>`;
+    }).join("");
+    const note = b.state === "chosen" ? trf("chat.rbChosen", b.by || "") : b.state === "expired" ? tr("chat.rbExpired") : "";
+    return `<div class="rb-row" role="group" aria-label="${escAttr(tr("chat.rbGroup"))}">${items}${note ? `<span class="rb-note">${escAttr(note)}</span>` : ""}</div>`;
   }
   function msgNode(html, x, stoppedKeys) {
     const tpl = list.ownerDocument.createElement("template");
@@ -233,6 +249,10 @@ export function createThread(list, scroller, opts) {
       const folded = box.classList.toggle("folded");
       el.textContent = folded ? trf("chat.showAll", el.dataset.lines) : tr("chat.showLess");
     } else if (act === "toggleWrap") opts.toggleWrap();
+    else if (act === "replyButton") {
+      const m = /^([0-9a-f]{32}):(\d{1,2})$/.exec(el.dataset.arg || "");
+      if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
+    }
   }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
