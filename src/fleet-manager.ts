@@ -6998,7 +6998,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * A forum-root command has one configured General before any adapter claims
    * dedup. Bare commands prefer the primary adapter's General in this group;
    * explicit suffixes select their own bot. Runtime availability must not pick
-   * another administrator, so stopped owners remain selected and then refuse.
+   * another administrator, so stopped owners remain selected and every copy
+   * silently refuses instead of falling back.
    * undefined = another ingress scope; null = root command with no proven target.
    */
   private telegramRootCommandTarget(msg: InboundMessage, threadId: string | undefined): { name: string; owner: string } | null | undefined {
