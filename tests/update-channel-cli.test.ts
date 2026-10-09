@@ -30,6 +30,7 @@ function update(installed: string, tags: { beta: string; latest: string }, args:
   mkdirSync(pkg);
   spawnSync("cp", ["-r", join(process.cwd(), "dist"), join(pkg, "dist")]);
   spawnSync("cp", ["-r", join(process.cwd(), "templates"), join(pkg, "templates")]);
+  spawnSync("cp", ["-r", join(process.cwd(), "launcher"), join(pkg, "launcher")]);
   const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
   writeFileSync(join(pkg, "package.json"), JSON.stringify({ ...manifest, version: installed }));
   symlinkSync(join(process.cwd(), "node_modules"), join(pkg, "node_modules"));

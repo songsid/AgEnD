@@ -30,7 +30,7 @@ import { isGeneralInstance } from "./general-instance.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
-import { UPDATE_COMMAND } from "./update-check.js";
+import { resolveInstalledAgend, updateCommand } from "./update-dispatch.js";
 import { selfCommand } from "./cli-entry.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
@@ -1639,12 +1639,18 @@ export class TopicCommands {
     const sent = await adapter.sendText(chatId, t("update.progress.preparing", 0), { threadId });
     this.ctx.beginUpdateProgress?.(adapter, chatId, threadId, sent.messageId);
 
-    // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND.
-    const updateCmd = UPDATE_COMMAND;
+    // The CLI picks the channel from the installed version it replaces; see UPDATE_COMMAND. #1450 C5: the INSTALLED
+    // agend, verified by identity, by absolute path — or a refusal, never whatever `agend` is first on PATH.
+    const installed = await resolveInstalledAgend();
+    if (!installed.ok) {
+      this.ctx.failUpdateProgress?.(`/update cannot verify the installed AgEnD (${installed.reason}). Run \`agend update\` from a shell.`);
+      return;
+    }
     const { spawn } = await import("node:child_process");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);
-    const child = spawn("sh", ["-c", `sleep 2 && ${updateCmd}`], {
+    const { command, args } = updateCommand(installed.agend);
+    const child = spawn(command, args, {
       detached: true, stdio: "ignore", env: withOrigin(origin),
     });
     child.once("error", err => this.ctx.failUpdateProgress?.(err.message));
