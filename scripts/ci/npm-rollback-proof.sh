@@ -48,4 +48,17 @@ do
 done
 npm_ install -g "$(pack 2.0.0 '{}')" >/dev/null 2>&1
 check "control: a good v2 replaces v1" 2.0.0
+
+# Concurrency (#1450 C1) — CHARACTERIZED, not gated: npm has no mutex between installs into one prefix. A slow
+# failing install A overlaps a good install B; what survives is reported so the documented restriction ("never two
+# installs at once; AgEnD serializes its own") stays tied to what npm actually does on this npm/OS.
+slow_fail="$(pack 3.0.0-slow-fail '{"scripts":{"postinstall":"node -e \"setTimeout(()=>process.exit(1),3000)\""}}')"
+good="$(pack 4.0.0 '{}')"
+npm_ install -g "$slow_fail" >/dev/null 2>&1 & a=$!
+sleep 1
+b_rc=0; npm_ install -g "$good" >/dev/null 2>&1 || b_rc=$?
+a_rc=0; wait "$a" || a_rc=$?
+pkg_version="$("$NODE" -p 'try { require(process.argv[1]).version } catch { "<none>" }' "$PREFIX/lib/node_modules/@rbproof/agend/package.json")"
+echo "  info  concurrent: A(slow, failing) rc=$a_rc, B(good) rc=$b_rc → package $pkg_version, bin $(installed)"
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "FAILED ($fails)"; exit 1; }
