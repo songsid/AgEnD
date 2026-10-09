@@ -1,0 +1,11 @@
+
+  Working directory · resume
+  Session = latest cwd recorded in the resumed session
+  Current = your current working directory
+
+› 1. Use session directory (/home/user/project-b)
+  2. Use current directory (/home/user/project)
+  3. Always use session directory
+  4. Always use current directory
+
+  enter continue · esc use session · ^c quit

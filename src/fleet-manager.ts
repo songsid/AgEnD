@@ -1291,7 +1291,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       FleetManager.sighupHandlerInstalled = true;
     }
     this.stormWindow = new StormWindow();
-    this.memoryPressure = new MemoryPressure({ onSample: snapshot => this.reportMemoryPressure(snapshot) });
+    this.memoryPressure = new MemoryPressure({ onSample: snapshot => this.reportMemoryPressure(snapshot),
+      onDarwinUnknown: memory => this.logger.info({ pressureRaw: memory?.darwinPressureRaw ?? null },
+        "macOS kernel memory pressure unknown — no notice or admission restriction") });
     this.spawnGate = new SpawnGate({
       storm: this.stormWindow,
       memoryPressure: this.memoryPressure,
@@ -1706,8 +1708,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const changed = snapshot.level !== this.memoryLogLevel;
     if (this.memoryPressure.advisoryOnly()) {
-      // macOS (#1256): the sample is kept in the log for calibration, but nothing is sent to a channel.
-      if (changed) this.logger.info({ hostMemory: snapshot }, "Host memory sample (macOS: logged only — no notice, no spawn throttling)");
+      // The sampler logs the unknown kernel value once per lifecycle; no warning/cooldown here.
       this.memoryLogLevel = snapshot.level;
       return;
     }
@@ -1730,8 +1731,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const escalation = snapshot.level === "critical" && this.memoryNoticeLevel !== "critical";
     if (!escalation && this.memoryNoticeAt !== null && now - this.memoryNoticeAt < 10 * 60_000) return;
     const size = (bytes: number | null) => bytes === null ? t("memory.unknown") : `${Math.round(bytes / 1024 / 1024)} MiB`;
-    const text = t("memory.pressure", t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes)), size(snapshot.memory.swapFreeBytes),
-      t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing"));
+    const action = t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing");
+    const text = this.memoryPressure.platform === "darwin"
+      ? t("memory.kernel_pressure", snapshot.memory.darwinPressureLevel ?? t("memory.unknown"), size(snapshot.memory.availableBytes), size(snapshot.memory.swapFreeBytes), action)
+      : t("memory.pressure", t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes)), size(snapshot.memory.swapFreeBytes), action);
     if (this.notifyFleetError(text, { throttle: false })) {
       this.memoryNoticeAt = now;
       this.memoryNoticeLevel = snapshot.level;
