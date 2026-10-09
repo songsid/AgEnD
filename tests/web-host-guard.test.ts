@@ -235,7 +235,8 @@ describe("health server response headers (live)", () => {
       // Cannot be framed, and script that does run has nowhere to send what it reads.
       for (const directive of ["frame-ancestors 'none'", "default-src 'self'", "connect-src 'self'", "img-src 'self' data: blob:",
         "form-action 'self'", "base-uri 'none'", "object-src 'none'"]) expect(csp, directive).toContain(directive);
-      expect(csp).not.toMatch(/https?:|\*/);
+      // The one remote source anywhere is a panel's images from Discord's emoji CDN path (status-emoji editor).
+      expect(csp.replace("img-src 'self' data: blob: https://cdn.discordapp.com/emojis/;", "img-src 'self' data: blob:;")).not.toMatch(/https?:|\*/);
       expect(res.headers["x-content-type-options"]).toBe("nosniff");
       expect(res.headers["cache-control"]).toBe("no-store");
     }
