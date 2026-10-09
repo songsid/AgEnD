@@ -1264,6 +1264,19 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("#1519 P6: each connection row shows its own state — one connected with its bot, one not running", async () => {
+    routes.push(r => (r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), channels: [
+      { id: "main", type: "discord", bot_token_env: "AGEND_DISCORD_TOKEN", group_id: "1", access: { mode: "locked", allowed_users: ["7"] } },
+      { id: "discord-2", type: "discord", bot_token_env: "AGEND_DISCORD_2_TOKEN", group_id: "1", access: { mode: "locked", allowed_users: [] } }] } } : undefined));
+    routes.push(r => (r.url === "/api/settings/connections" ? { body: [
+      { id: "main", token_present: true, status: "connected", identity: { username: "main_bot" } },
+      { id: "discord-2", token_present: true, status: "stopped" }] } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    const rows = p.root.querySelectorAll(".s-row.s-conn");
+    expect(rows.map((r: any) => [r.querySelector(".s-state")?.textContent, r.querySelector(".dot")?.getAttribute("class")]))
+      .toEqual([["Connected · @main_bot", "dot ok"], ["Not running", "dot off"]]);
+  });
+
   it("#1519 P3: a connection the gateway refused for its intents (4014) says what to do, not 'Problem'", async () => {
     routes.push(r => (r.url === "/api/settings/connections" ? { body: [{ id: "main", token_present: true, status: "retrying", problem: "missing_intent" }] } : undefined));
     await mount("bots", "settings:bots|1|en"); await settle(6);

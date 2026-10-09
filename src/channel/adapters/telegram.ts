@@ -691,7 +691,22 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   /** Expose bot for fleet manager operations (topic existence checks etc.) */
   getBot(): Bot { return this.bot; }
 
+  /**
+   * #1519 P6: polling has started (getMe answered, onStart ran) and has not failed since. start() resolves before that —
+   * it only launches the polling loop — so a resolved start() is not a connected connection.
+   */
+  private pollingReady = false;
+  /** #1519 P6: the last polling error was Telegram refusing the token (401); cleared by the next successful start. */
+  private authRejected = false;
+  /** #1537 review: stop() was called (and no start() since). */
+  private stopped = false;
+  connectionEvidence(): { ready: boolean; authRejected: boolean; stopped: boolean } {
+    return { ready: this.pollingReady, authRejected: this.authRejected, stopped: this.stopped };
+  }
+
   async start(): Promise<void> {
+    // #1537 review: a new start borrows nothing from the last one — not ready until its own onStart, and not stopped.
+    this.pollingReady = false; this.stopped = false;
     this.queue.start();
     this._pruneInbox();
     this.cleanupTimer = setInterval(() => this._pruneInbox(), 60 * 60 * 1000);
@@ -729,11 +744,15 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               allowed_updates: TELEGRAM_ALLOWED_UPDATES,
               onStart: (info) => {
                 reconnects = 0; // reset on successful start
+                this.pollingReady = true; this.authRejected = false;
                 this.emit("started", info.username, String(info.id));
               },
             });
             return; // bot.stop() was called — clean exit
           } catch (err) {
+            // #1519 P6: what the connection's status reports — not polling now, and whether Telegram refused the token.
+            this.pollingReady = false;
+            if (err instanceof GrammyError && err.error_code === 401) this.authRejected = true;
             if (err instanceof GrammyError && err.error_code === 409) {
               if (attempt >= MAX_409_RETRIES) {
                 this.emit("error", new Error(
@@ -763,6 +782,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async stop(): Promise<void> {
+    // #1537 review: the connection is not polling from the moment it is told to stop (before any await).
+    this.pollingReady = false; this.stopped = true;
     // Invalidate queued status work before any await. Re-created adapters must
     // not inherit proof from this object's pending requests.
     this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;

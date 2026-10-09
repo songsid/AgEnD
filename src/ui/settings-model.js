@@ -275,3 +275,24 @@ export function fullModelRequests(model, current) {
   }
   return out;
 }
+
+/**
+ * #1519 P6 (design §5.6): one connection's own state, from its own metadata (GET /api/settings/connections) — not the
+ * fleet's. { key, cls, bot }: key names the settings string, cls the dot ("ok" | "warn" | "bad" | "off"), bot its @name.
+ * In order: no fleet answering, no token, a named problem, then the adapter's own status.
+ */
+export function connectionState(meta, fleetUp) {
+  const m = meta || {};
+  if (!fleetUp) return { key: "problem", cls: "bad" };
+  if (m.token_present === false) return { key: "connTokenMissing", cls: "bad" };
+  if (m.problem === "missing_intent") return { key: "discordMissingIntent", cls: "bad" };
+  if (m.problem === "rejected") return { key: "connRejected", cls: "bad" };
+  const bot = m.identity && m.identity.username ? `@${String(m.identity.username).replace(/^@/, "")}` : "";
+  switch (m.status) {
+    case "connected": return { key: bot ? "connConnectedAs" : "connected", cls: "ok", bot };
+    case "retrying": return { key: "connReconnecting", cls: "warn" };
+    case "starting": return { key: "connStarting", cls: "warn" };
+    case "failed": return { key: "connFailed", cls: "bad" };
+    default: return { key: "connNotRunning", cls: "off" };
+  }
+}

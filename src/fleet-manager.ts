@@ -174,7 +174,7 @@ import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upl
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { envFileKeys } from "./token-env-name.js";
 import { parseEnvText } from "./env-file.js";
-import { isDisallowedIntentsError } from "./discord-permissions.js";
+import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
@@ -16720,12 +16720,34 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         general_channel_id: channel.options?.general_channel_id != null
           ? String(channel.options.general_channel_id)
           : null,
-        status: state?.status ?? (world ? "starting" : "stopped"),
-        // #1519 P3: the gateway refused an intent (4014) — Message Content is off in the developer portal.
-        ...(state && state.status !== "connected" && isDisallowedIntentsError(state.lastError) ? { problem: "missing_intent" as const } : {}),
+        ...this.connectionStatus(id, state, world),
         ...(world ? { identity: { id: world.botUserId ?? null, username: world.botUsername ?? null } } : {}),
       };
     });
+  }
+
+  /**
+   * #1519 P6 (#1537 review): a connection's status from evidence, never from a start call that merely resolved. No
+   * adapter object: not running (or retrying / failed, as recorded) — never "connected". An adapter that has not logged
+   * in yet (no `started`: no bot id; for Telegram, polling not ready) is "starting". Named problems: the Message Content
+   * intent refused (4014, P3), the token refused (an explicit auth error, or Telegram's own 401 flag) — the error text
+   * itself is never passed on.
+   */
+  private connectionStatus(id: string, state: { status: string; lastError?: string } | undefined, world: { botUserId?: string | null } | undefined):
+    { status: string; problem?: "missing_intent" | "rejected" } {
+    const adapter = this.adapters.get(id) as (ChannelAdapter & { connectionEvidence?: () => { ready: boolean; authRejected: boolean; stopped?: boolean } }) | undefined;
+    const evidence = adapter?.connectionEvidence?.();
+    const recorded = state?.status;
+    const problem = evidence?.authRejected || (recorded !== "connected" && isRejectedTokenError(state?.lastError)) ? "rejected" as const
+      : recorded !== "connected" && isDisallowedIntentsError(state?.lastError) ? "missing_intent" as const : undefined;
+    let status: string;
+    if (!adapter || evidence?.stopped) status = recorded === "retrying" || recorded === "failed" ? recorded : "stopped";   // gone, or told to stop
+    else if (recorded === "retrying" || recorded === "failed") status = recorded;
+    else if (evidence?.authRejected) status = "failed";
+    else if (!world?.botUserId) status = "starting";                        // not logged in yet
+    else if (evidence && !evidence.ready) status = "retrying";              // logged in once; its polling has failed since
+    else status = "connected";
+    return { status, ...(problem ? { problem } : {}) };
   }
 
   private secureConnectionChannel(connectionId: string): ChannelConfig | undefined {
