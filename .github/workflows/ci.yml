@@ -444,18 +444,26 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Pack tarball on Node 22
+      # Two tarballs of this build: as released (pinning its bundled Node), and the same package WITHOUT the pins — what
+      # a host no runtime covers gets (#1450): there an old Node must be refused, and npm must roll the upgrade back.
+      - name: Pack tarballs on Node 22 (pinned, and without a runtime)
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: |
           npm ci
           npm run build
           TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
-          echo "TGZ=$TGZ" >> "$GITHUB_ENV"
+          mv "$TGZ" "pinned-$TGZ"
+          npm pkg delete optionalDependencies
+          npm pack --json >/dev/null
+          mv "$TGZ" "noruntime-$TGZ"
+          git checkout -- package.json
+          echo "TGZ=pinned-$TGZ" >> "$GITHUB_ENV"
+          echo "TGZ_NORUNTIME=noruntime-$TGZ" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         if: needs.detect-changes.outputs.docs-only != 'true'
         with:
           node-version: '20'
-      - name: Rollback proof — Node 20 must not install new package
+      - name: Rollback proof — Node 20 is refused a package with no runtime for it; 2.1.12 stays
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: |
           set -euo pipefail
@@ -466,14 +474,24 @@ jobs:
           BEFORE=$("$PREFIX/bin/agend" --version)
           echo "Before: $BEFORE"
           [ "$BEFORE" = "2.1.12" ] || { echo "baseline install failed"; exit 1; }
-          # Attempt upgrade to new package; must fail due to preinstall guard
-          if npm install --global --prefix "$PREFIX" "./$TGZ"; then
-            echo "ERROR: npm install should have failed on Node 20 but succeeded" >&2
+          # The package without a runtime: Node 20 is older than engines, the preinstall refuses, npm rolls back.
+          if npm install --global --prefix "$PREFIX" "./$TGZ_NORUNTIME"; then
+            echo "ERROR: npm install of a package with no runtime should have failed on Node 20 but succeeded" >&2
             exit 1
           fi
-          echo "Good: npm failed as expected on Node 20"
-          # Verify old version is still in place
           AFTER=$("$PREFIX/bin/agend" --version)
-          echo "After: $AFTER"
+          echo "After the refused upgrade: $AFTER"
           [ "$AFTER" = "2.1.12" ] || { echo "ROLLBACK FAILED: version is $AFTER, expected 2.1.12" >&2; exit 1; }
-          echo "Rollback confirmed: 2.1.12 is still installed after failed upgrade on Node 20"
+          echo "Rollback confirmed: 2.1.12 is still installed after a refused upgrade on Node 20"
+      - name: Bundled install — Node 20 installs the pinned package, which runs on its own Node
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/node20-rollback-prefix"
+          # #1450 (user rule): where a runtime applies the system Node's version is never a reason to refuse.
+          npm install --global --prefix "$PREFIX" "./$TGZ"
+          WANT=$(node -p 'require("./package.json").version')
+          GOT=$("$PREFIX/bin/agend" --version)
+          [ "$GOT" = "$WANT" ] || { echo "ERROR: agend --version is $GOT, expected $WANT" >&2; exit 1; }
+          "$PREFIX/bin/agend" --agend-select-json | node -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); console.log("selection:", s.source, s.node); if (s.source !== "runtime") process.exit(1)'
+          echo "Node 20 upgraded to $GOT, running on the bundled Node"

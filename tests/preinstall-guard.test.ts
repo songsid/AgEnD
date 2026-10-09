@@ -10,19 +10,37 @@
  * but the binary will crash at the first DB open. This is a known npm
  * limitation; see Upgrade Notes in the changelog.
  */
-import { describe, it, expect } from "vitest";
+import { afterAll, describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 
-const GUARD = join(import.meta.dirname ?? "", "../scripts/preinstall-guard.cjs");
+const REPO = join(import.meta.dirname ?? "", "..");
+/**
+ * The guard reads the package.json beside it. Since #1450's pins landed, the repo's own manifest pins the bundled
+ * runtime, so on a supported host an old Node proceeds (postinstall proves the runtime). The engine boundary below is
+ * the refusal for a release that bundles no runtime: a copy of the guard beside the same manifest WITHOUT the pins.
+ */
+const unpinned = mkdtempSync(join(tmpdir(), "agend-guard-unpinned-"));
+afterAll(() => rmSync(unpinned, { recursive: true, force: true }));
+mkdirSync(join(unpinned, "scripts"));
+cpSync(join(REPO, "scripts", "preinstall-guard.cjs"), join(unpinned, "scripts", "preinstall-guard.cjs"));
+cpSync(join(REPO, "launcher"), join(unpinned, "launcher"), { recursive: true });
+{
+  const manifest = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
+  delete manifest.optionalDependencies;
+  writeFileSync(join(unpinned, "package.json"), JSON.stringify(manifest, null, 2));
+}
+const GUARD = join(unpinned, "scripts", "preinstall-guard.cjs");
 
-function runGuard(nodeVersion: string): { exitCode: number; stderr: string } {
+function runGuard(nodeVersion: string, guard = GUARD): { exitCode: number; stderr: string } {
   // Override process.versions.node via a preload and run the guard.
   const preload = `Object.defineProperty(process.versions,"node",{value:${JSON.stringify(nodeVersion)},configurable:true});`;
   const tmpPreload = `/tmp/guard-preload-${Date.now()}.cjs`;
   require("node:fs").writeFileSync(tmpPreload, preload);
-  const r = spawnSync(process.execPath, ["--require", tmpPreload, GUARD], {
+  const r = spawnSync(process.execPath, ["--require", tmpPreload, guard], {
     encoding: "utf-8",
     timeout: 5_000,
   });
@@ -56,6 +74,12 @@ describe("preinstall-guard — boundary cases", () => {
     expect(stderr).toMatch(/22\.14/);
     expect(stderr).toMatch(/20\.0\.0/);
     expect(stderr).toMatch(/aborting this install/i);
+  });
+
+  // #1450 pins: the shipped manifest pins all four runtime packages, so on a host they cover an old Node proceeds.
+  const platform = createRequire(import.meta.url)("../launcher/runtime-platform.cjs") as { runtimeSupport(h: unknown): { supported: boolean }; hostPlatform(): unknown };
+  it.skipIf(!platform.runtimeSupport(platform.hostPlatform()).supported)("the repo's own (pinned) manifest: an old Node proceeds on a supported host", () => {
+    expect(runGuard("20.19.0", join(REPO, "scripts", "preinstall-guard.cjs")).exitCode).toBe(0);
   });
 
   it("the guard file is in the package files list (included in npm pack)", () => {
