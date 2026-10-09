@@ -58,9 +58,15 @@ Open／pairing 對話准入及 saved grant 不授予 F；chat allowlist 不授�
   clear 在移除按鈕後、首個 IPC effect 前，亦重驗 exact adapter、
   daemon／IPC owner、cached launch owner（`bootId`、`spawnGeneration`、
   `launchAttempt`、`launchFenceEpoch`）、lifecycle epoch 與 delivery epoch，且不提供 web mirror。
-- Telegram no-thread General 在 dedup 前驗明確 bot suffix，即使沒有
-  message ID 也一樣。錯誤或未知 receiver 靜默；bare command 與既有
-  Classic／有-thread 的 username 行為不變。
+- Telegram forum 根層（沒有 topic）的 bare command-like 輸入固定選擇
+  configured primary adapter 在該群的 General；primary 在該群沒有 General
+  時，才依 config 順序選第一個同群 General。shared dedup 前由該 bot 自己的
+  copy 與 admin 名單決定准入，即使没有 message ID 也一樣，不再由到達順序
+  選擇管理員。目標已停止或無法判定時保持暫停，不會自動改選 sibling。
+  要對其他 General 下指令，使用 `/restart@ThatBot full`、`/update@ThatBot`
+  或該 General 自己的 topic。明確 suffix 在 dedup 前必須對應已知且唯一的
+  bot username；錯誤或未知 receiver 靜默。根層普通對話與既有
+  Classic／有-thread 的 username 路由保持原行為。
 
 ## 更新介面
 

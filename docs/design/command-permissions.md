@@ -66,9 +66,16 @@ unknown authority requires host CLI confirmation. See
   Clear also rechecks the exact adapter, daemon/IPC owner, cached launch owner
   (`bootId`, `spawnGeneration`, `launchAttempt`, `launchFenceEpoch`), lifecycle
   epoch and delivery epoch after retiring buttons, before the first IPC effect; it is not web-mirrored.
-- Telegram no-thread General validates an explicit bot suffix before dedup,
-  even without a message ID. Wrong or unknown receivers are silent; bare
-  commands and existing Classic/present-thread username behavior are unchanged.
+- At a Telegram forum's root (no topic), bare command-like input selects the
+  configured primary adapter's General in that group, or the first configured
+  same-group General when the primary has none there. Its own copy and admin
+  list govern admission before shared dedup, even without a message ID; arrival
+  order does not select an administrator. A stopped or unresolved owner is
+  held, with no automatic switch to a sibling. To address another General, use
+  `/restart@ThatBot full`, `/update@ThatBot`, or that General's own topic.
+  Explicit suffixes require a known, unambiguous matching bot username before
+  dedup; wrong or unknown receivers are silent. Ordinary root conversation and
+  existing Classic/present-thread username behavior retain their routing.
 
 ## Updating the surface
 
