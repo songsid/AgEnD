@@ -785,7 +785,7 @@ describe("the composer's paste (panel-chat.js, mounted)", () => {
 
   it("a short paste is just a paste", async () => {
     await freshChat();
-    expect(paste("x".repeat(10_000))).toBe(false);
+    expect(paste("x".repeat(4_000))).toBe(false);                 // the limit itself (#1269: 4,000)
     expect(a.toasts).toEqual([]);
   });
 });
