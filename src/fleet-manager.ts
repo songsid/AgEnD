@@ -64,6 +64,7 @@ import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
+import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
@@ -1417,13 +1418,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private ensureDeliveryOutbox(): void {
     if (this.deliveryOutbox) return;
-    const outbox = new DeliveryOutbox(join(this.dataDir, "delivery-outbox.db"), this.managerBootId);
-    this.deliveryOutbox = outbox;
-    if (!this.deliveryOutboxRecovered) {
-      const recovered = outbox.recoverForBoot(this.managerBootId);
-      this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
-      this.deliveryOutboxRecovered = true;
+    const dbPath = join(this.dataDir, "delivery-outbox.db");
+    let outbox: DeliveryOutbox | undefined;
+    try {
+      outbox = new DeliveryOutbox(dbPath, this.managerBootId);
+      if (!this.deliveryOutboxRecovered) {
+        const recovered = outbox.recoverForBoot(this.managerBootId);
+        this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
+      }
+    } catch (cause) {
+      // Unlike events.db, these rows cannot be discarded: queued messages and uncertain submissions are authoritative.
+      // Publish only a fully recovered store. A partial open/recovery must not authorize admission on a later call.
+      try { outbox?.close(); } catch { /* preserve the original failure */ }
+      const error = new OutboxOpenError(dbPath, cause);
+      this.logger.error({ err: cause, dbPath, kind: error.kind }, error.message);
+      throw error;
     }
+    this.deliveryOutbox = outbox;
+    this.deliveryOutboxRecovered = true;
     outbox.on("admitted", () => { this.scheduleDeliveryOutboxPump(); this.wakeCoordinator?.kick(); });
     outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
       this.scheduleDeliveryOutboxPump();
