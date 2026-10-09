@@ -6,10 +6,10 @@
 # the tag only says which package of this name is current.
 # A version already on the registry is skipped, not an error: a run that published some packages and then failed can
 # simply be run again (npm versions are immutable, so "already there" is the outcome a re-run wants). Only that EXACT
-# version counts — a name that holds other versions (the 0.0.0 placeholder that created it) is published to. A lookup
+# version counts — a name that holds only other versions (an older pin, a placeholder) is published to. A lookup
 # that cannot say — anything but the version itself, an empty answer or E404 — stops the run.
-# Auth (publish-runtime.yml): npm trusted publishing (OIDC) only, no token (docs/development.md: a new package name is
-# first created by hand with a placeholder version, then its trusted publisher is configured).
+# Auth (publish-runtime.yml): npm trusted publishing (OIDC). npm cannot create a NEW package name through OIDC, so the
+# first publish of a runtime package uses a short-lived NPM_TOKEN secret as NODE_AUTH_TOKEN (docs/development.md).
 set -euo pipefail
 DIR="${1:?package directory}"; DRY_RUN="${2:?true|false}"
 case "$DRY_RUN" in true|false) ;; *) echo "dry run must be true or false" >&2; exit 2 ;; esac
