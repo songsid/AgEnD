@@ -278,15 +278,7 @@ export function handleWebRequest(
   // panel says "not found"), so the response never tells which names exist.
   const shell = shellRoute(method, path);
   if (shell?.kind === "malformed") { json(res, 400, { error: "invalid instance name" }); return true; }
-  if (shell?.kind === "shell") {
-    try {
-      const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
-      sendPanelHtml(res, html.replace("<body>", shellBodyTag(req, ctx)), 200, {}, shellFrameSrc(req, ctx));
-    } catch {
-      json(res, 500, { error: "app.html not found" });
-    }
-    return true;
-  }
+  if (shell?.kind === "shell") { serveAppShell(req, res, ctx, "full"); return true; }
 
   // Serve JS modules
   if (method === "GET" && path.startsWith("/ui/js/")) {
@@ -1090,22 +1082,37 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
 }
 
 // ── #1408: what the server tells the app shell on its <body> ──
-// Built by one function for every signed-in entry, so arriving at /ui/fleet and then opening a chat is the same as
-// arriving at /ui. The mode decides the stream (§3): a local session gets the live stream (with polling while it is
-// down); the public link polls from the start (its manifest has no /ui/events). #1306: the origin the server believes
-// it is at, the preview origin chosen for this load (empty: previews off, with the reason) and the preview listener's
-// boot id. The public link has no previews.
-function shellPreview(req: IncomingMessage, ctx: WebApiContext) {
-  return gatewayRequestContext(req) ? null : ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
+// One function for every entry, so arriving at /ui/fleet or /view and then opening a chat is the same as arriving at
+// /ui. The mode decides what the page may do (§3):
+// - "full", signed in: a local session gets the live stream (with polling while it is down); the public link polls from
+//   the start (its manifest has no /ui/events). #1306: the origin the server believes it is at, the preview origin
+//   chosen for this load (empty: previews off, with the reason) and the preview listener's boot id; the public link
+//   has no previews.
+// - "view-only": an anonymous reader of /view under `web.view_access: open`. No stream, no previews, no session-only
+//   panel: the page shows View and a way to sign in, nothing else.
+export interface AppShellContext {
+  previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
 }
-function shellBodyTag(req: IncomingMessage, ctx: WebApiContext): string {
-  const p = shellPreview(req, ctx);
+export type AppShellMode = "full" | "view-only";
+
+function shellPreview(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode) {
+  if (mode !== "full" || gatewayRequestContext(req)) return null;
+  return ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
+}
+function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string {
+  const p = shellPreview(req, ctx, mode);
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-  return `<body data-mode="full"${gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
 }
-/** The shell's CSP may frame exactly <preview origin>/frame, and only when this load chose one. */
-function shellFrameSrc(req: IncomingMessage, ctx: WebApiContext): { frameSrc?: string } {
-  const p = shellPreview(req, ctx);
-  return p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {};
+/** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
+ *  when this load chose one. */
+export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: AppShellContext, mode: AppShellMode): void {
+  try {
+    const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
+    const p = shellPreview(req, ctx, mode);
+    sendPanelHtml(res, html.replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {});
+  } catch {
+    json(res, 500, { error: "app.html not found" });
+  }
 }
