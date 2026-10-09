@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { FleetManager } from "../src/fleet-manager.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+import { cachedCommandDaemon } from "./helpers/cached-command-daemon.js";
 
 // Real ingress/nonce/selector/TopicCommands methods. Every platform/lifecycle
 // effect is inert, with private state only; the global process guard stays on.
@@ -56,7 +57,7 @@ function rig() {
   fm.routing.rebuild(fm.fleetConfig!);
   const ipc = { connected: true, send: vi.fn() };
   fm.instanceIpcClients.set("worker", ipc as any);
-  any.daemons.set("worker", {});
+  any.daemons.set("worker", cachedCommandDaemon("worker"));
   any.daemons.set("general_a", {}); any.daemons.set("general_b", {});
   vi.spyOn(any, "deliverToInstance").mockResolvedValue(undefined);
   vi.spyOn(any.topicCommands, "getStatusText").mockResolvedValue("STATUS-CARD");

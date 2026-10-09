@@ -185,8 +185,8 @@ import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBac
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
-import { presentationState, interactionSummary } from "./interaction-observation.js";
-import type { InstanceState, InstanceStateSnapshot, InteractionSnapshot } from "./backend/types.js";
+import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
+import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -11175,12 +11175,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const daemon = this.daemons.get(pending.instanceName);
     const epoch = this.getDeliveryEpoch(pending.instanceName);
     const groupId = this.getChannelConfig(callbackAdapterId)?.group_id;
+    // Object identity survives a resident daemon's respawn/freeze, and stop
+    // invalidates its lifecycle epoch before the queued work replaces objects.
+    // These reads are cached and synchronous; they never probe the pane.
+    const readOwner = (): InteractionOwner | null => {
+      try {
+        const owner = daemon?.getInteractionSnapshot?.()?.owner;
+        if (!owner || typeof owner.bootId !== "string" || !owner.bootId
+          || ![owner.spawnGeneration, owner.launchAttempt, owner.launchFenceEpoch]
+            .every(n => Number.isSafeInteger(n) && n >= 0)) return null;
+        return { ...owner };
+      } catch { return null; }
+    };
+    const readLifecycleEpoch = (): number | null => {
+      try {
+        const value = this.lifecycle?.epochOf(pending.instanceName);
+        return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+      } catch { return null; }
+    };
+    const owner = readOwner(), lifecycleEpoch = readLifecycleEpoch();
     const current = (): boolean => {
+      const currentOwner = readOwner();
       try { return !this.shuttingDown
       && !!data.userId && !!pending.authChannelId
       && !this.webPromptClicks.has(data) // clear is deliberately not web-mirrored
       && this.worlds.get(callbackAdapterId)?.adapter === pending.adapter
-      && this.commandChannelStillTargets(pending.instanceName, pending.authChannelId, callbackAdapterId)
+      && this.commandChannelStillTargets(pending.instanceName, pending.authChannelId, callbackAdapterId, pending.chatId)
       && this.isModelAdmin(data.userId, pending.authChannelId, callbackAdapterId)
       && (this.classicChannels?.getInstanceByChannel(pending.authChannelId, callbackAdapterId) === pending.instanceName
         ? pending.adapter.type !== "telegram" || pending.chatId === pending.authChannelId
@@ -11188,6 +11208,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && this.getChannelConfig(callbackAdapterId)?.group_id === groupId
       && this.daemons.get(pending.instanceName) === daemon
       && this.instanceIpcClients.get(pending.instanceName) === ipc
+      && owner !== null && currentOwner !== null && sameInteractionOwner(owner, currentOwner)
+      && lifecycleEpoch !== null && readLifecycleEpoch() === lifecycleEpoch
       && this.isDeliveryEpochCurrent(pending.instanceName, epoch);
       } catch { return false; } // unavailable authority cannot admit a clear
     };
@@ -14468,7 +14490,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!data.userId || data.userId !== pending.userId
       || (pending.adapterId !== undefined && pending.adapterId !== adapterId)
       || (cbChannel !== pending.channelId && data.chatId !== pending.channelId)
-      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId)) {
+      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId, pending.adapterChatId)) {
       data.ack?.(t("buttons.admin_only"));
       return true;
     }
@@ -14503,7 +14525,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId)
+        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await this.applyEffort(pending.instanceName, level) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
@@ -14757,22 +14779,27 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * came through (it may have been rebound since the menu opened) and the clicker is still that channel's admin. Asked
    * when the click is claimed and again right before the change is applied.
    */
-  private menuClickStillCurrent(instanceName: string, userId: string, channelId: string, adapterId: string): boolean {
-    return this.commandChannelStillTargets(instanceName, channelId, adapterId)
+  private menuClickStillCurrent(instanceName: string, userId: string, channelId: string, adapterId: string, sourceChatId?: string): boolean {
+    return this.commandChannelStillTargets(instanceName, channelId, adapterId, sourceChatId)
       && this.isModelAdmin(userId, channelId, adapterId);
   }
 
   /** Current source-to-target mapping, including same-adapter topic moves. */
-  private commandChannelStillTargets(instanceName: string, channelId: string, adapterId: string): boolean {
+  private commandChannelStillTargets(instanceName: string, channelId: string, adapterId: string, sourceChatId?: string): boolean {
     if (this.getInstanceAdapterId(instanceName) !== adapterId) return false;
     const classic = this.classicChannels?.getInstanceByChannel(channelId, adapterId);
     if (classic !== undefined) return classic === instanceName;
     // Read the current config rather than relying on a pre-reload route cache.
-    const target = Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
+    const targets = Object.entries(this.fleetConfig?.instances ?? {}).filter(([name, cfg]) =>
       cfg.topic_id != null && String(cfg.topic_id) === channelId && this.getInstanceAdapterId(name) === adapterId);
-    if (target) return target[0] === instanceName;
-    // Root General menus carry the group address, not the logical topic id.
+    // A duplicate within one world is ambiguous (the slash table keeps the
+    // last registration). Never authorize an old menu via the first match.
+    if (targets.length > 1) return false;
     const channel = this.getChannelConfig(adapterId);
+    if (targets.length === 1) return targets[0][0] === instanceName
+      && (channel?.type !== "telegram" || sourceChatId !== undefined
+        && channel.group_id != null && String(channel.group_id) === sourceChatId);
+    // Root General menus carry the group address, not the logical topic id.
     return channel?.type === "telegram" && channel.group_id != null && String(channel.group_id) === channelId
       && this.fleetConfig?.instances[instanceName]?.general_topic === true
       && this.findGeneralInstance(adapterId) === instanceName;
@@ -14791,7 +14818,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!data.userId || data.userId !== pending.userId
       || (pending.adapterId !== undefined && pending.adapterId !== adapterId)
       || (cbChannel !== pending.channelId && data.chatId !== pending.channelId)
-      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId)) {
+      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId, pending.adapterChatId)) {
       data.ack?.(t("buttons.admin_only"));
       return true;
     }
@@ -14850,7 +14877,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId)
+        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await this.applyModel(pending.instanceName, model) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");

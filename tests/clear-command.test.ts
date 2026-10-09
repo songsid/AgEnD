@@ -6,6 +6,7 @@ import { createBackend } from "../src/backend/factory.js";
 import { CLEAR_UNSUPPORTED_MSG, TopicCommands } from "../src/topic-commands.js";
 import type { InboundMessage } from "../src/channel/types.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { cachedCommandDaemon } from "./helpers/cached-command-daemon.js";
 import { setLocale } from "../src/locale.js";
 
 function inbound(userId: string): InboundMessage {
@@ -176,6 +177,8 @@ describe("/clear nonce confirmation", () => {
       channelConfig: fm.fleetConfig!.channels![0],
     } as any);
     fm.instanceIpcClients.set("worker", { connected: true, send: ipcSend } as any);
+    (fm as any).daemons.set("worker", cachedCommandDaemon("worker"));
+    (fm as any).daemons.set("classic-worker", cachedCommandDaemon("classic-worker"));
     return { fm, adapter, ipcSend, notifyAlert, editMessageRemoveButtons, editMessage };
   }
 
