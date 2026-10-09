@@ -458,7 +458,6 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       ["stat prints the receipted mtime, then fails (the candidate was touched)", "stat", "mtime", (_f: ReturnType<typeof fixture>, node: string) => { const t = new Date(Date.now() + 60_000); utimesSync(node, t, t); }],
       ["cksum prints the true sums, then fails", "cksum", null, () => {}],
       ["cksum fails only on the receipt (after printing its true sum)", "cksum", "receipt-only", () => {}],
-      ["getconf prints the host's glibc, then fails", "getconf", null, () => {}],
       ["uname prints the host, then fails", "uname", null, () => {}],
     ] as const)("%s: the candidate never runs", (_n, tool, line, change) => {
       const f = fixture({ runtime: "ok", npmLayout: true });
@@ -483,6 +482,30 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       bin(f, "agend", liars({ [tool]: lie }));
       expect(existsSync(mark)).toBe(false);
     });
+  });
+
+  // #1450 leader review: an OS update (a macOS point release, a distro's newer glibc) must never lock AgEnD out of the
+  // Node it verified. The key binds os/cpu only; whether the host can still run it is runtimeSupport()'s minimums.
+  it("the admission key does not depend on the host's glibc or Darwin version", () => {
+    const f = fixture({ runtime: "ok" });
+    writeFileSync(join(f.pkg, ".agend-runtime.json"), "{}\n");
+    const candidate = select.runtimeCandidate(f.pkg, { name: `@songsid/agend-node-${HOST.id}`, version: process.versions.node });
+    const key = (host: Record<string, unknown>) => select.runtimeKey(f.pkg, candidate, host) as Buffer;
+    expect(key({ ...HOST, glibc: "2.99" }).equals(key({ ...HOST, glibc: "2.28" }))).toBe(true);
+    const mac = { platform: "darwin", arch: "arm64", id: "darwin-arm64", glibc: null };
+    expect(key({ ...mac, darwinRelease: "24.3.0" }).equals(key({ ...mac, darwinRelease: "24.4.0" }))).toBe(true);
+    expect(key({ ...HOST, glibc: "2.35" }).toString()).not.toMatch(/glibc|2\.35|host /);
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST)("after an OS update (another glibc version; getconf saying so, or failing) AgEnD still starts on its bundled Node", () => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    expect(postinstall(f).status).toBe(0);
+    expect(choose(f, { host: { ...HOST, glibc: "2.99" } })).toMatchObject({ ok: true, source: "runtime" });
+    for (const lie of ["glibc 2.99", null]) {
+      const r = bin(f, "agend", liars({ getconf: lie }));
+      expect(r.status, r.stderr).toBe(0);
+      expect(JSON.parse(r.stdout)).toMatchObject({ fakeRuntime: true });
+    }
   });
 
   it.skipIf(!ON_FIXTURE_HOST)("the key is compared as bytes: an install path with U+FFFD whose key bytes became FF is refused by both", () => {
