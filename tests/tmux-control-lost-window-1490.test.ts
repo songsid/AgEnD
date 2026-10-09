@@ -20,6 +20,7 @@ type Internals = {
   lostWindows: Map<string, unknown>;
   paneToWindow: Map<string, string>;
   lastOutputAt: Map<string, number>;
+  lastOutputAtMono: Map<string, number>;
   attachment: unknown;
   mono: () => number;
   resolvePane(windowId: string): Promise<void>;
@@ -100,7 +101,7 @@ describe("a registered window whose pane is not resolved yet is not idle (#1490)
     internals.registeredWindows.add("@7");
     internals.resetPaneObservations();           // what connect() does: every mapping dropped, grace armed
 
-    vi.advanceTimersByTime(SILENCE_MS + 1);      // grace over, @7 still unresolved
+    clock += SILENCE_MS + 1;                     // grace over, @7 still unresolved (advance mono clock)
     expect(client.isIdle("@7")).toBe(false);
     expect(client.isIdle("@99"), "an unregistered window after the same grace").toBe(true);
   });
@@ -140,6 +141,7 @@ describe("a lost window comes back on demand", () => {
     expect(client.isIdle("@7"), "silent for silenceMs").toBe(true);
 
     internals.lastOutputAt.set("%3", Date.now());
+    internals.lastOutputAtMono.set("%3", internals.mono());
     expect(client.isIdle("@7"), "real output after recovery is busy").toBe(false);
   });
 
@@ -223,8 +225,7 @@ describe("recovery evidence ends with the observations it was part of (#1494 rev
     expect(internals.paneToWindow.get("%4")).toBe("@7");
     expect(client.isIdle("@7"), "inside the new grace: unknown, not idle").toBe(false);
 
-    vi.setSystemTime(Date.now() + SILENCE_MS);   // control: silence since the new mapping settles to idle
-    clock += SILENCE_MS;
+    clock += SILENCE_MS;  // advance mono so grace expires and isIdle uses the new mapping
     expect(client.isIdle("@7")).toBe(true);
   });
 });

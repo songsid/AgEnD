@@ -29,6 +29,11 @@ Telegram General／Fleet 的文字 dispatcher 先辨識自己確實會處理的�
 | `channel-admin` | Fleet／General 為 F；既有 Classic registration 為該 bot 的 F 或 C |
 | `handler` | 新 `/start` 自己的准入：C 可直接啟動，或明列 guild／private-user grant；否則由 General 核准。Telegram group 保留 C 啟動權 |
 
+Settings 確認依變更的 owner 授權，與送出按鈕的 General 分開：每個既有目標的 F；
+fleet 層級／新增連線採 primary General 的 F；混合變更同時滿足兩者。
+跨平台或權限目標不明時用 host CLI 確認。詳見
+[確認敏感變更](../web-dashboard.zh-TW.md#確認敏感變更)。
+
 Open／pairing 對話准入及 saved grant 不授予 F；chat allowlist 不授予 C。兩角色
 維持不同：`/stop` 及 Discord Classic `/load` 須 C，既有 Classic context 控制
 接受 F 或 C。Classic 新啟動 grant 空白時申請核准；既有 registration 照常可用。
