@@ -52,7 +52,9 @@ describe("CLI instance start authentication (#1016)", () => {
   function runCli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), ...args], {
-        env: { ...process.env, AGEND_HOME: dataDir, NOTIFY_SOCKET: "" },
+        // The instance form against this test's own mock fleet (the test process guard refuses it otherwise: with no
+        // fleet answering it would fall through to starting one).
+        env: { ...process.env, AGEND_HOME: dataDir, NOTIFY_SOCKET: "", AGEND_TEST_ALLOW_INSTANCE_START: "1" },
         timeout: 8_000,
       }, (error, stdout, stderr) => {
         if (!error) resolve({ code: 0, stdout, stderr });

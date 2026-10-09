@@ -9,7 +9,7 @@
  * whose name holds `$`, spaces and quotes. No host npm, no network, no fleet.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,7 @@ function sq(text: string): string {
 }
 
 /** A fixture @songsid/agend package: `agend --version` prints its version; better-sqlite3 is an inert recorder. */
-function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok", opts: { launcher?: boolean; select?: "runtime" | "error" | "other-package" } = {}): string {
+function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok", opts: { launcher?: boolean; select?: "runtime" | "error" | "other-package"; realLauncher?: boolean } = {}): string {
   const dir = join(root, "src", name);
   mkdirSync(join(dir, "dist"), { recursive: true });
   mkdirSync(join(dir, "node_modules", "better-sqlite3"), { recursive: true });
@@ -38,6 +38,13 @@ function fixturePackage(root: string, name: string, version: string, native: Nat
   const bin = opts.launcher ? "launcher/agend" : "dist/cli.js";
   writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: bin } }));
   writeFileSync(join(dir, ".bin-target"), bin);
+  if (opts.realLauncher) {
+    // The SHIPPED launcher (sh bin + runtime-select), and a JS CLI it can run in process or spawn.
+    cpSync(join(process.cwd(), "launcher"), join(dir, "launcher"), { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "launcher/agend" }, engines: { node: "^22.14.0 || ^23.6.0 || >=24" } }));
+    writeFileSync(join(dir, ".bin-target"), "launcher/agend");
+    writeFileSync(join(dir, "dist", "cli.js"), `if (process.argv[2] === "--version") console.log(${JSON.stringify(version)});\n`);
+  }
   if (opts.launcher) {
     mkdirSync(join(dir, "launcher"));
     // A launcher-era package (#1450): `--agend-select-json` answers what launcher/launch.cjs would — the bundled Node,
@@ -57,8 +64,10 @@ function fixturePackage(root: string, name: string, version: string, native: Nat
     ].join("\n") + "\n");
     chmodSync(join(dir, "launcher", "agend"), 0o755);
   }
-  writeFileSync(join(dir, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\necho "agend $*" >> '${join(root, "agend.log")}'\nexit 0\n`);
-  chmodSync(join(dir, "dist", "cli.js"), 0o755);
+  if (!opts.realLauncher) {
+    writeFileSync(join(dir, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\necho "agend $*" >> '${join(root, "agend.log")}'\nexit 0\n`);
+    chmodSync(join(dir, "dist", "cli.js"), 0o755);
+  }
   writeFileSync(join(dir, "node_modules", "better-sqlite3", "index.js"), `
 const fs = require("node:fs"); const log = ${JSON.stringify(join(root, "native.log"))};
 const note = line => fs.appendFileSync(log, line + "\\n");
@@ -189,6 +198,29 @@ describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to 
 });
 
 describe("#1450 C4: a launcher-era target is verified on the Node IT selects, not the updater's", () => {
+  it("through the SHIPPED launcher: AGEND_NODE is what verification proves and reports — not PATH's node", () => {
+    const w = world();
+    const chosen = join(w.root, "chosen-node");
+    writeFileSync(chosen, `#!/bin/sh\necho "chosen $1" >> ${sq(join(w.root, "chosen.log"))}\nexec ${sq(process.execPath)} "$@"\n`);
+    chmodSync(chosen, 0o755);
+    w.env.AGEND_NODE = chosen;
+    const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { realLauncher: true })), w.runner);
+    expect(outcome).toMatchObject({ ok: true, node: realpathSync(chosen) });
+    expect(readFileSync(join(w.root, "chosen.log"), "utf8")).toContain("chosen -e");          // the DB proof ran on it
+    expect(w.nativeLog()).toEqual([...ONE_OPEN, ...ONE_OPEN]);
+  });
+
+  it("through the SHIPPED launcher: a selection whose DB fails is refused even though PATH's node would pass", () => {
+    const w = world();
+    const chosen = join(w.root, "chosen-node");
+    // A Node on which the package's database cannot open (as better-sqlite3 13 on Node 20 SIGSEGVs).
+    writeFileSync(chosen, `#!/bin/sh\n[ "$1" = -e ] && case "$2" in *better-sqlite3*) exit 139;; esac\nexec ${sq(process.execPath)} "$@"\n`);
+    chmodSync(chosen, 0o755);
+    w.env.AGEND_NODE = chosen;
+    expect(runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { realLauncher: true })), w.runner))
+      .toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining(`on the Node it selected, ${realpathSync(chosen)}`) });
+  });
+
   const install = (select: "runtime" | "error" | "other-package", native: NativeMode = "ok") => {
     const w = world();
     const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", native, { launcher: true, select })), w.runner);

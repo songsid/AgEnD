@@ -112,18 +112,19 @@ function checkShell(command, env, cwd) {
     if (word === 'which' || (words[i - 1] === '-v' || words[i - 1] === '-V')) { start = false; continue; }
     const rest = words.slice(i + 1);
     const end = rest.findIndex(w => /^[;|&\n]$/.test(w));
-    checkInvocation(word, end < 0 ? rest : rest.slice(0, end), env, cwd);
+    checkInvocation(word, end < 0 ? rest : rest.slice(0, end), env, cwd, { inShell: true });
     start = false;
   }
 }
-function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()) {
+function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd(), opts = {}) {
   cwd = childCwd(cwd);
   const base = path.basename(String(file));
   if (BACKENDS.has(base) && !fixtureAllowed(file, env, cwd)) throw new Error(`real backend CLI forbidden: ${base}`);
-  // Through PATH (`sh -c "agend fleet start"`), an `agend` that is not a registered fixture is whatever is installed on
-  // this host — a real fleet. A harness that once stubbed `agend` on PATH must not be the only thing in the way.
-  if (base === 'agend' && launchesDaemon(argv) && !fixtureAllowed(file, env, cwd)) {
-    throw new Error('a real `agend fleet start` from a test is forbidden');
+  // #1450: a fleet start of AgEnD itself, in any form. Refused — unless a DIRECT call (not a shell string) runs where
+  // the test asked for it to be recorded (AGEND_TEST_SELF_SPAWN_LOG): the caller then makes it inert.
+  const self = selfFleetStart(file, argv, env, cwd);
+  if (self && (opts.inShell || !(env.AGEND_TEST_SELF_SPAWN_LOG || process.env.AGEND_TEST_SELF_SPAWN_LOG))) {
+    throw new Error(`a real \`agend ${self}\` from a test is forbidden${opts.inShell ? "" : " (set AGEND_TEST_SELF_SPAWN_LOG to record it instead)"}`);
   }
   if (base === 'tmux') {
     if (!privateSocket(argv, env)) throw new Error('tmux requires a private test socket (-L/-S)');
@@ -134,6 +135,13 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
   if (SHELLS.has(base)) {
     const c = argv.findIndex(arg => /^-[^-]*c[^-]*$/.test(arg));
     if (c !== -1 && typeof argv[c + 1] === 'string') checkShell(argv[c + 1], env, cwd);
+    // `sh -c 'exec "$@"' sh <program> <args…>`: the program arrives as positional data, never in the script text.
+    if (c !== -1) {
+      for (let k = c + 2; k < argv.length; k++) {
+        const self = typeof argv[k] === 'string' && selfFleetStart(argv[k], argv.slice(k + 1), env, cwd);
+        if (self) throw new Error(`a real \`agend ${self}\` from a test is forbidden`);
+      }
+    }
   }
   if (/^node(?:js)?$/.test(base) && !argv.some(arg => ['-e', '--eval', '-p', '--print'].includes(arg))) {
     const script = argv.find(arg => !arg.startsWith('-') && (BACKENDS.has(path.basename(arg).replace(/\.(?:m?js|cjs|exe)$/, ''))
@@ -141,24 +149,50 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
     if (script && !fixtureAllowed(script, env, cwd, true)) throw new Error(`real backend Node entry forbidden: ${path.basename(script)}`);
   }
 }
-// #1450 C5: AgEnD restarts itself as `<this Node> <package>/dist/cli.js fleet start` (src/cli.ts from source) — no
-// `agend` on PATH a test could stub. A test may never start a real fleet (the daemon) that way, from this repo or any
-// copy of it; one that means to observe it sets AGEND_TEST_SELF_SPAWN_LOG, and the spawn is recorded there and
-// replaced by an inert `sh -c 'exit 0'`.
-/** `fleet start` with no instance launches the daemon; `fleet start <instance>` asks a running fleet (HTTP). */
-function launchesDaemon(args) {
-  return args[0] === 'fleet' && args[1] === 'start' && !args.slice(2).some(a => typeof a === 'string' && !a.startsWith('-'));
+// #1450 C5: AgEnD starts itself as `<this Node> <package>/dist/cli.js fleet start` (src/cli.ts from source), through
+// its launcher (`launcher/agend` sh, `launcher/agend.cjs`), or as `agend` on PATH. A test may never start a real fleet
+// (the daemon) in any of these forms — from this repo or any copy of it, by spawn, fork, a sync call or a shell string.
+/**
+ * Does this argv start the daemon? `fleet start` does — with an instance too: when no running fleet answers, that
+ * falls through to starting one. A test that drives the instance form against its own mock fleet says so
+ * (AGEND_TEST_ALLOW_INSTANCE_START=1).
+ */
+function launchesDaemon(args, env) {
+  if (args[0] !== 'fleet' || args[1] !== 'start') return false;
+  const instance = args.slice(2).some(a => typeof a === 'string' && !a.startsWith('-'));
+  return !instance || (env.AGEND_TEST_ALLOW_INSTANCE_START || process.env.AGEND_TEST_ALLOW_INSTANCE_START) !== '1';
 }
-function isAgendCli(file) {
-  if (!/^cli\.(?:js|ts)$/.test(path.basename(file))) return false;
-  try { return JSON.parse(fs.readFileSync(path.join(path.dirname(file), '..', 'package.json'), 'utf8')).name === '@songsid/agend'; }
+/** An entry of an @songsid/agend package: <pkg>/(dist|src)/cli.(js|ts), <pkg>/launcher/agend(.cjs). */
+function isAgendEntry(file) {
+  let real = file;
+  try { real = fs.realpathSync(file); } catch { /* as given */ }
+  const name = path.basename(real), dir = path.basename(path.dirname(real));
+  const entry = (/^cli\.(?:js|ts)$/.test(name) && (dir === 'dist' || dir === 'src')) || (/^agend(?:\.cjs)?$/.test(name) && dir === 'launcher');
+  if (!entry) return false;
+  try { return JSON.parse(fs.readFileSync(path.join(path.dirname(real), '..', 'package.json'), 'utf8')).name === '@songsid/agend'; }
   catch { return false; }
 }
-function selfFleetStart(file, argv, cwd) {
-  if (!/^node(?:js)?$/.test(path.basename(String(file)))) return null;
-  const i = argv.findIndex(arg => typeof arg === 'string' && !arg.startsWith('-') && isAgendCli(path.resolve(childCwd(cwd), arg)));
-  const rest = i < 0 ? [] : argv.slice(i + 1);
-  return launchesDaemon(rest) ? rest.join(' ') : null;
+/** Node flags whose value is the NEXT argument. */
+const NODE_VALUE_FLAGS = new Set(['--import', '--require', '-r', '--loader', '--experimental-loader', '--input-type', '--conditions', '-C', '--env-file', '--inspect-port']);
+/** `agend <args>` when this call is a start of AgEnD itself (see above), else null. */
+function selfFleetStart(file, argv, env, cwd) {
+  const base = path.basename(String(file));
+  let rest = null;
+  if (/^node(?:js)?$/.test(base) || String(file) === process.execPath) {
+    if (argv.some(arg => ['-e', '--eval', '-p', '--print'].includes(arg))) return null;
+    for (let i = 0; i < argv.length; i++) {
+      const arg = argv[i];
+      if (typeof arg !== 'string') return null;
+      if (NODE_VALUE_FLAGS.has(arg)) { i++; continue; }
+      if (arg.startsWith('-')) continue;
+      if (isAgendEntry(path.resolve(cwd, arg))) rest = argv.slice(i + 1);
+      break;
+    }
+  } else {
+    const resolved = String(file).includes('/') ? path.resolve(cwd, String(file)) : resolveExecutable(String(file), env, cwd);
+    if ((resolved && isAgendEntry(resolved)) || (base === 'agend' && !fixtureAllowed(file, env, cwd))) rest = argv;
+  }
+  return rest && launchesDaemon(rest, env) ? rest.join(' ') : null;
 }
 function install() {
   if (globalThis[KEY]) return globalThis[KEY];
@@ -172,6 +206,13 @@ function install() {
   }
   function guard(file, argv, env, cwd) {
     try { checkInvocation(file, argv, env, cwd); } catch (cause) { reject(cause); }
+  }
+  /** A direct self-start the guard let through (the log is set): record it; the caller runs `sh -c 'exit 0'` instead. */
+  function recordedSelfStart(file, argv, env, cwd) {
+    const self = selfFleetStart(file, argv, env, childCwd(cwd));
+    if (!self) return false;
+    fs.appendFileSync(env.AGEND_TEST_SELF_SPAWN_LOG || process.env.AGEND_TEST_SELF_SPAWN_LOG, `agend ${self}\n`);
+    return true;
   }
   function childEnv(env) {
     const result = { ...(env || process.env) };
@@ -187,11 +228,7 @@ function install() {
   cp.ChildProcess.prototype.spawn = function(options) {
     const env = Object.fromEntries((options.envPairs || []).map(pair => { const i = pair.indexOf('='); return [pair.slice(0, i), pair.slice(i + 1)]; }));
     guard(options.file, options.args.slice(1), env, options.cwd);
-    const self = selfFleetStart(options.file, options.args.slice(1), options.cwd);
-    if (self) {
-      const log = env.AGEND_TEST_SELF_SPAWN_LOG || process.env.AGEND_TEST_SELF_SPAWN_LOG;
-      if (!log) reject(new Error(`a real \`agend ${self}\` from a test is forbidden (set AGEND_TEST_SELF_SPAWN_LOG to record it instead)`));
-      fs.appendFileSync(log, `agend ${self}\n`);
+    if (recordedSelfStart(options.file, options.args.slice(1), env, options.cwd)) {
       options.file = '/bin/sh';
       options.args = ['sh', '-c', 'exit 0'];
     }
@@ -215,6 +252,7 @@ function install() {
         catch (cause) { reject(cause); }
       } else guard(file, argv, env, cwd);
       const guardedOptions = { ...options, env: childEnv(options.env) };
+      if (!shellCall && !options.shell && recordedSelfStart(file, argv, env, cwd)) return original.call(this, '/bin/sh', ['-c', 'exit 0'], guardedOptions);
       return shellCall ? original.call(this, file, guardedOptions) : original.call(this, file, argv, guardedOptions);
     };
   }

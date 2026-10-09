@@ -22,7 +22,7 @@ NotifyAccess=all
 # Bounded so a start that hangs before READY is noticed (#1113).
 TimeoutStartSec=15min
 WatchdogSec=60
-ExecStart=<%= nodePath %> <%= execPath %> fleet start
+ExecStart=<%- systemdQuote(nodePath) %> <%- systemdQuote(execPath) %> fleet start
 Environment=PATH=<%= path %>
 Environment=TERM=xterm-256color
 <% if (isRoot) { %>Environment=IS_SANDBOX=1

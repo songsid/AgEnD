@@ -6,7 +6,7 @@
  * wrapper around this test's own Node.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
@@ -28,6 +28,8 @@ const ON_FIXTURE_HOST = process.platform === "linux" && process.arch === "x64";
 describe("runtime-platform: engines and host support", () => {
   it.each([
     ["22.14.0", true], ["22.13.9", false], ["23.6.0", true], ["23.5.0", false], ["24.0.0", true], ["26.1.0", true], ["20.19.0", false], ["21.9.0", false],
+    // A prerelease satisfies no stable alternative (npm semver), and only a full x.y.z counts.
+    ["24.0.0-nightly20260101abcdef", false], ["22.14.0-rc.1", false], ["26.0.0-pre", false], ["v24.1.0", true], ["22.14", false], ["24", false],
   ])("satisfiesEngines(%s) = %s", (v, ok) => {
     expect(platform.satisfiesEngines(v, "^22.14.0 || ^23.6.0 || >=24")).toBe(ok);
   });
@@ -240,6 +242,35 @@ describe("selectRuntime: the order and the refusals", () => {
     expect(r).toMatchObject({ ok: false, reason: expect.stringMatching(reason) });
   });
 
+  it("AGEND_NODE that is a prerelease Node is refused (a nightly 24 is not >=24)", () => {
+    const f = fixture({ runtime: "ok" });
+    postinstall(f);
+    expect(choose(f, { env: { AGEND_NODE: process.execPath }, probe: () => ({ node: "24.0.0-nightly20260101abc", napi: 10 }) })).toMatchObject({ ok: false, reason: expect.stringContaining("24.0.0-nightly") });
+  });
+
+  // Only PHYSICAL absence (no runtime directory — not even a dangling link — and no receipt file) is the skipped-runtime
+  // exception; every other state refuses.
+  it.each([
+    ["an unparsable receipt", (f: ReturnType<typeof fixture>) => writeFileSync(join(f.pkg, ".agend-runtime.json"), "{ not json")],
+    ["an empty receipt", (f: ReturnType<typeof fixture>) => writeFileSync(join(f.pkg, ".agend-runtime.json"), "")],
+    ["a JSON-null receipt", (f: ReturnType<typeof fixture>) => writeFileSync(join(f.pkg, ".agend-runtime.json"), "null")],
+    ["a receipt that is a directory", (f: ReturnType<typeof fixture>) => mkdirSync(join(f.pkg, ".agend-runtime.json"))],
+    ["a dangling runtime-directory link", (f: ReturnType<typeof fixture>) => { mkdirSync(dirname(f.runtimeHome), { recursive: true }); symlinkSync(join(f.root, "gone"), f.runtimeHome); }],
+  ])("not absent, so refused (never the system Node): %s", (_n, arrange) => {
+    const f = fixture({ runtime: "none" });
+    arrange(f);
+    expect(choose(f)).toMatchObject({ ok: false, reason: expect.stringContaining("missing, incomplete or changed") });
+  });
+
+  it("postinstall and selection agree: a stale receipt with no runtime is removed, and both take the skipped-runtime path", () => {
+    const f = fixture({ runtime: "none" });
+    writeFileSync(join(f.pkg, ".agend-runtime.json"), JSON.stringify({ pinnedVersion: process.versions.node, nodePath: "/old/node" }));
+    const r = postinstall(f);
+    expect(r.status, r.stderr).toBe(0);
+    expect(existsSync(join(f.pkg, ".agend-runtime.json"))).toBe(false);
+    expect(choose(f)).toMatchObject({ ok: true, source: "system", warning: expect.stringContaining("not installed") });
+  });
+
   it("a valid AGEND_NODE overrides the bundled Node", () => {
     const f = fixture({ runtime: "ok" });
     postinstall(f);
@@ -305,7 +336,7 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
   const toolsOnly = (() => {
     const dir = mkdtempSync(join(tmpdir(), "agend tools-"));
     roots.push(dir);
-    for (const tool of ["sh", "readlink", "dirname", "basename", "uname"]) {
+    for (const tool of ["sh", "readlink", "dirname", "basename", "uname", "sed", "wc", "tr", "find"]) {
       symlinkSync(spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim(), join(dir, tool));
     }
     return dir;
@@ -348,13 +379,81 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
     expect(r.stdout).toBe("");
   });
 
-  it.skipIf(!ON_FIXTURE_HOST)("a bundled Node changed after it was verified: the bin still hands it to the JS launcher, which refuses", () => {
+  /** Replace the verified runtime with one that leaves a marker if it is ever executed. */
+  const tamper = (f: ReturnType<typeof fixture>, mark: string) => {
+    writeFileSync(join(f.runtimeHome, "bin", "node"), `#!/bin/sh\necho ran > '${mark}'\nexec '${process.execPath}' "$@"\n`);
+    chmodSync(join(f.runtimeHome, "bin", "node"), 0o755);
+  };
+
+  it.skipIf(!ON_FIXTURE_HOST)("a bundled Node changed after it was verified never runs: no node on PATH → the bin refuses itself", () => {
     const f = fixture({ runtime: "ok", npmLayout: true });
     expect(postinstall(f).status).toBe(0);
-    writeFileSync(join(f.runtimeHome, "bin", "node"), `#!/bin/sh\nexec '${process.execPath}' "$@"\n# changed\n`);
+    const mark = join(f.root, "tampered-ran");
+    tamper(f, mark);
     const r = bin(f, "agend", toolsOnly);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("changed since it was verified");
+    expect(existsSync(mark)).toBe(false);
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST)("…with a node on PATH, that node runs the JS launcher, which refuses; the changed file still never runs", () => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    expect(postinstall(f).status).toBe(0);
+    const mark = join(f.root, "tampered-ran");
+    tamper(f, mark);
+    const r = bin(f, "agend", `${toolsOnly}:${dirname(process.execPath)}`);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("changed since it was verified");
+    expect(existsSync(mark)).toBe(false);
+  });
+
+  /**
+   * The sh bin's own admission, one property at a time: each case changes exactly one thing the receipt binds, and the
+   * candidate — a runtime that leaves a marker whenever it runs — must never run (the JS launcher would refuse it too,
+   * so "exit 1" alone would not tell whether the bin let it run).
+   */
+  it.skipIf(!ON_FIXTURE_HOST).each([
+    ["touched (same bytes, newer mtime)", (f: ReturnType<typeof fixture>, node: string) => { const t = new Date(Date.now() + 60_000); utimesSync(node, t, t); void f; }],
+    ["resized with its mtime put back", (f: ReturnType<typeof fixture>, node: string) => { const st = statSync(node); writeFileSync(node, readFileSync(node, "utf8") + "# grown\n"); utimesSync(node, st.atime, st.mtime); void f; }],
+    ["a receipt naming another file", (f: ReturnType<typeof fixture>) => { const file = join(f.pkg, ".agend-runtime.json"); writeFileSync(file, readFileSync(file, "utf8").replace(/"nodePath": "[^"]*"/, `"nodePath": "${join(f.root, "elsewhere", "node")}"`)); }],
+  ])("the bin does not run a candidate %s", (_n, change) => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    const node = join(f.runtimeHome, "bin", "node");
+    const mark = join(f.root, "candidate-ran");
+    writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+    expect(postinstall(f).status).toBe(0);                // the proof itself runs it: that is expected
+    rmSync(mark, { force: true });
+    const receiptTime = statSync(join(f.pkg, ".agend-runtime.json")).mtime;
+    utimesSync(node, receiptTime, new Date(receiptTime.getTime() - 5_000));   // verified before its receipt was written
+    change(f, node);
+    const r = bin(f, "agend", toolsOnly);
+    expect(r.status).toBe(1);
+    expect(existsSync(mark)).toBe(false);
+  });
+
+  it("a valid AGEND_NODE starts AgEnD with no bundled Node and no node on PATH", () => {
+    const f = fixture({ runtime: "none", npmLayout: true });
+    const r = bin(f, "agend", toolsOnly, { AGEND_NODE: process.execPath });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ execPath: process.execPath, fakeRuntime: false, argv1: join(f.pkg, "dist", "cli.js") });
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST)("a valid AGEND_NODE wins over a changed bundled Node, which never runs", () => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    expect(postinstall(f).status).toBe(0);
+    const mark = join(f.root, "tampered-ran");
+    tamper(f, mark);
+    const r = bin(f, "agend", toolsOnly, { AGEND_NODE: process.execPath });
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ execPath: process.execPath, fakeRuntime: false });
+    expect(existsSync(mark)).toBe(false);
+  });
+
+  it.each([["relative", "node", "absolute path"], ["not executable", "/etc/hostname", "not an executable file"]])("AGEND_NODE %s: the bin refuses, nothing else runs", (_n, value, why) => {
+    const r = bin(fixture({ runtime: "none", npmLayout: true }), "agend", `${toolsOnly}:${dirname(process.execPath)}`, { AGEND_NODE: value });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(why);
+    expect(r.stdout).toBe("");
   });
 });
 

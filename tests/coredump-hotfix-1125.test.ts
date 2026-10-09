@@ -444,7 +444,7 @@ exit 0
     expect(calls.findIndex(c => c.startsWith("systemctl --user restart com.agend.fleet")), out).toBeGreaterThan(calls.findIndex(c => c.startsWith("npm install")));
     // The installed copy refreshed the unit (its own entry, named Node), and its restart passed the guard on that unit.
     const unitText = readFileSync(join(home, ".config", "systemd", "user", "com.agend.fleet.service"), "utf8");
-    expect(unitText).toContain(`ExecStart=${process.execPath} ${join(globalPkg, "dist", "cli.js")} fleet start`);
+    expect(unitText).toContain(`ExecStart="${process.execPath}" "${join(globalPkg, "dist", "cli.js")}" fleet start`);
     expect(r.status, out).toBe(0);
     expect(`${r.stdout}${r.stderr}`).not.toContain("Not restarting");
   });

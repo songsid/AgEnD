@@ -46,8 +46,16 @@ check_installed() {
     const [pkg, file] = process.argv.slice(1);
     const main = addRow(pkg, file);
     const w = new Worker(`${addRow}; require("node:worker_threads").parentPort.postMessage(addRow(${JSON.stringify(pkg)}, ${JSON.stringify(file)}))`, { eval: true });
-    w.on("message", n => { console.log(`  main thread: ${main} row(s); then the worker: ${n}`); process.exit(n === main + 1 ? 0 : 1); });
+    // Only a validated answer from the worker passes: an exit before it — even exit 0 — fails, and so does silence.
+    let answer = null;
+    w.on("message", n => { answer = n; });
     w.on("error", e => { console.error(e); process.exit(1); });
+    w.on("exit", code => {
+      if (answer !== main + 1) { console.error(`  the worker exited ${code} with ${answer === null ? "no answer" : `${answer} row(s), not ${main + 1}`}`); process.exit(1); }
+      console.log(`  main thread: ${main} row(s); then the worker: ${answer}`);
+      process.exit(0);
+    });
+    setTimeout(() => { console.error("  the worker did not finish within 30 s"); process.exit(1); }, 30_000).unref();
   ' "$pkg" "$WORK/acceptance-$RANDOM.db" || fail "better-sqlite3 did not open a database on the bundled Node"
 
   step "the system Node is untouched, and the runtime is on no PATH"
@@ -116,6 +124,23 @@ check_daemon() {
 
 # What a service definition written by this install would start. CI checks the file's contents and paths only: it
 # cannot prove a systemd user service or launchd loads it at boot/login.
+# Prints word N of a unit file's ExecStart, split as systemd splits a command line.
+SYSTEMD_WORDS='
+  const line = (/^ExecStart=(.*)$/m.exec(require("fs").readFileSync(process.argv[1], "utf8")) || [])[1] || "";
+  const words = []; let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i])) i++;
+    if (i >= line.length) break;
+    let w = "", q = null;
+    for (; i < line.length; i++) {
+      const c = line[i];
+      if (q) { if (c === q) { q = null; continue; } if (c === "\\" && i + 1 < line.length) { w += line[++i]; continue; } w += c; }
+      else { if (/\s/.test(c)) break; if (c === "\"" || c === "\x27") { q = c; continue; } if (c === "\\" && i + 1 < line.length) { w += line[++i]; continue; } w += c; }
+    }
+    words.push(w.replace(/%%/g, "%").replace(/\$\$/g, "$"));
+  }
+  process.stdout.write(words[Number(process.argv[2])] || "");'
+
 check_service_files() {
   local bin="$PREFIX/bin/agend" file argv0 argv1 path entry
   entry="$(realpath_of "$PREFIX/lib/node_modules/@songsid/agend/dist/cli.js")"
@@ -128,8 +153,9 @@ check_service_files() {
     path="$(plutil -extract EnvironmentVariables.PATH raw -o - "$file")"
   else
     file="$HOME/.config/systemd/user/com.agend.fleet.service"
-    argv0="$(sed -n 's/^ExecStart=\([^ ]*\) .*/\1/p' "$file")"
-    argv1="$(sed -n 's/^ExecStart=[^ ]* \([^ ]*\) .*/\1/p' "$file")"
+    # ExecStart's words as systemd splits them (quoted paths; %% and $$ undone).
+    argv0="$(node -e "$SYSTEMD_WORDS" "$file" 0)"
+    argv1="$(node -e "$SYSTEMD_WORDS" "$file" 1)"
     path="$(sed -n 's/^Environment=PATH=//p' "$file")"
   fi
   cat "$file"
