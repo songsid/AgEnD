@@ -190,11 +190,18 @@ describe.skipIf(!haveGpg)("end to end against a signed fake dist (offline)", () 
 // x.y.z-agend.N without one; #1457 review). npm is a stub that records its arguments.
 describe("publishing: an explicit dist-tag on every publish, dry run or real", () => {
   const script = join(process.cwd(), "scripts", "runtime", "publish-runtime-packages.sh");
-  const run = (versions: string[], dryRun: string) => {
+  /** `view`: which specs npm already has ("published"), what it answers for the rest ("empty": the name exists, not
+   *  this version; "404": no such package; "error": a failed lookup). */
+  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" } = {}) => {
     const dir = mkdtempSync(join(tmpdir(), "agrt-pub-"));
     const bin = join(dir, "bin"); mkdirSync(bin);
     const log = join(dir, "npm.log"); writeFileSync(log, "");
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "$PWD|$*" >> '${log}'\ncase "$1" in pack) echo '[{"name":"x","version":"y","size":1,"unpackedSize":2,"entryCount":3}]';; esac\nexit 0\n`);
+    const otherwise = view.otherwise ?? "404";
+    const viewAnswer = [
+      ...(view.published ?? []).map(spec => `[ "$2" = '${spec}' ] && { echo '"${spec.slice(spec.lastIndexOf("@") + 1)}"'; exit 0; }`),
+      otherwise === "empty" ? "exit 0" : otherwise === "404" ? `echo "npm error code E404" >&2; echo "npm error 404 Not Found - GET https://registry.npmjs.org/x" >&2; exit 1` : `echo "npm error code ETIMEDOUT" >&2; exit 1`,
+    ].join("\n");
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "$PWD|$*" >> '${log}'\ncase "$1" in pack) echo '[{"name":"x","version":"y","size":1,"unpackedSize":2,"entryCount":3}]';; view)\n${viewAnswer}\n;; esac\nexit 0\n`);
     chmodSync(join(bin, "npm"), 0o755);
     symlinkSync(process.execPath, join(bin, "node"));
     for (const v of versions) {
@@ -212,6 +219,31 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(r.status, r.stderr).toBe(0);
     const publishes = calls.filter(c => c.startsWith("publish"));
     expect(publishes).toEqual([`publish ${flag}--access public --provenance --tag latest`, `publish ${flag}--access public --provenance --tag latest`]);
+  });
+
+  // #1488 / first publish: a re-run after a partial success skips what npm already has, and never guesses.
+  it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: a version already on the registry is skipped; the rest publish", (dry, flag) => {
+    const { r, calls } = run(["22.23.3", "22.23.3-agend.2"], dry, { published: ["@songsid/agend-node-linux-x64@22.23.3"] });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("@songsid/agend-node-linux-x64@22.23.3: already on the registry, skipped");
+    expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag latest`]);
+  });
+  it("the package name exists but not this version (npm view prints nothing): published", () => {
+    const { r, calls } = run(["22.23.3"], "false", { otherwise: "empty" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(calls.filter(c => c.startsWith("publish"))).toHaveLength(1);
+  });
+  it("a lookup that fails another way (not 404) stops the run: nothing is published", () => {
+    const { r, calls } = run(["22.23.3"], "false", { otherwise: "error" });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("cannot be told");
+    expect(calls.filter(c => c.startsWith("publish"))).toEqual([]);
+  });
+  it("publish-runtime.yml: NPM_TOKEN (when the secret exists) is npm's fallback; provenance and OIDC stay", () => {
+    const yml = readFileSync(join(process.cwd(), ".github", "workflows", "publish-runtime.yml"), "utf8");
+    expect(yml).toContain("id-token: write");
+    expect(yml).toMatch(/- name: Publish \(or dry run\)[\s\S]*NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+    expect(readFileSync(script, "utf8")).toContain("npm publish --access public --provenance --tag latest");
   });
 
   it("refuses an unknown dry-run value and an empty package directory", () => {
