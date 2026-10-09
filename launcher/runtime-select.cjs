@@ -110,8 +110,10 @@ function cksum(buf) {
 /**
  * THE ADMISSION KEY (#1460 r3), the one thing the sh bins check before they exec the bundled Node — byte for byte, by
  * rebuilding it from their own measurements (launcher/agend) — and that this selection requires as well. One fact per
- * line: the host (os, cpu, glibc version / Darwin kernel), the Node's realpath, size and mtime (whole seconds), and the
- * POSIX `cksum` of both manifests and of the receipt. The postinstall writes it LAST, after everything it binds is
+ * line: the host's os and cpu, the Node's realpath, size and mtime (whole seconds), and the POSIX `cksum` of both
+ * manifests and of the receipt. NO host VERSION (glibc, Darwin kernel): an OS update must never lock AgEnD out of
+ * the Node it verified (#1450 leader review) — whether the host can still run it is runtimeSupport()'s minimums, judged
+ * fresh on every start, and the libc family is fixed by the package's own `libc` field at install. The postinstall writes it LAST, after everything it binds is
  * final and verified; any later change to a manifest or the receipt changes its CRC, any change to the binary its
  * size or mtime — and then neither side runs it. null when a bound file cannot be read.
  */
@@ -121,13 +123,11 @@ function runtimeKey(pkgDir, candidate, host) {
     var real = fs.realpathSync(candidate.node, { encoding: "buffer" });
     var st = fs.lstatSync(real);
     if (!st.isFile()) return null;
-    var hostlib = host.platform === "linux" ? (host.glibc ? "glibc " + host.glibc : "none") : host.platform === "darwin" ? String(host.darwinRelease) : "none";
     var line = function (text) { return Buffer.from(text + "\n", "utf8"); };
     return Buffer.concat([
-      line("agend-runtime-key 1"),
+      line("agend-runtime-key 2"),
       line("os " + host.platform),
       line("cpu " + host.arch),
-      line("host " + hostlib),
       Buffer.from("node ", "utf8"), real, Buffer.from("\n", "utf8"),
       line("size " + st.size),
       line("mtime " + Math.floor(st.mtimeMs / 1000)),

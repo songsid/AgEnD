@@ -16,7 +16,7 @@ import {
 } from "./kiro-agent.js";
 import {
   type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
-  kiroAgentConfirmed, forgetKiroIdentity,
+  kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
 } from "./kiro-identity.js";
 import { readKiroLedger } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
@@ -775,6 +775,37 @@ export class KiroBackend implements CliBackend {
   private launchPlan: KiroInstanceLaunch | null = null;
   /** The plan of the command last built: what agentSwitch() works from. */
   private activePlan: KiroInstanceLaunch | null = null;
+  private preparedV2Store: { key: string; store: KiroStoreRead } | null = null;
+  private storePreparation = 0;
+  private storeKey(config: CliBackendConfig): string {
+    return JSON.stringify([config.instanceName, config.workingDirectory, kiroCanonicalDirectory(config.workingDirectory), config.kiroUi,
+      resolveCredentialProfile(config.backendOptions), !!config.skipResume, getAgendHome(), kiroV2SessionsDir(), kiroCanonicalDirectory(kiroV2SessionsDir())]);
+  }
+
+  private readPreparedV2Store(config: CliBackendConfig): KiroStoreRead {
+    if (this.preparedV2Store?.key !== this.storeKey(config)) {
+      throw new KiroIdentityError("v2 session discovery was not prepared for this launch");
+    }
+    return this.preparedV2Store.store;
+  }
+
+  /** Metadata only: identity claims/config writes remain synchronous, after
+   * the daemon rechecks its launch admission following this await. */
+  async prepareLaunch(config?: CliBackendConfig): Promise<void> {
+    const preparation = ++this.storePreparation;
+    this.preparedV2Store = null;
+    if (!config || config.kiroUi !== "tui") return;
+    if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
+    const key = this.storeKey(config);
+    const plan = planKiroLaunch("tui", this.compatibility);
+    if (plan.kind !== "launch" || !plan.flags.includes("--agent-engine=v2") || !this.compatibility.supportsInstanceAgent) return;
+    const opts = { instance: config.instanceName, engine: "v2" as const, workingDirectory: config.workingDirectory,
+      credentialProfile: resolveCredentialProfile(config.backendOptions), skipResume: config.skipResume, agendHome: getAgendHome() };
+    if (kiroIdentityNeedsStore(opts)) {
+      const store = await listKiroV2Sessions(config.workingDirectory, kiroV2SessionsDir());
+      if (preparation === this.storePreparation && key === this.storeKey(config)) this.preparedV2Store = { key, store };
+    }
+  }
 
   constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
     this.binaryPath = resolveBinary("kiro-cli");
@@ -1051,6 +1082,7 @@ export class KiroBackend implements CliBackend {
 
     // #906: which conversation this attempt resumes, and as which agent — resolved once, here.
     const plan = this.planInstanceLaunch(config);
+    this.preparedV2Store = null;
     this.launchPlan = plan;
     const spec = this.agentSpec(config);
     const root = dirname(this.instanceDir);
@@ -1148,7 +1180,7 @@ export class KiroBackend implements CliBackend {
         agendHome,
         readStore: () => engine === "v1"
           ? listKiroV1Sessions(config.workingDirectory, kiroV1DbPath(credentialProfile))
-          : listKiroV2Sessions(config.workingDirectory, kiroV2SessionsDir()),
+          : this.readPreparedV2Store(config),
         launchedBefore: () => kiroLaunchedHereBefore(config.instanceName, config.workingDirectory, credentialProfile, engine),
       });
     }
