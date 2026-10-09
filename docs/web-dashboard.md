@@ -214,6 +214,17 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 
 In the owning General, an admin can choose **Open temporary public link** from `/dashboard` (Discord native slash; Telegram typed). Nothing is downloaded or exposed until that click. The bot DMs the link and code; Discord has an awaited ephemeral fallback. Telegram users must `/start` the bot privately first. No code is posted in General.
 
+While it starts, the menu you clicked shows each step with its seconds, updated at most every 2 s (3 s on Telegram):
+
+1. check cloudflared;
+2. download it, in MB of the total;
+3. verify it against the pinned version and SHA256;
+4. start the tunnel;
+5. wait for the public address to answer;
+6. send you the link privately.
+
+Steps 1–3 appear only when AgEnD's copy must be fetched; after the first time it is steps 4–6. A step that fails is marked with its reason, and running `/dashboard` again retries. The menu shows only these words and numbers, never the link or the code.
+
 It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button, a fresh menu, `/dashboard revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
 
 The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; preview, SSE, `/health`, `/agent` and code issuance are excluded. Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.

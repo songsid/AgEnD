@@ -214,6 +214,17 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 
 管理員在所屬 General 的 `/dashboard` 選 **開啟臨時公開連結**（Discord 原生 slash；Telegram 輸入指令）。按下前不下載、不開入口。bot 私送連結與登入碼；Discord 私訊失敗時改用須確認送達的 ephemeral 回覆。Telegram 請先私訊 bot 的 `/start`。General 絕不貼登入碼。
 
+啟動期間，你按的那個選單會逐步顯示每個階段與經過秒數，最多每 2 秒更新一次（Telegram 為 3 秒）：
+
+1. 檢查 cloudflared；
+2. 下載（已下載 / 總共 MB）；
+3. 驗證檔案（固定版本與 SHA256）；
+4. 啟動 tunnel；
+5. 等待公開網址可以連上；
+6. 私送連結給你。
+
+只有需要下載 AgEnD 自己的 cloudflared 時才會出現第 1–3 步；第一次之後只會看到第 4–6 步。失敗的那一步會標出原因，再執行一次 `/dashboard` 即可重試。選單上只有這些文字和數字，不會出現連結或登入碼。
+
 使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕、新選單、`/dashboard revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
 
 獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 preview、SSE、`/health`、`/agent` 或發碼 API。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
