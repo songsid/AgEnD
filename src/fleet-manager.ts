@@ -6951,25 +6951,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * #1085, defense in depth: a routed Telegram target must belong to the group
-   * the message came from — its own world's group_id. Two Telegram fleet
-   * worlds can number topics alike; a coincidence is dropped, never delivered.
+   * A forum-root command has one configured General before any adapter claims
+   * dedup. Bare commands prefer the primary adapter's General in this group;
+   * explicit suffixes select their own bot. Runtime availability must not pick
+   * another administrator, so stopped owners remain selected and then refuse.
+   * undefined = another ingress scope; null = root command with no proven target.
    */
+  private telegramRootCommandTarget(msg: InboundMessage, threadId: string | undefined): { name: string; owner: string } | null | undefined {
+    if (msg.source !== "telegram" || threadId !== undefined || !/^\/\w/.test(msg.text?.trim() ?? "")) return undefined;
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const receiving = channels.find(ch => (ch.id ?? ch.type) === msg.adapterId);
+    if (receiving?.type !== "telegram" || receiving.group_id == null || String(receiving.group_id) !== msg.chatId) return undefined;
+    const generals = Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic === true)
+      .map(([name]) => {
+        const owner = this.getInstanceAdapterId(name);
+        return { name, owner, channel: channels.find(ch => (ch.id ?? ch.type) === owner) };
+      });
+    const candidates = generals.filter(entry => entry.owner && entry.channel?.type === "telegram"
+      && entry.channel.group_id != null && String(entry.channel.group_id) === msg.chatId);
+    const suffix = msg.text?.trim().match(/^\/[\w-]+@(\S+)/)?.[1];
+    let selected: typeof candidates[number] | undefined;
+    if (suffix) {
+      const matches = candidates.filter(entry => this.worlds.get(entry.owner!)?.botUsername?.toLowerCase() === suffix.toLowerCase());
+      const owners = new Set(matches.map(entry => entry.owner));
+      if (owners.size !== 1) return null;
+      selected = matches[0];
+    } else {
+      // An unresolvable General may be the intended primary; do not silently
+      // widen authority to the next readable binding.
+      if (generals.some(entry => !entry.channel || (entry.channel.type === "telegram" && entry.channel.group_id == null))) return null;
+      selected = candidates.find(entry => entry.owner === this.getPrimaryAdapterId()) ?? candidates[0];
+    }
+    return selected?.owner ? { name: selected.name, owner: selected.owner } : null;
+  }
+
   /**
    * #1346: whether this copy may claim the shared dedup key for
    * command-like text. Fleet topics resolve an owning adapter and only its
    * copy proceeds. Classic targets and unknown routing keep their existing
-   * handling. At the receiving Telegram world's own forum root, an explicit
-   * suffix requires a known matching username before dedup; present-thread
+   * handling. Telegram forum-root commands select a configured General before
+   * dedup. An explicit suffix requires a known matching username; present-thread
    * copies retain their permissive handling when that identity is unknown.
    */
-  private isOwnerCommandCopy(msg: InboundMessage, threadId: string | undefined): boolean {
+  private isOwnerCommandCopy(msg: InboundMessage, threadId: string | undefined,
+    rootCommand = this.telegramRootCommandTarget(msg, threadId)): boolean {
+    if (rootCommand !== undefined) {
+      return rootCommand !== null && msg.adapterId === rootCommand.owner && this.daemons.has(rootCommand.name);
+    }
     if (!msg.adapterId) return true;
     const suffix = msg.text?.trim().match(/^\/[\w-]+@(\S+)/)?.[1];
     if (threadId === undefined) {
-      // General at the forum root belongs to the receiving world. Prove an
-      // explicit suffix before shared dedup, even when there is no message id.
-      // Classic/private/foreign-forum copies retain their own dispatch rules.
+      // Compatibility for a runtime world without configuration: preserve
+      // explicit receiver proof; Classic/private/foreign-forum copies retain
+      // their own dispatch rules.
       const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
       const channel = channels.find(ch => (ch.id ?? ch.type) === msg.adapterId)
         ?? this.worlds.get(msg.adapterId)?.channelConfig;
@@ -6997,6 +7031,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /**
+   * #1085: coincident topic numbers must not route across Telegram groups.
+   */
   private resolveInboundTarget(msg: InboundMessage, threadId: string): RouteTarget | undefined {
     if (msg.source !== "telegram") return this.routing.resolve(threadId);
     return this.routing.resolveAll(threadId).find(target => {
@@ -7029,6 +7066,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const threadId = this.inboundRouteThreadId(msg);
+    const rootCommand = this.telegramRootCommandTarget(msg, threadId);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
 
@@ -7098,7 +7136,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // to flow — so only fleet targets are judged here; the in-handler gates
     // (owner entry check, Discord ignore) cover classic instead.
     if ((msg.messageId || (msg.source === "telegram" && threadId === undefined))
-      && /^\/\w/.test(msg.text?.trim() ?? "") && !this.isOwnerCommandCopy(msg, threadId)) {
+      && /^\/\w/.test(msg.text?.trim() ?? "") && !this.isOwnerCommandCopy(msg, threadId, rootCommand)) {
       this.logger.debug({ adapterId: msg.adapterId, threadId }, "Non-owner command copy — skipping before dedup claim");
       return;
     }
@@ -7419,7 +7457,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       // General topic: Discord /xxx gets the system note first (never a
       // command); other sources fall through to the handlers below.
-      const generalInstance = this.findGeneralInstance(msg.adapterId);
+      const generalInstance = rootCommand?.name ?? this.findGeneralInstance(msg.adapterId);
       if (generalInstance && await this.replyDiscordNotACommand(msg, generalInstance)) return;
       if (generalInstance && await this.topicCommands.handleInstanceCommand(msg, generalInstance)) return;
       if (generalInstance && await this.topicCommands.handleGeneralCommand(msg, generalInstance)) return;
