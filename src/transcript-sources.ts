@@ -27,7 +27,8 @@ import { measureSyncWork } from "./sync-work-attribution.js";
  *     one found silently goes blind when the CLI starts a new session.
  */
 
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readSync, realpathSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
@@ -333,6 +334,19 @@ function readKiroConversationStatusSync(
  * Kiro 2.19 moved primary conversations to conversations_v2 in data.sqlite3;
  * legacy releases use <uuid>.jsonl plus sibling <uuid>.json metadata.
  */
+/** The Kiro legacy fallback's scan bounds (#1490): see KiroSessionSource.resolveActiveSession. */
+export const KIRO_FULL_SCAN_MS = 30_000;
+export const KIRO_QUIET_MS = 10 * 60_000;
+export const KIRO_SCAN_CONCURRENCY = 16;
+const KIRO_HOT_DIR_MS = 2_000;
+
+/** Run `task(0..count-1)`, at most `limit` at a time. */
+async function forEachLimited(count: number, limit: number, task: (index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async (): Promise<void> => { while (next < count) await task(next++); };
+  await Promise.all(Array.from({ length: Math.min(limit, count) }, worker));
+}
+
 export class KiroSessionSource implements TranscriptSource {
   private currentFile: string | null = null;
   private byteOffset = 0;
@@ -398,21 +412,47 @@ export class KiroSessionSource implements TranscriptSource {
    * `null` = the file does not concern us (another cwd, or a subagent child).
    */
   private metaCache = new Map<string, { mtimeMs: number; size: number; meta: { updated: number; created: number } | null }>();
+  /** The sessions directory as last listed: re-listed only when its mtime moves (a session added or removed). */
+  private sessionsListing: { mtimeMs: number; names: string[]; hotWhenRead: boolean } | null = null;
+  private fullScanAt = Number.NEGATIVE_INFINITY;
+  /** Monotonic clock for the full-scan spacing; wall clock for comparing with file times. Test hooks. */
+  private mono = (): number => performance.now();
+  private wall = (): number => Date.now();
 
-  private resolveActiveSession(): { jsonlPath: string; createdAtMs: number } | null {
-    let entries: string[];
-    try { entries = readdirSync(this.sessionsDir); } catch { return null; }
-    let best: { jsonlPath: string; updated: number; createdAtMs: number } | null = null;
-    const seen = new Set<string>();
-    for (const e of entries) {
-      if (!e.endsWith(".json") || e.endsWith(".jsonl")) continue;
-      const metaPath = join(this.sessionsDir, e);
-      seen.add(metaPath);
+  /**
+   * The newest session of this working directory, from its metadata (#1490). It used to run `readdirSync` plus a
+   * `statSync` of every metadata file on the event loop, on every 2 s poll while the store had no row for us: 16–18 ms
+   * per instance with 5,000 sessions. Now it is asynchronous and bounded:
+   *   - the directory is listed again only when its mtime moved, or when it was read right after a change (file
+   *     times are coarse: a session created in the same tick would share that mtime), or on a full scan;
+   *   - a metadata file quiet for KIRO_QUIET_MS is not stat'ed again until the next full scan, so a poll costs one
+   *     stat of the directory plus the recently active files; an old session resumed is seen within KIRO_FULL_SCAN_MS;
+   *   - every full scan (each KIRO_FULL_SCAN_MS) re-stats everything, KIRO_SCAN_CONCURRENCY at a time.
+   */
+  private async resolveActiveSession(): Promise<{ jsonlPath: string; createdAtMs: number } | null> {
+    const now = this.wall();
+    const full = this.mono() - this.fullScanAt >= KIRO_FULL_SCAN_MS;
+    let dirMtimeMs: number;
+    try { dirMtimeMs = (await stat(this.sessionsDir)).mtimeMs; } catch { return null; }
+    let listing = this.sessionsListing;
+    if (full || !listing || listing.mtimeMs !== dirMtimeMs || listing.hotWhenRead) {
+      let entries: string[];
+      try { entries = await readdir(this.sessionsDir); } catch { return null; }
+      listing = { mtimeMs: dirMtimeMs, names: entries.filter(e => e.endsWith(".json") && !e.endsWith(".jsonl")).sort(), hotWhenRead: now - dirMtimeMs < KIRO_HOT_DIR_MS };
+      this.sessionsListing = listing;
+    }
+    if (full) this.fullScanAt = this.mono();
+
+    const verdicts = new Array<{ updated: number; created: number } | null>(listing.names.length).fill(null);
+    const names = listing.names;
+    await forEachLimited(names.length, KIRO_SCAN_CONCURRENCY, async (i) => {
+      const metaPath = join(this.sessionsDir, names[i]!);
+      let cached = this.metaCache.get(metaPath);
+      if (!full && cached && now - cached.mtimeMs > KIRO_QUIET_MS) { verdicts[i] = cached.meta; return; }
       try {
-        const st = statSync(metaPath);
-        let cached = this.metaCache.get(metaPath);
+        const st = await stat(metaPath);
         if (!cached || cached.mtimeMs !== st.mtimeMs || cached.size !== st.size) {
-          const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+          const meta = JSON.parse(await readFile(metaPath, "utf-8"));
           // Subagent sessions are children of a turn already being reported.
           const ours = meta.cwd === this.workingDirectory && meta.session_created_reason !== "subagent";
           cached = {
@@ -424,17 +464,23 @@ export class KiroSessionSource implements TranscriptSource {
           };
           this.metaCache.set(metaPath, cached);
         }
-        if (!cached.meta) continue;
-        if (!best || cached.meta.updated > best.updated) {
-          const jsonlPath = join(this.sessionsDir, e.replace(/\.json$/, ".jsonl"));
-          best = { jsonlPath, updated: cached.meta.updated, createdAtMs: cached.meta.created };
-        }
-      } catch { /* partially written metadata — next poll */ }
-    }
+        verdicts[i] = cached.meta;
+      } catch { /* partially written metadata, or deleted meanwhile — next poll */ }
+    });
+    const seen = new Set(names.map(e => join(this.sessionsDir, e)));
     for (const known of this.metaCache.keys()) if (!seen.has(known)) this.metaCache.delete(known);
-    return best && existsSync(best.jsonlPath)
-      ? { jsonlPath: best.jsonlPath, createdAtMs: best.createdAtMs }
-      : null;
+
+    let best: { jsonlPath: string; updated: number; createdAtMs: number } | null = null;
+    names.forEach((e, i) => {
+      const meta = verdicts[i];
+      if (meta && (!best || meta.updated > best.updated)) {
+        best = { jsonlPath: join(this.sessionsDir, e.replace(/\.json$/, ".jsonl")), updated: meta.updated, createdAtMs: meta.created };
+      }
+    });
+    const chosen = best as { jsonlPath: string; createdAtMs: number } | null;
+    if (!chosen) return null;
+    try { await stat(chosen.jsonlPath); } catch { return null; }
+    return { jsonlPath: chosen.jsonlPath, createdAtMs: chosen.createdAtMs };
   }
 
   async poll(): Promise<TranscriptEvents> {
@@ -445,8 +491,8 @@ export class KiroSessionSource implements TranscriptSource {
     if (generation !== this.generation) return EMPTY;
     if (dbEvents !== null) return dbEvents;
 
-    const active = this.resolveActiveSession();
-    if (!active) return EMPTY;
+    const active = await this.resolveActiveSession();
+    if (generation !== this.generation || !active) return EMPTY;
 
     if (active.jsonlPath !== this.currentFile) {
       if (active.createdAtMs >= this.createdAt) {
