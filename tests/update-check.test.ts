@@ -89,7 +89,7 @@ describe("update version precheck", () => {
   it("reports restart failure prominently and returns failure", () => {
     const output = { log: vi.fn(), error: vi.fn() };
 
-    expect(reportUpdateRestart(null, output)).toBe(false);
+    expect(reportUpdateRestart(null, output)).toBe("failed");
     expect(output.error).toHaveBeenCalledWith(
       expect.stringContaining("Auto-restart FAILED"),
     );
@@ -102,8 +102,18 @@ describe("update version precheck", () => {
   it("reports a successful restart without an error", () => {
     const output = { log: vi.fn(), error: vi.fn() };
 
-    expect(reportUpdateRestart(0, output)).toBe(true);
+    expect(reportUpdateRestart(0, output)).toBe("restarted");
     expect(output.log).toHaveBeenCalledWith("  ✓ Service restarted");
+    expect(output.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("a restart systemd is still running (#1446 item 4)", () => {
+  it("is reported as pending — never as a ✓ restart, never as a failure", () => {
+    const output = { log: vi.fn(), error: vi.fn() };
+    expect(reportUpdateRestart(75, output)).toBe("pending");
+    expect(output.log).not.toHaveBeenCalledWith("  ✓ Service restarted");
+    expect(output.log).toHaveBeenCalledWith(expect.stringContaining("still running"));
     expect(output.error).not.toHaveBeenCalled();
   });
 });

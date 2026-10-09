@@ -2,6 +2,8 @@
 
 All slash commands available in Telegram and Discord, organized by platform and mode. Commands marked with 🔒 require admin permission.
 
+For each command's menu visibility, scope, refusal/passthrough and owning-bot F / shared Classic C gate, see the [command surface matrix](command-surface.md) ([繁體中文](command-surface.zh-TW.md)). "All" still requires ingress admission. Telegram General-only commands refuse in worker topics; menu visibility does not grant permission.
+
 ## Telegram — Fleet Topic Mode (Forum Group)
 
 Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrators` of the fleet's forum group (`group_id`), whenever that Telegram connection starts or is rebuilt. The 🔒 in the menu is generated from the command table (`src/command-table.ts`), not typed.
@@ -52,13 +54,15 @@ Registered via `setMyCommands` with `scope: all_group_chats` and `scope: default
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only) | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only) | All |
 
+Existing Classic `/compact`, `/save`, `/model`, `/pause`, `/wake` and `/clear` accept the owning bot's F **or** C. `/stop` requires C. In groups, handled slash commands must use `/command@OurBot`; bare slash commands are ignored.
+
 ### Telegram ClassicBot — unregistered commands
 
 These are handled but not shown in the bot menu:
 
 | Command | Permission | Notes |
 |---------|------------|-------|
-| `@bot /raw <text>` | Admin | Send raw text directly to CLI |
+| `/raw <text>` | Classic C gate; unavailable | The generic Classic `/chat /raw ...` helper drops it even for C. A mention-shaped variant can become ordinary wrapped input; it is not a raw bypass. See deferred [#1458](https://github.com/songsid/AgEnD/issues/1458) |
 | `@bot <message>` | All users | Normal conversation trigger via @mention |
 | `/cancel` | All users | Interrupt generation; handled when typed, not in the menu |
 | `/save <filename>` | Admin | Save session; handled when typed, not in the menu |
@@ -96,7 +100,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
-| 🔒 `/load <filename>` | Load a saved conversation | Admin |
+| 🔒 `/load <filename>` | Send `/chat load <filename>` to every Classic backend. Kiro supports it; on other backends AgEnD does not verify the response or successful import, and the CLI may reject it or treat it as input | ClassicBot admin |
 | 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required); sends `/new` on grok | Admin |
 
 ## Text Commands by Platform
@@ -136,7 +140,7 @@ Fleet-level commands — requires fleet admin:
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
 ClassicBot management commands, ClassicBot admin only:
-- TG: `/start` (groups), `/stop`, `/raw`
+- TG: `/start` (groups), `/stop`; Classic `/raw` has a C gate but no successful native raw route
 - DC: `/stop`, `/load`
 
 In a ClassicBot chat or channel, `/pause`, `/wake`, `/compact`, `/save`, `/model` and `/clear` accept a ClassicBot admin **or** a fleet admin of that chat's bot, on both platforms.
