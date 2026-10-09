@@ -89,6 +89,9 @@ temporary data directories, private sockets, test ports and cleanup.
 
 ## Verifying before a PR
 
+Before requesting review, check the applicable contracts in the
+[review checklist](dev/review-checklist.md) and include their evidence in the PR.
+
 ```bash
 npm run typecheck        # tsc --noEmit
 npm run typecheck:tests  # tsc --noEmit -p tsconfig.test.json
