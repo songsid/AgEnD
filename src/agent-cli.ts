@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
+import { agentTokenHeader } from "./agent-token-header.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -34,7 +35,11 @@ function post(op: string, args: Record<string, unknown>): Promise<string> {
       "Content-Type": "application/json",
       "Content-Length": Buffer.byteLength(body),
     };
-    if (token) headers["X-Agend-Instance-Token"] = token;
+    // Include the instance name in the header so the endpoint can verify the
+    // token before reading the body (security fix, #1489). The instance name
+    // is percent-encoded so non-ASCII names (e.g. "鬥破開發-opus-…") and names
+    // containing ":" survive HTTP header transmission.
+    if (token) headers["X-Agend-Instance-Token"] = agentTokenHeader(INSTANCE, token);
     const req = request({
       hostname: "127.0.0.1",
       port: PORT,
@@ -220,4 +225,3 @@ async function main(): Promise<void> {
 }
 
 main();
-
