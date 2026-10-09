@@ -79,6 +79,12 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
   ])("%s → %s", (_name, t, ok) => {
     expect(tupleStartsVerified(t, launcherTarget, "/usr/bin:/bin", fs).ok).toBe(ok);
   });
+  it("a legacy target (its bin IS dist/cli.js) keeps the script rule: a shebang naming an old Node is refused, whatever PATH finds", () => {
+    const legacy: VerifiedTarget = { dir: PKG, bin: `${PKG}/dist/cli.js`, entry: `${PKG}/dist/cli.js`, node: "/opt/node22/bin/node" };
+    const pinnedShebang = { ...fs, readFirstLine: (p: string) => (p.endsWith("/dist/cli.js") ? "#!/opt/node20/bin/node" : fs.readFirstLine(p)) };
+    expect(tupleStartsVerified(tuple([`${PKG}/dist/cli.js`, "fleet", "start"]), legacy, "/usr/bin:/bin", pinnedShebang).ok).toBe(false);
+  });
+
   it("a bundled runtime (on no PATH) is never reached through the launcher: it must be named", () => {
     const bundled: VerifiedTarget = { ...launcherTarget, node: `${PKG}/node_modules/@songsid/agend-node-linux-x64/bin/node` };
     expect(tupleStartsVerified(tuple([`${PKG}/launcher/agend`, "fleet", "start"]), bundled, "/usr/bin:/bin", fs).ok).toBe(false);
