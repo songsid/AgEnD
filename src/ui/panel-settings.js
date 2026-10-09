@@ -12,7 +12,7 @@ import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js"
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
 import { navigate, setLeaveGuard } from "/assets/app-nav.js";
 import { settingsPath, SETTINGS_SECTIONS } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -219,6 +219,7 @@ export function SettingsPanel({ route, navKey }) {
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
+      <${PendingChanges} inline=${true} />
       ${sectionBody}
     </div></div>
     ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} />` : null}
@@ -351,6 +352,7 @@ function Agents({ ctx, search, openDialog }) {
           <span class=${dotClass(st)} title=${tn(STATUS_KEY[st] || "stStopped")} aria-hidden="true"></span>
           <span class="s-name" title=${name}>${shortName(name, inst)}</span>
           <span class="s-meta" title=${sum.backend}>${sum.model}</span>
+          <span class="s-br" aria-hidden="true"></span>
           <span class="tag">${tn("effortTag", sum.effort)}</span>
           ${ch ? html`<span class=${`tag${ch.includes("persona") ? " persona" : ""}`}>${ch}</span>` : null}
           <span class="sr-only">${tn(STATUS_KEY[st] || "stStopped")}</span>
@@ -473,6 +475,7 @@ function Classic({ ctx, search, openDialog }) {
       <span class=${dotClass(rt.execution)} title=${tn(`exec_${rt.execution}`)} aria-hidden="true"></span>
       <span class="s-name" title=${c.instanceName || ""}>${shortName(c.name || c.instanceName || "?", { display_name: c.display_name })}</span>
       <span class="s-meta" title=${sum.backend}>${sum.model}</span>
+      <span class="s-br" aria-hidden="true"></span>
       <span class="tag">${tn("effortTag", sum.effort)}</span>
       <span class=${`tag${adapter !== "discord" ? " persona" : ""}`}>${adapter}</span>
       ${c.collab ? html`<span class="tag">collab</span>` : null}
@@ -667,10 +670,10 @@ function Developer({ ctx }) {
       <div class="seg-inline" role="group" aria-label=${tn("format")}>
         ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
       <button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
-      <button type="button" class="btn btn-sm" onClick=${copy}><${Icon} name="copy" size=${14} />${tn("copy")}</button>
-      <button type="button" class="btn btn-sm" onClick=${download}><${Icon} name="download" size=${14} />fleet.yaml</button>
+      <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
+      <button type="button" class="btn btn-sm" title="fleet.yaml" onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">fleet.yaml</span></button>
     </div>
-    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck="false" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
+    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck="false" wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
       : html`<pre class="s-yaml">${text}</pre>`}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}

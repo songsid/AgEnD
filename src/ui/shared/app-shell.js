@@ -245,14 +245,16 @@ const mmss = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Ma
 
 /**
  * #1423: Settings writes an admin has to confirm, from whichever panel made them (settings-confirm.js publishes them to
- * appStore.pendingChanges). What it asks, how to confirm it, the countdown, Withdraw — in any panel.
+ * appStore.pendingChanges). What it asks, how to confirm it, the countdown, Withdraw — in any panel: a card in the
+ * corner, except in Settings itself, which shows the same cards in its column, right under the operation (`inline`),
+ * so they never cover it (alpha.2 sweep).
  */
-function PendingChanges() {
+export function PendingChanges({ inline = false } = {}) {
   const { pendingChanges } = useStore(appStore);
   const list = pendingChanges || [];
   useTick(list.some(p => p.state === "pending"));
   if (!list.length) return null;
-  return html`<div class="pending-stack" role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} class=${`pending-card ${p.state}`} role="status">
+  return html`<div class=${`pending-stack${inline ? " inline" : ""}`} role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} class=${`pending-card ${p.state}`} role="status">
     <div class="pending-head"><${Icon} name=${p.state === "applied" ? "check" : p.state === "pending" || p.state === "applying" ? "clock" : "alert"} size=${16} />
       <strong>${t(`app.pending_${p.state}`)}</strong>
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
@@ -336,7 +338,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     </main>
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
-    ${viewOnly ? null : html`<${PendingChanges} />`}
+    ${viewOnly || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
     <${Toasts} />
   </div>`;

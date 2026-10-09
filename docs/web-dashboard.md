@@ -101,6 +101,13 @@ When an agent's reply contains a ` ```html ` block, a card under it can run that
 - **Off on every device until you turn it on.** Use **Allow HTML previews on this device** at the bottom of the sidebar, or the card's **⋯** menu. It asks once and says what it means. Turning it off stops every running preview.
 - **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **Stop** closes it. One preview runs at a time.
 - **Download** saves the HTML as `reply.html`. It is never opened in the dashboard.
+- **Open in panel** shows the block beside the conversation, with room to use it. On a phone it is a full-screen sheet; **←** goes back to the chat.
+  - From an idle card, the panel opens with its own **Preview** to click. From a running preview, the same button moves that preview into the panel.
+  - The panel's bar: **Page** / **Code** (the source), **Reload**, **Stop**, **Download**. **From …** at the top shows the message the block came from.
+  - Drag the divider to resize it, or focus it and use ← →, Home and End. This device remembers the width.
+  - When a later reply carries a newer version of the block (the same `<title>`, or any newer block when it has none), the panel offers it with **Show it**. It never swaps it in by itself, and the new version waits for **Preview**.
+  - Closing the panel (**×**, **←** or Esc) or opening another chat stops its preview. Starting a preview in a card stops the panel's: one preview runs at a time.
+  - There is no "open in a new tab": the HTML only ever runs in the sandboxed frame. Use **Download** to take it elsewhere.
 - **What it can and cannot do.** The preview runs in a sandbox on a separate address, so it cannot use your sign-in, read your session or act on the dashboard. It **may** be able to send data out (no browser blocks every way), so preview only HTML you trust.
 - **Only agents' replies** get a card, marked so by the fleet. HTML from people (on the web, Telegram or Discord) is only ever shown as code. A block cut off by the length limit gets no preview: ask the agent to send a `.html` file instead.
 - **Where it works.** Previews come from a second local port, `health_port + 1` (19281). Over SSH, forward it too: `ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`. Through a tunnel or proxy they need `web.preview_origin`, a separate host name mapped to that port; the proxy must pass the external `Host` through. Otherwise the card says why previews are off, and shows the code and **Download** only.
@@ -267,6 +274,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | "Your session has ended" | 2 hours without use, 12 hours since sign-in, or someone revoked. Sign in again. |
 | The dashboard briefly says "disconnected", then keeps updating | The live stream is blocked on your path, so it switched to polling every 5 seconds. Nothing to do. |
 | `/dashboard` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
+| The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 
 ### Confirming sensitive changes
 

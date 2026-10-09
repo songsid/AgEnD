@@ -128,8 +128,10 @@
   /**
    * Run `html` in `holder` (a node of the card) for `key`. `ui` is told what happened: ui.state(name, reason) with
    * "starting" | "running" | "stopped" | "unavailable". One preview at a time: any other running one stops first.
+   * opts.fill (#1481, the side panel): the frame fills its holder — the same frame from mountPreview, only sized by the
+   * panel instead of by the frame's height messages, which it then ignores.
    */
-  function start(key, holder, html, ui) {
+  function start(key, holder, html, ui, opts) {
     var a = availability();
     if (!a.ok) { ui.state("unavailable", a.reason); return false; }
     if (typeof html !== "string" || utf8Bytes(html) > LIMITS.maxBytes) { ui.state("unavailable", "This HTML is over 1 MiB; it is not previewed."); return false; }
@@ -139,14 +141,15 @@
     var card = {
       key: key, iframe: iframe, ch: randomCh(), holder: holder, html: html, ui: ui, rendered: false,
       height: LIMITS.minHeight, lastApplied: -Infinity, appliedInSecond: [], frozen: false, growth: [], pendingFrame: false,
-      readyTimer: null, watchdogTimer: null,
+      readyTimer: null, watchdogTimer: null, fill: !!(opts && opts.fill),
     };
+    if (card.fill) iframe.classList.add("fill");
     live.set(key, card);
     card.readyTimer = root.setTimeout(function () {
       if (live.get(key) === card && !card.rendered) stop(key, "unavailable", "Preview unavailable: the preview did not answer within 3 s. If an earlier preview froze, it may still be running — open the dashboard in a new tab. Over SSH, forward the preview port too.");
     }, LIMITS.readyMs);
     holder.appendChild(iframe);
-    setHeight(card, LIMITS.minHeight);
+    if (!card.fill) setHeight(card, LIMITS.minHeight);
     ui.state("starting", "");
     return true;
   }
@@ -235,6 +238,7 @@
   /** Height rules (design §4.2): clamp to [40, 4000]; ≤ 1 per animation frame and ≤ 10 per second; Δ < 2 px ignored;
    *  after 5 consecutive increases within 2 s the height freezes and the frame scrolls. */
   function requestHeight(card, h) {
+    if (card.fill) return;                            // the panel sizes it (#1481)
     var want = Math.max(LIMITS.minHeight, Math.min(LIMITS.maxHeight, h));
     if (Math.abs(want - card.height) < LIMITS.minDelta) return;
     var t = now();
