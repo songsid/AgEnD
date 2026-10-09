@@ -15,8 +15,10 @@ export function fakeBusctl(log: string, unitPath: string): string {
     "const exec = ((/^ExecStart=(.*)$/m.exec(text) || [])[1] || '').trim();",
     "const env = [...text.matchAll(/^Environment=(.*)$/mg)].map(m => m[1].trim());",
     "const out = (type, data) => process.stdout.write(JSON.stringify({ type, data }) + '\\n');",
+    // systemd's word splitting: quotes, backslash escapes, %% and $$ (src/service-installer.ts systemdWords).
+    "const words = s => { const w = []; let i = 0; while (i < s.length) { while (i < s.length && /\\s/.test(s[i])) i++; if (i >= s.length) break; let cur = '', q = null; for (; i < s.length; i++) { const c = s[i]; if (q) { if (c === q) { q = null; continue; } if (c === '\\\\' && i + 1 < s.length) { cur += s[++i]; continue; } cur += c; } else { if (/\\s/.test(c)) break; if (c === '\"' || c === \"'\") { q = c; continue; } if (c === '\\\\' && i + 1 < s.length) { cur += s[++i]; continue; } cur += c; } } w.push(cur.replace(/%%/g, '%').replace(/\\$\\$/g, '$')); } return w; };",
     "if (/LoadUnit/.test(line)) out('o', ['/org/freedesktop/systemd1/unit/fake']);",
-    "else if (/Service ExecStart$/.test(line)) { const argv = exec.split(/\\s+/); out('a(sasbttttuii)', exec ? [[argv[0], argv, false, 0, 0, 0, 0, 0, 0, 0]] : []); }",
+    "else if (/Service ExecStart$/.test(line)) { const argv = words(exec); out('a(sasbttttuii)', exec ? [[argv[0], argv, false, 0, 0, 0, 0, 0, 0, 0]] : []); }",
     "else if (/Service EnvironmentFiles$/.test(line)) out('a(sb)', []);",
     "else if (/Service (PassEnvironment|UnsetEnvironment)$/.test(line)) out('as', []);",
     "else if (/Service Environment$/.test(line)) out('as', env);",

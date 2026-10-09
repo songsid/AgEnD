@@ -8,6 +8,9 @@ import {
   uninstallService,
   restartSystemdService,
   SYSTEMD_RESTART_TIMEOUT_MS,
+  unitCliEntry,
+  systemdQuote,
+  systemdWords,
 } from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
@@ -35,7 +38,7 @@ describe("ServiceInstaller", () => {
 
   it("renders systemd unit with correct values", () => {
     const unit = renderSystemdUnit(vars);
-    expect(unit).toContain("ExecStart=/usr/local/bin/claude-channel-daemon fleet start");
+    expect(unit).toContain('ExecStart="/usr/local/bin/claude-channel-daemon" fleet start');
     expect(unit).toContain("WorkingDirectory=/Users/test/project");
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
     expect(unit).toContain("TimeoutStartSec=15min");
@@ -254,5 +257,37 @@ describe("ServiceInstaller", () => {
       seen.add(e);
     }
     // Mutant (remove dedup): /usr/bin would appear twice.
+  });
+});
+
+describe("ExecStart keeps a path as ONE argument (#1460 review: a canonical entry may contain spaces)", () => {
+  const vars = { label: "com.agend.fleet", execPath: "/x", path: "/usr/bin:/bin", workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" };
+  it.each([
+    ["/home/u/My Projects/agend/dist/cli.js"],
+    ["/opt/a%hb/$HOME/x\"y\\z/cli.js"],
+    ["/plain/dist/cli.js"],
+  ])("%s renders, and parses back, as exactly one word", (path) => {
+    const unit = renderSystemdUnit({ ...vars, execPath: path });
+    const line = unit.match(/^ExecStart=(.*)$/m)![1]!;
+    expect(systemdWords(line)).toEqual([path, "fleet", "start"]);
+    expect(unitCliEntry(unit)).toBe(path);
+  });
+  it("systemd's expansions are neutralised: % as %%, $ as $$", () => {
+    expect(systemdQuote("/a%h/$X")).toBe('"/a%%h/$$X"');
+  });
+  it("words: quotes, escapes and plain words, as systemd splits them", () => {
+    expect(systemdWords(`"/a b/node" '/c d/cli.js' fleet  start`)).toEqual(["/a b/node", "/c d/cli.js", "fleet", "start"]);
+    expect(systemdWords(String.raw`/x\ y/z fleet`)).toEqual(["/x y/z", "fleet"]);
+  });
+});
+
+describe("unitCliEntry (#1450: doctor compares the unit's CLI with this CLI's canonical entry)", () => {
+  it.each([
+    ["ExecStart=/usr/lib/node_modules/@songsid/agend/dist/cli.js fleet start", "/usr/lib/node_modules/@songsid/agend/dist/cli.js"],
+    ["ExecStart=/opt/rt/bin/node /usr/lib/node_modules/@songsid/agend/dist/cli.js fleet start", "/usr/lib/node_modules/@songsid/agend/dist/cli.js"],
+    ["[Service]\nType=notify\nExecStart=/a/node /b/cli.js fleet start\nRestart=on-failure", "/b/cli.js"],
+    ["[Service]\nType=simple", ""],
+  ])("%j → %j", (unit, entry) => {
+    expect(unitCliEntry(unit)).toBe(entry);
   });
 });
