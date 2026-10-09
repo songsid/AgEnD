@@ -84,7 +84,8 @@
       if (r.status === 500) {
         let message = "Signed out for now, but the change could not be saved — a fleet restart may sign this browser back in.";
         try { const body = await r.json(); if (body && typeof body.error === "string") message = body.error; } catch { /* keep the default */ }
-        window.alert(message);
+        // Said on the sign-in page this goes to (#1408 step 5: no browser alert): the page shows it once.
+        try { sessionStorage.setItem("agend_signout_note", message); } catch { /* private mode: nothing to carry it */ }
       }
       location.href = "/signin";
     },

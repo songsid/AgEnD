@@ -1,5 +1,5 @@
 // #1408: the web app's entry. One page for every route of the app (/ui, /ui/chat/<name>, /ui/fleet[/<tab>], /view,
-// /view/<name>, /settings[/<section>]); the server says on <body> which mode this load is in and how live updates travel (app-stream.js).
+// /view/<name>, /settings[/<section>], /ui/needs); the server says on <body> which mode this load is in and how live updates travel (app-stream.js).
 //
 // Public closure (#1408 §4): this file and everything it imports statically are served from /assets/ without a
 // session, and so is View (panel-view.js, loaded on demand). The panels that need a session live under /ui/js/ and are
@@ -11,6 +11,7 @@ import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity } from "./app-store.js";
 import { chatPath } from "./app-route.js";
+import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
 import { t } from "./app-i18n.js";
 
@@ -42,13 +43,16 @@ if (mode === "full") {
   // The chat's store must hear every message from the first frame, whatever panel is open: its module boots once,
   // now, for the life of the page. Fleet loads the first time it is opened.
   const loadChat = retryable((a) => import(retryUrl("/ui/js/panel-chat.js", a)).then((m) => {
-    m.boot({ stream, boot });
+    // The chat store this page booted — whichever import succeeded (a Retry loads ?retry=<n>) — is the page's one owner
+    // of its prompts; Needs you finds it here and never imports the chat itself (#1463 review).
+    appStore.set({ chatOwner: m.boot({ stream, boot }) });
     // Loaded only after the stream opened (a Retry): the frames sent on connect never reached it — catch up once.
     if (stream.started()) stream.catchUp();
     return m;
   }));
   const loadFleet = retryable((a) => import(retryUrl("/ui/js/panel-fleet.js", a)));
   const loadSettings = retryable((a) => import(retryUrl("/ui/js/panel-settings.js", a)));
+  const loadNeeds = retryable((a) => import(retryUrl("/ui/js/panel-needs.js", a)));
   // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
   // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.
   const chatBoot = loadChat();
@@ -59,6 +63,9 @@ if (mode === "full") {
   panels.set("chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) });
   panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
   panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
+  panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
+  // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
+  startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
   onNewInstance = async () => {
     closeDrawer();                                 // on a phone the dialog opens from the drawer: the drawer goes first
     let m;

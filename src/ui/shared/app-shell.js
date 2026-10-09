@@ -4,10 +4,11 @@
 import { html, useEffect, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
+import { ConfirmHost } from "./ui-confirm.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, viewPath, settingsPath, routeKey } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 
@@ -58,7 +59,20 @@ export function handleKey(e) {
 }
 
 /** document.title for the panel on screen. */
-export function setTitle(text) { if (typeof document !== "undefined") document.title = text ? `${text} · AgEnD` : "AgEnD"; }
+/**
+ * The tab's title: the panel's own, prefixed with "(N) " while N things need you (#1386 §6.1), so a background tab
+ * says so. The count follows the store; the panel only names itself.
+ */
+let titleBase = "", titleCount = 0;
+function drawTitle() {
+  if (typeof document === "undefined") return;
+  document.title = `${titleCount ? `(${titleCount}) ` : ""}${titleBase ? `${titleBase} · AgEnD` : "AgEnD"}`;
+}
+export function setTitle(text) { titleBase = text || ""; drawTitle(); }
+appStore.subscribe((s) => {
+  const n = Array.isArray(s.needs) ? s.needs.length : 0;
+  if (n !== titleCount) { titleCount = n; drawTitle(); }
+});
 
 // ── The parts ──
 
@@ -110,8 +124,11 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const shell = useStore(shellStore);
   const current = route && route.panel === "chat" ? route.instance : null;
   const on = (panel) => !!route && route.panel === panel;
-  const navLink = (panel, href, icon, label) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
-    aria-current=${on(panel) ? "page" : undefined} onClick=${closeDrawer}><${Icon} name=${icon} /><span>${label}</span></a>`;
+  // A count badge is hidden at 0; its number is also in the link's accessible name.
+  const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
+    aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t("app.needsCount", count)})` : undefined} onClick=${closeDrawer}>
+    <${Icon} name=${icon} /><span class="grow">${label}</span>${count ? html`<span class="nav-count" aria-hidden="true">${count}</span>` : null}</a>`;
+  const needsCount = Array.isArray(app.needs) ? app.needs.length : 0;
   // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
   if (viewOnly) {
     return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
@@ -134,6 +151,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="edit" /></button>
     </div>
     <nav class="side-nav" aria-label=${t("app.menu")}>
+      ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
       ${navLink("fleet", "/ui/fleet", "fleet", t("app.fleet"))}
       ${navLink("view", "/view", "view", t("app.view"))}
     </nav>
@@ -169,7 +187,7 @@ function Prefs() {
 export function PanelHeader({ title, sub, children, headingRef }) {
   const shell = useStore(shellStore);
   return html`<header class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
-    <button type="button" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
+    <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     <div class="panel-actions">${children}</div>
@@ -182,8 +200,8 @@ function BottomTabs({ route, viewOnly }) {
   try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
   const chatHref = route && route.panel === "chat" && route.instance ? chatPath(route.instance) : last ? chatPath(last) : "/ui";
   const anyAwaiting = Object.keys(app.awaiting).length;
-  const tab = (href, icon, label, active, badge) => html`<a class=${`tab${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}>
-    <${Icon} name=${icon} size=${20} /><span>${label}</span>${badge ? html`<span class="tab-badge" aria-label=${t("app.needsYou")}>${badge}</span>` : null}</a>`;
+  const tab = (href, icon, label, active, badge, badgeLabel) => html`<a class=${`tab${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}>
+    <${Icon} name=${icon} size=${20} /><span>${label}</span>${badge ? html`<span class="tab-badge" aria-label=${badgeLabel || t("app.needsYou")}>${badge}</span>` : null}</a>`;
   let lastView = null;
   try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
   const viewHref = route && route.panel === "view" && route.instance ? viewPath(route.instance) : viewPath(lastView);
@@ -195,6 +213,7 @@ function BottomTabs({ route, viewOnly }) {
   }
   return html`<nav class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
+    ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
     ${tab("/ui/fleet", "fleet", t("app.fleet"), route && route.panel === "fleet")}
     ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
     ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
@@ -318,6 +337,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly ? null : html`<${PendingChanges} />`}
+    <${ConfirmHost} />
     <${Toasts} />
   </div>`;
 }

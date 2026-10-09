@@ -178,6 +178,23 @@ describe("the first sign-in tour (#1366)", () => {
     expect(p.doc.activeElement?.textContent).toBe("Next");
   });
 
+  it("on a phone it outlines what is on screen: ☰ for the instance list, the tab's badge for 'needs you' (#1408 step 5)", async () => {
+    const p = await load({ narrow: true });
+    expect(p.spotted()).toEqual(["sbOpen"]);
+    for (let i = 0; i < 4; i++) p.click(p.button("Next"));          // step 5
+    expect(p.spotted()).toEqual(["sbOpen"]);
+    const tabs = p.doc.createElement("nav"); tabs.className = "tabs";
+    const badge = p.doc.createElement("span"); badge.id = "tab-badge-1"; badge.className = "tab-badge";
+    tabs.append(badge); p.doc.body.append(tabs);
+    p.tour.refreshTourSpot();
+    expect(p.spotted()).toEqual(["tab-badge-1"]);
+  });
+
+  it("on a desktop the same steps outline the instance list", async () => {
+    const p = await load();
+    expect(p.spotted()).toEqual(["instanceList"]);
+  });
+
   it("Esc closes an open drawer before the tour (the drawer is on top of the card)", async () => {
     const p = await load({ narrow: true });
     p.shell.openDrawer();

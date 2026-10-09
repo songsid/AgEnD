@@ -15,6 +15,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite } from "./settings-confirm.js";
 
 register("fleet", {
@@ -141,7 +142,8 @@ function Schedules({ lease }) {
   const [creating, setCreating] = useState(false);
   const state = useLoad(lease, "/ui/schedules", version);
   async function del(id) {
-    if (!confirm(t("fleet.deleteSchedule"))) return;
+    if (!(await confirmDialog({ message: t("fleet.deleteSchedule"), confirmLabel: t("fleet.delete"), danger: true }))) return;
+    if (!lease.current()) return;                   // answered after this tab went: the question no longer stands
     const r = await api("DELETE", `/ui/schedules/${encodeURIComponent(id)}`);
     if (r.error) toast(r.error, false); else { toast(t("fleet.scheduleDeleted")); setVersion(v => v + 1); }
   }
@@ -164,7 +166,8 @@ function Teams({ lease }) {
   const [creating, setCreating] = useState(false);
   const state = useLoad(lease, "/ui/teams", version);
   async function del(name) {
-    if (!confirm(t("fleet.deleteTeam", name))) return;
+    if (!(await confirmDialog({ message: t("fleet.deleteTeam", name), confirmLabel: t("fleet.delete"), danger: true }))) return;
+    if (!lease.current()) return;
     const r = await api("DELETE", `/ui/teams/${encodeURIComponent(name)}`);
     if (r.error) toast(r.error, false); else { toast(t("fleet.teamDeleted")); setVersion(v => v + 1); }
   }

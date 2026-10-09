@@ -81,7 +81,7 @@ describe("module admission (#1408 §4)", () => {
 
   it("the public modules reach private ones only by dynamic import(), and never statically", () => {
     const shared = join(process.cwd(), "src", "ui", "shared");
-    for (const name of ["app.js", "app-shell.js", "app-nav.js", "app-stream.js", "app-store.js", "app-ctx.js", "app-route.js", "app-i18n.js", "app-session.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js", "app-html.js"]) {
+    for (const name of ["app.js", "app-shell.js", "app-needs.js", "app-nav.js", "app-stream.js", "app-store.js", "app-ctx.js", "app-route.js", "app-i18n.js", "app-session.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js", "app-html.js"]) {
       const src = readFileSync(join(shared, name), "utf8");
       for (const spec of staticImports(src)) expect(spec, `${name} → ${spec}`).toMatch(/^\.\/[a-z0-9._-]+\.js$/);
     }
@@ -89,10 +89,10 @@ describe("module admission (#1408 §4)", () => {
     // Every dynamic import() in the entry names a panel (through retryUrl, which only adds ?retry=<n>): the private ones
     // under /ui/js/, and View, public, beside it under /assets/.
     const dynamic = [...app.matchAll(/import\(([^)]*)\)/g)].map(m => m[1]!.trim());
-    expect(dynamic.sort()).toEqual(['retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-settings.js", a']);
+    expect(dynamic.sort()).toEqual(['retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-needs.js", a', 'retryUrl("/ui/js/panel-settings.js", a']);
     // The private ones only in "full" mode: nothing under /ui/ is reached from the View-only branch.
     const fullBranch = app.slice(app.indexOf('if (mode === "full") {'), app.indexOf("} else appStore.set"));
-    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js"]) {
+    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-needs.js"]) {
       expect(app.indexOf(p), p).toBeGreaterThan(app.indexOf('if (mode === "full") {'));
       expect(fullBranch, p).toContain(p);
     }
@@ -294,7 +294,8 @@ describe("the stream's modes (#1408 §3)", () => {
 
   it("the app opens the stream only after the chat's store is attached", () => {
     const app = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.js"), "utf8");
-    expect(app).toMatch(/const loadChat = retryable\(\(a\) => import\([^)]*\)\)\.then\(\(m\) => \{\n\s*m\.boot\(\{ stream, boot \}\);\n[\s\S]*?if \(stream\.started\(\)\) stream\.catchUp\(\);\n\s*return m;\n\s*\}\)\);/);
+    // The store it boots is published as the page's prompt owner (#1463 review: a Retry's store included).
+    expect(app).toMatch(/const loadChat = retryable\(\(a\) => import\([^)]*\)\)\.then\(\(m\) => \{\n(?:\s*\/\/[^\n]*\n)*\s*appStore\.set\(\{ chatOwner: m\.boot\(\{ stream, boot \}\) \}\);\n[\s\S]*?if \(stream\.started\(\)\) stream\.catchUp\(\);\n\s*return m;\n\s*\}\)\);/);
     expect(app).toMatch(/const chatBoot = loadChat\(\);\n\s*chatBoot\.catch\(\(\) => \{\}\)\.finally\(\(\) => stream\.start\(\)\)/);
     expect(app.indexOf("stream.start()")).toBeGreaterThan(app.indexOf("m.boot("));
   });
