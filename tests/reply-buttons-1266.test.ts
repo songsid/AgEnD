@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { AdapterWorld } from "../src/adapter-world.js";
 import { AccessManager } from "../src/channel/access-manager.js";
-import type { ChannelAdapter, ChannelConfig } from "../src/channel/types.js";
+import type { ChannelAdapter } from "../src/channel/types.js";
+import type { ChannelConfig } from "../src/types.js";
 import {
   ReplyButtonStore, parseReplyButtons, parseReplyButtonCallback, replyButtonCallback, replyButtonClickText,
   replyButtonsClickPlace, replyButtonsFallbackText, REPLY_BUTTON_TTL_MS,
