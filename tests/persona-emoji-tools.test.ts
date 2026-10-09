@@ -254,8 +254,8 @@ describe("list_emojis shows what the instance may pick", () => {
     const { fm } = fleet();
     const r = await fm.listEmojisFor("worker");
     expect(r.platform).toBe("discord");
-    expect(r.statuses).toContainEqual({ status: "failed", value: "🐙", source: "instance" });
-    expect(r.statuses).toContainEqual({ status: "delivered", value: "✅", source: "builtin" });
+    expect(r.statuses).toContainEqual({ status: "failed", value: "🐙", source: "instance", kind: "reaction" });
+    expect(r.statuses).toContainEqual({ status: "delivered", value: "✅", source: "builtin", kind: "reaction" });
     expect((r.standard as any).suggestions).toContain("🦊");
     // #1226: no image URLs unless asked for (preview_emojis is how an agent looks at one).
     expect(r.server_emojis).toEqual([
@@ -268,6 +268,21 @@ describe("list_emojis shows what the instance may pick", () => {
       { server: "Main", primary: true, emojis: [{ value: "<:fox:111111111111111111>", image_url: "https://cdn.discordapp.com/emojis/111111111111111111.png" }] },
       { server: "Classic HQ", primary: false, emojis: [{ value: "<a:owl:222222222222222222>", image_url: "https://cdn.discordapp.com/emojis/222222222222222222.gif" }] },
     ]);
+  });
+
+  it("#1056: says inline why the lists differ by platform, and that progress_prefix is text, not a reaction", async () => {
+    const { fm } = fleet();
+    const dc = await fm.listEmojisFor("worker");
+    const tg = await fm.listEmojisFor("tgworker");
+    expect([typeof dc.platform_note, typeof tg.platform_note], "both platforms carry the note").toEqual(["string", "string"]);
+    expect(dc.platform_note).toMatch(/server emoji from server_emojis/);
+    expect(dc.platform_note).toMatch(/progress_prefix is message text, not a reaction/);
+    expect(tg.platform_note).toMatch(/^Telegram has no server custom emoji, so there is no server_emojis list: standard\.reactions is the complete set/);
+    for (const r of [dc, tg]) {
+      const kinds = Object.fromEntries((r.statuses as Array<{ status: string; kind: string }>).map(e => [e.status, e.kind]));
+      expect(kinds.progress_prefix).toBe("text_prefix");
+      expect(Object.entries(kinds).filter(([k]) => k !== "progress_prefix").every(([, v]) => v === "reaction")).toBe(true);
+    }
   });
 
   it("Telegram: its reaction set, and no server emojis", async () => {
@@ -577,15 +592,15 @@ describe("set_persona_emoji / list_emojis cover the photo and attachment stamps 
   it("list_emojis names both stamps with their source — builtin until the instance sets one", async () => {
     const { fm } = fleet();
     let r = await fm.listEmojisFor("worker");
-    expect(r.statuses).toContainEqual({ status: "photo", value: "📸", source: "builtin" });
-    expect(r.statuses).toContainEqual({ status: "attachment", value: "📎", source: "builtin" });
+    expect(r.statuses).toContainEqual({ status: "photo", value: "📸", source: "builtin", kind: "reaction" });
+    expect(r.statuses).toContainEqual({ status: "attachment", value: "📎", source: "builtin", kind: "reaction" });
     await fm.setPersonaEmoji("worker", { emoji: "🦊", status: "photo" });
     r = await fm.listEmojisFor("worker");
-    expect(r.statuses).toContainEqual({ status: "photo", value: "🦊", source: "instance" });
-    expect(r.statuses).toContainEqual({ status: "attachment", value: "📎", source: "builtin" });
+    expect(r.statuses).toContainEqual({ status: "photo", value: "🦊", source: "instance", kind: "reaction" });
+    expect(r.statuses).toContainEqual({ status: "attachment", value: "📎", source: "builtin", kind: "reaction" });
     const tg = await fm.listEmojisFor("tgworker");
-    expect(tg.statuses).toContainEqual({ status: "photo", value: "👌", source: "builtin" });
-    expect(tg.statuses).toContainEqual({ status: "attachment", value: "👍", source: "builtin" });
+    expect(tg.statuses).toContainEqual({ status: "photo", value: "👌", source: "builtin", kind: "reaction" });
+    expect(tg.statuses).toContainEqual({ status: "attachment", value: "👍", source: "builtin", kind: "reaction" });
   });
 
   it("they are stamps on a saved file, not delivery statuses: the avoid list and the own-reaction ladder do not grow", async () => {
@@ -794,5 +809,35 @@ describe("inherited names are not instances (#1083 review)", () => {
     expect(get).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+describe("#1056: a connection's status emojis apply at the next stamp, without a restart", () => {
+  it("a Settings save replaces the channels list; the running world's next stamp and list_emojis use the new value", async () => {
+    const { fm } = fleet();
+    expect(fm.resolveStatusEmojisFor("worker").delivered).toBe("✅");
+    // What PUT /api/settings/fleet/channels does: new objects, not an edit of the running world's.
+    const cfg = (fm as any).fleetConfig;
+    cfg.channels = cfg.channels.map((ch: any) => ch.id === "dc"
+      ? { ...ch, group_id: "guild-9", options: { ...(ch.options ?? {}), status_emojis: { delivered: "🦉", failed: "🧯" } } } : { ...ch });
+    const r = fm.resolveStatusEmojisFor("worker");
+    expect([r.delivered, r.failed], "the connection's new delivered; the instance's own failed still wins").toEqual(["🦉", "🐙"]);
+    expect((await fm.listEmojisFor("worker")).statuses).toContainEqual({ status: "delivered", value: "🦉", source: "platform", kind: "reaction" });
+    // Only the emojis are live: the binding is still the one the adapter started with.
+    expect(fm.worlds.get("dc")!.channelConfig.group_id).toBe("guild-1");
+    const react = vi.fn(async () => {});
+    const world = fm.worlds.get("dc")!;
+    (world.adapter as any).react = react;
+    (world.adapter as any).unreact = vi.fn(async () => {});
+    fm.finishDeliveryStatus("worker", "guild-1", "m1", "delivered", "t1");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("t1", "m1", "🦉", "t1"));
+  });
+
+  it("a Telegram connection's new set is still judged by Telegram's rules", () => {
+    const { fm } = fleet();
+    const cfg = (fm as any).fleetConfig;
+    cfg.channels = cfg.channels.map((ch: any) => ch.id === "tg" ? { ...ch, options: { status_emojis: { delivered: "<:fox:111111111111111111>", failed: "🔥" } } } : { ...ch });
+    const r = fm.resolveStatusEmojisFor("tgworker");
+    expect([r.delivered, r.failed]).toEqual(["👀", "🔥"]);
   });
 });

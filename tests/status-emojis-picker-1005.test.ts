@@ -368,7 +368,9 @@ describe("the connection editor stages its status emojis into PUT /fleet/channel
     await type(input("delivered"), "🦊");
     await click(byText("Stage change"));
     const bar = p.root.querySelector("[role=region]")!;
-    expect(bar.textContent).toContain("Restart AgEnD");
+    // #1056: a connection's status emojis apply at the next stamp — no AgEnD restart for an emoji-only edit.
+    expect(bar.textContent).toContain("Immediately");
+    expect(bar.textContent).not.toContain("Restart AgEnD");
     calls = [];
     await click(byText("Apply changes", bar));
     const put = writes().find(c => c.path === "/api/settings/fleet/channels")!;
@@ -377,6 +379,24 @@ describe("the connection editor stages its status emojis into PUT /fleet/channel
       id: "dc", access: DISCORD.access,
       options: { general_channel_id: "gen-1", status_emojis: { received: "<:inbox:111111111111111111>", delivered: "🦊" } },
     })]);
+  });
+
+  it("#1056 control: the same dialog with an access change — alone or with the emojis — still asks for an AgEnD restart", async () => {
+    const channel = { id: "dc", type: "discord", mode: "topic", bot_token_env: "FAKE", group_id: "guild-1", access: DISCORD.access,
+      options: { general_channel_id: "gen-1" } };
+    for (const withEmojis of [false, true]) {
+      world.fleet = { defaults: {}, instances: {}, channels: [channel] };
+      server = context();
+      await mountSection("bots");
+      await click(byText("Settings"));
+      const mode = p.root.querySelector("#bot-mode")!;
+      expect(mode.value, "the fixture starts open").toBe("open");
+      mode.value = "locked"; fire(mode, "change"); await settle();
+      if (withEmojis) await type(input("delivered"), "🦊");
+      await click(byText("Stage change"));
+      const bar = p.root.querySelector("[role=region]")!;
+      expect(bar.textContent, withEmojis ? "access + emojis" : "access only").toContain("Restart AgEnD");
+    }
   });
 });
 
