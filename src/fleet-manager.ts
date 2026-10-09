@@ -171,7 +171,7 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, typ
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
-import { handleViewRequest, isViewPath } from "./view-api.js";
+import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
@@ -2338,7 +2338,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(t(`${action}.usage`));
         return;
       }
-      if (!this.fleetConfig?.instances[requested]) {
+      if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, requested)) {
         await data.respond(t("instance.not_found", requested));
         return;
       }
@@ -2427,7 +2427,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleGeneralProfile(general: string | undefined, userId: string, ingressAdapterId: string | undefined,
     seconds: string | number | undefined, respond: (text: string) => Promise<unknown>): Promise<void> {
-    if (!general || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
+    if (!general || !Object.hasOwn(this.fleetConfig?.instances ?? {}, general) || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
     const ownerId = this.getInstanceAdapterId(general);
     if (!ownerId || ownerId !== ingressAdapterId) { await respond(t("not_authorized")); return; }
     const gate = this.fleetAdminGate(userId, ownerId);
@@ -15473,6 +15473,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   async applyModel(instanceName: string, model: string): Promise<string> {
+    // Reject model names with newlines or control characters: they would be
+    // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
+    if (/[\x00-\x1f\x7f]/.test(model)) {
+      return t("model.invalid_chars");
+    }
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" = "restart";
     try {
@@ -18254,6 +18259,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       .map(ch => ch.instanceName)
       .filter(name => !fleetNames.includes(name));
     const names = [...fleetNames, ...classicOnly];
+    // The identity every page shows (alpha.2, N1): alias, description, role and tags resolved by the same rule as
+    // /api/profiles (resolveInstanceIdentity) — the sidebar groups, searches and labels with it on every page.
+    const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
+    const profiles = profileIdentities(this.dataDir);
 
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
@@ -18290,13 +18299,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Only show effort if backend supports it and it's not antigravity
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
-      // Display name: fleet config → classic channel → undefined
-      const display_name = classic
-        ? this.classicChannels?.getAll().find(ch => ch.instanceName === name)?.displayName
-        : this.fleetConfig?.instances[name]?.display_name;
+      const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
       return {
         name,
-        display_name: display_name || undefined,
+        display_name: identity.display_name || undefined,
+        description: identity.description || undefined,
+        role: identity.role || undefined,
+        tags: identity.tags,
         status: this.getInstanceStatus(name),
         // `state` (presentation: may be awaiting_input) and `execution_state` (working / idle / stuck, or null —
         // what the dashboard's activity events carry) come from instancePresentation (#1212).
