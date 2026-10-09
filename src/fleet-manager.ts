@@ -172,7 +172,8 @@ import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
-import { UPDATE_COMMAND, installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
+import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
+import { resolveInstalledAgend, updateCommand } from "./update-dispatch.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -2259,11 +2260,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { spawn } = await import("node:child_process");
     // Plain `agend update`: the CLI picks the channel from the version it is about to replace (a beta install
     // stays on beta). Deciding here, from the package.json next to THIS code, read a source checkout's 1.22.0 as
-    // "not a beta" and sent a beta install to @latest.
-    const command = UPDATE_COMMAND;
+    // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
+    const installed = await resolveInstalledAgend();
+    if (!installed.ok) {
+      this.failUpdateProgress(`/update cannot verify the installed AgEnD (${installed.reason}). Run \`agend update\` from a shell.`);
+      return;
+    }
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
-    const child = spawn("sh", ["-c", `sleep 2 && ${command}`], {
+    const { command, args } = updateCommand(installed.agend);
+    const child = spawn(command, args, {
       detached: true, stdio: "ignore", env: withOrigin(origin),
     });
     child.once("error", err => this.failUpdateProgress(err.message));
