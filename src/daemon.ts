@@ -8546,13 +8546,19 @@ export class Daemon extends EventEmitter {
     retryPhase: string,
     allowRecoveryEnter = true,
   ): Promise<boolean> {
+    // The window this confirmation is about (#1490). The waits below can span a recoverWindow, which replaces
+    // this.tmux; a recovery Enter or a proof taken after that would be about another window. The fence goes down to
+    // the write (sendDeliveryEnterAfterAvailability asks it last, right before the key), and every proof after a wait
+    // asks it first.
+    const generation = this.spawnGeneration;
+    const current = () => this.spawnGeneration === generation && this.tmux?.getWindowId() === windowId;
     if (!this.canProveSubmission()) {
       let busy = await this.confirmBusyAfterEnter(windowId, enterAt);
       if (!busy) {
         if (!allowRecoveryEnter) return false;
         this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
         const retryAt = Date.now();
-        if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+        if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
         busy = await this.confirmBusyAfterEnter(windowId, retryAt);
       }
       return busy;
@@ -8576,13 +8582,14 @@ export class Daemon extends EventEmitter {
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
       if (proof !== "stranded" || !allowRecoveryEnter) return false;
-      if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
+      if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS)) || !current()) return false;
       proof = await this.confirmSubmitted(signature, baseline);
       if (proof === "submitted") return true;
       if (proof !== "stranded") return false;
-      if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+      if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
       const retryDeadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
       for (;;) {
+        if (!current()) return false;
         proof = await this.confirmSubmitted(signature, baseline);
         if (proof === "submitted") return true;
         if (Date.now() >= retryDeadline) return false;
@@ -8599,9 +8606,10 @@ export class Daemon extends EventEmitter {
     if (!allowRecoveryEnter) return false;
     this.logger.warn("Enter did not submit — waiting for the prompt, then re-sending once");
     if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
-    if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+    if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
     const deadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
     for (;;) {
+      if (!current()) return false;
       if (await this.confirmSubmitted(signature, baseline) === "submitted") return true;
       if (Date.now() >= deadline) return false;
       await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
