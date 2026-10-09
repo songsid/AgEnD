@@ -64,6 +64,7 @@ import { DeliveryStatusArgs } from "./outbound-schemas.js";
 import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
+import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -982,11 +983,15 @@ backend
       const svcPath = join(homedir(), ".config/systemd/user/com.agend.fleet.service");
       if (existsSync(svcPath)) {
         const svc = readFileSync(svcPath, "utf-8");
-        const match = svc.match(/ExecStart=(\S+)/);
-        const svcBin = match?.[1] ?? "";
-        const currentBin = es("which agend", { stdio: "pipe" }).toString().trim();
-        if (svcBin === currentBin) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
-        else fail(`service ExecStart${" ".repeat(3)} ${svcBin} ≠ ${currentBin}`);
+        // The CLI the unit starts — `<entry> fleet start`, or `<node> <entry> fleet start` — against this CLI's own
+        // canonical entry (#1450: `agend` on PATH is the sh launcher, never what a unit records).
+        const { unitCliEntry } = await import("./service-installer.js");
+        const svcEntry = unitCliEntry(svc);
+        let svcReal = svcEntry;
+        try { svcReal = realpathSync(svcEntry); } catch { /* reported as is */ }
+        const current = canonicalCliEntry();
+        if (svcReal === current) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
+        else fail(`service ExecStart${" ".repeat(3)} ${svcEntry || "(none)"} ≠ ${current}`);
 
         // Check Restart=on-failure
         if (svc.includes("Restart=on-failure")) {
@@ -1431,7 +1436,7 @@ program
      * verified package, then restart through the verified binary — never through whatever invoked this command
      * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
      */
-    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; node: string }, viaNvm: boolean): Promise<void> => {
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string }, viaNvm: boolean): Promise<void> => {
       const { newAgendInvocation } = await import("./update-install.js");
       const { activateService } = await import("./service-activation.js");
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
@@ -1634,7 +1639,7 @@ program
     const { installService, activateService, detectPlatform } = await import(
       "./service-installer.js"
     );
-    const execPath = process.argv[1];
+    const execPath = canonicalCliEntry();
     const svcPath = installService({
       label: "com.agend.fleet",
       execPath,
@@ -1760,7 +1765,9 @@ program
     if (!userServicePath && !systemServicePath) {
       console.log("No service installed. Starting fleet directly...");
       const { spawn } = await import("node:child_process");
-      const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+      // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+      const start = selfCommand(["fleet", "start"]);
+      const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
       child.unref();
       console.log("Fleet starting in background.");
       return;
@@ -1974,7 +1981,9 @@ program
         // during the wait.
         if (isOurFleet()) { try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ } }
         try { unlinkSync(pidPath); } catch { /* best effort */ }
-        const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+        // This Node on this CLI, not `sh -c "agend fleet start"` through PATH (#1450 C5).
+        const start = selfCommand(["fleet", "start"]);
+        const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
         child.unref();
         console.log("Fleet restarting in background.");
         return;

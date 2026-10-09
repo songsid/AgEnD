@@ -18,9 +18,13 @@ export interface ActivationTuple {
   env: Record<string, string>;
 }
 
-/** The proven install. `bin` and `node` are realpaths. */
+/**
+ * The proven install; every path a realpath. `entry` is its canonical inner CLI, `<dir>/dist/cli.js` — what a service
+ * starts (#1450 C4). Before the launcher it was also the npm bin; since #1450 the bin is the sh launcher.
+ */
 export interface VerifiedTarget {
   bin: string;
+  entry: string;
   node: string;
   dir: string;
 }
@@ -167,9 +171,9 @@ function scriptInterpreter(script: string, path: string, deps: TupleDeps): strin
 
 /**
  * Does this effective tuple start exactly the verified install? Two shapes are accepted:
- * - the bin script itself (`<bin> fleet start`, what `agend install` writes today): its realpath is the verified bin,
- *   and the interpreter its shebang resolves to on the definition's PATH is the verified Node;
- * - the interpreter explicitly (`<node> <bin> fleet start`, the private runtime's format): both realpaths verified.
+ * - the entry script itself (`<entry> fleet start`, what `agend install` writes today): its realpath is the verified
+ *   entry, and the interpreter its shebang resolves to on the definition's PATH is the verified Node;
+ * - the interpreter explicitly (`<node> <entry> fleet start`, the private runtime's format): both realpaths verified.
  * Anything else — another entry inside the same package, another checkout, extra arguments, NODE_OPTIONS — is not.
  */
 export function tupleStartsVerified(
@@ -183,22 +187,22 @@ export function tupleStartsVerified(
   }
   const program = deps.realpath(tuple.program);
   const args = tuple.argv.slice(1);
-  if (program === verified.bin) {
+  if (program === verified.entry) {
     if (!sameArgs(args, FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args)}, not ["fleet","start"]` };
     // PATH must be in the definition's effective environment: with none (e.g. UnsetEnvironment=PATH), `env node`
     // searches execvp's built-in path (glibc: /bin:/usr/bin), not any manager default — unprovable here (#1449 r5).
     if (tuple.env.PATH === undefined) return { ok: false, reason: "its environment has no PATH, so the Node its `env node` would find cannot be proven" };
-    const interpreter = scriptInterpreter(verified.bin, tuple.env.PATH, deps);
+    const interpreter = scriptInterpreter(verified.entry, tuple.env.PATH, deps);
     if (interpreter !== verified.node) return { ok: false, reason: `its Node is ${interpreter ?? "unresolvable"}, not the verified ${verified.node}` };
     return { ok: true };
   }
   if (program === verified.node) {
     const entry = args[0] ? deps.realpath(args[0]) : null;
-    if (entry !== verified.bin) return { ok: false, reason: `it starts ${args[0] ?? "nothing"}, not ${verified.bin}` };
+    if (entry !== verified.entry) return { ok: false, reason: `it starts ${args[0] ?? "nothing"}, not ${verified.entry}` };
     if (!sameArgs(args.slice(1), FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args.slice(1))}, not ["fleet","start"]` };
     return { ok: true };
   }
-  return { ok: false, reason: `it starts ${tuple.program} (${program ?? "missing"}), not ${verified.bin}` };
+  return { ok: false, reason: `it starts ${tuple.program} (${program ?? "missing"}), not ${verified.entry}` };
 }
 
 export type ServiceManager =

@@ -31,6 +31,7 @@ import { instanceSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { UPDATE_COMMAND } from "./update-check.js";
+import { selfCommand } from "./cli-entry.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -1685,7 +1686,9 @@ export class TopicCommands {
     try {
       const { execFile } = await import("node:child_process");
       const { promisify } = await import("node:util");
-      const { stdout } = await promisify(execFile)("agend", ["backend", "doctor", backend], {
+      // This CLI on this Node, not whichever `agend` is first on PATH (#1450 C5).
+      const doctor = selfCommand(["backend", "doctor", backend]);
+      const { stdout } = await promisify(execFile)(doctor.command, doctor.args, {
         timeout: 30_000,
         encoding: "utf-8",
       });

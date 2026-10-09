@@ -371,6 +371,9 @@ describe("the service-level commands, behind inert stubs", () => {
     const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
     writeFileSync(join(copy, "package.json"), JSON.stringify({ ...manifest, bin: { agend: "bin/agend" } }));
     mkdirSync(join(copy, "bin"));
+    // An installed package always has its canonical entry (#1450 C4); the update verifies it exists.
+    mkdirSync(join(copy, "dist"));
+    writeFileSync(join(copy, "dist", "cli.js"), "");
     // `install` is a no-op here (no service in this scratch HOME: the restart takes the detached path, whose
     // authorisation is what this test is about); everything else runs this source.
     writeFileSync(join(copy, "bin", "agend"), `#!/bin/sh\n[ "$1" = install ] && exit 0\nexec '${process.execPath}' --import tsx '${join(copy, "src", "cli.ts")}' "$@"\n`);
@@ -401,7 +404,9 @@ exit 1
       const result = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
         // NODE_OPTIONS so the restart child the update spawns (a plain `node cli.ts restart`) can run the .ts too
         execFile(process.execPath, [join(copy, "src", "cli.ts"), "update", "--yes"], {
-          env: { NODE_OPTIONS: "--import tsx", HOME: join(inert, "home"), AGEND_HOME: join(inert, "home", ".agend"), PATH: join(inert, "bin"), NOTIFY_SOCKET: "", AGEND_INSTANCE_NAME: "agend-leader" },
+          // The detached restart's own `fleet start` (#1450 C5: this Node on the copy's cli.ts) is recorded by the test
+          // process guard and never runs.
+          env: { NODE_OPTIONS: "--import tsx", HOME: join(inert, "home"), AGEND_HOME: join(inert, "home", ".agend"), PATH: join(inert, "bin"), NOTIFY_SOCKET: "", AGEND_INSTANCE_NAME: "agend-leader", AGEND_TEST_SELF_SPAWN_LOG: join(inert, "self-spawn.log") },
           timeout: 60_000,
         }, (error, stdout, stderr) => {
           if (!error) resolve({ code: 0, stdout, stderr });
@@ -416,6 +421,7 @@ exit 1
         ["update", "allowed", "yes"],
         ["restart", "allowed", "origin"],                                  // the child restart, authorised by the update
       ]);
+      expect(readFileSync(join(inert, "self-spawn.log"), "utf8")).toBe("agend fleet start\n");   // …which restarted the fleet
     } finally {
       decoy.kill("SIGKILL");
     }
