@@ -128,9 +128,30 @@ agent 的回覆裡有 ` ```html ` 區塊時，下方會出現一張卡片，可�
 ### 回應 fleet 的提示
 instance 看起來卡住、自己結束，或停在互動式提示時，Telegram／Discord 上的按鈕也會出現在該 instance 的聊天裡：*Force restart* / *Keep waiting*、*Restart* / *Ignore*、*請 General 協助* / *我自己處理*。
 - 它們是**同一個提示**：不論在哪邊，先回答的算數。另一邊的按鈕隨後會顯示結果，提示也會在所有地方同時到期。
-- 只有這幾種跟 instance 健康有關的提示會出現在 web 上；`/clear` 的確認、登入、ClassicBot 的核准、tips，以及 `/model`、`/effort` 選單，都會留在原本發出的地方。
+- 只有這幾種跟 instance 健康有關的提示會出現在 web 上；`/clear` 的確認、登入、ClassicBot 的核准、tips，以及 `/model`、`/effort` 選單，都會留在原本發出的地方。web chat 有自己的 `/clear`、`/model` 與 `/effort`（見下方）。
 - 頁面沒連線時發出的提示，重新連上後會立刻出現；如果期間已經在別處回答了，會顯示為已回答。
 - **沒有聊天平台？** 只用 dashboard 的 fleet，這些提示會直接出現在該 instance 的聊天裡。互動式提示的 *請 General 協助* 是請 General instance 去看它的終端機，所以只有 fleet 有 General 時才會出現。
+
+### 指令與快速動作
+在輸入框開頭打 `/`，會列出這個 instance 自己的聊天指令，和它的 Telegram/Discord topic 接受的指令相同，由相同的處理程式依相同的規則執行。
+- **指令清單**：輸入時會即時篩選。↑/↓ 移動，**Tab** 補完，**Enter** 執行，**Esc** 關閉。
+- **可用指令**：
+  - `/ctx`：context 用量、模型與推理強度。
+  - `/compact [指示]`
+  - `/clear`：會先確認。
+  - `/model [名稱]` 和 `/effort [等級]`：不加參數時會列出可選項目。
+  - `/cancel`
+  - `/btw <問題>`
+  - `/steer <文字>`
+  - `/pause` 和 `/wake`
+  - `/save <檔名>`
+- **結果顯示的位置**：輸入框上方。
+- **不是指令的情況**：其他以 `/` 開頭的內容照舊當成一般訊息送出；輸入框旁有待送檔案時打的指令也一樣。
+- **fleet 層級的指令**（`/status`、`/restart`、`/update`、`/login` 等）仍在 General 使用。
+- **`/raw`** 不在清單中。透過臨時公開連結時，以 `/raw ` 開頭的訊息會被拒絕，`/save` 也是。
+- **快速動作**：
+  - 聊天標題列上的模型與推理強度，點了會開啟可選清單。
+  - instance 的 context 用到 70% 時，輸入框上方會出現 **壓縮** 和 **清空…**。
 
 ## 等你處理（`/ui/needs`）
 

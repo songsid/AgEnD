@@ -17,6 +17,8 @@ export function createChatStore(deps) {
     msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(),
     exec: {}, awaiting: {}, current: null,
+    // #1269: the last chat command per instance — { command, busy, text?, error?, choices? } — shown above the composer.
+    commands: {},
   };
   const subs = new Set();
   const pastedTexts = new WeakMap();
@@ -265,6 +267,31 @@ export function createChatStore(deps) {
     changed(target);
   }
 
+  // ── Chat commands (#1269): the instance's own /ctx, /compact, /clear, /model … through POST /ui/command. One command
+  // at a time per instance, claimed before the request goes (a double Enter sends nothing more). /clear answers with a
+  // confirmation first: asked in the app's dialog, and a yes counts only while `alive()` (the chat that asked is still
+  // the one on screen) — the token is the server's, used once, for the instance as it was when asked.
+  async function runCommand(target, command, args, opts = {}) {
+    if (!target || (s.commands[target] && s.commands[target].busy)) return;
+    const alive = opts.alive || (() => true);
+    s.commands[target] = { command, busy: true };
+    changed(target);
+    const post = async (extra) => {
+      try { return await api("POST", "/ui/command", { instance: target, command, ...(args ? { args } : {}), ...extra }); }
+      catch (err) { return { error: err && err.message ? err.message : t("chat.disconnected") }; }
+    };
+    let r = await post({});
+    if (r && r.confirm) {
+      const yes = deps.confirm ? await deps.confirm({ title: `/${command}`, message: r.confirm.message, confirmLabel: t("chat.cmdConfirm"), danger: true }) : false;
+      if (!yes || !alive()) { delete s.commands[target]; changed(target); return; }
+      r = await post({ confirm: r.confirm.token });
+    }
+    s.commands[target] = r && r.choices ? { command, busy: false, choices: r.choices }
+      : r && r.error ? { command, busy: false, error: r.error } : { command, busy: false, text: (r && r.text) || "" };
+    changed(target);
+  }
+  function dismissCommand(target) { delete s.commands[target]; changed(target); }
+
   /** Wire the store to the app's stream, for the life of the page. */
   function attach(stream) {
     stream.on("status", applyStatus);
@@ -284,6 +311,6 @@ export function createChatStore(deps) {
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     uploadFile, send, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
-    cancelReply, isUser,
+    cancelReply, isUser, runCommand, dismissCommand,
   };
 }
