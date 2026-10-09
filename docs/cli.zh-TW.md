@@ -220,7 +220,7 @@ agend import <file>             # 從匯出檔案匯入配置
 
 **Fleet 停機期限（#1071）。** Detached `agend restart` 與 AgEnD 的 systemd unit 都會給停機五分鐘。Busy Kiro 的 drain、quit 與 signal grace 各有階段期限，但逐批停止會累加等待；舊的 detached 10 秒與 unit 60 秒上限可能截斷它們。Restart 會將 AgEnD 原本的 `TimeoutStopSec=60` 預設遷移成 `300`，並在停止前核對 systemd 已載入的期限。明確自訂值、重複賦值與 drop-in 覆寫會保留並提示；自訂較短期限仍可能截斷停機。五分鐘是外部上限，不保證涵蓋任意 fleet 大小或緩慢／卡住的 transport。
 
-Detached restart 使用非同步 polling 與 monotonic deadline。期限到了會重新核對 PID 的啟動 identity 與指令列，再送 SIGKILL，並最多等五秒確認真正退出。Ownership 讀不到或舊 owner 仍活著就拒絕啟動 replacement，避免重複 fleet。launchd 原有的停機／activation 政策不變。
+Detached restart 使用非同步 polling 與 monotonic deadline。期限到了會重新核對 PID 的啟動 identity 與指令列，再送 SIGKILL，並最多等五秒確認真正退出。Ownership 讀不到或舊 owner 仍活著就拒絕啟動 replacement，避免重複 fleet。若已記錄的啟動 identity 不變，只有指令列變空，可以在 grace 內等待新的退出證據；空指令列不能授權 SIGKILL 或 replacement。launchd 原有的停機／activation 政策不變。
 
 同一次遷移也會替舊的 unit 補上 #1113 的設定：`CoredumpFilter=0` 讓 crash dump 只有幾 KB（WSL 會把所有 crash 交給 WSL 的 crash collector，它不理會 `LimitCORE`；kiro-cli 和 fleet 本身都曾留下約 1GB 和 450MB 的 dump）；`LimitCORE=0` 適用於直接寫 core 檔的系統；`TimeoutStartSec=15min` 取代原本不設上限的啟動逾時；`StartLimitIntervalSec=30min` 搭配 `StartLimitBurst=4`，讓 fleet 在 30 分鐘內失敗 4 次後，systemd 就不再自動重啟。`agend restart` 會先執行 `systemctl reset-failed`，所以不受這個限制影響；直接用 `systemctl --user restart` 則會受限。部分 systemd 版本（包括 249）會忽略 unit 檔裡的 `CoredumpFilter=`，所以在 Linux 上 AgEnD 會自己把 `coredump_filter` 設為 0：fleet 行程在啟動時設，每個它啟動的 CLI 也會設（啟動指令會先在 pane 自己的 shell 裡設好，所以即使 tmux server 不是這個 fleet 起的也有效）。`AGEND_KEEP_COREDUMP_FILTER=1` 會關掉這兩處：行程改用繼承來的 mask（來自 systemd、tmux 或你的 shell），不一定是完整 dump。不論哪種情況 unit 檔都不會被修改；除非你選擇關閉，實際生效的 mask 都是 AgEnD 設的那個。你自己設定的值不會被更動。
 

@@ -146,14 +146,14 @@ function detachedCliRig(stop: (deps: import("../src/fleet-stop-budget.js").Detac
   find(ast); if (!refuses) throw Error("Restart refusal helper moved");
   const start = vi.fn(() => ({ unref: vi.fn() })), unlink = vi.fn();
   const process = { execPath: "/private/node", exitCode: 0, kill: vi.fn() }, guard = { guardDetached: vi.fn<() => { ok: true } | { ok: false; reason: string }>(() => ({ ok: true })) };
-  let reads = 0; let birth: string | null = "birth-1"; const console = { log: vi.fn(), error: vi.fn() };
+  let reads = 0; let birth: string | null = "birth-1", command = "node /private/cli.js fleet start", exited = () => false; const console = { log: vi.fn(), error: vi.fn() };
   const context = createContext({ process, console, performance, FLEET_STOP_TIMEOUT_MS, stopDetachedOwner: stop,
     pidPath: "/private/fleet.pid", existsSync: () => true, readFileSync: () => ++reads > 2 && changedPidFile ? "999" : "123",
-    detachedProcessStart: () => birth, readProcessCommandLine: () => "node /private/cli.js fleet start", isFleetStartCommandLine: () => true,
+    detachedProcessStart: () => birth, detachedProcessExited: () => exited(), readProcessCommandLine: () => command, isFleetStartCommandLine: (value: string) => value === "node /private/cli.js fleet start",
     guard, expectation: { ok: true, expected: {} }, guardDeps: {}, opts: { force: false }, unlinkSync: unlink,
     selfCommand: () => ({ command: "/private/node", args: ["/private/cli.js", "fleet", "start"] }), spawn: start, setTimeout });
   runInContext(ts.transpileModule(`const refuses = ${refuses.getText(ast)}; async function action() { ${branch} }`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText, context);
-  return { action: runInContext("action", context) as () => Promise<void>, start, unlink, process, guard, setBirth: (next: string | null) => { birth = next; } };
+  return { action: runInContext("action", context) as () => Promise<void>, start, unlink, process, guard, setBirth: (next: string | null) => { birth = next; }, setCommand: (next: string) => { command = next; }, setExitProof: (next: () => boolean) => { exited = next; } };
 }
 it("CLI awaits the proven physical exit, then rechecks runtime before spawning once", async () => {
   let release!: () => void; const wait = new Promise<void>(r => { release = r; }); const h = detachedCliRig(() => wait);
@@ -175,16 +175,34 @@ it("CLI's real wait rejects a recycled PID now occupied by another fleet", async
   expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
 });
 
-function startProbe(platform: string, raw: string | Error, ps: string | Error = "") {
+it("CLI cannot treat a changed command on the same live process as physical exit", async () => {
+  let clock = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => { clock += ms; h.setCommand("inert unrelated command"); } });
+  });
+  await h.action(); expect(h.process.exitCode).toBe(1); expect(h.start).not.toHaveBeenCalled(); expect(h.unlink).not.toHaveBeenCalled();
+  expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
+});
+
+it("a recycled PID with an unrelated new birth does prove the original fleet exited", async () => {
+  let clock = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => { clock += ms; h.setBirth("birth-2"); h.setCommand("inert unrelated command"); } });
+  });
+  await h.action(); expect(h.process.exitCode).toBe(0); expect(h.start).toHaveBeenCalledOnce();
+  expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
+});
+
+function startProbe(platform: string, raw: string | Error, ps: string | Error = "", functionName = "detachedProcessStart") {
   const source = readFileSync(new URL("../src/fleet-stop-budget.ts", import.meta.url), "utf8");
   const ast = ts.createSourceFile("budget.ts", source, ts.ScriptTarget.ES2022, true);
-  const fn = ast.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === "detachedProcessStart")!;
+  const fn = ast.statements.find((node): node is ts.FunctionDeclaration => ts.isFunctionDeclaration(node) && node.name?.text === functionName)!;
   const read = vi.fn(() => { if (raw instanceof Error) throw raw; return raw; });
   const execute = vi.fn(() => { if (ps instanceof Error) throw ps; return ps; });
   const context = createContext({ process: { platform }, readFileSync: read, execFileSync: execute });
   const text = fn.getText(ast).replace(/^export /, "");
   runInContext(ts.transpileModule(text, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context);
-  return { value: runInContext("detachedProcessStart(123)", context), read, execute };
+  return { value: runInContext(`${functionName}(123)`, context), read, execute };
 }
 it("Linux birth proof parses comm parentheses and exact start ticks without spawning ps", () => {
   const raw = `123 (a b)c) S ${Array.from({ length: 18 }, () => "0").join(" ")} 98765 0`;
@@ -196,6 +214,70 @@ it("macOS birth proof uses bounded ps and keeps an unreadable identity unknown",
   expect(p.value).toBe("Fri Oct 9 14:00:00 2026"); expect(p.read).not.toHaveBeenCalled();
   expect(p.execute).toHaveBeenCalledWith("ps", ["-p", "123", "-o", "lstart="], { encoding: "utf8", timeout: 1000, stdio: ["ignore", "pipe", "ignore"] });
   expect(startProbe("darwin", "unused", " ").value).toBeNull(); expect(startProbe("darwin", "unused", Error("unreadable")).value).toBeNull();
+});
+
+it("only readable Linux Z/X is exit proof; live, malformed and unreadable status remain unproven", () => {
+  const stat = (state: string, pid = 123) => `${pid} (a b)c) ${state} ${Array.from({ length: 18 }, () => "0").join(" ")} 98765 0`;
+  for (const state of ["Z", "X"]) expect(startProbe("linux", stat(state), "", "detachedProcessExited").value).toBe(true);
+  for (const raw of [stat("S"), stat("Z", 999), "123 (a) Z", "malformed", Error("unreadable")]) expect(startProbe("linux", raw, "", "detachedProcessExited").value).toBe(false);
+  const darwin = startProbe("darwin", "unused", "", "detachedProcessExited");
+  expect(darwin.value).toBe(false); expect(darwin.read).not.toHaveBeenCalled(); expect(darwin.execute).not.toHaveBeenCalled();
+});
+
+it.each(["start", "command"] as const)("a process exiting between liveness and unreadable %s is rechecked as gone", async field => {
+  let clock = 0, afterWait = false, probes = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => {
+      clock += ms; afterWait = true;
+      if (field === "start") h.setBirth(null); else h.setCommand("");
+    } });
+  });
+  h.process.kill.mockImplementation((...args) => {
+    if (afterWait && args[1] === 0 && ++probes >= 2) throw Object.assign(Error("exited"), { code: "ESRCH" });
+  });
+  await h.action(); expect(h.start).toHaveBeenCalledOnce(); expect(h.process.exitCode).toBe(0);
+});
+
+it.each(["start", "command"] as const)("an unreaped zombie emerging during the %s read is rechecked as exited", async field => {
+  let clock = 0, exitReads = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => {
+      clock += ms;
+      if (field === "start") h.setBirth(null); else h.setCommand("");
+      h.setExitProof(() => ++exitReads >= 2);
+    } });
+  });
+  await h.action(); expect(h.start).toHaveBeenCalledOnce(); expect(h.process.exitCode).toBe(0);
+  expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
+});
+
+it("an empty command on the captured birth only waits until readable exit proof", async () => {
+  let clock = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => {
+      clock += ms; h.setCommand(""); h.setExitProof(() => clock >= 1500);
+    } });
+  });
+  await h.action(); expect(clock).toBe(1500); expect(h.start).toHaveBeenCalledOnce(); expect(h.process.exitCode).toBe(0);
+  expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
+});
+
+it("a permanently unreadable command on the captured birth never authorizes KILL or replacement", async () => {
+  let clock = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => { clock += ms; h.setCommand(""); } });
+  });
+  await h.action(); expect(clock).toBe(FLEET_STOP_TIMEOUT_MS); expect(h.start).not.toHaveBeenCalled(); expect(h.process.exitCode).toBe(1);
+  expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
+});
+
+it("waiting has no initial signal authority and still needs physical exit after a KILL", async () => {
+  const noSignal = vi.fn();
+  const initial = await stopDetachedOwner({ inspect: () => "waiting", signal: noSignal, now: () => 0, sleep: async () => {} }).then(() => null, e => e);
+  expect(initial instanceof Error).toBe(true); expect(noSignal).not.toHaveBeenCalled();
+  let clock = 0, killed = false; const signals: string[] = [];
+  const held = await stopDetachedOwner({ inspect: () => killed ? "waiting" : "fleet", signal: signal => { signals.push(signal); if (signal === "SIGKILL") killed = true; }, now: () => clock, sleep: async ms => { clock += ms; } }).then(() => null, e => e);
+  expect(held instanceof Error).toBe(true); expect(clock).toBe(FLEET_STOP_TIMEOUT_MS + 5000); expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
 });
 
 it("CLI's selected runtime changing during the shutdown wait refuses replacement", async () => {

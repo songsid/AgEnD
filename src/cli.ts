@@ -50,7 +50,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
-import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, type DetachedOwnerState } from "./fleet-stop-budget.js";
+import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { limitFleetCoreDumps } from "./coredump-filter.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
@@ -2142,18 +2142,25 @@ program
       const originalPidFile = readFileSync(pidPath, "utf-8");
       const oldPid = Number(originalPidFile.trim());
       let claimedStart: string | null = null;
+      const absence = (): DetachedOwnerState | null => {
+        try { process.kill(oldPid, 0); }
+        catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unknown"; }
+        return detachedProcessExited(oldPid) ? "gone" : null;
+      };
       const inspect = (): DetachedOwnerState => {
         try {
           if (existsSync(pidPath) && readFileSync(pidPath, "utf-8") !== originalPidFile) return "unknown";
         } catch { return "unknown"; }
-        try { process.kill(oldPid, 0); }
-        catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unknown"; }
+        const missing = absence();
+        if (missing) return missing;
         const start = detachedProcessStart(oldPid);
-        if (start === null) return "unknown";
+        if (start === null) return absence() ?? "unknown";
         const command = readProcessCommandLine(oldPid);
-        if (!command) return "unknown";
+        if (!command) return absence() ?? (claimedStart !== null && start === claimedStart ? "waiting" : "unknown");
         const fleet = isFleetStartCommandLine(command);
         if (claimedStart !== null && start !== claimedStart) return fleet ? "unknown" : "other";
+        // The claimed process is still alive: rewritten argv is not exit proof.
+        if (claimedStart !== null && !fleet) return "unknown";
         claimedStart ??= start;
         return fleet ? "fleet" : "other";
       };

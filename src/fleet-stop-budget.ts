@@ -8,7 +8,7 @@ export const FLEET_STOP_TIMEOUT_MS = 5 * 60_000;
 const EXIT_CONFIRM_MS = 5_000;
 const POLL_MS = 500;
 
-export type DetachedOwnerState = "fleet" | "gone" | "other" | "unknown";
+export type DetachedOwnerState = "fleet" | "gone" | "other" | "unknown" | "waiting";
 export interface DetachedStopDeps {
   /** No signal is authorized by an unreadable identity. */
   inspect(): DetachedOwnerState;
@@ -21,24 +21,31 @@ export interface DetachedStopDeps {
  * No sleep subprocesses, no wall-clock budgets, and no kill(0) error treated
  * as exit proof except ESRCH (the caller's inspect contract). */
 export async function stopDetachedOwner(deps: DetachedStopDeps): Promise<void> {
-  const check = (): boolean => {
+  const inspect = (): DetachedOwnerState => {
     const state = deps.inspect();
     if (state === "unknown") throw new Error("Cannot confirm the detached fleet owner; nothing else was signalled or started");
-    return state === "fleet";
+    return state;
   };
-  if (!check()) return;
+  const alive = (state: DetachedOwnerState): boolean => state === "fleet" || state === "waiting";
+  const first = inspect();
+  if (first === "waiting") throw new Error("Cannot confirm the detached fleet command; nothing was signalled or started");
+  if (!alive(first)) return;
   const deadline = deps.now() + FLEET_STOP_TIMEOUT_MS;
   deps.signal("SIGTERM");
-  while (check()) {
+  while (alive(inspect())) {
     const remaining = deadline - deps.now();
     if (remaining <= 0) break;
     await deps.sleep(Math.min(POLL_MS, remaining));
   }
   // Re-read identity at the effect boundary, including after the last wait.
-  if (!check()) return;
+  // An empty command on the captured birth can be a transient exit transition.
+  // It only admits passive waiting: never a KILL or replacement.
+  const beforeKill = inspect();
+  if (beforeKill === "waiting") throw new Error("Cannot confirm the detached fleet command after its grace; refusing to signal or start a duplicate");
+  if (!alive(beforeKill)) return;
   deps.signal("SIGKILL");
   const exitDeadline = deps.now() + EXIT_CONFIRM_MS;
-  while (check()) {
+  while (alive(inspect())) {
     const remaining = exitDeadline - deps.now();
     if (remaining <= 0) throw new Error("Detached fleet has not exited after SIGKILL; refusing to start a duplicate");
     await deps.sleep(Math.min(POLL_MS, remaining));
@@ -70,4 +77,16 @@ export function detachedProcessStart(pid: number): string | null {
     }
     return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8", timeout: 1_000, stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
   } catch { return null; }
+}
+
+/** A Linux zombie has exited even while its parent has not reaped the PID. */
+export function detachedProcessExited(pid: number): boolean {
+  if (process.platform !== "linux") return false;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const end = stat.lastIndexOf(")");
+    const tail = stat.slice(end + 2).trim().split(/\s+/);
+    return end > 0 && stat.startsWith(`${pid} (`) && /^\d+$/.test(tail[19] ?? "")
+      && (tail[0] === "Z" || tail[0] === "X");
+  } catch { return false; } // No readable exit evidence: still unknown, never exit.
 }
