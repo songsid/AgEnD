@@ -103,15 +103,23 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
 function manager(answers: Array<[RegExp, Partial<CommandResult> | (() => Partial<CommandResult>)]>, files: Record<string, string> = {}, refreshWrites?: [string, string]) {
   const calls: string[] = [];
   let restarts = 0;
+  // launchd: once a bootout succeeded, the job is gone — the next print says so (113) — unless a test says otherwise.
+  let bootedOut = false;
+  let clock = 0;
   const deps: ActivationDeps = {
     ...fs,
     run: (command, args) => {
       const line = [command, ...args].join(" ");
       calls.push(line);
+      if (bootedOut && /^launchctl print/.test(line)) { bootedOut = false; return { status: 113, signal: null, stdout: "", stderr: "Could not find service" }; }
       const found = answers.find(([pattern]) => pattern.test(line))?.[1];
       const answer = typeof found === "function" ? found() : found;
-      return { status: 0, signal: null, stdout: "", stderr: "", ...(answer ?? {}) };
+      const result = { status: 0, signal: null, stdout: "", stderr: "", ...(answer ?? {}) };
+      if (/^launchctl bootout/.test(line) && result.status === 0) bootedOut = true;
+      return result;
     },
+    sleep: () => { clock += 100; },
+    monotonicNow: () => clock,
     readFile: path => files[path] ?? null,
     writeFile: (path, content) => { files[path] = content; calls.push(`write ${path}`); },
     refresh: () => { calls.push("refresh"); if (refreshWrites) files[refreshWrites[0]] = refreshWrites[1]; return { status: 0, signal: null, stdout: "", stderr: "" }; },
@@ -346,6 +354,38 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
     const m = manager([[new RegExp(`getenv ${key}`), { stdout: "/x\n" }], [/getenv/, { stdout: "" }], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
     expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining(key) });
     expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  // Real launchd (macOS 15, native-c6): bootout returns before the job is unloaded; a bootstrap then fails with 5.
+  it("bootout is asynchronous: the bootstrap waits until launchd reports the job gone (113)", () => {
+    let polls = 0;
+    const m = manager([[/print/, prints(printed(OLD), printed(NEW))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const run = m.deps.run;
+    let stillThere = 0;
+    m.deps.run = (command, args) => {
+      if (args[0] === "bootout") stillThere = 2;                    // two polls still show the old job
+      if (args[0] === "print" && stillThere > 0) { stillThere--; polls++; m.calls.push("print (still loaded)"); return { status: 0, signal: null, stderr: "", ...printed(OLD) } as CommandResult; }
+      return run(command, args);
+    };
+    expect(activateService(job, verified, m.deps)).toEqual({ ok: true, via: "launchd-activation" });
+    expect(polls).toBe(2);
+    const order = m.calls.filter(c => /bootout|bootstrap|still loaded|print gui/.test(c));
+    expect(order.indexOf(`launchctl bootstrap gui/501 ${plistPath}`)).toBeGreaterThan(order.lastIndexOf("print (still loaded)"));
+  });
+  it.each(["xpcproxy", "spawn scheduled"])("right after a bootstrap the job is still spawning (%s): waited out, then judged", state => {
+    const m = manager([[/print/, prints(printed(OLD), printed(NEW, 900, state), printed(NEW, 900, state), printed(NEW, 900))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toEqual({ ok: true, via: "launchd-activation" });
+  });
+  it("a job that never finishes unloading: no bootstrap into it; rolled back, package back", () => {
+    const m = manager([[/print/, printed(OLD)], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const run = m.deps.run;
+    m.deps.run = (command, args) => (args[0] === "print" && m.calls.some(c => /bootout/.test(c)) ? (m.calls.push("print (still loaded)"), { status: 0, signal: null, stderr: "", ...printed(OLD) } as CommandResult) : run(command, args));
+    let restored = 0;
+    m.deps.restorePackage = () => { restored++; return "package back"; };
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("did not finish unloading") });
+    expect(m.calls.filter(c => /bootstrap/.test(c))).toEqual([]);
+    expect(restored).toBe(1);
   });
 
   it("an initial print that exits non-zero for another reason (not 113) is uncertainty too", () => {

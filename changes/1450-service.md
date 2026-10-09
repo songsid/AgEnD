@@ -13,3 +13,5 @@ section: Changed
     proves the plist and records a planned activation, and the next `agend restart` performs exactly one
     `bootout`/`bootstrap`, rolling back to the previous job if the new one does not run. See `docs/cli.md` for the
     launchd domain AgEnD uses (`gui/<uid>`) and why.
+  - macOS: `agend install` and an update wait until launchd has finished unloading the previous job before loading the
+    new one. launchd returns from `bootout` early, and loading straight away failed with error 5.

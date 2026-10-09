@@ -28,12 +28,17 @@ const printed = (args: string[], pid: number, state = "running"): Partial<Comman
 
 function world(files: Record<string, string>, answers: Array<[RegExp, Partial<CommandResult> | (() => Partial<CommandResult>)]>) {
   const calls: string[] = [];
+  // launchd: once a bootout succeeded, the job is gone — the next print says so (113).
+  let bootedOut = false;
   const deps: PlanDeps = {
     run: (command, args) => {
       const line = [command, ...args].join(" ");
       calls.push(line);
+      if (bootedOut && /^launchctl print/.test(line)) { bootedOut = false; return { status: 113, signal: null, stdout: "", stderr: "Could not find service" }; }
       const a = answers.find(([re]) => re.test(line))?.[1];
-      return { status: 0, signal: null, stdout: "", stderr: "", ...(typeof a === "function" ? a() : a ?? {}) };
+      const result = { status: 0, signal: null, stdout: "", stderr: "", ...(typeof a === "function" ? a() : a ?? {}) };
+      if (/^launchctl bootout/.test(line) && result.status === 0) bootedOut = true;
+      return result;
     },
     readFile: p => files[p] ?? null,
     writeFile: (p, c) => { files[p] = c; calls.push(`write ${p}`); },
@@ -137,6 +142,7 @@ describe("the planned activation itself: one bootout + bootstrap; recovery uses 
       { bin: ENTRY, entry: ENTRY, node: RT, dir: PKG }, {
         ...w.deps, readFirstLine: () => null, isExecutable: () => false,
         refresh: () => { throw new Error("path 2 never refreshes"); }, restart: () => {}, log: () => {}, launchdPreimage: plan.preimage.plist,
+        sleep: () => {}, monotonicNow: () => 0,
         restorePackage: () => { w.calls.push("restore-package"); return "The previous package is back in place"; },
       });
     return { w, outcome };

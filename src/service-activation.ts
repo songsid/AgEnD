@@ -268,7 +268,16 @@ export interface ActivationDeps extends TupleDeps {
    * files inside the package. Returns one line for the outcome.
    */
   restorePackage?(): string;
+  /** Blocking pause between launchd polls (default: Atomics.wait); tests pass a no-op. */
+  sleep?(ms: number): void;
+  /** A monotonic clock in ms for poll deadlines (default: performance.now). */
+  monotonicNow?(): number;
 }
+
+/** How long launchd may take to finish unloading a booted-out job, or to spawn a bootstrapped one. */
+export const LAUNCHD_SETTLE_MS = 10_000;
+/** launchd states of a job that is being spawned (not yet `running`, not failed). */
+export const LAUNCHD_SPAWNING = ["spawn scheduled", "xpcproxy"];
 
 export type ActivationOutcome =
   | { ok: true; via: "restart" | "launchd-activation" }
@@ -360,6 +369,33 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     if (preimage !== null && onDisk !== preimage) deps.writeFile(manager.plistPath, preimage);
     return { ok: false, stopped: false, message: `  ✗ ${manager.plistPath} does not start the verified install: ${diskMatch.reason}. Restored the previous plist; not restarting the fleet.${packageBack()}` };
   }
+  // `launchctl bootout` returns before launchd has finished unloading the job (seen on macOS 15: a bootstrap right
+  // after it fails with 5, EIO, and a second bootout still finds the job). So: wait — bounded, on a monotonic clock —
+  // until launchd reports the job gone (print → 113) before bootstrapping; and after a bootstrap, wait out the brief
+  // spawning states (LAUNCHD_SPAWNING) before judging what runs.
+  const sleep = deps.sleep ?? ((ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); });
+  const clock = deps.monotonicNow ?? (() => performance.now());
+  const awaitUnloaded = (): boolean => {
+    const deadline = clock() + LAUNCHD_SETTLE_MS;
+    for (;;) {
+      const p = deps.run("launchctl", ["print", target]);
+      if (completed(p) && p.status === 113) return true;
+      if (clock() >= deadline) return false;
+      sleep(100);
+    }
+  };
+  const awaitStarted = (): CommandResult => {
+    const deadline = clock() + LAUNCHD_SETTLE_MS;
+    for (;;) {
+      const p = deps.run("launchctl", ["print", target]);
+      const state = completed(p) && p.status === 0 ? parseLaunchctlPrint(p.stdout) : null;
+      // Transitional states right after a bootstrap (macOS 15 shows `xpcproxy` with the pid for a few ms).
+      const settling = state !== null && (LAUNCHD_SPAWNING.includes(state.state ?? "") || (state.state === "running" && !state.pid));
+      if (!settling || clock() >= deadline) return p;
+      sleep(100);
+    }
+  };
+  let unloaded = true;
   if (loadedBefore) {
     const out = deps.run("launchctl", ["bootout", target]);
     if (!completed(out) || out.status !== 0) {
@@ -367,9 +403,10 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
       if (preimage !== null) deps.writeFile(manager.plistPath, preimage);
       return { ok: false, stopped: false, message: `  ✗ launchctl bootout of ${manager.label} did not complete (${out.signal ? `killed by ${out.signal}` : `exit ${out.status}`}). Restored the previous plist; not activating.${packageBack()}` };
     }
+    unloaded = awaitUnloaded();
   }
-  const boot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
-  const after = completed(boot) && boot.status === 0 ? deps.run("launchctl", ["print", target]) : null;
+  const boot = unloaded ? deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]) : null;
+  const after = boot && completed(boot) && boot.status === 0 ? awaitStarted() : null;
   const printed = after && completed(after) && after.status === 0 ? parseLaunchctlPrint(after.stdout) : null;
   const loadedMatch = printed?.tuple ? tupleStartsVerified(printed.tuple, verified, LAUNCHD_DEFAULT_PATH, deps) : null;
   if (printed?.pid && printed.state === "running" && loadedMatch?.ok) return { ok: true, via: "launchd-activation" };
@@ -377,19 +414,21 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   // Roll back: whatever loaded goes; the preimage plist goes back on disk; the preimage job comes back only if one was
   // running before, and only counts as restored when launchd runs exactly its tuple.
   deps.run("launchctl", ["bootout", target]);
+  const goneForRecovery = awaitUnloaded();
   if (preimage !== null) deps.writeFile(manager.plistPath, preimage);
   // The previous job's plist names files inside the package: the package goes back BEFORE that job is bootstrapped.
   const pkgLine = packageBack();
   let recovery = "No job was running before; the previous plist is back on disk.";
   if (loadedBefore && preimageTuple) {
-    const reboot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
-    const check = completed(reboot) && reboot.status === 0 ? deps.run("launchctl", ["print", target]) : null;
+    const reboot = goneForRecovery ? deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]) : null;
+    const check = reboot && completed(reboot) && reboot.status === 0 ? awaitStarted() : null;
     const back = check && completed(check) && check.status === 0 ? parseLaunchctlPrint(check.stdout) : null;
     recovery = back?.tuple && back.pid && back.state === "running" && sameJob(back.tuple, preimageTuple)
       ? "Rolled back to the previous job, which is running."
       : "The previous job could NOT be restored: run agend install and agend start.";
   }
-  const why = !completed(boot) || boot.status !== 0 ? "launchctl bootstrap failed"
+  const why = !boot ? `launchd did not finish unloading the previous job within ${LAUNCHD_SETTLE_MS / 1000}s`
+    : !completed(boot) || boot.status !== 0 ? "launchctl bootstrap failed"
     : !printed ? "launchctl print of the new job did not complete"
     : !printed.pid || printed.state !== "running" ? "the job did not start"
     : `launchd loaded a job that ${loadedMatch && !loadedMatch.ok ? loadedMatch.reason : "cannot be read"}`;

@@ -756,8 +756,13 @@ export function activateService(plistPath: string, pidPath: string): void {
     const uid = process.getuid?.() ?? 501;
     const domain = `gui/${uid}`;
     const label = plistPath.replace(/.*\//, "").replace(/\.plist$/, "");
-    // Unload if previously loaded (ignore errors)
+    // Unload if previously loaded (ignore errors). bootout returns before launchd has finished unloading the job (macOS
+    // 15: a bootstrap right after it fails with 5, EIO): wait — bounded, monotonic — until print says it is gone (113).
     try { execSync(`launchctl bootout ${domain}/${label}`, { stdio: "ignore" }); } catch {}
+    const deadline = performance.now() + 10_000;
+    while (spawnSync("launchctl", ["print", `${domain}/${label}`], { stdio: "ignore", timeout: 5000 }).status !== 113 && performance.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+    }
     execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
     execSync(`launchctl enable ${domain}/${label}`, { stdio: "inherit" });
   } else {
