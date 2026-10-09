@@ -21,7 +21,8 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
-import { createThread } from "./chat-thread.js";
+import { createThread, msgKey } from "./chat-thread.js";
+import { PreviewPanel, openPanel, panelStore, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot, startTour } from "./chat-tour.js";
 
@@ -147,7 +148,7 @@ function NotFound({ name }) {
 function ChatView({ name, inst, lease, exec, awaiting }) {
   const [dialog, setDialog] = useState(null);       // "details" | "delete" | null
   const [wrap, setWrap] = useState(codeWrap);
-  const view = useRef(null);
+  const view = useRef(null), split = useRef(null), thread = useRef(null);
   useEffect(() => { wrapListeners.add(setWrap); return () => wrapListeners.delete(setWrap); }, []);
   // First visit to this instance's chat on this page: its history (a navigation — it counts as use). Back again: nothing.
   useEffect(() => { store.openHistory(name, lease); }, [name]);
@@ -197,8 +198,14 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
     <${PanelHeader} title=${name} sub=${sub}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <${Thread} name=${name} />
-    <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />
+    <div class="chat-split" ref=${split}>
+      <div class="chat-main">
+        <${Thread} name=${name} th=${thread} />
+        <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />
+      </div>
+      <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
+        keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} />
+    </div>
     <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
     ${dialog === "details" ? html`<${DetailsDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
@@ -206,14 +213,15 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
 }
 
 /** The thread: Preact owns the elements, the keyed renderer owns what is inside the list (chat-thread.js). */
-function Thread({ name }) {
-  const scroller = useRef(null), list = useRef(null), th = useRef(null);
+function Thread({ name, th }) {
+  const scroller = useRef(null), list = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
   useLayoutEffect(() => {
     const thread = createThread(list.current, scroller.current, {
       t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
+      panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o) },   // #1481
     });
     th.current = thread;
     thread.render(store.state.msgs[name] || [], { restore: store.state.scrollMemo[name] ?? null });
@@ -223,12 +231,13 @@ function Thread({ name }) {
       else if (kind === "sent") thread.jumpLatest();
     });
     const offPv = P() ? P().onChange(() => thread.refreshCards()) : () => {};
+    const offPanel = panelStore.subscribe(() => thread.refreshCards());   // a card shows whether the panel has its block
     const onScroll = () => { store.state.scrollMemo[name] = thread.onScroll(); };
     const sc = scroller.current, ls = list.current;
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
     return () => {
-      off(); offPv();
+      off(); offPv(); offPanel();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       thread.dispose();                     // the whole thread goes: every preview in it stops first
@@ -388,7 +397,7 @@ function Composer({ name, lease, busy }) {
         autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
         aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}></textarea>
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
-        disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} />${t("chat.stopReply")}</button>
+        disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
       <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || !!s.sending[name]}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;

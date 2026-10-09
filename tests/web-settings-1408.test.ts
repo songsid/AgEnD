@@ -259,6 +259,45 @@ describe("#1374 and leaks", () => {
     expect(reqs).toEqual([]);
   });
 
+  it("alpha.2 sweep: one connection is '1 connection'", async () => {
+    await mount("bots"); await settle(6);
+    expect(p.root.querySelector(".list-head span").textContent).toBe("1 connection");
+  });
+
+  const breaksBeforeTags = (rows: any[]) => {
+    for (const r of rows) {
+      const kids = [...r.querySelector(".s-meta").parentNode.children];
+      const at = kids.indexOf(r.querySelector(".s-meta"));
+      expect(kids[at + 1].className, "the break follows the model").toBe("s-br");
+      expect(kids[at + 2].className, "…and the effort chip follows the break").toBe("tag");
+    }
+  };
+  it("alpha.2 sweep: every agent row breaks before its tags in the same place, so the chips wrap alike on a phone", async () => {
+    await mount("agents"); await settle(6);
+    const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
+    expect(rows.length).toBeGreaterThan(1);
+    breaksBeforeTags(rows);
+  });
+  it("alpha.2 sweep: …and so does every ClassicBot room row", async () => {
+    routes = [(r) => (r.method === "GET" && r.url === "/api/settings/classic"
+      ? { body: { defaults: {}, channels: { "discord:1": { name: "lobby", instanceName: "classic-lobby" }, "discord:2": { name: "ops", instanceName: "classic-ops" } } } } : undefined)];
+    await mount("classic"); await settle(6);
+    const rows = [...p.root.querySelectorAll(".s-row")].filter(r => r.querySelector(".s-meta"));
+    expect(rows.map(r => r.querySelector(".s-name").textContent).sort(), "the two room rows").toEqual(["lobby", "ops"]);
+    breaksBeforeTags(rows);
+  });
+
+  it("alpha.2 sweep: a fleet without provider secrets (the schema says so) is not asked for them — no 404 on every load", async () => {
+    routes = [(r) => (r.method === "GET" && r.url === "/api/settings/schema" ? { body: { ...SCHEMA, provider_secrets: false } } : undefined)];
+    await mount(); await settle(6);
+    expect(reads()).not.toContain("/api/settings/provider-secrets");
+    await p.unmount(); reqs = [];
+    routes = [(r) => (r.method === "GET" && r.url === "/api/settings/schema" ? { body: { ...SCHEMA, provider_secrets: true } } : undefined)];
+    await mount(); await settle(6);
+    expect(reads()).toContain("/api/settings/provider-secrets");
+    routes = [];
+  });
+
   it("50 mounts leave nothing: no lease, no listener, no leave guard", async () => {
     await settle();
     const baseLeases = ctx.leaseCount(), doc = p.document.listenerCount(), win = p.window.listenerCount();
@@ -365,16 +404,42 @@ describe("#1423: a change an admin must confirm", () => {
     expect(p.root.querySelector(".pending-card")?.textContent).toContain("Waiting for confirmation");
     expect(p.root.querySelector(".pending-card")?.textContent).toContain("fleet access: add 9");
     expect(p.root.querySelector(".op-line")?.textContent).toContain("waiting for confirmation in chat");
+    expect(p.root.querySelector(".pending-stack").className).toBe("pending-stack");      // the corner card elsewhere
     nav.navigate("/settings");
     await settle(6);
     expect(p.root.querySelector(".op-line")).toBeNull();          // Settings shows the operation itself
-    expect(p.root.querySelector(".pending-card")).not.toBeNull();
+    // …and the request too, in its own column (alpha.2 sweep): the shell's corner card is not drawn over it.
+    expect(!!p.root.querySelector(".pending-stack"), "no corner card in Settings").toBe(false);
+    await p.unmount();
+    app.appStore.set({ pendingChanges: [], settingsOp: null });
+  });
+
+  it("alpha.2 sweep: in Settings the request card sits in the column, right under the operation", async () => {
+    app.appStore.set({ pendingChanges: [{ ...VIEW("pending"), label: "Update main access", deadline: performance.now() + 60_000, withdraw: () => {}, dismiss: null }],
+      settingsOp: { id: 1, phase: "writing", error: null, job: null, lostJob: false, restart: "idle", leftover: [], steps: [{ label: "Update main access", impact: "fleet", status: "waiting", error: null, pendingId: "d" }] } });
+    await mount("bots", "settings:bots|inline|en"); await settle(6);
+    const stack = p.root.querySelector(".col > .pending-stack");
+    expect(!!stack, "in the column").toBe(true);
+    expect(stack.className).toBe("pending-stack inline");
+    expect(stack.querySelector(".pending-card").textContent).toContain("Waiting for confirmation");
+    const col = [...p.root.querySelector(".col").children];
+    expect(col.indexOf(stack) - col.indexOf(p.root.querySelector(".col > .s-op")), "right after the operation").toBe(1);
     await p.unmount();
     app.appStore.set({ pendingChanges: [], settingsOp: null });
   });
 });
 
 describe("the other ways in: Developer YAML and the setup wizard hand over to the same runner", () => {
+  it("alpha.2 sweep: the toolbar keeps a name on its icon buttons, and the editor scrolls instead of wrapping", async () => {
+    await mount("advanced", "settings:advanced|1|en"); await settle(6);
+    const bar = p.root.querySelector(".s-dev-bar");
+    const labelled = [...bar.querySelectorAll("button")].filter(b => b.querySelector(".lbl"));
+    // Below 480px .lbl is screen-reader only: the title is what a pointer sees, the label what a reader hears.
+    expect(labelled.map(b => [b.getAttribute("title"), b.querySelector(".lbl").textContent])).toEqual([["Copy", "Copy"], ["fleet.yaml", "fleet.yaml"]]);
+    btn(p.root.querySelector(".s-dev"), "Edit").click(); await settle(2);
+    expect(p.root.querySelector("textarea.s-yaml").getAttribute("wrap")).toBe("off");
+  });
+
   it("Developer: an edited model is one operation — its writes in order, then one apply", async () => {
     await mount("advanced", "settings:advanced|1|en"); await settle(6);
     btn(p.root.querySelector(".s-dev"), "JSON").click(); await settle(2);

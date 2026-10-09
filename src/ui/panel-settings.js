@@ -12,7 +12,7 @@ import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js"
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
 import { navigate, setLeaveGuard } from "/assets/app-nav.js";
 import { settingsPath, SETTINGS_SECTIONS } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -66,7 +66,8 @@ async function loadAll(lease) {
   const connections = await read(lease, "/api/settings/connections");
   if (!lease.current()) return null;
   out.connections = connections.ok && Array.isArray(connections.body) ? connections.body : [];
-  const secrets = await read(lease, "/api/settings/provider-secrets");
+  // Only where the fleet offers them (the schema says so): otherwise the route is a 404 and there is nothing to show.
+  const secrets = out.schema && out.schema.provider_secrets === false ? { ok: false } : await read(lease, "/api/settings/provider-secrets");
   if (!lease.current()) return null;
   out.providerOk = secrets.ok;
   out.providerSecrets = secrets.ok && Array.isArray(secrets.body) ? secrets.body : [];
@@ -218,6 +219,7 @@ export function SettingsPanel({ route, navKey }) {
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
+      <${PendingChanges} inline=${true} />
       ${sectionBody}
     </div></div>
     ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} />` : null}
@@ -329,7 +331,7 @@ function Agents({ ctx, search, openDialog }) {
     setBusy((b) => new Map(b).set(name, action));
     try { await work(); } finally { setBusy((b) => { const n = new Map(b); n.delete(name); return n; }); }
   };
-  const head = html`<div class="list-head"><span>${tn("countAgents", Object.keys(insts).length)}</span>
+  const head = html`<div class="list-head"><span>${Object.keys(insts).length === 1 ? tn("countAgent") : tn("countAgents", Object.keys(insts).length)}</span>
     <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button></div>`;
   if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />`;
   if (!groups.length) return html`${head}<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
@@ -350,6 +352,7 @@ function Agents({ ctx, search, openDialog }) {
           <span class=${dotClass(st)} title=${tn(STATUS_KEY[st] || "stStopped")} aria-hidden="true"></span>
           <span class="s-name" title=${name}>${shortName(name, inst)}</span>
           <span class="s-meta" title=${sum.backend}>${sum.model}</span>
+          <span class="s-br" aria-hidden="true"></span>
           <span class="tag">${tn("effortTag", sum.effort)}</span>
           ${ch ? html`<span class=${`tag${ch.includes("persona") ? " persona" : ""}`}>${ch}</span>` : null}
           <span class="sr-only">${tn(STATUS_KEY[st] || "stStopped")}</span>
@@ -370,7 +373,7 @@ function Bots({ ctx, search, openDialog }) {
   const all = channelsOf(ctx.fleet);
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
-  const head = html`<div class="list-head"><span>${tn("countBots", all.length)}</span>
+  const head = html`<div class="list-head"><span>${all.length === 1 ? tn("countBot") : tn("countBots", all.length)}</span>
     <button type="button" class="btn btn-primary" onClick=${() => openDialog({ kind: "newBot" })}><${Icon} name="plus" size=${16} />${tn("newBot")}</button></div>`;
   return html`${head}
     ${!rows.length ? html`<${Empty} icon="plug" title=${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")} />` : html`<div class="s-list">${rows.map(({ ch, i }) => {
@@ -464,7 +467,7 @@ function Classic({ ctx, search, openDialog }) {
     .sort((a, b) => ((STATUS_ORDER[ctx.classicRuntime(a.instanceName).status] ?? 9) - (STATUS_ORDER[ctx.classicRuntime(b.instanceName).status] ?? 9))
       || String(a.name || "").localeCompare(String(b.name || "")));
   if (!list.length) return html`<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
-  return html`<div class="list-head"><span>${tn("countRooms", rooms.length)}</span></div><div class="s-list">${list.map((c) => {
+  return html`<div class="list-head"><span>${rooms.length === 1 ? tn("countRoom") : tn("countRooms", rooms.length)}</span></div><div class="s-list">${list.map((c) => {
     const rt = ctx.classicRuntime(c.instanceName);
     const sum = effectiveSummary(ctx.live[c.instanceName] || {}, c, ctx.fleet.defaults || {}, (ctx.classic && ctx.classic.defaults) || {});
     const adapter = c.adapterId || "discord";
@@ -472,6 +475,7 @@ function Classic({ ctx, search, openDialog }) {
       <span class=${dotClass(rt.execution)} title=${tn(`exec_${rt.execution}`)} aria-hidden="true"></span>
       <span class="s-name" title=${c.instanceName || ""}>${shortName(c.name || c.instanceName || "?", { display_name: c.display_name })}</span>
       <span class="s-meta" title=${sum.backend}>${sum.model}</span>
+      <span class="s-br" aria-hidden="true"></span>
       <span class="tag">${tn("effortTag", sum.effort)}</span>
       <span class=${`tag${adapter !== "discord" ? " persona" : ""}`}>${adapter}</span>
       ${c.collab ? html`<span class="tag">collab</span>` : null}
@@ -666,10 +670,10 @@ function Developer({ ctx }) {
       <div class="seg-inline" role="group" aria-label=${tn("format")}>
         ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
       <button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
-      <button type="button" class="btn btn-sm" onClick=${copy}><${Icon} name="copy" size=${14} />${tn("copy")}</button>
-      <button type="button" class="btn btn-sm" onClick=${download}><${Icon} name="download" size=${14} />fleet.yaml</button>
+      <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
+      <button type="button" class="btn btn-sm" title="fleet.yaml" onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">fleet.yaml</span></button>
     </div>
-    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck="false" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
+    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck="false" wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
       : html`<pre class="s-yaml">${text}</pre>`}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}

@@ -6,7 +6,7 @@ AgEnD 的 web dashboard 是 fleet 自己跑的一個小型 web server，上面�
 
 | 面板 | 用途 |
 |---|---|
-| **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/config`）；**等你處理** 在 `/ui/needs` |
+| **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/org`、`…/cache`、`…/config`）；**等你處理** 在 `/ui/needs` |
 | **`/view`** | 以讀取為主的總覽：每個 agent 的即時終端、名單、用量，也可以編輯 agent 的個人檔案與頭像 |
 | **`/settings`** | fleet 設定——agent、連線、ClassicBot、預設值、`fleet.yaml`——可以套用並重啟。每個分頁都有自己的網址：`/settings/bots`、`…/classic`、`…/general`、`…/advanced`（`/settings` 是 Agent） |
 
@@ -101,6 +101,13 @@ agent 的回覆裡有 ` ```html ` 區塊時，下方會出現一張卡片，可�
 - **每台裝置預設都是關閉的，要你自己打開。** 用側欄底部的 **Allow HTML previews on this device**，或卡片的 **⋯** 選單。它只會問一次，並說明這代表什麼；關掉時，所有正在執行的預覽都會停止。
 - **每次都要你按下才會執行。** **預覽** 會在卡片下方的框架裡執行，並顯示這段說明：*「Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.」* 按 **停止** 關閉。一次只會執行一個預覽。
 - **下載** 會把 HTML 存成 `reply.html`，絕不會在 dashboard 裡開啟。
+- **在面板中開啟** 會把區塊放到對話旁邊，空間比較大。在手機上它是全螢幕的頁面，按 **←** 回到對話。
+  - 從閒置的卡片開啟時，面板有自己的 **預覽** 要你按。從正在執行的預覽開啟時，同一個按鈕會把那個預覽移到面板裡。
+  - 面板的工具列：**頁面**／**程式碼**（原始碼）、**重新載入**、**停止**、**下載**。頂端的 **來自 …** 會顯示這個區塊所在的訊息。
+  - 拖曳分隔線可調整寬度，或把焦點移到分隔線上用 ← →、Home、End。這台裝置會記住寬度。
+  - 之後的回覆帶來同一個區塊的較新版本時（`<title>` 相同；沒有 title 時則是任何較新的區塊），面板會用 **顯示** 提示你。它絕不會自己換掉，新版本也要等你按 **預覽**。
+  - 關閉面板（**×**、**←** 或 Esc）或打開別的對話時，面板的預覽會停止。在卡片裡啟動預覽會停止面板的預覽：一次只會執行一個預覽。
+  - 沒有「在新分頁開啟」：HTML 只會在沙箱框架裡執行。要拿到別處，請用 **下載**。
 - **它能做什麼、不能做什麼。** 預覽在另一個位址的沙箱裡執行，所以無法使用你的登入、讀取你的 session，也無法操作 dashboard。但它**可能**可以把資料傳出去（沒有瀏覽器能擋住所有管道），所以只預覽你信任的 HTML。
 - **只有 agent 的回覆**（由 fleet 標記）才會有卡片。來自人的 HTML（web、Telegram 或 Discord）一律只顯示成程式碼。被長度上限截斷的區塊不會有預覽：請 agent 改用 `.html` 檔案傳送。
 - **在哪裡能用。** 預覽來自第二個本機 port：`health_port + 1`（19281）。透過 SSH 使用時也要轉送它：`ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`。透過 tunnel 或 proxy 時需要設定 `web.preview_origin`（對應到那個 port 的另一個主機名稱），而且 proxy 必須原樣傳遞外部的 `Host`。不符合時，卡片會說明預覽為什麼關閉，只提供程式碼與 **下載**。
@@ -152,6 +159,20 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
 - **快速動作**：
   - 聊天標題列上的模型與推理強度，點了會開啟可選清單。
   - instance 的 context 用到 70% 時，輸入框上方會出現 **壓縮** 和 **清空…**。
+
+## Fleet（`/ui/fleet`）
+fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
+- **Tasks**、**排程**、**Teams**：任務看板、cron 排程和 team。可以在這裡建立、認領和刪除。
+- **組織圖**（`/ui/fleet/org`）：最上方是 General，下面是 `fleet.yaml` 的各個 team，最後是未加入 team 的 instance。
+  - 每個 instance 顯示名稱、它負責的工作、backend 與模型，以及即時狀態（工作中、閒置、等你回應、似乎卡住、已暫停、已停止、已當掉）。
+  - 也附上它的 Discord 討論串或 Telegram topic 連結，以及聊天連結。
+  - 組織圖唯讀：操作請在 Discord 或聊天裡進行。
+- **快取**（`/ui/fleet/cache`）：在 24 小時、7 天或 30 天內，每個 Claude Code 與 Codex instance 的提示快取在兩次請求之間過期的頻率、重寫的成本，以及保溫 ping 是否划算。
+  - 資料來自本機的 transcript，不呼叫任何供應商 API；每個 instance 只保存一份小摘要（`cache-ledger.json`）。
+  - 成本以單一價目表的牌價計算，並顯示查證日期。
+  - transcript 有記錄快取寫入時就採用它；沒有記錄時（部分 Codex session），改以未快取的輸入估算重寫量，數字會標示為估算；快取存活時間只能假定時也會標示為估算。
+  - Kiro 與其他 CLI 顯示「不提供」。
+- **設定**：fleet 的頻道、存取權限與預設值。
 
 ## 等你處理（`/ui/needs`）
 
@@ -253,6 +274,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 「登入已結束」 | 閒置 2 小時、登入已滿 12 小時，或有人執行了 revoke：重新登入即可。 |
 | dashboard 短暫顯示「disconnected」之後又繼續更新 | 你這條連線傳不了即時串流，已改成每 5 秒輪詢：不需要處理。 |
 | `/dashboard` 回覆「disabled」 | 這個 bot 沒有設定任何 fleet admin：把你的使用者加進它的 `allowed_users`。 |
+| 在登入頁，瀏覽器的開發者工具顯示 `/auth/session` 有紅色的 **401** | 這是預期行為：頁面會先檢查你是否已經登入，「沒有」就會回 401。不需要處理。 |
 
 ### 確認敏感變更
 

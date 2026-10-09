@@ -39,7 +39,17 @@
       history.replaceState(null, "", here.pathname + here.search + here.hash);
     }
   } catch { /* nothing to clean */ }
-  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.getAttribute("data-i18n")); });
+  // The command in the hint is a <code> that never breaks across lines (a break inside "--code" reads as two dashes
+  // and a word, alpha.2 sweep); the text around it is text.
+  const CMD = "agend web --code";
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const text = t(el.getAttribute("data-i18n"));
+    const at = text.indexOf(CMD);
+    if (at < 0) { el.textContent = text; return; }
+    const code = document.createElement("code");
+    code.textContent = CMD;
+    el.replaceChildren(text.slice(0, at), code, text.slice(at + CMD.length));
+  });
 
   // An old deep link, /ui#instance=<name> (#1408 §3): the fragment never reaches the server, and the sign-in page is
   // served at the URL that was asked for, so it is still in location.hash here. Exactly that one form becomes the new
@@ -94,6 +104,8 @@
     // navigation; going round again would loop, so stop and let the person type a code.
     if (recentlyBounced()) return false;
     try {
+      // Signed out, this answers 401 — and the browser logs that request in red in DevTools. That is expected: the
+      // probe asks "is there a session?", and no is a normal answer here (decided against reshaping the auth API).
       const r = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store" });
       return r.ok;
     } catch { return false; }

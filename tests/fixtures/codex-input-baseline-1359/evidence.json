@@ -1,0 +1,48 @@
+{
+  "backend": "codex-cli 0.160.0",
+  "baseline_source": "98a0c80f9bef54924be38d86470694af186c6068",
+  "isolation": {
+    "network": "unshare -rn, loopback only",
+    "home": "private",
+    "codex_home": "private",
+    "agend_home": "private",
+    "tmux": "private -S socket",
+    "responses": "mock localhost only",
+    "child_environment": "allowlist, no bot credentials",
+    "coredumps": "disabled",
+    "teardown": "SIGINT then only private tmux teardown"
+  },
+  "ui_recovery": "Escape plus resize 120x36 -> 120x10 after first Enter, before confirmation",
+  "runs": {
+    "recovery": {
+      "raw_result_sha256": "338316da85dd55754bc79f7c2942aa97b38f406333e5df2c05593610778919ce",
+      "baseline_readable": false,
+      "after_first_enter_readable": true,
+      "helper_returned": true,
+      "enters": 2,
+      "responses_requests": 2,
+      "user_turn_old_draft": [
+        "OLD DRAFT 1359 shared opening line 0\nOLD DRAFT 1359 shared opening line 1\nOLD DRAFT 1359 shared opening line 2\nOLD DRAFT 1359 shared opening line 3\nOLD DRAFT 1359 shared opening line 4\nOLD DRAFT 1359 shared opening line 5\nOLD DRAFT 1359 shared opening line 6\nOLD DRAFT 1359 shared opening line 7\nOLD DRAFT 1359 shared opening line 8\nOLD DRAFT 1359 shared opening line 9\nOLD DRAFT 1359 shared opening line 10\nOLD DRAFT 1359 shared opening line 11\nOLD DRAFT 1359 shared opening line 12\nOLD DRAFT 1359 shared opening line 13"
+      ],
+      "any_request_contains_new_delivery": false
+    },
+    "recovery-fixed": {
+      "raw_result_sha256": "ea17b5208d7b1ccc2c239e68695b3e070b2a8c09ebdd5feef4467ff540eb01d6",
+      "baseline_readable": false,
+      "after_first_enter_readable": true,
+      "helper_returned": false,
+      "enters": 1,
+      "responses_requests": 0,
+      "user_turn_old_draft": [],
+      "any_request_contains_new_delivery": false
+    }
+  },
+  "fixtures": {
+    "first-enter-ignored.txt": "07f0737e257dd31174af3e691e4e5e80bb1e474851bb01df0e3c23d12f75301c",
+    "old-multiline-unreadable.txt": "ce038562a61dac06f9bf43c99df75cc24156a191958ddf3fffa63aa86da5e212",
+    "older-input-readable.txt": "80948e1ad6a6bff97151a1c5595d89f789b390c3ec59b8d709a1b76be5895770",
+    "submitted.txt": "4f76089e39c1cb42ea13959f93422bb3db3212d8d76b6be7f4ae43097f8edb7b",
+    "warning-baseline.txt": "07f0737e257dd31174af3e691e4e5e80bb1e474851bb01df0e3c23d12f75301c",
+    "wrong-recovery-submitted.txt": "4dd1b97bb788f819648ffcb7b7e0506dee54798351e067e47adbcd3c8f935596"
+  }
+}

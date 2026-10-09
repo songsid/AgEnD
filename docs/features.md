@@ -1081,6 +1081,13 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 
 A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. In `/ui`, **Needs you** (`/ui/needs`) is a panel with a sidebar badge and optional desktop notifications (#1408 step 4). Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
 
-## Web app shell (#1408, step 1)
+## Web app shell (#1408)
 
 `/ui` is rebuilt as a single-page Preact + htm app (no build step; Preact and htm are bundled alongside the source at `src/ui/shared/vendor/`). Step 1 delivers the **Chat** panel at `/ui/chat/<instance>` and the **Fleet** panel at `/ui/fleet`. Step 2 delivers the **View** panel at `/view` and `/view/<instance>`, and step 3 the **Settings** panel at `/settings` and `/settings/<section>`. Typography and layout are modelled on ChatGPT's web UI (design language only — no OpenAI code or assets). The chat thread remains a keyed DOM renderer mounted by a Preact component. Step 4 adds the **Needs you** panel at `/ui/needs`. Design: [docs/design/1408-app-shell.md](design/1408-app-shell.md).
+
+Since then:
+- **Fleet → Org chart** (`/ui/fleet/org`, #1389): General, teams and instances, each with its live state and a link to its thread.
+- **Fleet → Cache** (`/ui/fleet/cache`, #1468): a per-instance prompt-cache expiry analysis with a keep-warm recommendation. It is read from local transcripts and priced at list price, and the check date is shown.
+- **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
+
+See [web-dashboard.md](web-dashboard.md).
