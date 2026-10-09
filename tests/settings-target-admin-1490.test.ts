@@ -147,6 +147,16 @@ describe.each(["telegram", "discord"] as const)("#1490 row11 %s: fallback never 
     for (const adapter of r.adapters) expect(adapter.notifyAlert).not.toHaveBeenCalled();
     expect(r.store.get(p.view.id, "browser")!.confirmation.kind).toBe("host_cli");
   });
+  it("a platform replacement's unknown scope cannot use the old platform's otherwise valid F", async () => {
+    const r = rig(platform), body = r.channels.map(ch => ch.id === "a"
+      ? { ...ch, type: platform === "telegram" ? "discord" : "telegram" } : ch);
+    const p = propose(r, true, { body });
+    expect(r.store.authorityOf(p.view.id)).toEqual({ connections: ["a"], primaryGeneral: false, unknown: true });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(r.any.pendingNonceButtons.size).toBe(0);
+    for (const adapter of r.adapters) expect(adapter.notifyAlert).not.toHaveBeenCalled();
+    expect(r.store.get(p.view.id, "browser")!.confirmation.kind).toBe("host_cli");
+  });
   it("live membership is rechecked after the actual baseline await", async () => {
     const r = rig(platform); let release!: (value: boolean) => void;
     const held = new Promise<boolean>(yes => { release = yes; }), unchanged = vi.fn(() => held);
