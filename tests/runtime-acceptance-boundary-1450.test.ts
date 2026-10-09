@@ -67,6 +67,12 @@ describe("the hop boundary refuses a fleet start in every form, before anything 
     expect(existsSync(w.mark)).toBe(false);
   });
 
+  it("direct: a combined -c cluster is read as -c (a harmless script is allowed)", () => {
+    const { violation } = createRequire(import.meta.url)(BOUNDARY) as { violation(file: string, args: string[]): string | null };
+    expect(violation("bash", ["--noprofile", "--norc", "-ec", "npm --version"])).toBeNull();
+    expect(violation("sh", ["-xc", "node launcher/postinstall.cjs"])).toBeNull();
+  });
+
   it("direct: spawnSync('bash', ['--noprofile', '--norc', '-ec', <command>]) is judged by its -c script", () => {
     const w = world();
     const dir = join(w.root, "a dir");
@@ -191,11 +197,15 @@ describe("shell strings are judged as the shell splits them (boundary.cjs)", () 
     ["sh script.sh"],
     [". ./script.sh"],
     ["cat <(/usr/bin/systemctl show x)"],
+    // A wrapper option it cannot model is refused even in front of a harmless command: it could take the next word.
+    ["nice --weird-flag node x"],
+    ["env --frobnicate=1 node x"],
   ])("refused: %s", (text) => { expect(shellViolation(text)).not.toBeNull(); });
   it.each([
     ["which agend"], ['readlink -f "/a b/agend"'], ["npm install -g @songsid/agend@2.2.0"], ["node scripts/preinstall-guard.cjs"],
     ["systemctl --user show -p KillMode --value com.agend.fleet"], ['sys"temctl" --user is-active x'], ["npm config get prefix"],
     ["command -v agend"], ["env NODE_OPTIONS= npm config get prefix"], ["timeout 5 npm --version"], ["if true; then echo ok; fi"], ["sh -c 'node launcher/postinstall.cjs'"],
+    ["sh -ec 'node launcher/postinstall.cjs'"], ["bash --noprofile -eo pipefail -c 'npm --version'"],
   ])("allowed (reaches PATH and its stubs): %s", (text) => { expect(shellViolation(text)).toBeNull(); });
 
   it.each([
