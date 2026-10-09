@@ -61,7 +61,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 
 ## Agent HTTP token
 
-`POST /agent` 不經 dashboard 閘門，必須帶 `X-Agend-Instance-Token`，伺服器會與所宣告 instance 的 `agent.token` 比對。Daemon 每次啟動 CLI 都會寫入新的 token，目標權限為 `0600`；限制權限失敗會記錄警告，不一定阻止啟動。伺服器也會執行該 instance 的 AgEnD 工具權限限制。Web token 不能替代這個 token。與 IPC socket 相同，同 Unix 使用者的行程能讀到憑證，因此這不是互不信任的本機 agent 之間的隔離機制。
+`POST /agent` 不經 dashboard 閘門，必須帶 `X-Agend-Instance-Token`。header 值格式為 `<encodedInstance>:<token>`，其中 `<encodedInstance>` 是 `encodeURIComponent(instanceName)`，`<token>` 是 daemon 每次啟動 CLI 時寫入 `<instanceDir>/agent.token`（權限 `0600`）的 64 字元 hex token。端點會先解碼 instance 名稱，在讀取請求 body **之前**驗證 token（缺少或錯誤的 token 直接回傳 401，不讀取 body），並將 body 限制在 512 KiB 以內（超過回傳 413）。伺服器也會執行該 instance 的 AgEnD 工具權限限制。Web token 不能替代這個 token。與 IPC socket 相同，同 Unix 使用者的行程能讀到憑證，因此這不是互不信任的本機 agent 之間的隔離機制。
 
 ## 機密資訊儲存
 
