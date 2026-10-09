@@ -113,7 +113,7 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     await h.slash("admin", "T1");
     expect(h.adapter.sendDirect).toHaveBeenCalledTimes(1);
     expect(h.respond).toHaveBeenCalledTimes(1);
-    expect(h.respond).toHaveBeenCalledWith(t("dashboard.private_sent"));
+    expect(h.respond).toHaveBeenCalledWith(t("dashboard.private_sent_dm"));
     expect(h.respond.mock.calls[0][0]).not.toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
     expect(h.respond.mock.calls[0][0]).not.toContain("http");
     expect(h.nonce()).toBeUndefined();
