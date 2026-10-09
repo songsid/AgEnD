@@ -83,7 +83,7 @@ describe("usage-limit auto-dismiss with Escape (#945)", () => {
     expect(usageLimitDialog!.isActive!(IDLE)).toBe(false);
   });
 
-  it("isActive rejects a pane missing option 1 (Reset usage)", () => {
+  it("isActive rejects a pane whose option block does not start at 1 (a row missing)", () => {
     const noOpt1 = REAL_MENU.replace(/.*Reset usage.*/i, "");
     expect(usageLimitDialog!.isActive!(noOpt1)).toBe(false);
   });
