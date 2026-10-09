@@ -467,14 +467,23 @@ before pushing. No arbitrary edits or multiple-commit reverts are authorized.
 
 `REVERT_PENDING #<pr> <head>` waits for every required and present check on that
 exact revert head to succeed (skipped is still not green). Run the command
-again to finish: it rechecks the original failure, recorded branch/tree/parent,
-PR binding, main overlap and exact CI, then squash-merges with
-`--match-head-commit`. This one generated revert requires no reviewer approval.
+again to finish: it rechecks the original failure, recorded branch/tree/parent
+and exact CI. After those network reads, it rechecks the full recorded PR
+identity (repository, number, state, draft, head, branch and main destination),
+refreshes main, and validates squash ancestry and path overlap before merging
+with `--match-head-commit`. This one generated revert requires no reviewer approval.
 It prints `REVERTED <sha>`, and subsequent runs do not create another PR. A
 lost create/merge response is read back; an uncertain result blocks instead of
 blindly creating a new proposal. Main changes overlapping the revert, changed
 revert branches, failed checks and unavailable reads require operator action.
 The revert is not itself eligible for recursive automatic reversion.
+
+The GitHub merge API pins the head but does not atomically pin the base or main
+tip. A change after the final snapshots can still race the remote operation.
+The merge readback must retain the same full PR identity and main destination
+before `REVERTED` is recorded. A changed destination is `BLOCKED`, leaves the
+receipt unsettled, and requires inspection of the remote effect; a retry cannot
+adopt that wrong-base merge.
 
 The private receipt and per-target lock must stay with the clone. Do not delete
 or copy them to bypass a failure. A terminated operator command can leave a lock

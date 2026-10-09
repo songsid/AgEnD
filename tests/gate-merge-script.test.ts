@@ -50,7 +50,7 @@ if (args[0] === "pr" && args[1] === "edit") {
 if (args[0] === "pr" && args[1] === "create") {
   const cp = require("node:child_process");
   const h = cp.execFileSync("git", ["--git-dir", st.origin, "rev-parse", "refs/heads/"+opt("--head")], {encoding:"utf8"}).trim();
-  st.prs[99] = {state:"OPEN",isDraft:false,headRefOid:h,headRefName:opt("--head"),baseRefName:opt("--base"),isCrossRepository:false};
+  st.prs[99] = {number:99,url:"https://github.com/songsid/AgEnD/pull/99",state:"OPEN",isDraft:false,headRefOid:h,headRefName:opt("--head"),baseRefName:opt("--base"),isCrossRepository:false};
   st.checkRuns[h] = st.autoRevertGreen ? st.greenRuns : [];
   save();
   if (st.createAppliedButFails) fail("lost create ACK");
@@ -61,6 +61,7 @@ if (args[0] === "pr" && args[1] === "merge") {
   if (st.failMerge) fail(st.failMerge);
   if (opt("--match-head-commit") !== pr.headRefOid) fail("Head branch was modified. Review and try the merge again.");
   if (!args.includes("--squash")) fail("not squash");
+  if (Number(args[2]) === 99 && st.revertMergePatch) Object.assign(pr, st.revertMergePatch);
   let merged = "f".repeat(40);
   if (st.actualMerge) {
     const cp = require("node:child_process"), server = path.join(dir,"server");
@@ -83,18 +84,32 @@ if (args[0] === "api") {
   if (args[1].includes("actions/runs")) { if(st.failMainCi) fail("CI unavailable"); out(st.mainCi); }
   const c = /commits\/([0-9a-f]{40})$/.exec(args[1]); if(c) {if(st.commitMetadata?.[c[1]]) out(st.commitMetadata[c[1]]); fail("no commit metadata");}
   const m = /commits\/([0-9a-f]{40})\/check-runs/.exec(args[1]);
-  if (m) { if(st.moveMainAfterChecks) { require("node:child_process").execFileSync("git", ["--git-dir",st.origin,"update-ref","refs/heads/main",st.moveMainAfterChecks]); delete st.moveMainAfterChecks; save(); } const runs = st.checkRuns[m[1]] ?? []; out({ total_count: st.totalCount ?? runs.length, check_runs: runs }); }
+  if (m) {
+    if(st.moveMainAfterChecks) { require("node:child_process").execFileSync("git", ["--git-dir",st.origin,"update-ref","refs/heads/main",st.moveMainAfterChecks]); delete st.moveMainAfterChecks; save(); }
+    const mutation = st.checkReadMutation;
+    if (mutation?.head === m[1]) {
+      mutation.count = (mutation.count ?? 0) + 1;
+      if (mutation.count === mutation.at) {
+        if (mutation.main) require("node:child_process").execFileSync("git", ["--git-dir",st.origin,"update-ref","refs/heads/main",mutation.main]);
+        if (mutation.pr) Object.assign(st.prs[mutation.pr], mutation.patch);
+      }
+      save();
+    }
+    const runs = st.checkRuns[m[1]] ?? []; out({ total_count: st.totalCount ?? runs.length, check_runs: runs });
+  }
 }
 fail("unexpected gh " + args.join(" "));
 `;
 
-type Pr = { state: string; isDraft: boolean; headRefOid: string; headRefName: string; baseRefName: string; isCrossRepository: boolean; mergeCommit?: { oid: string } };
+type Pr = { number?: number; url?: string; state: string; isDraft: boolean; headRefOid: string; headRefName: string; baseRefName: string; isCrossRepository: boolean; mergeCommit?: { oid: string } };
 type State = {
   prs: Record<string, Pr>; checkRuns: Record<string, unknown[]>; failMerge?: string; failEdit?: number[]; ignoreEdit?: number[]; totalCount?: number;
   failDelete?: boolean; rules?: unknown[]; failRules?: boolean; viewFails?: number[]; viewFailsAfterMerge?: boolean; merged?: boolean;
   editAppliedButFails?: number[]; mergeAppliedButFails?: boolean;
   actualMerge?: boolean; origin?: string; greenRuns?: unknown[]; autoRevertGreen?: boolean; mainCi?: unknown; failMainCi?: boolean;
   commitMetadata?: Record<string, any>; createAppliedButFails?: boolean; moveMainAfterChecks?: string;
+  checkReadMutation?: { head: string; at: number; count?: number; main?: string; pr?: number; patch?: Partial<Pr> };
+  revertMergePatch?: Partial<Pr>;
 };
 
 // main's gate: every required check, green.
@@ -132,7 +147,7 @@ function world() {
   const ok = (name: string, id = 1) => ({ id, name, status: "completed", conclusion: "success" });
   const state: State = {
     origin, greenRuns: green(ok, 1),
-    prs: { 7: { state: "OPEN", isDraft: false, headRefOid: approved, headRefName: "feature", baseRefName: "main", isCrossRepository: false } },
+    prs: { 7: { number: 7, url: `https://github.com/${REPO}/pull/7`, state: "OPEN", isDraft: false, headRefOid: approved, headRefName: "feature", baseRefName: "main", isCrossRepository: false } },
     checkRuns: { [approved]: green(ok, 1) },
   };
   const saveState = () => writeFileSync(join(bin, "state.json"), JSON.stringify(state));
@@ -682,6 +697,72 @@ function mergedWorld() {
 }
 
 describe("gate workflow 1480: exact main CI and private single-squash revert", () => {
+  it.each([
+    ["first CI", 1, "global"],
+    ["final CI global", 2, "global"],
+    ["final CI reverted path", 2, "same path"],
+  ] as const)("revert final effect rejects main movement during %s", (_label, at, kind) => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/);
+    const head = w.state.prs[99]!.headRefOid; w.state.checkRuns[head] = green(w.ok, 20);
+    w.sh(w.dev, "fetch", "-q", "origin"); w.sh(w.dev, "checkout", "-q", "-B", "main", "origin/main");
+    // A mode-only change is a cleanly mergeable modification of a reverted path, not a Git conflict.
+    if (kind === "same path") chmodSync(join(w.dev, "src/a.ts"), 0o755);
+    const future = w.commit("main moves during CI", kind === "global" ? { "package.json": "{}\n" } : {});
+    w.sh(w.dev, "push", "-q", "origin", "HEAD:refs/heads/future");
+    w.state.checkReadMutation = { head, at, main: future };
+    const r = w.post();
+    expect(r.status, r.line).toBe(1); expect(r.line).toContain("overlapping main");
+    expect(w.writes(r.calls)).toEqual([]);
+    expect(w.sh(w.dev, "ls-remote", "origin", "refs/heads/main").split(/\s/)[0]).toBe(future);
+    expect(JSON.parse(readFileSync(w.receipt, "utf8")).reverted).toBeUndefined();
+  });
+  it("revert final effect revalidates squash ancestry after final CI", () => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/);
+    const head = w.state.prs[99]!.headRefOid; w.state.checkRuns[head] = green(w.ok, 20);
+    const parent = JSON.parse(readFileSync(w.receipt, "utf8")).parent;
+    w.state.checkReadMutation = { head, at: 2, main: parent };
+    const r = w.post();
+    expect(r.status).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+    expect(w.sh(w.dev, "ls-remote", "origin", "refs/heads/main").split(/\s/)[0]).toBe(parent);
+    expect(JSON.parse(readFileSync(w.receipt, "utf8")).reverted).toBeUndefined();
+  });
+  it.each([
+    ["destination", { baseRefName: "release/test" }],
+    ["draft", { isDraft: true }],
+    ["state", { state: "CLOSED" }],
+    ["head", { headRefOid: "a".repeat(40) }],
+    ["branch", { headRefName: "other" }],
+    ["fork", { isCrossRepository: true }],
+    ["repository", { url: "https://github.com/other/AgEnD/pull/99" }],
+    ["number", { number: 100 }],
+  ] as const)("revert final effect rechecks %s after final CI", (_label, patch) => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/);
+    const head = w.state.prs[99]!.headRefOid; w.state.checkRuns[head] = green(w.ok, 20);
+    w.sh(w.dev, "fetch", "-q", "origin");
+    w.sh(w.dev, "push", "-q", "origin", `${w.merged}:refs/heads/release/test`);
+    w.state.checkReadMutation = { head, at: 2, pr: 99, patch };
+    const r = w.post();
+    expect(r.status, r.line).toBe(1); expect(w.writes(r.calls)).toEqual([]);
+    for (const branch of ["main", "release/test"]) expect(w.sh(w.dev, "ls-remote", "origin", `refs/heads/${branch}`).split(/\s/)[0]).toBe(w.merged);
+    expect(JSON.parse(readFileSync(w.receipt, "utf8")).reverted).toBeUndefined();
+  });
+  it("revert merge readback refuses a changed destination without settling its receipt", () => {
+    const w = mergedWorld(); expect(w.post().line).toMatch(/^REVERT_PENDING/);
+    const head = w.state.prs[99]!.headRefOid; w.state.checkRuns[head] = green(w.ok, 20);
+    w.sh(w.dev, "fetch", "-q", "origin");
+    w.sh(w.dev, "push", "-q", "origin", `${w.merged}:refs/heads/release/test`);
+    // Models movement after the final read: the head-only GitHub merge API cannot pin the base.
+    w.state.revertMergePatch = { baseRefName: "release/test" };
+    const r = w.post();
+    expect(r.status, r.line).toBe(1); expect(r.line).toContain("revert PR changed");
+    expect(r.calls.filter(c => c.startsWith("pr merge"))).toHaveLength(1);
+    expect(w.sh(w.dev, "ls-remote", "origin", "refs/heads/main").split(/\s/)[0]).toBe(w.merged);
+    expect(w.sh(w.dev, "ls-remote", "origin", "refs/heads/release/test").split(/\s/)[0]).not.toBe(w.merged);
+    expect(JSON.parse(readFileSync(w.receipt, "utf8")).reverted).toBeUndefined();
+    // A retry must not adopt the wrong-base merge through the already-MERGED branch either.
+    const again = w.post(); expect(again.status).toBe(1); expect(w.writes(again.calls)).toEqual([]);
+    expect(JSON.parse(readFileSync(w.receipt, "utf8")).reverted).toBeUndefined();
+  });
   it("failed main CI creates one real single-commit revert and waits for exact-head CI, then merges once", () => {
     const w = mergedWorld();
     const first = w.post(); expect(first.status, first.stderr + first.line).toBe(0); expect(first.line).toMatch(/^REVERT_PENDING #99 /);

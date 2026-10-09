@@ -96,13 +96,29 @@ function exactCi(head) {
   for (const r of d.check_runs) { requireThat(typeof r.name === 'string' && Number.isSafeInteger(r.id), 'invalid check'); if (!latest.has(r.name) || latest.get(r.name).id < r.id) latest.set(r.name, r); }
   return latest.size > 0 && [...required].every(n => latest.has(n)) && [...latest.values()].every(r => r.status === 'completed' && r.conclusion === 'success');
 }
-function verifiedTarget(r, merged, base) {
+function verifiedTargetCommit(r, merged, base) {
   requireThat(r.version === 1 && r.kind === 'gate-squash' && r.repo === repo && r.base === 'main' && r.merge === merged && sha(r.parent) && sha(r.head), 'not a gate main squash receipt');
   requireThat(git('rev-list', '--parents', '-n', '1', merged).trim() === `${merged} ${r.parent}`, 'not a single-parent squash');
   requireThat(git('show', '-s', '--format=%B', merged).split('\n').includes(marker(r.op)), 'gate marker mismatch');
   git('merge-base', '--is-ancestor', merged, base);
+}
+function verifiedTarget(r, merged, base) {
+  verifiedTargetCommit(r, merged, base);
   const p = gh('pr', 'view', String(r.pr), '-R', repo, '--json', 'state,mergeCommit');
   requireThat(p.state === 'MERGED' && p.mergeCommit?.oid === merged, 'original PR receipt mismatch');
+}
+function readRevertPr(v) {
+  const p = gh('pr', 'view', String(v.pr), '-R', repo, '--json', 'number,url,state,isDraft,headRefOid,headRefName,baseRefName,isCrossRepository,mergeCommit');
+  // -R selects the base repository; the returned identity must still name that exact recorded PR.
+  requireThat(p.number === v.pr && p.url === `https://github.com/${repo}/pull/${v.pr}` && p.headRefOid === v.head && p.headRefName === v.branch && p.baseRefName === 'main' && p.isCrossRepository === false, 'revert PR changed');
+  requireThat(p.isDraft === false, 'revert PR is draft');
+  return p;
+}
+function settleRevert(r, file, p) {
+  requireThat(p.state === 'MERGED' && sha(p.mergeCommit?.oid), 'revert merge unconfirmed');
+  r.reverted = p.mergeCommit.oid;
+  writePrivate(file, r);
+  return `REVERTED ${r.reverted}`;
 }
 function post(merged) {
   requireThat(sha(merged), 'full merge SHA required');
@@ -164,25 +180,28 @@ function post(merged) {
       requireThat(Number.isSafeInteger(v.pr) && v.pr > 0, 'invalid revert PR');
       writePrivate(file, r);
     }
-    const p = gh('pr', 'view', String(v.pr), '-R', repo, '--json', 'state,isDraft,headRefOid,headRefName,baseRefName,isCrossRepository,mergeCommit');
-    requireThat(p.headRefOid === v.head && p.headRefName === v.branch && p.baseRefName === 'main' && p.isCrossRepository === false, 'revert PR changed');
-    if (p.state === 'MERGED') { requireThat(sha(p.mergeCommit?.oid), 'revert merge unreadable'); r.reverted = p.mergeCommit.oid; writePrivate(file, r); return `REVERTED ${r.reverted}`; }
-    requireThat(p.state === 'OPEN' && p.isDraft === false, 'revert PR not open');
+    const p = readRevertPr(v);
+    if (p.state === 'MERGED') return settleRevert(r, file, p);
+    requireThat(p.state === 'OPEN', 'revert PR not open');
     if (!exactCi(v.head)) return `REVERT_PENDING #${v.pr} ${v.head}`;
-    // Reads may take time; repeat provenance, main failure, base/overlap and exact CI immediately before mutation.
+    // Finish the slow network reads before capturing the main tip used to authorize the effect.
+    verifiedTarget(r, merged, base);
+    requireThat(mainCi(merged) === 'FAILURE', 'main CI no longer failed');
+    requireThat(exactCi(v.head), 'revert CI changed');
+    const currentPr = readRevertPr(v);
+    requireThat(currentPr.state === 'OPEN', 'revert PR not open');
     git('fetch', '-q', remote, `+refs/heads/main:${mainRef}`);
     const currentBase = git('rev-parse', mainRef).trim();
-    verifiedTarget(r, merged, currentBase);
-    requireThat(mainCi(merged) === 'FAILURE', 'main CI no longer failed');
+    // Local checks only after this refresh: no earlier tip survives the CI/provenance waits.
+    verifiedTargetCommit(r, merged, currentBase);
     requireThat(overlap(currentBase, v.head) === 'DISJOINT', 'revert behind overlapping main: manual sync required');
-    requireThat(exactCi(v.head), 'revert CI changed');
     // A lost response is read back; no automatic retry here.
     let mergeError;
     try { run('gh', ['pr', 'merge', String(v.pr), '-R', repo, '--squash', '--match-head-commit', v.head]); } catch (e) { mergeError = e; }
-    const after = gh('pr', 'view', String(v.pr), '-R', repo, '--json', 'state,mergeCommit');
+    // The merge API pins the head, not the base. A changed destination must not settle our receipt.
+    const after = readRevertPr(v);
     requireThat(after.state === 'MERGED' && sha(after.mergeCommit?.oid), `revert merge unconfirmed: ${mergeError?.message || after.state}`);
-    r.reverted = after.mergeCommit.oid; writePrivate(file, r);
-    return `REVERTED ${r.reverted}`;
+    return settleRevert(r, file, after);
   } finally {
     if (scratch) { try { git('worktree', 'remove', '--force', scratch); } catch { /* owned scratch only; operator can inspect */ } }
     try { git('update-ref', '-d', mainRef); git('update-ref', '-d', revertRef); } finally { rmSync(lock, { recursive: true }); }
