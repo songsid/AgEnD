@@ -75,9 +75,9 @@ describe("the hop boundary refuses a fleet start in every form, before anything 
   });
 
   it("direct: a combined -c cluster is read as -c (a harmless script is allowed)", () => {
-    const { violation } = createRequire(import.meta.url)(BOUNDARY) as { violation(file: string, args: string[]): string | null };
-    expect(violation("bash", ["--noprofile", "--norc", "-ec", "npm --version"])).toBeNull();
-    expect(violation("sh", ["-xc", "node launcher/postinstall.cjs"])).toBeNull();
+    const { violation } = createRequire(import.meta.url)(BOUNDARY) as { violation(file: string, args: string[], env: Record<string, string>): string | null };
+    expect(violation("bash", ["--noprofile", "--norc", "-ec", "npm --version"], { PATH: "/usr/bin:/bin" })).toBeNull();
+    expect(violation("sh", ["-xc", "node launcher/postinstall.cjs"], { PATH: "/usr/bin:/bin" })).toBeNull();
   });
 
   it("direct: spawnSync('bash', ['--noprofile', '--norc', '-ec', <command>]) is judged by its -c script", () => {
@@ -184,12 +184,13 @@ describe("the hop's stubbed manager calls: argv kept, judged fail-closed (manage
 });
 
 describe("shell strings are judged as the shell splits them (boundary.cjs)", () => {
-  const { shellViolation: judge } = createRequire(import.meta.url)(BOUNDARY) as { shellViolation(text: string, env?: Record<string, string | undefined>): string | null };
+  const { shellViolation: judge, trustForTests } = createRequire(import.meta.url)(BOUNDARY) as { shellViolation(text: string, env?: Record<string, string | undefined>): string | null; trustForTests(env: Record<string, string>): void };
   // A hop's environment: its stubs first on PATH, and named as the stubs.
   const stubs = mkdtempSync(join(tmpdir(), "agend-stubs-"));
   roots.push(stubs);
   for (const m of ["systemctl", "launchctl"]) { writeFileSync(join(stubs, m), "#!/bin/sh\nexit 1\n"); chmodSync(join(stubs, m), 0o755); }
   const hopEnv = { PATH: `${stubs}:/usr/bin:/bin`, AGEND_BOUNDARY_STUBS: stubs };
+  trustForTests(hopEnv);
   const shellViolation = (text: string) => judge(text, hopEnv);
   it.each([
     ['"/tmp/a b/systemctl" --user restart x'],
