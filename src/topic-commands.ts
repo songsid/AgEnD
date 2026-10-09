@@ -1602,7 +1602,7 @@ export class TopicCommands {
       this.ctx.failUpdateProgress?.(`/update cannot prepare an independent updater (${launch.reason}). Run ` + "`agend update` from a host shell.");
       return;
     }
-    if (!this.ctx.hasFleetAdmins(msg.adapterId) || !this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+    if (!this.ctx.hasFleetAdmins(msg.adapterId) || !this.ctx.isFleetAdmin(msg.userId, msg.adapterId) || this.ctx.isFleetStopping()) {
       this.ctx.failUpdateProgress?.(t("not_authorized"));
       return;
     }

@@ -116,7 +116,7 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
     const commands = new TopicCommands({
       adapter, adapters: new Map([["telegram-main", adapter]]),
       fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
-      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin",
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
       dataDir: scratch(),
     } as any);
     const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;
@@ -155,7 +155,7 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
     const commands = new TopicCommands({
       adapter, adapters: new Map([["telegram-main", adapter]]),
       fleetConfig: { channel: { access: { allowed_users: ["admin"] } } },
-      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin",
+      hasFleetAdmins: () => true, isFleetAdmin: (u: string) => u === "admin", isFleetStopping: () => false,
       dataDir: scratch(), failUpdateProgress: (m: string) => { failed.push(m); },
     } as any);
     const msg = { text: "/update", chatId: "chat", threadId: "1", messageId: "m", userId: "admin", adapterId: "telegram-main", username: "op", timestamp: new Date() } as any;

@@ -32,6 +32,8 @@ vi.mock("../src/update-dispatch.js", async original => {
   const real = await original<typeof import("../src/update-dispatch.js")>();
   return { ...real, resolveInstalledAgend: vi.fn(async () => ({ ok: true, agend: "/test prefix/$HOME/agend", version: "2.2.0" })) };
 });
+// Shutdown notifications stay inert even if the test runner inherited a service environment.
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { defaultUpdateLaunchDeps, inServiceCgroup, resolveUpdateLaunch, watchUpdateLaunch, type UpdateLaunchDeps } from "../src/update-launch.js";
@@ -124,7 +126,7 @@ async function handler(platform: "discord" | "telegram", admin = () => true) {
   } else {
     const adapter = { id: "telegram-main", type: "telegram", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) };
     const commands = new TopicCommands({ adapter, adapters: new Map([[adapter.id, adapter]]), dataDir: scratch(),
-      hasFleetAdmins: () => true, isFleetAdmin: admin, failUpdateProgress: failed, fleetConfig: { channel: {} } } as any);
+      hasFleetAdmins: () => true, isFleetAdmin: admin, isFleetStopping: () => false, failUpdateProgress: failed, fleetConfig: { channel: {} } } as any);
     await (commands as any).handleUpdateCommand({ chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
   }
   return failed;
@@ -157,6 +159,72 @@ describe.each(["discord", "telegram"] as const)("real %s update entry", platform
   });
   it("a non-admin never reaches any scope preparation", async () => {
     await handler(platform, () => false); expect(effects).toHaveLength(0); expect(defaultUpdateLaunchDeps.cgroup).not.toHaveBeenCalled();
+  });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(r => { resolve = r; });
+  return { promise, resolve };
+}
+
+/** Actual FleetManager context, handlers and admin gate; no fleet or adapter is started. */
+function fleetHandler(platform: "discord" | "telegram") {
+  const fm = new FleetManager(scratch()); managers.push(fm);
+  const adapter = { id: `${platform}-main`, type: platform, sendText: vi.fn().mockResolvedValue({ messageId: "m" }) };
+  const config = { channel: { id: adapter.id, type: platform, group_id: "group", access: { allowed_users: ["admin"] } }, instances: {} };
+  const failed = vi.fn();
+  Object.assign(fm, { adapter, fleetConfig: config, beginUpdateProgress: vi.fn(), failUpdateProgress: failed });
+  fm.adapters.set(adapter.id, adapter as any);
+  // There are no login windows/listeners in this fixture. Keep those native teardown boundaries inert too.
+  vi.spyOn(fm as any, "shutdownLoginWindows").mockResolvedValue(undefined);
+  vi.spyOn(fm as any, "stopPreviewListener").mockReturnValue(undefined);
+  const run = () => platform === "discord"
+    ? (fm as any).handleUpdateSlash({ channelId: "general", userId: "admin", respond: vi.fn().mockResolvedValue("m") }, adapter.id)
+    : (fm as any).topicCommands.handleUpdateCommand({ chatId: "group", threadId: "1", userId: "admin", adapterId: adapter.id });
+  return { fm, config, adapter, failed, run };
+}
+
+describe.each(["discord", "telegram"] as const)("%s update with the actual fleet context", platform => {
+  it("shutdown during the planner await prevents the independent updater from escaping", async () => {
+    const h = fleetHandler(platform), entered = deferred<void>(), version = deferred<string>(), saved = deferred<void>();
+    const shutdown = vi.fn(() => saved.promise);
+    Object.assign(h.fm, { runtimeCpuProfiler: { shutdown } });
+    vi.mocked(defaultUpdateLaunchDeps.version).mockImplementation(() => { entered.resolve(); return version.promise; });
+    const request = h.run();
+    let stopped: Promise<void> | undefined;
+    try {
+      await entered.promise;
+      stopped = h.fm.stopAll(); // The real synchronous shutdown fence, with the save await held.
+      expect(shutdown).toHaveBeenCalledOnce();
+      expect(h.fm.isPlannedRestart()).toBe(true);
+      expect(h.fm.isFleetAdmin("admin", h.adapter.id)).toBe(true);
+      version.resolve("systemd 255\n");
+      await request;
+      expect(effects).toHaveLength(0);
+      expect(h.failed).toHaveBeenCalledOnce();
+    } finally {
+      version.resolve("systemd 255\n"); saved.resolve();
+      await request; await stopped;
+    }
+  });
+  it("an admitted live fleet still launches once", async () => {
+    const h = fleetHandler(platform);
+    expect(h.fm.isFleetStopping()).toBe(false);
+    await h.run();
+    expect(effects).toHaveLength(1); expect(effects[0].command).toBe("systemd-run");
+    expect(h.failed).not.toHaveBeenCalled();
+  });
+  it("authority revoked during the planner await still refuses", async () => {
+    const h = fleetHandler(platform), entered = deferred<void>(), version = deferred<string>();
+    vi.mocked(defaultUpdateLaunchDeps.version).mockImplementation(() => { entered.resolve(); return version.promise; });
+    const request = h.run();
+    try {
+      await entered.promise;
+      h.config.channel.access.allowed_users = [];
+      version.resolve("systemd 255\n"); await request;
+      expect(effects).toHaveLength(0); expect(h.failed).toHaveBeenCalledOnce();
+    } finally { version.resolve("systemd 255\n"); await request; }
   });
 });
 

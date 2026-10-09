@@ -1986,6 +1986,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return caller;
   }
 
+  /** Pure cached admission for command continuations; no IO or update-progress lookup. */
+  isFleetStopping(): boolean {
+    return this.shuttingDown;
+  }
+
   /**
    * Is the fleet going down (or coming back up) on purpose?
    *
