@@ -41,32 +41,70 @@ export const SYSTEMD_DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/u
 /** launchd's PATH when a job sets none. */
 export const LAUNCHD_DEFAULT_PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 
-/** Split a systemd `Environment=` value: space-separated assignments, an assignment may be double-quoted. */
-function splitSystemdEnvironment(value: string): Record<string, string> {
+/** A busctl `--json=short` reply's `data`, or null. */
+function busData(result: CommandResult): unknown {
+  if (result.status !== 0) return null;
+  try { return (JSON.parse(result.stdout) as { data?: unknown }).data ?? null; } catch { return null; }
+}
+
+/** `KEY=VALUE` strings → a map (later entries win, as in systemd). */
+function assignments(list: unknown): Record<string, string> | null {
+  if (!Array.isArray(list) || !list.every(item => typeof item === "string")) return null;
   const env: Record<string, string> = {};
-  for (const match of value.matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)) {
-    const item = match[1] !== undefined ? match[1].replace(/\\(.)/g, "$1") : match[2]!;
+  for (const item of list as string[]) {
     const eq = item.indexOf("=");
     if (eq > 0) env[item.slice(0, eq)] = item.slice(eq + 1);
   }
   return env;
 }
 
-/** `systemctl show -p ExecStart -p Environment -p NeedDaemonReload <unit>` → the loaded tuple and reload state. */
-export function parseSystemdShow(text: string): { tuple: ActivationTuple | null; needDaemonReload: boolean | null; execStarts: number } {
-  const props = new Map<string, string>();
-  for (const line of text.split("\n")) {
-    const eq = line.indexOf("=");
-    if (eq > 0) props.set(line.slice(0, eq), line.slice(eq + 1));
+export interface LoadedUnit {
+  /** The one ExecStart, argv exactly as systemd holds it (lossless: D-Bus `as`, not `systemctl show`'s joined text). */
+  tuple: ActivationTuple;
+  needDaemonReload: boolean;
+}
+
+/**
+ * What systemd will execute for `unit`, read over D-Bus with `busctl --json=short` (#1449 review r4: `systemctl show`
+ * joins argv with spaces, so `"fleet start"` and `fleet start` print alike). The effective environment is the
+ * manager's environment, then the unit's `Environment=`, then `UnsetEnvironment=`. A unit that also reads
+ * `EnvironmentFile=` or uses `PassEnvironment=` cannot be proven from here: refused, never guessed.
+ */
+export function readLoadedUnit(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string): { ok: true; unit: LoadedUnit } | { ok: false; reason: string } {
+  const scope = user ? ["--user"] : [];
+  const name = unit.endsWith(".service") ? unit : `${unit}.service`;
+  const bus = (args: string[]) => busData(run("busctl", [...scope, "--json=short", ...args]));
+  const path = bus(["call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "LoadUnit", "s", name]);
+  const objectPath = Array.isArray(path) && typeof path[0] === "string" ? path[0] : null;
+  if (!objectPath) return { ok: false, reason: `systemd does not know ${name}` };
+  const prop = (iface: string, property: string) => bus(["get-property", "org.freedesktop.systemd1", objectPath, `org.freedesktop.systemd1.${iface}`, property]);
+  const exec = prop("Service", "ExecStart");
+  if (!Array.isArray(exec) || exec.length !== 1 || !Array.isArray(exec[0]) || typeof exec[0][0] !== "string" || !Array.isArray(exec[0][1])) {
+    return { ok: false, reason: `its ExecStart is not exactly one command (${Array.isArray(exec) ? exec.length : "unreadable"})` };
   }
-  const exec = props.get("ExecStart") ?? "";
-  const entries = [...exec.matchAll(/\{ path=([^;]*?) ; argv\[\]=([^;]*?) ;/g)];
-  const need = props.get("NeedDaemonReload");
-  const env = splitSystemdEnvironment(props.get("Environment") ?? "");
-  const tuple = entries.length === 1
-    ? { program: entries[0]![1]!.trim(), argv: entries[0]![2]!.trim().split(/\s+/), env }
-    : null;
-  return { tuple, needDaemonReload: need === "yes" ? true : need === "no" ? false : null, execStarts: entries.length };
+  const argv = exec[0][1] as unknown[];
+  if (!argv.every(item => typeof item === "string")) return { ok: false, reason: "its ExecStart argv is unreadable" };
+  const files = prop("Service", "EnvironmentFiles");
+  if (!Array.isArray(files)) return { ok: false, reason: "its EnvironmentFiles cannot be read" };
+  if (files.length > 0) return { ok: false, reason: "it reads EnvironmentFile=, whose effect cannot be proven here" };
+  const pass = prop("Service", "PassEnvironment");
+  if (!Array.isArray(pass)) return { ok: false, reason: "its PassEnvironment cannot be read" };
+  if (pass.length > 0) return { ok: false, reason: "it uses PassEnvironment=, whose effect cannot be proven here" };
+  const manager = assignments(bus(["get-property", "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "Environment"]));
+  const own = assignments(prop("Service", "Environment"));
+  const unset = prop("Service", "UnsetEnvironment");
+  if (!manager || !own || !Array.isArray(unset) || !unset.every(item => typeof item === "string")) {
+    return { ok: false, reason: "its environment cannot be read" };
+  }
+  const env: Record<string, string> = { ...manager, ...own };
+  for (const item of unset as string[]) {
+    const eq = item.indexOf("=");
+    if (eq < 0) delete env[item];
+    else if (env[item.slice(0, eq)] === item.slice(eq + 1)) delete env[item.slice(0, eq)];
+  }
+  const need = prop("Unit", "NeedDaemonReload");
+  if (typeof need !== "boolean") return { ok: false, reason: "NeedDaemonReload cannot be read" };
+  return { ok: true, unit: { tuple: { program: exec[0][0] as string, argv: argv as string[], env }, needDaemonReload: need } };
 }
 
 const xmlUnescape = (text: string) => text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&amp;/g, "&");
@@ -109,6 +147,10 @@ export function parseLaunchctlPrint(text: string): { tuple: ActivationTuple | nu
   };
 }
 
+/** The arguments `fleet start`, as two separate elements (never one "fleet start" argument). */
+const FLEET_START = ["fleet", "start"];
+const sameArgs = (args: string[], want: string[]) => args.length === want.length && args.every((arg, i) => arg === want[i]);
+
 /** The interpreter a script runs on: its shebang, `env node` resolved on the definition's PATH. */
 function scriptInterpreter(script: string, path: string, deps: TupleDeps): string | null {
   const line = deps.readFirstLine(script);
@@ -142,7 +184,7 @@ export function tupleStartsVerified(
   const program = deps.realpath(tuple.program);
   const args = tuple.argv.slice(1);
   if (program === verified.bin) {
-    if (args.join(" ") !== "fleet start") return { ok: false, reason: `it runs "${args.join(" ")}", not "fleet start"` };
+    if (!sameArgs(args, FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args)}, not ["fleet","start"]` };
     const interpreter = scriptInterpreter(verified.bin, tuple.env.PATH ?? defaultPath, deps);
     if (interpreter !== verified.node) return { ok: false, reason: `its Node is ${interpreter ?? "unresolvable"}, not the verified ${verified.node}` };
     return { ok: true };
@@ -150,7 +192,7 @@ export function tupleStartsVerified(
   if (program === verified.node) {
     const entry = args[0] ? deps.realpath(args[0]) : null;
     if (entry !== verified.bin) return { ok: false, reason: `it starts ${args[0] ?? "nothing"}, not ${verified.bin}` };
-    if (args.slice(1).join(" ") !== "fleet start") return { ok: false, reason: `it runs "${args.slice(1).join(" ")}", not "fleet start"` };
+    if (!sameArgs(args.slice(1), FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args.slice(1))}, not ["fleet","start"]` };
     return { ok: true };
   }
   return { ok: false, reason: `it starts ${tuple.program} (${program ?? "missing"}), not ${verified.bin}` };
@@ -197,10 +239,13 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     if (reload.status !== 0) {
       return { ok: false, stopped: false, message: `  ✗ systemctl${manager.user ? " --user" : ""} daemon-reload failed, so systemd still runs the old definition. Not restarting the fleet.` };
     }
-    const show = deps.run("systemctl", [...scope, "show", "-p", "ExecStart", "-p", "Environment", "-p", "NeedDaemonReload", manager.unit]);
-    const loaded = show.status === 0 ? parseSystemdShow(show.stdout) : null;
-    if (!loaded || loaded.needDaemonReload !== false || !loaded.tuple) {
-      return { ok: false, stopped: false, message: `  ✗ Could not read what systemd has loaded for ${manager.unit} (${loaded?.execStarts ?? 0} ExecStart, NeedDaemonReload=${loaded?.needDaemonReload ?? "unknown"}). Not restarting the fleet.` };
+    const read = readLoadedUnit(deps.run, manager.user, manager.unit);
+    if (!read.ok) {
+      return { ok: false, stopped: false, message: `  ✗ Cannot prove what systemd will run for ${manager.unit}: ${read.reason}. Not restarting the fleet.` };
+    }
+    const loaded = read.unit;
+    if (loaded.needDaemonReload) {
+      return { ok: false, stopped: false, message: `  ✗ systemd still needs a daemon-reload for ${manager.unit} (the loaded definition is not the file). Not restarting the fleet.` };
     }
     const match = tupleStartsVerified(loaded.tuple, verified, SYSTEMD_DEFAULT_PATH, deps);
     if (!match.ok) {
@@ -210,10 +255,25 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     return { ok: true, via: "restart" };
   }
 
-  // launchd: the reload is the activation. Prove everything on disk first; then one bootout + bootstrap; then prove the
-  // loaded job; on failure put the preimage job back.
-  const preimage = deps.readFile(manager.plistPath);
+  // launchd: the reload is the activation (#1449 review r4).
+  // Before anything is stopped: the job launchd has LOADED must be the one its plist on disk describes, so that this
+  // plist is a true preimage to roll back to; launchd's own environment must not inject NODE_OPTIONS/NODE_PATH; and
+  // the refreshed plist must start the verified install. Then one bootout + bootstrap, proven by the loaded tuple and
+  // a running pid. Recovery bootstraps the preimage and must prove ITS tuple is what runs — not just any pid.
   const target = `${manager.domain}/${manager.label}`;
+  for (const key of ["NODE_OPTIONS", "NODE_PATH"]) {
+    const value = deps.run("launchctl", ["getenv", key]);
+    if (value.status === 0 && value.stdout.trim() !== "") {
+      return { ok: false, stopped: false, message: `  ✗ launchd's environment sets ${key} for every job, which changes how Node runs. Not activating; unset it (launchctl unsetenv ${key}).` };
+    }
+  }
+  const preimage = deps.readFile(manager.plistPath);
+  const preimageTuple = preimage !== null ? parsePlist(preimage) : null;
+  const before = deps.run("launchctl", ["print", target]);
+  const loadedBefore = before.status === 0 ? parseLaunchctlPrint(before.stdout) : null;
+  if (loadedBefore && (!loadedBefore.tuple || !preimageTuple || !sameJob(loadedBefore.tuple, preimageTuple))) {
+    return { ok: false, stopped: false, message: `  ✗ The job launchd has loaded for ${manager.label} is not the one ${manager.plistPath} describes, so there is no job to roll back to safely. Not activating; reload it (agend install, agend restart) first.` };
+  }
   const refreshed = deps.refresh();
   if (refreshed.status !== 0) deps.log(`  ⚠ Service file refresh failed: ${(refreshed.stderr || refreshed.stdout).trim()}`);
   const onDisk = deps.readFile(manager.plistPath);
@@ -223,23 +283,32 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     if (preimage !== null && onDisk !== preimage) deps.writeFile(manager.plistPath, preimage);
     return { ok: false, stopped: false, message: `  ✗ ${manager.plistPath} does not start the verified install: ${diskMatch.reason}. Restored the previous plist; not restarting the fleet.` };
   }
-  deps.run("launchctl", ["bootout", target]);
+  if (loadedBefore) deps.run("launchctl", ["bootout", target]);
   const boot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
   const printed = boot.status === 0 ? parseLaunchctlPrint(deps.run("launchctl", ["print", target]).stdout) : null;
   const loadedMatch = printed?.tuple ? tupleStartsVerified(printed.tuple, verified, LAUNCHD_DEFAULT_PATH, deps) : null;
-  if (printed?.pid && loadedMatch?.ok) return { ok: true, via: "launchd-activation" };
+  if (printed?.pid && printed.state === "running" && loadedMatch?.ok) return { ok: true, via: "launchd-activation" };
 
-  // Roll back to the job that was running before.
+  // Roll back: whatever loaded goes; the preimage plist goes back on disk; the preimage job comes back only if one was
+  // running before, and only counts as restored when launchd runs exactly its tuple.
   deps.run("launchctl", ["bootout", target]);
-  let restored = false;
-  if (preimage !== null) {
-    deps.writeFile(manager.plistPath, preimage);
-    restored = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]).status === 0
-      && parseLaunchctlPrint(deps.run("launchctl", ["print", target]).stdout).pid !== null;
+  if (preimage !== null) deps.writeFile(manager.plistPath, preimage);
+  let recovery = "No job was running before; the previous plist is back on disk.";
+  if (loadedBefore && preimageTuple) {
+    const reboot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
+    const after = reboot.status === 0 ? deps.run("launchctl", ["print", target]) : null;
+    const back = after?.status === 0 ? parseLaunchctlPrint(after.stdout) : null;
+    recovery = back?.tuple && back.pid && back.state === "running" && sameJob(back.tuple, preimageTuple)
+      ? "Rolled back to the previous job, which is running."
+      : "The previous job could NOT be restored: run agend install and agend start.";
   }
-  const why = boot.status !== 0 ? "launchctl bootstrap failed" : !printed?.pid ? "the job did not start" : `launchd loaded a job that ${loadedMatch && !loadedMatch.ok ? loadedMatch.reason : "cannot be read"}`;
-  return {
-    ok: false, stopped: true,
-    message: `  ✗ Activating the new launchd job failed: ${why}. ${restored ? "Rolled back to the previous job, which is running." : "The previous job could NOT be restored: run agend install and agend start."}`,
-  };
+  const why = boot.status !== 0 ? "launchctl bootstrap failed" : !printed?.pid || printed.state !== "running" ? "the job did not start" : `launchd loaded a job that ${loadedMatch && !loadedMatch.ok ? loadedMatch.reason : "cannot be read"}`;
+  return { ok: false, stopped: loadedBefore !== null, message: `  ✗ Activating the new launchd job failed: ${why}. ${recovery}` };
+}
+
+/** Two launchd jobs are the same when their program and argv are identical and every variable the plist sets matches. */
+function sameJob(loaded: ActivationTuple, plist: ActivationTuple): boolean {
+  return loaded.program === plist.program
+    && sameArgs(loaded.argv, plist.argv)
+    && Object.entries(plist.env).every(([key, value]) => loaded.env[key] === value);
 }

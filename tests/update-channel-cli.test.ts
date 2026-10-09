@@ -9,25 +9,15 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { fakeBusctl } from "./support/fake-busctl.js";
 
 const cli = join(process.cwd(), "dist", "cli.js");
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-/** A systemctl stub: logs every call; `show -p ExecStart …` reports the unit file's ExecStart/Environment as loaded. */
-export function systemctlStub(log: string, unitPath: string): string {
-  return `#!/bin/sh
-echo "systemctl $*" >> '${log}'
-case "$*" in
-  *"show -p ExecStart"*)
-    ex=$(sed -n 's/^ExecStart=//p' '${unitPath}' | tail -1)
-    envl=$(sed -n 's/^Environment=//p' '${unitPath}' | tr '\\n' ' ')
-    echo "ExecStart={ path=\${ex%% *} ; argv[]=$ex ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }"
-    echo "Environment=$envl"
-    echo "NeedDaemonReload=no";;
-esac
-exit 0
-`;
+/** A systemctl stub that only logs (the activation reads systemd over D-Bus: see fakeBusctl). */
+function systemctlStub(log: string, _unitPath: string): string {
+  return `#!/bin/sh\necho "systemctl $*" >> '${log}'\nexit 0\n`;
 }
 
 /** Run `agend update <args>` from an install of `installed`, with npm's tags pointing at `tags`. */
@@ -86,8 +76,11 @@ exit 0
   symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
   symlinkSync(process.execPath, join(bin, "node"));
   writeFileSync(join(bin, "launchctl"), `#!/bin/sh\necho "launchctl $*" >> '${log}'\nexit 0\n`);
-  // systemctl: logs; `show -p ExecStart …` answers what a reloaded manager would report for the user unit on disk.
+  // systemctl only logs (reload, restart); what the manager has loaded is read over D-Bus — busctl below.
   writeFileSync(join(bin, "systemctl"), systemctlStub(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+  // busctl: the D-Bus reads the activation makes (#1449: lossless ExecStart argv and the effective environment).
+  writeFileSync(join(bin, "busctl"), fakeBusctl(log, join(home, ".config", "systemd", "user", "com.agend.fleet.service")));
+  chmodSync(join(bin, "busctl"), 0o755);
   for (const f of ["npm", "systemctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
   // An existing user unit (the authoritative service here), recording whatever executable the case says.
   let unitPath: string | null = null;

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  activateService, parseLaunchctlPrint, parsePlist, parseSystemdShow, tupleStartsVerified,
+  activateService, parseLaunchctlPrint, parsePlist, readLoadedUnit, tupleStartsVerified,
   type ActivationDeps, type ServiceManager, type TupleDeps, type VerifiedTarget,
 } from "../src/service-activation.js";
 import type { CommandResult } from "../src/update-install.js";
@@ -30,19 +30,6 @@ const fs: TupleDeps = {
 const tuple = (argv: string[], env: Record<string, string> = { PATH: "/opt/node22/bin:/usr/bin:/bin" }) => ({ program: argv[0]!, argv, env });
 
 describe("parsers: what the managers report", () => {
-  it("systemctl show: the loaded ExecStart, its environment (quoted values), and NeedDaemonReload", () => {
-    const shown = parseSystemdShow([
-      "ExecStart={ path=/usr/bin/agend ; argv[]=/usr/bin/agend fleet start ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }",
-      'Environment=PATH=/opt/node22/bin:/usr/bin "TITLE=a b" TERM=xterm-256color',
-      "NeedDaemonReload=no",
-    ].join("\n"));
-    expect(shown).toEqual({
-      tuple: { program: "/usr/bin/agend", argv: ["/usr/bin/agend", "fleet", "start"], env: { PATH: "/opt/node22/bin:/usr/bin", TITLE: "a b", TERM: "xterm-256color" } },
-      needDaemonReload: false, execStarts: 1,
-    });
-    expect(parseSystemdShow("ExecStart=\nNeedDaemonReload=yes").needDaemonReload).toBe(true);
-  });
-
   it("a plist on disk and launchctl print of the loaded job", () => {
     expect(parsePlist(`<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/agend</string><string>fleet</string><string>start</string></array>
       <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/node22/bin:/usr/bin</string></dict></dict></plist>`))
@@ -98,92 +85,153 @@ function manager(answers: Array<[RegExp, Partial<CommandResult> | (() => Partial
   return { deps, calls, files, restarts: () => restarts };
 }
 
-const showFor = (exec: string, env = "PATH=/opt/node22/bin:/usr/bin:/bin", need = "no") => ({
-  stdout: `ExecStart={ path=${exec.split(" ")[0]} ; argv[]=${exec} ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }\nEnvironment=${env}\nNeedDaemonReload=${need}\n`,
-});
+/** busctl answers for one loaded unit (D-Bus, lossless argv). */
+function busFor(o: { argv: string[]; env?: string[]; envFiles?: Array<[string, boolean]>; pass?: string[]; unset?: string[]; need?: boolean; managerEnv?: string[]; execCount?: number }): Array<[RegExp, Partial<CommandResult>]> {
+  const json = (type: string, data: unknown) => ({ stdout: JSON.stringify({ type, data }) });
+  const exec = Array.from({ length: o.execCount ?? 1 }, () => [o.argv[0], o.argv, false, 0, 0, 0, 0, 0, 0, 0]);
+  return [
+    [/LoadUnit/, json("o", ["/org/freedesktop/systemd1/unit/com_2eagend_2efleet_2eservice"])],
+    [/Service ExecStart$/, json("a(sasbttttuii)", exec)],
+    [/Service EnvironmentFiles$/, json("a(sb)", o.envFiles ?? [])],
+    [/Service PassEnvironment$/, json("as", o.pass ?? [])],
+    [/Service UnsetEnvironment$/, json("as", o.unset ?? [])],
+    [/Service Environment$/, json("as", o.env ?? ["PATH=/opt/node22/bin:/usr/bin:/bin"])],
+    [/Manager Environment$/, json("as", o.managerEnv ?? ["HOME=/home/u", "PATH=/usr/local/bin:/usr/bin:/bin"])],
+    [/Unit NeedDaemonReload$/, json("b", o.need ?? false)],
+  ];
+}
 
-describe("systemd: refresh → daemon-reload → the LOADED unit must start the verified install → restart", () => {
+describe("systemd: refresh → daemon-reload → the LOADED unit (D-Bus) must start the verified install → restart", () => {
   const unit: ServiceManager = { kind: "systemd", unit: "com.agend.fleet", user: true };
+  const OK = ["/usr/bin/agend", "fleet", "start"];
 
   it("control: loaded unit starts the verified bin on the verified Node → one restart", () => {
-    const m = manager([[/show/, showFor("/usr/bin/agend fleet start")]]);
+    const m = manager(busFor({ argv: OK }));
     expect(activateService(unit, verified, m.deps)).toEqual({ ok: true, via: "restart" });
-    expect(m.calls).toEqual(["refresh", "systemctl --user daemon-reload", "systemctl --user show -p ExecStart -p Environment -p NeedDaemonReload com.agend.fleet", "restart"]);
+    expect(m.calls[0]).toBe("refresh");
+    expect(m.calls[1]).toBe("systemctl --user daemon-reload");
+    expect(m.calls.at(-1)).toBe("restart");
+    expect(m.calls.filter(c => c.startsWith("busctl")).every(c => c.startsWith("busctl --user --json=short "))).toBe(true);
   });
 
   it.each([
-    ["a drop-in whose ExecStart starts another install", [[/show/, showFor("/home/u/src/agend/dist/cli.js fleet start")]]],
-    ["a failed daemon-reload (systemd keeps the old unit)", [[/daemon-reload/, { status: 1, stderr: "Failed" }], [/show/, showFor("/home/u/src/agend/dist/cli.js fleet start")]]],
-    ["a failed daemon-reload, even when what is loaded would match (the transition failed)", [[/daemon-reload/, { status: 1, stderr: "Failed" }], [/show/, showFor("/usr/bin/agend fleet start")]]],
-    ["NeedDaemonReload=yes (the file changed, not loaded)", [[/show/, showFor("/usr/bin/agend fleet start", "PATH=/opt/node22/bin", "yes")]]],
-    ["an effective PATH selecting an old Node", [[/show/, showFor("/usr/bin/agend fleet start", "PATH=/opt/node20/bin:/opt/node22/bin")]]],
-    ["another entry inside the verified package", [[/show/, showFor(`${PKG}/dist/agent-cli.js fleet start`)]]],
-    ["an unreadable show", [[/show/, { status: 1 }]]],
-  ] as const)("%s → refused, nothing restarted", (_name, answers) => {
-    const m = manager(answers as any);
-    const outcome = activateService(unit, verified, m.deps);
-    expect(outcome).toMatchObject({ ok: false, stopped: false });
+    ["a drop-in whose ExecStart starts another install", { argv: ["/home/u/src/agend/dist/cli.js", "fleet", "start"] }],
+    ["NeedDaemonReload=yes (the file changed, not loaded)", { argv: OK, need: true }],
+    ["an effective PATH selecting an old Node", { argv: OK, env: ["PATH=/opt/node20/bin:/opt/node22/bin"] }],
+    ["another entry inside the verified package", { argv: [`${PKG}/dist/agent-cli.js`, "fleet", "start"] }],
+    ["ONE argument \"fleet start\" (systemctl show would print it like two)", { argv: ["/usr/bin/agend", "fleet start"] }],
+    ["an EnvironmentFile= (its PATH/NODE_OPTIONS cannot be proven)", { argv: OK, envFiles: [["/etc/agend.env", false]] as Array<[string, boolean]> }],
+    ["PassEnvironment=", { argv: OK, pass: ["NODE_OPTIONS"] }],
+    ["the manager's environment carries NODE_OPTIONS", { argv: OK, managerEnv: ["PATH=/usr/bin:/bin", "NODE_OPTIONS=--require /tmp/x.js"] }],
+    ["no unit PATH: the manager's PATH resolves an old Node", { argv: OK, env: [], managerEnv: ["PATH=/opt/node20/bin:/usr/bin"] }],
+    ["two ExecStart lines", { argv: OK, execCount: 2 }],
+  ] as const)("%s → refused, nothing restarted", (_name, o) => {
+    const m = manager(busFor(o as any));
+    expect(activateService(unit, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
     expect(m.restarts()).toBe(0);
+  });
+
+  it("a failed daemon-reload refuses, even when what is loaded would match", () => {
+    const m = manager([[/daemon-reload/, { status: 1, stderr: "Failed" }], ...busFor({ argv: OK })]);
+    expect(activateService(unit, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
+    expect(m.restarts()).toBe(0);
+  });
+
+  it("UnsetEnvironment= removing the manager's NODE_OPTIONS, and the manager PATH resolving the verified Node, is fine", () => {
+    const m = manager(busFor({ argv: OK, env: [], unset: ["NODE_OPTIONS"], managerEnv: ["PATH=/opt/node22/bin:/usr/bin", "NODE_OPTIONS=--inspect"] }));
+    expect(activateService(unit, verified, m.deps)).toEqual({ ok: true, via: "restart" });
   });
 
   it("a system unit is reloaded and read without --user", () => {
-    const m = manager([[/show/, showFor("/usr/bin/agend fleet start")]]);
+    const m = manager(busFor({ argv: OK }));
     activateService({ kind: "systemd", unit: "agend", user: false }, verified, m.deps);
     expect(m.calls).toContain("systemctl daemon-reload");
-    expect(m.calls).toContain("systemctl show -p ExecStart -p Environment -p NeedDaemonReload agend");
+    expect(m.calls.some(c => c.startsWith("busctl --json=short call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager LoadUnit s agend.service"))).toBe(true);
+  });
+
+  it("readLoadedUnit keeps argv elements exactly", () => {
+    const run = (cmd: string, args: string[]) => {
+      const line = [cmd, ...args].join(" ");
+      const hit = busFor({ argv: ["/usr/bin/agend", "fleet start", "x y"] }).find(([p]) => p.test(line))?.[1];
+      return { status: 0, signal: null, stdout: "", stderr: "", ...(hit ?? {}) };
+    };
+    const read = readLoadedUnit(run, true, "com.agend.fleet");
+    expect(read.ok && read.unit.tuple.argv).toEqual(["/usr/bin/agend", "fleet start", "x y"]);
   });
 });
 
-describe("launchd: prove the disk plist, ONE bootout+bootstrap, prove the loaded job; roll back to the preimage job", () => {
+describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+bootstrap, prove the loaded job; proven rollback", () => {
   const plistPath = "/Users/u/Library/LaunchAgents/com.agend.fleet.plist";
   const job: ServiceManager = { kind: "launchd", label: "com.agend.fleet", plistPath, domain: "gui/501" };
   const plist = (exec: string) => `<plist><dict><key>ProgramArguments</key><array>${exec.split(" ").map(a => `<string>${a}</string>`).join("")}</array><key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/node22/bin:/usr/bin</string></dict></dict></plist>`;
-  const printed = (exec: string, pid: number | null = 777) => ({
-    stdout: ["gui/501/com.agend.fleet = {", "\tstate = running", `\tprogram = ${exec.split(" ")[0]}`, "\targuments = {", ...exec.split(" ").map(a => `\t\t${a}`), "\t}",
+  const printed = (exec: string, pid: number | null = 777, state = "running") => ({
+    stdout: ["gui/501/com.agend.fleet = {", `\tstate = ${state}`, `\tprogram = ${exec.split(" ")[0]}`, "\targuments = {", ...exec.split(" ").map(a => `\t\t${a}`), "\t}",
       "\tenvironment = {", "\t\tPATH => /opt/node22/bin:/usr/bin", "\t}", ...(pid ? [`\tpid = ${pid}`] : []), "}"].join("\n"),
   });
-  const OLD = "/home/u/src/agend/dist/cli.js fleet start";
+  const OLD = "/home/u/src/agend/dist/cli.js fleet start";       // the job running before (its own plist on disk)
   const NEW = "/usr/bin/agend fleet start";
+  const OTHER = "/opt/unrelated/bin/tool fleet start";
+  /** Answers each `launchctl print` in turn. */
+  const prints = (...answers: Array<Partial<CommandResult>>) => { let i = 0; return () => answers[Math.min(i++, answers.length - 1)]!; };
 
   it("control: one bootout, one bootstrap, the loaded job starts the verified install — no kickstart, no restart", () => {
-    const m = manager([[/print/, printed(NEW)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const m = manager([[/print/, prints(printed(OLD), printed(NEW))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
     expect(activateService(job, verified, m.deps)).toEqual({ ok: true, via: "launchd-activation" });
-    expect(m.calls.filter(c => c.startsWith("launchctl"))).toEqual([
-      "launchctl bootout gui/501/com.agend.fleet", `launchctl bootstrap gui/501 ${plistPath}`, "launchctl print gui/501/com.agend.fleet",
-    ]);
-    expect(m.calls.some(c => /kickstart/.test(c))).toBe(false);
+    expect(m.calls.filter(c => /bootout|bootstrap|kickstart/.test(c))).toEqual(["launchctl bootout gui/501/com.agend.fleet", `launchctl bootstrap gui/501 ${plistPath}`]);
     expect(m.restarts()).toBe(0);
   });
 
+  it("the loaded job is NOT what the plist on disk describes → refused before anything is stopped or rewritten", () => {
+    const m = manager([[/print/, printed(OTHER)], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+    expect(m.calls).not.toContain("refresh");
+  });
+
+  it("launchd's own environment sets NODE_OPTIONS → refused before anything", () => {
+    const m = manager([[/getenv NODE_OPTIONS/, { stdout: "--require /tmp/x.js\n" }], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
   it("a refreshed plist that does not start the verified install: preimage restored, launchd untouched", () => {
-    const m = manager([], { [plistPath]: plist(OLD) }, [plistPath, plist(`${PKG}/dist/agent-cli.js fleet start`)]);
+    const m = manager([[/print/, printed(OLD)], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(`${PKG}/dist/agent-cli.js fleet start`)]);
     expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
     expect(m.files[plistPath]).toBe(plist(OLD));
-    expect(m.calls.some(c => c.startsWith("launchctl"))).toBe(false);
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
   });
 
-  it("launchd keeps (or loads) the cached old job after the bootstrap → rolled back to the preimage job", () => {
-    let prints = 0;
-    const m = manager([[/print/, () => (prints++ === 0 ? printed(OLD) : printed(OLD, 888))]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+  it("the new job does not prove out → the preimage job is back AND proven (its tuple, running)", () => {
+    const m = manager([[/print/, prints(printed(OLD), printed(OLD, 801), printed(OLD, 802))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
     const outcome = activateService(job, verified, m.deps);
     expect(outcome).toMatchObject({ ok: false, stopped: true });
-    expect(!outcome.ok && outcome.message).toContain("Rolled back to the previous job");
+    expect(!outcome.ok && outcome.message).toContain("Rolled back to the previous job, which is running");
     expect(m.files[plistPath]).toBe(plist(OLD));
-    expect(m.calls.filter(c => /bootstrap/.test(c))).toHaveLength(2);           // the new job, then the preimage
-    expect(m.calls.some(c => /kickstart/.test(c))).toBe(false);
   });
 
-  it("a failed bootstrap → rolled back to the preimage job", () => {
+  it("recovery is NOT claimed for a pid of some other job", () => {
     let boots = 0;
-    const m = manager([[/bootstrap/, () => (boots++ === 0 ? { status: 5 } : {})], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
-    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: true, message: expect.stringContaining("launchctl bootstrap failed") });
-    expect(m.files[plistPath]).toBe(plist(OLD));
+    const m = manager([
+      [/bootstrap/, () => (boots++ === 0 ? { status: 5 } : {})],
+      [/print/, prints(printed(OLD), printed(OTHER, 999))],
+      [/getenv/, { stdout: "" }],
+    ], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: true, message: expect.stringContaining("could NOT be restored") });
   });
 
   it("the new job loads but never starts (no pid) → rolled back", () => {
-    let prints = 0;
-    const m = manager([[/print/, () => (prints++ === 0 ? printed(NEW, null) : printed(OLD))]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const m = manager([[/print/, prints(printed(OLD), printed(NEW, null, "waiting"), printed(OLD, 803))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
     expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: true, message: expect.stringContaining("did not start") });
+  });
+
+  it("nothing was loaded before: no bootout first; a failed activation restores only the plist file", () => {
+    let boots = 0;
+    const m = manager([[/print/, () => ({ status: 113, stdout: "" })], [/bootstrap/, () => (boots++ === 0 ? { status: 5 } : {})], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("No job was running before") });
+    expect(m.calls.filter(c => /bootstrap/.test(c))).toHaveLength(1);
+    expect(m.files[plistPath]).toBe(plist(OLD));
   });
 });
 
