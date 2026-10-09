@@ -36,7 +36,9 @@ export function SetupWizard({ ctx, onClose }) {
     })();
   }, [lease]);
   if (!w) return html`<${Dialog} title=${tn("wizardTitle")} onClose=${onClose}><p class="note">…</p></${Dialog}>`;
-  const set = (k) => (v) => setW((x) => ({ ...x, [k]: v }));
+  // Every field the plan or a probe is about moves the revision (#1529 review r2): a plan or Detect that began before an
+  // edit — target, admin, backend, directory, name — is dropped when it lands, never committed or written over the edit.
+  const set = (k) => (v) => { bump(); setW((x) => ({ ...x, [k]: v })); };
   // No token env: the plan generates one (#1519 P1: AGEND_<PLATFORM>_<ID>_TOKEN, unique) and the commit carries the plan's.
   const input = () => ({
     platform: w.platform, backend: w.backend, working_directory: w.working_directory, instance_name: w.instance_name,
@@ -134,7 +136,7 @@ export function SetupWizard({ ctx, onClose }) {
   } else {
     body = !w.plan ? html`<p class="note">${tn("wizardPlanLoading")}</p>` : html`
       <p><strong>${tn("wizardWillWrite")}</strong></p>
-      <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend } } })}</pre>
+      <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend, channel_id: w.plan.instance.channel_id } } })}</pre>
       <${Drawer} title=${tn("advancedSection")}><${TokenEnvNote} name=${w.plan.token_env} /></${Drawer}>
       ${(w.plan.warnings || []).map((x, i) => html`<p key=${i} class="feedback warning">${x}</p>`)}`;
   }

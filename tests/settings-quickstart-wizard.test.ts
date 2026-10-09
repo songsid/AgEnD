@@ -573,6 +573,10 @@ describe("the wizard in the panel", () => {
       sent.push({ path, method, headers: init.headers ?? {}, body: init.body ? JSON.parse(init.body) : undefined });
       const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
       if (path === "/api/settings/quickstart/environment") return json(env);
+      if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "await-telegram-start") {
+        const answer = json({ ok: true, found: { groupId: -100111, userId: 7 }, offset: 1 });
+        return detectHold ? detectHold.then(() => answer) : answer;
+      }
       if (path === "/api/settings/quickstart/probe") {
         const answer = json({ identity: { valid: true, username: "bot_one" } });
         return probeHold ? probeHold.then(() => answer) : answer;
@@ -582,7 +586,7 @@ describe("the wizard in the panel", () => {
         channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", env_keys: ["AGEND_TELEGRAM_TOKEN"], warnings: [] })); }
       if (path === "/api/settings/quickstart/plan") return json({
         channel: { type: "telegram", group_id: "-100123", access: { mode: "locked", allowed_users: ["42"] } },
-        instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code" },
+        instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code", channel_id: "telegram" },
         channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", env_keys: ["AGEND_TELEGRAM_TOKEN"], warnings: [],
       });
       if (path === "/api/settings/quickstart/commit") return json(commitAnswer.body, commitAnswer.status);
@@ -604,7 +608,8 @@ describe("the wizard in the panel", () => {
 
   let probeHold: Promise<void> | null = null;
   let planHold: Promise<void> | null = null;
-  afterEach(() => { probeHold = null; planHold = null; });                 // a test that stopped early leaves none behind
+  let detectHold: Promise<void> | null = null;
+  afterEach(() => { probeHold = null; planHold = null; detectHold = null; });                 // a test that stopped early leaves none behind
   const mountWizard = async () => {
     const onClose = vi.fn();
     await p.mount(h(wizard.SetupWizard, { onClose }));
@@ -744,6 +749,43 @@ describe("the wizard in the panel", () => {
     release(); planHold = null; await settle(); await settle();
     expect(p.root.textContent, "still on step 3").toContain(tn("wizardStep", 3, 4));
     expect(p.root.textContent).not.toContain(tn("wizardWillWrite"));
+  });
+
+  it.each([["group", "wz-group", "-100999"], ["admin", "wz-user", "9"]])("#1529 review r2: a plan on its way when the %s changes is dropped — never reviewed or committed for the old values", async (_what, id, value) => {
+    await mountWizard();
+    await toStepThree();
+    await type("wz-group", "-100111"); await type("wz-user", "7");
+    let release!: () => void; planHold = new Promise<void>(r => { release = r; });
+    await next();
+    await type(id, value);
+    release(); planHold = null; await settle(); await settle();
+    expect([p.root.textContent.includes(tn("wizardStep", 3, 4)), p.root.textContent.includes(tn("wizardWillWrite"))], "still editing, no stale review").toEqual([true, false]);
+    // The next plan is for what is on the form now.
+    await next();
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    const plans = sent.filter(c => c.path === "/api/settings/quickstart/plan");
+    expect([plans.length, plans.at(-1)!.body[id === "wz-group" ? "group_id" : "admin_user_id"]]).toEqual([2, value]);
+  });
+
+  it("#1529 review r2: a Detect on its way never writes over a group or admin typed meanwhile", async () => {
+    await mountWizard();
+    await toStepThree();
+    let release!: () => void; detectHold = new Promise<void>(r => { release = r; });
+    button(tn("wizardDetect")).click(); await settle();
+    await type("wz-group", "-100999"); await type("wz-user", "9");
+    release(); detectHold = null; await settle(); await settle();
+    expect([field("wz-group").value, field("wz-user").value]).toEqual(["-100999", "9"]);
+    // Control: a Detect nobody edited over still fills them in.
+    await type("wz-group", ""); await type("wz-user", "");
+    button(tn("wizardDetect")).click(); await settle(); await settle();
+    expect([field("wz-group").value, field("wz-user").value]).toEqual(["-100111", "7"]);
+  });
+
+  it("#1529 review r2 (P3): the review shows the new agent's binding to its connection", async () => {
+    await mountWizard();
+    await toStepThree(); await next();
+    await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
+    expect(p.root.querySelector("pre.s-yaml")?.textContent ?? "").toMatch(/channel_id: telegram/);
   });
 
   it("#1529 review: Finish carries the plan's whole target — connection id, generated token env, and that it was generated", async () => {
