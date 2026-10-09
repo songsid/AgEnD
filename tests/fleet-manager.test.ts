@@ -2353,6 +2353,63 @@ instances: {}
     reloaded.loadConfig(configPath);
     expect(validateFleetConfig(reloaded.fleetConfig!).errors).toEqual([]);
   });
+
+  it("#1056 review: the migration moves the connection as it is in the file now — a concurrent edit and an unknown key survive", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    const original = `channel:
+  type: discord
+  bot_token_env: BOT
+  group_id: "123456789012345678"
+  custom_adapter_option: keep-me
+  access:
+    mode: locked
+    allowed_users: [1]
+instances: {}
+`;
+    writeFileSync(configPath, original);
+    fm.loadConfig(configPath);
+    const cfg = fm.fleetConfig!;
+    cfg.channels = (cfg.channels ?? []).map(ch => ({ ...ch, options: { ...(ch.options ?? {}), status_emojis: { delivered: "✅" } } }));
+    delete (cfg as { channel?: unknown }).channel;
+    // Before the save: someone edits the raw connection (a known field, an unknown option, a new key).
+    writeFileSync(configPath, original
+      .replace("allowed_users: [1]", "allowed_users: [1, 2]")
+      .replace("custom_adapter_option: keep-me", "custom_adapter_option: changed-by-hand\n  added_by_hand: yes"));
+    fm.saveFleetConfig();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.channel).toBeUndefined();
+    expect(saved.channels).toHaveLength(1);
+    expect(saved.channels[0]?.access?.allowed_users, "the concurrent known-field edit").toEqual([1, 2]);
+    expect([saved.channels[0]?.custom_adapter_option, saved.channels[0]?.added_by_hand], "the unknown option and the new key").toEqual(["changed-by-hand", "yes"]);
+    expect(saved.channels[0]?.options, "this save's own change").toEqual({ status_emojis: { delivered: "✅" } });
+    expect([saved.channels[0]?.id, saved.channels[0]?.mode], "no normalized defaults written").toEqual([undefined, undefined]);
+  });
+
+  it("#1056 review control: with channels already in the file the same sequence keeps the same leaves", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    const original = `channels:
+  - type: discord
+    bot_token_env: BOT
+    custom_adapter_option: keep-me
+    access:
+      mode: locked
+      allowed_users: [1]
+instances: {}
+`;
+    writeFileSync(configPath, original);
+    fm.loadConfig(configPath);
+    const cfg = fm.fleetConfig!;
+    cfg.channels = (cfg.channels ?? []).map(ch => ({ ...ch, options: { ...(ch.options ?? {}), status_emojis: { delivered: "✅" } } }));
+    delete (cfg as { channel?: unknown }).channel;
+    writeFileSync(configPath, original.replace("allowed_users: [1]", "allowed_users: [1, 2]").replace("custom_adapter_option: keep-me", "custom_adapter_option: changed-by-hand"));
+    fm.saveFleetConfig();
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect([saved.channels[0].access.allowed_users, saved.channels[0].custom_adapter_option, saved.channels[0].options])
+      .toEqual([[1, 2], "changed-by-hand", { status_emojis: { delivered: "✅" } }]);
+  });
 });
 
 describe("TopicCommands", () => {

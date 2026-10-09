@@ -9052,6 +9052,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const isRecord = (value: unknown): value is Record<string, unknown> =>
       typeof value === "object" && value !== null && !Array.isArray(value);
     if (isRecord(before) && isRecord(after)) {
+      // #1056: a legacy `channel` is being migrated (the caller removed it and kept `channels`). The file has no
+      // `channels` for the leaf patch below to land on — the snapshot's list is only the normalized alias — so a bare
+      // channels[0] holding just the changed field would be written while `channel` is deleted. Move the connection
+      // as it is in the file NOW (a concurrent or manual edit, an option AgEnD does not know) into channels[0]
+      // first; the patch then applies only this save's own changes on top, with the usual identity/order check.
+      if (path.length === 0 && this.rawFleetConfig.channel && !this.rawFleetConfig.channels
+        && after.channel === undefined && Array.isArray(after.channels) && !document.hasIn(["channels"])) {
+        const fresh = document.getIn(["channel"], true);
+        if (isMap(fresh)) {
+          const list = document.createNode([]) as ReturnType<typeof document.createNode> & { items: unknown[] };
+          list.items.push(fresh.clone());
+          document.setIn(["channels"], list);
+        }
+      }
       const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
       for (const key of keys) {
         // `channel` is a derived alias when the raw file uses `channels`.
@@ -9059,14 +9073,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Conversely, `channels` is a normalized alias for a legacy `channel`.
         // Keep the user's original shape unless the caller explicitly removed
         // `channel` (the Settings channels endpoint intentionally migrates it).
-        if (path.length === 0 && key === "channels" && this.rawFleetConfig.channel && !this.rawFleetConfig.channels) {
-          if (after.channel !== undefined) continue;
-          // #1056: migrating. The file has no `channels` to patch leaf by leaf (the snapshot's list is the
-          // normalized alias), so a leaf diff would write only the changed field into a new, bare channels[0]
-          // while `channel` is deleted. Write the whole list instead.
-          this.patchFleetDocument(document, [...path, key], undefined, after[key]);
-          continue;
-        }
+        if (path.length === 0 && key === "channels" && this.rawFleetConfig.channel && !this.rawFleetConfig.channels && after.channel !== undefined) continue;
         this.patchFleetDocument(document, [...path, key], before[key], after[key]);
       }
       return;
@@ -9197,6 +9204,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * to a plain add (never worse than the old behaviour).
    */
   private lastStatusEmoji = new Map<string, { emoji: string; status?: DeliveryStatus }>();
+  /**
+   * #1056: every status emoji each bot really stamped, per `${adapterId}:${messageId}` (match keys). A connection's
+   * status set can change while AgEnD runs, so "is this a stamp?" cannot be answered from the current set alone: a
+   * bot's earlier stamp in the old emoji must still be plumbing, not an agent's reaction. Unbounded for the same
+   * reason as lastStatusEmoji (a few short strings per stamped message).
+   */
+  private stampedStatus = new Map<string, Set<string>>();
+  private noteStamped(adapter: ChannelAdapter, messageId: string, emoji: string): void {
+    const adapterId = typeof (adapter as { id?: unknown }).id === "string" ? (adapter as unknown as { id: string }).id : "?";
+    const k = `${adapterId}:${messageId}`;
+    let set = this.stampedStatus.get(k);
+    if (!set) this.stampedStatus.set(k, set = new Set());
+    set.add(statusMatchKey(emoji));
+  }
   /**
    * One in-flight status update per bot+message: updates run strictly in call
    * order, so a delayed ❌ add can never land after a newer ✅'s removal —
@@ -9754,6 +9775,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (worlds.length > 0 && worlds.every(w => !!w.botUserId)) {
       const reactorWorlds = new Set(worlds.filter(w => w.botUserId === r.userId).map(w => w.id));
       if (reactorWorlds.size === 0) return false; // a human, or a bot outside this fleet
+      // #1056: what this bot really stamped on this message, whatever its status set says now.
+      if ([...reactorWorlds].some(id => this.stampedStatus.get(`${id}:${r.messageId}`)?.has(key))) return true;
       return [...names]
         .filter(n => reactorWorlds.has(this.getInstanceAdapterId(n) ?? ""))
         .some(n => statusMatchKeys(this.resolveStatusEmojisFor(n)).includes(key));
@@ -9761,6 +9784,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fallback: the built-in ladder (as before #1005) plus every value an
     // operator configured. Not the Telegram built-ins — 👎 is AgEnD's failed
     // stamp there, but also far too common a human reaction to swallow blind.
+    if (worlds.some(w => this.stampedStatus.get(`${w.id}:${r.messageId}`)?.has(key))) return true;   // #1056, as above
     const keys = new Set(statusMatchKeys(builtinStatusEmojis(undefined)));
     for (const name of names) {
       const resolved = this.resolveStatusEmojisFor(name);
@@ -9885,7 +9909,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // with agent react calls. The fleet's last emoji is not ownership.
         if (await adapter.reactDeliveryStatus(chatId, messageId, emoji, receivedAt)) {
           if (emoji == null) this.lastStatusEmoji.delete(key);
-          else this.lastStatusEmoji.set(key, { emoji, status });
+          else { this.lastStatusEmoji.set(key, { emoji, status }); this.noteStamped(adapter, messageId, emoji); }
         }
         return;
       }
@@ -9909,6 +9933,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await adapter.unreact(target, messageId, last.emoji, threadId).catch(e =>
           this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
       }
+      // Recorded before the add: Discord can report the reaction back before react() resolves.
+      this.noteStamped(adapter, messageId, emoji);
       await adapter.react(target, messageId, emoji, threadId);
       this.lastStatusEmoji.set(key, { emoji, status });
     } catch (e) {
