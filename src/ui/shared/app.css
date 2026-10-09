@@ -591,3 +591,21 @@ textarea.s-yaml { width: 100%; min-height: 50vh; resize: vertical; }
   .shell:has(.s-pending) .toasts { bottom: auto; }
   .s-pending { padding: var(--s-2) var(--s-3); }
 }
+
+/* ── Needs you (#1408 step 4 = #1386 part b) ── */
+.nav-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-full); background: var(--danger-fill); color: var(--on-danger);
+  font-size: 11px; font-weight: var(--fw-semibold); line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
+.n-group { margin-bottom: var(--s-4); }
+.n-group-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-1); color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.n-group-head a { color: inherit; }
+.n-group-head a:hover { text-decoration: underline; }
+.n-item { display: flex; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); margin-bottom: 2px; }
+.n-icon { flex: none; margin-top: 2px; color: var(--warn); }
+.n-item.bad .n-icon { color: var(--danger); }
+.n-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.n-title { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; }
+.n-title strong { font-size: var(--fs-sm); }
+.n-age { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.n-detail { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
+.n-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
+.n-notify { display: flex; flex-direction: column; gap: var(--s-1); }
