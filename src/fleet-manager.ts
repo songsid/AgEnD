@@ -181,7 +181,8 @@ import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from
 import { commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
-import { resolveInstalledAgend, updateCommand } from "./update-dispatch.js";
+import { resolveInstalledAgend } from "./update-dispatch.js";
+import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -2400,11 +2401,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
-    const { command, args } = updateCommand(installed.agend);
-    const child = spawn(command, args, {
+    const launch = await resolveUpdateLaunch(installed.agend);
+    if (!launch.ok) {
+      this.failUpdateProgress(`/update cannot prepare an independent updater (${launch.reason}). Run ` + "`agend update` from a host shell.");
+      return;
+    }
+    if (this.fleetAdminGate(data.userId, adapterId) !== "ok" || this.shuttingDown) {
+      this.failUpdateProgress(t("not_authorized"));
+      return;
+    }
+    const child = spawn(launch.command, launch.args, {
       detached: true, stdio: "ignore", env: withOrigin(origin),
     });
-    child.once("error", err => this.failUpdateProgress(err.message));
+    watchUpdateLaunch(child, message => this.failUpdateProgress(message));
     child.unref();
   }
 

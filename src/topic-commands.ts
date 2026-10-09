@@ -31,7 +31,8 @@ import { isGeneralInstance } from "./general-instance.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
-import { resolveInstalledAgend, updateCommand } from "./update-dispatch.js";
+import { resolveInstalledAgend } from "./update-dispatch.js";
+import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
 import { selfCommand } from "./cli-entry.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
@@ -1596,11 +1597,19 @@ export class TopicCommands {
     const { spawn } = await import("node:child_process");
     const origin = `command /update by ${msg.adapterId}:${msg.userId}`;
     recordInternalRequest(this.ctx.dataDir, "update", origin);
-    const { command, args } = updateCommand(installed.agend);
-    const child = spawn(command, args, {
+    const launch = await resolveUpdateLaunch(installed.agend);
+    if (!launch.ok) {
+      this.ctx.failUpdateProgress?.(`/update cannot prepare an independent updater (${launch.reason}). Run ` + "`agend update` from a host shell.");
+      return;
+    }
+    if (!this.ctx.hasFleetAdmins(msg.adapterId) || !this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+      this.ctx.failUpdateProgress?.(t("not_authorized"));
+      return;
+    }
+    const child = spawn(launch.command, launch.args, {
       detached: true, stdio: "ignore", env: withOrigin(origin),
     });
-    child.once("error", err => this.ctx.failUpdateProgress?.(err.message));
+    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message));
     child.unref();
   }
 

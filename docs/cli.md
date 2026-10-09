@@ -459,6 +459,18 @@ external service/package edits atomic; keep other installers and service operato
 Recovery restores the previous executable's policies, without reverting the data directory. Review the
 [downgrade compatibility limits](downgrade-compatibility.md) when the preimage is from an older release.
 
+Chat `/update` uses the verified installed executable. On Linux, when the fleet
+is inside a service cgroup, it starts the updater in an independent user scope
+before the existing two-second delay. `detached` alone does not survive a
+systemd service stop. The scope inherits the fleet's environment and working
+directory; credentials are not put in command arguments. This requires a
+reachable same-user systemd manager and `systemd-run` 240 or newer. An unknown
+cgroup, unsupported helper or launch failure refuses the chat update and asks
+you to run `agend update` from a host shell; it never falls back into the fleet's
+cgroup. Detached Linux fleets outside service cgroups and macOS keep the
+existing launch path. The scope isolates the updater from the fleet stop, not
+from host shutdown or logout that stops the user manager.
+
 ## Environment variables
 
 | Variable | Description |

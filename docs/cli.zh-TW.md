@@ -239,6 +239,15 @@ Detached restart 使用非同步 polling 與 monotonic deadline。期限到了�
 **更新的啟用結果（#1490）。** 套件驗證通過不代表 fleet 正在執行。確認重啟完成才算成功；未完成的重啟回傳 exit 75（pending），保留更新標記與所有修復備份，不還原或移除套件。重啟失敗回傳 exit 1。Systemd 路徑只有在載入的目標相同、unit bytes 未變、沒有待執行 job、main/control PID 都為零，且確認停止之後，才可還原本次更新的套件與 unit 備份。重新載入並核對舊定義後，才啟動原本正在執行的服務；原本停止的服務維持停止。即使回復成功，仍回報本次更新失敗。Ownership 變更或讀不到、沒有備份、detached owner、自訂而無法追蹤停止的模式或回復未完成，都需要管理者檢查，不能回報回復成功。重試前請以 `systemctl [--user] status <unit>` 檢查選定的服務。這些核對不能讓外部的服務／套件修改變成原子操作；更新期間請勿同時執行其他安裝或服務管理操作。
 回復會恢復舊執行檔的政策，不會還原資料目錄。備份來自較舊版本時，請先看[降版相容性限制](downgrade-compatibility.zh-TW.md)。
 
+聊天 `/update` 使用已驗證的安裝執行檔。在 Linux 上，若 fleet 位於服務的 cgroup，
+會先把 updater 移到獨立的 user scope，再等待原有的兩秒延遲。單靠 `detached`
+無法讓程序活過 systemd 服務停止。Scope 繼承 fleet 的環境與工作目錄；憑證不會放進
+命令參數。這需要可連線的同使用者 systemd manager，以及 240 以上的 `systemd-run`。
+Cgroup 不明、helper 不支援或啟動失敗時，聊天更新會拒絕並提示從主機 shell 執行
+`agend update`，不會退回 fleet 的 cgroup。Linux 上不在服務 cgroup 內的 detached
+fleet 與 macOS 維持原有啟動路徑。Scope 隔離的是 fleet 停止，無法抵抗主機關機，
+或登出時一併停止 user manager。
+
 ## 環境變數 (Environment Variables)
 
 | 變數 | 描述 |
