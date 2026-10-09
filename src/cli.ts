@@ -1477,18 +1477,6 @@ program
     };
     setUpdateProgressStage(DATA_DIR, "downloading");
 
-    // Detect and remove stale npm link (local build that shadows global install)
-    try {
-      const agendPath = execSync("which agend", { encoding: "utf-8", stdio: "pipe" }).trim();
-      const resolved = execSync(`readlink -f "${agendPath}"`, { encoding: "utf-8", stdio: "pipe" }).trim();
-      if (resolved.includes("/Projects/") || resolved.includes("@songsid") || resolved.includes("@suzuke") || resolved.includes("/src/")) {
-        console.log(`  ⚠️  Detected local npm link: ${resolved}`);
-        console.log("  Removing link to allow global install...\n");
-        try { execSync("npm unlink -g @suzuke/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
-        try { execSync("npm unlink -g @songsid/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
-      }
-    } catch { /* which/readlink failed — no agend installed, fine */ }
-
     // ── Check if npm global needs sudo ──
     let needsSudo = false;
     try {
@@ -1497,10 +1485,9 @@ program
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
 
+    const nvmSh = join(homedir(), ".nvm", "nvm.sh");
     if (needsSudo) {
       // ── nvm path: install without sudo ──
-      const nvmDir = join(homedir(), ".nvm");
-      const nvmSh = join(nvmDir, "nvm.sh");
       if (!existsSync(nvmSh)) {
         console.log("  Installing nvm (npm global requires sudo)...");
         try {
@@ -1510,46 +1497,31 @@ program
         }
       }
       console.log("  Using nvm to install Node 22...");
-      const nvmPrefix = `source ${nvmSh} && nvm install 22 && nvm use 22`;
-      try {
-        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}'`, { stdio: "inherit" });
-      } catch {
-        failUpdate("  Failed to install via nvm.");
-      }
-      // Try to remove old system binary
-      console.log("  Note: removing old system install (may require sudo)...");
-      // Never wait for a password in an agent/non-interactive terminal. This is
-      // best-effort cleanup; the new nvm install already succeeded.
-      spawnSync("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], {
-        stdio: "inherit",
-        timeout: 10_000,
-      });
-    } else {
-      // ── Direct install ──
-      try {
-        execSync(`npm install -g ${pkg}`, { stdio: "inherit" });
-      } catch {
-        failUpdate(`  Failed to update. Try: npm install -g ${pkg}`);
-      }
     }
 
-    // ── Verify installation ──
-    console.log("\n  Verifying installation...");
-    const nvmSh2 = join(homedir(), ".nvm", "nvm.sh");
-    const agendPath = needsSudo
-      ? spawnSync("bash", ["-c", `source ${nvmSh2} && nvm use 22 > /dev/null 2>&1 && which agend`], { encoding: "utf-8" }).stdout?.trim()
-      : spawnSync("which", ["agend"], { encoding: "utf-8" }).stdout?.trim();
-    if (!agendPath) {
-      if (needsSudo) console.error("  You may need to add nvm to your shell profile and restart.");
-      failUpdate("  ✗ Verification failed: agend not found in PATH after install.");
-    }
-    const verifyResult = spawnSync(agendPath, ["--version"], { encoding: "utf-8", timeout: 5000 });
-    if (verifyResult.status !== 0) {
-      failUpdate("  ✗ Verification failed: agend --version returned error.");
-    }
-    const newVersion = (verifyResult.stdout ?? "").trim();
-    console.log(`  ✓ Installed: ${newVersion}`);
-    setUpdateProgressStage(DATA_DIR, "installed", { version: newVersion.replace(/^v/, "") });
+    // ── Install, then verify, then clean up (#1446): nothing is removed before the new install is proven ──
+    const { runUpdateInstall, newAgendInvocation } = await import("./update-install.js");
+    const installed = runUpdateInstall(
+      { pkg, targetVersion, viaNvm: needsSudo, nvmSh },
+      {
+        run: (command, args, options = {}) => {
+          if (options.inherit) console.log("");
+          const result = spawnSync(command, args, {
+            encoding: "utf-8",
+            timeout: options.timeoutMs,
+            stdio: options.inherit ? "inherit" : ["ignore", "pipe", "pipe"],
+          });
+          return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+        },
+        log: message => console.log(message),
+      },
+    );
+    if (!installed.ok) return failUpdate(installed.message);
+    const agendPath = installed.agendPath;
+    const newVersion = installed.version;
+    const newAgend = newAgendInvocation({ viaNvm: needsSudo, nvmSh }, agendPath);
+    console.log(`\n  ✓ Installed: v${newVersion} (${agendPath}; opened a database on its Node)`);
+    setUpdateProgressStage(DATA_DIR, "installed", { version: newVersion });
 
     // ── Update service file ──
     if (agendPath) {
@@ -1558,7 +1530,7 @@ program
         // `agend install` activates by default. During update the existing
         // restart stage owns stop/start and progress reporting, so only refresh
         // the service file here to avoid restarting the fleet twice.
-        const installResult = spawnSync(agendPath, ["install", "--no-activate"], { encoding: "utf-8", timeout: 15000 });
+        const installResult = spawnSync(newAgend.command, [...newAgend.args, "install", "--no-activate"], { encoding: "utf-8", timeout: 15000 });
         if (installResult.status === 0) {
           console.log(`  ✓ Service updated`);
         } else {
@@ -1576,7 +1548,7 @@ program
     // installing completions the user didn't ask for. Run through the NEW
     // binary so the regenerated names are the new version's.
     try {
-      spawnSync(agendPath, ["completion", "install", "--refresh"], {
+      spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], {
         encoding: "utf-8",
         timeout: 15_000,
         stdio: "ignore",
@@ -1589,7 +1561,7 @@ program
     // that may be missing or buggy on the version being upgraded from. `agend
     // restart` (new binary) does the 4-environment service detection (system
     // systemd → user systemd → launchd → detached pid).
-    restartFleetForUpdate(agendPath, [], newVersion.replace(/^v/, ""));
+    restartFleetForUpdate(newAgend.command, newAgend.args, newVersion);
   });
 
 program
@@ -1780,7 +1752,7 @@ program
       getServicePath,
       getSystemServicePath,
       getSystemdServiceState,
-      restartSystemdService,
+      systemdRestartOutcome,
       ensureSystemdUnitHardening,
       effectiveUnitDropIns,
       unitCoredumpFilterState,
@@ -1912,15 +1884,23 @@ program
       try {
         execSync(`systemctl${systemdTarget.user ? " --user" : ""} reset-failed ${systemdTarget.unit}`, { stdio: "pipe", timeout: 5000 });
       } catch { /* best effort */ }
-      if (restartSystemdService(systemdTarget.unit, systemdTarget.user)) {
+      const restartOutcome = systemdRestartOutcome(systemdTarget.unit, systemdTarget.user);
+      if (restartOutcome === "restarted") {
         console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
         return;
       }
       // An installed service remains authoritative even when this invocation
       // fails. Falling through would create a second detached fleet.
-      console.log(`  ⚠ ${scope} restart reported failure, but the service exists — systemd will auto-retry.`);
-      console.log(`  Check: ${statusCommand}`);
-      process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
+      if (restartOutcome === "timed-out") {
+        // The job may still finish: the replacement fleet settles the update marker, not this command.
+        console.log(`  ⚠ ${scope} restart is still running after ${Math.round(SYSTEMD_RESTART_TIMEOUT_MS / 60_000)} minutes; systemd keeps the job going.`);
+        console.log(`  Check: ${statusCommand}`);
+        process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
+        return;
+      }
+      console.error(`  ✗ ${scope} restart failed (systemctl reported an error). systemd may retry it on its own.`);
+      console.error(`  Check: ${statusCommand}`);
+      process.exitCode = 1;
       return;
     }
     // 3. launchd (macOS)

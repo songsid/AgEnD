@@ -386,9 +386,15 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     const log = join(home, "calls.log");
     writeFileSync(log, "");
     // npm: a newer version is published; install is a no-op that "lands" it.
-    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; esac\nexit 0\n`);
-    // `agend` on PATH = the freshly installed binary: this build.
-    writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\nexec '${process.execPath}' '${cli}' "$@"\n`);
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '99.0.0-beta.3';; "config get prefix") echo '${home}';; "root -g") echo '${join(home, "lib", "node_modules")}';; esac\nexit 0\n`);
+    // `agend` on PATH = the freshly installed binary: this build, inside a global package npm "installed" (#1446: the
+    // updater checks it reports the target version and that the package opens a database on its node).
+    const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+    mkdirSync(join(globalPkg, "dist"), { recursive: true });
+    symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+    writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\necho "agend $*" >> '${log}'\n[ "$*" = "--version" ] && { echo 99.0.0-beta.3; exit 0; }\nexec '${process.execPath}' '${cli}' "$@"\n`);
+    chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
+    symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 echo "systemctl $*" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
@@ -396,7 +402,7 @@ case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
-    for (const f of ["npm", "agend", "systemctl"]) chmodSync(join(bin, f), 0o755);
+    for (const f of ["npm", "systemctl"]) chmodSync(join(bin, f), 0o755);
     const r = spawnSync(process.execPath, [cli, "update", "--beta"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}` },
       encoding: "utf8", timeout: 120_000,

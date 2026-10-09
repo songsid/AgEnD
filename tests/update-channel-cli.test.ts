@@ -31,6 +31,13 @@ function update(installed: string, tags: { beta: string; latest: string }, args:
   mkdirSync(bin);
   const log = join(home, "calls.log");
   writeFileSync(log, "");
+  // The global install npm "makes": a package whose `agend` reports what npm last installed (#1446: the updater checks
+  // the version and opens a database with the package's own better-sqlite3 on the `node` it runs under).
+  const globalPkg = join(home, "lib", "node_modules", "@songsid", "agend");
+  mkdirSync(join(globalPkg, "dist"), { recursive: true });
+  symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
+  const installedVersion = join(home, "installed-version");
+  writeFileSync(installedVersion, installed);
   writeFileSync(join(bin, "npm"), `#!/bin/sh
 echo "npm $*" >> '${log}'
 case "$*" in
@@ -38,12 +45,17 @@ case "$*" in
   "view @songsid/agend@latest version") echo '${tags.latest}';;
   view*) echo "$2" | sed 's/.*@//';;
   "config get prefix") echo '${home}';;
+  "root -g") echo '${join(home, "lib", "node_modules")}';;
+  "install -g "*) echo "$3" | sed 's/.*@//' > '${installedVersion}';;
 esac
 exit 0
 `);
-  writeFileSync(join(bin, "agend"), `#!/bin/sh\necho "agend $*" >> '${log}'\ncase "$*" in --version) echo '${installed}';; esac\nexit 0\n`);
+  writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\necho "agend $*" >> '${log}'\ncase "$*" in --version) cat '${installedVersion}';; esac\nexit 0\n`);
+  chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
+  symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
+  symlinkSync(process.execPath, join(bin, "node"));
   for (const tool of ["systemctl", "launchctl"]) writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> '${log}'\nexit 0\n`);
-  for (const f of ["npm", "agend", "systemctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
+  for (const f of ["npm", "systemctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
   const r = spawnSync(process.execPath, [join(pkg, "dist", "cli.js"), "update", ...args], {
     env: {
       ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "",
