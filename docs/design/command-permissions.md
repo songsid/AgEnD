@@ -1,86 +1,66 @@
 # Command permissions
 
-Who may run which chat command, and where. Since #1148 the answer lives in one
-table, [`src/command-table.ts`](../../src/command-table.ts). This page explains
-how to read it. For the full per-mode access matrix (inbound messages, private
-chats, config examples) see [permissions.md](../permissions.md); for what each
-command does see [commands.md](../commands.md).
+[繁體中文](command-permissions.zh-TW.md)
 
-## Two checks, in order
+The [command surface matrix](../command-surface.md) records menus, handling,
+refusals and text routing. [permissions.md](../permissions.md) explains admission
+and credentials; [commands.md](../commands.md) describes command effects.
 
-1. **The door** ([`src/slash-authz.ts`](../../src/slash-authz.ts), Discord slash
-   commands only) decides whether the caller may speak in this channel at all:
-   a DM is refused; a command from another guild is honoured only in a
-   registered ClassicBot channel or for `/start`; in a fleet channel the caller
-   must pass the access policy of the adapter that owns the channel's instance
-   (an explicit fleet admin always passes). ClassicBot channels stay open, as
-   they are for typed messages.
-2. **The command table** then decides whether the command applies in this kind
-   of channel and which admin level it needs. It can only narrow what the door
-   let through.
+## Admission, then command authority
 
-Both run in `FleetManager.dispatchSlash` (`src/fleet-manager.ts`), the single
-handler every Discord adapter uses. Telegram's typed-command handlers are not
-table-driven yet; the table's `telegram` column records what they actually do,
-and `tests/command-gates-by-platform.test.ts` pins each Telegram cell against
-the real handlers.
+Discord native slash commands pass the source/owner door in
+[`slash-authz.ts`](../../src/slash-authz.ts), then the rule in
+[`command-table.ts`](../../src/command-table.ts), then the handler. DMs refuse;
+foreign guilds allow only registered Classic contexts or new `/start`, and
+fleet-admin commands still require the bot's own guild. A sibling bot cannot
+handle another owner's fleet channel. An unavailable owning world fails closed.
+An explicit F passes fleet admission, but locked access with an empty F list
+provides no management authority.
 
-## Levels
+Telegram General/fleet typed dispatch recognizes the exact form it will handle
+and enforces the table's **Telegram** cell before that handler runs
+(`TopicCommands.tableRefusal`). A non-matching form remains ordinary text.
+Classic Telegram uses its own dispatcher and role checks; unsupported group
+commands need a separate conversational mention to become ordinary text.
 
-| Level | Who passes |
+## Roles
+
+| Level | Meaning |
 |---|---|
-| `anyone` | Whoever the door admitted |
-| `channel-admin` | In a fleet channel, a fleet admin. In a ClassicBot channel, a fleet admin **or** a ClassicBot admin |
-| `fleet-admin` | An explicit entry in the **invoking adapter's** `access.allowed_users` in fleet.yaml. An empty list means nobody (`/update` and `/dashboard` then reply that the command is disabled) |
-| `classic-admin` | A ClassicBot admin only (`defaults.admin_users` in classicBot.yaml; empty means nobody) |
-| `handler` | The table asks nothing more; the command's own handler decides. Only `/start` |
+| `anyone` | A caller already admitted by ingress; no additional admin role |
+| `fleet-admin` (**F**) | Explicit owning-bot YAML `access.allowed_users`; invoking bot when no target. Empty grants nobody; unknown adapter denies |
+| `classic-admin` (**C**) | Shared `classicBot.yaml` `defaults.admin_users`; empty grants nobody |
+| `channel-admin` | F in fleet/General; the Classic bot's F or C in an existing Classic registration |
+| `handler` | New `/start`'s own admission: C directly, or explicit guild/private-user grant; otherwise General approval. Telegram groups retain C start authority |
 
-Scopes: `fleet` (an instance's own channel/topic), `general` (the General
-dispatcher), `classic` (a ClassicBot channel/chat) and `none` (a channel with no
-agent). Where a command does not apply, it is refused with one line before
-anything runs.
+Open/pairing chat admission and saved access grants do not confer F. A chat
+allowlist does not confer C. The two roles remain distinct: `/stop` and Discord
+Classic `/load` require C, whereas existing Classic context controls accept F or C.
+Empty Classic new-start grants request approval; existing registrations stay usable.
 
-## The table, summarised
+## Scope and handler exceptions
 
-Discord column (what `dispatchSlash` enforces):
+- Discord exposes all 27 native commands per bot application, but per-agent
+  commands refuse without an applicable agent. `/profile` is General-only.
+- Telegram's 21 fleet menu entries are shared by General/instance topics; its
+  Classic menu has 10. Hidden `/cancel`, `/save` and fleet `/raw` still have handlers.
+- Recognized Telegram fleet-wide commands in a worker topic refuse and point to
+  General. Exact non-handler forms such as `/STATUS` or `/status report` remain
+  ordinary input. `/restart` and `/visibility` match case-insensitively.
+- Telegram Classic `/chat` uses ordinary conversation wrapping, not a special
+  command handler. The table's `anyone` cell does not create one.
+- Discord Classic `/load` submits to every backend without validating backend
+  support; successful import is not verified. Classic Telegram raw is currently
+  blocked by its generic helper. Neither capability is changed here; [#1458](https://github.com/songsid/AgEnD/issues/1458)
+  records future decisions.
+- Buttons and selectors have independent nonce, address and current-authority
+  checks. A command's earlier authorization is not permission for a later click.
+  Remaining source/after-await fences are tracked in #1148.
 
-| Commands | Level | Where |
-|---|---|---|
-| `/status`, `/restart`, `/login`, `/update`, `/doctor`, `/dashboard` | fleet-admin | everywhere |
-| `/sysinfo`, `/usage`, `/tips` | anyone | everywhere (`/tips on/off` is gated by its handler) |
-| `/pause`, `/wake`, `/compact`, `/clear`, `/model`, `/effort`, `/collab`, `/save` | channel-admin | agent channels |
-| `/steer`, `/btw`, `/cancel`, `/ctx` | anyone | agent channels |
-| `/stop`, `/load` | classic-admin | ClassicBot channels |
-| `/chat` | anyone | ClassicBot channels |
-| `/start` | handler (guild allowlist) | channels with no agent |
+## Updating the surface
 
-Telegram differs in these cells (`telegram` column):
-
-- The fleet-wide commands (`/status`, `/restart`, `/login`, `/update`,
-  `/doctor`, `/dashboard`, `/sysinfo`, `/usage`) have handlers only in the
-  General topic; elsewhere the text goes to the agent as a normal message.
-- `/compact`, `/save` and `/collab` have no check in a fleet topic. In a
-  ClassicBot chat `/compact` and `/save` need a ClassicBot admin, and `/collab`
-  has no handler.
-- `/pause` and `/wake` need a fleet admin in fleet topics and a ClassicBot
-  admin (not a fleet admin) in a ClassicBot chat. `/clear` and `/model` need a
-  fleet admin in fleet topics and a channel admin in a ClassicBot chat.
-- `/effort` and `/load` have no ClassicBot handler on Telegram.
-- `/start` checks the user allowlist in a private chat, and the group
-  allowlist **and** a ClassicBot admin in a group.
-
-When the two columns disagree, neither is "the real rule": read the column for
-the platform you are changing.
-
-## Changing a command's permission
-
-- Edit its row in `COMMANDS`. The 🔒 prefix in Discord slash descriptions
-  (`slashLock`) and in the Telegram menus (`telegramMenu`) is generated from the
-  table, so the label cannot drift from the rule.
-- A new Discord slash command must be added to the table: `dispatchSlash`
-  answers a command missing from the table with "that command is not available
-  any more" instead of running it.
-- If you change a Telegram handler's gate, update the `telegram` cell too;
-  `tests/command-gates-by-platform.test.ts` will fail otherwise.
-- Do not merge platforms by "most restrictive wins". A cell that holds for
-  Discord is not thereby true for Telegram.
+Change the correct platform cell in `COMMANDS`, the real handler and both matrix
+languages. Lock labels are generated from the relevant table/menu scopes; a label
+never authorizes execution. Keep `command-surface-docs-1148.test.ts` and the real
+handler tests in `command-gates-by-platform.test.ts` green. Do not copy a Discord
+rule into Telegram by choosing the more restrictive cell.

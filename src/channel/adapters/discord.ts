@@ -1111,8 +1111,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.generationNonReadySince = 0;
     this.shardNonReadySince.clear();
     try {
-      // Register classic bot slash commands (skipped for a secondary bot sharing
-      // a guild with the primary — only the primary owns the guild's commands).
+      // Register each bot application's own menu, including siblings in the same guild.
       if (this.registerCommands) try {
         const registered = await client.application?.commands.set([
           {
