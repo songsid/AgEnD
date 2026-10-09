@@ -13,7 +13,7 @@ import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
-import { createTranscriptSource } from "./transcript-sources.js";
+import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
@@ -99,6 +99,12 @@ const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
  * backstop is delayed by at most this window, never disabled.
  */
 const REPLY_GUARD_IDLE_CONFIRM_MS = 60_000;
+/**
+ * #1510: how long an idle pane may be held because the transcript still shows the turn running. A turn whose end is
+ * never written (the CLI killed, the rollout replaced) would otherwise be re-checked for ever; past this it stands
+ * down like a turn the transcript cannot place — never a recovery.
+ */
+const TRANSCRIPT_RUNNING_HOLD_MAX_MS = 30 * 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
@@ -1452,6 +1458,8 @@ export class Daemon extends EventEmitter {
   private turnReplyGuard = new TurnReplyGuard();
   /** #1510: turn boundaries from the CLI's transcript, for a backend whose guard reads its turn end there. */
   private transcriptTurns = new TranscriptTurnLedger();
+  /** #1510: since when (monotonic) this generation has been held as running in the transcript. */
+  private transcriptRunningSince: { generation: number; at: number } | null = null;
   /** Prevent a visible stale XML fragment from being recovered on later turns. */
   private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
@@ -2409,15 +2417,11 @@ export class Daemon extends EventEmitter {
       // (statusline transcript); codex/kiro/opencode read their CLI's own
       // conversation store via a pluggable source. Backends with no known
       // source stay inert exactly as before.
-      this.transcriptMonitor = new TranscriptMonitor(
-        this.instanceDir,
-        this.logger,
-        createTranscriptSource(
-          this.config.backend ?? "claude-code",
-          this.config.working_directory,
-          this.credentialProfileStore(),
-        ),
-      );
+      this.transcriptMonitor = this.buildTranscriptMonitor(createTranscriptSource(
+        this.config.backend ?? "claude-code",
+        this.config.working_directory,
+        this.credentialProfileStore(),
+      ));
       const transcriptMonitor = this.transcriptMonitor;
       const transcriptFence = this.launchFenceEpoch;
       // Baseline in the isolate before this daemon accepts new work. A
@@ -2436,7 +2440,6 @@ export class Daemon extends EventEmitter {
         this.adapter.react(chatId, messageId, "🫡")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Ack react failed"));
       };
-      this.followTranscriptTurns(this.transcriptMonitor);
       this.transcriptMonitor.on("tool_use", (name: string, input: unknown) => {
         this.logger.debug({ tool: name }, "Tool use");
         ackIfPending();
@@ -5205,7 +5208,14 @@ export class Daemon extends EventEmitter {
     // #1510: a backend whose turn end is read from its own transcript (codex) must show it there too: the turn that
     // took this delivery ended and nothing started since. Anything less never starts a recovery.
     if (this.backend?.turnEndFromTranscript === true) {
-      const verdict = this.transcriptTurns.verdict(turn.target.deliveredText, turn.target.deliveredAt ?? 0);
+      let verdict = this.transcriptTurns.verdict(turn.target.deliveredText, turn.target.deliveredAt ?? 0);
+      if (verdict === "running") {
+        if (this.transcriptRunningSince?.generation !== turn.generation) {
+          this.transcriptRunningSince = { generation: turn.generation, at: performance.now() };
+        }
+        if (performance.now() - this.transcriptRunningSince.at >= TRANSCRIPT_RUNNING_HOLD_MAX_MS) verdict = "unknown";
+      }
+      if (verdict !== "running") this.transcriptRunningSince = null;
       if (verdict === "running") {
         // Idle on screen, still working in the transcript: look again after another window.
         this.armReplyGuardConfirm(turn.generation);
@@ -5242,9 +5252,15 @@ export class Daemon extends EventEmitter {
       || this.backend?.binaryName === "claude";
   }
 
-  /** #1510: the monitor's turn boundaries feed the reply guard's ledger. */
-  private followTranscriptTurns(monitor: Pick<TranscriptMonitor, "on">): void {
+  /**
+   * This launch's transcript monitor. #1510: its turn boundaries feed the reply guard's ledger, which starts empty
+   * with it — a new monitor re-baselines at the transcript's end, so nothing the old one read can be attributed.
+   */
+  private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
+    const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source);
+    this.transcriptTurns.reset();
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => this.transcriptTurns.observe(turns));
+    return monitor;
   }
 
   private replyCompletionGuardEnabled(): boolean {

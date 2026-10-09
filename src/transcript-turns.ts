@@ -50,7 +50,7 @@ export class TranscriptTurnLedger {
     }
   }
 
-  /** Forget everything (the source re-baselined, or the instance restarted its CLI). */
+  /** Forget everything: the daemon does this for each new transcript monitor (a launch re-baselines the source). */
   reset(): void { this.turns = []; }
 
   /** See TranscriptTurnVerdict. `armedAt` is the wall-clock time the delivery armed the guard. */

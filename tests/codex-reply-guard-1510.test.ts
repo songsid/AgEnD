@@ -245,13 +245,37 @@ describe("the real Daemon with the real CodexBackend: recovery only when the rol
     expect(h.recovery()).toEqual([]);
   });
 
-  it("the daemon's ledger follows the monitor's turn batches", async () => {
+  it("the launch's monitor (buildTranscriptMonitor, which start() uses) feeds the ledger: unknown → ended", async () => {
     const h = harness();
-    const monitor = new EventEmitter();
-    h.daemon.followTranscriptTurns(monitor);
     await h.inbound();
-    monitor.emit("turns", h.ourTurn("complete"));
+    let pending: TranscriptTurnEvent[] = h.ourTurn("complete");
+    const source = { poll: async () => ({ toolUses: [], toolResults: [], assistantTexts: [], turns: pending.splice(0) }), reset() {} };
+    const monitor = h.daemon.buildTranscriptMonitor(source);
+    expect(h.daemon.transcriptTurns.verdict(h.writes[0], Date.now())).toBe("unknown");
+    await monitor.pollIncrement();
     expect(h.daemon.transcriptTurns.verdict(h.writes[0], Date.now())).toBe("ended");
+    monitor.stop();
+  });
+
+  it("a new launch's monitor starts the ledger empty (nothing the old one read is attributed)", async () => {
+    const h = harness();
+    await h.inbound();
+    h.transcript(h.ourTurn("complete"));
+    expect(h.daemon.transcriptTurns.verdict(h.writes[0], Date.now())).toBe("ended");
+    h.daemon.buildTranscriptMonitor(null).stop();
+    expect(h.daemon.transcriptTurns.verdict(h.writes[0], Date.now())).toBe("unknown");
+  });
+
+  it("a turn whose end never comes is held at most 30 min, then stands down without a recovery", async () => {
+    const h = harness();
+    await h.inbound();
+    h.transcript(h.ourTurn());
+    await h.capture(frame("tool-mid")); await h.capture(frame("tool-idle")); await h.confirmIdle();
+    for (let i = 0; i < 28; i++) await h.confirmIdle(); // ~29.5 min of windows
+    expect(h.daemon.turnReplyGuard.snapshot(), "still held").not.toBeNull();
+    for (let i = 0; i < 3; i++) await h.confirmIdle();
+    expect(h.daemon.turnReplyGuard.snapshot(), "stood down").toBeNull();
+    expect(h.recovery()).toEqual([]);
   });
 
   it("the pane alone never decides: the recorded tool-run frames read busy until task_complete's frame", async () => {
