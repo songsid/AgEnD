@@ -6,7 +6,7 @@
  * recorded panes: only the pane writer, the IPC and the MCP liveness probe are stubbed.
  */
 import { EventEmitter } from "node:events";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -129,6 +129,51 @@ describe("the recorded muse 1.4.4 session logs, through the production MuseSessi
     clock += 20_000;
     expect((await s.poll()).turns?.length).toBe(6);
   });
+
+  // #1547 review: uncertainty is never proof that a log is new, and a record of an unexpected shape proves nothing.
+  it.skipIf(process.getuid?.() === 0)("a log there at the start whose head could not be read then is still history: read from its end once it can be", async () => {
+    const t = tree();
+    const log = t.session("01a121bb-e928-7d00-ac73-07064285b859");
+    log.append(LOG);
+    chmodSync(log.file, 0o000); // its size can be read, its head cannot
+    const s = t.source();
+    try { await s.initialize(); } finally { chmodSync(log.file, 0o644); }
+    clock += 30_000;
+    const turns = (await s.poll()).turns ?? [];
+    expect(turns).toEqual([]);
+    const ledger = new TranscriptTurnLedger(); ledger.observe(turns);
+    expect(ledger.verdict("long echo one", acceptedAt.get("long echo one")! + 5_000)).toBe("unknown");
+  });
+
+  it.skipIf(process.getuid?.() === 0)("an initial listing that could not see part of the tree: a log found there later is read from its end", async () => {
+    const t = tree();
+    t.session("01a121bb-e928-7d00-ac73-07064285b859").append(LOG);
+    const day = join(t.root, "2026", "10", "10");
+    chmodSync(day, 0o000);
+    const s = t.source();
+    try { await s.initialize(); } finally { chmodSync(day, 0o755); }
+    clock += 30_000;
+    expect((await s.poll()).turns).toBeUndefined();
+    // control: a tree that did not exist at the start — everything in it later is new, read from its start
+    const fresh = tree(); rmSync(fresh.root, { recursive: true, force: true });
+    const f = fresh.source(); await f.initialize();
+    fresh.session("01a121bb-e928-7d00-ac73-07064285b859").append(LOG);
+    clock += 30_000;
+    expect((await f.poll()).turns?.length).toBe(6);
+  });
+
+  it("a terminal without a reason ends nothing: only the recorded explicit null is a finished run", async () => {
+    const noReason = LOG.map(l => l.includes('"terminal"') ? l.replace(',"reason":null', "") : l);
+    expect(noReason.join("\n")).not.toContain('"reason"');
+    expect(verdictFor((await replay(noReason)).ledger, "long echo one")).toBe("running");
+  });
+
+  it.each([["null"], ['{"recorded_at":1,"payload_type":"runtime.user_intent.accepted","payload":{"intent_id":"x","surface":"main","model_messages":{}}}'],
+    ['{"recorded_at":1,"payload_type":"runtime.user_intent.accepted","payload":{"intent_id":"x","surface":"main","model_messages":[null]}}']])(
+    "a malformed record (%s) is skipped; every valid boundary in the same read is still emitted", async bad => {
+      const { turns } = await replay([LOG[0], bad, ...LOG.slice(1)]);
+      expect(turns.map(t => t.kind)).toEqual(["start", "user", "user", "end", "start", "end"]);
+    });
 
   it("the fleet builds this source for a muse instance", () => {
     expect(createTranscriptSource("muse", CWD)).toBeInstanceOf(MuseSessionSource);

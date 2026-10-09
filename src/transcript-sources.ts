@@ -38,7 +38,7 @@ import type { KiroDbCursor } from "./kiro-db-reader.js";
 export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
-import { museSessionCwd, museSessionDirs, readFileHeadSync } from "./backend/muse.js";
+import { museSessionCwd, readFileHeadSync } from "./backend/muse.js";
 import { performance } from "node:perf_hooks";
 
 export interface ToolUseEvent { name: string; input: unknown }
@@ -279,10 +279,16 @@ export class CodexRolloutSource implements TranscriptSource {
  * Logs present when the source is created are read from their end (existing history is not this launch's).
  */
 export class MuseSessionSource implements TranscriptSource {
-  /** session.jsonl path → next offset to read (cwd-matched logs only). */
-  private files = new Map<string, number>();
-  /** Logs present at the baseline, with the size to anchor at their last line boundary on first read. */
-  private baseline = new Map<string, number>();
+  /**
+   * session.jsonl path → where to read next (cwd-matched logs only): a byte offset, or `{ anchor }` for a log that
+   * existed before this source (read from its last line boundary at `anchor` bytes, or at its size when first read
+   * if its size was not known then — never from its start).
+   */
+  private files = new Map<string, number | { anchor: number | null }>();
+  /** Every log present at the baseline, with its size then (null: it was there, its size could not be read). */
+  private preexisting = new Map<string, number | null>();
+  /** Whether the baseline listing saw the whole tree; if not, a log found later may be old and is read from its end. */
+  private baselineComplete = false;
   private rejected = new Set<string>();
   private sizes = new Map<string, number>();
   private listedAt = Number.NEGATIVE_INFINITY;
@@ -298,16 +304,23 @@ export class MuseSessionSource implements TranscriptSource {
   ) {}
 
   reset(): void {
-    this.files.clear(); this.baseline.clear(); this.rejected.clear(); this.sizes.clear(); this.intents.clear();
-    this.listedAt = Number.NEGATIVE_INFINITY; this.baselined = false;
+    this.files.clear(); this.preexisting.clear(); this.rejected.clear(); this.sizes.clear(); this.intents.clear();
+    this.listedAt = Number.NEGATIVE_INFINITY; this.baselined = false; this.baselineComplete = false;
   }
 
   async initialize(): Promise<void> { await this.list(); }
 
   private async list(): Promise<void> {
     this.listedAt = this.now();
-    for (const dir of museSessionDirs(this.root)) {
-      const path = join(dir, "session.jsonl");
+    const { logs, complete } = await listMuseSessionLogs(this.root);
+    if (!this.baselined) {
+      // The baseline is every log there now, whatever its head says: history is not this launch's, and a log whose
+      // cwd cannot be read yet is still history when it can.
+      for (const path of logs) this.preexisting.set(path, await stat(path).then(st => st.size, () => null));
+      this.baselineComplete = complete;
+      this.baselined = true;
+    }
+    for (const path of logs) {
       if (this.files.has(path) || this.rejected.has(path)) continue;
       const head = readFileHeadSync(path, 65_536);
       if (head === null) continue;
@@ -320,33 +333,31 @@ export class MuseSessionSource implements TranscriptSource {
         continue;
       }
       if (cwd !== this.workingDirectory) { this.rejected.add(path); continue; }
-      if (!this.baselined) {
-        const size = await stat(path).then(st => st.size, () => null);
-        if (size === null) continue;
-        this.baseline.set(path, size);
-        this.files.set(path, -1);
-      } else {
-        this.files.set(path, 0);
-      }
+      // Read from the start only a log provably made after the baseline.
+      const fresh = this.baselineComplete && !this.preexisting.has(path);
+      this.files.set(path, fresh ? 0 : { anchor: this.preexisting.get(path) ?? null });
     }
-    this.baselined = true;
   }
 
   async poll(): Promise<TranscriptEvents> {
     if (!this.baselined || this.now() - this.listedAt >= this.listTtlMs) await this.list();
     const turns: TranscriptTurnEvent[] = [];
-    for (const [path, offset] of this.files) {
+    for (const [path, next] of this.files) {
       const size = await stat(path).then(st => st.size, () => null);
       if (size === null || size === this.sizes.get(path)) continue;
-      let from = offset;
-      if (from < 0) {
-        try { from = await lastLineBoundary(path, this.baseline.get(path)); } catch { continue; }
+      let from: number;
+      if (typeof next === "number") from = next;
+      else {
+        try { from = await lastLineBoundary(path, next.anchor ?? size); } catch { continue; }
       }
       let read: { lines: string[]; newOffset: number };
       try { read = await readNewLines(path, from); } catch { continue; }
       this.files.set(path, read.newOffset);
       this.sizes.set(path, size);
-      for (const line of read.lines) this.parse(line, turns);
+      // One record at a time: a record of an unexpected shape is skipped, never the batch it came in.
+      for (const line of read.lines) {
+        try { this.parse(line, turns); } catch { /* skipped */ }
+      }
     }
     const events = emptyEvents();
     if (turns.length) events.turns = turns;
@@ -354,34 +365,73 @@ export class MuseSessionSource implements TranscriptSource {
   }
 
   private parse(line: string, turns: TranscriptTurnEvent[]): void {
-    let o: Record<string, unknown>;
-    try { o = JSON.parse(line); } catch { return; }
-    const type = o.payload_type, p = o.payload as Record<string, unknown> | undefined;
-    if (!p || typeof p !== "object") return;
-    const at = typeof o.recorded_at === "number" ? Math.floor(o.recorded_at / 1000) : NaN; // microseconds
+    let parsed: unknown;
+    try { parsed = JSON.parse(line); } catch { return; }
+    const o = asRecord(parsed), p = asRecord(o?.payload);
+    if (!o || !p) return;
+    const type = o.payload_type;
+    const at = typeof o.recorded_at === "number" && Number.isFinite(o.recorded_at) ? Math.floor(o.recorded_at / 1000) : NaN; // µs
     if (type === "runtime.user_intent.accepted") {
-      if (p.surface !== "main" || typeof p.intent_id !== "string" || !Number.isFinite(at)) return;
-      const text = ((p.model_messages as Array<{ content?: Array<{ kind?: string; text?: unknown }> }> | undefined) ?? [])
-        .flatMap(m => m.content ?? []).map(c => c.kind === "text" && typeof c.text === "string" ? c.text : "").join("\n");
+      if (p.surface !== "main" || typeof p.intent_id !== "string" || !Number.isFinite(at) || !Array.isArray(p.model_messages)) return;
+      const parts: string[] = [];
+      for (const message of p.model_messages) {
+        const content = asRecord(message)?.content;
+        if (!Array.isArray(content)) return;
+        for (const block of content) {
+          const b = asRecord(block);
+          if (b?.kind === "text" && typeof b.text === "string") parts.push(b.text);
+        }
+      }
+      const text = parts.join("\n");
       if (!text.trim()) return;
       this.intents.set(p.intent_id, { text, at });
       if (this.intents.size > 64) this.intents.delete(this.intents.keys().next().value as string);
     } else if (type === "runtime.user_intent.materialized") {
       const intent = typeof p.intent_id === "string" ? this.intents.get(p.intent_id) : undefined;
-      const runId = (p.outcome as { run_id?: unknown } | undefined)?.run_id;
+      const runId = asRecord(p.outcome)?.run_id;
       if (!intent || typeof runId !== "string") return;
       this.intents.delete(p.intent_id as string);
       turns.push({ kind: "user", turnId: runId, text: intent.text, at: intent.at });
     } else if (type === "runtime.session" && p.kind === "run" && typeof p.run_id === "string") {
-      const event = p.event as { kind?: unknown; reason?: unknown } | undefined;
+      const event = asRecord(p.event);
       if (event?.kind === "started") turns.push({ kind: "start", turnId: p.run_id });
-      else if (event?.kind === "terminal") {
+      else if (event?.kind === "terminal" && "reason" in event) {
+        // Only what was recorded proves anything: an explicit null is a run that finished; a missing or unfamiliar
+        // reason ends nothing (the turn stays open, and the guard's running cap stands it down).
         const reason = event.reason;
-        const end = reason == null ? "complete" : typeof reason === "string" && reason.startsWith("cancelled") ? "aborted" : "error";
-        turns.push({ kind: "end", turnId: p.run_id, end });
+        if (reason === null) turns.push({ kind: "end", turnId: p.run_id, end: "complete" });
+        else if (typeof reason === "string") turns.push({ kind: "end", turnId: p.run_id, end: reason.startsWith("cancelled") ? "aborted" : "error" });
       }
     }
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+/**
+ * `<root>/<YYYY>/<MM>/<DD>/<id>/session.jsonl` for every session directory. `complete` is false when a directory
+ * that exists could not be read: what it holds is unknown. A root that does not exist yet is complete (empty).
+ */
+async function listMuseSessionLogs(root: string): Promise<{ logs: string[]; complete: boolean }> {
+  let complete = true;
+  const children = async (dir: string, isRoot = false): Promise<string[]> => {
+    try { return await readdir(dir); } catch (err) {
+      if (!(isRoot && (err as NodeJS.ErrnoException).code === "ENOENT")) complete = false;
+      return [];
+    }
+  };
+  const logs: string[] = [];
+  for (const year of await children(root, true)) {
+    if (!/^\d{4}$/.test(year)) continue;
+    for (const month of await children(join(root, year))) {
+      for (const day of await children(join(root, year, month))) {
+        for (const session of await children(join(root, year, month, day))) logs.push(join(root, year, month, day, session, "session.jsonl"));
+      }
+    }
+  }
+  return { logs, complete };
 }
 
 /* -------------------------------------------------------------------- kiro */
