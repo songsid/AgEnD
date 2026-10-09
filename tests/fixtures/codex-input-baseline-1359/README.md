@@ -32,6 +32,11 @@ Recovery now captures again after its delay and requires an attributable current
 timing variation is an inert frame replay, not an additional native capture. Fresh positive echo/queue evidence completes
 without another key; an unknown or failed capture leaves the notice unconfirmed.
 
+The real Enter availability gate also replays the already-tracked v0160 `resume-loading.pane.txt`: a resume wait can
+replace the strand with an unrelated draft, a submitted echo, or unreadable input. The final ownership/positive decision
+therefore follows that wait, and the write half must not wait again. These are fake-clock cases with inert OS effects and
+substituted draft text, not new native captures. The readable-owned strand still receives exactly one recovery Enter.
+
 `submitted.txt` is a separate native positive control: a multiline old draft plus the new paste submitted normally and
 has a visible transcript echo above the empty composer. The ten ordinary scenarios and 400 sampled post-Enter frames
 also submitted safely or remained unreadable; they did not reproduce the bug without the explicit viewer-recovery race.

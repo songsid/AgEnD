@@ -22,6 +22,7 @@ const OLDER = fixture("older-input-readable");
 const SUBMITTED = fixture("submitted");
 const HIDDEN_ECHO = fixture("wrong-recovery-submitted");
 const IDLE = readFileSync(new URL("./fixtures/codex-audit-0162/v0160/idle.pane.txt", import.meta.url), "utf8");
+const RESUMING = readFileSync(new URL("./fixtures/codex-audit-0162/v0160/resume-loading.pane.txt", import.meta.url), "utf8");
 const TEXT = "OLD DRAFT 1359 shared opening NEW DELIVERY 1359 NOT THE OLD DRAFT";
 const signature = { value: pastedTextSignature(TEXT), unique: false };
 type AnyDaemon = Daemon & Record<string, any>;
@@ -131,6 +132,63 @@ function makeDaemon() {
   daemons.push(daemon); daemon["backend"] = backend;
   return { daemon, backend, warns };
 }
+describe("system recovery ownership at the real Enter availability boundary", () => {
+  const unrelated = OLDER.replaceAll("OLD DRAFT 1359 shared opening", "UNRELATED USER DRAFT 1359");
+  it.each([
+    ["unrelated draft revealed during availability wait", unrelated, false, 1],
+    ["positive submission during availability wait", SUBMITTED, true, 1],
+    ["owned strand remains after availability wait", OLDER, true, 2],
+    ["unreadable input after availability wait", WARNING, false, 1],
+  ] as const)("%s", async (_name, afterWait, ok, keys) => {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    const { daemon, backend } = makeDaemon();
+    // The real resume guard is armed; only its capture/OS boundary is inert.
+    daemon["inputTransientGuardGeneration"] = daemon["spawnGeneration"];
+    expect(backend.getInputUnavailableTransients().some(transient => transient.isActive(RESUMING))).toBe(true);
+    expect(backend.isDeliveryInputReadyPane(unrelated)).toBe(true);
+    let pane = IDLE;
+    let enters = 0;
+    let unrelatedSubmissions = 0;
+    const captures: { at: number; pane: string }[] = [];
+    const keyTimes: number[] = [];
+    const capture = vi.fn(async () => { captures.push({ at: Date.now(), pane }); return pane; });
+    const paste = vi.fn(async () => { pane = OLDER; return true; });
+    const enter = vi.fn(async () => {
+      keyTimes.push(Date.now());
+      if (++enters === 2) {
+        if (pane === unrelated) { unrelatedSubmissions++; pane = HIDDEN_ECHO; }
+        else if (pane === OLDER) pane = SUBMITTED;
+      }
+      return true; // first Enter is swallowed; no extra readiness wait is stubbed out
+    });
+    daemon["tmux"] = standingIn<TmuxManager>({ capturePane: capture, pasteBuffer: paste,
+      sendSpecialKey: enter, getLastSendSpecialKeyError: () => null });
+    const realWait = daemon["waitForInputTransientToClear"].bind(daemon);
+    let recoveryWaits = 0;
+    const wait = vi.fn(async (phase: string) => {
+      if (phase === "availability-recovery-retry") {
+        pane = RESUMING;
+        const next = ++recoveryWaits === 1 ? afterWait : unrelated;
+        setTimeout(() => { pane = next; }, 250);
+      }
+      return realWait(phase); // actual probe, progress budget, polling and clear decision
+    });
+    daemon["waitForInputTransientToClear"] = wait;
+    const done = daemon["submitSystemPaste"](TEXT, "availability-recovery");
+    await vi.advanceTimersByTimeAsync(3_000);
+    const result = await done;
+    expect(unrelatedSubmissions).toBe(0);
+    expect(result).toBe(ok);
+    expect(captures).toContainEqual({ at: 1_000, pane: RESUMING });
+    expect(captures).toContainEqual({ at: 1_250, pane: afterWait });
+    expect(paste).toHaveBeenCalledExactlyOnceWith(TEXT);
+    expect(enter).toHaveBeenCalledTimes(keys);
+    expect(keyTimes).toEqual(keys === 2 ? [500, 1_250] : [500]);
+    expect(wait).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenNthCalledWith(1, "availability-recovery");
+    expect(wait).toHaveBeenNthCalledWith(2, "availability-recovery-retry");
+  });
+});
 describe("Codex baseline ownership (#1359), native 0.160.0 frames", () => {
   it.each([WARNING, MULTILINE])("unreadable means unknown, although the real composer already holds an older draft", before => {
     const { daemon, backend } = makeDaemon();

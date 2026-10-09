@@ -7922,6 +7922,15 @@ export class Daemon extends EventEmitter {
     durableAttempt?: DurableDeliveryAttempt,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
+    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt);
+  }
+
+  /** Write half only: callers must finish the availability wait before any final recovery ownership proof. */
+  private async sendDeliveryEnterAfterAvailability(
+    phase: string,
+    stillCurrent?: () => boolean,
+    durableAttempt?: DurableDeliveryAttempt,
+  ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn
     // replaced the delivery. Check at the last point before the tmux write.
     if (this.deliveryWritesStopping || (stillCurrent && !stillCurrent())) return false;
@@ -8943,21 +8952,26 @@ export class Daemon extends EventEmitter {
     if (proof !== "submitted") {
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
       if (current && !current()) return false;
+      const retryPhase = `${label}-retry`;
       if (this.structuredInputEvidence()) {
-        // The delay may outlive a dialog or the paste itself. Freshly prove an
-        // attributable strand BEFORE another Enter; unknown input is not empty.
-        // Positive echo/queue evidence instead finishes without another key.
+        // Both the retry delay and the Enter availability wait may outlive the
+        // paste. Complete those waits BEFORE the last ownership/positive proof.
+        if (!(await this.waitForInputTransientToClear(retryPhase))) return false;
+        if (this.deliveryWritesStopping || (current && !current())) return false;
         proof = await this.confirmSubmitted(signature, baseline);
-        if (current && !current()) return false;
+        if (this.deliveryWritesStopping || (current && !current())) return false;
         if (proof === "submitted") return true;
         if (proof !== "stranded") {
           this.logger.warn({ label, proof }, "System paste recovery input could not be attributed");
           return false;
         }
+        // No further availability wait may invalidate this proof. The write
+        // half retains the same stopping/admission fence immediately before IPC.
+        if (!(await this.sendDeliveryEnterAfterAvailability(retryPhase, current))) return false;
+      } else {
+        // Row-only backends retain their ordinary availability wait and retry.
+        if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
       }
-      // Row-only backends retain their existing retry; a structured backend
-      // reaches this key only with fresh ownership of text still in the input.
-      if (!(await this.sendDeliveryEnter(`${label}-retry`, current))) return false;
       proof = await this.confirmSubmitted(signature, baseline);
       if (current && !current()) return false;
     }
