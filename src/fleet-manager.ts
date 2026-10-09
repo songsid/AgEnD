@@ -8980,6 +8980,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
     const tempPath = `${this.configPath}.tmp-${process.pid}`;
     writeFileSync(tempPath, output, "utf-8");
+    // #1056 (Fable's 2.2 audit): the patcher writes leaves, not configs, so a wrong patch can produce a file the
+    // validator — or the next start — refuses (a bare channels[0], a channels list with a null). Load and validate
+    // what is about to replace fleet.yaml; a result that adds an error is not written, and the save fails instead.
+    const refusal = this.savedFleetConfigProblem(tempPath);
+    if (refusal) {
+      try { unlinkSync(tempPath); } catch { /* already gone */ }
+      throw new Error(refusal);
+    }
     if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
     renameSync(tempPath, this.configPath);
 
@@ -8989,6 +8997,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { path: this.configPath, strippedDefaults: redundantPaths.length },
       "Saved fleet config (lossless patch)",
     );
+  }
+
+  /** Why the config written to `candidate` must not replace fleet.yaml, or null: it does not load, or it adds errors. */
+  private savedFleetConfigProblem(candidate: string): string | null {
+    let after;
+    try { after = validateFleetConfig(loadFleetConfig(candidate)); }
+    catch (err) { return `Refusing to save fleet.yaml: the result would not load (${(err as Error).message})`; }
+    let had = new Set<string>();
+    try {
+      if (this.configPath && existsSync(this.configPath)) {
+        had = new Set(validateFleetConfig(loadFleetConfig(this.configPath)).errors.map(e => `${e.path}\u0000${e.message}`));
+      }
+    } catch { /* the current file does not load: every error of the result counts as new */ }
+    const introduced = after.errors.filter(e => !had.has(`${e.path}\u0000${e.message}`));
+    return introduced.length
+      ? `Refusing to save fleet.yaml: it would be invalid (${introduced.map(e => `${e.path}: ${e.message}`).join("; ")})`
+      : null;
   }
 
   /** One-time upgrade migration; invalid YAML is never rewritten. */
