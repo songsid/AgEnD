@@ -245,11 +245,15 @@ export function detectWizardBackends(): string[] {
 export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: WizardPlan): FleetConfig {
   const draft = structuredClone(cfg), summary = wizardChannels(cfg);
   const channels = draft.channels ?? (draft.channel ? [draft.channel] : []);
-  // Always add as a NEW connection — never overwrite an existing one by env-name match.
-  // Matching by bot_token_env silently replaced an existing channel when the UI
-  // re-used the default "AGEND_BOT_TOKEN" env name across platforms (S1 data-overwrite bug).
+  // Match only when BOTH bot_token_env AND platform type agree. Matching by env-name
+  // alone silently replaced an existing Telegram channel when the Discord wizard
+  // re-used the same default "AGEND_BOT_TOKEN" env name (S1 data-overwrite bug).
+  const existingIndex = channels.findIndex(
+    channel => channel.bot_token_env === body.token_env && (channel as any).type === body.platform,
+  );
   const entry = { id: nextChannelId(body.platform, body.token_env, summary), ...plan.channel };
-  channels.push(entry as typeof channels[number]);
+  if (existingIndex >= 0) channels[existingIndex] = { ...channels[existingIndex], ...entry } as typeof channels[number];
+  else channels.push(entry as typeof channels[number]);
   draft.channels = channels; delete draft.channel;
   draft.instances = { ...draft.instances, [body.instance_name]: {
     ...(Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : {}),

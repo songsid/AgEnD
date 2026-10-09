@@ -15,6 +15,18 @@ const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = 4;
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }).catch(() => ({ ok: false, status: 0, body: { error: tn("failed") } }));
 
+/** Return the platform-specific default token_env, or keep the current value if it was manually typed.
+ * Ensures each platform gets a distinct env variable name so adding a second connection never
+ * replaces the first (S1 data-overwrite fix). */
+function defaultTokenEnv(currentEnv, newPlatform) {
+  const knownDefaults = ["AGEND_TELEGRAM_TOKEN", "AGEND_DISCORD_TOKEN",
+    "AGEND_TELEGRAM_TOKEN_2", "AGEND_DISCORD_TOKEN_2", "AGEND_BOT_TOKEN"];
+  if (!currentEnv || knownDefaults.includes(currentEnv)) {
+    return newPlatform === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN";
+  }
+  return currentEnv;
+}
+
 export function SetupWizard({ ctx, onClose }) {
   const lease = useLease("wizard");
   const [w, setW] = useState(null);
@@ -103,16 +115,8 @@ export function SetupWizard({ ctx, onClose }) {
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
-          onClick=${() => setW((x) => {
-            // Update the token_env default when platform changes, unless the
-            // user already typed a custom value (S1: each platform needs its own
-            // env name so adding a second connection never replaces the first).
-            const isDefaultEnv = x.token_env === "AGEND_TELEGRAM_TOKEN" || x.token_env === "AGEND_DISCORD_TOKEN"
-              || x.token_env === "AGEND_TELEGRAM_TOKEN_2" || x.token_env === "AGEND_DISCORD_TOKEN_2"
-              || !x.token_env;
-            return { ...x, platform: p, identity: null,
-              token_env: isDefaultEnv ? (p === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN") : x.token_env };
-          })}}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
+          onClick=${() => setW((x) => ({ ...x, platform: p, identity: null,
+            token_env: defaultTokenEnv(x.token_env, p) }))}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
       <p class="note">${w.platform === "telegram" ? tn("wizardTelegramHint") : tn("wizardDiscordHint")}</p>`;
   } else if (w.step === 3) {
     body = html`<div class="field"><label for="wz-token">${tn("wizardToken")}</label>
