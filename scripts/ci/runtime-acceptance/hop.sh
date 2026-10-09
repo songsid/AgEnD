@@ -41,6 +41,8 @@ STUB
   : > "$WORK/guard.log"
   export PATH="$WORK/guard:$PREFIX/bin:$ORIG_PATH"
   export AGEND_BOUNDARY_LOG="$WORK/boundary.log"
+  # A bare systemctl/launchctl must resolve to these stubs on the effective PATH of whatever runs it.
+  export AGEND_BOUNDARY_STUBS="$WORK/guard"
   : > "$AGEND_BOUNDARY_LOG"
   export NODE_OPTIONS="--require=$HERE/boundary.cjs"
   step "[$1] npm install -g @songsid/agend@$OLD (npmjs) on Node $SYS_NODE_VERSION, npm $(npm --version)"
