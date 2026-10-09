@@ -1050,4 +1050,4 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 ## 網頁應用程式外殼（#1408，步驟 1）
 
-`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。`/view` 和 `/settings` 仍是獨立的全頁載入頁面；將它們遷入外殼，以及加入「需要你處理」面板和側欄標記，預計在後續步驟完成。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。
+`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。`/settings` 仍是獨立的全頁載入頁面；將其遷入外殼，以及加入「需要你處理」面板和側欄標記，預計在後續步驟完成。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。
