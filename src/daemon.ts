@@ -14,6 +14,7 @@ import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource } from "./transcript-sources.js";
+import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
@@ -1449,6 +1450,8 @@ export class Daemon extends EventEmitter {
   // It also supplies the older dead-MCP/malformed-call recovery paths, so those
   // paths cannot disagree about whether the turn already spoke to the channel.
   private turnReplyGuard = new TurnReplyGuard();
+  /** #1510: turn boundaries from the CLI's transcript, for a backend whose guard reads its turn end there. */
+  private transcriptTurns = new TranscriptTurnLedger();
   /** Prevent a visible stale XML fragment from being recovered on later turns. */
   private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
@@ -2433,6 +2436,7 @@ export class Daemon extends EventEmitter {
         this.adapter.react(chatId, messageId, "🫡")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Ack react failed"));
       };
+      this.followTranscriptTurns(this.transcriptMonitor);
       this.transcriptMonitor.on("tool_use", (name: string, input: unknown) => {
         this.logger.debug({ tool: name }, "Tool use");
         ackIfPending();
@@ -4884,6 +4888,7 @@ export class Daemon extends EventEmitter {
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
     const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+    const deliveredAt = Date.now();
     // #1241 P2-1: carry pre-arm work evidence over the arm, bounded by this
     // delivery's ingress — output the paste produced before it confirmed.
     this.turnReplyGuard.arm({
@@ -4893,6 +4898,8 @@ export class Daemon extends EventEmitter {
       messageId: meta.message_id || undefined,
       correlationId: meta.correlation_id || undefined,
       inboundMarker,
+      deliveredText,
+      deliveredAt,
     }, this.pendingWork.lastInboundTimestamp());
     // #1209: persist the in-flight turn with a seam checkpoint. A marker
     // that survives a restart is an interrupted turn by construction —
@@ -5195,6 +5202,27 @@ export class Daemon extends EventEmitter {
       this.clearReplyGuardConfirm();
       return;
     }
+    // #1510: a backend whose turn end is read from its own transcript (codex) must show it there too: the turn that
+    // took this delivery ended and nothing started since. Anything less never starts a recovery.
+    if (this.backend?.turnEndFromTranscript === true) {
+      const verdict = this.transcriptTurns.verdict(turn.target.deliveredText, turn.target.deliveredAt ?? 0);
+      if (verdict === "running") {
+        // Idle on screen, still working in the transcript: look again after another window.
+        this.armReplyGuardConfirm(turn.generation);
+        this.logger.info({ correlationId: turn.target.correlationId, generation: turn.generation, reason: "transcript_turn_running" },
+          "Reply guard holding — the transcript shows the turn still running");
+        return;
+      }
+      if (verdict !== "ended") {
+        this.clearReplyGuardConfirm();
+        this.turnReplyGuard.complete(turn.generation);
+        this.logger.info({ correlationId: turn.target.correlationId, generation: turn.generation, reason: `transcript_${verdict}` },
+          verdict === "unknown" ? "Reply guard stood down — this delivery's turn is not in the transcript followed (fail-safe)"
+            : verdict === "aborted" ? "Reply guard stood down — the turn was interrupted"
+            : "Reply guard stood down — the turn ended on a provider error (its own notice covers it)");
+        return;
+      }
+    }
     this.clearReplyGuardConfirm();
     if (turn.replyAttempted) {
       // A reply was attempted but its deliver result is unknown (in-flight
@@ -5212,6 +5240,11 @@ export class Daemon extends EventEmitter {
     return this.runtimeIdentity?.backend === "claude-code"
       || this.config.backend === "claude-code"
       || this.backend?.binaryName === "claude";
+  }
+
+  /** #1510: the monitor's turn boundaries feed the reply guard's ledger. */
+  private followTranscriptTurns(monitor: Pick<TranscriptMonitor, "on">): void {
+    monitor.on("turns", (turns: TranscriptTurnEvent[]) => this.transcriptTurns.observe(turns));
   }
 
   private replyCompletionGuardEnabled(): boolean {

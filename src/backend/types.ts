@@ -382,6 +382,13 @@ export interface CliBackend {
   readonly replyCompletionGuard?: boolean;
 
   /**
+   * #1510: the guard's turn end must also be read from the CLI's own transcript (the source's `turns`): the turn that
+   * took the delivery ended, and nothing started since. Without that evidence (no source, the delivery not found in
+   * the transcript followed) no recovery starts. Absent means the pane alone decides, as for claude-code and kiro.
+   */
+  readonly turnEndFromTranscript?: boolean;
+
+  /**
    * Whether the CLI accepts Enter-submitted input while it is busy and queues
    * that input for a later turn. When true, the daemon may hand a complete
    * paste+Enter transaction to the CLI without first waiting for an idle pane.
