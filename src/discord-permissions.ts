@@ -38,9 +38,10 @@ export function isDisallowedIntentsError(message: string | null | undefined): bo
 }
 
 /**
- * The platform refused the bot token itself (#1519 P6): Discord's "An invalid token was provided" / TokenInvalid,
- * Telegram's 401 Unauthorized, a 401 status. Used only to name the problem; the error text is never shown.
+ * The platform refused the bot token itself (#1519 P6), named only from an explicit auth error: discord.js's
+ * TokenInvalid / "An invalid token was provided", grammY's "(401: Unauthorized)". Never a bare "401": a number inside a
+ * URL or any transport detail is not a refusal (#1537 review). Used only to name the problem; the text is never shown.
  */
 export function isRejectedTokenError(message: string | null | undefined): boolean {
-  return typeof message === "string" && /invalid token|TokenInvalid|\b401\b|unauthorized/i.test(message);
+  return typeof message === "string" && /An invalid token was provided|\bTokenInvalid\b|\(401: Unauthorized\)|^401: Unauthorized\b/.test(message);
 }

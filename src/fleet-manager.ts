@@ -16674,14 +16674,32 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         general_channel_id: channel.options?.general_channel_id != null
           ? String(channel.options.general_channel_id)
           : null,
-        status: state?.status ?? (world ? "starting" : "stopped"),
-        // #1519 P3: the gateway refused an intent (4014) — Message Content is off in the developer portal. P6: the
-        // platform refused the token. Named causes only — an adapter's error text is never passed on (it can carry it).
-        ...(state && state.status !== "connected" && isDisallowedIntentsError(state.lastError) ? { problem: "missing_intent" as const }
-          : state && state.status !== "connected" && isRejectedTokenError(state.lastError) ? { problem: "rejected" as const } : {}),
+        ...this.connectionStatus(id, state, world),
         ...(world ? { identity: { id: world.botUserId ?? null, username: world.botUsername ?? null } } : {}),
       };
     });
+  }
+
+  /**
+   * #1519 P6 (#1537 review): a connection's status from evidence, never from a start call that merely resolved. No
+   * adapter object: not running (or retrying / failed, as recorded) — never "connected". An adapter that has not logged
+   * in yet (no `started`: no bot id; for Telegram, polling not ready) is "starting". Named problems: the Message Content
+   * intent refused (4014, P3), the token refused (an explicit auth error, or Telegram's own 401 flag) — the error text
+   * itself is never passed on.
+   */
+  private connectionStatus(id: string, state: { status: string; lastError?: string } | undefined, world: { botUserId?: string | null } | undefined):
+    { status: string; problem?: "missing_intent" | "rejected" } {
+    const adapter = this.adapters.get(id) as (ChannelAdapter & { connectionEvidence?: () => { ready: boolean; authRejected: boolean } }) | undefined;
+    const evidence = adapter?.connectionEvidence?.();
+    const recorded = state?.status;
+    const problem = evidence?.authRejected || (recorded !== "connected" && isRejectedTokenError(state?.lastError)) ? "rejected" as const
+      : recorded !== "connected" && isDisallowedIntentsError(state?.lastError) ? "missing_intent" as const : undefined;
+    let status: string;
+    if (!adapter) status = recorded === "retrying" || recorded === "failed" ? recorded : "stopped";
+    else if (recorded === "retrying" || recorded === "failed") status = recorded;
+    else if (!world?.botUserId || (evidence && !evidence.ready)) status = evidence?.authRejected ? "failed" : "starting";
+    else status = "connected";
+    return { status, ...(problem ? { problem } : {}) };
   }
 
   private secureConnectionChannel(connectionId: string): ChannelConfig | undefined {
