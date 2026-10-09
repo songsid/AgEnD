@@ -66,8 +66,6 @@ export interface AuthApiContext {
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "agend-auth.js": { file: join("shared", "agend-auth.js"), type: "text/javascript; charset=utf-8" },
   "signin.js": { file: join("shared", "signin.js"), type: "text/javascript; charset=utf-8" },
-  "shell.js": { file: join("shared", "shell.js"), type: "text/javascript; charset=utf-8" },
-  "shell.css": { file: join("shared", "shell.css"), type: "text/css; charset=utf-8" },
   "theme.js": { file: join("shared", "theme.js"), type: "text/javascript; charset=utf-8" },
   // #1408: the design tokens every panel shares, and the font they name (Inter, SIL OFL 1.1: shared/fonts/OFL.txt).
   "tokens.css": { file: join("shared", "tokens.css"), type: "text/css; charset=utf-8" },
@@ -77,7 +75,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
   ...Object.fromEntries([
     "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
-    "app-shell.js", "app-session.js", "app-needs.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    "app-shell.js", "app-session.js", "app-needs.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
