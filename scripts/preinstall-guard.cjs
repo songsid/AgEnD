@@ -23,7 +23,7 @@ const ok =
 if (!ok) {
   process.stderr.write(
     "\n" +
-    "  AgEnD 2.2 needs Node >=22.14; your install was left unchanged.\n" +
+    "  AgEnD 2.2 needs Node >=22.14; npm is aborting this install.\n" +
     "\n" +
     "  Running: Node " + process.versions.node + "\n" +
     "  Required: ^22.14.0 || ^23.6.0 || >=24\n" +

@@ -52,10 +52,10 @@ describe("preinstall-guard — boundary cases", () => {
 
   it("prints a human-readable error on incompatible Node", () => {
     const { stderr } = runGuard("20.0.0");
-    expect(stderr).toMatch(/AgEnD 2\.2 needs Node/i);
+    expect(stderr).toMatch(/AgEnD 2\.2 needs Node.*aborting/is);
     expect(stderr).toMatch(/22\.14/);
     expect(stderr).toMatch(/20\.0\.0/);
-    expect(stderr).toMatch(/install was left unchanged/i);
+    expect(stderr).toMatch(/aborting this install/i);
   });
 
   it("the guard file is in the package files list (included in npm pack)", () => {
