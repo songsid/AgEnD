@@ -30,11 +30,19 @@ function sq(text: string): string {
 }
 
 /** A fixture @songsid/agend package: `agend --version` prints its version; better-sqlite3 is an inert recorder. */
-function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok"): string {
+function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok", opts: { launcher?: boolean } = {}): string {
   const dir = join(root, "src", name);
   mkdirSync(join(dir, "dist"), { recursive: true });
   mkdirSync(join(dir, "node_modules", "better-sqlite3"), { recursive: true });
-  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "dist/cli.js" } }));
+  // #1450: since the launcher, the bin is `launcher/agend` (an sh script) and the CLI stays dist/cli.js.
+  const bin = opts.launcher ? "launcher/agend" : "dist/cli.js";
+  writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: bin } }));
+  writeFileSync(join(dir, ".bin-target"), bin);
+  if (opts.launcher) {
+    mkdirSync(join(dir, "launcher"));
+    writeFileSync(join(dir, "launcher", "agend"), `#!/bin/sh\nexec ${sq(join(dir, "dist", "cli.js"))} "$@"\n`);
+    chmodSync(join(dir, "launcher", "agend"), 0o755);
+  }
   writeFileSync(join(dir, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\necho "agend $*" >> '${join(root, "agend.log")}'\nexit 0\n`);
   chmodSync(join(dir, "dist", "cli.js"), 0o755);
   writeFileSync(join(dir, "node_modules", "better-sqlite3", "index.js"), `
@@ -70,7 +78,7 @@ case "$1 $2" in
     [ -n "$NPM_FAIL" ] && exit 1
     rm -rf ${sq(join(pfx, "lib", "node_modules", "@songsid", "agend"))}
     cp -r "$3" ${sq(join(pfx, "lib", "node_modules", "@songsid", "agend"))}
-    ln -sf ../lib/node_modules/@songsid/agend/dist/cli.js ${sq(join(pfx, "bin", "agend"))}
+    ln -sf "../lib/node_modules/@songsid/agend/$(cat "$3/.bin-target")" ${sq(join(pfx, "bin", "agend"))}
     exit 0;;
 esac
 exit 0
@@ -100,6 +108,13 @@ exit 0
 const plan = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({ pkg, targetVersion, viaNvm: false, nvmSh: "/nonexistent" });
 
 describe("P0: the current install is never removed before the new one has succeeded", () => {
+  it("a launcher-shaped package (#1450): the bin is the sh launcher, the verified entry is still dist/cli.js", () => {
+    const w = world();
+    const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { launcher: true })), w.runner);
+    const pkg = realpathSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend"));
+    expect(outcome).toMatchObject({ ok: true, version: "2.2.0", bin: join(pkg, "launcher", "agend"), entry: join(pkg, "dist", "cli.js") });
+  });
+
   it("installs over the current package with no unlink, and verifies the installed one", () => {
     const w = world();
     runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
