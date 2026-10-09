@@ -9,7 +9,6 @@ import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
-import { isToolSetName } from "./tool-permissions.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -142,7 +141,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     // refusal or a migration notice tells someone to write has to validate,
     // or the only widening that passes is `full` — which is where #804 came
     // from.
-    if (value.tool_set !== undefined && !isToolSetName(String(value.tool_set))) err(`${path}.tool_set`, "must be full, coordinator, worker, standard, minimal, or general");
+    if (value.tool_set !== undefined && !["full", "coordinator", "worker", "standard", "minimal"].includes(String(value.tool_set))) err(`${path}.tool_set`, "must be full, coordinator, worker, standard, or minimal");
     if (value.log_level !== undefined && !["trace", "debug", "info", "warn", "error"].includes(String(value.log_level))) err(`${path}.log_level`, "must be trace, debug, info, warn, or error");
     if (value.lightweight !== undefined && typeof value.lightweight !== "boolean") err(`${path}.lightweight`, "must be a boolean");
     if (value.display_name !== undefined && typeof value.display_name !== "string") err(`${path}.display_name`, "must be a string");

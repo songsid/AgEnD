@@ -35,7 +35,7 @@ async function update(ctx: any, config: Record<string, unknown>) {
 
 describe("update_instance_config — tool_set (#814)", () => {
   it("accepts all valid tool_set values", async () => {
-    const validValues = ["full", "standard", "worker", "coordinator", "minimal", "general"] as const;
+    const validValues = ["full", "standard", "worker", "coordinator", "minimal"] as const;
     for (const tool_set of validValues) {
       const instance: Record<string, unknown> = {};
       const ctx = context(instance);
