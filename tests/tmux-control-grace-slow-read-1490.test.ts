@@ -175,3 +175,75 @@ describe("one slow control read does not tear down the control client (#1490)", 
     expect(proc.kill, "a stream silent for the drain limit is retired").toHaveBeenCalledOnce();
   });
 });
+
+describe("a drain is a gap in observation (#1517 review)", () => {
+  /** The slow read's frame up to (and including) a notification after its real footer, nonce trailer held back. */
+  function prefix(proc: Proc, output: string, notification: string): { head: Buffer; trailer: Buffer } {
+    const id = ++sequence;
+    const nonce = nonceAt(proc, 0);
+    return {
+      head: Buffer.from(`%begin 10 ${id} 1\n${output}%end 10 ${id} 1\n${notification}\n`),
+      trailer: Buffer.from(`%begin 10 ${id + 1} 1\n${nonce}\n%end 10 ${id + 1} 1\n`),
+    };
+  }
+
+  it("a pane whose output is held inside a drained frame is not idle; it settles only after real silence", async () => {
+    const { proc, internals, client, manager } = opened();
+    internals.paneToWindow.set("%5", "@5");
+    proc.stdout.emit("data", Buffer.from("%output %5 first\n"));
+    const slow = manager.capturePane();
+    await tick();
+    const { head, trailer } = prefix(proc, "captured text\n", "%output %5 still-generating");
+    proc.stdout.emit("data", head);                          // the pane is generating, but its output sits in the frame
+    await vi.advanceTimersByTimeAsync(2_100);
+    expect(await slow).toBe("fallback\n");
+    expect(client.isIdle("@5"), "blind while the frame drains: not idle").toBe(false);
+    expect(client.isObservationBlind()).toBe(true);
+
+    proc.stdout.emit("data", trailer);                       // the frame ends: the held notification is observed now
+    expect(client.isObservationBlind()).toBe(false);
+    expect(client.isIdle("@5"), "the held output is seen: busy").toBe(false);
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(client.isIdle("@5")).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(client.isIdle("@5"), "silent for silenceMs after it was seen").toBe(true);
+    expect(proc.kill).not.toHaveBeenCalled();
+  });
+
+  it("an Enter confirmation does not run out its 'no reaction' budget while the client is blind", async () => {
+    const { Daemon } = await import("../src/daemon.js");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { proc, internals, client, manager } = opened();
+    internals.paneToWindow.set("%5", "@5");
+    const dir = mkdtempSync(join(tmpdir(), "agend-drain-confirm-"));
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("drain", {
+      working_directory: "/tmp",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
+      log_level: "silent",
+    } as any, dir, false, { getReadyPattern: () => /❯/ } as any, client as any, { child: () => logger } as any) as any;
+    try {
+      const enterAt = Date.now();
+      let verdict: boolean | undefined;
+      void daemon.confirmBusyAfterEnter("@5", enterAt).then((v: boolean) => { verdict = v; });
+      await vi.advanceTimersByTimeAsync(100);
+      const slow = manager.capturePane();
+      await tick();
+      const { head, trailer } = prefix(proc, "captured\n", "%output %5 accepted-and-generating");
+      await vi.advanceTimersByTimeAsync(100);
+      proc.stdout.emit("data", head);                        // the CLI took the Enter; its output is held in the frame
+      await vi.advanceTimersByTimeAsync(2_000);
+      await slow;
+      expect(verdict, "no verdict while blind: the budget is not spent on time it could not see").toBeUndefined();
+      proc.stdout.emit("data", trailer);
+      await vi.advanceTimersByTimeAsync(400);
+      expect(verdict, "the held output, once seen, confirms the Enter").toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

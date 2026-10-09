@@ -328,10 +328,22 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     return this.observationResetAt;
   }
 
+  /**
+   * True while a control read's frame is open (#1517 review). From its `%begin` to its nonce trailer every notification
+   * tmux sends sits inside the frame and is observed only when it ends (with the time it is observed), so until then
+   * nothing new can be seen: a pane's silence is not evidence. Usually milliseconds; a slow read that is being drained
+   * can hold it open up to CONTROL_DRAIN_MS, after which the attachment is retired and observations reset.
+   */
+  isObservationBlind(): boolean {
+    return this.activeRead !== null && this.activeRead.guard !== null;
+  }
+
   /** Check if a window's pane has been silent for at least silenceMs */
   isIdle(windowId: string): boolean {
     // A registered window that stopped resolving: unknown, so not idle; asking retries the resolve (#1490).
     if (this.lostWindows.has(windowId)) { this.retryLostWindow(windowId); return false; }
+    // While a read's frame hides notifications, no pane's silence is observed: unknown, so not idle (#1517 review).
+    if (this.isObservationBlind()) return false;
     const paneId = this.windowToPaneId(windowId);
     // A registered window whose pane is not resolved yet (after a reconnect, or between failed attempts) is unknown,
     // not idle, however long the grace has run: its re-resolution can outlast the grace (#1490).
