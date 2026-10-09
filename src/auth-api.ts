@@ -78,6 +78,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   ...Object.fromEntries([
     "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
     "app-shell.js", "app-session.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
+    "panel-view.js", "view-strings.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },

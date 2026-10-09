@@ -12,6 +12,7 @@ import { bypassesWebGate } from "../src/auth-api.js";
 import { isViewPath } from "../src/view-api.js";
 import { isUsagePath, setUsageFetcherForTests } from "../src/usage/usage-api.js";
 import { getTmuxSocketName } from "../src/paths.js";
+import { installDom } from "./helpers/mini-dom.js";
 
 // This suite starts a real listener and calls /api/ai-usage, whose default fetcher reads the host's CLI logins
 // (Codex/Claude/… auth files under the real home) and calls the vendors (#1248 review). Nothing here may touch
@@ -329,14 +330,27 @@ describe("nothing credential-shaped is left behind", () => {
     expect(existsSync(join(dir, "web.token"))).toBe(true);
   });
 
-  it("view.html carries no token field, no URL token and no stored token", () => {
-    const html = readFileSync(join(process.cwd(), "src", "ui", "view.html"), "utf8");
-    expect(html).toContain('<script src="/assets/agend-auth.js"></script>');
+  it("the View page carries no token field, no URL token and no stored token; Edit sends a signed-out visitor to sign in", async () => {
+    // /view is the app shell (app.html) with the View panel (panel-view.js) and its strings (view-strings.js).
+    const shellHtml = readFileSync(join(process.cwd(), "src", "ui", "app.html"), "utf8");
+    const panel = readFileSync(join(process.cwd(), "src", "ui", "shared", "panel-view.js"), "utf8");
+    const strings = readFileSync(join(process.cwd(), "src", "ui", "shared", "view-strings.js"), "utf8");
+    expect(shellHtml).toContain('<script src="/assets/agend-auth.js"></script>');
     for (const forbidden of ["fToken", "agend_web_token", "urlToken", "X-Agend-Token", "?token=", "&token="]) {
-      expect(html, forbidden).not.toContain(forbidden);
+      for (const [name, src] of [["app.html", shellHtml], ["panel-view.js", panel], ["view-strings.js", strings]] as const) {
+        expect(src, `${name}: ${forbidden}`).not.toContain(forbidden);
+      }
     }
-    // The old free-text token box is gone, and Edit sends a signed-out visitor to sign in.
-    expect(html).toContain("/signin?next=");
+    expect(strings).not.toContain("tokenRequired");
+    // The old free-text token box is gone; Edit goes through the shell's sign-in link, which returns to this page.
+    expect(panel).toContain("signInHref()");
+    const dom = installDom({ url: "http://127.0.0.1:19280/view/alpha" });
+    try {
+      const shell = await import("/assets/app-shell.js");
+      expect(shell.signInHref()).toBe("/signin?next=%2Fview%2Falpha");
+    } finally {
+      dom.restore();
+    }
   });
 
   it("the dashboard message never offers a View (edit) link", () => {
