@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
 import { settingsFingerprint } from "./settings-transaction.js";
+import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -27,12 +28,33 @@ function fingerprint(value: unknown): string {
 }
 function same(a: unknown, b: unknown): boolean { return settingsFingerprint(a) === settingsFingerprint(b); }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
-function ordinary(path: readonly string[]): boolean {
-  // An immediate subtree only exists under settings/configuration, never under access/credential/control.
-  if (path.some(key => /access|permission|admin|credential|secret|public_link|mcp|auth|pre_task|instruction|project_roots/i.test(key))) return false;
-  const key = path.at(-1) ?? "";
-  if (["channels", "instances"].includes(path.at(-2) ?? "")) return false;
+/**
+ * #1490 (Fable's 2.2 audit): an immediate key that holds an object is not an immediate subtree. Only these children
+ * of one are immediate — anything else under it (`persona: { bot_token, allowed_users }`) is judged on its own path:
+ * a secret or an id list is confirmed, anything else is refused, never skipped with its parent.
+ */
+const IMMEDIATE_CHILDREN: Readonly<Record<string, ReadonlySet<string>>> = {
+  status_emojis: new Set<string>(STATUS_EMOJI_CONFIG_KEYS),
+  hang_detector: new Set(["enabled", "timeout_minutes"]),
+};
+const SENSITIVE_SEGMENT = /access|permission|admin|credential|secret|public_link|mcp|auth|pre_task|instruction|project_roots/i;
+const scalar = (value: unknown): boolean => value === undefined || value === null || typeof value !== "object";
+/** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
+const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
+function ordinary(path: readonly string[], old: unknown, next: unknown): boolean {
+  // An immediate value only exists under settings/configuration, never under access/credential/control.
+  if (path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
+  if (namedEntry(path, -1)) return false;
+  if (!scalar(old) || !scalar(next)) return false;              // an object or a list is walked, child by child
+  const key = path.at(-1) ?? "", parent = path.at(-2);
+  if (parent !== undefined && !namedEntry(path, -2) && immediate.has(parent)) return IMMEDIATE_CHILDREN[parent]?.has(key) ?? false;
   return immediate.has(key);
+}
+/** A child of an immediate key that is not one of its known children (see IMMEDIATE_CHILDREN). */
+function unknownImmediateChild(path: readonly string[]): boolean {
+  const key = path.at(-1), parent = path.at(-2);
+  if (key === undefined || parent === undefined || namedEntry(path, -2) || !immediate.has(parent)) return false;
+  return !(IMMEDIATE_CHILDREN[parent]?.has(key) ?? false);
 }
 export interface SettingsChangeDiff {
   section: SettingsChangeSection;
@@ -52,9 +74,11 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       throw new SettingsConfirmationError(413, "confirmation_diff_too_large");
   };
   const walk = (old: unknown, next: unknown, path: string[]): void => {
-    if (same(old, next) || ordinary(path)) return;
+    if (same(old, next) || ordinary(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
+    // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
+    if (unknownImmediateChild(path) && !secretKeys.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
     if (secretKeys.test(key)) { section = "secret"; add(`${label}: fingerprint ${fingerprint(old)} → ${fingerprint(next)}`); return; }
     if (idLists.has(key)) {
       section = "access";
