@@ -2214,7 +2214,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(t(`${action}.usage`));
         return;
       }
-      if (!this.fleetConfig?.instances[requested]) {
+      if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, requested)) {
         await data.respond(t("instance.not_found", requested));
         return;
       }
@@ -2303,7 +2303,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleGeneralProfile(general: string | undefined, userId: string, ingressAdapterId: string | undefined,
     seconds: string | number | undefined, respond: (text: string) => Promise<unknown>): Promise<void> {
-    if (!general || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
+    if (!general || !Object.hasOwn(this.fleetConfig?.instances ?? {}, general) || !this.fleetConfig?.instances[general]?.general_topic) { await respond(t("profile.general_only")); return; }
     const ownerId = this.getInstanceAdapterId(general);
     if (!ownerId || ownerId !== ingressAdapterId) { await respond(t("not_authorized")); return; }
     const gate = this.fleetAdminGate(userId, ownerId);
@@ -15233,6 +15233,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   async applyModel(instanceName: string, model: string): Promise<string> {
+    // Reject model names with newlines or control characters: they would be
+    // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
+    if (/[\x00-\x1f\x7f]/.test(model)) {
+      return t("model.invalid_chars");
+    }
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" = "restart";
     try {
