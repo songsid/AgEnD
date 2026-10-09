@@ -58,6 +58,15 @@ describe("the structure: buildOrgChart", () => {
     expect(org.instances.rev).toEqual({});
     expect(org.instances.room).toEqual({ description: "A classic room", classic: true });
   });
+  it("#1467 review: every name is an own key — \"__proto__\" and \"constructor\" included — and survives JSON", () => {
+    const org = buildOrgChart({ ...base, names: ["__proto__", "constructor"], instances: JSON.parse('{"__proto__":{"description":"Proto room"}}'),
+      teams: undefined, isClassic: (n: string) => n === "__proto__" } as any);
+    const wire = JSON.parse(JSON.stringify(org));
+    expect(Object.keys(wire.instances)).toEqual(["__proto__", "constructor"]);
+    expect(Object.hasOwn(wire.instances, "__proto__")).toBe(true);
+    expect(wire.instances["__proto__"]).toEqual({ description: "Proto room", classic: true });
+    expect(wire.instances.constructor).toEqual({});                 // not Object's: no description borrowed from it
+  });
   it("no teams configured: none", () => {
     expect(buildOrgChart({ ...base, teams: undefined } as any).teams).toEqual([]);
   });
@@ -88,6 +97,13 @@ describe("the structure: FleetManager.orgChart", () => {
     expect(org.instances.dev).toEqual({ description: "Builds", thread: { platform: "telegram", url: "https://t.me/c/9876543210/333333333333333333" } });
     expect(org.instances.room).toEqual({ description: "Classic", classic: true });
     expect(org.teams).toEqual([{ name: "web", members: ["dev", "room"] }]);
+  });
+  it("#1467 review: a ClassicBot room named \"__proto__\" keeps its metadata on the wire", () => {
+    const f = fake({ classicChannels: { getAll: () => [{ instanceName: "__proto__", description: "Proto room", channelId: "444444444444444444" }] } });
+    const wire = JSON.parse(JSON.stringify((FleetManager.prototype as any).orgChart.call(f)));
+    expect(Object.keys(wire.instances)).toEqual(["lead", "general", "dev", "__proto__"]);
+    expect(Object.hasOwn(wire.instances, "__proto__")).toBe(true);
+    expect(wire.instances["__proto__"]).toEqual({ description: "Proto room", classic: true });
   });
   it("no world for the instance: no link; no config: an empty chart", () => {
     const org = (FleetManager.prototype as any).orgChart.call(fake({ worlds: new Map() }));
@@ -287,6 +303,23 @@ describe("the page reads once; the stream moves it (#1374)", () => {
     await mount(); await settle(4);
     expect(p.root.querySelector(".org-note").textContent).toContain("Fleet → Teams");
     expect(names(team("Not in a team"))).toEqual(["web-dev", "reviewer", "loner", "newbie"]);
+  });
+});
+
+describe("#1467 review: names that are Object.prototype's keys", () => {
+  // A control for the page (it reads the answer's own keys, so the server's own-key fix reaches it unchanged).
+  it("\"__proto__\" shows its own metadata; \"constructor\", absent from the structure, borrows nothing", async () => {
+    org = JSON.parse(JSON.stringify({ general: [], teams: [], instances: {} }).replace('"instances":{}', '"instances":{"__proto__":{"description":"Proto room","classic":true}}'));
+    app.appStore.set({ ready: true, instances: [{ name: "__proto__", status: "running", backend: "claude-code" }, { name: "constructor", status: "running", backend: "codex" }],
+      exec: {}, awaiting: {}, needs: [] });
+    await mount(); await settle(4);
+    const [proto, ctor] = nodes(team("Not in a team"));
+    expect(proto.querySelector(".org-name").textContent).toBe("__proto__");
+    expect(proto.querySelector(".org-desc").textContent).toBe("Proto room");
+    expect(proto.querySelector(".org-meta").textContent).toContain("ClassicBot room");
+    expect(ctor.querySelector(".org-name").textContent).toBe("constructor");
+    expect(ctor.querySelector(".org-desc")).toBeNull();
+    expect(ctor.querySelectorAll(".org-link").map((a: any) => a.getAttribute("href"))).toEqual(["/ui/chat/constructor"]);
   });
 });
 

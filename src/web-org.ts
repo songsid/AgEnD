@@ -80,7 +80,9 @@ const text = (v: unknown): string | undefined => {
 };
 
 export function buildOrgChart(input: OrgInput): OrgChart {
-  const instances: Record<string, OrgInstance> = {};
+  // Keyed by instance name, and any name the validators accept is a key — "__proto__" included (#1467 review): a
+  // prototype-less map makes every assignment an own property, so JSON carries it like any other name.
+  const instances = Object.create(null) as Record<string, OrgInstance>;
   const general: string[] = [];
   for (const name of input.names) {
     const cfg = input.instances[name];
