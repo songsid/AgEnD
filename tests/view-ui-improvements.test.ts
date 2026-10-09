@@ -18,6 +18,7 @@ const viewStrings = readFileSync(join(process.cwd(), "src", "ui", "shared", "vie
 let p: AppPage;
 let view: View;
 let shell: typeof import("/assets/app-shell.js");
+let nav: typeof import("/assets/instance-nav.js");
 let i18n: typeof import("/assets/app-i18n.js");
 let useStore: typeof import("/assets/app-store.js")["useStore"];
 let roster: Array<Record<string, unknown>> = [];
@@ -43,6 +44,7 @@ beforeAll(async () => {
   g.getComputedStyle = () => ({ paddingLeft: "0", paddingRight: "0", paddingTop: "0", paddingBottom: "0", fontFamily: "monospace", fontSize: "1px", lineHeight: "1.2" });
   view = await import("/assets/panel-view.js");
   shell = await import("/assets/app-shell.js");
+  nav = await import("/assets/instance-nav.js");
   i18n = await import("/assets/app-i18n.js");
   useStore = (await import("/assets/app-store.js")).useStore;
 });
@@ -50,15 +52,16 @@ afterAll(async () => { await p.unmount(); p.restore(); i18n.setLang("en"); for (
 afterEach(async () => {
   await p.unmount();
   // The roster store is the page's own singleton: each test starts from a page that has just loaded.
-  view.viewStore.set({ loaded: false, error: null, roster: [], filter: "", collapsed: new Set(), current: null, order: { groups: new Map(), insts: new Map() } });
+  view.viewStore.set({ loaded: false, error: null, roster: [], current: null });
+  nav.navStore.set({ order: { groups: new Map(), insts: new Map() }, collapsed: new Set(), filter: { q: "", status: [], cli: [] } });
   p.storage.clear(); i18n.setLang("en");
   roster = []; ai = { providers: [], fetchedAt: 0 }; aiStatus = 200; paneStatus = 200; requests = [];
   p.document.body.innerHTML = ""; p.root = p.document.createElement("div"); p.root.id = "app"; p.document.body.appendChild(p.root);
 });
 
+/** The sidebar's list as the page shows it with View open (alpha.2, N1: one list on every page), fed by View's roster. */
 function Slot() {
-  const s = useStore(shell.shellStore);
-  return s.side ? h(s.side.Component, {}) : null;
+  return h(nav.RosterNav, {});
 }
 const mountView = (name = "alpha") => p.mount(h("div", {}, h(view.ViewPanel, { route: { panel: "view", instance: name }, navKey: `view:${name}|1|en` }), h(Slot, {})));
 const rows = () => p.root.querySelectorAll("a.v-inst");
@@ -180,9 +183,8 @@ describe("the sidebar order: saved in this browser only, never on the server", (
     const preact = await import("/assets/preact.module.js");
     preact.options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
     const fresh = await import("/assets/panel-view.js");
-    const freshShell = await import("/assets/app-shell.js");
-    const freshStore = await import("/assets/app-store.js");
-    const FreshSlot = () => { const s = freshStore.useStore(freshShell.shellStore); return s.side ? preact.h(s.side.Component, {}) : null; };
+    const freshNav = await import("/assets/instance-nav.js");
+    const FreshSlot = () => preact.h(freshNav.RosterNav, {});
     preact.render(preact.h("div", {}, preact.h(fresh.ViewPanel, { route: { panel: "view", instance: "alpha" }, navKey: "view:alpha|9|en" }), preact.h(FreshSlot, {})), p.root);
     await settle();
     expect(rows().map(rowName)).toEqual(["beta", "alpha"]);
