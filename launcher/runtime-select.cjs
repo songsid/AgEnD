@@ -20,14 +20,34 @@ function absent(file) {
 }
 
 /**
- * The receipt, by state: "absent" only when no file is there; "invalid" when one is there but cannot be read, is not
- * JSON, or is not an object (empty, `null`, an array); "valid" with its value.
+ * THE RECEIPT CONTRACT (#1460 review), shared word for word with the sh bins (launcher/agend), which check it before
+ * they exec anything: the receipt is exactly `JSON.stringify(receipt, null, 2) + "\n"` of these keys in this order —
+ * strings plain (no `"`, `\` or control characters), numbers non-negative integers, `libc` "glibc" or null. Anything
+ * else — unreadable, not JSON, valid JSON in another shape or layout — is "invalid". `mtime` is whole seconds (what
+ * `stat` gives a shell, and what survives a copy that preserves timestamps).
  */
+var RECEIPT_KEYS = ["receipt", "pinnedVersion", "nodePath", "size", "mtime", "sha256", "napi", "platform", "arch", "libc", "verifiedAt"];
+var PLAIN = /^[^"\\\u0000-\u001f]*$/;
+function receiptText(r) {
+  var ordered = {};
+  RECEIPT_KEYS.forEach(function (k) { ordered[k] = r[k]; });
+  return JSON.stringify(ordered, null, 2) + "\n";
+}
+function receiptShapeOk(r) {
+  var int = function (n) { return typeof n === "number" && Number.isSafeInteger(n) && n >= 0; };
+  var str = function (s) { return typeof s === "string" && PLAIN.test(s); };
+  return r.receipt === 2 && str(r.pinnedVersion) && /^\d+\.\d+\.\d+(-agend\.\d+)?$/.test(r.pinnedVersion)
+    && str(r.nodePath) && r.nodePath.charAt(0) === "/" && int(r.size) && int(r.mtime) && typeof r.sha256 === "string" && /^[0-9a-f]{64}$/.test(r.sha256)
+    && int(r.napi) && str(r.platform) && r.platform !== "" && str(r.arch) && r.arch !== "" && (r.libc === "glibc" || r.libc === null) && str(r.verifiedAt) && r.verifiedAt !== "";
+}
+
+/** The receipt, by state: "absent" only when no file is there; "valid" only in the contract's exact form; else "invalid". */
 function readReceipt(file) {
   if (absent(file)) return { state: "absent" };
-  var value;
-  try { value = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return { state: "invalid" }; }
-  return value && typeof value === "object" && !Array.isArray(value) ? { state: "valid", value: value } : { state: "invalid" };
+  var text, value;
+  try { text = fs.readFileSync(file, "utf8"); value = JSON.parse(text); } catch (e) { return { state: "invalid" }; }
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).join(",") !== RECEIPT_KEYS.join(",")) return { state: "invalid" };
+  return receiptShapeOk(value) && text === receiptText(value) ? { state: "valid", value: value } : { state: "invalid" };
 }
 
 function realpath(file) {
@@ -79,7 +99,7 @@ function receiptMatches(receipt, candidate, pin) {
   if (!real || real !== receipt.nodePath) return false;
   try {
     var st = fs.lstatSync(real);
-    return st.isFile() && st.size === receipt.size && st.mtimeMs === receipt.mtimeMs;
+    return st.isFile() && st.size === receipt.size && Math.floor(st.mtimeMs / 1000) === receipt.mtime;
   } catch (e) {
     return false;
   }
@@ -140,4 +160,4 @@ function selectRuntime(launcherDir, deps) {
   return { ok: false, reason: (pin ? support.reason : "this release bundles no Node") + "; this Node " + running.node + " is older than AgEnD needs (" + engines + ")", recovery: "install Node " + engines + ", then " + recovery };
 }
 
-module.exports = { RECEIPT: RECEIPT, MIN_NAPI: MIN_NAPI, selectRuntime: selectRuntime, packageDir: packageDir, pinnedRuntime: pinnedRuntime, runtimeCandidate: runtimeCandidate, probeNode: probeNode, qualifies: qualifies, receiptMatches: receiptMatches, readReceipt: readReceipt, absent: absent };
+module.exports = { RECEIPT: RECEIPT, MIN_NAPI: MIN_NAPI, selectRuntime: selectRuntime, packageDir: packageDir, pinnedRuntime: pinnedRuntime, runtimeCandidate: runtimeCandidate, probeNode: probeNode, qualifies: qualifies, receiptMatches: receiptMatches, readReceipt: readReceipt, absent: absent, receiptText: receiptText, RECEIPT_KEYS: RECEIPT_KEYS, PLAIN: PLAIN };
