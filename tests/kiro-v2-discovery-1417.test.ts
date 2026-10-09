@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -12,6 +12,7 @@ import type { CliBackendConfig } from "../src/backend/types.js";
 import { Daemon } from "../src/daemon.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import pino from "pino";
+import ts from "typescript";
 
 // A sync selector on the fleet's realm fails even on small files. The worker
 // owns only private fixtures; these mocks cannot reach that separate realm.
@@ -75,6 +76,25 @@ describe("bounded metadata lane", () => {
 });
 
 describe("real private worker, exact JSON metadata semantics", () => {
+  it("unavailable stat hints bypass the cache without discarding a readable session", () => {
+    // Execute the exact worker callback with inert FS imports: no native worker
+    // or real filesystem can synthesize a stat-denied/readable file reliably.
+    const source = readFileSync(new URL("../src/backend/kiro-v2-store-worker.ts", import.meta.url), "utf8");
+    const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    let handler!: (message: any) => void; const replies: any[] = [];
+    const read = vi.fn(() => JSON.stringify({ cwd: "/fixture", session_id: "mine" }));
+    const inertRequire = (name: string) => {
+      if (name === "node:worker_threads") return { parentPort: { on: (_event: string, callback: typeof handler) => { handler = callback; }, postMessage: (message: any) => replies.push(message) } };
+      if (name === "node:perf_hooks") return { performance: { now: () => 0 } };
+      if (name === "node:fs") return { readdirSync: () => ["mine.json"], readFileSync: read, statSync: () => { throw Object.assign(new Error("no stat hint"), { code: "EACCES" }); } };
+      if (name === "node:path") return { join };
+      throw new Error("unexpected worker dependency: " + name);
+    };
+    new Function("require", "exports", js)(inertRequire, {});
+    handler({ id: 1, input, deadlineAt: 100 }); handler({ id: 2, input, deadlineAt: 100 });
+    expect(replies.map(r => r.reply.sessions)).toEqual([[{ id: "mine", updatedAt: 0, createdAt: null }], [{ id: "mine", updatedAt: 0, createdAt: null }]]);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
   it("keeps directory aliases, filename fallback, subagents, arbitrary property order and duplicate-key last wins", async () => {
     file("mine"); file("other", { cwd: join(root, "other") }); file("sub", { session_created_reason: "subagent" });
     file("fallback", { session_id: 12, updated_at: "invalid", created_at: "invalid" });
