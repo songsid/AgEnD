@@ -247,12 +247,13 @@ refresh (sol; Prism v2-4).
    untouched.
 4. **Render and prove the new service definition without loading it.**
    - Write it to a temporary file: `systemd-analyze verify` for a unit, `plutil -lint` for a plist.
-   - Run `serviceTargetCheck` (#1449) on the rendered content: it must start the verified package.
+   - Compare the rendered file's activation tuple (below) with the expected one. #1449's directory-containment
+     `serviceTargetCheck` is the pre-runtime predecessor and is not sufficient on its own.
    - If this fails: restore the package (as in 3), and the service is unchanged.
 5. **systemd:**
    1. move the new unit into place;
    2. `daemon-reload` (this does not start anything);
-   3. read the **loaded** `ExecStart`, which must start the verified package;
+   3. read the **loaded** activation tuple (`systemctl show`), which must equal the expected tuple;
    4. then restart.
    - A failure before the restart: put the unit preimage back, `daemon-reload`, check the loaded `ExecStart` equals
      the preimage's, and restore the package. The old fleet was never stopped.
@@ -262,7 +263,7 @@ refresh (sol; Prism v2-4).
    - `bootout` stops the job, and `bootstrap` of a `RunAtLoad`/`KeepAlive` plist starts it. So every proof (steps
      1–4) is done before the first disruptive command, and the activation is single: `bootout` + `bootstrap` of the
      new plist, then **no separate restart**.
-   - Then `launchctl print` must show the new `ProgramArguments` and a running PID.
+   - Then `launchctl print` must show the expected activation tuple and a running PID.
    - If the bootstrap fails, or that check fails: `bootout` whatever loaded, restore the package preimage, put the
      plist preimage back, `bootstrap` it, and check that **it** is loaded and running. The outcome is a single
      `failed` with "rolled back to <previous>".
@@ -288,12 +289,58 @@ refresh (sol; Prism v2-4).
 - `full-restart.ts` and every other `process.execPath` spawn is never used after the package that holds the
   interpreter is gone. The helper is the only process that continues.
 
-### Restart refuses an unverified transition (the hop, Prism v2-6)
+### The activation tuple: what the guard and every loaded check compare (Prism v3)
 
-2.2's `agend restart` runs **`serviceTargetCheck` against the package it belongs to before stopping anything**. If the
-authoritative service does not start this verified install (for example, a refresh failed and the unit still names
-2.1.12's deleted entry), it exits non-zero and touches nothing. `--force` exists for operators, and it is never used
-by an updater. This covers any caller, including an old updater that ignores a failed step.
+Directory containment is not enough. A 2.1-format unit records `<same global package>/dist/cli.js` as its
+executable and leaves the interpreter to `#!/usr/bin/env node` plus the unit's `PATH`. npm replaces that package in
+place, so after a failed refresh the old unit still points **inside** the new package, and would run 2.2 on Node 20.
+What is compared is therefore the whole **activation tuple**:
+
+- **interpreter:** the realpath of the program the manager executes. That is `ExecStart`'s argv[0] or
+  `ProgramArguments[0]`, or for detached, the restart's own `process.execPath`.
+- **entry:** the realpath of the script it is given (argv[1]).
+- **arguments:** the rest, exactly `fleet start`.
+- **interpreter-affecting environment** of the definition: `NODE_OPTIONS`, `NODE_PATH` and `NODE_EXTRA_CA_CERTS` must
+  be absent or exactly what `agend install` renders, and `PATH` must not contain the runtime directory (PATH section).
+
+The **expected** tuple comes from this package's own selection protocol (C2), run fresh at check time:
+- the interpreter is the verified selected interpreter: the receipt-matched runtime, a validated `AGEND_NODE`, or a
+  qualifying system Node only in C2's no-runtime cases;
+- the entry is `canonicalCliEntry()`;
+- the arguments are `fleet start`.
+
+A definition whose argv[0] is a **script** (the 2.1 format, interpreter by shebang) never matches: 2.2 always names
+its interpreter.
+
+The **effective loaded** definition is what is compared, not the file:
+- systemd: `systemctl [--user] show -p ExecStart -p Environment -p FragmentPath -p DropInPaths <unit>`, which
+  reflects drop-ins and what is actually loaded;
+- launchd: `launchctl print gui/<uid>/<label>` (program, arguments, environment);
+- detached: there is no definition; the tuple is the one the restart itself would spawn, and its interpreter must be
+  the selected one.
+- If the manager's loaded definition differs from the file on disk, that is itself a mismatch: refuse, and report
+  "reload pending or failed".
+
+Uses:
+- the C6 step-5 loaded check, and the launchd post-bootstrap check (C6.6);
+- the render proof (C6.4), using the rendered file's tuple;
+- **the restart guard below.**
+
+### Restart refuses an unverified transition (the hop, Prism v2-6, v3)
+
+2.2's `agend restart` compares the **loaded** activation tuple of the authoritative service with the expected tuple
+**before stopping anything**. On any mismatch it exits non-zero and signals, stops and activates nothing:
+- a script as argv[0];
+- another interpreter or entry;
+- other arguments;
+- disallowed environment;
+- the loaded definition differing from the file.
+
+`--force` exists for operators, and it is never used by an updater.
+
+This covers every caller, including the old 2.1.12 updater, whose final `agend restart` follows a refresh that failed
+silently: the old-format unit, even when it points inside the new package, has a script as argv[0] and PATH's Node 20
+as its interpreter. That is a mismatch, so it is refused.
 
 ### Tests (actual package and service state, not only render)
 
@@ -309,7 +356,16 @@ by an updater. This covers any caller, including an old updater that ignores a f
   is never a double activation (no extra kickstart).
 - **Sequences:** upgrade → downgrade; a second 2.2 → 2.2; 2.2 → 2.1.12 with an installed service (preimage restored,
   loaded definition checked).
-- **The restart guard:** a unit naming another install → `agend restart` exits non-zero and nothing is signalled.
+- **The restart guard:** each of these (loaded through a private user manager) makes `agend restart` exit non-zero
+  with nothing signalled:
+  - another install;
+  - **a same-prefix 2.1-format unit** (script argv[0], Node 20 on PATH);
+  - the right entry with a wrong interpreter (a system Node instead of the receipt runtime);
+  - an extra argument;
+  - `NODE_OPTIONS` set;
+  - a drop-in overriding `ExecStart`;
+  - a file changed but not reloaded.
+- **Control:** the expected tuple restarts.
 
 ## Provisioning, and the #1442 guard
 
@@ -345,13 +401,18 @@ The old updater has **two branches**, both reachable (sol 7):
      launchd's reload is an activation). On failure it restores the service preimage and exits non-zero, which 2.1.12
      ignores.
   5. `agend completion install --refresh`.
-  6. `agend restart`: 2.2's restart **first runs the restart guard** (C6). If step 4 failed, the authoritative service
-     does not start the verified 2.2 install, so the restart **refuses before stopping anything**. The 2.1.12 fleet
+  6. `agend restart`: 2.2's restart **first runs the restart guard** (C6), comparing the loaded activation tuple. If
+     step 4 failed, the authoritative service still has the 2.1 tuple (a script as argv[0], PATH's Node 20), even
+     when it points inside the replaced package, so the restart **refuses before stopping anything**. The 2.1.12 fleet
      keeps running on its in-memory code, and the recovery line is printed. If step 4 succeeded, it restarts (systemd)
      or performs the single launchd activation.
-  - **CI:** the hop's failure leg runs the **real** 2.1.12 updater through its final restart, with a step 4 that
-    fails. It asserts that nothing was stopped or activated: the stand-in fleet PID is alive, and there are no
-    systemctl restart, launchctl or signal calls.
+  - **CI:** the hop's failure leg runs the **real** 2.1.12 updater through its final restart:
+    - Setup: a **real same-prefix 2.1-format unit** (`ExecStart=<prefix>/lib/node_modules/@songsid/agend/dist/cli.js
+      fleet start`, whose `PATH` makes `env node` Node 20) is loaded in a private systemd user manager, with a
+      stand-in fleet PID. A step 4 that fails.
+    - It asserts that nothing was stopped or activated: the stand-in PID is alive, and there are no systemctl
+      restart, launchctl or signal calls.
+    - The **control** leg, with a refresh that succeeds, restarts onto the expected tuple.
 - **Non-writable prefix** (needs sudo): the old updater installs **nvm and its Node 22**, then installs on it. This
   design cannot prevent that branch; the no-nvm goal only holds on the writable branch. On that branch the runtime is
   still installed and preferred, and the nvm Node only runs npm.
