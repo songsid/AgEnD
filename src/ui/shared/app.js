@@ -43,7 +43,9 @@ if (mode === "full") {
   // The chat's store must hear every message from the first frame, whatever panel is open: its module boots once,
   // now, for the life of the page. Fleet loads the first time it is opened.
   const loadChat = retryable((a) => import(retryUrl("/ui/js/panel-chat.js", a)).then((m) => {
-    m.boot({ stream, boot });
+    // The chat store this page booted — whichever import succeeded (a Retry loads ?retry=<n>) — is the page's one owner
+    // of its prompts; Needs you finds it here and never imports the chat itself (#1463 review).
+    appStore.set({ chatOwner: m.boot({ stream, boot }) });
     // Loaded only after the stream opened (a Retry): the frames sent on connect never reached it — catch up once.
     if (stream.started()) stream.catchUp();
     return m;
