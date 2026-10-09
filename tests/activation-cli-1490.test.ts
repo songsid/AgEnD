@@ -179,7 +179,7 @@ describe("the hosted native acceptance callback uses the new outcome contract", 
     // retireSystemCopy with undefined path logs failure and returns {ok:false}
     const { retireSystemCopy: retireImpl } = await import("../src/update-install.js");
     const logMessages: string[] = [];
-    const result = retireImpl({ run: () => ({ status: 0, stdout: "", stderr: "" }), log: (m) => logMessages.push(m) }, undefined);
+    const result = retireImpl({ run: () => ({ status: 0, signal: null, stdout: "", stderr: "" }), log: (m) => logMessages.push(m) }, undefined);
     expect(result.ok).toBe(false);
     expect(logMessages.some(m => m.includes("✗"))).toBe(true);
   });
