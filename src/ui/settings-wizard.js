@@ -26,7 +26,7 @@ export function SetupWizard({ ctx, onClose }) {
       if (!lease.current()) return;
       const e = (env && env.body) || { backends: [], channels: [], has_fleet: false };
       setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: "agent-1",
-        platform: "telegram", token: "", token_env: "AGEND_BOT_TOKEN", group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
+        platform: "telegram", token: "", token_env: "AGEND_TELEGRAM_TOKEN", group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
         identity: null, guilds: [], plan: null, offset: 0 });
     })();
   }, [lease]);
@@ -103,7 +103,16 @@ export function SetupWizard({ ctx, onClose }) {
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
-          onClick=${() => setW({ ...w, platform: p, identity: null })}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
+          onClick=${() => setW((x) => {
+            // Update the token_env default when platform changes, unless the
+            // user already typed a custom value (S1: each platform needs its own
+            // env name so adding a second connection never replaces the first).
+            const isDefaultEnv = x.token_env === "AGEND_TELEGRAM_TOKEN" || x.token_env === "AGEND_DISCORD_TOKEN"
+              || x.token_env === "AGEND_TELEGRAM_TOKEN_2" || x.token_env === "AGEND_DISCORD_TOKEN_2"
+              || !x.token_env;
+            return { ...x, platform: p, identity: null,
+              token_env: isDefaultEnv ? (p === "telegram" ? "AGEND_TELEGRAM_TOKEN" : "AGEND_DISCORD_TOKEN") : x.token_env };
+          })}}>${p === "telegram" ? "Telegram" : "Discord"}</button>`)}</div>
       <p class="note">${w.platform === "telegram" ? tn("wizardTelegramHint") : tn("wizardDiscordHint")}</p>`;
   } else if (w.step === 3) {
     body = html`<div class="field"><label for="wz-token">${tn("wizardToken")}</label>
