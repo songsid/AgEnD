@@ -171,7 +171,7 @@ export function SettingsPanel({ route, navKey }) {
     for (const c of staged.values()) {
       for (const k of c.confirms || []) if (!ask(tn(k))) { toast(tn("accessChangeCancelled"), false); return; }
     }
-    const list = [...staged.values()].map(({ label, impact, request, connectionSecret, stageKey }) => ({ label, impact, request, connectionSecret, stageKey }));
+    const list = [...staged.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
     if (startOperation(list)) setStaged(new Map());
   };
 
@@ -200,17 +200,19 @@ export function SettingsPanel({ route, navKey }) {
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
       ${sectionBody}
     </div></div>
-    ${staged.size ? html`<${PendingBar} staged=${staged} busy=${!!op && ["writing", "posting", "watching"].includes(op.phase)} onApply=${apply} onDiscard=${discard} />` : null}
+    ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} />` : null}
     ${open && ctx ? renderDialog(open, ctx, close) : null}
     ${open && open.kind === "help" ? html`<${HelpDialog} onClose=${close} />` : null}
   </div>`;
 }
 
+/** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */
+const opBusy = (op) => !!op && (["writing", "posting", "watching"].includes(op.phase) || op.restart === "busy");
 function dropSecrets(staged) { for (const c of staged.values()) if (c.connectionSecret) c.connectionSecret.secret = ""; }
 
 function renderDialog(d, ctx, close) {
   if (d.kind === "agent") return html`<${AgentDialog} name=${d.name} inst=${d.inst} ctx=${ctx} onClose=${close} />`;
-  if (d.kind === "bot") return html`<${BotDialog} index=${d.index} ctx=${ctx} onClose=${close} />`;
+  if (d.kind === "bot") return html`<${BotDialog} key=${d.id} id=${d.id} ctx=${ctx} onClose=${close} />`;
   if (d.kind === "newBot") return html`<${NewBotDialog} ctx=${ctx} onClose=${close} />`;
   if (d.kind === "classic") return html`<${ClassicDialog} room=${d.room} ctx=${ctx} onClose=${close} />`;
   if (d.kind === "create") return html`<${CreateInstanceDialog} onClose=${() => { close(); ctx.reload(); }} />`;
@@ -364,7 +366,7 @@ function Bots({ ctx, search, openDialog, lease }) {
         <span class="s-actions">
           <span class=${`tag${token ? "" : " warn"}`}>${token ? tn("tokenConfigured") : tn("tokenMissing")}</span>
           <span class=${`s-state ${ctx.fleetUp ? "ok" : "bad"}`}>${ctx.fleetUp ? tn("connected") : tn("problem")}</span>
-          <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", index: i })}>${tn("settingsButton")}</button></span>
+          <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
       </div>`;
     })}</div>`}
     ${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} lease=${lease} />` : null}`;
@@ -377,12 +379,18 @@ function Bots({ ctx, search, openDialog, lease }) {
 function ProviderKeys({ ctx, lease }) {
   const [keys, setKeys] = useState({});
   const [notes, setNotes] = useState({});
-  const [busy, setBusy] = useState(null);
+  // One request per provider at a time, each owning only its own provider's busy state (#1453 review): a second
+  // provider's key never unlocks the first while the first is still on its way. The ref decides at once; the state
+  // only draws it.
+  const inFlight = useRef(new Set());
+  const [busy, setBusy] = useState(() => new Set());
   const say = (id, note) => { if (lease.current()) setNotes((n) => ({ ...n, [id]: note })); };
   const go = async (spec) => {
     const secret = keys[spec.id] || "";
     if (!secret) { say(spec.id, { error: tn("enterKeyFirst") }); return; }
-    setBusy(spec.id);
+    if (inFlight.current.has(spec.id)) return;
+    inFlight.current.add(spec.id);
+    setBusy(new Set(inFlight.current));
     setKeys((k) => ({ ...k, [spec.id]: "" }));                 // out of the form at once; only this request holds it
     say(spec.id, { text: tn("verifying") });
     const key = newKey("provider");
@@ -404,14 +412,14 @@ function ProviderKeys({ ctx, lease }) {
       say(spec.id, ok ? { text: tn(labels[body.result]) } : { error: labels[body.result] ? tn(labels[body.result]) : (body.error || tn("applyFailed")) });
       if (ok) ctx.reload();
     } catch { say(spec.id, { error: tn("failed") }); }
-    finally { if (lease.current()) setBusy(null); }
+    finally { inFlight.current.delete(spec.id); if (lease.current()) setBusy(new Set(inFlight.current)); }
   };
   return html`<section class="card"><h3>${tn("providerKeys")}</h3>
     ${!ctx.providerSecrets.length ? html`<p class="note">${tn("noProviderVerifiers")}</p>` : ctx.providerSecrets.map((spec) => html`<div key=${spec.id} class="s-key">
       <div class="s-key-row"><strong>${spec.display_name}</strong><span class="tag">${spec.token_present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
         ${spec.verifier === "available" ? html`<input type="password" autocomplete="new-password" aria-label=${tn("providerKeyInput", spec.display_name)}
             placeholder=${spec.token_present ? tn("keyConfigured") : tn("keyNotConfigured")} value=${keys[spec.id] || ""} onInput=${(e) => setKeys((k) => ({ ...k, [spec.id]: e.target.value }))} />
-          <button type="button" class="btn btn-sm btn-primary" disabled=${busy === spec.id} onClick=${() => go(spec)}>${tn("verifyApply")}</button>`
+          <button type="button" class="btn btn-sm btn-primary" disabled=${busy.has(spec.id)} onClick=${() => go(spec)}>${tn("verifyApply")}</button>`
           : html`<span class="tag">${tn("unsupportedVerifier")}</span>`}</div>
       ${spec.verifier === "available" ? null : html`<p class="note">${tn("unsupportedVerifierHint")}</p>`}
       ${notes[spec.id] ? html`<p class=${`feedback${notes[spec.id].error ? " error" : ""}`} role="status">${notes[spec.id].error || notes[spec.id].text}</p>` : null}
@@ -654,7 +662,8 @@ function PendingBar({ staged, busy, onApply, onDiscard }) {
 /** The Apply in hand (the app's, settings-apply.js): its writes, its job, and a restart when one is needed. */
 function OperationCard({ op, schema }) {
   const [restarting, setRestarting] = useState(false);
-  const busy = ["writing", "posting", "watching"].includes(op.phase);
+  const busy = opBusy(op);                                 // nothing to dismiss while it, or its restart, runs
+  const phaseBusy = ["writing", "posting", "watching"].includes(op.phase);
   const job = op.job;
   const rows = (job && job.targets) || [];
   const fleetRestarting = job && job.status === "running" && rows.some((r) => r.target === "fleet" && r.status === "running");
@@ -693,7 +702,7 @@ function OperationCard({ op, schema }) {
         : r.settled_by === "no-change" ? tn("applyNoChange") : r.settled_by === "fleet-restart" ? tn("viaRestart") : r.kind === "hot" ? tn("impactNow") : tn("impactAgent")}</span>
       ${r.error ? html`<span class="feedback error">${r.error}</span>` : null}</li>`)}</ul>` : null}
     ${job && job.error ? html`<p class="feedback error">${job.error}</p>` : null}
-    ${needsRestart && !mismatch && !busy ? html`<div class="save-row"><button type="button" class="btn btn-primary" disabled=${restarting || op.restart === "busy"} onClick=${restart}>
+    ${needsRestart && !mismatch && !phaseBusy ? html`<div class="save-row"><button type="button" class="btn btn-primary" disabled=${restarting || op.restart === "busy"} onClick=${restart}>
       ${restarting || op.restart === "busy" ? tn("restartFleetBusy") : tn("restartFleetButton")}</button></div>` : null}
   </section>`;
 }

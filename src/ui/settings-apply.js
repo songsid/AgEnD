@@ -32,12 +32,17 @@ function view() {
 }
 function publish() { appStore.set({ settingsOp: view() }); }
 
-/** An operation is in hand and not finished: Apply stays off, and leaving the page asks first while it is pre-POST. */
-export function operationActive() { return !!op && ACTIVE.has(op.phase); }
+/**
+ * An operation is in hand and not finished — its writes, its apply job, or a restart of AgEnD it asked for (from the
+ * press until that restart's watch ends, #1453 review): Apply stays off, and no other operation can take its place.
+ */
+export function operationActive() { return !!op && (ACTIVE.has(op.phase) || op.restart === "busy"); }
 
 /**
- * Take over an Apply. `changes`: [{ label, impact, request: { method, url, body } } | { label, impact,
+ * Take over an Apply. `changes`: [{ label, impact, request: { method, url, body, sensitive? }, key? } | { label, impact,
  * connectionSecret: { id, secret } }], in order. Returns false (and does nothing) while another operation is active.
+ * A change that brings its `key` is the retry of a write whose outcome was never learned: the same key rejoins the
+ * request the server may already hold. A `sensitive` request body (the wizard's token) is dropped once it is sent.
  */
 export function startOperation(changes) {
   if (operationActive()) return false;
@@ -45,7 +50,7 @@ export function startOperation(changes) {
     id: ++seq,
     phase: "writing", error: null, job: null, lostJob: false, restart: "idle", leftover: [],
     applyKey: newKey("apply"),                       // made now, before the first write; every POST retry reuses it
-    steps: changes.map((c) => ({ ...c, key: newKey("write"), status: "queued" })),
+    steps: changes.map((c) => ({ ...c, request: c.request ? { ...c.request } : undefined, key: c.key || newKey("write"), status: "queued" })),
   };
   publish();
   run(op);
@@ -73,13 +78,21 @@ async function run(o) {
     if (!mine(o)) return;
     step.status = "running"; publish();
     let res;
+    // A transport failure leaves the outcome unknown: the server may have taken the write (or made it a pending
+    // request). That is not a refusal — the step keeps its key, so trying again rejoins it (#1453 review).
     try { res = await perform(step, o); }
-    catch (err) { res = { ok: false, body: { error: err && err.message ? err.message : "network" } }; }
-    finally { if (step.connectionSecret) step.connectionSecret.secret = ""; }
+    catch (err) { res = { ok: false, ambiguous: true, body: { error: err && err.message ? err.message : "network" } }; }
+    finally {
+      if (step.connectionSecret) step.connectionSecret.secret = "";
+      if (step.request && step.request.sensitive) step.request.body = null;
+    }
     if (!mine(o)) return;
     step.pendingId = null;
+    // The wizard's commit says when ~/.agend/.env is readable by others.
+    if (res && res.ok && res.body && res.body.secret_mode_ok === false) toast(t("settings.wizardEnvPerms"), false);
     if (!res || !res.ok) {
       step.status = "failed";
+      step.ambiguous = !!(res && res.ambiguous);
       step.error = (res && res.body && (res.body.error || res.body.result)) || "failed";
       stop(o, step);
       return;
@@ -136,9 +149,10 @@ function stop(o, failed) {
     else if (after && step.status === "queued") step.status = "skipped";
     if (step.connectionSecret) step.connectionSecret.secret = "";
   }
-  // What did not land can be staged again, except a secret, which has to be entered again.
-  o.leftover = o.steps.filter((s) => (s.status === "failed" || s.status === "skipped") && s.request)
-    .map(({ label, impact, request, stageKey }) => ({ label, impact, request, stageKey }));
+  // What did not land can be staged again, except a secret, which has to be entered again. A write whose outcome is
+  // unknown goes back with its key; one the server refused, or that never ran, gets a new key when it is applied.
+  o.leftover = o.steps.filter((s) => (s.status === "failed" || s.status === "skipped") && s.request && !s.request.sensitive)
+    .map(({ label, impact, request, stageKey, key, ambiguous }) => ({ label, impact, request, stageKey, ...(ambiguous ? { key } : {}) }));
   publish();
 }
 

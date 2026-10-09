@@ -332,6 +332,31 @@ describe("6. #1423: a write waiting for a fleet admin's confirmation", () => {
     expect(app.appStore.get().pendingChanges.map((x: any) => x.state)).toEqual(["pending"]);
   });
 
+  it("Fleet config: an older save decided late never unlocks the form under a newer save still on its way (#1453 review)", async () => {
+    let decided = "pending", posts = 0;
+    const second = gate();
+    handler = async (path, init) => {
+      if (path === "/ui/config" && init.method !== "POST") return { channel: { type: "discord", group_id: "1", access: { mode: "locked", allowed_users: ["2"] } }, defaults: { backend: "codex" }, project_roots: [] };
+      if (path === "/ui/config") { posts++; if (posts === 1) return pending; await second.p; return { ok: true }; }
+      if (path === `/api/settings/pending/${ID}`) return view(decided);
+      return {};
+    };
+    nav.navigate("/ui/fleet/config");
+    await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "config" }, navKey: "fleet:config|1|en" }));
+    await settle(6);
+    const save = () => [...p.root.querySelectorAll(".save-row .btn")].find((b: any) => b.textContent.includes("Save"))!;
+    save().click(); await settle(4);                               // A: pending — the form is free again
+    expect(save().disabled).toBe(false);
+    save().click(); await settle(4);                               // B: on its way
+    expect(save().disabled).toBe(true);
+    decided = "applied";                                           // A is decided now
+    await vi.waitFor(() => expect(app.appStore.get().pendingChanges[0]?.state).toBe("applied"), { timeout: 5000 });
+    await settle(4);
+    expect(save().disabled).toBe(true);                            // still B's
+    second.open(); await settle(6);
+    expect(save().disabled).toBe(false);
+  }, 10_000);
+
   it("Delete, then confirmed while the page is still on that chat: the dialog that handed over does not navigate", async () => {
     let decided = "pending";
     handler = async (path) => {

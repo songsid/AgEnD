@@ -53,8 +53,10 @@ async function fetchFake(url: string, init: any = {}) {
   const ans = await (a ?? base(r))!;
   if (ans instanceof Error) throw ans;
   const status = ans.status ?? 200;
-  return { ok: status >= 200 && status < 300, status, json: async () => ans.body, text: async () => JSON.stringify(ans.body) };
+  return { ok: status >= 200 && status < 300, status, json: async () => { if (ans.body === UNREADABLE) throw new SyntaxError("Unexpected end of JSON input"); return ans.body; },
+    text: async () => JSON.stringify(ans.body) };
 }
+const UNREADABLE = Symbol("unreadable body");
 const gate = <T,>() => { let open!: (v: T) => void; const p = new Promise<T>(r => { open = r; }); return { p, open }; };
 const writes = () => reqs.filter(r => r.method !== "GET");
 const reads = () => reqs.filter(r => r.method === "GET").map(r => r.url);
@@ -411,4 +413,222 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     expect(JSON.stringify(writes().filter(r => r.url === "/api/settings/apply"))).not.toContain("fake-wizard-token");
     expect(p.root.querySelector("dialog")).toBeNull();
   }, 10_000);
+});
+
+// ── #1453 review: ownership through every way in, and requests that cannot go backwards ──
+
+describe("#1453 review", () => {
+  const VIEW = (state: string, extra: Record<string, unknown> = {}) => ({ id: "f".repeat(32), state, section: "access", requested_at: 1, requested_by: "Chrome",
+    expires_at: 2, remaining_ms: 290_000, source: "web_session", summary: ["x"], confirmation: { kind: "chat" }, can_withdraw: state === "pending", outcome: null, ...extra });
+  const THREE = [
+    { id: "prior", type: "discord", bot_token_env: "A", access: { mode: "locked", allowed_users: ["1"] } },
+    { id: "main", type: "discord", bot_token_env: "B", access: { mode: "locked", allowed_users: ["2"] } },
+    { id: "persona", type: "telegram", bot_token_env: "C", access: { mode: "locked", allowed_users: ["3"] } },
+  ];
+  const rowNamed = (label: string) => p.root.querySelectorAll(".s-row").find((r: any) => r.textContent.includes(label));
+  const reloadPanel = async () => { app.appStore.set({ pendingChanges: [{ id: "r".repeat(32), state: "applied" }] }); await settle(8); app.appStore.set({ pendingChanges: [] }); await settle(2); };
+
+  it("1. a connection's dialog stays that connection's when the list changes under it; gone, it closes", async () => {
+    let channels: any[] = THREE;
+    routes.push(r => (r.url === "/api/settings/fleet/raw" ? { body: { ...structuredClone(FLEET), channels: structuredClone(channels) } } : undefined));
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(rowNamed("main"), "Settings").click(); await settle(4);
+    const token = p.root.querySelector("#bot-token");
+    token.value = "fake-main-token"; fire(token, "input"); await settle(2);
+    channels = THREE.filter(c => c.id !== "prior");                 // main moves from index 1 to 0, persona to 1
+    await reloadPanel();
+    expect(p.root.querySelector("dialog")?.textContent).toContain("main");
+    btn(p.root.querySelector("dialog"), "Stage the new token").click(); await settle(2);
+    p.root.querySelector("dialog .dlg-x").click(); await settle(4);
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(reqs.some(r => r.url.endsWith("/secret/verify"))).toBe(true));
+    expect(reqs.filter(r => r.url.endsWith("/secret/verify")).map(r => r.url)).toEqual(["/api/settings/connections/main/secret/verify"]);
+    // And when the connection is gone, its dialog (and the draft in it) goes too.
+    await vi.waitFor(() => expect(op().phase).not.toBe("writing"), { timeout: 5000 });
+    btn(rowNamed("persona"), "Settings").click(); await settle(4);
+    expect(p.root.querySelector("dialog")).not.toBeNull();
+    channels = THREE.filter(c => c.id !== "persona");
+    await reloadPanel();
+    expect(p.root.querySelector("dialog")).toBeNull();
+  }, 15_000);
+
+  it("2. the wizard hands its commit and the apply to the app before the commit is sent; with another Apply running it sends nothing", async () => {
+    const commit = gate<{ body: unknown }>();
+    routes.push(r => {
+      if (r.url === "/api/settings/quickstart/environment") return { body: { backends: ["codex"], channels: [], has_fleet: true } };
+      if (r.url === "/api/settings/quickstart/probe") return { body: { identity: { valid: true, username: "bot" } } };
+      if (r.url === "/api/settings/quickstart/plan") return { body: { channel: { type: "telegram" }, instance: { name: "agent-1", working_directory: "/w", backend: "codex" }, env_keys: [], warnings: [] } };
+      if (r.url === "/api/settings/quickstart/commit") return commit.p;
+      return undefined;
+    });
+    const walk = async () => {
+      btn(p.root.querySelector(".panel-actions"), "Setup wizard").click(); await settle(6);
+      const d = () => p.root.querySelector("dialog");
+      const type = async (sel: string, v: string) => { const i = d().querySelector(sel); i.value = v; fire(i, "input"); await settle(2); };
+      await type("#wz-wd", "/w"); btn(d(), "Next").click(); await settle(2); btn(d(), "Next").click(); await settle(2);
+      await type("#wz-token", "fake-wizard-token"); btn(d(), "Verify").click(); await settle(6); btn(d(), "Next").click(); await settle(6);
+      btn(d(), "Create and start").click(); await settle(2);
+    };
+    await mount(); await settle(6);
+    // Another Apply in hand: the wizard says so and sends no commit.
+    const held = gate<{ body: unknown }>();
+    routes.push(r => (r.url === "/api/settings/fleet/instances/zeta" ? held.p : undefined));
+    apply.startOperation([{ label: "z", impact: "now", request: { method: "PATCH", url: "/api/settings/fleet/instances/zeta", body: {} } }]);
+    await walk();
+    expect(p.root.querySelector("dialog")?.textContent).toContain("An Apply is still running");
+    expect(reqs.filter(r => r.url === "/api/settings/quickstart/commit")).toEqual([]);
+    p.root.querySelector("dialog .dlg-x").click(); await settle(2);
+    held.open({ body: { ok: true } });
+    await vi.waitFor(() => expect(apply.operationActive()).toBe(false), { timeout: 5000 });
+    // Free: owned by the app the moment it is pressed — before the commit has answered.
+    await walk();
+    expect(apply.operationActive()).toBe(true);
+    expect(winEvent("beforeunload").defaultPrevented).toBe(true);
+    expect(apply.startOperation([])).toBe(false);
+    commit.open({ body: { ok: true, secret_mode_ok: true } });
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 6000 });
+    expect(writes().filter(r => r.url === "/api/settings/apply")).toHaveLength(2);   // zeta's, then the wizard's
+  }, 20_000);
+
+  it("3. a restart owns the operation from the press until its watch ends: nothing else can start, Apply stays off", async () => {
+    const restart = gate<{ status: number; body: unknown }>();
+    const REQ = { id: "job1", status: "done", targets: [{ target: "fleet", kind: "cold", status: "restart-required" }] };
+    routes.push(r => {
+      if (r.url === "/api/settings/apply" && r.method === "POST") return { body: REQ };
+      if (r.url === "/api/settings/apply/job1") return { body: REQ };
+      if (r.url === "/api/settings/restart-fleet") return restart.p;
+      return undefined;
+    });
+    await mount(); await settle(6);
+    apply.startOperation([]);
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    await settle(4);
+    btn(p.root.querySelector(".s-op"), "Restart AgEnD").click(); await settle(2);
+    expect(apply.operationActive()).toBe(true);
+    expect(apply.startOperation([])).toBe(false);
+    await stageDescription("alpha", "A9");
+    expect(btn(p.root.querySelector(".s-pending"), "Apply changes").disabled).toBe(true);
+    routes.unshift(r => (r.url === "/api/settings/apply/job1" ? { body: JOB_DONE } : undefined));
+    restart.open({ status: 202, body: { job_id: "job1", restarting: true } });
+    await vi.waitFor(() => expect(apply.operationActive()).toBe(false), { timeout: 6000 });
+    expect(op().job.status).toBe("done");
+    expect(writes().filter(r => r.url === "/api/settings/restart-fleet")).toHaveLength(1);
+  }, 15_000);
+
+  it("4. an older 'pending' read that answers after Withdraw's 'rejected' does not bring the request back", async () => {
+    const poll = gate<{ body: unknown }>();
+    let polled = false;
+    routes.push(r => (r.method === "GET" && r.url.startsWith("/api/settings/pending/") && !polled ? (polled = true, poll.p) : undefined));
+    routes.push(r => (r.method === "DELETE" ? { body: VIEW("rejected", { outcome: { state: "rejected", reason_code: "withdrawn", message: "Change withdrawn." } }) } : undefined));
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
+    const done = confirmMod.track(VIEW("pending"), "x");
+    await vi.advanceTimersByTimeAsync(2_100);                      // the poll is on its way
+    expect(polled).toBe(true);
+    await app.appStore.get().pendingChanges[0].withdraw();
+    expect(app.appStore.get().pendingChanges[0].state).toBe("rejected");
+    poll.open({ body: VIEW("pending") });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(app.appStore.get().pendingChanges[0].state).toBe("rejected");
+    expect((await done).state).toBe("rejected");
+  });
+
+  it("4b. a reload's list that answers after Withdraw (no per-request order there) cannot bring the request back either", async () => {
+    const list = gate<{ body: unknown }>();
+    routes.push(r => (r.method === "GET" && r.url === "/api/settings/pending" ? list.p : undefined));
+    routes.push(r => (r.method === "DELETE" ? { body: VIEW("rejected", { outcome: { state: "rejected", reason_code: "withdrawn", message: "Change withdrawn." } }) } : undefined));
+    confirmMod.track(VIEW("pending"), "x");
+    const attached = confirmMod.attach();                         // asked before the Withdraw...
+    await app.appStore.get().pendingChanges[0].withdraw();
+    list.open({ body: [VIEW("pending")] });                       // ...answered after it
+    await attached; await settle(2);
+    expect(app.appStore.get().pendingChanges.map((x: any) => x.state)).toEqual(["rejected"]);
+  });
+
+  it("5. a write whose answer was lost goes back with its key, and the retry rejoins it; a refused one gets a new key", async () => {
+    let n = 0;
+    routes.push(r => (r.method === "PATCH" && r.url.endsWith("/alpha") && n++ === 0 ? Promise.reject(new TypeError("Failed to fetch")) as never : undefined));
+    await mount(); await settle(6);
+    await stageDescription("alpha", "A2");
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
+    await settle(6);
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    const patches = writes().filter(r => r.method === "PATCH");
+    expect(patches).toHaveLength(2);
+    expect(patches[1]!.key).toBe(patches[0]!.key);
+    expect(patches[1]!.body).toEqual(patches[0]!.body);
+    // Refused (a 400): the retry is a new request, with a new key.
+    reqs = [];
+    let m = 0;
+    routes.unshift(r => (r.method === "PATCH" && r.url.endsWith("/beta") && m++ === 0 ? { status: 400, body: { error: "invalid" } } : undefined));
+    await stageDescription("beta", "B2");
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
+    await settle(6);
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    const b = writes().filter(r => r.method === "PATCH");
+    expect(b).toHaveLength(2);
+    expect(b[1]!.key).not.toBe(b[0]!.key);
+  }, 20_000);
+
+  it("6. an accepted answer that cannot be read is not 'done': the operation stops before the next write and the apply", async () => {
+    routes.push(r => (r.method === "PATCH" && r.url.endsWith("/alpha") ? { status: 202, body: UNREADABLE } : undefined));
+    await mount(); await settle(6);
+    await stageDescription("alpha", "A2");
+    await stageDescription("beta", "B2");
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
+    expect(writes().map(r => `${r.method} ${r.url}`)).toEqual(["PATCH /api/settings/fleet/instances/alpha"]);
+    expect(op().steps.map((s: any) => s.status)).toEqual(["failed", "skipped"]);
+    // It goes back staged with its key: asking again rejoins whatever the server holds.
+    const first = writes()[0]!.key;
+    await settle(6);
+    routes.length = 0;
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    expect(writes().filter(r => r.method === "PATCH" && r.url.endsWith("/alpha")).map(r => r.key)).toEqual([first, first]);
+  }, 15_000);
+
+  it("7. a binding verification that answers after its dialog went asks nothing and writes nothing", async () => {
+    const verify = gate<{ body: unknown }>();
+    routes.push(r => (r.url.endsWith("/binding/verify") ? verify.p : undefined));
+    let asked = 0;
+    (globalThis as any).confirm = () => { asked++; return true; };
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(p.root.querySelector(".s-row"), "Settings").click(); await settle(4);
+    btn(p.root.querySelector("dialog"), "Verify the new binding").click(); await settle(2);
+    p.root.querySelector("dialog .dlg-x").click(); await settle(2);
+    nav.navigate("/ui/fleet"); await p.unmount();
+    verify.open({ body: { verification_id: "v1", probe: { group_name: "G" } } });
+    await settle(8);
+    expect(asked).toBe(0);
+    expect(writes().filter(r => r.url.endsWith("/binding/apply"))).toEqual([]);
+  });
+
+  it("9. each provider key owns only its own button: a second provider finishing never unlocks the first", async () => {
+    const p1 = gate<{ body: unknown }>();
+    routes.push(r => {
+      if (r.url === "/api/settings/provider-secrets") return { body: [{ id: "p1", display_name: "One", verifier: "available", token_present: false }, { id: "p2", display_name: "Two", verifier: "available", token_present: false }] };
+      if (r.url === "/api/settings/secrets/p1/verify") return p1.p;
+      if (r.url === "/api/settings/secrets/p2/verify") return { status: 400, body: { error: "bad key" } };
+      return undefined;
+    });
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    const keyRow = (name: string) => p.root.querySelectorAll(".s-key").find((k: any) => k.textContent.includes(name));
+    const enter = async (name: string, v: string) => { const i = keyRow(name).querySelector("input"); i.value = v; fire(i, "input"); await settle(2); btn(keyRow(name), "Verify & apply").click(); await settle(4); };
+    await enter("One", "fake-one");
+    expect(btn(keyRow("One"), "Verify & apply").disabled).toBe(true);
+    await enter("Two", "fake-two");
+    await settle(4);
+    expect(btn(keyRow("Two"), "Verify & apply").disabled).toBe(false);
+    expect(btn(keyRow("One"), "Verify & apply").disabled).toBe(true);
+    const i = keyRow("One").querySelector("input"); i.value = "fake-one-again"; fire(i, "input"); await settle(2);
+    btn(keyRow("One"), "Verify & apply").click(); await settle(4);
+    expect(reqs.filter(r => r.url === "/api/settings/secrets/p1/verify")).toHaveLength(1);
+    p1.open({ status: 400, body: { error: "bad" } } as any);
+    await settle(6);
+    expect(btn(keyRow("One"), "Verify & apply").disabled).toBe(false);
+  });
 });

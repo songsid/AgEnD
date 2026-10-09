@@ -275,7 +275,11 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
 // ── Connection (bot) ──
 
 /** Rebind a connection: the provider proves the target first, the person confirms it, then the binding job runs. */
-async function rebind(connection, groupId, generalChannelId, say) {
+/**
+ * `alive()` is the dialog's lease: once the dialog is gone, a verification that answers late asks nothing and writes
+ * nothing (#1453 review). A write already sent is still followed to its end.
+ */
+async function rebind(connection, groupId, generalChannelId, say, alive) {
   const key = newKey("binding");
   const binding = { group_id: String(groupId).trim(), general_channel_id: String(generalChannelId || "").trim() || null };
   const base = `/api/settings/connections/${encodeURIComponent(connection)}/binding`;
@@ -283,12 +287,14 @@ async function rebind(connection, groupId, generalChannelId, say) {
   let verified;
   try { verified = await api(`${base}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ ...binding, idempotency_key: key }) }); }
   catch { say({ error: tn("failed") }); return false; }
+  if (!alive()) return false;
   if (!verified.ok) { say({ error: (verified.body && verified.body.error) || tn("bindingVerifyFailed") }); return false; }
   const probe = (verified.body && verified.body.probe) || {};
   const target = [probe.group_name || binding.group_id, probe.channel_name || probe.channel_id].filter(Boolean).join(" / ");
   const perms = [probe.can_view ? "view" : null, probe.can_send ? "send" : null, probe.can_manage_topics ? "topics" : null].filter(Boolean).join(", ");
   say({ text: tn("bindingVerified", `${target}${perms ? ` (${perms})` : ""}`) });
   if (!ask(tn("bindingConfirm", target || binding.group_id))) { say({ text: tn("bindingNotApplied") }); return false; }
+  if (!alive()) return false;
   say({ text: tn("bindingApplying") });
   const applied = await confirmedWrite(`${base}/apply`, { method: "POST", key, label: tn("bindingLabel", connection),
     body: { verification_id: verified.body && verified.body.verification_id, idempotency_key: key } }).catch(() => ({ ok: false, body: { error: tn("failed") } }));
@@ -305,17 +311,23 @@ async function rebind(connection, groupId, generalChannelId, say) {
   return ok;
 }
 
-export function BotDialog({ index, ctx, onClose }) {
+/**
+ * One connection, named by its id — never by its place in the list: a reload after another connection was added or
+ * removed must not point this dialog (and a token typed into it) at a different connection (#1453 review). If the
+ * connection is gone, the dialog closes and its draft goes with it.
+ */
+export function BotDialog({ id, ctx, onClose }) {
   const { fleet, schema } = ctx;
   const chs = channelsOf(fleet);
-  const ch = chs[index];
-  const type = ch.type || "telegram";
-  const id = channelId(ch, index);
-  const previousAccess = useMemo(() => structuredClone(ch.access || { mode: "locked", allowed_users: [] }), []);
+  const index = chs.findIndex((c, i) => channelId(c, i) === id);
+  const ch = index >= 0 ? chs[index] : null;
+  const type = (ch && ch.type) || "telegram";
+  useEffect(() => { if (!ch) onClose(); }, [!ch]);
+  const previousAccess = useMemo(() => structuredClone((ch && ch.access) || { mode: "locked", allowed_users: [] }), []);
   const [mode, setMode] = useState(previousAccess.mode || "locked");
   const [users, setUsers] = useState([...(previousAccess.allowed_users || [])]);
-  const [group, setGroup] = useState(ch.group_id != null ? String(ch.group_id) : "");
-  const [general, setGeneral] = useState(ch.options && ch.options.general_channel_id != null ? String(ch.options.general_channel_id) : "");
+  const [group, setGroup] = useState(ch && ch.group_id != null ? String(ch.group_id) : "");
+  const [general, setGeneral] = useState(ch && ch.options && ch.options.general_channel_id != null ? String(ch.options.general_channel_id) : "");
   const [binding, setBinding] = useState(null);
   const [bindBusy, setBindBusy] = useState(false);
   const [token, setToken] = useState("");
@@ -324,6 +336,7 @@ export function BotDialog({ index, ctx, onClose }) {
   const lease = useLease("bot-dialog");
   const accessWarn = mode === "locked" && users.length === 0 ? "accessLockedEmpty" : "";
   const stageToken = () => {
+    if (!ch) return;
     if (!token) { setTokenNote({ error: tn("tokenRequired") }); return; }
     // The token goes into the staged change and nowhere else: not a label, not the URL, not storage.
     ctx.stage(`secret:${id}`, { label: tn("rotateToken", type), impact: schema.order[0], connectionSecret: { id, secret: token } });
@@ -331,6 +344,7 @@ export function BotDialog({ index, ctx, onClose }) {
     setTokenNote({ text: tn("tokenQueued") });
   };
   const stage = () => {
+    if (!ch) return;
     const original = structuredClone(chs);
     const next = structuredClone(original);
     next[index] = { ...next[index], access: { ...(next[index].access || {}), mode, allowed_users: [...users] } };
@@ -352,6 +366,7 @@ export function BotDialog({ index, ctx, onClose }) {
     onClose();
   };
   const remove = async () => {
+    if (!ch) return;
     if (!ask(tn("removeBot", `${type} (${chLabel(index)})`))) return;
     const next = chs.filter((_, j) => j !== index);
     const res = await confirmedWrite("/api/settings/fleet/channels", { method: "PUT", body: next, label: tn("removeBotLabel", id) }).catch(() => ({ ok: false, body: {} }));
@@ -361,6 +376,7 @@ export function BotDialog({ index, ctx, onClose }) {
     if (lease.current()) onClose();
   };
   const L = (text, field, htmlFor) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${htmlFor} />`;
+  if (!ch) return null;
   return html`<${EditDialog} title=${type === "telegram" ? "Telegram" : "Discord"} subtitle=${id} onClose=${onClose} onStage=${stage} impacts=${BOT_FIELDS} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("accessMode"), "fleet.channel.access.mode", "bot-mode")}<${Select} id="bot-mode" value=${mode} onChange=${setMode} options=${ACCESS_MODES} />
@@ -375,7 +391,7 @@ export function BotDialog({ index, ctx, onClose }) {
       <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" disabled=${bindBusy} onClick=${async () => {
         if (!group.trim()) { setBinding({ error: tn("groupRequired") }); return; }
         setBindBusy(true);
-        const ok = await rebind(id, group, general, (s) => { if (lease.current()) setBinding(s); });
+        const ok = await rebind(id, group, general, (s) => { if (lease.current()) setBinding(s); }, () => lease.current());
         if (lease.current()) setBindBusy(false);
         if (ok) ctx.reload();
       }}>${tn("bindingButton")}</button>

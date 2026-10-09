@@ -191,6 +191,9 @@ function Config({ lease }) {
   const state = useLoad(lease, "/ui/config", 0);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Each save owns the form's busy state only while it is the latest: an older save that is decided later (it waited
+  // for an admin's confirmation) never unlocks the form under a newer one still on its way (#1453 review).
+  const saves = useRef(0);
   useEffect(() => {
     if (!state || !state.data) return;
     const c = state.data, ch = c.channel || {}, acc = ch.access || {};
@@ -198,6 +201,8 @@ function Config({ lease }) {
       users: (acc.allowed_users || []).join(", "), backend: (c.defaults || {}).backend || "claude-code", roots: [...(c.project_roots || [])] });
   }, [state]);
   async function save() {
+    const mine = ++saves.current;
+    const done = () => { if (lease.current() && mine === saves.current) setSaving(false); };
     setSaving(true);
     const body = {
       channel: { group_id: form.groupId.trim(), access: { mode: form.mode, allowed_users: form.users.split(",").map(s => s.trim()).filter(Boolean) } },
@@ -208,10 +213,10 @@ function Config({ lease }) {
     // A change to access or the connection may need a fleet admin's confirmation (#1423): the shell follows it.
     try {
       const res = await confirmedWrite("/ui/config", { method: "POST", body, label: t("fleet.config"),
-        onPending: () => { toast(t("app.pendingSent")); if (lease.current()) setSaving(false); } });
+        onPending: () => { toast(t("app.pendingSent")); done(); } });
       r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
     } catch (err) { r = { error: err.message }; }
-    if (lease.current()) setSaving(false);
+    done();
     if (r.error) toast(r.error, false); else toast(t("fleet.configSaved") + (r.needs_restart ? t("fleet.configRestart") : ""));
   }
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });

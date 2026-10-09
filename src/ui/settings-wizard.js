@@ -6,17 +6,16 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Dialog } from "/assets/ui-dialog.js";
-import { toast } from "/assets/ui-toast.js";
-import { api, confirmedWrite } from "./settings-confirm.js";
-import { startOperation, operationActive } from "./settings-apply.js";
-import { BACKENDS, toYaml } from "./settings-model.js";
+import { api } from "./settings-confirm.js";
+import { startOperation } from "./settings-apply.js";
+import { BACKENDS, DEFAULT_SCHEMA, impactOf, toYaml } from "./settings-model.js";
 import { Select } from "./settings-dialogs.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = 4;
 const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body) }).catch(() => ({ ok: false, status: 0, body: { error: tn("failed") } }));
 
-export function SetupWizard({ onClose }) {
+export function SetupWizard({ ctx, onClose }) {
   const lease = useLease("wizard");
   const [w, setW] = useState(null);
   const [busy, setBusy] = useState("");
@@ -79,24 +78,18 @@ export function SetupWizard({ onClose }) {
     await finish();
   };
   /**
-   * Write the files, then the ordinary Apply. The token leaves the form with this request; once the commit is sent
-   * the wizard is done with it, and closing the dialog (or leaving the page) no longer stops anything.
+   * Write the files, then the ordinary Apply — one operation, handed to the app before the commit is even sent
+   * (#1453 review): the commit (which may wait for an admin's confirmation), then the apply and its job. While it runs
+   * no other Apply can start, leaving the page warns, and the token goes with the commit and is dropped after it.
    */
-  const finish = async () => {
-    if (operationActive()) { setErr(tn("applyBusyLocal")); return; }
-    setBusy(tn("wizardCommitting"));
+  const finish = () => {
     const body = { ...input(), token: w.token };
+    // It writes the connection and the first agent: it costs what a connection change does (the server's schema).
+    const handed = startOperation([{ label: tn("wizardTitle"), impact: impactOf((ctx && ctx.schema) || DEFAULT_SCHEMA, "fleet.channels"),
+      request: { method: "POST", url: "/api/settings/quickstart/commit", body, sensitive: true } }]);
+    if (!handed) { setErr(tn("applyBusyLocal")); return; }
     setW((x) => ({ ...x, token: "" }));
-    const commit = await confirmedWrite("/api/settings/quickstart/commit", { method: "POST", body, label: tn("wizardTitle"),
-      onPending: () => { toast(t("app.pendingSent")); if (lease.current()) onClose(); } }).catch(() => ({ ok: false, body: { error: tn("failed") } }));
-    if (!commit.ok) {
-      toast((commit.body && commit.body.error) || tn("applyFailed"), false);
-      if (lease.current()) { setBusy(""); setErr((commit.body && commit.body.error) || tn("applyFailed")); }
-      return;
-    }
-    if (commit.body && commit.body.secret_mode_ok === false) toast(tn("wizardEnvPerms"), false);
-    startOperation([]);                          // no writes left: the apply and its job, owned by the app
-    if (lease.current()) onClose();
+    onClose();
   };
 
   let body;

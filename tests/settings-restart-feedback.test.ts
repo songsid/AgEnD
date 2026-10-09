@@ -126,7 +126,9 @@ describe("Restart AgEnD gives feedback and cannot be pressed twice", () => {
 
     expect(calls.filter(restartPath)).toHaveLength(1);
     expect((globalThis as any).confirm).toHaveBeenCalledTimes(1);
-    expect(runner.operationActive()).toBe(false);
+    // The restart owns the operation until its watch ends (#1453 review), then lets go.
+    await vi.waitFor(() => expect(runner.operationActive()).toBe(false), { timeout: 5000 });
+    expect(calls.filter(restartPath)).toHaveLength(1);
   });
 
   it("watches the job the server moved to 'running', not the finished one it was holding — and keeps waiting while the fleet is down", async () => {

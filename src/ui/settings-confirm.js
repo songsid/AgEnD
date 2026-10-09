@@ -35,6 +35,14 @@ export async function api(path, opts = {}) {
 export function isPendingResponse(res) {
   return !!res && res.status === 202 && !!res.body && res.body.result === "pending_confirmation" && !!res.body.pending_change?.id;
 }
+/**
+ * A 202 whose body cannot be read, or that says pending_confirmation without a request to follow: the server may hold
+ * a request we cannot see. It is not done and not refused — unknown; the caller keeps the key to ask again with it.
+ */
+function isUnreadableAccept(res) {
+  return !!res && res.status === 202 && (!res.body || typeof res.body !== "object"
+    || (res.body.result === "pending_confirmation" && !(res.body.pending_change && typeof res.body.pending_change.id === "string")));
+}
 
 const tracked = new Map();                       // id → { view, at, label, waiters, done }
 let timer = null, polling = false;
@@ -60,9 +68,18 @@ function forget(id) {
   publish();
 }
 
-function update(view) {
+/**
+ * Every read of a request (a poll, Withdraw's answer, the 202 itself) takes a number when it is sent; only an answer
+ * newer than the last one applied may change the view, and a decided request never goes back to undecided — so an
+ * older "pending" that arrives after Withdraw's "rejected" cannot bring it back (#1453 review).
+ */
+function ticket(e) { return ++e.issued; }
+function update(view, token) {
   const e = tracked.get(view.id);
   if (!e) return;
+  if (token !== undefined && token < e.applied) return;
+  if (e.done && !TERMINAL.has(view.state)) return;
+  if (token !== undefined) e.applied = token;
   e.view = view; e.at = now();
   if (TERMINAL.has(view.state) && !e.done) {
     e.done = true;
@@ -86,11 +103,12 @@ async function poll() {
     for (const e of [...tracked.values()]) {
       if (e.done) continue;
       let res;
+      const token = ticket(e);
       try { res = await api(`/api/settings/pending/${encodeURIComponent(e.view.id)}`); } catch { continue; }   // offline: next round
-      if (res.ok && res.body && res.body.id) update(res.body);
+      if (res.ok && res.body && res.body.id === e.view.id) update(res.body, token);
       // 404: no longer this session's, or aged out of the store. Either way it will not apply now.
       else if (res.status === 404) update({ ...e.view, state: "expired", can_withdraw: false,
-        outcome: { state: "expired", reason_code: "not_found", message: "" } });
+        outcome: { state: "expired", reason_code: "not_found", message: "" } }, token);
     }
   } finally { polling = false; schedule(); }
 }
@@ -101,19 +119,22 @@ async function poll() {
  */
 export function track(view, label) {
   let e = tracked.get(view.id);
-  if (!e) { e = { view, at: now(), label, waiters: [], done: false }; tracked.set(view.id, e); }
+  if (!e) { e = { view, at: now(), label, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
   else if (label && !e.label) e.label = label;
   const settled = e.done ? Promise.resolve(e.view) : new Promise((resolve) => e.waiters.push(resolve));
-  update(view);
+  update(view, ticket(e));
   schedule();
   return settled;
 }
 
 /** Withdraw a request nobody has decided yet. The view it answers with is the truth (decided meanwhile, or not). */
 export async function withdraw(id) {
+  const e = tracked.get(id);
+  if (!e) return false;
+  const token = ticket(e);
   let res;
   try { res = await api(`/api/settings/pending/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch { return false; }
-  if (res.ok && res.body && res.body.id) { update(res.body); return true; }
+  if (res.ok && res.body && res.body.id === id) { update(res.body, token); return true; }
   return false;
 }
 
@@ -128,11 +149,13 @@ export async function attach() {
 /**
  * A write that may need confirmation. A 202 pending_confirmation is followed until decided and answered as the write
  * itself would have been: applied → { ok: true, body: what the write answered }, anything else → { ok: false } with
- * the reason. Every other answer is returned as it is. `key` is the request's Idempotency-Key: pass the same one to
+ * the reason. An accepted answer that cannot be read is { ok: false, ambiguous: true } (see isUnreadableAccept); a
+ * network failure throws. Every other answer is returned as it is. `key` is the request's Idempotency-Key: pass the same one to
  * retry the same request. `onPending(id)` is told when it starts waiting.
  */
 export async function confirmedWrite(path, { method = "POST", body, key = newKey("w"), label, headers, onPending } = {}) {
   const res = await api(path, { method, headers: { ...(headers || {}), "Idempotency-Key": key }, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (isUnreadableAccept(res)) return { ok: false, status: 202, ambiguous: true, body: { error: "unreadable_confirmation_response" } };
   if (!isPendingResponse(res)) return res;
   if (onPending) onPending(res.body.pending_change.id);
   const final = await track(res.body.pending_change, label);
