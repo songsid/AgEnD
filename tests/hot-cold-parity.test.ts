@@ -260,6 +260,7 @@ describe("settings impact schema", () => {
 });
 
 describe("GET /api/settings/schema", () => {
+  let enabled = false;
   function request(path: string): Promise<{ status: number; body: Record<string, unknown> }> {
     return new Promise((resolve, reject) => {
       const req = { method: "GET", destroy: () => undefined };
@@ -283,6 +284,7 @@ describe("GET /api/settings/schema", () => {
       getRawFleetConfig: () => ({}),
       saveFleetConfig: vi.fn(),
       lifecycle: { isPaused: vi.fn(() => false), pause: vi.fn(), wake: vi.fn() },
+      providerSecretsEnabled: () => enabled,
     } as unknown as SettingsApiContext;
   }
 
@@ -295,6 +297,13 @@ describe("GET /api/settings/schema", () => {
     expect(impacts["instance.backend"]).toBe("instance");
     expect(impacts["classic.auto_pause_after"]).toBe("instance");
     expect(impacts["fleet.spawn_concurrency"]).toBe("fleet");
+  });
+
+  it("says whether this fleet offers provider secrets (alpha.2 sweep: the page reads them only then)", async () => {
+    const res = await request("/api/settings/schema");
+    expect(res.body.provider_secrets).toBe(false);
+    enabled = true;
+    try { expect((await request("/api/settings/schema")).body.provider_secrets).toBe(true); } finally { enabled = false; }
   });
 
   it("follows the hot set rather than a table of its own", () => {

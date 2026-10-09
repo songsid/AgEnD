@@ -275,6 +275,8 @@ export function handleSettingsRequest(
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.
       fleet_signature_mismatch: ctx.fleetSignatureMismatchKeys?.() ?? null,
+      // Whether the provider-secret routes exist on this fleet: the page reads them only then (no 404 on every load).
+      provider_secrets: ctx.providerSecretsEnabled?.() === true,
     });
     return true;
   }
