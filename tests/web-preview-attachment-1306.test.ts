@@ -84,6 +84,8 @@ async function chat(msgs: unknown[], storage?: Record<string, string>) {
   return { pg, doc: pg.document as any };
 }
 const cards = (doc: any, sel = ".msg.agent") => [...doc.querySelectorAll(`${sel} .html-card[data-att]`)] as any[];
+/** The agent file's card — asserted to be there, so a missing card fails as such and not on the next line. */
+const card = (doc: any) => { const c = cards(doc)[0]; expect(c, "the file's card").toBeTruthy(); return c; };
 const click = async (el: any) => { if (typeof el.onclick === "function") el.onclick(); else el.click(); await settle(); await settle(); };
 function ready(frame: any) {
   frame.contentWindow = { posted: [] as unknown[], postMessage(m: unknown) { this.posted.push(m); } };
@@ -118,7 +120,7 @@ describe("Preview reads the file on the click and runs it in the preview frame",
   it("one same-origin read of /ui/file/<id>; the frame is the preview origin's; it renders the file's HTML", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    await click(cards(doc)[0].querySelector(".pv-run"));
+    await click(card(doc).querySelector(".pv-run"));
     expect(f.calls).toEqual([{ url: `/ui/file/${ID1}`, init: { credentials: "same-origin", cache: "no-store" } }]);
     const frame = PV.liveFrame(`b-1:a${ID1}`);
     expect(frame?.src).toBe(`${PREVIEW_ORIGIN}/frame`);
@@ -131,7 +133,7 @@ describe("Preview reads the file on the click and runs it in the preview frame",
   it("a second click while it reads does not read again; a later Preview uses what was read", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) }, { hold: true });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    const c = cards(doc)[0];
+    const c = card(doc);
     await click(c.querySelector(".pv-run"));
     expect(c.querySelector(".pv-note").textContent).toBe("Reading the file…");
     c.querySelector(".pv-run").onclick();
@@ -147,7 +149,7 @@ describe("Preview reads the file on the click and runs it in the preview frame",
   it("a device that has not allowed previews: no Preview, and a stray click reads nothing", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])], { agend_html_preview: "" });
-    const c = cards(doc)[0];
+    const c = card(doc);
     expect(c.querySelector(".pv-run").hidden).toBe(true);
     await click(c.querySelector(".pv-run"));
     expect([f.calls.length, PV.liveCount()]).toEqual([0, 0]);
@@ -158,27 +160,27 @@ describe("the 1 MiB cap and a file that is gone", () => {
   it("a listed size over 1 MiB: refused before anything is read", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) });
     const { doc } = await chat([agent(1, [file(ID1, "big.html", 1024 * 1024 + 1)])]);
-    const c = cards(doc)[0];
+    const c = card(doc);
     await click(c.querySelector(".pv-run"));
     expect([f.calls.length, PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, 0, "This file is over 1 MiB; it is not previewed."]);
   });
   it("bytes over 1 MiB though the listed size was small: refused after the read, no frame", async () => {
     serveFiles({ [ID1]: "<p>" + "x".repeat(1024 * 1024) });
     const { doc } = await chat([agent(1, [file(ID1, "grew.html", 100)])]);
-    const c = cards(doc)[0];
+    const c = card(doc);
     await click(c.querySelector(".pv-run"));
     expect([PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, "This file is over 1 MiB; it is not previewed."]);
   });
   it("exactly 1 MiB of UTF-8 runs", async () => {
     serveFiles({ [ID1]: "é".repeat(512 * 1024) });
     const { doc } = await chat([agent(1, [file(ID1, "edge.html", 1024 * 1024)])]);
-    await click(cards(doc)[0].querySelector(".pv-run"));
+    await click(card(doc).querySelector(".pv-run"));
     expect(PV.running(`b-1:a${ID1}`)).toBe(true);
   });
   it("the fleet no longer serves it (404): the card says so and runs nothing", async () => {
     serveFiles({});
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    const c = cards(doc)[0];
+    const c = card(doc);
     await click(c.querySelector(".pv-run"));
     expect([PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, "This file is no longer available here (it changed, or the fleet restarted). Ask the agent to send it again."]);
   });
@@ -188,7 +190,7 @@ describe("a read the card moved on from is dropped", () => {
   it("Stop while it reads: nothing runs when the answer comes", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) }, { hold: true });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    const c = cards(doc)[0];
+    const c = card(doc);
     await click(c.querySelector(".pv-run"));
     expect(c.querySelector(".pv-stop").hidden, "Stop is offered while it reads").toBe(false);
     await click(c.querySelector(".pv-stop"));
@@ -198,7 +200,7 @@ describe("a read the card moved on from is dropped", () => {
   it("the chat left while it reads (another instance): no frame, no panel", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) }, { hold: true });
     const { pg, doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    await click(cards(doc)[0].querySelector(".pv-open"));
+    await click(card(doc).querySelector(".pv-open"));
     await pg.mount(h(panel.ChatPanel, { route: { instance: "x" }, navKey: "two" }));
     await f.release();
     expect([PV.liveCount(), pp.panelStore.get().open]).toEqual([0, null]);
@@ -209,7 +211,7 @@ describe("Open in panel", () => {
   it("reads the file, opens the panel without running it; Code shows the file; Download keeps the file's name", async () => {
     serveFiles({ [ID1]: PAGE(1) });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    await click(cards(doc)[0].querySelector(".pv-open"));
+    await click(card(doc).querySelector(".pv-open"));
     const open = pp.panelStore.get().open;
     expect([open.key, open.code, open.att.name, PV.liveCount()]).toEqual([`b-1:a${ID1}`, PAGE(1), "style-switcher.html", 0]);
     await click(doc.querySelector(".pv-panel-run"));
@@ -228,10 +230,10 @@ describe("a newer version of the file", () => {
   it("a later agent reply attaching the same name is offered; Show it reads that file and shows it, not running", async () => {
     const f = serveFiles({ [ID1]: PAGE(1), [ID2]: PAGE(2) });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
-    await click(cards(doc)[0].querySelector(".pv-open"));
+    await click(card(doc).querySelector(".pv-open"));
     stream.message(agent(2, [file(ID2, "Style-Switcher.html")], "v2"));
     await settle();
-    expect(doc.querySelector(".pv-newer")?.textContent).toMatch(/A newer version is in the reply from/);
+    expect(doc.querySelector(".pv-newer")?.textContent ?? "", "offered").toMatch(/A newer version is in the reply from/);
     await click(doc.querySelector(".pv-newer-show"));
     const open = pp.panelStore.get().open;
     expect([open.key, open.code, PV.liveCount()]).toEqual([`b-2:a${ID2}`, PAGE(2), 0]);
