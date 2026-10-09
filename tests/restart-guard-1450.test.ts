@@ -16,7 +16,7 @@ const real: Record<string, string> = {
   [RT]: RT, [`${PKG}/dist/cli.js`]: `${PKG}/dist/cli.js`, "/usr/bin/agend": `${PKG}/launcher/agend`,
   "/opt/node20/bin/node": "/opt/node20/bin/node", "/home/u/other/dist/cli.js": "/home/u/other/dist/cli.js",
 };
-const deps = { realpath: (p: string) => real[p] ?? null };
+const deps = { realpath: (p: string) => real[p] ?? null, isExecutable: () => false };
 const tuple = (argv: string[], env: Record<string, string> = { PATH: "/usr/local/bin:/usr/bin:/bin" }) => ({ program: argv[0]!, argv, env });
 
 describe("judgeTuple: the loaded definition against the expected one", () => {
@@ -107,9 +107,33 @@ describe("guardDetached and the expectation itself", () => {
   });
   it("expectedTuple: this package's own launcher decides (its launcher dir beside dist/), and a refusal is passed on", () => {
     const seen: string[] = [];
-    expect(expectedTuple(dir => { seen.push(dir); return { ok: true, node: RT }; }, `${PKG}/dist/cli.js`)).toEqual({ ok: true, expected });
+    expect(expectedTuple(dir => { seen.push(dir); return { ok: true, node: RT, source: "runtime" }; }, `${PKG}/dist/cli.js`)).toEqual({ ok: true, expected: { ...expected, source: "runtime", launcher: `${PKG}/launcher/agend` } });
     expect(seen).toEqual([`${PKG}/launcher`]);
     expect(expectedTuple(() => ({ ok: false, reason: "the bundled Node is missing", recovery: "npm install -g @songsid/agend@2.2.0" }), `${PKG}/dist/cli.js`))
       .toMatchObject({ ok: false, reason: expect.stringContaining("the bundled Node is missing (to repair: npm install -g @songsid/agend@2.2.0)") });
+  });
+});
+
+describe("#1450: a system Node (no bundled runtime) — the definition starts the launcher; its PATH must find the selected Node", () => {
+  const LAUNCHER = `${PKG}/launcher/agend`;
+  const sys: ExpectedTuple = { node: "/opt/node22/bin/node", entry: `${PKG}/dist/cli.js`, source: "system", launcher: LAUNCHER };
+  const fs2 = {
+    realpath: (p: string) => ({ [LAUNCHER]: LAUNCHER, "/opt/node22/bin/node": "/opt/node22/bin/node", "/opt/node20/bin/node": "/opt/node20/bin/node", [`${PKG}/dist/cli.js`]: `${PKG}/dist/cli.js` } as Record<string, string>)[p] ?? null,
+    isExecutable: (p: string) => ["/opt/node22/bin/node", "/opt/node20/bin/node"].includes(p),
+  };
+  it.each([
+    ["the launcher, its PATH finding the selected Node", tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node22/bin:/usr/bin" }), null],
+    ["the launcher, its PATH finding an old Node first", tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node20/bin:/opt/node22/bin" }), "finds /opt/node20/bin/node"],
+    ["the launcher with no PATH", tuple([LAUNCHER, "fleet", "start"], {}), "finds no node"],
+    ["the system Node named (breaks when nvm removes its directory)", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), "starts the launcher"],
+    ["the launcher with an extra argument", tuple([LAUNCHER, "fleet", "start", "x"], { PATH: "/opt/node22/bin" }), "its arguments"],
+  ])("%s", (_n, t, refusal) => {
+    const judged = judgeTuple(t, sys, fs2);
+    if (refusal === null) expect(judged).toEqual({ ok: true });
+    else expect(judged).toMatchObject({ ok: false, reason: expect.stringContaining(refusal) });
+  });
+  it("a bundled runtime is never accepted through the launcher (it must be named)", () => {
+    const rt: ExpectedTuple = { node: RT, entry: `${PKG}/dist/cli.js`, source: "runtime", launcher: LAUNCHER };
+    expect(judgeTuple(tuple([LAUNCHER, "fleet", "start"], { PATH: "/opt/node22/bin" }), rt, { ...fs2, realpath: (p: string) => fs2.realpath(p) ?? real[p] ?? null })).toMatchObject({ ok: false });
   });
 });

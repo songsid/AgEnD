@@ -188,6 +188,17 @@ export function tupleStartsVerified(
   }
   const program = deps.realpath(tuple.program);
   const args = tuple.argv.slice(1);
+  // The package's sh launcher (#1450: a system Node is resolved at each start, never named): the Node its PATH finds
+  // must be the verified one — for a bundled runtime it never is (the runtime directory is on no PATH), so such a
+  // target is always named instead.
+  if (program === verified.bin && verified.bin !== verified.entry && /\/launcher\/agend$/.test(verified.bin)) {
+    if (!sameArgs(args, FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args)}, not ["fleet","start"]` };
+    if (tuple.env.PATH === undefined) return { ok: false, reason: "its environment has no PATH, so the Node its launcher would find cannot be proven" };
+    const found = tuple.env.PATH.split(":").filter(Boolean).map(dir => `${dir}/node`).find(candidate => deps.isExecutable(candidate));
+    const real = found ? deps.realpath(found) : null;
+    if (real !== verified.node) return { ok: false, reason: `its launcher would find ${real ?? "no node"}, not the verified ${verified.node}` };
+    return { ok: true };
+  }
   if (program === verified.entry) {
     if (!sameArgs(args, FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args)}, not ["fleet","start"]` };
     // PATH must be in the definition's effective environment: with none (e.g. UnsetEnvironment=PATH), `env node`

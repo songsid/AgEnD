@@ -39,6 +39,7 @@ function world(files: Record<string, string>, answers: Array<[RegExp, Partial<Co
     writeFile: (p, c) => { files[p] = c; calls.push(`write ${p}`); },
     removeFile: p => { delete files[p]; },
     realpath: p => ([RT, ENTRY].includes(p) ? p : null),
+    isExecutable: () => false,
     now: () => new Date("2026-10-09T00:00:00Z"),
   };
   return { deps, files, calls };

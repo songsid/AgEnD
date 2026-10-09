@@ -88,6 +88,7 @@ function planDeps() {
     writeFile: (path: string, content: string) => writeFileSync(path, content),
     removeFile: (path: string) => { try { unlinkSync(path); } catch { /* absent */ } },
     realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
+    isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
     now: () => new Date(),
   };
 }
@@ -1870,7 +1871,10 @@ program
     if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
     // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
     const guard = await import("./restart-guard.js");
-    const guardDeps = { realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } } };
+    const guardDeps = {
+      realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
+      isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+    };
     const captureRun = (command: string, args: string[]) => {
       const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
       return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };

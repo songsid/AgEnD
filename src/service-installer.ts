@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync, renameSync, statSync, chmodSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import ejs from "ejs";
@@ -19,6 +20,12 @@ interface ServiceVars {
    * `agend install` runs on what the launcher selected. Never left to `#!/usr/bin/env node` and the service's PATH.
    */
   nodePath?: string;
+  /**
+   * Instead of a named Node: the package's sh launcher, which finds Node at each start. Only for a SYSTEM Node (no
+   * bundled runtime on this host): a named system Node breaks when an nvm/brew upgrade removes its directory, while
+   * the bundled runtime's path only changes with an npm update, which re-renders the service (#1450 leader review).
+   */
+  launcherPath?: string;
   path?: string;
   workingDirectory: string;
   logPath: string;
@@ -52,11 +59,13 @@ function assertAbsolutePath(name: string, value: string): void {
   }
 }
 
-function validateVars(vars: ServiceVars & { path: string; nodePath: string }): void {
+function validateVars(vars: ServiceVars & { path: string; nodePath: string; program: string[] }): void {
   assertSafeServiceValue("label", vars.label);
   assertSafeServiceValue("execPath", vars.execPath);
-  assertSafeServiceValue("nodePath", vars.nodePath);
-  assertAbsolutePath("nodePath", vars.nodePath);
+  for (const word of vars.program) {
+    assertSafeServiceValue(vars.program.length === 1 ? "launcherPath" : "nodePath", word);
+    assertAbsolutePath(vars.program.length === 1 ? "launcherPath" : "nodePath", word);
+  }
   assertSafeServiceValue("workingDirectory", vars.workingDirectory);
   assertSafeServiceValue("logPath", vars.logPath);
   assertSafeServiceValue("path", vars.path);
@@ -129,9 +138,27 @@ export function buildServicePath(
   return dirs.join(":");
 }
 
-function withDefaults(vars: ServiceVars): ServiceVars & { path: string; nodePath: string } {
+/**
+ * What a service starts when the caller does not say: this package's own selection (launcher/runtime-select.cjs, C2)
+ * — the bundled runtime or an AGEND_NODE, named; a system Node, through the launcher. Anything that cannot be
+ * resolved (a file outside a package, a checkout without a launcher) names this process's Node, as before.
+ */
+export function defaultServiceProgram(execPath: string): { nodePath: string } | { launcherPath: string } {
+  try {
+    const launcherDir = join(dirname(dirname(execPath)), "launcher");
+    const select = createRequire(import.meta.url)(join(launcherDir, "runtime-select.cjs")) as { selectRuntime(dir: string): { ok: boolean; node?: string; source?: string } };
+    const chosen = select.selectRuntime(launcherDir);
+    if (chosen.ok && chosen.source === "system" && existsSync(join(launcherDir, "agend"))) return { launcherPath: join(launcherDir, "agend") };
+    if (chosen.ok && chosen.node) return { nodePath: chosen.node };
+  } catch { /* not inside a package with a launcher */ }
+  return { nodePath: process.execPath };
+}
+
+function withDefaults(vars: ServiceVars): ServiceVars & { path: string; nodePath: string; program: string[] } {
   const path = buildServicePath(vars.path, vars.execPath);
-  const full = { ...vars, path, nodePath: vars.nodePath ?? process.execPath, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
+  const chosen = vars.nodePath || vars.launcherPath ? (vars.launcherPath ? { launcherPath: vars.launcherPath } : { nodePath: vars.nodePath! }) : defaultServiceProgram(vars.execPath);
+  const program = "launcherPath" in chosen ? [chosen.launcherPath] : [chosen.nodePath, vars.execPath];
+  const full = { ...vars, path, nodePath: "nodePath" in chosen ? chosen.nodePath : "", program, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
   validateVars(full);
   return full;
 }
@@ -291,6 +318,8 @@ export function uninstallService(label: string): boolean {
  */
 export function unitCliEntry(unitText: string): string {
   const words = systemdWords(unitText.match(/^ExecStart=(.*)$/m)?.[1] ?? "");
+  // The launcher form (a system Node, found at each start) starts its package's dist/cli.js.
+  if (words[0] && /\/launcher\/agend$/.test(words[0])) return join(dirname(dirname(words[0])), "dist", "cli.js");
   return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
 }
 

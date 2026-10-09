@@ -8,7 +8,7 @@
  * predates the installed package.
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -444,7 +444,8 @@ exit 0
     expect(calls.findIndex(c => c.startsWith("systemctl --user restart com.agend.fleet")), out).toBeGreaterThan(calls.findIndex(c => c.startsWith("npm install")));
     // The installed copy refreshed the unit (its own entry, named Node), and its restart passed the guard on that unit.
     const unitText = readFileSync(join(home, ".config", "systemd", "user", "com.agend.fleet.service"), "utf8");
-    expect(unitText).toContain(`ExecStart="${process.execPath}" "${join(globalPkg, "dist", "cli.js")}" fleet start`);
+    // This build pins no runtime: a system Node, so the unit starts the package's launcher (#1450).
+    expect(unitText).toContain(`ExecStart="${join(realpathSync(globalPkg), "launcher", "agend")}" fleet start`);
     expect(r.status, out).toBe(0);
     expect(`${r.stdout}${r.stderr}`).not.toContain("Not restarting");
   });

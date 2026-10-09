@@ -29,7 +29,7 @@ export interface ServicePlan {
   createdAt: string;
 }
 
-export interface PlanDeps extends Pick<TupleDeps, "realpath"> {
+export interface PlanDeps extends Pick<TupleDeps, "realpath" | "isExecutable"> {
   run(command: string, args: string[]): CommandResult;
   readFile(path: string): string | null;
   writeFile(path: string, content: string): void;

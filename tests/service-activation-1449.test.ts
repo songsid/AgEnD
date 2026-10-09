@@ -71,10 +71,17 @@ describe("since the launcher (#1450): the bin is the sh launcher; a service stil
   it.each([
     ["the inner entry, `fleet start` (what `agend install` writes)", tuple([`${PKG}/dist/cli.js`, "fleet", "start"]), true],
     ["the interpreter explicitly on the inner entry", tuple(["/opt/node22/bin/node", `${PKG}/dist/cli.js`, "fleet", "start"]), true],
-    ["the sh launcher bin itself", tuple([`${PKG}/launcher/agend`, "fleet", "start"]), false],
+    // A system Node (no bundled runtime): the launcher, which finds the verified Node on this PATH (#1450 leader review).
+    ["the sh launcher bin itself, its PATH finding the verified Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"]), true],
+    ["the sh launcher bin itself, its PATH finding an old Node", tuple([`${PKG}/launcher/agend`, "fleet", "start"], { PATH: "/opt/node20/bin:/opt/node22/bin" }), false],
+    ["the sh launcher bin itself, no PATH", tuple([`${PKG}/launcher/agend`, "fleet", "start"], {}), false],
     ["a Node on the JS launcher", tuple(["/opt/node22/bin/node", `${PKG}/launcher/agend.cjs`, "fleet", "start"]), false],
   ])("%s → %s", (_name, t, ok) => {
     expect(tupleStartsVerified(t, launcherTarget, "/usr/bin:/bin", fs).ok).toBe(ok);
+  });
+  it("a bundled runtime (on no PATH) is never reached through the launcher: it must be named", () => {
+    const bundled: VerifiedTarget = { ...launcherTarget, node: `${PKG}/node_modules/@songsid/agend-node-linux-x64/bin/node` };
+    expect(tupleStartsVerified(tuple([`${PKG}/launcher/agend`, "fleet", "start"]), bundled, "/usr/bin:/bin", fs).ok).toBe(false);
   });
 });
 

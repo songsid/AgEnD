@@ -24,11 +24,27 @@ export interface ExpectedTuple {
   node: string;
   /** canonicalCliEntry(): `<pkg>/dist/cli.js`. */
   entry: string;
+  /**
+   * Where the selection came from. "system" (no bundled runtime for this host) is the one a definition does NOT name:
+   * it starts the package's own launcher, which finds Node on the definition's PATH at each start — so an nvm/brew
+   * upgrade that removes the old Node directory does not break the service (#1450 leader review).
+   */
+  source?: "runtime" | "override" | "system";
+  /** `<pkg>/launcher/agend`, the sh launcher. */
+  launcher?: string;
+}
+
+/** The Node a definition's PATH resolves (`command -v node`), as a realpath. */
+export function nodeOnPath(pathVar: string | undefined, deps: Pick<TupleDeps, "realpath" | "isExecutable">): string | null {
+  for (const dir of (pathVar ?? "").split(":").filter(Boolean)) {
+    if (deps.isExecutable(`${dir}/node`)) return deps.realpath(`${dir}/node`);
+  }
+  return null;
 }
 
 export type Judgement = { ok: true } | { ok: false; reason: string };
 
-interface Selection { ok: boolean; node?: string; reason?: string; recovery?: string }
+interface Selection { ok: boolean; node?: string; reason?: string; recovery?: string; source?: "runtime" | "override" | "system" }
 
 /** What this package's launcher would choose right now (launcher/runtime-select.cjs, C2). */
 export function expectedTuple(
@@ -37,13 +53,28 @@ export function expectedTuple(
 ): { ok: true; expected: ExpectedTuple } | { ok: false; reason: string } {
   const chosen = select(join(dirname(dirname(entry)), "launcher"));
   if (!chosen.ok || !chosen.node) return { ok: false, reason: `AgEnD cannot start here: ${chosen.reason ?? "no Node was selected"}${chosen.recovery ? ` (to repair: ${chosen.recovery})` : ""}` };
-  return { ok: true, expected: { node: chosen.node, entry } };
+  return { ok: true, expected: { node: chosen.node, entry, source: chosen.source, launcher: join(dirname(dirname(entry)), "launcher", "agend") } };
 }
 
-/** Does a definition's tuple start exactly the expected one, with its interpreter named? */
-export function judgeTuple(tuple: ActivationTuple, expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath">): Judgement {
+/**
+ * Does a definition's tuple start exactly the expected one? A bundled runtime or an AGEND_NODE is NAMED
+ * (`<node> <entry> fleet start`); a system Node is reached through the package's launcher (`<launcher> fleet start`),
+ * and the Node that definition's PATH resolves must be the selected one.
+ */
+export function judgeTuple(tuple: ActivationTuple, expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath" | "isExecutable">): Judgement {
   for (const key of INTERPRETER_ENV) {
     if (tuple.env[key] !== undefined) return { ok: false, reason: `it sets ${key}` };
+  }
+  if (expected.source === "system" && expected.launcher) {
+    const launcher = deps.realpath(expected.launcher);
+    if (!launcher || deps.realpath(tuple.program) !== launcher) {
+      return { ok: false, reason: `it runs ${tuple.program}; with no bundled Node here, a service starts the launcher ${expected.launcher}, which finds Node at each start — run \`agend install\` to refresh it` };
+    }
+    const rest = tuple.argv.slice(1);
+    if (rest.length !== 2 || rest[0] !== "fleet" || rest[1] !== "start") return { ok: false, reason: `its arguments are ${JSON.stringify(rest)}, not ["fleet","start"]` };
+    const found = nodeOnPath(tuple.env.PATH, deps);
+    if (found !== expected.node) return { ok: false, reason: `its PATH finds ${found ?? "no node"}, not the selected Node ${expected.node}` };
+    return { ok: true };
   }
   const runtimeDir = dirname(expected.node);
   if (runtimeDir.includes("/node_modules/") && (tuple.env.PATH ?? "").split(":").includes(runtimeDir)) {
@@ -62,7 +93,7 @@ export function judgeTuple(tuple: ActivationTuple, expected: ExpectedTuple, deps
 }
 
 /** systemd: the LOADED unit (D-Bus, after any reload), and no reload pending. */
-export function guardSystemd(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath">): Judgement {
+export function guardSystemd(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath" | "isExecutable">): Judgement {
   const loaded = readLoadedUnit(run, user, unit);
   if (!loaded.ok) return { ok: false, reason: `the loaded ${unit} cannot be read: ${loaded.reason}` };
   if (loaded.unit.needDaemonReload) return { ok: false, reason: `${unit} changed on disk and is not reloaded (a reload is pending or failed)` };
@@ -73,7 +104,7 @@ export function guardSystemd(run: (command: string, args: string[]) => CommandRe
 /** launchd: the loaded job (`launchctl print`) and the plist on disk must agree, and start the expected tuple. */
 export function guardLaunchd(
   run: (command: string, args: string[]) => CommandResult, target: string, plistPath: string, readFile: (path: string) => string | null,
-  expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath">,
+  expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath" | "isExecutable">,
 ): Judgement {
   const printed = run("launchctl", ["print", target]);
   if (printed.status !== 0 || printed.signal !== null) return { ok: false, reason: `launchctl print ${target} did not complete` };

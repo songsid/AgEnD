@@ -11,15 +11,16 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureSystemdKillModeMixed, ensureSystemdUnitHardening, renderSystemdUnit, unitCoredumpFilterState, unitDropInCandidates } from "../src/service-installer.js";
 import { fakeBusctl } from "./support/fake-busctl.js";
 
-// The built CLI on this Node: what `agend restart`'s guard (#1450 C6) expects a unit to start.
+// What `agend restart`'s guard (#1450 C6) expects for this checkout: it pins no runtime, so its selection is the
+// system Node, reached through the package's launcher; the unit's PATH must find this very Node first.
 const vars = {
-  label: "com.agend.fleet", execPath: join(process.cwd(), "dist", "cli.js"), nodePath: process.execPath, workingDirectory: "/home/u/.agend",
-  logPath: "/home/u/.agend/daemon.log", path: "/usr/local/bin:/usr/bin:/bin",
+  label: "com.agend.fleet", execPath: join(process.cwd(), "dist", "cli.js"), launcherPath: join(process.cwd(), "launcher", "agend"), workingDirectory: "/home/u/.agend",
+  logPath: "/home/u/.agend/daemon.log", path: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
 };
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -334,7 +335,7 @@ syncBuiltinESMExports();
     const { r, calls, out, restarted } = restart(old);
     expect(restarted, out).toBe(false);
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain("as a script, leaving its Node to PATH");
+    expect(r.stderr).toContain("a service starts the launcher");
     expect(calls.some(c => /^--user (restart|stop|kill)/.test(c)), calls.join("\n")).toBe(false);
   });
 

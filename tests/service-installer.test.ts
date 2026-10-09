@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { join } from "node:path";
 import {
   buildServicePath,
   classifySystemdServiceState,
@@ -11,6 +12,7 @@ import {
   unitCliEntry,
   systemdQuote,
   systemdWords,
+  defaultServiceProgram,
 } from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
@@ -294,5 +296,21 @@ describe("unitCliEntry (#1450: doctor compares the unit's CLI with this CLI's ca
     ["[Service]\nType=simple", ""],
   ])("%j → %j", (unit, entry) => {
     expect(unitCliEntry(unit)).toBe(entry);
+  });
+});
+
+describe("#1450: a system Node is not named — the service starts the launcher, which finds Node at each start", () => {
+  const base = { label: "com.agend.fleet", execPath: "/usr/lib/node_modules/@songsid/agend/dist/cli.js", path: "/usr/bin:/bin", workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" };
+  it("launcherPath renders `<launcher> fleet start` in the unit and the plist; doctor maps it back to the package's CLI", () => {
+    const launcher = "/usr/lib/node_modules/@songsid/agend/launcher/agend";
+    const unit = renderSystemdUnit({ ...base, launcherPath: launcher });
+    expect(unit).toContain(`ExecStart="${launcher}" fleet start`);
+    expect(unitCliEntry(unit)).toBe(base.execPath);
+    expect(renderLaunchdPlist({ ...base, launcherPath: launcher })).toMatch(new RegExp(`<string>${launcher}</string>\\s*<string>fleet</string>\\s*<string>start</string>`));
+  });
+  it("defaultServiceProgram: this package's own selection decides — a system Node (no runtime pinned) → the launcher", () => {
+    // This checkout pins no runtime: its selection is the system Node.
+    expect(defaultServiceProgram(join(process.cwd(), "dist", "cli.js"))).toEqual({ launcherPath: join(process.cwd(), "launcher", "agend") });
+    expect(defaultServiceProgram("/nowhere/dist/cli.js")).toEqual({ nodePath: process.execPath });
   });
 });
