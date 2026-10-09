@@ -94,6 +94,8 @@ export function buildServicePath(
   basePath = process.env.PATH ?? "",
   execPath = canonicalCliEntry(),
   homeDir = homedir(),
+  /** The Node this process runs on: under AgEnD's bundled Node it lives in node_modules, and is never added (#1450). */
+  nodeExec = process.execPath,
 ): string {
   const seen = new Set<string>();
   const dirs = basePath
@@ -116,7 +118,7 @@ export function buildServicePath(
     }
   } catch { /* nvm is optional */ }
   const fallbacks = [
-    dirname(process.execPath),
+    dirname(nodeExec),
     npmPrefixBin,
     ...nvmBins,
     join(homeDir, ".local", "bin"),
