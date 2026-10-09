@@ -625,3 +625,48 @@ describe("#1470 review — the service", () => {
     expect(logs).toEqual([]);
   });
 });
+
+describe("#1470 review r2", () => {
+  const cx = (t: number, o: Partial<Turn>): Turn => ({ t, model: "gpt-6.1-sol", prompt: C, uncached: 0, read: C, write5m: 0, write1h: 0, write: 0, output: 0, ...o });
+  it("1. a gap judged with the estimate is labelled an estimate even when the instance records real writes elsewhere", () => {
+    for (const order of ["write-first", "write-later"] as const) {
+      const l = emptyLedger();
+      const f: FileCursor = l.files.a = { kind: "codex", ino: 1, offset: 0 };
+      const positive = (t: number) => addTurn(l, f, cx(t, { write: 1000, read: C - 1000 }), 0);
+      if (order === "write-first") positive(T0 - 60_000);
+      addTurn(l, f, cx(T0, { write: 1000, read: C - 1000 }), 0);
+      // The field is absent here (an older CLI): the rewrite after the gap can only be the uncached input.
+      addTurn(l, f, cx(T0 + 2 * H, { write: null, uncached: 900_000, read: 100_000 }), 0);
+      addTurn(l, f, cx(T0 + 2 * H + 60_000, { write: 1000, read: C - 1000 }), 0);
+      if (order === "write-later") positive(T0 + 2 * H + 120_000);
+      expect(l.writesSeen, order).toBe(true);
+      const a = analyzeLedger(l, { backend: "codex", from: T0, to: T0 + 3 * H });
+      expect(a.sim.expired, order).toBe(1);
+      expect(a.estimate, order).toBe(true);
+    }
+  });
+  it("1. measured writes only (0 included): not an estimate", () => {
+    const l = emptyLedger();
+    const f: FileCursor = l.files.a = { kind: "codex", ino: 1, offset: 0 };
+    addTurn(l, f, cx(T0, { write: 1000, read: C - 1000 }), 0);
+    addTurn(l, f, cx(T0 + 2 * H, { write: 0, uncached: 900_000, read: 100_000 }), 0);
+    addTurn(l, f, cx(T0 + 2 * H + 60_000, { write: 1000, read: C - 1000 }), 0);
+    expect(analyzeLedger(l, { backend: "codex", from: T0, to: T0 + 3 * H }).estimate).toBe(false);
+  });
+  it("2. an unknown model whose context contributes nothing to the window does not take the dollars away", () => {
+    const T = Date.UTC(2026, 9, 2, 10, 0, 0);               // an hour boundary: the window's start
+    const l = emptyLedger();
+    const f: FileCursor = l.files.a = { kind: "codex", ino: 1, offset: 0 };
+    addTurn(l, f, cx(T - 300_000, { model: "gpt-reserve", prompt: 1000, read: 1000 }), 0);
+    for (const k of [0, 1, 2]) addTurn(l, f, cx(T + k * 60_000, { prompt: 1000, read: 1000 }), 0);
+    expect(l.gaps.map((g) => g[3])).toEqual(["gpt-reserve"]);   // the gap into the window sat on its context…
+    const a = analyzeLedger(l, { backend: "codex", from: T, to: T + H });
+    expect(a.sim.pings).toBe(0);                                // …which neither pings nor expires inside it
+    expect(a.priced).toBe(true);
+    // The same unknown model contributing (its idle tail pings inside the window) still switches to units.
+    addTurn(l, l.files.b = { kind: "codex", ino: 2, offset: 0 }, cx(T - 200_000, { model: "gpt-reserve", prompt: 1000, read: 1000 }), 0);
+    const withTail = analyzeLedger(l, { backend: "codex", from: T, to: T + H });
+    expect(withTail.sim.tailPings).toBeGreaterThan(0);
+    expect(withTail.priced).toBe(false);
+  });
+});

@@ -45,6 +45,8 @@ export interface SimResult {
   tailCost: number;
   /** What keep-warm would have saved, net of every ping. */
   net: number;
+  /** A gap judged in this window used an estimated write (Codex's uncached input), not a recorded one. */
+  estimated: boolean;
 }
 
 export const UNITS: Rates = { input: 1, read: 0.1, write5m: 1.25, write1h: 2, write: 1.25, output: 5 };
@@ -63,17 +65,21 @@ export function pingsBetween(t: number, end: number, intervalMs: number, from: n
 
 /** The keep-warm simulation over a window's long gaps and its sessions' ends. */
 export function simulate(gaps: readonly GapEvent[], tails: readonly SimTail[], o: SimOptions): SimResult {
-  const res: SimResult = { pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0 };
+  const res: SimResult = { pastTtl: 0, expired: 0, rewriteTokens: 0, expiryCost: 0, pings: 0, pingCost: 0, tailPings: 0, tailCost: 0, net: 0, estimated: false };
   let saved = 0;
   for (const [tEnd, gap, ctx, ctxModel, ttl, model, prompt, measured, estimated] of gaps) {
     if (tEnd < o.from) continue;
     const start = tEnd - Math.round(gap * 1000);
     const pings = pingsBetween(start, tEnd, pingIntervalMs(ttl), o.from, o.to);
-    res.pings += pings;
-    res.pingCost += pings * ctx * o.rates(ctxModel, ctx).read / M;
+    if (pings) {
+      res.pings += pings;
+      res.pingCost += pings * ctx * o.rates(ctxModel, ctx).read / M;
+    }
     if (tEnd > o.to || !(gap > ttl)) continue;
     res.pastTtl++;
-    const rewrite = o.measured && measured !== null ? measured : estimated;
+    const useMeasured = o.measured && measured !== null;
+    if (!useMeasured) res.estimated = true;
+    const rewrite = useMeasured ? measured : estimated;
     const lost = Math.min(rewrite, ctx);
     if (ctx > 0 && lost >= ctx / 2) {
       const r = o.rates(model, prompt);
@@ -134,19 +140,21 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
   const listed = o.rates ?? ratesFor;
   const inWindow = (h: number): boolean => h + 3_600_000 > o.from && h <= o.to;
   const tails = sessionTails(ledger, o.to);
-  // One unit for the whole instance: dollars when every model the window touches is priced.
-  const touched = new Set<string>(), requestModels = new Set<string>();
+  const estimatedTotals = o.backend === "codex" && !ledger.writesSeen;
+  // One unit for the whole instance: dollars when every model that contributes to this window is priced — the
+  // window's requests, and whatever the simulation itself prices (a pinged context, an expired request, an idle tail).
+  // A probe run records exactly the models the simulation asks a rate for.
+  const requestModels = new Set<string>();
   for (const [hk, hour] of Object.entries(ledger.hours)) {
     if (!inWindow(Number(hk))) continue;
-    for (const mk of Object.keys(hour.m)) { const m = mk.slice(0, mk.lastIndexOf("|")); touched.add(m); requestModels.add(m); }
+    for (const mk of Object.keys(hour.m)) requestModels.add(mk.slice(0, mk.lastIndexOf("|")));
   }
-  for (const g of ledger.gaps) if (g[0] >= o.from) { touched.add(g[3]); if (g[0] <= o.to) touched.add(g[5]); }
-  for (const t of tails) if (pingsBetween(t.t, t.until, pingIntervalMs(t.ttl), o.from, o.to) > 0) touched.add(t.model);
+  const touched = new Set<string>(requestModels);
+  simulate(ledger.gaps, tails, { rates: (model) => { touched.add(model); return UNITS; }, from: o.from, to: o.to, measured: !estimatedTotals });
   const priced = [...touched].every((m) => listed(m, 0) !== null);
   const rates = (model: string, prompt: number): Rates => (priced ? listed(model, prompt) : null) ?? UNITS;
   const gapBuckets = new Array<number>(GAP_BUCKETS).fill(0);
   let requests = 0, totalCost = 0;
-  const estimated = o.backend === "codex" && !ledger.writesSeen;
   for (const [hk, hour] of Object.entries(ledger.hours)) {
     if (!inWindow(Number(hk))) continue;
     hour.g.forEach((n, i) => { gapBuckets[i]! += n; });
@@ -156,11 +164,11 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
       requests += n;
       const r = rates(model, long ? Number.MAX_SAFE_INTEGER : 0);
       // Codex on GPT-5.6+ with no recorded writes: its uncached input is what got written (the estimate).
-      const uncachedRate = estimated && isOpenAiTtlModel(model) ? r.write : r.input;
+      const uncachedRate = estimatedTotals && isOpenAiTtlModel(model) ? r.write : r.input;
       totalCost += (uncached * uncachedRate + read * r.read + write5m * r.write5m + write1h * r.write1h + write * r.write + output * r.output) / M;
     }
   }
-  const sim = simulate(ledger.gaps, tails, { rates, from: o.from, to: o.to, measured: !estimated });
+  const sim = simulate(ledger.gaps, tails, { rates, from: o.from, to: o.to, measured: !estimatedTotals });
   const latest = tails.reduce<SimTail | null>((a, t) => (!a || t.t > a.t ? t : a), null);
   const ttlSec = latest ? latest.ttl : o.backend === "codex" ? 1800 : 3600;
   const assumedTtl = o.backend === "codex" && [...requestModels].some((m) => !isOpenAiTtlModel(m));
@@ -170,7 +178,8 @@ export function analyzeLedger(ledger: Ledger, o: AnalyzeOptions): InstanceAnalys
   else if (sim.net > 0 && sim.net >= sim.expiryCost * 0.1) recommendation = { on: true, reason: "saves" };
   else recommendation = { on: false, reason: "costs_more", pingsPerExpiry: Math.round((sim.pings + sim.tailPings) / sim.expired) };
   return {
-    requests, ttlSec, estimate: estimated || assumedTtl, priced, models: [...requestModels].sort(), gapBuckets, sim,
+    // An estimate when anything shown used one: the totals (Codex with no recorded write), a gap's rewrite, a TTL.
+    requests, ttlSec, estimate: (estimatedTotals && requests > 0) || sim.estimated || assumedTtl, priced, models: [...requestModels].sort(), gapBuckets, sim,
     totalCost, share: totalCost > 0 ? sim.expiryCost / totalCost : null, recommendation,
   };
 }
