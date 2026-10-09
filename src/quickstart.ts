@@ -42,6 +42,7 @@ const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 
 // ── Backend detection ────────────────────────────────────
 
@@ -106,6 +107,46 @@ function detectProjectRoots(): { path: string; gitCount: number }[] {
 // ── ClassicBot guild append helper ───────────────────────
 
 const CLASSIC_BOT_PATH = join(DATA_DIR, "classicBot.yaml");
+
+/**
+ * Add `newUsers` to the allowed_users of the chosen connection in `config`.
+ * Supports both channel-shaped (singular) and channels-shaped (array) files.
+ * For multi-connection files, `pickIndex` selects the target (default: 0).
+ * Never writes a phantom `channel:` key into a channels-shaped file.
+ * Exported for direct testing.
+ */
+export function addAllowedUsersToConfig(
+  config: Record<string, any>,
+  newUsers: string[],
+  pickIndex = 0,
+): void {
+  let channelTarget: Record<string, any>;
+  if (config.channels && Array.isArray(config.channels)) {
+    channelTarget = config.channels[Math.max(0, Math.min(config.channels.length - 1, pickIndex))];
+  } else {
+    config.channel ??= {};
+    channelTarget = config.channel;
+  }
+  const existing: string[] = channelTarget?.access?.allowed_users ?? [];
+  for (const uid of newUsers) {
+    if (!existing.includes(uid)) existing.push(uid);
+  }
+  (channelTarget.access ??= { mode: "locked" }).allowed_users = existing;
+}
+
+/**
+ * Write a backup of `configPath` to `<configPath>.bak-<now>` using atomicWriteFileSync.
+ * Throws on failure — callers must abort the overwrite if backup fails (fail-closed).
+ * Returns the backup path on success.
+ * Exported for direct testing.
+ */
+export async function backupFleetConfig(configPath: string, now = Date.now()): Promise<string> {
+  const { atomicWriteFileSync } = await import("./atomic-write.js");
+  const backupPath = `${configPath}.bak-${now}`;
+  atomicWriteFileSync(backupPath, readFileSync(configPath, "utf-8"), { mode: 0o600 });
+  return backupPath;
+}
+
 
 async function maybeUpdateClassicBot(rl: import("node:readline/promises").Interface): Promise<void> {
   if (!existsSync(CLASSIC_BOT_PATH)) return;
@@ -540,40 +581,35 @@ export async function runQuickstart(): Promise<void> {
         // ── Add allowed users to existing fleet.yaml ──
         const raw = readFileSync(FLEET_CONFIG_PATH, "utf-8");
         const config = yaml.load(raw) as Record<string, any>;
-        // Support both channel-shaped (singular) and channels-shaped (array) files.
-        // Never write a phantom `channel:` key into a channels-shaped file.
-        let channelTarget: Record<string, any>;
-        let saveConfig: () => void;
-        if (config.channels && Array.isArray(config.channels)) {
-          // channels-shaped file: pick the connection to update (or the only one)
-          const connections: any[] = config.channels;
-          let idx = 0;
-          if (connections.length > 1) {
-            console.log("\n  Which connection?");
-            for (let i = 0; i < connections.length; i++) {
-              console.log(`    ${i + 1}. ${connections[i].type ?? `connection ${i + 1}`}`);
-            }
-            const pick = (await rl.question("  Choose [1]: ")).trim();
-            idx = Math.max(0, Math.min(connections.length - 1, parseInt(pick || "1", 10) - 1));
+        // Pick which connection to update (P3: show id + group_id for disambiguation)
+        let pickIndex = 0;
+        if (config.channels && Array.isArray(config.channels) && config.channels.length > 1) {
+          console.log("\n  Which connection?");
+          for (let i = 0; i < config.channels.length; i++) {
+            const c = config.channels[i];
+            const label = [c.type, c.id ? `id:${c.id}` : null, c.group_id ? `group:${c.group_id}` : null]
+              .filter(Boolean).join("  ");
+            console.log(`    ${i + 1}. ${label || `connection ${i + 1}`}`);
           }
-          channelTarget = connections[idx];
-          saveConfig = () => writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
-        } else {
-          // channel-shaped (singular) file
-          config.channel ??= {};
-          channelTarget = config.channel;
-          saveConfig = () => writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
+          const pick = (await rl.question("  Choose [1]: ")).trim();
+          pickIndex = Math.max(0, Math.min(config.channels.length - 1, parseInt(pick || "1", 10) - 1));
         }
-        const currentUsers: string[] = channelTarget?.access?.allowed_users ?? [];
-        console.log(`\n  Current allowed users: ${currentUsers.join(", ") || "(none)"}`);
+        const existingUsers: string[] = (() => {
+          if (config.channels && Array.isArray(config.channels)) {
+            return config.channels[pickIndex]?.access?.allowed_users ?? [];
+          }
+          return config.channel?.access?.allowed_users ?? [];
+        })();
+        console.log(`\n  Current allowed users: ${existingUsers.join(", ") || "(none)"}`);
+        const newUsersList: string[] = [];
         while (true) {
           const uid = (await rl.question("  Add user ID (Enter to finish): ")).trim();
           if (!uid) break;
-          currentUsers.push(uid);
+          newUsersList.push(uid);
           console.log(`  ${green("✓")} Added: ${uid}`);
         }
-        (channelTarget.access ??= { mode: "locked" }).allowed_users = currentUsers;
-        saveConfig();
+        addAllowedUsersToConfig(config, newUsersList, pickIndex);
+        writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
         console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
 
         // Hot-reload if fleet is running
@@ -786,13 +822,17 @@ export async function runQuickstart(): Promise<void> {
     fleetObj.defaults = { backend };
 
     // Backup existing fleet.yaml before overwriting (action === "4" / start fresh).
+    // Fail-closed: if the backup cannot be written, abort the overwrite so the
+    // user does not lose their only copy while believing a backup exists.
     if (existsSync(FLEET_CONFIG_PATH)) {
-      const backupPath = `${FLEET_CONFIG_PATH}.bak-${Date.now()}`;
       try {
-        const { atomicWriteFileSync } = await import("./atomic-write.js");
-        atomicWriteFileSync(backupPath, readFileSync(FLEET_CONFIG_PATH, "utf-8"), { mode: 0o600 });
+        const backupPath = await backupFleetConfig(FLEET_CONFIG_PATH);
         console.log(`  ${green("✓")} Backed up existing config to ${backupPath}`);
-      } catch { /* best effort — proceed with overwrite even if backup fails */ }
+      } catch (err) {
+        console.error(`  ${red("✗")} Could not back up ${FLEET_CONFIG_PATH}: ${(err as Error).message}`);
+        console.error(`  Overwrite aborted — your existing config is unchanged.`);
+        process.exit(1);
+      }
     }
     writeFileSync(FLEET_CONFIG_PATH, yaml.dump(fleetObj, { quotingType: '"', forceQuotes: false }));
     console.log(`\n  ${green("✓")} ${FLEET_CONFIG_PATH}`);
