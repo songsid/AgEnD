@@ -12,13 +12,14 @@ import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import "./chat-render.js";
 import "./preview.js";
+import { loadHtmlAttachment } from "./html-attachment.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
 
 // ── The panel's state, one per page (the chat shows one instance at a time) ──
 
-/** open: { key, instance, msgKey, n, code, sender, ts } | null; run: start it on mount (a moved run). */
+/** open: { key, instance, msgKey, n | att, code, sender, ts } | null (`att`: an attached .html file, #1306 Q4); run: start it on mount (a moved run). */
 let state = { open: null, run: 0 };
 const subs = new Set();
 function set(next) { state = next; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
@@ -54,6 +55,22 @@ export function newerVersion(open, msgs, keyOf) {
   if (!open || !Array.isArray(msgs)) return null;
   const at = msgs.findIndex(x => keyOf(x) === open.msgKey);
   if (at < 0) return null;
+  // An attached file: a later agent reply attaching a file of the same name is its newer version. Its HTML is read
+  // when the person picks it (code: null here), as on a card.
+  if (open.att) {
+    const name = String(open.att.name || "").trim().toLowerCase();
+    for (let i = msgs.length - 1; i > at; i--) {
+      const x = msgs[i];
+      if (x.role !== "agent" || !Array.isArray(x.attachments)) continue;
+      for (let k = x.attachments.length - 1; k >= 0; k--) {
+        const a = x.attachments[k];
+        if (!R().isHtmlAttachment(a) || a.name.trim().toLowerCase() !== name) continue;
+        const msgKey = keyOf(x);
+        return { key: `${msgKey}:a${a.id}`, instance: open.instance, msgKey, att: { id: a.id, name: a.name, size: a.size }, code: null, sender: x.sender, ts: x.ts };
+      }
+    }
+    return null;
+  }
   const title = htmlTitle(open.code);
   for (let i = msgs.length - 1; i > at; i--) {
     const x = msgs[i];
@@ -93,6 +110,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [view, setView] = useState("preview");
   const [run, setRun] = useState({ state: "idle", reason: "" });
   const [newer, setNewer] = useState(null);
+  const [newerNote, setNewerNote] = useState("");
+  const reading = useRef(null);   // the newer version whose file is being read (one at a time)
   const holder = useRef(null), divider = useRef(null), panel = useRef(null);
   const open = st.open && st.open.instance === name ? st.open : null;
 
@@ -120,6 +139,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   }, [open && open.key, st.run]);
   // A later reply with a newer version of this block: offered, not swapped in.
   useEffect(() => {
+    setNewerNote(""); reading.current = null;
     if (!open) { setNewer(null); return undefined; }
     const check = () => setNewer(newerVersion(open, msgs() || [], keyOf));
     check();
@@ -162,6 +182,21 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
   };
+  // Show the newer version: an attached file's HTML is read first. A read the panel moved on from is dropped.
+  const showNewer = async () => {
+    if (!newer || reading.current) return;
+    if (newer.code != null) { openPanel(newer); return; }
+    const was = open && open.key, mine = reading.current = newer;
+    setNewerNote(t("chat.pvLoading"));
+    const r = await loadHtmlAttachment(newer.att);
+    if (reading.current !== mine) return;
+    reading.current = null;
+    const now = panelStore.get().open;
+    if (!now || now.key !== was) return;
+    if (!r.ok) { setNewerNote(t(r.reason === "over" ? "chat.pvAttOver" : r.reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed")); return; }
+    openPanel({ ...newer, code: r.code });
+  };
+  const fileName = open && open.att ? open.att.name : undefined;
   // Esc in the panel closes it (and is not the chat's "stop the reply").
   const onPanelKey = (e) => { if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); closePanel(); } };
 
@@ -188,10 +223,10 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
         ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
           <button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
           : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${start}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
-        <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
+        <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
       </div>
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>
-        <button type="button" class="btn btn-sm pv-newer-show" onClick=${() => openPanel(newer)}>${t("chat.pvNewerShow")}</button></div>` : null}
+        <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
       ${going ? html`<div class="pv-banner">${P().BANNER}</div>` : null}
       ${note && view === "preview" ? html`<div class="pv-note">${note}</div>` : null}
       <div class=${`pv-panel-body${view === "code" ? " show-code" : ""}`}>

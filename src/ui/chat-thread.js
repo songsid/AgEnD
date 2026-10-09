@@ -8,6 +8,7 @@
 // Unrelated updates (a new message, another message's tick) stop nothing (#1306 §6.2, #1408 §4).
 import "./chat-render.js";
 import "./preview.js";
+import { loadHtmlAttachment } from "./html-attachment.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -45,7 +46,7 @@ export function createThread(list, scroller, opts) {
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${R().attachmentsHtml(x.attachments)}${buttons}</div>${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${R().attachmentsHtml(x.attachments, x.role === "agent" ? { htmlCards: true } : undefined)}${buttons}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -92,72 +93,108 @@ export function createThread(list, scroller, opts) {
     }
   }
 
-  // HTML cards (#1306): each ```html fence of a server-marked agent message gets a card under its code block. Building
-  // a card makes no frame; Preview does (AgendPreview.start → mountPreview).
+  // HTML cards (#1306): each ```html fence of a server-marked agent message gets a card under its code block, and each
+  // .html/.htm file it attached gets one under its files (§6.1, Q4). Building a card makes no frame and fetches
+  // nothing; Preview does (AgendPreview.start → mountPreview), after reading an attachment's HTML on that click.
   function decorateHtmlCards(node, x, stoppedKeys) {
     const doc = list.ownerDocument;
     const fences = R().htmlFences(x.text);
     for (const ph of node.querySelectorAll(".html-card[data-card]")) {
       const n = Number(ph.dataset.card), fence = fences[n];
       if (!fence) continue;
-      const key = `${msgKey(x)}:f${n}`;
       ph.textContent = "";
       if (ph.classList.contains("truncated") || !fence.terminated) {
         const note = doc.createElement("div"); note.className = "pv-note"; note.textContent = tr("chat.pvTruncated"); ph.append(note);
         continue;
       }
-      const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-      const head = el("div", "pv-head");
-      const label = el("span", "pv-label", tr("chat.pvHtml"));
-      const run = el("button", "btn btn-sm pv-run", tr("chat.pvPreview")); run.type = "button";
-      const stopB = el("button", "btn btn-sm pv-stop", tr("chat.pvStop")); stopB.type = "button"; stopB.hidden = true;
-      const dl = el("button", "btn btn-sm btn-ghost pv-dl", tr("chat.pvDownload")); dl.type = "button";
-      const panel = opts.panel || null;
-      const toPanel = panel ? el("button", "btn btn-sm btn-ghost pv-open", tr("chat.pvOpenPanel")) : null;
-      if (toPanel) toPanel.type = "button";
-      const menu = el("details", "pv-menu");
-      const sum = el("summary", null, "⋯"); sum.title = tr("chat.pvMenu"); sum.setAttribute("aria-label", tr("chat.pvMenu"));
-      const optB = el("button", "chip-btn pv-opt"); optB.type = "button";
-      const neverB = el("button", "chip-btn pv-never"); neverB.type = "button";
-      menu.append(sum, optB, neverB);
-      head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), dl, menu);
-      const note = el("div", "pv-note");
-      const banner = el("div", "pv-banner", P().BANNER); banner.hidden = true;
-      const holder = el("div", "pv-holder");
-      ph.append(head, note, banner, holder);
-      let state = "idle";
-      const refresh = (reason) => {
-        const a = P().availability();
-        const going = state === "starting" || state === "running";
-        const inPanel = !!panel && panel.shown() === key;   // #1481: the panel shows this block; the card points there
-        run.hidden = !a.ok || going || inPanel;
-        if (toPanel) toPanel.hidden = inPanel;
-        stopB.hidden = !going;
-        banner.hidden = !going;
-        note.textContent = reason != null ? reason : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
-        optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
-        neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
-      };
-      const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
-      run.onclick = () => P().start(key, holder, fence.code, ui);
-      stopB.onclick = () => P().stop(key, "stopped", "");
-      // A running preview moves: it stops here and starts in the panel (the click that ran it). An idle one opens the
-      // panel with its own Preview to click.
-      if (toPanel) toPanel.onclick = () => {
-        const moving = P().running(key);
-        if (moving) P().stop(key, "stopped", "");
-        panel.open({ key, instance: x.instance, msgKey: msgKey(x), n, code: fence.code, sender: x.sender, ts: x.ts }, { run: moving });
-      };
-      dl.onclick = () => opts.download(fence.code);
-      optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
-      neverB.onclick = () => { menu.open = false; P().setNever(!P().never()); refreshCards(); };
-      cardRefresh.set(ph, refresh);
-      refresh(stoppedKeys.includes(key) ? tr("chat.pvChanged") : null);
+      buildCard(ph, x, `${msgKey(x)}:f${n}`, { n, code: fence.code }, stoppedKeys);
     }
+    const atts = Array.isArray(x.attachments) ? x.attachments : [];
+    for (const ph of node.querySelectorAll(".html-card[data-att]")) {
+      const att = atts.find(a => a && a.id === ph.dataset.att);
+      if (!att || !R().isHtmlAttachment(att)) continue;
+      ph.textContent = "";
+      buildCard(ph, x, `${msgKey(x)}:a${att.id}`, { att: { id: att.id, name: att.name, size: att.size } }, stoppedKeys);
+    }
+  }
+  /** Why an attachment's HTML could not be read, for the card's note. */
+  const attReason = (reason) => tr(reason === "over" ? "chat.pvAttOver" : reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed");
+  /** One card: `source` is { n, code } for a fence or { att } for an attachment (its HTML read on the first click). */
+  function buildCard(ph, x, key, source, stoppedKeys) {
+    const doc = list.ownerDocument;
+    const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const att = source.att || null;
+    let code = att ? null : source.code;
+    const head = el("div", "pv-head");
+    const label = el("span", "pv-label", att ? `${tr("chat.pvHtml")} · ${att.name}` : tr("chat.pvHtml"));
+    const run = el("button", "btn btn-sm pv-run", tr("chat.pvPreview")); run.type = "button";
+    const stopB = el("button", "btn btn-sm pv-stop", tr("chat.pvStop")); stopB.type = "button"; stopB.hidden = true;
+    // An attachment already has its download link (the file itself) right above the card.
+    const dl = att ? null : el("button", "btn btn-sm btn-ghost pv-dl", tr("chat.pvDownload"));
+    if (dl) dl.type = "button";
+    const panel = opts.panel || null;
+    const toPanel = panel ? el("button", "btn btn-sm btn-ghost pv-open", tr("chat.pvOpenPanel")) : null;
+    if (toPanel) toPanel.type = "button";
+    const menu = el("details", "pv-menu");
+    const sum = el("summary", null, "⋯"); sum.title = tr("chat.pvMenu"); sum.setAttribute("aria-label", tr("chat.pvMenu"));
+    const optB = el("button", "chip-btn pv-opt"); optB.type = "button";
+    const neverB = el("button", "chip-btn pv-never"); neverB.type = "button";
+    menu.append(sum, optB, neverB);
+    head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
+    const note = el("div", "pv-note");
+    const banner = el("div", "pv-banner", P().BANNER); banner.hidden = true;
+    const holder = el("div", "pv-holder");
+    ph.append(head, note, banner, holder);
+    let state = "idle";
+    // Reading an attachment: one read per card at a time (a second click while it reads does nothing), and a read
+    // whose card was stopped, replaced or left meanwhile is dropped (`reading` moved on, or the card left the page).
+    let reading = 0, reads = 0;
+    const refresh = (reason) => {
+      const a = P().availability();
+      const going = state === "starting" || state === "running";
+      const inPanel = !!panel && panel.shown() === key;   // #1481: the panel shows this block; the card points there
+      run.hidden = !a.ok || going || inPanel || !!reading;
+      if (toPanel) toPanel.hidden = inPanel || !!reading;
+      stopB.hidden = !going && !reading;
+      banner.hidden = !going;
+      note.textContent = reason != null ? reason : reading ? tr("chat.pvLoading") : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
+      optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
+      neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
+    };
+    /** The HTML, then `then(code)`: at once for a fence or an attachment already read; otherwise read it first. */
+    const withCode = async (then) => {
+      if (code != null) { then(code); return; }
+      if (reading) return;
+      const mine = reading = ++reads;
+      refresh();
+      const r = await loadHtmlAttachment(att);
+      if (reading !== mine || !ph.isConnected) return;
+      reading = 0;
+      if (!r.ok) { refresh(attReason(r.reason)); return; }
+      code = r.code;
+      refresh();
+      then(code);
+    };
+    const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
+    // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
+    run.onclick = () => { if (P().availability().ok) withCode((c) => P().start(key, holder, c, ui)); };
+    stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
+    // A running preview moves: it stops here and starts in the panel (the click that ran it). An idle one opens the
+    // panel with its own Preview to click.
+    if (toPanel) toPanel.onclick = () => {
+      const moving = P().running(key);
+      if (moving) P().stop(key, "stopped", "");
+      withCode((c) => panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: moving }));
+    };
+    if (dl) dl.onclick = () => opts.download(code);
+    optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
+    neverB.onclick = () => { menu.open = false; P().setNever(!P().never()); refreshCards(); };
+    cardRefresh.set(ph, refresh);
+    refresh(stoppedKeys.includes(key) ? tr("chat.pvChanged") : null);
   }
   /** Re-read this device's preview choice on every card in this thread. */
   function refreshCards() {
-    for (const node of list.querySelectorAll(".html-card[data-card]")) { const f = cardRefresh.get(node); if (f) f(); }
+    for (const node of list.querySelectorAll(".html-card[data-card], .html-card[data-att]")) { const f = cardRefresh.get(node); if (f) f(); }
   }
 
   const nearBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);
