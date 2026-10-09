@@ -413,6 +413,26 @@ On Linux the systemd unit uses `KillMode=mixed`, so stopping or updating the ser
 
 The same migration also adds the #1113 settings to an older unit. `CoredumpFilter=0` keeps a crash dump to a few KB: on WSL every crash is piped to the WSL crash collector, which ignores `LimitCORE`, and kiro-cli and the fleet itself had left dumps of about 1 GB and 450 MB. `LimitCORE=0` covers systems that write core files directly. `TimeoutStartSec=15min` replaces the old unlimited start timeout, and `StartLimitIntervalSec=30min` with `StartLimitBurst=4` stops systemd from restarting a fleet that failed four times in 30 minutes. `agend restart` runs `systemctl reset-failed` first, so it is never blocked by that limit; a plain `systemctl --user restart` is. Some systemd versions (249 among them) ignore `CoredumpFilter=` in a unit file, so on Linux AgEnD sets `coredump_filter` to 0 itself: the fleet process at startup, and each CLI it launches (the launch command sets it in the pane's own shell first, so it applies even in a tmux server the fleet did not start). `AGEND_KEEP_COREDUMP_FILTER=1` turns both off: processes then keep the mask they inherit (from systemd, tmux or your shell), which is not necessarily a full dump. The unit file is left as it is either way; whatever it says, the runtime mask is what AgEnD sets unless you opt out.
 
+**Which Node the service runs, and when `agend restart` refuses (#1450).**
+- The unit (`ExecStart=`) and the plist (`ProgramArguments`) name AgEnD's own Node first, then the package's
+  `dist/cli.js`, then `fleet start`. That is the Node `agend` itself selected: the bundled one, or a validated
+  `AGEND_NODE`. The runtime's directory is on no service PATH, so the coding CLIs keep the Node they had.
+- Before stopping anything, `agend restart` checks that the definition the service manager has **loaded** starts
+  exactly that: the selected Node named, this install's entry, `fleet start`, no `NODE_OPTIONS`/`NODE_PATH`, and no
+  reload pending. Otherwise it refuses and stops nothing.
+  - An older definition that leaves Node to `#!/usr/bin/env node` and the service's PATH is refused this way. Run
+    `agend install` to rewrite it.
+  - `agend restart --force` is for operators who have checked the service themselves. `agend update` never uses it.
+- **macOS:** `agend install` writes `~/Library/LaunchAgents/com.agend.fleet.plist` and loads it into `gui/<uid>`.
+  That is the domain of your login session, where LaunchAgents are loaded at login.
+  - For launchd, loading a plist is starting the job. So `agend install --no-activate` only writes and proves the new
+    plist and records a planned activation; the job already loaded keeps running.
+  - The next `agend restart` performs that activation once: one `bootout`, one `bootstrap`. Then `launchctl print`
+    must show the new job running. If it does not, the previous plist is bootstrapped again and checked.
+  - A Mac reached only over SSH, with nobody logged in, has no `gui/<uid>` domain (`launchctl` reports error 125).
+    There a job can only be loaded into `user/<uid>`, with `LimitLoadToSessionType=Background`. `agend install` does
+    not write that; such a job is yours to manage.
+
 ## Environment variables
 
 | Variable | Description |
