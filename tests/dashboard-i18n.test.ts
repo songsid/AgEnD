@@ -65,8 +65,9 @@ describe("the app's dictionary: English and zh-TW", () => {
 
   it("the call sites that used the old strings still use them: delete confirmations, the success toast, the validation toasts", () => {
     const fleet = read(join(UI, "panel-fleet.js"));
-    expect(fleet).toContain('confirm(t("fleet.deleteSchedule"))');
-    expect(fleet).toContain('confirm(t("fleet.deleteTeam", name))');
+    // #1408 step 5: asked in the app's own dialog, with the same strings.
+    expect(fleet).toContain('confirmDialog({ message: t("fleet.deleteSchedule")');
+    expect(fleet).toContain('confirmDialog({ message: t("fleet.deleteTeam", name)');
     expect(fleet).toContain('done: t("fleet.scheduleCreated")');
     expect(fleet).toContain('toast(t("fleet.teamFieldsRequired"), false)');
     expect(fleet).toContain('toast(t("fleet.topicRequired"), false)');

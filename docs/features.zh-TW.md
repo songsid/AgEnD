@@ -1046,8 +1046,8 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 ## 「需要你處理」收件匣（#1386 / #1398）
 
-每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。`/ui` 的側欄標記與「需要你處理」面板預計在後續步驟加入。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
+每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。在 `/ui` 中，**等你處理**（`/ui/needs`）是一個附側欄標記與可選桌面通知的面板（#1408 第 4 步）。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
 
 ## 網頁應用程式外殼（#1408，步驟 1）
 
-`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`），第三步提供 **Settings** 面板（`/settings` 及 `/settings/<section>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。加入「需要你處理」面板和側欄標記，預計在後續步驟完成。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。
+`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`），第三步提供 **Settings** 面板（`/settings` 及 `/settings/<section>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。第四步加入 **等你處理** 面板（`/ui/needs`）。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。

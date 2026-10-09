@@ -12,14 +12,75 @@ var fs = require("fs");
 var path = require("path");
 var LOG = process.env.AGEND_BOUNDARY_LOG;
 
-/** A service manager reached by absolute path, as a program or anywhere inside a shell string. */
-var MANAGER_BY_PATH = /(^|[\s;&|(`"'=])\/[^\s;&|()`"']*\/(systemctl|launchctl)(?=$|[\s;&|)`"'])/;
+var MANAGERS = /^(systemctl|launchctl)$/;
+var SHELLS = /^(sh|bash|dash|zsh|ksh)$/;
+var WRAPPERS = /^(exec|env|command|nohup|nice|time|builtin)$/;
+
+/**
+ * A shell string as the shell splits it: commands (split at ; & | ( ) and newlines), each a list of words with quotes
+ * removed and `dyn` set when a word holds an expansion ($… or `…`) the shell would resolve. null: unterminated quote.
+ */
+function shellCommands(text) {
+  var commands = [[]], word = null, q = null;
+  var end = function () { if (word) commands[commands.length - 1].push(word); word = null; };
+  var add = function (c, dyn) { if (!word) word = { text: "", dyn: false }; word.text += c; if (dyn) word.dyn = true; };
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charAt(i);
+    if (q === "'") { if (c === "'") q = null; else add(c, false); continue; }
+    if (q === '"') {
+      if (c === '"') q = null;
+      else if (c === "\\" && i + 1 < text.length) add(text.charAt(++i), false);
+      else add(c, c === "$" || c === "`");
+      continue;
+    }
+    if (c === "'" || c === '"') { q = c; if (!word) word = { text: "", dyn: false }; continue; }
+    if (c === "\\" && i + 1 < text.length) { add(text.charAt(++i), false); continue; }
+    if (/\s/.test(c) && c !== "\n") { end(); continue; }
+    if (/[;&|()\n]/.test(c)) { end(); commands.push([]); continue; }
+    add(c, c === "$" || c === "`");
+  }
+  if (q) return null;
+  end();
+  return commands.filter(function (cmd) { return cmd.length > 0; });
+}
+
+/** Why this shell string may not run in a hop — or null. Ambiguity counts as a violation. */
+function shellViolation(text, depth) {
+  if ((depth || 0) > 3) return "nested shell too deep: " + text;
+  if (/(\$\(|`)/.test(text) && /(systemctl|launchctl)/.test(text)) return "a service manager inside a command substitution: " + text;
+  var commands = shellCommands(text);
+  if (commands === null) return "an unterminated quote: " + text;
+  for (var c = 0; c < commands.length; c++) {
+    var w = commands[c], i = 0;
+    while (i < w.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i].text) || (!w[i].dyn && WRAPPERS.test(w[i].text)) || (i > 0 && WRAPPERS.test(w[i - 1].text) && w[i].text.charAt(0) === "-"))) i++;
+    if (i >= w.length) continue;
+    var cmd = w[i];
+    var base = path.basename(cmd.text);
+    if (cmd.dyn) return "an expansion as a command word (" + cmd.text + "): " + text;
+    if (base === "sudo") return "sudo in a hop: " + text;
+    if (MANAGERS.test(base) && cmd.text.indexOf("/") >= 0) return "service manager by path: " + text;
+    var rest = w.slice(i + 1).map(function (x) { return x.text; });
+    if (base === "eval") { var inner = shellViolation(rest.join(" "), (depth || 0) + 1); if (inner) return inner; }
+    if (SHELLS.test(base)) {
+      var k = rest.indexOf("-c");
+      if (k >= 0 && rest[k + 1] !== undefined) { var nested = shellViolation(rest[k + 1], (depth || 0) + 1); if (nested) return nested; }
+    }
+    for (var j = 0; j < rest.length - 1; j++) if (rest[j] === "fleet" && rest[j + 1] === "start") return "fleet start: " + text;
+  }
+  return null;
+}
+
+/** Why this program + argv may not run in a hop — or null. */
 function violation(file, args) {
   var all = [String(file)].concat((args || []).map(String));
+  var base = path.basename(String(file));
   for (var i = 0; i < all.length - 1; i++) if (all[i] === "fleet" && all[i + 1] === "start") return "fleet start: " + all.join(" ");
-  if (/\bfleet\s+start\b/.test(all.join(" "))) return "fleet start in a shell string: " + all.join(" ");
-  if (/^(systemctl|launchctl)$/.test(path.basename(String(file))) && path.isAbsolute(String(file))) return "service manager by absolute path: " + all.join(" ");
-  for (var j = 0; j < all.length; j++) if (MANAGER_BY_PATH.test(all[j])) return "service manager by absolute path in a command string: " + all.join(" ");
+  if (MANAGERS.test(base) && String(file).indexOf("/") >= 0) return "service manager by absolute path: " + all.join(" ");
+  if (base === "sudo") return "sudo in a hop: " + all.join(" ");
+  if (SHELLS.test(base)) {
+    var c = (args || []).indexOf("-c");
+    if (c >= 0 && args[c + 1] !== undefined) return shellViolation(String(args[c + 1]), 0);
+  }
   return null;
 }
 function stop(what) {
@@ -60,3 +121,5 @@ if (LOG) {
   var mod = require("module");
   if (mod.syncBuiltinESMExports) mod.syncBuiltinESMExports();
 }
+
+module.exports = { violation: violation, shellViolation: shellViolation, shellCommands: shellCommands };

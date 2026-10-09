@@ -246,15 +246,29 @@ export const fleetModel = (fleet) => ({
   defaults: fleet.defaults || {}, instances: fleet.instances || {},
 });
 
-/** The requests an edited full model makes: PUT defaults + channels, then each instance added, changed or removed. */
-export function fullModelRequests(model, currentInstances) {
+/** The same value, whatever the order of its keys (a YAML edit may reorder them). */
+function canon(v) {
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  if (v && typeof v === "object") return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
+  return JSON.stringify(v === undefined ? null : v);
+}
+export const sameConfig = (a, b) => canon(a) === canon(b);
+
+/**
+ * The requests an edited full model makes — only for what it changes against the configuration it was edited from
+ * (#1408 step 5: an unchanged section is not written again): defaults, channels, then each instance added, changed
+ * or removed.
+ */
+export function fullModelRequests(model, current) {
   const out = [];
-  if (model.defaults) out.push({ method: "PUT", url: "/api/settings/fleet/defaults", body: model.defaults });
+  const fleet = current || {};
+  if (model.defaults && !sameConfig(model.defaults, fleet.defaults || {})) out.push({ method: "PUT", url: "/api/settings/fleet/defaults", body: model.defaults });
   const chs = model.channels || (model.channel ? [model.channel] : null);
-  if (chs) out.push({ method: "PUT", url: "/api/settings/fleet/channels", body: chs });
+  if (chs && !sameConfig(chs, channelsOf(fleet))) out.push({ method: "PUT", url: "/api/settings/fleet/channels", body: chs });
   if (model.instances && typeof model.instances === "object") {
-    const cur = currentInstances || {};
+    const cur = fleet.instances || {};
     for (const [n, cfg] of Object.entries(model.instances)) {
+      if (cur[n] && sameConfig(cfg, cur[n])) continue;
       out.push({ method: cur[n] ? "PATCH" : "POST", url: `/api/settings/fleet/instances/${encodeURIComponent(n)}`, body: cfg });
     }
     for (const n of Object.keys(cur)) if (!(n in model.instances)) out.push({ method: "DELETE", url: `/api/settings/fleet/instances/${encodeURIComponent(n)}` });

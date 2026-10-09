@@ -203,9 +203,11 @@ async function watch(o, id) {
  * A full AgEnD restart for a job that needs one: its own confirmation (the caller's), its own key, one at a time. The
  * job's fleet row moves to "running" on the server; that job is watched again.
  */
-export async function restartFleet() {
+export async function restartFleet(forJob) {
   const o = op;
   if (!o || !o.job || o.restart === "busy" || ACTIVE.has(o.phase)) return { ok: false };
+  // A confirmation given for one job never restarts for another (the operation was replaced meanwhile).
+  if (forJob && (forJob.opId !== o.id || forJob.jobId !== o.job.id)) return { ok: false, stale: true };
   o.restart = "busy"; publish();
   const key = newKey("restart");
   let res;

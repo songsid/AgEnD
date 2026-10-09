@@ -12,12 +12,16 @@ import "./chat-strings.js";
 
 const TOUR_KEY = "agend_tour_done";
 const byId = (id) => document.getElementById(id);
+// On a phone the instance list is in the closed drawer: the tour outlines what opens it (☰), and for "needs you" the
+// bottom tab's badge (#1408 step 5: retargeted to the app's shell).
+const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
 const STEPS = [
-  { text: "chat.tour1", spot: () => byId("instanceList") },
+  { text: "chat.tour1", spot: () => (narrow() ? byId("sbOpen") : byId("instanceList")) },
   { text: "chat.tour2", spot: () => byId("main") },
   { text: "chat.tour3", spot: () => byId("attachBtn") },
   { text: "chat.tour4", spot: () => { const stop = byId("stopBtn"); return stop && !stop.hidden ? stop : byId("sendBtn"); } },
-  { text: "chat.tour5", spot: () => document.querySelector(".badge-await") || byId("instanceList") },
+  { text: "chat.tour5", spot: () => (narrow() ? document.querySelector(".tabs .tab-badge") || byId("sbOpen")
+    : document.querySelector(".badge-await") || byId("instanceList")) },
 ];
 let at = -1, spot = null, returnTo = null, escHeld = false, installed = false;
 

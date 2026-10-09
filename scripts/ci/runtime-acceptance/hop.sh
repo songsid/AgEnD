@@ -28,8 +28,14 @@ fresh() {
   PREFIX="$WORK/prefix"
   export HOME="$WORK/home" XDG_CONFIG_HOME="$WORK/home/.config" AGEND_HOME="$WORK/agend-home"
   export npm_config_userconfig="$RUNNER_TEMP/registry/npmrc" npm_config_cache="$WORK/cache" npm_config_prefix="$PREFIX"
+  # Each call is logged as `<name>( <len>:<bytes>)*` — argv boundaries kept (manager-activations.cjs) — and fails.
   for tool in systemctl launchctl sudo; do
-    printf '#!/bin/sh\necho "%s $*" >> "%s/guard.log"\nexit 1\n' "$tool" "$WORK" > "$WORK/guard/$tool"
+    cat > "$WORK/guard/$tool" <<STUB
+#!/bin/sh
+LC_ALL=C; export LC_ALL
+{ printf '%s' "$tool"; for a in "\$@"; do printf ' %d:%s' "\${#a}" "\$a"; done; printf '\\n'; } >> "$WORK/guard.log"
+exit 1
+STUB
     chmod +x "$WORK/guard/$tool"
   done
   : > "$WORK/guard.log"
@@ -50,9 +56,9 @@ check_boundary() {
   step "[$1] the process boundary held"
   if [ -s "$AGEND_BOUNDARY_LOG" ]; then cat "$AGEND_BOUNDARY_LOG"; fail "a fleet start or a service manager by path was attempted"; fi
   echo "  stubbed manager calls:"; sed 's/^/    /' "$WORK/guard.log"; [ -s "$WORK/guard.log" ] || echo "    none"
-  # Judged after `sudo` and the manager's own options (manager-activations.cjs), not by position.
+  # Fails closed (manager-activations.cjs): any sudo, an option it cannot judge, or a verb that is not read-only.
   if ! node "$HERE/manager-activations.cjs" "$WORK/guard.log"; then
-    fail "a service manager was asked to activate something"
+    fail "a stubbed service-manager call was not plainly read-only"
   fi
 }
 

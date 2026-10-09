@@ -20,6 +20,7 @@ export function isSafeInstanceName(name) {
 export function parseRoute(pathname) {
   if (pathname === "/ui") return { panel: "chat", instance: null };
   if (pathname === "/ui/fleet") return { panel: "fleet", tab: "tasks" };
+  if (pathname === "/ui/needs") return { panel: "needs" };
   let m = /^\/ui\/fleet\/([^/]+)$/.exec(pathname);
   if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : null;
   m = /^\/ui\/chat\/([^/]+)$/.exec(pathname);
@@ -41,17 +42,20 @@ function named(panel, segment) {
 export function chatPath(instance) { return `/ui/chat/${encodeURIComponent(instance)}`; }
 export function viewPath(instance) { return instance ? `/view/${encodeURIComponent(instance)}` : "/view"; }
 export function fleetPath(tab) { return tab && tab !== "tasks" ? `/ui/fleet/${tab}` : "/ui/fleet"; }
+export const NEEDS_PATH = "/ui/needs";
 export function settingsPath(section) { return section && section !== "agents" ? `/settings/${section}` : "/settings"; }
 export function routePath(route) {
   if (!route) return "/ui";
   if (route.panel === "fleet") return fleetPath(route.tab);
   if (route.panel === "settings") return settingsPath(route.section);
+  if (route.panel === "needs") return NEEDS_PATH;
   if (route.panel === "view") return viewPath(route.instance);
   return route.instance ? chatPath(route.instance) : "/ui";
 }
 /** One string per route: a change of it is a new navigation (a new lease for the panel, §4). */
 export function routeKey(route) {
   if (!route) return "none";
+  if (route.panel === "needs") return "needs:";
   return `${route.panel}:${route.panel === "fleet" ? route.tab : route.panel === "settings" ? route.section : route.instance ?? ""}`;
 }
 

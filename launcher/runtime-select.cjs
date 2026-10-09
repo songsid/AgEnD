@@ -8,6 +8,7 @@ var childProcess = require("child_process");
 var platform = require("./runtime-platform.cjs");
 
 var RECEIPT = ".agend-runtime.json";
+var KEY = ".agend-runtime.key";
 var MIN_NAPI = 10;
 
 function readJson(file) {
@@ -92,6 +93,57 @@ function qualifies(versions, engines) {
   return versions && platform.satisfiesEngines(versions.node, engines) && Number(versions.napi) >= MIN_NAPI;
 }
 
+/** POSIX `cksum`: CRC-32 (0x04C11DB7, MSB first), then the byte length (LSB first), complemented; "<crc> <length>". */
+var CRC_TABLE = (function () {
+  var t = [];
+  for (var i = 0; i < 256; i++) { var c = i << 24; for (var j = 0; j < 8; j++) c = c & 0x80000000 ? (c << 1) ^ 0x04C11DB7 : c << 1; t.push(c >>> 0); }
+  return t;
+})();
+function cksum(buf) {
+  var crc = 0;
+  var step = function (b) { crc = ((crc << 8) ^ CRC_TABLE[((crc >>> 24) ^ b) & 0xff]) >>> 0; };
+  for (var i = 0; i < buf.length; i++) step(buf[i]);
+  for (var n = buf.length; n > 0; n = Math.floor(n / 256)) step(n & 0xff);
+  return ((~crc) >>> 0) + " " + buf.length;
+}
+
+/**
+ * THE ADMISSION KEY (#1460 r3), the one thing the sh bins check before they exec the bundled Node — byte for byte, by
+ * rebuilding it from their own measurements (launcher/agend) — and that this selection requires as well. One fact per
+ * line: the host (os, cpu, glibc version / Darwin kernel), the Node's realpath, size and mtime (whole seconds), and the
+ * POSIX `cksum` of both manifests and of the receipt. The postinstall writes it LAST, after everything it binds is
+ * final and verified; any later change to a manifest or the receipt changes its CRC, any change to the binary its
+ * size or mtime — and then neither side runs it. null when a bound file cannot be read.
+ */
+function runtimeKey(pkgDir, candidate, host) {
+  try {
+    var real = fs.realpathSync(candidate.node);
+    var st = fs.lstatSync(real);
+    if (!st.isFile()) return null;
+    var hostlib = host.platform === "linux" ? (host.glibc ? "glibc " + host.glibc : "none") : host.platform === "darwin" ? String(host.darwinRelease) : "none";
+    return [
+      "agend-runtime-key 1",
+      "os " + host.platform,
+      "cpu " + host.arch,
+      "host " + hostlib,
+      "node " + real,
+      "size " + st.size,
+      "mtime " + Math.floor(st.mtimeMs / 1000),
+      "package " + cksum(fs.readFileSync(path.join(pkgDir, "package.json"))),
+      "runtime " + cksum(fs.readFileSync(path.join(candidate.dir, "package.json"))),
+      "receipt " + cksum(fs.readFileSync(path.join(pkgDir, RECEIPT))),
+    ].join("\n") + "\n";
+  } catch (e) {
+    return null;
+  }
+}
+function keyMatches(pkgDir, candidate, host) {
+  var want = runtimeKey(pkgDir, candidate, host);
+  var have;
+  try { have = fs.readFileSync(path.join(pkgDir, KEY), "utf8"); } catch (e) { return false; }
+  return want !== null && have === want;
+}
+
 /** Does the receipt the postinstall wrote still describe this exact binary? (cheap: no hashing at run time) */
 function receiptMatches(receipt, candidate, pin) {
   if (!receipt || receipt.pinnedVersion !== pin.version) return false;
@@ -138,15 +190,15 @@ function selectRuntime(launcherDir, deps) {
   if (pin && support.supported) {
     var candidate = runtimeCandidate(pkg.dir, pin);
     var receipt = readReceipt(path.join(pkg.dir, RECEIPT));
-    // 2. The verified runtime of this release.
-    if (candidate.exists && candidate.manifest && candidate.manifest.name === pin.name && candidate.manifest.version === pin.version && receipt.state === "valid" && receiptMatches(receipt.value, candidate, pin)) {
+    // 2. The verified runtime of this release — and its admission key, exactly what the sh bins check (see above).
+    if (candidate.exists && candidate.manifest && candidate.manifest.name === pin.name && candidate.manifest.version === pin.version && receipt.state === "valid" && receiptMatches(receipt.value, candidate, pin) && keyMatches(pkg.dir, candidate, host)) {
       return { ok: true, node: realpath(candidate.node), source: "runtime", pkgDir: pkg.dir };   // the binary checked, never a path the receipt names
     }
     // 3. Supported platform, runtime missing/partial/corrupt: refuse — never a silent fallback. The one exception is
     //    an install where the runtime was skipped altogether — PHYSICALLY nothing there, no directory (not even a
     //    dangling link) and no receipt file (--ignore-scripts or --omit=optional) — which may use a qualifying system
     //    Node, with a warning.
-    if (candidate.exists || receipt.state !== "absent") {
+    if (candidate.exists || receipt.state !== "absent" || !absent(path.join(pkg.dir, KEY))) {
       return { ok: false, reason: "the bundled Node (" + pin.name + "@" + pin.version + ") is missing, incomplete or changed since it was verified", recovery: recovery };
     }
     if (qualifies(running, engines)) {
@@ -160,4 +212,4 @@ function selectRuntime(launcherDir, deps) {
   return { ok: false, reason: (pin ? support.reason : "this release bundles no Node") + "; this Node " + running.node + " is older than AgEnD needs (" + engines + ")", recovery: "install Node " + engines + ", then " + recovery };
 }
 
-module.exports = { RECEIPT: RECEIPT, MIN_NAPI: MIN_NAPI, selectRuntime: selectRuntime, packageDir: packageDir, pinnedRuntime: pinnedRuntime, runtimeCandidate: runtimeCandidate, probeNode: probeNode, qualifies: qualifies, receiptMatches: receiptMatches, readReceipt: readReceipt, absent: absent, receiptText: receiptText, RECEIPT_KEYS: RECEIPT_KEYS, PLAIN: PLAIN };
+module.exports = { KEY: KEY, cksum: cksum, runtimeKey: runtimeKey, keyMatches: keyMatches, RECEIPT: RECEIPT, MIN_NAPI: MIN_NAPI, selectRuntime: selectRuntime, packageDir: packageDir, pinnedRuntime: pinnedRuntime, runtimeCandidate: runtimeCandidate, probeNode: probeNode, qualifies: qualifies, receiptMatches: receiptMatches, readReceipt: readReceipt, absent: absent, receiptText: receiptText, RECEIPT_KEYS: RECEIPT_KEYS, PLAIN: PLAIN };

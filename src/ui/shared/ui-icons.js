@@ -39,6 +39,8 @@ const P = {
   up: () => html`<path d="M12 19V5M5 12l7-7 7 7"/>`,
   eye: () => html`<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
   check: () => html`<path d="M20 6L9 17l-5-5"/>`,
+  inbox: () => html`<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>`,
+  bell: () => html`<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>`,
   bot: () => html`<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4M9 4h6"/><path d="M9 13h.01M15 13h.01M9 17h6"/>`,
   plug: () => html`<path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z"/><path d="M12 18v4"/>`,
   room: () => html`<path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/>`,
