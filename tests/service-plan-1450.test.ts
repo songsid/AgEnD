@@ -141,7 +141,7 @@ describe("the planned activation itself: one bootout + bootstrap; recovery uses 
     const outcome = activateService({ kind: "launchd", label: "com.agend.fleet", plistPath: PLIST, domain: "gui/501" },
       { bin: ENTRY, entry: ENTRY, node: RT, dir: PKG }, {
         ...w.deps, readFirstLine: () => null, isExecutable: () => false,
-        refresh: () => { throw new Error("path 2 never refreshes"); }, restart: () => {}, log: () => {}, launchdPreimage: plan.preimage.plist,
+        refresh: () => { throw new Error("path 2 never refreshes"); }, restart: () => { throw new Error("path 2 never restarts"); }, log: () => {}, launchdPreimage: plan.preimage.plist,
         sleep: () => {}, monotonicNow: () => 0,
         restorePackage: () => { w.calls.push("restore-package"); return "The previous package is back in place"; },
       });

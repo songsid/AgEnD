@@ -1,0 +1,42 @@
+# Explicit disposable VM rehearsal only: never on pull_request or push.
+name: Linux updater scope rehearsal
+run-name: Linux updater scope rehearsal (${{ github.ref_name }})
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cgroup1490-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts && npm run build
+      - name: Disposable runner user manager
+        shell: bash
+        run: |
+          sudo loginctl enable-linger "$USER" || true
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          for _ in $(seq 30); do
+            systemctl --user show-environment >/dev/null 2>&1 && break
+            sleep 0.1
+          done
+          systemctl --user status >/dev/null 2>&1 || true
+      - name: Actual private unit, reload, stop and updater self-restart
+        env:
+          AGEND_DISPOSABLE_CGROUP_PROBE: '1'
+        run: node scripts/ci/cgroup-updater-1490.mjs "$RUNNER_TEMP/cgroup-receipt.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cgroup1490-${{ github.sha }}
+          path: ${{ runner.temp }}/cgroup-receipt.json
+          retention-days: 3
+          if-no-files-found: error

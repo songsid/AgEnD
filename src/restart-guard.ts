@@ -43,7 +43,7 @@ export function nodeOnPath(pathVar: string | undefined, deps: Pick<TupleDeps, "r
   return null;
 }
 
-export type Judgement = { ok: true } | { ok: false; reason: string };
+export type Judgement = { ok: true } | { ok: false; reason: string; recovery?: string };
 
 interface Selection { ok: boolean; node?: string; reason?: string; recovery?: string; source?: "runtime" | "override" | "system" }
 
@@ -77,7 +77,8 @@ export function judgeTuple(tuple: ActivationTuple, expected: ExpectedTuple, deps
       return { ok: false, reason: "its PATH has an empty or relative entry, so the Node the launcher finds depends on the working directory" };
     }
     const found = nodeOnPath(tuple.env.PATH, deps);
-    if (found !== expected.node) return { ok: false, reason: `its PATH finds ${found ?? "no node"}, not the selected Node ${expected.node}` };
+    if (found !== expected.node) return { ok: false, reason: `its PATH finds ${found ?? "no node"}, not the selected Node ${expected.node}`,
+      recovery: "Use the shell with the intended Node to refresh the service's PATH; the loaded service must select that same Node before retrying." };
     return { ok: true };
   }
   const runtimeDir = dirname(expected.node);
@@ -102,7 +103,10 @@ export function guardSystemd(run: (command: string, args: string[]) => CommandRe
   if (!loaded.ok) return { ok: false, reason: `the loaded ${unit} cannot be read: ${loaded.reason}` };
   if (loaded.unit.needDaemonReload) return { ok: false, reason: `${unit} changed on disk and is not reloaded (a reload is pending or failed)` };
   const judged = judgeTuple(loaded.unit.tuple, expected, deps);
-  return judged.ok ? judged : { ok: false, reason: `the loaded ${unit} ${judged.reason}` };
+  return judged.ok ? judged : { ok: false, reason: `the loaded ${unit} ${judged.reason}`,
+    ...(judged.recovery ? { recovery: user
+      ? `${judged.recovery} Run agend install --no-activate, then systemctl --user daemon-reload, then agend restart.`
+      : `${judged.recovery} Have the system service owner update ${unit}'s Environment=PATH, run systemctl daemon-reload, then agend restart. agend install writes only a user service.` } : {}) };
 }
 
 /** launchd: the loaded job (`launchctl print`) and the plist on disk must agree, and start the expected tuple. */
@@ -120,7 +124,8 @@ export function guardLaunchd(
   const onDisk = xml === null ? null : parsePlist(xml);
   if (!onDisk || !sameJob(loaded, onDisk)) return { ok: false, reason: `the job launchd has loaded is not the one ${plistPath} describes` };
   const judged = judgeTuple(loaded, expected, deps);
-  return judged.ok ? judged : { ok: false, reason: `the loaded ${target} ${judged.reason}` };
+  return judged.ok ? judged : { ok: false, reason: `the loaded ${target} ${judged.reason}`,
+    ...(judged.recovery ? { recovery: `${judged.recovery} Run agend install --no-activate, then agend restart to consume the planned launchd activation.` } : {}) };
 }
 
 /** Detached: the restart starts `<this Node> <entry> fleet start` (selfCommand); this Node must be the selected one. */

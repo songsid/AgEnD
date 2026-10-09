@@ -112,6 +112,8 @@ export class TranscriptMonitor extends EventEmitter {
       for (const use of events.toolUses) { if (generation !== this.generation) return; this.emit("tool_use", use.name, use.input); }
       for (const result of events.toolResults) { if (generation !== this.generation) return; this.emit("tool_result", result.name, undefined); }
       for (const text of events.assistantTexts) { if (generation !== this.generation) return; this.emit("assistant_text", text); }
+      // #1510: one batch, in transcript order (the reply guard's turn ledger reads them together).
+      if (events.turns?.length && generation === this.generation) this.emit("turns", events.turns);
     } catch (err) {
       this.logger.debug({ err }, "TranscriptSource poll error");
     }

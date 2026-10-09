@@ -62,7 +62,7 @@ export async function resolveInstalledAgend(deps: DispatchDeps = defaultDispatch
 }
 
 /**
- * `<installed agend> update`, 2 s from now, from a detached `sh` that outlives this fleet (the update restarts it). The
+ * `<installed agend> update`, 2 s from now, from a detached `sh`. Service callers must wrap it in an independent scope before launch. The
  * path is a positional argument, never spliced into the script.
  */
 export const DELAYED_UPDATE_SCRIPT = 'sleep 2 && exec "$1" update';

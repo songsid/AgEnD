@@ -23,6 +23,7 @@ vi.mock("../src/transcript-sources.js", async original => ({
 vi.mock("../src/context-guardian.js", () => ({ ContextGuardian: class extends EventEmitter { startWatching() {} } }));
 import { AutoPauseController, Daemon } from "../src/daemon.js";
 import { TranscriptMonitor } from "../src/transcript-monitor.js";
+import { TranscriptTurnLedger } from "../src/transcript-turns.js"; // a constructed Daemon's field (#1510); Object.create skips it
 import { KiroSessionSource } from "../src/transcript-sources.js";
 import type { KiroDbInput, KiroDbLane, KiroDbReply } from "../src/kiro-transcript-lane.js";
 const roots: string[] = [];
@@ -36,7 +37,7 @@ function fixture() {
   const d = Object.create(Daemon.prototype) as any;
   Object.assign(d, {name:"fixture", instanceDir:dir, config:{backend:"kiro-cli",working_directory:dir,hang_detector:{enabled:false}},
     tmuxSessionName:"never-connect", logger:{info:vi.fn(),warn:vi.fn(),debug:vi.fn(),error:vi.fn()},
-    startupAborted:false, launchFenceEpoch:0,
+    startupAborted:false, launchFenceEpoch:0, transcriptTurns:new TranscriptTurnLedger(),
     spawnClaudeWindow:vi.fn(async()=>false), injectSnapshotMessage:vi.fn(async()=>{}),
     maybeResumeInterruptedTurn:vi.fn(async()=>{}), runWarmupInstructionNotice:vi.fn(async()=>{}),
     attachPipePaneLog:vi.fn(async()=>{}), credentialProfileStore:vi.fn(()=>undefined),

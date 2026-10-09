@@ -36,6 +36,7 @@ import Database from "better-sqlite3";
 import { sharedKiroTranscriptLane, type KiroDbLane, type KiroDbLease } from "./kiro-transcript-lane.js";
 import type { KiroDbCursor } from "./kiro-db-reader.js";
 export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
+import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
 
 export interface ToolUseEvent { name: string; input: unknown }
@@ -44,6 +45,8 @@ export interface TranscriptEvents {
   toolUses: ToolUseEvent[];
   toolResults: Array<{ name: string }>;
   assistantTexts: string[];
+  /** #1510: turn boundaries, from a source that records them (codex). */
+  turns?: TranscriptTurnEvent[];
 }
 
 export interface TranscriptCheckpoint {
@@ -93,6 +96,8 @@ export class CodexRolloutSource implements TranscriptSource {
    */
   private accepted = new Set<string>();
   private readonly index: RolloutIndex;
+  /** #1510: the turn the records being read belong to (its `task_started`), carried across polls of one file. */
+  private openTurnId = "";
 
   constructor(
     private workingDirectory: string,
@@ -107,6 +112,7 @@ export class CodexRolloutSource implements TranscriptSource {
   reset(): void {
     this.currentFile = null;
     this.byteOffset = 0;
+    this.openTurnId = "";
     this.rejected.clear();
     this.accepted.clear();
     this.snapshotExistingFiles();
@@ -196,18 +202,39 @@ export class CodexRolloutSource implements TranscriptSource {
       }
       this.currentFile = active.path;
       this.byteOffset = offset;
+      this.openTurnId = "";
     }
 
     const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
     this.byteOffset = newOffset;
 
     const events = emptyEvents();
+    const turns: TranscriptTurnEvent[] = [];
     for (const line of lines) {
       let entry: Record<string, unknown>;
       try { entry = JSON.parse(line); } catch { continue; }
-      if (entry.type !== "response_item") continue;
       const p = entry.payload as Record<string, unknown> | undefined;
       if (!p) continue;
+      // #1510: codex 0.162 writes one task_started per turn and ends it with task_complete (last_agent_message null
+      // after a provider error) or turn_aborted; a steer lands inside the open turn as another user message.
+      if (entry.type === "event_msg") {
+        if (p.type === "task_started" && typeof p.turn_id === "string") {
+          this.openTurnId = p.turn_id;
+          turns.push({ kind: "start", turnId: p.turn_id });
+        } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
+          const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
+          turns.push({ kind: "end", turnId: p.turn_id, end });
+        }
+        continue;
+      }
+      if (entry.type !== "response_item") continue;
+      if (p.type === "message" && p.role === "user") {
+        const text = (p.content as Array<Record<string, unknown>> | undefined ?? [])
+          .map(block => typeof block.text === "string" ? block.text : "").join("\n");
+        const at = Date.parse(String(entry.timestamp ?? ""));
+        if (text.trim() && Number.isFinite(at)) turns.push({ kind: "user", turnId: this.openTurnId, text, at });
+        continue;
+      }
       if (p.type === "function_call") {
         let input: unknown = p.arguments;
         if (typeof input === "string") { try { input = JSON.parse(input); } catch { /* keep raw */ } }
@@ -227,6 +254,7 @@ export class CodexRolloutSource implements TranscriptSource {
         }
       }
     }
+    if (turns.length) events.turns = turns;
     return events;
   }
 }

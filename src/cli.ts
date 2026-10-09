@@ -1444,6 +1444,7 @@ program
         }
         process.exitCode = 1;
       }
+      if (restartOutcome === "pending") process.exitCode = 75;
       return restartOutcome;
     };
 
@@ -1472,10 +1473,11 @@ program
       // C6: a failure before the fleet runs the new install puts the previous package back too (taken before npm).
       const { restorePackagePreimage, prunePreimages } = await import("./package-preimage.js");
       const rollback = verified.rollback;
-      const restorePackage = rollback?.preimage ? () => {
+      const restoreChecked = rollback?.preimage ? () => {
         const back = restorePackagePreimage(rollback.root, rollback.prefix, rollback.preimage!);
-        return back.ok ? `The previous package (v${rollback.preimage!.version}) is back in place` : `The previous package could NOT be put back: ${back.reason}`;
+        return { ok: back.ok, message: back.ok ? `The previous package (v${rollback.preimage!.version}) is back in place` : `The previous package could NOT be put back: ${back.reason}` };
       } : undefined;
+      const restorePackage = restoreChecked ? () => restoreChecked().message : undefined;
       const capture = (command: string, args: string[]) => {
         const result = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
         return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
@@ -1498,12 +1500,14 @@ program
           // The completion script embeds this version's subcommand names; --refresh only rewrites existing artifacts.
           try { spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], { encoding: "utf-8", timeout: 15_000, stdio: "ignore" }); } catch { /* cosmetic */ }
           restartResult = restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
+          return restartResult;
         },
         log: message => console.log(message),
         restorePackage,
+        systemdRecovery: restoreChecked ? { restorePackage: restoreChecked } : undefined,
       });
       // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
-      if (outcome.ok && rollback) prunePreimages(rollback.prefix, rollback.preimage);
+      if (activationSettled(outcome, restartResult) && rollback) prunePreimages(rollback.prefix, rollback.preimage);
       // nvm transition: the old system copy is what the previous service ran. Only once the fleet POSITIVELY runs the
       // new install (activationSettled) is it removed; pending, failed or refused, it stays, so the old unit still starts.
       if (verified.retireSystemCopy) {
@@ -1525,6 +1529,11 @@ program
         return;
       }
       if (!outcome.ok) {
+        if (outcome.pending) {
+          console.log(outcome.message);
+          process.exitCode = 75;
+          return;
+        }
         console.error(outcome.message);
         if (!setUpdateProgressStage(DATA_DIR, "failed", { error: outcome.message.trim() })) clearUpdateMarker(DATA_DIR);
         process.exitCode = 1;
@@ -1901,10 +1910,11 @@ program
     };
     const expectation = guard.expectedTuple();
     /** Refuse (nothing stopped) unless the definition about to run is proven; `--force` overrides for an operator. */
-    const refuses = (judged: { ok: true } | { ok: false; reason: string }): boolean => {
+    const refuses = (judged: { ok: true } | { ok: false; reason: string; recovery?: string }): boolean => {
       if (judged.ok) return false;
       if (opts.force) { console.log(`  ⚠ --force: ${judged.reason}; restarting anyway.`); return false; }
       console.error(`  ✗ Not restarting: ${judged.reason}. Nothing was stopped.`);
+      if (judged.recovery) console.error(`  To repair: ${judged.recovery}`);
       process.exitCode = 1;
       return true;
     };
@@ -2113,7 +2123,7 @@ program
               readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
               isExecutable: path => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
               refresh: () => ({ status: 0, signal: null, stdout: "", stderr: "" }),
-              restart: () => {},
+              restart: () => { throw new Error("planned launchd activation does not invoke restart"); },
               log: message => console.log(message),
               launchdPreimage: plan.preimage.plist,
             });

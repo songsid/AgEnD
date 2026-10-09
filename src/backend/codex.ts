@@ -882,6 +882,13 @@ function codexUnboxedResumeLoading(rows: string[]): boolean {
 }
 
 export class CodexBackend implements CliBackend {
+  /**
+   * #1510: the reply-completion guard covers codex, its turn end read from the rollout (task_complete /
+   * turn_aborted, recorded on 0.162.0 in tests/fixtures/reply-guard-1510): the pane alone stays busy through a tool
+   * run, but the rollout is what proves the turn that took the delivery ended.
+   */
+  readonly replyCompletionGuard = true;
+  readonly turnEndFromTranscript = true;
   readonly binaryName = "codex";
   private binaryPath: string;
   private readonly sharedCodexHome: string;

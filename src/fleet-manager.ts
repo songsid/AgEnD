@@ -172,6 +172,7 @@ import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtons
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { envFileKeys } from "./token-env-name.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
@@ -180,7 +181,8 @@ import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from
 import { commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
-import { resolveInstalledAgend, updateCommand } from "./update-dispatch.js";
+import { resolveInstalledAgend } from "./update-dispatch.js";
+import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -1207,7 +1209,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!settlement) return false;
         await settlement;
         const job = this.providerSecretJobs.get(id) ?? this.connectionSecretJobs.get(id) ?? this.connectionBindingJobs.get(id);
-        return !!job && ["applied", "applied_next_use", "reloaded"].includes(job.result);
+        // restart_required: the value is stored and committed (the receipt is checked above), only no adapter was running
+        // to take it — the change is done, and the page says it starts with the next restart (#1519 P1), never "failed".
+        return !!job && ["applied", "applied_next_use", "reloaded", "restart_required"].includes(job.result);
       },
     });
     this.settingsConfirmation = gate; return gate;
@@ -1982,6 +1986,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return caller;
   }
 
+  /** Pure cached admission for command continuations; no IO or update-progress lookup. */
+  isFleetStopping(): boolean {
+    return this.shuttingDown;
+  }
+
   /**
    * Is the fleet going down (or coming back up) on purpose?
    *
@@ -2397,11 +2406,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
-    const { command, args } = updateCommand(installed.agend);
-    const child = spawn(command, args, {
+    const launch = await resolveUpdateLaunch(installed.agend);
+    if (!launch.ok) {
+      this.failUpdateProgress(`/update cannot prepare an independent updater (${launch.reason}). Run ` + "`agend update` from a host shell.");
+      return;
+    }
+    if (this.fleetAdminGate(data.userId, adapterId) !== "ok" || this.shuttingDown) {
+      this.failUpdateProgress(t("not_authorized"));
+      return;
+    }
+    const child = spawn(launch.command, launch.args, {
       detached: true, stdio: "ignore", env: withOrigin(origin),
     });
-    child.once("error", err => this.failUpdateProgress(err.message));
+    watchUpdateLaunch(child, message => this.failUpdateProgress(message));
     child.unref();
   }
 
@@ -16601,6 +16618,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   listSecureConnections(): ConnectionMetadata[] {
     const channels = this.fleetConfig?.channels
       ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    // A token written from Settings is in .env before this process has it (#1519 P1: a new connection's token waits for
+    // the restart that starts it) — stored is "set", not "missing". Names only; no value is read out.
+    let stored: Set<string>;
+    try { stored = envFileKeys(this.dataDir); } catch { stored = new Set(); }   // unreadable: only what this process has
     return channels.map((channel, index) => {
       const id = channel.id ?? channel.type ?? `channel-${index}`;
       const world = this.worlds.get(id);
@@ -16609,7 +16630,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         id,
         type: channel.type,
         token_env: channel.bot_token_env,
-        token_present: !!process.env[channel.bot_token_env],
+        token_present: !!process.env[channel.bot_token_env] || stored.has(channel.bot_token_env),
         group_id: channel.group_id != null ? String(channel.group_id) : null,
         general_channel_id: channel.options?.general_channel_id != null
           ? String(channel.options.general_channel_id)

@@ -65,18 +65,21 @@ it("ordinary cached capabilities do not bypass external /ui authentication", asy
   expect(h.save).not.toHaveBeenCalled();
 });
 it("Quickstart's target-keyed writer draft exposes the old directory and full connection order", async () => {
-  const h = harness(), body = { ...setupPayload, instance_name: "owner_a", working_directory: "/new/approved" };
+  // #1519 P1 (S1): the wizard always adds a connection, under a token env no connection holds.
+  const h = harness(), body = { ...setupPayload, token_env: "NEW_BOT_TOKEN", instance_name: "owner_a", working_directory: "/new/approved" };
   h.config.channels.unshift({ ...h.config.channels[0], id: "other", bot_token_env: "OTHER_BOT_TOKEN", group_id: "-100999" }); h.save(); h.save.mockClear();
   const effectA = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", body, { config: h.config, classic: {} });
   const effectB = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, instance_name: "owner_b" }, { config: h.config, classic: {} });
   const summary = effectA.diff!.summary.join("\n");
   expect(summary).toContain("instances.owner\\_a.working\\_directory: /old/a → /new/approved");
   expect(effectA.diff!.summary).not.toEqual(effectB.diff!.summary);
-  const appended = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, token_env: "NEW_BOT_TOKEN" }, { config: h.config, classic: {} });
-  expect(appended.diff!.summary.join("\n")).toContain("ordered connections / primary");
+  expect(summary).toContain("ordered connections / primary");
+  // The token env another connection holds is refused, never proposed as a replacement.
+  expect(() => prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, token_env: "AGEND_BOT_TOKEN" }, { config: h.config, classic: {} }))
+    .toThrow(expect.objectContaining({ status: 409 }));
   const pending = await h.request("/api/settings/quickstart/commit", body);
   expect(pending.status).toBe(202); expect(pending.body.pending_change.summary).toEqual(effectA.diff!.summary);
   expect((await h.store.decide(pending.body.pending_change.id, "confirm", actor)).state).toBe("applied");
   expect(h.config.instances.owner_a.working_directory).toBe("/new/approved"); expect(h.config.instances.owner_b.working_directory).toBe("/old/b");
-  expect(h.config.channels.map((item: any) => item.id)).toEqual(["other", "primary"]);
+  expect(h.config.channels.map((item: any) => item.id)).toEqual(["other", "primary", "telegram"]);
 });
