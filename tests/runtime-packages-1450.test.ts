@@ -192,14 +192,14 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
   const script = join(process.cwd(), "scripts", "runtime", "publish-runtime-packages.sh");
   /** `view`: which specs npm already has ("published"), what it answers for the rest ("empty": the name exists, not
    *  this version; "404": no such package; "error": a failed lookup). */
-  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" } = {}, relative = false) => {
+  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" | { prints: string } } = {}, relative = false) => {
     const dir = mkdtempSync(join(tmpdir(), "agrt-pub-"));
     const bin = join(dir, "bin"); mkdirSync(bin);
     const log = join(dir, "npm.log"); writeFileSync(log, "");
     const otherwise = view.otherwise ?? "404";
     const viewAnswer = [
       ...(view.published ?? []).map(spec => `[ "$2" = '${spec}' ] && { echo '"${spec.slice(spec.lastIndexOf("@") + 1)}"'; exit 0; }`),
-      otherwise === "empty" ? "exit 0" : otherwise === "404" ? `echo "npm error code E404" >&2; echo "npm error 404 Not Found - GET https://registry.npmjs.org/x" >&2; exit 1` : `echo "npm error code ETIMEDOUT" >&2; exit 1`,
+      typeof otherwise === "object" ? `printf '%s\\n' '${otherwise.prints}'; exit 0` : otherwise === "empty" ? "exit 0" : otherwise === "404" ? `echo "npm error code E404" >&2; echo "npm error 404 Not Found - GET https://registry.npmjs.org/x" >&2; exit 1` : `echo "npm error code ETIMEDOUT" >&2; exit 1`,
     ].join("\n");
     writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "$PWD|$*" >> '${log}'\ncase "$1" in pack) echo '[{"name":"x","version":"y","size":1,"unpackedSize":2,"entryCount":3}]';; view)\n${viewAnswer}\n;; esac\nexit 0\n`);
     chmodSync(join(bin, "npm"), 0o755);
@@ -242,6 +242,13 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(r.status, r.stderr).toBe(0);
     expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.3 version --json");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag latest`]);
+  });
+  // #1495 review: a successful answer that is not the exact version proves nothing — the run stops, publishing nothing.
+  it.each([["another version", '"0.0.0"'], ["an object", "{}"], ["not JSON", "garbage"]])("npm view answers %s: refused, nothing published", (_n, prints) => {
+    const { r, calls } = run(["22.23.3"], "false", { otherwise: { prints } }, true);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("not this version and not \"absent\"");
+    expect(calls.filter(c => c.startsWith("publish"))).toEqual([]);
   });
   it("the package name exists but not this version (npm view prints nothing): published", () => {
     const { r, calls } = run(["22.23.3"], "false", { otherwise: "empty" });

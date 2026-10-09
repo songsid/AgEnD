@@ -25,6 +25,12 @@ for pkg in "$DIR"/*/; do
     echo "$spec: already on the registry, skipped"
     continue
   fi
+  # A successful answer proves presence only as the exact version; anything else it prints (another version, {},
+  # something that is not JSON) is not "absent" either: stop.
+  if [ "$vrc" -eq 0 ] && [ -n "$seen" ]; then
+    echo "$spec: npm view answered '$seen', not this version and not \"absent\" — not publishing anything further" >&2
+    exit 1
+  fi
   if [ "$vrc" -ne 0 ] && ! grep -qE "E404|404 Not Found" "$ERR"; then
     echo "$spec: npm view failed, so whether it is published cannot be told — not publishing anything further:" >&2
     tail -3 "$ERR" >&2
