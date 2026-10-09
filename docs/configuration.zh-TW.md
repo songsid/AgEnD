@@ -277,6 +277,8 @@ templates:
 
 ## instances.\<name\>
 
+`tool_set` 對已辨識的 instance 身分執行政策防護，不會隔離同 uid、具有 shell 能力的 agent。另一個 agent 能讀它的 `agent.token` 或使用其 IPC socket；見[共用帳號威脅模型](SECURITY.zh-TW.md#工具組與共用主機帳號)。
+
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
 | `working_directory` | string | 自動 | 專案目錄路徑。省略時自動建立 `~/.agend/workspaces/<name>` |

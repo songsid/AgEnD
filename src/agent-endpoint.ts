@@ -9,7 +9,10 @@
  * daemon writes a fresh 32-byte token to <instanceDir>/agent.token (mode 0600)
  * on each spawn; agent-cli reads it and sends it in the header. The endpoint
  * verifies the header matches the on-disk token for the claimed instance,
- * preventing a local process from impersonating another instance.
+ * rejecting callers that do not hold that instance's credential. Mode 0600
+ * separates OS users, not same-uid processes: a shell-capable sibling can read
+ * another instance's token and claim its identity. Tool profiles enforce policy
+ * for the resolved identity; they are not a sandbox for mutually untrusted agents.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
@@ -305,8 +308,8 @@ export async function dispatchAgentOperation(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   // Sink 3 of 3, before any branch below: the early-returning ops are as much
-  // a tool call as the mapped ones. Stage 1 records and continues; the refusal
-  // arrives in stage 2.
+  // a tool call as the mapped ones. Enforce policy for the token-resolved identity
+  // here; this does not isolate hostile shell processes sharing that identity.
   const requestedTool = toolForAgentOp(op);
   if (requestedTool) {
     const profile = resolveToolSet(ctx.fleetConfig?.instances[instance], instance);

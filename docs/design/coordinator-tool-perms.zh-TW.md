@@ -2,6 +2,8 @@
 
 狀態：**已強制執行**（CHANGELOG 2.1.6，#804 已關閉）。四條路（MCP tool list、`tools/call`、直寫 socket、`POST /agent`）都經伺服器端同一張權限表：`FleetManager.checkToolPermission()`（`src/fleet-manager.ts`），未設定 `tool_set` 的一般 instance 預設為 `worker`（`resolveToolSet()`，`src/tool-permissions.ts`）。下文為當時的查證與設計，針對回報的真問題——codex worker 自己創 instance 當 subagent。
 
+**目前的威脅模型（#1490 row 12）**：工具組是針對已辨識身分的政策防護，不是同 uid、具有 shell 能力的 agent 之間的安全邊界。同帳號 agent 能讀另一個 instance 的 `agent.token` 或連上其 `channel.sock`，取得該身分的權限。`0600` 與每次 spawn 換 token 都不會隔離同 uid 程序；需要隔離時必須使用作業系統機制。以下歷史設計的「控制」均限於這個威脅模型，見[安全考量](../SECURITY.zh-TW.md#工具組與共用主機帳號)。
+
 裁示已折入。掃描數據在 §2，**它推翻了第一版移／留清單裡最大的一項**；fable 的碼審在 §3，**它推翻了第一版的核心前提**——「MCP 面靠不揭露」不是控制。
 
 **先講結論：這不是 prompt 沒勸住，是我們把能力發給它了。** 而且有**四條**獨立的路可以呼叫這些工具，其中三條連工具名單都不看——所以這張票的重點不是「發哪些工具」，而是**在收斂點上拒絕**。
