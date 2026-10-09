@@ -196,6 +196,8 @@ export interface WebApiContext {
   listWebPrompts?(): unknown[];
   /** #1386: everything waiting on the person, every world (the web is global). */
   needsYouItems?(): unknown[];
+  /** #1389: the org chart's structure (fleet.yaml's teams, General, descriptions, thread links); absent: an empty chart. */
+  orgChart?(): unknown;
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -801,6 +803,13 @@ export function handleWebRequest(
   }
 
   // ── Teams ──────────────────────────────────────────────
+
+  // #1389: the org chart. Opening it is a person's navigation (it counts as use, like a Fleet tab); nothing re-reads
+  // it on a timer — the live state comes over the stream the page already has.
+  if (method === "GET" && path === "/ui/org") {
+    json(res, 200, ctx.orgChart?.() ?? { general: [], teams: [], instances: {} });
+    return true;
+  }
 
   if (method === "GET" && path === "/ui/teams") {
     const teams = ctx.fleetConfig?.teams ?? {};
