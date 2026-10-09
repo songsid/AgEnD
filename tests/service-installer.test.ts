@@ -28,7 +28,9 @@ describe("ServiceInstaller", () => {
   it("renders launchd plist with correct values", () => {
     const plist = renderLaunchdPlist(vars);
     expect(plist).toContain("<string>com.claude-channel-daemon</string>");
-    expect(plist).toContain("<string>/usr/local/bin/claude-channel-daemon</string>");
+    // #1450 C6: the interpreter is named first — this process's Node unless given — then the CLI, then `fleet start`.
+    expect(plist).toMatch(new RegExp(`<string>${process.execPath}</string>\\s*<string>/usr/local/bin/claude-channel-daemon</string>\\s*<string>fleet</string>\\s*<string>start</string>`));
+    expect(renderLaunchdPlist({ ...vars, nodePath: "/opt/rt/bin/node" })).toContain("<string>/opt/rt/bin/node</string>");
     expect(plist).toContain("<string>fleet</string>");
     expect(plist).toContain("<string>start</string>");
     expect(plist).toContain("<string>/usr/local/bin:/usr/bin:/bin:");
@@ -36,7 +38,10 @@ describe("ServiceInstaller", () => {
 
   it("renders systemd unit with correct values", () => {
     const unit = renderSystemdUnit(vars);
-    expect(unit).toContain("ExecStart=/usr/local/bin/claude-channel-daemon fleet start");
+    expect(unit).toContain(`ExecStart=${process.execPath} /usr/local/bin/claude-channel-daemon fleet start`);
+    expect(renderSystemdUnit({ ...vars, nodePath: "/opt/rt/bin/node" })).toContain("ExecStart=/opt/rt/bin/node /usr/local/bin/claude-channel-daemon fleet start");
+    expect(() => renderSystemdUnit({ ...vars, nodePath: "node" })).toThrow("nodePath must be an absolute path");
+    expect(() => renderSystemdUnit({ ...vars, nodePath: "/opt/rt/bin/node\nExecStartPost=/bin/rm" })).toThrow("control characters");
     expect(unit).toContain("WorkingDirectory=/Users/test/project");
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
     expect(unit).toContain("TimeoutStartSec=15min");

@@ -1808,8 +1808,26 @@ program
   .command("restart")
   .description("Restart the AgEnD service (auto-detects systemd/launchd/detached)")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (opts: { yes?: boolean }) => {
+  .option("--force", "Restart even when the loaded service does not start this install on its selected Node (operators only)")
+  .action(async (opts: { yes?: boolean; force?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "restart", { yes: opts.yes })) process.exit(1);
+    // #1450 C6: what the restarted fleet must run, by this package's own selection (C2) — decided before anything stops.
+    const guard = await import("./restart-guard.js");
+    const guardDeps = { realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } } };
+    const captureRun = (command: string, args: string[]) => {
+      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
+      return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    };
+    const expectation = guard.expectedTuple();
+    /** Refuse (nothing stopped) unless the definition about to run is proven; `--force` overrides for an operator. */
+    const refuses = (judged: { ok: true } | { ok: false; reason: string }): boolean => {
+      if (judged.ok) return false;
+      if (opts.force) { console.log(`  ⚠ --force: ${judged.reason}; restarting anyway.`); return false; }
+      console.error(`  ✗ Not restarting: ${judged.reason}. Nothing was stopped.`);
+      process.exitCode = 1;
+      return true;
+    };
+    if (!expectation.ok && refuses(expectation)) return;
     // Try each runtime environment in order and stop at the first that succeeds.
     // Don't gate on fleet.pid: a fleet under systemd/launchd writes its pid in the
     // service's own HOME, which may differ from what this command resolves (sudo,
@@ -1946,6 +1964,7 @@ program
         }
       }
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
+      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps))) return;
       // Clears the failed state AND the start-limit counter (#1113:
       // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
       // so an operator's restart is never refused by the limit.
@@ -1978,6 +1997,9 @@ program
       try {
         // print succeeds only if the service is loaded in launchd
         execSync(`launchctl print gui/${uid}/${label}`, { stdio: "pipe", timeout: 5000 });
+        const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
+        const readText = (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } };
+        if (expectation.ok && refuses(guard.guardLaunchd(captureRun, `gui/${uid}/${label}`, plistPath, readText, expectation.expected, guardDeps))) return;
         if (run(`launchctl kickstart -k gui/${uid}/${label}`)) { console.log("Service restarted."); return; }
       } catch { /* not loaded — fall through */ }
     }
@@ -1992,6 +2014,8 @@ program
         return isFleetStartCommandLine(readProcessCommandLine(oldPid));
       };
       if (oldPid && isOurFleet()) {
+        // The replacement is `<this Node> <entry> fleet start` (C5): this Node must be the selected one.
+        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
         try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
         for (let i = 0; i < 20; i++) {
           try { process.kill(oldPid, 0); } catch { break; }

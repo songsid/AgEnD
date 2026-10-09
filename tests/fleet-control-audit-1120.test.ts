@@ -362,6 +362,7 @@ describe("the service-level commands, behind inert stubs", () => {
     const copy = join(inert, "copy");
     mkdirSync(copy);
     cpSync(join(process.cwd(), "src"), join(copy, "src"), { recursive: true });
+    cpSync(join(process.cwd(), "launcher"), join(copy, "launcher"), { recursive: true });   // its own selection (#1450 C2)
     cpSync(join(process.cwd(), "package.json"), join(copy, "package.json"));
     symlinkSync(join(process.cwd(), "node_modules"), join(copy, "node_modules"));
     const future = new Date(Date.now() + 3_600_000);

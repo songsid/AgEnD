@@ -12,7 +12,13 @@ const templatesDir = join(__dirname, "..", "templates");
 
 interface ServiceVars {
   label: string;
+  /** The CLI the service starts: canonicalCliEntry(). */
   execPath: string;
+  /**
+   * The Node that runs it, NAMED in the definition (#1450 C6): the selected interpreter — this process's own, since
+   * `agend install` runs on what the launcher selected. Never left to `#!/usr/bin/env node` and the service's PATH.
+   */
+  nodePath?: string;
   path?: string;
   workingDirectory: string;
   logPath: string;
@@ -46,9 +52,11 @@ function assertAbsolutePath(name: string, value: string): void {
   }
 }
 
-function validateVars(vars: ServiceVars & { path: string }): void {
+function validateVars(vars: ServiceVars & { path: string; nodePath: string }): void {
   assertSafeServiceValue("label", vars.label);
   assertSafeServiceValue("execPath", vars.execPath);
+  assertSafeServiceValue("nodePath", vars.nodePath);
+  assertAbsolutePath("nodePath", vars.nodePath);
   assertSafeServiceValue("workingDirectory", vars.workingDirectory);
   assertSafeServiceValue("logPath", vars.logPath);
   assertSafeServiceValue("path", vars.path);
@@ -121,9 +129,9 @@ export function buildServicePath(
   return dirs.join(":");
 }
 
-function withDefaults(vars: ServiceVars): ServiceVars & { path: string } {
+function withDefaults(vars: ServiceVars): ServiceVars & { path: string; nodePath: string } {
   const path = buildServicePath(vars.path, vars.execPath);
-  const full = { ...vars, path, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
+  const full = { ...vars, path, nodePath: vars.nodePath ?? process.execPath, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
   validateVars(full);
   return full;
 }

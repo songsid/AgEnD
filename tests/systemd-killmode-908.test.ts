@@ -14,9 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ensureSystemdKillModeMixed, ensureSystemdUnitHardening, renderSystemdUnit, unitCoredumpFilterState, unitDropInCandidates } from "../src/service-installer.js";
+import { fakeBusctl } from "./support/fake-busctl.js";
 
+// The built CLI on this Node: what `agend restart`'s guard (#1450 C6) expects a unit to start.
 const vars = {
-  label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: "/home/u/.agend",
+  label: "com.agend.fleet", execPath: join(process.cwd(), "dist", "cli.js"), nodePath: process.execPath, workingDirectory: "/home/u/.agend",
   logPath: "/home/u/.agend/daemon.log", path: "/usr/local/bin:/usr/bin:/bin",
 };
 const dirs: string[] = [];
@@ -296,6 +298,9 @@ esac
 exit 0
 `);
     chmodSync(join(bin, "systemctl"), 0o755);
+    // The restart guard reads the LOADED unit over D-Bus: answered from the unit file, never the host's systemd.
+    writeFileSync(join(bin, "busctl"), fakeBusctl(join(home, "busctl.log"), unit));
+    chmodSync(join(bin, "busctl"), 0o755);
     // `system`: the CLI finds a system unit. Only that one path is redirected,
     // inside the child process, to the throwaway unit (and away from the user
     // unit, so the system branch is the one taken).
@@ -321,6 +326,17 @@ syncBuiltinESMExports();
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     return { r, calls, unit, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => (opts.system ? /^restart agend\b/ : /^--user restart com\.agend\.fleet/).test(c)) };
   }
+
+  // #1450 C6: the hop's failed step 4 leaves the 2.1 unit loaded — the entry as a script, its Node by PATH. The restart
+  // refuses before stopping anything (the old fleet keeps running); with the 2.2 unit it proceeds (the cases below).
+  it.skipIf(!existsSync(cli))("a 2.1-format unit (a script as ExecStart's argv[0]) is refused: nothing is restarted", () => {
+    const old = renderSystemdUnit(vars).replace(/^ExecStart=.*$/m, `ExecStart=${vars.execPath} fleet start`);
+    const { r, calls, out, restarted } = restart(old);
+    expect(restarted, out).toBe(false);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("as a script, leaving its Node to PATH");
+    expect(calls.some(c => /^--user (restart|stop|kill)/.test(c)), calls.join("\n")).toBe(false);
+  });
 
   it.skipIf(!existsSync(cli))("adds KillMode=mixed before `systemctl --user daemon-reload` (built CLI, stubbed systemctl)", () => {
     const { r, calls, out, restarted } = restart(legacyUnit());

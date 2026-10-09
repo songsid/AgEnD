@@ -38,7 +38,7 @@ export interface TupleDeps {
 }
 
 /** Environment that changes what Node runs or loads: never accepted in a service definition AgEnD activates. */
-const INTERPRETER_ENV = ["NODE_OPTIONS", "NODE_PATH"];
+export const INTERPRETER_ENV = ["NODE_OPTIONS", "NODE_PATH"];
 
 /** systemd's PATH when a unit sets none (systemd.exec, "Environment variables in spawned processes"). */
 export const SYSTEMD_DEFAULT_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
@@ -340,7 +340,7 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
 }
 
 /** Two launchd jobs are the same when their program and argv are identical and every variable the plist sets matches. */
-function sameJob(loaded: ActivationTuple, plist: ActivationTuple): boolean {
+export function sameJob(loaded: ActivationTuple, plist: ActivationTuple): boolean {
   return loaded.program === plist.program
     && sameArgs(loaded.argv, plist.argv)
     && Object.entries(plist.env).every(([key, value]) => loaded.env[key] === value);
