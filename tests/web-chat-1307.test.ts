@@ -144,10 +144,10 @@ describe("chat-render: the turn's elapsed time and a long paste (segment 2)", ()
     expect([-5000, NaN, undefined, "x"].map(r.formatElapsed)).toEqual(["0:00", "0:00", "0:00", "0:00"]);
   });
 
-  it("a paste over 10,000 characters is long; 10,000 is not", () => {
+  it("a paste over 4,000 characters is long; 4,000 is not (#1269)", () => {
     const r = render();
-    expect(r.LONG_PASTE_CHARS).toBe(10_000);
-    expect([r.isLongPaste("a".repeat(10_000)), r.isLongPaste("a".repeat(10_001)), r.isLongPaste(""), r.isLongPaste(null)]).toEqual([false, true, false, false]);
+    expect(r.LONG_PASTE_CHARS).toBe(4_000);
+    expect([r.isLongPaste("a".repeat(4_000)), r.isLongPaste("a".repeat(4_001)), r.isLongPaste(""), r.isLongPaste(null)]).toEqual([false, true, false, false]);
   });
 });
 

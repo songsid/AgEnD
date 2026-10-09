@@ -167,6 +167,8 @@ graph LR
 > ```
 > 然後重新啟動 WSL（`wsl --shutdown`）。安裝指令：`curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash`
 
+> **不支援原生 Windows**：`agend` 與 `agend-agent` 指令是 POSIX `sh` 啟動腳本，而且 AgEnD 的 instance 都跑在 tmux 裡。在 Windows 上請於 WSL 內安裝與執行 AgEnD。
+
 ## 文件
 
 - [使用情境](docs/use-cases.zh-TW.md) — AgEnD 實際被拿來做什麼，附真實案例

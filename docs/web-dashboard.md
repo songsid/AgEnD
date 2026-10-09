@@ -88,7 +88,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 
 ### Files and images
 - Attach with **📎**, by pasting, or by dropping files onto the chat (it shows where they will go while you drag). Each file waits above the composer as a chip with its name and size, and **✕** removes it.
-- A paste longer than **10,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
+- A paste longer than **4,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
 - Limits: up to **5 files per message**, **10 MB each**, **25 MB together**.
 - Types: **PNG, JPEG, GIF, WebP, PDF and text files**. The type is read from the file itself, not from its name.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.

@@ -7,6 +7,7 @@ import { stdin, stdout } from "node:process";
 import { execSync } from "node:child_process";
 import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
+import { canonicalCliEntry } from "./cli-entry.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -773,7 +774,7 @@ export async function runSetupWizard(): Promise<void> {
     const { installService, detectPlatform } = await import("./service-installer.js");
     const svcPath = installService({
       label: "com.agend.fleet",
-      execPath: process.argv[1],
+      execPath: canonicalCliEntry(),
       path: process.env.PATH!,
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),

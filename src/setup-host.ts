@@ -56,6 +56,7 @@ import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import type { TunnelHandle, TunnelProvider } from "./tunnel/types.js";
 import yaml from "js-yaml";
 import { writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { canonicalCliEntry } from "./cli-entry.js";
 
 /** How long the form may stay open at all. */
 export const SETUP_HOST_TTL_MS = 15 * 60_000;
@@ -109,7 +110,7 @@ export function resolvePort(opts: { tunnel?: boolean; port?: number; healthPort?
 }
 
 function defaultSpawnFleet(): void {
-  const cliEntry = join(dirname(fileURLToPath(import.meta.url)), "cli.js");
+  const cliEntry = canonicalCliEntry();
   const child = spawn(process.execPath, [cliEntry, "start"], { detached: true, stdio: "ignore" });
   child.unref();
 }

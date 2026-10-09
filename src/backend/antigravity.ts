@@ -311,12 +311,13 @@ export class AntigravityBackend implements CliBackend {
     try {
       // (Re)write our statusline script each launch so it stays current. agy
       // pipes JSON telemetry on stdin; we emit "Context N% used" (matches
-      // parseContextPercent). Uses node (always present in an AgEnD env) rather
-      // than jq (not guaranteed); a parse error prints nothing (empty footer).
+      // parseContextPercent). Uses AgEnD's own Node (process.execPath, #1450 C5) rather than jq (not guaranteed) or a
+      // `node` from PATH (maybe absent, maybe too old for `?.`); a parse error prints nothing (empty footer).
       const scriptPath = join(this.agendHome, "agy-statusline.sh");
+      const js = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log('Context '+(Math.round(j.context_window?.used_percentage||0))+'% used')}catch{}})";
       const script = `#!/bin/bash
 # AgEnD-generated agy statusline — prints "Context N% used" for /ctx to scrape.
-node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log('Context '+(Math.round(j.context_window?.used_percentage||0))+'% used')}catch{}})"
+exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
 `;
       try {
         mkdirSync(this.agendHome, { recursive: true });

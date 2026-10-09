@@ -1,0 +1,123 @@
+# #1450 runtime acceptance: AgEnD on its private bundled Node, end to end, on every runtime platform we can rent.
+# The candidate and its four runtime packages are BUILT in this run (signed official Node, verified) and served from
+# a local verdaccio — nothing is published to npm. Every cell installs into a scratch prefix/HOME/AGEND_HOME.
+# CI checks service files by contents and paths only; it cannot prove that a systemd user service or launchd loads
+# one at boot or login (that is the manual check on a real host).
+name: Runtime acceptance
+
+on:
+  pull_request:
+    paths:
+      - launcher/**
+      - scripts/preinstall-guard.cjs
+      - scripts/runtime/**
+      - scripts/ci/runtime-acceptance/**
+      - .github/workflows/runtime-acceptance.yml
+      - package.json
+      - src/service-installer.ts
+      - src/update-install.ts
+      - src/service-activation.ts
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PIN: 22.23.3          # the bundled Node: the newest 22.x (docs/design/1450 "Pinned Node")
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci && npm run build
+      - name: Runtime packages from the signed official Node ${{ env.PIN }}
+        run: node scripts/runtime/build-runtime-packages.mjs --node "$PIN" --out "$RUNNER_TEMP/runtime"
+      - name: The candidate, pinning them
+        run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.2.0-acceptance.${{ github.run_id }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-acceptance-packages
+          path: ${{ runner.temp }}/packages
+          retention-days: 3
+
+  install-run:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+        # The system Node is never a reason to refuse where a bundled Node applies (#1450, user 2026-10-09): 16 and 18
+        # install and run too — AgEnD runs on the bundled Node, whatever Node runs npm.
+        node: ['16', '18', '20.19.0', '22']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-acceptance-packages
+          path: ${{ runner.temp }}/packages
+      # The local registry (verdaccio 6) runs on Node 22, started before the cell's own Node goes on PATH.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Local registry with the candidate
+        run: bash scripts/ci/runtime-acceptance/registry.sh "$RUNNER_TEMP/packages" "$RUNNER_TEMP/registry"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # Node 16's npm 8 runs node-gyp for better-sqlite3 even though it ships prebuilds (npm 10 does not); the build is a
+      # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
+      # has none; a Mac with the Command Line Tools' python3 does.
+      - if: matrix.node == '16'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: tmux for the scratch daemon
+        run: command -v tmux || { if [ "$(uname)" = Darwin ]; then brew install tmux; else sudo apt-get install -y tmux; fi; }
+      - name: Install, select, open the DB, run the daemon — on the bundled Node
+        run: bash scripts/ci/runtime-acceptance/install-run.sh "$RUNNER_TEMP/packages"
+      - name: The service file starts the bundled Node
+        # Needs #1450 PR 3 (C6 render); reported, not yet gating. Remove continue-on-error when PR 3 lands.
+        continue-on-error: true
+        run: bash scripts/ci/runtime-acceptance/install-run.sh "$RUNNER_TEMP/packages" service
+
+  hop:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        # 2.1.12 itself starts on 18 and 20, so both legs run there; on 16 it cannot start, so only plain npm applies.
+        node: ['16', '18', '20.19.0']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-acceptance-packages
+          path: ${{ runner.temp }}/packages
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Local registry with the candidate
+        run: bash scripts/ci/runtime-acceptance/registry.sh "$RUNNER_TEMP/packages" "$RUNNER_TEMP/registry"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # Node 16's npm 8 runs node-gyp for better-sqlite3 even though it ships prebuilds (npm 10 does not); the build is a
+      # no-op when a prebuild exists, but node-gyp 9 needs a Python with distutils (<= 3.11). The runners' Python 3.14
+      # has none; a Mac with the Command Line Tools' python3 does.
+      - if: matrix.node == '16'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 2.1.12 → candidate, through the old updater and through plain npm
+        run: bash scripts/ci/runtime-acceptance/hop.sh "$RUNNER_TEMP/packages"

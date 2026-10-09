@@ -372,8 +372,8 @@
     return Number(scrollHeight) - Number(scrollTop) - Number(clientHeight) <= (slack == null ? 48 : slack);
   }
 
-  /** A paste longer than this many characters becomes a text file instead of filling the composer (#1307). */
-  var LONG_PASTE_CHARS = 10000;
+  /** A paste longer than this many characters becomes a text file instead of filling the composer (#1307; 4,000 per #1269). */
+  var LONG_PASTE_CHARS = 4000;
   function isLongPaste(text) { return typeof text === "string" && text.length > LONG_PASTE_CHARS; }
 
   /** How long a turn has run, as m:ss (h:mm:ss past an hour); never negative. */

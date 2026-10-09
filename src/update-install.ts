@@ -37,7 +37,7 @@ export interface UpdateInstallPlan {
 }
 
 export type UpdateInstallOutcome =
-  | { ok: true; agendPath: string; version: string; dir: string; bin: string; node: string }
+  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string }
   | { ok: false; stage: "install" | "verify"; message: string };
 
 /**
@@ -74,27 +74,35 @@ export function isLocalLinkTarget(entryIsSymlink: boolean, realTarget: string): 
 }
 
 /**
- * The identity of what npm installed: `$1` is the package directory in npm's global root. Prints its name, version and
- * the REAL path of its `agend` bin target, so PATH's `agend` can be held to that exact file.
+ * The identity of what npm installed: `$1` is the package directory in npm's global root. Prints its name, version, the
+ * REAL path of its `agend` bin target, so PATH's `agend` can be held to that exact file, and of its canonical inner
+ * entry `dist/cli.js` (#1450 C4: what a service starts; since the launcher, not the bin).
  */
 export const PACKAGE_IDENTITY_SCRIPT = [
   "const fs = require('node:fs'), path = require('node:path');",
   "const dir = process.argv[1];",
   "const p = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));",
   "const bin = typeof p.bin === 'string' ? p.bin : (p.bin || {}).agend;",
-  "process.stdout.write(JSON.stringify({ name: p.name, version: p.version, dir: fs.realpathSync(dir), bin: bin ? fs.realpathSync(path.join(dir, bin)) : null }));",
+  "const real = f => { try { return fs.realpathSync(f); } catch (e) { return null; } };",
+  "process.stdout.write(JSON.stringify({ name: p.name, version: p.version, dir: fs.realpathSync(dir), bin: bin ? real(path.join(dir, bin)) : null, entry: real(path.join(dir, 'dist', 'cli.js')) }));",
 ].join(" ");
 
-/** Proves the native module loads AND works: on Node 20 better-sqlite3 13 imports fine and then SIGSEGVs on open. */
+/**
+ * Proves the native module loads AND works, in the main thread and in a worker (the fleet opens databases in both):
+ * on Node 20 better-sqlite3 13 imports fine and then SIGSEGVs on open. `$1` is the package directory.
+ */
 export const NATIVE_CHECK_SCRIPT = [
-  "const { createRequire } = require('node:module');",
-  "const req = createRequire(require('node:path').join(process.argv[1], 'package.json'));",
-  "const Database = req('better-sqlite3');",
-  "const db = new Database(':memory:');",
-  "if (db.prepare('select 1 as one').get().one !== 1) process.exit(3);",
-  "db.close();",
-  "process.stdout.write('native-ok');",
+  "const { Worker } = require('node:worker_threads');",
+  "const open = dir => { const D = require('node:module').createRequire(require('node:path').join(dir, 'package.json'))('better-sqlite3');",
+  "  const db = new D(':memory:'); const one = db.prepare('select 1 as one').get().one; db.close(); return one; };",
+  "if (open(process.argv[1]) !== 1) process.exit(3);",
+  "const w = new Worker(`${open}; require('node:worker_threads').parentPort.postMessage((${open})(require('node:worker_threads').workerData))`, { eval: true, workerData: process.argv[1] });",
+  "w.on('message', one => { if (one !== 1) process.exit(4); process.stdout.write('native-ok'); });",
+  "w.on('error', () => process.exit(5));",
 ].join(" ");
+
+/** What a launcher-era package's own selection says (`agend --agend-select-json`, launcher/launch.cjs). */
+interface Selection { node?: string; pkgDir?: string; entry?: string; source?: string; error?: string; recovery?: string }
 
 const normalizeVersion = (text: string): string => text.trim().replace(/^v/i, "");
 
@@ -118,9 +126,9 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   }
   const pkgDir = join(out(rootRun), "@songsid", "agend");
   const identityRun = run(["node", "-e", PACKAGE_IDENTITY_SCRIPT, pkgDir]);
-  let identity: { name?: string; version?: string; dir?: string; bin?: string | null } = {};
+  let identity: { name?: string; version?: string; dir?: string; bin?: string | null; entry?: string | null } = {};
   try { identity = JSON.parse(out(identityRun)); } catch { /* checked below */ }
-  if (identityRun.status !== 0 || identity.name !== "@songsid/agend" || !identity.version || !identity.dir || !identity.bin) {
+  if (identityRun.status !== 0 || identity.name !== "@songsid/agend" || !identity.version || !identity.dir || !identity.bin || !identity.entry) {
     return fail(`  ✗ Verification failed: ${pkgDir} is not an installed @songsid/agend package.`);
   }
   const version = normalizeVersion(identity.version);
@@ -144,6 +152,25 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   if (normalizeVersion(out(versionRun)) !== version) {
     return fail(`  ✗ Verification failed: \`${agendPath} --version\` printed ${out(versionRun)}, but the installed package is v${version}.`);
   }
+  // #1450 C4: a package with the launcher chooses its own Node (C2) — ask IT, through its own bin, and prove THAT Node,
+  // whatever Node this updater runs on. Without one (≤ 2.1.x, a downgrade) the shebang rule below.
+  if (runner.run("test", ["-f", join(identity.dir, "launcher", "runtime-select.cjs")], { timeoutMs: 5_000 }).status === 0) {
+    const probe = run([agendPath, "--agend-select-json"]);
+    let chosen: Selection = {};
+    try { chosen = JSON.parse(out(probe)) as Selection; } catch { /* checked below */ }
+    if (probe.status !== 0 || !chosen.node) {
+      return fail(`  ✗ Verification failed: the installed package will not start here${chosen.error ? `: ${chosen.error}` : ` (\`agend --agend-select-json\` exited ${probe.status ?? probe.signal})`}.${chosen.recovery ? ` To repair: ${chosen.recovery}` : ""}`);
+    }
+    if (chosen.pkgDir !== identity.dir || chosen.entry !== identity.entry) {
+      return fail(`  ✗ Verification failed: the installed launcher selected ${chosen.pkgDir}/${chosen.entry}, not the installed package ${identity.entry}.`);
+    }
+    const proof = runner.run(chosen.node, ["-e", NATIVE_CHECK_SCRIPT, identity.dir], { timeoutMs: 30_000 });
+    if (proof.status !== 0 || out(proof) !== "native-ok") {
+      return fail(`  ✗ Verification failed: the installed package cannot open a database on the Node it selected, ${chosen.node} (${proof.signal ?? `exit ${proof.status}`}). ${proof.stderr.trim().split("\n").pop() ?? ""}`.trimEnd());
+    }
+    return { ok: true, agendPath, version, dir: identity.dir, bin: identity.bin, entry: identity.entry, node: chosen.node };
+  }
+
   const native = run(["node", "-e", NATIVE_CHECK_SCRIPT, identity.dir], 30_000);
   if (native.status !== 0 || out(native) !== "native-ok") {
     return fail(`  ✗ Verification failed: the installed package cannot open a database with this Node (${native.signal ?? `exit ${native.status}`}). ${native.stderr.trim().split("\n").pop() ?? ""}`.trimEnd());
@@ -156,7 +183,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
   if (nodeRun.status !== 0 || !nodeReal || nodeReal.status !== 0 || !out(nodeReal)) {
     return fail("  ✗ Verification failed: could not resolve the Node the installed package runs on.");
   }
-  return { ok: true, agendPath, version, dir: identity.dir, bin: identity.bin, node: out(nodeReal) };
+  return { ok: true, agendPath, version, dir: identity.dir, bin: identity.bin, entry: identity.entry, node: out(nodeReal) };
 }
 
 export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner): UpdateInstallOutcome {
