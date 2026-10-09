@@ -258,6 +258,7 @@ describe("selectRuntime: the order and the refusals", () => {
     ["a JSON-null receipt", (f: ReturnType<typeof fixture>) => writeFileSync(join(f.pkg, ".agend-runtime.json"), "null")],
     ["a receipt that is a directory", (f: ReturnType<typeof fixture>) => mkdirSync(join(f.pkg, ".agend-runtime.json"))],
     ["a dangling runtime-directory link", (f: ReturnType<typeof fixture>) => { mkdirSync(dirname(f.runtimeHome), { recursive: true }); symlinkSync(join(f.root, "gone"), f.runtimeHome); }],
+    ["a stray admission key", (f: ReturnType<typeof fixture>) => writeFileSync(join(f.pkg, ".agend-runtime.key"), "agend-runtime-key 1\n")],
   ])("not absent, so refused (never the system Node): %s", (_n, arrange) => {
     const f = fixture({ runtime: "none" });
     arrange(f);
