@@ -704,7 +704,8 @@ function OperationCard({ op, schema }) {
   const phaseBusy = ["writing", "posting", "watching"].includes(op.phase);
   const job = op.job;
   const rows = (job && job.targets) || [];
-  const fleetRestarting = job && job.status === "running" && rows.some((r) => r.target === "fleet" && r.status === "running");
+  // A fleet row of kind "hot" is connections starting without a restart (#1519 P6), not AgEnD restarting.
+  const fleetRestarting = job && job.status === "running" && rows.some((r) => r.target === "fleet" && r.status === "running" && r.kind !== "hot");
   const needsRestart = rows.some((r) => r.status === "restart-required");
   const failedRows = rows.some((r) => r.status === "failed");
   const mismatch = schema && schema.fleet_signature_mismatch;
@@ -741,7 +742,7 @@ function OperationCard({ op, schema }) {
     ${rows.length ? html`<ul class="s-op-steps">${rows.map((r) => html`<li key=${r.target} class=${`s-step ${r.status}`}>
       <span class="s-step-icon" aria-hidden="true">${r.status === "done" ? html`<${Icon} name="check" size=${14} />` : r.status === "failed" ? html`<${Icon} name="alert" size=${14} />` : r.status === "restart-required" ? html`<${Icon} name="restart" size=${14} />` : "·"}</span>
       <span class="grow">${r.target === "fleet" ? "AgEnD" : shortName(r.target, {})}</span>
-      <span class="note">${r.target === "fleet" && r.status === "running" ? tn("restartFleetTitle") : r.status === "restart-required" ? tn("applyRestartNeeded")
+      <span class="note">${r.target === "fleet" && r.status === "running" ? tn(r.kind === "hot" ? "connStartingNow" : "restartFleetTitle") : r.status === "restart-required" ? tn("applyRestartNeeded")
         : r.settled_by === "no-change" ? tn("applyNoChange") : r.settled_by === "fleet-restart" ? tn("viaRestart") : r.kind === "hot" ? tn("impactNow") : tn("impactAgent")}</span>
       ${r.error ? html`<span class="feedback error">${r.error}</span>` : null}</li>`)}</ul>` : null}
     ${job && job.error ? html`<p class="feedback error">${job.error}</p>` : null}

@@ -13,7 +13,7 @@
  * `tests/fleet-level-config.test.ts` asserts both sides of the line so a new
  * key has to be classified deliberately.
  */
-import type { FleetConfig } from "./types.js";
+import type { ChannelConfig, FleetConfig } from "./types.js";
 
 /**
  * Startup-only, with the construction site that consumes each one.
@@ -117,4 +117,26 @@ export function fleetLevelSignature(config: FleetConfig | null): string {
 export function fleetLevelDifferences(a: FleetConfig | null, b: FleetConfig | null): string[] {
   return STARTUP_ONLY_FLEET_KEYS.filter(path =>
     JSON.stringify(pick(a, path) ?? null) !== JSON.stringify(pick(b, path) ?? null));
+}
+
+/**
+ * #1519 P6: the connections a running fleet can start without a restart — those appended to it, and only when nothing
+ * else at startup level changed: every other startup-only key equal, the connections it started with still there, the
+ * same and in the same order (so the first, the primary, is untouched), and at least one of them (a web-only fleet's
+ * first connection becomes the primary, which only a fresh process sets up). Anything else: null — a restart.
+ */
+export function appendedConnections(before: FleetConfig | null, after: FleetConfig | null): ChannelConfig[] | null {
+  for (const path of STARTUP_ONLY_FLEET_KEYS) {
+    if (path === "channel" || path === "channels") continue;
+    if (JSON.stringify(pick(before, path) ?? null) !== JSON.stringify(pick(after, path) ?? null)) return null;
+  }
+  const list = (cfg: FleetConfig | null): ChannelConfig[] => (cfg?.channels ?? (cfg?.channel ? [cfg.channel] : [])) as ChannelConfig[];
+  const was = list(before), now = list(after);
+  if (!was.length || now.length <= was.length) return null;
+  const same = (a: ChannelConfig, b: ChannelConfig) => JSON.stringify(withoutRuntimeOptions(a)) === JSON.stringify(withoutRuntimeOptions(b));
+  for (let i = 0; i < was.length; i++) if (!same(was[i]!, now[i]!)) return null;
+  const added = now.slice(was.length);
+  const ids = new Set(was.map(c => c.id ?? c.type));
+  for (const c of added) { const id = c.id ?? c.type; if (!id || ids.has(id)) return null; ids.add(id); }
+  return added;
 }
