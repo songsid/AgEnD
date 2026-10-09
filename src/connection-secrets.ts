@@ -48,8 +48,11 @@ export interface ConnectionMetadata {
   group_id: string | number | null;
   general_channel_id?: string | null;
   status: string;
-  /** #1519 P3: a known cause the connection is down — "missing_intent": Message Content is off in the developer portal. */
-  problem?: "missing_intent";
+  /**
+   * A known cause the connection is down: "missing_intent" — Message Content is off in the developer portal (#1519 P3);
+   * "rejected" — the platform refused the token (P6).
+   */
+  problem?: "missing_intent" | "rejected";
   identity?: { id: string | null; username: string | null };
 }
 
