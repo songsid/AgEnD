@@ -557,6 +557,30 @@ a { color: inherit; text-decoration: none; }
 .s-yaml { font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.5; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-3);
   overflow: auto; max-height: 60vh; white-space: pre; margin: 0; color: var(--text); }
 textarea.s-yaml { width: 100%; min-height: 50vh; resize: vertical; }
+/* Lines too long for the box scroll sideways; a shadow at an edge says there is more that way (alpha.2 sweep). */
+.s-yaml {
+  background:
+    linear-gradient(to right, var(--bg) 30%, transparent) left / 24px 100% no-repeat local,
+    linear-gradient(to left, var(--bg) 30%, transparent) right / 24px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--text) 22%, transparent), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--text) 22%, transparent), transparent) right / 10px 100% no-repeat scroll,
+    var(--bg);
+}
+textarea.s-yaml { white-space: pre; overflow-x: auto; }
+.s-br { display: none; }
+@media (max-width: 479px) {
+  /* Settings → Developer: one toolbar row, icons only (names stay as titles and for screen readers). */
+  .s-dev-bar { flex-wrap: nowrap; }
+  .s-dev-bar .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  /* An agent's row: name and model on the first line, its tags and buttons from the second, on every row alike. */
+  .s-br { display: block; flex-basis: 100%; height: 0; }
+  /* View: the profile line wraps to two lines instead of hiding the model and context. */
+  .v-card-meta { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  /* A text button in Needs you lines up with the text above it, first in its row or wrapped onto a line of its own;
+     a row's trailing Delete sits at the right. */
+  .n-actions > .btn-ghost { padding-left: 0; padding-right: 0; margin-left: -1px; }
+  .row-item > .btn-ghost:last-child { margin-left: auto; }
+}
 .s-pending { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-3) var(--s-5);
   background: var(--bg); border-top: 1px solid var(--border); box-shadow: var(--shadow-2); }
 .s-pending .grow { flex: 1; }
@@ -583,6 +607,8 @@ textarea.s-yaml { width: 100%; min-height: 50vh; resize: vertical; }
 .se-default { opacity: 0.7; }
 /* #1423: requests waiting for a fleet admin, in any panel */
 .pending-stack { position: fixed; right: var(--s-4); top: calc(var(--header-h) + var(--s-2)); z-index: 40; display: flex; flex-direction: column; gap: var(--s-2); width: min(360px, calc(100vw - 32px)); }
+/* In Settings the cards sit in the column, under the Apply row — every width (alpha.2 sweep). */
+.pending-stack.inline, .shell:has(.s-pending) .pending-stack.inline { position: static; width: auto; margin-bottom: var(--s-4); }
 .pending-card { background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--r-md); box-shadow: var(--shadow-2); padding: var(--s-3) var(--s-4); display: flex; flex-direction: column; gap: var(--s-1); font-size: var(--fs-sm); }
 .pending-card.applied { border-color: var(--ok); }
 .pending-card.rejected, .pending-card.expired, .pending-card.stale, .pending-card.failed { border-color: var(--danger-line); }
