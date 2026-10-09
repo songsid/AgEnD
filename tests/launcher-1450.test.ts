@@ -126,7 +126,7 @@ describe("postinstall: prove the bundled Node, write the receipt", () => {
     expect(existsSync(join(f.pkg, ".agend-runtime.json"))).toBe(false);
   });
 
-  it.each([["main-only", "a worker"], ["broken", "the main thread"]] as const)("better-sqlite3 that fails (%s) in %s is refused, no receipt", (sqlite) => {
+  it.each([["main-only", "a worker"], ["broken", "the main thread"]] as const)("better-sqlite3 that fails (%s) in %s is refused, no receipt", (sqlite, _where) => {
     const f = fixture({ runtime: "ok", sqlite });
     const r = postinstall(f);
     expect(r.status).toBe(1);
