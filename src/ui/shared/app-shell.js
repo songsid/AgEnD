@@ -1,7 +1,7 @@
 // #1408 §2/§7: the app's frame — the sidebar (a drawer on a phone), the main area with its panel, the bottom tabs on a
 // phone, the connection line, toasts. Panels render their own header through <PanelHeader>, so every panel's title,
 // status and ⋯ actions sit in the same place.
-import { html, useEffect, useState } from "./app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
 import { ConfirmHost } from "./ui-confirm.js";
@@ -11,6 +11,7 @@ import { navStore } from "./app-nav.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
+import { InstanceNav, RosterNav } from "./instance-nav.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), footer: [], keyboard: false, dialog: null, side: null });
@@ -24,6 +25,9 @@ export function setSideSection(Component) {
   shellStore.set({ side: entry });
   return () => { if (shellStore.get().side === entry) shellStore.set({ side: null }); };
 }
+
+// The sidebar's instance list (alpha.2, N1): one component on every page. keepActiveInView lives with it.
+export { keepActiveInView } from "./instance-nav.js";
 
 /** An app-level dialog (New instance): rendered by the shell until closed, whatever panel is showing. */
 export function showDialog(Component, props = {}) { shellStore.set({ dialog: { Component, props } }); }
@@ -90,29 +94,6 @@ export function statusClass(i, exec, awaiting) {
 }
 export { statusLabel };
 
-function tooltip(i) {
-  const src = (s) => (s === "instance" || s === "classic" ? "configured" : s === "fleet-default" ? "fleet default" : s);
-  const model = i.model ? (i.model_source === "live" || i.model_source === "cli-default" || i.model_source === "unresolved" ? i.model : `${i.model} (${src(i.model_source)})`) : null;
-  const effort = i.effort ? `effort:${i.effort}${i.effort_source ? ` (${src(i.effort_source)})` : ""}` : null;
-  const ctx = i.context_pct != null ? `ctx:${Math.round(i.context_pct)}%` : null;
-  const cost = i.cost > 0 ? `$${i.cost.toFixed(2)}` : null;
-  return [i.name, i.backend, model, effort, ctx, cost, i.status].filter(Boolean).join(" · ");
-}
-
-function InstanceRow({ i, active, exec, awaiting }) {
-  const alias = typeof i.display_name === "string" && i.display_name.trim() && i.display_name.trim() !== i.name ? i.display_name.trim() : "";
-  const cls = statusClass(i, exec, awaiting);
-  // Two lines: the name (never shortened to make room for a badge, #1408 rough edge 6), then the alias and/or
-  // "needs you". Everything else is in the tooltip.
-  return html`<li><a class=${`inst${active ? " active" : ""}`} href=${chatPath(i.name)} title=${tooltip(i)} aria-current=${active ? "page" : undefined}
-      onClick=${closeDrawer}>
-    <span class=${`dot ${cls}`} aria-hidden="true"></span>
-    <span class="inst-text"><span class="inst-name">${i.name}</span>
-      ${alias || awaiting != null ? html`<span class="inst-sub">${alias ? html`<span class="inst-alias">${alias}</span>` : null}
-        ${awaiting != null ? html`<span class="badge-await" title=${awaiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}
-      <span class="sr-only">${statusLabel(i, exec, awaiting)}</span></span></a></li>`;
-}
-
 /** Sign in, and come back here afterwards (the sign-in page accepts only the app's own pages). */
 export function signInHref() {
   const here = typeof location !== "undefined" ? location.pathname + location.search : "/view";
@@ -122,7 +103,6 @@ export function signInHref() {
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
-  const current = route && route.panel === "chat" ? route.instance : null;
   const on = (panel) => !!route && route.panel === panel;
   // A count badge is hidden at 0; its number is also in the link's accessible name.
   const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
@@ -137,7 +117,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
         <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
       </div>
       <nav class="side-nav" aria-label=${t("app.menu")}>${navLink("view", "/view", "view", t("app.view"))}</nav>
-      ${shell.side ? html`<${shell.side.Component} />` : html`<div class="side-section"></div>`}
+      ${shell.side ? html`<${shell.side.Component} />` : html`<${ViewOnlyNav} route=${route} />`}
       <div class="side-foot">
         <${Prefs} />
         <a class="side-row" href=${signInHref()}><${Icon} name="user" /><span>${t("app.signIn")}</span></a>
@@ -155,12 +135,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       ${navLink("fleet", "/ui/fleet", "fleet", t("app.fleet"))}
       ${navLink("view", "/view", "view", t("app.view"))}
     </nav>
-    ${shell.side ? html`<${shell.side.Component} />` : html`<div class="side-section" id="instanceList">
-      <h2 class="side-label">${t("app.instances")}</h2>
-      ${app.instances.length ? html`<ul class="inst-list">${app.instances.map(i => html`<${InstanceRow} key=${i.name} i=${i} active=${i.name === current}
-          exec=${app.exec[i.name]} awaiting=${Object.prototype.hasOwnProperty.call(app.awaiting, i.name) ? app.awaiting[i.name] : null} />`)}</ul>`
-        : html`<p class="side-empty">${t("app.noInstances")}</p>`}
-    </div>`}
+    ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
+        exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />`}
     <div class="side-foot">
       ${navLink("settings", settingsPath(), "settings", t("app.settings"))}
       ${shell.footer.map(({ key, Component }) => html`<${Component} key=${key} />`)}
@@ -168,6 +144,11 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <${SessionMenu} />
     </div>
   </aside>`;
+}
+
+/** The anonymous View reader's list: View's roster read (no status frames without a session), the same component. */
+function ViewOnlyNav({ route }) {
+  return html`<${RosterNav} route=${route} viewOnly=${true} onPick=${closeDrawer} />`;
 }
 
 function Prefs() {

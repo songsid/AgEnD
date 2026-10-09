@@ -1,3 +1,4 @@
+import type { PaneContextSource } from "./pane-context-cache.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -813,6 +814,8 @@ const CONFIRM_BUSY_POLL_MS = 200;
  * hold the pane write lock along with it.
  */
 const CONFIRM_BUSY_MAX_WAIT_MS = 10_000;
+/** How much longer a confirmation waits while the control client is blind (a drained read; its limit is 10 s). */
+const CONFIRM_BUSY_BLIND_EXTRA_MS = 12_000;
 /**
  * How long a delivery waits for an in-flight spawn. Comfortably past the default
  * 25s startup timeout plus dialog dismissal; past it we fall back to the old
@@ -4328,6 +4331,23 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** Context refresh uses the already-bound manager; no name-based child or backend probe. */
+  getPaneContextSource(): PaneContextSource | null {
+    const tmux = this.tmux;
+    const control = this.controlClient;
+    if (!tmux || !control || this.deliveryWritesStopping) return null;
+    const owner = this.interactionOwner();
+    const epoch = this.deliveryEpoch;
+    const isCurrent = () => {
+      const now = this.interactionOwner();
+      return !this.deliveryWritesStopping && this.controlClient === control && this.tmux === tmux && this.deliveryEpoch === epoch
+        && now.bootId === owner.bootId && now.spawnGeneration === owner.spawnGeneration
+        && now.launchAttempt === owner.launchAttempt && now.launchFenceEpoch === owner.launchFenceEpoch;
+    };
+    return { owner: tmux, generation: JSON.stringify([owner.bootId, owner.spawnGeneration, owner.launchAttempt, owner.launchFenceEpoch, epoch]),
+      isCurrent, capture: () => isCurrent() ? tmux.capturePaneWithHistory(60, 2_000) : Promise.reject(new Error("Pane context owner retired")) };
+  }
+
   getHangDetector(): HangDetector | null {
     return this.hangDetector;
   }
@@ -4858,7 +4878,9 @@ export class Daemon extends EventEmitter {
     // chat_id) does not update lastChatId, so its proxy reply would land in
     // whatever USER topic spoke to this instance last — the wrong audience for
     // a task result, and a stale one (sol's review of #515).
-    if (meta.from_instance || !meta.chat_id) return;
+    // A web message on a fleet with no chat platform has no chat_id (its reply goes to the web chat through the fleet's
+    // web-only sink), but it is a person waiting for an answer all the same: the guard arms for it (alpha.2).
+    if (meta.from_instance || (!meta.chat_id && meta.source !== "web")) return;
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
     const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
@@ -8412,6 +8434,10 @@ export class Daemon extends EventEmitter {
         // is disqualifying and no amount of output may override it. Where it
         // cannot (a backend with no prompt pattern), the output signal remains
         // exactly as before — this must not regress backends we cannot read.
+        // The attempt's owner (#1514 review): a confirmation fenced because the window was replaced must not be revived
+        // by the late proof below on the replacement's pane.
+        const ownerTmux = this.tmux, ownerGeneration = this.spawnGeneration;
+        const owned = () => this.tmux === ownerTmux && this.spawnGeneration === ownerGeneration;
         const becameBusy = await this.confirmAfterEnter(
           windowId,
           enterAt,
@@ -8427,13 +8453,26 @@ export class Daemon extends EventEmitter {
           // A steer keeps its pre-#758 settlement (steer-accepted / positive submission proof): routing it into the
           // transcript-proof wait would hold a steer to `uncertain` whenever the CLI files no transcript marker (#1207 P2).
           if (!rawPaste && !steer && !this.canProveSubmission()) verdict.proof = "output-edge";
+        } else if (!owned()) {
+          // The window this delivery was pasted into was replaced while it was being confirmed: whether its CLI took
+          // the message is unknown, and the new window's pane says nothing about it. Uncertain, never ✅ or ❌.
+          this.logger.warn({ phase: "post-submit-proof" }, "Window replaced during submission proof — delivery outcome uncertain");
+          verdict.phase = "post-submit-proof";
+          verdict.proof = "window-replaced";
+          return false;
         } else {
           const proof = this.structuredInputEvidence()
-            ? await this.lateCodexSubmissionProof(signature, pasteBaseline)
-            : await this.confirmSubmitted(signature, pasteBaseline);
-          if (proof === "submitted") {
+            ? await this.lateCodexSubmissionProof(signature, pasteBaseline, false, owned)
+            : await this.confirmSubmitted(signature, pasteBaseline, owned);
+          if (proof === "submitted" && owned()) {
             if (status) this.emit("message_confirmed", status);
             return true;
+          }
+          if (!owned()) {
+            this.logger.warn({ phase: "post-submit-proof" }, "Window replaced during submission proof — delivery outcome uncertain");
+            verdict.phase = "post-submit-proof";
+            verdict.proof = "window-replaced";
+            return false;
           }
           if (this.structuredInputEvidence() && proof !== "stranded") {
             // This is the observed #910 race: the CLI processed the message
@@ -8546,14 +8585,23 @@ export class Daemon extends EventEmitter {
     retryPhase: string,
     allowRecoveryEnter = true,
   ): Promise<boolean> {
+    // The window this confirmation is about (#1490). The waits below can span a recoverWindow, which replaces
+    // this.tmux with a new TmuxManager, so its identity (with the spawn generation) is the fence. A recovery Enter or
+    // a proof taken after that would be about another window: the fence goes down to the write
+    // (sendDeliveryEnterAfterAvailability asks it last, right before the key) and into every proof, which asks it
+    // before its capture and again before judging what it read (#1514 review) — so a replacement during a capture
+    // can neither confirm this delivery nor run a proof's side effects.
+    const generation = this.spawnGeneration, tmux = this.tmux;
+    const current = () => this.spawnGeneration === generation && this.tmux === tmux;
+    const proofNow = () => this.confirmSubmitted(signature, baseline, current);
     if (!this.canProveSubmission()) {
-      let busy = await this.confirmBusyAfterEnter(windowId, enterAt);
+      let busy = (await this.confirmBusyAfterEnter(windowId, enterAt)) && current();
       if (!busy) {
-        if (!allowRecoveryEnter) return false;
+        if (!allowRecoveryEnter || !current()) return false;
         this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
         const retryAt = Date.now();
-        if (!(await this.sendDeliveryEnter(retryPhase))) return false;
-        busy = await this.confirmBusyAfterEnter(windowId, retryAt);
+        if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
+        busy = (await this.confirmBusyAfterEnter(windowId, retryAt)) && current();
       }
       return busy;
     }
@@ -8570,27 +8618,31 @@ export class Daemon extends EventEmitter {
       // proves a swallowed Enter only once it outlasts the window; an early one is polled through. Codex keeps its rule.
       const strandMustPersist = !!this.backend?.readInputRow;
       for (;;) {
-        proof = await this.confirmSubmitted(signature, baseline);
+        proof = await proofNow();
+        if (!current()) return false;
         if (proof === "submitted") return true;
         if ((proof === "stranded" && !strandMustPersist) || Date.now() >= firstDeadline) break;
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
       if (proof !== "stranded" || !allowRecoveryEnter) return false;
-      if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
-      proof = await this.confirmSubmitted(signature, baseline);
+      if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS)) || !current()) return false;
+      proof = await proofNow();
+      if (!current()) return false;
       if (proof === "submitted") return true;
       if (proof !== "stranded") return false;
-      if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+      if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
       const retryDeadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
       for (;;) {
-        proof = await this.confirmSubmitted(signature, baseline);
+        proof = await proofNow();
+        if (!current()) return false;
         if (proof === "submitted") return true;
         if (Date.now() >= retryDeadline) return false;
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
     }
 
-    if (await this.confirmSubmitted(signature, baseline) === "submitted") return true;
+    if (await proofNow() === "submitted" && current()) return true;
+    if (!current()) return false;
 
     // Retry once the prompt is back — an Enter sent into a mid-redraw TUI is
     // how we got here. Then poll briefly rather than judging on one capture:
@@ -8599,26 +8651,33 @@ export class Daemon extends EventEmitter {
     if (!allowRecoveryEnter) return false;
     this.logger.warn("Enter did not submit — waiting for the prompt, then re-sending once");
     if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
-    if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+    if (!(await this.sendDeliveryEnter(retryPhase, current))) return false;
     const deadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
     for (;;) {
-      if (await this.confirmSubmitted(signature, baseline) === "submitted") return true;
+      const proof = await proofNow();
+      if (!current()) return false;
+      if (proof === "submitted") return true;
       if (Date.now() >= deadline) return false;
       await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
     }
   }
 
-  private async confirmSubmitted(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
-    if (!this.tmux) return "unproven";
+  private async confirmSubmitted(
+    signature: SubmissionSignature, baseline: PaneEvidence | null, owned?: () => boolean,
+  ): Promise<SubmitProof> {
+    // `owned`: the attempt's window fence (#1514 review), asked before the capture and again before judging it —
+    // judging can retire the spawn's input guard, so a capture of a replaced window must not even be judged.
+    if (!this.tmux || (owned && !owned())) return "unproven";
     let pane: string | null = null;
     try { pane = await this.tmux.capturePane(); } catch { /* the transcript may still say */ }
+    if (owned && !owned()) return "unproven";
     const onPane = pane === null ? "unproven" : this.judgeSubmission(pane, signature, baseline);
     if (onPane === "submitted") return onPane;
     const t = signature.transcript;
     const found = await this.transcriptLook(signature);
     // One synchronous stretch from here: the fence is asked after the last await, and only then is the hit kept and the
     // spawn's guard retired — a stop or respawn that lands between the look and this line leaves both untouched.
-    if (!found || !t?.current()) return onPane;
+    if (!found || !t?.current() || (owned && !owned())) return onPane;
     if (!t.provenBy) { t.provenBy = found; t.onProof?.(found); }
     return this.submittedProof();
   }
@@ -8758,12 +8817,13 @@ export class Daemon extends EventEmitter {
 
   /** Only positive echo/queue evidence may turn an ambiguous Codex write into ✅. */
   private async lateCodexSubmissionProof(
-    signature: SubmissionSignature, baseline: PaneEvidence | null, waitThroughStranded = false,
+    signature: SubmissionSignature, baseline: PaneEvidence | null, waitThroughStranded = false, owned?: () => boolean,
   ): Promise<SubmitProof> {
     const deadline = Date.now() + CODEX_LATE_PROOF_MS;
     let proof: SubmitProof = "unproven";
     for (;;) {
-      proof = await this.confirmSubmitted(signature, baseline);
+      if (owned && !owned()) return "unproven";
+      proof = await this.confirmSubmitted(signature, baseline, owned);
       // Ordinary idle-path proof may return a strand immediately. After a
       // native-queue recovery Enter, though, it can be the previous frame
       // still on screen; only a strand that survives the bounded repaint
@@ -8774,6 +8834,7 @@ export class Daemon extends EventEmitter {
           // Scrollback can hold the echo the viewport lost — but it is judged exactly like the viewport: a box that
           // cannot be read, or that still holds our text, is never upgraded by an echo further up.
           const history = await this.tmux.capturePaneWithHistory(300);
+          if (owned && !owned()) return "unproven";
           if (this.judgeSubmission(history, signature, baseline) === "submitted") return this.submittedProof();
         } catch { /* a failed history read proves neither delivery nor loss */ }
       }
@@ -9038,12 +9099,17 @@ export class Daemon extends EventEmitter {
   private async confirmBusyAfterEnter(windowId: string, since: number): Promise<boolean> {
     const client = this.controlClient!;
     const hardDeadline = Date.now() + CONFIRM_BUSY_MAX_WAIT_MS;
+    // A drained control read hides notifications (#1517 review): while the client is blind a quiet pane is not
+    // evidence of a swallowed Enter, so blind polls do not count toward "no reaction". Bounded: past the drain limit
+    // the client retires and resets, which restarts this check from when it could see again.
+    const blindDeadline = hardDeadline + CONFIRM_BUSY_BLIND_EXTRA_MS;
     let observedFrom = since;
     let polls = 0;
 
     while (polls < CONFIRM_BUSY_POLLS) {
       await new Promise(r => setTimeout(r, CONFIRM_BUSY_POLL_MS));
       if (client.hasOutputSince(windowId, observedFrom)) return true;
+      if (client.isObservationBlind?.() && Date.now() < blindDeadline) continue;
 
       const resetAt = client.getObservationResetAt();
       if (resetAt > observedFrom && Date.now() < hardDeadline) {

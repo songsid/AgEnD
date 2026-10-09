@@ -1031,7 +1031,7 @@ instances:
 
 ## 平行停止 instance (Parallel instance stop)
 
-關閉 fleet 時（`agend fleet stop`、`agend stop`），instance 會分批平行停止，每批的大小隨 fleet 規模調整：少於 10 個 instance 時一次 5 個，10 到 30 個時一次 10 個，超過 30 個時一次 15 個。systemd unit 以 `TimeoutStopSec=60` 限制整個停止流程的時間。
+關閉 fleet 時（`agend fleet stop`、`agend stop`），instance 會分批平行停止，每批的大小隨 fleet 規模調整：少於 10 個 instance 時一次 5 個，10 到 30 個時一次 10 個，超過 30 個時一次 15 個。systemd unit 以 `TimeoutStopSec=300` 限制整個停止流程，允許數批 busy Kiro 停機；任意 fleet 大小或緩慢／卡住的 I/O 仍可能超過期限。Detached restart 也使用相同的五分鐘期限。既有 unit 如何處理，見 [Restart 遷移與自訂期限政策](cli.zh-TW.md#服務管理-service-management)。
 
 從 2.1.9 起，systemd unit 使用 `KillMode=mixed`：systemd 只對 fleet 送訊號，再由 fleet 依序結束每個 CLI。在此之前，所有 CLI 會在同一瞬間收到 SIGTERM，WSL 上的 kiro-cli 每次都會 abort，寫出約 1 GB 的 core dump（#908）。`agend restart` 會替舊的 unit 補上這一行，見 [CLI 參考](cli.zh-TW.md#設定與安裝-setup--installation)。
 

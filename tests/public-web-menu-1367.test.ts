@@ -90,7 +90,9 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
   it("Telegram DM failure gives safe /start guidance and withdraws code/link", async () => {
     const h = rig(); h.adapter.sendDirect.mockRejectedValue(Error("secret provider URL")); await h.typed(); await h.click();
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false); expect(h.manager.stop).toHaveBeenCalledTimes(1);
-    expect(h.adapter.editMessageRemoveButtons).toHaveBeenCalledWith("G", "menu", t("dashboard.private_failed"), "T0");
+    // The menu ends on the public link's steps (⑥ marked failed), then the safe guidance.
+    expect(h.adapter.editMessageRemoveButtons).toHaveBeenLastCalledWith("G", "menu", expect.stringMatching(/❌ ⑥ [^\n]*\n\n/), "T0");
+    expect(String((h.adapter.editMessageRemoveButtons.mock.calls.at(-1) as unknown[])[2]).endsWith(t("dashboard.private_failed"))).toBe(true);
     expect(t("dashboard.private_failed")).toContain("/start"); expect(JSON.stringify(h.adapter.editMessageRemoveButtons.mock.calls)).not.toContain("secret provider");
   });
   it("Discord DM refusal awaits ephemeral fallback; no ACK means no usable code/link", async () => {

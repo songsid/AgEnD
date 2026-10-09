@@ -23,7 +23,7 @@ async function sidebar(instances: Array<Record<string, unknown>>, path = "/ui") 
   await pg.mount(h(Shell, { panels: new Map(), onNewInstance() {} }));
   return pg;
 }
-/** The View panel's roster, as the sidebar section the panel installs while it is mounted (panel-view.js ViewRoster). */
+/** The sidebar's list on View (alpha.2, N1: the shell's one list, fed by the status frames; the rows link to View). */
 async function viewSidebar(roster: Array<Record<string, unknown>>, path = "/view") {
   const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" } });
   mounted.push(pg);
@@ -34,9 +34,9 @@ async function viewSidebar(roster: Array<Record<string, unknown>>, path = "/view
   const { applyStatus } = await import("/assets/app-store.js");
   const { Shell } = await import("/assets/app-shell.js");
   const { ViewPanel, viewStore } = await import("/assets/panel-view.js");
-  viewStore.set({ loaded: false, error: null, roster: [], filter: "", collapsed: new Set(), current: null });
+  viewStore.set({ loaded: false, error: null, roster: [], current: null });
   startRouter(pg.window);
-  applyStatus({ instances: [] });
+  applyStatus({ instances: roster.map(r => ({ ...r, name: r.instance_name })) });
   await pg.mount(h(Shell, { panels: new Map([["view", { Component: ViewPanel }]]), onNewInstance() {} }));
   await vi.waitFor(async () => { await settle(); expect(pg.root.querySelectorAll("a.v-inst").length).toBe(roster.length); });
   return pg;
@@ -116,13 +116,16 @@ describe("sidebar instance identity", () => {
     [{ model: "sonnet", model_source: "instance" }, "sonnet (configured)"],
     [{ model: "sonnet", model_source: "fleet-default" }, "sonnet (fleet default)"],
   ])("the tooltip names the model's source: %j", async (patch, shown) => {
+    // alpha.2 (N1): one row on every page, with View's tooltip (one fact a line) — the shell's one-liner is gone.
     const pg = await sidebar([{ ...dashboardPayload, ...patch, effort: null, context_pct: null, cost: 0 }]);
-    expect(rows(pg)[0]!.getAttribute("title")).toBe(`classic-rd1web-miraculous-agent · kiro-cli · ${shown} · running`);
+    expect(rows(pg)[0]!.getAttribute("title")!.split("\n")).toEqual(["Mira｜奇蹟網頁企劃", "(classic-rd1web-miraculous-agent)", "Backend: Kiro CLI",
+      `Model: ${shown}`, "Status: Running", "Context: Unavailable"]);
   });
 
   it("the tooltip carries effort (with its source, instance included), context and cost", async () => {
     const pg = await sidebar([{ ...dashboardPayload, model: "sonnet", model_source: "instance", effort: "high", effort_source: "instance", context_pct: 42.6, cost: 1.5 }]);
-    expect(rows(pg)[0]!.getAttribute("title")).toBe("classic-rd1web-miraculous-agent · kiro-cli · sonnet (configured) · effort:high (configured) · ctx:43% · $1.50 · running");
+    expect(rows(pg)[0]!.getAttribute("title")!.split("\n").slice(2)).toEqual(["Backend: Kiro CLI", "Model: sonnet (configured)", "Status: Running",
+      "Context: 43%", "Effort: high (configured)", "Cost: $1.50"]);
   });
 
   it("the row is a real link to the chat, reachable with Tab and Enter, and the active one is marked for assistive tech", async () => {
