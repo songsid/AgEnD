@@ -96,6 +96,20 @@ check_no_system_node() {
 
 # Start a scratch fleet with no instances (isolated HOME/AGEND_HOME, a private tmux socket), prove the daemon process
 # IS the bundled Node, then stop it. With NO_NODE_PATH set, the fleet is started and stopped on that PATH.
+# #1450 (leader): in an environment AgEnD hands to other programs, PATH has no bundled runtime directory and an
+# npm-installed `#!/usr/bin/env node` CLI (as codex and claude are) runs on the SYSTEM Node, never AgEnD's own.
+# $1 = what it is, $2 = that PATH, $3 = the Node expected ("" when none is on that PATH).
+check_cli_node() {
+  local what="$1" path="$2" want="$3" cli got
+  case ":$path:" in *"/agend-node-"*|*"$(dirname "$RT_NODE")"*) fail "$what: its PATH contains the bundled runtime directory: $path" ;; esac
+  cli="$WORK/npm-installed-cli"
+  printf '#!/usr/bin/env node\nconsole.log(require("fs").realpathSync(process.execPath))\n' > "$cli"; chmod +x "$cli"
+  got="$(env -i HOME="$HOME" PATH="$path" "$cli" 2>/dev/null || true)"
+  [ "$got" != "$RT_NODE" ] || fail "$what: an npm-installed CLI ran on the bundled Node"
+  [ "$got" = "$want" ] || fail "$what: an npm-installed CLI ran on '${got:-nothing}', not ${want:-no node}"
+  echo "  $what: no runtime directory on PATH; an \`env node\` CLI runs on ${got:-no node (none on PATH)}"
+}
+
 check_daemon() {
   local bin="$PREFIX/bin/agend" port=19391 fpid exe launcher
   local -a run=()
@@ -116,6 +130,13 @@ check_daemon() {
   if [ -e "/proc/$fpid/exe" ]; then exe="$(readlink "/proc/$fpid/exe")"; else exe="$(ps -o comm= -p "$fpid")"; fi
   echo "  fleet pid $fpid runs $exe"
   [ "$(realpath_of "$exe")" = "$RT_NODE" ] || fail "the daemon runs $exe, not the bundled $RT_NODE"
+  # What the fleet hands its tmux server and every instance: its own environment.
+  local fleet_path
+  if [ -r "/proc/$fpid/environ" ]; then fleet_path="$(tr '\0' '\n' < "/proc/$fpid/environ" | sed -n 's/^PATH=//p')"
+  else fleet_path="$(ps eww -o command= -p "$fpid" | tr ' ' '\n' | sed -n 's/^PATH=//p' | head -1)"; fi
+  [ -n "$fleet_path" ] || fail "the fleet's PATH could not be read"
+  if [ -n "${NO_NODE_PATH:-}" ]; then check_cli_node "the fleet's environment" "$fleet_path" ""
+  else check_cli_node "the fleet's environment" "$fleet_path" "$(realpath_of "$SYS_NODE")"; fi
   ${run[@]+"${run[@]}"} "$bin" fleet stop --yes
   for _ in $(seq 60); do kill -0 "$fpid" 2>/dev/null || break; sleep 1; done
   if kill -0 "$fpid" 2>/dev/null; then cat "$WORK/fleet.out"; fail "the scratch fleet did not stop"; fi
@@ -125,17 +146,44 @@ check_daemon() {
 
 # What a service definition written by this install would start. CI checks the file's contents and paths only: it
 # cannot prove a systemd user service or launchd loads it at boot/login.
+# Prints word N of a unit file's ExecStart, split as systemd splits a command line.
+SYSTEMD_WORDS='
+  const line = (/^ExecStart=(.*)$/m.exec(require("fs").readFileSync(process.argv[1], "utf8")) || [])[1] || "";
+  const words = []; let i = 0;
+  while (i < line.length) {
+    while (i < line.length && /\s/.test(line[i])) i++;
+    if (i >= line.length) break;
+    let w = "", q = null;
+    for (; i < line.length; i++) {
+      const c = line[i];
+      if (q) { if (c === q) { q = null; continue; } if (c === "\\" && i + 1 < line.length) { w += line[++i]; continue; } w += c; }
+      else { if (/\s/.test(c)) break; if (c === "\"" || c === "\x27") { q = c; continue; } if (c === "\\" && i + 1 < line.length) { w += line[++i]; continue; } w += c; }
+    }
+    words.push(w.replace(/%%/g, "%").replace(/\$\$/g, "$"));
+  }
+  process.stdout.write(words[Number(process.argv[2])] || "");'
+
 check_service_files() {
-  local bin="$PREFIX/bin/agend" file argv0
-  step "agend install --no-activate writes a service that starts the bundled Node"
+  local bin="$PREFIX/bin/agend" file argv0 argv1 path entry
+  entry="$(realpath_of "$PREFIX/lib/node_modules/@songsid/agend/dist/cli.js")"
+  step "agend install --no-activate writes a service that names the bundled Node and starts this install"
   "$bin" install --no-activate
   if [ "$(uname)" = "Darwin" ]; then
     file="$HOME/Library/LaunchAgents/com.agend.fleet.plist"
     argv0="$(plutil -extract ProgramArguments.0 raw -o - "$file")"
+    argv1="$(plutil -extract ProgramArguments.1 raw -o - "$file")"
+    path="$(plutil -extract EnvironmentVariables.PATH raw -o - "$file")"
   else
     file="$HOME/.config/systemd/user/com.agend.fleet.service"
-    argv0="$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$file")"
+    # ExecStart's words as systemd splits them (quoted paths; %% and $$ undone).
+    argv0="$(node -e "$SYSTEMD_WORDS" "$file" 0)"
+    argv1="$(node -e "$SYSTEMD_WORDS" "$file" 1)"
+    path="$(sed -n 's/^Environment=PATH=//p' "$file")"
   fi
   cat "$file"
-  [ "$argv0" = "$RT_NODE" ] || fail "the service starts '$argv0', not the bundled $RT_NODE (C6, #1450 PR 3)"
+  [ "$argv0" = "$RT_NODE" ] || fail "the service starts '$argv0', not the bundled $RT_NODE"
+  [ "$(realpath_of "$argv1")" = "$entry" ] || fail "the service's CLI is '$argv1', not this install's $entry"
+  case ":$path:" in *"/agend-node-"*) fail "the service PATH contains the runtime directory: $path" ;; esac
+  check_cli_node "the service's environment" "$path" "$(realpath_of "$SYS_NODE")"
+  echo "  argv: $argv0 $argv1 fleet start"
 }

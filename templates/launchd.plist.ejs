@@ -6,8 +6,8 @@
     <string><%= label %></string>
     <key>ProgramArguments</key>
     <array>
-        <string><%= execPath %></string>
-        <string>fleet</string>
+<% for (const word of program) { %>        <string><%= word %></string>
+<% } %>        <string>fleet</string>
         <string>start</string>
     </array>
     <key>EnvironmentVariables</key>
