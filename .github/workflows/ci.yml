@@ -432,7 +432,7 @@ jobs:
   # Uses an isolated global prefix — never touches the host global npm.
   node20-rollback-smoke:
     runs-on: ubuntu-latest
-    needs: setup
+    needs: [setup, detect-changes]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
