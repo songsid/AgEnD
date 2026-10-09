@@ -113,6 +113,29 @@ describe("Connected only on evidence of a login", () => {
   });
 });
 
+describe("#1537 review r2: a past login is not lent to a stopped or restarting adapter", () => {
+  it("logged in, then told to stop (its bot.stop still running): Not running — then started again (onStart pending): not Connected; its own onStart: Connected", async () => {
+    const { fm, dir } = fleet([tg("primary-x"), tg("tg")]);
+    vi.stubEnv(TOKEN_ENV, "123456:test-only");
+    let onStart: ((info: { username: string; id: number }) => void) | undefined;
+    let adapter!: TelegramAdapter;
+    made.next = () => (adapter = realTelegram(dir, async (opts) => { onStart = opts.onStart; await new Promise(() => {}); }));
+    await fm.startSharedAdapter({ ...fm.fleetConfig, channels: [fm.fleetConfig.channels[1]] } as FleetConfig);
+    onStart!({ username: "control_bot", id: 42 });
+    expect(rowOf(fm, "tg").row, "control: logged in").toBe("connConnectedAs");
+    vi.spyOn(adapter.getBot(), "stop").mockImplementation(() => new Promise(() => {}));   // the stop is held
+    void adapter.stop();
+    expect(rowOf(fm, "tg")).toEqual({ status: "stopped", problem: null, row: "connNotRunning" });
+    onStart = undefined;
+    void adapter.start();                                                                     // a new start: its onStart held
+    await new Promise(r => setImmediate(r));
+    expect(rowOf(fm, "tg").row, "the old login is not this start's").not.toMatch(/^conn(ConnectedAs|ected)$/);
+    expect(rowOf(fm, "tg").status).toBe("retrying");
+    onStart!({ username: "control_bot", id: 42 });
+    expect(rowOf(fm, "tg").row, "control: its own onStart").toBe("connConnectedAs");
+  });
+});
+
 describe("rejected only from an explicit auth error", () => {
   it("real refusals are named; a 401 inside a URL or any transport detail is not", () => {
     expect(["An invalid token was provided.", "Error [TokenInvalid]: An invalid token was provided.", "Call to 'getMe' failed! (401: Unauthorized)", "401: Unauthorized"].map(isRejectedTokenError))

@@ -16736,13 +16736,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   private connectionStatus(id: string, state: { status: string; lastError?: string } | undefined, world: { botUserId?: string | null } | undefined):
     { status: string; problem?: "missing_intent" | "rejected" } {
-    const adapter = this.adapters.get(id) as (ChannelAdapter & { connectionEvidence?: () => { ready: boolean; authRejected: boolean } }) | undefined;
+    const adapter = this.adapters.get(id) as (ChannelAdapter & { connectionEvidence?: () => { ready: boolean; authRejected: boolean; stopped?: boolean } }) | undefined;
     const evidence = adapter?.connectionEvidence?.();
     const recorded = state?.status;
     const problem = evidence?.authRejected || (recorded !== "connected" && isRejectedTokenError(state?.lastError)) ? "rejected" as const
       : recorded !== "connected" && isDisallowedIntentsError(state?.lastError) ? "missing_intent" as const : undefined;
     let status: string;
-    if (!adapter) status = recorded === "retrying" || recorded === "failed" ? recorded : "stopped";
+    if (!adapter || evidence?.stopped) status = recorded === "retrying" || recorded === "failed" ? recorded : "stopped";   // gone, or told to stop
     else if (recorded === "retrying" || recorded === "failed") status = recorded;
     else if (evidence?.authRejected) status = "failed";
     else if (!world?.botUserId) status = "starting";                        // not logged in yet

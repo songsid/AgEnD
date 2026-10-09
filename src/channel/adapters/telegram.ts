@@ -698,9 +698,15 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private pollingReady = false;
   /** #1519 P6: the last polling error was Telegram refusing the token (401); cleared by the next successful start. */
   private authRejected = false;
-  connectionEvidence(): { ready: boolean; authRejected: boolean } { return { ready: this.pollingReady, authRejected: this.authRejected }; }
+  /** #1537 review: stop() was called (and no start() since). */
+  private stopped = false;
+  connectionEvidence(): { ready: boolean; authRejected: boolean; stopped: boolean } {
+    return { ready: this.pollingReady, authRejected: this.authRejected, stopped: this.stopped };
+  }
 
   async start(): Promise<void> {
+    // #1537 review: a new start borrows nothing from the last one — not ready until its own onStart, and not stopped.
+    this.pollingReady = false; this.stopped = false;
     this.queue.start();
     this._pruneInbox();
     this.cleanupTimer = setInterval(() => this._pruneInbox(), 60 * 60 * 1000);
@@ -776,6 +782,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async stop(): Promise<void> {
+    // #1537 review: the connection is not polling from the moment it is told to stop (before any await).
+    this.pollingReady = false; this.stopped = true;
     // Invalidate queued status work before any await. Re-created adapters must
     // not inherit proof from this object's pending requests.
     this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;
