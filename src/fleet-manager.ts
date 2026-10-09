@@ -173,6 +173,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { envFileKeys } from "./token-env-name.js";
+import { isDisallowedIntentsError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
@@ -16633,6 +16634,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           ? String(channel.options.general_channel_id)
           : null,
         status: state?.status ?? (world ? "starting" : "stopped"),
+        // #1519 P3: the gateway refused an intent (4014) — Message Content is off in the developer portal.
+        ...(state && state.status !== "connected" && isDisallowedIntentsError(state.lastError) ? { problem: "missing_intent" as const } : {}),
         ...(world ? { identity: { id: world.botUserId ?? null, username: world.botUsername ?? null } } : {}),
       };
     });

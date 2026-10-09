@@ -14,7 +14,8 @@ const tn = (k, ...v) => t(`settings.${k}`, ...v);
 export async function verifyBotToken(platform, token) {
   const res = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform, token }) })
     .catch(() => ({ ok: false, body: {} }));
-  if (res.ok && res.body && res.body.identity) return res.body.identity;
+  // A Discord bot's invite and portal page come with it (#1519 P3).
+  if (res.ok && res.body && res.body.identity) return { ...res.body.identity, invite: res.body.invite_url || null, portal: res.body.portal_url || null };
   return { valid: false, reason: (res.body && res.body.error) || tn("verifyFailed") };
 }
 

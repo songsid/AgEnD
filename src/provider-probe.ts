@@ -59,6 +59,26 @@ export async function listDiscordGuilds(token: string, doFetch = fetch): Promise
   } catch { return []; }
 }
 
+export interface DiscordTextChannel { id: string; name: string }
+
+/**
+ * #1519 P3: a server's text channels, as the bot sees them (GET /guilds/{id}/channels with its token), in Discord's
+ * order — for the General channel picker. A guild the bot is not in, or one it cannot list, is { ok: false }.
+ */
+export async function listDiscordTextChannels(token: string, guildId: string, doFetch = fetch): Promise<{ ok: true; channels: DiscordTextChannel[] } | { ok: false; error: string }> {
+  if (!/^\d{1,20}$/.test(guildId)) return { ok: false, error: "guild id must be numeric" };
+  try {
+    const res = await doFetch(`${DISCORD_API}/guilds/${guildId}/channels`, { headers: { Authorization: `Bot ${token}` } });
+    if (!res.ok) return { ok: false, error: `Discord replied ${res.status}` };
+    const rows = (await res.json()) as Array<{ id?: string; name?: string; type?: number; position?: number }>;
+    const text = (Array.isArray(rows) ? rows : []).filter(c => c && c.type === 0 && typeof c.id === "string" && typeof c.name === "string");
+    text.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    return { ok: true, channels: text.map(c => ({ id: c.id!, name: c.name! })) };
+  } catch (err) {
+    return { ok: false, error: redactProviderError(err, token) };
+  }
+}
+
 export async function verifyTelegramToken(token: string, doFetch = fetch): Promise<BotIdentity> {
   try {
     const res = await doFetch(`https://api.telegram.org/bot${token}/getMe`);

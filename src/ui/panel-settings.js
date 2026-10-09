@@ -378,7 +378,10 @@ function Bots({ ctx, search, openDialog }) {
   return html`${head}
     ${!rows.length ? html`<${Empty} icon="plug" title=${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")} />` : html`<div class="s-list">${rows.map(({ ch, i }) => {
       const users = (ch.access && ch.access.allowed_users) || [];
-      const token = (ctx.connections.find((c, j) => channelId(c, j) === channelId(ch, i)) || {}).token_present;
+      const meta = ctx.connections.find((c, j) => channelId(c, j) === channelId(ch, i)) || {};
+      const token = meta.token_present;
+      // #1519 P3: the gateway refused the Message Content intent (4014) — said as what to do, not "Problem".
+      const missingIntent = meta.problem === "missing_intent";
       // #1408 step 5: one line on a desktop — who it is, its facts in one clipped line (all of them in its tooltip),
       // then the cluster; on a phone the facts go under it. It no longer wraps fact by fact.
       const facts = [ch.bot_token_env || tn("noTokenEnv"),
@@ -386,13 +389,14 @@ function Bots({ ctx, search, openDialog }) {
         tn("accessTag", (ch.access && ch.access.mode) || "locked"),
         users.length ? `${users.slice(0, 3).join(", ")}${users.length > 3 ? ` +${users.length - 3}` : ""}` : tn("noAllowedUsers")].filter(Boolean).join(" · ");
       return html`<div key=${channelId(ch, i)} class="s-row s-conn">
-        <span class="s-ident"><span class=${`dot ${ctx.fleetUp ? "ok" : "bad"}`} title=${ctx.fleetUp ? tn("connected") : tn("problem")} aria-hidden="true"></span>
+        <span class="s-ident"><span class=${`dot ${ctx.fleetUp && !missingIntent ? "ok" : "bad"}`} title=${missingIntent ? tn("discordMissingIntent") : ctx.fleetUp ? tn("connected") : tn("problem")} aria-hidden="true"></span>
           <span class="s-name">${ch.type === "telegram" ? "Telegram" : "Discord"}</span>
           <span class=${`tag${i === 0 ? "" : " persona"}`}>${ch.id || chLabel(i)}</span></span>
         <span class="s-facts" title=${facts}>${facts}</span>
         <span class="s-actions">
           <span class=${`tag${token ? "" : " warn"}`}>${token ? tn("tokenConfigured") : tn("tokenMissing")}</span>
-          <span class=${`s-state ${ctx.fleetUp ? "ok" : "bad"}`}>${ctx.fleetUp ? tn("connected") : tn("problem")}</span>
+          ${missingIntent ? html`<span class="s-state bad" title=${tn("discordMissingIntent")}>${tn("discordMissingIntent")}</span>`
+            : html`<span class=${`s-state ${ctx.fleetUp ? "ok" : "bad"}`}>${ctx.fleetUp ? tn("connected") : tn("problem")}</span>`}
           <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
       </div>`;
     })}</div>`}

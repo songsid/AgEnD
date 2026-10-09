@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { discordInviteUrl } from "./discord-permissions.js";
 import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
 // The same probes the Settings wizard makes — one copy, one behaviour.
 import { awaitTelegramGroupStart, listDiscordGuilds, TelegramPollConflictError, verifyDiscordToken } from "./provider-probe.js";
@@ -428,21 +429,12 @@ async function addPersonaBot(rl: import("node:readline/promises").Interface): Pr
   }
 
   // Step 2: ensure the bot is in the primary guild (invite + re-check loop).
-  // Non-Administrator permission set covering what a reply/topic bot needs.
-  const PERMS = (
-    (1n << 10n) | // VIEW_CHANNEL
-    (1n << 11n) | // SEND_MESSAGES
-    (1n << 38n) | // SEND_MESSAGES_IN_THREADS (topics are threads)
-    (1n << 13n) | // MANAGE_MESSAGES (retire cancel buttons)
-    (1n << 16n) | // READ_MESSAGE_HISTORY
-    (1n << 6n)  | // ADD_REACTIONS
-    (1n << 31n)   // USE_APPLICATION_COMMANDS (slash)
-  ).toString();
+  // The one permission set (#1519 P3): the same as Settings' invite button; never Administrator.
   while (true) {
     const guilds = await listDiscordGuilds(token);
     if (guilds.some(g => g.id === primaryGroup)) { console.log(`  ${green("✓")} Bot is in the server (${primaryGroup}).`); break; }
     console.log(`  ${yellow("Bot is not in your server yet.")} Invite it:`);
-    if (appId) console.log(`  ${dim(`https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot%20applications.commands&permissions=${PERMS}`)}`);
+    if (appId) console.log(`  ${dim(discordInviteUrl(appId))}`);
     else console.log(`  ${dim("https://discord.com/developers/applications → OAuth2 → URL Generator (scopes: bot, applications.commands)")}`);
     const again = (await rl.question("  Press Enter after inviting (or type 'skip' to abort): ")).trim();
     if (again.toLowerCase() === "skip") { console.log("  Cancelled."); return; }
