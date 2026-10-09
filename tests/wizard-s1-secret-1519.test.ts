@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import type { FleetConfig } from "../src/config.js";
+import type { FleetConfig } from "../src/types.js";
 import { draftQuickstart, planQuickstart } from "../src/quickstart-api.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
