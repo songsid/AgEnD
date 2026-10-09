@@ -25,7 +25,8 @@ import { gatewayRequestContext } from "./web-request-context.js";
  * fleet config and tmux is invoked via execFile (no shell) to prevent command
  * injection.
  */
-import { sendPanelHtml } from "./web-host-guard.js";
+import { isViewPage, shellRoute } from "./web-shell-routes.js";
+import { serveAppShell, type AppShellContext } from "./web-api.js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +59,8 @@ export interface ViewApiContext {
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   getUiStatus(): unknown;
   resolveInstanceModel?(name: string): { model: string };
+  /** #1306: the preview origin chosen for a signed-in shell load (the same hook web-api.ts uses). */
+  previewForUi?: AppShellContext["previewForUi"];
 }
 
 interface ProfileRow {
@@ -188,7 +191,7 @@ export function parsePaneSize(out: string): PaneSize | null {
 /** True if the path belongs to the view feature (so the caller can skip the
  * global web-token gate and let this module do its own token checks). */
 export function isViewPath(path: string): boolean {
-  return path === "/view"
+  return isViewPage(path)
     || path.startsWith("/api/pane/")
     || path === "/api/profiles"
     || path.startsWith("/api/profile/")
@@ -227,14 +230,15 @@ export function handleViewRequest(
   // added later cannot forget it.
   if (!isRead && denied()) return true;
 
-  // ── GET /view — static page ──
-  if (method === "GET" && path === "/view") {
-    try {
-      const html = readFileSync(join(__dirname, "ui", "view.html"), "utf-8");
-      sendPanelHtml(res, html);
-    } catch {
-      json(res, 500, { error: "view.html not found" });
-    }
+  // ── GET /view, /view/<name> — the app shell, on its View panel (#1408 step 2) ──
+  // A signed-in browser gets the whole app. Anyone else got here because reads are open (`web.view_access: open`, not
+  // the public link): they get the View-only shell — the same look, with nothing that needs a session in it.
+  if (isViewPage(path)) {
+    const m = shellRoute(method, path);
+    if (!m) { json(res, 405, { error: "method not allowed" }); return true; }
+    if (m.kind === "malformed") { json(res, 400, { error: "invalid instance name" }); return true; }
+    const signedIn = verdict().kind !== "reject";
+    serveAppShell(req, res, ctx, signedIn ? "full" : "view-only");
     return true;
   }
 

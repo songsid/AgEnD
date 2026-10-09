@@ -316,7 +316,7 @@ instances:
 
 升級後第一次啟動時，AgEnD 會讀取最近三十天的活動，列出實際用過 worker 已拿不到之工具的 instance，以及使用次數。它絕不會修改你的設定：哪些 agent 負責協調，是你怎麼組織 fleet 的決定；明確寫上的 `tool_set: full` 也會原封不動保留。
 
-**目前只能透過 Settings 或直接編輯 `fleet.yaml` 設定**：General 的 `update_instance_config` 還沒有 `tool_set` 欄位，從那裡送出的值會被丟掉。
+**`tool_set` 只能透過 Settings 或直接編輯 `fleet.yaml` 設定。** 透過 General 的 `update_instance_config` 傳入 `tool_set` 會收到權限邊界錯誤（#804/#814）——任何 coordinator 設定檔的 agent 都能呼叫的 MCP 工具，不能被用來擴大設定檔的權限。
 
 ## 權限系統 (Permission system)
 
@@ -670,7 +670,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 ## Codex session 恢復 (Codex session resume)
 
-每個 Codex instance 恢復的都是**自己的**對話。啟動時，AgEnD 以唯讀方式讀取 Codex 共用的 session 資料庫（`~/.codex/state_5.sqlite`），挑出記錄的工作目錄和 instance 完全相同的最新互動 session，再執行 `codex resume <id>`。AgEnD 不用 `codex resume --last`：從 Codex 0.157 起，它會挑整個 git repository 裡最新的 session，於是同一個 repo 不同 worktree 上的 instance 會互相搶走對方的 session（#984）。
+每個 Codex instance 恢復的都是**自己的**對話。啟動時，AgEnD 以唯讀方式讀取 Codex 共用的 session 資料庫（`$CODEX_HOME/state_5.sqlite`，預設值：`~/.codex`），挑出記錄的工作目錄和 instance 完全相同的最新互動 session，再執行 `codex resume <id>`。AgEnD 不用 `codex resume --last`：從 Codex 0.157 起，它會挑整個 git repository 裡最新的 session，於是同一個 repo 不同 worktree 上的 instance 會互相搶走對方的 session（#984）。
 
 | 情況 | 啟動方式 |
 |---|---|
@@ -679,7 +679,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 | 讀不到 session 資料庫，且同一個 git repo 裡有其他 Codex instance | 新對話，並在該 instance 的 topic 發通知 |
 | 讀不到 session 資料庫，且 repo 裡沒有其他 Codex instance | `codex resume --last`，並發通知 |
 
-AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 `~/.codex`，所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
+AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
 
 **`~/.codex` 在哪裡。** 上面提到的共用 Codex home，在 fleet 的環境有設定 `$CODEX_HOME` 時就是它，否則就是 `~/.codex`。每個 instance 本身則以 `~/.agend/cx/<hash>/` 底下的私有 `CODEX_HOME` 執行：裡面有它自己的 `config.toml`（你的設定，去掉其他 instance 的 AgEnD MCP 項目，再加上它自己的），登入資訊、session 和快取則連回共用的 home。
 
@@ -1043,3 +1043,11 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 - critical 解除後，啟動速度會在 30 秒內慢慢回升。
 
 `/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢）；在 Linux 上，記憶體壓力也會讓它標成 degraded，並發出 fleet 通知，冷卻時間 10 分鐘（升級到 critical 會立刻通知）。在 **macOS** 上，從 #1257 起樣本只寫進日誌：不會放慢或擋下任何東西、不發通知，`/health` 也不回報壓力，因為 macOS 的可用記憶體和 swap 數字，在記憶體充裕的機器上也會觸發警示。詳見英文版 [memory-pressure.md](memory-pressure.md)。
+
+## 「需要你處理」收件匣（#1386 / #1398）
+
+每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。`/ui` 的側欄標記與「需要你處理」面板預計在後續步驟加入。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
+
+## 網頁應用程式外殼（#1408，步驟 1）
+
+`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。`/settings` 仍是獨立的全頁載入頁面；將其遷入外殼，以及加入「需要你處理」面板和側欄標記，預計在後續步驟完成。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。

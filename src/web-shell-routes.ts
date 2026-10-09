@@ -6,8 +6,9 @@
  * - the public link's manifest (public-web-gateway.ts) admits these GETs.
  *
  * Client routes take only first segments the server's data routes never use (chat, fleet), so a page and a data
- * read can never be confused (a test checks both directions). /view and /settings are still pages of their own in
- * step 1; they are navigations here so the sign-in fallback keeps covering them.
+ * read can never be confused (a test checks both directions). /view and /view/<name> are the View panel (step 2;
+ * view-api.ts serves them, open to anyone when `web.view_access` is open). /settings is still a page of its own until
+ * step 3; it is a navigation here so the sign-in fallback keeps covering it.
  */
 
 export const FLEET_TABS = ["tasks", "schedules", "teams", "config"] as const;
@@ -15,7 +16,8 @@ export type FleetTab = typeof FLEET_TABS[number];
 
 export type ShellRoute =
   | { panel: "chat"; instance: string | null }
-  | { panel: "fleet"; tab: FleetTab };
+  | { panel: "fleet"; tab: FleetTab }
+  | { panel: "view"; instance: string | null };
 
 /** What a path is: the app shell (with its route), a malformed shell path (400), or not the shell at all (null). */
 export type ShellMatch = { kind: "shell"; route: ShellRoute } | { kind: "malformed" } | null;
@@ -50,20 +52,35 @@ export function shellRoute(method: string, path: string): ShellMatch {
     const name = decodeSegment(chat[1]!);
     return name !== null && isSafeInstanceName(name) ? { kind: "shell", route: { panel: "chat", instance: name } } : { kind: "malformed" };
   }
+  if (path === "/view") return { kind: "shell", route: { panel: "view", instance: null } };
+  const view = /^\/view\/([^/]+)$/.exec(path);
+  if (view) {
+    const name = decodeSegment(view[1]!);
+    return name !== null && isSafeInstanceName(name) ? { kind: "shell", route: { panel: "view", instance: name } } : { kind: "malformed" };
+  }
   // `/ui/chat` with nothing after it, or more than one segment: not a page (404 like any unknown path).
   return null;
 }
 
+/** The View panel's pages: what view-api.ts serves, and what `web.view_access: open` lets anyone read. */
+export function isViewPage(path: string): boolean {
+  const m = shellRoute("GET", path);
+  return m !== null && (m.kind === "malformed" ? path.startsWith("/view/") : m.route.panel === "view");
+}
+
 /**
- * A browser navigation to a page of the web app: the shell's routes, plus /view and /settings (still their own pages
- * in step 1). The gate answers these, signed out, with the sign-in page instead of a JSON 401.
+ * A browser navigation to a page of the web app: the shell's routes, plus /settings (still its own page until step 3).
+ * The gate answers these, signed out, with the sign-in page instead of a JSON 401.
  */
 export function isWebPageNavigation(path: string): boolean {
-  if (path === "/view" || path === "/settings") return true;
+  if (path === "/settings") return true;
   return shellRoute("GET", path) !== null;
 }
 
 /** The app's client-side paths, for links the server builds (#1386 links, the tour). */
 export function chatPath(instance: string): string {
   return `/ui/chat/${encodeURIComponent(instance)}`;
+}
+export function viewPath(instance: string): string {
+  return `/view/${encodeURIComponent(instance)}`;
 }

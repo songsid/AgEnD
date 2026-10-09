@@ -2,7 +2,7 @@
  * #931: with the issue's exact user config — a quoted-key status_line and no
  * Context item — the real Codex CLI's idle pane passes every readiness proof.
  *
- * Opt-in (`AGEND_CODEX_E2E=1`, codex-cli 0.157.x on PATH): throwaway
+ * Opt-in (`AGEND_CODEX_E2E=1`, codex-cli 0.157.x, 0.160.x or 0.162.x on PATH): throwaway
  * AGEND_HOME / CODEX_HOME, a fresh session (no resume), a private tmux socket,
  * and no prompt, so no model turn is spent. The login
  * (`AGEND_CODEX_E2E_AUTH`, default ~/.codex/auth.json) is symlinked, never
@@ -22,7 +22,7 @@ function codexVersion(): string | null {
   } catch { return null; }
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
-const enabled = !!version && /\b0\.157\.\d+\b/.test(version) && existsSync(AUTH);
+const enabled = !!version && /\b0\.(?:157|160|162)\.\d+\b/.test(version) && existsSync(AUTH);
 
 let root = "";
 let socket = "";

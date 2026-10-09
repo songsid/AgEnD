@@ -339,9 +339,7 @@ with the counts. It never edits your config: which agents coordinate is a
 statement about how your fleet is organised, and an explicit `tool_set: full`
 stays exactly as you wrote it.
 
-**Today this can only be set through Settings or by editing `fleet.yaml`** —
-General's `update_instance_config` has no `tool_set` field yet, so a value sent
-that way is dropped.
+**`tool_set` can only be set through Settings or by editing `fleet.yaml`.** Sending `tool_set` through General's `update_instance_config` is refused with a privilege-boundary error (#804/#814) — an MCP tool that any coordinator-profile agent can call must not be able to widen profiles.
 
 ## Permission system
 
@@ -697,7 +695,7 @@ Configure `mirror_topic_id` in `fleet.yaml` to designate a Telegram topic for ob
 
 ## Codex session resume
 
-Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`~/.codex/state_5.sqlite`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
+Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`$CODEX_HOME/state_5.sqlite`, default: `~/.codex`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
 
 | Situation | Launch |
 |---|---|
@@ -706,7 +704,7 @@ Each Codex instance resumes **its own** conversation. At launch AgEnD reads Code
 | Session database unreadable, another Codex instance shares the git repo | a new conversation, plus a notice in the instance's topic |
 | Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
 
-AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared `~/.codex`, so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
+AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared Codex home (`$CODEX_HOME`, default: `~/.codex`), so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
 
 **Where `~/.codex` is.** Everywhere above, the shared Codex home is `$CODEX_HOME` when that is set in the fleet's environment, and `~/.codex` otherwise. Each instance itself runs with a private `CODEX_HOME` under `~/.agend/cx/<hash>/`: its own `config.toml` (your settings without other instances' AgEnD MCP entries, plus its own), with the login, sessions and caches linked back to the shared home.
 
@@ -1078,3 +1076,11 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 - after a critical hold clears, starts ramp back up slowly for 30 seconds.
 
 `/health` always carries a `hostMemory` block (level, RAM and swap, trend); on Linux, pressure also marks it degraded, and a fleet notice is sent with a 10-minute cooldown (an escalation to critical is sent at once). On **macOS** the sample is written to the log only since #1257: nothing is slowed or held, no notice is sent, and `/health` does not report pressure, because macOS's free-memory and swap numbers alerted on machines with plenty of memory. Details: [memory-pressure.md](memory-pressure.md).
+
+## "Needs you" inbox (#1386 / #1398)
+
+A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. The sidebar badge and Needs you panel in `/ui` are planned for a later step. Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
+
+## Web app shell (#1408, step 1)
+
+`/ui` is rebuilt as a single-page Preact + htm app (no build step; Preact and htm are bundled alongside the source at `src/ui/shared/vendor/`). Step 1 delivers the **Chat** panel at `/ui/chat/<instance>` and the **Fleet** panel at `/ui/fleet`. Step 2 delivers the **View** panel at `/view` and `/view/<instance>`. Typography and layout are modelled on ChatGPT's web UI (design language only — no OpenAI code or assets). The chat thread remains a keyed DOM renderer mounted by a Preact component. `/settings` is still a full-load page; migrating it and adding the Needs you panel and sidebar badge are planned for later steps. Design: [docs/design/1408-app-shell.md](design/1408-app-shell.md).
