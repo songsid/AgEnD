@@ -301,7 +301,8 @@ describe("the service-level commands, behind inert stubs", () => {
     for (const command of ["systemctl", "npm", "sudo", "launchctl", "agend", "loginctl", "journalctl"]) {
       const path = join(inert, "bin", command);
       // npm also answers `prefix -g` (the scratch dir): the update locks that prefix before it installs (#1450 C1).
-      const prefixAnswer = command === "npm" ? `[ "$1 $2" = "prefix -g" ] && { echo '${inert}'; exit 0; }\n` : "";
+      // …and `root -g` (nothing installed there): the update copies any installed package aside first (#1450 C6).
+      const prefixAnswer = command === "npm" ? `[ "$1 $2" = "prefix -g" ] && { echo '${inert}'; exit 0; }\n[ "$1 $2" = "root -g" ] && { echo '${join(inert, "lib", "node_modules")}'; exit 0; }\n` : "";
       writeFileSync(path, `#!/bin/sh\n${prefixAnswer}echo "${command} $@ ORIGIN=$AGEND_RESTART_ORIGIN" >> "${join(inert, "calls")}"\nexit 1\n`);
       chmodSync(path, 0o755);
     }

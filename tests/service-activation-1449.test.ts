@@ -10,6 +10,7 @@ import {
   type ActivationDeps, type ServiceManager, type TupleDeps, type VerifiedTarget,
 } from "../src/service-activation.js";
 import type { CommandResult } from "../src/update-install.js";
+import { systemdWords } from "../src/service-installer.js";
 
 const PKG = "/usr/lib/node_modules/@songsid/agend";
 const verified: VerifiedTarget = { dir: PKG, bin: `${PKG}/dist/cli.js`, entry: `${PKG}/dist/cli.js`, node: "/opt/node22/bin/node" };
@@ -177,6 +178,48 @@ describe("systemd: refresh → daemon-reload → the LOADED unit (D-Bus) must st
     };
     const read = readLoadedUnit(run, true, "com.agend.fleet");
     expect(read.ok && read.unit.tuple.argv).toEqual(["/usr/bin/agend", "fleet start", "x y"]);
+  });
+});
+
+describe("#1450 C6: a systemd failure before the restart restores the unit (reloaded, proven) and the package", () => {
+  const unitPath = "/home/u/.config/systemd/user/com.agend.fleet.service";
+  const OLD = `[Service]\nExecStart=/opt/node22/bin/node ${PKG}/dist/cli.js fleet start\nEnvironment=PATH=/opt/node22/bin:/usr/bin:/bin\n`;
+  const NEW_WRONG = `[Service]\nExecStart=/opt/node22/bin/node ${PKG}/dist/agent-cli.js fleet start\nEnvironment=PATH=/opt/node22/bin:/usr/bin:/bin\n`;
+  /** A systemd whose LOADED ExecStart is whatever the unit file says at the last successful daemon-reload. */
+  function systemd(reloads: Array<number>) {
+    const files: Record<string, string> = { [unitPath]: OLD };
+    let loadedText = OLD;
+    let n = 0;
+    const exec = () => {
+      const argv = systemdWords(/^ExecStart=(.*)$/m.exec(loadedText)![1]!);
+      return { stdout: JSON.stringify({ type: "a(sasbttttuii)", data: [[argv[0], argv, false, 0, 0, 0, 0, 0, 0, 0]] }) };
+    };
+    const answers: Array<[RegExp, Partial<CommandResult> | (() => Partial<CommandResult>)]> = [
+      [/daemon-reload/, () => { const status = reloads[n++] ?? 0; if (status === 0) loadedText = files[unitPath]!; return { status }; }],
+      [/Service ExecStart$/, exec],
+      ...busFor({ argv: [] }).filter(([re]) => !/ExecStart/.test(String(re))),
+    ];
+    const m = manager(answers, files, [unitPath, NEW_WRONG]);
+    const restored: string[] = [];
+    m.deps.restorePackage = () => { restored.push("package"); m.calls.push("restore-package"); return "The previous package (v2.1.12) is back in place"; };
+    return { m, restored };
+  }
+
+  it("the refreshed unit does not verify: the preimage goes back, is reloaded and loaded, and the package is restored", () => {
+    const { m, restored } = systemd([0, 0]);
+    const outcome = activateService({ kind: "systemd", unit: "com.agend.fleet", user: true, unitPath }, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("the previous com.agend.fleet is back and loaded; The previous package (v2.1.12) is back in place") });
+    expect(m.files[unitPath]).toBe(OLD);
+    expect(m.calls.filter(c => c === "systemctl --user daemon-reload")).toHaveLength(2);
+    expect(restored).toEqual(["package"]);
+    expect(m.restarts()).toBe(0);
+  });
+
+  it("the restore cannot be reloaded: said so, never called loaded", () => {
+    const { m } = systemd([0, 1]);                         // the refresh reloads; the restore's reload fails
+    const outcome = activateService({ kind: "systemd", unit: "com.agend.fleet", user: true, unitPath }, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("back on disk but systemd does not show it loaded") });
+    expect(m.files[unitPath]).toBe(OLD);
   });
 });
 

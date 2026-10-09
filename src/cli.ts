@@ -1451,7 +1451,7 @@ program
      * verified package, then restart through the verified binary — never through whatever invoked this command
      * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
      */
-    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string }, viaNvm: boolean): Promise<void> => {
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null } }, viaNvm: boolean): Promise<void> => {
       const { newAgendInvocation } = await import("./update-install.js");
       const { activateService } = await import("./service-activation.js");
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
@@ -1460,10 +1460,17 @@ program
       // The authoritative manager, chosen as `agend restart` chooses: system unit > user unit / launchd plist > none.
       const systemUnit = getSystemServicePath();
       const ownService = systemUnit ? null : getServicePath();
-      const manager = systemUnit ? { kind: "systemd" as const, unit: "agend", user: false }
+      const manager = systemUnit ? { kind: "systemd" as const, unit: "agend", user: false, unitPath: systemUnit }
         : ownService && detectPlatform() === "macos" ? { kind: "launchd" as const, label: "com.agend.fleet", plistPath: ownService, domain: `gui/${process.getuid?.() ?? 501}` }
-        : ownService ? { kind: "systemd" as const, unit: "com.agend.fleet", user: true }
+        : ownService ? { kind: "systemd" as const, unit: "com.agend.fleet", user: true, unitPath: ownService }
         : { kind: "detached" as const };
+      // C6: a failure before the fleet runs the new install puts the previous package back too (taken before npm).
+      const { restorePackagePreimage, prunePreimages } = await import("./package-preimage.js");
+      const rollback = verified.rollback;
+      const restorePackage = rollback?.preimage ? () => {
+        const back = restorePackagePreimage(rollback.root, rollback.prefix, rollback.preimage!);
+        return back.ok ? `The previous package (v${rollback.preimage!.version}) is back in place` : `The previous package could NOT be put back: ${back.reason}`;
+      } : undefined;
       const capture = (command: string, args: string[]) => {
         const result = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
         return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
@@ -1488,7 +1495,10 @@ program
           restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
         },
         log: message => console.log(message),
+        restorePackage,
       });
+      // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
+      if (outcome.ok && rollback) prunePreimages(rollback.prefix, rollback.preimage);
       // The refresh above (`install --no-activate`) records a launchd plan; this activation consumed it, whatever it
       // came to — never leave one for a later `agend restart` to act on.
       if (manager.kind === "launchd") {
@@ -1606,6 +1616,12 @@ program
     }
 
     // ── Install, then verify, then clean up (#1446): nothing is removed before the new install is proven ──
+    // #1450 C6: npm replaces THIS package in place. Everything the rest of the update runs — verification, rollback,
+    // service work — is loaded now, before npm; a later import would load the NEW package's files into this process.
+    await Promise.all([
+      import("./service-activation.js"), import("./service-installer.js"), import("./service-plan.js"),
+      import("./restart-guard.js"), import("./package-preimage.js"), import("./install-lock.js"), import("./update-check.js"),
+    ]);
     const { runUpdateInstall } = await import("./update-install.js");
     // #1450 C1: this update owns the npm prefix from before npm runs until it settles (verify, service, restart) —
     // released when this process exits, however it exits; a crash leaves a lock the next update reclaims.
@@ -1617,7 +1633,7 @@ program
     process.once("exit", () => releaseLock());
     const installed = runUpdateInstall(
       {
-        pkg, targetVersion, viaNvm: needsSudo, nvmSh,
+        pkg, targetVersion, viaNvm: needsSudo, nvmSh, rollback: true,
         lock: prefix => {
           const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, {
             pid: process.pid, processStart: admission.processStart, newToken: () => randomBytes(16).toString("hex"),

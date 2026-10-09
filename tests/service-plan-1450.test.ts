@@ -117,6 +117,7 @@ describe("the planned activation itself: one bootout + bootstrap; recovery uses 
       { bin: ENTRY, entry: ENTRY, node: RT, dir: PKG }, {
         ...w.deps, readFirstLine: () => null, isExecutable: () => false,
         refresh: () => { throw new Error("path 2 never refreshes"); }, restart: () => {}, log: () => {}, launchdPreimage: plan.preimage.plist,
+        restorePackage: () => { w.calls.push("restore-package"); return "The previous package is back in place"; },
       });
     return { w, outcome };
   }
@@ -133,5 +134,16 @@ describe("the planned activation itself: one bootout + bootstrap; recovery uses 
     expect(outcome).toMatchObject({ ok: false, stopped: true, message: expect.stringContaining("Rolled back to the previous job, which is running") });
     expect(w.files[PLIST]).toBe(plist(OLD_ARGS));
     expect(w.calls.filter(c => /bootstrap/.test(c))).toHaveLength(2);
+    // The previous job's plist names files inside the package: the package is back BEFORE that job is bootstrapped.
+    const restoredAt = w.calls.indexOf("restore-package");
+    const rebootAt = w.calls.map((c, i) => [c, i] as const).filter(([c]) => /bootstrap/.test(c))[1]![1];
+    expect(restoredAt).toBeGreaterThan(-1);
+    expect(restoredAt).toBeLessThan(rebootAt);
+    expect(outcome).toMatchObject({ message: expect.stringContaining("The previous package is back in place") });
+  });
+  it("success: the package is never restored", () => {
+    const { w, outcome } = activate(printed(NEW_ARGS, 900), {});
+    expect(outcome.ok).toBe(true);
+    expect(w.calls).not.toContain("restore-package");
   });
 });

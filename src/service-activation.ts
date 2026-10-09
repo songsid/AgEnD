@@ -10,6 +10,7 @@
  * Every manager command goes through an injected runner, so the sequences are testable without systemd or launchd.
  */
 import type { CommandResult } from "./update-install.js";
+import { systemdWords } from "./service-installer.js";
 
 /** What a manager would execute: the program, its full argv (argv[0] included), and the environment it sets. */
 export interface ActivationTuple {
@@ -206,7 +207,7 @@ export function tupleStartsVerified(
 }
 
 export type ServiceManager =
-  | { kind: "systemd"; unit: string; user: boolean }
+  | { kind: "systemd"; unit: string; user: boolean; /** The unit file: its preimage is put back on a failure (C6). */ unitPath?: string }
   | { kind: "launchd"; label: string; plistPath: string; domain: string }
   | { kind: "detached" };
 
@@ -224,6 +225,12 @@ export interface ActivationDeps extends TupleDeps {
    * is the recorded preimage plist, not the file. With this set, `refresh` is not called.
    */
   launchdPreimage?: string;
+  /**
+   * #1450 C6: put the previous PACKAGE back (its preimage, taken before npm). Called on every failure before the fleet
+   * runs the new install — and, on launchd, BEFORE the previous job is bootstrapped again, since that job's plist names
+   * files inside the package. Returns one line for the outcome.
+   */
+  restorePackage?(): string;
 }
 
 export type ActivationOutcome =
@@ -245,24 +252,33 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
 
   if (manager.kind === "systemd") {
     const scope = manager.user ? ["--user"] : [];
+    const preimage = manager.unitPath ? deps.readFile(manager.unitPath) : null;
+    // C6 step 5, a failure before the restart: the unit preimage goes back and is reloaded, and the LOADED ExecStart
+    // must be the preimage's again; then the package preimage. The old fleet was never stopped.
+    const fail = (why: string): ActivationOutcome => {
+      const restored: string[] = [];
+      if (preimage !== null && manager.unitPath) {
+        deps.writeFile(manager.unitPath, preimage);
+        const reloaded = deps.run("systemctl", [...scope, "daemon-reload"]);
+        const back = reloaded.status === 0 ? readLoadedUnit(deps.run, manager.user, manager.unit) : null;
+        const want = systemdWords(/^ExecStart=(.*)$/m.exec(preimage)?.[1] ?? "");
+        restored.push(back?.ok && sameArgs(back.unit.tuple.argv, want)
+          ? `the previous ${manager.unit} is back and loaded`
+          : `the previous ${manager.unit} is back on disk but systemd does not show it loaded (run systemctl${manager.user ? " --user" : ""} daemon-reload)`);
+      }
+      if (deps.restorePackage) restored.push(deps.restorePackage());
+      return { ok: false, stopped: false, message: `  ✗ ${why}. Not restarting the fleet.${restored.length ? ` ${restored.join("; ")}.` : ""}` };
+    };
     const refreshed = deps.refresh();
     if (refreshed.status !== 0) deps.log(`  ⚠ Service file refresh failed: ${(refreshed.stderr || refreshed.stdout).trim()}`);
     const reload = deps.run("systemctl", [...scope, "daemon-reload"]);
-    if (reload.status !== 0) {
-      return { ok: false, stopped: false, message: `  ✗ systemctl${manager.user ? " --user" : ""} daemon-reload failed, so systemd still runs the old definition. Not restarting the fleet.` };
-    }
+    if (reload.status !== 0) return fail(`systemctl${manager.user ? " --user" : ""} daemon-reload failed, so systemd still runs the old definition`);
     const read = readLoadedUnit(deps.run, manager.user, manager.unit);
-    if (!read.ok) {
-      return { ok: false, stopped: false, message: `  ✗ Cannot prove what systemd will run for ${manager.unit}: ${read.reason}. Not restarting the fleet.` };
-    }
+    if (!read.ok) return fail(`Cannot prove what systemd will run for ${manager.unit}: ${read.reason}`);
     const loaded = read.unit;
-    if (loaded.needDaemonReload) {
-      return { ok: false, stopped: false, message: `  ✗ systemd still needs a daemon-reload for ${manager.unit} (the loaded definition is not the file). Not restarting the fleet.` };
-    }
+    if (loaded.needDaemonReload) return fail(`systemd still needs a daemon-reload for ${manager.unit} (the loaded definition is not the file)`);
     const match = tupleStartsVerified(loaded.tuple, verified, SYSTEMD_DEFAULT_PATH, deps);
-    if (!match.ok) {
-      return { ok: false, stopped: false, message: `  ✗ systemd's loaded ${manager.unit} does not start the verified install: ${match.reason}. Not restarting the fleet; fix the unit (agend install) and run agend restart.` };
-    }
+    if (!match.ok) return fail(`systemd's loaded ${manager.unit} does not start the verified install: ${match.reason}`);
     deps.restart();
     return { ok: true, via: "restart" };
   }
@@ -308,16 +324,17 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   const onDisk = deps.readFile(manager.plistPath);
   const diskTuple = onDisk ? parsePlist(onDisk) : null;
   const diskMatch = diskTuple ? tupleStartsVerified(diskTuple, verified, LAUNCHD_DEFAULT_PATH, deps) : { ok: false as const, reason: "the plist cannot be read" };
+  const packageBack = () => (deps.restorePackage ? ` ${deps.restorePackage()}.` : "");
   if (!diskMatch.ok) {
     if (preimage !== null && onDisk !== preimage) deps.writeFile(manager.plistPath, preimage);
-    return { ok: false, stopped: false, message: `  ✗ ${manager.plistPath} does not start the verified install: ${diskMatch.reason}. Restored the previous plist; not restarting the fleet.` };
+    return { ok: false, stopped: false, message: `  ✗ ${manager.plistPath} does not start the verified install: ${diskMatch.reason}. Restored the previous plist; not restarting the fleet.${packageBack()}` };
   }
   if (loadedBefore) {
     const out = deps.run("launchctl", ["bootout", target]);
     if (!completed(out) || out.status !== 0) {
       // The old job may well still be running: leave it, put its plist back.
       if (preimage !== null) deps.writeFile(manager.plistPath, preimage);
-      return { ok: false, stopped: false, message: `  ✗ launchctl bootout of ${manager.label} did not complete (${out.signal ? `killed by ${out.signal}` : `exit ${out.status}`}). Restored the previous plist; not activating.` };
+      return { ok: false, stopped: false, message: `  ✗ launchctl bootout of ${manager.label} did not complete (${out.signal ? `killed by ${out.signal}` : `exit ${out.status}`}). Restored the previous plist; not activating.${packageBack()}` };
     }
   }
   const boot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
@@ -330,6 +347,8 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   // running before, and only counts as restored when launchd runs exactly its tuple.
   deps.run("launchctl", ["bootout", target]);
   if (preimage !== null) deps.writeFile(manager.plistPath, preimage);
+  // The previous job's plist names files inside the package: the package goes back BEFORE that job is bootstrapped.
+  const pkgLine = packageBack();
   let recovery = "No job was running before; the previous plist is back on disk.";
   if (loadedBefore && preimageTuple) {
     const reboot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
@@ -343,7 +362,7 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     : !printed ? "launchctl print of the new job did not complete"
     : !printed.pid || printed.state !== "running" ? "the job did not start"
     : `launchd loaded a job that ${loadedMatch && !loadedMatch.ok ? loadedMatch.reason : "cannot be read"}`;
-  return { ok: false, stopped: loadedBefore !== null, message: `  ✗ Activating the new launchd job failed: ${why}. ${recovery}` };
+  return { ok: false, stopped: loadedBefore !== null, message: `  ✗ Activating the new launchd job failed: ${why}. ${recovery}${pkgLine}` };
 }
 
 /** Two launchd jobs are the same when their program and argv are identical and every variable the plist sets matches. */
