@@ -7,12 +7,22 @@ import { Toasts } from "./ui-toast.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, routeKey } from "./app-route.js";
+import { chatPath, viewPath, routeKey } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
-export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), footer: [], keyboard: false, dialog: null });
+export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), footer: [], keyboard: false, dialog: null, side: null });
+
+/**
+ * The mounted panel's own sidebar section, in place of the instance list (View's roster: its groups, filter and order,
+ * #1408 step 2). Returns the function that takes it away; take it through the panel's lease.
+ */
+export function setSideSection(Component) {
+  const entry = { Component };
+  shellStore.set({ side: entry });
+  return () => { if (shellStore.get().side === entry) shellStore.set({ side: null }); };
+}
 
 /** An app-level dialog (New instance): rendered by the shell until closed, whatever panel is showing. */
 export function showDialog(Component, props = {}) { shellStore.set({ dialog: { Component, props } }); }
@@ -89,10 +99,34 @@ function InstanceRow({ i, active, exec, awaiting }) {
       <span class="sr-only">${statusLabel(i, exec, awaiting)}</span></span></a></li>`;
 }
 
-function Sidebar({ route, onNewInstance }) {
+/** Sign in, and come back here afterwards (the sign-in page accepts only the app's own pages). */
+export function signInHref() {
+  const here = typeof location !== "undefined" ? location.pathname + location.search : "/view";
+  return `/signin?next=${encodeURIComponent(here)}`;
+}
+
+function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
   const current = route && route.panel === "chat" ? route.instance : null;
+  const on = (panel) => !!route && route.panel === panel;
+  const navLink = (panel, href, icon, label) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
+    aria-current=${on(panel) ? "page" : undefined} onClick=${closeDrawer}><${Icon} name=${icon} /><span>${label}</span></a>`;
+  // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
+  if (viewOnly) {
+    return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
+      <div class="side-head">
+        <a class="brand" href="/view" onClick=${closeDrawer}>${t("app.brand")}</a>
+        <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
+      </div>
+      <nav class="side-nav" aria-label=${t("app.menu")}>${navLink("view", "/view", "view", t("app.view"))}</nav>
+      ${shell.side ? html`<${shell.side.Component} />` : html`<div class="side-section"></div>`}
+      <div class="side-foot">
+        <${Prefs} />
+        <a class="side-row" href=${signInHref()}><${Icon} name="user" /><span>${t("app.signIn")}</span></a>
+      </div>
+    </aside>`;
+  }
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
@@ -100,15 +134,15 @@ function Sidebar({ route, onNewInstance }) {
       <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="edit" /></button>
     </div>
     <nav class="side-nav" aria-label=${t("app.menu")}>
-      <a class=${`side-row${route && route.panel === "fleet" ? " active" : ""}`} href="/ui/fleet" aria-current=${route && route.panel === "fleet" ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="fleet" /><span>${t("app.fleet")}</span></a>
-      <a class="side-row" href="/view"><${Icon} name="view" /><span>${t("app.view")}</span></a>
+      ${navLink("fleet", "/ui/fleet", "fleet", t("app.fleet"))}
+      ${navLink("view", "/view", "view", t("app.view"))}
     </nav>
-    <div class="side-section" id="instanceList">
+    ${shell.side ? html`<${shell.side.Component} />` : html`<div class="side-section" id="instanceList">
       <h2 class="side-label">${t("app.instances")}</h2>
       ${app.instances.length ? html`<ul class="inst-list">${app.instances.map(i => html`<${InstanceRow} key=${i.name} i=${i} active=${i.name === current}
           exec=${app.exec[i.name]} awaiting=${Object.prototype.hasOwnProperty.call(app.awaiting, i.name) ? app.awaiting[i.name] : null} />`)}</ul>`
         : html`<p class="side-empty">${t("app.noInstances")}</p>`}
-    </div>
+    </div>`}
     <div class="side-foot">
       <a class="side-row" href="/settings"><${Icon} name="settings" /><span>${t("app.settings")}</span></a>
       ${shell.footer.map(({ key, Component }) => html`<${Component} key=${key} />`)}
@@ -142,7 +176,7 @@ export function PanelHeader({ title, sub, children, headingRef }) {
   </header>`;
 }
 
-function BottomTabs({ route }) {
+function BottomTabs({ route, viewOnly }) {
   const app = useStore(appStore);
   let last = null;
   try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
@@ -150,10 +184,19 @@ function BottomTabs({ route }) {
   const anyAwaiting = Object.keys(app.awaiting).length;
   const tab = (href, icon, label, active, badge) => html`<a class=${`tab${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}>
     <${Icon} name=${icon} size=${20} /><span>${label}</span>${badge ? html`<span class="tab-badge" aria-label=${t("app.needsYou")}>${badge}</span>` : null}</a>`;
+  let lastView = null;
+  try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
+  const viewHref = route && route.panel === "view" && route.instance ? viewPath(route.instance) : viewPath(lastView);
+  if (viewOnly) {
+    return html`<nav class="tabs" aria-label=${t("app.menu")}>
+      ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
+      ${tab(signInHref(), "user", t("app.signIn"), false)}
+    </nav>`;
+  }
   return html`<nav class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
     ${tab("/ui/fleet", "fleet", t("app.fleet"), route && route.panel === "fleet")}
-    ${tab("/view", "view", t("app.view"), false)}
+    ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
     ${tab("/settings", "settings", t("app.settings"), false)}
   </nav>`;
 }
@@ -198,7 +241,7 @@ function Outlet({ route, seq, panels }) {
   return html`<${C} route=${route} navKey=${`${routeKey(route)}|${seq}|${lang()}`} />`;
 }
 
-export function Shell({ panels, onNewInstance }) {
+export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const nav = useStore(navStore);
   const shell = useStore(shellStore);
   const [, relang] = useState(0);
@@ -216,13 +259,13 @@ export function Shell({ panels, onNewInstance }) {
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : ""].filter(Boolean).join(" ");
   return html`<div class=${cls}>
     <a class="skip" href="#main">${t("app.skip")}</a>
-    <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} />
+    <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
-    <${BottomTabs} route=${nav.route} />
+    <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     <${Toasts} />
   </div>`;

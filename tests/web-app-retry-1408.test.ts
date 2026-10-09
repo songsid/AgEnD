@@ -24,7 +24,7 @@ let restore: (() => void) | null = null;
 // The first, un-queried import of the chat always fails here (a factory that throws leaves nothing cached between
 // cases); a retry asks for ?retry=<n>, which is not mocked and loads the real module.
 vi.doMock("/ui/js/panel-chat.js", async () => { throw new Error("network: the first load failed"); });
-afterEach(() => { restore?.(); restore = null; vi.resetModules(); });
+afterEach(() => { vi.useRealTimers(); restore?.(); restore = null; vi.resetModules(); });
 
 /** A page with the real entry, whose first chat import fails. `poll` answers each /ui/poll in turn. */
 async function scenario(poll: PollAnswer[]) {
@@ -129,9 +129,13 @@ describe("Retry after a failed first load of the chat", () => {
   it("a fallback poll already on its way when Retry loads the chat: the catch-up joins it, and the live events after it win", async () => {
     const h = held();
     const s = await scenario([h.answer]);
+    // The fallback loop's 5 s interval (armed with A) is not what this test is about: a slow chat load must not let
+    // its next tick queue a read behind A. Only the interval is frozen; A itself comes from the 5 s error timer.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     s.sources[0].onerror();                                   // the stream drops: fallback poll A after 5 s, and it hangs
     await vi.waitFor(() => expect(s.requests.filter(r => r.startsWith("GET /ui/poll"))).toHaveLength(1), { timeout: 8000 });
     s.retry();                                                // the chat loads now and catches up — on A
+    await vi.waitFor(() => expect(s.app.querySelector("#msgIn")).not.toBeNull(), { timeout: 8000 });   // a slow load still joins A
     await settle(6);
     expect(s.polls()).toBe(0);                                // (retry() cleared the log: no new read was made)
     h.open();

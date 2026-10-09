@@ -116,7 +116,10 @@ export class MiniNode extends Target {
 }
 
 export class MiniText extends MiniNode {
-  data: string;
+  private _data = "";
+  // A real DOM stores text: Preact may hand a number (a count) to a text node's data.
+  get data(): string { return this._data; }
+  set data(v: string) { this._data = String(v); }
   constructor(doc: MiniDocument, data: string) { super(); this.nodeType = 3; this.ownerDocument = doc; this.data = data; }
   get nodeValue() { return this.data; } set nodeValue(v: string) { this.data = v; }
   get textContent() { return this.data; } set textContent(v: string) { this.data = String(v); }
