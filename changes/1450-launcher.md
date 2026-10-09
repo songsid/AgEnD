@@ -7,6 +7,12 @@ section: Changed
   install verifies that Node: its exact version, N-API 10, and a database opened in the main thread and in a worker.
   It then records it, and from then on AgEnD runs on it whatever Node is on your PATH. Your system Node, PATH and npm
   stay as they were.
+  - Where AgEnD bundles its Node, your system Node's version never blocks an install or an update: Node 20, 18,
+    16, any Node whose npm can run the install. AgEnD does not run on it. An install is refused in only two cases,
+    and npm then keeps the version you had:
+    - this platform has no bundled Node (musl Linux, 32-bit, another OS, glibc older than 2.28, macOS older than 11)
+      and your Node is older than AgEnD needs (`^22.14.0 || ^23.6.0 || >=24`), so AgEnD could not start;
+    - the bundled Node fails its check during the install.
   - A bundled Node that is missing, incomplete or changed after it was verified is refused, with the command that
     repairs it. AgEnD never falls back to another Node silently.
   - If the bundled Node was skipped at install (`--omit=optional`, `--ignore-scripts`), AgEnD uses your Node when it

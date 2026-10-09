@@ -134,6 +134,15 @@ describe("postinstall: prove the bundled Node, write the receipt", () => {
     expect(r.stdout).toContain("a database opened in the main thread and a worker");
   });
 
+  // #1450 (user, 2026-10-09): the Node running npm is not judged when the bundled Node is there to prove.
+  it.each([{ node: "20.19.0", napi: 9 }, { node: "18.20.8", napi: 9 }, { node: "16.20.2", napi: 8 }, { node: "12.22.12", napi: 8 }])(
+    "the Node running npm (%j) is never a reason to refuse: the bundled Node is proven and recorded", (versions) => {
+      const f = fixture({ runtime: "ok" });
+      const r = postinstall(f, versions);
+      expect(r.status, r.stderr).toBe(0);
+      expect(existsSync(join(f.pkg, ".agend-runtime.json"))).toBe(true);
+    });
+
   it("a runtime that reports another version is refused (exit 1, npm rolls back) and no receipt is written", () => {
     const f = fixture({ runtime: "ok", pin: "22.0.1" });
     writeFileSync(join(f.runtimeHome, "package.json"), JSON.stringify({ name: `@songsid/agend-node-${HOST.id}`, version: "22.0.1" }));
@@ -667,17 +676,33 @@ describe("preinstall guard with a pinned runtime", () => {
     return spawnSync(process.execPath, ["--require", preload, join(f.pkg, "scripts", "preinstall-guard.cjs")], { encoding: "utf8" });
   };
 
-  it.skipIf(!platform.runtimeSupport(platform.hostPlatform()).supported)("an old Node proceeds when this release pins a runtime for a supported host (postinstall proves it)", () => {
-    const host = platform.hostPlatform();
+  /** A fixture whose manifest pins the four published runtimes, as a release does. */
+  const pinnedFour = () => {
     const f = fixture({ runtime: "none" });
     const manifest = JSON.parse(readFileSync(join(f.pkg, "package.json"), "utf8"));
-    manifest.optionalDependencies = { [`@songsid/agend-node-${host.id}`]: "22.23.3" };
+    manifest.optionalDependencies = Object.fromEntries(["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"].map(id => [`@songsid/agend-node-${id}`, "22.23.3"]));
     writeFileSync(join(f.pkg, "package.json"), JSON.stringify(manifest));
-    expect(guard(f, "20.19.0").status).toBe(0);
-  });
+    return f;
+  };
+
+  // #1450 (user, 2026-10-09): on a host a bundled Node covers, the system Node's version never refuses the install.
+  it.skipIf(!platform.runtimeSupport(platform.hostPlatform()).supported).each(["20.19.0", "18.20.8", "16.20.2", "14.21.3", "12.22.12"])(
+    "a supported host with a pinned runtime: system Node %s is never a reason to refuse (postinstall proves the bundled Node)", (node) => {
+      expect(guard(pinnedFour(), node).status).toBe(0);
+    });
 
   it("an old Node is still refused when nothing is pinned", () => {
     expect(guard(fixture({ pin: null }), "20.19.0").status).toBe(1);
+  });
+
+  it("a host no bundled Node covers (32-bit), with an old Node: refused with a reason, since AgEnD would not start", () => {
+    const f = pinnedFour();
+    guard(f, "18.20.8");                                                                // writes the preload and the guard
+    writeFileSync(join(f.root, "ia32.cjs"), `Object.defineProperty(process, "arch", { value: "ia32", configurable: true });`);
+    const refused = spawnSync(process.execPath, ["--require", join(f.root, "ia32.cjs"), "--require", join(f.root, "preload.cjs"), join(f.pkg, "scripts", "preinstall-guard.cjs")], { encoding: "utf8" });
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain("Running: Node 18.20.8");
+    expect(refused.stderr).toContain("npm is aborting this install");
   });
 });
 

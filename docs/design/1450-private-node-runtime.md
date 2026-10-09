@@ -404,6 +404,14 @@ This covers the old 2.1.12 updater's final `agend restart`:
   - postinstall makes the verified-complete decision and refuses (rolling back) otherwise.
   - Tests replace #1442's single Node-20 case with the matrix: supported + runtime, supported + runtime missing,
     unsupported + qualifying Node, unsupported + old Node.
+- **The system Node never blocks an install where a bundled Node applies (user, 2026-10-09).** Not only 20.19: 18, 16
+  and any Node whose npm can run the install proceed, and the launcher files that Node runs (preinstall-guard.cjs,
+  postinstall.cjs, runtime-*.cjs, launch.cjs) keep to old syntax and APIs. Exactly two refusals remain:
+  1. no bundled Node for this host (musl, 32-bit, another OS, glibc < 2.28, macOS < 11, or a release pinning none)
+     **and** a system Node that does not satisfy `engines`: AgEnD would install and then not start;
+  2. the postinstall's proof of the bundled Node fails: npm rolls the install back and the previous version stays.
+  CI covers it with install-run cells on system Node 16 and 18, and hop cells from 2.1.12 on 16 and 18 (on 16, 2.1.12
+  itself cannot start, so only the plain-npm leg exists there).
 - **Dependency install scripts:** none in the **production closure that a global install actually resolves**. The test
   runs on a real `npm install -g` of the packed candidate into a scratch prefix (`npm query` there), not on the
   repository lockfile; esbuild and fsevents are dev-only. A future native dependency's fallback build would compile
@@ -504,7 +512,7 @@ There is no nvm offer: the runtime replaces it.
   - **Concurrency and late-failure cases** (C1).
   - **Any serial cell failing stops the work and goes back to the leader.**
 - **Unit:** C2–C5 as listed. Service tests run against a private systemd user manager and private launchd labels (C6).
-- **The hop job** (ubuntu + macos, Node 20.19.0):
+- **The hop job** (ubuntu + macos, Node 20.19.0, 18 and 16):
   - Setup:
     - a verdaccio proxying npmjs with the candidate and runtime packages published (`max_body_size` raised);
     - an **isolated HOME, `XDG_CONFIG_HOME`, npm prefix and `AGEND_HOME`**;

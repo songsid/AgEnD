@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# #1450 runtime acceptance, install-and-run: on this runner's system Node (20.19 or 22), a plain
+# #1450 runtime acceptance, install-and-run: on this runner's system Node (16, 18, 20.19 or 22), a plain
 # `npm install -g @songsid/agend@<candidate>` from the local registry must install and verify the bundled Node, and
 # AgEnD — CLI, database, daemon — must run on it, never on the system Node, even when the system Node qualifies.
 # Usage: install-run.sh <packages dir> [service]   (after registry.sh; everything lives under $RUNNER_TEMP/accept)
