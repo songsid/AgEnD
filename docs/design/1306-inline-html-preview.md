@@ -549,3 +549,14 @@ Not in v1. A future design needs:
   before any content exists. A URL fragment would put private HTML into history, bookmarks and sync.
 - **Untrusted HTML stays nested** in the opaque sandboxed frame.
 - **Its own browser acceptance rows.**
+
+## 14. Later: the side panel (#1481)
+
+The preview can also run in a panel beside the conversation (`src/ui/preview-panel.js`). Nothing in §3–§9 changes:
+- The panel's frame is made by `mountPreview` and started by `AgendPreview.start`, like a card's. The `fill` option only
+  sizes it to the panel, which then ignores the frame's height messages.
+- It is offered only on the cards of §6.1. It runs on a click: Preview in the panel, or Open in panel on a card whose
+  preview the person already started (the run moves; it is not started anew without them).
+- A newer version of the block in a later reply is offered, never swapped in, and waits for Preview.
+- One preview per page still holds. Closing the panel, leaving the chat, the opt-out and the watchdog stop it as they stop a card.
+- Open in new tab stays deferred (§13).

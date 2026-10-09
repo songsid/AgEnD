@@ -19,7 +19,8 @@ export const msgKey = (x) => `${x.boot}-${x.id}`;
 
 /**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
- * setPreviewOptIn(on), copyText(text) → Promise<boolean>, download(code) }.
+ * setPreviewOptIn(on), copyText(text) → Promise<boolean>, download(code), panel? }. panel (#1481): { shown() → the card
+ * key the side panel shows, or null; open(spec, { run }) } — without it a card has no "Open in panel".
  */
 export function createThread(list, scroller, opts) {
   const nodes = new Map();          // key → { html, node }
@@ -95,12 +96,15 @@ export function createThread(list, scroller, opts) {
       const run = el("button", "btn btn-sm pv-run", tr("chat.pvPreview")); run.type = "button";
       const stopB = el("button", "btn btn-sm pv-stop", tr("chat.pvStop")); stopB.type = "button"; stopB.hidden = true;
       const dl = el("button", "btn btn-sm btn-ghost pv-dl", tr("chat.pvDownload")); dl.type = "button";
+      const panel = opts.panel || null;
+      const toPanel = panel ? el("button", "btn btn-sm btn-ghost pv-open", tr("chat.pvOpenPanel")) : null;
+      if (toPanel) toPanel.type = "button";
       const menu = el("details", "pv-menu");
       const sum = el("summary", null, "⋯"); sum.title = tr("chat.pvMenu"); sum.setAttribute("aria-label", tr("chat.pvMenu"));
       const optB = el("button", "chip-btn pv-opt"); optB.type = "button";
       const neverB = el("button", "chip-btn pv-never"); neverB.type = "button";
       menu.append(sum, optB, neverB);
-      head.append(label, run, stopB, dl, menu);
+      head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), dl, menu);
       const note = el("div", "pv-note");
       const banner = el("div", "pv-banner", P().BANNER); banner.hidden = true;
       const holder = el("div", "pv-holder");
@@ -109,16 +113,25 @@ export function createThread(list, scroller, opts) {
       const refresh = (reason) => {
         const a = P().availability();
         const going = state === "starting" || state === "running";
-        run.hidden = !a.ok || going;
+        const inPanel = !!panel && panel.shown() === key;   // #1481: the panel shows this block; the card points there
+        run.hidden = !a.ok || going || inPanel;
+        if (toPanel) toPanel.hidden = inPanel;
         stopB.hidden = !going;
         banner.hidden = !going;
-        note.textContent = reason != null ? reason : going ? (state === "starting" ? tr("chat.pvStarting") : "") : a.ok ? "" : a.reason;
+        note.textContent = reason != null ? reason : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
         optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
         neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
       };
       const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
       run.onclick = () => P().start(key, holder, fence.code, ui);
       stopB.onclick = () => P().stop(key, "stopped", "");
+      // A running preview moves: it stops here and starts in the panel (the click that ran it). An idle one opens the
+      // panel with its own Preview to click.
+      if (toPanel) toPanel.onclick = () => {
+        const moving = P().running(key);
+        if (moving) P().stop(key, "stopped", "");
+        panel.open({ key, instance: x.instance, msgKey: msgKey(x), n, code: fence.code, sender: x.sender, ts: x.ts }, { run: moving });
+      };
       dl.onclick = () => opts.download(fence.code);
       optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
       neverB.onclick = () => { menu.open = false; P().setNever(!P().never()); refreshCards(); };
@@ -187,6 +200,14 @@ export function createThread(list, scroller, opts) {
     return bottom ? null : scroller.scrollTop;
   }
   function jumpLatest() { toBottom(); unseen = 0; reportJump(); }
+  /** Show one message (the panel's "from …" link, #1481): scrolled into view and briefly marked. */
+  function reveal(key) {
+    const have = nodes.get(key); if (!have) return false;
+    if (typeof have.node.scrollIntoView === "function") have.node.scrollIntoView({ block: "center" });
+    have.node.classList.add("flash");
+    setTimeout(() => { have.node.classList.remove("flash"); }, 1600);
+    return true;
+  }
 
   async function copyFrom(button, text) {
     const ok = await opts.copyText(text);
@@ -221,5 +242,5 @@ export function createThread(list, scroller, opts) {
     nodes.clear();
   }
 
-  return { render, onScroll, onClick, jumpLatest, refreshCards, dispose, nodes, get unseen() { return unseen; } };
+  return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, dispose, nodes, get unseen() { return unseen; } };
 }
