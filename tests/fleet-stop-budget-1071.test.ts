@@ -153,7 +153,7 @@ function detachedCliRig(stop: (deps: import("../src/fleet-stop-budget.js").Detac
     guard, expectation: { ok: true, expected: {} }, guardDeps: {}, opts: { force: false }, unlinkSync: unlink,
     selfCommand: () => ({ command: "/private/node", args: ["/private/cli.js", "fleet", "start"] }), spawn: start, setTimeout });
   runInContext(ts.transpileModule(`const refuses = ${refuses.getText(ast)}; async function action() { ${branch} }`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText, context);
-  return { action: runInContext("action", context) as () => Promise<void>, start, unlink, process, guard, setBirth: (next: string | null) => { birth = next; }, setCommand: (next: string) => { command = next; }, setExitProof: (next: () => boolean) => { exited = next; } };
+  return { action: runInContext("action", context) as () => Promise<void>, start, unlink, process, guard, setBirth: (next: string | null) => { birth = next; }, setCommand: (next: string) => { command = next; }, setExitProof: (next: () => boolean) => { exited = next; }, console, context };
 }
 it("CLI awaits the proven physical exit, then rechecks runtime before spawning once", async () => {
   let release!: () => void; const wait = new Promise<void>(r => { release = r; }); const h = detachedCliRig(() => wait);
@@ -293,4 +293,57 @@ it("CLI refuses an unreadable birth identity or EPERM instead of deleting the ow
     await h.action(); expect(h.process.exitCode).toBe(1); expect(h.unlink).not.toHaveBeenCalled(); expect(h.start).not.toHaveBeenCalled();
     expect(h.process.kill.mock.calls.every(c => c[1] === 0)).toBe(true);
   }
+});
+
+
+it("CLI does not signal a recycled owner appearing during the potentially blocking KILL log", async () => {
+  let clock = 0;
+  const h = detachedCliRig(async deps => {
+    await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => { clock += ms; } });
+  });
+  h.console.log.mockImplementation(message => {
+    if (String(message).includes("Grace expired")) { h.setBirth("birth-2"); h.setCommand("inert unrelated command"); }
+  });
+  await h.action();
+  expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual([[123, "SIGTERM"]]);
+  expect(h.start).toHaveBeenCalledOnce(); // captured owner is gone, no new PID publication; recycled process is untouched
+});
+
+it("CLI refuses unknown ownership appearing during the KILL log (unchanged live owner control signals once)", async () => {
+  for (const revoked of [true, false]) {
+    let clock = 0, killed = false;
+    const h = detachedCliRig(async deps => {
+      await stopDetachedOwner({ ...deps, now: () => clock, sleep: async ms => { clock += ms; } });
+    });
+    h.setExitProof(() => killed);
+    h.console.log.mockImplementation(message => { if (revoked && String(message).includes("Grace expired")) h.setBirth(null); });
+    h.process.kill.mockImplementation((_pid, signal) => { if (signal === "SIGKILL") killed = true; });
+    await h.action();
+    expect(h.process.kill.mock.calls.filter(c => c[1] !== 0)).toEqual(revoked ? [[123, "SIGTERM"]] : [[123, "SIGTERM"], [123, "SIGKILL"]]);
+    expect(h.start.mock.calls).toHaveLength(revoked ? 0 : 1);
+    expect(h.process.exitCode).toBe(revoked ? 1 : 0);
+  }
+});
+
+it.each(["changed", "unreadable"] as const)("CLI rechecks %s PID publication after the actual runtime guard's file lookups", async state => {
+  const root = scratch(), publication = join(root, "fleet.pid"); writeFileSync(publication, "123");
+  const h = detachedCliRig(async () => {});
+  h.context.pidPath = publication;
+  h.context.existsSync = (path: string) => path === publication;
+  h.context.readFileSync = (path: string, encoding: BufferEncoding) => readFileSync(path, encoding);
+  const { guardDetached } = await import("../src/restart-guard.js");
+  let probes = 0;
+  h.guard.guardDetached.mockImplementation(() => guardDetached("/private/node", { node: "/private/node", entry: "/private/cli.js" }, {
+    realpath: path => {
+      if (++probes === 2) {
+        writeFileSync(publication, "999");
+        if (state === "unreadable") h.context.readFileSync = () => { throw new Error("publication no longer readable"); };
+      }
+      return path;
+    },
+  }));
+  await h.action();
+  expect(probes).toBe(2); expect(h.process.exitCode).toBe(1);
+  expect(h.unlink).not.toHaveBeenCalled(); expect(h.start).not.toHaveBeenCalled();
+  expect(readFileSync(publication, "utf8")).toBe("999");
 });

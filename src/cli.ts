@@ -1968,7 +1968,7 @@ program
       const reloadCmd = systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload";
       // #1113 rides the same migration: crash-dump, start-limit and
       // start-timeout directives are filled in alongside KillMode. KillMode
-      // and the managed #1071 stop grace gate the restart; the others are informational.
+      // and the loaded #1071 stop grace gate the restart; the others are informational.
       // The drop-ins systemd applies to this unit, by its own account
       // (DropInPaths), plus any on disk it has not loaded yet. Guessing the
       // directories alone misses type-wide service.d and other load paths.
@@ -2015,19 +2015,19 @@ program
           return;
         }
       }
-      // #1071: a managed legacy 60s unit must actually load the longer grace.
-      // Explicit main/drop-in overrides remain the operator's choice.
+      // Migration preserves operator overrides. Admission independently requires
+      // the actual loaded budget for EVERY selected systemd target, even if its
+      // unit file disappeared or no migration/classification was possible.
       if (hardening.TimeoutStopSec === "custom") {
         console.log(`  ⚠ ${unitPath} sets its own TimeoutStopSec; left as is. A short grace can cut off busy CLI batches (#1071).`);
-      } else if (hardening.TimeoutStopSec) {
-        let loaded = "";
-        try { loaded = execSync(`systemctl${scopeFlag} show -p TimeoutStopUSec --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown refuses */ }
-        const milliseconds = systemdStopTimeoutMs(loaded);
-        if (milliseconds === null || milliseconds < FLEET_STOP_TIMEOUT_MS) {
-          console.error(`  ✗ Not restarting: systemd has ${loaded || "unknown"} stop grace loaded; this fleet needs ${FLEET_STOP_TIMEOUT_MS / 1000}s. Reload ${unitPath} and retry (#1071).`);
-          process.exitCode = 1;
-          return;
-        }
+      }
+      let loadedStopGrace = "";
+      try { loadedStopGrace = execSync(`systemctl${scopeFlag} show -p TimeoutStopUSec --value ${systemdTarget.unit}`, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5000 }).trim(); } catch { /* unknown refuses */ }
+      const milliseconds = systemdStopTimeoutMs(loadedStopGrace);
+      if (milliseconds === null || milliseconds < FLEET_STOP_TIMEOUT_MS) {
+        console.error(`  ✗ Not restarting: systemd has ${loadedStopGrace || "unknown"} stop grace loaded; this fleet needs ${FLEET_STOP_TIMEOUT_MS / 1000}s. Set TimeoutStopSec to at least ${FLEET_STOP_TIMEOUT_MS / 1000}s in ${unitPath ?? systemdTarget.unit}, run \`${reloadCmd}\`, and retry (#1071).`);
+        process.exitCode = 1;
+        return;
       }
       if (outcome === "added") {
         console.log(`  ✓ ${unitPath}: added KillMode=mixed (the fleet stops its CLIs; systemd no longer signals them all at once)`);
@@ -2183,6 +2183,11 @@ program
             inspect,
             signal: signal => {
               if (signal === "SIGKILL") console.log("  ⚠ Grace expired; forcing the confirmed fleet owner to exit.");
+              // stdout can block. The helper's earlier proof cannot authorize a
+              // signal after that write; prove the exact owner again now.
+              const owner = inspect();
+              if (owner === "gone" || owner === "other") return;
+              if (owner !== "fleet") throw new Error("Detached fleet ownership changed before signalling; refusing the signal");
               try { process.kill(oldPid, signal); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
             },
             now: () => performance.now(),
@@ -2193,16 +2198,19 @@ program
           process.exitCode = 1;
           return;
         }
-        // A different owner publishing during the wait must not lose its PID file
-        // or receive a second fleet. The stopped owner may have removed its file.
-        if (existsSync(pidPath) && readFileSync(pidPath, "utf-8") !== originalPidFile) {
-          console.error("  ✗ Fleet owner changed while stopping; refusing a duplicate restart.");
+        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
+        const start = selfCommand(["fleet", "start"]);
+        // The runtime guard and command preparation can read files. Recheck
+        // publication AFTER both, immediately before cleanup/spawn. Unreadable
+        // publication cannot authorize deleting a newly published owner's file.
+        let publicationCurrent = false;
+        try { publicationCurrent = !existsSync(pidPath) || readFileSync(pidPath, "utf-8") === originalPidFile; } catch { /* unknown refuses */ }
+        if (!publicationCurrent) {
+          console.error("  ✗ Fleet owner changed or its publication is unreadable; refusing a duplicate restart.");
           process.exitCode = 1;
           return;
         }
-        if (expectation.ok && refuses(guard.guardDetached(process.execPath, expectation.expected, guardDeps))) return;
         try { unlinkSync(pidPath); } catch { /* old owner already removed it */ }
-        const start = selfCommand(["fleet", "start"]);
         const child = spawn(start.command, start.args, { detached: true, stdio: "ignore" });
         child.unref();
         console.log("Fleet restarting in background.");
