@@ -228,7 +228,7 @@ describe("§2 store selectors", () => {
     expect(listKiroV1Sessions(join(root, "work"), join(dir, "data.sqlite3")).kind).toBe("unreadable");
   });
 
-  it("v2: session files of this directory, subagents and other directories ignored", () => {
+  it("v2: session files of this directory, subagents and other directories ignored", async () => {
     const dir = join(root, "kiro-home", "sessions", "cli"); mkdirSync(dir, { recursive: true });
     const cwd = join(root, "work");
     const file = (id: string, extra: Record<string, unknown>) => writeFileSync(join(dir, `${id}.json`), JSON.stringify({ session_id: id, updated_at: "2026-10-08T10:00:00Z", ...extra }));
@@ -236,9 +236,9 @@ describe("§2 store selectors", () => {
     file("s-sub", { cwd, session_created_reason: "subagent" });
     file("s-other", { cwd: join(root, "other") });
     writeFileSync(join(dir, "s-partial.json"), "{");
-    const read = listKiroV2Sessions(cwd, dir);
+    const read = await listKiroV2Sessions(cwd, dir);
     expect(read).toMatchObject({ kind: "ok", sessions: [{ id: "s-mine", updatedAt: Date.parse("2026-10-08T12:00:00Z") }] });
-    expect(listKiroV2Sessions(cwd, join(root, "nope")).kind).toBe("ok");
+    expect((await listKiroV2Sessions(cwd, join(root, "nope"))).kind).toBe("ok");
   });
 });
 
