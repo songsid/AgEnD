@@ -48,3 +48,19 @@ describe("a new connection's name", () => {
     expect(newTokenEnvConflict("AGEND_BOT_TOKEN", channels)).toBeNull();
   });
 });
+
+describe("a token stored from Settings counts as set before the restart that loads it", () => {
+  it("listSecureConnections: in .env (names only) or in this process → present; in neither → missing", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const dir = mkdtempSync(join(tmpdir(), "agend-envname-")); dirs.push(dir);
+    writeFileSync(join(dir, ".env"), "AGEND_DISCORD_2_TOKEN=stored-not-loaded\n");
+    const fm = new FleetManager(dir) as any;
+    fm.fleetConfig = { defaults: {}, instances: {}, channels: [
+      { id: "discord-2", type: "discord", bot_token_env: "AGEND_DISCORD_2_TOKEN" },
+      { id: "telegram", type: "telegram", bot_token_env: "AGEND_TEST_ABSENT_TOKEN" }] };
+    delete process.env.AGEND_DISCORD_2_TOKEN; delete process.env.AGEND_TEST_ABSENT_TOKEN;
+    const rows = fm.listSecureConnections();
+    expect(rows.map((r: any) => [r.id, r.token_present])).toEqual([["discord-2", true], ["telegram", false]]);
+    expect(JSON.stringify(rows)).not.toContain("stored-not-loaded");
+  });
+});

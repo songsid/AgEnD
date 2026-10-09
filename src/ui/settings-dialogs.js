@@ -494,8 +494,9 @@ export function NewBotDialog({ ctx, onClose }) {
     setF((x) => ({ ...x, token: "" }));
     onClose();
   };
-  // A change of platform or id is another connection: what was verified and planned no longer applies.
-  const set = (k) => (v) => { setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "" } : {}) })); setPlan(null); };
+  // A change of platform or id is another connection: what was verified and planned no longer applies. The server or
+  // group does not change the id or the token's name, so the plan (and its name under Advanced) stays.
+  const set = (k) => (v) => { setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "" } : {}) })); if (k !== "group") setPlan(null); };
   return html`<${Dialog} title=${tn("newBot")} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tn("cancel")}</button>
       <button type="button" class="btn btn-primary" disabled=${busy || !f.identity || !f.identity.valid} onClick=${save}>${tn("save")}</button>`}>
