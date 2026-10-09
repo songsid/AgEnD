@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import pino from "pino";
@@ -13,6 +15,23 @@ import { TmuxControlClient } from "../src/tmux-control.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { forgetInstanceContext } from "../src/topic-commands.js";
 import { getTmuxSocketName } from "../src/paths.js";
+import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
+
+class CaptureRes extends ServerResponse {
+  status = 0;
+  body = "";
+  writeHead(status: number): this { this.status = status; return this; }
+  end(chunk?: unknown): this { if (chunk) this.body += String(chunk); return this; }
+}
+const token = "a".repeat(48);
+function details(ctx: FleetManager | WebApiContext): number | null {
+  const req = Readable.from([]) as unknown as IncomingMessage;
+  req.method = "GET"; req.url = "/ui/instance/one"; req.headers = { "x-agend-token": token };
+  const res = new CaptureRes(req);
+  expect(handleWebRequest(req, res, new URL(req.url, "http://localhost"), ctx as unknown as WebApiContext)).toBe(true);
+  expect(res.status).toBe(200);
+  return (JSON.parse(res.body) as { context_pct: number | null }).context_pct;
+}
 
 function child() {
   return Object.assign(new EventEmitter(), { pid: 123, stdout: new EventEmitter(), stderr: new EventEmitter(),
@@ -48,6 +67,7 @@ function reply(pane: string) {
 }
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "agend-pane1235-")); roots.push(root);
+  writeFileSync(join(root, "web.token"), token, { mode: 0o600 });
   const config = { backend: "codex", working_directory: root, lightweight: true, log_level: "error",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 } } as const;
   const control = new TmuxControlClient("context-fixture"); clients.push(control); control.start();
@@ -78,6 +98,51 @@ describe("public status to the existing tmux control attachment", () => {
     expect(attachment.stdin.write.mock.calls[0][0]).toContain("'-60'");
     reply("Context 33% left\n"); await drain(); expect(h.context()).toBe(67);
     expect(io.spawn).toHaveBeenCalledOnce(); // only the inert initial control attachment
+    for (const mock of [io.execFile, io.execSync, io.execFileSync, io.spawnSync]) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("Details returns the status-warmed context through the real web handler", async () => {
+    const h = fixture(); const read = vi.spyOn(h.control, "read");
+    expect(h.context()).toBeNull(); reply("Context 33% left\n"); await drain();
+    expect(h.context()).toBe(67);
+    for (let i = 0; i < 25; i++) expect(details(h.fm)).toBe(67);
+    expect(read).toHaveBeenCalledOnce(); expect(attachment.stdin.write).toHaveBeenCalledOnce();
+    expect(io.spawn).toHaveBeenCalledOnce();
+    for (const mock of [io.execFile, io.execSync, io.execFileSync, io.spawnSync]) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("opening Details preserves the warm status cache without another capture", async () => {
+    const h = fixture(); const read = vi.spyOn(h.control, "read");
+    expect(h.context()).toBeNull(); reply("Context 33% left\n"); await drain();
+    expect(h.context()).toBe(67); details(h.fm);
+    expect(h.context()).toBe(67);
+    expect(read).toHaveBeenCalledOnce(); expect(attachment.stdin.write).toHaveBeenCalledOnce();
+  });
+
+  it("a cold Details request and status join the same owned capture", async () => {
+    const h = fixture(); const read = vi.spyOn(h.control, "read");
+    expect(details(h.fm)).toBeNull(); expect(h.context()).toBeNull(); expect(details(h.fm)).toBeNull();
+    expect(read).toHaveBeenCalledOnce(); expect(attachment.stdin.write).toHaveBeenCalledOnce();
+    reply("Context 33% left\n"); await drain();
+    expect(details(h.fm)).toBe(67); expect(h.context()).toBe(67); expect(read).toHaveBeenCalledOnce();
+  });
+
+  it("Details without an owner-source getter stays unknown and starts no capture", () => {
+    const h = fixture(); const ctx = Object.create(h.fm) as WebApiContext;
+    Object.defineProperty(ctx, "getPaneContextSource", { value: undefined });
+    expect(details(ctx)).toBeNull(); expect(attachment.stdin.write).not.toHaveBeenCalled();
+    for (const mock of [io.execFile, io.execSync, io.execFileSync, io.spawnSync]) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it.each(["stop", "daemon"] as const)("Details rejects a held capture after owner retirement by %s", async event => {
+    const h = fixture(); const read = vi.spyOn(h.control, "read");
+    expect(h.context()).toBeNull();
+    if (event === "stop") h.daemon.fenceDeliveryWritesForStop();
+    else h.f.daemons.delete("one");
+    expect(details(h.fm)).toBeNull();
+    reply("Context 33% left\n"); await drain();
+    expect(details(h.fm)).toBeNull(); expect(h.context()).toBeNull();
+    expect(read).toHaveBeenCalledOnce(); expect(attachment.stdin.write).toHaveBeenCalledOnce();
     for (const mock of [io.execFile, io.execSync, io.execFileSync, io.spawnSync]) expect(mock).not.toHaveBeenCalled();
   });
 

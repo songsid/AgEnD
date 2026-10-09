@@ -1,5 +1,6 @@
 import { binaryProbe } from "./binary-probe.js";
 import type { SettingsExecution } from "./settings-transaction.js";
+import type { PaneContextSource } from "./pane-context-cache.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -183,6 +184,8 @@ export interface WebApiContext {
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   getUiStatus(): unknown;
+  /** Current owned pane reader shared with status; absent means context is unavailable. */
+  getPaneContextSource?(name: string): PaneContextSource | null;
   /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
   previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
   emitSseEvent(event: string, data: unknown): void;
@@ -681,7 +684,7 @@ export function handleWebRequest(
     // Backend: instance → fleet default → claude-code
     const backend = config.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     // Context: aligned with /ctx — resolveInstanceContext, not statusline
-    const { context } = resolveInstanceContext(ctx.dataDir, name, backend);
+    const { context } = resolveInstanceContext(ctx.dataDir, name, backend, { source: ctx.getPaneContextSource?.(name) });
     const context_pct = context; // null when unavailable, not 0
     // Model: Claude Code has live statusline, others use the effective resolver (aligned with /ctx).
     const statuslineModel = backend === "claude-code" ? readStatuslineModel(ctx.dataDir, name) : null;
