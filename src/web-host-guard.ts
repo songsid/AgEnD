@@ -55,14 +55,15 @@ export function hostnameOf(value: string): string | null {
  * script runs because the panel is served with a per-response nonce for it
  * (sendPanelHtml), and no panel has an inline `on*=` handler. Injected markup can
  * therefore not run script. `connect-src`, `img-src` and `form-action` are this
- * origin, so nothing read can be posted elsewhere, and `base-uri`, `object-src` and
+ * origin (images on a panel: plus Discord's emoji CDN path, below), so nothing read can be posted elsewhere, and `base-uri`, `object-src` and
  * `frame-ancestors` are closed. Styles are the same (#1300): `style-src 'self'`, and a
  * panel's own `<style>` block carries the response's nonce. No panel has a `style="…"`
  * attribute — what a script colours or sizes at run time goes through the style object
  * (CSSOM), which the policy does not govern — so injected markup cannot add inline styles of its
  * own (it can still carry the page's existing class names).
  *
- * Fonts, scripts and styles are all served from here; nothing loads from a CDN.
+ * Fonts, scripts and styles are all served from here; nothing loads from a CDN. Panel pages add one image source,
+ * Discord's custom-emoji CDN (DISCORD_EMOJI_IMG_SRC) — the status-emoji editor shows server emoji from there.
  */
 export const WEB_CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -123,7 +124,17 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
 }
 
 /**
+ * The one remote image source a panel may load: Discord's custom-emoji CDN, which the status-emoji editor shows
+ * (status-emojis.ts emojiImageUrl). Path-scoped — a source ending in "/" admits only what is under it, so the rest of
+ * cdn.discordapp.com (attachments, avatars) stays refused, and a redirect elsewhere is refused too. It is an image
+ * source only: script still cannot connect or post anywhere but this origin. What it gives up is that Discord sees the
+ * viewer's address when the editor is open (the request carries no referrer — EmojiImg sets no-referrer).
+ */
+export const DISCORD_EMOJI_IMG_SRC = "https://cdn.discordapp.com/emojis/";
+
+/**
  * The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's nonce for scripts and styles,
+ * Discord's emoji CDN for images (DISCORD_EMOJI_IMG_SRC),
  * and — for /ui only, when a preview origin was chosen for this load (#1306) — `frame-src <preview origin>/frame`:
  * path-scoped, so nothing else of that origin can be framed or navigated to. Without it, frames fall back to
  * default-src 'self'.
@@ -131,7 +142,8 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
 export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string } = {}): string {
   const policy = WEB_CONTENT_SECURITY_POLICY
     .replace("script-src 'self'", `script-src 'self' 'nonce-${nonce}'`)
-    .replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`);
+    .replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`)
+    .replace("img-src 'self' data: blob:", `img-src 'self' data: blob: ${DISCORD_EMOJI_IMG_SRC}`);
   return opts.frameSrc ? `${policy}; frame-src ${opts.frameSrc}` : policy;
 }
 

@@ -147,13 +147,13 @@ describe("Kiro JSON fallback: a session's metadata is parsed once per change, no
     return metaPath;
   }
   const pin = (path: string, at: Date) => utimesSync(path, at, at);
-  const active = (source: KiroSessionSource) => (source as unknown as { resolveActiveSession(): { jsonlPath: string } | null }).resolveActiveSession()?.jsonlPath;
+  const active = async (source: KiroSessionSource) => (await (source as unknown as { resolveActiveSession(): Promise<{ jsonlPath: string } | null> }).resolveActiveSession())?.jsonlPath;
 
-  it("an unchanged file is not re-read: its cached verdict stands", () => {
+  it("an unchanged file is not re-read: its cached verdict stands", async () => {
     const when = new Date(Date.now() - 60_000);
     const mine = writeSession("mine", work, "2026-10-04T10:00:00Z"); pin(mine, when);
     const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
-    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
     // Rewrite it as someone else's, same size, same mtime: only a re-read could notice.
     const size = statSync(mine).size;
     const mtimeBefore = statSync(mine).mtimeMs;
@@ -162,65 +162,65 @@ describe("Kiro JSON fallback: a session's metadata is parsed once per change, no
     writeFileSync(mine, foreign.padEnd(size));
     pin(mine, when);
     expect(statSync(mine).mtimeMs).toBe(mtimeBefore);              // really untouched as far as stat can tell
-    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
   });
 
-  it("a changed file (mtime or size) is read again", () => {
+  it("a changed file (mtime or size) is read again", async () => {
     const mine = writeSession("mine", work, "2026-10-04T10:00:00Z");
     pin(mine, new Date(Date.now() - 60_000));
     const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
-    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
     writeSession("mine", "/someone/else", "2026-10-04T10:00:00Z");   // new content, new mtime
-    expect(active(source)).toBeUndefined();
+    expect(await active(source)).toBeUndefined();
   });
 
-  it("a file that only changed in mtime is read again — and so is one that only changed in size", () => {
+  it("a file that only changed in mtime is read again — and so is one that only changed in size", async () => {
     const base = new Date(Date.now() - 60_000);
     const mine = writeSession("mine", work, "2026-10-04T10:00:00Z"); pin(mine, base);
     const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
-    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
     const size = statSync(mine).size;
     const foreign = JSON.stringify({ session_id: "mine", cwd: "/z", created_at: "2026-10-04T10:00:00Z", updated_at: "2026-10-04T10:00:00Z" });
     // same size, newer mtime
     writeFileSync(mine, foreign.padEnd(size)); pin(mine, new Date(base.getTime() + 5_000));
-    expect(active(source)).toBeUndefined();
+    expect(await active(source)).toBeUndefined();
     // back to ours with a different size, mtime pinned to the one the cache has now
     const cachedMtime = statSync(mine).mtime;
     writeFileSync(mine, JSON.stringify({ session_id: "mine", cwd: work, created_at: "2026-10-04T10:00:00Z", updated_at: "2026-10-04T10:00:00Z", more: "x" }));
     utimesSync(mine, cachedMtime, cachedMtime);
-    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
   });
 
-  it("the newest session for the cwd still wins, subagents and other cwds still skipped", () => {
+  it("the newest session for the cwd still wins, subagents and other cwds still skipped", async () => {
     pin(writeSession("old", work, "2026-10-04T09:00:00Z"), new Date(Date.now() - 90_000));
     pin(writeSession("new", work, "2026-10-04T11:00:00Z"), new Date(Date.now() - 80_000));
     pin(writeSession("sub", work, "2026-10-04T12:00:00Z", "subagent"), new Date(Date.now() - 70_000));
     pin(writeSession("foreign", "/other", "2026-10-04T13:00:00Z"), new Date(Date.now() - 60_000));
     const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
-    expect(active(source)).toBe(join(sessionsDir(), "new.jsonl"));
-    expect(active(source)).toBe(join(sessionsDir(), "new.jsonl"));   // and again, from the cache
+    expect(await active(source)).toBe(join(sessionsDir(), "new.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "new.jsonl"));   // and again, from the cache
     pin(writeSession("newer", work, "2026-10-04T14:00:00Z"), new Date());
-    expect(active(source)).toBe(join(sessionsDir(), "newer.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "newer.jsonl"));
   });
 
-  it("a half-written metadata file is retried next poll, not cached as 'not ours'", () => {
+  it("a half-written metadata file is retried next poll, not cached as 'not ours'", async () => {
     mkdirSync(sessionsDir(), { recursive: true });
     const metaPath = join(sessionsDir(), "mine.json");
     writeFileSync(metaPath, '{"session_id":"mine","cwd":');           // torn
     writeFileSync(join(sessionsDir(), "mine.jsonl"), "");
     const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
-    expect(active(source)).toBeUndefined();
+    expect(await active(source)).toBeUndefined();
     writeSession("mine", work, "2026-10-04T10:00:00Z");
-    expect(active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
+    expect(await active(source)).toBe(join(sessionsDir(), "mine.jsonl"));
   });
 
-  it("the cache forgets files that are gone", () => {
+  it("the cache forgets files that are gone", async () => {
     const a = writeSession("a", work, "2026-10-04T10:00:00Z"); writeSession("b", work, "2026-10-04T11:00:00Z");
     const source = new KiroSessionSource(work, sessionsDir(), Date.now(), missingDb());
-    active(source);
+    await active(source);
     expect((source as unknown as { metaCache: Map<string, unknown> }).metaCache.size).toBe(2);
     rmSync(a); rmSync(join(sessionsDir(), "a.jsonl"));
-    active(source);
+    await active(source);
     expect((source as unknown as { metaCache: Map<string, unknown> }).metaCache.size).toBe(1);
   });
 });
