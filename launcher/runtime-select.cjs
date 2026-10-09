@@ -104,7 +104,7 @@ function selectRuntime(launcherDir, deps) {
     var receipt = readJson(path.join(pkg.dir, RECEIPT));
     // 2. The verified runtime of this release.
     if (candidate.exists && candidate.manifest && candidate.manifest.name === pin.name && candidate.manifest.version === pin.version && receiptMatches(receipt, candidate, pin)) {
-      return { ok: true, node: receipt.nodePath, source: "runtime", pkgDir: pkg.dir };
+      return { ok: true, node: realpath(candidate.node), source: "runtime", pkgDir: pkg.dir };   // the binary checked, never a path the receipt names
     }
     // 3. Supported platform, runtime missing/partial/corrupt: refuse — never a silent fallback. The one exception is
     //    an install where the runtime was skipped altogether (no directory, no receipt: --ignore-scripts or

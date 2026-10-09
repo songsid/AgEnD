@@ -55,7 +55,7 @@ describe("runtime-platform: engines and host support", () => {
 });
 
 /** A fixture @songsid/agend package with this repo's launcher/, a stand-in CLI, and optionally a pinned runtime. */
-function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" | "none"; receipt?: boolean; ancestorRuntime?: boolean } = {}) {
+function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" | "none"; ancestorRuntime?: boolean; sqlite?: "real" | "main-only" | "broken" } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-ln-"));
   roots.push(root);
   const pkg = opts.ancestorRuntime ? join(root, "node_modules", "@songsid", "agend") : join(root, "pkg");
@@ -83,6 +83,15 @@ function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" |
   }
   // better-sqlite3 for the postinstall proof, from this repo.
   mkdirSync(join(pkg, "node_modules"), { recursive: true });
+  if (opts.sqlite && opts.sqlite !== "real") {
+    // A stand-in better-sqlite3 that cannot open a database in a worker (or anywhere): the proof must notice.
+    mkdirSync(join(pkg, "node_modules", "better-sqlite3"), { recursive: true });
+    writeFileSync(join(pkg, "node_modules", "better-sqlite3", "package.json"), JSON.stringify({ name: "better-sqlite3", main: "index.js" }));
+    writeFileSync(join(pkg, "node_modules", "better-sqlite3", "index.js"), [
+      `const broken = ${opts.sqlite === "broken"} || !require("node:worker_threads").isMainThread;`,
+      "module.exports = class { constructor() { if (broken) throw new Error('cannot load the native addon'); } prepare() { return { get: () => ({ one: 1 }) }; } close() {} };",
+    ].join("\n"));
+  }
   if (!existsSync(join(pkg, "node_modules", "better-sqlite3"))) symlinkSync(join(process.cwd(), "node_modules", "better-sqlite3"), join(pkg, "node_modules", "better-sqlite3"));
   if (!existsSync(join(pkg, "node_modules", "bindings"))) { try { symlinkSync(join(process.cwd(), "node_modules", "bindings"), join(pkg, "node_modules", "bindings")); } catch { /* not needed by v13 */ } }
   if (!existsSync(join(pkg, "node_modules", "file-uri-to-path"))) { try { symlinkSync(join(process.cwd(), "node_modules", "file-uri-to-path"), join(pkg, "node_modules", "file-uri-to-path")); } catch { /* optional */ } }
@@ -111,6 +120,14 @@ describe("postinstall: prove the bundled Node, write the receipt", () => {
   it("a runtime that reports another version is refused (exit 1, npm rolls back) and no receipt is written", () => {
     const f = fixture({ runtime: "ok", pin: "22.0.1" });
     writeFileSync(join(f.runtimeHome, "package.json"), JSON.stringify({ name: `@songsid/agend-node-${HOST.id}`, version: "22.0.1" }));
+    const r = postinstall(f);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("did not pass its check");
+    expect(existsSync(join(f.pkg, ".agend-runtime.json"))).toBe(false);
+  });
+
+  it.each([["main-only", "a worker"], ["broken", "the main thread"]] as const)("better-sqlite3 that fails (%s) in %s is refused, no receipt", (sqlite) => {
+    const f = fixture({ runtime: "ok", sqlite });
     const r = postinstall(f);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("did not pass its check");
@@ -150,6 +167,23 @@ describe("selectRuntime: the order and the refusals", () => {
     postinstall(f);
     writeFileSync(join(f.runtimeHome, "bin", "node"), "#!/bin/sh\necho tampered\n");
     expect(choose(f)).toMatchObject({ ok: false, reason: expect.stringContaining("changed since it was verified") });
+  });
+
+  it("a receipt naming another binary is refused, and is never what runs", () => {
+    const f = fixture({ runtime: "ok" });
+    expect(postinstall(f).status).toBe(0);
+    const file = join(f.pkg, ".agend-runtime.json");
+    const receipt = JSON.parse(readFileSync(file, "utf8"));
+    writeFileSync(file, JSON.stringify({ ...receipt, nodePath: process.execPath }));
+    expect(choose(f)).toMatchObject({ ok: false, reason: expect.stringContaining("changed since it was verified") });
+  });
+
+  it("a receipt from another pinned version (scripts skipped on an upgrade) is refused", () => {
+    const f = fixture({ runtime: "ok" });
+    expect(postinstall(f).status).toBe(0);
+    const file = join(f.pkg, ".agend-runtime.json");
+    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), pinnedVersion: "22.0.0" }));
+    expect(choose(f)).toMatchObject({ ok: false });
   });
 
   it("a runtime present but never verified (no receipt) is refused", () => {
