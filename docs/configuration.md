@@ -171,6 +171,8 @@ channels:
 - Reactions an AgEnD bot stamps from its own status set never reach an instance as a user reaction. Once every bot's user id is known, humans' reactions always pass, whatever emoji they use.
 - Each instance's instructions list its own status set as the emojis to avoid (the five delivery statuses; `photo`/`attachment` are stamps on a saved file, not part of that ladder).
 - **Settings** edits both maps: the connection's (Bots → Settings → Status emojis) and an agent's override (agent → Status emojis). The picker offers unicode emojis, Telegram's reaction set on a Telegram connection, and on Discord the server's own custom emojis, fetched with the bot token. The preview is resolved by AgEnD exactly as the bot will react.
+- A change to a connection's `status_emojis` applies at the bot's next stamp, with no restart. Each agent's "avoid these" list follows at its next start. The rest of a connection (binding, access, token) still needs an AgEnD restart.
+- `progress_prefix` is not a reaction: it is the emoji at the start of the progress message, so Telegram's reaction set does not limit it.
 
 ---
 

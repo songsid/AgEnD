@@ -750,10 +750,19 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig(next);
       if (rejectIfWorse(res, before, after)) return;
-      settingsWrite(req, () => {
-        cfg.channels = normalizedBody as FleetConfig["channels"];
-        delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
-      });
+      const previous = { channels: cfg.channels, channel: cfg.channel, hadChannel: "channel" in cfg };
+      try {
+        settingsWrite(req, () => {
+          cfg.channels = normalizedBody as FleetConfig["channels"];
+          delete (cfg as { channel?: unknown }).channel; ctx.saveFleetConfig();
+        });
+      } catch (err) {
+        // #1056: the save refused (fleet.yaml unchanged): memory goes back to what the file still says.
+        cfg.channels = previous.channels;
+        if (previous.hadChannel) cfg.channel = previous.channel;
+        ctx.logger.warn({ err }, "settings: channels save refused");
+        return json(res, 500, { ok: false, error: (err as Error).message });
+      }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
