@@ -1,0 +1,64 @@
+# #1450 option A: publish AgEnD's private Node runtime packages, @songsid/agend-node-<os>-<cpu>, from an official
+# Node release. Manual and rare — only when the pinned Node changes, never per AgEnD release. Each package holds the
+# official bin/node + LICENSE, verified against the GPG-signed SHASUMS256.txt (scripts/runtime/build-runtime-packages.mjs),
+# and is published with provenance through npm's trusted publishing (OIDC), like the main package.
+name: Publish runtime packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      node_version:
+        description: "Official Node release to package, e.g. 22.23.3 (an LTS line under maintenance)"
+        required: true
+      repack:
+        description: "Repack number for the same Node (empty for the first package of this Node version)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Build and `npm publish --dry-run` only"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-runtime
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Inputs are versions, nothing else
+        env:
+          NODE_VERSION: ${{ inputs.node_version }}
+          REPACK: ${{ inputs.repack }}
+        run: |
+          [[ "$NODE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::node_version must be x.y.z"; exit 1; }
+          [[ -z "$REPACK" || "$REPACK" =~ ^[1-9][0-9]*$ ]] || { echo "::error::repack must be a positive integer"; exit 1; }
+      - name: Build from the signed official release
+        env:
+          NODE_VERSION: ${{ inputs.node_version }}
+          REPACK: ${{ inputs.repack }}
+        run: node scripts/runtime/build-runtime-packages.mjs --node "$NODE_VERSION" --out runtime-packages ${REPACK:+--repack "$REPACK"}
+      - name: Use OIDC-capable npm
+        run: npm install --global npm@11
+      - name: Publish (or dry run)
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          for dir in runtime-packages/*/; do
+            (cd "$dir" && npm pack --dry-run --json | node -e 'const p = JSON.parse(require("fs").readFileSync(0, "utf8"))[0]; console.log(`${p.name}@${p.version}: ${p.size} bytes packed, ${p.unpackedSize} unpacked, ${p.entryCount} files`)')
+            if [ "$DRY_RUN" = "true" ]; then
+              (cd "$dir" && npm publish --dry-run --access public --provenance)
+            else
+              (cd "$dir" && npm publish --access public --provenance)
+            fi
+          done
