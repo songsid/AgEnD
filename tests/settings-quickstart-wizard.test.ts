@@ -487,7 +487,7 @@ describe("POST /api/settings/quickstart/commit", () => {
     for (const [name, guild] of [["agent-dc", "555"], ["agent-dc2", "555"]] as const) {
       const input = { ...noEnv, platform: "discord", group_id: undefined, guild_id: guild, instance_name: name };
       const plan = await request("/api/settings/quickstart/plan", ctx, "POST", input);
-      expect(plan.body.instance.channel_id, "the preview names the binding").toBe(plan.body.channel_id);
+      expect((plan.body.instance as { channel_id: string }).channel_id, "the preview names the binding").toBe(plan.body.channel_id);
       const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...input, channel_id: plan.body.channel_id, token_env: plan.body.token_env, token_env_generated: true });
       expect(res.status).toBe(200);
     }
