@@ -497,15 +497,66 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
     expect(key({ ...HOST, glibc: "2.35" }).toString()).not.toMatch(/glibc|2\.35|host /);
   });
 
-  it.skipIf(!ON_FIXTURE_HOST)("after an OS update (another glibc version; getconf saying so, or failing) AgEnD still starts on its bundled Node", () => {
+  it.skipIf(!ON_FIXTURE_HOST)("after an OS update (a newer glibc) AgEnD still starts on its bundled Node", () => {
     const f = fixture({ runtime: "ok", npmLayout: true });
     expect(postinstall(f).status).toBe(0);
     expect(choose(f, { host: { ...HOST, glibc: "2.99" } })).toMatchObject({ ok: true, source: "runtime" });
-    for (const lie of ["glibc 2.99", null]) {
-      const r = bin(f, "agend", liars({ getconf: lie }));
-      expect(r.status, r.stderr).toBe(0);
-      expect(JSON.parse(r.stdout)).toMatchObject({ fakeRuntime: true });
-    }
+    const r = bin(f, "agend", fakeGetconf("glibc 2.99"));
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ fakeRuntime: true });
+  });
+
+  /** toolsOnly with a `getconf` that prints `out` (exit 0), or fails when out is null. */
+  function fakeGetconf(out: string | null) {
+    const dir = liars({});
+    rmSync(join(dir, "getconf"));
+    writeFileSync(join(dir, "getconf"), out === null ? "#!/bin/sh\nexit 1\n" : `#!/bin/sh\necho '${out}'\n`);
+    chmodSync(join(dir, "getconf"), 0o755);
+    return dir;
+  }
+
+  // #1460 review: the host's SUPPORT is checked fresh before the first exec — minimums, not a pinned version. A
+  // verified runtime on a host that no longer qualifies (copied, or a downgraded libc) never runs from either bin.
+  it.skipIf(!ON_FIXTURE_HOST).each([
+    ["glibc 2.27 (below the 2.28 minimum)", "glibc 2.27"],
+    ["no glibc (getconf fails: musl)", null],
+    ["an unreadable glibc version", "glibc x.y"],
+  ] as const)("on %s, neither bin runs the bundled Node", (_n, out) => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    const node = join(f.runtimeHome, "bin", "node");
+    const mark = join(f.root, "candidate-ran");
+    writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+    expect(postinstall(f).status).toBe(0);
+    rmSync(mark, { force: true });
+    for (const name of ["agend", "agend-agent"]) bin(f, name, fakeGetconf(out));
+    expect(existsSync(mark)).toBe(false);
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST).each([["19.6.0", false], ["24.0.0", true]] as const)("Darwin kernel %s: the bundled Node runs = %s (both bins)", (release, runs) => {
+    // A darwin-arm64 install, hand-made (its postinstall cannot prove a Darwin runtime on this Linux host): the
+    // receipt and key exactly as the contract writes them, and a `uname` that says Darwin/arm64/<release>.
+    const f = fixture({ runtime: "none", npmLayout: true, pin: null });
+    const id = "darwin-arm64";
+    const manifest = JSON.parse(readFileSync(join(f.pkg, "package.json"), "utf8"));
+    manifest.optionalDependencies = { [`@songsid/agend-node-${id}`]: process.versions.node };
+    writeFileSync(join(f.pkg, "package.json"), JSON.stringify(manifest, null, 2) + "\n");
+    const home = join(f.pkg, "node_modules", "@songsid", `agend-node-${id}`);
+    mkdirSync(join(home, "bin"), { recursive: true });
+    writeFileSync(join(home, "package.json"), JSON.stringify({ name: `@songsid/agend-node-${id}`, version: process.versions.node }, null, 2) + "\n");
+    const mark = join(f.root, "candidate-ran");
+    writeFileSync(join(home, "bin", "node"), `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+    chmodSync(join(home, "bin", "node"), 0o755);
+    const real = realpathSync(join(home, "bin", "node"));
+    const st = statSync(real);
+    writeFileSync(join(f.pkg, ".agend-runtime.json"), select.receiptText({ receipt: 2, pinnedVersion: process.versions.node, nodePath: real, size: st.size, mtime: Math.floor(st.mtimeMs / 1000), sha256: "0".repeat(64), napi: 10, platform: "darwin", arch: "arm64", libc: null, verifiedAt: "2026-10-09T00:00:00.000Z" }));
+    const candidate = select.runtimeCandidate(f.pkg, { name: `@songsid/agend-node-${id}`, version: process.versions.node });
+    writeFileSync(join(f.pkg, ".agend-runtime.key"), select.runtimeKey(f.pkg, candidate, { platform: "darwin", arch: "arm64", id, glibc: null, darwinRelease: release }));
+    const dir = liars({});
+    rmSync(join(dir, "uname"));
+    writeFileSync(join(dir, "uname"), `#!/bin/sh\ncase "$1" in -s) echo Darwin ;; -m) echo arm64 ;; -r) echo ${release} ;; esac\n`);
+    chmodSync(join(dir, "uname"), 0o755);
+    for (const name of ["agend", "agend-agent"]) bin(f, name, dir);
+    expect(existsSync(mark)).toBe(runs);
   });
 
   it.skipIf(!ON_FIXTURE_HOST)("the key is compared as bytes: an install path with U+FFFD whose key bytes became FF is refused by both", () => {
