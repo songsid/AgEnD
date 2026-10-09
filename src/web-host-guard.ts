@@ -140,12 +140,26 @@ export const DISCORD_EMOJI_IMG_SRC = "https://cdn.discordapp.com/emojis/";
  * default-src 'self'.
  */
 export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string } = {}): string {
-  const policy = WEB_CONTENT_SECURITY_POLICY
-    .replace("script-src 'self'", `script-src 'self' 'nonce-${nonce}'`)
-    .replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`)
-    .replace("img-src 'self' data: blob:", `img-src 'self' data: blob: ${DISCORD_EMOJI_IMG_SRC}`);
+  let policy = rewriteDirective(WEB_CONTENT_SECURITY_POLICY, "script-src 'self'", `script-src 'self' 'nonce-${nonce}'`);
+  policy = rewriteDirective(policy, "style-src 'self'", `style-src 'self' 'nonce-${nonce}'`);
+  policy = rewriteDirective(policy, "img-src 'self' data: blob:", `img-src 'self' data: blob: ${DISCORD_EMOJI_IMG_SRC}`);
   return opts.frameSrc ? `${policy}; frame-src ${opts.frameSrc}` : policy;
 }
+
+/**
+ * Replace the directive that is exactly `from` in `policy` with `to`. A policy without it throws: a string replace that
+ * found nothing would quietly ship panels without their nonce (no script runs) or without the emoji source (#1520
+ * review) after an edit to the base policy. Whole directives only, so "script-src 'self'" never matches a longer one.
+ */
+export function rewriteDirective(policy: string, from: string, to: string): string {
+  const parts = policy.split("; ");
+  const at = parts.indexOf(from);
+  if (at < 0) throw new Error(`panel CSP: the base policy has no "${from}" directive to extend`);
+  parts[at] = to;
+  return parts.join("; ");
+}
+// Checked once at load: a base policy that lost a directive the panels extend fails at startup, not on a page.
+panelContentSecurityPolicy("load-check");
 
 /**
  * Send a panel page (/ui, /view, /settings, the sign-in page). Its own inline `<script>` and `<style>` blocks get a
