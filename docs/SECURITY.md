@@ -30,8 +30,8 @@ agent running under the same uid**. Such an agent can read a sibling's
 `agent.token` or connect to its `channel.sock`, claim the sibling's identity and
 receive that sibling's permissions, including a coordinator's. A `0600` file
 does not distinguish processes belonging to its owner. Per-spawn rotation does
-not change that fact. Treat same-account agents as mutually trusted; use OS
-isolation for agents that must not share authority.
+not change that fact. Treat same-account agents as mutually trusted; use separate OS users or
+properly isolated containers for agents that must not share authority.
 
 ## IPC socket
 

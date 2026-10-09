@@ -29,7 +29,7 @@
 `agent.token` 或連上它的 `channel.sock`，冒用其身分與工具權限，包括
 coordinator 的權限。`0600` 無法區分檔案擁有者的不同程序；每次 spawn
 換 token 也不會改變這件事。請把同帳號 agent 視為互相信任；需要隔離權限時，
-必須使用作業系統隔離。
+必須使用不同 OS 使用者或妥善隔離的容器。
 
 ## IPC Socket
 

@@ -308,8 +308,8 @@ export async function dispatchAgentOperation(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   // Sink 3 of 3, before any branch below: the early-returning ops are as much
-  // a tool call as the mapped ones. Stage 1 records and continues; the refusal
-  // arrives in stage 2.
+  // a tool call as the mapped ones. Enforce policy for the token-resolved identity
+  // here; this does not isolate hostile shell processes sharing that identity.
   const requestedTool = toolForAgentOp(op);
   if (requestedTool) {
     const profile = resolveToolSet(ctx.fleetConfig?.instances[instance], instance);
