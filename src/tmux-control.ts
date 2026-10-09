@@ -118,7 +118,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Epoch ms of the last observation reset. Everything before it is unobservable:
    *  the pane cache was dropped, so the absence of a record proves nothing. */
-  private observationResetAt = -1; // -1 = never reset; ≥0 = reset at this mono timestamp
+  private observationResetAt = -1;    // monotonic: -1 = never reset; ≥0 = reset at this mono timestamp
+  private observationResetWallAt = -1; // wall-clock (Date.now) copy for getObservationResetAt() callers
   private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
   /** The current sweep's pending per-listener slots. */
   private safetySweepSlots = new Set<ReturnType<typeof setTimeout>>();
@@ -222,6 +223,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
       if (win === windowId) {
         this.paneToWindow.delete(pane);
         this.lastOutputAt.delete(pane);
+        this.lastOutputAtMono.delete(pane);
         this.mappedAt.delete(pane);
         break;
       }
@@ -288,6 +290,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
     // the window re-resolves to inside the new grace (#1494 review).
     this.recoveredAt.clear();
     this.observationResetAt = this.mono();
+    this.observationResetWallAt = Date.now();
   }
 
   /**
@@ -326,8 +329,10 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
    * of it. A reset inside that window makes a negative answer meaningless, and
    * acting on it produces confident, wrong conclusions.
    */
+  /** Returns the wall-clock time (Epoch ms, Date.now() basis) of the most recent observation reset,
+   * or -1 if the client has never reset. Callers compare against Date.now()-derived timestamps. */
   getObservationResetAt(): number {
-    return this.observationResetAt;
+    return this.observationResetWallAt;
   }
 
   /**

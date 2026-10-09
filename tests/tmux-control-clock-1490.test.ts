@@ -128,3 +128,58 @@ describe("TmuxControlClient.waitUntilIdle: resolves false when stopped (#1490 P3
     expect(result).toBe(true);
   });
 });
+
+// ── P1: getObservationResetAt() returns wall-clock (Epoch ms) ────────────────
+//
+// Fable W1 witness: getObservationResetAt() returned mono (~265 ms) instead
+// of wall clock (~1.79e12 ms), breaking daemon.ts callers that compare
+// against Date.now()-derived enterAt/pasteStartedAt values.
+//
+// Reverse mutation: changing getObservationResetAt() to return this.observationResetAt
+// (mono) instead of this.observationResetWallAt makes this test fail because
+// the mono value is many orders of magnitude smaller than a real Epoch timestamp.
+
+describe("getObservationResetAt returns wall-clock Epoch ms (#1538 P1)", () => {
+  it("getObservationResetAt() is comparable to Date.now() after reset", () => {
+    const { client } = makeClient();
+    const before = Date.now();
+    (client as any).resetPaneObservations.call(client);
+    const after = Date.now();
+    const resetAt = client.getObservationResetAt();
+
+    // Must be in wall-clock range, not mono range (~hundreds of ms)
+    expect(resetAt).toBeGreaterThanOrEqual(before);
+    expect(resetAt).toBeLessThanOrEqual(after + 100);
+  });
+
+  it("getObservationResetAt() returns -1 before any reset", () => {
+    const { client } = makeClient();
+    expect(client.getObservationResetAt()).toBe(-1);
+  });
+});
+
+// ── P2: unregisterWindow clears lastOutputAtMono ─────────────────────────────
+//
+// Fable W2 witness: after unregisterWindow, lastOutputAtMono still had the
+// stale pane entry. Re-mapping the same paneId would then make isIdle read
+// the old mono timestamp and potentially report idle prematurely.
+//
+// Reverse mutation: removing lastOutputAtMono.delete from unregisterWindow
+// makes this test fail because the stale entry persists.
+
+describe("unregisterWindow clears lastOutputAtMono (#1538 P2)", () => {
+  it("lastOutputAtMono entry is removed when window is unregistered", () => {
+    const { client, internals } = makeClient();
+    const paneId = "%3";
+    internals.paneToWindow.set(paneId, "@3");
+    internals.registeredWindows.add("@3");
+    internals.lastOutputAt.set(paneId, Date.now());
+    internals.lastOutputAtMono.set(paneId, internals.mono());
+
+    client.unregisterWindow("@3");
+
+    expect((internals as any).lastOutputAtMono.has(paneId)).toBe(false);
+    expect((internals as any).lastOutputAt.has(paneId)).toBe(false);
+    expect((internals as any).mappedAt.has(paneId)).toBe(false);
+  });
+});
