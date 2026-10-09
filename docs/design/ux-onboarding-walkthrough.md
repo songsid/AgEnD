@@ -209,9 +209,11 @@ One component, used by "Add a bot", by the "New connection" dialog, and by a con
 - **The General channel:**
   - The form lists the server's text channels (`GET /guilds/{id}/channels` with the bot token) in a dropdown, defaulting to one named "general" if there is one.
   - Today it is a typed id.
-- **Your user id (the admin):** a **claim code**, which replaces Developer Mode. The form shows a one-time code and "Mention @bot with `claim ABC123` in the channel you want as General". A mention carries the message text even without the Message Content intent.
+- **Your user id (the admin):** a **claim code**, which replaces Developer Mode. The form shows a one-time code and "Mention @bot with `claim ABC123` in the channel you want as General". A message that mentions the bot carries its content even without the privileged Message Content intent: that is a content exemption, not an intent.
 - **The bootstrap lane.** At claim time the connection is not applied yet, so no adapter of the fleet is reading this bot. The claim is read by a **pending-claim listener**:
-  - **What it is.** A narrowly scoped, temporary reader for this one bot, opened after the token verifies and before the setup is committed: a Telegram long-poll on `getUpdates`, or a Discord gateway session with only `GUILDS` plus mentions.
+  - **What it is.** A narrowly scoped, temporary reader for this one bot, opened after the token verifies and before the setup is committed:
+    - **Telegram:** a long-poll on `getUpdates`.
+    - **Discord:** a gateway session with the minimal intents `GUILDS | GUILD_MESSAGES`. `MESSAGE_CREATE` is delivered under `GUILD_MESSAGES`, and the privileged `MESSAGE_CONTENT` intent is not requested. Its handler accepts only a message that mentions the verified bot and carries the right claim (Discord gateway docs, "List of Intents" and "Message Content Intent").
   - **What it accepts.** It admits nothing but a `claim <code>` message: no command, no delivery, no inbound to any agent.
   - **Binding.** It is bound to the verified bot id, the pending setup id and the code.
   - **What a valid claim records.** The author becomes the first admin and allowed user, and the chat (Telegram group or topic; Discord guild plus channel) is recorded into the pending setup. The setup is then confirmed and committed as usual.
@@ -224,7 +226,11 @@ One component, used by "Add a bot", by the "New connection" dialog, and by a con
   - The adapter's gateway close code 4014 (disallowed intents) becomes a connection status: "Turn on Message Content Intent in the Discord developer portal → Bot".
 
 ### 5.4 Telegram ids, and the first confirmation
-- **Group and user:** the claim code ("add @bot to your group, then send `/claim ABC123` there") gives both the group id and the user id, through the pending-claim listener (§5.3) for a new bot, or through the running adapter for a token the fleet already polls. The current "Detect from a message" remains as the fallback.
+- **Group and user:** the claim code gives both the group id and the user id, through the pending-claim listener (§5.3) for a new bot, or through the running adapter for a token the fleet already polls.
+  - The form generates the command addressed to the verified bot: `/claim@<verified_bot_username> ABC123`.
+  - In a group with the default privacy mode, a bot receives commands addressed to it with the `@username` suffix. A bare `/claim` is guaranteed to reach a bot only in limited cases (Telegram Bots FAQ, "What messages will my bot get?").
+  - The listener accepts only a command carrying its own suffix. The first claim does not rely on privacy being off or the bot being an admin; if a design ever needs either, it must say so and check it.
+  - The current "Detect from a message" remains as the fallback.
 - **The first confirmation:** on a fleet whose only chat is the one being set up, confirmation can only come from the host CLI (§2.5, §2.7). Options for the user (Q1):
   - **A. Keep host confirmation, and make it easier to do.** Confirmation stays an explicit action on one exact proposal:
     - The card shows `agend settings confirm <id>` with a copy button and a QR code.
