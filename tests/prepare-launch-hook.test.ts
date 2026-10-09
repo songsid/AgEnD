@@ -33,6 +33,7 @@ describe("Daemon.trySpawnInsideGate and the backend's prepareLaunch", () => {
     const { daemon, order } = launch(() => new Promise(resolve => setTimeout(resolve, 30)));
     await expect(daemon.trySpawnInsideGate()).rejects.toThrow(/stop after the command/);
     expect(order).toEqual(["prepareLaunch:start", "prepareLaunch:done", "writeConfig", "buildCommand"]);
+    expect(daemon.backend.prepareLaunch).toHaveBeenCalledWith(daemon.backend.writeConfig.mock.calls[0][0]);
   });
 
   it("a prepareLaunch that throws does not fail the launch", async () => {

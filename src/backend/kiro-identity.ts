@@ -35,6 +35,7 @@ import { createHash } from "node:crypto";
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { writeFileAtomic } from "./kiro-engine-ledger.js";
+import { sharedKiroV2StoreLane } from "./kiro-v2-store.js";
 
 export type KiroClassicEngine = "v1" | "v2";
 /** v3 has its own identity (kiro-v3-identity.ts); its records here only say whether it runs as the agent. */
@@ -133,32 +134,13 @@ export function listKiroV1Sessions(workingDirectory: string, dbPath: string): Ki
   }
 }
 
-/**
- * v2: the TUI's session files, `<sessionsDir>/<id>.json`, whose `cwd` is this directory and which are not a turn's
- * subagent. A missing directory is an empty store; an unreadable directory is unreadable. A file that cannot be
- * parsed (being written) is skipped: it is not a conversation anyone could be handed.
- */
-export function listKiroV2Sessions(workingDirectory: string, sessionsDir: string): KiroStoreRead {
-  let names: string[];
-  try { names = readdirSync(sessionsDir); } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "ENOENT" ? EMPTY_STORE
-      : { kind: "unreadable", detail: `cannot list ${sessionsDir}: ${(err as Error).message}` };
-  }
-  const keys = new Set(kiroDirectoryKeys(workingDirectory));
-  const sessions: KiroStoreSession[] = [];
-  const created = new Map<string, number | null>();
-  for (const name of names) {
-    if (!name.endsWith(".json")) continue;
-    try {
-      const meta = JSON.parse(readFileSync(join(sessionsDir, name), "utf-8")) as Record<string, unknown>;
-      if (typeof meta.cwd !== "string" || !keys.has(meta.cwd) || meta.session_created_reason === "subagent") continue;
-      const id = typeof meta.session_id === "string" ? meta.session_id : name.slice(0, -".json".length);
-      sessions.push({ id, updatedAt: Date.parse(String(meta.updated_at ?? "")) || 0 });
-      const at = Date.parse(String(meta.created_at ?? ""));
-      created.set(id, Number.isFinite(at) ? at : null);
-    } catch { /* partly written */ }
-  }
-  return { kind: "ok", sessions, createdAt: (id: string) => created.get(id) ?? null };
+/** Full v2 files are read/parsed in a bounded worker, never on the fleet loop. */
+export async function listKiroV2Sessions(workingDirectory: string, sessionsDir: string): Promise<KiroStoreRead> {
+  const result = await sharedKiroV2StoreLane.read({ keys: kiroDirectoryKeys(workingDirectory), sessionsDir });
+  if (result.kind === "unreadable") return result;
+  const created = new Map(result.sessions.map(s => [s.id, s.createdAt]));
+  return { kind: "ok", sessions: result.sessions.map(({ id, updatedAt }) => ({ id, updatedAt })),
+    createdAt: (id: string) => created.get(id) ?? null };
 }
 
 export class KiroIdentityError extends Error {
@@ -297,6 +279,29 @@ function claim(claims: string, id: string, instance: string): boolean {
 function abandonClaim(claims: string, id: string, instance: string): void {
   if (!SAFE_ID.test(id) || !heldBy(claimOf(claims, id), instance)) return;
   try { writeFileAtomic(join(claims, id), `${instance}\nabandoned\n`); } catch { /* the state's abandoned list still holds it */ }
+}
+
+/** Whether launch preparation needs a store snapshot. Only reads the small
+ * identity/claim files; never claims or writes. The final resolver rereads this
+ * state synchronously AFTER preparation/admission, so an async result cannot
+ * overwrite a newer identity. Pending unclaimed adoption is conservative:
+ * claiming may fail, in which case a fresh baseline will need the store.
+ */
+export function kiroIdentityNeedsStore(opts: Omit<ResolveKiroIdentityOptions, "readStore" | "launchedBefore">): boolean {
+  if (!OWNER_NAME.test(opts.instance)) return false;
+  const p = paths(opts.agendHome, opts.engine, opts.instance);
+  const read = readState(p.state, opts.instance);
+  const key = keyOf(opts.engine, opts.workingDirectory, opts.credentialProfile);
+  const record = read.kind === "ok" ? read.state.keys[key] : undefined;
+  const pending = readPending(p.pending);
+  if (pending === "unreadable") return false; // the resolver refuses this launch
+  const pendingId = Object.hasOwn(pending, key) ? pending[key]! : null;
+  if (pendingId && !record) {
+    if (opts.skipResume || read.kind === "bad") return true;
+    return !heldBy(claimOf(p.claims, pendingId), opts.instance);
+  }
+  if (read.kind === "none" || read.kind === "bad" || !record || opts.skipResume) return true;
+  return record.id === null || !heldBy(claimOf(p.claims, record.id), opts.instance);
 }
 
 export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdentityDecision {
