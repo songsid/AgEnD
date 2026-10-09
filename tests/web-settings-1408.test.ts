@@ -632,3 +632,92 @@ describe("#1453 review", () => {
     expect(btn(keyRow("One"), "Verify & apply").disabled).toBe(false);
   });
 });
+
+describe("#1453 review r2", () => {
+  const VIEW = (state: string, id = "a".repeat(32)) => ({ id, state, section: "access", requested_at: 1, requested_by: "Chrome", expires_at: 2, remaining_ms: 290_000,
+    source: "web_session", summary: ["x"], confirmation: { kind: "chat" }, can_withdraw: state === "pending",
+    outcome: state === "pending" ? null : { state, reason_code: "withdrawn", message: "Change withdrawn." } });
+
+  it("1. a 202 whose request id is empty is unknown, not done: nothing after it is written, and its key is kept", async () => {
+    routes.push(r => (r.method === "PATCH" && r.url.endsWith("/alpha")
+      ? { status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { ...VIEW("pending"), id: "" } } } : undefined));
+    await mount(); await settle(6);
+    await stageDescription("alpha", "A2");
+    await stageDescription("beta", "B2");
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("failed"), { timeout: 5000 });
+    expect(writes().map(r => `${r.method} ${r.url}`)).toEqual(["PATCH /api/settings/fleet/instances/alpha"]);
+    expect(app.appStore.get().pendingChanges ?? []).toEqual([]);
+    const first = writes()[0]!.key;
+    await settle(6); routes.length = 0;
+    btn(p.root.querySelector(".s-pending"), "Apply changes").click();
+    await vi.waitFor(() => expect(op().phase).toBe("done"), { timeout: 5000 });
+    expect(writes().filter(r => r.method === "PATCH" && r.url.endsWith("/alpha")).map(r => r.key)).toEqual([first, first]);
+  }, 15_000);
+
+  it("2. withdrawn, then dismissed: a reload's list that answers late does not bring the card back", async () => {
+    const list = gate<{ body: unknown }>();
+    routes.push(r => (r.method === "GET" && r.url === "/api/settings/pending" ? list.p : undefined));
+    routes.push(r => (r.method === "DELETE" ? { body: VIEW("rejected") } : undefined));
+    confirmMod.track(VIEW("pending"), "x");
+    const attached = confirmMod.attach();
+    await app.appStore.get().pendingChanges[0].withdraw();
+    app.appStore.get().pendingChanges[0].dismiss();
+    expect(app.appStore.get().pendingChanges).toEqual([]);
+    list.open({ body: [VIEW("pending")] });
+    await attached; await settle(2);
+    expect(app.appStore.get().pendingChanges).toEqual([]);
+    // Control: a request never seen decided is still picked up from the list.
+    const list2 = gate<{ body: unknown }>();
+    routes.unshift(r => (r.method === "GET" && r.url === "/api/settings/pending" ? list2.p : undefined));
+    const again = confirmMod.attach();
+    list2.open({ body: [VIEW("pending", "b".repeat(32))] });
+    await again; await settle(2);
+    expect(app.appStore.get().pendingChanges.map((x: any) => x.id)).toEqual(["b".repeat(32)]);
+  });
+
+  it("3. a provider key verified after its card was unmounted (Bots → General → Bots) is never applied over the key entered since", async () => {
+    const verifyA = gate<{ body: unknown }>();
+    let verifies = 0;
+    routes.push(r => {
+      if (r.url === "/api/settings/provider-secrets") return { body: [{ id: "p1", display_name: "One", verifier: "available", token_present: true }] };
+      if (r.url === "/api/settings/secrets/p1/verify") return verifies++ === 0 ? verifyA.p : { body: { verification_id: "vB" } };
+      if (r.url === "/api/settings/secrets/p1/apply") return { body: { result: "reloaded" } };
+      return undefined;
+    });
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    const enter = async (v: string) => {
+      const row = p.root.querySelector(".s-key");
+      const i = row.querySelector("input"); i.value = v; fire(i, "input"); await settle(2);
+      btn(row, "Verify & apply").click(); await settle(4);
+    };
+    await enter("fake-key-a");
+    await mount("general", "settings:general|2|en"); await settle(4);
+    await mount("bots", "settings:bots|3|en"); await settle(6);
+    await enter("fake-key-b");
+    await vi.waitFor(() => expect(writes().filter(r => r.url === "/api/settings/secrets/p1/apply")).toHaveLength(1));
+    verifyA.open({ body: { verification_id: "vA" } });
+    await settle(8);
+    const applies = writes().filter(r => r.url === "/api/settings/secrets/p1/apply");
+    expect(applies.map(r => r.body.verification_id)).toEqual(["vB"]);
+  });
+
+  it("4. the frame its connection is gone in, a binding verification that answers asks nothing and writes nothing", async () => {
+    const dialogs = await import("/ui/js/settings-dialogs.js");
+    const model = await import("/ui/js/settings-model.js");
+    const verify = gate<{ body: unknown }>();
+    routes.push(r => (r.url.endsWith("/binding/verify") ? verify.p : undefined));
+    let asked = 0;
+    (globalThis as any).confirm = () => { asked++; return true; };
+    const ctxFor = (channels: unknown[]) => ({ fleet: { ...FLEET, channels }, schema: model.DEFAULT_SCHEMA, reload() {}, stage() {}, stageChannels() {}, channelType: () => "discord" });
+    // onClose does nothing: the dialog stays mounted with its lease alive, as in the frame before the parent closes it.
+    await p.mount(h(dialogs.BotDialog, { id: "main", ctx: ctxFor(FLEET.channels), onClose() {} })); await settle(4);
+    btn(p.root.querySelector("dialog"), "Verify the new binding").click(); await settle(2);
+    await p.mount(h(dialogs.BotDialog, { id: "main", ctx: ctxFor([]), onClose() {} })); await settle(2);
+    expect(p.root.querySelector("dialog")).toBeNull();
+    verify.open({ body: { verification_id: "v1", probe: { group_name: "G" } } });
+    await settle(6);
+    expect(asked).toBe(0);
+    expect(writes().filter(r => r.url.endsWith("/binding/apply"))).toEqual([]);
+  });
+});

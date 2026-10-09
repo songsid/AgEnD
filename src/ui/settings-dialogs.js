@@ -322,6 +322,10 @@ export function BotDialog({ id, ctx, onClose }) {
   const index = chs.findIndex((c, i) => channelId(c, i) === id);
   const ch = index >= 0 ? chs[index] : null;
   const type = (ch && ch.type) || "telegram";
+  // The moment its connection is gone (this render), nothing started here may ask or write any more — not one frame
+  // later, when the close below has run (#1453 review).
+  const present = useRef(!!ch);
+  present.current = !!ch;
   useEffect(() => { if (!ch) onClose(); }, [!ch]);
   const previousAccess = useMemo(() => structuredClone((ch && ch.access) || { mode: "locked", allowed_users: [] }), []);
   const [mode, setMode] = useState(previousAccess.mode || "locked");
@@ -391,7 +395,8 @@ export function BotDialog({ id, ctx, onClose }) {
       <div class="dlg-inline-actions"><button type="button" class="btn btn-sm" disabled=${bindBusy} onClick=${async () => {
         if (!group.trim()) { setBinding({ error: tn("groupRequired") }); return; }
         setBindBusy(true);
-        const ok = await rebind(id, group, general, (s) => { if (lease.current()) setBinding(s); }, () => lease.current());
+        const alive = () => lease.current() && present.current;
+        const ok = await rebind(id, group, general, (s) => { if (alive()) setBinding(s); }, alive);
         if (lease.current()) setBindBusy(false);
         if (ok) ctx.reload();
       }}>${tn("bindingButton")}</button>

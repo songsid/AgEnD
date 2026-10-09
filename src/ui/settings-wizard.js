@@ -80,7 +80,8 @@ export function SetupWizard({ ctx, onClose }) {
   /**
    * Write the files, then the ordinary Apply — one operation, handed to the app before the commit is even sent
    * (#1453 review): the commit (which may wait for an admin's confirmation), then the apply and its job. While it runs
-   * no other Apply can start, leaving the page warns, and the token goes with the commit and is dropped after it.
+   * no other Apply can start, leaving the page warns. The token leaves the form now; the operation holds it in the
+ * commit's body until that write completes, then drops it.
    */
   const finish = () => {
     const body = { ...input(), token: w.token };

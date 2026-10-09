@@ -42,7 +42,8 @@ export function operationActive() { return !!op && (ACTIVE.has(op.phase) || op.r
  * Take over an Apply. `changes`: [{ label, impact, request: { method, url, body, sensitive? }, key? } | { label, impact,
  * connectionSecret: { id, secret } }], in order. Returns false (and does nothing) while another operation is active.
  * A change that brings its `key` is the retry of a write whose outcome was never learned: the same key rejoins the
- * request the server may already hold. A `sensitive` request body (the wizard's token) is dropped once it is sent.
+ * request the server may already hold. A `sensitive` request body (the wizard's token) is dropped when its write
+ * completes (answered, refused or failed), and such a change is never staged again.
  */
 export function startOperation(changes) {
   if (operationActive()) return false;

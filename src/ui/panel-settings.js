@@ -179,7 +179,7 @@ export function SettingsPanel({ route, navKey }) {
   const sectionBody = !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
-    : section === "bots" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} lease=${mount} />`
+    : section === "bots" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
     : section === "classic" ? html`<${Classic} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
     : section === "general" ? html`<${General} key=${data.loadedAt} ctx=${ctx} staged=${staged} />`
     : html`<${Developer} ctx=${ctx} />`;
@@ -345,7 +345,7 @@ function Agents({ ctx, search, openDialog }) {
   })}</div>`;
 }
 
-function Bots({ ctx, search, openDialog, lease }) {
+function Bots({ ctx, search, openDialog }) {
   const all = channelsOf(ctx.fleet);
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
@@ -369,14 +369,18 @@ function Bots({ ctx, search, openDialog, lease }) {
           <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
       </div>`;
     })}</div>`}
-    ${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} lease=${lease} />` : null}`;
+    ${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`;
 }
 
 /**
  * Provider API keys: verified by AgEnD, then applied (it may need an admin's confirmation, #1423). A provider whose
  * key cannot be positively verified gets no input at all — never an "unverified" write.
  */
-function ProviderKeys({ ctx, lease }) {
+function ProviderKeys({ ctx }) {
+  // Its own lease: a section change unmounts this card, and a verification started here that answers after that is
+  // abandoned before its apply — never applied over a key entered since (#1453 review). A write already sent is not
+  // undone; it is followed to its end on the server.
+  const lease = useLease("provider-keys");
   const [keys, setKeys] = useState({});
   const [notes, setNotes] = useState({});
   // One request per provider at a time, each owning only its own provider's busy state (#1453 review): a second
@@ -397,6 +401,7 @@ function ProviderKeys({ ctx, lease }) {
     const base = `/api/settings/secrets/${encodeURIComponent(spec.id)}`;
     try {
       const verified = await api(`${base}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ secret, idempotency_key: key }) });
+      if (!lease.current()) return;
       if (!verified.ok) { say(spec.id, { error: (verified.body && verified.body.error) || tn("verifyFailed") }); return; }
       say(spec.id, { text: tn("applyingKey") });
       const result = await confirmedWrite(`${base}/apply`, { method: "POST", key, label: tn("providerKeyLabel", spec.display_name),
@@ -410,7 +415,7 @@ function ProviderKeys({ ctx, lease }) {
       const labels = { applied_next_use: "keyAppliedNextUse", reloaded: "keyApplied", rolled_back: "keyRolledBack", rollback_failed: "keyRollbackFailed" };
       const ok = body.result === "applied_next_use" || body.result === "reloaded";
       say(spec.id, ok ? { text: tn(labels[body.result]) } : { error: labels[body.result] ? tn(labels[body.result]) : (body.error || tn("applyFailed")) });
-      if (ok) ctx.reload();
+      if (ok && lease.current()) ctx.reload();
     } catch { say(spec.id, { error: tn("failed") }); }
     finally { inFlight.current.delete(spec.id); if (lease.current()) setBusy(new Set(inFlight.current)); }
   };

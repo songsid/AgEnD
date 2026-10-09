@@ -31,9 +31,12 @@ export async function api(path, opts = {}) {
   return { ok: r.ok, status: r.status, body };
 }
 
+/** A request id we can follow: a non-empty string (the server's are 32 hex characters). */
+const usableId = (v) => typeof v === "string" && v.length > 0;
 /** The 202 that means "waiting for an admin", not "done". */
 export function isPendingResponse(res) {
-  return !!res && res.status === 202 && !!res.body && res.body.result === "pending_confirmation" && !!res.body.pending_change?.id;
+  return !!res && res.status === 202 && !!res.body && res.body.result === "pending_confirmation" && !!res.body.pending_change
+    && usableId(res.body.pending_change.id);
 }
 /**
  * A 202 whose body cannot be read, or that says pending_confirmation without a request to follow: the server may hold
@@ -41,10 +44,13 @@ export function isPendingResponse(res) {
  */
 function isUnreadableAccept(res) {
   return !!res && res.status === 202 && (!res.body || typeof res.body !== "object"
-    || (res.body.result === "pending_confirmation" && !(res.body.pending_change && typeof res.body.pending_change.id === "string")));
+    || (res.body.result === "pending_confirmation" && !(res.body.pending_change && usableId(res.body.pending_change.id))));
 }
 
 const tracked = new Map();                       // id → { view, at, label, waiters, done }
+// Requests seen decided on this page, kept after their card is dismissed: an older read that still says "pending"
+// (a reload's list answered late) must not bring one back (#1453 review).
+const finals = new Map();                        // id → its decided view
 let timer = null, polling = false;
 
 function publish() {
@@ -83,6 +89,7 @@ function update(view, token) {
   e.view = view; e.at = now();
   if (TERMINAL.has(view.state) && !e.done) {
     e.done = true;
+    finals.set(view.id, view);
     for (const resolve of e.waiters.splice(0)) resolve(view);
     // A request that applied goes away by itself; one that did not stays until it is dismissed, so it is read.
     if (view.state === "applied") e.doneTimer = setTimeout(() => forget(view.id), SHOW_DONE_MS);
@@ -118,6 +125,7 @@ async function poll() {
  * failed). The same id twice is followed once.
  */
 export function track(view, label) {
+  if (finals.has(view.id) && !tracked.has(view.id)) return Promise.resolve(finals.get(view.id));   // decided and dismissed
   let e = tracked.get(view.id);
   if (!e) { e = { view, at: now(), label, waiters: [], done: false, issued: 0, applied: 0 }; tracked.set(view.id, e); }
   else if (label && !e.label) e.label = label;
@@ -172,7 +180,7 @@ export function outcomeResponse(view) {
 /** For tests: forget everything and stop following. */
 export function resetConfirmations() {
   for (const e of tracked.values()) if (e.doneTimer) clearTimeout(e.doneTimer);
-  tracked.clear();
+  tracked.clear(); finals.clear();
   if (timer) { clearTimeout(timer); timer = null; }
   appStore.set({ pendingChanges: [] });
 }
