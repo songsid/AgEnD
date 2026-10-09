@@ -127,7 +127,7 @@ function manager(answers: Array<[RegExp, Partial<CommandResult> | (() => Partial
     readFile: path => files[path] ?? null,
     writeFile: (path, content) => { files[path] = content; calls.push(`write ${path}`); },
     refresh: () => { calls.push("refresh"); if (refreshWrites) files[refreshWrites[0]] = refreshWrites[1]; return { status: 0, signal: null, stdout: "", stderr: "" }; },
-    restart: () => { restarts++; calls.push("restart"); },
+    restart: () => { restarts++; calls.push("restart"); return "restarted"; },
     log: () => {},
   };
   return { deps, calls, files, restarts: () => restarts };
