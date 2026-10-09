@@ -258,14 +258,15 @@ export function unitCliEntry(unitText: string): string {
   return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
 }
 
+/** Where `agend install` keeps a launchd job: the user's LaunchAgents (the gui/<uid> domain of a logged-in user). */
+export function launchdPlistPath(label: string): string {
+  return join(process.env.HOME!, "Library/LaunchAgents", `${label}.plist`);
+}
+
 export function installService(vars: ServiceVars): string {
   const plat = detectPlatform();
   if (plat === "macos") {
-    const plistPath = join(
-      process.env.HOME!,
-      "Library/LaunchAgents",
-      `${vars.label}.plist`,
-    );
+    const plistPath = launchdPlistPath(vars.label);
     mkdirSync(dirname(plistPath), { recursive: true });
     writeFileSync(plistPath, renderLaunchdPlist(vars));
     return plistPath;

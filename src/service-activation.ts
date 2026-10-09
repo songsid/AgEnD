@@ -219,6 +219,11 @@ export interface ActivationDeps extends TupleDeps {
   /** `agend restart` through the verified binary (systemd, detached). Returns its exit status. */
   restart(): void;
   log(message: string): void;
+  /**
+   * launchd planned activation (#1450 C6 path 2): the proven new plist is ALREADY on disk, so the job to roll back to
+   * is the recorded preimage plist, not the file. With this set, `refresh` is not called.
+   */
+  launchdPreimage?: string;
 }
 
 export type ActivationOutcome =
@@ -279,7 +284,7 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
       return { ok: false, stopped: false, message: `  ✗ launchd's environment sets ${key} for every job, which changes how Node runs. Not activating; unset it (launchctl unsetenv ${key}).` };
     }
   }
-  const preimage = deps.readFile(manager.plistPath);
+  const preimage = deps.launchdPreimage ?? deps.readFile(manager.plistPath);
   const preimageTuple = preimage !== null ? parsePlist(preimage) : null;
   // The loaded job, or a CONFIRMED absence: launchctl print exits 113 ("Could not find service") for a job that is not
   // loaded. Anything else that is not a complete, readable job is uncertainty: refuse with nothing touched.
@@ -296,8 +301,10 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   if (loadedBefore && (!loadedBefore.tuple || !preimageTuple || !sameJob(loadedBefore.tuple, preimageTuple))) {
     return { ok: false, stopped: false, message: `  ✗ The job launchd has loaded for ${manager.label} is not the one ${manager.plistPath} describes, so there is no job to roll back to safely. Not activating; reload it (agend install, agend restart) first.` };
   }
-  const refreshed = deps.refresh();
-  if (refreshed.status !== 0) deps.log(`  ⚠ Service file refresh failed: ${(refreshed.stderr || refreshed.stdout).trim()}`);
+  if (deps.launchdPreimage === undefined) {
+    const refreshed = deps.refresh();
+    if (refreshed.status !== 0) deps.log(`  ⚠ Service file refresh failed: ${(refreshed.stderr || refreshed.stdout).trim()}`);
+  }
   const onDisk = deps.readFile(manager.plistPath);
   const diskTuple = onDisk ? parsePlist(onDisk) : null;
   const diskMatch = diskTuple ? tupleStartsVerified(diskTuple, verified, LAUNCHD_DEFAULT_PATH, deps) : { ok: false as const, reason: "the plist cannot be read" };

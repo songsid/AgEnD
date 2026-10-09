@@ -34,7 +34,7 @@ import {
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
-import { spawn, execSync, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
@@ -76,6 +76,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const DATA_DIR = getAgendHome();
+
+/** Real-filesystem, real-process deps for the launchd plan (service-plan.ts) and its activation. */
+function planDeps() {
+  return {
+    run: (command: string, args: string[]) => {
+      const r = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
+      return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    },
+    readFile: (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } },
+    writeFile: (path: string, content: string) => writeFileSync(path, content),
+    removeFile: (path: string) => { try { unlinkSync(path); } catch { /* absent */ } },
+    realpath: (path: string) => { try { return realpathSync(path); } catch { return null; } },
+    now: () => new Date(),
+  };
+}
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 
 // CLI commands run outside FleetManager. Honor an explicit fleet locale while
@@ -1474,6 +1489,12 @@ program
         },
         log: message => console.log(message),
       });
+      // The refresh above (`install --no-activate`) records a launchd plan; this activation consumed it, whatever it
+      // came to — never leave one for a later `agend restart` to act on.
+      if (manager.kind === "launchd") {
+        const { planPath } = await import("./service-plan.js");
+        planDeps().removeFile(planPath(DATA_DIR));
+      }
       if (outcome.ok && outcome.via === "launchd-activation") {
         console.log("  ✓ Service restarted (launchd loaded the verified job)");
         // The new fleet clears the update marker once it is up.
@@ -1656,17 +1677,37 @@ program
   .option("--activate", "Deprecated; service activation is now the default")
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
-    const { installService, activateService, detectPlatform } = await import(
+    const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath } = await import(
       "./service-installer.js"
     );
     const execPath = canonicalCliEntry();
-    const svcPath = installService({
+    const serviceVars = {
       label: "com.agend.fleet",
       execPath,
       path: process.env.PATH!,
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),
-    });
+    };
+    // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
+    // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
+    if (opts.activate === false && detectPlatform() === "macos") {
+      const { refreshLaunchdWithoutActivating } = await import("./service-plan.js");
+      const { expectedTuple } = await import("./restart-guard.js");
+      const expectation = expectedTuple();
+      if (!expectation.ok) { console.error(`  ✗ ${expectation.reason}`); process.exitCode = 1; return; }
+      const uid = process.getuid?.() ?? 501;
+      const plistPath = launchdPlistPath(serviceVars.label);
+      mkdirSync(dirname(plistPath), { recursive: true });
+      const outcome = refreshLaunchdWithoutActivating({
+        label: serviceVars.label, target: `gui/${uid}/${serviceVars.label}`, plistPath, newPlist: renderLaunchdPlist(serviceVars),
+        expected: expectation.expected, pkgDir: dirname(dirname(execPath)), agendHome: DATA_DIR,
+      }, planDeps());
+      if (!outcome.ok) { console.error(`  ✗ ${outcome.message}`); process.exitCode = 1; return; }
+      console.log(t("install.path", plistPath));
+      console.log(`  ${outcome.message}`);
+      return;
+    }
+    const svcPath = installService(serviceVars);
     console.log(t("install.path", svcPath));
     if (opts.activate !== false) {
       const pidPath = join(DATA_DIR, "fleet.pid");
@@ -1990,18 +2031,56 @@ program
       process.exitCode = 1;
       return;
     }
-    // 3. launchd (macOS)
+    // 3. launchd (macOS). "Loaded" is launchctl print's own answer (113 = not loaded); nothing here may fall through
+    // to the detached restart once a job is known to be loaded.
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
       const label = "com.agend.fleet";
-      try {
-        // print succeeds only if the service is loaded in launchd
-        execSync(`launchctl print gui/${uid}/${label}`, { stdio: "pipe", timeout: 5000 });
+      const target = `gui/${uid}/${label}`;
+      const deps = planDeps();
+      const printed = deps.run("launchctl", ["print", target]);
+      if (printed.status === 0) {
         const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
-        const readText = (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } };
-        if (expectation.ok && refuses(guard.guardLaunchd(captureRun, `gui/${uid}/${label}`, plistPath, readText, expectation.expected, guardDeps))) return;
-        if (run(`launchctl kickstart -k gui/${uid}/${label}`)) { console.log("Service restarted."); return; }
-      } catch { /* not loaded — fall through */ }
+        // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
+        const { readPlan, admitPlan, planPath } = await import("./service-plan.js");
+        const plan = opts.force ? null : readPlan(DATA_DIR, deps);
+        if (plan && expectation.ok) {
+          const pkgDir = dirname(dirname(expectation.expected.entry));
+          const admitted = admitPlan(plan, { target, expected: expectation.expected, pkgDir }, deps);
+          if (!admitted.ok) {
+            console.error(`  ✗ Not activating the planned launchd job: ${admitted.reason}. Nothing was stopped.`);
+            process.exitCode = 1;
+            return;
+          }
+          const { activateService } = await import("./service-activation.js");
+          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
+            { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
+              ...deps,
+              readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
+              isExecutable: path => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
+              refresh: () => ({ status: 0, signal: null, stdout: "", stderr: "" }),
+              restart: () => {},
+              log: message => console.log(message),
+              launchdPreimage: plan.preimage.plist,
+            });
+          deps.removeFile(planPath(DATA_DIR));
+          if (outcome.ok) { console.log("Service restarted (launchd loaded the planned job)."); return; }
+          console.error(outcome.message);
+          process.exitCode = 1;
+          return;
+        }
+        // Path 1: an unchanged loaded job.
+        if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
+        if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
+        console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
+        process.exitCode = 1;
+        return;
+      }
+      if (printed.status !== 113) {
+        console.error(`  ✗ Could not tell whether ${label} is loaded (launchctl print ${printed.signal ? `killed by ${printed.signal}` : `exited ${printed.status}`}); refusing a detached restart that could duplicate the fleet.`);
+        process.exitCode = 1;
+        return;
+      }
     }
     // 4. Detached process tracked by fleet.pid (no service manager)
     if (existsSync(pidPath)) {
