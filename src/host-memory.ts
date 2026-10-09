@@ -8,6 +8,10 @@ export interface HostMemory {
   availableKind: "available" | "free" | "unknown";
   swapTotalBytes: number | null;
   swapFreeBytes: number | null;
+  /** Darwin kernel alarm, independent of the diagnostic RAM/swap estimates. */
+  darwinPressureLevel?: 1 | 2 | 4 | null;
+  /** Bounded diagnostic output; null when unavailable or not requested. */
+  darwinPressureRaw?: string | null;
 }
 
 interface HostMemoryDeps {
