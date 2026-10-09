@@ -619,3 +619,58 @@ textarea.s-yaml { width: 100%; min-height: 50vh; resize: vertical; }
 .n-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
 .n-notify { display: flex; flex-direction: column; gap: var(--s-1); }
 .confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }
+
+/* ── Org chart (#1389): General → teams → instances. Connectors are borders and pseudo-elements; no inline style.
+   Desktop: General's stem meets the bus over the team grid (no per-team ticks: a wrapped row would have nothing to
+   meet). Phone: one column hanging off a rail, a tick into each team. ── */
+.col.col-wide { max-width: 1240px; }
+.org-head { flex-wrap: wrap; }
+.org-counts { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); list-style: none; }
+.org-count { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
+.org-note { margin-bottom: var(--s-3); }
+.org-nodes { list-style: none; display: flex; flex-direction: column; gap: var(--s-2); }
+.org-top .org-nodes { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+.org-top .org-node { width: min(100%, 360px); }
+.org-top::after { content: ""; display: block; width: 2px; height: var(--s-5); margin: 0 auto; background: var(--border-strong); }
+.org-teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--s-4); align-items: start; }
+.org-top + .org-teams, .org-top + .org-note + .org-teams { position: relative; padding-top: var(--s-5); border-top: 2px solid var(--border-strong); }
+.org-team { position: relative; display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; padding: var(--s-3); border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg); }
+.org-team-head { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.org-team-head h3 { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-md); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.org-team-desc { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.org-team-sub { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); font-size: var(--fs-xs); }
+.org-node { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; padding: var(--s-3); border-radius: var(--r-md); background: var(--surface); border-left: 3px solid transparent; }
+.org-node.st-needs, .org-node.st-stuck { border-left-color: var(--warn); }
+.org-node.st-crashed { border-left-color: var(--danger); }
+.org-node.st-working { border-left-color: var(--ok); }
+.org-node.st-missing { opacity: 0.7; }
+.org-node-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.org-names { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.org-alias, .org-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-alias { font-size: var(--fs-sm); }
+.org-name { font-size: var(--fs-xs); color: var(--text-2); }
+strong.org-name { font-size: var(--fs-sm); color: var(--text); }
+.org-state { flex-shrink: 0; font-size: 11px; line-height: 18px; padding: 0 var(--s-2); border-radius: var(--r-full); border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+.org-state.st-needs { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-line); }
+.org-state.st-stuck { color: var(--warn); border-color: var(--warn-line); }
+.org-state.st-crashed { color: var(--danger); border-color: var(--danger); }
+.org-state.st-working { color: var(--ok); }
+.org-desc { color: var(--text-2); font-size: var(--fs-sm); overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.org-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); min-width: 0; font-size: var(--fs-xs); color: var(--text-3); }
+.org-chip { padding: 0 var(--s-2); border-radius: var(--r-full); background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.org-model { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.org-links { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.org-link { display: inline-flex; align-items: center; gap: var(--s-1); font-size: var(--fs-xs); color: var(--accent); }
+.org-link:hover { text-decoration: underline; }
+@media (max-width: 899px) {
+  /* A phone: one column, the teams hang off a rail on the left. */
+  .org-top::after { margin: 0 0 0 var(--s-4); }
+  .org-top + .org-teams, .org-top + .org-note + .org-teams { border-top: 0; padding-top: 0; margin-left: var(--s-4); padding-left: var(--s-4); border-left: 2px solid var(--border-strong); }
+  .org-top + .org-teams .org-team::before, .org-top + .org-note + .org-teams .org-team::before {
+    content: ""; position: absolute; top: var(--s-5); left: calc(-1 * var(--s-4) - 2px); width: var(--s-4); height: 2px; background: var(--border-strong); }
+  .org-link { min-height: var(--tap); }
+}
+/* A phone: Fleet's five tabs fit when only the open one shows its label (the others keep theirs for screen readers). */
+@media (max-width: 479px) {
+  .p-fleet .seg-item:not(.active) > span { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+}
