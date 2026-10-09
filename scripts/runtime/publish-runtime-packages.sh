@@ -18,7 +18,8 @@ ERR="$(mktemp)"; trap 'rm -f "$ERR"' EXIT
 for pkg in "$DIR"/*/; do
   [ -f "$pkg/package.json" ] || continue
   found=1
-  spec="$(node -p 'const p = require(process.argv[1]); p.name + "@" + p.version' "$pkg/package.json")"
+  # Read as a file: require() would take a relative path such as runtime-packages/… (the workflow's) for a module name.
+  spec="$(node -p 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); p.name + "@" + p.version' "$pkg/package.json")"
   set +e; seen="$(npm view "$spec" version --json 2>"$ERR")"; vrc=$?; set -e
   if [ "$vrc" -eq 0 ] && [ "$seen" = "\"${spec##*@}\"" ]; then
     echo "$spec: already on the registry, skipped"

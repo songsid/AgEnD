@@ -192,7 +192,7 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
   const script = join(process.cwd(), "scripts", "runtime", "publish-runtime-packages.sh");
   /** `view`: which specs npm already has ("published"), what it answers for the rest ("empty": the name exists, not
    *  this version; "404": no such package; "error": a failed lookup). */
-  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" } = {}) => {
+  const run = (versions: string[], dryRun: string, view: { published?: string[]; otherwise?: "empty" | "404" | "error" } = {}, relative = false) => {
     const dir = mkdtempSync(join(tmpdir(), "agrt-pub-"));
     const bin = join(dir, "bin"); mkdirSync(bin);
     const log = join(dir, "npm.log"); writeFileSync(log, "");
@@ -208,7 +208,8 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
       mkdirSync(join(dir, "pkgs", `p-${v}`), { recursive: true });
       writeFileSync(join(dir, "pkgs", `p-${v}`, "package.json"), JSON.stringify({ name: "@songsid/agend-node-linux-x64", version: v }));
     }
-    const r = spawnSync("bash", [script, join(dir, "pkgs"), dryRun], { encoding: "utf8", env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` } });
+    // The workflow passes a RELATIVE directory (runtime-packages): `relative` runs it exactly so, from the parent dir.
+    const r = spawnSync("bash", [script, relative ? "pkgs" : join(dir, "pkgs"), dryRun], { encoding: "utf8", cwd: relative ? dir : undefined, env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` } });
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => l.split("|")[1]!);
     rmSync(dir, { recursive: true, force: true });
     return { r, calls };
@@ -234,6 +235,13 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(r.stdout).not.toContain("already on the registry");
     expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.3 version --json");
     expect(calls.filter(c => c.startsWith("publish"))).toHaveLength(1);
+  });
+  // Run 37944296787: `require("runtime-packages/…/package.json")` resolved as a module name and nothing was published.
+  it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: called with a RELATIVE package directory, as publish-runtime.yml does", (dry, flag) => {
+    const { r, calls } = run(["22.23.3"], dry, { otherwise: "404" }, true);
+    expect(r.status, r.stderr).toBe(0);
+    expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.3 version --json");
+    expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag latest`]);
   });
   it("the package name exists but not this version (npm view prints nothing): published", () => {
     const { r, calls } = run(["22.23.3"], "false", { otherwise: "empty" });
