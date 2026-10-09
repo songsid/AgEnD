@@ -292,7 +292,10 @@ export class CacheService {
    * on every catchUp() cycle when many files are updated rapidly. */
   private async save(insts: CacheInstance[]): Promise<void> {
     const now = Date.now();
-    if (now - this.lastSaveAt < CacheService.SAVE_THROTTLE_MS) return;
+    // Skip early only when nothing is dirty AND we are within the throttle window.
+    // When there IS dirty data (including failed-write retries), always save.
+    if (this.dirty.size === 0 && !this.metaDirty
+        && now - this.lastSaveAt < CacheService.SAVE_THROTTLE_MS) return;
     this.lastSaveAt = now;
     const byName = new Map(insts.map((i) => [i.name, i]));
     for (const name of [...this.dirty]) {

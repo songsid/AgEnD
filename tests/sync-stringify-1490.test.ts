@@ -69,7 +69,7 @@ describe("CacheService.save throttle — source verification (#1490 P3)", () => 
   it("source contains SAVE_THROTTLE_MS and the per-save throttle guard", () => {
     const src = readFileSync(join(import.meta.dirname, "..", "src", "cache-service.ts"), "utf-8");
     expect(src).toContain("SAVE_THROTTLE_MS");
-    expect(src).toContain("this.lastSaveAt < CacheService.SAVE_THROTTLE_MS");
+    expect(src).toContain("dirty.size === 0 && !this.metaDirty");  // skip only when nothing to write
     expect(src).toContain("this.lastSaveAt = now"); // records last save time
   });
 
