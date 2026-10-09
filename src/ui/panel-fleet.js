@@ -25,7 +25,7 @@ register("fleet", {
     title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", config: "Config",
     newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
     noTasks: "No tasks yet", noTasksHint: "Create one to coordinate fleet work.", noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
-    noTeams: "No teams yet", noTeamsHint: "Group instances for coordinated work.", countTasks: "{0} tasks", countSchedules: "{0} schedules", countTeams: "{0} teams",
+    noTeams: "No teams yet", noTeamsHint: "Group instances for coordinated work.", countTasks: "{0} tasks", countSchedules: "{0} schedules", countTeams: "{0} teams", countTask: "1 task", countSchedule: "1 schedule", countTeam: "1 team",
     claim: "Claim", done: "Done", delete: "Delete", on: "on", off: "off", cancel: "Cancel", create: "Create", creating: "Creating…", save: "Save changes",
     taskTitle: "Title", taskDesc: "Description", priority: "Priority", assignee: "Assignee", unassigned: "Unassigned",
     pNormal: "Normal", pLow: "Low", pHigh: "High", pUrgent: "Urgent",
@@ -45,7 +45,7 @@ register("fleet", {
     title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", config: "設定",
     newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
     noTasks: "還沒有 task", noTasksHint: "建立一個來協調 fleet 的工作。", noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
-    noTeams: "還沒有 team", noTeamsHint: "把 instance 分組一起工作。", countTasks: "{0} 個 task", countSchedules: "{0} 個排程", countTeams: "{0} 個 team",
+    noTeams: "還沒有 team", noTeamsHint: "把 instance 分組一起工作。", countTasks: "{0} 個 task", countSchedules: "{0} 個排程", countTeams: "{0} 個 team", countTask: "1 個 task", countSchedule: "1 個排程", countTeam: "1 個 team",
     claim: "認領", done: "完成", delete: "刪除", on: "開", off: "關", cancel: "取消", create: "建立", creating: "建立中…", save: "儲存變更",
     taskTitle: "標題", taskDesc: "說明", priority: "優先順序", assignee: "負責人", unassigned: "未指派",
     pNormal: "一般", pLow: "低", pHigh: "高", pUrgent: "緊急",
@@ -74,7 +74,7 @@ async function api(method, path, body, lease) {
 }
 
 /**
- * Load `path` under the lease: `null` while the first load runs, `{ error }` on failure. A refresh (a new `version`,
+ * Load `path` under the lease: `null` while the first load runs, `{ error }` on failure (no answer, or an HTTP error). A refresh (a new `version`,
  * after Claim or Create) keeps showing what is there until the new list arrives — nothing below it is torn down, so
  * an open dialog and its draft survive (#1425 review). Only the latest request's answer is kept.
  */
@@ -87,7 +87,10 @@ function useLoad(lease, path, version) {
     if (shownFor.current !== lease) { shownFor.current = lease; setState(null); }
     (async () => {
       try {
-        const d = await api("GET", path, null, lease);
+        // A read the server refused (a 4xx/5xx with an { error } body) is a failure, not an empty list (alpha.2 sweep).
+        const r = await lease.fetch(path, { method: "GET", headers: { "Content-Type": "application/json" } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
         if (lease.current() && mine === seq.current) setState({ data: d });
       } catch { if (lease.current() && mine === seq.current) setState({ error: true }); }
     })();
@@ -127,7 +130,7 @@ function Tasks({ lease }) {
   }
   return html`<${Loaded} state=${state}>${(d) => {
     const tasks = d.tasks || [];
-    return html`<${ListHead} count=${t("fleet.countTasks", tasks.length)} label=${t("fleet.newTask")} action=${{ onClick: () => setCreating(true) }} />
+    return html`<${ListHead} count=${tasks.length === 1 ? t("fleet.countTask") : t("fleet.countTasks", tasks.length)} label=${t("fleet.newTask")} action=${{ onClick: () => setCreating(true) }} />
       ${tasks.length ? html`<ul class="rows">${tasks.map(x => html`<li key=${x.id} class="row-item">
         <span class=${`pill ${x.status}`}>${x.status}</span><span class="grow">${x.title}</span>
         ${x.assignee ? html`<a class="link" href=${chatPath(x.assignee)}>${x.assignee}</a>` : null}
@@ -151,7 +154,7 @@ function Schedules({ lease }) {
   }
   return html`<${Loaded} state=${state}>${(d) => {
     const list = d.schedules || [];
-    return html`<${ListHead} count=${t("fleet.countSchedules", list.length)} label=${t("fleet.newSchedule")} action=${{ onClick: () => setCreating(true) }} />
+    return html`<${ListHead} count=${list.length === 1 ? t("fleet.countSchedule") : t("fleet.countSchedules", list.length)} label=${t("fleet.newSchedule")} action=${{ onClick: () => setCreating(true) }} />
       ${list.length ? html`<ul class="rows">${list.map(x => html`<li key=${x.id} class="row-item">
         <span class=${`pill ${x.enabled ? "open" : "done"}`}>${x.enabled ? t("fleet.on") : t("fleet.off")}</span>
         <span class="grow">${x.label || cronDesc(x.cron)}</span><span class="mono muted" title=${cronDesc(x.cron)}>${x.cron}</span>
@@ -175,7 +178,7 @@ function Teams({ lease }) {
   }
   return html`<${Loaded} state=${state}>${(d) => {
     const entries = Object.entries(d.teams || {});
-    return html`<${ListHead} count=${t("fleet.countTeams", entries.length)} label=${t("fleet.newTeam")} action=${{ onClick: () => setCreating(true) }} />
+    return html`<${ListHead} count=${entries.length === 1 ? t("fleet.countTeam") : t("fleet.countTeams", entries.length)} label=${t("fleet.newTeam")} action=${{ onClick: () => setCreating(true) }} />
       ${entries.length ? html`<ul class="rows">${entries.map(([name, team]) => html`<li key=${name} class="row-item">
         <span class="grow strong">${name}</span><span class="muted">${(team.members || []).join(", ")}</span>
         <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(name)}>${t("fleet.delete")}</button></li>`)}</ul>`
