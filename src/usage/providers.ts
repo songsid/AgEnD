@@ -371,7 +371,7 @@ export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "na
     return orStatusline({ status: "error", plan, error: "Token rejected. Run `claude` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "claude"), metrics: [] });
   }
   if (res.status === 429) {
-    const retryAfterSec = parseInt(res.headers.get("Retry-After") ?? "0", 10) || 60;
+    const retryAfterSec = parseInt(res.headers?.get?.("Retry-After") ?? "0", 10) || 60;
     return orStatusline({ status: "error", plan, error: "Rate limited by Anthropic — try again later.", errorI18n: i18n("usage.error.rate_limited", "Anthropic"), hint: `retry-after:${retryAfterSec}`, metrics: [] });
   }
   if (!res.ok) return orStatusline({ status: "error", plan, error: `Usage request failed (HTTP ${res.status}).`, errorI18n: i18n("usage.error.http", res.status), metrics: [] });
