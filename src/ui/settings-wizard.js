@@ -10,7 +10,8 @@ import { api } from "./settings-confirm.js";
 import { startOperation } from "./settings-apply.js";
 import { BACKENDS, DEFAULT_SCHEMA, impactOf, toYaml } from "./settings-model.js";
 import { Drawer, Select } from "./settings-dialogs.js";
-import { TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
+import { botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
+import { DiscordServerPicker } from "./settings-discord.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const STEPS = 4;
@@ -124,9 +125,9 @@ export function SetupWizard({ ctx, onClose }) {
     body = html`<${TokenField} id="wz-token" platform=${w.platform} value=${w.token} identity=${w.identity} busy=${!!busy}
         onInput=${(v) => { bump(); setW((x) => ({ ...x, token: v, identity: null })); }} onVerify=${verify} />
       ${w.platform === "discord" ? html`
-        <div class="field"><label for="wz-guild">${tn("guildIdField")}</label><${Select} id="wz-guild" value=${w.guild_id} onChange=${set("guild_id")}
-          options=${["", ...w.guilds.map((g) => ({ value: g.id, label: `${g.name} (${g.id})` }))]} /></div>
-        <div class="field"><label for="wz-gen">${tn("wizardGeneralChannel")}</label><input id="wz-gen" type="text" value=${w.general_channel_id} onInput=${(e) => set("general_channel_id")(e.target.value.trim())} /></div>
+        <${DiscordServerPicker} idPrefix="wz" token=${w.identity && w.identity.valid ? w.token : ""} bot=${w.identity && botHandle(w.identity.username)}
+          invite=${w.identity && w.identity.invite} portal=${w.identity && w.identity.portal} guilds=${w.guilds} onGuilds=${(g) => setW((x) => ({ ...x, guilds: g }))}
+          guild=${w.guild_id} onGuild=${set("guild_id")} channel=${w.general_channel_id} onChannel=${set("general_channel_id")} />
         <div class="field"><label for="wz-user">${tn("wizardAdminUser")}</label><input id="wz-user" type="text" placeholder=${tn("discordUserPlaceholder")} value=${w.admin_user_id} onInput=${(e) => set("admin_user_id")(e.target.value.trim())} /></div>`
       : html`
         <div class="field"><label for="wz-group">${tn("groupIdField")}</label><input id="wz-group" type="text" placeholder="-1001234567890" value=${w.group_id} onInput=${(e) => set("group_id")(e.target.value.trim())} />

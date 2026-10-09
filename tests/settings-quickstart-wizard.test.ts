@@ -573,6 +573,13 @@ describe("the wizard in the panel", () => {
       sent.push({ path, method, headers: init.headers ?? {}, body: init.body ? JSON.parse(init.body) : undefined });
       const json = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body });
       if (path === "/api/settings/quickstart/environment") return json(env);
+      if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "guilds") return json({ ok: true, guilds: [{ id: "111", name: "One" }, { id: "222", name: "Two" }] });
+      if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "channels") {
+        const guild = JSON.parse(init.body).guild_id;
+        const answer = json({ ok: true, channels: guild === "111" ? [{ id: "101", name: "general" }] : [{ id: "201", name: "random" }] });
+        // A held read answers differently (199), so an answer that leaks from a gone picker shows.
+        return channelsHold ? channelsHold.then(() => json({ ok: true, channels: [{ id: "199", name: "general" }] })) : answer;
+      }
       if (path === "/api/settings/quickstart/probe" && init.body && JSON.parse(init.body).action === "await-telegram-start") {
         const answer = json({ ok: true, found: { groupId: -100111, userId: 7 }, offset: 1 });
         return detectHold ? detectHold.then(() => answer) : answer;
@@ -609,7 +616,8 @@ describe("the wizard in the panel", () => {
   let probeHold: Promise<void> | null = null;
   let planHold: Promise<void> | null = null;
   let detectHold: Promise<void> | null = null;
-  afterEach(() => { probeHold = null; planHold = null; detectHold = null; });                 // a test that stopped early leaves none behind
+  let channelsHold: Promise<void> | null = null;
+  afterEach(() => { probeHold = null; planHold = null; detectHold = null; channelsHold = null; });                 // a test that stopped early leaves none behind
   const mountWizard = async () => {
     const onClose = vi.fn();
     await p.mount(h(wizard.SetupWizard, { onClose }));
@@ -786,6 +794,36 @@ describe("the wizard in the panel", () => {
     await toStepThree(); await next();
     await vi.waitFor(() => expect(p.root.textContent).toContain(tn("wizardWillWrite")));
     expect(p.root.querySelector("pre.s-yaml")?.textContent ?? "").toMatch(/channel_id: telegram/);
+  });
+
+  async function discordStepThree() {
+    await type("wz-wd", "/tmp/app"); await next();
+    button("Discord").click(); await settle();
+    await next();
+    await type("wz-token", "dc-token");
+    button(tn("wizardVerify")).click(); await settle(); await settle();
+  }
+  const choose = async (id: string, value: string) => { field(id).value = value; fire(field(id), field(id).tagName === "SELECT" ? "change" : "input"); await settle(); await settle(); };
+
+  it("#1533 review: in the wizard too, another server takes the old General with it", async () => {
+    await mountWizard();
+    await discordStepThree();
+    await choose("wz-guild", "111");
+    expect(field("wz-gen").value, "control: general picked for 111").toBe("101");
+    await choose("wz-guild", "222");
+    expect(field("wz-gen").value).toBe("");
+  });
+
+  it("#1533 review: an answer for a picker that left the page (Back) never fills the wizard's General", async () => {
+    await mountWizard();
+    await discordStepThree();
+    let release!: () => void; channelsHold = new Promise<void>(r => { release = r; });
+    await choose("wz-guild", "111");
+    button(tn("wizardBack")).click(); await settle();     // step 2: the picker is gone
+    release(); channelsHold = null; await settle(); await settle();
+    await next();                                          // back on step 3
+    expect([field("wz-guild").value, field("wz-gen").value], "the server stays; the General is the new picker's (101), never the gone one's (199)").toEqual(["111", "101"]);
+    expect(sent.filter(c => c.body?.action === "channels").length, "the new picker asked again").toBe(2);
   });
 
   it("#1529 review: Finish carries the plan's whole target — connection id, generated token env, and that it was generated", async () => {

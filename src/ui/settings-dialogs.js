@@ -11,6 +11,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api, confirmedWrite, newKey } from "./settings-confirm.js";
 import { botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
+import { DiscordServerPicker } from "./settings-discord.js";
 import { startOperation } from "./settings-apply.js";
 import {
   ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -460,7 +461,7 @@ export function BotDialog({ id, ctx, onClose }) {
  */
 export function NewBotDialog({ ctx, onClose }) {
   const lease = useLease("new-bot");
-  const [f, setF] = useState({ type: "discord", id: "", token: "", identity: null, guilds: [], group: "" });
+  const [f, setF] = useState({ type: "discord", id: "", token: "", identity: null, guilds: [], group: "", general: "" });
   const [plan, setPlan] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -468,7 +469,8 @@ export function NewBotDialog({ ctx, onClose }) {
   // that began before is dropped when it lands — never restoring an old token, naming it, or planning for it.
   const rev = useRef(0);
   const body = (x) => ({ platform: x.type, connection_only: true, ...(x.id.trim() ? { channel_id: x.id.trim() } : {}),
-    ...(x.group.trim() ? (x.type === "discord" ? { guild_id: x.group.trim() } : { group_id: x.group.trim() }) : {}) });
+    ...(x.group.trim() ? (x.type === "discord" ? { guild_id: x.group.trim() } : { group_id: x.group.trim() }) : {}),
+    ...(x.type === "discord" && x.general.trim() ? { general_channel_id: x.general.trim() } : {}) });
   const planFor = async (x) => {
     const at = rev.current;
     const res = await api("/api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(body(x)) }).catch(() => ({ ok: false, body: {} }));
@@ -507,7 +509,7 @@ export function NewBotDialog({ ctx, onClose }) {
   };
   // A change of platform or id is another connection: what was verified and planned no longer applies. The server or
   // group does not change the id or the token's name, so the plan (and its name under Advanced) stays.
-  const set = (k) => (v) => { rev.current++; setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "" } : {}) })); if (k !== "group") setPlan(null); };
+  const set = (k) => (v) => { rev.current++; setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "", general: "" } : {}) })); if (k !== "group" && k !== "general") setPlan(null); };
   return html`<${Dialog} title=${tn("newBot")} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tn("cancel")}</button>
       <button type="button" class="btn btn-primary" disabled=${busy || !f.identity || !f.identity.valid} onClick=${save}>${tn("save")}</button>`}>
@@ -515,10 +517,11 @@ export function NewBotDialog({ ctx, onClose }) {
       <div class="field"><label for="nb-type">${tn("type")}</label><${Select} id="nb-type" value=${f.type} onChange=${set("type")} options=${CH_TYPES} /></div>
       <${TokenField} id="nb-token" platform=${f.type} value=${f.token} identity=${f.identity} busy=${busy}
         onInput=${(v) => { rev.current++; setF((x) => ({ ...x, token: v, identity: null, guilds: [] })); setPlan(null); }} onVerify=${verify} hint=${tn("newBotTokenHint")} />
-      ${f.type === "discord" && f.guilds.length
-        ? html`<div class="field"><label for="nb-group">${tn("guildIdField")}</label><${Select} id="nb-group" value=${f.group} onChange=${set("group")}
-            options=${["", ...f.guilds.map((g) => ({ value: g.id, label: `${g.name} (${g.id})` }))]} /></div>`
-        : html`<div class="field"><label for="nb-group">${f.type === "discord" ? tn("guildIdField") : tn("groupIdField")}</label>
+      ${f.type === "discord"
+        ? html`<${DiscordServerPicker} idPrefix="nb" token=${f.identity && f.identity.valid ? f.token : ""} bot=${f.identity && botHandle(f.identity.username)}
+            invite=${f.identity && f.identity.invite} portal=${f.identity && f.identity.portal} guilds=${f.guilds} onGuilds=${(g) => setF((x) => ({ ...x, guilds: g }))}
+            guild=${f.group} onGuild=${set("group")} channel=${f.general} onChannel=${set("general")} />`
+        : html`<div class="field"><label for="nb-group">${tn("groupIdField")}</label>
             <input id="nb-group" type="text" value=${f.group} onInput=${(e) => set("group")(e.target.value.trim())} /></div>`}
       <${Drawer} title=${tn("advancedSection")}>
         <div class="field"><label for="nb-id">${tn("connectionIdOptional")}</label><input id="nb-id" type="text" placeholder=${plan ? plan.channel_id : f.type}

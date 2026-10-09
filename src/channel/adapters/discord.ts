@@ -386,6 +386,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     client.on("shardDisconnect", (event, shardId) => {
       if (!this.isCurrentClient(client, generation)) return;
       this.healthStatus = "retrying";
+      // 4014: the application has not been granted an intent it asks for (Message Content) — a setting in the developer
+      // portal, not a transient error; recorded so the connection's status can say what to do (#1519 P3).
+      if (event.code === 4014) { this.lastReconnectReason = "Used disallowed intents (4014)"; this.emitHealthChanged(); }
       this.shardNonReadySince.set(shardId, this.now());
       console.warn(`[discord:${this.id}] shard ${shardId} disconnected (${event.code}: ${event.reason || "no reason"})`);
     });
