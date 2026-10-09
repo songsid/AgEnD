@@ -54,7 +54,11 @@ a { color: inherit; text-decoration: none; }
 .link:hover { text-decoration: underline; }
 
 /* ── The frame ── */
-.shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
+/* The page itself never scrolls: only its panes do. The shell is the containing block of anything absolutely positioned
+   inside it (an .sr-only label), so its overflow: hidden clips it — an absolute element whose containing block is the
+   viewport escapes every scroll container and made the whole page scroll (alpha.2: two scrollbars on /ui/chat). */
+.shell { display: flex; height: 100vh; height: 100dvh; overflow: hidden; position: relative; }
+html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .skip { position: absolute; left: var(--s-2); top: -60px; z-index: 100; background: var(--accent-fill); color: var(--on-accent); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); }
 .skip:focus { top: var(--s-2); }
 
@@ -76,7 +80,7 @@ a { color: inherit; text-decoration: none; }
 .side-row .meta { color: var(--text-3); font-size: var(--fs-xs); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-row.toggle { cursor: pointer; color: var(--text-2); }
 .side-row.toggle input { margin: 0; accent-color: var(--accent); }
-.side-section { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s-2) var(--s-2); }
+.side-section { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s-2) var(--s-2); position: relative; }   /* its .sr-only labels scroll (and clip) with it */
 /* The sidebar's list scroller: thin and in the theme's colours, not the UA's light bar with arrows. WebKit/Blink take
    the pseudo-elements; Chromium ignores them once scrollbar-color is set, so the standard properties are Firefox-only. */
 .side-section::-webkit-scrollbar { width: 10px; }
