@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { join } from "node:path";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import {
   buildServicePath,
   reloadLaunchdJob,
@@ -310,9 +313,25 @@ describe("#1450: a system Node is not named — the service starts the launcher,
     expect(renderLaunchdPlist({ ...base, launcherPath: launcher })).toMatch(new RegExp(`<string>${launcher}</string>\\s*<string>fleet</string>\\s*<string>start</string>`));
   });
   it("defaultServiceProgram: this package's own selection decides — a system Node (no runtime pinned) → the launcher", () => {
-    // This checkout pins no runtime: its selection is the system Node.
-    expect(defaultServiceProgram(join(process.cwd(), "dist", "cli.js"))).toEqual({ launcherPath: join(process.cwd(), "launcher", "agend") });
+    // A package that pins no runtime (a copy of this one without its pins): its selection is the system Node.
+    const pkg = mkdtempSync(join(tmpdir(), "agend-svc-unpinned-"));
+    try {
+      cpSync(join(process.cwd(), "launcher"), join(pkg, "launcher"), { recursive: true });
+      const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+      delete manifest.optionalDependencies;
+      writeFileSync(join(pkg, "package.json"), JSON.stringify(manifest, null, 2));
+      mkdirSync(join(pkg, "dist"));
+      writeFileSync(join(pkg, "dist", "cli.js"), "");
+      expect(defaultServiceProgram(join(pkg, "dist", "cli.js"))).toEqual({ launcherPath: join(pkg, "launcher", "agend") });
+    } finally { rmSync(pkg, { recursive: true, force: true }); }
     expect(defaultServiceProgram("/nowhere/dist/cli.js")).toEqual({ nodePath: process.execPath });
+  });
+  it("defaultServiceProgram: this checkout pins the runtime (#1450) — whatever its own selection says is what is named", () => {
+    const select = createRequire(import.meta.url)("../launcher/runtime-select.cjs") as { selectRuntime(dir: string): { ok: boolean; node?: string; source?: string } };
+    const chosen = select.selectRuntime(join(process.cwd(), "launcher"));
+    const expected = chosen.ok && chosen.source === "system" ? { launcherPath: join(process.cwd(), "launcher", "agend") }
+      : chosen.ok && chosen.node ? { nodePath: chosen.node } : { nodePath: process.execPath };
+    expect(defaultServiceProgram(join(process.cwd(), "dist", "cli.js"))).toEqual(expected);
   });
 });
 
