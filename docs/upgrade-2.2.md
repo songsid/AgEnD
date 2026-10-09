@@ -16,14 +16,27 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 
 `AGEND_HOME` below is your AgEnD data directory: `~/.agend` unless you set `AGEND_HOME`.
 
-**2.1 Stop the fleet, and make sure it has exited.**
-```sh
-agend stop          # if you run AgEnD as a service (you ran `agend install`)
-agend fleet stop    # if you start it yourself with `agend fleet start`
-# Wait until the fleet process is really gone. Neither command waits for that:
-while kill -0 "$(cat "${AGEND_HOME:-$HOME/.agend}/fleet.pid" 2>/dev/null)" 2>/dev/null; do sleep 2; done
-```
-A busy fleet (Kiro instances finishing their turns) can take minutes to stop. If you see "fleet process still running", wait; do not go on while it runs. A service must also stay stopped: do not start it from another terminal in the meantime.
+**2.1 Stop the fleet, and make sure it has exited.** Do this by hand, step by step; stop at any surprise.
+
+1. **Note the fleet's PID before stopping it:**
+   ```sh
+   cat "${AGEND_HOME:-$HOME/.agend}/fleet.pid"
+   ```
+   - It prints a number: that is the fleet's PID; keep it.
+   - `No such file or directory`: no fleet is running from this data directory. Check with `agend fleet status`, then go to 2.2.
+   - Any other error (for example `Permission denied`), or anything that is not a number: **stop here** and find out why. An unreadable PID file is not proof that the fleet is gone.
+2. **Stop it:**
+   ```sh
+   agend stop          # if you run AgEnD as a service (you ran `agend install`)
+   agend fleet stop    # if you start it yourself with `agend fleet start`
+   ```
+   Either command can return before the fleet has exited: a busy fleet (Kiro instances finishing their turns) can take minutes. Its return alone does not mean "stopped".
+3. **Wait for that PID to be gone**, using the number from step 1 (here `12345`):
+   ```sh
+   while ps -p 12345 >/dev/null; do sleep 2; done; echo "12345 has exited"
+   ```
+   `ps -p` succeeds while that process exists. Go on only after the line `12345 has exited` is printed.
+4. **A service must stay stopped** until step 2.4. On Linux, `systemctl --user is-active com.agend.fleet` must print `inactive` (or `failed`). On macOS, `launchctl print gui/$(id -u)/com.agend.fleet` must show no `pid =` line. If it is running again, stop it again and repeat step 3.
 
 **2.2 Back up** the data directory (fleet.yaml, .env and the SQLite stores). If you use Kiro, also copy each workspace's `.kiro/` directory.
 ```sh

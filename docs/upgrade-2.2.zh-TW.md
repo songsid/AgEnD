@@ -16,14 +16,27 @@
 
 下面的 `AGEND_HOME` 指的是 AgEnD 的資料目錄：沒有另外設定 `AGEND_HOME` 時就是 `~/.agend`。
 
-**2.1 停掉 fleet，並確認它真的已經結束。**
-```sh
-agend stop          # 以服務方式執行的（執行過 agend install）
-agend fleet stop    # 自己用 agend fleet start 啟動的
-# 等到 fleet 行程真的結束；上面兩個指令都不會等：
-while kill -0 "$(cat "${AGEND_HOME:-$HOME/.agend}/fleet.pid" 2>/dev/null)" 2>/dev/null; do sleep 2; done
-```
-忙碌中的 fleet（Kiro instance 正在把手上的 turn 做完）可能要好幾分鐘才會停。如果看到「fleet process still running」，請繼續等，不要在它還在執行時往下做。以服務方式執行的，也要確保服務在這段期間保持停止，不要從其他終端機把它啟動。
+**2.1 停掉 fleet，並確認它真的已經結束。** 請手動一步一步做，遇到任何意外就停下來。
+
+1. **停止之前，先記下 fleet 的 PID：**
+   ```sh
+   cat "${AGEND_HOME:-$HOME/.agend}/fleet.pid"
+   ```
+   - 印出一個數字：那就是 fleet 的 PID，請記下來。
+   - 出現 `No such file or directory`：表示這個資料目錄沒有執行中的 fleet。用 `agend fleet status` 確認後，直接跳到 2.2。
+   - 出現其他錯誤（例如 `Permission denied`），或印出來的不是數字：**先停在這裡**，查清楚原因。PID 檔讀不到，不能當作 fleet 已經結束的證據。
+2. **停止它：**
+   ```sh
+   agend stop          # 以服務方式執行的（執行過 agend install）
+   agend fleet stop    # 自己用 agend fleet start 啟動的
+   ```
+   這兩個指令都可能在 fleet 還沒結束時就返回：忙碌中的 fleet（Kiro instance 正在把手上的 turn 做完）可能要好幾分鐘。指令返回本身，不代表已經停了。
+3. **等到那個 PID 消失**，用第 1 步記下的數字（這裡以 `12345` 為例）：
+   ```sh
+   while ps -p 12345 >/dev/null; do sleep 2; done; echo "12345 has exited"
+   ```
+   只要那個行程還在，`ps -p` 就會成功。要等到印出 `12345 has exited` 那一行，才繼續往下做。
+4. **服務在 2.4 之前必須保持停止。** Linux 上，`systemctl --user is-active com.agend.fleet` 要印出 `inactive`（或 `failed`）；macOS 上，`launchctl print gui/$(id -u)/com.agend.fleet` 的輸出裡不能有 `pid =` 那一行。如果它又跑起來了，就再停一次，並重做第 3 步。
 
 **2.2 備份**資料目錄（fleet.yaml、.env 和 SQLite 資料都在裡面）。有用 Kiro 的話，也把每個工作目錄的 `.kiro/` 各複製一份。
 ```sh
