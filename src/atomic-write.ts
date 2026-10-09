@@ -17,7 +17,6 @@ import {
   renameSync,
   unlinkSync,
   writeSync,
-  mkdirSync,
 } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -45,8 +44,6 @@ export function atomicWriteFileSync(
   const fsync = opts.fsync ?? fsyncSync;
   const dir = dirname(path);
   const temp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-
-  mkdirSync(dir, { recursive: true });
 
   let fd: number | undefined;
   try {
