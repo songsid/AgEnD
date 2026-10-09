@@ -57,6 +57,12 @@ function fakeChild() {
   child.answer.catch(() => {});
   return { child, answer, fail, exit };
 }
+/** A promise's value once settled, readable without awaiting it (a hang shows as undefined, not a timeout). */
+function capture<T>(p: Promise<T>): { value: T | undefined } {
+  const box: { value: T | undefined } = { value: undefined };
+  void p.then((v) => { box.value = v; });
+  return box;
+}
 const fakeTimers = () => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
 const tick = () => vi.advanceTimersByTimeAsync(0);
 
@@ -206,13 +212,14 @@ describe("BinaryProbe: a lookup that hangs (#1498 review)", () => {
     expect(await Promise.all(answers)).toEqual(Array(20).fill({ known: false }));
     expect(children.length, "one stuck child, not twenty-one").toBe(1);
 
-    const waiting = [probe.probe("codex", { fresh: true }), probe.probe("codex", { fresh: true })];
+    const waiting = [capture(probe.probe("codex", { fresh: true })), capture(probe.probe("codex", { fresh: true }))];
     await tick();
     children[0].exit();                          // it finally goes away, inside their deadline
     await tick();
     expect(children.length, "two fresh probes waiting on it start one child between them").toBe(2);
     children[1].answer("/bin/codex"); children[1].exit();
-    expect(await Promise.all(waiting), "and both get its answer").toEqual([
+    await tick();
+    expect(waiting.map((w) => w.value), "and both get its answer").toEqual([
       { known: true, path: "/bin/codex" }, { known: true, path: "/bin/codex" }]);
     const next = probe.probe("codex", { fresh: true });
     await tick();
@@ -231,6 +238,106 @@ describe("BinaryProbe: a lookup that hangs (#1498 review)", () => {
     await tick();
     expect(settled).toEqual({ known: false });
     expect(children.length, "no fourth process").toBe(3);
+  });
+});
+
+describe("BinaryProbe: bounded waits, round 2 (#1498 review r2)", () => {
+  let children: ReturnType<typeof fakeChild>[] = [];
+  let clock = 0;
+  const spawner = () => { const c = fakeChild(); children.push(c); return c.child; };
+  const microtasks = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+  beforeEach(() => { children = []; clock = 0; fakeTimers(); });
+  afterEach(() => { for (const c of children) c.exit(); vi.useRealTimers(); });
+
+  it("callers sharing a successor child: the newest of them stores its answer", async () => {
+    const probe = new BinaryProbe(spawner);
+    const first = probe.probe("codex");
+    await tick();
+    children[0].answer(null); children[0].exit();
+    expect(await first).toEqual({ known: true, path: null });      // cached: absent
+
+    void probe.probe("codex", { fresh: true });                     // A: its child has not exited yet
+    await tick();
+    const b = capture(probe.probe("codex", { fresh: true })), c = capture(probe.probe("codex", { fresh: true }));
+    await tick();
+    children[1].answer(null); children[1].exit();                   // A's lookup, from before the install
+    await tick();
+    expect(children.length, "B and C share one successor").toBe(3);
+    children[2].answer("/bin/codex"); children[2].exit();
+    await tick();
+    expect([b.value, c.value]).toEqual([{ known: true, path: "/bin/codex" }, { known: true, path: "/bin/codex" }]);
+    expect(await probe.probe("codex"), "the panel's next probe sees the new answer, not the old null").toEqual({ known: true, path: "/bin/codex" });
+    expect(children.length, "from the cache").toBe(3);
+  });
+
+  it("an ordinary probe during a fresh one gets the fresh answer, not the cached one or the older child's", async () => {
+    const probe = new BinaryProbe(spawner);
+    const first = probe.probe("codex");
+    await tick();
+    children[0].answer(null);                                       // answered, not exited yet
+    expect(await first).toEqual({ known: true, path: null });
+    const fresh = capture(probe.probe("codex", { fresh: true }));   // /login, after an install: waits for child 0
+    await tick();
+    const poll = capture(probe.probe("codex"));                     // the panel polls meanwhile
+    await tick();
+    children[0].exit();
+    await tick();
+    children[1].answer("/bin/codex"); children[1].exit();
+    await tick();
+    expect(fresh.value).toEqual({ known: true, path: "/bin/codex" });
+    expect(poll.value, "the poll joined the fresh probe").toEqual({ known: true, path: "/bin/codex" });
+  });
+
+  it("an answer that arrives after the caller's deadline is unknown and not cached, whatever the timer order", async () => {
+    const probe = new BinaryProbe(spawner, () => clock);
+    const r = probe.probe("codex");
+    await microtasks();
+    clock = PROBE_DEADLINE_MS + 1;                                  // the budget is spent; no timer has run yet
+    children[0].answer("/bin/codex");
+    await microtasks();
+    expect(await r).toEqual({ known: false });
+    children[0].exit();
+    await microtasks();
+    void probe.probe("codex");
+    await microtasks();
+    expect(children.length, "nothing was cached from the late answer").toBe(2);
+  });
+
+  it("the same answer one millisecond inside the deadline is known and cached (control)", async () => {
+    const probe = new BinaryProbe(spawner, () => clock);
+    const r = probe.probe("codex");
+    await microtasks();
+    clock = PROBE_DEADLINE_MS - 1;
+    children[0].answer("/bin/codex");
+    await microtasks();
+    expect(await r).toEqual({ known: true, path: "/bin/codex" });
+    children[0].exit();
+    await microtasks();
+    expect(await probe.probe("codex")).toEqual({ known: true, path: "/bin/codex" });
+    expect(children.length).toBe(1);
+  });
+
+  it("a hundred callers timing out on a stuck child leave one subscription per child and no waiter behind", async () => {
+    let subscriptions = 0;
+    const counted = () => {
+      const c = fakeChild();
+      for (const p of [c.child.answer, c.child.exited] as Array<Promise<unknown>>) {
+        const then = p.then.bind(p);
+        (p as any).then = (...a: Parameters<typeof then>) => { subscriptions++; return then(...a); };
+      }
+      children.push(c);
+      return c.child;
+    };
+    const probe = new BinaryProbe(counted);
+    void probe.probe("codex", { fresh: true });
+    await vi.advanceTimersByTimeAsync(PROBE_DEADLINE_MS);
+    for (let i = 0; i < 100; i++) void probe.probe("codex", { fresh: true });
+    await vi.advanceTimersByTimeAsync(PROBE_DEADLINE_MS);
+    expect(children.length).toBe(1);
+    expect(subscriptions, "the child's answer and exit, subscribed once each").toBe(2);
+    const slot = (probe as unknown as { running: Map<string, { waiters: Set<unknown> }> }).running.get("codex")!;
+    expect(slot.waiters.size, "every timed-out caller is gone").toBe(0);
+    expect(probe.runningCount, "the stuck child keeps its reservation").toBe(1);
   });
 });
 
