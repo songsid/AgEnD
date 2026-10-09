@@ -32,6 +32,10 @@ function rig(status: number | null, kind: "systemd" | "detached" = "systemd") {
   const spawnSync = vi.fn((command: string, args: string[]) => {
     commands.push([command, ...args]);
     if (command === "systemctl" || command === "busctl") return w.run(command, args);
+    if (command === "sh" && args[0] === "-c" && String(args[1]).includes("command -v npm")) {
+      // retireSystemCopy resolves npm absolute path before calling sudo
+      return { ...w.result(), stdout: "/usr/local/bin/npm", status: 0 };
+    }
     if (command === "sudo") return w.result(); // retireSystemCopy; never execute it
     if (command !== w.entry) throw Error(`Unexpected inert program ${command}`);
     if (args[0] === "completion") return w.result();
