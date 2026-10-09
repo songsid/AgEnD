@@ -90,17 +90,20 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
     expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
   });
 
-  it("positionTicks-oversize: node with 800k positionTicks rejected without stringify", async () => {
-    // Prism witness: 2 nodes, one with 800,000 positionTicks {line,ticks} entries.
-    // 800k × ~22 JSON bytes per entry ≈ 17.6 MiB just for positionTicks; total > 20 MiB.
+  it("positionTicks-oversize: node with 1.2M positionTicks rejected without stringify (Prism r5 witness)", async () => {
+    // Prism witness: 2 nodes, leaf with 1,200,000 {line,ticks} entries.
+    // 1.2M × 35 bytes (conservative MAX_BYTES_PER_TICK) = 42 MiB > 20 MiB cap.
+    // 1200s < 1800s cap. Guard must reject WITHOUT calling JSON.stringify on
+    // the positionTicks array itself (that would allocate ~30 MiB on the event loop).
     const dir = tempDir();
+    const positionTicks = Array.from({ length: 1_200_000 }, (_, i) => ({ line: i + 1, ticks: 1 }));
     const bigProfile = {
       nodes: [
         {
           id: 1,
           callFrame: { functionName: "hot", scriptId: "1", url: "file:///app.ts", lineNumber: 0, columnNumber: 0 },
-          hitCount: 800000,
-          positionTicks: Array.from({ length: 800000 }, (_, i) => ({ line: i + 1, ticks: 1 })),
+          hitCount: 1_200_000,
+          positionTicks,
         },
         {
           id: 2,
@@ -108,14 +111,18 @@ describe("saveCpuProfile: large profiles rejected before JSON.stringify (#1490 P
           hitCount: 0,
         },
       ],
-      samples: Array.from({ length: 800000 }, () => 1),
-      timeDeltas: Array.from({ length: 800000 }, () => 1000),
+      samples: Array.from({ length: 1_200_000 }, () => 1),
+      timeDeltas: Array.from({ length: 1_200_000 }, () => 1000),
       startTime: 0,
-      endTime: 800000 * 1000,
+      endTime: 1_200_000 * 1000,
     };
+
     const spy = vi.spyOn(JSON, "stringify");
     await expect(saveCpuProfile(dir, bigProfile)).rejects.toThrow(/too large|exceeds/i);
+    // Must not have serialised the whole profile
     expect(spy.mock.calls.some(args => args[0] === bigProfile)).toBe(false);
+    // Must not have serialised the positionTicks array itself (that is the allocation we guard against)
+    expect(spy.mock.calls.some(args => args[0] === positionTicks)).toBe(false);
   });
 
   it("small positionTicks: profile with normal positionTicks is accepted (regression)", async () => {

@@ -64,14 +64,18 @@ export async function saveCpuProfile(dataDir: string, profile: unknown, signal?:
       ? Buffer.byteLength(JSON.stringify(frame.url), "utf8") - 2 : 0;
     const fnBytes = typeof frame.functionName === "string"
       ? Buffer.byteLength(JSON.stringify(frame.functionName), "utf8") - 2 : 0;
-    // Variable arrays per node: positionTicks (array of {line, ticks} objects;
-    // can be enormous — 800k entries is a real V8 shape) and children (node ids).
-    // Serialise each directly so a node with a huge positionTicks is caught before
-    // the whole profile is JSON.stringify'd.
+    // Variable arrays per node: positionTicks and children.
+    // Do NOT call JSON.stringify on these arrays — that would allocate the very
+    // large string the guard is meant to prevent. Instead use a conservative
+    // per-record byte estimate:
+    //   positionTicks: each {line,ticks} entry ≤ 35 JSON bytes in the worst case
+    //     (e.g. '{"line":999999,"ticks":9999}' = 29 bytes; 35 gives headroom).
+    //   children: each node-id integer ≤ 8 JSON bytes.
+    const MAX_BYTES_PER_TICK = 35;
     const posTicksBytes = Array.isArray((node as any).positionTicks)
-      ? Buffer.byteLength(JSON.stringify((node as any).positionTicks), "utf8") : 0;
+      ? (node as any).positionTicks.length * MAX_BYTES_PER_TICK : 0;
     const childrenBytes = Array.isArray((node as any).children)
-      ? (node as any).children.length * 8 : 0; // each child id ≈ 8 chars JSON
+      ? (node as any).children.length * 8 : 0;
     estimatedBytes += NODE_FIXED + FRAME_FIXED + urlBytes + fnBytes + posTicksBytes + childrenBytes;
     // Early exit: avoid accumulating through every node if already over cap.
     if (estimatedBytes > CPU_PROFILE_MAX_BYTES) {
