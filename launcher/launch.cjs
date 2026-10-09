@@ -39,12 +39,16 @@ module.exports = function launch(entryRelative, launcherDir) {
   var env = {};
   Object.keys(process.env).forEach(function (key) { env[key] = process.env[key]; });
   env.AGEND_NODE_SELECTED = "1";
-  var child = childProcess.spawn(chosen.node, [entry].concat(args), { stdio: "inherit", env: env });
+  // The handlers are in place BEFORE the spawn: a signal delivered between spawn() and their registration would kill
+  // this launcher by default and orphan the CLI. (JS handlers cannot run during this synchronous block, so `child` is
+  // always set by the time one does.)
+  var child = null;
   FORWARDED.forEach(function (signal) {
     process.on(signal, function () { try { child.kill(signal); } catch (e) { /* gone */ } });
   });
   // A terminal's Ctrl+C reaches the whole process group, the child included: the child decides, this waits.
   process.on("SIGINT", function () {});
+  child = childProcess.spawn(chosen.node, [entry].concat(args), { stdio: "inherit", env: env });
   child.on("error", function (err) {
     process.stderr.write("\n  AgEnD cannot start " + chosen.node + ": " + err.message + "\n\n");
     process.exit(1);

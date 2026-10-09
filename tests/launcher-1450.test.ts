@@ -66,10 +66,12 @@ function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" |
     name: "@songsid/agend", version: "2.2.0", engines: { node: "^22.14.0 || ^23.6.0 || >=24" },
     ...(pin ? { optionalDependencies: { [`@songsid/agend-node-${HOST.id}`]: pin } } : {}),
   }));
-  // The CLI reports which Node ran it, its argv[1], and whether the launcher spawned it; exits with $CLI_EXIT.
+  // The CLI reports which Node ran it, its argv[1], and whether the launcher spawned it; exits with $CLI_EXIT. With
+  // $CLI_WAIT it stays up, its SIGTERM handler in place BEFORE it reports (the test signals as soon as it reads).
   writeFileSync(join(pkg, "dist", "cli.js"), [
+    "if (process.env.CLI_WAIT) process.on('SIGTERM', () => { require('fs').writeFileSync(process.env.CLI_WAIT, 'SIGTERM'); process.exit(143); });",
     "process.stdout.write(JSON.stringify({ execPath: process.execPath, argv1: process.argv[1], args: process.argv.slice(2), spawned: process.env.AGEND_NODE_SELECTED === '1', fakeRuntime: !!process.env.FAKE_RUNTIME }));",
-    "if (process.env.CLI_WAIT) { process.on('SIGTERM', () => { require('fs').writeFileSync(process.env.CLI_WAIT, 'SIGTERM'); process.exit(143); }); setInterval(() => {}, 1000); }",
+    "if (process.env.CLI_WAIT) setInterval(() => {}, 1000);",
     "else process.exit(Number(process.env.CLI_EXIT || 0));",
   ].join("\n"));
   const runtimeHome = opts.ancestorRuntime ? join(root, "node_modules", "@songsid", `agend-node-${HOST.id}`) : join(pkg, "node_modules", "@songsid", `agend-node-${HOST.id}`);
