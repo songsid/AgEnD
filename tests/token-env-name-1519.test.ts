@@ -39,10 +39,10 @@ describe("the generated name", () => {
 describe("a new connection's name", () => {
   const channels = [{ id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN" }];
   it("is refused when another connection holds it, when reserved or a provider's, or malformed", () => {
-    expect(newTokenEnvConflict("AGEND_TELEGRAM_TOKEN", channels)).toMatch(/"telegram" connection/);
-    expect(newTokenEnvConflict("PATH", channels)).toMatch(/reserved/);
-    expect(newTokenEnvConflict([...providerRegistryEnvKeys()][0]!, channels)).toMatch(/reserved/);
-    expect(newTokenEnvConflict("lower", channels)).toMatch(/UPPER_SNAKE/);
+    expect(newTokenEnvConflict("AGEND_TELEGRAM_TOKEN", channels) ?? "").toMatch(/"telegram" connection/);
+    expect(newTokenEnvConflict("PATH", channels) ?? "").toMatch(/reserved/);
+    expect(newTokenEnvConflict([...providerRegistryEnvKeys()][0]!, channels) ?? "").toMatch(/reserved/);
+    expect(newTokenEnvConflict("lower", channels) ?? "").toMatch(/UPPER_SNAKE/);
   });
   it("is allowed when only .env has it (the pre-fleet form names AGEND_BOT_TOKEN itself)", () => {
     expect(newTokenEnvConflict("AGEND_BOT_TOKEN", channels)).toBeNull();

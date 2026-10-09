@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import {
+  draftQuickstart,
   newConnectionConflict,
   nextChannelId,
   planQuickstart,
@@ -57,9 +58,9 @@ describe("the plan the last step shows", () => {
 
   it("#1519 P1 (S1): a token env another connection holds is refused — the wizard never replaces a connection", () => {
     const env = { channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN", group_id: null, allowed_users: ["42", "77"] }] };
-    expect(newConnectionConflict({ token_env: "AGEND_BOT_TOKEN" }, env)).toMatch(/already holds the token of the "telegram" connection/);
-    expect(newConnectionConflict({ token_env: "AGEND_TG_2_TOKEN", channel_id: "telegram" }, env)).toMatch(/already exists/);
-    expect(newConnectionConflict({ token_env: "PATH" }, env)).toMatch(/reserved|UPPER_SNAKE/);
+    expect(newConnectionConflict({ token_env: "AGEND_BOT_TOKEN" }, env) ?? "").toMatch(/already holds the token of the "telegram" connection/);
+    expect(newConnectionConflict({ token_env: "AGEND_TG_2_TOKEN", channel_id: "telegram" }, env) ?? "").toMatch(/already exists/);
+    expect(newConnectionConflict({ token_env: "PATH" }, env) ?? "").toMatch(/reserved|UPPER_SNAKE/);
     expect(newConnectionConflict({ token_env: "AGEND_TG_2_TOKEN", channel_id: "telegram-2" }, env)).toBeNull();
   });
 
@@ -84,6 +85,24 @@ describe("the plan the last step shows", () => {
     const plan = planQuickstart({ ...BASE, admin_user_id: "42" }, EMPTY_ENV);
 
     expect(plan.channel.access).toEqual({ mode: "locked", allowed_users: ["42"] });
+  });
+});
+
+describe("the draft (what is confirmed and what is written) only ever adds", () => {
+  const cfg = () => ({ defaults: {}, instances: { keep: { working_directory: "/k" } },
+    channels: [{ id: "telegram", type: "telegram", bot_token_env: "AGEND_BOT_TOKEN", group_id: "-1", mode: "topic", access: { mode: "locked", allowed_users: ["9"] } }] }) as never;
+  it("#1519 P1 (S1): even a body naming another connection's env leaves that connection exactly as it was", () => {
+    const base = cfg(), before = structuredClone((base as any).channels[0]);
+    const draft = draftQuickstart(base, BASE, planQuickstart(BASE, { ...EMPTY_ENV, channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN", group_id: "-1" }] })) as any;
+    expect(draft.channels[0]).toEqual(before);
+    expect(draft.channels).toHaveLength(2);
+  });
+  it("#1519 P1: connection_only adds no agent and leaves the agents as they were", () => {
+    const base = cfg();
+    const input = { platform: "discord", connection_only: true, token_env: "AGEND_DISCORD_TOKEN" } as WizardPlanInput;
+    const draft = draftQuickstart(base, input, planQuickstart(input, EMPTY_ENV)) as any;
+    expect(draft.instances).toEqual({ keep: { working_directory: "/k" } });
+    expect(draft.channels.map((c: any) => c.id)).toEqual(["telegram", "discord"]);
   });
 });
 
@@ -397,7 +416,7 @@ describe("POST /api/settings/quickstart/commit", () => {
     const res = await request("/api/settings/quickstart/commit", ctx, "POST", valid);
 
     expect(res.status).toBe(409);
-    expect(String(res.body.error)).toMatch(/already holds the token of the "telegram" connection/);
+    expect(String(res.body?.error ?? "")).toMatch(/already holds the token of the "telegram" connection/);
     expect([saveFleetConfig.mock.calls.length, existsSync(join(dir, ".env"))]).toEqual([0, false]);
     expect(ctx.fleetConfig).toEqual(before);
   });
