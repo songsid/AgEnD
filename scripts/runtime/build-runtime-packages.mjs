@@ -15,7 +15,7 @@
 // Built-ins only (fetch, crypto, fs) plus `tar` and `gpgv` from the system.
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -121,7 +121,23 @@ export async function buildRuntimePackages({ node, out, distUrl = DEFAULT_DIST_U
       const top = `node-v${node}-${platform.id}`;
       // Only the two members we ship; tar refuses names outside them, so nothing else can land in the package.
       execFileSync("tar", ["-xzf", tarball, "-C", dir, "--strip-components=1", "--no-same-owner", `${top}/bin/node`, `${top}/LICENSE`], { stdio: "pipe" });
-      if (!existsSync(join(dir, "bin", "node")) || !existsSync(join(dir, "LICENSE"))) throw new Error(`${file}: bin/node or LICENSE missing`);
+      // A signed archive is still only trusted for what it is: both outputs must be REGULAR FILES, checked without
+      // following links, before anything is changed or recorded (#1457 review: a symlink member would make chmod act on
+      // its target, a directory member would carry its descendants into the package).
+      for (const member of ["bin/node", "LICENSE"]) {
+        let kind = "missing";
+        try { const st = lstatSync(join(dir, member)); kind = st.isFile() ? "file" : st.isSymbolicLink() ? "symlink" : st.isDirectory() ? "directory" : "special"; } catch { /* missing */ }
+        if (kind !== "file") {
+          rmSync(dir, { recursive: true, force: true });
+          throw new Error(`${file}: ${member} is a ${kind}, not a regular file`);
+        }
+      }
+      const extra = (path) => lstatSync(path).isDirectory() ? readdirSync(path).map(name => `${path}/${name}`).flatMap(extra) : [path];
+      const shipped = extra(dir).map(path => path.slice(dir.length + 1)).sort();
+      if (shipped.join(",") !== "LICENSE,bin/node") {
+        rmSync(dir, { recursive: true, force: true });
+        throw new Error(`${file}: unexpected content extracted: ${shipped.join(", ")}`);
+      }
       chmodSync(join(dir, "bin", "node"), 0o755);
       const manifest = runtimeManifest(platform, node, repack);
       manifest.agendRuntime.sha256 = expected;

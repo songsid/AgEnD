@@ -53,12 +53,4 @@ jobs:
       - name: Publish (or dry run)
         env:
           DRY_RUN: ${{ inputs.dry_run }}
-        run: |
-          for dir in runtime-packages/*/; do
-            (cd "$dir" && npm pack --dry-run --json | node -e 'const p = JSON.parse(require("fs").readFileSync(0, "utf8"))[0]; console.log(`${p.name}@${p.version}: ${p.size} bytes packed, ${p.unpackedSize} unpacked, ${p.entryCount} files`)')
-            if [ "$DRY_RUN" = "true" ]; then
-              (cd "$dir" && npm publish --dry-run --access public --provenance)
-            else
-              (cd "$dir" && npm publish --access public --provenance)
-            fi
-          done
+        run: bash scripts/runtime/publish-runtime-packages.sh runtime-packages "$DRY_RUN"

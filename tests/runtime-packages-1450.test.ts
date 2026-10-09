@@ -5,7 +5,7 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,6 +131,52 @@ describe.skipIf(!haveGpg)("end to end against a signed fake dist (offline)", () 
     } finally { sign(trusted); }
   });
 
+  /** Rebuild one platform's tarball with `shape(top)` applied to its tree, re-sum and re-sign it; returns a restorer. */
+  const variant = (platformId: string, shape: (top: string) => void) => {
+    const name = `node-v${version}-${platformId}`;
+    const tarball = join(dist, `${name}.tar.gz`);
+    const good = readFileSync(tarball);
+    const tree = join(root, `variant-${platformId}-${Date.now()}`);
+    mkdirSync(join(tree, name, "bin"), { recursive: true });
+    writeFileSync(join(tree, name, "LICENSE"), "Node.js license\n");
+    shape(join(tree, name));
+    execFileSync("tar", ["-czf", tarball, "-C", tree, name]);
+    writeSums(); sign(trusted);
+    return () => { writeFileSync(tarball, good); writeSums(); sign(trusted); };
+  };
+
+  it("a SIGNED archive whose bin/node is a symlink is refused, and the link target is never chmod-ed", async () => {
+    const canary = join(root, "outside-canary");
+    writeFileSync(canary, "not ours\n", { mode: 0o600 });
+    chmodSync(canary, 0o600);
+    const restore = variant("linux-x64", top => symlinkSync(canary, join(top, "bin", "node")));
+    try {
+      await expect(build(join(root, "out-symlink"))).rejects.toThrow(/bin\/node is a symlink, not a regular file/);
+      expect(statSync(canary).mode & 0o777).toBe(0o600);
+      expect(existsSync(join(root, "out-symlink", "agend-node-linux-x64"))).toBe(false);
+    } finally { restore(); }
+  });
+
+  it("a signed archive whose bin/node is a directory (with children) is refused", async () => {
+    const restore = variant("linux-x64", top => {
+      mkdirSync(join(top, "bin", "node", "nested"), { recursive: true });
+      writeFileSync(join(top, "bin", "node", "nested", "payload"), "x");
+    });
+    try {
+      await expect(build(join(root, "out-dir"))).rejects.toThrow(/bin\/node is a directory, not a regular file/);
+    } finally { restore(); }
+  });
+
+  it("a signed archive whose LICENSE is a symlink is refused", async () => {
+    const restore = variant("darwin-arm64", top => {
+      writeFileSync(join(top, "bin", "node"), "#!/bin/sh\n"); chmodSync(join(top, "bin", "node"), 0o755);
+      rmSync(join(top, "LICENSE")); symlinkSync("/etc/hostname", join(top, "LICENSE"));
+    });
+    try {
+      await expect(build(join(root, "out-license"))).rejects.toThrow(/LICENSE is a symlink, not a regular file/);
+    } finally { restore(); }
+  });
+
   it("a platform missing from the signed SHASUMS is refused", async () => {
     writeSums(`node-v${version}-linux-arm64.tar.gz`);
     sign(trusted);
@@ -139,3 +185,38 @@ describe.skipIf(!haveGpg)("end to end against a signed fake dist (offline)", () 
     } finally { writeSums(); sign(trusted); }
   });
 });
+
+// publish-runtime-packages.sh: every publish names its dist-tag (npm 11 refuses a prerelease such as a repack
+// x.y.z-agend.N without one; #1457 review). npm is a stub that records its arguments.
+describe("publishing: an explicit dist-tag on every publish, dry run or real", () => {
+  const script = join(process.cwd(), "scripts", "runtime", "publish-runtime-packages.sh");
+  const run = (versions: string[], dryRun: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "agrt-pub-"));
+    const bin = join(dir, "bin"); mkdirSync(bin);
+    const log = join(dir, "npm.log"); writeFileSync(log, "");
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "$PWD|$*" >> '${log}'\ncase "$1" in pack) echo '[{"name":"x","version":"y","size":1,"unpackedSize":2,"entryCount":3}]';; esac\nexit 0\n`);
+    chmodSync(join(bin, "npm"), 0o755);
+    symlinkSync(process.execPath, join(bin, "node"));
+    for (const v of versions) {
+      mkdirSync(join(dir, "pkgs", `p-${v}`), { recursive: true });
+      writeFileSync(join(dir, "pkgs", `p-${v}`, "package.json"), JSON.stringify({ name: "@songsid/agend-node-linux-x64", version: v }));
+    }
+    const r = spawnSync("bash", [script, join(dir, "pkgs"), dryRun], { encoding: "utf8", env: { ...process.env, PATH: `${bin}:/usr/bin:/bin` } });
+    const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => l.split("|")[1]!);
+    rmSync(dir, { recursive: true, force: true });
+    return { r, calls };
+  };
+
+  it.each([["true", "--dry-run "], ["false", ""]])("dry_run=%s: a plain version and a repack both publish with --tag latest", (dry, flag) => {
+    const { r, calls } = run(["22.23.3", "22.23.3-agend.2"], dry);
+    expect(r.status, r.stderr).toBe(0);
+    const publishes = calls.filter(c => c.startsWith("publish"));
+    expect(publishes).toEqual([`publish ${flag}--access public --provenance --tag latest`, `publish ${flag}--access public --provenance --tag latest`]);
+  });
+
+  it("refuses an unknown dry-run value and an empty package directory", () => {
+    expect(run(["22.23.3"], "maybe").r.status).toBe(2);
+    expect(run([], "true").r.status).toBe(1);
+  });
+});
+
