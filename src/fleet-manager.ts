@@ -9838,9 +9838,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const emoji = this.receivedReactionFor(instanceName, adapter, msg.adapterId);
     // Classic's system receipt is status-owned too. An ordinary react call
     // would label it as an agent/other reaction and suppress later statuses.
+    // #1056: recorded as this bot's stamp like the delivery statuses (provenance survives a status-set change) —
+    // on Telegram once the adapter took the slot, on Discord before the add (its gateway can echo it first).
     if (adapter instanceof TelegramAdapter) {
-      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then(() => {});
+      return adapter.reactDeliveryStatus(msg.chatId, msg.messageId, emoji, msg.timestamp.getTime()).then((took) => {
+        if (took) this.noteStamped(adapter, msg.messageId, emoji);
+      });
     }
+    this.noteStamped(adapter, msg.messageId, emoji);
     return adapter.react(msg.threadId ?? msg.chatId, msg.messageId, emoji);
   }
 
