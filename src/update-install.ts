@@ -10,6 +10,8 @@
  * Every command goes through an injected runner, so the sequence is testable without npm, nvm or a fleet.
  */
 import { join } from "node:path";
+import { rmSync } from "node:fs";
+import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
 
 export interface CommandResult {
   status: number | null;
@@ -42,10 +44,16 @@ export interface UpdateInstallPlan {
    * is handed to npm as AGEND_INSTALL_TOKEN. Omitted: no lock (tests of the order alone).
    */
   lock?(prefix: string): { ok: true; token: string } | { ok: false; reason: string };
+  /**
+   * #1450 C6: copy the installed package aside before npm (requires `lock`), and put it back when the new one does not
+   * verify. The successful outcome carries the preimage, so a later service failure can restore it too.
+   */
+  rollback?: boolean;
+  now?(): Date;
 }
 
 export type UpdateInstallOutcome =
-  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string }
+  | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null } }
   | { ok: false; stage: "lock" | "install" | "verify"; message: string };
 
 /**
@@ -213,6 +221,7 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   }
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
   const env: Record<string, string> = {};
+  let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
   if (plan.lock) {
     const prefix = inInstallEnv(runner, plan, ["npm", "prefix", "-g"], { timeoutMs: 15_000 });
     const where = prefix.stdout.trim().split("\n").pop()?.trim() ?? "";
@@ -220,9 +229,19 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     const lock = plan.lock(where);
     if (!lock.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${lock.reason}. Nothing was changed.` };
     env.AGEND_INSTALL_TOKEN = lock.token;
+    if (plan.rollback) {
+      const rootRun = inInstallEnv(runner, plan, ["npm", "root", "-g"], { timeoutMs: 15_000 });
+      const root = rootRun.stdout.trim().split("\n").pop()?.trim() ?? "";
+      if (rootRun.status !== 0 || !root) return { ok: false, stage: "lock", message: "  ✗ Could not ask npm where it installs packages; nothing was changed." };
+      const taken = takePackagePreimage(root, where, plan.now?.() ?? new Date());
+      if (!taken.ok) return { ok: false, stage: "lock", message: `  ✗ Not updating: ${taken.reason}. Nothing was changed.` };
+      rollback = { root, prefix: where, preimage: taken.preimage };
+    }
   }
   const install = inInstallEnv(runner, plan, ["npm", "install", "-g", plan.pkg], { inherit: true, env });
   if (install.status !== 0) {
+    // npm rolled its own install back: the copy is not needed.
+    if (rollback?.preimage) rmSync(rollback.preimage.dir, { recursive: true, force: true });
     return {
       ok: false, stage: "install",
       message: plan.viaNvm ? "  Failed to install via nvm. The current install was not touched."
@@ -231,7 +250,20 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   }
 
   const verified = verifyInstalledPackage(plan, runner);
-  if (!verified.ok) return verified;
+  if (!verified.ok) {
+    if (!rollback?.preimage) return verified;
+    // C6 step 3: the new package does not verify — put the previous one back, and prove it is what is installed now.
+    const previous = rollback.preimage;
+    const restored = restorePackagePreimage(rollback.root, rollback.prefix, previous);
+    if (!restored.ok) return { ok: false, stage: "verify", message: `${verified.message}\n  ✗ ${restored.reason}. Reinstall it: npm install -g @songsid/agend@${previous.version}` };
+    const back = verifyInstalledPackage({ ...plan, targetVersion: previous.version }, runner);
+    return {
+      ok: false, stage: "verify",
+      message: back.ok ? `${verified.message}\n  ↩ Rolled back to v${previous.version}, which verifies; the running fleet was not touched.`
+        : `${verified.message}\n  ✗ v${previous.version} was put back but does not verify either: ${back.message.trim()} Reinstall it: npm install -g @songsid/agend@${previous.version}`,
+    };
+  }
+  if (rollback) Object.assign(verified, { rollback });
 
   // Only now is the new install proven: clean up the old system copy an nvm install leaves behind. Best effort, and
   // never waits for a password.

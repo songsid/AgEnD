@@ -9,7 +9,7 @@
  * whose name holds `$`, spaces and quotes. No host npm, no network, no fleet.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -125,6 +125,49 @@ exit 0
 }
 
 const plan = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({ pkg, targetVersion, viaNvm: false, nvmSh: "/nonexistent" });
+
+describe("#1450 C6: a package that does not verify is replaced by the previous one, which must verify", () => {
+  const withRollback = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({
+    ...plan(pkg, targetVersion), lock: () => ({ ok: true, token: "9".repeat(32) }), rollback: true, now: () => new Date("2026-10-09T01:02:03Z"),
+  });
+  const installedVersion = (w: ReturnType<typeof world>) => JSON.parse(readFileSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend", "package.json"), "utf8")).version;
+
+  it("the new package cannot open a database: v2.1.12 is put back, verified, and the copy is gone", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0", "throw-on-open")), w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "verify", message: expect.stringContaining("Rolled back to v2.1.12, which verifies") });
+    expect(installedVersion(w)).toBe("2.1.12");
+    expect(realpathSync(join(w.prefix, "bin", "agend"))).toBe(realpathSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend", "dist", "cli.js")));
+    expect(existsSync(join(w.prefix, ".agend-rollback"))).toBe(true);
+    expect(readdirSync(join(w.prefix, ".agend-rollback"))).toEqual([]);
+  });
+
+  it("npm's own failure: npm rolled back, and the copy is removed", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    w.env.NPM_FAIL = "1";
+    expect(runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0")), w.runner)).toMatchObject({ ok: false, stage: "install" });
+    expect(readdirSync(join(w.prefix, ".agend-rollback"))).toEqual([]);
+    expect(installedVersion(w)).toBe("2.1.12");
+  });
+
+  it("success: the outcome carries the preimage (for a later service failure), the new package is installed", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0")), w.runner);
+    expect(outcome.ok && outcome.rollback?.preimage?.version).toBe("2.1.12");
+    expect(existsSync(join(outcome.ok && outcome.rollback?.preimage ? outcome.rollback.preimage.dir : "/nonexistent", "agend", "package.json"))).toBe(true);
+    expect(installedVersion(w)).toBe("2.2.0");
+  });
+
+  it("nothing installed yet: no preimage, and a failed verify has nothing to roll back to", () => {
+    const w = world();
+    const outcome = runUpdateInstall(withRollback(fixturePackage(w.root, "v220", "2.2.0", "throw-on-open")), w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "verify" });
+    expect(outcome.ok === false && outcome.message).not.toContain("Rolled back");
+  });
+});
 
 describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to npm only", () => {
   it("the lock is asked for npm's own prefix; its token reaches `npm install` and no other command", () => {
