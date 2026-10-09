@@ -55,6 +55,8 @@ const CASES: Array<[string, string]> = [
   ["/view/a%2Fb", "malformed"],
   ["/view/%E0%A4", "malformed"],
   ["/view/a/b", "none"],
+  ["/ui/needs", "needs:"],
+  ["/ui/needs/x", "none"],
   ["/settings", "settings:agents"],
   ["/settings/agents", "settings:agents"],
   ["/settings/bots", "settings:bots"],
@@ -77,6 +79,7 @@ function describeServer(path: string): string {
   if (m.kind === "malformed") return "malformed";
   if (m.route.panel === "fleet") return `fleet:${m.route.tab}`;
   if (m.route.panel === "settings") return `settings:${m.route.section}`;
+  if (m.route.panel === "needs") return "needs:";
   return `${m.route.panel}:${m.route.instance ?? ""}`;
 }
 function describeClient(path: string): string {
@@ -84,6 +87,7 @@ function describeClient(path: string): string {
   if (!r) return "none";
   if (r.panel === "fleet") return `fleet:${r.tab}`;
   if (r.panel === "settings") return `settings:${r.section}`;
+  if (r.panel === "needs") return "needs:";
   return `${r.panel}:${r.instance ?? ""}`;
 }
 

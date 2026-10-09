@@ -379,3 +379,28 @@ describe("6. #1423: a write waiting for a fleet admin's confirmation", () => {
     expect(p.window.location.pathname).toBe("/ui/chat/alpha");
   }, 10_000);
 });
+
+describe("#1465 review: a delete confirmed after its tab went sends nothing", () => {
+  it("schedules and teams", async () => {
+    const C = await import("/assets/ui-confirm.js");
+    (globalThis as any).confirm = undefined;
+    try {
+      for (const [tab, list, key] of [["schedules", { schedules: [{ id: "s1", label: "nightly", cron: "0 2 * * *", target: "alpha", enabled: true }] }, "/ui/schedules/"],
+        ["teams", { teams: { core: { members: ["alpha"] } } }, "/ui/teams/"]] as const) {
+        handler = async (path: string) => (path === `/ui/${tab}` ? list : {});
+        nav.navigate(`/ui/fleet/${tab}`);
+        await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab }, navKey: `fleet:${tab}|1|en` }));
+        await settle(6);
+        [...p.root.querySelectorAll(".row-item .btn")].find((b: any) => b.textContent.includes("Delete"))!.click();
+        await settle(2);
+        const q = C.confirmStore.get().queue[0];
+        expect(q, tab).toBeDefined();
+        await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|2|en" }));   // another tab: a new lease
+        await settle(4);
+        requests.length = 0;
+        C.answerConfirm(q.id, true); await settle(6);
+        expect(requests.filter((r: string) => r.startsWith(`DELETE ${key}`)), tab).toEqual([]);
+      }
+    } finally { (globalThis as any).confirm = () => true; }
+  });
+});

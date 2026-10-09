@@ -1,33 +1,66 @@
 "use strict";
-// #1450 runtime acceptance: which stubbed service-manager calls (one per line, as the hop's stubs log them) would have
-// ACTIVATED something. A line's command is judged after any `sudo` (and its options) and after the manager's own
-// options — `systemctl --no-pager --user restart x`, `sudo -n systemctl --user start x` — never by position alone.
-// Usage: node manager-activations.cjs <log>   → prints each activating line; exits 1 if there is any.
-var path = require("path");
+// #1450 runtime acceptance: judge the hop's stubbed service-manager calls. The stubs log each call as one record,
+// `<name>( <len>:<bytes>)*\n` — every argument length-prefixed, so its boundaries survive (an `echo "$*"` log cannot
+// tell `-p 'a b'` from `-p a b`). The judgement FAILS CLOSED: a call is allowed only when it is plainly read-only.
+//   - sudo: never (a hop on a writable prefix has no reason to);
+//   - systemctl / launchctl: every option must be known (with its value, if it takes one), and the verb must be on the
+//     read-only allowlist. An unknown option, a missing verb, or any other verb is an activation.
+// Usage: node manager-activations.cjs <log>   → prints each refused call; exits 1 if there is any.
+var fs = require("fs");
 
-var VERBS = ["restart", "start", "stop", "kill", "reload-or-restart", "try-restart", "kickstart", "bootstrap", "bootout", "load", "unload", "enable", "reenable", "isolate"];
-/** Options whose value is the next word. */
-var SUDO_VALUE = ["-u", "-g", "-C", "-h", "-p", "-r", "-t", "-U", "-D"];
-var MANAGER_VALUE = ["-H", "--host", "-M", "--machine", "-p", "--property", "-t", "--type", "-s", "--signal", "--state", "-n", "--lines", "-o", "--output", "--root", "--job-mode", "--kill-whom"];
+var SYSTEMCTL_FLAGS = ["--user", "--system", "--no-pager", "--no-legend", "--no-ask-password", "--quiet", "-q", "--value", "--all", "-a", "--full", "-l", "--plain"];
+var SYSTEMCTL_VALUED = ["-p", "--property", "-t", "--type", "--state", "-o", "--output", "-n", "--lines"];
+var SYSTEMCTL_READS = ["is-active", "is-enabled", "is-failed", "show", "status", "cat", "list-units", "list-unit-files", "list-dependencies", "show-environment", "daemon-reload", "reset-failed", "--version"];
+var LAUNCHCTL_READS = ["print", "print-disabled", "getenv", "list", "managername", "manageruid", "managerpid", "version", "help"];
 
-function activation(line) {
-  var w = String(line).trim().split(/\s+/).filter(Boolean);
-  while (w.length && path.basename(w[0]) === "sudo") {
-    w.shift();
-    while (w.length && w[0].charAt(0) === "-") { var f = w.shift(); if (SUDO_VALUE.indexOf(f) >= 0) w.shift(); }
+/** The records of a stub log: [{ name, args }]; null when the log is not well-formed (ambiguity: refused). */
+function parseLog(buf) {
+  var text = buf.toString("latin1"), out = [], i = 0;
+  while (i < text.length) {
+    var j = i;
+    while (j < text.length && text.charAt(j) !== " " && text.charAt(j) !== "\n") j++;
+    var rec = { name: text.slice(i, j), args: [] };
+    i = j;
+    while (i < text.length && text.charAt(i) === " ") {
+      var colon = text.indexOf(":", i + 1);
+      var len = colon > i ? text.slice(i + 1, colon) : "";
+      if (!/^(0|[1-9]\d*)$/.test(len) || colon + 1 + Number(len) > text.length) return null;
+      rec.args.push(Buffer.from(text.slice(colon + 1, colon + 1 + Number(len)), "latin1").toString("utf8"));
+      i = colon + 1 + Number(len);
+    }
+    if (text.charAt(i) !== "\n" || !rec.name) return null;
+    i++;
+    out.push(rec);
   }
-  if (!w.length || !/^(systemctl|launchctl)$/.test(path.basename(w[0]))) return null;
-  for (var i = 1; i < w.length; i++) {
-    if (w[i].charAt(0) === "-") { if (MANAGER_VALUE.indexOf(w[i]) >= 0) i++; continue; }
-    return VERBS.indexOf(w[i]) >= 0 ? w[i] : null;
-  }
-  return null;
+  return out;
 }
 
-module.exports = { activation: activation };
+/** Why this call is not plainly read-only — or null. */
+function refusal(rec) {
+  if (rec.name === "sudo") return "sudo was called";
+  var valued = rec.name === "systemctl" ? SYSTEMCTL_VALUED : [];
+  var flags = rec.name === "systemctl" ? SYSTEMCTL_FLAGS : [];
+  var reads = rec.name === "systemctl" ? SYSTEMCTL_READS : rec.name === "launchctl" ? LAUNCHCTL_READS : null;
+  if (!reads) return "an unknown stubbed program " + rec.name;
+  for (var i = 0; i < rec.args.length; i++) {
+    var a = rec.args[i];
+    if (a === "--version" && rec.name === "systemctl") return null;
+    if (a.charAt(0) === "-") {
+      if (flags.indexOf(a) >= 0) continue;
+      if (valued.indexOf(a) >= 0) { i++; continue; }
+      if (/^--[a-z-]+=/.test(a) && valued.indexOf(a.slice(0, a.indexOf("="))) >= 0) continue;
+      return "an option it cannot judge (" + a + ")";
+    }
+    return reads.indexOf(a) >= 0 ? null : "the verb " + a;
+  }
+  return "no verb";
+}
+
+module.exports = { parseLog: parseLog, refusal: refusal };
 if (require.main === module) {
-  var lines = require("fs").readFileSync(process.argv[2], "utf8").split("\n").filter(Boolean);
-  var bad = lines.filter(function (l) { return activation(l) !== null; });
-  bad.forEach(function (l) { console.log(l); });
+  var recs = parseLog(fs.readFileSync(process.argv[2]));
+  if (recs === null) { console.log("  the stub log is not well-formed"); process.exit(1); }
+  var bad = recs.filter(function (r) { return refusal(r) !== null; });
+  bad.forEach(function (r) { console.log("  " + refusal(r) + ": " + r.name + " " + JSON.stringify(r.args)); });
   process.exit(bad.length ? 1 : 0);
 }

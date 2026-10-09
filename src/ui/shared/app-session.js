@@ -1,4 +1,4 @@
-// The Session menu (from shell.js, #1018): who is signed in on this device, the other signed-in devices, and signing
+// The Session menu (#1018; once in the retired shell.js): who is signed in on this device, the other signed-in devices, and signing
 // out. Device labels come from other browsers' User-Agents, so they are only ever rendered as text.
 // It reads /auth/session when the page starts and each time the menu is opened — a person's action, not a timer.
 import { html, useEffect, useRef, useState } from "./app-html.js";

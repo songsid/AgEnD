@@ -15,14 +15,15 @@ let guard = null;
 let here = null;                                 // the path the app shows now (popstate has already changed the address)
 
 /**
- * `fn(route)` → false keeps the app where it is (it asked the person, who said no). One guard at a time; returns the
- * remover, which only removes this one.
+ * `fn(route, path)` → false keeps the app where it is. A guard that has to ask (the app's own dialog, which answers
+ * later) returns false at once and, on a yes, goes on with `navigate(path, { force: true })`. One guard at a time;
+ * returns the remover, which only removes this one.
  */
 export function setLeaveGuard(fn) {
   guard = fn;
   return () => { if (guard === fn) guard = null; };
 }
-const mayLeave = (route) => !guard || guard(route) !== false;
+const mayLeave = (route, path) => !guard || guard(route, path) !== false;
 
 /** Start following the address bar. An old /ui#instance=<name> link becomes /ui/chat/<name> before the first render. */
 export function startRouter(w = window) {
@@ -33,19 +34,20 @@ export function startRouter(w = window) {
   navStore.set({ route: parseRoute(w.location.pathname), seq: 1 });
   w.addEventListener("popstate", () => {
     const route = parseRoute(w.location.pathname);
-    if (!mayLeave(route)) { w.history.pushState(null, "", here); return; }
+    const path = w.location.pathname + w.location.search;
+    if (!mayLeave(route, path)) { w.history.pushState(null, "", here); return; }
     here = w.location.pathname + w.location.search;
     navStore.set(s => ({ route, seq: s.seq + 1 }));
   });
   w.document.addEventListener("click", onLinkClick);
 }
 
-/** Go to `path`. A path that is not a route of the app is a full load. */
+/** Go to `path`. A path that is not a route of the app is a full load. `force` skips the leave guard (it said yes). */
 export function navigate(path, opts = {}) {
   const url = new URL(path, win.location.href);
   const route = parseRoute(url.pathname);
   if (!route || url.origin !== win.location.origin) { win.location.assign(url.href); return; }
-  if (!mayLeave(route)) return;
+  if (!opts.force && !mayLeave(route, url.pathname + url.search)) return;
   if (url.pathname + url.search !== win.location.pathname + win.location.search) {
     win.history[opts.replace ? "replaceState" : "pushState"](null, "", url.pathname + url.search);
   }

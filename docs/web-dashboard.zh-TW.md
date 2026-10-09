@@ -6,7 +6,7 @@ AgEnD 的 web dashboard 是 fleet 自己跑的一個小型 web server，上面�
 
 | 面板 | 用途 |
 |---|---|
-| **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/config`） |
+| **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/config`）；**等你處理** 在 `/ui/needs` |
 | **`/view`** | 以讀取為主的總覽：每個 agent 的即時終端、名單、用量，也可以編輯 agent 的個人檔案與頭像 |
 | **`/settings`** | fleet 設定——agent、連線、ClassicBot、預設值、`fleet.yaml`——可以套用並重啟。每個分頁都有自己的網址：`/settings/bots`、`…/classic`、`…/general`、`…/advanced`（`/settings` 是 Agent） |
 
@@ -131,6 +131,14 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
 - 只有這幾種跟 instance 健康有關的提示會出現在 web 上；`/clear` 的確認、登入、ClassicBot 的核准、tips，以及 `/model`、`/effort` 選單，都會留在原本發出的地方。
 - 頁面沒連線時發出的提示，重新連上後會立刻出現；如果期間已經在別處回答了，會顯示為已回答。
 - **沒有聊天平台？** 只用 dashboard 的 fleet，這些提示會直接出現在該 instance 的聊天裡。互動式提示的 *請 General 協助* 是請 General instance 去看它的終端機，所以只有 fleet 有 General 時才會出現。
+
+## 等你處理（`/ui/needs`）
+
+所有等你處理的事，來自每個 bot 的世界，集中在一份清單：fleet 的提示（沒有回應、已結束、在終端機上等待）、停在權限、危險指令、登入或其他對話框的 agent、因需要登入而暫停或已崩潰的 agent，以及 fleet 無法確認或無法送達的傳送。這和每個 bot 在 General 的「等你處理」即時訊息是同一份清單（那裡每個 bot 只顯示自己的 agent）。在任何地方處理過的事——Discord、Telegram 或這裡——都會從每份清單消失。
+
+- 側欄的 **等你處理**（手機上是一個分頁）會顯示待處理的數量；瀏覽器分頁的標題會以 `(N)` 開頭。
+- 清單依 agent 分組，最舊的在前。提示有它自己的按鈕；傳送有 **確認**；每一項都有 **開啟聊天**。
+- **在這台裝置通知我**：分頁在背景時，有新的事等你處理就跳出桌面通知（在終端機上的等待要持續 5 秒才通知）。設定只對這個瀏覽器有效，開啟時會請求權限，而且需要安全的網址：`127.0.0.1`/`localhost` 或 HTTPS 公開連結，區網的一般 HTTP 網址不行。手機上不提供：手機請以 Discord 通知為主（General 裡的新訊息，以及可選的私訊）。
 
 ## `/view`
 

@@ -6,7 +6,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 
 | Panel | What it is for |
 |---|---|
-| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/config`) |
+| **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/config`); **Needs you** is `/ui/needs` |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/advanced` (`/settings` is Agents) |
 
@@ -131,6 +131,14 @@ When an instance looks hung, exits on its own, or is stuck on an interactive pro
 - Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked.
 - A prompt raised while the page was not connected appears as soon as it reconnects. One answered elsewhere meanwhile shows as answered.
 - **No chat platform?** On a dashboard-only fleet these prompts are asked here, in the instance's chat. An interactive prompt's *Ask General to help* asks your General instance to look at the terminal, so that one is offered only when the fleet has a General.
+
+## Needs you (`/ui/needs`)
+
+Everything waiting on you, from every bot's world, in one list: a fleet prompt (not responding, exited, waiting at its terminal), an agent stopped at a permission, a dangerous command, a sign-in or another dialog, an agent paused for sign-in or crashed, and a delivery the fleet could not confirm or deliver. It is the same list as each bot's live **Needs you** message in General (there, each bot shows only its own agents). Something handled anywhere, in Discord, Telegram or here, leaves every list.
+
+- **Needs you** in the sidebar (and a tab on a phone) shows how many things are waiting; the browser tab's title starts with `(N)`.
+- The list is grouped by agent, oldest first. A prompt has its own buttons; a delivery has **Acknowledge**; every item has **Open chat**.
+- **Notify me on this device** shows a desktop notification when something new needs you while the tab is in the background (a terminal wait only once it has lasted 5 seconds). It is per browser, asks for permission when you turn it on, and needs a secure address: `127.0.0.1`/`localhost` or the HTTPS public link, not a plain-HTTP LAN address. It is not offered on phones: there, the Discord notification (a new post in General, and the optional DM) is the one to rely on.
 
 ## `/view`
 

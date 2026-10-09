@@ -46,11 +46,12 @@ function main(deps) {
   if (!pkg) refuse("the installed package is not @songsid/agend", "npm install -g @songsid/agend");
   // A receipt describes THIS install's verification and nothing else: whatever is there now (one npm left behind, one
   // copied in) goes first, so selection and installation see the same state (runtime-select.cjs).
-  var receiptPath = path.join(pkg.dir, select.RECEIPT);
-  if (!select.absent(receiptPath)) {
-    try { fs.unlinkSync(receiptPath); } catch (e) { /* checked below */ }
-    if (!select.absent(receiptPath)) refuse("an old runtime receipt at " + receiptPath + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
-  }
+  [select.KEY, select.RECEIPT].forEach(function (name) {
+    var file = path.join(pkg.dir, name);
+    if (select.absent(file)) return;
+    try { fs.unlinkSync(file); } catch (e) { /* checked below */ }
+    if (!select.absent(file)) refuse("an old runtime receipt at " + file + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
+  });
   // C1: an `agend update` owns this prefix right now → only its own npm child may install (install-admission.cjs).
   var admitted = admission.admit(pkg.dir, { env: d.env, processStart: d.processStart });
   if (!admitted.ok) refuse(admitted.reason, "Never run two installs of @songsid/agend into one prefix at once, or one while `agend update` runs.");
@@ -88,6 +89,12 @@ function main(deps) {
       var tmp = path.join(pkg.dir, select.RECEIPT + "." + process.pid + ".tmp");
       fs.writeFileSync(tmp, select.receiptText(receipt));
       fs.renameSync(tmp, path.join(pkg.dir, select.RECEIPT));
+      // The admission key goes LAST: it binds the receipt just written (runtime-select.cjs).
+      var key = select.runtimeKey(pkg.dir, candidate, host);
+      if (key === null) refuse("the bundled Node's admission key cannot be computed", "npm install -g @songsid/agend@" + pkg.manifest.version);
+      var keyTmp = path.join(pkg.dir, select.KEY + "." + process.pid + ".tmp");
+      fs.writeFileSync(keyTmp, key);
+      fs.renameSync(keyTmp, path.join(pkg.dir, select.KEY));
       log("  ✓ AgEnD will run on its bundled Node " + seen.node + " (verified: N-API " + seen.napi + ", a database opened in the main thread and a worker)");
       return 0;
     }

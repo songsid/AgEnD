@@ -46,38 +46,24 @@ if [ -n "${AGEND_NODE:-}" ]; then
   exec "$AGEND_NODE" "$launcher" "$@"
 fi
 
-# 2. The bundled Node, only when it is admissible by the SAME contract the JS launcher applies
-#    (launcher/runtime-select.cjs, "THE RECEIPT CONTRACT"), checked before anything runs:
-#    - this release pins it (package.json), and the runtime package is that version;
-#    - the receipt is exactly the contract's form, for that pin;
-#    - the file is a regular file at the receipted realpath, with the receipted size and mtime (whole seconds).
-#    A receipt in any other shape, or a candidate that differs in any of these, is never executed here.
+# 2. The bundled Node, only when its ADMISSION KEY (launcher/runtime-select.cjs, "THE ADMISSION KEY") is exactly what
+#    this shell measures now — nothing parsed, the bytes rebuilt and compared: the host, the Node's realpath, size and
+#    mtime, and the POSIX cksum of both manifests and of the receipt. The JS selection requires the same key, so a
+#    change to any bound file keeps BOTH from running the candidate.
 admissible() {
-  pin=$(sed -n "s/^    \"@songsid\/agend-node-$os-$cpu\": \"\([0-9][0-9.]*\(-agend\.[0-9][0-9]*\)\{0,1\}\)\",\{0,1\}\$/\1/p" "$pkg/package.json" | head -n 1)
-  [ -n "$pin" ] || return 1
-  version=$(sed -n 's/^  "version": "\([^"]*\)",\{0,1\}$/\1/p' "$node_pkg/package.json" | head -n 1)
-  [ "$version" = "$pin" ] || return 1
-  [ -f "$receipt" ] && [ -f "$node" ] && [ ! -L "$node" ] && [ -x "$node" ] || return 1
-  [ "$(wc -l < "$receipt" | tr -d ' ')" = 13 ] || return 1
-  [ "$(sed -n 1p "$receipt")" = "{" ] && [ "$(sed -n 2p "$receipt")" = '  "receipt": 2,' ] && [ "$(sed -n 13p "$receipt")" = "}" ] || return 1
-  r_pin=$(sed -n '3s/^  "pinnedVersion": "\([0-9][0-9.]*\(-agend\.[0-9][0-9]*\)\{0,1\}\)",$/\1/p' "$receipt")
-  r_path=$(sed -n '4s/^  "nodePath": "\(\/[^"\\]*\)",$/\1/p' "$receipt")
-  r_size=$(sed -n '5s/^  "size": \([0-9][0-9]*\),$/\1/p' "$receipt")
-  r_mtime=$(sed -n '6s/^  "mtime": \([0-9][0-9]*\),$/\1/p' "$receipt")
-  # ERE (grep -E) for alternation: BSD sed's basic regexes have none.
-  sed -n 7p "$receipt" | grep -Eq '^  "sha256": "[0-9a-f]{64}",$' || return 1
-  sed -n 8p "$receipt" | grep -Eq '^  "napi": (0|[1-9][0-9]*),$' || return 1
-  sed -n 9p "$receipt" | grep -Eq '^  "platform": "[^"\\]+",$' || return 1
-  sed -n 10p "$receipt" | grep -Eq '^  "arch": "[^"\\]+",$' || return 1
-  sed -n 11p "$receipt" | grep -Eq '^  "libc": ("glibc"|null),$' || return 1
-  sed -n 12p "$receipt" | grep -Eq '^  "verifiedAt": "[^"\\]+"$' || return 1
-  [ -n "$r_pin" ] && [ -n "$r_path" ] && [ -n "$r_size" ] && [ -n "$r_mtime" ] || return 1
-  # (A leading-zero size/mtime, which JSON forbids, can never equal what wc and stat print below.)
-  [ "$r_pin" = "$pin" ] || return 1
-  [ "$(cd "$(dirname "$node")" 2>/dev/null && pwd -P)/node" = "$r_path" ] || return 1
-  [ "$(wc -c < "$node" | tr -d ' ')" = "$r_size" ] || return 1
+  [ -f "$pkg/.agend-runtime.key" ] && [ -f "$node" ] && [ ! -L "$node" ] && [ -x "$node" ] || return 1
+  case $os in
+    linux) hostlib=$(getconf GNU_LIBC_VERSION 2>/dev/null) || hostlib=none ;;
+    darwin) hostlib=$(uname -r) ;;
+    *) return 1 ;;
+  esac
+  [ -n "$hostlib" ] || hostlib=none
+  real=$(cd "$(dirname "$node")" 2>/dev/null && pwd -P)/node || return 1
+  size=$(wc -c < "$node" | tr -d ' ') || return 1
   mtime=$(stat -c %Y "$node" 2>/dev/null) || mtime=$(stat -f %m "$node" 2>/dev/null) || return 1
-  [ "$mtime" = "$r_mtime" ]
+  sum_package=$(cksum < "$pkg/package.json") && sum_runtime=$(cksum < "$node_pkg/package.json") && sum_receipt=$(cksum < "$receipt") || return 1
+  printf 'agend-runtime-key 1\nos %s\ncpu %s\nhost %s\nnode %s\nsize %s\nmtime %s\npackage %s\nruntime %s\nreceipt %s\n' \
+    "$os" "$cpu" "$hostlib" "$real" "$size" "$mtime" "$sum_package" "$sum_runtime" "$sum_receipt" | cmp -s - "$pkg/.agend-runtime.key"
 }
 if admissible; then
   exec "$node" "$launcher" "$@"

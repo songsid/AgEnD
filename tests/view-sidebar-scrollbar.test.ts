@@ -4,9 +4,8 @@ import { join } from "node:path";
 
 // The sidebar's scrolling list (View's roster is one, in the app shell) and the stylesheet that the page loads.
 const appCss = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf-8");
-const shellCss = readFileSync(join(process.cwd(), "src", "ui", "shared", "shell.css"), "utf-8");
-// Comments stripped: they mention the properties they explain.
-const css = [appCss, shellCss].map(src => src.replace(/\/\*[\s\S]*?\*\//g, "")).join("\n");
+// Comments stripped: they mention the properties they explain. (#1408 step 5: shell.css is retired.)
+const css = [appCss].map(src => src.replace(/\/\*[\s\S]*?\*\//g, "")).join("\n");
 const LIST = ".side-section";
 const scrollbarRules = css.split("\n").filter(l => /scrollbar-(color|width)|::-webkit-scrollbar/.test(l));
 
