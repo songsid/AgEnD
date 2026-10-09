@@ -13,7 +13,7 @@ import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { EventEmitter } from "node:events";
 import { handleAgentRequest } from "../src/agent-endpoint.js";
-import { agentTokenHeader } from "../src/agent-cli.js";
+import { agentTokenHeader } from "../src/agent-token-header.js";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -209,7 +209,7 @@ describe("POST /agent: token-first validation (#1489)", () => {
 
   it("agentTokenHeader produces ASCII-safe header and endpoint authenticates non-ASCII instance", async () => {
     const instanceName = "\u9B25\u7834\u4F01\u5283-7393"; // 鬥破企劃-7393
-    const token = "test-token-not-a-secret";
+    const token = "test-token-not-a-secret"; // gitleaks:allow
     const dataDir = mkdtempSync(join(tmpdir(), "agend-ep-nonascii-"));
     try {
       // (a) Header must be ASCII-safe — fails if encodeURIComponent is removed.

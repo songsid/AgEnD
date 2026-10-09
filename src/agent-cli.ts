@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
+import { agentTokenHeader } from "./agent-token-header.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -24,19 +25,6 @@ function readInstanceToken(): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Build the `X-Agend-Instance-Token` header value for a given instance and token.
- *
- * The instance name is percent-encoded so non-ASCII names (e.g. "鬥破開發-opus-…")
- * and names containing ":" survive HTTP header transmission without throwing
- * ERR_INVALID_CHAR. The endpoint reverses this with `decodeURIComponent`.
- *
- * Exported so tests call the real encoding logic instead of duplicating it.
- */
-export function agentTokenHeader(instance: string, token: string): string {
-  return `${encodeURIComponent(instance)}:${token}`;
 }
 
 function post(op: string, args: Record<string, unknown>): Promise<string> {
@@ -236,8 +224,4 @@ async function main(): Promise<void> {
   }
 }
 
-// Only run main() when this file is the entrypoint, not when imported as a module
-// (e.g. in tests that import agentTokenHeader).
-if (import.meta.url === new URL(process.argv[1], "file:").href) {
-  main();
-}
+main();
