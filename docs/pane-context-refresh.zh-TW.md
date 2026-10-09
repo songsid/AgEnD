@@ -23,7 +23,7 @@ Claude Code 仍優先採用具權威性的 `statusline.json`；明確執行 `/ct
 用來辨識預設 tmux namespace 的 OS home，只在帳號資料庫查詢成功後、同一個
 OS 使用者內快取。改動 `HOME` 不會取得預設 server 權限；`AGEND_HOME` 仍決定
 自訂 namespace。帳號查詢失敗為 unknown，後續可重試；user id 改動會使成功的
-home 快取失效。socket／session 名稱不變。
+home 快取失效。socket／session 名稱不變。改動帳號的 home 目錄後，需重啟 fleet。
 
 ## 證據與限制
 
@@ -40,9 +40,9 @@ fake tmux；新路徑使用真 manager／lane 與無外部作用的已連線 tra
 | 三次本機測量 | 舊路徑 | 已連線 control |
 | --- | --- | --- |
 | 每個模擬分鐘的 capture 子程序 | 138 | 0 |
-| 完整 fixture 工作量 | 166.7–202.3 ms | 0.82–2.14 ms |
-| 單次 event-loop turn 最長 native 呼叫時間總和 | 27.3–50.1 ms | 0 ms |
-| 最大 heartbeat 間隔 | 28.3–51.7 ms | 0.56–1.39 ms |
+| 完整 fixture 工作量 | 190.4–236.5 ms | 1.03–7.21 ms |
+| 單次 event-loop turn 最長 native 呼叫時間總和 | 40.1–52.7 ms | 0 ms |
+| 最大 heartbeat 間隔 | 41.2–54.5 ms | 0.90–5.52 ms |
 
 這是單一主機上 inert fixture 的數字。heartbeat 間隔包含主機排程與 I/O，並非
 production 延遲保證或新的 live 前後 profile。pane parsing、statusline 讀取與

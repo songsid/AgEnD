@@ -25,7 +25,8 @@ The OS home used to identify the default tmux namespace is cached only after a
 successful password-database lookup, for the same OS user. Changing `HOME` does
 not grant default-server access; `AGEND_HOME` still controls the custom namespace.
 An unreadable account lookup returns unknown, and can retry. A user-id change
-invalidates the successful-home cache. Socket/session names are unchanged.
+invalidates the successful-home cache. Socket/session names are unchanged. Restart
+the fleet after changing the account's home directory.
 
 ## Evidence and limits
 
@@ -42,9 +43,9 @@ No tmux server, fleet, backend CLI or account is opened.
 | Three local repetitions | Baseline | Connected control |
 | --- | --- | --- |
 | Capture children per modeled minute | 138 | 0 |
-| Complete fixture workload | 166.7–202.3 ms | 0.82–2.14 ms |
-| Longest native-invocation burst in one loop turn | 27.3–50.1 ms | 0 ms |
-| Maximum heartbeat gap | 28.3–51.7 ms | 0.56–1.39 ms |
+| Complete fixture workload | 190.4–236.5 ms | 1.03–7.21 ms |
+| Longest native-invocation burst in one loop turn | 40.1–52.7 ms | 0 ms |
+| Maximum heartbeat gap | 41.2–54.5 ms | 0.90–5.52 ms |
 
 These numbers describe inert fixtures on one host. Heartbeat gaps include host
 scheduling and I/O; they are not a production latency promise or a new live

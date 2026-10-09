@@ -435,21 +435,11 @@ export function forgetInstanceContext(instanceName: string): void {
 }
 
 /**
- * Single source of truth for instance context % across /ctx, /status, and View.
- * Claude-code prefers statusline.json (authoritative, no TUI scrape); everyone
- * else scrapes the live pane with the same parsers /ctx uses.
- *
- * Non-blocking by default (stale-while-revalidate): a fresh cache entry is
- * returned as-is; a stale or missing one is returned immediately anyway while an owned
- * control-mode refresh runs. A missing pane owner returns unknown without spawning. This used to scrape synchronously with `execFileSync`
- * (2s timeout) on a cache miss, and the 12s TTL is LONGER than the dashboard's
- * 10s poll — so roughly every other tick did N blocking captures. With ten
- * non-claude-code instances and a slow tmux that froze the entire fleet event
- * loop for up to 20s per tick: no IPC, no message delivery, no watchdog ping.
- * Three open browser tabs ran three independent polls.
- *
- * Pass `bypassCache` for a synchronous, authoritative read — used by `/ctx`,
- * where a user is asking right now and 2s of blocking is the correct trade.
+ * Shared context percentage for /ctx, /status and View, using the same pane parsers.
+ * Claude Code prefers its authoritative statusline.json.
+ * Polled reads return cached values immediately and refresh through the captured
+ * owner after the monotonic 8s interval. A missing pane owner returns unknown.
+ * Explicit /ctx retains its synchronous authoritative read via bypassCache.
  */
 export function resolveInstanceContext(
   dataDir: string,
