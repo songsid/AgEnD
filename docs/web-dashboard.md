@@ -10,7 +10,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings, with apply and restart |
 
-`/ui` is one app with a sidebar: the instances, **Fleet**, **View**, **Settings**, the theme, the language and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/view` and `/settings` are still pages of their own for now, with their navigation bar. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
+`/ui` and `/view` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings**, the theme, the language and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/settings` is still a page of its own for now, with its navigation bar. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
 The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It is reachable from the machine itself unless you set up a way in: see [Reaching it from elsewhere](#reaching-it-from-elsewhere).
 
@@ -35,7 +35,7 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 - A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first. Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
 - Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (2 hours locally, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
-- **The Session menu** (at the bottom of the sidebar in `/ui`; in the top bar of `/view` and `/settings`) shows:
+- **The Session menu** (at the bottom of the sidebar in `/ui` and `/view`; in the top bar of `/settings`) shows:
   - which browser you are signed in as, and when the session ends;
   - every other signed-in device, each with **Sign out**;
   - **Sign out everywhere**.
@@ -134,14 +134,19 @@ When an instance looks hung, exits on its own, or is stuck on an interactive pro
 
 ## `/view`
 
-`/view` shows every agent: the live terminal capture, the roster with each one's state and context, and AI subscription usage.
+`/view` shows every agent: the live terminal capture, the roster with each one's state and context, and AI subscription usage. Each agent has its own address, `/view/<name>`; `/view` alone opens the one this browser looked at last.
+
+- **The roster is the sidebar** while View is open (on a phone, the drawer): grouped by tag, with the filter at the bottom (**/** jumps to it) and your own order (drag a group or an instance). Rows show the context in use and the backend's colour; hover for the rest.
+- **The header** has **Text size** (Fit → Comfortable → Compact), **Usage** and **Help**. The terminal stays dark in both themes.
+- **The card under the terminal** shows the agent's name, role and model; its arrow opens the whole profile. **Edit profile** changes the display name, role, description and avatar.
 
 - **Reading `/view` needs no sign-in by default** (`web.view_access: open`). That includes the live terminal, so anyone who can reach the port can watch your agents. On a machine only you can reach, that is fine. Otherwise set:
   ```yaml
   web:
     view_access: session   # reading /view needs a signed-in session too
   ```
-- **Editing an agent's profile, avatar or the sidebar order always needs a session.** The Edit button sends a signed-out visitor to sign in and back.
+- **Signed out, `/view` is View alone:** the sidebar has View and **Sign in**, nothing that needs a session is shown or read, and **Sign in to edit** takes you to the sign-in page and back.
+- **Editing an agent's profile or avatar always needs a session.** The order of the roster is kept in this browser only.
 - Scripts can still write with the `X-Agend-Token` header.
 
 ## Reaching it from elsewhere

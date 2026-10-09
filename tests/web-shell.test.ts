@@ -217,18 +217,31 @@ describe("/ and the shared assets", () => {
     await stop(h.fm);
   }, 30_000);
 
-  it("does not skip the gate for anything but the door", () => {
-    const skips = (url: string) => bypassesWebGate({ method: "GET", url }, url, undefined, p => isViewPath(p) || isUsagePath(p));
+  it("does not skip the gate for anything but the door and the View reads", () => {
+    const skips = (url: string, view_access?: string) => bypassesWebGate({ method: "GET", url }, url, { web: { view_access } }, p => isViewPath(p) || isUsagePath(p));
     expect(skips("/")).toBe(true);
     expect(skips("/ui")).toBe(false);
     expect(skips("/ui/poll")).toBe(false);
     expect(skips("/ui/events")).toBe(false);
+    // #1408 step 2: /view and /view/<name> are View's public pages (the View-only shell under view_access: open).
+    expect(skips("/view")).toBe(true);
+    expect(skips("/view/alpha")).toBe(true);
+    expect(skips("/view/a%20b")).toBe(true);
+    // Not a page of View: the gate still answers it.
+    expect(skips("/view/a/b")).toBe(false);
+    expect(skips("/view/")).toBe(false);
+    expect(skips("/settings")).toBe(false);
+    // view_access: session takes every View read back behind the gate.
+    expect(skips("/view", "session")).toBe(false);
+    expect(skips("/view/alpha", "session")).toBe(false);
   });
 });
 
 describe("the panels adopt the shell", () => {
-  it("view and settings load the stylesheet and both scripts, and place one nav marked with their own name", () => {
-    for (const [file, current] of [["view.html", "view"], ["settings.html", "settings"]] as const) {
+  // #1408 step 2: /view is the app shell on its View panel (view.html is gone), so settings is the only panel that
+  // still loads the old shell.js and places its own nav.
+  it("settings loads the stylesheet and both scripts, and places one nav marked with its own name", () => {
+    for (const [file, current] of [["settings.html", "settings"]] as const) {
       const html = ui(file);
       expect(html, file).toContain('<link rel="stylesheet" href="/assets/shell.css">');
       expect(html, file).toContain('<script src="/assets/agend-auth.js"></script>');
@@ -253,8 +266,27 @@ describe("the panels adopt the shell", () => {
     expect(html).not.toContain("data-agend-nav");
   });
 
+  it("/ui and /view are the app shell, /view/<name> too; settings stays its own page", async () => {
+    const h = await startFleet();
+    try {
+      for (const path of ["/ui", "/view", "/view/alpha"]) {
+        const r = await raw(h.port, "GET", path, { cookie: h.cookie, accept: "text/html" });
+        expect(r.status, path).toBe(200);
+        expect(r.body, path).toContain('<script type="module" src="/assets/app.js"></script>');
+        expect(r.body, path).not.toContain("/assets/shell.js");
+      }
+      const settings = await raw(h.port, "GET", "/settings", { cookie: h.cookie, accept: "text/html" });
+      expect(settings.body).toContain('<script src="/assets/shell.js" defer></script>');
+    } finally { await stop(h.fm); }
+  }, 30_000);
+
   it("loads nothing from another origin — no CDN fonts, scripts or styles", () => {
-    for (const file of ["app.html", "view.html", "settings.html", "signin.html"]) {
+    // The View panel's modules are JavaScript: no URL of another origin in them either (#1408 step 2).
+    for (const file of ["shared/panel-view.js", "shared/view-strings.js"]) {
+      expect(ui(file), file).not.toMatch(/["'`(=]\s*https?:\/\//i);
+      expect(ui(file), file).not.toMatch(/\bimport\(\s*["'`]https?:/i);
+    }
+    for (const file of ["app.html", "settings.html", "signin.html"]) {
       const html = ui(file);
       expect(html, file).not.toMatch(/<(?:link|script|img)[^>]+(?:href|src)=["']https?:/i);
       expect(html, file).not.toContain("fonts.googleapis.com");
