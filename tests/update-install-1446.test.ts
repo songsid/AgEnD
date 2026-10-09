@@ -109,11 +109,11 @@ exit 0
   const extraPath: string[] = [];
   const env: Record<string, string> = {};
   const runner: CommandRunner = {
-    run: (command, args) => {
+    run: (command, args, options = {}) => {
       // cwd = the scratch root: a spliced `$(touch pwned)` would land where the tests look for it.
       const r = spawnSync(command, args, {
         encoding: "utf8", cwd: root,
-        env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env },
+        env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env, ...options.env },
       });
       return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
     },
