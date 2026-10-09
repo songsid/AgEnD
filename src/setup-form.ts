@@ -370,3 +370,26 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 </body>
 </html>
 `;
+
+/**
+ * #1490: the setup pages' Content-Security-Policy. Their one `<script>` and one `<style>` are inline, so each response
+ * gets a fresh nonce for exactly those (setupPage); nothing else may run, load from elsewhere, post elsewhere, or frame
+ * the page. fetch() goes to this origin only (the setup host's own API).
+ */
+export function setupContentSecurityPolicy(nonce: string): string {
+  return [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}'`,
+    `style-src 'nonce-${nonce}'`,
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
+/** A setup page with `nonce` on its inline `<script>` and `<style>` tags — the only ones the policy admits. */
+export function setupPage(html: string, nonce: string): string {
+  return html.replace(/<script>/g, `<script nonce="${nonce}">`).replace(/<style>/g, `<style nonce="${nonce}">`);
+}

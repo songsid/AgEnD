@@ -216,8 +216,21 @@ export function buildClearedSessionCookies(): string[] {
 
 /** The presented session id, or undefined. A `__Host-` cookie wins: it cannot have been planted by a sibling site. */
 export function readSessionCookie(req: WebGateRequest): string | undefined {
+  return readSessionCookies(req)[0];
+}
+
+/**
+ * Every session id this request presents, in the order they are tried (#1490): the `__Host-` cookie first, then, on
+ * this computer's own listener only, the plain one. A stale `__Host-` cookie (a session that ended) used to hide a
+ * valid plain one, so a signed-in browser read as signed out. The public link only ever accepts its `__Host-` cookie.
+ * Trying the plain cookie after a `__Host-` one that does not authenticate admits nothing that presenting the plain
+ * cookie alone would not.
+ */
+export function readSessionCookies(req: WebGateRequest): string[] {
   const jar = parseCookieHeader(headerValue(req, "cookie") ?? undefined);
-  return gatewayRequestContext(req) ? jar.get(WEB_SESSION_COOKIE_SECURE) : jar.get(WEB_SESSION_COOKIE_SECURE) ?? jar.get(WEB_SESSION_COOKIE);
+  const secure = jar.get(WEB_SESSION_COOKIE_SECURE), plain = jar.get(WEB_SESSION_COOKIE);
+  if (gatewayRequestContext(req)) return secure ? [secure] : [];
+  return [secure, plain].filter((c, i, all): c is string => !!c && all.indexOf(c) === i);
 }
 
 export function hasValidHeaderToken(req: WebGateRequest, token: string): boolean {
@@ -271,8 +284,12 @@ export function authorizeSession(
 ): SessionAuthResult {
   if (!token || !isWebRequestCurrent(req)) return { kind: "reject", status: 401, message: WEB_TOKEN_INVALID_MESSAGE };
   if (!isSameOriginRequest(req)) return { kind: "reject", status: 403, message: WEB_CROSS_SITE_MESSAGE };
-  const cookie = readSessionCookie(req);
-  const session = sessions && cookie ? sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch !== false, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId }) : null;
+  const presented = readSessionCookies(req);
+  let cookie: string | undefined = presented[0], session: ReturnType<WebSessionStore["authenticate"]> = null;
+  for (const candidate of sessions ? presented : []) {
+    session = sessions!.authenticate(candidate, tokenEpoch(token), { touch: opts.touch !== false, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
+    if (session) { cookie = candidate; break; }
+  }
   if (!session || !cookie) {
     return { kind: "reject", status: 401, message: cookie ? WEB_SESSION_EXPIRED_MESSAGE : WEB_SESSION_REQUIRED_MESSAGE };
   }
@@ -310,11 +327,13 @@ function authorize(
   // carrying both is the CLI's, not a forged form's.
   if (hasValidHeaderToken(req, token)) return { kind: "allow", via: "header-token" };
 
-  const cookie = readSessionCookie(req);
-  if (sessions && cookie) {
-    const session = sessions.authenticate(cookie, tokenEpoch(token), { touch: opts.touch, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
+  const presented = readSessionCookies(req);
+  const cookie = presented[0];
+  for (const candidate of sessions ? presented : []) {
+    const session = sessions!.authenticate(candidate, tokenEpoch(token), { touch: opts.touch, surface: gatewayRequestContext(req)?.surface, exposureId: gatewayRequestContext(req)?.exposureId });
     if (session) {
-      if (!isSafeMethod(method) && !passesCookieWriteChecks(req, cookie)) {
+      // The write checks bind to the session that authenticated (its CSRF value), not to the first cookie presented.
+      if (!isSafeMethod(method) && !passesCookieWriteChecks(req, candidate)) {
         return { kind: "reject", status: 403, message: WEB_CSRF_MESSAGE, reason: "csrf" };
       }
       return { kind: "allow", via: "session", session };
@@ -363,10 +382,14 @@ function authorize(
  */
 const PASSIVE_GET_PATHS: ReadonlySet<string> = new Set(["/ui/poll", "/ui/events", "/api/profiles", "/api/ai-usage"]);
 const PASSIVE_GET_PANE = /^\/api\/pane\/[^/]+$/;
+const PASSIVE_APPLY_STATUS = /^\/api\/settings\/(?:apply\/[A-Za-z0-9-]+|(?:provider-secrets|secrets)\/[^/]+\/apply\/[A-Za-z0-9_-]+|connections\/[^/]+\/(?:secret|binding)\/apply\/[A-Za-z0-9_-]+)$/;
 
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
   if ((method ?? "GET") !== "GET") return false;
-  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path);
+  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)
+    // #1490: a page polls an Apply job (and a secret or binding apply) for up to ten minutes while the person waits;
+    // that polling is not their activity and must not slide the session's idle expiry (#1373).
+    || PASSIVE_APPLY_STATUS.test(path);
 }
 
 /**
