@@ -414,9 +414,14 @@ On Linux the systemd unit uses `KillMode=mixed`, so stopping or updating the ser
 The same migration also adds the #1113 settings to an older unit. `CoredumpFilter=0` keeps a crash dump to a few KB: on WSL every crash is piped to the WSL crash collector, which ignores `LimitCORE`, and kiro-cli and the fleet itself had left dumps of about 1 GB and 450 MB. `LimitCORE=0` covers systems that write core files directly. `TimeoutStartSec=15min` replaces the old unlimited start timeout, and `StartLimitIntervalSec=30min` with `StartLimitBurst=4` stops systemd from restarting a fleet that failed four times in 30 minutes. `agend restart` runs `systemctl reset-failed` first, so it is never blocked by that limit; a plain `systemctl --user restart` is. Some systemd versions (249 among them) ignore `CoredumpFilter=` in a unit file, so on Linux AgEnD sets `coredump_filter` to 0 itself: the fleet process at startup, and each CLI it launches (the launch command sets it in the pane's own shell first, so it applies even in a tmux server the fleet did not start). `AGEND_KEEP_COREDUMP_FILTER=1` turns both off: processes then keep the mask they inherit (from systemd, tmux or your shell), which is not necessarily a full dump. The unit file is left as it is either way; whatever it says, the runtime mask is what AgEnD sets unless you opt out.
 
 **Which Node the service runs, and when `agend restart` refuses (#1450).**
-- The unit (`ExecStart=`) and the plist (`ProgramArguments`) name AgEnD's own Node first, then the package's
-  `dist/cli.js`, then `fleet start`. That is the Node `agend` itself selected: the bundled one, or a validated
-  `AGEND_NODE`. The runtime's directory is on no service PATH, so the coding CLIs keep the Node they had.
+- With AgEnD's bundled Node (or a validated `AGEND_NODE`), the unit (`ExecStart=`) and the plist (`ProgramArguments`)
+  name that Node first, then the package's `dist/cli.js`, then `fleet start`. The bundled Node's path changes only when
+  npm updates AgEnD, and `agend update` rewrites the service then. The runtime's directory is on no service PATH, so the
+  coding CLIs keep the Node they had.
+- Where AgEnD has no bundled Node (any platform other than glibc Linux and macOS 11+ on x64/arm64), the service starts
+  the package's launcher (`<package>/launcher/agend fleet start`) instead. The launcher finds Node on the service's
+  PATH at each start, so upgrading Node with nvm or Homebrew, which removes the old version's directory, does not break
+  the service. A Node that is too old is refused at start, and the reason goes to the service log.
 - Before stopping anything, `agend restart` checks that the definition the service manager has **loaded** starts
   exactly that: the selected Node named, this install's entry, `fleet start`, no `NODE_OPTIONS`/`NODE_PATH`, and no
   reload pending. Otherwise it refuses and stops nothing.
