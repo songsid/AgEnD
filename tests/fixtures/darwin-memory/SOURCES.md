@@ -26,3 +26,15 @@ Parser contracts were checked against primary Apple source:
 
 `free + speculative + max(inactive, purgeable)` is AgEnD's conservative estimate,
 not an Apple-defined MemAvailable or the Activity Monitor pressure graph.
+
+## Kernel pressure alarm (#1256)
+
+`kernel-pressure-{1,2,4}.txt` are **synthetic representative sysctl outputs**,
+not reporter calibration data or a live Mac run. They follow sysctl's labelled
+integer format. The development host remains Linux.
+
+The kernel's [sysctl handler and dispatch conversion](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/kern/kern_memorystatus_notify.c#L1775)
+map normal to `NOTE_MEMORYSTATUS_PRESSURE_NORMAL`, warning/urgent to WARN, and
+critical to CRITICAL; the sysctl returns those dispatch flags, not its internal
+enum. This is the source of the 1/2/4 contract, with other values left unknown.
+The read-only sysctl is masked in release builds and is not a stable public API.

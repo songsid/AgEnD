@@ -642,6 +642,15 @@ export function codexAppServerDisconnected(pane: string): boolean {
 }
 
 /**
+ * How codex labels Control in its key hints, from codex-rs/tui `key_hint.rs` MODIFIER_LABELS. Up to 0.160 it was
+ * always `ctrl+c`. From 0.162 it is `^c` on Linux (where AgEnD runs) and `⌃c` on macOS, while Shift and Alt stay
+ * spelled out on Linux (`shift+tab`). The footers below are drawn from these labels, so they say whichever applies.
+ */
+const CODEX_CTRL = String.raw`(?:ctrl\+|\^|⌃)`;
+const CODEX_SESSION_LOCK_FOOTER = new RegExp(String.raw`^\s*r retry\s+(?:f fork\s+)?esc\/${CODEX_CTRL}c\/q exit\b`);
+const CODEX_RESUME_CWD_FOOTER = new RegExp(String.raw`^\s*enter continue · esc use session · ${CODEX_CTRL}c quit\s*$`);
+
+/**
  * #984: Codex (0.156+) parks a resumed session behind this screen while
  * another process holds the session's thread-writer lock. Both keys are unsafe
  * to automate: `r` spins while the other writer lives, and `f` (0.157) forks
@@ -652,7 +661,7 @@ function codexSessionLockVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
   let last = rows.length - 1;
   while (last >= 0 && rows[last].trim() === "") last--;
-  if (last < 0 || !/^\s*r retry\s+(?:f fork\s+)?esc\/ctrl\+c\/q exit\b/.test(rows[last])) return false;
+  if (last < 0 || !CODEX_SESSION_LOCK_FOOTER.test(rows[last])) return false;
   for (let i = last - 1; i >= Math.max(0, last - 4); i--) {
     if (!/^\s*🔒\s+This conversation is open in another app\b/.test(rows[i])) continue;
     return /^\s*Close it there and press R to continue here\.\s*$/.test(rows[i + 1] ?? "")
@@ -673,7 +682,7 @@ function codexResumeCwdPickerVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
   let last = rows.length - 1;
   while (last >= 0 && rows[last].trim() === "") last--;
-  if (last < 0 || !/^\s*enter continue · esc use session · ctrl\+c quit\s*$/.test(rows[last])) return false;
+  if (last < 0 || !CODEX_RESUME_CWD_FOOTER.test(rows[last])) return false;
   const header = rows.findIndex((row, i) => i >= Math.max(0, last - 16) && i < last
     && /^\s*Working directory · resume\s*$/.test(row));
   if (header < 0) return false;
