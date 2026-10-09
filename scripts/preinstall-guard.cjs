@@ -7,10 +7,8 @@
 //   Node 23.6.0        (released 2025-01-13)
 //   Node 24+
 //
-// This guard exits 1 on incompatible Node so npm aborts the install and
-// rolls back to the previously installed version — protecting a machine
-// running the OLD updater (2.1.x) that can only issue a warning about
-// `engines` but still allows the install to proceed.
+// This guard exits 1 when the running Node does not support N-API 10 so
+// npm aborts the install and keeps the previously installed version intact.
 //
 // --ignore-scripts bypasses this check; see Upgrade Notes in the changelog.
 
@@ -25,18 +23,13 @@ const ok =
 if (!ok) {
   process.stderr.write(
     "\n" +
-    "  ERROR  AgEnD requires Node.js ^22.14.0 || ^23.6.0 || >=24.\n" +
-    "         better-sqlite3 v13 uses Node-API 10, available from\n" +
-    "         Node 22.14.0 LTS, Node 23.6.0, or Node 24+.\n" +
+    "  AgEnD 2.2 needs Node >=22.14; your install was left unchanged.\n" +
     "\n" +
     "  Running: Node " + process.versions.node + "\n" +
+    "  Required: ^22.14.0 || ^23.6.0 || >=24\n" +
     "\n" +
-    "  Upgrade Node first, then retry:\n" +
-    "    nvm install 22 && nvm use 22\n" +
+    "  Update Node to a compatible version, then retry:\n" +
     "    npm install -g @songsid/agend\n" +
-    "\n" +
-    "  npm is aborting this install. Your existing agend version\n" +
-    "  remains in place.\n" +
     "\n",
   );
   process.exit(1);
