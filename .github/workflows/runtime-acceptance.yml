@@ -3,6 +3,9 @@
 # a local verdaccio — nothing is published to npm. Every cell installs into a scratch prefix/HOME/AGEND_HOME.
 # CI checks service files by contents and paths only; it cannot prove that a systemd user service or launchd loads
 # one at boot or login (that is the manual check on a real host).
+# macOS cells (user decision, 2026-10-09): NOT on pull requests — Mac runners queue for 20–40 min and Mac users are few.
+# They run on a release tag (v*), on demand (workflow_dispatch) and weekly; before a release the real-Mac rehearsal
+# covers the Mac. Pull requests run the Linux cells (x64 and arm64).
 name: Runtime acceptance
 
 on:
@@ -20,6 +23,10 @@ on:
       - src/restart-guard.ts
       - src/service-plan.ts
       - src/package-preimage.ts
+  push:
+    tags: ['v*']
+  schedule:
+    - cron: '17 3 * * 1'   # weekly, Monday 03:17 UTC: the macOS cells
   workflow_dispatch:
 
 permissions:
@@ -54,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest","ubuntu-24.04-arm"]' || '["ubuntu-latest","ubuntu-24.04-arm","macos-latest","macos-15-intel"]') }}
         # The system Node is never a reason to refuse where a bundled Node applies (#1450, user 2026-10-09): 16 and 18
         # install and run too — AgEnD runs on the bundled Node, whatever Node runs npm.
         node: ['16', '18', '20.19.0', '22']
@@ -94,7 +101,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
         # 2.1.12 itself starts on 18 and 20, so both legs run there; on 16 it cannot start, so only plain npm applies.
         node: ['16', '18', '20.19.0']
     runs-on: ${{ matrix.os }}
@@ -130,7 +137,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
