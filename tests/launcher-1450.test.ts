@@ -19,7 +19,8 @@ const LAUNCHER = join(process.cwd(), "launcher");
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
-const HOST = { platform: "linux", arch: "x64", id: "linux-x64", glibc: "2.35", darwinRelease: null };
+// The fixture host is linux-x64 with THIS machine's glibc: the admission key binds the real host, as the sh bin sees it.
+const HOST = { platform: "linux", arch: "x64", id: "linux-x64", glibc: platform.glibcVersion() ?? "2.35", darwinRelease: null };
 const NOW = { node: "22.20.0", napi: 10 };
 const OLD = { node: "20.19.0", napi: 9 };
 /** The launcher picks the REAL host; the spawned-runtime cases need it to be the fixture's linux-x64. */
@@ -337,7 +338,7 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
   const toolsOnly = (() => {
     const dir = mkdtempSync(join(tmpdir(), "agend tools-"));
     roots.push(dir);
-    for (const tool of ["sh", "readlink", "dirname", "basename", "uname", "sed", "wc", "tr", "find", "grep", "stat", "head"]) {
+    for (const tool of ["sh", "readlink", "dirname", "basename", "uname", "wc", "tr", "stat", "cksum", "cmp", "getconf"]) {
       symlinkSync(spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim(), join(dir, tool));
     }
     return dir;
@@ -458,6 +459,21 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       ["a receipt for another pin", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"pinnedVersion": "[^"]*"/, '"pinnedVersion": "22.0.0"'))],
       ["a runtime package of another version", (f: ReturnType<typeof fixture>) => edit(join(f.runtimeHome, "package.json"), t => t.replace(/"version": "[^"]*"/, '"version": "22.0.0"'))],
       ["a receipt of the old shape (mtimeMs, no receipt key)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => { const r = JSON.parse(t); delete r.receipt; r.mtimeMs = r.mtime * 1000; delete r.mtime; return JSON.stringify(r, null, 2) + "\n"; })],
+      // #1460 r2's counterexamples: each changes a bound file, so its cksum — and the admission key — differs.
+      ["a literal TAB in receipt.platform", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"platform": "([^"]*)"/, '"platform": "$1\t"'))],
+      ["napi beyond a safe integer", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"napi": \d+/, '"napi": 9007199254740993'))],
+      ["the root manifest's name changed", (f: ReturnType<typeof fixture>) => edit(join(f.pkg, "package.json"), t => t.replace('"@songsid/agend"', '"@songsid/agenx"'))],
+      ["the runtime manifest's name changed", (f: ReturnType<typeof fixture>) => edit(join(f.runtimeHome, "package.json"), t => t.replace(/"name": "[^"]*"/, '"name": "@songsid/agend-node-other"'))],
+      ["a malformed pin (22..23.3) in both manifests and the receipt", (f: ReturnType<typeof fixture>) => {
+        for (const file of [join(f.pkg, "package.json"), join(f.runtimeHome, "package.json"), receiptFile(f)]) edit(file, t => t.split(process.versions.node).join("22..23.3"));
+      }],
+      ["trailing text after the root manifest", (f: ReturnType<typeof fixture>) => edit(join(f.pkg, "package.json"), t => t + "garbage\n")],
+      ["trailing text after the runtime manifest", (f: ReturnType<typeof fixture>) => edit(join(f.runtimeHome, "package.json"), t => t + "garbage\n")],
+      // …and with its mtime put back: content, not timestamps, binds the manifests and the receipt.
+      ["the root manifest edited to the same length, mtime restored", (f: ReturnType<typeof fixture>) => keepTimes(join(f.pkg, "package.json"), () => edit(join(f.pkg, "package.json"), t => t.replace('"2.2.0"', '"2.2.9"')))],
+      ["the receipt edited to the same length, mtime restored", (f: ReturnType<typeof fixture>) => keepTimes(receiptFile(f), () => edit(receiptFile(f), t => t.replace(/"verifiedAt": "(\d)/, '"verifiedAt": "9')))],
+      ["the admission key edited", (f: ReturnType<typeof fixture>) => edit(join(f.pkg, ".agend-runtime.key"), t => t.replace(/^size (\d+)$/m, (_m, n) => `size ${Number(n) + 1}`))],
+      ["the admission key removed (receipt still valid)", (f: ReturnType<typeof fixture>) => rmSync(join(f.pkg, ".agend-runtime.key"))],
     ].map(([n, fn, ok = false]) => [n, fn, ok] as const))("%s → admitted: %s", (_n, change, expected) => {
       const f = fixture({ runtime: "ok", npmLayout: true });
       const node = join(f.runtimeHome, "bin", "node");
