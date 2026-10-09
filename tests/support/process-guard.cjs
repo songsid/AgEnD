@@ -120,6 +120,11 @@ function checkInvocation(file, argv = [], env = process.env, cwd = process.cwd()
   cwd = childCwd(cwd);
   const base = path.basename(String(file));
   if (BACKENDS.has(base) && !fixtureAllowed(file, env, cwd)) throw new Error(`real backend CLI forbidden: ${base}`);
+  // Through PATH (`sh -c "agend fleet start"`), an `agend` that is not a registered fixture is whatever is installed on
+  // this host — a real fleet. A harness that once stubbed `agend` on PATH must not be the only thing in the way.
+  if (base === 'agend' && argv[0] === 'fleet' && argv[1] === 'start' && !fixtureAllowed(file, env, cwd)) {
+    throw new Error('a real `agend fleet start` from a test is forbidden');
+  }
   if (base === 'tmux') {
     if (!privateSocket(argv, env)) throw new Error('tmux requires a private test socket (-L/-S)');
     // Check commands launched in panes; a private socket does not authorise a

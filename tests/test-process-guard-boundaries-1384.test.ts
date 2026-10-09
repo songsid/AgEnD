@@ -119,6 +119,10 @@ describe("process guard child execution boundaries", () => {
     expect(recorded.stdout.trim()).toBe("spawned");
     expect(readFileSync(log, "utf8")).toBe("agend fleet start\n");
     expect(existsSync(join(root, ".agend", "fleet.pid"))).toBe(false);
+    // …and the old shell form never reaches whatever `agend` this host has installed.
+    expect(() => execSync("agend fleet start", { stdio: "ignore", env: { ...process.env, HOME: root, AGEND_HOME: join(root, ".agend") } }))
+      .toThrow("a real `agend fleet start` from a test is forbidden");
+    expect(processGuard.takeViolations()).toEqual([expect.stringContaining("agend fleet start")]);
   });
 
   it("does not bootstrap a fixture from the parent cwd when child PATH is absent", () => {
