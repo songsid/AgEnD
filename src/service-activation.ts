@@ -175,7 +175,7 @@ function scriptInterpreter(script: string, path: string, deps: TupleDeps): strin
 export function tupleStartsVerified(
   tuple: ActivationTuple,
   verified: VerifiedTarget,
-  defaultPath: string,
+  _defaultPath: string,
   deps: TupleDeps,
 ): { ok: true } | { ok: false; reason: string } {
   for (const key of INTERPRETER_ENV) {
@@ -185,7 +185,10 @@ export function tupleStartsVerified(
   const args = tuple.argv.slice(1);
   if (program === verified.bin) {
     if (!sameArgs(args, FLEET_START)) return { ok: false, reason: `its arguments are ${JSON.stringify(args)}, not ["fleet","start"]` };
-    const interpreter = scriptInterpreter(verified.bin, tuple.env.PATH ?? defaultPath, deps);
+    // PATH must be in the definition's effective environment: with none (e.g. UnsetEnvironment=PATH), `env node`
+    // searches execvp's built-in path (glibc: /bin:/usr/bin), not any manager default — unprovable here (#1449 r5).
+    if (tuple.env.PATH === undefined) return { ok: false, reason: "its environment has no PATH, so the Node its `env node` would find cannot be proven" };
+    const interpreter = scriptInterpreter(verified.bin, tuple.env.PATH, deps);
     if (interpreter !== verified.node) return { ok: false, reason: `its Node is ${interpreter ?? "unresolvable"}, not the verified ${verified.node}` };
     return { ok: true };
   }
@@ -261,16 +264,31 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   // the refreshed plist must start the verified install. Then one bootout + bootstrap, proven by the loaded tuple and
   // a running pid. Recovery bootstraps the preimage and must prove ITS tuple is what runs — not just any pid.
   const target = `${manager.domain}/${manager.label}`;
+  // Every read must COMPLETE (#1449 r5): a timed-out or failed query is uncertainty, never "unset" or "not loaded".
+  const completed = (r: CommandResult) => r.status !== null && r.signal === null;
   for (const key of ["NODE_OPTIONS", "NODE_PATH"]) {
     const value = deps.run("launchctl", ["getenv", key]);
-    if (value.status === 0 && value.stdout.trim() !== "") {
+    if (!completed(value) || value.status !== 0) {
+      return { ok: false, stopped: false, message: `  ✗ Could not read launchd's ${key} (launchctl getenv ${value.signal ? `killed by ${value.signal}` : `exited ${value.status}`}). Not activating; nothing was changed.` };
+    }
+    if (value.stdout.trim() !== "") {
       return { ok: false, stopped: false, message: `  ✗ launchd's environment sets ${key} for every job, which changes how Node runs. Not activating; unset it (launchctl unsetenv ${key}).` };
     }
   }
   const preimage = deps.readFile(manager.plistPath);
   const preimageTuple = preimage !== null ? parsePlist(preimage) : null;
+  // The loaded job, or a CONFIRMED absence: launchctl print exits 113 ("Could not find service") for a job that is not
+  // loaded. Anything else that is not a complete, readable job is uncertainty: refuse with nothing touched.
   const before = deps.run("launchctl", ["print", target]);
-  const loadedBefore = before.status === 0 ? parseLaunchctlPrint(before.stdout) : null;
+  let loadedBefore: ReturnType<typeof parseLaunchctlPrint> | null = null;
+  if (completed(before) && before.status === 0) {
+    loadedBefore = parseLaunchctlPrint(before.stdout);
+    if (!loadedBefore.tuple) {
+      return { ok: false, stopped: false, message: `  ✗ launchctl print of ${manager.label} could not be read. Not activating; nothing was changed.` };
+    }
+  } else if (!(completed(before) && before.status === 113)) {
+    return { ok: false, stopped: false, message: `  ✗ Could not tell whether ${manager.label} is loaded (launchctl print ${before.signal ? `killed by ${before.signal}` : `exited ${before.status}`}). Not activating; nothing was changed.` };
+  }
   if (loadedBefore && (!loadedBefore.tuple || !preimageTuple || !sameJob(loadedBefore.tuple, preimageTuple))) {
     return { ok: false, stopped: false, message: `  ✗ The job launchd has loaded for ${manager.label} is not the one ${manager.plistPath} describes, so there is no job to roll back to safely. Not activating; reload it (agend install, agend restart) first.` };
   }
@@ -283,9 +301,17 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     if (preimage !== null && onDisk !== preimage) deps.writeFile(manager.plistPath, preimage);
     return { ok: false, stopped: false, message: `  ✗ ${manager.plistPath} does not start the verified install: ${diskMatch.reason}. Restored the previous plist; not restarting the fleet.` };
   }
-  if (loadedBefore) deps.run("launchctl", ["bootout", target]);
+  if (loadedBefore) {
+    const out = deps.run("launchctl", ["bootout", target]);
+    if (!completed(out) || out.status !== 0) {
+      // The old job may well still be running: leave it, put its plist back.
+      if (preimage !== null) deps.writeFile(manager.plistPath, preimage);
+      return { ok: false, stopped: false, message: `  ✗ launchctl bootout of ${manager.label} did not complete (${out.signal ? `killed by ${out.signal}` : `exit ${out.status}`}). Restored the previous plist; not activating.` };
+    }
+  }
   const boot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
-  const printed = boot.status === 0 ? parseLaunchctlPrint(deps.run("launchctl", ["print", target]).stdout) : null;
+  const after = completed(boot) && boot.status === 0 ? deps.run("launchctl", ["print", target]) : null;
+  const printed = after && completed(after) && after.status === 0 ? parseLaunchctlPrint(after.stdout) : null;
   const loadedMatch = printed?.tuple ? tupleStartsVerified(printed.tuple, verified, LAUNCHD_DEFAULT_PATH, deps) : null;
   if (printed?.pid && printed.state === "running" && loadedMatch?.ok) return { ok: true, via: "launchd-activation" };
 
@@ -296,13 +322,16 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   let recovery = "No job was running before; the previous plist is back on disk.";
   if (loadedBefore && preimageTuple) {
     const reboot = deps.run("launchctl", ["bootstrap", manager.domain, manager.plistPath]);
-    const after = reboot.status === 0 ? deps.run("launchctl", ["print", target]) : null;
-    const back = after?.status === 0 ? parseLaunchctlPrint(after.stdout) : null;
+    const check = completed(reboot) && reboot.status === 0 ? deps.run("launchctl", ["print", target]) : null;
+    const back = check && completed(check) && check.status === 0 ? parseLaunchctlPrint(check.stdout) : null;
     recovery = back?.tuple && back.pid && back.state === "running" && sameJob(back.tuple, preimageTuple)
       ? "Rolled back to the previous job, which is running."
       : "The previous job could NOT be restored: run agend install and agend start.";
   }
-  const why = boot.status !== 0 ? "launchctl bootstrap failed" : !printed?.pid || printed.state !== "running" ? "the job did not start" : `launchd loaded a job that ${loadedMatch && !loadedMatch.ok ? loadedMatch.reason : "cannot be read"}`;
+  const why = !completed(boot) || boot.status !== 0 ? "launchctl bootstrap failed"
+    : !printed ? "launchctl print of the new job did not complete"
+    : !printed.pid || printed.state !== "running" ? "the job did not start"
+    : `launchd loaded a job that ${loadedMatch && !loadedMatch.ok ? loadedMatch.reason : "cannot be read"}`;
   return { ok: false, stopped: loadedBefore !== null, message: `  ✗ Activating the new launchd job failed: ${why}. ${recovery}` };
 }
 

@@ -131,6 +131,12 @@ describe("systemd: refresh → daemon-reload → the LOADED unit (D-Bus) must st
     expect(m.restarts()).toBe(0);
   });
 
+  it("UnsetEnvironment=PATH (PATH absent in the final environment) is refused — no default is assumed", () => {
+    const m = manager(busFor({ argv: OK, env: ["PATH=/opt/node22/bin:/usr/bin"], unset: ["PATH"], managerEnv: ["PATH=/opt/node22/bin"] }));
+    expect(activateService(unit, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("no PATH") });
+    expect(m.restarts()).toBe(0);
+  });
+
   it("a failed daemon-reload refuses, even when what is loaded would match", () => {
     const m = manager([[/daemon-reload/, { status: 1, stderr: "Failed" }], ...busFor({ argv: OK })]);
     expect(activateService(unit, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
@@ -223,6 +229,43 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
   it("the new job loads but never starts (no pid) → rolled back", () => {
     const m = manager([[/print/, prints(printed(OLD), printed(NEW, null, "waiting"), printed(OLD, 803))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
     expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: true, message: expect.stringContaining("did not start") });
+  });
+
+  const killed = { status: null, signal: "SIGTERM" as NodeJS.Signals };
+
+  it("a launchctl getenv that did not complete (timed out) is uncertainty: refused, nothing touched", () => {
+    const m = manager([[/getenv/, killed], [/print/, printed(OLD)]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("Could not read launchd") });
+    expect(m.calls).not.toContain("refresh");
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  it("an initial launchctl print that did not complete is NOT 'no job loaded': refused, nothing touched", () => {
+    const m = manager([[/print/, killed], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("Could not tell whether") });
+    expect(m.calls).not.toContain("refresh");
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+    expect(m.files[plistPath]).toBe(plist(OLD));
+  });
+
+  it("an initial print that exits non-zero for another reason (not 113) is uncertainty too", () => {
+    const m = manager([[/print/, { status: 5 }], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false });
+    expect(m.calls.some(c => /bootout|bootstrap/.test(c))).toBe(false);
+  });
+
+  it("a post-bootstrap print killed mid-way (matching partial output) is not success: rolled back", () => {
+    const m = manager([[/print/, prints(printed(OLD), { ...printed(NEW), ...killed }, printed(OLD, 804))], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    const outcome = activateService(job, verified, m.deps);
+    expect(outcome).toMatchObject({ ok: false, stopped: true, message: expect.stringContaining("did not complete") });
+    expect(m.files[plistPath]).toBe(plist(OLD));
+  });
+
+  it("a bootout that does not complete: the old job is left, its plist restored, nothing bootstrapped", () => {
+    const m = manager([[/bootout/, killed], [/print/, printed(OLD)], [/getenv/, { stdout: "" }]], { [plistPath]: plist(OLD) }, [plistPath, plist(NEW)]);
+    expect(activateService(job, verified, m.deps)).toMatchObject({ ok: false, stopped: false, message: expect.stringContaining("bootout") });
+    expect(m.calls.some(c => /bootstrap/.test(c))).toBe(false);
+    expect(m.files[plistPath]).toBe(plist(OLD));
   });
 
   it("nothing was loaded before: no bootout first; a failed activation restores only the plist file", () => {
