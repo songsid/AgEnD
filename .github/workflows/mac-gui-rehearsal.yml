@@ -7,9 +7,6 @@ name: Mac GUI-domain rehearsal
 
 on:
   workflow_dispatch:
-  push:
-    # Lets the rehearsal run from its own branch before this file is on main; removed when it lands.
-    branches: [ci/1450-gui-rehearsal]
 
 permissions:
   contents: read
