@@ -259,6 +259,22 @@ describe("#1374 and leaks", () => {
     expect(reqs).toEqual([]);
   });
 
+  it("alpha.2 sweep: one connection is '1 connection'", async () => {
+    await mount("bots"); await settle(6);
+    expect(p.root.querySelector(".list-head span").textContent).toBe("1 connection");
+  });
+
+  it("alpha.2 sweep: a fleet without provider secrets (the schema says so) is not asked for them — no 404 on every load", async () => {
+    routes = [(r) => (r.method === "GET" && r.url === "/api/settings/schema" ? { body: { ...SCHEMA, provider_secrets: false } } : undefined)];
+    await mount(); await settle(6);
+    expect(reads()).not.toContain("/api/settings/provider-secrets");
+    await p.unmount(); reqs = [];
+    routes = [(r) => (r.method === "GET" && r.url === "/api/settings/schema" ? { body: { ...SCHEMA, provider_secrets: true } } : undefined)];
+    await mount(); await settle(6);
+    expect(reads()).toContain("/api/settings/provider-secrets");
+    routes = [];
+  });
+
   it("50 mounts leave nothing: no lease, no listener, no leave guard", async () => {
     await settle();
     const baseLeases = ctx.leaseCount(), doc = p.document.listenerCount(), win = p.window.listenerCount();

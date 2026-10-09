@@ -1,0 +1,17 @@
+---
+section: Fixed
+---
+- **Web app: fixes from the alpha.2 regression sweep.**
+  - A Fleet list the server fails to load shows the error state with **Try again**, instead of "No tasks yet".
+  - Settings no longer asks for provider secrets on a fleet that has none, which removes a 404 from every Settings load.
+  - Counts of one are singular: "1 task", "1 connection", "1 room".
+  - On a phone:
+    - a connection's name keeps its line;
+    - Settings' tabs fit the screen;
+    - the buttons in Settings rows and in **Needs you** are full-size tap targets;
+    - the command palette's descriptions wrap instead of being cut;
+    - **Stop reply** is icon-only when there is no room, so the message box keeps its placeholder.
+  - In a chat on a desktop, notices appear under the header instead of over the composer's buttons.
+  - The sign-in hint never breaks `agend web --code` across lines.
+  - The working dot's pulse stays visible on dark backgrounds.
+  - The docs cover Fleet → Org chart, Fleet → Cache and the chat's commands.
