@@ -29,9 +29,9 @@ Environment=TERM=xterm-256color
 <% } %>WorkingDirectory=<%= workingDirectory %>
 Restart=on-failure
 RestartSec=5
-# Daemon shutdown is bounded per batch; do not let an uncooperative backend
-# hold systemctl stop/update for the previous five-minute default.
-TimeoutStopSec=60
+# Busy Kiro instances need 15s to drain + 5s quit + 2s signal grace in each
+# sequential batch. Keep an outer bound, but allow several batches (#1071).
+TimeoutStopSec=<%= stopTimeoutSec %>
 # Stop by signalling the fleet process only (#908). The tmux server and every
 # CLI inside it live in this unit's cgroup, and the default control-group mode
 # SIGTERMs all of them at once: kiro-cli aborted (SIGABRT, a ~1 GB core dump on
