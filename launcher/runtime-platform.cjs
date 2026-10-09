@@ -67,10 +67,13 @@ function runtimeSupport(host) {
 
 /**
  * Does a Node version satisfy an `engines.node` range? Only the forms AgEnD uses: alternatives joined by `||`, each
- * `^x.y.z` (same major, at least x.y.z) or `>=x[.y[.z]]`.
+ * `^x.y.z` (same major, at least x.y.z) or `>=x[.y[.z]]`. The version must be a full stable `x.y.z`: as in npm's
+ * semver, a prerelease (`24.0.0-nightly…`, `22.14.0-rc.1`) satisfies no stable alternative.
  */
 function satisfiesEngines(version, range) {
-  var v = numbers(String(version).replace(/^v/, ""));
+  var full = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(String(version));
+  if (!full) return false;
+  var v = [+full[1], +full[2], +full[3]];
   return String(range).split("||").some(function (alt) {
     var a = alt.trim();
     var m;

@@ -40,6 +40,13 @@ function main(deps) {
   var d = deps || {};
   var pkg = select.packageDir(d.launcherDir || __dirname);
   if (!pkg) refuse("the installed package is not @songsid/agend", "npm install -g @songsid/agend");
+  // A receipt describes THIS install's verification and nothing else: whatever is there now (one npm left behind, one
+  // copied in) goes first, so selection and installation see the same state (runtime-select.cjs).
+  var receiptPath = path.join(pkg.dir, select.RECEIPT);
+  if (!select.absent(receiptPath)) {
+    try { fs.unlinkSync(receiptPath); } catch (e) { /* checked below */ }
+    if (!select.absent(receiptPath)) refuse("an old runtime receipt at " + receiptPath + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
+  }
   var host = d.host || platform.hostPlatform();
   var running = d.versions || { node: process.versions.node, napi: Number(process.versions.napi) };
   var engines = (pkg.manifest.engines && pkg.manifest.engines.node) || ">=22.14.0";

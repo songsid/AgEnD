@@ -14,6 +14,22 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return null; }
 }
 
+/** Physically absent (lstat: ENOENT/ENOTDIR)? A dangling symlink, or a path that cannot be inspected, is PRESENT. */
+function absent(file) {
+  try { fs.lstatSync(file); return false; } catch (e) { return e.code === "ENOENT" || e.code === "ENOTDIR"; }
+}
+
+/**
+ * The receipt, by state: "absent" only when no file is there; "invalid" when one is there but cannot be read, is not
+ * JSON, or is not an object (empty, `null`, an array); "valid" with its value.
+ */
+function readReceipt(file) {
+  if (absent(file)) return { state: "absent" };
+  var value;
+  try { value = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return { state: "invalid" }; }
+  return value && typeof value === "object" && !Array.isArray(value) ? { state: "valid", value: value } : { state: "invalid" };
+}
+
 function realpath(file) {
   try { return fs.realpathSync(file); } catch (e) { return null; }
 }
@@ -35,7 +51,7 @@ function pinnedRuntime(manifest, host) {
 /** The candidate is exactly <pkgDir>/node_modules/<name> — never require.resolve, which can walk up to an ancestor. */
 function runtimeCandidate(pkgDir, pin) {
   var dir = path.join(pkgDir, "node_modules", pin.name);
-  var exists = fs.existsSync(dir);
+  var exists = !absent(dir);
   var manifest = exists ? readJson(path.join(dir, "package.json")) : null;
   return { dir: dir, exists: exists, manifest: manifest, node: path.join(dir, "bin", "node") };
 }
@@ -101,15 +117,16 @@ function selectRuntime(launcherDir, deps) {
   var support = platform.runtimeSupport(host);
   if (pin && support.supported) {
     var candidate = runtimeCandidate(pkg.dir, pin);
-    var receipt = readJson(path.join(pkg.dir, RECEIPT));
+    var receipt = readReceipt(path.join(pkg.dir, RECEIPT));
     // 2. The verified runtime of this release.
-    if (candidate.exists && candidate.manifest && candidate.manifest.name === pin.name && candidate.manifest.version === pin.version && receiptMatches(receipt, candidate, pin)) {
+    if (candidate.exists && candidate.manifest && candidate.manifest.name === pin.name && candidate.manifest.version === pin.version && receipt.state === "valid" && receiptMatches(receipt.value, candidate, pin)) {
       return { ok: true, node: realpath(candidate.node), source: "runtime", pkgDir: pkg.dir };   // the binary checked, never a path the receipt names
     }
     // 3. Supported platform, runtime missing/partial/corrupt: refuse — never a silent fallback. The one exception is
-    //    an install where the runtime was skipped altogether (no directory, no receipt: --ignore-scripts or
-    //    --omit=optional), which may use a qualifying system Node, with a warning.
-    if (candidate.exists || receipt) {
+    //    an install where the runtime was skipped altogether — PHYSICALLY nothing there, no directory (not even a
+    //    dangling link) and no receipt file (--ignore-scripts or --omit=optional) — which may use a qualifying system
+    //    Node, with a warning.
+    if (candidate.exists || receipt.state !== "absent") {
       return { ok: false, reason: "the bundled Node (" + pin.name + "@" + pin.version + ") is missing, incomplete or changed since it was verified", recovery: recovery };
     }
     if (qualifies(running, engines)) {
@@ -123,4 +140,4 @@ function selectRuntime(launcherDir, deps) {
   return { ok: false, reason: (pin ? support.reason : "this release bundles no Node") + "; this Node " + running.node + " is older than AgEnD needs (" + engines + ")", recovery: "install Node " + engines + ", then " + recovery };
 }
 
-module.exports = { RECEIPT: RECEIPT, MIN_NAPI: MIN_NAPI, selectRuntime: selectRuntime, packageDir: packageDir, pinnedRuntime: pinnedRuntime, runtimeCandidate: runtimeCandidate, probeNode: probeNode, qualifies: qualifies, receiptMatches: receiptMatches };
+module.exports = { RECEIPT: RECEIPT, MIN_NAPI: MIN_NAPI, selectRuntime: selectRuntime, packageDir: packageDir, pinnedRuntime: pinnedRuntime, runtimeCandidate: runtimeCandidate, probeNode: probeNode, qualifies: qualifies, receiptMatches: receiptMatches, readReceipt: readReceipt, absent: absent };
