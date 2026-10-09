@@ -201,6 +201,9 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
+import { CacheService, WINDOWS, type CacheReport, type CacheWindow } from "./cache-service.js";
+import { claudeProjectKey } from "./backend/claude-code.js";
+import { sharedRolloutIndex } from "./rollout-index.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -10667,6 +10670,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
+  private cacheService: CacheService | null = null;
+  /**
+   * #1468: the prompt-cache expiry analysis for the web, per instance, over `window`. Read from each instance's
+   * ledger as it is now; the first request starts the bounded, persisted catch-up over the transcripts
+   * (cache-service.ts) — never a vendor call, never a synchronous transcript read.
+   */
+  cacheReport(window: string): Promise<CacheReport> {
+    const w: CacheWindow = Object.prototype.hasOwnProperty.call(WINDOWS, window) ? window as CacheWindow : "7d";
+    this.cacheService ??= new CacheService({
+      // fleet.yaml's instances, then the ClassicBot rooms (their workspace under the AgEnD home, their own backend).
+      instances: () => {
+        const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
+          name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
+        }));
+        const taken = new Set(fleet.map(i => i.name));
+        const classic = (this.classicChannels?.getAll() ?? []).filter(ch => !taken.has(ch.instanceName)).map(ch => ({
+          name: ch.instanceName,
+          backend: this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
+          workingDirectory: join(getAgendHome(), "workspaces", ch.instanceName),
+          ledgerPath: join(this.getInstanceDir(ch.instanceName), "cache-ledger.json"),
+        }));
+        return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
+      },
+      claudeProjectsDir: () => join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "projects"),
+      claudeKey: claudeProjectKey,
+      codexSessionsDir: () => join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),
+      listRollouts: root => sharedRolloutIndex(root).list(),
+      metaPath: join(this.dataDir, "cache-codex-rollouts.json"),
+      log: (level, msg, extra) => this.logger[level](extra ?? {}, msg),
+    });
+    return this.cacheService.report(w);
+  }
+
   /** The web's Acknowledge (any item; a signed-in session is fleet-admin level). */
   acknowledgeNeedsItem(id: string, principal: string): { status: 200 | 400 | 404 | 409 | 500; message: string } {
     if (!this.needsYou) return { status: 409, message: t("needs.ack_already") };
@@ -15425,6 +15461,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
     const needsStopped = this.stopNeedsYou();
+    this.cacheService?.stop();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
