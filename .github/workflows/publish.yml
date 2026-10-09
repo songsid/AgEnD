@@ -53,6 +53,13 @@ jobs:
 
       - name: Set package version
         run: npm pkg set "version=$VERSION"
+      # #1488: 2.2 ships its own Node only through optionalDependencies pins; without them every host would run AgEnD on
+      # whatever Node it has. What npm will publish — the packed manifest — must pin each shipped runtime package
+      # exactly, to one version, and each must already be on the registry (scripts/release/check-runtime-pins.mjs).
+      - name: The packed package pins its bundled Node, as published runtime packages
+        run: |
+          TARBALL="$(npm pack --json --pack-destination "$RUNNER_TEMP" | node -pe 'JSON.parse(require("fs").readFileSync(0, "utf8"))[0].filename')"
+          node scripts/release/check-runtime-pins.mjs "$RUNNER_TEMP/$TARBALL"
       # The latest check again, right before publishing: the build took minutes, and the check is only as good
       # as the latest it read. The concurrency group keeps other release runs out of this window.
       - name: Publish
