@@ -14,6 +14,7 @@ var crypto = require("crypto");
 var childProcess = require("child_process");
 var platform = require("./runtime-platform.cjs");
 var select = require("./runtime-select.cjs");
+var admission = require("./install-admission.cjs");
 
 /** Runs on the candidate Node with argv[1] = the package dir: version, N-API, and a real DB open in both threads. */
 var PROOF = [
@@ -51,6 +52,9 @@ function main(deps) {
     try { fs.unlinkSync(file); } catch (e) { /* checked below */ }
     if (!select.absent(file)) refuse("an old runtime receipt at " + file + " cannot be removed", "remove it, then: npm install -g @songsid/agend@" + pkg.manifest.version);
   });
+  // C1: an `agend update` owns this prefix right now → only its own npm child may install (install-admission.cjs).
+  var admitted = admission.admit(pkg.dir, { env: d.env, processStart: d.processStart });
+  if (!admitted.ok) refuse(admitted.reason, "Never run two installs of @songsid/agend into one prefix at once, or one while `agend update` runs.");
   var host = d.host || platform.hostPlatform();
   var running = d.versions || { node: process.versions.node, napi: Number(process.versions.napi) };
   var engines = (pkg.manifest.engines && pkg.manifest.engines.node) || ">=22.14.0";

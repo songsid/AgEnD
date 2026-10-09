@@ -98,6 +98,7 @@ function world() {
   writeFileSync(calls, "");
   const npmStub = (pfx: string) => `#!/bin/sh
 echo "npm $*" >> ${sq(calls)}
+[ -n "$AGEND_INSTALL_TOKEN" ] && echo "token $AGEND_INSTALL_TOKEN for npm $*" >> ${sq(calls)}
 case "$1 $2" in
   "root -g") echo ${sq(join(pfx, "lib", "node_modules"))}; exit 0;;
   "prefix -g") echo ${sq(pfx)}; exit 0;;
@@ -117,11 +118,11 @@ exit 0
   const extraPath: string[] = [];
   const env: Record<string, string> = {};
   const runner: CommandRunner = {
-    run: (command, args) => {
+    run: (command, args, options = {}) => {
       // cwd = the scratch root: a spliced `$(touch pwned)` would land where the tests look for it.
       const r = spawnSync(command, args, {
         encoding: "utf8", cwd: root,
-        env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env },
+        env: { PATH: [...extraPath, tools, join(prefix, "bin"), "/usr/bin", "/bin"].join(":"), HOME: root, ...env, ...options.env },
       });
       return { status: r.status, signal: r.signal, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
     },
@@ -133,6 +134,25 @@ exit 0
 }
 
 const plan = (pkg: string, targetVersion: string | null = "2.2.0"): UpdateInstallPlan => ({ pkg, targetVersion, viaNvm: false, nvmSh: "/nonexistent" });
+
+describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to npm only", () => {
+  it("the lock is asked for npm's own prefix; its token reaches `npm install` and no other command", () => {
+    const w = world();
+    const asked: string[] = [];
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: prefix => { asked.push(prefix); return { ok: true, token: "7".repeat(32) }; } }, w.runner);
+    expect(outcome.ok).toBe(true);
+    expect(asked).toEqual([w.prefix]);
+    expect(w.callLog().filter(line => line.startsWith("token "))).toEqual([`token ${"7".repeat(32)} for npm install -g ${join(w.root, "src", "v220")}`]);
+  });
+
+  it("a refused lock stops before npm installs anything", () => {
+    const w = world();
+    runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
+    const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), lock: () => ({ ok: false, reason: "another AgEnD install is running on /p" }) }, w.runner);
+    expect(outcome).toMatchObject({ ok: false, stage: "lock", message: expect.stringContaining("another AgEnD install is running on /p. Nothing was changed.") });
+    expect(w.callLog().filter(line => line.startsWith("npm install"))).toHaveLength(1);          // only the 2.1.12 setup
+  });
+});
 
 describe("#1450 C4: a launcher-era target is verified on the Node IT selects, not the updater's", () => {
   it("through the SHIPPED launcher: AGEND_NODE is what verification proves and reports — not PATH's node", () => {
@@ -320,6 +340,33 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     expect(calls).toContain("nvm-node");                                     // the checks ran on nvm's node
     expect(calls.at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
     expect(existsSync(join(w.root, "pwned")), "the path was data, not shell").toBe(false);
+  });
+
+  // #1472 review: one `nvm use 22` selection, frozen — locking, installing and verifying all happen in that prefix.
+  it("nvm's selection is frozen once: a later `nvm use 22` that would pick another Node 22 is never asked", () => {
+    const w = world();
+    const nvmDir = join(w.root, "nvm");
+    const sel = (v: string) => ({ bin: join(nvmDir, "versions", v, "bin"), prefix: join(nvmDir, "versions", v) });
+    const A = sel("22a"), B = sel("22b");
+    for (const x of [A, B]) {
+      mkdirSync(x.bin, { recursive: true });
+      mkdirSync(join(x.prefix, "lib", "node_modules", "@songsid"), { recursive: true });
+      writeFileSync(join(x.bin, "npm"), w.npmStub(x.prefix));
+      writeFileSync(join(x.bin, "node"), `#!/bin/sh\nexec '${process.execPath}' "$@"\n`);
+      for (const f of ["npm", "node"]) chmodSync(join(x.bin, f), 0o755);
+    }
+    // Each `nvm use 22` after the first selects ANOTHER Node 22 (e.g. one installed meanwhile).
+    writeFileSync(join(nvmDir, "nvm.sh"), `nvm() { case "$1" in install) return 0;; use) c=$(cat '${join(nvmDir, "uses")}' 2>/dev/null || echo 0); c=$((c+1)); echo $c > '${join(nvmDir, "uses")}'; if [ $c -eq 1 ]; then PATH='${A.bin}':"$PATH"; else PATH='${B.bin}':"$PATH"; fi; export PATH;; esac; }\n`);
+    const locked: string[] = [];
+    const outcome = runUpdateInstall({
+      pkg: fixturePackage(w.root, "v220", "2.2.0"), targetVersion: "2.2.0", viaNvm: true, nvmSh: join(nvmDir, "nvm.sh"),
+      lock: prefix => { locked.push(prefix); return { ok: true, token: "f".repeat(32) }; },
+    }, w.runner);
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(A.prefix, "bin", "agend") });
+    expect(locked).toEqual([A.prefix]);
+    expect(existsSync(join(A.prefix, "lib", "node_modules", "@songsid", "agend", "package.json"))).toBe(true);
+    expect(existsSync(join(B.prefix, "lib", "node_modules", "@songsid", "agend"))).toBe(false);
+    expect(readFileSync(join(nvmDir, "uses"), "utf8").trim()).toBe("1");
   });
 
   it("a failed verification under nvm keeps the old system copy", () => {

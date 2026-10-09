@@ -12,6 +12,12 @@ vi.mock("node:child_process", async importOriginal => {
 });
 
 const created = vi.hoisted(() => [] as Array<{ id: string }>);
+// /update dispatches the INSTALLED agend found through npm (#1450 C5): a fixed, verified install here — never the
+// host's own global npm state.
+vi.mock("../src/update-dispatch.js", async importOriginal => {
+  const real = await importOriginal<typeof import("../src/update-dispatch.js")>();
+  return { ...real, resolveInstalledAgend: vi.fn(async () => ({ ok: true, agend: "/opt/agend-test/bin/agend", version: "2.2.0" })) };
+});
 vi.mock("../src/channel/factory.js", async () => {
   const { EventEmitter: EE } = await import("node:events");
   class FakeAdapter extends EE {
