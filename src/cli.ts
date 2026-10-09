@@ -1513,7 +1513,10 @@ program
       if (verified.retireSystemCopy) {
         if (activationSettled(outcome, restartResult)) {
           const retireResult = retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) }, verified.npmPath);
-          if (!retireResult.ok) console.warn(`  ⚠️  Old system install was not removed: ${retireResult.reason}`);
+          if (!retireResult.ok) {
+            console.error(`  ✗ Old system install was not removed: ${retireResult.reason}`);
+            process.exitCode = 1;
+          }
         } else {
           console.log("  Note: the old system install was kept, since the new one is not running yet.");
         }

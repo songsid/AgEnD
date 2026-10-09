@@ -407,8 +407,8 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
   });
 
   it("retireSystemCopy uses the nvm npm path (not parent PATH) when nvmBin is set (#1490 P3)", () => {
-    // P1 witness: nvm install uses <nvmBin>/npm; retirement must use the same path,
-    // not the parent PATH npm which could be a different binary.
+    // P1 witness: npm is resolved via inInstallEnv (command -v npm in the install env),
+    // so retirement uses the same npm the install actually invoked, not a static join().
     const w = world();
     // Set up a fake nvm npm stub distinct from the system npm
     const nvmBin = join(w.root, "nvm-bin");

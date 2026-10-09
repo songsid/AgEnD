@@ -236,11 +236,20 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     if (selected.status !== 0 || !node.startsWith("/")) return { ok: false, stage: "install", message: "  Could not tell which Node `nvm use 22` selects. The current install was not touched." };
     plan = { ...plan, nvmBin: dirname(node) };
   }
-  // Resolve the npm path that will be used for this install (and for retirement).
-  // For nvm: npm lives alongside node in nvmBin. For system: resolve from PATH.
-  const resolvedNpmPath: string | null = plan.nvmBin
-    ? join(plan.nvmBin, "npm")
-    : (() => { const r = runner.run("sh", ["-c", "command -v npm"], { timeoutMs: 5_000 }); const p = r.stdout?.trim() ?? ""; return p.startsWith("/") ? p : null; })();
+  // Resolve npm using the actual install environment (same environment npm will
+  // be invoked in), so the path is the one inInstallEnv would actually choose.
+  // This is a single sh -c "command -v npm" inside the install env.
+  // If this fails, npm cannot be located and install must not proceed.
+  const npmResolve = inInstallEnv(runner, plan, ["sh", "-c", "command -v npm"], { timeoutMs: 5_000 });
+  const resolvedNpmPath: string | null = npmResolve.status === 0
+    ? (npmResolve.stdout?.trim() ?? "")
+    : null;
+  if (!resolvedNpmPath || !resolvedNpmPath.startsWith("/")) {
+    return {
+      ok: false, stage: "install",
+      message: `  ✗ Cannot locate npm in the install environment (got: ${JSON.stringify(resolvedNpmPath)}); nothing was changed.`,
+    };
+  }
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
   const env: Record<string, string> = {};
   let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
