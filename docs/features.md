@@ -695,7 +695,7 @@ Configure `mirror_topic_id` in `fleet.yaml` to designate a Telegram topic for ob
 
 ## Codex session resume
 
-Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`~/.codex/state_5.sqlite`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
+Each Codex instance resumes **its own** conversation. At launch AgEnD reads Codex's shared session database (`$CODEX_HOME/state_5.sqlite`, default: `~/.codex`) read-only and picks the newest interactive session whose recorded working directory is exactly the instance's, then runs `codex resume <id>`. It does not use `codex resume --last`: since Codex 0.157 that picks the newest session of the whole git repository, so instances on worktrees of one repo would take each other's sessions (#984).
 
 | Situation | Launch |
 |---|---|
@@ -704,7 +704,7 @@ Each Codex instance resumes **its own** conversation. At launch AgEnD reads Code
 | Session database unreadable, another Codex instance shares the git repo | a new conversation, plus a notice in the instance's topic |
 | Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
 
-AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared `~/.codex`, so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
+AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared Codex home (`$CODEX_HOME`, default: `~/.codex`), so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
 
 **Where `~/.codex` is.** Everywhere above, the shared Codex home is `$CODEX_HOME` when that is set in the fleet's environment, and `~/.codex` otherwise. Each instance itself runs with a private `CODEX_HOME` under `~/.agend/cx/<hash>/`: its own `config.toml` (your settings without other instances' AgEnD MCP entries, plus its own), with the login, sessions and caches linked back to the shared home.
 
