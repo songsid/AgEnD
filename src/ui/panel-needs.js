@@ -4,7 +4,8 @@
 // A renderer only (#1386 §4.2, the user's Discord-first rule): the list is the server's one derivation, the app
 // store's `needs`, which arrives over the passive channels (SSE `needs`, the /ui/poll field). This panel reads
 // nothing (#1374: no new GET, no timer that asks the server); its writes are a person's actions:
-// - a prompt's own buttons, through the chat store (one claim path with Chat: POST /ui/prompt, first answer wins);
+// - a prompt's own buttons, through the page's chat store (appStore.chatOwner — whichever chat import booted, a Retry's
+//   included): one claim per prompt with Chat (POST /ui/prompt, first answer wins);
 // - Acknowledge on a delivery (POST /ui/needs/ack), which clears it everywhere;
 // - Open: that instance's chat.
 // Something resolved anywhere (Discord, Telegram, the web) leaves the list by itself.
@@ -18,7 +19,6 @@ import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
-import { store as chatStore } from "./panel-chat.js";
 
 register("needs", {
   en: {
@@ -54,11 +54,21 @@ const tn = (k, ...v) => t(`needs.${k}`, ...v);
  * see the same claim.
  * - `acks[id]`: "busy" while its POST is out, "done" once the server took it, until the server's next list drops the
  *   item (then forgotten); a failure gives it back.
- * - `prompts[nonce]`: the same, for a prompt answered while the chat store is not there yet (only before Chat boots);
- *   otherwise the chat store's own prompt is the claim (answerByNonce).
+ * - `prompts[nonce]`: the same, for a prompt answered while the page has no chat store yet (before Chat boots). When
+ *   it arrives, each such claim is handed to it (holdPrompt) — one claim, never two — and its outcome settles there.
  */
 export const claims = createStore({ acks: {}, prompts: {} });
+const chatOwner = () => appStore.get().chatOwner || null;
+let handedTo = null;
 appStore.subscribe((st) => {
+  // The chat store arrived (or was replaced by a Retry's): the claims taken without it become its own.
+  if (st.chatOwner && st.chatOwner !== handedTo) {
+    handedTo = st.chatOwner;
+    const items = Array.isArray(st.needs) ? st.needs : [];
+    for (const nonce of Object.keys(claims.get().prompts)) {
+      handedTo.holdPrompt(items.find((i) => i.nonce === nonce) || { nonce, instance: "" });
+    }
+  }
   const items = Array.isArray(st.needs) ? st.needs : [];
   const listed = new Set(items.map((i) => i.id)), nonces = new Set(items.map((i) => i.nonce).filter(Boolean));
   const c = claims.get();
@@ -97,14 +107,14 @@ export function groupNeeds(items) {
 
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { needs } = useStore(appStore);
+  const { needs, chatOwner: owner } = useStore(appStore);
   const items = Array.isArray(needs) ? needs : [];
   const [, tick] = useState(0);
   useEffect(() => { setTitle(tn("title")); }, [navKey]);
   // Ages move on: a redraw every 30 s while the panel is open (display only — nothing is read).
   useEffect(() => { lease.interval(() => tick((n) => n + 1), 30_000); }, [lease]);
-  // The chat store owns a prompt's busy/answered state; redraw when it changes.
-  useEffect(() => { if (chatStore) lease.hold(chatStore.subscribe(() => tick((n) => n + 1))); }, [lease]);
+  // The chat store owns a prompt's busy/answered state; redraw when it changes (and when it arrives).
+  useEffect(() => { if (owner) return owner.subscribe(() => tick((n) => n + 1)); return undefined; }, [owner, lease]);
   const groups = groupNeeds(items);
   const nowMs = Date.now();
   return html`<div class="panel p-needs">
@@ -113,21 +123,22 @@ export function NeedsPanel({ navKey }) {
       ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn("emptyHint")} />`
         : groups.map((g) => html`<section key=${g.instance} class="n-group" aria-label=${g.instance}>
           <h2 class="n-group-head"><a href=${chatPath(g.instance)}>${g.instance}</a></h2>
-          ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} />`)}
+          ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`)}
       <${NotifyToggle} />
     </div></div>
   </div>`;
 }
 
-function NeedsItem({ item, nowMs }) {
+function NeedsItem({ item, nowMs, owner }) {
   const c = useStore(claims);
-  // A prompt: the chat store's prompt is the one claim (Chat and Needs you, any panel, any render).
-  const p = item.type === "prompt" && item.nonce && chatStore ? chatStore.state.prompts[item.nonce] : null;
+  // A prompt: the page's chat store holds the one claim (Chat and Needs you, any panel, any render).
+  const p = item.type === "prompt" && item.nonce && owner ? owner.state.prompts[item.nonce] : null;
   const fallback = item.nonce ? c.prompts[item.nonce] : undefined;
   const promptBusy = p ? p.busy || p.resolved : !!fallback;
   const answer = async (action) => {
-    if (chatStore) { chatStore.answerByNonce(item, action); return; }
+    const store = chatOwner();
+    if (store) { store.answerByNonce(item, action); return; }
     // Only before Chat has booted: the page's own claim on this nonce, taken now (synchronously), kept until the
     // server's list drops the prompt (or the answer fails).
     if (claims.get().prompts[item.nonce]) return;
@@ -138,8 +149,11 @@ function NeedsItem({ item, nowMs }) {
         body: JSON.stringify({ instance: item.instance, nonce: item.nonce, action }) });
       r = await res.json().catch(() => ({}));
     } catch (err) { r = { error: err && err.message ? err.message : t("app.failed") }; }
-    if (r && r.answered) { setClaim("prompts", item.nonce, "done"); return; }
+    // The chat store may have arrived meanwhile and taken this claim over: its outcome is settled there.
+    const now = chatOwner();
+    if (r && r.answered) { if (now) setClaim("prompts", item.nonce, null); else setClaim("prompts", item.nonce, "done"); return; }
     setClaim("prompts", item.nonce, null);
+    if (now) now.releasePrompt(item.nonce);
     toast((r && r.error) || t("app.failed"), false);
   };
   const ack = c.acks[item.id];

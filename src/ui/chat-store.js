@@ -149,6 +149,18 @@ export function createChatStore(deps) {
     if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], resolved: false, busy: false };
     return answerPrompt(p, action);
   }
+  /** A claim taken elsewhere before this store existed (Needs you, before Chat booted): held here from now on. */
+  function holdPrompt(item) {
+    if (!item || typeof item.nonce !== "string") return;
+    let p = s.prompts[item.nonce];
+    if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], resolved: false, busy: false };
+    if (!p.resolved) { p.busy = true; changed(p.instance); }
+  }
+  /** That claim's answer was refused: the prompt can be answered again (unless it was settled meanwhile). */
+  function releasePrompt(nonce) {
+    const p = s.prompts[nonce];
+    if (p && !p.resolved) { p.busy = false; changed(p.instance); }
+  }
   const promptsFor = (instance) => Object.values(s.prompts).filter(p => p.instance === instance);
 
   // ── Sending. Never lose anything: a failed send's files go back to that chat's list and its text back into its own
@@ -270,7 +282,7 @@ export function createChatStore(deps) {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     setCurrent(name) { s.current = name; },
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
-    onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, promptsFor,
+    onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     uploadFile, send, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, putBack, discardFailed, setDraft,
     cancelReply, isUser,
   };

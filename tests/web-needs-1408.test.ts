@@ -43,7 +43,8 @@ beforeAll(async () => {
   ctx = await import("/assets/app-ctx.js");
   notifier = await import("/assets/app-needs.js");
   chat = await import("/ui/js/panel-chat.js");
-  chat.boot({ stream: { on() { return () => {}; } }, boot: null, deps: { fetch: fetchFake } });
+  // As the entry does: the booted chat store is published as the page's prompt owner.
+  app.appStore.set({ chatOwner: chat.boot({ stream: { on() { return () => {}; } }, boot: null, deps: { fetch: fetchFake } }) });
   N = await import("/ui/js/panel-needs.js");
   nav.startRouter(p.window);
 });
@@ -372,13 +373,12 @@ describe("#1463 review: one claim per prompt and per acknowledgement, for the li
   });
 });
 
-describe("#1463 review: before Chat has booted, the page's own claim", () => {
+describe("#1463 review: before Chat has booted, the page's own claim — handed to the chat store when it comes", () => {
   it("one answer for a prompt, kept across a remount until the list drops it", async () => {
     vi.resetModules();
-    vi.doMock("/ui/js/panel-chat.js", () => ({ store: null }));
     const fresh = await import("/ui/js/panel-needs.js");
     const appFresh = await import("/assets/app-store.js");
-    appFresh.appStore.set({ needs: [ITEMS[0]] });
+    appFresh.appStore.set({ needs: [ITEMS[0]], chatOwner: null });
     let open!: (v: unknown) => void;
     answer = (r) => (r.url === "/ui/prompt" ? new Promise(res => { open = res; }) : {});
     // A fresh module graph has its own Preact: render with it (the harness's render is the first graph's).
@@ -398,6 +398,33 @@ describe("#1463 review: before Chat has booted, the page's own claim", () => {
       expect(reqs.filter(r => r.url === "/ui/prompt")).toHaveLength(1);
       appFresh.appStore.set({ needs: [] }); await settle(2);
       expect(fresh.claims.get().prompts).toEqual({});
-    } finally { await unmountFresh(); vi.doUnmock("/ui/js/panel-chat.js"); vi.resetModules(); }
+    } finally { await unmountFresh(); vi.resetModules(); }
+  });
+
+  it("a claim taken before Chat booted is the chat store's once it boots: no second answer from Chat or Needs you", async () => {
+    vi.resetModules();
+    const fresh = await import("/ui/js/panel-needs.js");
+    const appFresh = await import("/assets/app-store.js");
+    const chatFresh = await import("/ui/js/panel-chat.js");
+    appFresh.appStore.set({ needs: [ITEMS[0]], chatOwner: null });
+    let open!: (v: unknown) => void;
+    answer = (r) => (r.url === "/ui/prompt" ? new Promise(res => { open = res; }) : {});
+    const P = await import("/assets/preact.module.js");
+    P.options.requestAnimationFrame = (cb: () => void) => setTimeout(cb, 0);
+    const mountFresh = async () => { P.render(P.h(fresh.NeedsPanel, { route: { panel: "needs" }, navKey: "h1" }), p.root); await settle(); };
+    try {
+      await mountFresh(); await settle(4);
+      btn(p.root.querySelector(".n-item"), "Ask General").click(); await settle(2);
+      // Chat boots now (the entry publishes its store): the claim is handed over.
+      const owner = chatFresh.boot({ stream: { on() { return () => {}; } }, boot: null, deps: { fetch: fetchFake } });
+      appFresh.appStore.set({ chatOwner: owner }); await settle(4);
+      expect(owner.state.prompts.n1?.busy).toBe(true);
+      owner.answerByNonce(ITEMS[0], "cancel"); await settle(2);                     // Chat's button: already taken
+      btn(p.root.querySelector(".n-item"), "Myself")?.click(); btn(p.root.querySelector(".n-item"), "Answering")?.click(); await settle(2);
+      expect(reqs.filter(r => r.url === "/ui/prompt")).toHaveLength(1);
+      open({ error: "refused" }); await settle(4);                                  // refused: free again, in the owner
+      expect(owner.state.prompts.n1?.busy).toBe(false);
+      expect(fresh.claims.get().prompts).toEqual({});
+    } finally { P.render(null, p.root); await settle(); vi.resetModules(); }
   });
 });
