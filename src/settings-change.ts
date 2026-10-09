@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
 import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
+import type { SettingsChangeAuthority } from "./settings-authority.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -61,6 +62,8 @@ export interface SettingsChangeDiff {
   summary: readonly string[];
   fingerprint: string;
   affectedConnections: readonly string[];
+  /** Private normalized effect scope, populated by prepareSettingsEffect. */
+  authority?: SettingsChangeAuthority;
 }
 /** Compare the entire normalized effect, including removals and primary/order. */
 export function settingsChangeDiff(before: unknown, after: unknown, options: {

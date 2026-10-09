@@ -299,4 +299,12 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 
 Fleet admin 在 General 核對遮蔽 secret 的 diff 後確認。Chat 不可用時執行本機命令 `agend settings confirm <id>`；Reject、到期或 session 撤銷都不套用變更。Apply 重試須沿用相同的 `Idempotency-Key` 與 body，回到同一個請求。終態失敗後應重新檢查並用新 key 提出；secret 必須重新輸入。在網頁 app 中，等待確認的請求會在任何面板顯示成一張卡片，附倒數時間和 **撤回**（見 [`/settings`](#settings)）。
 
+**哪個 bot 的 admin 能確認？** 既有連線的變更需要每個受影響連線的 admin
+資格；agent 搬移時包含原、新兩個 owner。共用 token 需要所有使用該環境變數的
+連線 admin 資格。Fleet 層級變更與新增連線，需要設定中 primary General 所屬 bot
+的 admin；primary bot 沒有 General 時，採第一個設定的 General。混合變更需要
+同時滿足兩類權限。提示移到另一個 General，不會把確認權限交給該 bot 的 admin；
+套用前會重新檢查 admin 資格。跨平台或目標不明時，必須用 host CLI 確認。
+首次 Setup 仍由 host 確認。
+
 首次 Setup 同樣回傳 pending 請求。在 host 確認後，還要明確按 **Start AgEnD**。Pending 回應、舊的成功 commit 或已改動的設定，都不能將 setup listener 交給 fleet。
