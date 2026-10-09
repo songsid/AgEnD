@@ -117,22 +117,24 @@ function cksum(buf) {
  */
 function runtimeKey(pkgDir, candidate, host) {
   try {
-    var real = fs.realpathSync(candidate.node);
+    // Bytes, never decoded text: a path is whatever bytes the filesystem has (#1460 r4), exactly as the shell prints it.
+    var real = fs.realpathSync(candidate.node, { encoding: "buffer" });
     var st = fs.lstatSync(real);
     if (!st.isFile()) return null;
     var hostlib = host.platform === "linux" ? (host.glibc ? "glibc " + host.glibc : "none") : host.platform === "darwin" ? String(host.darwinRelease) : "none";
-    return [
-      "agend-runtime-key 1",
-      "os " + host.platform,
-      "cpu " + host.arch,
-      "host " + hostlib,
-      "node " + real,
-      "size " + st.size,
-      "mtime " + Math.floor(st.mtimeMs / 1000),
-      "package " + cksum(fs.readFileSync(path.join(pkgDir, "package.json"))),
-      "runtime " + cksum(fs.readFileSync(path.join(candidate.dir, "package.json"))),
-      "receipt " + cksum(fs.readFileSync(path.join(pkgDir, RECEIPT))),
-    ].join("\n") + "\n";
+    var line = function (text) { return Buffer.from(text + "\n", "utf8"); };
+    return Buffer.concat([
+      line("agend-runtime-key 1"),
+      line("os " + host.platform),
+      line("cpu " + host.arch),
+      line("host " + hostlib),
+      Buffer.from("node ", "utf8"), real, Buffer.from("\n", "utf8"),
+      line("size " + st.size),
+      line("mtime " + Math.floor(st.mtimeMs / 1000)),
+      line("package " + cksum(fs.readFileSync(path.join(pkgDir, "package.json")))),
+      line("runtime " + cksum(fs.readFileSync(path.join(candidate.dir, "package.json")))),
+      line("receipt " + cksum(fs.readFileSync(path.join(pkgDir, RECEIPT)))),
+    ]);
   } catch (e) {
     return null;
   }
@@ -140,8 +142,8 @@ function runtimeKey(pkgDir, candidate, host) {
 function keyMatches(pkgDir, candidate, host) {
   var want = runtimeKey(pkgDir, candidate, host);
   var have;
-  try { have = fs.readFileSync(path.join(pkgDir, KEY), "utf8"); } catch (e) { return false; }
-  return want !== null && have === want;
+  try { have = fs.readFileSync(path.join(pkgDir, KEY)); } catch (e) { return false; }
+  return want !== null && Buffer.compare(have, want) === 0;
 }
 
 /** Does the receipt the postinstall wrote still describe this exact binary? (cheap: no hashing at run time) */

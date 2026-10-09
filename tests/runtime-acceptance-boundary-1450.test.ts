@@ -67,6 +67,17 @@ describe("the hop boundary refuses a fleet start in every form, before anything 
     expect(existsSync(w.mark)).toBe(false);
   });
 
+  it("direct: spawnSync('bash', ['--noprofile', '--norc', '-ec', <command>]) is judged by its -c script", () => {
+    const w = world();
+    const dir = join(w.root, "a dir");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "systemctl"), `#!/bin/sh\necho "$*" >> '${w.mark}'\n`);
+    chmodSync(join(dir, "systemctl"), 0o755);
+    const r = w.run(`require('child_process').spawnSync('bash', ['--noprofile', '--norc', '-ec', ${JSON.stringify(`"${join(dir, "systemctl")}" --user restart private-unit`)}])`);
+    expect(r.status).not.toBe(0);
+    expect(existsSync(w.mark)).toBe(false);
+  });
+
   it("a process that was itself started as a fleet start (e.g. by a shell the boundary never saw) stops at once", () => {
     const w = world();
     const r = spawnSync(process.execPath, [join(w.root, "inert.js"), "fleet", "start"], { encoding: "utf8", env: { ...process.env, AGEND_BOUNDARY_LOG: w.log, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require=${BOUNDARY}`.trim() } });
@@ -126,6 +137,12 @@ describe("the hop's stubbed manager calls: argv kept, judged fail-closed (manage
     ["systemctl", ["--user", "frobnicate", "x"]],
     ["launchctl", ["load", "-w", "/p.plist"]],
     ["launchctl", ["unload", "/p.plist"]],
+    // The whole argv, after the verb too (#1460 r4).
+    ["systemctl", ["--user", "show", "--unknown-option", "private-unit"]],
+    ["systemctl", ["show", "-p"]],
+    ["systemctl", ["--version", "--unknown-option"]],
+    ["systemctl", ["--version", "restart", "x"]],
+    ["launchctl", ["print", "-x", "gui/501/x"]],
   ])("refused: %s %j", (tool, args) => {
     const st = stubs();
     st.call(tool, ...args);
@@ -141,6 +158,8 @@ describe("the hop's stubbed manager calls: argv kept, judged fail-closed (manage
     ["systemctl", ["--user", "reset-failed", "com.agend.fleet"]],
     ["launchctl", ["print", "gui/501/com.agend.fleet"]],
     ["launchctl", ["getenv", "NODE_OPTIONS"]],
+    ["systemctl", ["--version"]],
+    ["systemctl", ["show", "--property=KillMode", "--value", "com.agend.fleet"]],
   ])("read-only, allowed: %s %j", (tool, args) => {
     const st = stubs();
     st.call(tool, ...args);
@@ -166,15 +185,31 @@ describe("shell strings are judged as the shell splits them (boundary.cjs)", () 
     ["sudo -n npm uninstall -g @songsid/agend"],
     ["true && agend fleet start"],
     ["echo 'unterminated"],
+    ["xargs /usr/bin/systemctl restart < list"],
+    ["find / -name x -exec /usr/bin/systemctl restart {} ;"],
+    ["env --frobnicate /usr/bin/systemctl restart x"],
+    ["sh script.sh"],
+    [". ./script.sh"],
+    ["cat <(/usr/bin/systemctl show x)"],
   ])("refused: %s", (text) => { expect(shellViolation(text)).not.toBeNull(); });
   it.each([
     ["which agend"], ['readlink -f "/a b/agend"'], ["npm install -g @songsid/agend@2.2.0"], ["node scripts/preinstall-guard.cjs"],
     ["systemctl --user show -p KillMode --value com.agend.fleet"], ['sys"temctl" --user is-active x'], ["npm config get prefix"],
+    ["command -v agend"], ["env NODE_OPTIONS= npm config get prefix"], ["timeout 5 npm --version"], ["if true; then echo ok; fi"], ["sh -c 'node launcher/postinstall.cjs'"],
   ])("allowed (reaches PATH and its stubs): %s", (text) => { expect(shellViolation(text)).toBeNull(); });
 
   it.each([
     ['"%s" --user restart private-unit', "quoted absolute path with a space"],
     ['"%d"/systemctl --user restart private-unit', "quoted directory + basename"],
+    // #1460 r4: compound commands, wrapper option values, combined -c flags, a substitution whose target is in env.
+    ['if "%s" --user restart private-unit; then :; fi', "if/then"],
+    ['env -u NAME "%s" --user restart private-unit', "env -u NAME"],
+    ['nice -n 0 "%s" --user restart private-unit', "nice -n 0"],
+    ['timeout 5 "%s" --user restart private-unit', "timeout 5"],
+    ['bash --noprofile --norc -ec \'"%s" --user restart private-unit\'', "nested bash -ec"],
+    ['sh -ec \'"%s" --user restart private-unit\'', "nested sh -ec"],
+    ['echo "$("$PRIVATE_MANAGER" --user restart private-unit)"', "a substitution with the target in env"],
+    ['env -S \'"%s" --user restart private-unit\'', "env -S"],
   ])("executed, with a private manager at a path with spaces: %s (%s) is refused and never runs", (form) => {
     const w = world();
     const dir = join(w.root, "a dir");
@@ -183,7 +218,7 @@ describe("shell strings are judged as the shell splits them (boundary.cjs)", () 
     writeFileSync(manager, `#!/bin/sh\necho "$*" >> '${w.mark}'\n`);
     chmodSync(manager, 0o755);
     const command = form.replace("%s", manager).replace("%d", dir);
-    const r = w.run(`require('child_process').execSync(${JSON.stringify(command)})`);
+    const r = w.run(`process.env.PRIVATE_MANAGER = ${JSON.stringify(manager)}; require('child_process').execSync(${JSON.stringify(command)})`);
     expect(r.status).not.toBe(0);
     expect(w.logged()).not.toBe("");
     expect(existsSync(w.mark)).toBe(false);
