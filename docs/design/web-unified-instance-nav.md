@@ -1,6 +1,6 @@
 # One instance sidebar, an instance view switch, one top bar
 
-Status: design for review. Nothing here is implemented yet.
+Status: design for review (r2: Prism's r1 — row destinations per PR, one identity rule for both lanes). Nothing here is merged yet.
 Source: user feedback on 2.2 alpha.2 (via the leader, 2026-10-10):
 - "I want Fleet and View to have the same left sidebar, including the filter."
 - "Or, once I'm in an instance, switch between Fleet and View right next to its name."
@@ -83,9 +83,21 @@ Clicking an instance in the sidebar from a Fleet tab opens **its Details** (the 
 ### 3.1 One sidebar component: `InstanceNav`
 
 - **Where it lives:** in `/assets` (`shared/instance-nav.js`), because View is public. The shell renders it on every page. `setSideSection` stays for other uses, but View no longer replaces the list.
-- **Data:** the live `appStore.instances` (SSE/poll status frames) for state, dots and needs-you, which is already pushed with no extra polling. Groups need tags, which the status frame does not carry today. The status frame gains `tags` (and `role` for the tooltip), taken from what `/api/profiles` already reads.
-  - View's 5 s `/api/profiles` poll stays only for what View shows elsewhere (avatars and descriptions on the cards). The sidebar no longer depends on it.
-  - In view-only mode (anonymous reader, no SSE), the list comes from `/api/profiles` as today, mapped to the same row shape.
+- **Data:** the live `appStore.instances` (SSE/poll status frames) for state, dots and needs-you, which is already pushed with no extra polling.
+  - View's 5 s `/api/profiles` poll stays only for what View shows elsewhere (avatars and the card). The sidebar no longer depends on it.
+  - In view-only mode (anonymous reader, no SSE), the list comes from `/api/profiles` as today.
+- **One row, one rule (review r1).** Both lanes, the status frame (SSE and poll) and `/api/profiles`, carry the same identity fields, resolved by **one server function** (`resolveInstanceIdentity`, `view-api.ts`) that both call. Today they differ: the status frame's alias is the config value only, and it has no description. So an alias set on a profile would be lost from search and the tooltip outside View. The canonical row:
+
+  | Field | Source, in priority order |
+  |---|---|
+  | `name` (status) / `instance_name` (profiles) | the instance's key: `fleet.yaml` `instances`, plus ClassicBot rooms. The client reads either (`nameOf`). |
+  | `display_name` | profile DB → `fleet.yaml` `display_name` → ClassicBot room `displayName` → none |
+  | `description` | profile DB → `fleet.yaml` `description` → none |
+  | `role` | profile DB → none |
+  | `tags` | `fleet.yaml` `tags`; a ClassicBot room without its own is `["classic"]`; otherwise `[]` (strings only) |
+  | `status`, `backend`, `model`, `model_source`, `effort`, `effort_source`, `context_pct` | as today (the same resolvers in both lanes) |
+
+  The status frame reads the profile DB only when `profiles.db` already exists, so a status read never creates it. This also changes what Chat's header and the shell show as an instance's alias: the profile's alias, as View already shows. That is deliberate: one name per instance on every page.
 - **Rows** (one row component, replacing both today):
   - The dot uses the shell's richer `statusClass`.
   - Name, then alias (#1366 identity rules unchanged), the needs-you badge, context %, and the backend icon.
@@ -99,7 +111,10 @@ Clicking an instance in the sidebar from a Fleet tab opens **its Details** (the 
   - The whole filter (`{ q, status[], cli[] }`) is kept **per device** (`agend_instance_filter`) and **carries across pages**.
   - "/" focuses it and Esc clears it, as on View today. Drag is off while a filter is active, as today.
   - The count reads "12 / 24 (filtered)".
-- **Where a row goes:** **the view you are in.** On Chat it opens Chat, on View it opens View, on Details or a Fleet tab it opens Details, and on Settings or Needs it opens Chat. The row's `href` is that path, so a middle-click or a copied link goes to the same place.
+- **Where a row goes:** **the view you are in**, always to a route that exists in that PR (review r1).
+  - **N1:** on View it opens View; everywhere else (Chat, the Fleet tabs, Settings, Needs) it opens Chat, as today.
+  - **N2** (only once Q4 is decided, and in the same PR that adds the Details route to both route tables and its panel): on Details it opens Details; from a Fleet tab, per Q4.
+  - The row's `href` is that path, so a middle-click or a copied link goes to the same place.
 - **The active row** is highlighted on all three views, with `aria-current="page"`.
 - **Scroll:** the list is never remounted on navigation, and `keepActiveInView` (#1515) nudges only its `scrollTop`. Its scroll position is kept per page load.
 
@@ -161,8 +176,8 @@ Chat's ⋯ → "Details" goes here instead of the dialog.
 
 | PR | Scope | Size | Depends on |
 |---|---|---|---|
-| N1 | `InstanceNav`: one list on every page; `tags` in the status frame; groups, saved order (migrated), filter with status/CLI chips kept per device; the row keeps the current view; scroll kept. Tests: one component on Chat, View and Fleet; filter carried across pages and reloads; order migration; the anonymous View reader; no new poll | M (1–2 days) | #1515 |
-| N2 | The view switch and Details: `/ui/fleet/agent/:name` in both route tables, the Details panel per Q1, ⋯ → Details, phone top tabs. Tests: the switch keeps the instance; URL round-trip; the anonymous reader sees no switch; Details read-only | M (1–2 days) | N1 |
+| N1 | `InstanceNav`: one list on every page; the canonical row (§3.1) in the status frame through the shared resolver; groups, View's saved order (same key), filter with status/CLI chips kept per device; rows to View on View, to Chat elsewhere (existing routes only); scroll kept. Tests: one component on Chat, View and Fleet; a Fleet row's href is the existing Chat route; filter carried across pages and reloads; a profile alias that differs from the config, a profile description overriding the config's, and ClassicBot tags, all the same in both lanes and on every page; the anonymous View reader; no new poll | M (1–2 days) | #1515 |
+| N2 | The view switch and Details: `/ui/fleet/agent/:name` in both route tables and its panel per Q1, in the same PR; then rows on Details open Details and, per Q4, rows from a Fleet tab; ⋯ → Details; phone top tabs. Tests: the switch keeps the instance; URL round-trip; the anonymous reader sees no switch; Details read-only | M (1–2 days) | N1, Q1, Q4 |
 | N3 | `InstanceHeader`: usage and text size on Chat, View, Details and Fleet; shared `agend_text_size` (migrated); Chat/Fleet font scaling via one custom property. Tests: the same controls in the same order on every page; one setting across views and reloads; no style attribute | S–M (1 day) | N1 |
 
 Each PR includes a real-browser sweep (desktop and phone, light and dark) through the whole-app harness, and extends it with "the sidebar is the same component on Chat, View and Fleet" and "the filter survives a page change and a reload".
