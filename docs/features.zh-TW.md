@@ -1043,3 +1043,11 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 - critical 解除後，啟動速度會在 30 秒內慢慢回升。
 
 `/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢）；在 Linux 上，記憶體壓力也會讓它標成 degraded，並發出 fleet 通知，冷卻時間 10 分鐘（升級到 critical 會立刻通知）。在 **macOS** 上，從 #1257 起樣本只寫進日誌：不會放慢或擋下任何東西、不發通知，`/health` 也不回報壓力，因為 macOS 的可用記憶體和 swap 數字，在記憶體充裕的機器上也會觸發警示。詳見英文版 [memory-pressure.md](memory-pressure.md)。
+
+## 「需要你處理」收件匣（#1386 / #1398）
+
+每個世界的 General topic 都有一則持續更新的**「需要你處理」**訊息，彙整該世界的 instance 所有等待操作者處理的事項——投遞確認、掛起警告、權限請求。每個 General 只顯示自己世界的 instance（owner-scoped）；`/ui` 的網頁動態消息則是全艦隊可見。訊息中的每個項目都能一鍵前往對應的地方操作：instance 的獨立 topic 或訊息本身的現有按鈕。唯一新增的互動是對目前沒有按鈕的投遞項目加上**確認（Acknowledge）**功能。任何介面上解決的項目都會在所有介面上消失。`/ui` 的側欄標記與「需要你處理」面板預計在後續步驟加入。設計文件：[docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md)。
+
+## 網頁應用程式外殼（#1408，步驟 1）
+
+`/ui` 以單頁式 Preact + htm 應用程式重建（無需建置步驟；Preact 和 htm 以源碼形式隨附於 `src/ui/shared/vendor/`）。第一步提供 **Chat** 面板（`/ui/chat/<instance>`）和 **Fleet** 面板（`/ui/fleet`）。第二步提供 **View** 面板（`/view` 及 `/view/<instance>`）。排版和版面設計以 ChatGPT 網頁介面為參考（僅參考設計語言——不使用 OpenAI 的程式碼或素材）。聊天執行緒保持為由 Preact 元件掛載的鍵值 DOM 渲染器。`/settings` 仍是獨立的全頁載入頁面；將其遷入外殼，以及加入「需要你處理」面板和側欄標記，預計在後續步驟完成。設計文件：[docs/design/1408-app-shell.md](design/1408-app-shell.md)。

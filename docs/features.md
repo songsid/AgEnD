@@ -1076,3 +1076,11 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 - after a critical hold clears, starts ramp back up slowly for 30 seconds.
 
 `/health` always carries a `hostMemory` block (level, RAM and swap, trend); on Linux, pressure also marks it degraded, and a fleet notice is sent with a 10-minute cooldown (an escalation to critical is sent at once). On **macOS** the sample is written to the log only since #1257: nothing is slowed or held, no notice is sent, and `/health` does not report pressure, because macOS's free-memory and swap numbers alerted on machines with plenty of memory. Details: [memory-pressure.md](memory-pressure.md).
+
+## "Needs you" inbox (#1386 / #1398)
+
+A single live **Needs you** message in each world's General topic surfaces attention items for that world's instances — delivery acknowledgements, hang alerts, permission prompts. Each General shows only its own world's instances (owner-scoped); the `/ui` web feed shows items fleet-wide. Every item is one tap from where it is acted on: the instance's own thread or the message's existing buttons. The only new interaction is **Acknowledge** for delivery items that have no button today. Items resolved on any surface disappear everywhere. The sidebar badge and Needs you panel in `/ui` are planned for a later step. Design: [docs/design/1386-needs-you-inbox.md](design/1386-needs-you-inbox.md).
+
+## Web app shell (#1408, step 1)
+
+`/ui` is rebuilt as a single-page Preact + htm app (no build step; Preact and htm are bundled alongside the source at `src/ui/shared/vendor/`). Step 1 delivers the **Chat** panel at `/ui/chat/<instance>` and the **Fleet** panel at `/ui/fleet`. Step 2 delivers the **View** panel at `/view` and `/view/<instance>`. Typography and layout are modelled on ChatGPT's web UI (design language only — no OpenAI code or assets). The chat thread remains a keyed DOM renderer mounted by a Preact component. `/settings` is still a full-load page; migrating it and adding the Needs you panel and sidebar badge are planned for later steps. Design: [docs/design/1408-app-shell.md](design/1408-app-shell.md).
