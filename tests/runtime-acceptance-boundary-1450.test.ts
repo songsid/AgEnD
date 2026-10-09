@@ -159,6 +159,7 @@ describe("shell strings are judged as the shell splits them (boundary.cjs)", () 
     ["'/tmp/x'/launchctl kickstart -k gui/1/x"],
     ['M=/x/systemctl; "$M" --user restart x'],
     ["echo $(/usr/bin/systemctl restart x)"],
+    ["echo `/usr/bin/systemctl restart x`"],
     ["env -i /usr/bin/systemctl restart x"],
     ["eval '/usr/bin/systemctl restart x'"],
     ['sh -c "/bin/launchctl kickstart -k gui/1/x"'],
