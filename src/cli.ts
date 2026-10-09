@@ -1432,7 +1432,7 @@ program
      * verified package, then restart through the verified binary — never through whatever invoked this command
      * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
      */
-    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; node: string }, viaNvm: boolean): Promise<void> => {
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string }, viaNvm: boolean): Promise<void> => {
       const { newAgendInvocation } = await import("./update-install.js");
       const { activateService } = await import("./service-activation.js");
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");

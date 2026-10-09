@@ -9,7 +9,7 @@
  * whose name holds `$`, spaces and quotes. No host npm, no network, no fleet.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -105,6 +105,8 @@ describe("P0: the current install is never removed before the new one has succee
     runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
     const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0")), w.runner);
     expect(outcome).toMatchObject({ ok: true, agendPath: join(w.prefix, "bin", "agend"), version: "2.2.0" });
+    // #1450 C4: the canonical inner entry a service starts, verified as a realpath (here also the bin).
+    expect(outcome.ok && outcome.entry).toBe(realpathSync(join(w.prefix, "lib", "node_modules", "@songsid", "agend", "dist", "cli.js")));
     expect(w.callLog().some(line => /\bunlink\b|\buninstall\b/.test(line))).toBe(false);
   });
 
