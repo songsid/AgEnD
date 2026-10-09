@@ -453,6 +453,8 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
       ["a malformed receipt whose path/size lines are still readable", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/\n}\n$/, ",\n}\n"))],
       ["a receipt that is valid JSON in another layout (minified)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => JSON.stringify(JSON.parse(t)) + "\n")],
       ["a receipt with a leading-zero size", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"size": (\d+)/, '"size": 0$1'))],
+      ["a receipt with a trailing blank line (valid JSON, not the contract's text)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t + "\n")],
+      ["a receipt with a space after its closing brace", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/}\n$/, "} \n"))],
       ["a receipt for another pin", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => t.replace(/"pinnedVersion": "[^"]*"/, '"pinnedVersion": "22.0.0"'))],
       ["a runtime package of another version", (f: ReturnType<typeof fixture>) => edit(join(f.runtimeHome, "package.json"), t => t.replace(/"version": "[^"]*"/, '"version": "22.0.0"'))],
       ["a receipt of the old shape (mtimeMs, no receipt key)", (f: ReturnType<typeof fixture>) => edit(receiptFile(f), t => { const r = JSON.parse(t); delete r.receipt; r.mtimeMs = r.mtime * 1000; delete r.mtime; return JSON.stringify(r, null, 2) + "\n"; })],

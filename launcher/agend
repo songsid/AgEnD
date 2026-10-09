@@ -72,8 +72,7 @@ admissible() {
   sed -n 11p "$receipt" | grep -Eq '^  "libc": ("glibc"|null),$' || return 1
   sed -n 12p "$receipt" | grep -Eq '^  "verifiedAt": "[^"\\]+"$' || return 1
   [ -n "$r_pin" ] && [ -n "$r_path" ] && [ -n "$r_size" ] && [ -n "$r_mtime" ] || return 1
-  # As JSON has them: no leading zeros.
-  for n in "$r_size" "$r_mtime"; do case $n in 0 | [1-9]*) ;; *) return 1 ;; esac; done
+  # (A leading-zero size/mtime, which JSON forbids, can never equal what wc and stat print below.)
   [ "$r_pin" = "$pin" ] || return 1
   [ "$(cd "$(dirname "$node")" 2>/dev/null && pwd -P)/node" = "$r_path" ] || return 1
   [ "$(wc -c < "$node" | tr -d ' ')" = "$r_size" ] || return 1
