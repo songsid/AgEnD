@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.4
+
+  resumed session 01a1214e-bc5f-7fc2-931f-242127de6a1a
+
+❯ hello from the 1.4.4 audit
+
+◆ echo: hello from the 1.4.4 audit
+
+  session 01a1214e-bc5f-7fc2-931f-242127de6a1a does not record a usable model for provider echo; using the provider
+  default model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  echo · /t/muse-audit/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
