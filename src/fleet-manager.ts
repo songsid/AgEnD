@@ -60,6 +60,7 @@ import {
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
+import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
@@ -10277,18 +10278,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.deliveryOutbox?.wasDeliveryIdPrunedForCaller(deliveryId, callerInstance) ?? false;
   }
 
+  /** How long opening events.db waits for another process's lock (a field so tests need not wait 5 s). */
+  private eventLogBusyTimeoutMs = 5000;
+
   private openEventLog(): EventLog | null {
     const dbPath = join(this.dataDir, "events.db");
     try {
-      return new EventLog(dbPath);
+      return new EventLog(dbPath, { busyTimeoutMs: this.eventLogBusyTimeoutMs });
     } catch (err) {
-      this.logger.error({ err, dbPath }, "events.db unusable — moving it aside and starting a fresh one");
+      // #1490: only a file SQLite proved corrupt is moved aside. A lock (it outlasted the busy timeout), a driver that
+      // cannot load (ABI), or a permission/I/O problem says nothing against the file: it stays where it is, history
+      // intact, and the fleet runs without event logging until it restarts.
+      const kind = classifySqliteOpenError(err);
+      if (kind !== "corrupt") {
+        const key = kind === "busy" ? "eventlog.locked" : kind === "abi" ? "eventlog.abi" : "eventlog.unopenable";
+        this.logger.error({ err, dbPath, kind }, `events.db not opened (${kind}) — left in place; continuing without event logging`);
+        try { this.notifyFleetError(t(key)); } catch { /* best effort: adapters may not be up yet; the log line stands */ }
+        return null;
+      }
+      this.logger.error({ err, dbPath }, "events.db is corrupt — moving it aside and starting a fresh one");
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       for (const suffix of ["", "-wal", "-shm"]) {
         try { renameSync(`${dbPath}${suffix}`, `${dbPath}${suffix}.corrupt-${stamp}`); } catch { /* may not exist */ }
       }
       try {
-        return new EventLog(dbPath);
+        return new EventLog(dbPath, { busyTimeoutMs: this.eventLogBusyTimeoutMs });
       } catch (retryErr) {
         // History is worth losing; a fleet that won't start is not.
         this.logger.error({ err: retryErr, dbPath }, "Could not open a fresh events.db — continuing without event logging");
