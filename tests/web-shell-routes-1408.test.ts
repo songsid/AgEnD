@@ -73,7 +73,7 @@ const CASES: Array<[string, string]> = [
 // Every data route under /ui the server answers (web-api.ts), by shape.
 const DATA_ROUTES = ["/ui/poll", "/ui/events", "/ui/history", "/ui/file/abc", "/ui/prompts", "/ui/instance/web-dev", "/ui/instances",
   "/ui/tasks", "/ui/tasks/t1", "/ui/schedules", "/ui/schedules/s1", "/ui/teams", "/ui/teams/x", "/ui/config", "/ui/org", "/ui/cache", "/ui/backends", "/ui/js/app.js",
-  "/ui/needs/ack", "/ui/send", "/ui/upload", "/ui/prompt", "/ui/cancel/x", "/ui/stop/x", "/ui/start/x", "/ui/restart/x", "/ui/instances/x/delete"];
+  "/ui/needs/ack", "/ui/send", "/ui/upload", "/ui/prompt", "/ui/command", "/ui/cancel/x", "/ui/stop/x", "/ui/start/x", "/ui/restart/x", "/ui/instances/x/delete"];
 
 function describeServer(path: string): string {
   const m = shellRoute("GET", path);

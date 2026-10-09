@@ -757,7 +757,9 @@ describe("the chat panel (the real page modules)", () => {
     c.stream.emit("status", frame(inst("w")));
     await c.mount("w");
     const sc = c.p.root.querySelector(".scroller");
-    Object.assign(sc, { scrollTop: 0, clientHeight: 500, scrollHeight: 2000 });
+    Object.assign(sc, { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000 });
+    fire(sc, "scroll");                                            // at the bottom…
+    sc.scrollTop = 0; fire(sc, "scroll");                          // …then the reader scrolled up
     const jump = () => c.p.root.querySelector(".jump-latest");
     c.stream.emit("message", msg(1, "w", "one"));
     await settle();
@@ -775,6 +777,58 @@ describe("the chat panel (the real page modules)", () => {
     await settle();
     expect(sc.scrollTop).toBe(2000);
     expect(jump()).toBeNull();
+  });
+
+  it("#1269: content that grows after it was drawn keeps a reader at the bottom there; one who scrolled up is never moved", async () => {
+    const observers: Array<{ cb: () => void; targets: unknown[]; off: boolean }> = [];
+    const saved = (globalThis as any).ResizeObserver;
+    (globalThis as any).ResizeObserver = class { o: { cb: () => void; targets: unknown[]; off: boolean };
+      constructor(cb: () => void) { this.o = { cb, targets: [], off: false }; observers.push(this.o); }
+      observe(t: unknown) { this.o.targets.push(t); } disconnect() { this.o.off = true; } };
+    try {
+      const c = await chatPage();
+      c.stream.emit("status", frame(inst("w")));
+      await c.mount("w");
+      const sc = c.p.root.querySelector(".scroller");
+      const grow = (h: number) => { sc.scrollHeight = h; for (const o of observers) if (!o.off) o.cb(); };
+      const jump = () => c.p.root.querySelector(".jump-latest");
+      expect(observers.some((o) => !o.off && o.targets.includes(sc) && o.targets.includes(c.p.root.querySelector(".thread")))).toBe(true);
+      Object.assign(sc, { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000 });
+      fire(sc, "scroll");                                          // at the bottom
+      grow(2600);                                                  // an image loaded, a card drew itself
+      await settle();
+      expect(sc.scrollTop, "pinned: follows the growth").toBe(2600);
+      expect(!!jump(), "nothing new to jump to").toBe(false);
+      // The browser's scroll anchoring moves the view (down) as content grows, before the observer runs: still pinned.
+      sc.scrollHeight = 3200; sc.scrollTop = 2610; fire(sc, "scroll");
+      grow(3200);
+      expect(sc.scrollTop, "an anchoring scroll is not the reader leaving").toBe(3200);
+      sc.scrollTop = 200; fire(sc, "scroll");                      // the reader scrolls up to read
+      grow(3600);
+      await settle();
+      expect(sc.scrollTop, "never pulled away").toBe(200);
+      sc.scrollTop = 900; fire(sc, "scroll");                      // scrolling down, not yet at the bottom: still free
+      grow(3800);
+      expect(sc.scrollTop).toBe(900);
+      expect(jump()?.textContent).toBe("Latest");
+      c.stream.emit("message", msg(1, "w", "one"));
+      await settle();
+      expect(sc.scrollTop, "nor by a new message").toBe(900);
+      sc.scrollTop = 3300; fire(sc, "scroll");                     // scrolled back down to the bottom by hand: pinned again
+      grow(4200);
+      expect(sc.scrollTop, "pinned by reaching the bottom").toBe(4200);
+      sc.scrollTop = 100; fire(sc, "scroll");
+      fire(jump(), "click");
+      await settle();
+      grow(5200);
+      expect(sc.scrollTop, "after the jump: pinned again").toBe(5200);
+      sc.scrollHeight = 6000;                                      // grown, and the observer has not run yet…
+      c.stream.emit("message", msg(2, "w", "two"));                // …when a message arrives: a pinned reader follows it
+      await settle();
+      expect(sc.scrollTop).toBe(6000);
+      await c.p.unmount();
+      expect(observers.every((o) => o.off), "the thread's observer goes with it").toBe(true);
+    } finally { (globalThis as any).ResizeObserver = saved; }
   });
 
   it("while polling, the ticks come with the poll — the chat's history is never re-read in the background (#1253 review)", async () => {

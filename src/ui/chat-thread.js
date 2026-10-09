@@ -25,6 +25,12 @@ export function createThread(list, scroller, opts) {
   const nodes = new Map();          // key → { html, node }
   let msgs = [];
   let unseen = 0;
+  // The reader is at the newest message. While pinned, content that grows after it was drawn — an image loading, a
+  // preview card, the composer growing — keeps the view at the bottom (#1269); a reader who scrolled up is never moved.
+  // Only a move UP unpins: the browser's own scroll anchoring also fires scroll events when content grows (the view
+  // moves down or stays), and those must not count as the reader leaving the bottom. Reaching the bottom pins again.
+  let pinned = true;
+  let lastTop = 0;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
@@ -127,10 +133,15 @@ export function createThread(list, scroller, opts) {
 
   const nearBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);
   function reportJump() { opts.onJump({ show: !nearBottom(), unseen }); }
+  function toBottom() { scroller.scrollTop = scroller.scrollHeight; pinned = true; lastTop = scroller.scrollTop; }
+  // Sizes change without a scroll event (layout after the render): follow them while pinned.
+  const resized = () => { if (pinned && !nearBottom()) toBottom(); reportJump(); };
+  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
+  if (ro) { ro.observe(list); ro.observe(scroller); }
 
   /** Draw `next` (this instance's messages). `restore`: the scroll position to return to (null = the bottom). */
   function render(next, renderOpts = {}) {
-    const stick = nearBottom();
+    const stick = pinned || nearBottom();
     msgs = next || [];
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
@@ -159,19 +170,23 @@ export function createThread(list, scroller, opts) {
     }
     if ("restore" in renderOpts) {
       unseen = 0;
-      scroller.scrollTop = renderOpts.restore == null ? scroller.scrollHeight : renderOpts.restore;
-    } else if (stick) scroller.scrollTop = scroller.scrollHeight;
+      if (renderOpts.restore == null) toBottom();
+      else { scroller.scrollTop = renderOpts.restore; pinned = nearBottom(); lastTop = scroller.scrollTop; }
+    } else if (stick) toBottom();
     else unseen += added;
     reportJump();
   }
 
   function onScroll() {
-    const bottom = nearBottom();
+    const bottom = nearBottom(), top = scroller.scrollTop;
+    if (bottom) pinned = true;
+    else if (top < lastTop) pinned = false;
+    lastTop = top;
     if (bottom) unseen = 0;
     reportJump();
     return bottom ? null : scroller.scrollTop;
   }
-  function jumpLatest() { scroller.scrollTop = scroller.scrollHeight; unseen = 0; reportJump(); }
+  function jumpLatest() { toBottom(); unseen = 0; reportJump(); }
 
   async function copyFrom(button, text) {
     const ok = await opts.copyText(text);
@@ -201,6 +216,7 @@ export function createThread(list, scroller, opts) {
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   function dispose() {
+    if (ro) ro.disconnect();
     if (P()) P().stopAll("leave");
     nodes.clear();
   }
