@@ -244,6 +244,7 @@ describe("`agend update` when the package is already current (built CLI copy, st
 echo "systemctl $*" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
 case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
+case "$*" in *"show -p TimeoutStopUSec --value"*) echo 5min;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
@@ -307,7 +308,11 @@ describe("detached `agend restart` signals only a confirmed fleet (built CLI; th
     chmodSync(join(bin, "systemctl"), 0o755);
     // A detached restart must run on the Node this package selects (restart guard, #1450 C6). Once the checkout pins
     // and verified its bundled runtime (npm ci), that is not this test's Node — AGEND_NODE names it as the selection.
-    const r = spawnSync(process.execPath, [cli, "restart"], {
+    // Real inert orphan ownership/signals, accelerated monotonic budget: the five-minute
+    // grace is modelled in ~10s, without changing production or waiting five minutes.
+    const clock = join(home, "monotonic-clock.mjs");
+    writeFileSync(clock, `const now = performance.now.bind(performance); Object.defineProperty(performance, "now", { value: () => now() * 30 });`);
+    const r = spawnSync(process.execPath, ["--import", `file://${clock}`, cli, "restart"], {
       env: { ...process.env, AGEND_ALLOW_TEST_FLEET_CONTROL: "1", AGEND_INSTANCE_NAME: "", HOME: home, AGEND_HOME: agendHome, PATH: `${bin}:${process.env.PATH}`, AGEND_TEST_SELF_SPAWN_LOG: log, AGEND_NODE: process.execPath },
       encoding: "utf8", timeout: 60_000,
     });
@@ -331,7 +336,7 @@ describe("detached `agend restart` signals only a confirmed fleet (built CLI; th
     expect(res.calls).toContain("agend fleet start");
   });
 
-  // Both wait out the ~10 s SIGTERM grace period.
+  // The accelerated clock models the five-minute SIGTERM grace in ~10 real seconds.
   it.skipIf(!existsSync(cli) || !linux || process.env.AGEND_SYSTEMD_UNIT_PRESENT === "1")("a fleet that ignores SIGTERM is SIGKILLed", () => {
     const res = detachedRestart("node /opt/agend/bin/agend fleet start", "trap '' TERM; while :; do sleep 0.1; done");
     expect(res.alive, `${res.r.stdout}${res.r.stderr}`).toBe(false);
@@ -431,6 +436,7 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
 echo "systemctl $*" >> '${log}'
 case "$*" in *is-active*) echo active;; esac
 case "$*" in *"show -p KillMode --value"*) echo mixed;; esac
+case "$*" in *"show -p TimeoutStopUSec --value"*) echo 5min;; esac
 case "$*" in *"show -p CoredumpFilter --value"*) echo 0x33;; esac
 exit 0
 `);
