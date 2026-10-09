@@ -61,7 +61,9 @@ Claude Code `PreToolUse`/`PostToolUse` hooks would give sub-second, exact events
 The activity view adds **no new reads**. It consumes the events `TranscriptMonitor` already produces for the bubble: one reader per instance, two consumers.
 
 That makes the existing reads matter more, so **P0 bounds them**:
-- Claude and codex `readNewLines` read the whole delta since the offset in one buffer. P0 caps each look the way `TranscriptDeltaReader` (#1379) does: at most 1 MiB and 250 ms per look, lines over 256 KiB skipped by length with the offset still advancing, and the remainder read on the next poll.
+- Claude and codex `readNewLines` read the whole delta since the offset in one buffer. P0 caps each look. The numbers are this design's own choice, sized for a 2 s poll of a busy session: at most **1 MiB and 250 ms per look**, lines over **256 KiB** skipped by length with the offset still advancing, and the remainder read on the next poll.
+  - The mechanism follows `TranscriptDeltaReader` (#1379), but that reader's numbers are smaller and differ: 256 KiB per chunk, 256 KiB per line, a 250 ms budget per look (`transcript-delta-reader.ts:16-23`).
+  - P0 measures a real 300 MB rollout and may lower the 1 MiB.
 - The codex 64 KiB synchronous head read moves to the async path.
 - The opencode synchronous `node:sqlite` read keeps its `LIMIT 100` and is attributed with `measureSyncWork`. Moving it into a worker is noted, not required.
 
@@ -71,14 +73,16 @@ Nothing reads a transcript on a web request. Pages get steps from memory (§5).
 
 ```ts
 interface ActivityStep {
-  seq: number;               // per instance, monotonic for this process; a page asks for "after seq"
+  id: string;                // stable for the step's life (`<turn>.<n>`): an update replaces the step with this id
+  seq: number;               // per instance, monotonic for this process; bumped on EVERY emission, including updates
   turn: number;              // the turn the step belongs to (a new delivery starts one)
   ts: number;                // when the fleet saw it (wall clock, for display)
-  kind: "read" | "search" | "edit" | "write" | "run" | "test" | "web" | "mcp" | "agent" | "plan" | "other";
+  kind: "read" | "search" | "edit" | "write" | "run" | "test" | "web" | "mcp" | "agent" | "plan" | "other" | "gap";
+  skipped?: number;          // a gap entry only: how many steps were dropped there
   label: string;             // human text, already redacted (≤ 120 chars)
   tool: string;              // the CLI's tool name ("Bash", "exec", "fs_read"), for icons and loop detection
-  status: "running" | "done" | "failed";
-  durationMs?: number;       // when both the call and its result were seen
+  status: "running" | "done" | "failed" | "interrupted";
+  durationMs?: number;       // only when both the call and its result were seen (never for "interrupted")
   inferred?: true;           // from the pane (kiro TUI), not a transcript
 }
 ```
@@ -87,6 +91,11 @@ The fleet keeps, per instance, a ring buffer of the last **100 steps across the 
 
 The turn boundary comes from what the bubble already uses: a new delivery, and the idle edge.
 
+**A step's life (#1506 review).**
+- **Updates.** A step is emitted when its call is seen (`running`), and again when its result is seen (`done`/`failed`, with `durationMs`). Each emission gets a **new `seq`** and keeps the **same `id`**. The buffer holds one entry per `id` (the latest), and a page replaces by `id`. So a page whose cursor has passed the running emission still receives the update, because it carries a later `seq`. The SSE accelerator sends exactly the same emissions, which keeps poll and SSE in parity.
+- **Turn end.** On the idle edge or a new delivery, every step of the ending turn still `running` becomes `interrupted`: emitted again with a new `seq`, and `durationMs` left empty. This covers an interrupted tool, a crashed CLI, a result never written, and a transcript that rolled over. It never pretends to be `done`.
+- **Gaps.** When steps are dropped before a page could see them (§6: IPC coalescing, or ring-buffer overflow past a page's cursor), the stream carries a **gap entry** `{ id: "gap:<seq>", kind: "gap", skipped: N }`, which the page shows as "… N steps skipped". Nothing is silently missing.
+
 **Labels, one labeller.**
 - `summarizeProgress()` grows a structured variant that returns `{ kind, label }`. The bubble keeps its exact text (a parity test pins it), and the web uses `kind` for icons.
 - The terse `summarizeTool` path stays separate, as `tool-progress.ts` already requires.
@@ -94,7 +103,9 @@ The turn boundary comes from what the bubble already uses: a new delivery, and t
 **Privacy: what a step may contain (default).**
 - **Shell commands:** the program plus one bare-word subcommand (`shellCommandLabel`), never the arguments. `git push`, not `git push https://user:token@…`.
 - **File paths:** relative to the working directory when inside it, with home shown as `~`. The path passes through `redactSecrets`. A path under the AgEnD state directory is shown as `<agend state>`.
-- **Search patterns, URLs and queries:** the domain or the first 40 characters, through `redactSecrets`.
+- **Searches:** the scope only (the relative path searched). The **pattern is not shown** by default: a grep pattern is often the very value being looked for (a password fragment, a customer's email, an internal host), and `redactSecrets` recognises only known formats (#1506 review).
+- **URLs:** the domain only. **Queries** (web search) are not shown by default.
+- Patterns and queries appear only with **verbose**, the same switch as the command preview, and they go through `redactSecrets` too.
 - **MCP tools:** `server:tool` only, never arguments. Agend's own tools are shown as "Messaging" or "Fleet", as the bubble already hides them.
 - **Never shown:**
   - tool results or output;
@@ -102,7 +113,7 @@ The turn boundary comes from what the bubble already uses: a new delivery, and t
   - the assistant's thinking text;
   - environment values;
   - any input field that is not listed above.
-- **Verbose** (a per-instance opt-in, the same switch as `tool_progress: verbose`): adds a 48-character command preview, through `redactSecrets`. Off by default.
+- **Verbose** (a per-instance opt-in, the same switch as `tool_progress: verbose`): adds a 48-character command preview, and the search pattern or query (40 characters), each through `redactSecrets`. Off by default.
 
 The rule is an **allowlist of fields per tool kind**, not a denylist: an unknown tool shows its name and nothing else.
 
@@ -135,13 +146,20 @@ No new message types, no threads, and no per-step messages: platform rate limits
 ## 6. Transport and cost
 
 - **Push** works without SSE, as #1262 requires.
-  - `/ui/poll` gains `activity`: for each working instance, the steps after the page's `activity_after` cursor (`<boot>-<seq>`), at most 30 per instance and per answer, plus the current-state line. It is part of the existing passive poll, not a new GET (#1374).
+  - `/ui/poll` gains `activity`: for each working instance, the current-state line plus the emissions after the page's `activity_after` cursor (`<boot>-<seq>`).
+    - The emissions come **oldest first, at most 30** per instance and per answer. The answer's cursor is the `seq` of the **last emission it returned**, and `more: true` says more remain, which the page picks up on the next poll (or at once). Nothing in the middle is skipped.
+    - If the page's cursor is older than the oldest emission still in the ring buffer (the page was away while more than 100 steps happened), the answer starts with a gap entry, `skipped: <oldest seq − cursor − 1>`.
+    - A cursor from another boot gets the current turn from its start, like the chat's `replayFor`.
+    - It is part of the existing passive poll, not a new GET (#1374).
   - Poll clients (the public link, or an SSE outage) see steps within one 5 s poll.
   - SSE clients also get a coalesced `activity_steps` event (at most one per instance per second) for sub-second latency. It is an accelerator only: the poll answer always carries the same data.
 - **Size:** a step is about 150–200 bytes of JSON. With 5 working instances × 30 steps, an answer is at most about 30 KB, and only while steps are new. An idle fleet adds `activity: {}`.
 - **CPU:** labelling is string work on events that already exist. There is no read on the request path.
 - **Memory:** 100 steps × about 200 bytes × instances, roughly 20 KB per instance.
-- **Daemon → fleet:** the existing `instance_progress` IPC (≤ 1 every 3 s) carries the structured steps instead of text. The coalescing stays, so a burst of 50 tool calls in 3 s becomes one IPC with the newest 30.
+- **Daemon → fleet:** the existing `instance_progress` IPC (≤ 1 every 3 s) carries the structured emissions instead of text.
+  - The coalescing stays, and is defined by `id`: a step updated twice in a window is sent once, as its latest state.
+  - If more than 30 distinct steps are pending, the IPC carries the **newest 30** plus `skipped: N`, the number of distinct steps dropped. The fleet records that as a gap entry in the buffer at that position, so every page sees "… N steps skipped" there.
+  - A dropped step's later update is not lost: it is a new emission, so it is pending again.
 - **Reads:** unchanged — 2 s per working instance, bounded per §3.3.
 
 ## 7. Phased plan
@@ -149,7 +167,7 @@ No new message types, no threads, and no per-step messages: platform rate limits
 | Phase | Content | Size |
 |---|---|---|
 | **P0** | Bound the claude/codex delta reads (1 MiB / 250 ms per look, long-line skip, async codex head). The structured labeller `{kind, label}`, with a parity test against today's bubble text. Real redacted fixtures per backend. | S (≈ 1 day) |
-| **P1** | The fleet `ActivityStore` (ring buffer, turn boundaries); structured `instance_progress`; `/ui/poll` `activity` and the SSE accelerator; the web working line with the current step and the expandable turn list. Tests: the allowlist redaction table (secrets in args never reach a step), the poll cursor, the SSE ≡ poll parity, and the ×N collapse. Plus a real-browser smoke. | M (≈ 2–3 days) |
+| **P1** | The fleet `ActivityStore` (ring buffer, turn boundaries); structured `instance_progress`; `/ui/poll` `activity` and the SSE accelerator; the web working line with the current step and the expandable turn list. Tests:<br>• the allowlist redaction table (secrets in args, grep patterns and queries never reach a default step);<br>• the poll cursor, oldest first, with `more`;<br>• **over 30 steps** in one answer (the next poll continues, no hole);<br>• an **IPC coalesced with a gap** (`skipped: N` reaches the page as one gap entry);<br>• a **running → done update** after the cursor passed it (replaced by `id`);<br>• **turn end with steps still running** (→ `interrupted`, no duration);<br>• a cursor older than the buffer (a gap);<br>• SSE ≡ poll parity, including updates and gaps;<br>• the ×N collapse.<br>Plus a real-browser smoke. | M (≈ 2–3 days) |
 | **P2** | A muse source (session.jsonl payload types, verified on a real session, redacted fixture); kiro TUI pane steps marked `inferred`; pane-only waiting states as the current line; measure kiro DB latency and prefer the v2 JSONL when it is fresher. | M (≈ 2 days) |
 | **P3** | The turn summary on the reply; the Fleet/Org chart current-step line; the side-panel Activity view; repeated-step highlighting as a loop hint. | S–M (≈ 2 days) |
 | P4 (only if needed) | Claude Code hooks for sub-second steps, behind a setting. | decide later |
