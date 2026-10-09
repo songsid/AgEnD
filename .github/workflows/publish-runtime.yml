@@ -1,10 +1,10 @@
 # #1450 option A: publish AgEnD's private Node runtime packages, @songsid/agend-node-<os>-<cpu>, from an official
 # Node release. Manual and rare — only when the pinned Node changes, never per AgEnD release. Each package holds the
 # official bin/node + LICENSE, verified against the GPG-signed SHASUMS256.txt (scripts/runtime/build-runtime-packages.mjs),
-# and is published with provenance through npm's trusted publishing (OIDC), like the main package. OIDC cannot create
-# a NEW package name: the first publish of these packages uses a short-lived granular token in the NPM_TOKEN secret,
-# then the trusted publisher is configured on npmjs.com and the token deleted (docs/development.md). Packages already
-# on the registry are skipped, so a partly successful run can be re-run.
+# and is published with provenance through npm's trusted publishing (OIDC), like the main package — no npm token.
+# OIDC cannot create a NEW package name: each name first gets a placeholder version published by hand, and its
+# trusted publisher configured on npmjs.com (docs/development.md). A version already on the registry is skipped, so a
+# partly successful run can be re-run.
 name: Publish runtime packages
 
 on:
@@ -56,8 +56,4 @@ jobs:
       - name: Publish (or dry run)
         env:
           DRY_RUN: ${{ inputs.dry_run }}
-          # Empty unless the NPM_TOKEN secret exists: then npm falls back to it where OIDC cannot publish (a new name).
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then echo "auth: OIDC, falling back to the NPM_TOKEN secret (first publish of a package name)"; else echo "auth: OIDC (trusted publishing)"; fi
-          bash scripts/runtime/publish-runtime-packages.sh runtime-packages "$DRY_RUN"
+        run: bash scripts/runtime/publish-runtime-packages.sh runtime-packages "$DRY_RUN"

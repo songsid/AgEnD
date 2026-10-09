@@ -228,6 +228,13 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(r.stdout).toContain("@songsid/agend-node-linux-x64@22.23.3: already on the registry, skipped");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([`publish ${flag}--access public --provenance --tag latest`]);
   });
+  it("only the EXACT version counts: a name holding just its 0.0.0 placeholder is published to", () => {
+    const { r, calls } = run(["22.23.3"], "false", { published: ["@songsid/agend-node-linux-x64@0.0.0"], otherwise: "empty" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).not.toContain("already on the registry");
+    expect(calls).toContain("view @songsid/agend-node-linux-x64@22.23.3 version --json");
+    expect(calls.filter(c => c.startsWith("publish"))).toHaveLength(1);
+  });
   it("the package name exists but not this version (npm view prints nothing): published", () => {
     const { r, calls } = run(["22.23.3"], "false", { otherwise: "empty" });
     expect(r.status, r.stderr).toBe(0);
@@ -239,10 +246,10 @@ describe("publishing: an explicit dist-tag on every publish, dry run or real", (
     expect(r.stderr).toContain("cannot be told");
     expect(calls.filter(c => c.startsWith("publish"))).toEqual([]);
   });
-  it("publish-runtime.yml: NPM_TOKEN (when the secret exists) is npm's fallback; provenance and OIDC stay", () => {
+  it("publish-runtime.yml publishes through OIDC with provenance and never wires an npm token", () => {
     const yml = readFileSync(join(process.cwd(), ".github", "workflows", "publish-runtime.yml"), "utf8");
     expect(yml).toContain("id-token: write");
-    expect(yml).toMatch(/- name: Publish \(or dry run\)[\s\S]*NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
+    expect(yml).not.toMatch(/NODE_AUTH_TOKEN|NPM_TOKEN|secrets\./);
     expect(readFileSync(script, "utf8")).toContain("npm publish --access public --provenance --tag latest");
   });
 

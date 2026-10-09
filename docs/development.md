@@ -306,21 +306,22 @@ GPG-signed official release and published with `--provenance` and
 `--tag latest`. A version already on the registry is skipped, so a run that
 published some packages and then failed can be run again.
 
-Authentication is trusted publishing (OIDC), as for the main package, except for
-the **first publish of a package name**. npm cannot create a new package through
-OIDC (it answers `E404 PUT … could not be found or you do not have permission`).
-The first time:
+Authentication is trusted publishing (OIDC) only, as for the main package; the
+workflow has no npm token. npm cannot create a **new** package name through OIDC
+(it answers `E404 PUT … could not be found or you do not have permission`), so
+each runtime package name is created once, by hand:
 
-1. Create a granular npm access token with read and write access to the
-   `@songsid` scope, expiring in one day.
-2. Store it as the repository secret `NPM_TOKEN`. The workflow passes it as
-   `NODE_AUTH_TOKEN`, and npm uses it where OIDC cannot publish. Without the
-   secret, the workflow uses OIDC only.
+1. A maintainer publishes a placeholder of each package from their own npm login:
+   version `0.0.0`, `--tag placeholder`, so `latest` never points at it.
+2. On npmjs.com, configure the trusted publisher of each of the four packages:
+   repository `songsid/AgEnD`, workflow `publish-runtime.yml`.
 3. Run `publish-runtime.yml` with `dry_run` off, and confirm with `npm view
-   @songsid/agend-node-<os>-<cpu>@<version>` that all four packages are there.
-4. On npmjs.com, configure the trusted publisher (this repository,
-   `publish-runtime.yml`) for each of the four packages.
-5. Delete the `NPM_TOKEN` secret and revoke the token.
+   @songsid/agend-node-<os>-<cpu>@<version>` that all four are there.
+
+The placeholder does not count as published: only the exact pinned version is
+skipped, so the real version is published next to it. As a fallback, if no
+manual placeholder is possible, a one-day granular token can do the first publish
+from a maintainer's machine; it is never stored in this repository.
 
 After that, a new pinned Node publishes through OIDC alone.
 
