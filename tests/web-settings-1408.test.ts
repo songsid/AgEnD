@@ -1140,6 +1140,76 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("#1533 review r2: an older poll read never overrides a newer Check again's pick (one owner of the server choice)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
+    let held: { p: Promise<{ body: unknown }>; open: (v: { body: unknown }) => void } | null = null;
+    let reads = 0;
+    routes.push(r => {
+      if (r.url !== "/api/settings/quickstart/probe") return undefined;
+      if (r.body?.action === "verify") return { body: { identity: { valid: true, username: "b", id: "7" }, invite_url: "https://discord.com/oauth2/authorize?client_id=7", portal_url: "https://x" } };
+      if (r.body?.action === "guilds") {
+        reads++;
+        if (reads === 1) return { body: { guilds: [{ id: "111", name: "One" }] } };                  // Verify's: the bot's servers before the invite
+        if (reads === 2) { held = gate<{ body: unknown }>(); return held.p; }                      // poll A, held
+        return { body: { guilds: [{ id: "111", name: "One" }, { id: "555", name: "B" }] } };          // Check again B
+      }
+      if (r.body?.action === "channels") return { body: { channels: [] } };
+      return undefined;
+    });
+    routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord", token_env: "AGEND_DISCORD_TOKEN", env_keys: [], warnings: [] } } : undefined));
+    try {
+      await mount("bots", "settings:bots|1|en"); await settle(6);
+      btn(p.root, "New connection").click(); await settle(4);
+      const dlg = () => p.root.querySelector("dialog");
+      const token = dlg().querySelector("#nb-token"); token.value = "t"; fire(token, "input"); await settle(2);
+      btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(8);
+      const invite = dlg().querySelector(".discord-setup a.btn");
+      invite.onclick ? invite.onclick({}) : fire(invite, "click"); await settle(2);
+      await vi.advanceTimersByTimeAsync(2000); await settle(2);
+      expect([reads, held !== null], "poll A on its way").toEqual([2, true]);
+      btn(dlg(), "Check again").click(); await settle(8);
+      expect([reads, dlg().querySelector("#nb-guild").value], "Check again B picked 555").toEqual([3, "555"]);
+      held!.open({ body: { guilds: [{ id: "111", name: "One" }, { id: "666", name: "A" }] } }); await settle(8);
+      expect(dlg().querySelector("#nb-guild").value, "A's late answer does not move it").toBe("555");
+      await vi.advanceTimersByTimeAsync(6000); await settle(2);
+      expect(reads, "the pick ended the waiting").toBe(3);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("#1533 review r2: Check again supersedes a poll read still on its way, even when the older one answers first", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "performance"] });
+    const held: Array<{ p: Promise<{ body: unknown }>; open: (v: { body: unknown }) => void }> = [];
+    let reads = 0;
+    routes.push(r => {
+      if (r.url !== "/api/settings/quickstart/probe") return undefined;
+      if (r.body?.action === "verify") return { body: { identity: { valid: true, username: "b", id: "7" }, invite_url: "https://discord.com/oauth2/authorize?client_id=7", portal_url: "https://x" } };
+      if (r.body?.action === "guilds") {
+        reads++;
+        if (reads === 1) return { body: { guilds: [{ id: "111", name: "One" }] } };
+        const g = gate<{ body: unknown }>(); held.push(g); return g.p;                                  // poll A, then Check again B
+      }
+      if (r.body?.action === "channels") return { body: { channels: [] } };
+      return undefined;
+    });
+    routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord", token_env: "AGEND_DISCORD_TOKEN", env_keys: [], warnings: [] } } : undefined));
+    try {
+      await mount("bots", "settings:bots|1|en"); await settle(6);
+      btn(p.root, "New connection").click(); await settle(4);
+      const dlg = () => p.root.querySelector("dialog");
+      const token = dlg().querySelector("#nb-token"); token.value = "t"; fire(token, "input"); await settle(2);
+      btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(8);
+      const invite = dlg().querySelector(".discord-setup a.btn");
+      invite.onclick ? invite.onclick({}) : fire(invite, "click"); await settle(2);
+      await vi.advanceTimersByTimeAsync(2000); await settle(2);                       // poll A held
+      btn(dlg(), "Check again").click(); await settle(2);                              // Check again B held
+      expect(held.length).toBe(2);
+      held[0]!.open({ body: { guilds: [{ id: "111", name: "One" }, { id: "666", name: "A" }] } }); await settle(8);
+      expect(dlg().querySelector("#nb-guild").value, "the older poll A, superseded, picks nothing").toBe("");
+      held[1]!.open({ body: { guilds: [{ id: "111", name: "One" }, { id: "555", name: "B" }] } }); await settle(8);
+      expect(dlg().querySelector("#nb-guild").value, "Check again B picks").toBe("555");
+    } finally { vi.useRealTimers(); }
+  });
+
   it("#1533 review: another token clears the old General (its server's channel belongs to the old bot)", async () => {
     routes.push(r => {
       if (r.url !== "/api/settings/quickstart/probe") return undefined;

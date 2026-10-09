@@ -28,12 +28,14 @@ export function DiscordServerPicker({ idPrefix, token, bot, invite, portal, guil
   const now = useRef({ token, guild, channel });
   now.current = { token, guild, channel };
   // The current operation of each kind; an answer is taken only while its number is still the one here.
-  const op = useRef({ poll: 0, check: 0, channels: 0 });
+  // `choice`: the one generation of the server choice that polls and Check again both write (#1533 review r2) — a read
+  // started before any later pick, Check again or Stop cannot pick.
+  const op = useRef({ poll: 0, check: 0, channels: 0, choice: 0 });
   const poll = useRef({ timer: null, until: 0, known: new Set(), asking: false });
   const chosen = useRef(false);                            // the person picked a General channel since this server's list was asked
 
   const stopPolling = (timedOut = false) => {
-    op.current.poll++;                                     // retires the poll's reads still on their way
+    op.current.poll++; op.current.choice++;                // retires the poll's reads still on their way
     if (poll.current.timer) { clearInterval(poll.current.timer); poll.current.timer = null; }
     setPolling(timedOut ? { timedOut: true } : null);
   };
@@ -48,9 +50,10 @@ export function DiscordServerPicker({ idPrefix, token, bot, invite, portal, guil
 
   /** One read of the bot's servers, for operation `kind` number `seq`; joined: pick it (unless the person chose meanwhile). */
   const readGuilds = async (kind, seq, known, deadline) => {
-    const asked = token;
+    const asked = token, choice = op.current.choice;
     const res = await probe({ action: "guilds", token: asked });
-    const current = () => live.current && op.current[kind] === seq && now.current.token === asked && (deadline == null || clock() <= deadline);
+    const current = () => live.current && op.current[kind] === seq && op.current.choice === choice && now.current.token === asked
+      && (deadline == null || clock() <= deadline);
     if (!current()) return false;
     const list = (res.ok && res.body && Array.isArray(res.body.guilds)) ? res.body.guilds : null;
     if (!list) return false;
@@ -65,21 +68,24 @@ export function DiscordServerPicker({ idPrefix, token, bot, invite, portal, guil
     const seq = op.current.poll, known = new Set((guilds || []).map((g) => g.id)), until = clock() + POLL_FOR_MS;
     poll.current = { timer: null, until, known, asking: false };
     setPolling({ timedOut: false });
-    poll.current.timer = setInterval(async () => {
+    const record = poll.current;
+    record.timer = setInterval(async () => {
       if (op.current.poll !== seq) return;
       if (clock() > until) { stopPolling(true); return; }
-      if (poll.current.asking) return;                     // one read at a time
-      poll.current.asking = true;
-      const joined = await readGuilds("poll", seq, known, until).finally(() => { poll.current.asking = false; });
-      if (joined && op.current.poll === seq) stopPolling();
+      if (record.asking) return;                           // one read at a time
+      record.asking = true;
+      // Its own record only: a later poll's in-flight flag is not this read's to clear.
+      await readGuilds("poll", seq, known, until).finally(() => { record.asking = false; });
     }, POLL_MS);
   };
   // Check again: a new, explicit read of its own (it does not revive a stopped poll).
-  const checkAgain = () => { const seq = ++op.current.check; void readGuilds("check", seq, poll.current.known, null); };
+  // A newer, explicit read: it supersedes any read still on its way (theirs no longer picks).
+  const checkAgain = () => { op.current.choice++; const seq = ++op.current.check; void readGuilds("check", seq, poll.current.known, null); };
 
   /** A server is picked — by the person (`manual`) or because the bot joined it. Either way the old General goes. */
   const pickGuild = (id, manual) => {
-    if (manual) { stopPolling(); op.current.check++; }   // a choice of the person's: no read still on its way overrides it
+    // Any pick — the person's, or a read's — ends the waiting and retires every other read still on its way.
+    stopPolling(); op.current.check++;
     if (id !== now.current.guild && now.current.channel) onChannel("");
     onGuild(id);
   };
