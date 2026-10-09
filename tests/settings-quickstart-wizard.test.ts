@@ -577,6 +577,9 @@ describe("the wizard in the panel", () => {
         const answer = json({ identity: { valid: true, username: "bot_one" } });
         return probeHold ? probeHold.then(() => answer) : answer;
       }
+      if (path === "/api/settings/quickstart/plan" && planHold) { const hold = planHold; return hold.then(() => json({
+        channel: { type: "telegram" }, instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code", channel_id: "telegram" },
+        channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", env_keys: ["AGEND_TELEGRAM_TOKEN"], warnings: [] })); }
       if (path === "/api/settings/quickstart/plan") return json({
         channel: { type: "telegram", group_id: "-100123", access: { mode: "locked", allowed_users: ["42"] } },
         instance: { name: "agent-1", working_directory: "/tmp/app", backend: "claude-code" },
@@ -600,6 +603,8 @@ describe("the wizard in the panel", () => {
   afterEach(async () => { runner.resetOperation(); await p.unmount(); });
 
   let probeHold: Promise<void> | null = null;
+  let planHold: Promise<void> | null = null;
+  afterEach(() => { probeHold = null; planHold = null; });                 // a test that stopped early leaves none behind
   const mountWizard = async () => {
     const onClose = vi.fn();
     await p.mount(h(wizard.SetupWizard, { onClose }));
@@ -724,10 +729,21 @@ describe("the wizard in the panel", () => {
     expect(field("wz-token").disabled, "locked while Verify runs").toBe(true);
     await type("wz-token", "token-B");                    // an input that still arrives is the form now
     release(); probeHold = null; await settle(); await settle();
-    expect(p.root.querySelector(".token-field .feedback"), "token-B is not named by A's answer").toBeNull();
+    expect(p.root.querySelector(".token-field .feedback")?.textContent ?? null, "token-B is not named by A's answer").toBeNull();
     await next();
     expect(sent.some(c => c.path === "/api/settings/quickstart/plan"), "no plan for an unverified token").toBe(false);
     expect(p.root.textContent).toContain(tn("wizardNeedVerify"));
+  });
+
+  it("#1529 review: a plan still on its way when the token changes is dropped — the review step never shows it", async () => {
+    await mountWizard();
+    await toStepThree();
+    let release!: () => void; planHold = new Promise<void>(r => { release = r; });
+    await next();
+    await type("wz-token", "token-B");
+    release(); planHold = null; await settle(); await settle();
+    expect(p.root.textContent, "still on step 3").toContain(tn("wizardStep", 3, 4));
+    expect(p.root.textContent).not.toContain(tn("wizardWillWrite"));
   });
 
   it("#1529 review: Finish carries the plan's whole target — connection id, generated token env, and that it was generated", async () => {
