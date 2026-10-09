@@ -236,19 +236,22 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
     if (selected.status !== 0 || !node.startsWith("/")) return { ok: false, stage: "install", message: "  Could not tell which Node `nvm use 22` selects. The current install was not touched." };
     plan = { ...plan, nvmBin: dirname(node) };
   }
-  // Resolve npm using the actual install environment (same environment npm will
-  // be invoked in), so the path is the one inInstallEnv would actually choose.
-  // This is a single sh -c "command -v npm" inside the install env.
-  // If this fails, npm cannot be located and install must not proceed.
-  const npmResolve = inInstallEnv(runner, plan, ["sh", "-c", "command -v npm"], { timeoutMs: 5_000 });
-  const resolvedNpmPath: string | null = npmResolve.status === 0
-    ? (npmResolve.stdout?.trim() ?? "")
-    : null;
-  if (!resolvedNpmPath || !resolvedNpmPath.startsWith("/")) {
-    return {
-      ok: false, stage: "install",
-      message: `  ✗ Cannot locate npm in the install environment (got: ${JSON.stringify(resolvedNpmPath)}); nothing was changed.`,
-    };
+  // Resolve npm using the actual install environment only when needed for retirement
+  // (nvm installs leave an old system copy; non-nvm installs do not use retireSystemCopy).
+  // For nvm: npm lives in nvmBin alongside node — run "command -v npm" inside the nvm env.
+  // For non-nvm: retirement is never called, so no path resolution is needed.
+  let resolvedNpmPath: string | null = null;
+  if (plan.viaNvm) {
+    const npmResolve = inInstallEnv(runner, plan, ["sh", "-c", "command -v npm"], { timeoutMs: 5_000 });
+    resolvedNpmPath = npmResolve.status === 0
+      ? (npmResolve.stdout?.trim() ?? "")
+      : null;
+    if (!resolvedNpmPath || !resolvedNpmPath.startsWith("/")) {
+      return {
+        ok: false, stage: "install",
+        message: `  ✗ Cannot locate npm in the nvm install environment (got: ${JSON.stringify(resolvedNpmPath)}); nothing was changed.`,
+      };
+    }
   }
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
   const env: Record<string, string> = {};
