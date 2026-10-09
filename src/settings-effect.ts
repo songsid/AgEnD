@@ -1,6 +1,6 @@
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
-import { draftQuickstart, planQuickstart, validateWizardInput, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
+import { draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
@@ -89,10 +89,14 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   } else if (path === "/api/settings/quickstart/commit") {
     const patch = record(body); if (!cfg || typeof patch.token !== "string" || typeof patch.token_env !== "string") throw new SettingsConfirmationError(400, "invalid_quickstart");
     if (validateWizardInput(patch)) throw new SettingsConfirmationError(400, "invalid_quickstart");
-    const channels = wizardChannels(cfg), plan = planQuickstart(patch as WizardPlanInput, { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
+    const channels = wizardChannels(cfg);
+    // #1519 P1 (S1): a new connection only — one that would take another's id or token env is refused, not proposed.
+    if (newConnectionConflict(patch as WizardPlanInput, { channels })) throw new SettingsConfirmationError(409, "connection_exists");
+    const plan = planQuickstart(patch as WizardPlanInput, { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
     const draft = draftQuickstart(cfg, patch as WizardPlanInput, plan);
     const normalizedBefore = structuredClone(cfg); normalizedBefore.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete normalizedBefore.channel;
-    return { diff: settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} instance ${patch.instance_name}`, force: true, secret: { key: patch.token_env, after: patch.token } }) };
+    const what = patch.connection_only === true ? `connection ${plan.channel_id}` : `instance ${patch.instance_name}`;
+    return { diff: settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} ${what}`, force: true, secret: { key: patch.token_env, after: patch.token } }) };
   } else if (path === "/ui/instances") {
     const payload = record(body), channels = cfg?.channels ?? (cfg?.channel ? [cfg.channel] : []);
     const name = payload.topic_name ?? (typeof payload.directory === "string" ? basename(payload.directory) : null);

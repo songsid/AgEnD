@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import {
+  newConnectionConflict,
   nextChannelId,
   planQuickstart,
   runProviderProbe,
@@ -54,20 +55,12 @@ describe("the plan the last step shows", () => {
     expect(JSON.stringify(plan)).not.toContain("123456:");
   });
 
-  it("warns that re-running replaces who may use the bot", () => {
-    // Re-running the wizard rewrites the connection's access block. Everyone
-    // else on the allow list stops being able to drive the bot, which is a
-    // lockout the user has to read before it happens.
-    const plan = planQuickstart({ ...BASE, admin_user_id: "42" }, {
-      ...EMPTY_ENV,
-      channels: [{
-        id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN",
-        group_id: null, allowed_users: ["42", "77", "88"],
-      }],
-    });
-
-    expect(plan.warnings.join(" ")).toContain("77, 88");
-    expect(plan.warnings.join(" ")).toContain("no longer be able to use the bot");
+  it("#1519 P1 (S1): a token env another connection holds is refused — the wizard never replaces a connection", () => {
+    const env = { channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN", group_id: null, allowed_users: ["42", "77"] }] };
+    expect(newConnectionConflict({ token_env: "AGEND_BOT_TOKEN" }, env)).toMatch(/already holds the token of the "telegram" connection/);
+    expect(newConnectionConflict({ token_env: "AGEND_TG_2_TOKEN", channel_id: "telegram" }, env)).toMatch(/already exists/);
+    expect(newConnectionConflict({ token_env: "PATH" }, env)).toMatch(/reserved|UPPER_SNAKE/);
+    expect(newConnectionConflict({ token_env: "AGEND_TG_2_TOKEN", channel_id: "telegram-2" }, env)).toBeNull();
   });
 
   it("says nothing about the allow list when nobody is dropped", () => {
@@ -79,16 +72,11 @@ describe("the plan the last step shows", () => {
     expect(plan.warnings.join(" ")).not.toContain("no longer be able");
   });
 
-  it("warns about an empty allow list, a reused variable, and a missing backend", () => {
+  it("warns about an empty allow list and a missing backend", () => {
     const noAdmin = planQuickstart(BASE, EMPTY_ENV);
-    const reused = planQuickstart({ ...BASE, admin_user_id: "7" }, {
-      ...EMPTY_ENV,
-      channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN", group_id: null }],
-    });
     const missing = planQuickstart({ ...BASE, admin_user_id: "7", backend: "codex" }, EMPTY_ENV);
 
     expect(noAdmin.warnings.join(" ")).toContain("nobody can drive the bot");
-    expect(reused.warnings.join(" ")).toContain("already used");
     expect(missing.warnings.join(" ")).toContain("not found on this host");
   });
 
@@ -100,18 +88,20 @@ describe("the plan the last step shows", () => {
 });
 
 describe("naming a new connection", () => {
-  it("takes the platform name when it is free, and qualifies it when it is not", () => {
-    expect(nextChannelId("telegram", "TG_MAIN", [])).toBe("telegram");
-    expect(nextChannelId("telegram", "TG_SECOND", [{ id: "telegram", token_env: "TG_MAIN" }]))
-      .toBe("telegram-tg_second");
-    expect(nextChannelId("telegram", "TG_THIRD", [
-      { id: "telegram", token_env: "TG_MAIN" },
-      { id: "telegram-tg_third", token_env: "OTHER" },
-    ])).toBe("telegram-tg_third-2");
+  it("takes the platform name when it is free, then numbers it — never an existing connection's id", () => {
+    expect(nextChannelId("telegram", [])).toBe("telegram");
+    expect(nextChannelId("telegram", [{ id: "telegram" }])).toBe("telegram-2");
+    expect(nextChannelId("telegram", [{ id: "telegram" }, { id: "telegram-2" }, { id: "discord" }])).toBe("telegram-3");
   });
 
-  it("keeps the id of the connection it is replacing", () => {
-    expect(nextChannelId("telegram", "TG_MAIN", [{ id: "primary", token_env: "TG_MAIN" }])).toBe("primary");
+  it("#1519 P1: a plan without a token env gets a generated one, unique against connections, providers and .env", () => {
+    const env = { ...EMPTY_ENV, channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", group_id: null }] };
+    const { token_env: _drop, ...noEnv } = BASE;
+    const second = planQuickstart(noEnv as WizardPlanInput, env);
+    expect([second.channel_id, second.token_env, second.channel.bot_token_env]).toEqual(["telegram-2", "AGEND_TELEGRAM_2_TOKEN", "AGEND_TELEGRAM_2_TOKEN"]);
+    const taken = new Set(["AGEND_TELEGRAM_TOKEN", "AGEND_TELEGRAM_2_TOKEN"]);
+    expect(planQuickstart(noEnv as WizardPlanInput, { ...env, taken_env: taken }).token_env).toBe("AGEND_TELEGRAM_2_2_TOKEN");
+    expect(planQuickstart({ ...noEnv, platform: "discord", channel_id: "persona1" } as WizardPlanInput, EMPTY_ENV).token_env).toBe("AGEND_DISCORD_PERSONA1_TOKEN");
   });
 });
 
@@ -331,7 +321,7 @@ describe("POST /api/settings/quickstart/commit", () => {
 
   it("adds a second bot on the same platform under its own id", async () => {
     // The platform name is taken by the first connection, so a second one has
-    // to be qualified — otherwise validation rejects a duplicate channel id and
+    // to be numbered — otherwise validation rejects a duplicate channel id and
     // the wizard can never add a second Telegram bot at all.
     const dir = tempDir();
     const { ctx } = context(dir);
@@ -346,7 +336,7 @@ describe("POST /api/settings/quickstart/commit", () => {
     expect(res.status).toBe(200);
     const channels = (ctx.fleetConfig as unknown as { channels: Array<Record<string, unknown>> }).channels;
     expect(channels).toHaveLength(2);
-    expect(channels.map(channel => channel.id)).toEqual(["telegram", "telegram-tg_second"]);
+    expect(channels.map(channel => channel.id)).toEqual(["telegram", "telegram-2"]);
   });
 
   it("writes nothing at all when the assembled config turns out invalid", async () => {
@@ -396,18 +386,55 @@ describe("POST /api/settings/quickstart/commit", () => {
     expect(ctx.fleetConfig).toEqual(before);
   });
 
-  it("replaces the connection that already owns the variable instead of adding a second", async () => {
+  it("#1519 P1 (S1): never replaces the connection that owns the variable — refused, and nothing moves", async () => {
     const dir = tempDir();
-    const { ctx } = context(dir);
+    const { ctx, saveFleetConfig } = context(dir);
     (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [
       { id: "telegram", type: "telegram", bot_token_env: "AGEND_BOT_TOKEN", group_id: "-1" },
     ];
+    const before = structuredClone(ctx.fleetConfig);
 
-    await request("/api/settings/quickstart/commit", ctx, "POST", valid);
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", valid);
 
+    expect(res.status).toBe(409);
+    expect(String(res.body.error)).toMatch(/already holds the token of the "telegram" connection/);
+    expect([saveFleetConfig.mock.calls.length, existsSync(join(dir, ".env"))]).toEqual([0, false]);
+    expect(ctx.fleetConfig).toEqual(before);
+  });
+
+  it("#1519 P1: the same server, a second bot of the same platform — both connections stay (plan → commit)", async () => {
+    const dir = tempDir();
+    const { ctx } = context(dir);
+    const first = { id: "discord", type: "discord", bot_token_env: "AGEND_DISCORD_TOKEN", group_id: "555", mode: "topic", access: { mode: "locked", allowed_users: ["1"] } };
+    (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [first];
+    writeFileSync(join(dir, ".env"), "AGEND_DISCORD_TOKEN=first\n");
+    const { token_env: _drop, ...noEnv } = valid;
+    const input = { ...noEnv, platform: "discord", guild_id: "555", group_id: undefined };
+
+    const plan = await request("/api/settings/quickstart/plan", ctx, "POST", input);
+    expect(plan.status).toBe(200);
+    expect([plan.body.channel_id, plan.body.token_env]).toEqual(["discord-2", "AGEND_DISCORD_2_TOKEN"]);
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", { ...input, token_env: plan.body.token_env, token: "999:SECOND" });
+
+    expect(res.status).toBe(200);
     const channels = (ctx.fleetConfig as unknown as { channels: Array<Record<string, unknown>> }).channels;
-    expect(channels).toHaveLength(1);
-    expect(channels[0]).toMatchObject({ bot_token_env: "AGEND_BOT_TOKEN", group_id: "-100123" });
+    expect(channels.map(c => [c.id, c.bot_token_env, c.group_id])).toEqual([["discord", "AGEND_DISCORD_TOKEN", "555"], ["discord-2", "AGEND_DISCORD_2_TOKEN", "555"]]);
+    expect(channels[0]).toEqual(first);
+    expect(readFileSync(join(dir, ".env"), "utf8")).toBe("AGEND_DISCORD_TOKEN=first\nAGEND_DISCORD_2_TOKEN=999:SECOND\n");
+  });
+
+  it("#1519 P1: New connection — connection_only adds the connection and writes no agent", async () => {
+    const dir = tempDir();
+    const { ctx } = context(dir);
+    const instancesBefore = structuredClone(ctx.fleetConfig!.instances);
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", {
+      platform: "telegram", connection_only: true, token_env: "AGEND_TELEGRAM_TOKEN", group_id: "-100777", token: "123456:NEW",
+    });
+    expect(res.status).toBe(200);
+    expect(ctx.fleetConfig!.instances).toEqual(instancesBefore);
+    const channels = (ctx.fleetConfig as unknown as { channels: Array<Record<string, unknown>> }).channels;
+    expect(channels.at(-1)).toMatchObject({ id: "telegram", bot_token_env: "AGEND_TELEGRAM_TOKEN", group_id: "-100777", access: { mode: "locked", allowed_users: [] } });
+    expect(JSON.stringify(res.body)).not.toContain("123456:NEW");
   });
 
   it.each([

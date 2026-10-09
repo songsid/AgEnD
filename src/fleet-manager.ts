@@ -1207,7 +1207,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!settlement) return false;
         await settlement;
         const job = this.providerSecretJobs.get(id) ?? this.connectionSecretJobs.get(id) ?? this.connectionBindingJobs.get(id);
-        return !!job && ["applied", "applied_next_use", "reloaded"].includes(job.result);
+        // restart_required: the value is stored and committed (the receipt is checked above), only no adapter was running
+        // to take it — the change is done, and the page says it starts with the next restart (#1519 P1), never "failed".
+        return !!job && ["applied", "applied_next_use", "reloaded", "restart_required"].includes(job.result);
       },
     });
     this.settingsConfirmation = gate; return gate;

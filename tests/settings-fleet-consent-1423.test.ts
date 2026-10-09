@@ -153,6 +153,26 @@ describe("#1423 actual General nonce handler", () => {
   });
 });
 describe("#1423 actual queued runners and owned cleanup", () => {
+  it("#1519 P1: a token stored for a connection with no running adapter (restart_required) is a done change for the gate, not a failed one", async () => {
+    const h = harness(); writeFileSync(join(h.dir, ".env"), "TEST_BOT_TOKEN=old\n"); vi.stubEnv("TEST_BOT_TOKEN", "old");
+    h.fm.adapters.delete("primary"); h.fm.adapter = null;                       // the connection is not running
+    const cap = new SettingsExecution({ current: () => true, snapshot: () => h.fm.fleetConfig });
+    const job: any = { id: "no-adapter", connectionId: "primary", status: "running", result: "applying" };
+    h.fm.connectionSecretJobs.set(job.id, job);
+    h.fm.queueSettingsOperation(job, [settingsFileResource(join(h.dir, ".env"))], cap, (execution: SettingsExecution) => h.fm.runConnectionSecretApply(job, "stored-sentinel", execution));
+    await h.fm.settingsJobSettlements.get(job.id);
+    expect([job.result, cap.completed, readFileSync(join(h.dir, ".env"), "utf8").includes("stored-sentinel")]).toEqual(["restart_required", true, true]);
+    const gate = h.fm.settingsGate(); h.store = gate.store;
+    expect(await (gate as any).options.job(job.id), "the gate's job check").toBe(true);
+    // Control: a rolled-back job is still a failure.
+    const failed: any = { id: "rolled", connectionId: "primary", status: "running", result: "applying" };
+    h.fm.connectionSecretJobs.set(failed.id, failed);
+    h.fm.queueSettingsOperation(failed, [settingsFileResource(join(h.dir, ".env"))], undefined, async () => { throw new Error("boom"); });
+    await h.fm.settingsJobSettlements.get(failed.id);
+    expect([failed.result, await (gate as any).options.job(failed.id)]).toEqual(["rollback_failed", false]);
+    cap.close();
+  });
+
   it("a token runner commits its receipt before returning, so revocation at queue settlement cannot fabricate rollback", async () => {
     const h = harness(); writeFileSync(join(h.dir, ".env"), "TEST_BOT_TOKEN=old\n"); vi.stubEnv("TEST_BOT_TOKEN", "old");
     let alive = true; const cap = new SettingsExecution({ current: () => alive, snapshot: () => h.fm.fleetConfig });
