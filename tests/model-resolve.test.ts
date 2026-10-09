@@ -95,7 +95,7 @@ describe("resolveInstanceModel precedence", () => {
   it("explains an unresolved default when no probe has run", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { defaults: { backend: "claude-code" }, instances: { worker: {} } } as any;
-    expect(fm.resolveInstanceModel("worker").display).toBe("default (not probed yet)");
+    expect(fm.resolveInstanceModel("worker").display).toBe("default (detected when it starts)");
   });
 
   it("modelDisplayForInstance returns the resolved display string", () => {

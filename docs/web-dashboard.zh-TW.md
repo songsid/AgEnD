@@ -8,9 +8,9 @@ AgEnD 的 web dashboard 是 fleet 自己跑的一個小型 web server，上面�
 |---|---|
 | **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/config`） |
 | **`/view`** | 以讀取為主的總覽：每個 agent 的即時終端、名單、用量，也可以編輯 agent 的個人檔案與頭像 |
-| **`/settings`** | fleet 設定，可以套用並重啟 |
+| **`/settings`** | fleet 設定——agent、連線、ClassicBot、預設值、`fleet.yaml`——可以套用並重啟。每個分頁都有自己的網址：`/settings/bots`、`…/classic`、`…/general`、`…/advanced`（`/settings` 是 Agent） |
 
-`/ui` 和 `/view` 是同一個有側欄的 app：instance 清單、**Fleet**、**檢視**、**設定**、主題、語言和 **Session** 選單都在側欄。在裡面切換不會重新載入頁面，上一頁／下一頁也可以用。`/settings` 目前仍是獨立頁面，保留原本的導覽列。打開 `/` 會進入 `/ui`，並回到你上次開著的聊天。舊的 `/ui#instance=<name>` 連結仍然有效，登入後也會帶到正確的聊天。
+`/ui`、`/view` 和 `/settings` 是同一個有側欄的 app：instance 清單、**Fleet**、**檢視**、**設定**、主題、語言和 **Session** 選單都在側欄。在裡面切換不會重新載入頁面，上一頁／下一頁也可以用。打開 `/` 會進入 `/ui`，並回到你上次開著的聊天。舊的 `/ui#instance=<name>` 連結仍然有效，登入後也會帶到正確的聊天。
 
 server 只聽 **`127.0.0.1`**，port 是 `health_port`（預設 **19280**）。除非你另外開通，否則只有本機連得到，請見[從別的裝置連線](#從別的裝置連線)。
 
@@ -35,7 +35,7 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 - session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。登入後最多 **12 小時**、或閒置 **2 小時**就會結束（以先到者為準）；本機 session 在 fleet 重啟後仍有效。公開 session 綁定單次入口，四小時／閒置 30 分鐘及入口關閉都會使其失效；不能用於本機或下一個入口，本機 cookie 與 header token 也不能用於公開入口。
 - 只有你的操作才算使用：打開頁面或聊天、送出訊息、變更任何東西。頁面自己定時做的事一律不算：即時串流（重新連線也一樣）、備援輪詢，以及 `/view` 的終端、名單與用量更新。所以開著不管的分頁——包括 `web.view_access: session` 時的 `/view`——仍會在閒置期限後結束（本機 2 小時、公開 session 30 分鐘）。
 - session 結束時，頁面會提示一次（「登入已結束。重新登入」），而且保留你畫面上正在做的事。
-- **Session 選單**（`/ui` 和 `/view` 在側欄最下方；`/settings` 在上方列）會顯示：
+- **Session 選單**（在側欄最下方）會顯示：
   - 你目前用哪個瀏覽器登入、這個 session 什麼時候到期；
   - 其他已登入的裝置，每台都可以按 **Sign out**；
   - **全部登出（Sign out everywhere）**。
@@ -149,6 +149,15 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
 - **編輯 agent 的個人檔案或頭像一律需要登入。** 名單順序只保存在這個瀏覽器。
 - 腳本仍然可以用 `X-Agend-Token` header 寫入。
 
+## `/settings`
+
+**Agent**、**連線**、**ClassicBot**、**一般**和**開發者**（以 YAML 或 JSON 呈現整份 `fleet.yaml`）是分頁，各有自己的網址。搜尋框可篩選 agent、連線和 ClassicBot 房間；**設定精靈** 的四個步驟和 `agend quickstart` 相同。
+
+- **變更會先暫存，再一起套用。** 在 agent 或連線的 **設定** 對話框按 **暫存變更** 就會暫存；一般分頁的 **檢查變更** 也一樣。下方的列會顯示數量和套用的代價（立即生效、重新啟動該 agent，或重新啟動 AgEnD）；**套用變更** 一次套用全部，**捨棄** 則全部丟掉。在分頁之間切換時暫存的變更會保留；帶著暫存變更離開設定時，會先問 **要捨棄 N 項尚未套用的變更嗎？**
+- **按下套用後，即使離開也會繼續。** 你可以去聊天或任何地方：寫入、重新載入和進度都會繼續，頂端會有一行顯示進度，回到設定時可以看到細節。前一次套用完成前，不能再套用一次。需要重新啟動 AgEnD 本身時，會提供 **重新啟動 AgEnD**（另有確認）。
+- **新增 agent** 和側欄的 ✎（新增 instance）是同一個對話框。
+- **需要 fleet 管理員確認的變更**（見[確認敏感變更](#確認敏感變更)）會在任何面板顯示一張卡片：變更內容、剩餘時間，以及 **撤回**。套用會等它；確認後其餘部分繼續，若被拒絕或逾時，之後的變更都不會套用，並重新暫存（bot token 需要重新輸入）。
+
 ## 從別的裝置連線
 
 ### 手機使用臨時公開連結
@@ -220,6 +229,6 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 
 變更存取／F／C 名單、secret、connection 目的地／順序、公開曝光或控制類 instance 設定會回傳 `202 pending_confirmation`。請求人可用 `GET /api/settings/pending[/:id]` 列出或輪詢，並用 `DELETE /api/settings/pending/:id` 撤回尚未被認領的請求；其他 session 會得到 404。輪詢屬被動讀取，不延長登入有效期；`remaining_ms` 用來倒數，顯示的時間戳不是授權期限。
 
-Fleet admin 在 General 核對遮蔽 secret 的 diff 後確認。Chat 不可用時執行本機命令 `agend settings confirm <id>`；Reject、到期或 session 撤銷都不套用變更。Apply 重試須沿用相同的 `Idempotency-Key` 與 body，回到同一個請求。終態失敗後應重新檢查並用新 key 提出；secret 必須重新輸入。Settings shell 的等待狀態顯示由 #1408 另外處理。
+Fleet admin 在 General 核對遮蔽 secret 的 diff 後確認。Chat 不可用時執行本機命令 `agend settings confirm <id>`；Reject、到期或 session 撤銷都不套用變更。Apply 重試須沿用相同的 `Idempotency-Key` 與 body，回到同一個請求。終態失敗後應重新檢查並用新 key 提出；secret 必須重新輸入。在網頁 app 中，等待確認的請求會在任何面板顯示成一張卡片，附倒數時間和 **撤回**（見 [`/settings`](#settings)）。
 
 首次 Setup 同樣回傳 pending 請求。在 host 確認後，還要明確按 **Start AgEnD**。Pending 回應、舊的成功 commit 或已改動的設定，都不能將 setup listener 交給 fleet。

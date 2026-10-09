@@ -167,21 +167,22 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
     } finally { h.stop(); }
   });
 
-  // #1408 step 2: /view is the app shell on its View panel. Signed in, it is the same page as /ui (the same preview origin
-  // and frame-src); anonymous under view_access: open it is the View-only shell, with no preview at all.
-  it("/view signed in carries /ui's preview attributes and frame-src; anonymous /view is view-only with none; /settings and sign-in never get one; every dashboard response keeps DENY and frame-ancestors 'none'", async () => {
+  // #1408 steps 2 and 3: /view and /settings are the app shell on their panels. Signed in, each is the same page as /ui
+  // (the same preview origin and frame-src: entering at /settings and switching to Chat is entering at /ui); anonymous
+  // /view under view_access: open is the View-only shell, with no preview at all. Sign-in never gets one.
+  it("/view and /settings signed in carry /ui's preview attributes and frame-src; anonymous /view is view-only with none; sign-in never gets one; every dashboard response keeps DENY and frame-ancestors 'none'", async () => {
     const h = await startFleet();
     try {
       const frame = `frame-src http://127.0.0.1:${h.pport.port}/frame`;
       const ui = await raw(h.port, "GET", "/ui", { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
-      for (const p of ["/view", "/view/alpha"]) {
+      for (const p of ["/view", "/view/alpha", "/settings", "/settings/general"]) {
         const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
         expect(r.status, p).toBe(200);
         expect(directive(String(r.headers["content-security-policy"]), "frame-src"), p).toBe(frame);
         expect(bodyAttrs(r.body), p).toEqual(bodyAttrs(ui.body));
         expect(bodyAttrs(r.body)["data-mode"], p).toBe("full");
       }
-      for (const p of ["/settings", "/signin"]) {
+      for (const p of ["/signin"]) {
         const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
         expect(directive(String(r.headers["content-security-policy"]), "frame-src"), p).toBe("");
       }
