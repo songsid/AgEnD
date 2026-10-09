@@ -60,6 +60,7 @@ import {
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
+import { binaryProbe } from "./binary-probe.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js";
@@ -4247,17 +4248,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * Probe the same executable set exposed by the web backend catalog.
    *
-   * This deliberately has no cache: an install `/login` ran can add a
+   * This deliberately skips the cache: an install `/login` ran can add a
    * binary to PATH while the fleet process remains alive, and the next bare
    * `/login` must see it without requiring a restart or an explicit cache
-   * invalidation call.
+   * invalidation call. The fresh answers also refresh the shared cache that
+   * `/ui/backends` reads. #1490: async PATH walk, no `which` fork on the loop.
    */
-  private probeInstalledBackends(): Set<string> {
-    const installed = new Set<string>();
-    for (const [backend, info] of Object.entries(BACKEND_INSTALLATION_INFO)) {
-      if (checkBinaryInstalled(info.binary)) installed.add(backend);
-    }
-    return installed;
+  private async probeInstalledBackends(): Promise<Set<string>> {
+    const entries = Object.entries(BACKEND_INSTALLATION_INFO);
+    const found = await Promise.all(entries.map(([, info]) => binaryProbe.probe(info.binary, { fresh: true })));
+    return new Set(entries.filter((_, i) => found[i] !== null).map(([backend]) => backend));
   }
 
   /**
@@ -12556,7 +12556,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const name of this.configuredBackendInstanceNames()) {
       configured.add(this.backendNameOf(name));
     }
-    const installed = this.probeInstalledBackends();
+    const installed = await this.probeInstalledBackends();
     // One entry point for "get this CLI working" (#1131): a backend that is
     // not installed is offered too, and the click installs it first, then
     // signs in (startLoginSession routes it).
