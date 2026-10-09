@@ -2,6 +2,7 @@ import { settingsRequestExecution, settingsWrite } from "./settings-request-capa
 import { type SettingsExecution, SettingsExecutionError, settingsFileResource, trySettingsLease } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 /**
  * The Settings setup wizard's server side.
  *
@@ -345,6 +346,7 @@ export function handleQuickstartRequest(
   }
 
   if (method === "POST" && path === "/api/settings/quickstart/probe") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "Token verification is not permitted over a public link" }); return true; }
     readBody(req, 16 * 1024).then(async buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;
