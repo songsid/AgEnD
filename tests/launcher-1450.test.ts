@@ -407,14 +407,28 @@ describe("the sh bins: AgEnD starts with no Node on PATH", () => {
     expect(existsSync(mark)).toBe(false);
   });
 
-  it.skipIf(!ON_FIXTURE_HOST)("touched after its verification (same bytes, newer mtime): not admitted by the bin either", () => {
+  /**
+   * The sh bin's own admission, one property at a time: each case changes exactly one thing the receipt binds, and the
+   * candidate — a runtime that leaves a marker whenever it runs — must never run (the JS launcher would refuse it too,
+   * so "exit 1" alone would not tell whether the bin let it run).
+   */
+  it.skipIf(!ON_FIXTURE_HOST).each([
+    ["touched (same bytes, newer mtime)", (f: ReturnType<typeof fixture>, node: string) => { const t = new Date(Date.now() + 60_000); utimesSync(node, t, t); void f; }],
+    ["resized with its mtime put back", (f: ReturnType<typeof fixture>, node: string) => { const st = statSync(node); writeFileSync(node, readFileSync(node, "utf8") + "# grown\n"); utimesSync(node, st.atime, st.mtime); void f; }],
+    ["a receipt naming another file", (f: ReturnType<typeof fixture>) => { const file = join(f.pkg, ".agend-runtime.json"); writeFileSync(file, readFileSync(file, "utf8").replace(/"nodePath": "[^"]*"/, `"nodePath": "${join(f.root, "elsewhere", "node")}"`)); }],
+  ])("the bin does not run a candidate %s", (_n, change) => {
     const f = fixture({ runtime: "ok", npmLayout: true });
-    expect(postinstall(f).status).toBe(0);
-    const future = new Date(Date.now() + 60_000);
-    utimesSync(join(f.runtimeHome, "bin", "node"), future, future);
+    const node = join(f.runtimeHome, "bin", "node");
+    const mark = join(f.root, "candidate-ran");
+    writeFileSync(node, `#!/bin/sh\necho ran >> '${mark}'\nexec '${process.execPath}' "$@"\n`);
+    expect(postinstall(f).status).toBe(0);                // the proof itself runs it: that is expected
+    rmSync(mark, { force: true });
+    const receiptTime = statSync(join(f.pkg, ".agend-runtime.json")).mtime;
+    utimesSync(node, receiptTime, new Date(receiptTime.getTime() - 5_000));   // verified before its receipt was written
+    change(f, node);
     const r = bin(f, "agend", toolsOnly);
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain("changed since it was verified");
+    expect(existsSync(mark)).toBe(false);
   });
 
   it("a valid AGEND_NODE starts AgEnD with no bundled Node and no node on PATH", () => {
