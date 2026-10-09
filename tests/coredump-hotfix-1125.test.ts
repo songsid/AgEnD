@@ -201,7 +201,9 @@ describe("`agend update` when the package is already current (built CLI copy, st
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: agendHome,
+      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+      // service starts the verified install)
+      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
       logPath: join(agendHome, "daemon.log"), path: "/usr/bin:/bin",
     }));
     const bin = join(home, "bin");
@@ -215,7 +217,9 @@ describe("`agend update` when the package is already current (built CLI copy, st
     mkdirSync(join(globalPkg, "dist"), { recursive: true });
     symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
     writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version, bin: { agend: "dist/cli.js" } }));
-    writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\nexit 0\n`);
+    // The installed `agend`: reports the version, keeps the unit as is (`install`), and runs this build for the rest —
+    // so the restart the update dispatches through it is the real restart code.
+    writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\n[ "$1" = "install" ] && exit 0\nexec '${process.execPath}' '${cli}' "$@"\n`);
     chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
     symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
     writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "npm $*" >> '${log}'\ncase "$*" in view*) echo '${version}';; "root -g") echo '${join(home, "lib", "node_modules")}';; "prefix -g") echo '${home}';; esac\nexit 0\n`);
@@ -387,7 +391,9 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     const unitDir = join(home, ".config", "systemd", "user");
     mkdirSync(unitDir, { recursive: true });
     writeFileSync(join(unitDir, "com.agend.fleet.service"), renderSystemdUnit({
-      label: "com.agend.fleet", execPath: "/usr/local/bin/agend", workingDirectory: agendHome,
+      // as `agend install` writes it for the installed package: its global bin (#1449: a restart is refused unless the
+      // service starts the verified install)
+      label: "com.agend.fleet", execPath: join(home, "bin", "agend"), workingDirectory: agendHome,
       logPath: join(agendHome, "daemon.log"), path: "/usr/bin:/bin",
     }));
     const bin = join(home, "bin");
@@ -402,7 +408,7 @@ describe("upgrade path: the restart runs through the newly installed binary (bui
     mkdirSync(join(globalPkg, "dist"), { recursive: true });
     symlinkSync(join(process.cwd(), "node_modules"), join(globalPkg, "node_modules"));
     writeFileSync(join(globalPkg, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "99.0.0-beta.3", bin: { agend: "dist/cli.js" } }));
-    writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\necho "agend $*" >> '${log}'\n[ "$*" = "--version" ] && { echo 99.0.0-beta.3; exit 0; }\nexec '${process.execPath}' '${cli}' "$@"\n`);
+    writeFileSync(join(globalPkg, "dist", "cli.js"), `#!/bin/sh\necho "agend $*" >> '${log}'\n[ "$*" = "--version" ] && { echo 99.0.0-beta.3; exit 0; }\n[ "$1" = "install" ] && exit 0\nexec '${process.execPath}' '${cli}' "$@"\n`);
     chmodSync(join(globalPkg, "dist", "cli.js"), 0o755);
     symlinkSync(join(globalPkg, "dist", "cli.js"), join(bin, "agend"));
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh

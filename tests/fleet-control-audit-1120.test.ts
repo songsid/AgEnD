@@ -365,7 +365,32 @@ describe("the service-level commands, behind inert stubs", () => {
     const future = new Date(Date.now() + 3_600_000);
     utimesSync(join(copy, "src", "cli.ts"), future, future);
     const version = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version as string;
-    writeFileSync(join(inert, "bin", "npm"), `#!/bin/sh\n[ "$1" = view ] && { echo ${version}; exit 0; }\necho "npm $@" >> "${join(inert, "calls")}"\nexit 1\n`);
+    // The copy is also what npm reports as the installed global package (#1449: before restarting a fleet that
+    // predates the install, the update verifies that package and restarts through ITS `agend`): its bin is a wrapper
+    // that runs this source through tsx, and that is the `agend` on PATH.
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    writeFileSync(join(copy, "package.json"), JSON.stringify({ ...manifest, bin: { agend: "bin/agend" } }));
+    mkdirSync(join(copy, "bin"));
+    writeFileSync(join(copy, "bin", "agend"), `#!/bin/sh\nexec '${process.execPath}' --import tsx '${join(copy, "src", "cli.ts")}' "$@"\n`);
+    chmodSync(join(copy, "bin", "agend"), 0o755);
+    const globalRoot = join(inert, "global", "lib", "node_modules");
+    mkdirSync(join(globalRoot, "@songsid"), { recursive: true });
+    symlinkSync(copy, join(globalRoot, "@songsid", "agend"));
+    mkdirSync(join(inert, "global", "bin"));
+    symlinkSync(join(copy, "bin", "agend"), join(inert, "global", "bin", "agend"));   // the bin link npm makes
+    rmSync(join(inert, "bin", "agend"));
+    symlinkSync(join(copy, "bin", "agend"), join(inert, "bin", "agend"));
+    for (const tool of ["sh", "readlink"]) symlinkSync(execFileSync("which", [tool], { encoding: "utf8" }).trim(), join(inert, "bin", tool));
+    symlinkSync(process.execPath, join(inert, "bin", "node"));
+    writeFileSync(join(inert, "bin", "npm"), `#!/bin/sh
+case "$1 $2" in
+  "view "*) echo ${version}; exit 0;;
+  "root -g") echo '${globalRoot}'; exit 0;;
+  "prefix -g") echo '${join(inert, "global")}'; exit 0;;
+esac
+echo "npm $@" >> "${join(inert, "calls")}"
+exit 1
+`);
     mkdirSync(join(inert, "home", ".agend"), { recursive: true });
     symlinkSync(execFileSync("which", ["ps"], { encoding: "utf8" }).trim(), join(inert, "bin", "ps"));   // process start time
     const decoy: ChildProcess = spawn("bash", ["-c", 'exec -a "agend fleet start" sleep 120'], { stdio: "ignore" });
@@ -382,7 +407,7 @@ describe("the service-level commands, behind inert stubs", () => {
           else reject(error);
         });
       });
-      expect(result.stdout).toContain("restarting it onto");               // it reached the restart step
+      expect(result.stdout + result.stderr, result.stdout + result.stderr).toContain("verified — restarting the fleet onto it"); // it reached the restart step
       expect(result.stderr).not.toContain("Refusing");
       const trail = readFileSync(join(inert, "home", ".agend", AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line) as AuditEntry);
       expect(trail.map(entry => [entry.action, entry.outcome, entry.detail])).toEqual([

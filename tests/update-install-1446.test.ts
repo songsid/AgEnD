@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { systemdRestartOutcome } from "../src/service-installer.js";
 import {
-  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, runUpdateInstall,
+  isLocalLinkTarget, NATIVE_CHECK_SCRIPT, newAgendInvocation, runUpdateInstall, serviceRecordedExecutable, serviceTargetCheck,
   type CommandRunner, type UpdateInstallPlan,
 } from "../src/update-install.js";
 
@@ -104,7 +104,7 @@ describe("P0: the current install is never removed before the new one has succee
     const w = world();
     runUpdateInstall(plan(fixturePackage(w.root, "v2112", "2.1.12"), "2.1.12"), w.runner);
     const outcome = runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0")), w.runner);
-    expect(outcome).toEqual({ ok: true, agendPath: join(w.prefix, "bin", "agend"), version: "2.2.0" });
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(w.prefix, "bin", "agend"), version: "2.2.0" });
     expect(w.callLog().some(line => /\bunlink\b|\buninstall\b/.test(line))).toBe(false);
   });
 
@@ -215,7 +215,7 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
   it("installs, verifies with nvm's node, and removes the old system copy last", () => {
     const { w, nvmSh, nvmPrefix } = nvmWorld();
     const outcome = runUpdateInstall({ pkg: fixturePackage(w.root, "v220", "2.2.0"), targetVersion: "2.2.0", viaNvm: true, nvmSh }, w.runner);
-    expect(outcome).toEqual({ ok: true, agendPath: join(nvmPrefix, "bin", "agend"), version: "2.2.0" });
+    expect(outcome).toMatchObject({ ok: true, agendPath: join(nvmPrefix, "bin", "agend"), version: "2.2.0" });
     const calls = w.callLog();
     expect(calls).toContain("nvm-node");                                     // the checks ran on nvm's node
     expect(calls.at(-1)).toBe("sudo -n npm uninstall -g @songsid/agend");
@@ -240,6 +240,38 @@ describe("item 1: an nvm install runs every step inside nvm's Node 22 — nvm.sh
     expect(readFileSync(join(w.root, "agend.log"), "utf8").trim()).toBe("agend restart");
     expect(existsSync(join(w.root, "pwned"))).toBe(false);
     expect(newAgendInvocation({ viaNvm: false, nvmSh }, "/usr/bin/agend")).toEqual({ command: "/usr/bin/agend", args: [] });
+  });
+});
+
+describe("#1449 review: the service a restart would start must be the verified install", () => {
+  const pkgDir = "/usr/lib/node_modules/@songsid/agend";
+  const realpath = (p: string) => ({
+    "/usr/bin/agend": `${pkgDir}/dist/cli.js`,                       // the global bin link
+    [`${pkgDir}/dist/cli.js`]: `${pkgDir}/dist/cli.js`,
+    "/home/u/src/agend/dist/cli.js": "/home/u/src/agend/dist/cli.js", // another checkout
+  } as Record<string, string>)[p] ?? null;
+  const unit = (exec: string) => ({ path: "/home/u/.config/systemd/user/com.agend.fleet.service", content: `[Service]\nType=notify\nExecStart=${exec} fleet start\n` });
+  const plist = (exec: string) => ({ path: "/Users/u/Library/LaunchAgents/com.agend.fleet.plist", content: `<plist><dict><key>ProgramArguments</key>\n    <array>\n        <string>${exec}</string>\n        <string>fleet</string>\n    </array></dict></plist>` });
+
+  it.each([
+    ["a systemd unit recording the global bin link", unit("/usr/bin/agend"), true],
+    ["a systemd unit recording the inner cli.js", unit(`${pkgDir}/dist/cli.js`), true],
+    ["a systemd unit still starting another checkout", unit("/home/u/src/agend/dist/cli.js"), false],
+    ["a systemd unit whose executable no longer exists", unit("/opt/gone/agend"), false],
+    ["a launchd plist recording the bin link", plist("/usr/bin/agend"), true],
+    ["a launchd plist starting another checkout", plist("/home/u/src/agend/dist/cli.js"), false],
+    ["an unreadable service file", { path: "/etc/systemd/system/agend.service", content: "" }, false],
+  ])("%s → ok=%s", (_name, service, ok) => {
+    expect(serviceTargetCheck(service, pkgDir, realpath).ok).toBe(ok);
+  });
+
+  it("no service file (a detached fleet) has nothing to check", () => {
+    expect(serviceTargetCheck(null, pkgDir, realpath)).toEqual({ ok: true, servicePath: null });
+  });
+
+  it("a sibling directory whose name starts like the package is not inside it", () => {
+    expect(serviceTargetCheck(unit("/x"), pkgDir, () => `${pkgDir}-old/dist/cli.js`).ok).toBe(false);
+    expect(serviceRecordedExecutable("ExecStart=/a/b fleet start")).toBe("/a/b");
   });
 });
 

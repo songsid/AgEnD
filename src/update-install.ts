@@ -37,7 +37,7 @@ export interface UpdateInstallPlan {
 }
 
 export type UpdateInstallOutcome =
-  | { ok: true; agendPath: string; version: string }
+  | { ok: true; agendPath: string; version: string; dir: string }
   | { ok: false; stage: "install" | "verify"; message: string };
 
 /**
@@ -149,7 +149,7 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
     return fail(`  ✗ Verification failed: the installed package cannot open a database with this Node (${native.signal ?? `exit ${native.status}`}). ${native.stderr.trim().split("\n").pop() ?? ""}`.trimEnd());
   }
 
-  return { ok: true, agendPath, version };
+  return { ok: true, agendPath, version, dir: identity.dir };
 }
 
 export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner): UpdateInstallOutcome {
@@ -188,3 +188,37 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   }
   return verified;
 }
+
+/**
+ * What the authoritative service definition would start: the executable recorded in a systemd unit's `ExecStart=` or
+ * a launchd plist's first `ProgramArguments` string. null when the file names none.
+ */
+export function serviceRecordedExecutable(content: string): string | null {
+  const exec = /^ExecStart=(\S+)/m.exec(content);
+  if (exec) return exec[1]!;
+  const program = /<key>ProgramArguments<\/key>\s*<array>\s*<string>([^<]+)<\/string>/.exec(content);
+  return program ? program[1]!.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") : null;
+}
+
+export type ServiceTargetCheck =
+  | { ok: true; servicePath: string | null }
+  | { ok: false; servicePath: string; recorded: string | null };
+
+/**
+ * Before a restart activates a verified install (#1449 review): the authoritative service definition — if there is
+ * one — must start code from that very package. The recorded executable may be the global bin link or the inner
+ * `dist/cli.js` (`agend install` records `process.argv[1]`), so it is compared by realpath, as a path inside the
+ * verified package directory. No service file: a detached fleet, nothing to check.
+ */
+export function serviceTargetCheck(
+  service: { path: string; content: string } | null,
+  pkgDir: string,
+  realpath: (path: string) => string | null,
+): ServiceTargetCheck {
+  if (!service) return { ok: true, servicePath: null };
+  const recorded = serviceRecordedExecutable(service.content);
+  const real = recorded ? realpath(recorded) : null;
+  const inside = real !== null && (real === pkgDir || real.startsWith(`${pkgDir}/`));
+  return inside ? { ok: true, servicePath: service.path } : { ok: false, servicePath: service.path, recorded };
+}
+

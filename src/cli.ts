@@ -30,6 +30,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  realpathSync,
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -1423,6 +1424,59 @@ program
       }
     };
 
+    const nvmSh = join(homedir(), ".nvm", "nvm.sh");
+    /**
+     * Activate a VERIFIED install (#1449 review), on both the update path and the already-installed retry: refresh the
+     * service through the verified binary, require the authoritative service definition to start code from the
+     * verified package, then restart through the verified binary — never through whatever invoked this command
+     * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
+     */
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string }, viaNvm: boolean): Promise<void> => {
+      const { newAgendInvocation, serviceTargetCheck } = await import("./update-install.js");
+      const { getServicePath, getSystemServicePath } = await import("./service-installer.js");
+      const newAgend = newAgendInvocation({ viaNvm, nvmSh }, verified.agendPath);
+
+      // ── Update service file ──
+      // `agend install` activates by default. During update the restart stage owns stop/start and progress
+      // reporting, so only refresh the service file here to avoid restarting the fleet twice.
+      try {
+        const installResult = spawnSync(newAgend.command, [...newAgend.args, "install", "--no-activate"], { encoding: "utf-8", timeout: 15000 });
+        if (installResult.status === 0) {
+          console.log(`  ✓ Service updated`);
+        } else {
+          console.log(`  ⚠ Service file update failed: ${(installResult.stderr || installResult.stdout || "unknown error").trim()}`);
+        }
+      } catch (e) {
+        console.log(`  ⚠ Service file update failed: ${(e as Error).message}`);
+      }
+
+      // ── The service must start the verified package ──
+      const servicePath = getSystemServicePath() ?? getServicePath();
+      let service: { path: string; content: string } | null = null;
+      if (servicePath) { try { service = { path: servicePath, content: readFileSync(servicePath, "utf-8") }; } catch { service = { path: servicePath, content: "" }; } }
+      const target = serviceTargetCheck(service, verified.dir, path => { try { return realpathSync(path); } catch { return null; } });
+      if (!target.ok) {
+        const message = `  ✗ ${target.servicePath} starts ${target.recorded ?? "nothing readable"}, not the verified install at ${verified.dir}. Not restarting the fleet; fix the service (agend install) and run agend restart.`;
+        console.error(message);
+        if (!setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() })) clearUpdateMarker(DATA_DIR);
+        process.exitCode = 1;
+        return;
+      }
+
+      // ── Refresh installed shell completions ──
+      // The completion script embeds this version's subcommand names, so a previously installed static file goes
+      // stale on update. --refresh only rewrites artifacts that already exist. Run through the NEW binary.
+      try {
+        spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], { encoding: "utf-8", timeout: 15_000, stdio: "ignore" });
+      } catch { /* cosmetic — never block an update on completion refresh */ }
+
+      // ── Restart fleet ──
+      // Through the verified binary: the inline restart would execute this process's code, which may be the
+      // version being upgraded from — or another checkout altogether. `agend restart` does the service detection
+      // (system systemd → user systemd → launchd → detached pid).
+      restartFleetForUpdate(newAgend.command, newAgend.args, verified.version);
+    };
+
     if (shouldSkipUpdate(pkgVersion, targetVersion, opts.force)) {
       // Installed already — but is the running fleet? An update whose restart
       // failed leaves the old process running against the new files (#1113
@@ -1443,7 +1497,7 @@ program
         // second `agend update` must not restart onto it unchecked.
         const { verifyInstalledPackage } = await import("./update-install.js");
         const verified = verifyInstalledPackage(
-          { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh: join(homedir(), ".nvm", "nvm.sh") },
+          { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
           {
             run: (command, args, options = {}) => {
               const result = spawnSync(command, args, { encoding: "utf-8", timeout: options.timeoutMs, stdio: ["ignore", "pipe", "pipe"] });
@@ -1461,7 +1515,7 @@ program
         }
         console.log(`  ✓ v${pkgVersion} verified — restarting the fleet onto it.\n`);
         markUpdateInProgress(DATA_DIR);
-        restartFleetForUpdate(process.execPath, [process.argv[1]], pkgVersion);
+        await activateVerified(verified, false);
         return;
       }
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
@@ -1508,7 +1562,6 @@ program
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
 
-    const nvmSh = join(homedir(), ".nvm", "nvm.sh");
     if (needsSudo) {
       // ── nvm path: install without sudo ──
       if (!existsSync(nvmSh)) {
@@ -1523,7 +1576,7 @@ program
     }
 
     // ── Install, then verify, then clean up (#1446): nothing is removed before the new install is proven ──
-    const { runUpdateInstall, newAgendInvocation } = await import("./update-install.js");
+    const { runUpdateInstall } = await import("./update-install.js");
     const installed = runUpdateInstall(
       { pkg, targetVersion, viaNvm: needsSudo, nvmSh },
       {
@@ -1542,49 +1595,10 @@ program
     if (!installed.ok) return failUpdate(installed.message);
     const agendPath = installed.agendPath;
     const newVersion = installed.version;
-    const newAgend = newAgendInvocation({ viaNvm: needsSudo, nvmSh }, agendPath);
     console.log(`\n  ✓ Installed: v${newVersion} (${agendPath}; opened a database on its Node)`);
     setUpdateProgressStage(DATA_DIR, "installed", { version: newVersion });
 
-    // ── Update service file ──
-    if (agendPath) {
-      try {
-        // Use the NEW binary to install service (old binary's templates may be deleted)
-        // `agend install` activates by default. During update the existing
-        // restart stage owns stop/start and progress reporting, so only refresh
-        // the service file here to avoid restarting the fleet twice.
-        const installResult = spawnSync(newAgend.command, [...newAgend.args, "install", "--no-activate"], { encoding: "utf-8", timeout: 15000 });
-        if (installResult.status === 0) {
-          console.log(`  ✓ Service updated`);
-        } else {
-          console.log(`  ⚠ Service file update failed (non-fatal): ${(installResult.stderr || installResult.stdout || "unknown error").trim()}`);
-        }
-      } catch (e) {
-        console.log(`  ⚠ Service file update failed (non-fatal): ${(e as Error).message}`);
-      }
-    }
-
-    // ── Refresh installed shell completions ──
-    // The completion script embeds this version's subcommand names, so a
-    // previously installed static file goes stale on update. --refresh only
-    // rewrites artifacts that already exist — an update never starts
-    // installing completions the user didn't ask for. Run through the NEW
-    // binary so the regenerated names are the new version's.
-    try {
-      spawnSync(newAgend.command, [...newAgend.args, "completion", "install", "--refresh"], {
-        encoding: "utf-8",
-        timeout: 15_000,
-        stdio: "ignore",
-      });
-    } catch { /* cosmetic — never block an update on completion refresh */ }
-
-    // ── Restart fleet ──
-    // Run the restart through the NEWLY-INSTALLED binary (agendPath), not inline.
-    // The inline restart would execute the OLD binary's code — exactly the logic
-    // that may be missing or buggy on the version being upgraded from. `agend
-    // restart` (new binary) does the 4-environment service detection (system
-    // systemd → user systemd → launchd → detached pid).
-    restartFleetForUpdate(newAgend.command, newAgend.args, newVersion);
+    await activateVerified(installed, needsSudo);
   });
 
 program

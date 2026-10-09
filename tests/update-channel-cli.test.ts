@@ -15,7 +15,7 @@ const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 /** Run `agend update <args>` from an install of `installed`, with npm's tags pointing at `tags`. */
-function update(installed: string, tags: { beta: string; latest: string }, args: string[], opts: { brokenNative?: boolean; staleFleet?: boolean } = {}) {
+function update(installed: string, tags: { beta: string; latest: string }, args: string[], opts: { brokenNative?: boolean; staleFleet?: boolean; unitExec?: (paths: { globalCli: string; runningCli: string }) => string } = {}) {
   const home = mkdtempSync(join(tmpdir(), "agend-update-cli-"));
   dirs.push(home);
   const agendHome = join(home, ".agend");
@@ -65,6 +65,15 @@ exit 0
   symlinkSync(process.execPath, join(bin, "node"));
   for (const tool of ["systemctl", "launchctl"]) writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> '${log}'\nexit 0\n`);
   for (const f of ["npm", "systemctl", "launchctl"]) chmodSync(join(bin, f), 0o755);
+  // An existing user unit (the authoritative service here), recording whatever executable the case says.
+  let unitPath: string | null = null;
+  if (opts.unitExec) {
+    const unitDir = join(home, ".config", "systemd", "user");
+    mkdirSync(unitDir, { recursive: true });
+    unitPath = join(unitDir, "com.agend.fleet.service");
+    writeFileSync(unitPath, `[Service]\nExecStart=${opts.unitExec({ globalCli: join(globalPkg, "dist", "cli.js"), runningCli: join(pkg, "dist", "cli.js") })} fleet start\n`);
+  }
+  const unitBefore = unitPath ? readFileSync(unitPath, "utf8") : null;
   let fleetPid: number | null = null;
   if (opts.staleFleet) {
     // A fleet that started before the install: this CLI's own files land "later" (the stale-fleet branch). Detached
@@ -89,7 +98,8 @@ exit 0
   })() : null;
   if (fleetPid) { try { process.kill(fleetPid, "SIGKILL"); } catch { /* gone */ } }
   const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
-  return { r, calls, fleetAlive, out: `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`, installs: calls.filter(c => c.startsWith("npm install")) };
+  const unitAfter = unitPath ? readFileSync(unitPath, "utf8") : null;
+  return { r, calls, fleetAlive, unitBefore, unitAfter, out: `${r.stdout}\n${r.stderr}\n${calls.join("\n")}`, installs: calls.filter(c => c.startsWith("npm install")) };
 }
 
 describe("agend update stays on the installed channel (built CLI, stubbed npm)", () => {
@@ -170,10 +180,32 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
     expect(fleetAlive, "the running fleet was left alone").toBe(true);
   });
 
-  it("control: a working installed package does get the restart", { timeout: 60_000 }, () => {
-    const { out, fleetAlive } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"], { staleFleet: true });
+  it("a working installed package gets the restart — through the INSTALLED binary, not the one invoked", { timeout: 60_000 }, () => {
+    // The invoking CLI is a different checkout (this build's copy) of the same version; PATH resolves the installed
+    // package. Refresh and restart must go through the installed `agend`; the invoking checkout's own restart (which
+    // would signal the stand-in fleet) must not run (#1449 review).
+    const { out, calls, fleetAlive } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"], { staleFleet: true });
     expect(out).toContain("verified — restarting the fleet onto it");
-    expect(fleetAlive, "the stale fleet was restarted (signalled)").toBe(false);
+    expect(calls).toContain("agend install --no-activate");
+    expect(calls).toContain("agend restart");
+    expect(fleetAlive, "only the installed agend (an inert stub here) was asked to restart").toBe(true);
+  });
+
+  it("an existing service unit that still starts another install is not restarted onto: refused, unit untouched", { timeout: 60_000 }, () => {
+    const { r, out, calls, fleetAlive, unitBefore, unitAfter } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
+      { staleFleet: true, unitExec: ({ runningCli }) => runningCli });
+    expect(r.status, out).toBe(1);
+    expect(out).toContain("not the verified install");
+    expect(calls).not.toContain("agend restart");
+    expect(unitAfter).toBe(unitBefore);
+    expect(fleetAlive).toBe(true);
+  });
+
+  it("control: a unit that starts the verified install (by its bin link) is restarted onto", { timeout: 60_000 }, () => {
+    const { out, calls } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"],
+      { staleFleet: true, unitExec: ({ globalCli }) => globalCli });
+    expect(out).toContain("verified — restarting the fleet onto it");
+    expect(calls).toContain("agend restart");
   });
 });
 
