@@ -398,8 +398,15 @@ export class WebSessionStore {
       try { (this.ops.fsyncSync ?? fsyncSync)(tmpFd); } finally { (this.ops.closeSync ?? closeSync)(tmpFd); }
       this.ops.renameSync(temp, this.path);
       // Dir fsync: best-effort; rename already succeeded so data is safe.
-      const dirFd = (this.ops.openSync ?? openSync)(dir, "r");
-      try { (this.ops.fsyncSync ?? fsyncSync)(dirFd); } catch { /* best effort */ } finally { (this.ops.closeSync ?? closeSync)(dirFd); }
+      // openSync is inside the try so an EACCES on the directory does not
+      // propagate after rename has already succeeded.
+      let dirFd: number | undefined;
+      try {
+        dirFd = (this.ops.openSync ?? openSync)(dir, "r");
+        (this.ops.fsyncSync ?? fsyncSync)(dirFd);
+      } catch { /* best effort */ } finally {
+        if (dirFd !== undefined) (this.ops.closeSync ?? closeSync)(dirFd);
+      }
       try { chmodSync(this.path, 0o600); } catch { /* best effort */ }
       this.persisted = new Set([...this.byHash.keys()].filter(hash => !this.pending.has(hash)));
       this.dirty = false;

@@ -801,6 +801,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
 
+  /** Test seam: inject a spy to verify saveFleetConfig calls fsync. Default: fsyncSync. */
+  fsyncForTest: ((fd: number) => void) | undefined = undefined;
+
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
   readonly stormWindow: StormWindow;
@@ -9093,24 +9096,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     noteSettingsWrite(this.configPath, this.savedFleetConfigSnapshot, this.fleetConfig);
     const output = String(this.rawFleetDocument);
     if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
-    const tempPath = `${this.configPath}.tmp-${process.pid}`;
-    writeFileSync(tempPath, output, "utf-8");
-    // #1056 (Fable's 2.2 audit): the patcher writes leaves, not configs, so a wrong patch can produce a file the
-    // validator — or the next start — refuses (a bare channels[0], a channels list with a null). Load and validate
-    // what is about to replace fleet.yaml; a result that adds an error is not written, and the save fails instead.
-    const refusal = this.savedFleetConfigProblem(tempPath);
-    if (refusal) {
-      try { unlinkSync(tempPath); } catch { /* already gone */ }
-      throw new Error(refusal);
-    }
-    if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
-    // fsync before rename so data survives a power loss between write and rename.
-    const tempFd = openSync(tempPath, "r+");
-    try { fsyncSync(tempFd); } finally { closeSync(tempFd); }
-    renameSync(tempPath, this.configPath);
-    // Dir fsync: best-effort; rename already succeeded so data is safe.
-    const dirFd = openSync(dirname(this.configPath), "r");
-    try { fsyncSync(dirFd); } catch { /* best effort */ } finally { closeSync(dirFd); }
+    // Atomic write with fsync. The beforeRename hook runs after fsync and
+    // before rename so validation failures are reported before the file is
+    // replaced (#1056), and the temp file is cleaned up on any throw.
+    atomicWriteFileSync(this.configPath, output, {
+      mode: existsSync(this.configPath) ? statSync(this.configPath).mode : 0o644,
+      fsync: this.fsyncForTest,
+      beforeRename: (tempPath) => {
+        // #1056 (Fable's 2.2 audit): the patcher writes leaves, not configs, so
+        // a wrong patch can produce a file the validator — or the next start —
+        // refuses. Load and validate what is about to replace fleet.yaml.
+        const refusal = this.savedFleetConfigProblem(tempPath);
+        if (refusal) throw new Error(refusal);
+        if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
+      },
+    });
 
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);

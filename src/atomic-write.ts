@@ -1,14 +1,15 @@
 /**
  * Atomic file write with fsync.
  *
- * Sequence: open(temp, wx) → write → fsync(fd) → close → rename → fsync(dir).
+ * Sequence: open(temp, wx) → write → fsync(fd) → close → [beforeRename(temp)]
+ *           → rename → fsync(dir, best-effort).
  *
- * The directory fsync is best-effort: a failure there is logged but does NOT
- * undo the rename (the data is safe on disk after the file fsync + rename).
+ * The directory fsync is best-effort: a failure there is silently ignored
+ * because rename has already committed the data.
  *
- * This is the shared helper for fleet.yaml, web-sessions.json, and
- * update-marker.json (#1490 P3 — those three files used write+rename without
- * fsync before this module).
+ * Used by src/update-marker.ts directly. src/fleet-manager.ts saveFleetConfig
+ * and src/web-session.ts persistNow use the same sequence inline (fleet.yaml
+ * needs a pre-rename validation step; web-session uses injectable fs ops).
  */
 import {
   closeSync,
@@ -29,11 +30,18 @@ export interface AtomicWriteOpts {
   mode?: number;
   /** Injected fsync for testing. Default: `fsyncSync` from node:fs. */
   fsync?: (fd: number) => void;
+  /**
+   * Optional hook called with the temp-file path after fsync and close,
+   * immediately before rename. Throw to abort the write (the temp file will
+   * be cleaned up).
+   */
+  beforeRename?: (tempPath: string) => void;
 }
 
 /**
  * Write `data` to `path` atomically with fsync:
- * open(temp) → write → fsync(fd) → close → rename → fsync(dir, best-effort).
+ * open(temp) → write → fsync(fd) → close → [beforeRename(temp)] → rename
+ * → fsync(dir, best-effort).
  */
 export function atomicWriteFileSync(
   path: string,
@@ -52,6 +60,7 @@ export function atomicWriteFileSync(
     fsync(fd);
     closeSync(fd);
     fd = undefined;
+    opts.beforeRename?.(temp);
     renameSync(temp, path);
   } catch (err) {
     if (fd !== undefined) {
@@ -63,6 +72,13 @@ export function atomicWriteFileSync(
 
   // Dir fsync: best-effort. A failure here means the directory entry may not
   // be durable, but the file data and the rename are already on disk.
-  const dirFd = openSync(dir, "r");
-  try { fsync(dirFd); } catch { /* best effort — do not undo rename */ } finally { closeSync(dirFd); }
+  // openSync is inside the try so an EACCES on the directory does not
+  // propagate after rename has already succeeded.
+  let dirFd: number | undefined;
+  try {
+    dirFd = openSync(dir, "r");
+    fsync(dirFd);
+  } catch { /* best effort — do not undo rename */ } finally {
+    if (dirFd !== undefined) closeSync(dirFd);
+  }
 }
