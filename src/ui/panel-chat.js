@@ -221,6 +221,8 @@ function Thread({ name, th }) {
     const thread = createThread(list.current, scroller.current, {
       t, tf: t, isUser: (x) => store.isUser(x, name), onJump: setJump, onEmpty: setEmpty,
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
+      clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+      replyButtonBusy: (id) => store.state.rbBusy.has(id),
       panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o) },   // #1481
     });
     th.current = thread;

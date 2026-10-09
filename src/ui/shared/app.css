@@ -337,6 +337,12 @@ a { color: inherit; text-decoration: none; }
 @container (max-width: 560px) {
   .pv-panel-bar :not(.pv-panel-run) > .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 }
+/* #1266: an agent reply's buttons — choices under the text; one answers for everyone. */
+.rb-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.rb-btn { max-width: 100%; white-space: normal; text-align: left; }
+.rb-btn.chosen { border-color: var(--ok); color: var(--text); }
+.rb-btn:disabled:not(.chosen) { opacity: 0.55; }
+.rb-note { font-size: var(--fs-xs); color: var(--text-3); }
 .pv-menu { position: relative; }
 .pv-menu > summary { list-style: none; cursor: pointer; padding: 2px var(--s-2); border-radius: var(--r-sm); color: var(--text-3); }
 .pv-menu > summary::-webkit-details-marker { display: none; }
