@@ -28,10 +28,17 @@ function world() {
   writeFileSync(join(root, "inert.js"), `require('fs').appendFileSync(${JSON.stringify(mark)}, process.argv.slice(2).join(' ') + '\\n');`);
   const log = join(root, "boundary.log");
   writeFileSync(log, "");
-  const run = (script: string, argv: string[] = []) => spawnSync(process.execPath, ["-e", script, ...argv], {
-    encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, AGEND_BOUNDARY_LOG: log, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require=${BOUNDARY}`.trim() },
-  });
-  return { root, mark, log, run, logged: () => readFileSync(log, "utf8") };
+  // The hop's stub managers: where a bare systemctl/launchctl must resolve (AGEND_BOUNDARY_STUBS).
+  const stubs = join(root, "stubs");
+  mkdirSync(stubs);
+  const stubMark = join(root, "stub-ran");
+  for (const m of ["systemctl", "launchctl"]) {
+    writeFileSync(join(stubs, m), `#!/bin/sh\necho "$*" >> '${stubMark}'\nexit 1\n`);
+    chmodSync(join(stubs, m), 0o755);
+  }
+  const env = { ...process.env, PATH: `${stubs}:${bin}:${process.env.PATH}`, AGEND_BOUNDARY_LOG: log, AGEND_BOUNDARY_STUBS: stubs, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --require=${BOUNDARY}`.trim() };
+  const run = (script: string, argv: string[] = []) => spawnSync(process.execPath, ["-e", script, ...argv], { encoding: "utf8", env });
+  return { root, mark, log, run, stubs, stubMark, env, logged: () => readFileSync(log, "utf8") };
 }
 
 describe("the hop boundary refuses a fleet start in every form, before anything runs", () => {
@@ -177,7 +184,13 @@ describe("the hop's stubbed manager calls: argv kept, judged fail-closed (manage
 });
 
 describe("shell strings are judged as the shell splits them (boundary.cjs)", () => {
-  const { shellViolation } = createRequire(import.meta.url)(BOUNDARY) as { shellViolation(text: string): string | null };
+  const { shellViolation: judge } = createRequire(import.meta.url)(BOUNDARY) as { shellViolation(text: string, env?: Record<string, string | undefined>): string | null };
+  // A hop's environment: its stubs first on PATH, and named as the stubs.
+  const stubs = mkdtempSync(join(tmpdir(), "agend-stubs-"));
+  roots.push(stubs);
+  for (const m of ["systemctl", "launchctl"]) { writeFileSync(join(stubs, m), "#!/bin/sh\nexit 1\n"); chmodSync(join(stubs, m), 0o755); }
+  const hopEnv = { PATH: `${stubs}:/usr/bin:/bin`, AGEND_BOUNDARY_STUBS: stubs };
+  const shellViolation = (text: string) => judge(text, hopEnv);
   it.each([
     ['"/tmp/a b/systemctl" --user restart x'],
     ['"/tmp/x"/systemctl --user restart x'],
@@ -200,11 +213,26 @@ describe("shell strings are judged as the shell splits them (boundary.cjs)", () 
     // A wrapper option it cannot model is refused even in front of a harmless command: it could take the next word.
     ["nice --weird-flag node x"],
     ["env --frobnicate=1 node x"],
+    // #1460 r5: the environment a command runs with is part of what is judged.
+    ["env NODE_OPTIONS= npm config get prefix"],
+    ["PATH=/tmp/private systemctl --user restart x"],
+    ["env PATH=/tmp/private systemctl --user restart x"],
+    ["env -u PATH systemctl --user restart x"],
+    ["env -i systemctl --user restart x"],
+    ["export PATH=/tmp/private; systemctl --user restart x"],
+    ["BASH_ENV=/tmp/x bash -c true"],
+    ["/usr/bin/env /tmp/private/systemctl --user restart x"],
+    ["2>/tmp/err /tmp/private/systemctl --user restart x"],
+    ["bash --rcfile /tmp/rc -ic 'printf harmless'"],
+    ["bash -l -c true"],
+    ["bash --rcfile /tmp/rc -c true"],
+    ["bash --login -c true"],
+    ["sh -s"],
   ])("refused: %s", (text) => { expect(shellViolation(text)).not.toBeNull(); });
   it.each([
     ["which agend"], ['readlink -f "/a b/agend"'], ["npm install -g @songsid/agend@2.2.0"], ["node scripts/preinstall-guard.cjs"],
     ["systemctl --user show -p KillMode --value com.agend.fleet"], ['sys"temctl" --user is-active x'], ["npm config get prefix"],
-    ["command -v agend"], ["env NODE_OPTIONS= npm config get prefix"], ["timeout 5 npm --version"], ["if true; then echo ok; fi"], ["sh -c 'node launcher/postinstall.cjs'"],
+    ["command -v agend"], ["env FOO=bar npm config get prefix"], ["timeout 5 npm --version"], ["if true; then echo ok; fi"], ["sh -c 'node launcher/postinstall.cjs'"],
     ["sh -ec 'node launcher/postinstall.cjs'"], ["bash --noprofile -eo pipefail -c 'npm --version'"],
   ])("allowed (reaches PATH and its stubs): %s", (text) => { expect(shellViolation(text)).toBeNull(); });
 
@@ -261,5 +289,50 @@ describe("the acceptance DB probe (checks.sh) passes only a validated worker ans
     const dir = pkg(mode);
     const r = spawnSync(process.execPath, ["-e", probe, dir, join(dir, "probe.db")], { encoding: "utf8", timeout: 40_000 });
     expect(r.status, r.stderr).toBe(want);
+  });
+});
+
+describe("#1460 r5: the boundary judges the command WITH its effective environment, executed natively", () => {
+  /** A private manager at a spaced path that leaves a marker if it ever runs. */
+  function privateManager(w: ReturnType<typeof world>) {
+    const dir = join(w.root, "private dir");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "systemctl"), `#!/bin/sh\necho "$*" >> '${w.mark}'\n`);
+    chmodSync(join(dir, "systemctl"), 0o755);
+    writeFileSync(join(w.root, "rcfile"), `'${join(dir, "systemctl")}' --user restart private-unit\n`);
+    return { dir, manager: join(dir, "systemctl"), rc: join(w.root, "rcfile") };
+  }
+  it.each([
+    ["PATH=<private> systemctl (shell)", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync(${JSON.stringify(`PATH='${p.dir}' systemctl --user restart private-unit`)})`],
+    ["env PATH=<private> systemctl (shell)", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync(${JSON.stringify(`env PATH='${p.dir}' systemctl --user restart private-unit`)})`],
+    ["spawnSync('systemctl') with env PATH=<private>", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('systemctl', ['--user', 'restart', 'private-unit'], { env: { PATH: ${JSON.stringify(p.dir)} } })`],
+    ["spawnSync('/usr/bin/env', [<private manager>])", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('/usr/bin/env', [${JSON.stringify(p.manager)}, '--user', 'restart', 'private-unit'])`],
+    ["spawnSync('/usr/bin/nice', ['-n','0',<private manager>])", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('/usr/bin/nice', ['-n', '0', ${JSON.stringify(p.manager)}, '--user', 'restart', 'private-unit'])`],
+    ["/usr/bin/env <private manager> (shell)", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync(${JSON.stringify(`/usr/bin/env '${p.manager}' --user restart private-unit`)})`],
+    ["2>file <private manager> (shell)", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync(${JSON.stringify(`2>'${p.dir}/err' '${p.manager}' --user restart private-unit`)})`],
+    ["bash --rcfile <file> -ic 'printf harmless'", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('bash', ['--rcfile', ${JSON.stringify(p.rc)}, '-ic', 'printf harmless'])`],
+    ["execSync('systemctl …') with env PATH=<private>", (p: ReturnType<typeof privateManager>) => `require('child_process').execSync('systemctl --user restart private-unit', { env: { PATH: ${JSON.stringify(p.dir)} } })`],
+    ["spawnSync('<private manager> …', { shell: true })", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync(${JSON.stringify(`'${p.manager}' --user restart private-unit`)}, { shell: true })`],
+    ["async spawn('systemctl') with env PATH=<private>", (p: ReturnType<typeof privateManager>) => `require('child_process').spawn('systemctl', ['--user', 'restart', 'private-unit'], { env: { PATH: ${JSON.stringify(p.dir)} } })`],
+    ["BASH_ENV=<file> in a spawn's env", (p: ReturnType<typeof privateManager>) => `require('child_process').spawnSync('bash', ['-c', 'true'], { env: { ...process.env, BASH_ENV: ${JSON.stringify(p.rc)} } })`],
+  ])("refused, the private manager never runs: %s", (_n, script) => {
+    const w = world();
+    const p = privateManager(w);
+    const r = w.run(script(p));
+    expect(r.status, r.stderr).not.toBe(0);
+    expect(w.logged()).not.toBe("");
+    expect(existsSync(w.mark)).toBe(false);
+  });
+  it("control: a bare manager that resolves to the hop's stub on the effective PATH runs (the stub)", () => {
+    const w = world();
+    const r = w.run(`require('child_process').spawnSync('systemctl', ['--user', 'is-active', 'x']); require('child_process').execSync('systemctl --user show x || true')`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(w.logged()).toBe("");
+    expect(readFileSync(w.stubMark, "utf8")).toBe("--user is-active x\n--user show x\n");
+  });
+  it("a child whose NODE_OPTIONS dropped the boundary gets it back", () => {
+    const w = world();
+    const r = w.run(`const r = require('child_process').spawnSync(process.execPath, ['-e', 'console.log(process.env.NODE_OPTIONS)'], { env: { PATH: process.env.PATH, NODE_OPTIONS: '' }, encoding: 'utf8' }); process.stdout.write(r.stdout)`);
+    expect(r.stdout).toContain("boundary.cjs");
   });
 });

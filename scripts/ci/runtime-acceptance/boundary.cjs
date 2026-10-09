@@ -19,14 +19,18 @@ var KEYWORDS = /^(if|then|elif|else|fi|while|until|do|done|!|\{|\}|time|coproc)$
 /** Commands whose words are not commands (a later `do` / `)` starts one). */
 var NOT_COMMANDS = /^(for|case|select|function)$/;
 /** Programs that run commands from their arguments in ways not modelled here: never in a hop. */
-var RUNNERS = /^(sudo|doas|su|runuser|pkexec|chroot|nsenter|unshare|xargs|parallel|watch|source|\.)$/;
+var RUNNERS = /^(sudo|doas|su|runuser|pkexec|chroot|nsenter|unshare|xargs|parallel|watch|source|\.|eval|exec)$/;
+/** Shell builtins that change the environment or how later words resolve: unsupported in a hop. */
+var ENV_CHANGERS = /^(export|unset|cd|pushd|popd|alias|unalias|hash|set|declare|typeset|readonly|local|enable|shopt|trap)$/;
+/** Variables that change what a name resolves to, what a shell runs at start, or the boundary itself. */
+var GUARDED_VARS = /^(PATH|BASH_ENV|ENV|NODE_OPTIONS|LD_[A-Z_]*|DYLD_[A-Z_]*)$/;
 /**
- * Wrappers that run the rest of their words as a command, with the options each takes. An option not listed here is
- * not guessed at: the string is refused. `split`: an option whose value is itself a command line (env -S).
+ * Wrappers that run the rest of their words as a command (as shell words OR as programs, e.g. /usr/bin/env), with
+ * the options each takes. An option not listed here is not guessed at: refused. `split`: an option whose value is a
+ * command line itself (env -S). `clears`: an option that empties the environment (env -i).
  */
 var WRAPPERS = {
-  exec: { flags: ["-c", "-l"], valued: ["-a"] },
-  env: { flags: ["-i", "-0", "--ignore-environment", "--null", "-"], valued: ["-u", "--unset", "-C", "--chdir", "-P"], split: ["-S", "--split-string"], assignments: true },
+  env: { flags: ["-0", "--null", "-"], clears: ["-i", "--ignore-environment"], valued: ["-C", "--chdir", "-P"], unset: ["-u", "--unset"], split: ["-S", "--split-string"], assignments: true },
   command: { flags: ["-p"], lookup: ["-v", "-V"] },
   nohup: {},
   builtin: {},
@@ -38,10 +42,11 @@ var WRAPPERS = {
 
 /**
  * A shell string as the shell splits it: commands (split at ; & | ( ) and newlines), each a list of words with quotes
- * removed and `dyn` set when a word holds an expansion the shell would resolve. null: unterminated quote.
+ * removed and `dyn` set when a word holds an expansion. { redirect: true } when an unquoted < or > appears (a
+ * redirection can take the command position: unsupported). null: unterminated quote.
  */
 function shellCommands(text) {
-  var commands = [[]], word = null, q = null;
+  var commands = [[]], word = null, q = null, redirect = false;
   var end = function () { if (word) commands[commands.length - 1].push(word); word = null; };
   var add = function (c, dyn) { if (!word) word = { text: "", dyn: false }; word.text += c; if (dyn) word.dyn = true; };
   for (var i = 0; i < text.length; i++) {
@@ -55,24 +60,29 @@ function shellCommands(text) {
     }
     if (c === "'" || c === '"') { q = c; if (!word) word = { text: "", dyn: false }; continue; }
     if (c === "\\" && i + 1 < text.length) { add(text.charAt(++i), false); continue; }
+    if (c === "<" || c === ">") { redirect = true; end(); continue; }
     if (/\s/.test(c) && c !== "\n") { end(); continue; }
     if (/[;&|()\n]/.test(c)) { end(); commands.push([]); continue; }
     add(c, c === "$" || c === "`");
   }
   if (q) return null;
   end();
-  return commands.filter(function (cmd) { return cmd.length > 0; });
+  return { redirect: redirect, commands: commands.filter(function (cmd) { return cmd.length > 0; }) };
 }
 
-/** The script a shell runs: { script } for `-c`, else { refusal } (a file, stdin, or options it cannot read). */
+/** The script a shell runs: { script } for `-c`, else { refusal } (a file, stdin, startup files, interactive). */
 function shellScript(args) {
   var hasC = false;
   for (var i = 0; i < args.length; i++) {
     var a = String(args[i]);
     if (a === "--") { i++; break; }
-    if (a.slice(0, 2) === "--") { if (a === "--rcfile" || a === "--init-file") i++; continue; }
+    if (a.slice(0, 2) === "--") {
+      if (a === "--rcfile" || a === "--init-file" || a === "--login") return { refusal: "a shell with startup files (" + a + ")" };
+      continue;
+    }
     if ((a.charAt(0) === "-" || a.charAt(0) === "+") && a.length > 1) {
       if (/[^a-zA-Z]/.test(a.slice(1))) return { refusal: "a shell option it cannot read (" + a + ")" };
+      if (/[ils]/.test(a.slice(1))) return { refusal: "an interactive, login or stdin shell (" + a + ")" };
       if (a.indexOf("c") > 0) hasC = true;
       if (a.indexOf("o") > 0) i++;                                    // -o <option>, also inside a cluster (-eo pipefail)
       continue;
@@ -83,80 +93,124 @@ function shellScript(args) {
   return i < args.length ? { script: String(args[i]) } : { refusal: "a shell -c without its command" };
 }
 
-/** Why this shell string may not run in a hop — or null. Anything it cannot model counts as a violation. */
-function shellViolation(text, depth) {
-  if ((depth || 0) > 4) return "nested shell too deep: " + text;
-  if (/(\$\(|`|<\(|>\()/.test(text)) return "a command or process substitution: " + text;
-  var commands = shellCommands(text);
-  if (commands === null) return "an unterminated quote: " + text;
-  for (var c = 0; c < commands.length; c++) {
-    var w = commands[c], i = 0;
-    for (;;) {
-      while (i < w.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[i].text)) i++;          // assignments
-      if (i >= w.length) break;
-      var word = w[i];
-      if (!word.dyn && KEYWORDS.test(word.text)) { i++; continue; }
-      if (!word.dyn && NOT_COMMANDS.test(word.text)) { i = w.length; break; }
-      var spec = !word.dyn && Object.prototype.hasOwnProperty.call(WRAPPERS, word.text) ? WRAPPERS[word.text] : null;
-      if (!spec) break;
-      i++;
-      var positional = spec.positional || 0;
-      while (i < w.length) {
-        var a = w[i];
-        if (a.dyn) return "an expansion in " + word.text + "'s options: " + text;
-        if (a.text === "--") { i++; break; }
-        if (spec.assignments && /^[A-Za-z_][A-Za-z0-9_]*=/.test(a.text)) { i++; continue; }
-        if (a.text.charAt(0) !== "-" || a.text === "-" && (spec.flags || []).indexOf("-") < 0) break;
-        if ((spec.lookup || []).indexOf(a.text) >= 0) { i = w.length; break; }       // command -v: looks up, runs nothing
-        if ((spec.flags || []).indexOf(a.text) >= 0) { i++; continue; }
-        if ((spec.valued || []).indexOf(a.text) >= 0) { if (i + 1 >= w.length) return word.text + " " + a.text + " without its value: " + text; i += 2; continue; }
-        if ((spec.split || []).indexOf(a.text) >= 0) {
-          if (i + 1 >= w.length) return word.text + " " + a.text + " without its value: " + text;
-          var inner = shellViolation(w[i + 1].text, (depth || 0) + 1);
-          if (inner) return inner;
-          i += 2;
-          continue;
-        }
-        var attached = (spec.valued || []).filter(function (v) { return /^-[a-zA-Z]$/.test(v) && a.text.indexOf(v) === 0 && a.text.length > 2; })[0]
-          || (spec.valued || []).filter(function (v) { return v.slice(0, 2) === "--" && a.text.indexOf(v + "=") === 0; })[0];
-        if (attached) { i++; continue; }
-        return "an option of " + word.text + " it cannot judge (" + a.text + "): " + text;
-      }
-      while (positional > 0 && i < w.length) { if (w[i].dyn) return "an expansion as " + word.text + "'s argument: " + text; i++; positional--; }
-    }
-    if (i >= w.length) continue;
-    var cmd = w[i];
-    var base = path.basename(cmd.text);
-    if (cmd.dyn) return "an expansion as a command word (" + cmd.text + "): " + text;
-    if (RUNNERS.test(base)) return base + " in a hop: " + text;
-    if (MANAGERS.test(base) && cmd.text.indexOf("/") >= 0) return "service manager by path: " + text;
-    var rest = w.slice(i + 1).map(function (x) { return x.text; });
-    if (base === "find" && rest.some(function (x) { return /^-(exec|execdir|ok|okdir)$/.test(x); })) return "find -exec in a hop: " + text;
-    if (base === "eval") { var evald = shellViolation(rest.join(" "), (depth || 0) + 1); if (evald) return evald; }
-    if (SHELLS.test(base)) {
-      var sc = shellScript(rest);
-      if (sc.refusal) return sc.refusal + ": " + text;
-      var nested = shellViolation(sc.script, (depth || 0) + 1);
-      if (nested) return nested;
-    }
-    for (var j = 0; j < rest.length - 1; j++) if (rest[j] === "fleet" && rest[j + 1] === "start") return "fleet start: " + text;
+/** The file `name` resolves to on this PATH, or null. */
+function onPath(name, pathVar) {
+  var dirs = String(pathVar || "").split(":");
+  for (var i = 0; i < dirs.length; i++) {
+    if (!dirs[i]) continue;
+    var f = path.join(dirs[i], name);
+    try { fs.accessSync(f, fs.constants.X_OK); if (fs.statSync(f).isFile()) return f; } catch (e) { /* next */ }
   }
   return null;
 }
 
-/** Why this program + argv may not run in a hop — or null. */
-function violation(file, args) {
-  var all = [String(file)].concat((args || []).map(String));
-  var base = path.basename(String(file));
-  for (var i = 0; i < all.length - 1; i++) if (all[i] === "fleet" && all[i + 1] === "start") return "fleet start: " + all.join(" ");
-  if (MANAGERS.test(base) && String(file).indexOf("/") >= 0) return "service manager by absolute path: " + all.join(" ");
-  if (RUNNERS.test(base)) return base + " in a hop: " + all.join(" ");
+/** An environment the boundary can reason about: no startup-file variables. */
+function envViolation(env) {
+  if (env.BASH_ENV !== undefined || env.ENV !== undefined) return "a shell startup file in the environment (BASH_ENV/ENV)";
+  return null;
+}
+
+/**
+ * Why this command — words with its effective environment — may not run in a hop, or null. One path for direct
+ * spawns (shell: false) and for every command of a shell string (shell: true).
+ */
+function judgeWords(words, env, shell, depth, text) {
+  if ((depth || 0) > 4) return "nested too deep: " + text;
+  var i = 0, cleared = false;
+  for (;;) {
+    while (shell && i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i].text)) {
+      if (GUARDED_VARS.test(words[i].text.slice(0, words[i].text.indexOf("=")))) return "an assignment to " + words[i].text.split("=")[0] + ": " + text;
+      i++;
+    }
+    if (i >= words.length) return null;
+    var word = words[i];
+    if (shell && !word.dyn && KEYWORDS.test(word.text)) { i++; continue; }
+    if (shell && !word.dyn && NOT_COMMANDS.test(word.text)) return null;
+    var name = path.basename(word.text);
+    var spec = !word.dyn && Object.prototype.hasOwnProperty.call(WRAPPERS, name) ? WRAPPERS[name] : null;
+    if (!spec) break;
+    i++;
+    var positional = spec.positional || 0;
+    while (i < words.length) {
+      var a = words[i];
+      if (a.dyn) return "an expansion in " + name + "'s words: " + text;
+      if (a.text === "--") { i++; break; }
+      if (spec.assignments && /^[A-Za-z_][A-Za-z0-9_]*=/.test(a.text)) {
+        if (GUARDED_VARS.test(a.text.slice(0, a.text.indexOf("=")))) return name + " setting " + a.text.split("=")[0] + ": " + text;
+        i++;
+        continue;
+      }
+      if (a.text.charAt(0) !== "-" || (a.text === "-" && (spec.flags || []).indexOf("-") < 0)) break;
+      if ((spec.lookup || []).indexOf(a.text) >= 0) return null;                    // command -v: looks up, runs nothing
+      if ((spec.flags || []).indexOf(a.text) >= 0) { i++; continue; }
+      if ((spec.clears || []).indexOf(a.text) >= 0) { cleared = true; i++; continue; }
+      if ((spec.unset || []).indexOf(a.text) >= 0) {
+        if (i + 1 >= words.length) return name + " " + a.text + " without its value: " + text;
+        if (GUARDED_VARS.test(words[i + 1].text)) return name + " unsetting " + words[i + 1].text + ": " + text;
+        i += 2;
+        continue;
+      }
+      if ((spec.valued || []).indexOf(a.text) >= 0) { if (i + 1 >= words.length) return name + " " + a.text + " without its value: " + text; i += 2; continue; }
+      if ((spec.split || []).indexOf(a.text) >= 0) {
+        if (i + 1 >= words.length) return name + " " + a.text + " without its value: " + text;
+        var inner = shellViolation(words[i + 1].text, env, (depth || 0) + 1);
+        if (inner) return inner;
+        i += 2;
+        continue;
+      }
+      var attached = (spec.valued || []).filter(function (v) { return /^-[a-zA-Z]$/.test(v) && a.text.indexOf(v) === 0 && a.text.length > 2; })[0]
+        || (spec.valued || []).filter(function (v) { return v.slice(0, 2) === "--" && a.text.indexOf(v + "=") === 0; })[0];
+      if (attached) { i++; continue; }
+      return "an option of " + name + " it cannot judge (" + a.text + "): " + text;
+    }
+    while (positional > 0 && i < words.length) { if (words[i].dyn) return "an expansion as " + name + "'s argument: " + text; i++; positional--; }
+  }
+  if (i >= words.length) return null;
+  var cmd = words[i];
+  var base = path.basename(cmd.text);
+  var rest = words.slice(i + 1).map(function (x) { return x.text; });
+  if (cmd.dyn) return "an expansion as a command word (" + cmd.text + "): " + text;
+  if (RUNNERS.test(base)) return base + " in a hop: " + text;
+  if (shell && ENV_CHANGERS.test(base)) return base + " (changes the environment) in a hop: " + text;
+  if (base === "find" && rest.some(function (x) { return /^-(exec|execdir|ok|okdir)$/.test(x); })) return "find -exec in a hop: " + text;
+  for (var j = 0; j < rest.length - 1; j++) if (rest[j] === "fleet" && rest[j + 1] === "start") return "fleet start: " + text;
+  if (MANAGERS.test(base)) {
+    if (cmd.text.indexOf("/") >= 0) return "service manager by path: " + text;
+    // A bare name: it must resolve, on THIS command's effective PATH, to the hop's own stub.
+    var stubs = env.AGEND_BOUNDARY_STUBS || process.env.AGEND_BOUNDARY_STUBS;
+    var found = cleared ? null : onPath(base, env.PATH);
+    if (!stubs || !found || path.resolve(found) !== path.join(path.resolve(stubs), base)) return base + " that does not resolve to the hop's stub (" + (found || "nothing") + "): " + text;
+  }
   if (SHELLS.test(base)) {
-    var sc = shellScript(args || []);
-    if (sc.refusal) return sc.refusal + ": " + all.join(" ");
-    return shellViolation(sc.script, 0);
+    var sc = shellScript(rest);
+    if (sc.refusal) return sc.refusal + ": " + text;
+    var nested = shellViolation(sc.script, cleared ? {} : env, (depth || 0) + 1);
+    if (nested) return nested;
   }
   return null;
+}
+
+/** Why this shell string, run with `env`, may not run in a hop — or null. */
+function shellViolation(text, env, depth) {
+  env = env || process.env;
+  if (/(\$\(|`|<\(|>\()/.test(text)) return "a command or process substitution: " + text;
+  var parsed = shellCommands(text);
+  if (parsed === null) return "an unterminated quote: " + text;
+  if (parsed.redirect) return "a redirection: " + text;
+  for (var c = 0; c < parsed.commands.length; c++) {
+    var v = judgeWords(parsed.commands[c], env, true, depth, text);
+    if (v) return v;
+  }
+  return null;
+}
+
+/** Why this program + argv, run with `env`, may not run in a hop — or null. */
+function violation(file, args, env) {
+  env = env || process.env;
+  var all = [String(file)].concat((args || []).map(String));
+  var bad = envViolation(env);
+  if (bad) return bad + ": " + all.join(" ");
+  return judgeWords(all.map(function (t) { return { text: t, dyn: false }; }), env, false, 0, all.join(" "));
 }
 function stop(what) {
   if (LOG) fs.appendFileSync(LOG, process.pid + " " + what + "\n");
@@ -172,25 +226,48 @@ if (LOG) {
     process.stderr.write("[runtime-acceptance boundary] refused: " + self + "\n");
     process.exit(70);
   }
+  // Every child keeps this boundary: a NODE_OPTIONS without it (dropped or replaced) gets it back.
+  var PRELOAD = "--require=" + __filename;
+  var keepBoundary = function (env) {
+    var e = {};
+    Object.keys(env || process.env).forEach(function (k) { e[k] = (env || process.env)[k]; });
+    if (String(e.NODE_OPTIONS || "").indexOf(__filename) < 0) e.NODE_OPTIONS = (String(e.NODE_OPTIONS || "") + " " + PRELOAD).trim();
+    e.AGEND_BOUNDARY_LOG = LOG;
+    return e;
+  };
   var originalSpawn = cp.ChildProcess.prototype.spawn;
   cp.ChildProcess.prototype.spawn = function (options) {
-    var v = violation(options.file, options.args.slice(1));
+    var env = {};
+    (options.envPairs || []).forEach(function (pair) { var i = pair.indexOf("="); env[pair.slice(0, i)] = pair.slice(i + 1); });
+    var v = violation(options.file, options.args.slice(1), env);
     if (v) stop(v);
+    var kept = keepBoundary(env);
+    options.envPairs = Object.keys(kept).map(function (k) { return k + "=" + kept[k]; });
     return originalSpawn.call(this, options);
   };
   ["spawnSync", "execFileSync"].forEach(function (name) {
     var original = cp[name];
-    cp[name] = function (file, args) {
-      var v = violation(file, Array.isArray(args) ? args : []);
+    cp[name] = function (file, args, options) {
+      if (!Array.isArray(args)) { options = args; args = []; }
+      options = options || {};
+      var env = options.env || process.env;
+      var v = options.shell ? violation("/bin/sh", ["-c", [file].concat(args).join(" ")], env) : violation(file, args, env);
       if (v) stop(v);
-      return original.apply(this, arguments);
+      var opts = {};
+      Object.keys(options).forEach(function (k) { opts[k] = options[k]; });
+      opts.env = keepBoundary(options.env);
+      return original.call(this, file, args, opts);
     };
   });
   var originalExecSync = cp.execSync;
-  cp.execSync = function (command) {
-    var v = violation("sh", ["-c", String(command)]);
+  cp.execSync = function (command, options) {
+    options = options || {};
+    var v = violation("/bin/sh", ["-c", String(command)], options.env || process.env);
     if (v) stop(v);
-    return originalExecSync.apply(this, arguments);
+    var opts = {};
+    Object.keys(options).forEach(function (k) { opts[k] = options[k]; });
+    opts.env = keepBoundary(options.env);
+    return originalExecSync.call(this, command, opts);
   };
   // ESM `import { spawnSync } from "node:child_process"` (AgEnD's own code) sees these only once synced.
   var mod = require("module");

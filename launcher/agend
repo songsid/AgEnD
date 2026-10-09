@@ -71,7 +71,31 @@ admissible() {
   printf 'agend-runtime-key 2\nos %s\ncpu %s\nnode %s\nsize %s\nmtime %s\npackage %s\nruntime %s\nreceipt %s\n' \
     "$os" "$cpu" "$real" "$size" "$mtime" "$sum_package" "$sum_runtime" "$sum_receipt" | cmp -s - "$pkg/.agend-runtime.key"
 }
-if admissible; then
+# This host, measured fresh, must still be one the bundled Node supports (launcher/runtime-platform.cjs
+# runtimeSupport: glibc >= 2.28 on Linux, Darwin kernel >= 20) — minimums, never a pinned version. A stored or copied
+# runtime on a host that no longer qualifies never runs; the JS launcher then picks a system Node or refuses.
+supported() {
+  case $os in
+    linux)
+      v=$(getconf GNU_LIBC_VERSION 2>/dev/null) || return 1
+      case $v in "glibc "*) v=${v#glibc } ;; *) return 1 ;; esac
+      major=${v%%.*}
+      minor=${v#*.}
+      minor=${minor%%.*}
+      case $major in '' | *[!0-9]*) return 1 ;; esac
+      case $minor in '' | *[!0-9]*) return 1 ;; esac
+      [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 28 ]; }
+      ;;
+    darwin)
+      r=$(uname -r) || return 1
+      kernel=${r%%.*}
+      case $kernel in '' | *[!0-9]*) return 1 ;; esac
+      [ "$kernel" -ge 20 ]
+      ;;
+    *) return 1 ;;
+  esac
+}
+if supported && admissible; then
   exec "$node" "$launcher" "$@"
 fi
 
