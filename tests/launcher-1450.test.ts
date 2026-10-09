@@ -6,9 +6,9 @@
  * wrapper around this test's own Node.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -55,10 +55,12 @@ describe("runtime-platform: engines and host support", () => {
 });
 
 /** A fixture @songsid/agend package with this repo's launcher/, a stand-in CLI, and optionally a pinned runtime. */
-function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" | "none"; ancestorRuntime?: boolean; sqlite?: "real" | "main-only" | "broken" } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "agend-ln-"));
+function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" | "none"; ancestorRuntime?: boolean; sqlite?: "real" | "main-only" | "broken"; npmLayout?: boolean } = {}) {
+  // A space in every fixture path: the bins and the launcher must quote all of it.
+  const root = mkdtempSync(join(tmpdir(), "agend ln-"));
   roots.push(root);
-  const pkg = opts.ancestorRuntime ? join(root, "node_modules", "@songsid", "agend") : join(root, "pkg");
+  const pkg = opts.ancestorRuntime ? join(root, "node_modules", "@songsid", "agend")
+    : opts.npmLayout ? join(root, "pre fix", "lib", "node_modules", "@songsid", "agend") : join(root, "pkg");
   mkdirSync(join(pkg, "dist"), { recursive: true });
   cpSync(LAUNCHER, join(pkg, "launcher"), { recursive: true });
   const pin = opts.pin === undefined ? process.versions.node : opts.pin;
@@ -68,12 +70,21 @@ function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" |
   }));
   // The CLI reports which Node ran it, its argv[1], and whether the launcher spawned it; exits with $CLI_EXIT. With
   // $CLI_WAIT it stays up, its SIGTERM handler in place BEFORE it reports (the test signals as soon as it reads).
-  writeFileSync(join(pkg, "dist", "cli.js"), [
+  for (const cli of ["cli.js", "agent-cli.js"]) writeFileSync(join(pkg, "dist", cli), [
     "if (process.env.CLI_WAIT) process.on('SIGTERM', () => { require('fs').writeFileSync(process.env.CLI_WAIT, 'SIGTERM'); process.exit(143); });",
     "process.stdout.write(JSON.stringify({ execPath: process.execPath, argv1: process.argv[1], args: process.argv.slice(2), spawned: process.env.AGEND_NODE_SELECTED === '1', fakeRuntime: !!process.env.FAKE_RUNTIME }));",
     "if (process.env.CLI_WAIT) setInterval(() => {}, 1000);",
     "else process.exit(Number(process.env.CLI_EXIT || 0));",
   ].join("\n"));
+  if (opts.npmLayout) {
+    // npm's global bin: a RELATIVE symlink into the package — and here a second, absolute link to that one.
+    mkdirSync(join(root, "pre fix", "bin"), { recursive: true });
+    mkdirSync(join(root, "other bin"));
+    for (const bin of ["agend", "agend-agent"]) {
+      symlinkSync(join("..", "lib", "node_modules", "@songsid", "agend", "launcher", bin), join(root, "pre fix", "bin", bin));
+      symlinkSync(join(root, "pre fix", "bin", bin), join(root, "other bin", bin));
+    }
+  }
   const runtimeHome = opts.ancestorRuntime ? join(root, "node_modules", "@songsid", `agend-node-${HOST.id}`) : join(pkg, "node_modules", "@songsid", `agend-node-${HOST.id}`);
   if ((opts.runtime ?? "none") !== "none") {
     mkdirSync(join(runtimeHome, "bin"), { recursive: true });
@@ -280,6 +291,64 @@ describe("the launcher, end to end", () => {
     const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>(r => child.once("exit", (c, s) => r([c, s])));
     expect(readFileSync(mark, "utf8")).toBe("SIGTERM");                           // forwarded, not just the launcher dying
     expect([code, signal]).toEqual([143, null]);                                  // the launcher waited for the CLI's own exit
+  });
+});
+
+describe("the sh bins: AgEnD starts with no Node on PATH", () => {
+  /** A PATH with only the tools the bin script itself uses — no node anywhere on it. */
+  const toolsOnly = (() => {
+    const dir = mkdtempSync(join(tmpdir(), "agend tools-"));
+    roots.push(dir);
+    for (const tool of ["sh", "readlink", "dirname", "basename", "uname"]) {
+      symlinkSync(spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim(), join(dir, tool));
+    }
+    return dir;
+  })();
+  const bin = (f: ReturnType<typeof fixture>, name: string, path: string, env: Record<string, string> = {}) =>
+    spawnSync(join(f.root, "other bin", name), ["status", "--x"], { encoding: "utf8", timeout: 30_000, env: { ...process.env, PATH: path, ...env } });
+
+  it("both bins are the same POSIX sh script, executable, and what package.json links", () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    expect(manifest.bin).toEqual({ agend: "./launcher/agend", "agend-agent": "./launcher/agend-agent" });
+    const text = readFileSync(join(LAUNCHER, "agend"), "utf8");
+    expect(readFileSync(join(LAUNCHER, "agend-agent"), "utf8")).toBe(text);
+    expect(text.startsWith("#!/bin/sh\n")).toBe(true);
+    expect(text.replace(/^\s*#.*$/gm, "")).not.toMatch(/readlink -f|\[\[|\bfunction\b|\$\{[A-Za-z_]+\[/);       // POSIX only, no GNU readlink -f
+    for (const name of ["agend", "agend-agent"]) expect(statSync(join(LAUNCHER, name)).mode & 0o111).toBe(0o111);
+    expect(spawnSync("sh", ["-n", join(LAUNCHER, "agend")]).status).toBe(0);
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST)("through a relative bin link and a link to it, in paths with spaces, no node on PATH: the bundled Node runs the CLI", () => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    expect(postinstall(f).status).toBe(0);
+    for (const [name, entry] of [["agend", "cli.js"], ["agend-agent", "agent-cli.js"]]) {
+      const r = bin(f, name, toolsOnly);
+      expect(r.status, r.stderr).toBe(0);
+      expect(JSON.parse(r.stdout)).toMatchObject({ fakeRuntime: true, args: ["status", "--x"], argv1: join(f.pkg, "dist", entry) });
+    }
+  });
+
+  it("no bundled Node installed: falls back to the node on PATH (which the JS launcher then qualifies)", () => {
+    const f = fixture({ runtime: "none", npmLayout: true });
+    const r = bin(f, "agend", `${toolsOnly}:${dirname(process.execPath)}`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(JSON.parse(r.stdout)).toMatchObject({ execPath: process.execPath, fakeRuntime: false, argv1: join(f.pkg, "dist", "cli.js") });
+  });
+
+  it("no bundled Node and no node on PATH: a clear refusal, exit 127", () => {
+    const r = bin(fixture({ runtime: "none", npmLayout: true }), "agend", toolsOnly);
+    expect(r.status).toBe(127);
+    expect(r.stderr).toContain("its bundled Node is not installed and there is no node on PATH");
+    expect(r.stdout).toBe("");
+  });
+
+  it.skipIf(!ON_FIXTURE_HOST)("a bundled Node changed after it was verified: the bin still hands it to the JS launcher, which refuses", () => {
+    const f = fixture({ runtime: "ok", npmLayout: true });
+    expect(postinstall(f).status).toBe(0);
+    writeFileSync(join(f.runtimeHome, "bin", "node"), `#!/bin/sh\nexec '${process.execPath}' "$@"\n# changed\n`);
+    const r = bin(f, "agend", toolsOnly);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("changed since it was verified");
   });
 });
 

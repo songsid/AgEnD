@@ -1,0 +1,43 @@
+#!/bin/sh
+# #1450: the `agend` and `agend-agent` npm bins (this file and launcher/agend-agent are identical). POSIX sh, so AgEnD
+# starts with no Node on PATH at all: it execs this release's bundled Node on the JS launcher, which is the one place
+# that decides and verifies the interpreter (launcher/runtime-select.cjs). A `node` on PATH is used only when the
+# bundled Node is not installed; the JS launcher then decides whether that Node qualifies. Native Windows is not
+# supported (WSL is), as with tmux.
+
+# This file's real location: npm's global bin is a symlink, possibly relative, possibly to another link. A readlink
+# loop, not `readlink -f` (older macOS lacks it; GNU is not assumed).
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self") || break
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+dir=$(cd "$(dirname "$self")" && pwd -P) || exit 1
+pkg=$(dirname "$dir")
+launcher=$dir/$(basename "$self").cjs
+
+case $(uname -s) in
+  Linux) os=linux ;;
+  Darwin) os=darwin ;;
+  *) os=unsupported ;;
+esac
+case $(uname -m) in
+  x86_64 | amd64) cpu=x64 ;;
+  aarch64 | arm64) cpu=arm64 ;;
+  *) cpu=unsupported ;;
+esac
+node=$pkg/node_modules/@songsid/agend-node-$os-$cpu/bin/node
+
+# The postinstall verified this Node and wrote the receipt; the JS launcher re-checks the receipt against it.
+if [ -f "$pkg/.agend-runtime.json" ] && [ -x "$node" ]; then
+  exec "$node" "$launcher" "$@"
+fi
+if command -v node >/dev/null 2>&1; then
+  exec node "$launcher" "$@"
+fi
+echo "AgEnD cannot start: its bundled Node is not installed and there is no node on PATH." >&2
+echo "To repair: npm install -g @songsid/agend" >&2
+exit 127
