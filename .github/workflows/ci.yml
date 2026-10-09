@@ -444,21 +444,26 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Pack tarball on Node 22
+      # Two tarballs of this build: as released (pinning its bundled Node), and the same package WITHOUT the pins — what
+      # a host no runtime covers gets (#1450): there an old Node must be refused, and npm must roll the upgrade back.
+      - name: Pack tarballs on Node 22 (pinned, and without a runtime)
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: |
           npm ci
           npm run build
           TGZ=$(npm pack --json | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].filename)")
-          echo "TGZ=$TGZ" >> "$GITHUB_ENV"
+          mv "$TGZ" "pinned-$TGZ"
+          npm pkg delete optionalDependencies
+          npm pack --json >/dev/null
+          mv "$TGZ" "noruntime-$TGZ"
+          git checkout -- package.json
+          echo "TGZ=pinned-$TGZ" >> "$GITHUB_ENV"
+          echo "TGZ_NORUNTIME=noruntime-$TGZ" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         if: needs.detect-changes.outputs.docs-only != 'true'
         with:
           node-version: '20'
-      # #1450: the package pins AgEnD's own Node, so on a host a runtime covers the system Node's version is never a
-      # reason to refuse. The rollback proof stays for the case a runtime does not cover (--omit=optional stands in
-      # for it): Node 20 is older than engines, the postinstall refuses, npm rolls back and 2.1.12 stays.
-      - name: Node 20 — without its runtime the upgrade rolls back; with it, AgEnD runs on the bundled Node
+      - name: Rollback proof — Node 20 is refused a package with no runtime for it; 2.1.12 stays
         if: needs.detect-changes.outputs.docs-only != 'true'
         run: |
           set -euo pipefail
@@ -469,16 +474,21 @@ jobs:
           BEFORE=$("$PREFIX/bin/agend" --version)
           echo "Before: $BEFORE"
           [ "$BEFORE" = "2.1.12" ] || { echo "baseline install failed"; exit 1; }
-          # 1. No runtime (omitted): the upgrade must fail and leave 2.1.12 in place.
-          if npm install --global --prefix "$PREFIX" --omit=optional "./$TGZ"; then
-            echo "ERROR: npm install without the runtime should have failed on Node 20 but succeeded" >&2
+          # The package without a runtime: Node 20 is older than engines, the preinstall refuses, npm rolls back.
+          if npm install --global --prefix "$PREFIX" "./$TGZ_NORUNTIME"; then
+            echo "ERROR: npm install of a package with no runtime should have failed on Node 20 but succeeded" >&2
             exit 1
           fi
           AFTER=$("$PREFIX/bin/agend" --version)
           echo "After the refused upgrade: $AFTER"
           [ "$AFTER" = "2.1.12" ] || { echo "ROLLBACK FAILED: version is $AFTER, expected 2.1.12" >&2; exit 1; }
           echo "Rollback confirmed: 2.1.12 is still installed after a refused upgrade on Node 20"
-          # 2. With the pinned runtime: the upgrade succeeds on Node 20 and AgEnD runs on its bundled Node.
+      - name: Bundled install — Node 20 installs the pinned package, which runs on its own Node
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        run: |
+          set -euo pipefail
+          PREFIX="$RUNNER_TEMP/node20-rollback-prefix"
+          # #1450 (user rule): where a runtime applies the system Node's version is never a reason to refuse.
           npm install --global --prefix "$PREFIX" "./$TGZ"
           WANT=$(node -p 'require("./package.json").version')
           GOT=$("$PREFIX/bin/agend" --version)
