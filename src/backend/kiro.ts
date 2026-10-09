@@ -232,7 +232,7 @@ export function kiroTrustPromptState(pane: string): KiroLaunchPromptState {
 }
 
 function kiroTrustPromptDialogs(trustAll: boolean): RuntimeDialog[] {
-  const guarded = { pattern: KIRO_TRUST_PATTERN, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true } as const;
+  const guarded = { pattern: KIRO_TRUST_PATTERN, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, oncePerLaunch: true } as const;
   const at = (pane: string, cursor: number) => {
     const state = kiroTrustPromptState(pane);
     return trustAll && state.active && state.cursor === cursor;
@@ -378,8 +378,8 @@ export function kiroLaunchPromptState(pane: string, spec: KiroLaunchPromptSpec):
   return { active: true, cursor: marked[0] };
 }
 
-/** kiro's input row: legacy `12% !>` / `[agent] 3% λ !>`, or a bare `>`/`❯`. */
-const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$/;
+/** Kiro's legacy input row, or the archived TUI's column-zero `›` composer (including typed text). */
+const KIRO_COMPOSER_ROW = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*\S{0,2}\s*!?\s*[❯>]|^\s*[!❯>]\s*$|^›(?:[ \t]|$)/;
 
 /**
  * Launch prompts that would move an instance off its engine (#1109). Text

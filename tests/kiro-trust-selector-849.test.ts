@@ -9,6 +9,7 @@ vi.mock("node:child_process", async original => ({ ...await original<typeof impo
   spawn: forbiddenProcess, spawnSync: forbiddenProcess, fork: forbiddenProcess,
 }));
 import { KiroBackend } from "../src/backend/kiro.js";
+import { TmuxManager } from "../src/tmux-manager.js";
 import { Daemon } from "../src/daemon.js";
 import type { RuntimeDialog } from "../src/backend/types.js";
 
@@ -17,6 +18,9 @@ import type { RuntimeDialog } from "../src/backend/types.js";
 const NATIVE = readFileSync(new URL("./fixtures/kiro-steer-1405/2.27.1-tui-trust-all-tools.pane.txt", import.meta.url), "utf8");
 const ACCEPT = NATIVE.replace("❯ No, exit", "  No, exit").replace(/^([ ]*)Yes, I accept$/m, "$1❯ Yes, I accept");
 const PERSIST = NATIVE.replace("❯ No, exit", "  No, exit").replace(/^([ ]*)Yes, and don't ask again$/m, "$1❯ Yes, and don't ask again");
+const TUI_IDLE = readFileSync(new URL("./fixtures/kiro-steer-1405/2.27.1-tui-idle.pane.txt", import.meta.url), "utf8");
+const TUI_BUSY = readFileSync(new URL("./fixtures/kiro-steer-1405/2.28.0-tui-busy-steer.pane.txt", import.meta.url), "utf8");
+const TUI_COMPOSER = TUI_IDLE.split("\n").find(row => row.startsWith("›"))!;
 const READY = "All tools are now trusted (!).\n2% !> What would you like to do?";
 const dirs: string[] = [];
 const daemons: any[] = [];
@@ -33,6 +37,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const daemon of daemons.splice(0)) daemon.freezeRuntimeMonitors();
   vi.clearAllTimers();
+  vi.restoreAllMocks();
   vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   expect(forbiddenProcess).not.toHaveBeenCalled();
@@ -81,6 +86,7 @@ describe("native TUI trust selector shared by startup and runtime", () => {
       expect(found[0].blocksDelivery).toBe(true);
       expect(found[0].verifyAfterKeys).toBe(true);
       expect(found[0].autoResolutionKey).toBeTruthy();
+      expect(found[0].oncePerLaunch).toBe(true);
       expect(found[1].holdOnly).toBe(true);
     }
   });
@@ -244,5 +250,85 @@ describe("true daemon runtime scanner and delivery hold", () => {
     release(NATIVE);
     await vi.advanceTimersByTimeAsync(400);
     expect(h.keys).toEqual([]);
+  });
+});
+
+describe("R2 trust launch claims and native composer ownership", () => {
+  it.each([["idle", TUI_IDLE], ["busy", TUI_BUSY]])("archived trust above the native %s composer is history", async (_name, current) => {
+    const pane = `${NATIVE.trimEnd()}\n${current}`;
+    for (const dialogs of tables()) expect(matches(dialogs, pane).filter(d => d.description.includes("trust confirmation"))).toEqual([]);
+    const h = makeDaemon(pane);
+    expect((await h.daemon.probeBlockingDialog()).state).toBe("clear");
+    if (_name === "idle") expect(await h.daemon.paneReadinessForDelivery("@fixture")).toBe("ready");
+    h.daemon.startErrorMonitor(); await vi.advanceTimersByTimeAsync(10_500);
+    expect(h.keys).toEqual([]);
+  });
+  it.each([["No", NATIVE], ["Accept", ACCEPT]])("native composer before copied %s options cannot receive keys", (_name, frame) => {
+    const pane = frame.replace(" ❯", `\n${TUI_COMPOSER}\n ❯`);
+    for (const dialogs of tables()) expect(matches(dialogs, pane).filter(d => d.description.includes("trust confirmation"))).toEqual([]);
+  });
+  it("each runtime phase stays claimed when Enter repaints No", async () => {
+    const h = makeDaemon(NATIVE, key => key === "Down" ? ACCEPT : NATIVE);
+    h.daemon.startErrorMonitor(); await vi.advanceTimersByTimeAsync(35_500);
+    expect(h.keys).toEqual(["Down", "Enter"]);
+    expect((await h.daemon.probeBlockingDialog()).dialog.holdOnly).toBe(true);
+  });
+  it("startup claims survive handoff to runtime and a ready repaint", async () => {
+    const h = makeDaemon(NATIVE, key => key === "Down" ? ACCEPT : READY);
+    await startup(h.daemon);
+    expect(h.keys).toEqual(["Down", "Enter"]);
+    h.daemon.startErrorMonitor(); await vi.advanceTimersByTimeAsync(5_500);
+    h.screen.pane = NATIVE; await vi.advanceTimersByTimeAsync(25_000);
+    expect(h.keys).toEqual(["Down", "Enter"]);
+    expect((await h.daemon.probeBlockingDialog()).dialog.holdOnly).toBe(true);
+  });
+  it("uncertain send ACK never releases a claimed launch phase", async () => {
+    const h = makeDaemon();
+    h.tmux.sendSpecialKey.mockImplementation(async key => { h.keys.push(key); return false; });
+    h.daemon.startErrorMonitor(); await vi.advanceTimersByTimeAsync(25_500);
+    expect(h.keys).toEqual(["Down"]);
+  });
+  it.each(["stop", "recover"])("held runtime Accept capture cannot send after %s", async which => {
+    const h = makeDaemon(ACCEPT);
+    let release!: (pane: string) => void;
+    h.tmux.capturePane.mockResolvedValueOnce(ACCEPT).mockImplementationOnce(() => new Promise<string>(resolve => { release = resolve; }));
+    h.daemon.startErrorMonitor(); await vi.advanceTimersByTimeAsync(5_000);
+    expect(release).toBeTypeOf("function");
+    let replacementSend: ReturnType<typeof vi.spyOn> | undefined;
+    if (which === "stop") h.daemon.fenceDeliveryWritesForStop();
+    else {
+      Object.assign(h.tmux, { getWindowId: () => "@fixture" });
+      Object.assign(h.daemon.controlClient, { registerWindow: vi.fn(async () => {}), unregisterWindow: vi.fn(), on: vi.fn(), off: vi.fn() });
+      vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([{ id: "@replacement", name: "trust-849", index: 0 }] as any);
+      expect(await h.daemon.recoverWindow()).toBe("@replacement");
+      expect(h.daemon.tmux).not.toBe(h.tmux);
+      replacementSend = vi.spyOn(h.daemon.tmux, "sendSpecialKey").mockResolvedValue(true);
+    }
+    release(ACCEPT); await vi.advanceTimersByTimeAsync(400);
+    expect(h.keys).toEqual([]);
+    if (replacementSend) expect(replacementSend).not.toHaveBeenCalled();
+  });
+  it("a genuinely new spawn may claim the phases again", async () => {
+    const h = makeDaemon(NATIVE, key => key === "Down" ? ACCEPT : READY);
+    await startup(h.daemon);
+    h.daemon.beginSpawn(); h.daemon.endSpawn(); h.screen.pane = NATIVE;
+    await startup(h.daemon);
+    expect(h.keys).toEqual(["Down", "Enter", "Down", "Enter"]);
+  });
+});
+
+describe("R2 final synchronous admission and attempt controls", () => {
+  it("stop at the last callback before the key refuses it synchronously", async () => {
+    const h = makeDaemon(ACCEPT);
+    h.logger.info.mockImplementation(() => h.daemon.fenceDeliveryWritesForStop());
+    h.daemon.startErrorMonitor(); await vi.advanceTimersByTimeAsync(5_500);
+    expect(h.keys).toEqual([]);
+  });
+  it("a new launch attempt in the same spawn may claim the phases again", async () => {
+    const h = makeDaemon(NATIVE, key => key === "Down" ? ACCEPT : READY);
+    await startup(h.daemon);
+    h.daemon.launchAttempt++; h.screen.pane = NATIVE;
+    await startup(h.daemon);
+    expect(h.keys).toEqual(["Down", "Enter", "Down", "Enter"]);
   });
 });
