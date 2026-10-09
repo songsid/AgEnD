@@ -14,7 +14,8 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy, sendPanelHtml } from "../src/web-host-guard.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const PANELS = ["app.html", "view.html", "settings.html", "signin.html", join("web-terminal", "terminal.html")];
+// #1408 step 2: /view is app.html too (its View panel is a module, shared/panel-view.js), so view.html is gone.
+const PANELS = ["app.html", "settings.html", "signin.html", join("web-terminal", "terminal.html")];
 // Every script a panel can load from this origin: the app's modules and the shared ones (*.module.js is vendored Preact/htm).
 const isModule = (f: string) => f.endsWith(".js") && !f.endsWith(".module.js");
 const MODULES = [...readdirSync(UI).filter(isModule), ...readdirSync(join(UI, "shared")).filter(isModule).map(f => join("shared", f))];
@@ -29,6 +30,10 @@ describe("no inline event handler, anywhere a panel could write one", () => {
     const src = readFileSync(join(UI, file), "utf8");
     expect(src.match(/\son[a-z]+\s*=\s*["'`{$\\]/gi) ?? [], file).toEqual([]);
     expect(src, file).not.toMatch(/javascript:/i);
+  });
+
+  it("the View panel's modules are in the scan above, so a rename cannot drop them silently", () => {
+    expect(MODULES).toEqual(expect.arrayContaining([join("shared", "panel-view.js"), join("shared", "view-strings.js")]));
   });
 
   it("the shared scripts a panel loads write none either", () => {
@@ -119,7 +124,8 @@ describe("every panel as served", () => {
           expect(res.body.match(/\son[a-z]+\s*=\s*"/gi) ?? [], path).toEqual([]);
         }
       }
-      expect(seen.size, "/view and /settings each have inline script, twice; /ui none").toBe(4);
+      // /settings has its inline script (twice, one nonce per response); /view and /ui are the app shell, which has none.
+      expect(seen.size, "/settings has inline script, twice; /view and /ui none").toBe(2);
     } finally { await h.stop(); }
   }, 30_000);
 });
@@ -150,9 +156,15 @@ const unescape = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 
 describe("the app builds its markup from templates and props; the thread's string template is escaped and allow-listed (#1303)", () => {
   const THREAD = readFileSync(join(UI, "chat-thread.js"), "utf8");
+  // The one innerHTML write a module may make besides the thread: the View pane's frame, which ansiToHtml builds from
+  // escaped pane text and its own spans only (#1408 step 2). Pinned by content, so a second write fails here.
+  const ANSI_FRAME = "pre.current.innerHTML = ansiToHtml(text);";
   it.each(MODULES.filter(f => f !== join("chat-thread.js")))("%s: no innerHTML write, insertAdjacentHTML, document.write, eval or new Function", (file) => {
     const src = readFileSync(join(UI, file), "utf8");
-    expect(src, file).not.toMatch(/\.innerHTML\s*=/);
+    if (file === join("shared", "panel-view.js")) {
+      expect(src.match(/\.innerHTML\s*=/g) ?? [], file).toHaveLength(1);
+      expect(src, file).toContain(ANSI_FRAME);
+    } else expect(src, file).not.toMatch(/\.innerHTML\s*=/);
     expect(src, file).not.toContain("insertAdjacentHTML");
     expect(src, file).not.toContain("document.write");
     expect(src, file).not.toMatch(/\beval\(|new Function\(/);
@@ -171,12 +183,12 @@ describe("the app builds its markup from templates and props; the thread's strin
   });
 
   it("esc() escapes quotes on the panels that still write markup by string (the same function writes text and attributes)", () => {
-    for (const file of ["view.html", "settings.html"]) {
+    for (const file of ["settings.html", join("shared", "panel-view.js")]) {
       const src = readFileSync(join(UI, file), "utf8");
-      const m = src.match(/(?:function esc\(s\) \{[^\n]*\}|const esc = \(s\) => [^\n]*;)/);
+      const m = src.match(/(?:export )?(?:function esc\(s\) \{[^\n]*\}|const esc = \(s\) => [^\n]*;)/);
       expect(m, file).not.toBeNull();
       const ctx = vm.createContext({ escAttr: (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;") });
-      const esc = vm.runInContext(`(() => { ${m![0]}; return esc; })()`, ctx) as (s: string) => string;
+      const esc = vm.runInContext(`(() => { ${m![0].replace(/^export /, "")}; return esc; })()`, ctx) as (s: string) => string;
       expect(esc(`a"b'c<d>&`), file).toBe("a&quot;b&#39;c&lt;d&gt;&amp;");
     }
   });

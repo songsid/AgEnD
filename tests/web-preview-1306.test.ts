@@ -167,13 +167,34 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
     } finally { h.stop(); }
   });
 
-  it("/view, /settings and sign-in never get a frame-src; every dashboard response keeps DENY and frame-ancestors 'none'", async () => {
+  // #1408 step 2: /view is the app shell on its View panel. Signed in, it is the same page as /ui (the same preview origin
+  // and frame-src); anonymous under view_access: open it is the View-only shell, with no preview at all.
+  it("/view signed in carries /ui's preview attributes and frame-src; anonymous /view is view-only with none; /settings and sign-in never get one; every dashboard response keeps DENY and frame-ancestors 'none'", async () => {
     const h = await startFleet();
     try {
-      for (const p of ["/view", "/settings", "/signin", "/ui"]) {
+      const frame = `frame-src http://127.0.0.1:${h.pport.port}/frame`;
+      const ui = await raw(h.port, "GET", "/ui", { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
+      for (const p of ["/view", "/view/alpha"]) {
+        const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
+        expect(r.status, p).toBe(200);
+        expect(directive(String(r.headers["content-security-policy"]), "frame-src"), p).toBe(frame);
+        expect(bodyAttrs(r.body), p).toEqual(bodyAttrs(ui.body));
+        expect(bodyAttrs(r.body)["data-mode"], p).toBe("full");
+      }
+      for (const p of ["/settings", "/signin"]) {
+        const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
+        expect(directive(String(r.headers["content-security-policy"]), "frame-src"), p).toBe("");
+      }
+      for (const p of ["/view", "/view/alpha"]) {
+        const anon = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, accept: "text/html" });
+        expect(anon.status, `${p} anonymous`).toBe(200);
+        expect(directive(String(anon.headers["content-security-policy"]), "frame-src"), `${p} anonymous`).toBe("");
+        const a = bodyAttrs(anon.body);
+        expect([a["data-mode"], a["data-preview-origin"], a["data-preview-boot"]], `${p} anonymous`).toEqual(["view-only", "", ""]);
+      }
+      for (const p of ["/view", "/view/alpha", "/settings", "/signin", "/ui"]) {
         const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
         const csp = String(r.headers["content-security-policy"]);
-        if (p !== "/ui") expect(directive(csp, "frame-src"), p).toBe("");
         expect(r.headers["x-frame-options"], p).toBe("DENY");
         expect(directive(csp, "frame-ancestors"), p).toBe("frame-ancestors 'none'");
       }

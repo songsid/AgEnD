@@ -5,6 +5,8 @@
  * served pages; no fleet started. (#1268 is the same for scripts: tests/web-csp-1268.test.ts.)
  * #1408 step 1: the dashboard is the app shell: app.html has no <style> block at all (tokens.css and app.css are
  * external), and every app module is scanned like the panels' scripts.
+ * #1408 step 2: /view is the app shell too (its View panel is shared/panel-view.js, with the ANSI renderer that used
+ * to live in view.html), so view.html is gone and the terminal-colour cases read panel-view.js.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
@@ -16,7 +18,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { WEB_CONTENT_SECURITY_POLICY, panelContentSecurityPolicy } from "../src/web-host-guard.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const PANELS = ["app.html", "view.html", "settings.html", "signin.html"];
+const PANELS = ["app.html", "settings.html", "signin.html"];
 // Every script a panel can load from this origin: the app's modules and the shared ones (*.module.js is vendored Preact/htm).
 const isModule = (f: string) => f.endsWith(".js") && !f.endsWith(".module.js");
 const SHARED = [...readdirSync(join(UI)).filter(isModule), ...readdirSync(join(UI, "shared")).filter(isModule).map(f => join("shared", f))];
@@ -25,6 +27,10 @@ afterEach(() => { for (const d of tempDirs.splice(0)) rmSync(d, { recursive: tru
 const directive = (csp: string, name: string) => csp.split(";").map(s => s.trim()).find(s => s.startsWith(name + " ")) ?? "";
 
 describe("no style attribute, anywhere a panel could write one", () => {
+  it("the View panel's modules are in the scan below, so a rename cannot drop them silently", () => {
+    expect(SHARED).toEqual(expect.arrayContaining([join("shared", "panel-view.js"), join("shared", "view-strings.js")]));
+  });
+
   it.each(PANELS)("%s: none in the markup or in a template its script builds; no setAttribute('style')", (file) => {
     const src = readFileSync(join(UI, file), "utf8");
     expect(src.match(/\sstyle\s*=\s*["'`{$\\]/gi) ?? [], file).toEqual([]);
@@ -122,7 +128,8 @@ describe("every panel as served", () => {
         expect(nonce, `${path}: style-src names a nonce`).toBeTruthy();
         expect(directive(csp, "script-src"), "one nonce for both").toContain(`'nonce-${nonce}'`);
         const tags = [...res.body.matchAll(/<style\b([^>]*)>/g)].map(m => m[1]!.trim());
-        if (path === "/ui") expect(tags, "the app shell's styles are external files").toEqual([]);
+        // /ui and /view are the app shell: its styles are external files, so there is no <style> to nonce.
+        if (path === "/ui" || path === "/view") expect(tags, `${path}: the app shell's styles are external files`).toEqual([]);
         else expect(tags.length, path).toBeGreaterThan(0);
         for (const a of tags) expect(a, path).toBe(`nonce="${nonce}"`);
         expect(res.body.match(/\sstyle\s*=\s*"/gi) ?? [], path).toEqual([]);
@@ -134,11 +141,13 @@ describe("every panel as served", () => {
 // ── /view's live terminal: colours as data, painted through the style object ──
 
 describe("/view's terminal colours", () => {
-  const VIEW = readFileSync(join(UI, "view.html"), "utf8");
+  const VIEW = readFileSync(join(UI, "shared", "panel-view.js"), "utf8");
+  // The ANSI section of the View panel's module: BASE, esc, xterm256, ansiToHtml and paintAnsi, up to the roster. Its
+  // exports are dropped so the section runs as a plain script.
   const between = (from: string, to: string) => VIEW.slice(VIEW.indexOf(from), VIEW.indexOf(to));
   function load() {
     const c = vm.createContext({});
-    vm.runInContext(between("  const BASE = [", "  function ansiToHtml(") + between("  function ansiToHtml(", "  // ── Font sizing"), c);
+    vm.runInContext(between("const BASE = [", "// ── The roster").replace(/^export /gm, ""), c);
     return c as unknown as { ansiToHtml(t: string): string; paintAnsi(root: unknown): void; xterm256(n: number): string };
   }
 
