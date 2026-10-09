@@ -121,6 +121,29 @@ describe("remaining effective environment contract witnesses", () => {
     writeFileSync(startup, `require('child_process').spawnSync(${JSON.stringify(w.manager)}, ['--user', 'restart', 'private-unit']);\n`);
     refuse(w.run(`try { require('child_process').${via}(process.execPath, ['-e', '0'], { env: { ...process.env, NODE_OPTIONS: ${JSON.stringify(`--require=${startup}`)} } }); } catch (e) { process.exit(3); }`));
   });
+  // #1460 r7: `env -` is env's own spelling of -i.
+  it("spawnSync('/usr/bin/env', ['-', node, …]) is refused before the cleared child runs", () => {
+    const w = world(); refuse(w.run(`const r=require('child_process').spawnSync('/usr/bin/env',${JSON.stringify(["-", process.execPath, ...w.childArgs])});${relay}`));
+  });
+  it("sh -c 'env - node …' is refused before the cleared child runs", () => {
+    const w = world(); refuse(w.run(`require('child_process').execSync(${JSON.stringify(["env", "-", process.execPath, ...w.childArgs].map(quote).join(" "))})`));
+  });
+  // #1460 r7: NODE_OPTIONS as Node decodes it — a quoted --require is the real preload, at the root and below it.
+  it("a quoted --require=\"<boundary>\" is the boundary's own preload: the root runs, and a child is still judged", () => {
+    const w = world(), target = join(w.root, "harmless");
+    const env = { ...w.env, NODE_OPTIONS: `--require="${guard}" --require="${boundary}"` };
+    const run = (js: string) => spawnSync(process.execPath, ["-e", js], { encoding: "utf8", timeout: 10_000, cwd: w.root, env });
+    const ok = run(`require('fs').writeFileSync(${JSON.stringify(target)},'ok')`);
+    assert.equal(ok.status, 0, ok.stderr); assert.equal(readFileSync(target, "utf8"), "ok"); assert.equal(readFileSync(w.log, "utf8"), "");
+    const child = run(`const r=require('child_process').spawnSync(process.execPath,${JSON.stringify(w.childArgs)});${relay}`);
+    refuse({ result: child, markerRan: existsSync(w.mark), journal: readFileSync(w.log, "utf8"), stubRan: existsSync(w.stubMark) });
+  });
+  // #1460 r7: with no PATH the native lookup is the platform default, not cwd: a bare manager is refused.
+  it("a bare manager with no PATH in its environment is refused, even from the stubs directory", () => {
+    const w = world();
+    refuse(w.run(`const e={...process.env};delete e.PATH;const r=require('child_process').spawnSync('systemctl',['--user','restart','private-unit'],{cwd:${JSON.stringify(w.stubs)},env:e});${relay}`));
+    assert.match(readFileSync(w.log, "utf8"), /no PATH/);
+  });
   it("mentioning the boundary in a Node condition is not proof its preload survived", () => {
     const w = world(), fake = `--require=${guard} --conditions=${boundary}`;
     refuse(w.run(`const r=require('child_process').spawnSync(process.execPath,${JSON.stringify(w.childArgs)},{env:{...process.env,NODE_OPTIONS:${JSON.stringify(fake)}}});${relay}`));

@@ -12,9 +12,31 @@ var fs = require("fs");
 var path = require("path");
 var LOG = process.env.AGEND_BOUNDARY_LOG;
 var PRELOAD = "--require=" + __filename;
-/** Whether a NODE_OPTIONS value really preloads this file (a token, not a mention). */
+/**
+ * NODE_OPTIONS as Node splits it: words separated by spaces; inside double quotes a space is kept and a backslash
+ * escapes the next character (node_options.cc ParseNodeOptionsEnvVar). null: an unterminated quote.
+ */
+function nodeOptionWords(value) {
+  var words = [], word = null, q = false, text = String(value || "");
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charAt(i);
+    if (q) {
+      if (c === "\\" && i + 1 < text.length) word += text.charAt(++i);
+      else if (c === '"') q = false;
+      else word += c;
+      continue;
+    }
+    if (c === '"') { q = true; if (word === null) word = ""; continue; }
+    if (c === " ") { if (word !== null) words.push(word); word = null; continue; }
+    word = (word === null ? "" : word) + c;
+  }
+  if (q) return null;
+  if (word !== null) words.push(word);
+  return words;
+}
+/** Whether a NODE_OPTIONS value really preloads this file (a decoded token, not a mention). */
 function preloads(value) {
-  var t = String(value || "").split(/\s+/);
+  var t = nodeOptionWords(value) || [];
   for (var i = 0; i < t.length; i++) {
     if (t[i] === PRELOAD) return true;
     if ((t[i] === "--require" || t[i] === "-r") && t[i + 1] === __filename) return true;
@@ -119,7 +141,7 @@ function shellScript(args) {
 
 /** The file `name` resolves to on this PATH from `cwd`, as exec does: an empty entry is cwd, a relative one is under it. */
 function onPath(name, pathVar, cwd) {
-  var dirs = String(pathVar === undefined ? "" : pathVar).split(":");
+  var dirs = String(pathVar).split(":");
   for (var i = 0; i < dirs.length; i++) {
     var f = path.resolve(cwd, dirs[i] || ".", name);
     try { fs.accessSync(f, fs.constants.X_OK); if (fs.statSync(f).isFile()) return f; } catch (e) { /* next */ }
@@ -173,7 +195,8 @@ function judgeWords(words, env, cwd, shell, depth, text) {
         i++;
         continue;
       }
-      if (a.text.charAt(0) !== "-" || (a.text === "-" && (spec.flags || []).indexOf("-") < 0)) break;
+      if (a.text === "-") return "a lone - for " + name + " (env: clears the environment): " + text;
+      if (a.text.charAt(0) !== "-") break;
       if ((spec.lookup || []).indexOf(a.text) >= 0) return null;                    // command -v: looks up, runs nothing
       if ((spec.flags || []).indexOf(a.text) >= 0) { i++; continue; }
       if ((spec.unset || []).indexOf(a.text) >= 0) {
@@ -202,6 +225,8 @@ function judgeWords(words, env, cwd, shell, depth, text) {
   if (MANAGERS.test(base)) {
     if (cmd.text.indexOf("/") >= 0) return "service manager by path: " + text;
     // A bare name: it must resolve, on THIS command's PATH from its cwd, to the stub in the hop's TRUSTED directory.
+    // With no PATH at all the lookup is the platform's own default, not modelled here: refused.
+    if (env.PATH === undefined) return base + " with no PATH in its environment: " + text;
     var found = onPath(base, env.PATH, cwd);
     if (!TRUSTED.stubs || !found || found !== path.join(TRUSTED.stubs, base)) return base + " that does not resolve to the hop's stub (" + (found || "nothing") + "): " + text;
   }
