@@ -316,7 +316,7 @@ instances:
 
 升級後第一次啟動時，AgEnD 會讀取最近三十天的活動，列出實際用過 worker 已拿不到之工具的 instance，以及使用次數。它絕不會修改你的設定：哪些 agent 負責協調，是你怎麼組織 fleet 的決定；明確寫上的 `tool_set: full` 也會原封不動保留。
 
-**目前只能透過 Settings 或直接編輯 `fleet.yaml` 設定**：General 的 `update_instance_config` 還沒有 `tool_set` 欄位，從那裡送出的值會被丟掉。
+**`tool_set` 只能透過 Settings 或直接編輯 `fleet.yaml` 設定。** 透過 General 的 `update_instance_config` 傳入 `tool_set` 會收到權限邊界錯誤（#804/#814）——任何 coordinator 設定檔的 agent 都能呼叫的 MCP 工具，不能被用來擴大設定檔的權限。
 
 ## 權限系統 (Permission system)
 
