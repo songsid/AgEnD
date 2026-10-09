@@ -16,8 +16,15 @@ export function getAgendHome(): string {
  * Null when the password database cannot be read: falling back to homedir()
  * would trust `$HOME` again (#1128 review), so then no home is the default.
  */
+let verifiedDefaultHome: { uid: number | null; home: string } | undefined;
 export function realDefaultAgendHome(): string | null {
-  try { return join(userInfo().homedir, ".agend"); } catch { return null; }
+  const uid = process.getuid?.() ?? null;
+  if (verifiedDefaultHome?.uid === uid) return verifiedDefaultHome.home;
+  try {
+    const home = join(userInfo().homedir, ".agend");
+    verifiedDefaultHome = { uid, home };
+    return home;
+  } catch { return null; } // unknown never trusts HOME, and may retry a later OS lookup
 }
 
 /**
