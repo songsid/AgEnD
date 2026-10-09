@@ -284,7 +284,7 @@ describe("`agend restart` (what `agend update` spawns) fixes the unit before rel
     writeFileSync(join(bin, "systemctl"), `#!/bin/sh
 has=no; grep -q '^KillMode=mixed$' '${unit}' 2>/dev/null && has=yes
 echo "$* killmode=$has" >> '${log}'
-case "$*" in *is-active*) ${opts.vanishDuringSelection ? `rm -f '${unit}';` : ""} echo active;; esac
+case "$*" in *"--user is-active"*) ${opts.vanishDuringSelection ? `rm -f '${unit}';` : ""} echo active;; *is-active*) echo active;; esac
 case "$*" in *daemon-reload*)
   [ "${opts.failReload ? "1" : "0"}" = 1 ] && exit 1
   if [ "${opts.pinLoaded ? "1" : "0"}" = 0 ]; then
@@ -338,6 +338,30 @@ syncBuiltinESMExports();
     const calls = readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
     return { r, calls, unit, out: `${r.stdout}\n${r.stderr}`, restarted: calls.some(c => (opts.system ? /^restart agend\b/ : /^--user restart com\.agend\.fleet/).test(c)) };
   }
+
+  it.each([
+    ["custom", "90s", "90"], ["duplicate", "90s", "60\nTimeoutStopSec=90"],
+    ["drop-in", "90s", "300"], ["custom unknown", "", "90"],
+  ])("loaded stop grace is independently gated for %s", (kind, stopLoaded, configured) => {
+    const unit = legacyUnit().replace("TimeoutStopSec=60", `TimeoutStopSec=${configured}`);
+    const r = restart(unit, { stopLoaded, loaded: "mixed", pinLoaded: true,
+      ...(kind === "drop-in" ? { dropIn: "[Service]\nTimeoutStopSec=90\n" } : {}) });
+    expect(r.r.status).toBe(1); expect(r.restarted).toBe(false);
+    expect(r.calls.some(c => c.includes("show -p TimeoutStopUSec --value"))).toBe(true);
+    expect(r.out).toContain("this fleet needs 300s");
+    expect(readFileSync(r.unit, "utf8")).toContain(`TimeoutStopSec=${configured}`);
+  });
+  it("a unit disappearing after target selection cannot skip the loaded stop-grace query", () => {
+    const r = restart(legacyUnit(), { vanishDuringSelection: true, stopLoaded: "90s", loaded: "mixed", pinLoaded: true });
+    expect(r.r.status).toBe(1); expect(r.restarted).toBe(false);
+    expect(r.calls.some(c => c.includes("show -p TimeoutStopUSec --value"))).toBe(true);
+    expect(r.out).toContain("this fleet needs 300s");
+  });
+  it("a preserved custom 600s loaded grace remains restartable", () => {
+    const r = restart(legacyUnit().replace("TimeoutStopSec=60", "TimeoutStopSec=600"), { stopLoaded: "10min" });
+    expect(r.restarted).toBe(true); expect(r.r.status).toBe(0);
+    expect(readFileSync(r.unit, "utf8")).toContain("TimeoutStopSec=600");
+  });
 
   it.skipIf(!existsSync(cli))("#1071: stale, unknown or malformed loaded stop grace refuses before restart", () => {
     for (const stopLoaded of ["1min", "", "5min garbage"]) {
@@ -573,29 +597,6 @@ while :; do sleep 1; done
     return readFileSync(out, "utf8").trim();
   }
 
-  it.each([
-    ["custom", "90s", "90"], ["duplicate", "90s", "60\nTimeoutStopSec=90"],
-    ["drop-in", "90s", "300"], ["custom unknown", "", "90"],
-  ])("loaded stop grace is independently gated for %s", (kind, stopLoaded, configured) => {
-    const unit = legacyUnit().replace("TimeoutStopSec=60", `TimeoutStopSec=${configured}`);
-    const r = restart(unit, { stopLoaded, loaded: "mixed", pinLoaded: true,
-      ...(kind === "drop-in" ? { dropIn: "[Service]\nTimeoutStopSec=90\n" } : {}) });
-    expect(r.r.status).toBe(1); expect(r.restarted).toBe(false);
-    expect(r.calls.some(c => c.includes("show -p TimeoutStopUSec --value"))).toBe(true);
-    expect(r.out).toContain("this fleet needs 300s");
-    expect(readFileSync(r.unit, "utf8")).toContain(`TimeoutStopSec=${configured}`);
-  });
-  it("a unit disappearing after target selection cannot skip the loaded stop-grace query", () => {
-    const r = restart(legacyUnit(), { vanishDuringSelection: true, stopLoaded: "90s", loaded: "mixed", pinLoaded: true });
-    expect(r.r.status).toBe(1); expect(r.restarted).toBe(false);
-    expect(r.calls.some(c => c.includes("show -p TimeoutStopUSec --value"))).toBe(true);
-    expect(r.out).toContain("this fleet needs 300s");
-  });
-  it("a preserved custom 600s loaded grace remains restartable", () => {
-    const r = restart(legacyUnit().replace("TimeoutStopSec=60", "TimeoutStopSec=600"), { stopLoaded: "10min" });
-    expect(r.restarted).toBe(true); expect(r.r.status).toBe(0);
-    expect(readFileSync(r.unit, "utf8")).toContain("TimeoutStopSec=600");
-  });
 
   it("the template's KillMode lets the fleet quit its CLIs; control-group SIGTERMs them", () => {
     const rendered = /^KillMode=(\w[\w-]*)$/m.exec(renderSystemdUnit(vars))?.[1] ?? "control-group";
