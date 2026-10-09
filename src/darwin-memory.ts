@@ -7,7 +7,13 @@ export const DARWIN_MEMORY_CACHE_MS = 30_000;
 const MAX_OUTPUT = 32 * 1024;
 
 export function unknownDarwinMemory(totalBytes: number): HostMemory {
-  return { totalBytes, availableBytes: null, availableKind: "unknown", swapTotalBytes: null, swapFreeBytes: null };
+  return { totalBytes, availableBytes: null, availableKind: "unknown", swapTotalBytes: null, swapFreeBytes: null, darwinPressureLevel: null, darwinPressureRaw: null };
+}
+
+/** XNU exposes NOTE_MEMORYSTATUS_PRESSURE_* (1/2/4), not its internal 0/1/2/3 enum. */
+export function parseDarwinPressureLevel(text: string): HostMemory["darwinPressureLevel"] {
+  const match = /^kern\.memorystatus_vm_pressure_level:[ \t]+([124])[ \t]*\r?\n?$/.exec(text);
+  return match && match[0].length === text.length ? Number(match[1]) as 1 | 2 | 4 : null;
 }
 
 /** vm_stat's printed free count excludes speculative pages. Purgeable can overlap inactive. */
@@ -73,6 +79,8 @@ interface Options {
   run?: MemoryCommandRunner;
   totalmem?: () => number;
   now?: () => number;
+  /** Only the periodic fleet sampler requests the kernel alarm. Diagnostics do not fork for it. */
+  includePressure?: boolean;
 }
 interface Flight {
   completed: boolean;
@@ -81,11 +89,12 @@ interface Flight {
   cancel(): void;
 }
 
-/** One bounded logical read and at most one physical pair, even across stop/restart. */
+/** One bounded logical read and at most one physical batch, even across stop/restart. */
 export class DarwinMemoryProbe {
   private readonly run: MemoryCommandRunner;
   private readonly total: () => number;
   private readonly now: () => number;
+  private readonly includePressure: boolean;
   private flight: Flight | null = null;
   private cache: { at: number; memory: HostMemory } | null = null;
   private epoch = 0;
@@ -94,11 +103,12 @@ export class DarwinMemoryProbe {
     this.run = options.run ?? runMemoryCommand;
     this.total = options.totalmem ?? totalmem;
     this.now = options.now ?? (() => performance.now());
+    this.includePressure = options.includePressure ?? false;
   }
 
   read(): Promise<HostMemory> {
     if (this.cache && this.now() - this.cache.at < DARWIN_MEMORY_CACHE_MS) return Promise.resolve({ ...this.cache.memory });
-    // A timed-out or cancelled pair still owns its physical reservation.
+    // A timed-out or cancelled batch still owns its physical reservation.
     if (this.flight) {
       const flight = this.flight;
       if (flight.completed) return Promise.resolve(unknownDarwinMemory(this.total()));
@@ -128,7 +138,9 @@ export class DarwinMemoryProbe {
     // Start the deadline before either constructor; a slow constructor cannot earn extra time.
     timer = setTimeout(cancel, DARWIN_MEMORY_DEADLINE_MS);
     timer.unref?.();
-    for (const [file, args] of [["/usr/bin/vm_stat", []], ["/usr/sbin/sysctl", ["vm.swapusage"]]] as const) {
+    const requests: Array<[string, string[]]> = [["/usr/bin/vm_stat", []], ["/usr/sbin/sysctl", ["vm.swapusage"]]];
+    if (this.includePressure) requests.push(["/usr/sbin/sysctl", ["kern.memorystatus_vm_pressure_level"]]);
+    for (const [file, args] of requests) {
       if (this.now() >= deadlineAt) { cancel(); break; }
       try { commands.push(this.run(file, [...args])); }
       catch { commands.push({ result: Promise.resolve(null), stopped: Promise.resolve(), kill: () => {} }); }
@@ -137,8 +149,9 @@ export class DarwinMemoryProbe {
       if (completed) return;
       if (epoch !== this.epoch || this.now() >= deadlineAt) { cancel(); return; }
       const available = outputs[0] === null || outputs[0] === undefined ? null : parseDarwinAvailable(outputs[0], totalBytes);
-      finish(available === null ? unknown : { totalBytes, availableBytes: available, availableKind: "available",
-        ...parseDarwinSwap(outputs[1] ?? "") });
+      finish({ ...(available === null ? unknown : { totalBytes, availableBytes: available, availableKind: "available" as const,
+        ...parseDarwinSwap(outputs[1] ?? "") }), darwinPressureLevel: parseDarwinPressureLevel(outputs[2] ?? ""),
+        darwinPressureRaw: outputs[2]?.slice(0, 1024) ?? null });
     });
     // Never release on kill request/result alone. Rejected cleanup remains reserved.
     void Promise.all(commands.map(command => command.stopped.catch(() => new Promise<void>(() => {})))).then(() => {

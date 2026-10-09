@@ -106,8 +106,8 @@ export class SpawnGate {
         const index = this.queue.findIndex(item => !this.activeDirectories.has(item.task.workingDirectory));
         if (this.nestedQueue.length === 0 && index < 0) return;
         // Explicit zero preserves the existing deterministic test/embedding opt-out.
-        // macOS memory is advisory (#1256): admission neither waits for a sample nor reads one.
-        const sample = this.options.lowMemoryBytes === 0 || this.memoryPressure.advisoryOnly() ? null : this.memoryPressure.sampleForAdmission();
+        // Darwin reads cached kernel pressure or joins the periodic sampler, without starting a probe here.
+        const sample = this.options.lowMemoryBytes === 0 ? null : this.memoryPressure.sampleForAdmission();
         if (sample instanceof Promise) {
           this.awaitingMemory = true;
           void sample.finally(() => {
@@ -116,7 +116,7 @@ export class SpawnGate {
           });
           return;
         }
-        let pressure = sample === null ? "normal" : sample.level;
+        let pressure = sample === null || this.memoryPressure.advisoryOnly() ? "normal" : sample.level;
         if (this.stopped) return;
         if (pressure === "critical") {
           this.pressureHeld = true;
