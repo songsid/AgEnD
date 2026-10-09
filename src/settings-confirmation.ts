@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
+import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { performance } from "node:perf_hooks";
 
 export const SETTINGS_CONFIRMATION_TTL_MS = 5 * 60_000;
@@ -46,6 +47,7 @@ export interface SettingsChangeProposal {
   remainingMs?: number;
   requestFingerprint?: string;
   affectedConnections?: readonly string[];
+  authority?: SettingsChangeAuthority;
   /** Session, token epoch, exposure and fleet lifecycle; never extends expiry. */
   current(): boolean;
   /** Recheck the original configuration before admitting the effect. */
@@ -57,6 +59,7 @@ export interface SettingsChangeProposal {
   discard?(): void;
 }
 interface RecordEntry {
+  authority: SettingsChangeAuthority;
   view: Omit<SettingsPendingView, "remaining_ms" | "can_withdraw">;
   session: string;
   key: string;
@@ -88,7 +91,8 @@ export class SettingsConfirmationStore {
   private now(): number { return this.options.now?.() ?? performance.now(); }
   private wall(): number { return this.options.wallNow?.() ?? Date.now(); }
   private audit(event: string, entry: RecordEntry, extra: Record<string, unknown> = {}): void {
-    this.options.audit(event, { id: entry.view.id, section: entry.view.section, source: entry.view.source, ...extra });
+    this.options.audit(event, { id: entry.view.id, section: entry.view.section, source: entry.view.source,
+      authority: structuredClone(entry.authority), ...extra });
   }
   private display(label: string): string { return label.slice(0, 256).replace(/[\p{Cc}\p{Cf}]/gu,
     char => `\\u{${char.codePointAt(0)!.toString(16)}}`).replace(/@/g, "[at]").replace(/[\\`*_~[\]()<>|]/g, char => "\\" + char); }
@@ -143,6 +147,7 @@ export class SettingsConfirmationStore {
     const id = randomBytes(16).toString("hex");
     const requested = this.wall();
     const entry: RecordEntry = { session: proposal.session, key: proposal.key, fingerprint: proposal.fingerprint,
+      authority: structuredClone(proposal.authority ?? { connections: [], primaryGeneral: false, unknown: true }),
       snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
@@ -159,6 +164,9 @@ export class SettingsConfirmationStore {
     return this.snapshot(entry);
   }
   affectedConnections(id: string): readonly string[] { return this.records.get(id)?.proposal?.affectedConnections ?? []; }
+  authorityOf(id: string): SettingsChangeAuthority | null {
+    const entry = this.records.get(id); return entry ? structuredClone(entry.authority) : null;
+  }
   inspectHost(id: string): { view: SettingsPendingView; fingerprint: string } | null {
     this.prune(); const entry = this.records.get(id);
     return entry && !this.closed ? { view: this.snapshot(entry), fingerprint: entry.fingerprint } : null;

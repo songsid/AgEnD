@@ -550,6 +550,7 @@ export interface ModelCatalog {
 interface NonceButtonEntry {
   pendingChangeId?: string;
   confirmationCurrent?: () => boolean;
+  confirmationAdmin?: (userId: string) => boolean;
   requesterUserId?: string;
   publicExposureId?: string;
   dashboardOwner?: LoginCodeOwner;
@@ -1218,14 +1219,55 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.settingsConfirmation = gate; return gate;
   }
 
+  /** Exact configured effect owners; this does not depend on prompt location. */
+  private settingsChatAuthority(store: SettingsConfirmationStore, id: string): {
+    platform: "telegram" | "discord"; current(): boolean; admin(userId: string): boolean;
+  } | null {
+    const scope = store.authorityOf(id);
+    if (!scope || scope.unknown) return null;
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const targets = new Set(scope.connections);
+    let primaryGeneral: { name: string; owner: string } | undefined;
+    const selectPrimary = (): { name: string; owner: string } | undefined => {
+      const generals = Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic === true);
+      const selected = generals.find(([name]) => this.getInstanceAdapterId(name) === this.getPrimaryAdapterId()) ?? generals[0];
+      const owner = selected && this.getInstanceAdapterId(selected[0]);
+      return selected && owner ? { name: selected[0], owner } : undefined;
+    };
+    if (scope.primaryGeneral) {
+      primaryGeneral = selectPrimary(); if (!primaryGeneral) return null;
+      targets.add(primaryGeneral.owner);
+    }
+    const owners = [...targets].map(id => channels.filter(ch => (ch.id ?? ch.type) === id));
+    if (!owners.length || owners.some(matches => matches.length !== 1)) return null;
+    const platform = owners[0][0].type;
+    if ((platform !== "telegram" && platform !== "discord") || owners.some(matches => matches[0].type !== platform)) return null;
+    const identities = owners.map(matches => ({ id: matches[0].id ?? matches[0].type, type: matches[0].type }));
+    const generation = this.settingsGeneration;
+    const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation
+      && identities.every(owner => {
+        const configs = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+        const matches = configs.filter(ch => (ch.id ?? ch.type) === owner.id);
+        return matches.length === 1 && matches[0].type === owner.type;
+      })
+      && (!primaryGeneral || selectPrimary()?.name === primaryGeneral.name && selectPrimary()?.owner === primaryGeneral.owner);
+    return { platform, current, admin: userId => current() && !!userId
+      && identities.every(owner => this.isFleetAdmin(userId, owner.id)) };
+  }
+
   private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
     const generation = this.settingsGeneration;
+    const authority = this.settingsChatAuthority(store, view.id);
+    if (!authority) {
+      this.logger.info({ id: view.id }, "Settings authority is unknown or spans platforms; host CLI confirmation required");
+      return;
+    }
     const excluded = new Set(store.affectedConnections(view.id));
     for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
       if (!config.general_topic) continue;
       const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
       const general = this.daemons.get(name);
-      if (!adapterId || !adapter || !general || excluded.has(adapterId) || !this.hasFleetAdmins(adapterId)) continue;
+      if (!adapterId || !adapter || !general || excluded.has(adapterId) || adapter.type !== authority.platform) continue;
       const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
       if (!chatId || !topic) continue;
       let retired = false, attached = false;
@@ -1236,7 +1278,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         && this.adapterState.get(adapterId)?.status === "connected"
         && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
         && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic
-        && this.hasFleetAdmins(adapterId);
+        && authority.current();
       if (!current()) continue;
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
@@ -1244,7 +1286,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           message: `🔒 Settings change awaiting fleet-admin confirmation\nSource: ${view.source}\nRequester: ${view.requested_by}\n${view.summary.join("\n")}`,
           choices: [{ action: "confirm", label: "Confirm" }, { action: "reject", label: "Reject" }],
           expiredText: "Settings confirmation is no longer pending.", timeoutMs: view.remaining_ms,
-          extra: { pendingChangeId: view.id, confirmationCurrent: current },
+          extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId) },
         });
         void posted.then(nonce => {
           if (!retired) return;
@@ -1268,7 +1310,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleSettingsChangeCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
-    const result = this.consumeNonceCallback("settings-confirm:", /^settings-confirm:([0-9a-f]{32}):(confirm|reject)$/, data, adapterId, adapter);
+    const result = this.consumeNonceCallback("settings-confirm:", /^settings-confirm:([0-9a-f]{32}):(confirm|reject)$/, data, adapterId, adapter,
+      undefined, (userId, entry) => entry.confirmationAdmin?.(userId) === true);
     if (!result) return false;
     if (result === "consumed") return true;
     const { entry, action } = result;
@@ -1276,7 +1319,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const view = await this.settingsGate().store.decide(entry.pendingChangeId!, action as "confirm" | "reject", {
         label: `fleet admin ${data.userId}`,
         current: () => entry.confirmationCurrent?.() === true && this.getAdapterForInstance(entry.instanceName) === entry.adapter
-          && !!data.userId && this.isFleetAdmin(data.userId, entry.adapterId),
+          && !!data.userId && entry.confirmationAdmin?.(data.userId) === true,
       });
       await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, view.outcome?.message ?? "Settings change is applying.");
     } catch { await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, "Settings confirmation rejected or expired."); }
@@ -10686,7 +10729,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "pendingChangeId" | "confirmationCurrent" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
+    extra?: Pick<NonceButtonEntry, "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -10787,6 +10830,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
        * button — so a fresh message is the only guaranteed feedback. */
       notice?: string;
     },
+    authorize?: (userId: string, entry: NonceButtonEntry) => boolean,
   ): { entry: NonceButtonEntry; action: string } | "consumed" | null {
     if (!data.callbackData.startsWith(prefix)) return null;
     const match = data.callbackData.match(actionRe);
@@ -10830,7 +10874,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const isAuthorized = fromWeb
       ? pending.web !== undefined
       : data.userId
-      ? pending.allowAnyUser
+      ? authorize
+        ? authorize(data.userId, pending)
+        : pending.allowAnyUser
         ? true
         : pending.authChannelId
         ? this.isModelAdmin(data.userId, pending.authChannelId, callbackAdapterId)

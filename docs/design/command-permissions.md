@@ -38,6 +38,12 @@ allowlist does not confer C. The two roles remain distinct: `/stop` and Discord
 Classic `/load` require C, whereas existing Classic context controls accept F or C.
 Empty Classic new-start grants request approval; existing registrations stay usable.
 
+Settings confirmation uses the effect's owners, independently of the General
+that delivers its buttons: F on every existing target; primary General's F for
+fleet-wide/new-connection effects; both for mixed effects. Cross-platform or
+unknown authority requires host CLI confirmation. See
+[Confirming sensitive changes](../web-dashboard.md#confirming-sensitive-changes).
+
 ## Scope and handler exceptions
 
 - Discord exposes all 27 native commands per bot application, but per-agent
