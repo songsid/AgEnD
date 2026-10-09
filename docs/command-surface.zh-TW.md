@@ -105,8 +105,8 @@
 | 介面 | 實際 gate |
 |---|---|
 | Cancel | current owner／目的地／訊息；已准入的 Fleet speaker，或既有 Classic 對話參與者 |
-| Model / effort | opener＋adapter/channel＋當下 owner/admin；claim 與 progress update 後，來源 channel 都仍須對應此 target |
-| Clear | Classic 的 F 或 C、其他 context 的 F；精確 nonce/world/message；button retirement 後、clear IPC 前重驗當下 role、來源 target、adapter、daemon/IPC owner 與 delivery epoch |
+| Model / effort | opener＋adapter/channel＋當下 owner/admin；claim 與 progress update 後，來源 channel 與原始 Telegram group 都仍須對應此 target；同 world 的 topic 對應有歧義時拒絕 |
+| Clear | Classic 的 F 或 C、其他 context 的 F；精確 nonce/world/message；button retirement 後、clear IPC 前重驗當下 role、來源 target、adapter、daemon/IPC owner、cached launch owner、lifecycle epoch 與 delivery epoch |
 | Tip feedback | 有身分 caller＋精確 nonce/world/message；advanced unlock 另需 F |
 | Login / hang / exit / Classic approval | F＋精確 nonce/world/message，並使用各請求既有的 ownership 檢查 |
 | Dashboard / Settings confirmation | current owner F、nonce，以及 requester／authority fence |
@@ -119,7 +119,7 @@
 
 `tests/command-surface-docs-1148.test.ts` 以命令表檢查兩語言的命令 cell 與選單，並明列 Classic 真 handler 的例外。`tests/command-gates-by-platform.test.ts` 驅動真 handler。規則、選單或路由改變時，兩份文件一起更新；不要由 Discord cell 推論 Telegram 有對應 handler。
 
-no-thread General suffix 與 callback 的 await 後 fence 拒絕已過期或無法確認的來源；既有角色模型與精確形式 passthrough 維持不動。首個同步 IPC／config effect 核准後，沿用既有 backend／restart 行為。
+no-thread General suffix 與 callback 的 await 後 fence 拒絕已過期或無法確認的來源；既有角色模型與精確形式 passthrough 維持不動。Clear 跨等待比對 cached `{bootId, spawnGeneration, launchAttempt, launchFenceEpoch}` 與 lifecycle epoch；ownership 無法確認時拒絕。首個同步 IPC／config effect 核准後，沿用既有 backend／restart 行為。
 
 ## 核對來源
 
@@ -136,5 +136,5 @@ no-thread General suffix 與 callback 的 await 後 fence 拒絕已過期或無�
 - [`src/classic-channel-manager.ts:483`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/classic-channel-manager.ts#L483) — Empty Classic start grants / 空准入清單
 
 - [`src/fleet-manager.ts:6767`](https://github.com/songsid/AgEnD/blob/5ccbf10d11d4698fd3a4682e16fd4d843054aabf/src/fleet-manager.ts#L6767) — No-thread General suffix / 無 thread 的 General 定址
-- [`src/fleet-manager.ts:11150`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L11150) — Clear after-await fence / clear 等待後重驗
-- [`src/fleet-manager.ts:14741`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L14741) — Selector source mapping / 選單來源對應
+- [`src/fleet-manager.ts:11196`](https://github.com/songsid/AgEnD/blob/462b528007e33c071a05ca54521c117ca28148df/src/fleet-manager.ts#L11196) — Clear after-await fence / clear 等待後重驗
+- [`src/fleet-manager.ts:14788`](https://github.com/songsid/AgEnD/blob/462b528007e33c071a05ca54521c117ca28148df/src/fleet-manager.ts#L14788) — Selector source mapping / 選單來源對應

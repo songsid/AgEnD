@@ -105,8 +105,8 @@ Buttons have their own handler gates; menu visibility and a slash command's gate
 | Surface | Actual gate |
 |---|---|
 | Cancel | current owner/destination/message; admitted fleet speaker, or an existing Classic conversation participant |
-| Model / effort | opener + adapter/channel + current owner/admin; the source channel must still map to this target at claim and after the progress update |
-| Clear | F or C in Classic, F elsewhere; exact nonce/world/message; current role, source target, adapter, daemon/IPC owner and delivery epoch are rechecked after button retirement, before clear IPC |
+| Model / effort | opener + adapter/channel + current owner/admin; the source channel and original Telegram group must still map to this target at claim and after the progress update; ambiguous same-world topics refuse |
+| Clear | F or C in Classic, F elsewhere; exact nonce/world/message; current role, source target, adapter, daemon/IPC owner, cached launch owner, lifecycle epoch and delivery epoch are rechecked after button retirement, before clear IPC |
 | Tip feedback | identified caller + exact nonce/world/message; advanced unlock additionally requires F |
 | Login / hang / exit / Classic approval | F + exact nonce/world/message, plus request-specific ownership where present |
 | Dashboard / Settings confirmation | current owner F, nonce and requester/authority fences |
@@ -119,7 +119,7 @@ Source: `src/fleet-manager.ts:10443`, `:11592`, `:14413`, `:14719`, `:11126`. St
 
 `tests/command-surface-docs-1148.test.ts` checks both languages' command cells and menu membership against the command table, with explicit Classic real-handler exceptions. `tests/command-gates-by-platform.test.ts` exercises the real handlers. Update both documents when a rule, menu or route changes. Do not infer a Telegram handler from a Discord cell.
 
-The no-thread General suffix and after-await callback fences reject stale or unverified sources. They preserve the role model and exact-form passthrough. Once the first synchronous IPC/config effect is admitted, the existing backend/restart behavior continues.
+The no-thread General suffix and after-await callback fences reject stale or unverified sources. They preserve the role model and exact-form passthrough. Clear compares the cached `{bootId, spawnGeneration, launchAttempt, launchFenceEpoch}` and lifecycle epoch across its wait; unavailable ownership refuses. Once the first synchronous IPC/config effect is admitted, the existing backend/restart behavior continues.
 
 ## Audited sources
 
@@ -136,5 +136,5 @@ The no-thread General suffix and after-await callback fences reject stale or unv
 - [`src/classic-channel-manager.ts:483`](https://github.com/songsid/AgEnD/blob/41687055f2bf5b26fcc9f350309caa183729ca78/src/classic-channel-manager.ts#L483) — Empty Classic start grants / 空准入清單
 
 - [`src/fleet-manager.ts:6767`](https://github.com/songsid/AgEnD/blob/5ccbf10d11d4698fd3a4682e16fd4d843054aabf/src/fleet-manager.ts#L6767) — No-thread General suffix / 無 thread 的 General 定址
-- [`src/fleet-manager.ts:11150`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L11150) — Clear after-await fence / clear 等待後重驗
-- [`src/fleet-manager.ts:14741`](https://github.com/songsid/AgEnD/blob/aec3af6180eff478a5b560513c5ee2909595bedb/src/fleet-manager.ts#L14741) — Selector source mapping / 選單來源對應
+- [`src/fleet-manager.ts:11196`](https://github.com/songsid/AgEnD/blob/462b528007e33c071a05ca54521c117ca28148df/src/fleet-manager.ts#L11196) — Clear after-await fence / clear 等待後重驗
+- [`src/fleet-manager.ts:14788`](https://github.com/songsid/AgEnD/blob/462b528007e33c071a05ca54521c117ca28148df/src/fleet-manager.ts#L14788) — Selector source mapping / 選單來源對應
