@@ -419,6 +419,24 @@ export class WebChatHistory {
   cursorOf(m: WebChatMessage): string { return `${m.boot}-${m.id}`; }
 
   /**
+   * The cursor a poll hands out: the newest message its answer accounts for. This process's newest id once it has
+   * recorded one. Before that (#1577), the newest retained message in boot order — after a restart, the last restored
+   * one: `<boot>-0` would be read back as after(0), which is everything retained, so a polling page was sent the whole
+   * restored history every 5 s. Nothing retained at all: `<boot>-0`, as before.
+   */
+  pollCursor(): string {
+    if (this.lastId > 0 || this.restoredBoots.size === 0) return `${this.boot}-${this.lastId}`;
+    const rank = this.bootRanks();
+    let newest: WebChatMessage | null = null;
+    for (const slot of this.byInstance.values()) {
+      for (const m of slot.messages) {
+        if (!newest || rank(m.boot) > rank(newest.boot) || (m.boot === newest.boot && m.id > newest.id)) newest = m;
+      }
+    }
+    return newest ? this.cursorOf(newest) : `${this.boot}-0`;
+  }
+
+  /**
    * What a reconnecting stream with this `Last-Event-ID` should be sent. A cursor of this boot replays what came
    * after it. #1565: a cursor of a restored boot (a page that stayed open across the restart) gets what came after
    * it in that boot and everything of the later boots — never a message it already has. A cursor of a boot this
