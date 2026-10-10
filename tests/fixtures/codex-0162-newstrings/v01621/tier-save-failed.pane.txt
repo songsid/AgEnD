@@ -1,0 +1,16 @@
+
+  >_ OpenAI Codex (v0.162.1)
+     <working-directory>
+  permissions: YOLO mode
+
+  Tip: Use /statusline to configure which items appear in the status line.
+
+• Service tier set to priority
+
+■ Failed to save default service tier: config/batchWrite failed in TUI: config/batchWrite failed: failed to load configuration: <instance-config>:1:8: unclosed table, expected `]` (code -32603)
+You can continue this task. To save the default, resolve the error above, then switch to a different tier and back to the desired tier.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                          ⚠ 1 warning · f2 to view

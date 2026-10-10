@@ -1,0 +1,97 @@
+{
+  "version": "0.162.1",
+  "excludeResetCreditDetails": true,
+  "elapsed_ms": 13,
+  "reply": {
+    "id": 3,
+    "result": {
+      "ordinaryUsageAllowed": null,
+      "rateLimits": {
+        "limitId": "codex",
+        "limitName": null,
+        "normalModelSlug": null,
+        "primary": {
+          "usedPercent": 21,
+          "windowDurationMins": 300,
+          "resetsAt": 2000000000
+        },
+        "secondary": null,
+        "credits": null,
+        "individualLimit": null,
+        "spendControlReached": null,
+        "planType": "plus",
+        "rateLimitReachedType": null
+      },
+      "rateLimitsByLimitId": {
+        "codex": {
+          "limitId": "codex",
+          "limitName": null,
+          "normalModelSlug": null,
+          "primary": {
+            "usedPercent": 21,
+            "windowDurationMins": 300,
+            "resetsAt": 2000000000
+          },
+          "secondary": null,
+          "credits": null,
+          "individualLimit": null,
+          "spendControlReached": null,
+          "planType": "plus",
+          "rateLimitReachedType": null
+        }
+      },
+      "rateLimitResetCredits": {
+        "availableCount": 3,
+        "credits": null
+      },
+      "accountId": null,
+      "rateLimitUpsell": null
+    }
+  },
+  "calls": [
+    {
+      "path": "/ps/plugins/list?scope=GLOBAL&limit=200",
+      "elapsed_ms": 341
+    },
+    {
+      "path": "/ps/plugins/installed?limit=200&includeDownloadUrls=true",
+      "elapsed_ms": 350
+    },
+    {
+      "path": "/plugins/featured?platform=codex",
+      "elapsed_ms": 351
+    },
+    {
+      "path": "/ps/plugins/suggested/codex?scope=GLOBAL",
+      "elapsed_ms": 351
+    },
+    {
+      "path": "/ps/plugins/installed?limit=200",
+      "elapsed_ms": 358
+    },
+    {
+      "path": "/ps/plugins/installed?limit=200",
+      "elapsed_ms": 360
+    },
+    {
+      "path": "/api/codex/accounts/check",
+      "elapsed_ms": 375
+    },
+    {
+      "path": "/api/codex/rate-limit-reset-credits",
+      "elapsed_ms": 404
+    },
+    {
+      "path": "/api/codex/usage",
+      "elapsed_ms": 404
+    },
+    {
+      "path": "/api/codex/accounts/check",
+      "elapsed_ms": 406
+    },
+    {
+      "path": "/api/codex/usage",
+      "elapsed_ms": 5396
+    }
+  ]
+}
