@@ -173,6 +173,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { envFileKeys } from "./token-env-name.js";
+import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -815,20 +816,6 @@ function emojiListFilter(opts: Record<string, unknown>): {
     primaryOnly: flag(opts.primary_only),
     withImageUrls: flag(opts.with_image_urls),
   };
-}
-
-/**
- * Read the Discord general channel id from a connection, handling both:
- *  - new location: `channel.options.general_channel_id` (written since the wizard fix)
- *  - old location: `channel.general_channel_id` (written by wizard before c25045b0 was corrected)
- * `options` is authoritative when both are present.
- */
-export function discordGeneralChannelId(ch: Record<string, unknown>): string | null {
-  const fromOptions = (ch.options as Record<string, unknown> | undefined)?.general_channel_id;
-  if (fromOptions != null && String(fromOptions)) return String(fromOptions);
-  const legacy = (ch as Record<string, unknown>).general_channel_id;
-  if (legacy != null && String(legacy)) return String(legacy);
-  return null;
 }
 
 

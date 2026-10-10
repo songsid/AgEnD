@@ -13,6 +13,7 @@ const execAsync = promisify(exec);
 import type { FleetContext } from "./fleet-context.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { discordGeneralChannelId } from "./discord-general.js";
 import { formatCents } from "./cost-guard.js";
 import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
@@ -1752,11 +1753,12 @@ export class TopicCommands {
         }
         if (platformType === "discord") {
           const ch = channels.find(c => c.type === "discord");
-          const gcid = ch?.options?.general_channel_id as string | number | undefined;
+          // Use the helper so legacy files (top-level general_channel_id) still work.
+          const gcid = ch ? discordGeneralChannelId(ch as unknown as Record<string, unknown>) : null;
           // A Discord general needs a real channel id — NOT the TG-convention
           // "1", which makes the DC adapter throw fetching channel "1". Skip
           // (leave unbound) if there's no valid channel to bind to.
-          if (gcid == null || !/^\d{17,}$/.test(String(gcid))) {
+          if (gcid == null || !/^\d{17,}$/.test(gcid)) {
             this.ctx.logger.warn({ name }, "Discord general has no valid general_channel_id — skipping topic bind (set channel.options.general_channel_id)");
             continue;
           }
