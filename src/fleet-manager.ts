@@ -6,6 +6,7 @@ import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileRes
 import { performance } from "node:perf_hooks";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
+import { handleWebIconRequest } from "./web-icons.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
@@ -18013,14 +18014,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
 
-      // Browsers request this automatically and AgEnD does not ship an icon.
-      // It is neither user data nor an API route, so do not turn the harmless
-      // probe into a noisy web-token 401 in the browser console.
-      if (req.method === "GET" && requestPath === "/favicon.ico") {
-        res.writeHead(204);
-        res.end();
-        return;
-      }
+      // Branding is public, after Host admission: automatic favicon requests
+      // must not become noisy web-token 401s in the browser console.
+      if (handleWebIconRequest(req, res, requestPath)) return;
 
       // Public: the health probe, /agent (instance-token auth of its own), the
       // sign-in surface, and /view's reads unless web.view_access says otherwise.

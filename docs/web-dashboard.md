@@ -2,6 +2,8 @@
 
 中文版：[web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)
 
+The dashboard's browser tab uses the Silver **Ag** mark on Chat, View, Settings and the sign-in page, including temporary public links. The same mark is available as an apple-touch icon when you save the page to a phone's home screen. Icons are bundled and served from the dashboard itself; loading them requires no sign-in.
+
 AgEnD's web dashboard is three panels on one small web server that the fleet runs for you:
 
 | Panel | What it is for |

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>AgEnD — Ag</title>
+  <rect x="1" y="1" width="62" height="62" rx="12" fill="#e5eaf0" stroke="#617386" stroke-width="2"/>
+  <g transform="translate(0 -2)"><g fill="#14273d" fill-rule="evenodd">
+    <path d="M8.5 43 17 18h6l8.5 25H26l-2-6h-8l-2 6Zm9-10.5h5l-2.5-8Z"/>
+    <path transform="translate(2 0)" d="M49.5 27v18.8c0 5-3.1 7.2-8.2 7.2h-6.8v-4.8H41c2.6 0 3.7-.9 3.7-3.2v-3.3c-1.3 1.5-3.1 2.3-5.6 2.3-5.8 0-9-3.7-9-8.9 0-5.1 3.2-8.9 9-8.9 2.5 0 4.3.8 5.6 2.3V27Zm-9.7 3.8c-3 0-4.6 1.8-4.6 4.3s1.6 4.3 4.6 4.3 4.6-1.8 4.6-4.3-1.6-4.3-4.6-4.3Z"/>
+  </g></g>
+</svg>
