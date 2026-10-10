@@ -2,6 +2,8 @@
 
 English: [web-dashboard.md](web-dashboard.md)
 
+Dashboard 的瀏覽器分頁在聊天、View、設定與登入頁使用銀色 **Ag** 圖示，臨時公開連結也相同。將頁面加入手機主畫面時，可使用同款 apple-touch 圖示。圖示隨套件附上，由 dashboard 本身提供，載入時不需要登入。
+
 AgEnD 的 web dashboard 是 fleet 自己跑的一個小型 web server，上面有三個面板：
 
 | 面板 | 用途 |

@@ -105,7 +105,8 @@ const timeOf = (ts) => (ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digi
  * props: name (the instance), msgs() → its messages, subscribe(fn) → unsubscribe (the chat store's), keyOf(x),
  * reveal(msgKey) (the thread shows that message), download(code).
  */
-export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, download }) {
+/** allow(): this device's opt-in through the chat's one path (setPreviewOptIn: the confirm, then setOptIn) → the choice. */
+export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, download, allow }) {
   const [st, setSt] = useState(state);
   const [view, setView] = useState("preview");
   const [run, setRun] = useState({ state: "idle", reason: "" });
@@ -203,7 +204,11 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   if (!open) return null;
   const going = run.state === "starting" || run.state === "running";
   const a = P().availability();
-  const note = run.reason || (going ? (run.state === "starting" ? t("chat.pvStarting") : "") : a.ok ? t("chat.pvPanelIdle") : a.reason);
+  // #1554: a device that has not allowed previews is offered the same "Allow previews" here (the same confirm); Preview
+  // is then enabled — still a click. Why a run stopped (e.g. switched off in another tab) is still said first.
+  const askOptIn = !going && !a.ok && a.why === "optin" && typeof allow === "function";
+  const note = run.reason || (going ? (run.state === "starting" ? t("chat.pvStarting") : "") : a.ok ? t("chat.pvPanelIdle") : askOptIn ? t("chat.pvWhyOptinPanel") : a.reason);
+  const allowHere = async () => { if (await allow()) setRun({ state: "idle", reason: "" }); };
   const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
   return html`<div class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
       aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
@@ -227,8 +232,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
       </div>
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>
         <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
-      ${going ? html`<div class="pv-banner">${P().BANNER}</div>` : null}
-      ${note && view === "preview" ? html`<div class="pv-note">${note}</div>` : null}
+      ${going ? html`<div class="pv-banner">${P().banner()}</div>` : null}
+      ${note && view === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
       <div class=${`pv-panel-body${view === "code" ? " show-code" : ""}`}>
         <div class="pv-holder" ref=${holder}></div>
         ${view === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}

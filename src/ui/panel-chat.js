@@ -65,7 +65,8 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   store.attach(stream);
   // #1306: what the server said about previews for this load. The page-wide message and storage listeners this adds
   // belong to the app, once (they are never per mount).
-  if (P() && bootData) P().init(bootData);
+  // #1554: its words in the page's language (chat.pv*); a key the dictionary does not have keeps preview.js's English.
+  if (P() && bootData) P().init(bootData, { text: (key, ...v) => { const k = `chat.${key}`, s = t(k, ...v); return s === k ? null : s; } });
   addFooterItem("previews", PreviewOptIn);
   addFooterItem("tour", TourButton);
   installTour();
@@ -211,7 +212,7 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
         <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />
       </div>
       <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
-        keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} />
+        keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${() => setPreviewOptIn(true)} />
     </div>
     <${LightboxHost} />
     <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
