@@ -166,3 +166,51 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     expect(g.respond.mock.calls[0]![0]).not.toContain(t("dashboard.code_next"));
   });
 });
+
+describe("#1586 review (Prism r1): the follow-up's wait never outlives the owner, and never fails a confirmed delivery", () => {
+  /** sendDirect: the sign-in message goes at once; the code-only follow-up is held until released. */
+  function holdFollowUp(h: ReturnType<typeof rig>) {
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    h.adapter.sendDirect.mockImplementation(async (user: string, text: string) => {
+      if (/^<code>|^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(text)) await held;
+      return { chatId: user, messageId: "dm" };
+    });
+    return () => release();
+  }
+
+  it.each([[true, "an owner removed while the follow-up waits: the code is withdrawn and the delivery reported failed"],
+    [false, "control — the same owner: delivered, the code stays"]] as const)("menu local (Telegram), owner removed = %s: %s", async (demote, _label) => {
+    const h = rig(); const release = holdFollowUp(h);
+    await h.typed(); const click = h.click("local"); await flush();
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2);
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(true);
+    if (demote) h.owner.access.allowed_users = ["admin2"];
+    release(); await click; await flush();
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(!demote);
+  });
+
+  it.each([true, false])("Discord /dashboard outside General, owner removed during the follow-up = %s", async (demote) => {
+    const h = rig("discord"); const release = holdFollowUp(h);
+    const slash = h.slash("admin", "T1"); await flush();
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2);
+    if (demote) h.owner.access.allowed_users = ["admin2"];
+    release(); await slash; await flush();
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(!demote);
+    expect(h.respond).toHaveBeenLastCalledWith(t(demote ? "dashboard.private_failed" : "dashboard.private_sent_dm"));
+  });
+
+  it("a follow-up that never answers, with the clock already past the delivery's budget: the DM stands and is reported sent", async () => {
+    const h = rig("discord");
+    h.adapter.sendDirect.mockImplementation(async (user: string, text: string) => {
+      if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(text)) return new Promise<never>(() => {});
+      return { chatId: user, messageId: "dm" };
+    });
+    const slash = h.slash("admin", "T1"); await flush();
+    mono = 10_001;                                   // an event-loop stall: the 10 s delivery budget is spent
+    await vi.advanceTimersByTimeAsync(5_000); await slash; await flush();
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(true);
+    expect(h.respond).toHaveBeenLastCalledWith(t("dashboard.private_sent_dm"));
+  });
+});
+

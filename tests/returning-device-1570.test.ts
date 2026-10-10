@@ -497,3 +497,25 @@ describe("the sign-in page offers the button only to a returning device", () => 
     expect(limited.$("resend").hidden).toBe(false);
   });
 });
+
+describe("#1586 review (Prism r1): the resend's code-only follow-up never outlives the owner", () => {
+  it.each([true, false])("owner removed while the follow-up waits = %s", async (demote) => {
+    const h = rig();
+    const cookie = await h.returning();
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    h.adapter.sendDirect.mockImplementation(async (user: string, text: string) => {
+      if (text.startsWith("<code>")) await held;
+      return { chatId: user, messageId: "dm" };
+    });
+    const device = h.fm.verifyReturningDevice(cookie.split("=")[1])!;
+    const asked = h.fm.requestReturningCode(device, { surface: "local", label: "Chrome on macOS" });
+    await flush();
+    expect(h.adapter.sendDirect.mock.calls.at(-1)![1]).toMatch(/^<code>/);
+    if (demote) h.owner.access.allowed_users = ["admin2"];
+    release();
+    expect(await asked).toEqual({ kind: demote ? "refused" : "sent" });
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(!demote);
+  });
+});
+

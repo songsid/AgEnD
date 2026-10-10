@@ -4990,9 +4990,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!id) throw new Error("private delivery unconfirmed");
       }
       if (!current()) throw new Error("owner changed");
-      // The slash command's own reply (editReply) is ONE message: only the DM gets the code on its own (#1586).
-      if (deliveredByDm) await this.sendCodeAlone((body, opts) => adapter.sendDirect!(data.userId, body, opts), adapter.type, login.display, deadline);
-      if (deliveredByDm) await withinBudget(data.respond(t("dashboard.private_sent_dm")), deadline);
+      // The slash command's own reply (editReply) is ONE message: only the DM gets the code on its own (#1586). Its
+      // wait has its own budget, so the notice below never runs out of time because of it; and the owner is asked
+      // again after it — an owner gone during that wait takes the code with them.
+      if (deliveredByDm) {
+        await this.sendCodeAlone((body, opts) => adapter.sendDirect!(data.userId, body, opts), adapter.type, login.display);
+        if (!current()) throw new Error("owner changed");
+        await withinBudget(data.respond(t("dashboard.private_sent_dm")), performance.now() + 5_000);
+      }
     } catch (err) {
       this.webLoginCodes!.revokeIfCurrent(login.issuanceId);
       this.logger.info({ err: (err as Error)?.message }, "Dashboard private delivery was not confirmed");
@@ -5005,11 +5010,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * goes by the same private route the sign-in message took. A convenience: that message already holds the code, so a
    * follow-up that fails changes nothing about the delivery.
    */
-  private async sendCodeAlone(send: (body: string, opts: SendOpts) => Promise<unknown>, platform: string, display: string, deadline: number): Promise<void> {
+  private async sendCodeAlone(send: (body: string, opts: SendOpts) => Promise<unknown>, platform: string, display: string): Promise<void> {
     const telegram = platform === "telegram";
     const body = telegram ? `<code>${display.replace(/[&<>]/g, c => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"))}</code>` : display;
     try {
-      await withinBudget(send(body, telegram ? { format: "html", disablePreview: true } : { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
+      // Its own 5 s, never the sign-in delivery's budget: a slow convenience must not fail a delivery already confirmed.
+      await withinBudget(send(body, telegram ? { format: "html", disablePreview: true } : { disablePreview: true }), performance.now() + 5_000);
     } catch (err) {
       this.logger.info({ err: (err as Error)?.message }, "The code-only follow-up was not sent; the sign-in message holds the code");
     }
@@ -5113,7 +5119,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }), deadline);
         else await deliver();
         if (!current() || this.webToken !== token) throw new Error("owner changed");
-        if (codeAlone) await this.sendCodeAlone(codeAlone, direct.type, issued.display, deadline);
+        if (codeAlone) {
+          await this.sendCodeAlone(codeAlone, direct.type, issued.display);
+          // The owner (and a public link's exposure, through `current`) and the token are asked again after that wait.
+          if (!current() || this.webToken !== token) throw new Error("owner changed");
+        }
         return true;
       } catch (err) {
         this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
@@ -5211,7 +5221,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { kind: "refused" };
     }
     if (this.webToken !== token || !this.publicOwnerCurrent(owner)) { this.webLoginCodes!.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
-    await this.sendCodeAlone((body, opts) => adapter.sendDirect!(userId, body, opts), adapter.type, issued.display, performance.now() + 5_000);
+    await this.sendCodeAlone((body, opts) => adapter.sendDirect!(userId, body, opts), adapter.type, issued.display);
+    // Asked again after the follow-up's wait: the owner, the token, shutdown, and a public request's exposure.
+    const exposureGone = input.surface === "gateway"
+      && (this.publicWebLink?.exposureId !== input.exposureId || this.publicWebLink?.status().state !== "open");
+    if (this.shuttingDown || this.webToken !== token || !this.publicOwnerCurrent(owner) || exposureGone) {
+      this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
+      return { kind: "refused" };
+    }
     this.logger.info({ adapterId, surface: input.surface }, "Web sign-in code sent privately to a returning device's owner");
     return { kind: "sent" };
   }
