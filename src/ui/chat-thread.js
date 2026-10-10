@@ -276,6 +276,14 @@ export function createThread(list, scroller, opts) {
   }
   /** The thread's own buttons (Copy, Wrap, fold), delegated from the thread element. */
   function onClick(e) {
+    // A chat image: a plain left click (or Enter on it) shows it in the page; with a modifier key the link does what
+    // the browser does (a new tab, a new window, a download). A middle click is not a click event at all.
+    const img = e.target && e.target.closest ? e.target.closest("a.att-img") : null;
+    if (img && list.contains(img) && opts.openImage && !e.defaultPrevented && (e.button ?? 0) === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+      const links = [...(img.closest(".atts") || img).querySelectorAll("a.att-img")];
+      if (opts.openImage(links.length ? links : [img], img)) e.preventDefault();
+      return;
+    }
     const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
     if (!el || !list.contains(el)) return;
     const act = el.dataset.act;
