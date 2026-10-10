@@ -12,7 +12,11 @@ const mounted: AppPage[] = [];
 let calls: string[] = [];
 let detail: Record<string, unknown> = {};
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
-const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" })];
+const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner")];
+const ROOM = { name: "classic-ops-1", status: "running", kind: "classic", description: "the ops room", display_name: "Ops", working_directory: null, backend: "codex", tags: ["classic"],
+  binding: null, room: { name: "ops", channel_id: "555", adapter_id: "discord" }, model: "gpt", model_source: "live", effort: null, context_pct: 5, statusline: {}, recent_activity: [] };
+/** Answers for /ui/instance/<name> held by a test: each read takes the next one (a promise it can settle later). */
+const held = new Map<string, Array<Promise<{ status: number; body: unknown }>>>();
 const DETAIL = (name: string) => ({
   name, status: "running", description: "Builds the site", display_name: "Web developer", working_directory: "/w/web", backend: "claude-code",
   tags: ["Platform", "web"], binding: { channel_id: "discord-2", topic_id: "1234", general_topic: false },
@@ -25,11 +29,15 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
   const SETTINGS: Record<string, unknown> = {
     "/api/settings/schema": { impacts: {}, order: ["now", "instance", "fleet"] },
     "/api/settings/fleet/raw": { defaults: {}, channels: [], instances: { "web-dev": { working_directory: "/w/web", description: "Builds the site" } } },
-    "/api/settings/classic": { defaults: {}, channels: {} }, "/api/settings/connections": [],
+    "/api/settings/classic": { defaults: {}, channels: { "555:discord": { instanceName: "classic-ops-1", name: "ops", adapterId: "discord", channelId: "555", backend: "codex" } } }, "/api/settings/connections": [],
     "/api/settings/status-emojis": { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] }, "/api/fleet": { version: "2.2.0", instances: [{ name: "web-dev", status: "running" }] },
     "/api/profiles": [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }], "/api/settings/pending": [],
   };
   if (m === "GET" && Object.prototype.hasOwnProperty.call(SETTINGS, url)) return { ok: true, status: 200, json: async () => structuredClone(SETTINGS[url]), text: async () => "" };
+  if (url.startsWith("/ui/instance/") && held.get(decodeURIComponent(url.slice("/ui/instance/".length)))?.length) {
+    const a = await held.get(decodeURIComponent(url.slice("/ui/instance/".length)))!.shift()!;
+    return { ok: a.status < 300, status: a.status, json: async () => a.body, text: async () => JSON.stringify(a.body) };
+  }
   const body: unknown = url.startsWith("/ui/instance/") ? detail[decodeURIComponent(url.slice("/ui/instance/".length))] ?? { error: "Instance not found" }
     : m === "POST" ? { ok: true } : {};
   const status = url.startsWith("/ui/instance/") && !detail[decodeURIComponent(url.slice("/ui/instance/".length))] ? 404 : 200;
@@ -57,6 +65,7 @@ afterEach(async () => {
   for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
   (await import("/assets/app-store.js")).appStore.set({ viewOnly: false });
   req.takeAgentRequest();
+  held.clear();
   calls = [];
 });
 
@@ -69,7 +78,8 @@ async function app(path: string) {
   const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1" } });
   mounted.push(pg);
   (globalThis as any).fetch = fakeFetch;
-  detail = { "web-dev": DETAIL("web-dev"), "api-server": { ...DETAIL("api-server"), status: "stopped" }, "qa-bot": { ...DETAIL("qa-bot"), status: "paused" } };
+  detail = { "web-dev": DETAIL("web-dev"), "api-server": { ...DETAIL("api-server"), status: "stopped", binding: { channel_id: "telegram", implicit: true, topic_id: null, general_topic: false } },
+    "qa-bot": { ...DETAIL("qa-bot"), status: "paused" }, "classic-ops-1": ROOM, loner: { ...DETAIL("loner"), binding: { channel_id: null, implicit: false, topic_id: null, general_topic: false } } };
   const { startRouter } = await import("/assets/app-nav.js");
   const { applyStatus } = await import("/assets/app-store.js");
   const { Shell } = await import("/assets/app-shell.js");
@@ -161,7 +171,7 @@ describe("Details (Q1 = B)", () => {
   it("Edit in Settings goes to Settings and asks it for that agent's dialog", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
-    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "agents" }, "web-dev"]);
+    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "agents" }, { name: "web-dev", kind: "agent" }]);
   });
   it("an unknown instance: not found, with no actions", async () => {
     const pg = await app("/ui/fleet/agent/nobody");
@@ -209,6 +219,55 @@ describe("Edit in Settings: that agent's dialog — only an agent Settings knows
     for (const name of ["nobody", "__proto__", "constructor"]) {
       const pg = await settings(name);
       expect([name, pg.root.querySelector("dialog") ? "dialog" : null]).toEqual([name, null]);
+      await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
+    }
+  });
+});
+
+describe("#1561 review", () => {
+  const rowsOf = (pg: AppPage) => Object.fromEntries(pg.root.querySelectorAll(".p-details .d-config .kv").map((r: any) => [r.querySelector(".k").textContent, r.querySelector(".v").textContent]));
+  it("a ClassicBot room: its own summary (no directory), Classic's actions only (pause), and Edit in Settings → its ClassicBot dialog", async () => {
+    const pg = await app("/ui/fleet/agent/classic-ops-1");
+    expect(rowsOf(pg)).toEqual({ "Display name": "Ops", Description: "the ops room", "Bound to": "ClassicBot room #ops (discord)", Tags: "classic" });
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause"]);
+    pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
+    expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "classic" }, { name: "classic-ops-1", kind: "classic" }]);
+  });
+  it("bound by default to the first connection says so; web only only when the fleet has no connection", async () => {
+    const pg = await app("/ui/fleet/agent/api-server");
+    expect(rowsOf(pg)["Bound to"]).toBe("telegram (the first connection, by default), no topic yet");
+    await go("/ui/fleet/agent/loner");
+    expect(rowsOf(pg)["Bound to"]).toBe("not bound (web only)");
+  });
+  it("Retry: an older read still on its way never overwrites a newer answer (failed or not)", async () => {
+    const gate = () => { let open!: (v: { status: number; body: unknown }) => void; const p = new Promise<{ status: number; body: unknown }>((r) => { open = r; }); return { p, open }; };
+    const a = gate(), b = gate();
+    held.set("web-dev", [Promise.resolve({ status: 500, body: { error: "x" } }), a.p, b.p]);
+    const pg = await app("/ui/fleet/agent/web-dev");
+    const retry = () => pg.root.querySelector(".p-details .error-state .btn");
+    expect(retry()?.textContent ?? null, "the first read failed").toBe("Try again");
+    retry().click(); await settle();                       // Retry A: held
+    retry().click(); await settle();                       // Retry B: held
+    b.open({ status: 200, body: { ...DETAIL("web-dev"), description: "newest" } }); await settle(4);
+    expect(rowsOf(pg).Description).toBe("newest");
+    a.open({ status: 500, body: { error: "late" } }); await settle(4);
+    expect([rowsOf(pg).Description ?? null, pg.root.querySelector(".p-details .error-state") ? "failed" : null]).toEqual(["newest", null]);
+  });
+});
+
+describe("#1561 review: Settings opens a ClassicBot room's own dialog", () => {
+  it("a classic request opens ClassicDialog for that room; a fleet agent's name as classic opens nothing", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
+    const S = await import("../src/ui/panel-settings.js");
+    for (const [name, want] of [["classic-ops-1", "dialog"], ["web-dev", null]] as const) {
+      const pg = page({ url: "http://127.0.0.1:19280/settings/classic", storage: { agend_tour_done: "1" } });
+      mounted.push(pg);
+      (globalThis as any).fetch = fakeFetch;
+      req.requestAgentSettings(name, "classic");
+      await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "classic" }, navKey: `settings:classic|${name}|en` }));
+      await settle(8);
+      const dlg = pg.root.querySelector("dialog");
+      expect([name, dlg ? "dialog" : null, dlg ? /ops/.test(dlg.textContent) : null]).toEqual([name, want, want ? true : null]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
   });

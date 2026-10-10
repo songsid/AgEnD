@@ -42,15 +42,20 @@ function DetailsView({ name, inst, exec, awaiting }) {
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState("");
   const body = useRef(null);
+  // Each read is numbered: only the latest one (on this page) may set what is shown — a Retry still on its way never
+  // overwrites a newer answer, failed or not (#1561 review).
+  const reads = useRef(0);
   const load = async () => {
+    const mine = ++reads.current;
+    const current = () => lease.current() && reads.current === mine;
     try {
       const r = await lease.fetch(`/ui/instance/${encodeURIComponent(name)}`, { headers: { "Content-Type": "application/json" } });
-      if (!lease.current()) return;
+      if (!current()) return;
       const j = await r.json();
-      if (!lease.current()) return;
+      if (!current()) return;
       if (!r.ok) { setFailed(true); return; }
       setFailed(false); setD(j);
-    } catch { if (lease.current()) setFailed(true); }
+    } catch { if (current()) setFailed(true); }
   };
   useEffect(() => { load(); }, [lease]);
   // Bars are sized after they are drawn, through the CSSOM (never a style attribute, #1300).
@@ -74,9 +79,17 @@ function DetailsView({ name, inst, exec, awaiting }) {
     if (!res.ok) toast((res.body && res.body.error) || t("chat.dActionFailed"), false);
     else toast(t(verb === "pause" ? "chat.dPaused" : "chat.dWoken", name));
   });
-  const editInSettings = () => { requestAgentSettings(name); navigate(settingsPath()); };
+  // A ClassicBot room (classicBot.yaml) keeps Classic's split: its own Settings dialog, and only the actions Settings'
+  // Classic rows have (pause / wake) — never the fleet agent's (#1561 review).
+  const classic = !!(d && d.kind === "classic");
+  const editInSettings = () => { requestAgentSettings(name, classic ? "classic" : "agent"); navigate(settingsPath(classic ? "classic" : undefined)); };
   const st = inst.status;
-  const items = [
+  // Until its read is in, the page does not know which kind it is: no actions yet (only Edit is offered once known).
+  const items = !d ? [] : classic ? [
+    { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
+    st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
+    st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
+  ] : [
     { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
     st === "running" ? null : st === "paused" ? null : { key: "start", label: t("chat.start"), icon: "play", disabled: !!busy, onSelect: () => lifecycle("start") },
     st === "running" ? { key: "restart", label: t("chat.restart"), icon: "restart", disabled: !!busy, onSelect: () => lifecycle("restart") } : null,
@@ -96,14 +109,19 @@ function DetailsView({ name, inst, exec, awaiting }) {
   else {
     const sl = d.statusline || {}, cost = sl.cost?.total_cost_usd ?? 0, ctx = d.context_pct;
     const rl5 = sl.rate_limits?.five_hour?.used_percentage ?? 0, rl7 = sl.rate_limits?.seven_day?.used_percentage ?? 0;
+    // Where it is bound, as the fleet resolves it: no channel_id is the first connection (said so); "web only" only
+    // when the fleet has no connection at all (#1561 review).
     const b = d.binding || {};
-    const binding = b.general_topic ? t("chat.dBindingGeneral", b.channel_id || t("chat.dPrimary"))
-      : b.topic_id ? t("chat.dBindingTopic", b.channel_id || t("chat.dPrimary"), b.topic_id)
-      : b.channel_id ? t("chat.dBindingChannel", b.channel_id) : t("chat.dBindingNone");
+    const conn = b.channel_id ? (b.implicit ? t("chat.dBindingDefault", b.channel_id) : b.channel_id) : null;
+    const binding = d.room ? t("chat.dBindingRoom", d.room.name, d.room.adapter_id || t("chat.dPrimary"))
+      : !conn ? t("chat.dBindingNone")
+      : b.general_topic ? t("chat.dBindingGeneral", conn)
+      : b.topic_id ? t("chat.dBindingTopic", conn, b.topic_id)
+      : t("chat.dBindingNoTopic", conn);
     content = html`<section class="card d-config"><h3>${t("chat.dConfig")}</h3>
         ${row(t("chat.dDisplay"), d.display_name || "--")}
         ${row(t("chat.dDescription"), d.description || "--")}
-        ${row(t("chat.dDirectory"), html`<span class="mono">${d.working_directory}</span>`)}
+        ${d.working_directory ? row(t("chat.dDirectory"), html`<span class="mono">${d.working_directory}</span>`) : null}
         ${row(t("chat.dBinding"), binding)}
         ${row(t("chat.dTags"), Array.isArray(d.tags) && d.tags.length ? html`<span class="d-tags">${d.tags.map((x) => html`<span key=${x} class="tag">${x}</span>`)}</span>` : "--")}
         <div class="d-edit"><span class="note">${t("chat.dReadOnly")}</span>

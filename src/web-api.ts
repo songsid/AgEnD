@@ -175,6 +175,8 @@ export interface WebApiContext {
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   /** A ClassicBot room (registered in classicBot.yaml, not fleet.yaml) — shown on the dashboard like any instance. */
   isClassicInstance?(name: string): boolean;
+  /** #1523 N2: a ClassicBot room's own summary for Details (classicBot.yaml, not fleet.yaml), or null. */
+  classicRoomFor?(name: string): { name: string; channel_id: string; adapter_id: string | null; backend: string; display_name: string | null; description: string | null } | null;
   /**
    * Post an owner web-chat echo to `instance`'s opted-in ClassicBot channels
    * (#1320 part B). Resolves the entries and adapters itself; returns how
@@ -667,11 +669,16 @@ export function handleWebRequest(
   const detailMatch = path.match(/^\/ui\/instance\/(.+)$/);
   if (method === "GET" && detailMatch) {
     const name = decodeURIComponent(detailMatch[1]);
-    const config = ctx.fleetConfig?.instances[name];
-    if (!config) {
+    // An own key only: an inherited name ("constructor") is no instance. #1523 N2: a ClassicBot room is one too — its
+    // own summary (classicBot.yaml), never read as a fleet.yaml agent.
+    const instances = ctx.fleetConfig?.instances ?? {};
+    const fleetConfig = Object.prototype.hasOwnProperty.call(instances, name) ? instances[name] : undefined;
+    const room = fleetConfig ? null : ctx.classicRoomFor?.(name) ?? null;
+    if (!fleetConfig && !room) {
       json(res, 404, { error: `Instance not found: ${name}` });
       return true;
     }
+    const config = fleetConfig ?? { working_directory: "", backend: room!.backend, display_name: room!.display_name ?? undefined, description: room!.description ?? undefined };
     const statusFile = join(ctx.getInstanceDir(name), "statusline.json");
     let statusline: Record<string, unknown> = {};
     try { statusline = JSON.parse(readFileSync(statusFile, "utf-8")); } catch { /* */ }
@@ -700,19 +707,28 @@ export function handleWebRequest(
 
     // The instance's other fleet.yaml fields this read shows (the context's type names only the ones it always needed).
     const more = config as { tags?: unknown; channel_id?: unknown; general_topic?: unknown };
+    // Where it is bound, as the fleet resolves it (getInstanceAdapterId): no channel_id means the first connection —
+    // "web only" only when the fleet has none (#1561 review).
+    const fc = ctx.fleetConfig as { channels?: Array<{ id?: string; type?: string }>; channel?: { id?: string; type?: string } } | undefined;
+    const connections = fc?.channels ?? (fc?.channel ? [fc.channel] : []);
+    const first = connections[0] ? (connections[0].id ?? connections[0].type ?? null) : null;
+    const explicit = typeof more.channel_id === "string" ? more.channel_id : null;
     json(res, 200, {
       name,
       status: ctx.getInstanceStatus(name),
       description: config.description,
       display_name: config.display_name,
-      working_directory: config.working_directory,
+      working_directory: room ? null : config.working_directory,
       // #1523 N2 (Q1 = B): the read-only config summary on Details — tags and where it is bound. Nothing secret.
-      tags: Array.isArray(more.tags) ? more.tags.filter((x: unknown): x is string => typeof x === "string") : [],
-      binding: {
-        channel_id: typeof more.channel_id === "string" ? more.channel_id : null,
+      kind: room ? "classic" : "agent",
+      tags: room ? ["classic"] : Array.isArray(more.tags) ? more.tags.filter((x: unknown): x is string => typeof x === "string") : [],
+      binding: room ? null : {
+        channel_id: explicit ?? first,
+        implicit: explicit === null && first !== null,      // bound to the first connection by default
         topic_id: config.topic_id != null ? String(config.topic_id) : null,
         general_topic: more.general_topic === true,
       },
+      ...(room ? { room: { name: room.name, channel_id: room.channel_id, adapter_id: room.adapter_id } } : {}),
       backend,
       context_pct,
       model,

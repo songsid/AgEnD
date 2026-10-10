@@ -206,8 +206,17 @@ export function SettingsPanel({ route, navKey }) {
   useEffect(() => {
     if (!ctx) return;
     const want = takeAgentRequest();
+    if (!want) return;
+    const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+    if (want.kind === "classic") {
+      // A ClassicBot room: its own dialog (ClassicDialog), found by its instance among this config's rooms.
+      const rooms = (ctx.classic && ctx.classic.channels) || {};
+      const key = Object.keys(rooms).find((k) => own(rooms, k) && rooms[k] && rooms[k].instanceName === want.name);
+      if (key) setDialog({ kind: "classic", room: { key, ...rooms[key] }, key: navKey });
+      return;
+    }
     const insts = (ctx.fleet && ctx.fleet.instances) || {};
-    if (want && Object.prototype.hasOwnProperty.call(insts, want)) setDialog({ kind: "agent", name: want, inst: insts[want], key: navKey });
+    if (own(insts, want.name)) setDialog({ kind: "agent", name: want.name, inst: insts[want.name], key: navKey });
   }, [!!ctx, navKey]);
   const sectionBody = !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`

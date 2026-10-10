@@ -136,7 +136,7 @@ A new panel at `/ui/fleet/agent/:name` (a `/ui/js` module). What it holds is dec
   - working directory, binding (channel, topic or room), tags, description, ClassicBot room if any;
   - "Edit in Settings" opens that agent's `AgentDialog`;
   - nothing is edited on this page.
-- **Actions** from the ⋯ menu: start/restart/stop, pause/wake, delete. They are the existing calls with the existing confirmations.
+- **Actions** from the ⋯ menu, carried over with their existing calls and confirmations: start/restart/stop (Chat's ⋯) and pause/wake (Settings' rows). A ClassicBot room keeps Classic's split: pause/wake only, and "Edit in Settings" opens its ClassicBot dialog. Deletion stays where it already lives, in Chat's ⋯ and Settings (scope check, 2026-10-10).
 
 Chat's ⋯ → "Details" goes here instead of the dialog.
 
