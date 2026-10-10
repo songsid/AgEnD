@@ -15,16 +15,20 @@ export const FAINT_OFF = "⟨/dim⟩";
 /** A CSI SGR sequence: ESC [ params m. */
 const SGR = /\x1b\[([0-9;:]*)m/g;
 
-/** The faint state after applying one SGR parameter list to `faint`; `firstChange` says what the first faint code was. */
-function applySgr(params: string, faint: boolean): { faint: boolean; firstChange: "on" | "off22" | "off0" | null } {
-  let firstChange: "on" | "off22" | "off0" | null = null;
+/**
+ * The faint state after applying one SGR parameter list to `faint`; `firstChange` says what its first intensity code
+ * was: faint on (2), bold on (1), "normal intensity" (22, which ends BOTH bold and faint), or a full reset (0).
+ */
+function applySgr(params: string, faint: boolean): { faint: boolean; firstChange: "faint" | "bold" | "off22" | "off0" | null } {
+  let firstChange: "faint" | "bold" | "off22" | "off0" | null = null;
   const parts = params.split(";");
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!;
     // An empty parameter is 0: ESC[m, like ESC[0m, is a full reset.
     const c = part === "" ? 0 : Number(part.split(":")[0]);
     if (c === 0 || c === 22) { faint = false; firstChange ??= c === 22 ? "off22" : "off0"; }
-    else if (c === 2) { faint = true; firstChange ??= "on"; }
+    else if (c === 2) { faint = true; firstChange ??= "faint"; }
+    else if (c === 1) firstChange ??= "bold";
     else if ((c === 38 || c === 48 || c === 58) && !part.includes(":")) {
       // Extended colour, semicolon form: 5;N (256 colours) or 2;R;G;B (truecolour) belong to this code, not to the
       // attribute list. The colon form (ITU T.416: `38:5:N`, `38:2::R:G:B`) carries them inside this one element.
@@ -54,15 +58,16 @@ export function markFaintRuns(raw: string): string {
 }
 
 /**
- * Whether the window may BEGIN inside faint text: its first faint-related code turns faint off with 22 ("normal
- * intensity") before anything turned it on. The `ESC[2m` was before the window, so the text up to that point is not
- * marked. (A plain 0 reset ends every attribute and is everywhere in a TUI stream: it says nothing either way.)
+ * Whether the window may BEGIN inside faint text: its first intensity code is 22 ("normal intensity"), with no 1, 2 or 0
+ * before it. Then the `ESC[2m` it ends may have been before the window, so the text up to that point is not marked.
+ * A bold (1) or faint (2) first means the 22 closes something the window itself opened (Fable r2: a TUI's bold is
+ * everywhere, a bold-closing 22 must not raise the note); a full reset (0) first means nothing was left open.
  */
 export function startsInsideFaint(raw: string): boolean {
   for (const m of raw.matchAll(SGR)) {
     const change = applySgr(m[1]!, false).firstChange;
-    if (change === "on") return false;
     if (change === "off22") return true;
+    if (change !== null) return false;
   }
   return false;
 }

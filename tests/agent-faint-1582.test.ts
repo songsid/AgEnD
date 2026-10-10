@@ -27,6 +27,7 @@ describe("get_instance_logs marks faint text (live 2.1.296 stream)", () => {
     expect(error).toBeUndefined();
     expect(result.lines).toContain(`${FAINT_ON}\x1b[2mdd a correction note to that decision${FAINT_OFF}\x1b[22m`);
     expect(result._note).toContain(FAINT_NOTE);
+    expect(result._note).not.toContain(FAINT_START_NOTE);     // its 22s close a bold and a faint it opened (Fable r2)
     // The escape sequences are kept: with the markers removed, the stream is exactly the file's.
     expect(result.lines.split(FAINT_ON).join("").split(FAINT_OFF).join("")).toBe(readFileSync(join(FIX, "suggestion.output.log"), "utf8"));
   });
@@ -83,6 +84,14 @@ describe("a window that may begin inside faint text (Fable r1 P3)", () => {
     expect(startsInsideFaint("x\x1b[2mdim\x1b[22m")).toBe(false);
     expect(startsInsideFaint("\x1b[38;5;22mgreen\x1b[39m")).toBe(false);   // 22 as a colour index is not intensity
     expect(startsInsideFaint("plain")).toBe(false);
+  });
+
+  it("Fable r2: a 22 that closes a bold the window opened is not a faint start — nor in the live Claude stream", () => {
+    expect(startsInsideFaint("a \x1b[1mBold\x1b[22m b \x1b[2mdim\x1b[22m")).toBe(false);
+    expect(startsInsideFaint(readFileSync(join(FIX, "suggestion.output.log"), "utf8"))).toBe(false);
+    // A full reset first leaves nothing open — the same answer whether 0 and 22 share a sequence or not.
+    expect(startsInsideFaint("x\x1b[0;22my")).toBe(false);
+    expect(startsInsideFaint("x\x1b[0m\x1b[22my")).toBe(false);
   });
 
   it("get_instance_logs adds the note for such a window", async () => {
