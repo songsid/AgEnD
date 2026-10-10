@@ -30,6 +30,8 @@ About the codes:
 - Five wrong tries use up a code. Enough wrong tries across codes pause sign-in for a few minutes. While no code has been issued, there is nothing to guess.
 - Local sign-ins are announced in General unless `web.notify_login: false`. Public sign-ins always require a confirmed public notice.
 
+**Send me a new code.** A browser that signed in before with a code from `/dashboard` shows this button on the sign-in page, so you do not have to go back to chat. The new code goes by DM to the person who received that earlier code, never into a group, and only while they are still a fleet admin. The DM names the browser and whether it asked through the public link or the local network. It can be asked for once a minute and five times an hour per browser (and a few times a minute for the whole fleet). It is not available while sign-in is paused after wrong codes. A code from `agend web` does not make a browser eligible. On a public link the button only works while that same link is open, and the sign-in is announced in General as usual. `/dashboard revoke` and `agend web-token rotate` remove the button from every browser.
+
 An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) is **not** a way in. It opens the sign-in page, and the token is removed from the address bar.
 
 ## Sessions

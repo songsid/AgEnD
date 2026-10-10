@@ -265,8 +265,9 @@ export function handleAuthRequest(
       let device: string | null = null;
       try { device = result.owner ? ctx.rememberReturningDevice?.(result.owner, { surface: record.surface, label }) ?? null : null; } catch (err) { ctx.logger.debug({ err }, "returning device not recorded"); }
       const secure = isSecureRequest(gateReq);
+      const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000);
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {
-        "Set-Cookie": [buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000), ...(device ? [buildDeviceCookie(device, secure)] : [])],
+        "Set-Cookie": device ? [session, buildDeviceCookie(device, secure)] : session,
       });
     }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); })
       .finally(() => { req.removeListener("aborted", disconnect); res.removeListener?.("close", disconnect); });
