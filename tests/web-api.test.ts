@@ -225,6 +225,44 @@ describe("backend detection endpoint", () => {
   });
 });
 
+describe("/ui/instance/:name: the read-only config summary Details shows (#1523 N2, Q1 = B)", () => {
+  it("tags (strings only) and where it is bound — channel, topic, General — and nothing else of the config", async () => {
+    const ctx = makeCtx({
+      fleetConfig: { channel: { group_id: 1 }, defaults: {}, teams: {}, instances: {
+        a: { working_directory: "/w/a", tags: ["Platform", 7, "web"], channel_id: "discord-2", topic_id: 1234, general_topic: true, bot_token_env: "SECRET_NAME" },
+        b: { working_directory: "/w/b" },
+      } },
+      getInstanceDir: () => "/tmp/nonexistent",
+    } as never);
+    const a = JSON.parse((await callAndWait("GET", "/ui/instance/a", undefined, ctx)).body);
+    expect([a.kind, a.tags, a.binding]).toEqual(["agent", ["Platform", "web"], { channel_id: "discord-2", implicit: false, topic_id: "1234", general_topic: true }]);
+    expect(JSON.stringify(a)).not.toContain("SECRET_NAME");
+    const b = JSON.parse((await callAndWait("GET", "/ui/instance/b", undefined, ctx)).body);
+    // `channel: { group_id }` names no connection id or type: nothing to resolve — no connection.
+    expect([b.tags, b.binding]).toEqual([[], { channel_id: null, implicit: false, topic_id: null, general_topic: false }]);
+  });
+
+  it("#1561 review: no channel_id is the first connection (by default) — web only only when the fleet has none", async () => {
+    const at = (channels: unknown[]) => makeCtx({ fleetConfig: { channels, defaults: {}, teams: {}, instances: { alpha: { working_directory: "/w/a" } } }, getInstanceDir: () => "/tmp/nonexistent" } as never);
+    const tg = JSON.parse((await callAndWait("GET", "/ui/instance/alpha", undefined, at([{ id: "telegram", type: "telegram" }, { id: "discord", type: "discord" }]))).body);
+    expect(tg.binding).toEqual({ channel_id: "telegram", implicit: true, topic_id: null, general_topic: false });
+    const none = JSON.parse((await callAndWait("GET", "/ui/instance/alpha", undefined, at([]))).body);
+    expect(none.binding).toEqual({ channel_id: null, implicit: false, topic_id: null, general_topic: false });
+  });
+
+  it("#1561 review: a ClassicBot room is read from classicBot.yaml (its own summary), never as a fleet agent; an inherited name is none", async () => {
+    const ctx = makeCtx({
+      fleetConfig: { channels: [{ id: "discord", type: "discord" }], defaults: {}, teams: {}, instances: {} },
+      getInstanceDir: () => "/tmp/nonexistent",
+      classicRoomFor: (n: string) => (n === "classic-ops-1" ? { name: "ops", channel_id: "555", adapter_id: "discord", backend: "codex", display_name: "Ops", description: "the ops room" } : null),
+    } as never);
+    const r = JSON.parse((await callAndWait("GET", "/ui/instance/classic-ops-1", undefined, ctx)).body);
+    expect([r.kind, r.tags, r.binding, r.room, r.working_directory, r.backend, r.display_name, r.description])
+      .toEqual(["classic", ["classic"], null, { name: "ops", channel_id: "555", adapter_id: "discord" }, null, "codex", "Ops", "the ops room"]);
+    for (const n of ["nobody", "constructor", "__proto__"]) expect([n, (await callAndWait("GET", `/ui/instance/${n}`, undefined, ctx)).status]).toEqual([n, 404]);
+  });
+});
+
 describe("/ui/instance/:name new fields (B2 wiring)", () => {
   it("returns model, model_source, effort, effort_source, context_pct, display_name", async () => {
     const ctx = makeCtx({

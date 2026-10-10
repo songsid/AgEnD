@@ -80,6 +80,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "panel-view.js", "view-strings.js",
     // alpha.2 (N1): the sidebar's one instance list, and View's roster read it shows to an anonymous reader.
     "instance-nav.js", "view-roster-store.js",
+    // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
+    "instance-switch.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },

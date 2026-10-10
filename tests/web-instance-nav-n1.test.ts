@@ -73,12 +73,16 @@ describe("one list on every page", () => {
     }
   });
 
-  it("a row opens the view the page is in: View → View, everywhere else → Chat; the open instance is the active row", async () => {
+  it("a row opens the view the page is in: View → View, Details and the Fleet tabs → Details (#1523 Q4 = A), everywhere else → Chat; the open instance is the active row", async () => {
     const pg = await app("/ui/chat/web-dev");
     expect([hrefOf(pg, "docs-writer"), activeName(pg)]).toEqual(["/ui/chat/docs-writer", "web-dev"]);
     await go("/view/api-server");
     expect([hrefOf(pg, "docs-writer"), activeName(pg)]).toEqual(["/view/docs-writer", "api-server"]);
     await go("/ui/fleet/tasks");
+    expect([hrefOf(pg, "docs-writer"), activeName(pg)]).toEqual(["/ui/fleet/agent/docs-writer", null]);
+    await go("/ui/fleet/agent/api-server");
+    expect([hrefOf(pg, "docs-writer"), activeName(pg)]).toEqual(["/ui/fleet/agent/docs-writer", "api-server"]);
+    await go("/settings");
     expect([hrefOf(pg, "docs-writer"), activeName(pg)]).toEqual(["/ui/chat/docs-writer", null]);
   });
 

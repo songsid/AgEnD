@@ -53,6 +53,7 @@ if (mode === "full") {
   const loadFleet = retryable((a) => import(retryUrl("/ui/js/panel-fleet.js", a)));
   const loadSettings = retryable((a) => import(retryUrl("/ui/js/panel-settings.js", a)));
   const loadNeeds = retryable((a) => import(retryUrl("/ui/js/panel-needs.js", a)));
+  const loadDetails = retryable((a) => import(retryUrl("/ui/js/panel-details.js", a)));
   // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
   // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.
   const chatBoot = loadChat();
@@ -64,6 +65,8 @@ if (mode === "full") {
   panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
   panels.set("settings", { load: () => loadSettings().then((m) => m.SettingsPanel) });
   panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
+  // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
+  panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });
   // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
   startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
   onNewInstance = async () => {

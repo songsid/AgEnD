@@ -136,7 +136,7 @@ A new panel at `/ui/fleet/agent/:name` (a `/ui/js` module). What it holds is dec
   - working directory, binding (channel, topic or room), tags, description, ClassicBot room if any;
   - "Edit in Settings" opens that agent's `AgentDialog`;
   - nothing is edited on this page.
-- **Actions** from the ⋯ menu: start/restart/stop, pause/wake, delete. They are the existing calls with the existing confirmations.
+- **Actions** from the ⋯ menu, carried over with their existing calls and confirmations: start/restart/stop (Chat's ⋯) and pause/wake (Settings' rows). A ClassicBot room keeps Classic's split: pause/wake only, and "Edit in Settings" opens its ClassicBot dialog. Deletion stays where it already lives, in Chat's ⋯ and Settings (scope check, 2026-10-10).
 
 Chat's ⋯ → "Details" goes here instead of the dialog.
 
@@ -164,7 +164,9 @@ Chat's ⋯ → "Details" goes here instead of the dialog.
 
 ## 4. Decisions for the user
 
-| # | Question | Options | Proposed |
+Decided by the user on 2026-10-10 ("照建議"): Q1 = B, Q2 = A, Q4 = A. Q3 = A and Q5 were decided earlier.
+
+| # | Question | Options | Decided |
 |---|---|---|---|
 | Q1 | What does **Details** (the Fleet side of one instance) show? | A: the current details dialog as a page (runtime + recent activity) · B: A + a read-only config summary (directory, binding, tags, description) with "Edit in Settings", + start/stop/pause actions · C: B + the full config editor inline | **B** |
 | Q2 | **Text size** steps, shared by Chat, View and Fleet | A: S / M / L everywhere; View also keeps "Fit" · B: View's current three (fit / comfortable / compact) everywhere · C: a slider (90–130 %) | **A** |

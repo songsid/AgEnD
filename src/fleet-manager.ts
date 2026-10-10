@@ -2916,6 +2916,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.classicChannels?.getAll().some(channel => channel.instanceName === name) ?? false;
   }
 
+  /** #1523 N2: a ClassicBot room's own summary for its Details page (classicBot.yaml), or null. */
+  classicRoomFor(name: string): { name: string; channel_id: string; adapter_id: string | null; backend: string; display_name: string | null; description: string | null } | null {
+    const ch = this.classicChannels?.getAll().find(channel => channel.instanceName === name);
+    if (!ch) return null;
+    return {
+      name: ch.name, channel_id: ch.channelId, adapter_id: ch.adapterId ?? null,
+      backend: this.classicChannels!.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
+      display_name: ch.displayName ?? null, description: ch.description ?? null,
+    };
+  }
+
   private cacheInstanceExecutionState(name: string, msg: Record<string, unknown>): void {
     const state = msg.state;
     if (state !== "idle" && state !== "working" && state !== "stuck") return;

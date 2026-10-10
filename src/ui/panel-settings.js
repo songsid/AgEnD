@@ -36,6 +36,7 @@ import {
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
 import { FirstRunCard, takeWizardRequest } from "./first-run.js";
+import { takeAgentRequest } from "./settings-request.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const ICONS = { agents: "bot", bots: "plug", classic: "room", general: "sliders", advanced: "code" };
@@ -200,6 +201,23 @@ export function SettingsPanel({ route, navKey }) {
   const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive, () => mount.current()) : null;
   // #1519 P7: "Connect a chat app" on the first-run card elsewhere came here for the wizard: it opens once the data is in.
   useEffect(() => { if (ctx && takeWizardRequest()) setDialog({ kind: "wizard", key: navKey }); }, [!!ctx, navKey]);
+  // #1523 N2: "Edit in Settings" on an instance's Details: that agent's dialog, once the data is in — only an agent this
+  // configuration has (own key), with Settings' own staged Apply and confirmations.
+  useEffect(() => {
+    if (!ctx) return;
+    const want = takeAgentRequest();
+    if (!want) return;
+    const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+    if (want.kind === "classic") {
+      // A ClassicBot room: its own dialog (ClassicDialog), found by its instance among this config's rooms.
+      const rooms = (ctx.classic && ctx.classic.channels) || {};
+      const key = Object.keys(rooms).find((k) => own(rooms, k) && rooms[k] && rooms[k].instanceName === want.name);
+      if (key) setDialog({ kind: "classic", room: { key, ...rooms[key] }, key: navKey });
+      return;
+    }
+    const insts = (ctx.fleet && ctx.fleet.instances) || {};
+    if (own(insts, want.name)) setDialog({ kind: "agent", name: want.name, inst: insts[want.name], key: navKey });
+  }, [!!ctx, navKey]);
   const sectionBody = !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`

@@ -66,6 +66,12 @@ register("chat", {
     loadFailed: "Failed to load", tour: "Tour", tourBtnTitle: "Show the web chat tour again",
     dName: "Name", dStatus: "Status", dDisplay: "Display name", dDescription: "Description", dDirectory: "Directory", dBackend: "Backend", dModel: "Model", dEffort: "Effort",
     dCost: "Cost", dCostNote: "(session accumulated)", dContext: "Context", dRate5: "Rate 5h", dRate7: "Rate 7d", dActivity: "Recent activity", dInstance: "Instance", dRuntime: "Runtime",
+    // #1523 N2: Details (the Fleet side of one instance).
+    dConfig: "Configuration", dBinding: "Bound to", dBindingGeneral: "the General topic of {0}", dBindingTopic: "{0}, topic {1}", dBindingNoTopic: "{0}, no topic yet",
+    dBindingDefault: "{0} (the first connection, by default)", dBindingRoom: "ClassicBot room #{0} ({1})",
+    dBindingNone: "not bound (web only)", dPrimary: "the first connection", dTags: "Tags", dReadOnly: "Read only — change it in Settings.",
+    dEditInSettings: "Edit in Settings", dPause: "Pause", dWake: "Wake", dPaused: "{0} paused", dWoken: "{0} is waking up", dActionFailed: "That did not work — try again.",
+    dNoActivity: "No activity in the last hour.", dWorking: "Working…",
     configured: "(configured)", fleetDefault: "(fleet default)",
   },
   "zh-TW": {
@@ -131,6 +137,11 @@ register("chat", {
     loadFailed: "載入失敗", tour: "導覽", tourBtnTitle: "再看一次網頁聊天導覽",
     dName: "名稱", dStatus: "狀態", dDisplay: "顯示名稱", dDescription: "說明", dDirectory: "目錄", dBackend: "Backend", dModel: "模型", dEffort: "Effort",
     dCost: "花費", dCostNote: "（本次 session 累計）", dContext: "Context", dRate5: "5 小時額度", dRate7: "7 天額度", dActivity: "最近活動", dInstance: "Instance", dRuntime: "執行環境",
+    dConfig: "設定", dBinding: "綁定", dBindingGeneral: "{0} 的 General topic", dBindingTopic: "{0}，topic {1}", dBindingNoTopic: "{0}，尚未綁定 topic",
+    dBindingDefault: "{0}（預設：第一個連線）", dBindingRoom: "ClassicBot 房間 #{0}（{1}）",
+    dBindingNone: "未綁定（只用網頁）", dPrimary: "第一個連線", dTags: "標籤", dReadOnly: "這裡只能檢視——請到設定修改。",
+    dEditInSettings: "到設定編輯", dPause: "暫停", dWake: "喚醒", dPaused: "{0} 已暫停", dWoken: "{0} 正在喚醒", dActionFailed: "沒有成功，請再試一次。",
+    dNoActivity: "最近一小時沒有活動。", dWorking: "處理中…",
     configured: "（設定值）", fleetDefault: "（fleet 預設）",
   },
 });

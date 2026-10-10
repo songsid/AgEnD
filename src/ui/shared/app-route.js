@@ -13,7 +13,7 @@ export function isSafeInstanceName(name) {
 }
 
 /**
- * A path → the route it names: { panel: "chat" | "view", instance } | { panel: "fleet", tab } |
+ * A path → the route it names: { panel: "chat" | "view" | "details", instance } | { panel: "fleet", tab } |
  * { panel: "settings", section } | null (not a page of the app: a full load). A malformed name is null too; the
  * server answers it 400.
  */
@@ -21,7 +21,10 @@ export function parseRoute(pathname) {
   if (pathname === "/ui") return { panel: "chat", instance: null };
   if (pathname === "/ui/fleet") return { panel: "fleet", tab: "tasks" };
   if (pathname === "/ui/needs") return { panel: "needs" };
-  let m = /^\/ui\/fleet\/([^/]+)$/.exec(pathname);
+  // #1523 N2: one instance's Details (`agent` is no Fleet tab; a tab is one segment).
+  let m = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(pathname);
+  if (m) return named("details", m[1]);
+  m = /^\/ui\/fleet\/([^/]+)$/.exec(pathname);
   if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : null;
   m = /^\/ui\/chat\/([^/]+)$/.exec(pathname);
   if (m) return named("chat", m[1]);
@@ -41,6 +44,7 @@ function named(panel, segment) {
 
 export function chatPath(instance) { return `/ui/chat/${encodeURIComponent(instance)}`; }
 export function viewPath(instance) { return instance ? `/view/${encodeURIComponent(instance)}` : "/view"; }
+export function detailsPath(instance) { return `/ui/fleet/agent/${encodeURIComponent(instance)}`; }
 export function fleetPath(tab) { return tab && tab !== "tasks" ? `/ui/fleet/${tab}` : "/ui/fleet"; }
 export const NEEDS_PATH = "/ui/needs";
 export function settingsPath(section) { return section && section !== "agents" ? `/settings/${section}` : "/settings"; }
@@ -50,6 +54,7 @@ export function routePath(route) {
   if (route.panel === "settings") return settingsPath(route.section);
   if (route.panel === "needs") return NEEDS_PATH;
   if (route.panel === "view") return viewPath(route.instance);
+  if (route.panel === "details") return detailsPath(route.instance);
   return route.instance ? chatPath(route.instance) : "/ui";
 }
 /** One string per route: a change of it is a new navigation (a new lease for the panel, §4). */
