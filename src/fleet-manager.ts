@@ -183,7 +183,7 @@ import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResul
 import { LoginSession } from "./login-manager.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
-import { commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
+import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
@@ -3559,7 +3559,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The door, the table and the start of the command run in one synchronous stretch (#1399 review): no await between
    * the check and the act, so the channel's instance cannot be rebound to another bot in between.
    */
-  private async dispatchSlash(data: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+  private async dispatchSlash(slash: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+    // #1569: an alias (/web) is its command (/dashboard) from here on — the door, the table and the handler see one name.
+    const data: ClassicStartSlashData = { ...slash, command: canonicalCommand(slash.command) };
     const door = this.slashDoor(data, adapterId);
     if ("refusal" in door) {
       await data.respond(t(door.refusal)).catch(() => { /* the interaction may already be gone */ });
