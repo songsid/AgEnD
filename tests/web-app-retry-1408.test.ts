@@ -51,7 +51,8 @@ async function scenario(poll: PollAnswer[]) {
   await import("/assets/app.js");
   await vi.waitFor(() => expect(sources.map(s => s.url)).toEqual(["/ui/events"]));
   await vi.waitFor(() => expect(app.querySelector(".error-state")).not.toBeNull());
-  const send = (name: string, data: unknown, lastEventId?: string) => sources[0].listeners[name]?.({ data: JSON.stringify(data), lastEventId });
+  // The page's stream: the newest EventSource (#1580: a reconnect opens a new one and lets the old one go).
+  const send = (name: string, data: unknown, lastEventId?: string) => sources.at(-1).listeners[name]?.({ data: JSON.stringify(data), lastEventId });
   // The connect frames go out while no chat listens.
   send("status", STATUS);
   send("prompts", [prompt(P1, "still open"), prompt(P2, "answered meanwhile")]);
@@ -129,10 +130,12 @@ describe("Retry after a failed first load of the chat", () => {
   it("a fallback poll already on its way when Retry loads the chat: the catch-up joins it, and the live events after it win", async () => {
     const h = held();
     const s = await scenario([h.answer]);
-    // The fallback loop's 5 s interval (armed with A) is not what this test is about: a slow chat load must not let
-    // its next tick queue a read behind A. Only the interval is frozen; A itself comes from the 5 s error timer.
+    // The fallback loop's 5 s interval is not what this test is about: a slow chat load must not let its next tick
+    // queue a read behind A. Only the interval is frozen.
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
-    s.sources[0].onerror();                                   // the stream drops: fallback poll A after 5 s, and it hangs
+    s.sources[0].onerror();                                   // the stream drops (#1580): it is reopened on the backoff's first step
+    await vi.waitFor(() => expect(s.sources).toHaveLength(2), { timeout: 3000 });
+    s.sources[1].onerror();                                   // that attempt fails before it speaks: its probe poll A, which hangs
     await vi.waitFor(() => expect(s.requests.filter(r => r.startsWith("GET /ui/poll"))).toHaveLength(1), { timeout: 8000 });
     s.retry();                                                // the chat loads now and catches up — on A
     await vi.waitFor(() => expect(s.app.querySelector("#msgIn")).not.toBeNull(), { timeout: 8000 });   // a slow load still joins A
@@ -140,7 +143,10 @@ describe("Retry after a failed first load of the chat", () => {
     expect(s.polls()).toBe(0);                                // (retry() cleared the log: no new read was made)
     h.open();
     await vi.waitFor(() => expect(s.cards()).toEqual([{ text: "still open", done: false, buttons: [true] }]));
-    // The stream is back: P1 answered elsewhere, P3 posted, a new message.
+    // A answered: the fleet is there; the stream is reopened on the backoff's next step — a new EventSource.
+    await vi.waitFor(() => expect(s.sources).toHaveLength(3), { timeout: 5000 });
+    // The stream is back: P1 answered elsewhere, P3 posted, a new message — its first frame starts the reconnect's one
+    // catch-up read, and these live events are held behind that read's (older) snapshot.
     s.send("prompt_resolved", { instance: "alpha", nonce: P1, outcome: "answered on Discord" });
     s.send("prompt", prompt(P3, "posted meanwhile"));
     s.send("message", { ...MSG, id: 6, text: "later", messageId: "m6" }, "1-6");
@@ -150,8 +156,9 @@ describe("Retry after a failed first load of the chat", () => {
       { text: "answered on Discord", done: true, buttons: [] },
       { text: "posted meanwhile", done: false, buttons: [true] },
     ]);
-    expect(s.polls()).toBe(0);                                // nothing was queued behind A, and the stream speaks again
-    expect(s.sources).toHaveLength(1);
+    expect(s.polls()).toBe(1);                                // nothing was queued behind A; the reconnect's own catch-up, once
+    expect(s.sources).toHaveLength(3);
+    vi.useRealTimers();
   }, 25_000);
 
   it("live events dropped during the catch-up read, then a failed recovery read: retried and shown, then P3 is there", async () => {
