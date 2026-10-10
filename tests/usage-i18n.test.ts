@@ -47,8 +47,8 @@ describe("usage i18n key parity", () => {
       (await import("/assets/app-i18n.js")).setLang("en");
       dom.restore();
     }
-    // The page's usage renderer (panel-view.js) names these keys with the same fallbacks the server sends.
-    const panel = readFileSync(join(process.cwd(), "src/ui/shared/panel-view.js"), "utf8");
+    // The page's usage renderer (usage-dialog.js since #1523 N3) names these keys with the same fallbacks the server sends.
+    const panel = readFileSync(join(process.cwd(), "src/ui/shared/usage-dialog.js"), "utf8");
     expect(panel).toContain("usageText(m.label, m.labelI18n)");
     expect(panel).toContain('usageText(m.value ?? "", m.valueI18n)');
     expect(panel).toContain("usageText(p.hint, p.hintI18n)");
