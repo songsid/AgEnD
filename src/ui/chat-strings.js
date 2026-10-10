@@ -32,6 +32,7 @@ register("chat", {
     pvOpenPanel: "Open in panel", pvInPanel: "Shown in the panel.", pvPanel: "HTML preview", pvSource: "From {0}, {1} — show the message",
     pvPage: "Page", pvCode: "Code", pvReload: "Reload", pvClose: "Close the panel", pvBack: "Back to the chat", pvResize: "Resize the preview panel",
     pvNewer: "A newer version is in the reply from {0}.", pvNewerShow: "Show it", pvPanelIdle: "Click Preview to run it here.",
+    lbLabel: "Image: {0}", lbLabelNoName: "Image", lbClose: "Close", lbOpenOriginal: "Open original", lbPrev: "Previous image", lbNext: "Next image", lbCount: "{0} / {1}",
     // #1554: preview.js's words (its English is the fallback there), and the server's reasons by code.
     pvWhyOptin: "HTML previews are off on this device (this browser, at this address). Allow them from this card's ⋯ menu or the sidebar.",
     pvWhyOptinPanel: "HTML previews are off on this device (this browser, at this address).",
@@ -97,6 +98,7 @@ register("chat", {
     pvOpenPanel: "在面板中開啟", pvInPanel: "已在面板中顯示。", pvPanel: "HTML 預覽", pvSource: "來自 {0}，{1}——顯示該訊息",
     pvPage: "頁面", pvCode: "程式碼", pvReload: "重新載入", pvClose: "關閉面板", pvBack: "回到對話", pvResize: "調整預覽面板寬度",
     pvNewer: "{0} 的回覆裡有較新的版本。", pvNewerShow: "顯示", pvPanelIdle: "按「預覽」在這裡執行。",
+    lbLabel: "圖片：{0}", lbLabelNoName: "圖片", lbClose: "關閉", lbOpenOriginal: "開啟原圖", lbPrev: "上一張", lbNext: "下一張", lbCount: "{0} / {1}",
     pvWhyOptin: "這台裝置（這個瀏覽器、這個網址）還沒允許 HTML 預覽。可從這張卡片的 ⋯ 選單或側欄允許。",
     pvWhyOptinPanel: "這台裝置（這個瀏覽器、這個網址）還沒允許 HTML 預覽。",
     pvWhyNever: "這台裝置在這個工作階段已關閉預覽。",
