@@ -1,0 +1,1 @@
+<timestamp>  WARN codex_app_server::request_processors::account_processor::rate_limit_resets: rate limit reset credit detail request timed out; falling back to the usage response
