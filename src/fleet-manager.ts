@@ -1455,20 +1455,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<boolean> {
     const content = replyButtonClickText(button);
     const web = by.source === "web";
-    const ts = new Date().toISOString();
+    const timestamp = new Date();
+    const ts = timestamp.toISOString();
     const messageId = web ? newWebMessageId() : (set.messageId ?? "");
+    const deliveryEpoch = this.getDeliveryEpoch(set.instance);
+    const inbound = {
+      chatId: set.chatId, threadId: set.threadId || undefined, messageId,
+      username: by.username, adapterId: set.adapterId === "web" ? undefined : set.adapterId,
+      source: web ? "web" : (this.worlds.get(set.adapterId)?.adapter.type ?? "web"),
+    };
+    // A platform click has no new human message: its receipt and subsequent
+    // daemon delivery statuses belong on the reply carrying these buttons.
+    // Telegram needs the click time to establish status-slot ownership. Web
+    // ids go only to the dashboard's delivery lane, never a platform react API.
+    if (inbound.chatId && messageId) {
+      this.reactMessageStatus(set.instance, inbound.chatId, messageId, "received", inbound.threadId, timestamp.getTime());
+    }
+    if (this.fleetConfig?.instances[set.instance] && set.threadId) {
+      this.touchActivity(set.instance);
+      this.setTopicIcon(set.instance, "blue");
+    }
+    const reactions = this.pendingReactionsMeta(set.instance);
     const sent = await this.deliverToInstance(set.instance, {
       type: "fleet_inbound",
       content,
       targetSession: set.instance,
       meta: {
         chat_id: set.chatId, message_id: messageId, user: by.username, user_id: by.userId, ts,
-        thread_id: set.threadId, adapter_id: set.adapterId === "web" ? undefined : set.adapterId,
-        source: web ? "web" : (this.worlds.get(set.adapterId)?.adapter.type ?? "web"),
+        thread_id: set.threadId, adapter_id: inbound.adapterId, source: inbound.source,
+        ...reactions.meta,
       },
     });
     if (sent === false) return false;
-    this.lastInboundUser.set(set.instance, by.username);
+    reactions.consume();
+    this.afterUserInboundDelivered(set.instance, inbound, deliveryEpoch);
     this.emitSseEvent("message", {
       instance: set.instance, sender: by.username, role: "user", text: content, ts, ...(web ? { messageId } : {}),
     });
@@ -7624,15 +7644,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             },
           });
           generalReactions.consume();
-          this.lastInboundUser.set(generalInstance, msg.username);
+          this.afterUserInboundDelivered(generalInstance, msg);
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
           this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
           this.emitSseEvent("message", {
             instance: generalInstance, sender: msg.username, role: "user",
             text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
           });
-          this.trackInboundMsg(generalInstance, msg);
-          void this.sendCancelButton(generalInstance);
         } catch (err) {
           this.logger.warn({ err: (err as Error).message, instanceName: generalInstance }, "General wake/delivery failed");
         }
@@ -7746,15 +7764,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       return;
     }
-    this.lastInboundUser.set(instanceName, msg.username);
+    this.afterUserInboundDelivered(instanceName, msg);
     this.logger.info(`${msg.username} → ${instanceName}: ${(text ?? "").slice(0, 100)}`);
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
     this.emitSseEvent("message", {
       instance: instanceName, sender: msg.username, role: "user",
       text: (text ?? "").slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
     });
-    this.trackInboundMsg(instanceName, msg);
-    void this.sendCancelButton(instanceName);
   }
 
   /** Handle outbound tool calls from a daemon instance */
@@ -12950,6 +12966,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** A successful user handoff starts the same cancel/progress lifecycle,
+   * whether the person typed in General/a topic/Classic or chose a reply button.
+   * The button continuation pins its delivery epoch so cancellation during an
+   * accepted handoff cannot resurrect a fresh publication afterward. */
+  private afterUserInboundDelivered(
+    instanceName: string,
+    msg: { username: string; chatId: string; messageId: string; threadId?: string; adapterId?: string; source?: string },
+    deliveryEpoch?: number,
+  ): void {
+    if (this.shuttingDown || (deliveryEpoch !== undefined && !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch))) return;
+    this.lastInboundUser.set(instanceName, msg.username);
+    this.trackInboundMsg(instanceName, msg);
+    void this.sendCancelButton(instanceName);
+  }
+
   /** Remember the user message just delivered, so we can react ✅ when done. */
   private trackInboundMsg(instanceName: string, msg: { chatId: string; messageId: string; threadId?: string; adapterId?: string; source?: string }): void {
     if (!msg.chatId || !msg.messageId) return;
@@ -14595,10 +14626,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.logger.warn({ err: (err as Error).message, instanceName }, "Classic wake/delivery failed");
       return;
     }
-    this.lastInboundUser.set(instanceName, msg.username);
+    this.afterUserInboundDelivered(instanceName, { ...msg, threadId: replyThreadId });
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
-    this.trackInboundMsg(instanceName, { ...msg, threadId: replyThreadId });
-    void this.sendCancelButton(instanceName);
   }
 
   /** Paste raw text directly to a classic instance's CLI (no [user:] wrapping) */
