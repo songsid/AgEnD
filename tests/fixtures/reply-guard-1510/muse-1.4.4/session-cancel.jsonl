@@ -1,2 +1,5 @@
-{"recorded_at": 1791560371911163, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3", "event": {"kind": "started", "prompt": "cancel me"}}}
-{"recorded_at": 1791560372190117, "payload_type": "runtime.session", "payload": {"kind": "run", "run_id": "9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3", "event": {"kind": "terminal", "reason": "cancelled during end-of-turn reminder wait"}}}
+{"recorded_at":1791560365639293,"payload_type":"runtime.session.route_facts","payload":{"kind":"route_facts","record":{"cwd":"/home/user/project"}}}
+{"recorded_at":1791560371905885,"payload_type":"runtime.user_intent.accepted","payload":{"intent_id":"9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3","surface":"main","model_messages":[{"content":[{"kind":"text","text":"cancel me"}]}],"wake_policy":"start_once"}}
+{"recorded_at":1791560371911163,"payload_type":"runtime.session","payload":{"kind":"run","run_id":"9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3","event":{"kind":"started","prompt":"cancel me"}}}
+{"recorded_at":1791560371919378,"payload_type":"runtime.user_intent.materialized","payload":{"intent_id":"9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3","outcome":{"kind":"top_level_turn_started","run_id":"9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3"}}}
+{"recorded_at":1791560372190117,"payload_type":"runtime.session","payload":{"kind":"run","run_id":"9cfe61b3-bf3f-43ad-b86a-0f9e9623ddd3","event":{"kind":"terminal","reason":"cancelled during end-of-turn reminder wait"}}}
