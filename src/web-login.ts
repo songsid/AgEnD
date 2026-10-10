@@ -115,6 +115,11 @@ export class WebLoginCodes {
     return { display: formatOneTimeCode(code), expiresAt, tier, issuanceId };
   }
 
+  /** #1570: how long redemption stays paused by the breaker (0 when it is closed). A code request is refused meanwhile. */
+  pausedForMs(): number {
+    return Math.max(0, this.pausedUntil - this.now());
+  }
+
   /** Whether a redemption right now would be compared against anything. */
   get hasOutstandingCode(): boolean {
     return this.activeCode() !== null;

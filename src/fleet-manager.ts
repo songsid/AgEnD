@@ -234,6 +234,7 @@ import { bypassesWebGate, handleAuthRequest, serveSigninPage, type AuthApiContex
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { tokenEpoch, WebSessionStore } from "./web-session.js";
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
+import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
 import { createPreviewListener, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener } from "./web-preview.js";
 import { fleetLevelDifferences, fleetLevelSignature, appendedConnections } from "./fleet-level-config.js";
@@ -1351,6 +1352,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
+  /** #1570: browsers that may ask the sign-in page for a fresh code, and how often they may. */
+  private returningDevices: ReturningDevices | null = null;
+  private readonly codeRequestLimiter = new CodeRequestLimiter();
   /**
    * Set while a Settings apply job is driving the reconcile. The reconcile
    * stays the single doer; it just says out loud what it is doing to whom, so
@@ -4861,6 +4865,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         onWarn: message => this.logger.warn(message),
       });
     }
+    if (!this.returningDevices) {
+      this.returningDevices = new ReturningDevices({ dataDir: this.dataDir, onWarn: message => this.logger.warn(message) });
+    }
     if (!this.webLoginCodes) {
       this.webLoginCodes = new WebLoginCodes({
         onEvent: event => {
@@ -5115,10 +5122,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     void this.publicWebLink?.close("dashboard revoke");
     this.webLoginCodes!.revoke();
-    const result = this.webSessions!.revokeAll();
-    if (result.durable) this.logger.info({ count: result.count }, "Web sessions revoked (all)");
+    // #1570: no browser may ask the sign-in page for a code any more.
+    const devices = this.returningDevices!.revokeAll();
+    const sessions = this.webSessions!.revokeAll();
+    const result = { count: sessions.count, durable: sessions.durable && devices.durable };
+    if (result.durable) this.logger.info({ count: result.count, devices: devices.count }, "Web sessions revoked (all)");
     else this.logger.warn({ count: result.count }, "Web sessions revoked in memory only — the session file could not be updated or removed");
     return result;
+  }
+
+  /** #1570 (auth-api): this browser becomes a returning device of the code's owner. The cookie value, or null. */
+  rememberReturningDevice(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null {
+    const token = this.webToken;
+    if (!token) return null;
+    this.initializeWebSessions();
+    return this.returningDevices!.remember(owner, { ...input, tokenEpoch: tokenEpoch(token), webToken: token });
+  }
+
+  /** #1570 (auth-api): the returning device a cookie value proves under the CURRENT token, or null. */
+  verifyReturningDevice(value: string | undefined): ReturningDevice | null {
+    const token = this.webToken;
+    if (!token) return null;
+    this.initializeWebSessions();
+    return this.returningDevices!.verify(value, token, tokenEpoch(token));
+  }
+
+  /**
+   * #1570: a returning device asks for a fresh code. It goes privately (a DM, the path /dashboard uses) to the person
+   * whose code that browser last redeemed — and only if they are still a fleet admin of that bot, the bot is live, the
+   * breaker is closed and the rate limits allow it. A public-link request must belong to the link that is open now; the
+   * code carries the owner, so its sign-in still goes through confirmPublicWebLogin. Nothing is posted anywhere else.
+   */
+  async requestReturningCode(device: ReturningDevice, input: { surface: "local" | "gateway"; exposureId?: string; label: string }):
+    Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }> {
+    const token = this.webToken;
+    if (!token || this.shuttingDown) return { kind: "refused" };
+    this.initializeWebSessions();
+    const paused = this.webLoginCodes!.pausedForMs();
+    if (paused > 0) return { kind: "limited", retryAfterMs: paused };
+    const admitted = this.codeRequestLimiter.admit(device.idHash);
+    if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
+    const { adapterId, userId, chatId, threadId } = device.owner;
+    const adapter = this.adapters.get(adapterId);
+    // The same owner gate /dashboard's private delivery uses: still a fleet admin, the same General, the bot live.
+    const owner: LoginCodeOwner = { adapterId, userId, chatId, ...(threadId !== undefined ? { threadId } : {}), binding: adapter };
+    if (!adapter?.sendDirect || !this.publicOwnerCurrent(owner)) {
+      this.logger.info({ adapterId }, "Sign-in code request refused: the recorded owner is no longer a fleet admin of a live bot");
+      return { kind: "refused" };
+    }
+    if (input.surface === "gateway") {
+      const link = this.publicWebLink;
+      if (!link || !input.exposureId || link.exposureId !== input.exposureId || link.status().state !== "open") return { kind: "refused" };
+    } else if (input.exposureId !== undefined) return { kind: "refused" };
+    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner });
+    const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"),
+      t(input.surface === "gateway" ? "web.resend_public" : "web.resend_local"));
+    try {
+      await withinBudget(adapter.sendDirect(userId, text, { disablePreview: true }), performance.now() + 5_000);
+    } catch (err) {
+      this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
+      this.logger.info({ err: (err as Error)?.message, adapterId }, "Sign-in code request: the private message could not be sent");
+      return { kind: "refused" };
+    }
+    if (this.webToken !== token || !this.publicOwnerCurrent(owner)) { this.webLoginCodes!.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
+    this.logger.info({ adapterId, surface: input.surface }, "Web sign-in code sent privately to a returning device's owner");
+    return { kind: "sent" };
   }
 
   /** Called by the sign-in endpoint: a login the operator did not make should be visible to them. */
