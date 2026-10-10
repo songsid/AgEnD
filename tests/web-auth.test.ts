@@ -131,7 +131,9 @@ describe("persistent dashboard token", () => {
     expect(address && typeof address !== "string").toBe(true);
     const response = await fetch(`http://127.0.0.1:${(address as { port: number }).port}/favicon.ico`);
 
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/vnd.microsoft.icon");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(readFileSync(new URL("../src/ui/icons/favicon.ico", import.meta.url)));
     await close(server);
     (fm as any).healthServer = null;
   });
