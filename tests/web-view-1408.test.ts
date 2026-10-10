@@ -396,15 +396,16 @@ describe("within one navigation, an older answer never lands over a newer one; a
   it("usage: Refresh supersedes the minute's read on its way; that read's late answer is dropped", async () => {
     const held = deferred<any>();
     const provider = (name: string) => ({ providers: [{ id: "p", name, status: "ok", metrics: [] }], fetchedAt: 1 });
-    // 0: the panel's availability check; 1: the dialog's first read; 2: the minute's tick (held); 3: Refresh.
-    const s = await setup({ usage: (_u, _i, n) => (n === 2 ? held.promise : json(provider(n === 3 ? "NEW" : "FIRST"))) });
+    // #1523 N3: no availability read any more (the page says whether usage is offered). 0: the dialog's first read;
+    // 1: the minute's tick (held); 2: Refresh.
+    const s = await setup({ usage: (_u, _i, n) => (n === 1 ? held.promise : json(provider(n === 2 ? "NEW" : "FIRST"))) });
     try {
       vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval", "performance"] });
       const m = s.mount("alpha", "view:alpha|1|en"); await vi.advanceTimersByTimeAsync(50); await m;
       s.p.root.querySelectorAll(".panel-actions .btn").find((b: any) => b.textContent.includes("Usage")).click();
       await vi.advanceTimersByTimeAsync(10);
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(s.calls.filter(c => c.url.startsWith("/api/ai-usage"))).toHaveLength(3);
+      expect(s.calls.filter(c => c.url.startsWith("/api/ai-usage"))).toHaveLength(2);
       s.p.root.querySelectorAll("dialog .btn").find((b: any) => b.textContent.includes("Refresh")).click();
       await vi.advanceTimersByTimeAsync(10);
       const names = () => s.p.root.querySelectorAll(".u-provider strong").map((e: any) => e.textContent);

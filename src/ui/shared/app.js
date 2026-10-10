@@ -14,8 +14,11 @@ import { chatPath } from "./app-route.js";
 import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
 import { t } from "./app-i18n.js";
+import { initTextSize } from "./header-tools.js";
 
 const boot = document.body.dataset;
+// #1523 N3: this device's text size, on the root before the first paint of any panel.
+initTextSize();
 // "full": a signed-in page. "view-only": an anonymous reader of /view under web.view_access: open — no stream, no
 // session-only panel, nothing under /ui/ is ever imported or read (#1408 §3).
 const mode = boot.mode === "view-only" ? "view-only" : "full";

@@ -14,6 +14,7 @@ import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/as
 import { navigate } from "/assets/app-nav.js";
 import { settingsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
+import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
@@ -139,7 +140,7 @@ function DetailsView({ name, inst, exec, awaiting }) {
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;
   }
   return html`<div class="panel p-details">
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}${content}</div></div>
   </div>`;
 }

@@ -69,7 +69,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - **Code blocks** show their language, with **Copy** and **Wrap** (long lines wrap instead of scrolling; remembered for this browser). A block longer than 30 lines is folded: **Show all N lines** opens it.
 - The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
 - The sidebar button at its top hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it. A phone also has tabs along the bottom (Chat, Fleet, View, Settings); they make room while the keyboard is open.
-- The header shows the instance's name and state. Its **⋯** menu holds **Instance details** and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
+- The header shows the instance's name and state, the **Chat / View / Details** switch, **Text size** and **Usage** (the same two, in the same order, on Chat, View, Details and Fleet). **Text size** goes S → M → L and is one setting for this browser: chosen on any page, it is the size on every page and after a reload. Its **⋯** menu holds **Instance details** (the Details page) and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
 - **Theme** and **Language** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser. The language applies to every panel.
 - **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
 
@@ -195,7 +195,7 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 `/view` shows every agent: the live terminal capture, the roster with each one's state and context, and AI subscription usage. Each agent has its own address, `/view/<name>`; `/view` alone opens the one this browser looked at last.
 
 - **The roster is the sidebar** while View is open (on a phone, the drawer): grouped by tag, with the filter at the bottom (**/** jumps to it) and your own order (drag a group or an instance). Rows show the context in use and the backend's colour; hover for the rest.
-- **The header** has **Text size** (Fit → Comfortable → Compact), **Usage** and **Help**. The terminal stays dark in both themes.
+- **The header** has **Text size**, **Usage** and **Help**. On View the size goes Fit → S → M → L: **Fit** sizes the terminal to its box, and S / M / L are the size every page shares. The terminal stays dark in both themes.
 - **The card under the terminal** shows the agent's name, role and model; its arrow opens the whole profile. **Edit profile** changes the display name, role, description and avatar.
 
 - **Reading `/view` needs no sign-in by default** (`web.view_access: open`). That includes the live terminal, so anyone who can reach the port can watch your agents. On a machine only you can reach, that is fine. Otherwise set:

@@ -46,7 +46,8 @@ describe("the View-only page (the real entry, a fake DOM)", () => {
       expect(sources).toEqual([]);
       expect(imported).toEqual([]);
       const paths = [...new Set(reads.map(r => r.split(" ")[1]!.split("?")[0]!))];
-      expect(paths.sort()).toEqual(["/api/ai-usage", "/api/pane/alpha", "/api/profiles"]);
+      // #1523 N3: no /api/ai-usage probe — the page says whether usage is offered (data-usage-panel).
+      expect(paths.sort()).toEqual(["/api/pane/alpha", "/api/profiles"]);
       for (const p of paths) expect(isPassiveWebRead("GET", p), p).toBe(true);
       expect(reads.every(r => r.startsWith("GET "))).toBe(true);
     } finally { dom.restore(); delete g.EventSource; delete g.fetch; vi.resetModules(); }

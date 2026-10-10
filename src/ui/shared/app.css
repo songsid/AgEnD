@@ -155,6 +155,18 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
 .inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }
 .inst-switch .seg-item { min-height: 30px; }
+/* #1523 N3 (Q2 = A): the text size, one custom property from the root's data-text-size (header-tools.js). The chat's
+   messages, Details and the Fleet tabs scale the type tokens by it; View's terminal scales itself (VIEW_SCALE). */
+:root { --text-scale: 1; }
+:root[data-text-size="s"] { --text-scale: 0.9; }
+:root[data-text-size="l"] { --text-scale: 1.15; }
+.thread, .p-details .panel-body, .p-fleet .panel-body {
+  --fs-xs: calc(12px * var(--text-scale)); --lh-xs: calc(16px * var(--text-scale));
+  --fs-sm: calc(13px * var(--text-scale)); --lh-sm: calc(18px * var(--text-scale));
+  --fs-md: calc(15px * var(--text-scale)); --lh-md: calc(24px * var(--text-scale));
+  --fs-lg: calc(17px * var(--text-scale)); --lh-lg: calc(24px * var(--text-scale));
+  font-size: var(--fs-md); line-height: var(--lh-md);
+}
 /* #1523 N2: Details. */
 .p-details .d-tags { display: inline-flex; flex-wrap: wrap; gap: var(--s-1); }
 .p-details .d-edit { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-2); }

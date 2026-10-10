@@ -9,6 +9,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { HeaderTools } from "/assets/header-tools.js";
 import { renavigate } from "/assets/app-nav.js";
 import { chatPath, fleetPath, FLEET_TABS } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -104,7 +105,7 @@ export function FleetPanel({ route, navKey }) {
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, config: Config }[tab] || Tasks;
   return html`<div class="panel p-fleet">
-    <${PanelHeader} title=${t("fleet.title")} />
+    <${PanelHeader} title=${t("fleet.title")}><${HeaderTools} /></${PanelHeader}>
     <nav class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
     <div class="panel-body"><div class=${`col${tab === "org" || tab === "cache" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>

@@ -13,6 +13,7 @@ import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, onPanelKey, setTitle, addFooterItem, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
+import { HeaderTools } from "/assets/header-tools.js";
 import { navigate } from "/assets/app-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Dialog } from "/assets/ui-dialog.js";
@@ -208,7 +209,7 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", inst.model)} aria-label=${t("chat.chipModel", inst.model)} onClick=${() => pick("model")}>${inst.model}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${HeaderTools} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="chat-split" ref=${split}>
       <div class="chat-main">
         <${Thread} name=${name} th=${thread} />
