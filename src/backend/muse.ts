@@ -233,6 +233,13 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
  *      needs `--trust-workspace` beside it to reach the prompt unattended.
  */
 export class MuseBackend implements CliBackend {
+  /**
+   * #1510: the reply-completion guard covers muse, its turn end read from the session log (run `started` /
+   * `terminal`, recorded on 1.4.4 in tests/fixtures/reply-guard-1510): between a run and the run a mid-run message
+   * starts, the pane shows one idle frame — the log does not.
+   */
+  readonly replyCompletionGuard = true;
+  readonly turnEndFromTranscript = true;
   readonly binaryName = "muse";
   private binaryPath: string;
   private readonly sharedXdgConfigHome: string;

@@ -304,7 +304,7 @@ templates:
 | `terminal.rows` | number | `36` | 啟用時的高度；整數 `24`–`120` |
 | `mcp_auto_restart` | boolean | `true` | MCP 死亡或 CLI 啟動後 90 秒仍未連線時重啟並 resume；通常等 idle，但有 30 分鐘強制重啟上限；未解決的 auth 問題會抑制自動重啟。`false` 只通知 |
 | `mcp_proxy_reply` | boolean | `false` | 自願啟用：人類回合結束時若 MCP 已死且未送回覆，daemon 將 pane 最後文字轉貼到頻道並標 ⚠️。原始 pane 文字可能洩漏無法完整遮蔽的內容，預設關閉 |
-| `reply_completion_guard` | boolean | `true` | 人類回合結束卻未送出回覆時，一次有界的補結論機制；必須有 backend 支援：Claude Code、成功建立的 Kiro legacy/TUI 啟動，以及 Codex（僅限 rollout 顯示該輪已結束時）；Kiro v3 與其他 backend 不啟用。Classic defaults／個別 channel 也可設定 |
+| `reply_completion_guard` | boolean | `true` | 人類回合結束卻未送出回覆時，一次有界的補結論機制；必須有 backend 支援：Claude Code、成功建立的 Kiro legacy/TUI 啟動，以及 Codex 與 Muse（僅限 CLI 自己的紀錄顯示該輪已結束時）；Kiro v3 與其他 backend 不啟用。Classic defaults／個別 channel 也可設定 |
 | `systemPrompt` | string | — | 額外指令：內嵌字串或 `file:path`，透過下方列出的 backend 原生指令路徑載入。相對檔案路徑以 instance 的 `working_directory` 解析；多個部分以逗號連接，見 [features](features.zh-TW.md#systemprompt-檔案路徑-systemprompt-file-paths) |
 | `workflow` | string \| false | `"builtin"` | 工作流程：`"builtin"`、`"file:path"`、內嵌內容或 `false`。可放在 instance 或 `defaults`，不可放在 fleet.yaml 頂層 |
 | `skipPermissions` | boolean | 未設 `false` 時視為 `true` | 依 backend 使用不同 bypass flag，見[安全邊界](SECURITY.zh-TW.md)。OpenCode：其 `--help` 有列 `--auto` 時以 `--auto` 啟動（明確的 `deny` 規則仍然有效）；舊版沒有啟動開關，prompt 由執行期回答「Allow once」 |

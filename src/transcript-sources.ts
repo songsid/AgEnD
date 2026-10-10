@@ -38,6 +38,8 @@ import type { KiroDbCursor } from "./kiro-db-reader.js";
 export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
+import { museSessionCwd, readFileHeadSync } from "./backend/muse.js";
+import { performance } from "node:perf_hooks";
 
 export interface ToolUseEvent { name: string; input: unknown }
 
@@ -257,6 +259,179 @@ export class CodexRolloutSource implements TranscriptSource {
     if (turns.length) events.turns = turns;
     return events;
   }
+}
+
+/* -------------------------------------------------------------------- muse */
+
+/**
+ * #1510: muse's turn boundaries, from its session logs (`<root>/<YYYY>/<MM>/<DD>/<id>/session.jsonl`, recorded on
+ * 1.4.4 in tests/fixtures/reply-guard-1510). Only turns are read; muse's tool activity is not.
+ *
+ * - a run is a turn: `runtime.session` run `started` → `terminal {reason}` (null: done; "cancelled …": the user
+ *   stopped it; anything else: it failed);
+ * - a message is `runtime.user_intent.accepted` (its text, surface "main") and lands in a run with
+ *   `user_intent.materialized` — a new run, or the active one when it was typed mid-run;
+ * - the end-of-turn reminder observers write their own session directories and no main-surface intents.
+ *
+ * Every log whose head names this working directory is followed: ownership is decided later, by the delivered text
+ * (TranscriptTurnLedger), so two muse instances in one directory cannot vouch for each other. The directory tree is
+ * re-listed at most every `listTtlMs`; between listings only the logs already known are read, and only when they grew.
+ * Logs present when the source is created are read from their end (existing history is not this launch's).
+ */
+export class MuseSessionSource implements TranscriptSource {
+  /**
+   * session.jsonl path → where to read next (cwd-matched logs only): a byte offset, or `{ anchor }` for a log that
+   * existed before this source (read from its last line boundary at `anchor` bytes, or at its size when first read
+   * if its size was not known then — never from its start).
+   */
+  private files = new Map<string, number | { anchor: number | null }>();
+  /** Every log present at the baseline, with its size then (null: it was there, its size could not be read). */
+  private preexisting = new Map<string, number | null>();
+  /** Whether the baseline listing saw the whole tree; if not, a log found later may be old and is read from its end. */
+  private baselineComplete = false;
+  private rejected = new Set<string>();
+  private sizes = new Map<string, number>();
+  private listedAt = Number.NEGATIVE_INFINITY;
+  private baselined = false;
+  /** intent_id → its text and time, until it materializes (bounded). */
+  private intents = new Map<string, { text: string; at: number }>();
+
+  constructor(
+    private workingDirectory: string,
+    private root = join(homedir(), ".local", "share", "muse", "sessions"),
+    private listTtlMs = 30_000,
+    private now: () => number = () => performance.now(),
+  ) {}
+
+  reset(): void {
+    this.files.clear(); this.preexisting.clear(); this.rejected.clear(); this.sizes.clear(); this.intents.clear();
+    this.listedAt = Number.NEGATIVE_INFINITY; this.baselined = false; this.baselineComplete = false;
+  }
+
+  async initialize(): Promise<void> { await this.list(); }
+
+  private async list(): Promise<void> {
+    this.listedAt = this.now();
+    const { logs, complete } = await listMuseSessionLogs(this.root);
+    if (!this.baselined) {
+      // The baseline is every log there now, whatever its head says: history is not this launch's, and a log whose
+      // cwd cannot be read yet is still history when it can.
+      for (const path of logs) this.preexisting.set(path, await stat(path).then(st => st.size, () => null));
+      this.baselineComplete = complete;
+      this.baselined = true;
+    }
+    for (const path of logs) {
+      if (this.files.has(path) || this.rejected.has(path)) continue;
+      const head = readFileHeadSync(path, 65_536);
+      if (head === null) continue;
+      const cwd = museSessionCwd(head);
+      if (cwd === null) {
+        // A log being started names its cwd within moments; one that still does not a minute on never will (the
+        // end-of-turn reminder observers write two such logs per turn) and is not read again.
+        const mtime = await stat(path).then(st => st.mtimeMs, () => null);
+        if (mtime !== null && Date.now() - mtime > 60_000) this.rejected.add(path);
+        continue;
+      }
+      if (cwd !== this.workingDirectory) { this.rejected.add(path); continue; }
+      // Read from the start only a log provably made after the baseline.
+      const fresh = this.baselineComplete && !this.preexisting.has(path);
+      this.files.set(path, fresh ? 0 : { anchor: this.preexisting.get(path) ?? null });
+    }
+  }
+
+  async poll(): Promise<TranscriptEvents> {
+    if (!this.baselined || this.now() - this.listedAt >= this.listTtlMs) await this.list();
+    const turns: TranscriptTurnEvent[] = [];
+    for (const [path, next] of this.files) {
+      const size = await stat(path).then(st => st.size, () => null);
+      if (size === null || size === this.sizes.get(path)) continue;
+      let from: number;
+      if (typeof next === "number") from = next;
+      else {
+        try { from = await lastLineBoundary(path, next.anchor ?? size); } catch { continue; }
+      }
+      let read: { lines: string[]; newOffset: number };
+      try { read = await readNewLines(path, from); } catch { continue; }
+      this.files.set(path, read.newOffset);
+      this.sizes.set(path, size);
+      // One record at a time: a record of an unexpected shape is skipped, never the batch it came in.
+      for (const line of read.lines) {
+        try { this.parse(line, turns); } catch { /* skipped */ }
+      }
+    }
+    const events = emptyEvents();
+    if (turns.length) events.turns = turns;
+    return events;
+  }
+
+  private parse(line: string, turns: TranscriptTurnEvent[]): void {
+    let parsed: unknown;
+    try { parsed = JSON.parse(line); } catch { return; }
+    const o = asRecord(parsed), p = asRecord(o?.payload);
+    if (!o || !p) return;
+    const type = o.payload_type;
+    const at = typeof o.recorded_at === "number" && Number.isFinite(o.recorded_at) ? Math.floor(o.recorded_at / 1000) : NaN; // µs
+    if (type === "runtime.user_intent.accepted") {
+      if (p.surface !== "main" || typeof p.intent_id !== "string" || !Number.isFinite(at) || !Array.isArray(p.model_messages)) return;
+      const parts: string[] = [];
+      for (const message of p.model_messages) {
+        const content = asRecord(message)?.content;
+        if (!Array.isArray(content)) return;
+        for (const block of content) {
+          const b = asRecord(block);
+          if (b?.kind === "text" && typeof b.text === "string") parts.push(b.text);
+        }
+      }
+      const text = parts.join("\n");
+      if (!text.trim()) return;
+      this.intents.set(p.intent_id, { text, at });
+      if (this.intents.size > 64) this.intents.delete(this.intents.keys().next().value as string);
+    } else if (type === "runtime.user_intent.materialized") {
+      const intent = typeof p.intent_id === "string" ? this.intents.get(p.intent_id) : undefined;
+      const runId = asRecord(p.outcome)?.run_id;
+      if (!intent || typeof runId !== "string") return;
+      this.intents.delete(p.intent_id as string);
+      turns.push({ kind: "user", turnId: runId, text: intent.text, at: intent.at });
+    } else if (type === "runtime.session" && p.kind === "run" && typeof p.run_id === "string") {
+      const event = asRecord(p.event);
+      if (event?.kind === "started") turns.push({ kind: "start", turnId: p.run_id });
+      else if (event?.kind === "terminal" && "reason" in event) {
+        // Only what was recorded proves anything: an explicit null is a run that finished; a missing or unfamiliar
+        // reason ends nothing (the turn stays open, and the guard's running cap stands it down).
+        const reason = event.reason;
+        if (reason === null) turns.push({ kind: "end", turnId: p.run_id, end: "complete" });
+        else if (typeof reason === "string") turns.push({ kind: "end", turnId: p.run_id, end: reason.startsWith("cancelled") ? "aborted" : "error" });
+      }
+    }
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+/**
+ * `<root>/<YYYY>/<MM>/<DD>/<id>/session.jsonl` for every session directory. `complete` is false when a directory
+ * that exists could not be read: what it holds is unknown. A root that does not exist yet is complete (empty).
+ */
+async function listMuseSessionLogs(root: string): Promise<{ logs: string[]; complete: boolean }> {
+  let complete = true;
+  const children = async (dir: string, isRoot = false): Promise<string[]> => {
+    try { return await readdir(dir); } catch (err) {
+      if (!(isRoot && (err as NodeJS.ErrnoException).code === "ENOENT")) complete = false;
+      return [];
+    }
+  };
+  const logs: string[] = [];
+  for (const year of await children(root, true)) {
+    if (!/^\d{4}$/.test(year)) continue;
+    for (const month of await children(join(root, year))) {
+      for (const day of await children(join(root, year, month))) {
+        for (const session of await children(join(root, year, month, day))) logs.push(join(root, year, month, day, session, "session.jsonl"));
+      }
+    }
+  }
+  return { logs, complete };
 }
 
 /* -------------------------------------------------------------------- kiro */
@@ -681,6 +856,7 @@ export function createTranscriptSource(
 ): TranscriptSource | null {
   switch (backend) {
     case "codex": return new CodexRolloutSource(workingDirectory);
+    case "muse": return new MuseSessionSource(workingDirectory);
     // undefined keeps each parameter's own default; only the store moves.
     case "kiro-cli": return new KiroSessionSource(workingDirectory, undefined, undefined, kiroStoreDbPath(storeHome));
     case "opencode": return new OpenCodeDbSource(workingDirectory);
