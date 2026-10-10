@@ -16,9 +16,8 @@
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { mkdtempSync } from "node:fs";
-import { tmpdir, join } from "node:path";
-import { tmpdir as _td } from "node:os";
-import { join as _join } from "node:path";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { planQuickstart } from "../src/quickstart-api.js";
 import { discordGeneralChannelId } from "../src/discord-general.js";
 
@@ -135,7 +134,7 @@ describe("W2: listSecureConnections returns legacy top-level general_channel_id 
   it("general_channel_id is surfaced when only the legacy top-level field is set", async () => {
     const { FleetManager } = await import("../src/fleet-manager.js");
     // Use a real FleetManager instance with a temp dir to satisfy envFileKeys
-    const dir = mkdtempSync(_join(_td(), "agend-gcid-legacy-"));
+    const dir = mkdtempSync(join(tmpdir(), "agend-gcid-legacy-"));
     const fm = new (FleetManager as any)(dir);
     fm.fleetConfig = {
       channels: [{
