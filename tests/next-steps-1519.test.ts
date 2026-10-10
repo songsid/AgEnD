@@ -76,6 +76,13 @@ describe("agend quickstart", () => {
     expect(qs).toContain('runDiscordFlow(rl, "Step 3/4")');
     // Every way out that says Done says where the dashboard is first: one Done, printed by printDone (five exits).
     expect([qs.match(/═══ Done ═══/g)?.length ?? 0, qs.match(/printDone\(\);/g)?.length ?? 0]).toEqual([1, 5]);
+    // A fresh setup (most people's path) prints it too, once the fleet is started or the way to start it is said, and
+    // before the shell-completion question (#1550 review): printDone's call, and this one.
+    expect(qs.match(/printDashboard\(\);/g)?.length ?? 0).toBe(2);
+    const fresh = qs.slice(qs.indexOf("═══ Setup Complete ═══"));
+    const at = (s: string) => fresh.indexOf(s);
+    const pos = [at("Start the fleet: ${bold(\"agend fleet start\")}"), at("printDashboard();"), at("completion-install.js")];
+    expect([pos.every(p => p >= 0), pos[0] < pos[1], pos[1] < pos[2]], JSON.stringify(pos)).toEqual([true, true, true]);
   });
 });
 
@@ -106,7 +113,8 @@ describe("agend setup", () => {
   it("the page's last word links the dashboard on the address the fleet just answered on", () => {
     const form = SRC("setup-form.ts");
     expect(form).toContain('link.href = "/"; link.textContent = location.origin + "/";');
-    expect(form).toContain("sign in with agend web --code on this machine, or send /dashboard to your bot");
+    // The page may be open on a phone through a tunnel: "this machine" would be the phone (#1550 review).
+    expect(form).toContain("sign in with agend web --code on the machine running AgEnD, or send /dashboard to your bot");
   });
 });
 

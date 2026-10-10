@@ -7,7 +7,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 
 ## 環境需求
 
-- Node.js 和 npm。在 macOS（11 以上）和 glibc Linux（x64 或 arm64）上，AgEnD 會安裝並使用自己的 Node 22，不論執行 npm 的是哪個 Node。其他環境需要 Node 22.14 以上。
+- Node.js 和 npm。在 macOS（11 以上）和 glibc 2.28 以上的 Linux（x64 或 arm64）上，AgEnD 會安裝並使用自己的 Node 22，不論執行 npm 的是哪個 Node。其他環境需要 Node 22.14+、23.6+ 或 24+。
 - tmux
 - Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token
 - 至少一個已安裝並登入的 AI coding CLI — 見[安裝後端](#安裝後端)
@@ -65,7 +65,7 @@ agend quickstart
 
 1. 找出你已安裝的 AI coding CLI，有好幾個時讓你選。
 2. 問你要用 Telegram、Discord 還是兩者都要。Discord 是內建的，不用另外裝東西。
-3. 檢查你的 bot token 並找出你的群組。Discord 還會問你的 user id 和要用的頻道。
+3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著會問你的 user ID 和 General 頻道的 ID。
 4. 問你的專案放在哪裡。
 
 最後它會提議把 fleet 裝成系統服務並啟動，接著告訴你網頁儀表板在哪裡。

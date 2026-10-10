@@ -7,7 +7,7 @@ AgEnD runs your AI coding agents as a system service and puts them in your Teleg
 
 ## Requirements
 
-- Node.js and npm. On macOS (11 or newer) and on glibc Linux (x64 or arm64), AgEnD installs its own Node 22 and runs on it, whatever Node runs npm. Elsewhere it needs Node 22.14 or newer.
+- Node.js and npm. On macOS (11 or newer) and on Linux with glibc 2.28 or newer (x64 or arm64), AgEnD installs its own Node 22 and runs on it, whatever Node runs npm. Elsewhere it needs Node 22.14+, 23.6+ or 24+.
 - tmux
 - A Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token
 - At least one AI coding CLI, installed and logged in — see [Backends](#install-a-backend)
@@ -65,7 +65,7 @@ It runs in four steps:
 
 1. It finds the AI coding CLI you have, and asks which one if there are several.
 2. It asks for Telegram, Discord, or both. Discord is built in, so there is nothing extra to install.
-3. It checks your bot token and finds your group. On Discord it also asks for your user id and the channel to use.
+3. It checks your bot token. On Telegram it then finds your group once you send `/start` there. On Discord it lists the servers the bot is in, or asks for the server ID if it is in none. It then asks for your user ID and the General channel's ID.
 4. It asks where your projects live.
 
 At the end it offers to install the fleet as a service and start it. It then shows where the web dashboard is.
