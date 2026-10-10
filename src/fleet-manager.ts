@@ -72,7 +72,8 @@ import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js"
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
+import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
+import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
@@ -4980,7 +4981,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       try {
         if (!adapter.sendDirect) throw new Error("DM unavailable");
-        await withinBudget(adapter.sendDirect(data.userId, privateText, { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
+        await withinBudget(adapter.sendDirect(data.userId, `${privateText}\n${t("dashboard.code_next")}`, { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
         deliveredByDm = true;
       } catch (err) {
         this.logDashboardDmFailure(err);
@@ -4989,11 +4990,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!id) throw new Error("private delivery unconfirmed");
       }
       if (!current()) throw new Error("owner changed");
+      // The slash command's own reply (editReply) is ONE message: only the DM gets the code on its own (#1586).
+      if (deliveredByDm) await this.sendCodeAlone((body, opts) => adapter.sendDirect!(data.userId, body, opts), adapter.type, login.display, deadline);
       if (deliveredByDm) await withinBudget(data.respond(t("dashboard.private_sent_dm")), deadline);
     } catch (err) {
       this.webLoginCodes!.revokeIfCurrent(login.issuanceId);
       this.logger.info({ err: (err as Error)?.message }, "Dashboard private delivery was not confirmed");
       await data.respond(t("dashboard.private_failed")).catch(() => undefined);
+    }
+  }
+  /**
+   * #1586: the sign-in code once more, as a message of its own, so a phone can copy it by itself: Telegram's monospace
+   * `<code>` copies on a tap, and a message holding nothing else copies whole on a long-press (Discord: Copy Text). It
+   * goes by the same private route the sign-in message took. A convenience: that message already holds the code, so a
+   * follow-up that fails changes nothing about the delivery.
+   */
+  private async sendCodeAlone(send: (body: string, opts: SendOpts) => Promise<unknown>, platform: string, display: string, deadline: number): Promise<void> {
+    const telegram = platform === "telegram";
+    const body = telegram ? `<code>${display.replace(/[&<>]/g, c => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"))}</code>` : display;
+    try {
+      await withinBudget(send(body, telegram ? { format: "html", disablePreview: true } : { disablePreview: true }), Math.min(deadline, performance.now() + 5_000));
+    } catch (err) {
+      this.logger.info({ err: (err as Error)?.message }, "The code-only follow-up was not sent; the sign-in message holds the code");
     }
   }
   /** Why the DM did not go, for the log only (Discord 50007 = the user does not accept DMs from this server's members). */
@@ -5011,7 +5029,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
     const menuText = this.topicCommands.getDashboardText(false, !publicAllowed)
       + (publicAllowed ? "\n\n" + t("dashboard.public_risk") : "")
-      + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0);
+      + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
+      + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : "");
     const choices = [{ action: "local", label: t("dashboard.local") },
       ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
@@ -5064,20 +5083,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!token || !current()) return false;
       this.initializeWebSessions();
       const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
-      const text = t("dashboard.private_link", url, issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), expiresAt ? new Date(expiresAt).toISOString() : t("dashboard.local"));
+      // #1586: the expiry in the fleet's zone with its offset, never a bare UTC ISO string.
+      const text = t("dashboard.private_link", url, issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), expiresAt ? formatFleetTime(expiresAt) : t("dashboard.local"))
+        + "\n" + t("dashboard.code_next");
       const deadline = performance.now() + 10_000;
       const direct = owner.binding as ChannelAdapter;
+      // The route the sign-in message took: the code-only follow-up takes the same one (#1586).
+      let codeAlone: ((body: string, opts: SendOpts) => Promise<unknown>) | null = null;
       try {
         const deliver = async (c: Choice[] = []): Promise<import("./channel/types.js").SentMessage> => {
           try {
             if (!direct.sendDirect) throw new Error("DM unavailable");
             const sent = await withinBudget(direct.sendDirect(owner.userId, text, { disablePreview: true, choices: c }), Math.min(deadline, performance.now() + 5_000));
             deliveredByDm = true;
+            codeAlone = (body, opts) => direct.sendDirect!(owner.userId, body, opts);
             return sent;
           } catch (err) {
             this.logDashboardDmFailure(err);
             if (direct.type !== "discord" || !data.respondPrivate || !current()) throw new Error("private delivery unavailable");
             const sent = await withinBudget(data.respondPrivate(text, c), deadline);
+            codeAlone = body => data.respondPrivate!(body);
             return { ...sent, chatId: owner.chatId, threadId: owner.threadId };
           }
         };
@@ -5088,6 +5113,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }), deadline);
         else await deliver();
         if (!current() || this.webToken !== token) throw new Error("owner changed");
+        if (codeAlone) await this.sendCodeAlone(codeAlone, direct.type, issued.display, deadline);
         return true;
       } catch (err) {
         this.webLoginCodes!.revokeIfCurrent(issued.issuanceId);
@@ -5176,7 +5202,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } else if (input.exposureId !== undefined) return { kind: "refused" };
     const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner });
     const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"),
-      t(input.surface === "gateway" ? "web.resend_public" : "web.resend_local"));
+      t(input.surface === "gateway" ? "web.resend_public" : "web.resend_local")) + "\n" + t("dashboard.code_next");
     try {
       await withinBudget(adapter.sendDirect(userId, text, { disablePreview: true }), performance.now() + 5_000);
     } catch (err) {
@@ -5185,6 +5211,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { kind: "refused" };
     }
     if (this.webToken !== token || !this.publicOwnerCurrent(owner)) { this.webLoginCodes!.revokeIfCurrent(issued.issuanceId); return { kind: "refused" }; }
+    await this.sendCodeAlone((body, opts) => adapter.sendDirect!(userId, body, opts), adapter.type, issued.display, performance.now() + 5_000);
     this.logger.info({ adapterId, surface: input.surface }, "Web sign-in code sent privately to a returning device's owner");
     return { kind: "sent" };
   }
