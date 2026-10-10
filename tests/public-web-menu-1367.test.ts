@@ -113,7 +113,10 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
   it("Discord dashboard outside General finishes deferred response after private DM", async () => {
     const h = rig("discord");
     await h.slash("admin", "T1");
-    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(1);
+    // #1586: the sign-in DM, then the code alone, to the same user.
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2);
+    expect(h.adapter.sendDirect.mock.calls.map(c => c[0])).toEqual(["admin", "admin"]);
+    expect(h.adapter.sendDirect.mock.calls[1][1]).toBe(/[A-Z0-9]{4}-[A-Z0-9]{4}/.exec(h.adapter.sendDirect.mock.calls[0][1])![0]);
     expect(h.respond).toHaveBeenCalledTimes(1);
     expect(h.respond).toHaveBeenCalledWith(t("dashboard.private_sent_dm"));
     expect(h.respond.mock.calls[0][0]).not.toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
