@@ -167,7 +167,7 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
 ## Fleet（`/ui/fleet`）
 fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 
-**單一 instance 的詳細資訊**（`/ui/fleet/agent/<name>`）是那個 instance 在 Fleet 這一側的頁面：執行環境（backend、模型、effort、花費、context、5 小時和 7 天額度）、最近活動，以及唯讀的設定摘要（顯示名稱、說明、目錄、綁定在哪裡、標籤）。要修改請按 **到設定編輯**。它的 ⋯ 選單可以啟動、重新啟動、停止、暫停、喚醒或刪除它，確認步驟和聊天頁相同。
+**單一 instance 的詳細資訊**（`/ui/fleet/agent/<name>`）是那個 instance 在 Fleet 這一側的頁面：執行環境（backend、模型、effort、花費、context、5 小時和 7 天額度）、最近活動，以及唯讀的設定摘要（顯示名稱、說明、目錄、綁定在哪裡、標籤）。要修改請按 **到設定編輯**。它的 ⋯ 選單可以啟動、重新啟動、停止、暫停或喚醒它，呼叫和確認步驟與聊天頁的 ⋯ 選單及設定相同；刪除 instance 仍在聊天頁的 ⋯ 選單和設定裡。
 - 在 instance 的頁面上，標題列可以在它的 **聊天**、**View** 和 **詳細資訊** 之間切換（手機上是標題列下方的分頁），instance 不變。沒有登入、只讀 View 的人看不到這個切換。
 - 開著某個 instance 時，側欄的 **Fleet**（以及手機的 Fleet 分頁）會進到那個 instance 的詳細資訊；沒有開著 instance 時則是 Tasks。在詳細資訊或 Fleet 分頁上，點側欄的 instance 會開它的詳細資訊。
 - **Tasks**、**排程**、**Teams**：任務看板、cron 排程和 team。可以在這裡建立、認領和刪除。

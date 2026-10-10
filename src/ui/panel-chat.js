@@ -435,8 +435,7 @@ function FileChip({ f, i, name }) {
 
 // ── Dialogs ──
 
-/** Delete an instance (typed confirmation; a fleet admin may have to confirm, #1423). Chat's ⋯ and Details' ⋯. */
-export function DeleteDialog({ name, onClose }) {
+function DeleteDialog({ name, onClose }) {
   // The dialog's own lease: it ends when the dialog goes (closed, or the chat left for another page). The delete
   // may still finish on the server, and says so, but a dialog that is gone never closes or navigates the page the
   // person is on now (#1425 review).

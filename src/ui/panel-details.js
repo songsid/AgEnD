@@ -3,8 +3,8 @@
 // - runtime and recent activity (what Chat's details dialog showed, now a page);
 // - a read-only config summary — directory, binding, tags, description — with "Edit in Settings" (that agent's
 //   Settings dialog: Settings' own staged Apply and confirmations; nothing is edited here);
-// - the instance's actions (⋯): the calls and confirmations Chat already uses — start / restart / stop, pause / wake
-//   (Settings' calls), delete (Chat's typed confirmation).
+// - the instance's actions (⋯), carried over with their calls and confirmations, none new: start / restart / stop (Chat's
+//   ⋯), pause / wake (Settings' agent row). Deletion stays where it already lives (Chat's ⋯, Settings).
 // One read of /ui/instance/<name> when it opens (#1374: nothing recurring); the live status is the app's.
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
@@ -20,7 +20,6 @@ import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
 import { api } from "./settings-confirm.js";
 import { requestAgentSettings } from "./settings-request.js";
-import { DeleteDialog } from "./panel-chat.js";
 
 export function DetailsPanel({ route, navKey }) {
   const app = useStore(appStore);
@@ -42,7 +41,6 @@ function DetailsView({ name, inst, exec, awaiting }) {
   const [d, setD] = useState(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState("");
-  const [dialog, setDialog] = useState(null);       // "delete" | null
   const body = useRef(null);
   const load = async () => {
     try {
@@ -85,7 +83,6 @@ function DetailsView({ name, inst, exec, awaiting }) {
     st === "running" ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", disabled: !!busy, onSelect: () => lifecycle("stop") } : null,
     st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
     st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
-    { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, disabled: !!busy, onSelect: () => setDialog("delete") },
   ];
 
   const cls = statusClass(inst, exec, awaiting);
@@ -126,6 +123,5 @@ function DetailsView({ name, inst, exec, awaiting }) {
   return html`<div class="panel p-details">
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}${content}</div></div>
-    ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
   </div>`;
 }

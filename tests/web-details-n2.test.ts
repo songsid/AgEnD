@@ -146,23 +146,20 @@ describe("Details (Q1 = B)", () => {
   });
   it("the actions are the state's, through the existing calls: running → restart / stop / pause; stopped → start; paused → wake", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Restart instance", "Stop instance", "Pause", "Delete instance…"]);
+    // Carried over, none new (leader 2026-10-10): no Delete on Details — it stays in Chat's ⋯ and Settings.
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Restart instance", "Stop instance", "Pause"]);
     await choose(pg, "Stop instance");
     await choose(pg, "Pause");
     expect(calls.filter(c => c.startsWith("POST"))).toEqual(["POST /ui/stop/web-dev", "POST /api/settings/instances/web-dev/pause"]);
     await go("/ui/fleet/agent/api-server");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Start instance", "Delete instance…"]);
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Start instance"]);
     await go("/ui/fleet/agent/qa-bot");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Wake", "Delete instance…"]);
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Wake"]);
     await choose(pg, "Wake");
     expect(calls.filter(c => c.startsWith("POST")).at(-1)).toBe("POST /api/settings/instances/qa-bot/wake");
   });
-  it("Delete asks with Chat's typed confirmation; Edit in Settings goes to Settings and asks it for that agent's dialog", async () => {
+  it("Edit in Settings goes to Settings and asks it for that agent's dialog", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
-    await choose(pg, "Delete instance…");
-    expect(pg.root.querySelector("dialog input")?.getAttribute("placeholder") ?? null).toBe("delete web-dev");
-    expect(calls.filter(c => c.includes("/delete")), "nothing deleted by opening it").toEqual([]);
-    pg.root.querySelector("dialog .btn:not(.btn-danger)").click(); await settle();
     pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
     expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "agents" }, "web-dev"]);
   });

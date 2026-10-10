@@ -167,7 +167,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
 ## Fleet (`/ui/fleet`)
 The fleet's shared work and its overview, one tab each. Every tab has its own address.
 
-**One instance's Details** (`/ui/fleet/agent/<name>`) is the Fleet side of that instance: its runtime (backend, model, effort, cost, context, 5-hour and 7-day limits), its recent activity, and a read-only summary of its configuration (display name, description, directory, where it is bound, tags), with **Edit in Settings** to change it. Its ⋯ menu starts, restarts, stops, pauses, wakes or deletes it, with the same confirmations as in the chat.
+**One instance's Details** (`/ui/fleet/agent/<name>`) is the Fleet side of that instance: its runtime (backend, model, effort, cost, context, 5-hour and 7-day limits), its recent activity, and a read-only summary of its configuration (display name, description, directory, where it is bound, tags), with **Edit in Settings** to change it. Its ⋯ menu starts, restarts, stops, pauses or wakes it, with the same calls and confirmations as the chat's ⋯ menu and Settings; deleting an instance stays in the chat's ⋯ menu and Settings.
 - On an instance page, the header switches between its **Chat**, **View** and **Details** (tabs under the header on a phone); the instance stays the same. Someone reading View without signing in sees no switch.
 - With an instance open, the sidebar's **Fleet** (and the phone's Fleet tab) goes to that instance's Details; with none open, to Tasks. On Details or a Fleet tab, an instance in the sidebar opens its Details.
 - **Tasks**, **Schedules** and **Teams**: the task board, cron schedules and teams. Create, claim and delete them here.
