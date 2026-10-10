@@ -10,7 +10,11 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 - On **Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64**, AgEnD 2.2 brings its own Node 22.23.3 (`@songsid/agend-node-<os>-<cpu>`, installed with it) and runs on that, whatever Node is on your PATH. You do not need to upgrade Node yourself.
 - **Anywhere else** (musl Linux such as Alpine, 32-bit, other systems), AgEnD 2.2 needs Node **22.14 or newer** (or 23.6+, or 24+) on your PATH, and refuses to install on an older one.
 
-**Do not use 2.1.12's `agend update` for this upgrade.** It removes the installed AgEnD before it installs the new one (#1487), so a refused install leaves no `agend` at all. Install with npm instead (step 2.3 below): a refused direct install leaves the old version in place.
+**From any 2.1.x, upgrade with `npm install -g @songsid/agend@<2.2 version>`, not with `agend update` or `/update`.**
+
+- **Why (#1487):** 2.1's updater removes the installed AgEnD *before* it installs the new one. If that install then fails for any reason, nothing is left: AgEnD 2.2 refusing your host, a network or registry problem, or a proxy. There is no `agend` command, and the running fleet keeps going only until its next restart or login, after which the service cannot start. This was reproduced on a real Mac: launchd reports `EX_CONFIG` and the fleet stays down.
+- **A direct `npm install -g` has no removal step:** if it is refused, your current version stays.
+- **If `agend update` already failed this way,** see [section 7](#7-if-agend-update-from-21-already-failed).
 
 ## 2. Upgrade, step by step
 
@@ -131,3 +135,14 @@ Yes. The link opens the sign-in page; type the code (one use, 5 minutes). `/dash
 
 **Can I enter a bot token in the browser?**
 Yes. In 2.2, Settings → Connections asks for the token, checks it with the platform and shows the bot's name before saving. It is stored in `~/.agend/.env` and never shown again. The change still needs confirmation (#1423).
+
+## 7. If `agend update` from 2.1 already failed
+
+Signs: `agend: command not found`, or the update ended with "Failed to update" (in chat: "❌ Update failed during download/install"), or AgEnD 2.2's install refusal said the previous AgEnD was already removed. Your data directory is untouched; only the program is gone. Put a version back:
+
+```sh
+npm install -g @songsid/agend@2.1.12   # or the 2.2 version, once your host can install it
+agend install                          # rewrites and starts the service; needed even if the fleet still looks alive
+```
+
+Run `agend install` even if the old fleet is still answering. It is running from deleted files and will not come back after a restart or login until the service is rewritten.

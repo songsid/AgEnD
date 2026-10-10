@@ -99,6 +99,7 @@ function world() {
   const npmStub = (pfx: string) => `#!/bin/sh
 echo "npm $*" >> ${sq(calls)}
 [ -n "$AGEND_INSTALL_TOKEN" ] && echo "token $AGEND_INSTALL_TOKEN for npm $*" >> ${sq(calls)}
+[ "$AGEND_UPDATE_KEEPS_PREVIOUS" = 1 ] && echo "keeps-previous for npm $*" >> ${sq(join(root, "env.log"))}
 case "$1 $2" in
   "root -g") echo ${sq(join(pfx, "lib", "node_modules"))}; exit 0;;
   "prefix -g") echo ${sq(pfx)}; exit 0;;
@@ -186,6 +187,17 @@ describe("#1450 C1: the npm prefix is locked before npm runs; the token goes to 
     expect(outcome.ok).toBe(true);
     expect(asked).toEqual([w.prefix]);
     expect(w.callLog().filter(line => line.startsWith("token "))).toEqual([`token ${"7".repeat(32)} for npm install -g ${join(w.root, "src", "v220")}`]);
+  });
+
+  // #1487: this updater never unlinks first; the install hooks must be able to tell it from AgEnD 2.1's updater.
+  it("`npm install` is told this updater keeps the previous install (AGEND_UPDATE_KEEPS_PREVIOUS=1), with or without a lock", () => {
+    for (const lock of [undefined, () => ({ ok: true as const, token: "7".repeat(32) })]) {
+      const w = world();
+      const outcome = runUpdateInstall({ ...plan(fixturePackage(w.root, "v220", "2.2.0")), ...(lock ? { lock } : {}) }, w.runner);
+      expect(outcome.ok).toBe(true);
+      const seen = existsSync(join(w.root, "env.log")) ? readFileSync(join(w.root, "env.log"), "utf8").trim().split("\n") : [];
+      expect(seen).toEqual([`keeps-previous for npm install -g ${join(w.root, "src", "v220")}`]);
+    }
   });
 
   it("a refused lock stops before npm installs anything", () => {

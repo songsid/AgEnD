@@ -251,7 +251,9 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   const npmBin = resolvedNpmPath ?? "npm";
 
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
-  const env: Record<string, string> = {};
+  // #1487: this updater never unlinks first, so a refused install keeps the previous one; the install hooks read this to
+  // tell that apart from AgEnD 2.1's updater, which removes it before installing (launcher/old-updater-note.cjs).
+  const env: Record<string, string> = { AGEND_UPDATE_KEEPS_PREVIOUS: "1" };
   let rollback: { root: string; prefix: string; preimage: PackagePreimage | null } | undefined;
   if (plan.lock) {
     const prefix = inInstallEnv(runner, plan, [npmBin, "prefix", "-g"], { timeoutMs: 15_000 });
