@@ -131,6 +131,45 @@ describe("a fleet that went away (a restart)", () => {
     s.close();
   });
 
+  it("the next outage starts from the first step again once the stream was back (the backoff is per outage)", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await load();
+    const w = world();
+    const s = createStream({ mode: "full", env: w.env });
+    const retries: number[] = [];
+    s.on("retry", (r: { inMs: number }) => retries.push(r.inMs));
+    s.start();
+    w.sources[0].frame("status", status);
+    w.sources[0].onerror();
+    for (let i = 0; i < 3; i++) { await vi.advanceTimersByTimeAsync(retries.at(-1)!); w.sources.at(-1).onerror(); await vi.advanceTimersByTimeAsync(0); }
+    expect(retries).toEqual([1000, 2000, 4000, 8000]);
+    w.fleet = "up";
+    await vi.advanceTimersByTimeAsync(8000);
+    w.sources.at(-1).frame("status", status);                // back
+    await vi.advanceTimersByTimeAsync(0);
+    w.fleet = "down";
+    w.sources.at(-1).onerror();                              // a later restart
+    expect(retries.at(-1)).toBe(1000);
+    s.close();
+  });
+
+  it("a stream this page let go of is not listened to: its late events change nothing", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await load();
+    const w = world();
+    const s = createStream({ mode: "full", env: w.env });
+    const seen: unknown[] = [];
+    s.on("message", (m: unknown) => seen.push(m));
+    s.start();
+    w.sources[0].frame("status", status);
+    const old = w.sources[0];
+    old.onerror();
+    await vi.advanceTimersByTimeAsync(0);
+    old.frame("message", { id: "late" }, "zz-9");             // a frame that was still in the pipe
+    expect([seen, s.connection(), s.cursor()]).toEqual([[], "reconnecting", ""]);
+    s.close();
+  });
+
   it("a 401 is the session ending: nothing is retried after it", async () => {
     vi.useFakeTimers();
     const { createStream } = await load();
