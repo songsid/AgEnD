@@ -11,7 +11,8 @@ import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 
 const read = (...parts: string[]) => readFileSync(join(process.cwd(), ...parts), "utf-8");
 // #1408 step 1: the dashboard's percentages and bars are the chat's details panel, styled by the app's stylesheet.
-const panelChat = read("src", "ui", "panel-chat.js");
+// #1523 N2: the instance's details (with its context and rate percentages) are a page now, panel-details.js.
+const panelDetails = read("src", "ui", "panel-details.js");
 const appCss = read("src", "ui", "shared", "app.css");
 const appShell = read("src", "ui", "shared", "app-shell.js");
 const tokens = read("src", "ui", "shared", "tokens.css");
@@ -79,7 +80,7 @@ describe("AI usage readability", () => {
   });
 
   it("keeps the dashboard's context and rate percentages bold with a visible bar", () => {
-    expect(panelChat.match(/<span class="pct">/g)?.length).toBe(3);
+    expect(panelDetails.match(/<span class="pct">/g)?.length).toBe(3);
     expect(appCss).toMatch(/\.pct \{ font-weight: var\(--fw-semibold\);/);
     // The row is 13 px; the percentage itself keeps the old dashboard's floor of 15 px.
     expect(resolved(appCss, ".pct", "font-size")).toBeGreaterThanOrEqual(15);
