@@ -1,0 +1,45 @@
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a breakdown.
+
+  Worked for <1s • 22:57
+
+
+› fourth
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or
+try again at 11:57 PM.
+
+
+› fifth
+
+
+■ We’re currently experiencing high demand, which may cause temporary errors.
+
+
+› sixth
+
+
+
+› seventh
+
+
+■ Selected model is at capacity. Please try a different model.
+
+
+› /compact keep the decisions
+
+
+• ok
+
+  Worked for <1s • 22:58
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 4 warnings · f2 to view
