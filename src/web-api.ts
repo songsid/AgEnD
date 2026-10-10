@@ -25,9 +25,9 @@ import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
-import type { PreviewAvailability } from "./web-preview.js";
+import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
-import { attachmentDelivery, displayName, INLINE_MIME, isFileId, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type UploadEntry, type WebFileLedger } from "./web-upload.js";
+import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -463,6 +463,10 @@ export function handleWebRequest(
   const fileMatch = path.match(/^\/ui\/file\/([^/]+)$/);
   if (method === "GET" && fileMatch) {
     const id = fileMatch[1]!;
+    // #1589: audio and video, played in the page — one byte range at a time (206), by id only, never a whole video in
+    // memory. Every other type is answered exactly as before.
+    const media = isFileId(id) ? ctx.webFiles?.mediaOf?.(id) ?? null : null;
+    if (media) { serveMediaRange(req, res, ctx.webFiles!, id, media); return true; }
     const got = isFileId(id) ? ctx.webFiles?.read(id) : null;
     if (!got) { json(res, 404, { error: "No such file" }); return true; }
     const { file, bytes } = got;
@@ -1218,6 +1222,42 @@ function shellPreview(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   if (mode !== "full" || gatewayRequestContext(req)) return null;
   return ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
 }
+/**
+ * #1589: an audio/video file, by id (the ledger re-checks the file on every read). One `Range: bytes=a-b`, `a-` or `-n`
+ * → 206 with at most MEDIA_RANGE_MAX bytes and its Content-Range (a player asks again for the rest); past the end → 416.
+ * No Range, several, or one not in that form → 200 with the whole file, as every file is served (the Download link).
+ * Inline, nosniff, no caching, and the route's own sandbox policy, as for every file.
+ */
+function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFileLedger, id: string, file: ServedFile): void {
+  const total = file.size;
+  const header = typeof req.headers.range === "string" ? req.headers.range.trim() : "";
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header);
+  let start = 0, end = total - 1;
+  const ranged = !!m && (m[1] !== "" || m[2] !== "");
+  if (ranged) {
+    if (m[1] === "") { const n = Number(m[2]); start = Math.max(0, total - n); }
+    else { start = Number(m[1]); if (m[2] !== "") end = Number(m[2]); }
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= total) {
+      res.setHeader("Content-Range", `bytes */${total}`);
+      json(res, 416, { error: "Range not satisfiable" });
+      return;
+    }
+  }
+  end = ranged ? Math.min(end, total - 1, start + MEDIA_RANGE_MAX - 1) : total - 1;
+  const got = files.readSlice(id, start, end);
+  if (!got || (!ranged && got.bytes.length !== total)) { json(res, 404, { error: "No such file" }); return; }
+  res.setHeader("Content-Type", file.mime);
+  res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
+  res.setHeader("Accept-Ranges", "bytes");
+  if (ranged) res.setHeader("Content-Range", `bytes ${got.start}-${got.end}/${total}`);
+  res.setHeader("Content-Length", String(got.bytes.length));
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+  res.writeHead(ranged ? 206 : 200);
+  res.end(got.bytes);
+}
+
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string {
   const p = shellPreview(req, ctx, mode);
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -1226,7 +1266,9 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
     // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔.
-    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}">`;
+    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`
+    // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
+    + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}>`;
 }
 /** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
  *  when this load chose one. */
@@ -1234,7 +1276,12 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
   try {
     const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
     const p = shellPreview(req, ctx, mode);
-    sendPanelHtml(res, html.replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {});
+    // #1589: media plays only from this listener's own file route (path-scoped, like frame-src), at the address this page
+    // was loaded from (a Host the host guard accepted); never on the public link, nor where no chat is shown.
+    const own = mode === "full" && !gatewayRequestContext(req)
+      ? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) : null;
+    const mediaSrc = own ? `${own}/ui/file/` : "'none'";
+    sendPanelHtml(res, html.replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, { ...(p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

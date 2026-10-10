@@ -292,6 +292,20 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .msg .att-img { cursor: zoom-in; }
 /* #1565: a file from before the fleet restarted that could not be served again — its name only, nothing to fetch. */
 .att-file.att-gone { opacity: 0.6; cursor: default; text-decoration: none; }
+/* #1589: media plays inline (native controls); text attachments open in a card, escaped. */
+.att-media { margin-top: var(--s-2); }
+.att-media .att-video { display: block; max-width: min(100%, 480px); max-height: 360px; border-radius: var(--r-sm); background: #000; }
+.att-media .att-audio { display: block; width: min(100%, 420px); }
+.text-card { margin-top: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); }
+.text-card .tc-head { display: flex; align-items: center; gap: var(--s-2); }
+.text-card .tc-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-family: var(--font-mono); color: var(--text-2); }
+.text-card .tc-body { margin-top: var(--s-2); max-height: 480px; overflow: auto; }
+.text-card .tc-body[hidden] { display: none; }
+.text-card .tc-pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--fs-xs); }
+.text-card .tc-table-wrap { overflow-x: auto; }
+.text-card .tc-table { border-collapse: collapse; font-size: var(--fs-xs); }
+.text-card .tc-table th, .text-card .tc-table td { border: 1px solid var(--border); padding: 2px 6px; text-align: left; vertical-align: top; }
+.text-card .tc-more { margin-top: var(--s-2); }
 /* A chat image, full size, in the page (image-lightbox.js): the whole viewport, dark, the image fitted to it. */
 html.lb-open .scroller { overflow: hidden; }
 .lb { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
