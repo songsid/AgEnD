@@ -21,7 +21,7 @@ server 只聽 **`127.0.0.1`**，port 是 `health_port`（預設 **19280**）。�
 dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 
 1. 取得登入碼，兩種方式擇一：
-   - 在 General 使用 **`/dashboard`**（限 fleet admin；Discord 原生 slash），選本機登入或臨時公開連結。選單不含碼，bot 會私送連結與一次性登入碼。
+   - 在 General 使用 **`/dashboard`**（限 fleet admin；Discord 原生 slash），選本機登入或臨時公開連結。選單不含碼，bot 會私送連結與一次性登入碼，接著再把登入碼單獨傳一則，手機上就能只複製登入碼（Telegram：點一下；Discord：長按 → 複製文字）。公開連結的期限以 fleet 的時區顯示，並附上 UTC 偏移。
    - 在主機上執行 **`agend web`**，會印出登入碼並開啟登入頁；`agend web --code` 則只印出來、不開瀏覽器。
 2. 打開登入頁，輸入 8 個字元的登入碼（`ABCD-EFGH`，有沒有連字號、大小寫都可以）。
 
