@@ -142,7 +142,7 @@ export function createThread(list, scroller, opts) {
     menu.append(sum, optB, neverB);
     head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
     const note = el("div", "pv-note");
-    const banner = el("div", "pv-banner", P().BANNER); banner.hidden = true;
+    const banner = el("div", "pv-banner", P().banner()); banner.hidden = true;
     const holder = el("div", "pv-holder");
     ph.append(head, note, banner, holder);
     let state = "idle";

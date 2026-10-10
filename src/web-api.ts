@@ -1193,7 +1193,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   const p = shellPreview(req, ctx, mode);
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
-    + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}">`;
+    + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}" data-preview-reason-code="${attr(p?.code ?? "")}">`;
 }
 /** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
  *  when this load chose one. */
