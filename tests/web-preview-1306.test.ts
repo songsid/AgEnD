@@ -148,7 +148,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       expect(bodyAttrs(r.body)).toEqual({
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
         "data-mode": "full", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
-        "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "",
+        "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1",
       });
       const lh = await raw(h.port, "GET", "/ui", { host: `localhost:${h.port}`, cookie: h.cookie });
       expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame`);

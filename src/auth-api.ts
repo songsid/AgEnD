@@ -82,6 +82,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "instance-nav.js", "view-roster-store.js",
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
     "instance-switch.js",
+    // #1523 N3: every page's header tools (text size, usage), the usage dialog they open, and the read stream it shares with View.
+    "header-tools.js", "usage-dialog.js", "read-stream.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },

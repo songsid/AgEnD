@@ -157,7 +157,7 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
-    web?: { echo_to_channel?: boolean };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -1207,6 +1207,8 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
 //   panel: the page shows View and a way to sign in, nothing else.
 export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
+  /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
+  readonly fleetConfig?: { web?: { usage_panel?: boolean } } | null;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -1220,7 +1222,9 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
-    + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}">`;
+    + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
+    // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔.
+    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}">`;
 }
 /** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
  *  when this load chose one. */

@@ -137,29 +137,32 @@ describe("the terminal's font fits the pane's cell grid", () => {
   });
 });
 
-describe("the font density control", () => {
+describe("the text size control (#1523 N3, Q2 = A: S / M / L shared; View keeps Fit)", () => {
   const densityButton = () => p.root.querySelectorAll("button").find((b: any) => (b.getAttribute("title") ?? "").startsWith("Text size"))!;
+  const pageLoad = async () => (await import("/assets/header-tools.js")).initTextSize();
 
-  it("cycles Fit -> Comfortable -> Compact and scales the fitted size", async () => {
+  it("cycles Fit -> S -> M -> L -> Fit and scales the fitted size; S / M / L are the shared size", async () => {
+    await pageLoad();
     await mount();
     await resizeBox(1012, 610);
     expect(densityButton().getAttribute("title")).toBe("Text size: Fit");
     densityButton().click(); await settle(); await wait(20);
-    expect(p.storage.get("agend_view_density")).toBe("comfortable");
-    expect(densityButton().getAttribute("title")).toBe("Text size: Comfortable");
-    expect(fontPx()).toBe("20.73px");                    // 16.58 * 1.25
+    expect([p.storage.get("agend_text_size"), p.storage.get("agend_view_fit"), densityButton().getAttribute("title")]).toEqual(["s", "0", "Text size: S"]);
+    expect(fontPx()).toBe("13.27px");                    // 16.58 * 0.8 (View's old compact)
     densityButton().click(); await settle(); await wait(20);
-    expect(p.storage.get("agend_view_density")).toBe("compact");
-    expect(fontPx()).toBe("13.27px");                    // 16.58 * 0.8
+    expect([p.storage.get("agend_text_size"), fontPx()]).toEqual(["m", "16.58px"]);
     densityButton().click(); await settle(); await wait(20);
-    expect(p.storage.get("agend_view_density")).toBe("fit");
-    expect(fontPx()).toBe("16.58px");
+    expect([p.storage.get("agend_text_size"), fontPx()]).toEqual(["l", "20.73px"]);   // 16.58 * 1.25 (View's old comfortable)
+    densityButton().click(); await settle(); await wait(20);
+    expect([p.storage.get("agend_view_fit"), densityButton().getAttribute("title"), fontPx()]).toEqual(["1", "Text size: Fit", "16.58px"]);
   });
 
-  it("remembers the choice in this browser (agend_view_density) across mounts", async () => {
+  it("a page load reads this browser's choice; View's old agend_view_density is taken over once (compact → S)", async () => {
     p.storage.set("agend_view_density", "compact");
+    p.storage.delete("agend_text_size"); p.storage.delete("agend_view_fit");
+    await pageLoad();
     await mount();
-    expect(densityButton().getAttribute("title")).toBe("Text size: Compact");
+    expect([densityButton().getAttribute("title"), p.storage.get("agend_text_size"), p.storage.get("agend_view_fit")]).toEqual(["Text size: S", "s", "0"]);
   });
 });
 
