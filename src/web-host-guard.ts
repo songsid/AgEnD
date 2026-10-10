@@ -139,11 +139,15 @@ export const DISCORD_EMOJI_IMG_SRC = "https://cdn.discordapp.com/emojis/";
  * path-scoped, so nothing else of that origin can be framed or navigated to. Without it, frames fall back to
  * default-src 'self'.
  */
-export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string } = {}): string {
+export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string; mediaSrc?: string } = {}): string {
   let policy = rewriteDirective(WEB_CONTENT_SECURITY_POLICY, "script-src 'self'", `script-src 'self' 'nonce-${nonce}'`);
   policy = rewriteDirective(policy, "style-src 'self'", `style-src 'self' 'nonce-${nonce}'`);
   policy = rewriteDirective(policy, "img-src 'self' data: blob:", `img-src 'self' data: blob: ${DISCORD_EMOJI_IMG_SRC}`);
-  return opts.frameSrc ? `${policy}; frame-src ${opts.frameSrc}` : policy;
+  if (opts.frameSrc) policy = `${policy}; frame-src ${opts.frameSrc}`;
+  // #1589: the app shell's audio/video — exactly <dashboard origin>/ui/file/ (or 'none'); without it media falls back
+  // to default-src 'self' as before.
+  if (opts.mediaSrc) policy = `${policy}; media-src ${opts.mediaSrc}`;
+  return policy;
 }
 
 /**
@@ -166,7 +170,7 @@ panelContentSecurityPolicy("load-check");
  * fresh nonce, and the response's CSP names that nonce and nothing else inline (#1268, #1300): a script or a style
  * that was not in the file as served — anything injected into the page — has no nonce and does not apply.
  */
-export function sendPanelHtml(res: ServerResponse, html: string, status = 200, headers: Record<string, string> = {}, csp: { frameSrc?: string } = {}): void {
+export function sendPanelHtml(res: ServerResponse, html: string, status = 200, headers: Record<string, string> = {}, csp: { frameSrc?: string; mediaSrc?: string } = {}): void {
   const nonce = randomBytes(18).toString("base64");
   res.setHeader("Content-Security-Policy", panelContentSecurityPolicy(nonce, csp));
   res.writeHead(status, { "Content-Type": "text/html; charset=utf-8", ...headers });

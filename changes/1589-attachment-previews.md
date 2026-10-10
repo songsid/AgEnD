@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Attachments preview inline in the web chat (#1589).** Audio and video files (mp4, webm, mov, mp3, m4a, wav, ogg) play in the message with the browser's own controls, streamed by file id in byte ranges of at most 4 MiB. Text files get a card with Show, Download and the first 200 lines (then "Show all N lines"): Markdown through the chat's own escaping renderer, JSON pretty-printed and highlighted, code highlighted, CSV and TSV as a table, anything else as plain text. Nothing in a file is ever run, and files over 1 MiB stay downloads. Formatting is capped at 4,000 elements per card (table cells, highlighted tokens, Markdown elements) and 50 csv columns, "Show all" included; past that, the card shows plain text. The page allows media only from its own `/ui/file/` route. A file that is gone shows as before, with no preview. The public link is unchanged: there, attachments are downloads only and its page allows no media.

@@ -469,6 +469,28 @@
   }
 
   /**
+   * #1589: how an attachment is shown inline, by its name (agents' files carry their extension; uploads keep theirs):
+   * "video" / "audio" (native controls, by id), "md", "csv" / "tsv", "json", "code:<lang>", "text" — or null (a
+   * download only: an image, an .html file, a PDF, anything else). Text is always shown escaped, never run.
+   */
+  var MEDIA_EXT = { mp4: "video", m4v: "video", webm: "video", mov: "video", mp3: "audio", m4a: "audio", wav: "audio", ogg: "audio", oga: "audio", opus: "audio" };
+  var CODE_EXT = { js: "js", jsx: "js", mjs: "js", cjs: "js", ts: "ts", tsx: "ts", py: "py", sh: "sh", bash: "sh", zsh: "sh" };
+  var TEXT_EXT = { txt: 1, log: 1, toml: 1, yaml: 1, yml: 1, ini: 1, cfg: 1, conf: 1, xml: 1, diff: 1, patch: 1, sql: 1, css: 1, scss: 1, go: 1, rs: 1,
+    java: 1, kt: 1, c: 1, h: 1, cc: 1, cpp: 1, hpp: 1, rb: 1, php: 1, swift: 1, jsonl: 1 };
+  function attachmentPreviewType(a) {
+    if (!a || a.gone === true || typeof a.id !== "string" || !/^[0-9a-f]{32}$/.test(a.id) || a.kind === "photo" || typeof a.name !== "string") return null;
+    var m = /\.([A-Za-z0-9]{1,8})$/.exec(a.name.trim());
+    var ext = m ? m[1].toLowerCase() : "";
+    if (Object.prototype.hasOwnProperty.call(MEDIA_EXT, ext)) return MEDIA_EXT[ext];
+    if (ext === "md" || ext === "markdown") return "md";
+    if (ext === "csv" || ext === "tsv") return ext;
+    if (ext === "json") return "json";
+    if (Object.prototype.hasOwnProperty.call(CODE_EXT, ext)) return "code:" + CODE_EXT[ext];
+    if (Object.prototype.hasOwnProperty.call(TEXT_EXT, ext)) return "text";
+    return null;
+  }
+
+  /**
    * The files shown with a message. Only an id the fleet issued (32 hex) becomes a URL, and only under
    * /ui/file/; a name is text. Images are shown (and open full size), other files are download links.
    * With { htmlCards: true } (a server-marked agent reply, as for renderMarkdown) each .html/.htm file also gets an
@@ -477,6 +499,8 @@
   function attachmentsHtml(attachments, opts) {
     if (!Array.isArray(attachments)) return "";
     var cards = !!(opts && opts.htmlCards);
+    // #1589: { inlinePreviews: true } (not on the public link) plays media and offers text inline, after the file list.
+    var inline = !!(opts && opts.inlinePreviews);
     var out = [], after = [];
     attachments.forEach(function (a) {
       // #1565: a file from before the fleet restarted that could not be served again — its name, marked unavailable;
@@ -488,6 +512,10 @@
       if (!a || typeof a.id !== "string" || !/^[0-9a-f]{32}$/.test(a.id)) return;
       if (cards && isHtmlAttachment(a)) after.push('<div class="html-card" data-att="' + a.id + '"></div>');
       var url = "/ui/file/" + a.id;
+      var kind = inline ? attachmentPreviewType(a) : null;
+      if (kind === "video") after.push('<div class="att-media"><video class="att-video" controls preload="metadata" src="' + url + '"></video></div>');
+      else if (kind === "audio") after.push('<div class="att-media"><audio class="att-audio" controls preload="metadata" src="' + url + '"></audio></div>');
+      else if (kind) after.push('<div class="text-card" data-att="' + a.id + '" data-type="' + kind + '"></div>');
       var name = escapeHtml(a.name || "file");
       if (a.kind === "photo") {
         out.push('<a class="att-img" href="' + url + '" target="_blank" rel="noopener noreferrer"><img src="' + url + '" alt="' + name + '" loading="lazy"></a>');
@@ -505,6 +533,6 @@
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,
     isNearBottom: isNearBottom, CODE_FOLD_LINES: CODE_FOLD_LINES, lineCount: lineCount,
     LONG_PASTE_CHARS: LONG_PASTE_CHARS, isLongPaste: isLongPaste, formatElapsed: formatElapsed,
-    htmlFences: htmlFences,
+    htmlFences: htmlFences, attachmentPreviewType: attachmentPreviewType, highlight: highlight,
   };
 });

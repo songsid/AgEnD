@@ -126,13 +126,24 @@ export interface ServedFile {
 const ID_PATTERN = /^[0-9a-f]{32}$/;
 export const isFileId = (id: string): boolean => ID_PATTERN.test(id);
 
+const TEXT_MIME = "text/plain; charset=utf-8";
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
-  ".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8",
-  ".csv": "text/plain; charset=utf-8", ".json": "text/plain; charset=utf-8", ".log": "text/plain; charset=utf-8",
+  ".pdf": "application/pdf",
+  // #1589: media an agent sends is played in the page (by id, with Range); never anything a browser would run.
+  ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".opus": "audio/ogg",
+  // Text, always served as text/plain (never text/html, never script): the page shows it escaped.
+  ...Object.fromEntries([".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl", ".log", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".conf",
+    ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".sh", ".bash", ".zsh", ".go", ".rs", ".java", ".kt", ".c", ".h", ".cc", ".cpp", ".hpp",
+    ".rb", ".php", ".swift", ".sql", ".css", ".scss", ".diff", ".patch", ".xml"].map((ext) => [ext, TEXT_MIME])),
 };
 /** Images the browser may show inline; everything else is served as a download. */
 export const INLINE_MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** #1589: audio and video the page plays with <video>/<audio>: served inline, by id, with byte ranges. */
+export const MEDIA_MIME = new Set(["video/mp4", "video/webm", "video/quicktime", "audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg"]);
+/** The most one range answer carries: a player asks again for the rest, nothing buffers a whole video. */
+export const MEDIA_RANGE_MAX = 4 * 1024 * 1024;
 
 /**
  * Uploads waiting for their message, and every file the dashboard may fetch back. In memory: ids from
@@ -304,21 +315,41 @@ export class WebFileLedger {
    * regular file, still the file (device + inode) and size it was registered with. Null when any of that fails.
    */
   read(id: string): { file: ServedFile; bytes: Buffer } | null {
+    const got = this.readSlice(id, 0, Number.MAX_SAFE_INTEGER);
+    return got && got.start === 0 && got.bytes.length === got.file.size ? { file: got.file, bytes: got.bytes } : null;
+  }
+
+  /** #1589: a served file that is audio or video (MEDIA_MIME), or null — the file route plays those by range. */
+  mediaOf(id: string): ServedFile | null {
     const file = isFileId(id) ? this.served.get(id) : undefined;
-    if (!file) return null;
+    return file && MEDIA_MIME.has(file.mime) ? file : null;
+  }
+
+  /**
+   * #1589: bytes `start`…`end` (inclusive, clamped to the file) of a served file, with the same re-checks as read():
+   * opened without following a symlink, still a regular file, the same device + inode and size it was registered with.
+   * Null when any of that fails, or the range starts past the end.
+   */
+  readSlice(id: string, start: number, end: number): { file: ServedFile; bytes: Buffer; start: number; end: number } | null {
+    const file = isFileId(id) ? this.served.get(id) : undefined;
+    if (!file || !Number.isSafeInteger(start) || start < 0) return null;
     let fd: number | null = null;
     try {
       fd = openSync(file.realPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
       const st = fstatSync(fd);
       if (!st.isFile() || st.size !== file.size || st.dev !== file.dev || st.ino !== file.ino) return null;
-      const bytes = Buffer.alloc(st.size);
+      if (st.size === 0) return start === 0 ? { file, bytes: Buffer.alloc(0), start: 0, end: -1 } : null;
+      if (start >= st.size) return null;
+      const last = Math.min(end, st.size - 1);
+      const length = last - start + 1;
+      const bytes = Buffer.alloc(length);
       let off = 0;
-      while (off < st.size) {
-        const n = readSync(fd, bytes, off, st.size - off, off);
+      while (off < length) {
+        const n = readSync(fd, bytes, off, length - off, start + off);
         if (n <= 0) break;
         off += n;
       }
-      return off === st.size ? { file, bytes } : null;
+      return off === length ? { file, bytes, start, end: last } : null;
     } catch {
       return null;
     } finally {

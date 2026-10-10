@@ -11,6 +11,16 @@ import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
 
 const R = () => globalThis.AgendChatRender;
+/** #1589: the public link shows attachments as downloads only (its page says so: <body data-public-link="1">). */
+const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1";
+/** #1589: how much of a text attachment is shown before "Show all". */
+export const TEXT_PREVIEW_LINES = 200;
+/** #1589: the most elements one formatted text card may build (table cells, highlight spans, Markdown elements), Show all
+ *  included. Lines and the 1 MiB read do not bound it (one 200 KB line can be 100,000 cells): past it the card is plain
+ *  text, one text node. */
+export const TEXT_PREVIEW_NODES = 4000;
+/** A csv/tsv wider than this is shown as text, as Markdown tables are capped at 20 columns. */
+export const TEXT_PREVIEW_COLUMNS = 50;
 const P = () => globalThis.AgendPreview;
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
@@ -46,7 +56,7 @@ export function createThread(list, scroller, opts) {
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable") })}${buttons}</div>${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -69,6 +79,7 @@ export function createThread(list, scroller, opts) {
     const node = tpl.content.firstElementChild;
     decorateCode(node);
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
+    if (x) decorateTextCards(node, x);
     return node;
   }
 
@@ -116,6 +127,114 @@ export function createThread(list, scroller, opts) {
       ph.textContent = "";
       buildCard(ph, x, `${msgKey(x)}:a${att.id}`, { att: { id: att.id, name: att.name, size: att.size } }, stoppedKeys);
     }
+  }
+  // #1589: a text attachment (md, csv, json, code, plain) gets a card: Show reads the file once (the same capped,
+  // same-origin read as an HTML attachment's) and shows it — Markdown through renderMarkdown (it escapes first), code
+  // through the highlighter (escaped), csv as a table and anything else as text, all built with textContent. Nothing in
+  // the file is ever run: no frame, no script, no HTML of its own.
+  function decorateTextCards(node, x) {
+    const atts = Array.isArray(x.attachments) ? x.attachments : [];
+    for (const ph of node.querySelectorAll(".text-card[data-att]")) {
+      const att = atts.find(a => a && a.id === ph.dataset.att);
+      const type = att ? R().attachmentPreviewType(att) : null;
+      if (!att || !type || type !== ph.dataset.type) continue;
+      buildTextCard(ph, att, type);
+    }
+  }
+  function buildTextCard(ph, att, type) {
+    const doc = list.ownerDocument;
+    const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    ph.textContent = "";
+    const head = el("div", "tc-head");
+    const label = el("span", "tc-label", att.name);
+    const show = el("button", "btn btn-sm tc-show", tr("chat.tcShow")); show.type = "button";
+    const dl = el("a", "btn btn-sm tc-dl", tr("chat.tcDownload")); dl.href = `/ui/file/${att.id}`; dl.setAttribute("download", att.name);
+    head.append(label, show, dl);
+    const note = el("div", "pv-note");
+    const body = el("div", "tc-body"); body.hidden = true;
+    ph.append(head, note, body);
+    let text = null, reading = false, all = false;
+    const draw = () => {
+      body.textContent = "";
+      const lines = text.split(/\r?\n/);
+      const cut = !all && lines.length > TEXT_PREVIEW_LINES;
+      const shown = cut ? lines.slice(0, TEXT_PREVIEW_LINES) : lines;
+      const src = shown.join("\n");
+      // Formatting is built only within TEXT_PREVIEW_NODES: the markup is measured as a string first, never as DOM.
+      const plain = () => {
+        const pre = el("pre", "tc-pre"), code = el("code", null, src);
+        pre.append(code); body.append(el("div", "pv-note", tr("chat.tcPlain")), pre);
+      };
+      if (type === "md") {
+        const html = R().renderMarkdown(src);
+        if (tagCount(html) > TEXT_PREVIEW_NODES) plain();
+        else { const md = el("div", "md"); md.innerHTML = html; body.append(md); }
+      } else if (type === "csv" || type === "tsv") {
+        const table = csvTable(src, type === "tsv" ? "\t" : ",", el);
+        if (table) body.append(table); else plain();
+      } else {
+        const lang = type === "json" ? "json" : type.startsWith("code:") ? type.slice(5) : "";
+        const lit = lang ? R().highlight(src, lang) : null;
+        if (lit != null && tagCount(lit) > TEXT_PREVIEW_NODES) plain();
+        else {
+          const pre = el("pre", "tc-pre"), code = el("code");
+          if (lit != null) code.innerHTML = lit; else code.textContent = src;
+          pre.append(code); body.append(pre);
+        }
+      }
+      if (cut) {
+        const more = el("button", "btn btn-sm tc-more", trf("chat.tcShowAll", lines.length)); more.type = "button";
+        more.onclick = () => { all = true; draw(); };
+        body.append(more);
+      }
+    };
+    show.onclick = async () => {
+      if (reading) return;
+      if (text !== null) { body.hidden = !body.hidden; show.textContent = tr(body.hidden ? "chat.tcShow" : "chat.tcHide"); return; }
+      reading = true; note.textContent = tr("chat.pvLoading");
+      const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size });
+      reading = false;
+      if (!ph.isConnected) return;                       // the card left the page while it was read: nothing to draw
+      if (!r.ok) { note.textContent = r.reason === "over" ? tr("chat.tcOver") : attReason(r.reason); return; }
+      note.textContent = "";
+      text = r.code;
+      if (type === "json") { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* shown as written */ } }
+      draw();
+      body.hidden = false; show.textContent = tr("chat.tcHide");
+    };
+  }
+  /** How many elements an HTML string would build: its opening tags (escaped text has none). */
+  function tagCount(html) {
+    let n = 0;
+    for (let i = html.indexOf("<"); i !== -1; i = html.indexOf("<", i + 1)) { const c = html.charCodeAt(i + 1); if ((c | 32) >= 97 && (c | 32) <= 122) n++; }
+    return n;
+  }
+  /** A csv/tsv as a table: quoted fields ("a, b", "say ""hi""") kept whole; every cell is textContent. */
+  function csvTable(src, sep, el) {
+    const rows = [];
+    let row = [], cell = "", quoted = false;
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (quoted) {
+        if (c === '"') { if (src[i + 1] === '"') { cell += '"'; i++; } else quoted = false; }
+        else cell += c;
+      } else if (c === '"' && cell === "") quoted = true;
+      else if (c === sep) { row.push(cell); cell = ""; }
+      else if (c === "\n") { row.push(cell.replace(/\r$/, "")); rows.push(row); row = []; cell = ""; }
+      else cell += c;
+    }
+    if (cell !== "" || row.length) { row.push(cell.replace(/\r$/, "")); rows.push(row); }
+    // Within the card's budget, or not a table at all (the caller shows it as text).
+    let cells = 0;
+    for (const r of rows) { cells += r.length; if (r.length > TEXT_PREVIEW_COLUMNS || cells + rows.length > TEXT_PREVIEW_NODES) return null; }
+    const table = el("table", "tc-table");
+    rows.forEach((r, i) => {
+      const tr_ = el("tr");
+      for (const v of r) tr_.append(el(i === 0 ? "th" : "td", null, v));
+      table.append(tr_);
+    });
+    const wrap = el("div", "tc-table-wrap"); wrap.append(table);
+    return wrap;
   }
   /** Why an attachment's HTML could not be read, for the card's note. */
   const attReason = (reason) => tr(reason === "over" ? "chat.pvAttOver" : reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed");

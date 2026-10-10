@@ -58,7 +58,9 @@ function publicDispatcher(d: ReturnType<typeof dispatcher>) {
     closeExposure: () => { current = false; }, pending: () => { open = false; } };
 }
 
-function assertLinks(h: ReturnType<typeof exchange>) {
+/** #1589: the app shell narrows media to this listener's file route (`<origin>/ui/file/`), or to nothing ('none') on
+ *  the public link and the view-only page; other pages carry no media-src. Nothing else in the policy changes. */
+function assertLinks(h: ReturnType<typeof exchange>, media?: string) {
   expect(h.headers["content-type"]).toBe("text/html; charset=utf-8");
   expect(h.text()).toContain('<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 64x64">');
   expect(h.text()).toContain('<link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">');
@@ -66,7 +68,8 @@ function assertLinks(h: ReturnType<typeof exchange>) {
   const csp = String(h.headers["content-security-policy"]).replace(/'nonce-[^']+'/g, "'nonce-fixture'");
   expect(csp).toBe(BASE_CSP.replace("script-src 'self'", "script-src 'self' 'nonce-fixture'")
     .replace("style-src 'self'", "style-src 'self' 'nonce-fixture'")
-    .replace("img-src 'self' data: blob:", "img-src 'self' data: blob: https://cdn.discordapp.com/emojis/"));
+    .replace("img-src 'self' data: blob:", "img-src 'self' data: blob: https://cdn.discordapp.com/emojis/")
+    + (media ? `; media-src ${media}` : ""));
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -126,7 +129,8 @@ describe("Silver Ag dashboard icons", () => {
   it.each(["/signin", "/ui", "/ui/chat/worker", "/settings", "/settings/bots", "/view", "/view/worker"])("links all icons on local page %s without changing its CSP", path => {
     const d = dispatcher();
     const h = exchange(path, "GET", path === "/signin" || path.startsWith("/view") ? {} : { "x-agend-token": token });
-    d.dispatch(h); expect(h.status()).toBe(200); assertLinks(h);
+    d.dispatch(h); expect(h.status()).toBe(200);
+    assertLinks(h, path === "/signin" ? undefined : path.startsWith("/view") ? "'none'" : "http://localhost/ui/file/");
     if (path.startsWith("/view")) expect(h.text()).toContain('data-mode="view-only"');
   });
 
@@ -134,7 +138,7 @@ describe("Silver Ag dashboard icons", () => {
     const d = dispatcher(), g = publicDispatcher(d);
     const session = d.sessions.create({ tier: "admin", surface: "gateway", exposureId: exposure, label: "fixture", tokenEpoch: tokenEpoch(token) });
     const h = exchange(path, "GET", { host, cookie: `__Host-agend_session=${session.sessionId}` });
-    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h);
+    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'");
     if (path !== "/signin") expect(h.text()).toContain('data-web-transport="poll"');
     const anonymous = exchange(path, "GET", { host, accept: "text/html" }); g.dispatch(anonymous);
     expect(anonymous.status()).toBe(path === "/signin" ? 200 : 401); assertLinks(anonymous);
