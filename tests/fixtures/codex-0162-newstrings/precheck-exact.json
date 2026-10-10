@@ -1,0 +1,31 @@
+{
+  "precheck_head": "a7247d3f88863a01a1ad81fc776a71986b14197b",
+  "strings": [
+    {
+      "offset": 239762335,
+      "text": "You can continue this task. To save the default, resolve the error above, then switch to a different tier and back to the desired tier.",
+      "near_literal": "rate limit",
+      "distance": 189,
+      "old_count": 0,
+      "new_count": 1
+    },
+    {
+      "offset": 239945885,
+      "text": "rate limit reset credit detail request timed out; falling back to the usage response",
+      "near_literal": "rate limit",
+      "distance": 0,
+      "old_count": 1,
+      "new_count": 1,
+      "false_positive": "changed adjacent Rust string with no boundary"
+    },
+    {
+      "offset": 242422352,
+      "text": "Tell the user this agent stopped after repeated Guardian denials. Do not resume this agent or retry its blocked work until the user explicitly confirms that it should continue.",
+      "near_literal": "r retry",
+      "distance": 19,
+      "old_count": 0,
+      "new_count": 1,
+      "near_false_positive": "detector literal is a substring of the candidate"
+    }
+  ]
+}

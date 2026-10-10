@@ -1,0 +1,74 @@
+[
+  {
+    "path": "codex-rs/tui/src/app/event_dispatch.rs",
+    "sha256": {
+      "rust-v0.162.0": "96b4e4d805fbc2d8f18a77849194eccd071f0425809c9e2f4b88b0dcc487bad4",
+      "rust-v0.162.1": "96b4e4d805fbc2d8f18a77849194eccd071f0425809c9e2f4b88b0dcc487bad4"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/tui/src/chatwidget/service_tiers.rs",
+    "sha256": {
+      "rust-v0.162.0": "7ffacb772d0917e80e51367b34c19dc70bf73d823efbb1a5bc58929a86cee3b1",
+      "rust-v0.162.1": "7ffacb772d0917e80e51367b34c19dc70bf73d823efbb1a5bc58929a86cee3b1"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/tui/src/app/model_defaults.rs",
+    "sha256": {
+      "rust-v0.162.0": "f91d99c61404df171e341e3e34f088f2c9f05b57d07f8685b1023ea5a1536a7f",
+      "rust-v0.162.1": "f91d99c61404df171e341e3e34f088f2c9f05b57d07f8685b1023ea5a1536a7f"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/tui/src/app/background_requests.rs",
+    "sha256": {
+      "rust-v0.162.0": "d81768c6fa797254f9fc8b81a295a8909f0aa1a4056f69f8f526d750a586436a",
+      "rust-v0.162.1": "d81768c6fa797254f9fc8b81a295a8909f0aa1a4056f69f8f526d750a586436a"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/app-server/src/request_processors/account_processor.rs",
+    "sha256": {
+      "rust-v0.162.0": "fa0f3132af310c9eaa2355fcd57886d1e02db24ca7d8e996d445f55708d576cc",
+      "rust-v0.162.1": "fa0f3132af310c9eaa2355fcd57886d1e02db24ca7d8e996d445f55708d576cc"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/app-server/src/request_processors/account_processor/rate_limit_resets.rs",
+    "sha256": {
+      "rust-v0.162.0": "f0f091043b220299acc2f57d3897fe3a140537f0b1b1e0bca59f886d6b7f3d79",
+      "rust-v0.162.1": "f0f091043b220299acc2f57d3897fe3a140537f0b1b1e0bca59f886d6b7f3d79"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/core/src/session/mod.rs",
+    "sha256": {
+      "rust-v0.162.0": "5e94b4e8fc9fea7314169e7e29e88a96acbe7f9d0ec5e50a6a60de2d7ffc88df",
+      "rust-v0.162.1": "5e94b4e8fc9fea7314169e7e29e88a96acbe7f9d0ec5e50a6a60de2d7ffc88df"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/core/src/agent/control/completion.rs",
+    "sha256": {
+      "rust-v0.162.0": "1f7a82036f5da1460af1a75c6a139278439bccac0421c0084ba92dd4c830b198",
+      "rust-v0.162.1": "1f7a82036f5da1460af1a75c6a139278439bccac0421c0084ba92dd4c830b198"
+    },
+    "same": true
+  },
+  {
+    "path": "codex-rs/core/src/session_prefix.rs",
+    "sha256": {
+      "rust-v0.162.0": "fd1306b0716ddad091d33930322f01e07d4528bfd66ad794e9cf3bb17669e26c",
+      "rust-v0.162.1": "fd1306b0716ddad091d33930322f01e07d4528bfd66ad794e9cf3bb17669e26c"
+    },
+    "same": true
+  }
+]

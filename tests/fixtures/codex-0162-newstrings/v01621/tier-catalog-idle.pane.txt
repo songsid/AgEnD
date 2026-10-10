@@ -1,0 +1,11 @@
+
+  >_ OpenAI Codex (v0.162.1)
+     <working-directory>
+  permissions: YOLO mode
+
+  Tip: Use /statusline to configure which items appear in the status line.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                          ⚠ 1 warning · f2 to view
