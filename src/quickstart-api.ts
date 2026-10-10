@@ -210,7 +210,10 @@ export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment & 
   // Only the id that platform has — Discord has a guild, Telegram a group.
   if (input.platform === "discord") {
     if (input.guild_id) channel.group_id = input.guild_id;
-    if (input.general_channel_id) channel.general_channel_id = input.general_channel_id;
+    // Write general_channel_id under options (the runtime reads it from there).
+    // Top-level general_channel_id was a bug introduced in c25045b0; old files
+    // that still have it at the top level are handled by discordGeneralChannelId().
+    if (input.general_channel_id) channel.options = { ...(channel.options as Record<string,unknown> ?? {}), general_channel_id: input.general_channel_id };
   } else if (input.group_id) {
     channel.group_id = input.group_id;
   }

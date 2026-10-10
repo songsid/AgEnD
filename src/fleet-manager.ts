@@ -173,6 +173,7 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { envFileKeys } from "./token-env-name.js";
+import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -816,6 +817,7 @@ function emojiListFilter(opts: Record<string, unknown>): {
     withImageUrls: flag(opts.with_image_urls),
   };
 }
+
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
@@ -5523,8 +5525,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const need of [...needsGeneral]) {
       const matchIdx = unboundGenerals.findIndex(([, inst]) => {
         const topicId = String(inst.topic_id ?? "");
-        if (need.ch.type === "discord" && need.ch.options?.general_channel_id) {
-          return topicId === String(need.ch.options.general_channel_id);
+        if (need.ch.type === "discord" && discordGeneralChannelId(need.ch as unknown as Record<string, unknown>)) {
+          return topicId === discordGeneralChannelId(need.ch as unknown as Record<string, unknown>);
         }
         if (need.ch.type === "telegram") {
           return topicId === "1" || topicId === "";
@@ -10567,9 +10569,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (generalTopic != null) return { chatId, opts: { threadId: String(generalTopic) } };
 
     if (cfg?.type === "discord") {
-      const configured = cfg.options?.general_channel_id;
-      if (configured != null && String(configured)) {
-        return { chatId, opts: { threadId: String(configured) } };
+      const configured = discordGeneralChannelId(cfg as unknown as Record<string, unknown>);
+      if (configured) {
+        return { chatId, opts: { threadId: configured } };
       }
       return null;   // a guild id is not a channel; sending would always fail
     }
@@ -16717,9 +16719,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         token_env: channel.bot_token_env,
         token_present: !!process.env[channel.bot_token_env] || stored.has(channel.bot_token_env),
         group_id: channel.group_id != null ? String(channel.group_id) : null,
-        general_channel_id: channel.options?.general_channel_id != null
-          ? String(channel.options.general_channel_id)
-          : null,
+        general_channel_id: discordGeneralChannelId(channel as unknown as Record<string, unknown>),
         ...this.connectionStatus(id, state, world),
         ...(world ? { identity: { id: world.botUserId ?? null, username: world.botUsername ?? null } } : {}),
       };

@@ -46,7 +46,10 @@ describe("the plan the last step shows", () => {
 
     expect(telegram.channel).toMatchObject({ type: "telegram", group_id: "-100123" });
     expect(telegram.channel).not.toHaveProperty("general_channel_id");
-    expect(discord.channel).toMatchObject({ type: "discord", group_id: "999", general_channel_id: "888" });
+    // general_channel_id is written under options (not top-level) since the wizard fix
+    expect(discord.channel).toMatchObject({ type: "discord", group_id: "999" });
+    expect((discord.channel as any).options).toMatchObject({ general_channel_id: "888" });
+    expect(discord.channel).not.toHaveProperty("general_channel_id"); // not at top level
   });
 
   it("never carries the token, only the variable name", () => {
