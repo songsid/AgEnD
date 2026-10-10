@@ -1064,11 +1064,16 @@ const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
     const instanceDir = joinPath(ctx.dataDir, "instances", v.data.name);
     const tail = await readTailLines(joinPath(instanceDir, "output.log"), lines);
     const notes: string[] = [];
+    // #1582: faint text (a CLI's suggestion or placeholder) is marked, so it is never read as something typed.
+    const { markFaintRuns, startsInsideFaint, FAINT_NOTE, FAINT_START_NOTE } = await import("./ansi-faint.js");
+    const text = markFaintRuns(tail.text);
+    if (text !== tail.text) notes.push(FAINT_NOTE);
+    if (startsInsideFaint(tail.text)) notes.push(FAINT_START_NOTE);
     if (capped) notes.push(`Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.`);
     if (tail.truncated) notes.push("Showing a bounded tail of a large log; total line count unavailable.");
     if (tail.partial) notes.push("The tail holds a partial line: no line break in the scanned window.");
     respond({
-      lines: tail.text,
+      lines: text,
       total_lines: tail.totalLines,
       ...(notes.length > 0 ? { _note: notes.join(" ") } : {}),
     });
