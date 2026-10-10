@@ -28,7 +28,9 @@
            border: 0; border-radius: var(--r-full); cursor: pointer; }
   button:hover:not(:disabled) { opacity: .88; }
   button:disabled { opacity: .6; cursor: default; }
+  button.secondary { margin-top: 10px; color: var(--text); background: transparent; border: 1px solid var(--border-strong); }
   #msg { min-height: 1.5em; margin-top: 14px; font-size: var(--fs-sm); color: var(--danger); }
+  #msg.ok { color: var(--text-2); }
   .hint { margin-top: 18px; font-size: var(--fs-xs); color: var(--text-3); }
   .hint code { white-space: nowrap; font-family: var(--font-mono); }
   [hidden] { display: none !important; }
@@ -45,6 +47,7 @@
     <input id="code" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters"
            autocorrect="off" spellcheck="false" maxlength="12" placeholder="XXXX-XXXX" required>
     <button id="go" type="submit" data-i18n="submit">Sign in</button>
+    <button id="resend" type="button" class="secondary" hidden data-i18n="resend">Send me a new code</button>
     <div id="msg" role="alert" aria-live="polite"></div>
     <div class="hint" data-i18n="hint">Send /dashboard to your AgEnD bot, or run “<code>agend web --code</code>” on the host. A code works once and expires in 5 minutes.</div>
   </form>

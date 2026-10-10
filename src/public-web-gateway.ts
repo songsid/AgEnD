@@ -10,11 +10,11 @@ import { isWebIconPath } from "./web-icons.js";
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
   if (reads && isWebIconPath(path)) return true;
-  if (reads && ["/", "/signin", "/ui", "/view", "/auth/session", "/auth/sessions", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
+  if (reads && ["/", "/signin", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
   if (method === "GET" && path.startsWith("/assets/") && isServedAsset(path.slice("/assets/".length))) return true;
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).
   if (reads && shellRoute(method, path) !== null) return true;
-  if (method === "POST" && ["/auth/login", "/auth/logout"].includes(path)) return true;
+  if (method === "POST" && ["/auth/login", "/auth/logout", "/auth/request-code"].includes(path)) return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;
   if (method === "POST" && (path === "/api/sort-order" || /^\/api\/(profile|avatar)\/[^/]+$/.test(path))) return true;

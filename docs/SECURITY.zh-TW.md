@@ -52,6 +52,7 @@ Daemon 透過 `~/.agend/instances/<name>/channel.sock` 與 AgEnD MCP bridge 通�
 - **只靠 cookie 授權的寫入**，還必須帶與 `Host` 相同的 `Origin`、瀏覽器有送 `Sec-Fetch-Site` 時其值為 `same-origin`，以及該 session 專屬的 `X-Agend-CSRF` 值。光有 cookie 什麼都改不了。本機帶 header token 的請求不需要這些檢查：網頁無法讓瀏覽器自動加上那個 header。
 - 所有受保護路由都會拒絕 host／port 與 `Host` 不同（或無法解析，例如 `null`）的 `Origin`。沒有 `Origin` 的讀取，只要憑證有效仍可通過。
 - **撤銷**：Session 選單可登出單一裝置或所有裝置；`/dashboard revoke` 讓所有瀏覽器登出並作廢尚未使用的登入碼；`agend web-token rotate` 讓所有在舊 token 下建立的 session 在下一次請求時失效，不需重啟。
+- **回訪裝置（#1570）**：用 `/dashboard` 私送的登入碼登入時，會另外設定第二個 cookie `agend_device`（https 與公開連結上為 `__Host-agend_device`；`HttpOnly`、`SameSite=Strict`、90 天）。它的值是隨機 128-bit id 加上以 `web.token` 推導金鑰的 HMAC，不含任何聊天或使用者 id。`~/.agend/web-devices.json`（`0600`）只存 id 的 SHA-256、收到那組碼的擁有者與 token epoch。只有這種瀏覽器能在登入頁要求新的登入碼（`POST /auth/request-code`，必須帶 `Origin`）。fleet 會重新確認擁有者仍是該 bot 與 General 的 fleet 管理員，並只以私訊送出（絕不發到群組，也沒有替代管道）；私訊會寫出瀏覽器與來源。限制：每個裝置每分鐘 1 次、每小時 5 次；整個 fleet 每 20 秒 1 次、每小時 20 次（單調時鐘）；輸錯碼的斷路器開啟時一律拒絕。公開連結的要求必須屬於目前開啟中的 exposure，碼只限該 exposure 使用，登入仍需確認公開通知送達。`/dashboard revoke` 會清空登錄，`agend web-token rotate` 會讓所有裝置 cookie 失效（HMAC 金鑰與 epoch 都會改變）。
 
 這是共用的操作員憑證，不是個別使用者帳號或角色系統。`/dashboard` 需要 fleet 管理員，但任何持有登入碼、session 或 header token 的人都能使用；本機 HTTP 操作不會逐次重查聊天允許名單。公開請求還必須確認發碼者的權限／綁定與入口仍有效。登入碼在用掉之前請視同密碼；選單的碼只會私送。
 

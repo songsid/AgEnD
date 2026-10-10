@@ -1,0 +1,17 @@
+
+  >_ OpenAI Codex (v0.162.1)
+     /audit/run-VERSION/isolated-e401
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› e401 independent turn
+
+
+■ unexpected status 401 Unauthorized: Incorrect API key provided, url: http://127.0.0.1:MOCK_PORT/v1/responses
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 2 warnings · f2 to view

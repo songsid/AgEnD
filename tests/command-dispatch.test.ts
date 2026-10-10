@@ -43,7 +43,7 @@ vi.mock("../src/channel/factory.js", async () => {
 
 import { FleetManager } from "../src/fleet-manager.js";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
-import { COMMANDS, commandSpec, decideCommand, isLocked, slashLock, type CommandChecks, type CommandScope } from "../src/command-table.js";
+import { COMMANDS, COMMAND_ALIASES, commandSpec, decideCommand, isLocked, slashLock, type CommandChecks, type CommandScope } from "../src/command-table.js";
 import { setLocale, t } from "../src/locale.js";
 
 /**
@@ -389,7 +389,9 @@ describe("the lock emoji is generated from the table", () => {
     expect(block).not.toContain("🔒");
     const registered = [...block.matchAll(/name: "(\w+)", description: (?:withFleetLabel\()?slashLock\("(\w+)"\)/g)];
     for (const [, name, locked] of registered) expect(locked).toBe(name);
-    expect(registered.map(m => m[1]).sort()).toEqual(COMMANDS.filter(c => c.slash).map(c => c.name).sort());
+    // #1569: plus each alias of a slash command (/web for /dashboard), registered under its own name.
+    const aliases = Object.entries(COMMAND_ALIASES).filter(([, target]) => COMMANDS.find(c => c.name === target)?.slash).map(([alias]) => alias);
+    expect(registered.map(m => m[1]).sort()).toEqual([...COMMANDS.filter(c => c.slash).map(c => c.name), ...aliases].sort());
   });
 
   it("every reply a refusal can use exists in both languages", () => {

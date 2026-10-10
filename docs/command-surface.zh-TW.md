@@ -115,6 +115,10 @@
 
 來源：`src/fleet-manager.ts:10443`、`:11592`、`:14413`、`:14719`、`:11126`。過期或不明 callback ID 不授權。
 
+## 別名
+
+`/web` 就是 `/dashboard` 的短名稱（#1569）。它是命令表裡的同一列，所以兩張表裡它的 cell 就是上面 `/dashboard` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣有 `/web revoke`。Discord 把它註冊成獨立的 slash 指令，Telegram fleet 選單把它列在 `/dashboard` 後面。
+
 ## 維護矩陣
 
 `tests/command-surface-docs-1148.test.ts` 以命令表檢查兩語言的命令 cell 與選單，並明列 Classic 真 handler 的例外。`tests/command-gates-by-platform.test.ts` 驅動真 handler。規則、選單或路由改變時，兩份文件一起更新；不要由 Discord cell 推論 Telegram 有對應 handler。
