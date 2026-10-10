@@ -7,7 +7,7 @@ AgEnD runs your AI coding agents as a system service and puts them in your Teleg
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js and npm. On macOS (11 or newer) and on glibc Linux (x64 or arm64), AgEnD installs its own Node 22 and runs on it, whatever Node runs npm. Elsewhere it needs Node 22.14 or newer.
 - tmux
 - A Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token
 - At least one AI coding CLI, installed and logged in — see [Backends](#install-a-backend)
@@ -61,13 +61,22 @@ agend backend doctor claude-code
 agend quickstart
 ```
 
-It asks for your bot token, which backend to use, and which directory the first agent works in. Discord is built in — choose it at the prompt, nothing extra to install.
+It runs in four steps:
+
+1. It finds the AI coding CLI you have, and asks which one if there are several.
+2. It asks for Telegram, Discord, or both. Discord is built in, so there is nothing extra to install.
+3. It checks your bot token and finds your group. On Discord it also asks for your user id and the channel to use.
+4. It asks where your projects live.
+
+At the end it offers to install the fleet as a service and start it. It then shows where the web dashboard is.
 
 Run `agend quickstart` again later to add users or servers to an existing config.
 
 To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard).
 
 ## Start the fleet
+
+If quickstart installed the service, the fleet is already running. Otherwise:
 
 ```bash
 agend fleet start
@@ -84,6 +93,16 @@ agend install
 Open Telegram, find your bot, and send it a message. In a forum group, each topic is one agent; a message to the **General** topic is routed to whichever agent should handle it.
 
 On Discord, `/start` begins an agent in the current channel, `/chat <message>` talks to it, and `/stop` ends it.
+
+## Open the web dashboard
+
+The fleet also serves a dashboard at `http://localhost:19280/`. It has the same chats as your bot, and Settings, where you can add a bot, an agent, or a token. To sign in, run this on the machine:
+
+```bash
+agend web --code
+```
+
+You can also send `/dashboard` to your bot. Either one gives you a one-time code for the sign-in page.
 
 If nothing answers, check the fleet first:
 

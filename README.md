@@ -101,11 +101,11 @@ Or install manually:
 
 ```bash
 npm install -g @songsid/agend    # 1. Install
-agend quickstart                # 2. Setup — bot token, backend, done
-agend fleet start               # 3. Launch your fleet 🎉
+agend quickstart                # 2. Setup — backend, bot token, done
+agend fleet start               # 3. Launch your fleet 🎉 (skip if quickstart installed it as a service)
 ```
 
-Open Telegram or Discord, send a message to your bot, and start working from your phone.
+Open Telegram or Discord, send a message to your bot, and start working from your phone. Or open the web dashboard at `http://localhost:19280/`. To sign in, run `agend web --code` on this machine, or send `/dashboard` to your bot.
 
 > **Discord?** `agend quickstart` supports Discord too — it's built in, no extra install needed. See [Discord setup guide](docs/features.md#discord-adapter).
 
@@ -188,7 +188,7 @@ ClassicBot lets users start AI agents in any Discord text channel using slash co
 # 1. Run quickstart (select Discord — built in, no extra install)
 agend quickstart
 
-# 2. Start the fleet
+# 2. Start the fleet (skip if quickstart installed it as a service)
 agend fleet start
 ```
 

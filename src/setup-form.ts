@@ -347,7 +347,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
         const res = await fetch("/health", { cache: "no-store" });
         if (res.status) {
           $("finishMsg").className = "msg ok";
-          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up.";
+          // #1519 P7: the fleet answers on this address now — its dashboard is here too.
+          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up, or open its dashboard: ";
+          const link = document.createElement("a"); link.href = "/"; link.textContent = location.origin + "/";
+          $("finishMsg").append(link, " (sign in with agend web --code on this machine, or send /dashboard to your bot).");
           return;
         }
       } catch { /* not listening yet */ }

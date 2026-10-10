@@ -57,6 +57,7 @@ import type { TunnelHandle, TunnelProvider } from "./tunnel/types.js";
 import yaml from "js-yaml";
 import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { canonicalCliEntry } from "./cli-entry.js";
+import { dashboardLines, dashboardPort } from "./next-steps.js";
 
 /** How long the form may stay open at all. */
 export const SETUP_HOST_TTL_MS = 15 * 60_000;
@@ -638,6 +639,8 @@ export class SetupHost {
 
     markSetupComplete(this.opts.dataDir);
     this.log("Setup complete — starting AgEnD.");
+    // #1519 P7: where its dashboard will be, and how to sign in to it.
+    for (const line of dashboardLines(dashboardPort(this.opts.configPath))) this.log(line);
     (this.opts.spawnFleet ?? defaultSpawnFleet)();
   }
 
