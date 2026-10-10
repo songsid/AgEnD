@@ -43,6 +43,9 @@ The sections above them hold the evidence:
 | `APPEARED` | absent before, present now → MINOR |
 | `NEW PROMPT-LIKE STRINGS near a known detector literal` | a new "Do you want…?", "Press … to", "Yes, and…", "Allow …?", "(y/n)", retry or rate-limit string within 600 bytes of a detector literal: a new or changed dialog on that surface → MAJOR |
 | `NEW PROMPT-LIKE STRINGS elsewhere` | the same kind of string, away from every detector literal → MINOR |
+| `NEW PROMPT-LIKE STRINGS in documentation text` | a new one inside markdown `**bold**`: docs or skills the binary embeds, not a screen it paints → MINOR |
+| `PROMPT KEPT, ONLY ITS NEIGHBOURING STRING CHANGED` | a native binary keeps strings back to back; the old release has this prompt and this neighbour, only side by side differently → MINOR |
+| `INCOMPLETE (old/new): …` | a part that could not be read in full → MAJOR |
 | `PROMPT-LIKE STRINGS gone` | for the auditor; not part of the verdict |
 
 Each literal line shows `[surface] old -> new "text" (file:line declaration)`.
@@ -51,22 +54,30 @@ Each literal line shows `[surface] old -> new "text" (file:line declaration)`.
 
 A MAJOR verdict also comes from:
 - **Too little text found:** fewer than 3 of the backend's literals in the old release. The check cannot see the CLI's text, perhaps because it is compressed or encoded.
-- **A failed run:** a path that does not exist, or an unknown backend. The verdict line is then still printed, after a `REASON: the precheck could not run`.
+- **An incomplete scan:** a directory that cannot be listed, a file that cannot be opened, a file or archive member over 1 GiB, a broken or truncated archive or gzip file, a gzip file that expands past 1 GiB (it is expanded with that bound, never in full first). The run exits 4.
+- **A failed run:** a path that does not exist, an unknown backend, a manifest that cannot be read. The verdict line is still printed, after `REASON: the precheck could not run`, and the run exits non-zero.
+
+Links inside a directory or archive are listed as notes and not followed.
 
 ## Limits
 
 - **Compressed or encoded text** inside a native binary is not decoded. Gzip files and archive members are. A CLI whose text is hidden this way shows up as the coverage MAJOR above, never as a silent NONE.
 - **Text forms counted:** each literal as UTF-8, as UTF-16LE (some JS engines store strings that way) and in its JSON-escaped form (minified bundles).
-- **Prompt-like strings** are compared with minified names inside `${…}` blanked out. Trailing 1–2 character tokens are dropped, because a string table's next-entry header can be a printable byte. This keeps renames between builds from looking new.
+- **Prompt-like strings** are found in UTF-8 and UTF-16LE text. They are compared whole, with only these differences ignored, each with its own evidence:
+  - minified names inside `${…}` (renamed by every build);
+  - a Bun/JSC string table's next-entry length byte when it is printable (the bytes after it are `00 00 80`);
+  - a neighbouring string in a native binary, only when the old release has the same text up to that boundary *and* the new neighbour already exists in the old release.
+
+  Nothing else is cut: `connect to OpenAI?` → `connect to GitHub?` beside a detector literal is MAJOR.
 - **What this does not cover:** file formats AgEnD reads (session journals, rollouts, databases), and behaviour (when a dialog appears, what a key does). The live audit covers those; this is only a gate for it.
 
 ## The manifest
 
 `manifest.json` lists every detector literal per backend, generated from `src/` with the TypeScript parser.
 - **What it reads:** `sources.json` names the files and declarations.
-- **What it keeps:** string literals, template parts, and the literal text runs of regexes, including `new RegExp("…")`.
+- **What it keeps:** string literals, template parts, and the literal text runs of regexes. Every string inside a `RegExp(…)` argument (concatenated, templated or `String.raw`) and every string with regex syntax is read as a regex; required whitespace (`\s+`, `[ \t]+`) is a space. Machine codes (`UNAUTHENTICATED`, `invalid_api_key`, `ExpiredTokenException`) are kept on their own.
 - **What it leaves out:**
-  - the fields of a dialog/error entry that hold AgEnD's own words (`description`, `message`, …);
+  - the fields of a dialog/error entry that hold AgEnD's own words (`description`, `message`, …), and the `name`/`key`/`description` arguments of the file's own helpers (`claudeConfirmDialogEntries(pattern, "Claude workspace trust dialog", …)`);
   - the arguments of `t()`, logger calls and Error constructors;
   - the declarations `sources.json` excludes (command builders, config writers, CLI help parsers).
 
@@ -77,4 +88,4 @@ npx tsx scripts/manual/cli-upstream-precheck/build-manifest.ts           # rewri
 npx tsx scripts/manual/cli-upstream-precheck/build-manifest.ts --check   # exit 1 when it is stale
 ```
 
-`tests/cli-upstream-precheck.test.ts` fails when `manifest.json` no longer matches the source, so a detector literal cannot be added or changed without the manifest. A new detector file or declaration has to be added to `sources.json`. The test does not compare line numbers; they move with any edit above them.
+`tests/cli-upstream-precheck.test.ts` fails when `manifest.json` no longer matches the source, so a detector literal cannot be added or changed without the manifest. A new detector file or declaration has to be added to `sources.json`; the test fails when a declaration `sources.json` names does not exist. It also removes one real detector literal from a real backend's text and expects MAJOR, with the committed manifest. Line numbers are not compared; they move with any edit above them.

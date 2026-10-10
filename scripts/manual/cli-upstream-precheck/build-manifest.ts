@@ -36,27 +36,64 @@ export function prose(s: string): boolean {
 }
 
 /**
- * The literal text runs of a regex source: the characters between its operators, at least 6 with a space. An escaped
- * punctuation character is itself; a class (\\s, \\d, [..]), an anchor, a group or an alternation ends the run; a
- * character a quantifier makes optional (?, *, {0,…}) is left out, so every run is text the match really contains.
+ * A machine code a detector matches as one word: UNAUTHENTICATED, RESOURCE_EXHAUSTED, invalid_api_key,
+ * ExpiredTokenException. (A single English word is not one: it is everywhere and says nothing.)
+ */
+export function machineToken(s: string): boolean {
+  return /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(s) && s.length >= 6
+    || /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(s) && s.length >= 8
+    || /^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+(?:Exception|Error)$/.test(s);
+}
+
+/** What a literal must be to be kept: screen text or a machine code. */
+export function kept(s: string): boolean { return prose(s) || machineToken(s); }
+
+/**
+ * The literal text runs of a regex source: the characters between its operators, kept when they read as screen text
+ * (with a space) or are a machine code. An escaped punctuation character is itself; whitespace that must be there
+ * (\\s, \\s+, [ \\t]+, a space) is one space; a class, an anchor, a group or an alternation ends the run; a character
+ * a quantifier makes optional (?, *, {0,…}) is left out — so every run is text the match really contains.
  */
 export function regexRuns(source: string): string[] {
   const out: string[] = [];
   let run = "";
   // Trimmed of the punctuation at either end: "Resume from summary (" is "Resume from summary" — what the CLI stores.
-  const end = () => { const r = run.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, ""); if (r.length >= 6 && /[A-Za-z]{3}/.test(r) && / /.test(r)) out.push(r); run = ""; };
+  const end = () => {
+    const r = run.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, "");
+    if ((r.length >= 6 && /[A-Za-z]{3}/.test(r) && / /.test(r)) || machineToken(r)) out.push(r);
+    run = "";
+  };
+  /** Whitespace that is required (no ?, * or {0,…} after it) is one space in the text; optional whitespace ends the run. */
+  const space = (next: number): number => {
+    const q = source[next];
+    if (q === "+") { run += " "; return next; }
+    if (q === "?" || q === "*") { end(); return next; }
+    if (q === "{") { const m = /^\{(\d+)(,\d*)?\}/.exec(source.slice(next)); if (m) { if (m[1] === "0") end(); else run += " "; return next + m[0].length - 1; } }
+    run += " ";
+    return next - 1;
+  };
   for (let i = 0; i < source.length; i++) {
     const c = source[i]!;
     if (c === "\\") {
       const d = source[i + 1] ?? "";
       i++;
-      if (/[sSdDwWbBnrtfv0-9cpPkK]/.test(d)) { end(); if (/[pPk]/.test(d) && source[i + 1] === "{") i = source.indexOf("}", i) < 0 ? source.length : source.indexOf("}", i); continue; }
+      if (d === "s") { i = space(i + 1); continue; }
+      if (/[SdDwWbBnrtfv0-9cpPkK]/.test(d)) { end(); if (/[pPk]/.test(d) && source[i + 1] === "{") i = source.indexOf("}", i) < 0 ? source.length : source.indexOf("}", i); continue; }
       if (d === "x") { end(); i += 2; continue; }
       if (d === "u") { end(); i += source[i + 1] === "{" ? source.indexOf("}", i) - i : 4; continue; }
       run += d;
       continue;
     }
-    if (c === "[") { end(); for (i++; i < source.length && source[i] !== "]"; i++) if (source[i] === "\\") i++; continue; }
+    if (c === "[") {
+      let j = i + 1;
+      for (; j < source.length && source[j] !== "]"; j++) if (source[j] === "\\") j++;
+      const body = source.slice(i + 1, j);
+      i = j;
+      if (body && !body.startsWith("^") && /^(?:[ \t]|\\s|\\t)+$/.test(body)) { i = space(i + 1); continue; }   // [ \t] is whitespace
+      end();
+      continue;
+    }
+    if (c === " ") { i = space(i + 1); continue; }
     if (c === "(") { end(); if (source[i + 1] === "?") { i++; if (source[i + 1] === "<" && source[i + 2] !== "=" && source[i + 2] !== "!") i = source.indexOf(">", i); else i += source[i + 1] === "<" ? 2 : 1; } continue; }
     if (c === "?" || c === "*") { run = run.slice(0, -1); end(); continue; }
     if (c === "{") {
@@ -67,7 +104,7 @@ export function regexRuns(source: string): string[] {
     run += c;
   }
   end();
-  return out;
+  return [...new Set(out.map((r) => r.replace(/ {2,}/g, " ")))];
 }
 
 /** The surface a declaration's name says, when sources.json does not say it. */
@@ -105,19 +142,57 @@ function calleeName(call: ts.CallExpression | ts.NewExpression): string | null {
   return null;
 }
 
+/** A parameter of AgEnD's own helper that carries AgEnD's words (a dialog's name, its key, its description). */
+const OWN_PARAMS = new Set(["description", "message", "name", "key", "label", "what", "reason", "notice"]);
+/** Regex syntax in a string: it is a regex source kept in a string (passed to RegExp later), read as one too. */
+const REGEX_SYNTAX = /\|.*\S|\\[sdwb]|\[\^?[^\]]*\]|\(\?:/;
+
+/** The names of every declaration in a file (functions, classes, methods, variables, object keys). */
+export function declarationNames(file: string): Set<string> {
+  const sf = ts.createSourceFile(file, readFileSync(join(ROOT, file), "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const out = new Set<string>();
+  const visit = (node: ts.Node) => { const n = nameOf(node); if (n !== null) out.add(n); ts.forEachChild(node, visit); };
+  visit(sf);
+  return out;
+}
+
 /** Every kept literal of one source entry. */
-export function literalsOf(entry: SourceEntry): ManifestLiteral[] {
+export function literalsOf(entry: SourceEntry, source?: string): ManifestLiteral[] {
   const path = join(ROOT, entry.file);
-  const text = readFileSync(path, "utf8");
+  const text = source ?? readFileSync(path, "utf8");
   const sf = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const out: ManifestLiteral[] = [];
   const want = entry.symbols ? new Set(entry.symbols) : null;
   const skip = new Set(entry.exclude ?? []);
+  // The file's own functions: which of their parameters hold AgEnD's words (claudeConfirmDialogEntries(pattern, name, …)).
+  const ownParams = new Map<string, Set<number>>();
+  const collect = (node: ts.Node) => {
+    let fname: string | null = null, params: ts.NodeArray<ts.ParameterDeclaration> | null = null;
+    if (ts.isFunctionDeclaration(node) && node.name) { fname = node.name.text; params = node.parameters; }
+    else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))) {
+      fname = node.name.text; params = node.initializer.parameters;
+    }
+    if (fname && params) {
+      const at = new Set<number>();
+      params.forEach((p, i) => { if (ts.isIdentifier(p.name) && OWN_PARAMS.has(p.name.text)) at.add(i); });
+      if (at.size) ownParams.set(fname, at);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
   const add = (t: string, kind: ManifestLiteral["kind"], at: ts.Node, names: string[]) => {
     const line = sf.getLineAndCharacterOfPosition(at.getStart(sf)).line + 1;
     out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)" });
   };
-  const visit = (node: ts.Node, names: string[], own: boolean, inScope: boolean) => {
+  const isStringRaw = (n: ts.Node): n is ts.TaggedTemplateExpression =>
+    ts.isTaggedTemplateExpression(n) && ts.isPropertyAccessExpression(n.tag) && ts.isIdentifier(n.tag.expression) && n.tag.expression.text === "String" && n.tag.name.text === "raw";
+  /** One piece of text: as a regex source inside RegExp(…) (or when it is plainly one), else as screen text. */
+  const piece = (t: string, kind: ManifestLiteral["kind"], at: ts.Node, names: string[], asRegex: boolean) => {
+    if (asRegex) { for (const r of regexRuns(t)) add(r, "regex", at, names); return; }
+    if (kept(t)) add(t, kind, at, names);
+    if (REGEX_SYNTAX.test(t)) for (const r of regexRuns(t)) add(r, "regex", at, names);
+  };
+  const visit = (node: ts.Node, names: string[], own: boolean, inScope: boolean, asRegex: boolean) => {
     const n = nameOf(node);
     if (n !== null) {
       if (skip.has(n)) return;
@@ -125,30 +200,45 @@ export function literalsOf(entry: SourceEntry): ManifestLiteral[] {
       names = [...names, n];
       if (want && want.has(n)) inScope = true;
     }
-    if ((ts.isCallExpression(node) || ts.isNewExpression(node))) {
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
       const callee = calleeName(node);
       if (callee && OWN_CALLS.has(callee)) own = true;
-      // new RegExp("…") / RegExp("…"): its string argument is a regex source.
-      if (callee === "RegExp" && node.arguments?.length && ts.isStringLiteralLike(node.arguments[0]!) && inScope && !own) {
-        for (const r of regexRuns(node.arguments[0]!.text)) add(r, "regex", node.arguments[0]!, names);
-        node.arguments.slice(1).forEach((a) => visit(a, names, own, inScope));
+      const args = node.arguments ?? ts.factory.createNodeArray<ts.Expression>();
+      if (callee === "RegExp" && args.length) {
+        // new RegExp(…): every string in its first argument — concatenated, templated, String.raw — is regex source.
+        visit(args[0]!, names, own, inScope, true);
+        args.slice(1).forEach((a) => visit(a, names, own, inScope, false));
+        visit(node.expression, names, own, inScope, false);
+        return;
+      }
+      const ownAt = callee ? ownParams.get(callee) : undefined;
+      if (ownAt) {
+        visit(node.expression, names, own, inScope, asRegex);
+        args.forEach((a, i) => visit(a, names, own || ownAt.has(i), inScope, asRegex));
         return;
       }
     }
     if (ts.isThrowStatement(node)) own = true;
     if (inScope && !own) {
+      if (isStringRaw(node)) {
+        const tpl = node.template;
+        const parts = ts.isNoSubstitutionTemplateLiteral(tpl) ? [tpl] : [tpl.head, ...tpl.templateSpans.map((sp) => sp.literal)];
+        for (const part of parts) piece(part.rawText ?? part.text, "template", part, names, asRegex);
+        if (!ts.isNoSubstitutionTemplateLiteral(tpl)) tpl.templateSpans.forEach((sp) => visit(sp.expression, names, own, inScope, asRegex));
+        return;
+      }
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-        if (prose(node.text)) add(node.text, ts.isStringLiteral(node) ? "string" : "template", node, names);
+        piece(node.text, ts.isStringLiteral(node) ? "string" : "template", node, names, asRegex);
       } else if (ts.isTemplateExpression(node)) {
-        for (const part of [node.head, ...node.templateSpans.map((s) => s.literal)]) if (prose(part.text)) add(part.text, "template", part, names);
+        for (const part of [node.head, ...node.templateSpans.map((sp) => sp.literal)]) piece(part.text, "template", part, names, asRegex);
       } else if (ts.isRegularExpressionLiteral(node)) {
         const src = node.text.slice(1, node.text.lastIndexOf("/"));
         for (const r of regexRuns(src)) add(r, "regex", node, names);
       }
     }
-    ts.forEachChild(node, (c) => visit(c, names, own, inScope));
+    ts.forEachChild(node, (c) => visit(c, names, own, inScope, asRegex));
   };
-  visit(sf, [], false, want === null);
+  visit(sf, [], false, want === null, false);
   return out;
 }
 

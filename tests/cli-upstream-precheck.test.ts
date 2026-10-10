@@ -5,13 +5,13 @@
  * - precheck.py cannot run anything or reach the network (no such import), and its verdict follows its rules on small
  *   synthetic artifacts in every format it reads (a file, a .tgz, a .zip, a gzip file, a directory).
  */
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, SURFACES, buildManifest, manifestKeys, regexRuns, surfaceOf, type Manifest } from "../scripts/manual/cli-upstream-precheck/build-manifest.js";
+import { MANIFEST_PATH, SURFACES, buildManifest, declarationNames, literalsOf, manifestKeys, regexRuns, surfaceOf, type Manifest } from "../scripts/manual/cli-upstream-precheck/build-manifest.js";
 
 const DIR = join(process.cwd(), "scripts/manual/cli-upstream-precheck");
 const PRECHECK = join(DIR, "precheck.py");
@@ -60,6 +60,12 @@ describe("the regex reader", () => {
     [String.raw`No, maybe later with \/terminal-setup`, ["No, maybe later with /terminal-setup"]],
     [String.raw`colou?r is here now`, ["r is here now"]],
     [String.raw`(?<name>x) Yes, I trust this folder|Esc to cancel`, ["Yes, I trust this folder", "Esc to cancel"]],
+    // #1575 review: required whitespace is a space; machine codes are kept on their own.
+    [String.raw`no\s+device\s+registration found for token`, ["no device registration found for token"]],
+    [String.raw`unexpected\s+status\s+401\b`, ["unexpected status 401"]],
+    [String.raw`error.*authentication|UNAUTHENTICATED`, ["UNAUTHENTICATED"]],
+    [String.raw`(?:invalid_api_key|authentication_error)`, ["invalid_api_key", "authentication_error"]],
+    [String.raw`optional\s*space here`, ["space here"]],
   ])("%s → %j", (src, runs) => { expect(regexRuns(src)).toEqual(runs); });
   it("names a surface from the declaration when sources.json does not", () => {
     expect([surfaceOf(["TRUST_TITLE"]), surfaceOf(["getErrorPatterns"]), surfaceOf(["x"], { x: "exit" }), surfaceOf(["helper"])])
@@ -67,16 +73,47 @@ describe("the regex reader", () => {
   });
 });
 
+describe("the manifest holds the detectors AgEnD really runs (#1575 review P1-1)", () => {
+  it.each([
+    ["kiro-cli", "no device registration found for token"],   // new RegExp("…|…" + "…")
+    ["codex", "invalid_api_key"],                               // new RegExp(String.raw`…${…}…`)
+    ["codex", "invalid api key"],
+    ["claude", "Login failed: Request failed with status code 400"],   // LOGIN_FLOWS["claude-code"]
+    ["agy", "UNAUTHENTICATED"],                                 // a machine code in a regex
+  ])("%s: %j", (b, text) => {
+    expect(committed().backends[b]!.literals.some((l) => l.text === text)).toBe(true);
+  });
+  it("reads every string inside RegExp(…) as regex source: plain, concatenated, templated and String.raw", () => {
+    const src = [
+      'const A = new RegExp("Esc to cancel\\\\.");',
+      'const B = new RegExp("Press any key " + "to continue\\\\.");',
+      'const C = new RegExp(`Login failed\\\\. ${X} try again later`);',
+      'const D = new RegExp(String.raw`Sign in\\s+required\\.`);',
+      'const E = "Plain screen text here";',
+    ].join("\n");
+    const texts = literalsOf({ file: "src/inline.ts" }, src).map((l) => `${l.kind}:${l.text}`).sort();
+    expect(texts).toEqual(["regex:Esc to cancel", "regex:Login failed", "regex:Press any key", "regex:Sign in required", "regex:to continue", "regex:try again later", "string:Plain screen text here"]);
+  });
+  it("leaves out the names AgEnD gives its own dialogs (a helper's name/key/description argument)", () => {
+    const all = Object.values(committed().backends).flatMap((v) => v.literals.map((l) => l.text));
+    for (const own of ["Claude Bypass Permissions warning", "Claude workspace trust dialog", "Kiro V3 ease-in prompt"]) expect(all, own).not.toContain(own);
+  });
+  it("every declaration sources.json names exists in its file (a typo would silently select nothing)", () => {
+    const sources = JSON.parse(readFileSync(join(DIR, "sources.json"), "utf8")) as { backends: Record<string, Array<{ file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, string> }>> };
+    const missing: string[] = [];
+    for (const [b, entries] of Object.entries(sources.backends)) for (const e of entries) {
+      const names = declarationNames(e.file);
+      for (const n of [...(e.symbols ?? []), ...Object.keys(e.surfaces ?? {})]) if (!names.has(n)) missing.push(`${b} ${e.file} ${n}`);
+    }
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("precheck.py compares prompt-like strings as a release would show them", () => {
   it.each([
     ["minified names inside ${…} are not compared", "retrying in ${(Pe/1000).toFixed(1)}s", "retrying in ${}s"],
-    ["a string table's next header byte (Bun/JSC) is not compared", "Yes, and always allow access to 9", "Yes, and always allow access"],
-    ["a native binary's neighbour string (Rust/Go: no separator) is cut at the sentence end", "press R to continue here.retry Forking", "press R to continue here."],
-    ["…and after a colon run straight into the next string", "rate limit reached:Please try a shorter message.", "rate limit reached:"],
-    ["…and where a header byte glues two strings with no punctuation (Go)", "Yes, proceednDo you trust the contents", "Yes,"],
-    ["…the same pair without the byte reads the same", "Yes, proceedDo you trust the contents", "Yes,"],
-    ["a neighbour past the 60-character cap never moves the cut (grok)", "usage limit reachedstatus 401unauthorizedinvalid_request_errorCompaction failed", "usage limit reachedstatus 401unauthorizedinvalid_request_err"],
-    ["a prompt itself is kept", "Do you want to proceed? (y/n)", "Do you want to proceed?"],
+    ["the string ends at a control byte", "Do you want to proceed?\u0001next", "Do you want to proceed?"],
+    ["nothing else is cut (a product name stays whole)", "Do you want to connect to GitHub?", "Do you want to connect to GitHub?"],
   ])("%s", (_label, raw, key) => {
     const out = execFileSync("python3", ["-I", "-c", `import sys; sys.argv=["x"]; sys.path.insert(0, ${JSON.stringify(DIR)}); import precheck; print(precheck.normalize(sys.stdin.buffer.read()))`], { input: raw, encoding: "utf8" });
     expect(out.trimEnd()).toBe(key);
@@ -87,7 +124,7 @@ describe("precheck.py is static by construction", () => {
   it("imports nothing that runs a program or opens a connection", () => {
     const src = readFileSync(PRECHECK, "utf8");
     expect(src.match(/^\s*(?:import|from)\s+(\S+)/gm)!.map((l) => l.trim().split(/\s+/)[1]).sort())
-      .toEqual(["bisect", "gzip", "json", "os", "re", "sys", "tarfile", "zipfile"]);
+      .toEqual(["bisect", "json", "os", "re", "sys", "tarfile", "zipfile", "zlib"]);
     expect(src).not.toMatch(/subprocess|socket|urllib|http\.|os\.system|os\.exec|os\.spawn|popen|ctypes|extractall|\.extract\(|__import__|eval\(|exec\(/);
   });
 });
@@ -110,9 +147,9 @@ function manifestFile(d: string): string {
 }
 const pad = (n: number) => "\0".repeat(n);
 const OLD = `head${pad(10)}Do you trust the files in this folder${pad(10)}esc to interrupt now${pad(10)}Rate limited, retrying soon${pad(10)}esc to interrupt now${pad(8000)}tail`;
-function run(old: string, neu: string, m: string): { verdict: string; out: string } {
-  const out = execFileSync("python3", ["-I", PRECHECK, "fake", old, neu, "--manifest", m], { encoding: "utf8" });
-  return { verdict: out.trim().split("\n").at(-1)!, out };
+function run(old: string, neu: string, m: string, extra: string[] = []): { verdict: string; out: string; status: number | null } {
+  const r = spawnSync("python3", ["-I", PRECHECK, "fake", old, neu, "--manifest", m, ...extra], { encoding: "utf8" });
+  return { verdict: r.stdout.trim().split("\n").at(-1)!, out: r.stdout, status: r.status };
 }
 function pair(neu: string): { verdict: string; out: string } {
   const d = scratch();
@@ -176,5 +213,138 @@ describe("precheck.py's verdict", () => {
     try { execFileSync("python3", ["-I", PRECHECK, "fake", join(d, "none"), join(d, "none"), "--manifest", manifestFile(d)], { encoding: "utf8" }); }
     catch (e) { out = String((e as { stdout?: string }).stdout ?? ""); }
     expect(out.trim().split("\n").at(-1)).toBe("PRECHECK: MAJOR");
+  });
+});
+
+// ── #1575 review: what must never pass as NONE or MINOR ──
+
+const T = "Do you trust the files in this folder", B = "esc to interrupt now", R = "Rate limited, retrying soon";
+const NEW_Q = "Do you want to share all credentials?";
+function files(old: string | Buffer, neu: string | Buffer): { old: string; neu: string; m: string; d: string } {
+  const d = scratch();
+  writeFileSync(join(d, "old.bin"), old);
+  writeFileSync(join(d, "new.bin"), neu);
+  return { old: join(d, "old.bin"), neu: join(d, "new.bin"), m: manifestFile(d), d };
+}
+
+describe("removing one detector literal from a real backend's text is MAJOR, with the real manifest (P1-1)", () => {
+  it.each([
+    ["kiro-cli", "no device registration found for token"],
+    ["codex", "invalid_api_key"],
+    ["claude", "Login failed: Request failed with status code 400"],
+    ["agy", "UNAUTHENTICATED"],
+  ])("%s without %j", (b, target) => {
+    const markers = committed().backends[b]!.literals.map((l) => l.text).filter((t) => t !== target && !target.includes(t) && !t.includes(target)).slice(0, 3);
+    const d = scratch();
+    writeFileSync(join(d, "old.bin"), [...markers, target].join("\0"));
+    writeFileSync(join(d, "new.bin"), markers.join("\0"));
+    writeFileSync(join(d, "same.bin"), [...markers, target].join("\0"));
+    const removed = spawnSync("python3", ["-I", PRECHECK, b, join(d, "old.bin"), join(d, "new.bin")], { encoding: "utf8" }).stdout;
+    const control = spawnSync("python3", ["-I", PRECHECK, b, join(d, "old.bin"), join(d, "same.bin")], { encoding: "utf8" }).stdout;
+    expect(removed.trim().split("\n").at(-1)).toBe("PRECHECK: MAJOR");
+    expect(removed).toContain(`missing: [`);
+    expect(control.trim().split("\n").at(-1)).toBe("PRECHECK: NONE");
+  });
+});
+
+describe("new prompts are found wherever they sit, in every text form (P1-2)", () => {
+  it("next to the 65th occurrence of a literal (every occurrence places prompts)", () => {
+    const old = `${`${T}${pad(4)}`.repeat(64)}${B}${pad(4)}${R}${pad(3000)}${T}${pad(8)}`;
+    const f = files(old, `${old}${NEW_Q}`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("in UTF-16LE text, as its literals are", () => {
+    const u = (s: string) => Buffer.from(s, "utf16le");
+    const old = Buffer.concat([u(T), Buffer.alloc(8), u(B), Buffer.alloc(8), u(R), Buffer.alloc(8)]);
+    const f = files(old, Buffer.concat([old, u(NEW_Q)]));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.out.includes("literals in the old artifact: 3 of 4")]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a product name is not cut: OpenAI → GitHub beside a known literal is MAJOR", () => {
+    const f = files(`${OLD}${T}${pad(4)}Do you want to connect to OpenAI?`, `${OLD}${T}${pad(4)}Do you want to connect to GitHub?`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("control: a new question inside embedded markdown documentation (**bold**) is not a screen: MINOR, listed apart", () => {
+    const f = files(`${OLD}${T}${pad(4)}`, `${OLD}${T}${pad(4)}Make sure **Allow self-hosted environments** is on?`);
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /in documentation text \(markdown \*\*bold\*\*\): 1/.test(r.out)]).toEqual(["PRECHECK: MINOR", true]);
+  });
+  it("…but the same question without markdown, beside a known literal, is MAJOR", () => {
+    const f = files(`${OLD}${T}${pad(4)}`, `${OLD}${T}${pad(4)}Make sure Allow self-hosted environments is on?`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("control: a Bun string table's length byte after a string is not part of it (NONE)", () => {
+    const head = Buffer.from(`${OLD}${T}${pad(4)}Yes, and always allow access to `);
+    const f = files(Buffer.concat([head, Buffer.from([0x03, 0, 0, 0x80])]), Buffer.concat([head, Buffer.from([0x39, 0, 0, 0x80])]));   // "9" = the next entry's length
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: NONE");
+  });
+  it("control: only the neighbour of a kept prompt changed, and the neighbour was already there (MINOR, said so)", () => {
+    const old = `${OLD}${R}${pad(4)}Yes, proceed${T}${pad(30)}Yes, proceedn  No, quit${pad(4)}`;
+    const f = files(old, old.replace(`Yes, proceed${T}`, `Yes, proceedn${T}`));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /ONLY ITS NEIGHBOURING STRING CHANGED: 1/.test(r.out)]).toEqual(["PRECHECK: MINOR", true]);
+  });
+  it("…but a neighbour the old release never had is a new prompt (MAJOR)", () => {
+    const old = `${OLD}${R}${pad(4)}Yes, proceed${T}${pad(30)}Yes, proceedn  No, quit${pad(4)}`;
+    const f = files(old, old.replace(`Yes, proceed${T}`, "Yes, proceednDo you share all the credentials"));
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+});
+
+describe("a scan that could not read everything is MAJOR, whatever else it saw (P1-3, P2-2)", () => {
+  const MARKERS = [T, B, R].join("\0");
+  it("an unreadable directory inside the artifact", () => {
+    if (process.getuid?.() === 0) return;           // root reads everything: nothing to show
+    const d = scratch();
+    for (const side of ["old", "new"]) { mkdirSync(join(d, side, "locked"), { recursive: true }); writeFileSync(join(d, side, "cli"), MARKERS); }
+    chmodSync(join(d, "new", "locked"), 0o000);
+    try {
+      const r = run(join(d, "old"), join(d, "new"), manifestFile(d));
+      expect([r.verdict, /INCOMPLETE \(new\): cannot list/.test(r.out), r.status]).toEqual(["PRECHECK: MAJOR", true, 4]);
+    } finally { chmodSync(join(d, "new", "locked"), 0o755); }
+  });
+  it("a file over the size bound", () => {
+    const d = scratch();
+    for (const side of ["old", "new"]) { mkdirSync(join(d, side)); writeFileSync(join(d, side, "cli"), MARKERS); }
+    writeFileSync(join(d, "new", "big"), "x".repeat(2048));
+    const r = run(join(d, "old"), join(d, "new"), manifestFile(d), ["--max-member", "1024"]);
+    expect([r.verdict, /big: larger than 1024 bytes/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a broken gzip file (its raw bytes are not scanned instead)", () => {
+    const f = files(MARKERS, Buffer.concat([Buffer.from([0x1f, 0x8b, 0x08, 0x00]), Buffer.from(MARKERS)]));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /broken gzip|truncated gzip/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a gzip file that expands past the bound is refused while it is being expanded", () => {
+    const big = gzipSync(Buffer.from(`${MARKERS}\0${"y".repeat(4100)}`));
+    const f = files(MARKERS, big);
+    const r = run(f.old, f.neu, f.m, ["--max-member", "1024"]);
+    expect([r.verdict, /decompresses to more than 1024 bytes/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+});
+
+describe("every failure still ends with the verdict line, and a non-zero exit (P2-1)", () => {
+  it("a manifest that is not JSON", () => {
+    const f = files(OLD, OLD);
+    writeFileSync(f.m, "{");
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.status !== 0]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("an error no check anticipated (a manifest literal that cannot be encoded) still ends with the verdict", () => {
+    const f = files(OLD, OLD);
+    writeFileSync(f.m, '{"backends":{"fake":{"literals":[{"text":"\\ud800 lone surrogate","surface":"error"}]}}}');
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.status !== 0, /could not run: UnicodeEncodeError/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true, true]);
+  });
+  it("a zip member whose bytes were changed (CRC error)", () => {
+    const d = scratch();
+    execFileSync("python3", ["-I", "-c", `import zipfile; z=zipfile.ZipFile(${JSON.stringify(join(d, "cli.zip"))},"w"); z.writestr("cli", ${JSON.stringify(OLD)}); z.close()`]);
+    const zip = readFileSync(join(d, "cli.zip"));
+    const at = zip.indexOf(Buffer.from("Do you trust"));
+    zip[at] = zip[at]! ^ 1;
+    writeFileSync(join(d, "bad.zip"), zip);
+    writeFileSync(join(d, "old.bin"), OLD);
+    const r = run(join(d, "old.bin"), join(d, "bad.zip"), manifestFile(d));
+    expect([r.verdict, r.status !== 0]).toEqual(["PRECHECK: MAJOR", true]);
   });
 });

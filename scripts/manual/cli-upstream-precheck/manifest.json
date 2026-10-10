@@ -357,6 +357,14 @@
      "symbol": "CLAUDE_RETRY_WAIT"
     },
     {
+     "text": "Retrying in",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 525,
+     "symbol": "CLAUDE_RETRY_SUFFIX"
+    },
+    {
      "text": "[ \\t]·[ \\t]Retrying in ",
      "kind": "template",
      "surface": "error",
@@ -373,20 +381,20 @@
      "symbol": "CLAUDE_LIVE_TAIL"
     },
     {
-     "text": ")\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ",
-     "kind": "template",
-     "surface": "error",
-     "file": "src/backend/claude-code.ts",
-     "line": 560,
-     "symbol": "claudeRetryRow"
-    },
-    {
      "text": "Do you want to proceed",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
      "line": 569,
      "symbol": "CLAUDE_DANGEROUS_COMMAND_PROMPT"
+    },
+    {
+     "text": "to cancel",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 571,
+     "symbol": "DANGER_FOOTER"
     },
     {
      "text": "Esc to cancel · Tab to amend",
@@ -405,7 +413,15 @@
      "symbol": "claudeBashPermissionActive"
     },
     {
-     "text": "Yes, and always allow access to",
+     "text": "1. Yes",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 641,
+     "symbol": "claudeBashPermissionActive"
+    },
+    {
+     "text": "2. Yes, and always allow access to",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
@@ -421,7 +437,7 @@
      "symbol": "claudeBashPermissionActive"
     },
     {
-     "text": "Yes, and switch to auto mode · auto mode handles these prompts for you",
+     "text": "3. Yes, and switch to auto mode · auto mode handles these prompts for you",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/claude-code.ts",
@@ -437,11 +453,19 @@
      "symbol": "CLAUDE_BACKGROUND_WORK_EXIT"
     },
     {
-     "text": "Exit and stop tasks",
+     "text": "1. Exit and stop tasks",
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/claude-code.ts",
      "line": 670,
+     "symbol": "claudeBackgroundWorkExitActive"
+    },
+    {
+     "text": "3. Stay",
+     "kind": "regex",
+     "surface": "exit",
+     "file": "src/backend/claude-code.ts",
+     "line": 671,
      "symbol": "claudeBackgroundWorkExitActive"
     },
     {
@@ -459,6 +483,14 @@
      "file": "src/backend/claude-code.ts",
      "line": 986,
      "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 986,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
     },
     {
      "text": "API Error: Request rejected (429",
@@ -493,6 +525,14 @@
      "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
     },
     {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 996,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
+    },
+    {
      "text": "API Error: Authentication",
      "kind": "regex",
      "surface": "error",
@@ -517,12 +557,36 @@
      "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
     },
     {
+     "text": "model_access",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1006,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
      "text": "or ask your admin to enable this model",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/claude-code.ts",
      "line": 1006,
      "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "unrecognized_model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1006,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1007,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
     },
     {
      "text": "API Error: Overloaded",
@@ -539,6 +603,14 @@
      "file": "src/backend/claude-code.ts",
      "line": 1015,
      "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "config_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1040,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.type"
     },
     {
      "text": "API key",
@@ -613,28 +685,20 @@
      "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
     },
     {
-     "text": "Claude Bypass Permissions warning",
-     "kind": "string",
-     "surface": "dialog",
-     "file": "src/backend/claude-code.ts",
-     "line": 1130,
-     "symbol": "ClaudeCodeBackend.getStartupDialogs"
-    },
-    {
-     "text": "Claude workspace trust dialog",
-     "kind": "string",
-     "surface": "dialog",
-     "file": "src/backend/claude-code.ts",
-     "line": 1131,
-     "symbol": "ClaudeCodeBackend.getStartupDialogs"
-    },
-    {
      "text": "Resume Session",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/claude-code.ts",
      "line": 1137,
      "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "dangerous_command",
+     "kind": "string",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1191,
+     "symbol": "ClaudeCodeBackend.getRuntimeDialogs.interactionKind"
     },
     {
      "text": "no conversation found",
@@ -659,13 +723,69 @@
      "file": "src/backend/claude-code.ts",
      "line": 1277,
      "symbol": "ClaudeCodeBackend.resumeMissingPattern"
+    },
+    {
+     "text": "function_calls",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/daemon.ts",
+     "line": 1076,
+     "symbol": "detectMalformedClaudeToolCall.closingTags"
+    },
+    {
+     "text": "claude auth login",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 250,
+     "symbol": "LOGIN_FLOWS.claude-code.command"
+    },
+    {
+     "text": "Sign in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 252,
+     "symbol": "LOGIN_FLOWS.claude-code.loginScreenPattern"
+    },
+    {
+     "text": "your Anthropic account",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 252,
+     "symbol": "LOGIN_FLOWS.claude-code.loginScreenPattern"
+    },
+    {
+     "text": "Logged in as",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 255,
+     "symbol": "LOGIN_FLOWS.claude-code.successPattern"
+    },
+    {
+     "text": "Login successful",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 255,
+     "symbol": "LOGIN_FLOWS.claude-code.successPattern"
+    },
+    {
+     "text": "Login failed: Request failed with status code 400",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 262,
+     "symbol": "LOGIN_FLOWS.claude-code.failures.pattern"
     }
    ]
   },
   "codex": {
    "literals": [
     {
-     "text": "Context[ \t]+(?:d+%[ \t]+(?:left|used)|d+…|…)",
+     "text": "Context[ \\t]+(?:\\d+%[ \\t]+(?:left|used)|\\d+…|…)",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -817,11 +937,27 @@
      "symbol": "codexRateSwitchPickerVisible"
     },
     {
-     "text": "Keep current model (never show again",
+     "text": "3. Keep current model (never show again",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
      "line": 539,
+     "symbol": "codexRateSwitchPickerVisible"
+    },
+    {
+     "text": "2. Keep current model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 540,
+     "symbol": "codexRateSwitchPickerVisible"
+    },
+    {
+     "text": "1. Switch to",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 541,
      "symbol": "codexRateSwitchPickerVisible"
     },
     {
@@ -833,24 +969,56 @@
      "symbol": "codexUnknownSelectionVisible"
     },
     {
-     "text": "^[ \t]*•[ \t]+(?:Reconnecting to (?:app-)?server(?:…|...)|Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch)[ \t]+(d+[hms](?:[ \t]+d+[hms])*)[ \t]*$",
-     "kind": "template",
+     "text": "Reconnect failed — check the endpoint, then relaunch",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
      "line": 626,
      "symbol": "CODEX_DISCONNECT_ROW"
     },
     {
-     "text": "^s*r retrys+(?:f forks+)?esc/",
-     "kind": "template",
+     "text": "Reconnecting to",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 626,
+     "symbol": "CODEX_DISCONNECT_ROW"
+    },
+    {
+     "text": "c/q exit",
+     "kind": "regex",
      "surface": "resume",
      "file": "src/backend/codex.ts",
      "line": 650,
      "symbol": "CODEX_SESSION_LOCK_FOOTER"
     },
     {
-     "text": "^s*enter continue · esc use session · ",
-     "kind": "template",
+     "text": "f fork",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 650,
+     "symbol": "CODEX_SESSION_LOCK_FOOTER"
+    },
+    {
+     "text": "r retry",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 650,
+     "symbol": "CODEX_SESSION_LOCK_FOOTER"
+    },
+    {
+     "text": "c quit",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 651,
+     "symbol": "CODEX_RESUME_CWD_FOOTER"
+    },
+    {
+     "text": "enter continue · esc use session",
+     "kind": "regex",
      "surface": "resume",
      "file": "src/backend/codex.ts",
      "line": 651,
@@ -897,7 +1065,7 @@
      "symbol": "codexResumeCwdPickerVisible"
     },
     {
-     "text": "Update now",
+     "text": "1. Update now",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/codex.ts",
@@ -905,7 +1073,15 @@
      "symbol": "codexUpdatePickerVisible"
     },
     {
-     "text": "Skip until next version",
+     "text": "2. Skip",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 706,
+     "symbol": "codexUpdatePickerVisible.second"
+    },
+    {
+     "text": "3. Skip until next version",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/codex.ts",
@@ -937,7 +1113,7 @@
      "symbol": "CODEX_LIVE_STATUS_ROW"
     },
     {
-     "text": "[p{L}p{N}][p{L}p{N}._:/+-]*(?:[ \t]+(?:none|low|medium|high|xhigh|max|minimal|standard))?(?:[ \t]+(?:fast|flex|priority))?",
+     "text": "[\\p{L}\\p{N}][\\p{L}\\p{N}._:/+-]*(?:[ \\t]+(?:none|low|medium|high|xhigh|max|minimal|standard))?(?:[ \\t]+(?:fast|flex|priority))?",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -945,7 +1121,15 @@
      "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.model-with-reasoning"
     },
     {
-     "text": "d+(?:.d+)?[kKmM]?[ \t]+window",
+     "text": "No changes",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 807,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.branch-changes"
+    },
+    {
+     "text": "\\d+(?:\\.\\d+)?[kKmM]?[ \\t]+window",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -953,7 +1137,7 @@
      "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.context-window-size"
     },
     {
-     "text": "weekly[ \t]+d+(?:.d+)?%(?:[ \t]+(?:left|used))?(?:[ \t]+@?[^\r\n·]+)?",
+     "text": "weekly[ \\t]+\\d+(?:\\.\\d+)?%(?:[ \\t]+(?:left|used))?(?:[ \\t]+@?[^\\r\\n·]+)?",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -961,7 +1145,7 @@
      "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.weekly-limit"
     },
     {
-     "text": "d+(?:.d+)?[kKmM]?[ \t]+(?:tokens?[ \t]+)?used",
+     "text": "\\d+(?:\\.\\d+)?[kKmM]?[ \\t]+(?:tokens?[ \\t]+)?used",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -969,7 +1153,7 @@
      "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.used-tokens"
     },
     {
-     "text": "d+(?:.d+)?[kKmM]?[ \t]+in",
+     "text": "\\d+(?:\\.\\d+)?[kKmM]?[ \\t]+in",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -977,7 +1161,7 @@
      "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.total-input-tokens"
     },
     {
-     "text": "d+(?:.d+)?[kKmM]?[ \t]+out",
+     "text": "\\d+(?:\\.\\d+)?[kKmM]?[ \\t]+out",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -985,7 +1169,7 @@
      "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.total-output-tokens"
     },
     {
-     "text": "Fast[ \t]+(?:on|off)",
+     "text": "Fast[ \\t]+(?:on|off)",
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
@@ -1007,6 +1191,14 @@
      "file": "src/backend/codex.ts",
      "line": 841,
      "symbol": "codexBoxedResumeLoading"
+    },
+    {
+     "text": "model: loading",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 847,
+     "symbol": "codexBoxedResumeLoading.loading"
     },
     {
      "text": "Resuming session",
@@ -1041,6 +1233,14 @@
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
+     "text": "check_for_update_on_startup",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 1266,
+     "symbol": "CodexBackend.disableStartupUpdateCheck.existing"
+    },
+    {
      "text": "check_for_update_on_startup = false",
      "kind": "string",
      "surface": "other",
@@ -1055,6 +1255,14 @@
      "file": "src/backend/codex.ts",
      "line": 1275,
      "symbol": "CodexBackend.disableStartupUpdateCheck.LINE"
+    },
+    {
+     "text": "status_line",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1344,
+     "symbol": "CodexBackend.enableContextStatusLine"
     },
     {
      "text": "\n[tui]\nstatus_line = [\"",
@@ -1081,12 +1289,12 @@
      "symbol": "CodexBackend.enableContextStatusLine.reason"
     },
     {
-     "text": "(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}",
-     "kind": "template",
-     "surface": "idle-busy",
+     "text": "archived_sessions",
+     "kind": "string",
+     "surface": "resume",
      "file": "src/backend/codex.ts",
-     "line": 1670,
-     "symbol": "CodexBackend.getReadyPattern.noContextReady"
+     "line": 1430,
+     "symbol": "CodexBackend.SHARED_SESSION_DIRS"
     },
     {
      "text": "Messages to be submitted",
@@ -1097,28 +1305,132 @@
      "symbol": "CodexBackend.isStableUnknownLayoutIdlePane"
     },
     {
-     "text": "|Error:|API Error:)s*[sS]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceededs+yours+currents+quota)\b",
-     "kind": "template",
+     "text": "API Error",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
      "line": 1802,
      "symbol": "CodexBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|Error:|API Error:)s*[sS]{0,240}?(?:[\"'](?:status|code)[\"']s*:s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)",
-     "kind": "template",
+     "text": "billing_hard_limit_reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1802,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "exceeded your current quota",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1802,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "insufficient_quota",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1802,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate limit",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
      "line": 1815,
      "symbol": "CodexBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|Error:|API Error:)s*[sS]{0,240}?(?:[\"'](?:status|code)[\"']s*:s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)",
-     "kind": "template",
+     "text": "rate_limit_exceeded",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1815,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "too many requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1815,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "too_many_requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1815,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "unexpected status 429",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1815,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1818,
+     "symbol": "CodexBackend.getErrorPatterns.type"
+    },
+    {
+     "text": "401 Unauthorized",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
      "line": 1828,
      "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "authentication_error",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1828,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "invalid api key",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1828,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "invalid_api_key",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1828,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "unexpected status 401",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1828,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1831,
+     "symbol": "CodexBackend.getErrorPatterns.type"
     },
     {
      "text": "ve hit your usage limit",
@@ -1129,12 +1441,36 @@
      "symbol": "CodexBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "^[ \t]*•[ \t]+Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch[ \t]+(d+[hms](?:[ \t]+d+[hms])*)[ \t]*$",
-     "kind": "template",
+     "text": "model is not supported when using codex with a chatgpt account",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1848,
+     "line": 1863,
      "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model metadata for",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1863,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "not found. defaulting to fallback metadata",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1863,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1864,
+     "symbol": "CodexBackend.getErrorPatterns.type"
     },
     {
      "text": "Selected model is at capacity. Please try a different model",
@@ -1143,6 +1479,46 @@
      "file": "src/backend/codex.ts",
      "line": 1887,
      "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "nudge_continue",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1889,
+     "symbol": "CodexBackend.getErrorPatterns.action"
+    },
+    {
+     "text": "workspace is out of credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1906,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "less than",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1928,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "of your",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1928,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Keep current model (never show again",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 2022,
+     "symbol": "CodexBackend.rateSwitchPickerDialog.pattern"
     },
     {
      "text": "Release notes: https://github.com/openai/codex/releases",
@@ -1175,6 +1551,14 @@
      "file": "src/daemon.ts",
      "line": 739,
      "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "codex resume",
+     "kind": "regex",
+     "surface": "exit",
+     "file": "src/daemon.ts",
+     "line": 4149,
+     "symbol": "Daemon.isCodexResumeScreen"
     },
     {
      "text": "codex login --device-auth",
@@ -1213,7 +1597,15 @@
      "symbol": "looksLikeOpencodeHelp"
     },
     {
-     "text": "enter confirm",
+     "text": "again to",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/opencode-permission.ts",
+     "line": 110,
+     "symbol": "COMPOSER"
+    },
+    {
+     "text": "select enter confirm",
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/opencode-permission.ts",
@@ -1229,7 +1621,7 @@
      "symbol": "HINT_LINE"
     },
     {
-     "text": "Allow always",
+     "text": "Allow once Allow always Reject",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/opencode-permission.ts",
@@ -1237,12 +1629,12 @@
      "symbol": "PERMISSION_OPTIONS"
     },
     {
-     "text": "Allow once",
+     "text": "Confirm Cancel",
      "kind": "regex",
-     "surface": "approval",
+     "surface": "other",
      "file": "src/backend/opencode-permission.ts",
-     "line": 161,
-     "symbol": "PERMISSION_OPTIONS"
+     "line": 163,
+     "symbol": "ALWAYS_OPTIONS"
     },
     {
      "text": "Ask anything",
@@ -1267,6 +1659,22 @@
      "file": "src/backend/opencode.ts",
      "line": 140,
      "symbol": "OpenCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/opencode.ts",
+     "line": 141,
+     "symbol": "OpenCodeBackend.getErrorPatterns.type"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/opencode.ts",
+     "line": 147,
+     "symbol": "OpenCodeBackend.getErrorPatterns.type"
     },
     {
      "text": "Permission required",
@@ -1373,6 +1781,14 @@
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
+     "text": "pty_error",
+     "kind": "string",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10794,
+     "symbol": "Daemon.dismissDialogsUntilReady"
+    },
+    {
      "text": "command not found",
      "kind": "regex",
      "surface": "dialog",
@@ -1458,19 +1874,27 @@
     },
     {
      "text": "Log in with browser",
-     "kind": "string",
+     "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/muse.ts",
-     "line": 201,
-     "symbol": "museLoginScreenActive"
+     "line": 211,
+     "symbol": "MUSE_LOGIN_MENU.pattern"
     },
     {
      "text": "Set an API key",
-     "kind": "string",
+     "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/muse.ts",
-     "line": 201,
-     "symbol": "museLoginScreenActive"
+     "line": 211,
+     "symbol": "MUSE_LOGIN_MENU.pattern"
+    },
+    {
+     "text": "ENOENT",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/muse.ts",
+     "line": 348,
+     "symbol": "MuseBackend.mirrorSharedConfigEntries"
     },
     {
      "text": "Muse Code",
@@ -1479,6 +1903,14 @@
      "file": "src/backend/muse.ts",
      "line": 475,
      "symbol": "MuseBackend.getReadyPattern"
+    },
+    {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 581,
+     "symbol": "MuseBackend.getErrorPatterns.type"
     },
     {
      "text": "too many requests",
@@ -1490,43 +1922,67 @@
     },
     {
      "text": "still unauthorized after a token refresh; run `muse login` again",
-     "kind": "string",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
      "line": 594,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|your saved login is no longer valid\\. Log in again or use a different account",
-     "kind": "string",
+     "text": "your saved login is no longer valid. Log in again or use a different account",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
      "line": 595,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|your API key from META_API_KEY was rejected",
-     "kind": "string",
+     "text": "your API key from META_API_KEY was rejected",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
      "line": 596,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|Not logged in\\. Run \\S+(?: \\S+)? again to log in",
-     "kind": "string",
+     "text": "Not logged in. Run",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
      "line": 597,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|Not logged in\\W+run /login to get started",
-     "kind": "string",
+     "text": "again to log in",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 597,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Not logged in",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
      "line": 598,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "run /login to get started",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 598,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 600,
+     "symbol": "MuseBackend.getErrorPatterns.type"
     },
     {
      "text": "out of credits",
@@ -1637,7 +2093,7 @@
      "symbol": "readKiroComposer"
     },
     {
-     "text": "^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+",
+     "text": "^›[ \\t]+Kiro is working(?:[ \\t]+·[ \\t]+[^·]+?)?[ \\t]+·[ \\t]+",
      "kind": "template",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
@@ -1645,23 +2101,39 @@
      "symbol": "readKiroComposer.working"
     },
     {
-     "text": "Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$",
-     "kind": "template",
+     "text": "Type to steer",
+     "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
      "line": 105,
      "symbol": "readKiroComposer"
     },
     {
-     "text": "Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$",
-     "kind": "template",
+     "text": "to queue",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 105,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "Type to queue",
+     "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
      "line": 106,
      "symbol": "readKiroComposer"
     },
     {
-     "text": "^›[ \t]+ask a question or describe a task",
+     "text": "to steer",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 106,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "^›[ \\t]+ask a question or describe a task",
      "kind": "template",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
@@ -1669,16 +2141,16 @@
      "symbol": "readKiroComposer.idle"
     },
     {
-     "text": "[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$",
-     "kind": "template",
+     "text": "exit plan mode: shift+tab",
+     "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
      "line": 109,
      "symbol": "readKiroComposer"
     },
     {
-     "text": "[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$",
-     "kind": "template",
+     "text": "tangent to go back · /tangent ls to view",
+     "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/kiro.ts",
      "line": 110,
@@ -1853,28 +2325,12 @@
      "symbol": "KIRO_CLASSIC_NUDGE.options"
     },
     {
-     "text": "Kiro V3 ease-in prompt",
+     "text": "kiro_default",
      "kind": "string",
-     "surface": "onboarding",
+     "surface": "input-box",
      "file": "src/backend/kiro.ts",
-     "line": 450,
-     "symbol": "KIRO_ENGINE_PROMPT_DIALOGS"
-    },
-    {
-     "text": "Kiro 3.0 agent-config upgrade prompt",
-     "kind": "string",
-     "surface": "onboarding",
-     "file": "src/backend/kiro.ts",
-     "line": 451,
-     "symbol": "KIRO_ENGINE_PROMPT_DIALOGS"
-    },
-    {
-     "text": "Kiro Classic deprecation nudge",
-     "kind": "string",
-     "surface": "onboarding",
-     "file": "src/backend/kiro.ts",
-     "line": 452,
-     "symbol": "KIRO_ENGINE_PROMPT_DIALOGS"
+     "line": 664,
+     "symbol": "readActiveKiroAgent"
     },
     {
      "text": "/agent swap ",
@@ -1893,19 +2349,19 @@
      "symbol": "KiroBackend.instructionsSource"
     },
     {
-     "text": "All tools are now trusted|Trust All Tools active|Credits:.*Time:",
-     "kind": "template",
+     "text": "All tools are now trusted",
+     "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
      "line": 1299,
      "symbol": "KiroBackend.getReadyPattern"
     },
     {
-     "text": "|ask a question or describe a task|\\d+%.*[!❯>]|",
-     "kind": "template",
+     "text": "Trust All Tools active",
+     "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 1300,
+     "line": 1299,
      "symbol": "KiroBackend.getReadyPattern"
     },
     {
@@ -1933,6 +2389,14 @@
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
+     "text": "model_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1357,
+     "symbol": "KiroBackend.getErrorPatterns.type"
+    },
+    {
      "text": "not available",
      "kind": "regex",
      "surface": "error",
@@ -1949,28 +2413,68 @@
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "You are not logged in|ExpiredTokenException|no device registration found for token",
-     "kind": "string",
+     "text": "ExpiredTokenException",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1400,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|Access denied:.*bearer token.*invalid",
-     "kind": "string",
+     "text": "You are not logged in",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1400,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "no device registration found for token",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1400,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Access denied",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1401,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "|^\\s*\\d+:\\s*(?:dispatch failure[^\\n]*?)?No token\\s*$",
-     "kind": "string",
+     "text": "bearer token",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1401,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "No token",
+     "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
      "line": 1402,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "dispatch failure",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1402,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1406,
+     "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
      "text": "dispatch failure (timeout",
@@ -2011,6 +2515,38 @@
      "file": "src/backend/kiro.ts",
      "line": 1457,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "RequestThrottledException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1472,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "SlowDownException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1472,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "TooManyRequestsException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1472,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1473,
+     "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
      "text": "having trouble responding",
@@ -2077,8 +2613,8 @@
      "symbol": "KIRO_EXPIRED_LOGIN_SCREEN"
     },
     {
-     "text": "Select login method|",
-     "kind": "template",
+     "text": "Select login method",
+     "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
      "line": 179,
@@ -2145,7 +2681,7 @@
      "symbol": "grokWeeklyLimitDialog.pattern"
     },
     {
-     "text": "Tab:next answer",
+     "text": "Tab:next answer │ Esc:scrollback │ Shift+x:dismiss",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
@@ -2161,7 +2697,7 @@
      "symbol": "grokWeeklyLimitDialog.isActive.title"
     },
     {
-     "text": "1 (○) Upgrade tier",
+     "text": "1 (○) Upgrade tier Upgrade to a higher tier for more usage",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
@@ -2169,15 +2705,7 @@
      "symbol": "grokWeeklyLimitDialog.isActive.upgrade"
     },
     {
-     "text": "Upgrade to a higher tier for more usage",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/grok.ts",
-     "line": 40,
-     "symbol": "grokWeeklyLimitDialog.isActive.upgrade"
-    },
-    {
-     "text": "2 (○) Buy more credits",
+     "text": "2 (○) Buy more credits Purchase credits to keep using Grok Build",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
@@ -2185,15 +2713,7 @@
      "symbol": "grokWeeklyLimitDialog.isActive.credits"
     },
     {
-     "text": "Purchase credits to keep using Grok Build",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/grok.ts",
-     "line": 41,
-     "symbol": "grokWeeklyLimitDialog.isActive.credits"
-    },
-    {
-     "text": "navigate · y copy",
+     "text": "navigate · y copy Enter:submit",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
@@ -2209,12 +2729,28 @@
      "symbol": "GrokBackend.getReadyPattern"
     },
     {
+     "text": "rate_limit",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 256,
+     "symbol": "GrokBackend.getErrorPatterns.type"
+    },
+    {
      "text": "too many requests",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
      "line": 256,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 257,
+     "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
      "text": "insufficient credits",
@@ -2231,6 +2767,46 @@
      "file": "src/backend/grok.ts",
      "line": 258,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Request failed (426",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 267,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Your Grok CLI version",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 267,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "is outdated",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 267,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "update to version",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 267,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "outdated_cli",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 268,
+     "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
      "text": "Do you trust the contents",
@@ -2341,14 +2917,6 @@
      "symbol": "AGY_LEGACY_BUSY_ROW"
     },
     {
-     "text": "^[\\u2800-\\u28FF][ \\t]+\\p{L}[^\\n]*?(?:…|\\.\\.\\.)[ \\t]*(?:\\(esc to cancel\\)|\\d+(?:\\.\\d+)?s)?[ \\t]*\\r?\\n",
-     "kind": "string",
-     "surface": "idle-busy",
-     "file": "src/backend/antigravity.ts",
-     "line": 66,
-     "symbol": "AGY_WORKING_ROW_ABOVE_COMPOSER"
-    },
-    {
      "text": "Do you trust the contents of this project",
      "kind": "regex",
      "surface": "trust",
@@ -2373,8 +2941,8 @@
      "symbol": "agyTrustDialogState"
     },
     {
-     "text": "\\? for shortcuts|^\\s*",
-     "kind": "template",
+     "text": "for shortcuts",
+     "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/antigravity.ts",
      "line": 369,
@@ -2389,12 +2957,44 @@
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
+     "text": "RESOURCE_EXHAUSTED",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 492,
+     "symbol": "AntigravityBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "UNAUTHENTICATED",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 493,
+     "symbol": "AntigravityBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 493,
+     "symbol": "AntigravityBackend.getErrorPatterns.type"
+    },
+    {
      "text": "failed to construct executor",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/antigravity.ts",
      "line": 499,
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "model_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 499,
+     "symbol": "AntigravityBackend.getErrorPatterns.type"
     },
     {
      "text": "unknown model key",
@@ -2405,31 +3005,7 @@
      "symbol": "AntigravityBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "0] Skip",
-     "kind": "regex",
-     "surface": "dialog",
-     "file": "src/backend/antigravity.ts",
-     "line": 540,
-     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
-    },
-    {
-     "text": "1] Good",
-     "kind": "regex",
-     "surface": "dialog",
-     "file": "src/backend/antigravity.ts",
-     "line": 540,
-     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
-    },
-    {
-     "text": "2] Fine",
-     "kind": "regex",
-     "surface": "dialog",
-     "file": "src/backend/antigravity.ts",
-     "line": 540,
-     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
-    },
-    {
-     "text": "3] Bad",
+     "text": "1] Good [2] Fine [3] Bad [0] Skip",
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/antigravity.ts",
@@ -2467,14 +3043,6 @@
      "file": "src/login-flows.ts",
      "line": 280,
      "symbol": "LOGIN_FLOWS.antigravity.loginScreenPattern"
-    },
-    {
-     "text": "for shortcuts",
-     "kind": "regex",
-     "surface": "onboarding",
-     "file": "src/login-flows.ts",
-     "line": 287,
-     "symbol": "LOGIN_FLOWS.antigravity.successPattern"
     }
    ]
   }

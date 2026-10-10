@@ -18,9 +18,9 @@
           "CLAUDE_BOX_RULE": "input-box", "CLAUDE_CONFIRM_FOOTER": "dialog", "THEME_TITLE": "onboarding", "THEME_BELOW_ROW": "onboarding",
           "BYPASS_TITLE": "trust", "CLAUDE_BYPASS_DIALOG_PATTERN": "trust", "CLAUDE_DANGEROUS_COMMAND_PROMPT": "approval",
           "DANGER_OPTION_ROW": "approval", "DANGER_FOOTER": "approval", "claudeCommandRequestIdentity": "approval",
-          "CLAUDE_BACKGROUND_WORK_EXIT": "exit", "quitBlockedByDialog": "exit", "claudeLiveTail": "idle-busy", "CLAUDE_LIVE_TAIL": "idle-busy" } },
+          "CLAUDE_BACKGROUND_WORK_EXIT": "exit", "quitBlockedByDialog": "exit", "CLAUDE_LIVE_TAIL": "idle-busy" } },
       { "file": "src/daemon.ts", "symbols": ["detectMalformedClaudeToolCall"], "surfaces": { "detectMalformedClaudeToolCall": "error" } },
-      { "file": "src/login-flows.ts", "symbols": ["claude"], "surfaces": { "claude": "onboarding" } }
+      { "file": "src/login-flows.ts", "symbols": ["claude-code"], "surfaces": { "claude-code": "onboarding" } }
     ],
     "codex": [
       { "file": "src/backend/codex.ts",
