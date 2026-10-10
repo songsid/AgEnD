@@ -9,6 +9,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+/** When set, statSync of fleet.yaml fails with this code (an unreadable config, not an absent one). */
+const statFault = vi.hoisted(() => ({ code: null as string | null }));
+vi.mock("node:fs", async (original) => {
+  const fs = await original<typeof import("node:fs")>();
+  return { ...fs, statSync: ((path: string, ...rest: unknown[]) => {
+    if (statFault.code && String(path).endsWith("fleet.yaml")) throw Object.assign(new Error(statFault.code), { code: statFault.code });
+    return (fs.statSync as (...a: unknown[]) => unknown)(path, ...rest);
+  }) as typeof fs.statSync };
+});
 import { getUsageSnapshot, handleUsageRequest, setUsageFetcherForTests, type UsageApiContext, type UsagePayload } from "../src/usage/usage-api.js";
 
 const ctx = { fleetConfig: { defaults: {}, instances: {} }, logger: { debug() {}, info() {}, warn() {}, error() {} } } as unknown as UsageApiContext;
@@ -28,13 +37,15 @@ function get(path = "/api/ai-usage"): Promise<{ code: number; headers: Record<st
 let home: string;
 let calls = 0;
 let gate: (() => void) | null = null;
+let active = 0, maxActive = 0;                               // vendor rounds running at once
 const MIN = 60_000;
 /** A fetcher that answers when `gate` is called, or at once when `slowMs` is 0. */
 function fetcher(slowMs = 0) {
   return async (): Promise<UsagePayload> => {
     calls++;
     const n = calls;
-    if (slowMs) await new Promise<void>((r) => { gate = r; setTimeout(r, slowMs); });
+    maxActive = Math.max(maxActive, ++active);
+    try { if (slowMs) await new Promise<void>((r) => { gate = r; setTimeout(r, slowMs); }); } finally { active--; }
     return { fetchedAt: new Date().toISOString(), providers: [{ id: "claude", name: "Claude", status: "ok", metrics: [{ label: `fetch ${n}`, value: n } as never] }] };
   };
 }
@@ -44,7 +55,7 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "agend-usage-swr-"));
   vi.stubEnv("AGEND_HOME", home);
   writeFileSync(join(home, "fleet.yaml"), "instances: {}\n");
-  calls = 0; gate = null;
+  calls = 0; gate = null; statFault.code = null; active = 0; maxActive = 0;
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
 });
@@ -134,6 +145,99 @@ describe("the panel opens from the last snapshot at once (#1585)", () => {
   it("never a browser or proxy cache: Cache-Control: no-store", async () => {
     setUsageFetcherForTests(fetcher());
     expect((await get()).headers["Cache-Control"]).toBe("no-store");
+  });
+});
+
+/** fleet.yaml rewritten as another config (another size and mtime), past the 5 s metadata memo. */
+function changeConfig(note: string) {
+  writeFileSync(join(home, "fleet.yaml"), `instances: {}\n# ${note}\n`);
+  utimesSync(join(home, "fleet.yaml"), new Date(Date.now() + 1000), new Date(Date.now() + 1000));
+  vi.setSystemTime(Date.now() + 6_000);
+}
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe("a snapshot belongs to the config it was fetched under, on every path (#1585)", () => {
+  it("a fresh snapshot (within the TTL) is not served under another config: that read waits for its own", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    const warm = getUsageSnapshot(); gate!(); await warm;   // fetch 1, config A
+    changeConfig("B");                                       // still inside the 5-minute TTL
+    let settled = false;
+    const panel = get().then((r) => { settled = true; return r; });
+    await tick();
+    expect(settled).toBe(false);
+    gate!();
+    expect([label((await panel).body), (await panel).body.refreshing, calls]).toEqual(["fetch 2", undefined, 2]);
+  });
+
+  it("an in-flight fetch for config A is not joined under B: B waits it out, then gets its own — never A's, never two at once", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    const warm = getUsageSnapshot(); gate!(); await warm;   // fetch 1, A
+    vi.setSystemTime(Date.now() + 6 * MIN);
+    const stale = await get();                               // A's refresh (fetch 2) starts and is held
+    expect([label(stale.body), stale.body.refreshing, calls]).toEqual(["fetch 1", true, 2]);
+    changeConfig("B");
+    const b = get();
+    await tick();
+    expect(calls).toBe(2);                                   // B did not start a parallel round
+    gate!(); await tick(); await tick();                     // A's fetch 2 lands; B's own fetch 3 starts
+    expect(calls).toBe(3);
+    gate!();
+    expect([label((await b).body), (await b).body.refreshing]).toEqual(["fetch 3", undefined]);
+    expect(maxActive).toBe(1);
+  });
+
+  it("the same config still joins the one in flight (the control)", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    const one = get(), two = get();
+    await tick();
+    gate!();
+    expect([label((await one).body), label((await two).body), calls]).toEqual(["fetch 1", "fetch 1", 1]);
+  });
+});
+
+describe("an unreadable config is unknown, not absent (#1585)", () => {
+  it("a snapshot taken while fleet.yaml's metadata could not be read is not served stale under it, even unchanged", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    statFault.code = "EACCES";
+    const warm = getUsageSnapshot(); gate!(); await warm;   // fetch 1, under an unknown config
+    changeConfig("B");                                       // and the stat still fails
+    vi.setSystemTime(Date.now() + 6 * MIN);
+    let settled = false;
+    const panel = get().then((r) => { settled = true; return r; });
+    await tick();
+    expect(settled).toBe(false);                             // not the stale A at once
+    gate!();
+    expect([label((await panel).body), (await panel).body.refreshing]).toEqual(["fetch 2", undefined]);
+  });
+
+  it("within the TTL an unknown config gets no cached numbers and no extra vendor round: the read fails", async () => {
+    setUsageFetcherForTests(fetcher());
+    await getUsageSnapshot();                                // fetch 1, config A
+    statFault.code = "EIO";
+    vi.setSystemTime(Date.now() + 6_000);
+    const r = await get();
+    expect([r.code, calls]).toEqual([500, 1]);
+    statFault.code = null;                                   // readable again: not remembered as unknown
+    const back = await get();
+    expect([back.code, label(back.body), calls]).toEqual([200, "fetch 1", 1]);
+  });
+
+  it("two reads under an unknown config at once: one vendor round, not one each", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    statFault.code = "EIO";
+    const one = get(), two = get();
+    await tick();
+    gate!(); await tick(); await tick();
+    expect([(await one).code, (await two).code, calls]).toEqual([200, 500, 1]);
+  });
+
+  it("an absent classicBot.yaml (ENOENT) is a known config: the stale snapshot is served (the control)", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    const warm = getUsageSnapshot(); gate!(); await warm;
+    vi.setSystemTime(Date.now() + 6 * MIN);
+    const r = await get();
+    expect([label(r.body), r.body.refreshing]).toEqual(["fetch 1", true]);
+    gate!();
   });
 });
 

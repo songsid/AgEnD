@@ -94,24 +94,37 @@ const STALE_MAX_MS = 60 * 60 * 1000;
  * require a larger refactor; this is an accepted trade-off. */
 const RETRY_AFTER_MAX_MS = 15 * 60 * 1000; // 15 minutes
 
-let cache: { at: number; ttlMs: number; payload: UsagePayload; museRevision: number; configKey: string } | null = null;
+let cache: { at: number; ttlMs: number; payload: UsagePayload; owner: UsageOwner } | null = null;
 
 /**
- * #1585: which fleet config a snapshot was taken under — fleet.yaml's and classicBot.yaml's size and mtime. A stale
- * snapshot is served only under the config it was fetched for: a credential profile or binding added, removed or
- * moved since means another set of accounts, so that read waits for a fresh one. Metadata only; at most every 5 s.
+ * #1585: which fleet config a snapshot was taken under — fleet.yaml's and classicBot.yaml's size and mtime. A snapshot
+ * is served, fresh or stale, and an in-flight fetch is joined, only under the config it was fetched for: a credential
+ * profile or binding added, removed or moved since means another set of accounts, so that read waits for its own
+ * fetch. Metadata only; at most every 5 s. `null` when a file's metadata cannot be read (anything but ENOENT): an unknown
+ * config matches nothing, not even another unknown one, and is not remembered.
  */
 let configKeyMemo: { at: number; key: string } | null = null;
 const CONFIG_KEY_MS = 5_000;
-function usageConfigKey(now = Date.now()): string {
+function usageConfigKey(now = Date.now()): string | null {
   if (configKeyMemo && now - configKeyMemo.at < CONFIG_KEY_MS) return configKeyMemo.key;
-  const parts = ["fleet.yaml", "classicBot.yaml"].map((f) => {
-    try { const st = statSync(join(getAgendHome(), f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return `${f}:-`; }
-  });
+  const parts: string[] = [];
+  for (const f of ["fleet.yaml", "classicBot.yaml"]) {
+    try {
+      const st = statSync(join(getAgendHome(), f));
+      parts.push(`${f}:${st.size}:${st.mtimeMs}`);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") return null;
+      parts.push(`${f}:-`);                                  // known to be absent
+    }
+  }
   configKeyMemo = { at: now, key: parts.join("|") };
   return configKeyMemo.key;
 }
-let inflight: Promise<UsagePayload> | null = null;
+/** The config a snapshot or a fetch belongs to: the fleet config and the Muse usage revision. */
+type UsageOwner = { configKey: string | null; museRevision: number };
+const sameOwner = (a: UsageOwner, b: UsageOwner) =>
+  a.configKey !== null && a.configKey === b.configKey && a.museRevision === b.museRevision;
+let inflight: { promise: Promise<UsagePayload>; owner: UsageOwner } | null = null;
 let lastForcedFetchStartedAt: number | null = null;
 /** Last successful per-provider rows, for stale-while-rate-limited. */
 const lastGood = new Map<string, { at: number; provider: ProviderUsage }>();
@@ -258,43 +271,57 @@ async function usage(force: boolean, allowStale = false): Promise<UsagePayload> 
     lastForcedFetchStartedAt === null
     || now - lastForcedFetchStartedAt >= FORCE_FLOOR_MS
   );
-  const museRevision = museUsageRevision();
-  const configKey = usageConfigKey(now);
-  if (!effectiveForce && cache && now - cache.at < cache.ttlMs && cache.museRevision === museRevision) return cache.payload;
-  // #1585, stale-while-revalidate (the dashboard panel only): an expired snapshot from the same config and Muse revision,
-  // younger than STALE_MAX_MS, is answered at once while the one refresh the expiry would have started anyway runs.
-  // Vendors are called exactly as before — the same condition starts the same single shared fetch; only the panel stops
-  // waiting for it.
-  const servable = allowStale && !effectiveForce && cache && cache.museRevision === museRevision
-    && cache.configKey === configKey && now - cache.at < STALE_MAX_MS;
-  const stale = servable ? cache!.payload : null;
-  inflight ??= (() => {
-    if (effectiveForce) lastForcedFetchStartedAt = Date.now();
-    return fetcher()
-      .then(payload => {
-        const transient = hasTransientEmpty(payload);
-        const resolved = withStaleFallback(payload);
-        // Extend cache TTL to the longest Retry-After deadline so we don't
-        // hammer vendor endpoints during a backoff window.
-        const maxRetryAfterMs = retryAfterUntil.size > 0
-          ? Math.max(0, Math.max(...retryAfterUntil.values()) - Date.now())
-          : 0;
-        cache = {
-          at: Date.now(),
-          ttlMs: Math.max(transient ? TRANSIENT_CACHE_MS : CACHE_MS, maxRetryAfterMs),
-          payload: resolved,
-          museRevision,
-          configKey,
-        };
-        return resolved;
-      })
-      .finally(() => { inflight = null; });
-  })();
+  const owner: UsageOwner = { configKey: usageConfigKey(now), museRevision: museUsageRevision() };
+  const ownCache = cache && sameOwner(cache.owner, owner) ? cache : null;
+  if (!effectiveForce && ownCache && now - ownCache.at < ownCache.ttlMs) return ownCache.payload;
+  // An unknown config is served nothing cached, and vendors are still called no more often than the TTL allows: within
+  // the last fetch's TTL such a read fails (every caller reports a failed read) instead of starting another round.
+  if (owner.configKey === null && !effectiveForce && cache && now - cache.at < cache.ttlMs) {
+    throw new Error("the fleet config cannot be read: usage is not shown for an unknown config");
+  }
+  // #1585, stale-while-revalidate (the dashboard panel only): an expired snapshot of this same config and Muse
+  // revision, younger than STALE_MAX_MS, is answered at once while the one refresh the expiry would have started anyway
+  // runs. Vendors are called exactly as before — the same condition starts the same single shared fetch; only the panel
+  // stops waiting for it.
+  const stale = allowStale && !effectiveForce && ownCache && now - ownCache.at < STALE_MAX_MS ? ownCache.payload : null;
+  const fresh = fetchFor(owner, effectiveForce, () => usage(force, false));
   if (stale) {
-    inflight.catch(() => { /* a failed background refresh: the next read tries again, as before */ });
+    fresh.catch(() => { /* a failed background refresh: the next read tries again, as before */ });
     return { ...stale, refreshing: true };
   }
-  return inflight;
+  return fresh;
+}
+
+/**
+ * The fetch for `owner`: joins the one in flight when it belongs to the same config; one for another config is waited
+ * out first (never a second vendor round in parallel), then the read is decided again and this config gets its own. Its result is cached under the
+ * owner it was started for, so it is never served to another.
+ */
+function fetchFor(owner: UsageOwner, effectiveForce: boolean, again: () => Promise<UsagePayload>): Promise<UsagePayload> {
+  if (inflight && sameOwner(inflight.owner, owner)) return inflight.promise;
+  // Another config's fetch: wait it out, then decide again (its result is never this read's).
+  if (inflight) return inflight.promise.then(() => undefined, () => undefined).then(again);
+  if (effectiveForce) lastForcedFetchStartedAt = Date.now();
+  const promise = fetcher()
+    .then(payload => {
+      const transient = hasTransientEmpty(payload);
+      const resolved = withStaleFallback(payload);
+      // Extend cache TTL to the longest Retry-After deadline so we don't
+      // hammer vendor endpoints during a backoff window.
+      const maxRetryAfterMs = retryAfterUntil.size > 0
+        ? Math.max(0, Math.max(...retryAfterUntil.values()) - Date.now())
+        : 0;
+      cache = {
+        at: Date.now(),
+        ttlMs: Math.max(transient ? TRANSIENT_CACHE_MS : CACHE_MS, maxRetryAfterMs),
+        payload: resolved,
+        owner,
+      };
+      return resolved;
+    })
+    .finally(() => { if (inflight?.promise === promise) inflight = null; });
+  inflight = { promise, owner };
+  return promise;
 }
 
 /**
