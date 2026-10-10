@@ -79,7 +79,7 @@ health_port: 19280
 Cloudflare Quick Tunnel 開一個臨時的**公開 https 連結**。不需要任何設定：`/login kiro`（或 `/login claude`）的確認會有三個按鈕——
 **我了解（外網臨時連結）**、**我了解（內網）**、**取消**；按第一個就是同意，每次登入一次，連結不會保留或重用。Discord 與 Telegram 都一樣。
 
-**cloudflared。** fleet 的 `PATH` 上若已有 `cloudflared` 就直接使用。否則第一次選擇公開連結時，AgEnD 會把 Cloudflare 的官方版本下載到它自己的資料夾（`~/.agend/bin/cloudflared`，不需要 sudo，不安裝到系統），並在聊天室說明。版本在 AgEnD 裡固定，下載後會比對一同固定的 SHA256；不符的檔案會被刪除，什麼都不會執行。已安裝的版本每次使用前都會再檢查一次。AgEnD 只會安裝到、也只信任完全屬於你的資料夾：若 `~/.agend`（或其中的 `bin`）可被其他使用者寫入，或 `bin` 是 symlink，它會拒絕並說明原因。支援 Linux（x86-64、arm64、arm、x86）與 macOS（Intel、Apple silicon）；其他系統請自行安裝 cloudflared。如果取得不到（離線、被阻擋；會使用 `HTTPS_PROXY`），這次登入會說明原因且不開啟任何東西——請改選**我了解（內網）**。
+**cloudflared。** fleet 的 `PATH` 上若已有 `cloudflared` 就直接使用。否則第一次選擇公開連結時，AgEnD 會把 Cloudflare 的官方版本下載到它自己的資料夾（`~/.agend/bin/cloudflared`，不需要 sudo，不安裝到系統），並在聊天室說明。版本在 AgEnD 裡固定，下載後會比對一同固定的 SHA256；不符的檔案會被刪除，什麼都不會執行。已安裝的版本每次使用前都會再檢查一次。**下載來源：** Linux 先從 Cloudflare 自己的套件庫（`pkg.cloudflare.com` 的 `.deb`，由 AgEnD 自行解出執行檔）下載；套件不存在、停滯、太慢或不符時，再改用 GitHub release。macOS 沒有套件，只用 GitHub。兩種來源都比對同一個固定的 SHA256。只有連續 60 秒沒有收到資料才算失敗，整體上限 30 分鐘，所以慢但持續在動的連線會下載完成。AgEnD 只會安裝到、也只信任完全屬於你的資料夾：若 `~/.agend`（或其中的 `bin`）可被其他使用者寫入，或 `bin` 是 symlink，它會拒絕並說明原因。支援 Linux（x86-64、arm64、arm、x86）與 macOS（Intel、Apple silicon）；其他系統請自行安裝 cloudflared。如果取得不到（離線、被阻擋；會使用 `HTTPS_PROXY`），這次登入會說明原因且不開啟任何東西——請改選**我了解（內網）**。
 
 要在這台主機關閉公開連結（不顯示按鈕，也絕不下載）：
 
