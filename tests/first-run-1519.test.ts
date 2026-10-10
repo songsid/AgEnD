@@ -16,7 +16,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(),
   execFileSync: vi.fn(() => { throw Error("no binary discovery in this test"); }),
 }));
-import { agentConflict, draftQuickstart, handleQuickstartRequest, planQuickstart, validateWizardInput, withExistingAgent, type WizardPlanInput } from "../src/quickstart-api.js";
+import { agentConflict, draftQuickstart, handleQuickstartRequest, movedTopic, planQuickstart, validateWizardInput, withExistingAgent, withTopicRelease, type WizardPlanInput } from "../src/quickstart-api.js";
+import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import type { FleetConfig } from "../src/types.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
@@ -53,6 +54,72 @@ describe("the wizard never overwrites an agent", () => {
   it("existing_agent must be a boolean; a new agent still needs its backend and directory", () => {
     expect(validateWizardInput({ ...NEW, existing_agent: "yes" as never }) ?? "").toMatch(/existing_agent must be a boolean/);
     expect(validateWizardInput({ ...NEW, instance_name: "beta", working_directory: "" }) ?? "").toMatch(/working_directory/);
+  });
+});
+
+describe("#1549 review: a topic belongs to its chat — moving an agent to another chat does not carry it", () => {
+  const TG1 = { ...CH, id: "telegram", group_id: "-100111" };
+  const fleetWith = (agent: Record<string, unknown>, channels: unknown[] = [TG1]) => cfgOf({ alpha: { working_directory: "/w/a", backend: "codex", ...agent } }, channels);
+  const tgPlan = (cfg: FleetConfig, group: string) => planQuickstart(withExistingAgent({ platform: "telegram", instance_name: "alpha", existing_agent: true, token_env: "AGEND_TELEGRAM_2_TOKEN", group_id: group, channel_id: "telegram-2" } as WizardPlanInput, cfg),
+    { backends: [], has_fleet: true, channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", group_id: "-100111", allowed_users: [] }] } as never);
+  const body = (group: string) => ({ platform: "telegram", instance_name: "alpha", existing_agent: true, token_env: "AGEND_TELEGRAM_2_TOKEN", group_id: group, channel_id: "telegram-2" }) as WizardPlanInput;
+  /** What the fleet would route a message from `chatId`'s topic `thread` to, on this configuration (the real router). */
+  function routeOf(cfg: FleetConfig, chatId: string, thread: string): string | null {
+    const dir = mkdtempSync(join(tmpdir(), "agend-test-topic-route-"));
+    try {
+      const fm = new FleetManager(dir) as any;
+      clearInterval(fm.sessionPruneTimer);
+      fm.fleetConfig = cfg;
+      fm.routing.rebuild(cfg);
+      return fm.resolveInboundTarget({ source: "telegram", adapterId: "telegram-2", chatId }, thread)?.name ?? null;
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  it("another group: the topic is not carried — the new group's topic 30 routes to nobody; everything else is kept", () => {
+    const cfg = fleetWith({ channel_id: "telegram", topic_id: 30, model: "m1" });
+    const plan = withTopicRelease(tgPlan(cfg, "-100222"), cfg, { instance_name: "alpha", existing_agent: true });
+    expect(plan.instance?.topic ?? null).toEqual({ from: "30", to: null });
+    const draft = draftQuickstart(cfg, body("-100222"), plan);
+    expect(draft.instances.alpha).toEqual({ working_directory: "/w/a", backend: "codex", model: "m1", channel_id: "telegram-2" });
+    expect(routeOf(draft, "-100222", "30")).toBeNull();
+  });
+
+  it("control: the same group (a second bot in it) keeps the topic, and it still routes", () => {
+    const cfg = fleetWith({ channel_id: "telegram", topic_id: 30 });
+    const plan = withTopicRelease(tgPlan(cfg, "-100111"), cfg, { instance_name: "alpha", existing_agent: true });
+    expect(plan.instance?.topic ?? null).toBeNull();
+    const draft = draftQuickstart(cfg, body("-100111"), plan);
+    expect(draft.instances.alpha.topic_id).toBe(30);
+    expect(routeOf(draft, "-100111", "30")).toBe("alpha");
+  });
+
+  it.each([
+    ["no topic (a web-only agent)", {}, [TG1], "-100222", null],
+    ["no channel_id: its connection is the first", { topic_id: 30 }, [TG1], "-100111", null],
+    ["no channel_id, another group", { topic_id: 30 }, [TG1], "-100222", { from: "30", to: null }],
+    ["its connection cannot be found: not 'the same'", { channel_id: "gone", topic_id: 30 }, [TG1], "-100111", { from: "30", to: null }],
+    ["the General agent, another Telegram group: that group's General (1)", { channel_id: "telegram", topic_id: 1, general_topic: true }, [TG1], "-100222", { from: "1", to: 1 }],
+  ])("%s", (_n, agent, channels, group, expected) => {
+    const cfg = fleetWith(agent, channels);
+    expect(movedTopic(cfg, "alpha", tgPlan(cfg, group).channel)).toEqual(expected);
+  });
+
+  it("Discord: same server keeps; another server drops it, or gives the General agent that server's general channel", () => {
+    const DC = { id: "discord", type: "discord", bot_token_env: "AGEND_DISCORD_TOKEN", group_id: "111", access: { mode: "locked", allowed_users: [] } };
+    const dcChannel = (guild: string, general?: string) => ({ type: "discord", group_id: guild, ...(general ? { general_channel_id: general } : {}) });
+    expect(movedTopic(fleetWith({ channel_id: "discord", topic_id: "123456789012345678" }, [DC]), "alpha", dcChannel("111"))).toBeNull();
+    expect(movedTopic(fleetWith({ channel_id: "discord", topic_id: "123456789012345678" }, [DC]), "alpha", dcChannel("222"))).toEqual({ from: "123456789012345678", to: null });
+    expect(movedTopic(fleetWith({ channel_id: "discord", topic_id: "123456789012345678", general_topic: true }, [DC]), "alpha", dcChannel("222", "987654321098765432")))
+      .toEqual({ from: "123456789012345678", to: "987654321098765432" });
+    expect(movedTopic(fleetWith({ channel_id: "discord", topic_id: "123456789012345678", general_topic: true }, [DC]), "alpha", dcChannel("222")), "no valid general channel: none")
+      .toEqual({ from: "123456789012345678", to: null });
+    expect(movedTopic(fleetWith({ channel_id: "telegram", topic_id: 30 }), "alpha", dcChannel("-100111")), "another platform, same id string").toEqual({ from: "30", to: null });
+  });
+
+  it("the #1423 confirmation shows the topic going (the same draft)", () => {
+    const cfg = fleetWith({ channel_id: "telegram", topic_id: 30 });
+    const diff = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body("-100222"), token: "fake-test-token" }, { config: cfg as never, classic: {} }).diff!;
+    expect(diff.summary.join("\n")).toMatch(/instances\.alpha\.topic\\_id/);
   });
 });
 
@@ -104,6 +171,7 @@ describe("the status frame counts the connections", () => {
 type Req = { method: string; url: string; body: any };
 let reqs: Req[] = [];
 let env: Record<string, unknown> = {};
+let planTopic: unknown = null;
 const FLEET = { defaults: { backend: "claude-code" }, channels: [], instances: { alpha: { working_directory: "/w/a" } } };
 async function fetchFake(url: string, init: any = {}) {
   const r: Req = { method: init.method || "GET", url, body: init.body ? JSON.parse(init.body) : null };
@@ -119,7 +187,7 @@ async function fetchFake(url: string, init: any = {}) {
     : url === "/api/settings/quickstart/environment" ? env
     : url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? { identity: { valid: true, username: "bot" } }
     : url === "/api/settings/quickstart/plan" ? { channel: { id: "telegram", type: "telegram" }, channel_id: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", warnings: [],
-      instance: { name: r.body.instance_name, working_directory: r.body.working_directory ?? "/w/a", backend: r.body.backend ?? "claude-code", channel_id: "telegram", ...(r.body.existing_agent ? { existing: true } : {}) } }
+      instance: { name: r.body.instance_name, working_directory: r.body.working_directory ?? "/w/a", backend: r.body.backend ?? "claude-code", channel_id: "telegram", ...(r.body.existing_agent ? { existing: true } : {}), ...(planTopic ? { topic: planTopic } : {}) } }
     : url.startsWith("/ui/history") ? { messages: [] }
     : m !== "GET" ? { ok: true } : {};
   return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
@@ -158,6 +226,7 @@ beforeEach(async () => {
   reqs = [];
   p.storage.delete(first.DISMISS_KEY);
   first.resetFirstRun();
+  planTopic = null;
   env = { backends: ["claude-code"], channels: [], has_fleet: true, agents: [{ name: "alpha", working_directory: "/w/a", backend: "claude-code" }] };
 });
 
@@ -249,6 +318,20 @@ describe("the wizard's first step", () => {
     expect(d().querySelector("#wz-wd")?.id ?? null, "no directory to ask").toBeNull();
     const [plan] = await toPlan();
     expect(plan).toEqual({ platform: "telegram", instance_name: "alpha", existing_agent: true });
+  });
+
+  it("#1549 review: a topic the move does not carry is said at the plan (and a General's new one is shown)", async () => {
+    planTopic = { from: "30", to: null };
+    await openWizard();
+    await toPlan();
+    expect(d().querySelector(".feedback.warning")?.textContent ?? null).toBe("Its topic (30) is in the chat of its old connection, so it is not carried over: in the new chat it has no topic until one is bound.");
+    expect(d().querySelector("pre.s-yaml")?.textContent ?? "").not.toMatch(/topic_id/);
+    await p.unmount();
+    planTopic = { from: "1", to: "1" };
+    await openWizard();
+    await toPlan();
+    expect([d().querySelector(".feedback.warning")?.textContent ?? null, /topic_id: "?1"?/.test(d().querySelector("pre.s-yaml")?.textContent ?? "")])
+      .toEqual(["It is the General agent: in the new chat it takes that chat's General topic.", true]);
   });
 
   it("A new agent: asks backend, directory and a free name (agent-1 is taken → agent-2)", async () => {

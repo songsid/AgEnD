@@ -101,7 +101,12 @@ export interface WizardPlanInput {
 export interface WizardPlan {
   /** The channel entry that will be merged into fleet.yaml. */
   channel: Record<string, unknown>;
-  instance: { name: string; working_directory: string; backend: string; channel_id: string; existing?: boolean } | null;
+  /**
+   * `topic`: an existing agent whose topic belongs to another chat (#1549 review) — `from` its old id, `to` the id it
+   * gets here (the General topic of the new chat, for a General agent) or null (none: the old one is not carried).
+   */
+  instance: { name: string; working_directory: string; backend: string; channel_id: string; existing?: boolean;
+    topic?: { from: string; to: string | null } } | null;
   /** The new connection's id and the env var its token goes to. */
   channel_id: string;
   token_env: string;
@@ -142,6 +147,44 @@ export function withExistingAgent<T extends Pick<WizardPlanInput, "instance_name
   if (!input.existing_agent || !cfg || !Object.hasOwn(cfg.instances ?? {}, input.instance_name)) return input;
   const inst = cfg.instances[input.instance_name] as { working_directory?: string; backend?: string };
   return { ...input, working_directory: inst.working_directory ?? "", backend: inst.backend ?? cfg.defaults?.backend ?? "claude-code" };
+}
+
+/**
+ * #1549 review: a topic id means something only in its chat (a Telegram group's forum topic, a Discord server's
+ * channel). An existing agent moved to a connection in another chat would keep an id that, there, is some other topic —
+ * or none yet — and inbound messages from that topic would route to it. So its topic binding goes with the move unless
+ * the new connection is in the same chat (same platform and group/server). Unknown (the old connection cannot be
+ * found) is not "the same": the binding goes.
+ */
+export function releasesTopic(cfg: FleetConfig, instanceName: string, newChannel: { type?: unknown; group_id?: unknown }): boolean {
+  if (!Object.hasOwn(cfg.instances ?? {}, instanceName)) return false;
+  const inst = cfg.instances[instanceName] as { topic_id?: unknown; channel_id?: unknown };
+  if (inst.topic_id === undefined || inst.topic_id === null || inst.topic_id === "") return false;
+  const channels = wizardChannels(cfg);
+  const old = inst.channel_id != null ? channels.find(c => c.id === String(inst.channel_id)) : channels[0];
+  if (!old || old.group_id == null || newChannel.group_id == null) return true;
+  return !(old.type === String(newChannel.type ?? "") && old.group_id === String(newChannel.group_id));
+}
+
+/**
+ * The topic an existing agent has after moving to `newChannel`: its own when the chat is the same; else, for the
+ * General agent, the new chat's General (Telegram's thread 1, the Discord connection's general channel); else none.
+ */
+export function movedTopic(cfg: FleetConfig, instanceName: string, newChannel: Record<string, unknown>): { from: string; to: string | number | null } | null {
+  if (!releasesTopic(cfg, instanceName, newChannel)) return null;
+  const inst = cfg.instances[instanceName] as { topic_id?: unknown; general_topic?: unknown };
+  const from = String(inst.topic_id);
+  if (inst.general_topic !== true) return { from, to: null };
+  if (newChannel.type === "telegram") return { from, to: 1 };
+  const general = newChannel.general_channel_id;
+  return { from, to: general != null && /^\d{17,}$/.test(String(general)) ? String(general) : null };
+}
+
+/** The plan as the wizard shows it: an existing agent's topic that the move changes is said so. */
+export function withTopicRelease(plan: WizardPlan, cfg: FleetConfig, input: Pick<WizardPlanInput, "instance_name" | "existing_agent">): WizardPlan {
+  const moved = input.existing_agent && plan.instance ? movedTopic(cfg, input.instance_name, plan.channel) : null;
+  if (!moved || !plan.instance) return plan;
+  return { ...plan, instance: { ...plan.instance, topic: { from: moved.from, to: moved.to == null ? null : String(moved.to) } } };
 }
 
 /** Why this input cannot be a new connection, or null: a taken id or token env (it would replace a connection). */
@@ -292,6 +335,12 @@ export function detectWizardBackends(): string[] {
  * asserts this module's import graph reaches neither fleet-manager, daemon nor
  * instance-lifecycle, so the host cannot grow a path to them by accident.
  */
+function withMovedTopic<T extends { topic_id?: unknown }>(inst: T, moved: { to: string | number | null } | null): T {
+  if (!moved) return inst;
+  const { topic_id: _old, ...rest } = inst;
+  return (moved.to == null ? rest : { ...rest, topic_id: moved.to }) as T;
+}
+
 /** One pure draft shared by the writer and the authoritative confirmation diff. */
 export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: WizardPlan): FleetConfig {
   const draft = structuredClone(cfg), summary = wizardChannels(cfg);
@@ -304,8 +353,9 @@ export function draftQuickstart(cfg: FleetConfig, body: WizardPlanInput, plan: W
   if (body.connection_only) return draft;
   const existing = Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : undefined;
   draft.instances = { ...draft.instances, [body.instance_name]: body.existing_agent && existing
-    // #1519 P7: an existing agent keeps everything it has; only its connection becomes the new one.
-    ? { ...existing, channel_id: plan.channel_id }
+    // #1519 P7: an existing agent keeps everything it has; only its connection becomes the new one — and a topic of
+    // another chat is not carried into this one (#1549 review: releasesTopic).
+    ? withMovedTopic({ ...existing, channel_id: plan.channel_id }, movedTopic(cfg, body.instance_name, plan.channel))
     : { ...(existing ?? {}), working_directory: body.working_directory, backend: body.backend, channel_id: plan.channel_id },
   } as FleetConfig["instances"];
   return draft;
@@ -437,12 +487,12 @@ export function handleQuickstartRequest(
       try { envFile = envFileKeys(ctx.dataDir); }
       catch (err) { if (err instanceof EnvFileUnreadableError) return json(res, 503, { error: err.message }); throw err; }
       const taken = takenTokenEnvNames({ channelEnvs: channels.map(c => c.token_env), envFile, processEnv: Object.keys(process.env) });
-      json(res, 200, planQuickstart(withExistingAgent(body, cfg), {
+      json(res, 200, withTopicRelease(planQuickstart(withExistingAgent(body, cfg), {
         backends: body.connection_only ? [] : detectWizardBackends(),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
         channels,
         taken_env: taken,
-      }));
+      }), cfg, body));
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

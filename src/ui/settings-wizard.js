@@ -155,8 +155,11 @@ export function SetupWizard({ ctx, onClose }) {
   } else {
     body = !w.plan ? html`<p class="note">${tn("wizardPlanLoading")}</p>` : html`
       <p><strong>${tn("wizardWillWrite")}</strong></p>
-      <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend, channel_id: w.plan.instance.channel_id } } })}</pre>
+      <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend, channel_id: w.plan.instance.channel_id,
+        ...(w.plan.instance.topic && w.plan.instance.topic.to != null ? { topic_id: w.plan.instance.topic.to } : {}) } } })}</pre>
       ${w.plan.instance && w.plan.instance.existing ? html`<p class="note">${tn("wizardAgentExistingNote")}</p>` : null}
+      ${w.plan.instance && w.plan.instance.topic ? html`<p class="feedback warning">${w.plan.instance.topic.to == null
+        ? tn("wizardTopicNotCarried", w.plan.instance.topic.from) : tn("wizardTopicGeneral")}</p>` : null}
       <${Drawer} title=${tn("advancedSection")}><${TokenEnvNote} name=${w.plan.token_env} /></${Drawer}>
       ${(w.plan.warnings || []).map((x, i) => html`<p key=${i} class="feedback warning">${x}</p>`)}`;
   }
