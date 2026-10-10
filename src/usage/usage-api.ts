@@ -289,7 +289,13 @@ async function usage(force: boolean, allowStale = false): Promise<UsagePayload> 
     fresh.catch(() => { /* a failed background refresh: the next read tries again, as before */ });
     return { ...stale, refreshing: true };
   }
-  return fresh;
+  // A read that waited is answered only if the config it waited under is still the one it reads now: a profile or
+  // binding changed meanwhile means another set of accounts, so it decides again (the result stays cached under the
+  // owner it was fetched for). An unknown config that is still unknown gets the round it waited for (never a cache).
+  return fresh.then(payload => {
+    const configKey = usageConfigKey();
+    return configKey === owner.configKey && museUsageRevision() === owner.museRevision ? payload : usage(false, false);
+  });
 }
 
 /**

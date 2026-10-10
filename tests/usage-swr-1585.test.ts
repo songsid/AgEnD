@@ -186,6 +186,28 @@ describe("a snapshot belongs to the config it was fetched under, on every path (
     expect(maxActive).toBe(1);
   });
 
+  it("readers waiting under A when the config becomes B are not answered with A's numbers", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    const one = get(), two = get();                          // no cache: the first fetch, joined by the second read
+    await tick();
+    expect([calls, maxActive]).toEqual([1, 1]);
+    changeConfig("B");
+    gate!(); await tick(); await tick();                     // A's fetch lands; both readers decide again: one fetch for B
+    expect(calls).toBe(2);
+    gate!();
+    expect([label((await one).body), label((await two).body), calls, maxActive]).toEqual(["fetch 2", "fetch 2", 2, 1]);
+  });
+
+  it("a reader waiting under A when the config becomes unreadable is refused, not answered with A's numbers", async () => {
+    setUsageFetcherForTests(fetcher(200));
+    const one = get();
+    await tick();
+    statFault.code = "EIO";
+    vi.setSystemTime(Date.now() + 6_000);
+    gate!();
+    expect([(await one).code, calls]).toEqual([500, 1]);
+  });
+
   it("the same config still joins the one in flight (the control)", async () => {
     setUsageFetcherForTests(fetcher(200));
     const one = get(), two = get();
