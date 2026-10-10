@@ -52,6 +52,7 @@ const P = {
   org: () => html`<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-5h14v5"/>`,
   panel: () => html`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/>`,
   back: () => html`<path d="M19 12H5M12 19l-7-7 7-7"/>`,
+  forward: () => html`<path d="M5 12h14M12 5l7 7-7 7"/>`,
   external: () => html`<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>`,
 };
 
