@@ -55,7 +55,12 @@ export function createStream(opts) {
   const now = () => (env.performance && typeof env.performance.now === "function" ? env.performance.now() : Date.now());
   let polling = null, pollAgain = false, pollSeq = 0;   // the poll in flight, whether another was asked for meanwhile
   let held = null;                                // live events held while a catch-up read is in flight
-  let catching = null, retryTimer = null;
+  let catching = null, retryTimer = null, retryWake = null;
+  // #1580 review: who owns the work in flight. `readEpoch` moves when the page lets everything go (suspend, end,
+  // close): a read, a catch-up or a queued poll begun before it neither emits, nor releases, nor queues, nor decides
+  // anything. `epoch` also moves when the stream comes back live: a fallback read's or a probe's late failure must not
+  // turn a healthy stream into "reconnecting" — those control decisions belong to the epoch they started in.
+  let readEpoch = 0, epoch = 0;
 
   function emit(name, data, extra) {
     const set = listeners.get(name);
@@ -94,17 +99,16 @@ export function createStream(opts) {
    * - One that has not answered within POLL_LIMIT_MS counts as failed and its late answer is ignored, so a stuck
    *   request never holds up the polls after it (or the live events it holds).
    */
-  let lastStatus = 0;
   function pollOnce(opts = {}) {
     if (polling) { if (!opts.join) pollAgain = true; return polling; }
-    const mine = ++pollSeq;
-    lastStatus = 0;
+    const mine = ++pollSeq, ep = readEpoch;
+    let status = 0;                                  // this read's HTTP status — its own, never another read's
     if (sse && !held) held = [];
     let limit = null;
     const read = (async () => {
       try {
         const r = await env.fetch(`/ui/poll?after=${encodeURIComponent(state.cursor)}`, { cache: "no-store" });
-        if (!r.ok && r.status === 401) lastStatus = 401;         // the session ended: nothing is retried (#1580)
+        status = r.status | 0;
         if (closed || mine !== pollSeq || !r.ok) return false;
         const d = await r.json();
         if (closed || mine !== pollSeq) return false;
@@ -119,19 +123,32 @@ export function createStream(opts) {
       } catch { return false; /* the next tick, or the catch-up's retry, tries again */ }
     })();
     const timedOut = new Promise((resolve) => { limit = env.setTimeout(() => { if (mine === pollSeq) pollSeq++; resolve(false); }, POLL_LIMIT_MS); });
-    polling = Promise.race([read, timedOut]).then((ok) => {
+    const p = polling = Promise.race([read, timedOut]).then((ok) => {
       env.clearTimeout(limit);
+      // Let go of (suspend, end, close) while it was out: it decides nothing — and touches nothing that is newer.
+      if (ep !== readEpoch) return { ok: false, overflow: false, status, stale: true };
       if (mine === pollSeq) pollSeq++;               // whatever this read still does from here on is ignored
-      polling = null;
-      if (closed) { held = null; return { ok: false, overflow: false }; }
+      if (polling === p) polling = null;
+      if (closed) { held = null; return { ok: false, overflow: false, status }; }
+      // #1580: the session ended, whichever read heard it — everything stops here, queued work included.
+      if (status === 401) { held = null; end(); return { ok: false, overflow: false, status }; }
       const overflow = release();
       // Live events were dropped: what they changed is recovered by catching up — inside its lifecycle, so a failed
       // recovery read is retried and shown, never taken for done (#1425 review). A catch-up awaiting this read loops.
       if (overflow && !catching) catchUp();
       if (pollAgain) { pollAgain = false; pollOnce(); }
-      return { ok, overflow, status: lastStatus };
+      return { ok, overflow, status };
     });
-    return polling;
+    return p;
+  }
+  /** #1580 review: the page lets go of everything in flight — reads, the queued poll, the catch-up and its retry wait. */
+  function cancelWork() {
+    readEpoch++; epoch++;
+    pollSeq++; polling = null; pollAgain = false; held = null;
+    env.clearTimeout(retryTimer); retryTimer = null;
+    const wake = retryWake; retryWake = null;
+    catching = null;
+    if (wake) wake();                                // the old catch-up settles (false) instead of waiting forever
   }
   /** The 5 s poll: the public link's transport, and a reachable fleet whose stream does not get through. */
   function startPolling(pollNow = true) {
@@ -141,16 +158,17 @@ export function createStream(opts) {
     pollTimer = env.setInterval(pollTick, 5000);
   }
   async function pollTick() {
+    const ep = epoch;
     const r = await pollOnce();
-    if (closed || suspended || r.ok || r.overflow) return;
+    if (closed || suspended || ended || ep !== epoch || r.stale || r.ok || r.overflow) return;
     // Not answered: the fleet is not there (a restart). The loop stops — no poll storm — and the backoff takes over.
     stopPolling();
-    if (r.status === 401) { end(); return; }
     setConnection("reconnecting");
     scheduleStep();
   }
   function stopPolling() { if (pollTimer) { env.clearInterval(pollTimer); pollTimer = null; } }
   function alive() {
+    if (state.connection !== "live") epoch++;      // back live: earlier fallback/probe failures decide nothing now
     stopPolling();
     attempts = 0;
     env.clearTimeout(reconnectTimer); reconnectTimer = null; waitingVisible = false;
@@ -191,10 +209,10 @@ export function createStream(opts) {
   /** The stream failed before it spoke: is the fleet there at all? One poll says. */
   async function probe() {
     if (pollTimer) { scheduleStep(); return; }          // already polling: that loop is the probe
+    const ep = epoch;
     const r = await pollOnce({ join: true });
-    if (closed || suspended || ended) return;
+    if (closed || suspended || ended || ep !== epoch || r.stale) return;
     if (r.ok) startPolling(false);                       // reachable, the stream does not get through: poll meanwhile
-    else if (r.status === 401) { end(); return; }
     else setConnection("reconnecting");
     scheduleStep();
   }
@@ -213,17 +231,19 @@ export function createStream(opts) {
   }
   /** The public link's reconnect step: one poll; answered → the 5 s loop again (it just read), else the next step. */
   async function pollProbe() {
+    const ep = epoch;
     const r = await pollOnce();
-    if (closed || suspended || ended) return;
+    if (closed || suspended || ended || ep !== epoch || r.stale) return;
     if (r.ok) { attempts = 0; startPolling(false); }
-    else if (r.status === 401) end();
     else scheduleStep();
   }
   function onVisible() {
     if (!hidden() && waitingVisible) { waitingVisible = false; step(); }
   }
   function end() {
+    if (ended) return;
     ended = true;
+    cancelWork();
     closeStream(); stopPolling();
     env.clearTimeout(reconnectTimer); reconnectTimer = null;
     setConnection("ended");
@@ -235,31 +255,36 @@ export function createStream(opts) {
    * It opens no transport: still the one EventSource, and no polling loop.
    */
   function catchUp() {
-    if (closed) return Promise.resolve(false);
+    if (closed || ended) return Promise.resolve(false);
     if (catching) return catching;
     env.clearTimeout(retryTimer); retryTimer = null;
     setHydration("catching");
-    catching = (async () => {
+    const ep = readEpoch;
+    // Settles this catch-up; the page's current one is cleared only if it is still this one (a resume may have
+    // started a newer one meanwhile).
+    const done = (value, hydration) => { if (catching === me) { catching = null; if (hydration) setHydration(hydration); } return value; };
+    const me = (async () => {
       let failures = 0, overflows = 0;
       for (;;) {
         // A poll already on its way will do (its answer reaches the listener that just attached); nothing is queued.
         const { ok, overflow } = await pollOnce({ join: true });
-        if (closed) return false;
-        if (ok && !overflow) { catching = null; setHydration("ok"); return true; }
+        if (closed || ep !== readEpoch) return done(false);   // let go of (suspend, end — a 401 — or close): no retry
+        if (ok && !overflow) return done(true, "ok");
         if (ok) {
           // Read, but live events were dropped meanwhile: not done until a read without that succeeds. At once (nothing
           // failed), and bounded: a stream that floods every read gives up as failed, with Retry.
-          if (++overflows > MAX_OVERFLOW_READS) { catching = null; setHydration("failed"); return false; }
+          if (++overflows > MAX_OVERFLOW_READS) return done(false, "failed");
           continue;
         }
-        if (failures >= RETRY_DELAYS.length) { catching = null; setHydration("failed"); return false; }
+        if (failures >= RETRY_DELAYS.length) return done(false, "failed");
         setHydration("retrying");
-        await new Promise((resolve) => { retryTimer = env.setTimeout(resolve, RETRY_DELAYS[failures++]); });
-        retryTimer = null;
-        if (closed) return false;
+        await new Promise((resolve) => { retryWake = resolve; retryTimer = env.setTimeout(resolve, RETRY_DELAYS[failures++]); });
+        retryTimer = null; retryWake = null;
+        if (closed || ep !== readEpoch) return done(false);
       }
     })();
-    return catching;
+    catching = me;
+    return me;
   }
 
   /** Open the transport. Called once every listener that must see the first frames is attached (the chat's store):
@@ -293,14 +318,15 @@ export function createStream(opts) {
     suspend() {
       if (closed || !started || suspended) return;
       suspended = true;
+      cancelWork();
       closeStream(); stopPolling();
       env.clearTimeout(reconnectTimer); reconnectTimer = null; waitingVisible = false;
-      env.clearTimeout(retryTimer); retryTimer = null;
     },
     /** #1580: back from the back-forward cache (pageshow, persisted): reconnect at once and catch up. */
     resume() {
       if (closed || !suspended || ended) return;
       suspended = false;
+      epoch++;
       attempts = 0;
       if (opts.transport === "poll") { startPolling(); return; }
       openStream(true);
@@ -308,7 +334,7 @@ export function createStream(opts) {
     /** For tests and page unload: nothing is emitted after this. */
     close() {
       closed = true;
-      held = null;
+      cancelWork();
       stopPolling();
       closeStream();
       env.clearTimeout(reconnectTimer); env.clearTimeout(retryTimer);
