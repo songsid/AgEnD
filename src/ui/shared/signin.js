@@ -3,7 +3,9 @@
 // Two jobs: (1) when the page is what a gated URL answered with because the browser sent no cookie
 // (a SameSite=Strict cookie is not sent on a navigation that came from a chat app), probe the session
 // from *here* — a same-site request does carry the cookie — and carry on to the page that was asked
-// for; (2) otherwise take the one-time code and exchange it.
+// for; (2) otherwise take the one-time code and exchange it. A browser that signed in before with a code from
+// /dashboard (a returning device, #1570) is also offered "Send me a new code": the server sends it privately to the
+// person who received that earlier code — the page never learns who that is.
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
@@ -15,6 +17,9 @@
       refused: "That code did not work — it may be wrong, expired or already used. Ask for a new one with /dashboard.",
       paused: "Too many wrong codes — sign-in is paused for a few minutes.",
       network: "Could not reach AgEnD. Check the connection and try again.",
+      resend: "Send me a new code", resent: "A new code was sent to you privately in chat. Enter it above.",
+      resend_wait: "A code was asked for a moment ago — wait a little and try again.",
+      resend_refused: "A new code could not be sent. Ask for one with /dashboard.",
     },
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "請輸入聊天頻道給你的一次性登入碼。",
@@ -23,6 +28,9 @@
       refused: "登入碼無效：可能輸入錯誤、已過期或已使用。請用 /dashboard 再要一個。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
+      resend: "傳一組新的登入碼給我", resent: "新的登入碼已私訊給你，請在上方輸入。",
+      resend_wait: "剛剛才要過登入碼，請稍候再試。",
+      resend_refused: "無法傳送新的登入碼。請用 /dashboard 再要一個。",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
@@ -97,7 +105,35 @@
       if (note) { sessionStorage.removeItem("agend_signout_note"); $("msg").textContent = note; }
     } catch { /* private mode */ }
     $("code").focus();
+    offerResend();
   }
+
+  // Only a returning device gets the button; the answer is a boolean and asking has no side effect.
+  async function offerResend() {
+    try {
+      const r = await fetch("/auth/device", { credentials: "same-origin", cache: "no-store" });
+      if (r.ok && (await r.json()).returning === true) $("resend").hidden = false;
+    } catch { /* no button */ }
+  }
+
+  $("resend").addEventListener("click", async () => {
+    const button = $("resend");
+    const msg = $("msg");
+    msg.textContent = "";
+    msg.classList.remove("ok");
+    button.disabled = true;
+    try {
+      const r = await fetch("/auth/request-code", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (r.status === 202) { msg.classList.add("ok"); msg.textContent = t("resent"); $("code").focus(); }
+      else if (r.status === 429) msg.textContent = t("resend_wait");
+      else { msg.textContent = t("resend_refused"); if (r.status === 401) button.hidden = true; }
+    } catch {
+      msg.textContent = t("network");
+    }
+    button.disabled = false;
+  });
 
   async function probe() {
     // A second bounce inside ten seconds means the cookie is valid but not being sent on the
@@ -116,6 +152,7 @@
     const button = $("go");
     const msg = $("msg");
     msg.textContent = "";
+    msg.classList.remove("ok");
     button.disabled = true;
     button.textContent = t("working");
     try {

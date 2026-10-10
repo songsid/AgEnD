@@ -14,6 +14,8 @@ import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-contex
  *   DELETE /auth/sessions/<handle>  end one of them
  *   DELETE /auth/sessions           end all of them
  *   POST   /auth/issue-code         X-Agend-Token only — how `agend web --code` asks for a code
+ *   GET    /auth/device             is this a returning device (#1570) — a boolean, no side effect
+ *   POST   /auth/request-code       a returning device asks for a fresh code, sent privately to its owner (#1570)
  *
  * Every GET here is free of side effects: a chat client that previews a link
  * cannot spend a code, mint a session, or move a counter. The only thing that
@@ -43,6 +45,7 @@ import {
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
 import type { LoginCodeOwner, WebLoginCodes } from "./web-login.js";
+import { buildDeviceCookie, readDeviceCookie, type ReturningDevice } from "./web-returning-device.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -60,7 +63,16 @@ export interface AuthApiContext {
   /** Told after every successful sign-in, so the operator can be shown one they did not make. */
   confirmPublicWebLogin?(info: { label: string; handle: string; owner: LoginCodeOwner }, isCurrent: () => boolean): Promise<void>;
   onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string }): void;
+  /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
+  rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
+  /** #1570: the returning device a cookie value proves, or null. */
+  verifyReturningDevice?(value: string | undefined): ReturningDevice | null;
+  /** #1570: send a fresh code privately to the device's owner, if they still may have one. */
+  requestReturningCode?(device: ReturningDevice, input: { surface: "local" | "gateway"; exposureId?: string; label: string }):
+    Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }>;
 }
+
+export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /dashboard.";
 
 /** The only files `/assets/` will serve. A map, not a directory: nothing else can be named into it. */
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
@@ -248,11 +260,44 @@ export function handleAuthRequest(
       }
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
       try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
+      // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the
+      // session id above is unrelated to it). A code with no owner (`agend web --code`) does not.
+      let device: string | null = null;
+      try { device = result.owner ? ctx.rememberReturningDevice?.(result.owner, { surface: record.surface, label }) ?? null : null; } catch (err) { ctx.logger.debug({ err }, "returning device not recorded"); }
+      const secure = isSecureRequest(gateReq);
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, {
-        "Set-Cookie": buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000),
+        "Set-Cookie": [buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000), ...(device ? [buildDeviceCookie(device, secure)] : [])],
       });
     }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); })
       .finally(() => { req.removeListener("aborted", disconnect); res.removeListener?.("close", disconnect); });
+    return true;
+  }
+
+  // ── #1570: a returning device — GET is a boolean and nothing else; POST asks for a code for its owner ──
+  if (path === "/auth/device" || path === "/auth/request-code") {
+    const cookie = typeof req.headers.cookie === "string" ? req.headers.cookie : undefined;
+    const device = ctx.webToken ? ctx.verifyReturningDevice?.(readDeviceCookie(cookie, !!gatewayRequestContext(req))) ?? null : null;
+    if (path === "/auth/device") {
+      if (method !== "GET") { json(res, 405, { error: "method not allowed" }); return true; }
+      json(res, 200, { returning: device !== null }, { "Cache-Control": "no-store" });
+      return true;
+    }
+    if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
+    if (!req.headers.origin || !isSameOriginRequest(gateReq)) { json(res, 403, { error: "Cross-site request rejected" }); return true; }
+    if (!isJsonRequest(req)) { json(res, 415, { error: "expected application/json" }); return true; }
+    if (!device || !ctx.requestReturningCode) { json(res, 401, { error: CODE_REQUEST_REFUSED_MESSAGE }); return true; }
+    const gateway = gatewayRequestContext(req);
+    const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
+    void readJsonBody(req).then(async () => {
+      if (!isWebRequestCurrent(req)) { json(res, 503, { error: CODE_REQUEST_REFUSED_MESSAGE }); return; }
+      const outcome = await ctx.requestReturningCode!(device, { surface: gateway?.surface ?? "local", exposureId: gateway?.exposureId, label });
+      if (outcome.kind === "sent") { json(res, 202, { ok: true }); return; }
+      if (outcome.kind === "limited") {
+        json(res, 429, { error: "Too many requests — wait a little and try again." }, { "Retry-After": String(Math.ceil(outcome.retryAfterMs / 1000)) });
+        return;
+      }
+      json(res, 503, { error: CODE_REQUEST_REFUSED_MESSAGE });
+    }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 503, { error: CODE_REQUEST_REFUSED_MESSAGE }); });
     return true;
   }
 
