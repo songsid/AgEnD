@@ -290,6 +290,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .msg.user .atts { justify-content: flex-end; }
 .msg .att-img img { max-width: 260px; max-height: 220px; border-radius: var(--r-sm); display: block; }
 .msg .att-img { cursor: zoom-in; }
+/* #1565: a file from before the fleet restarted that could not be served again — its name only, nothing to fetch. */
+.att-file.att-gone { opacity: 0.6; cursor: default; text-decoration: none; }
 /* A chat image, full size, in the page (image-lightbox.js): the whole viewport, dark, the image fitted to it. */
 html.lb-open .scroller { overflow: hidden; }
 .lb { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
