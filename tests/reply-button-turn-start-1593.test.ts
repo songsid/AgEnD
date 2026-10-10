@@ -226,11 +226,19 @@ describe("claims and cleanup remain shared", () => {
   });
   it.each([false, "throw"])("failed handoff %s reopens without a successful turn", async result => {
     const h = fixture("discord");
-    vi.spyOn(h.fm, "deliverToInstance").mockImplementation(async () => { if (result === "throw") throw new Error("inert unavailable"); return false; });
+    const delivery = vi.spyOn(h.fm, "deliverToInstance").mockImplementation(async () => { if (result === "throw") throw new Error("inert unavailable"); return false; });
     await h.click();
+    expect(h.reactions.map(r => r[2])).toEqual(["👀", "❌"]);
     expect(h.alerts).toEqual([]); expect(h.fm.lastInboundUser.has("w")).toBe(false);
     expect(h.fm.webChatHistory.list("w")).toEqual([]);
     expect(h.buttons.viewOf(h.prepared.id).state).toBe("open");
+    delivery.mockRestore(); await h.click();
+    h.daemon.emit("message_confirmed", { chatId: h.where.chatId, messageId: "reply-with-buttons", threadId: "42" });
+    await flush();
+    expect(h.reactions.map(r => r[2])).toEqual(["👀", "❌", "👀", "🤔", "✅"]);
+    expect(h.adapter.unreact).toHaveBeenCalledWith("42", "reply-with-buttons", "❌", "42");
+    expect(h.payloads).toHaveLength(1); expect(h.alerts).toHaveLength(1);
+    expect(h.buttons.viewOf(h.prepared.id).state).toBe("chosen");
   });
   it("a canceled accepted handoff cannot resurrect a cancel publication", async () => {
     const h = fixture("discord"), wait = held<void>();

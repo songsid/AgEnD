@@ -1476,17 +1476,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.setTopicIcon(set.instance, "blue");
     }
     const reactions = this.pendingReactionsMeta(set.instance);
-    const sent = await this.deliverToInstance(set.instance, {
-      type: "fleet_inbound",
-      content,
-      targetSession: set.instance,
-      meta: {
-        chat_id: set.chatId, message_id: messageId, user: by.username, user_id: by.userId, ts,
-        thread_id: set.threadId, adapter_id: inbound.adapterId, source: inbound.source,
-        ...reactions.meta,
-      },
-    });
-    if (sent === false) return false;
+    let accepted = false;
+    try {
+      accepted = (await this.deliverToInstance(set.instance, {
+        type: "fleet_inbound",
+        content,
+        targetSession: set.instance,
+        meta: {
+          chat_id: set.chatId, message_id: messageId, user: by.username, user_id: by.userId, ts,
+          thread_id: set.threadId, adapter_id: inbound.adapterId, source: inbound.source,
+          ...reactions.meta,
+        },
+      })) !== false;
+    } finally {
+      // Both false and throw reopen the choice in the controller. Finish the
+      // receipt through the same reconciler as typed input, rather than leaving
+      // a received reaction on a message that never reached the agent.
+      if (!accepted && inbound.chatId && messageId) {
+        this.finishDeliveryStatus(set.instance, inbound.chatId, messageId, "failed", inbound.threadId);
+      }
+    }
+    if (!accepted) return false;
     reactions.consume();
     this.afterUserInboundDelivered(set.instance, inbound, deliveryEpoch);
     this.emitSseEvent("message", {
