@@ -1455,7 +1455,7 @@ program
      * verified package, then restart through the verified binary — never through whatever invoked this command
      * (process.argv[1] may be another checkout). A failed target check leaves the running fleet alone.
      */
-    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null }; retireSystemCopy?: true }, viaNvm: boolean): Promise<void> => {
+    const activateVerified = async (verified: { agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: import("./package-preimage.js").PackagePreimage | null }; retireSystemCopy?: true; npmPath?: string }, viaNvm: boolean): Promise<void> => {
       const { newAgendInvocation, retireSystemCopy, activationSettled } = await import("./update-install.js");
       // What the restart came to — carried, never inferred from the exit code (pending ≠ restarted).
       let restartResult: "restarted" | "pending" | "failed" | null = null;
@@ -1512,7 +1512,11 @@ program
       // new install (activationSettled) is it removed; pending, failed or refused, it stays, so the old unit still starts.
       if (verified.retireSystemCopy) {
         if (activationSettled(outcome, restartResult)) {
-          retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) });
+          const retireResult = retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) }, verified.npmPath);
+          if (!retireResult.ok) {
+            console.error(`  ✗ Old system install was not removed: ${retireResult.reason}`);
+            process.exitCode = 1;
+          }
         } else {
           console.log("  Note: the old system install was kept, since the new one is not running yet.");
         }
