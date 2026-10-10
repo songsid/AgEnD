@@ -77,15 +77,17 @@ describe("#1490 normalized Settings authority", () => {
     expect(() => prepareSettingsEffect("PUT", "/api/settings/fleet/web", { public_link: { ttl_minutes: 60 },
       authority: { connections: ["b"], primaryGeneral: false, unknown: false } }, { config: cfg, classic: {} })).toThrow("unsupported_sensitive_effect");
   });
-  it("Quickstart new-connection consent retains primary F and any overwritten instance's old owner", () => {
+  it("Quickstart new-connection consent retains primary F and a rebound instance's old owner", () => {
     const cfg = config(), body = { platform: "telegram", token: "test-secret", token_env: "FIXTURE_NEW", channel_id: "new",
       backend: "codex", instance_name: "worker", working_directory: "/fixture/new", group_id: "-100123", admin_user_id: "42" };
     const connection = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, connection_only: true }, { config: cfg, classic: {} }).diff!;
     expect(connection.authority).toEqual(scope([], true));
-    const overwritten = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", body, { config: cfg, classic: {} }).diff!;
-    expect(overwritten.authority).toEqual(scope(["b"], true));
-    expect(overwritten.summary.join("\n")).toContain("worker");
-    expect(JSON.stringify(overwritten)).not.toContain(body.token);
+    // #1519 P7: an existing agent is never overwritten — it is rebound to the new connection, with its old owner's consent.
+    expect(() => prepareSettingsEffect("POST", "/api/settings/quickstart/commit", body, { config: cfg, classic: {} })).toThrow(expect.objectContaining({ status: 409 }));
+    const rebound = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, existing_agent: true }, { config: cfg, classic: {} }).diff!;
+    expect(rebound.authority).toEqual(scope(["b"], true));
+    expect(rebound.summary.join("\n")).toContain("worker");
+    expect(JSON.stringify(rebound)).not.toContain(body.token);
   });
   it("store scope and audit fields are isolated from caller mutations and never added to the browser view", () => {
     const audit = vi.fn(), store = new SettingsConfirmationStore({ audit });

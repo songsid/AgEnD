@@ -31,7 +31,12 @@ export function SetupWizard({ ctx, onClose }) {
       const env = await api("/api/settings/quickstart/environment").catch(() => null);
       if (!lease.current()) return;
       const e = (env && env.body) || { backends: [], channels: [], has_fleet: false };
-      setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: "agent-1",
+      // #1519 P7: with agents already there, the bot is for one of them by default; a new agent gets a free name.
+      const agents = Array.isArray(e.agents) ? e.agents : [];
+      const names = new Set(agents.map((a) => a.name));
+      let n = 1; while (names.has(`agent-${n}`)) n++;
+      setW({ step: 1, env: e, backend: (e.backends || [])[0] || "claude-code", working_directory: "", instance_name: `agent-${n}`,
+        agent: agents.length ? "existing" : "new", existing_name: agents.length ? agents[0].name : "",
         platform: "telegram", token: "", group_id: "", guild_id: "", general_channel_id: "", admin_user_id: "",
         identity: null, guilds: [], plan: null, offset: 0 });
     })();
@@ -41,8 +46,11 @@ export function SetupWizard({ ctx, onClose }) {
   // edit — target, admin, backend, directory, name — is dropped when it lands, never committed or written over the edit.
   const set = (k) => (v) => { bump(); setW((x) => ({ ...x, [k]: v })); };
   // No token env: the plan generates one (#1519 P1: AGEND_<PLATFORM>_<ID>_TOKEN, unique) and the commit carries the plan's.
+  // An existing agent (#1519 P7) is named and nothing else: the server keeps its directory and backend.
   const input = () => ({
-    platform: w.platform, backend: w.backend, working_directory: w.working_directory, instance_name: w.instance_name,
+    platform: w.platform,
+    ...(w.agent === "existing" ? { instance_name: w.existing_name, existing_agent: true }
+      : { backend: w.backend, working_directory: w.working_directory, instance_name: w.instance_name }),
     group_id: w.group_id || undefined, guild_id: w.guild_id || undefined, general_channel_id: w.general_channel_id || undefined,
     admin_user_id: w.admin_user_id || undefined,
   });
@@ -75,7 +83,10 @@ export function SetupWizard({ ctx, onClose }) {
   };
   const next = async () => {
     setErr("");
-    if (w.step === 1) { if (!w.working_directory.startsWith("/")) { setErr(tn("wizardNeedDir")); return; } setW({ ...w, step: 2 }); return; }
+    if (w.step === 1) {
+      if (w.agent !== "existing" && !w.working_directory.startsWith("/")) { setErr(tn("wizardNeedDir")); return; }
+      setW({ ...w, step: 2 }); return;
+    }
     if (w.step === 2) { setW({ ...w, step: 3 }); return; }
     if (w.step === 3) {
       if (!w.identity || !w.identity.valid) { setErr(tn("wizardNeedVerify")); return; }
@@ -110,12 +121,19 @@ export function SetupWizard({ ctx, onClose }) {
   };
 
   let body;
+  const agents = Array.isArray(w.env.agents) ? w.env.agents : [];
   if (w.step === 1) {
-    body = html`<div class="field"><label for="wz-be">${tn("wizardBackend")}</label>
+    const which = agents.length ? html`<div class="seg-inline" role="group" aria-label=${tn("wizardAgentWhich")}>
+        ${["existing", "new"].map((k) => html`<button key=${k} type="button" class=${`btn${w.agent === k ? " btn-primary" : ""}`} aria-pressed=${w.agent === k ? "true" : "false"}
+          onClick=${() => set("agent")(k)}>${k === "existing" ? tn("wizardAgentExisting") : tn("wizardAgentNew")}</button>`)}</div>` : null;
+    body = w.agent === "existing" ? html`${which}
+      <div class="field"><label for="wz-agent">${tn("wizardAgentPick")}</label>
+        <${Select} id="wz-agent" value=${w.existing_name} onChange=${set("existing_name")} options=${agents.map((a) => a.name)} />
+        <p class="note">${tn("wizardAgentExistingNote")}</p></div>` : html`${which}<div class="field"><label for="wz-be">${tn("wizardBackend")}</label>
         <${Select} id="wz-be" value=${w.backend} onChange=${set("backend")} options=${w.env.backends && w.env.backends.length ? w.env.backends : BACKENDS} />
         <p class="note">${w.env.backends && w.env.backends.length ? tn("wizardBackendFound", w.env.backends.join(", ")) : tn("wizardBackendNone")}</p></div>
       <div class="field"><label for="wz-wd">${tn("workingDir")}</label><input id="wz-wd" type="text" placeholder="/home/you/projects/app" value=${w.working_directory} onInput=${(e) => set("working_directory")(e.target.value.trim())} /></div>
-      <div class="field"><label for="wz-name">${tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${w.instance_name} onInput=${(e) => set("instance_name")(e.target.value.trim())} /></div>`;
+      <div class="field"><label for="wz-name">${agents.length ? tn("wizardAgentNewName") : tn("wizardAgentName")}</label><input id="wz-name" type="text" value=${w.instance_name} onInput=${(e) => set("instance_name")(e.target.value.trim())} /></div>`;
   } else if (w.step === 2) {
     body = html`<div class="seg-inline" role="group" aria-label=${tn("wizardPlatform")}>
         ${["telegram", "discord"].map((p) => html`<button key=${p} type="button" class=${`btn${w.platform === p ? " btn-primary" : ""}`} aria-pressed=${w.platform === p ? "true" : "false"}
@@ -137,7 +155,11 @@ export function SetupWizard({ ctx, onClose }) {
   } else {
     body = !w.plan ? html`<p class="note">${tn("wizardPlanLoading")}</p>` : html`
       <p><strong>${tn("wizardWillWrite")}</strong></p>
-      <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend, channel_id: w.plan.instance.channel_id } } })}</pre>
+      <pre class="s-yaml">${toYaml({ channels: [w.plan.channel], instances: { [w.plan.instance.name]: { working_directory: w.plan.instance.working_directory, backend: w.plan.instance.backend, channel_id: w.plan.instance.channel_id,
+        ...(w.plan.instance.topic && w.plan.instance.topic.to != null ? { topic_id: w.plan.instance.topic.to } : {}) } } })}</pre>
+      ${w.plan.instance && w.plan.instance.existing ? html`<p class="note">${tn("wizardAgentExistingNote")}</p>` : null}
+      ${w.plan.instance && w.plan.instance.topic ? html`<p class="feedback warning">${w.plan.instance.topic.to == null
+        ? tn("wizardTopicNotCarried", w.plan.instance.topic.from) : tn("wizardTopicGeneral")}</p>` : null}
       <${Drawer} title=${tn("advancedSection")}><${TokenEnvNote} name=${w.plan.token_env} /></${Drawer}>
       ${(w.plan.warnings || []).map((x, i) => html`<p key=${i} class="feedback warning">${x}</p>`)}`;
   }

@@ -1735,24 +1735,23 @@ export class TopicCommands {
     if (!botToken) return;
 
     let configChanged = false;
+    const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
     for (const [name, config] of Object.entries(this.ctx.fleetConfig.instances)) {
       if (config.topic_id != null) continue;
 
-      // General topic: determine platform type from channel_id → channels config
+      // #1549 review: the agent's own connection decides — its channel_id, else the first. A topic is made, or a
+      // General bound, only in that connection's chat: an owner that is not configured is left unbound, and nothing
+      // is borrowed from another connection (a topic in the old group, the old bot's General).
+      const ownerId = (config as { channel_id?: string }).channel_id;
+      const owner = ownerId != null ? channels.find(c => (c.id ?? c.type) === ownerId) : channels[0];
+      if (!owner) {
+        this.ctx.logger.warn({ name, channelId: ownerId }, "Agent's connection is not configured — leaving its topic unbound");
+        continue;
+      }
+
       if (config.general_topic) {
-        const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
-        let platformType: string | undefined;
-        if ((config as any).channel_id) {
-          const matched = channels.find(c => (c.id ?? c.type) === (config as any).channel_id);
-          platformType = matched?.type;
-        }
-        if (!platformType) {
-          if (name.includes("telegram")) platformType = "telegram";
-          else if (name.includes("discord")) platformType = "discord";
-        }
-        if (platformType === "discord") {
-          const ch = channels.find(c => c.type === "discord");
-          const gcid = ch?.options?.general_channel_id as string | number | undefined;
+        if (owner.type === "discord") {
+          const gcid = owner.options?.general_channel_id as string | number | undefined;
           // A Discord general needs a real channel id — NOT the TG-convention
           // "1", which makes the DC adapter throw fetching channel "1". Skip
           // (leave unbound) if there's no valid channel to bind to.
@@ -1765,7 +1764,14 @@ export class TopicCommands {
           config.topic_id = 1;
         }
         configChanged = true;
-        this.ctx.logger.info({ name, topicId: config.topic_id, platformType }, "Bound to General topic");
+        this.ctx.logger.info({ name, topicId: config.topic_id, platformType: owner.type }, "Bound to General topic");
+        continue;
+      }
+
+      // A new topic is made through the primary connection only (createForumTopic's adapter): an agent of another
+      // connection is not given a topic in the primary's group.
+      if (owner !== channels[0]) {
+        this.ctx.logger.info({ name, channelId: ownerId }, "Agent belongs to another connection — not auto-creating a topic in the primary group");
         continue;
       }
 

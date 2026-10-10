@@ -38,7 +38,7 @@ describe("the app's dictionary: English and zh-TW", () => {
   });
 
   it.each([
-    ["fleet.topicRequired", "目錄留空時必須填寫 Topic 名稱"],
+    ["fleet.topicRequired", "目錄留空時必須填寫名稱"],
     ["fleet.deleteSchedule", "確定刪除此排程嗎？"],
     ["fleet.deleteTeam", "確定刪除 team「{0}」嗎？"],
     ["fleet.teamFieldsRequired", "必須填寫名稱並選擇至少一名成員"],
