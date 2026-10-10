@@ -1,0 +1,50 @@
+
+● mock reply 12
+
+✻ Churned for 0s · done 9:02 PM · 1 shell still running
+
+❯ [agend-delivery-id:11111111-2222-3333-4444-555555555555]
+  [from:audit-peer] first line of a multi-line message
+  second line with detail
+  third line closes it
+  (message_id: xmsg-1 | correlation_id: cid-1)
+
+● mock reply 16
+
+✻ Crunched for 0s · done 9:02 PM · 1 shell still running
+
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+
+● mock reply 20
+
+✻ Cooked for 0s · done 9:02 PM · 1 shell still running
+
+❯ trigger E429 nowtrigger E529 now
+
+● API Error: Repeated 529 Overloaded errors. The API is at capacity — this is usually temporary. Try again in a moment. If it persists, check your
+  inference gateway (127.0.0.1:18296).
+
+✻ Sautéed for 1s · done 9:03 PM · 1 shell still running
+
+❯ trigger E500 nowtrigger E401 now
+
+❯ BGWORK start it
+
+  Ran 1 shell command
+
+● tool finished
+
+✻ Crunched for 0s · done 9:05 PM · 1 shell still running
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Background work is running
+   The following will stop when you exit:
+
+   shell · sleep 900
+
+   ❯ 1. Exit and stop tasks
+     2. Move to background and exit
+     3. Stay
+
+   Enter to confirm · Esc to cancel
