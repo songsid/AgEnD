@@ -23,6 +23,9 @@
   var LIMITS = { maxBytes: 1024 * 1024, minHeight: 40, maxHeight: 4000, readyMs: 3000, watchdogMs: 10000, resizePerSec: 10, minDelta: 2, growthFreeze: 5, growthWindowMs: 2000 };
   var OPT_IN_KEY = "agend_html_preview";        // localStorage: "on" — this device allows previews
   var NEVER_KEY = "agend_html_preview_never";   // sessionStorage: "1" — never preview on this device (this session)
+  // #1568: the banner was acknowledged ("I understand"). localStorage: the sign-in's session handle — hidden while the
+  // page belongs to that sign-in; sessionStorage: "1" — no sign-in session known, this tab only.
+  var BANNER_ACK_KEY = "agend_html_preview_banner_ack";
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "" };
@@ -74,6 +77,8 @@
     }
   }
   function onStorage(event) {
+    // #1568: the banner acknowledged in another tab of this sign-in: hide it here too (nothing starts or stops).
+    if (event && event.key === BANNER_ACK_KEY) { notify(); return; }
     if (event && event.key !== OPT_IN_KEY && event.key !== null) return;   // key null: storage was cleared
     if (!optedIn()) stopAll("off");
     notify();
@@ -103,6 +108,46 @@
     var s = store("sessionStorage");
     try { if (s) { if (on) s.setItem(NEVER_KEY, "1"); else s.removeItem(NEVER_KEY); } } catch (e) { /* this page only */ }
     if (on) stopAll("off");
+    notify();
+  }
+
+  // ── #1568: the banner, acknowledged until the next sign-in ────────
+
+  // The page's sign-in, as the page found it out (AgendAuth): undefined — not known yet; null — no sign-in session (a
+  // loopback page without one, a session that ended, a failed read); otherwise the session's handle.
+  var bannerScope;
+  // Pressed on this page: { scope } — the sign-in it was pressed under (undefined: before the page knew). Holds for
+  // this page and that sign-in whatever storage does (blocked, full); null: not pressed here.
+  var pressed = null;
+  function validHandle(h) { return typeof h === "string" && /^[0-9a-f]{16}$/.test(h); }
+  /**
+   * Whether the banner was acknowledged for this page's sign-in: the handle stored is this session's (a new sign-in
+   * has a new handle, so it shows again); with no sign-in session, for this tab only. Not known yet: shown.
+   */
+  function bannerAcked() {
+    if (pressed && (pressed.scope === undefined || pressed.scope === bannerScope)) return true;
+    if (bannerScope === undefined) return false;
+    if (bannerScope === null) { var t = store("sessionStorage"); try { return !!t && t.getItem(BANNER_ACK_KEY) === "1"; } catch (e) { return false; } }
+    var s = store("localStorage");
+    try { return !!s && s.getItem(BANNER_ACK_KEY) === bannerScope; } catch (e) { return false; }
+  }
+  function writeBannerAck() {
+    if (bannerScope === undefined) return;
+    var kind = bannerScope === null ? "sessionStorage" : "localStorage";
+    var s = store(kind);
+    try { if (s) s.setItem(BANNER_ACK_KEY, bannerScope === null ? "1" : bannerScope); } catch (e) { /* this page only */ }
+  }
+  /** "I understand": the banner is hidden until the next sign-in (or, with no sign-in session, for this tab). */
+  function ackBanner() {
+    pressed = { scope: bannerScope };
+    writeBannerAck();
+    notify();
+  }
+  /** The page's sign-in: the session handle, or null when there is no sign-in session. Set once the page knows. */
+  function setBannerScope(handle) {
+    bannerScope = validHandle(handle) ? handle : null;
+    // Pressed before the page knew its sign-in: it was this one — recorded for it now.
+    if (pressed && pressed.scope === undefined) { pressed = { scope: bannerScope }; writeBannerAck(); }
     notify();
   }
 
@@ -289,5 +334,9 @@
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
     /** The banner every running preview carries, in the page's language (#1554); BANNER is its English. */
     banner: function () { return say("pvBanner", BANNER); },
+    /** #1568: its "I understand", and whether it was pressed for this sign-in. The frame's border stays either way. */
+    bannerAckLabel: function () { return say("pvBannerAck", "I understand"); },
+    bannerAckTitle: function () { return say("pvBannerAckTitle", "Hide this notice until you sign in again"); },
+    bannerAcked: bannerAcked, ackBanner: ackBanner, setBannerScope: setBannerScope,
   };
 });

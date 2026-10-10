@@ -142,7 +142,10 @@ export function createThread(list, scroller, opts) {
     menu.append(sum, optB, neverB);
     head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
     const note = el("div", "pv-note");
-    const banner = el("div", "pv-banner", P().banner()); banner.hidden = true;
+    // #1568: the banner, with its "I understand" (hidden until the next sign-in; the frame's border stays).
+    const banner = el("div", "pv-banner"); banner.hidden = true;
+    const ack = el("button", "btn btn-sm btn-ghost pv-ack", P().bannerAckLabel()); ack.type = "button"; ack.title = P().bannerAckTitle();
+    banner.append(el("span", "pv-banner-text", P().banner()), ack);
     const holder = el("div", "pv-holder");
     ph.append(head, note, banner, holder);
     let state = "idle";
@@ -156,7 +159,7 @@ export function createThread(list, scroller, opts) {
       run.hidden = !a.ok || going || inPanel || !!reading;
       if (toPanel) toPanel.hidden = inPanel || !!reading;
       stopB.hidden = !going && !reading;
-      banner.hidden = !going;
+      banner.hidden = !going || P().bannerAcked();
       note.textContent = reason != null ? reason : reading ? tr("chat.pvLoading") : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
       optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
       neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
@@ -187,6 +190,7 @@ export function createThread(list, scroller, opts) {
       withCode((c) => panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: moving }));
     };
     if (dl) dl.onclick = () => opts.download(code);
+    ack.onclick = () => P().ackBanner();      // every card and the panel hear it (onChange)
     optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
     neverB.onclick = () => { menu.open = false; P().setNever(!P().never()); refreshCards(); };
     cardRefresh.set(ph, refresh);
