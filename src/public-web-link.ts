@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { newTunnelSid } from "./tunnel/manager.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
-import { CloudflaredInstallError, ensureCloudflared } from "./tunnel/cloudflared-install.js";
+import { CloudflaredInstallError, ensureCloudflared, type CloudflaredInstallProgress } from "./tunnel/cloudflared-install.js";
 import { PublicLinkProgressTracker, failureOf, type PublicLinkFailure, type PublicLinkProgress } from "./public-link-progress.js";
 import type { TunnelReservation } from "./tunnel/purpose-lane.js";
 import type { TunnelStopResult } from "./tunnel/types.js";
@@ -55,6 +55,13 @@ export interface PublicLinkDelivery {
   readonly expiresAt: number;
   readonly isCurrent: () => boolean;
 }
+/** What the install reports, onto the public link's steps (①–③). */
+export function applyInstallProgress(progress: PublicLinkProgressTracker, p: CloudflaredInstallProgress): void {
+  if (p.phase === "checked") progress.installChecked(p.download, p.version);
+  else if (p.phase === "downloading") progress.downloaded(p.received, p.total, p.fallback?.reason);
+  else progress.begin("verify");
+}
+
 /** A start step that failed for a reason the user is shown. */
 class StartFailure extends Error {
   constructor(readonly reason: PublicLinkFailure) { super(reason); }
@@ -170,11 +177,7 @@ export class PublicWebLink {
   private async start(e: Exposure, protocol: "http2" | "quic" | "auto"): Promise<void> {
     try {
       const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
-        onProgress: p => {
-          if (p.phase === "checked") e.progress.installChecked(p.download, p.version);
-          else if (p.phase === "downloading") e.progress.downloaded(p.received, p.total);
-          else e.progress.begin("verify");
-        } });
+        onProgress: p => applyInstallProgress(e.progress, p) });
       if (!this.current(e)) throw new Error("closed");
       e.progress.begin("tunnel");
       const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); });

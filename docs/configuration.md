@@ -50,7 +50,11 @@ consent, once per login; a link is never kept or reused. This works the same on 
 chosen, AgEnD downloads Cloudflare's official build into its own folder (`~/.agend/bin/cloudflared`, no sudo, nothing
 installed system-wide) and says so in the chat. The version is pinned in AgEnD and the download is checked against a
 SHA256 pinned with it; a file that does not match is deleted and nothing runs. The installed copy is checked again before
-every use. AgEnD only installs into, and only trusts, a folder that is yours alone: if `~/.agend` (or its `bin`) is
+every use. **Where it comes from:** on Linux, Cloudflare's own package repository first (`pkg.cloudflare.com`, the
+`.deb`, whose binary is unpacked by AgEnD itself), then the GitHub release when the package is missing, stalls, is too
+slow or does not match. On macOS, GitHub only, since there is no package for it. Both are checked against the same
+pinned SHA256. A download fails only when no data has arrived for 60 seconds, with an overall limit of 30 minutes, so a
+slow connection that keeps moving finishes. AgEnD only installs into, and only trusts, a folder that is yours alone: if `~/.agend` (or its `bin`) is
 writable by another user, or `bin` is a symlink, it refuses and says so. Linux (x86-64, arm64, arm, x86) and macOS
 (Intel, Apple silicon) are covered; elsewhere, install cloudflared yourself. If it cannot be obtained (offline, blocked, `HTTPS_PROXY` is honoured), the login says why and opens nothing —
 choose **I understand (local network)** instead.
