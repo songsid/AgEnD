@@ -10,13 +10,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+// #1555 review: a fault injected into reading our own downloaded package (and nothing else).
+const fsFault = vi.hoisted(() => ({ code: null as string | null }));
+vi.mock("node:fs/promises", async original => {
+  const real = await original<typeof import("node:fs/promises")>();
+  return { ...real, readFile: (async (path: unknown, ...rest: unknown[]) => {
+    if (fsFault.code && String(path).endsWith(".deb.part")) throw Object.assign(new Error(`${fsFault.code}: injected`), { code: fsFault.code });
+    return (real.readFile as (...a: unknown[]) => Promise<unknown>)(path, ...rest);
+  }) as typeof real.readFile };
+});
 import { CLOUDFLARED_PIN, CloudflaredInstallError, ensureCloudflared, packageUrl, releaseUrl, type CloudflaredAsset, type CloudflaredInstallProgress } from "../src/tunnel/cloudflared-install.js";
 import { arMember, extractDebFile, tarFile, DebExtractError } from "../src/tunnel/deb-extract.js";
-import { PublicLinkProgressTracker, renderPublicLinkProgress } from "../src/public-link-progress.js";
+import { PublicLinkProgressTracker, failureOf, renderPublicLinkProgress } from "../src/public-link-progress.js";
+import { applyInstallProgress } from "../src/public-web-link.js";
 import { setLocale, t } from "../src/locale.js";
 
 const dirs: string[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); setLocale("en"); });
+afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); setLocale("en"); fsFault.code = null; });
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-cf1554-")); dirs.push(d); return d; };
 const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
 const BINARY = Buffer.from("#!/bin/sh\necho 'cloudflared version 2026.9.3'\n".repeat(50));
@@ -291,5 +301,69 @@ describe("step ② says when the source switched (en, zh-TW)", () => {
     expect(text).toContain(t("dashboard.progress.download_fallback", "12.0 / 38.3 MB", t("dashboard.progress.fallback_slow")));
     expect(text).toContain("GitHub");
     expect(text).toContain("pkg.cloudflare.com");
+  });
+});
+
+describe("#1555 review", () => {
+  it.each([["EACCES"], ["EIO"]])("reading our own downloaded package failing (%s) is local: install-failed, GitHub never asked, nothing installed", async code => {
+    const dataDir = scratch(); const net = network({ pkg: deb(BINARY), github: BINARY });
+    fsFault.code = code;
+    const err = await ensureCloudflared(base(dataDir, { fetchImpl: net.fetchImpl })).catch(e => e);
+    expect(err).toMatchObject({ kind: "install-failed" });
+    expect(err.message).toContain(code);
+    expect(net.calls).toEqual(["pkg"]);
+    expect(existsSync(join(dataDir, "bin", "cloudflared"))).toBe(false);
+    expect(leftovers(dataDir)).toEqual([]);
+  });
+
+  /** The first bytes, then the event loop held for `holdMs` (the stall timer cannot run), then the rest at once. */
+  const late = (holdMs: number) => () => {
+    let sent = false;
+    return new Response(new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(new Uint8Array(BINARY.subarray(0, 5))); },
+      pull(c) {
+        if (sent) return;
+        sent = true;
+        const until = performance.now() + holdMs; while (performance.now() < until) { /* hold the loop */ }
+        c.enqueue(new Uint8Array(BINARY.subarray(5))); c.close();
+      },
+    }), { status: 200, headers: { "content-length": String(BINARY.length) } });
+  };
+  it("bytes that arrive after the stall deadline are not accepted, even though the timer has not run yet", async () => {
+    const { deb: _none, ...githubOnly } = LINUX;
+    const dataDir = scratch();
+    const err = await ensureCloudflared(base(dataDir, { fetchImpl: network({ github: late(140) }).fetchImpl, pin: pin(githubOnly), stallMs: 80 })).catch(e => e);
+    expect(err).toMatchObject({ kind: "download-failed" });
+    expect(err.message).toMatch(/^stalled/);
+    expect(existsSync(join(dataDir, "bin", "cloudflared"))).toBe(false);
+    expect(leftovers(dataDir)).toEqual([]);
+    const ok = scratch(); // control: inside the deadline
+    await ensureCloudflared(base(ok, { fetchImpl: network({ github: late(10) }).fetchImpl, pin: pin(githubOnly), stallMs: 80 }));
+    expect(installed(ok)).toEqual(BINARY);
+  });
+
+  it("a wrong package, then GitHub: ② is active again (no ③) while GitHub downloads, and a GitHub 404 fails at ②", async () => {
+    const dataDir = scratch();
+    let answer!: (r: Response) => void;
+    const held = new Promise<Response>(resolve => { answer = resolve; });
+    const net = network({ pkg: deb(OTHER), github: () => held });
+    const tracker = new PublicLinkProgressTracker(() => performance.now(), () => {});
+    const pending = ensureCloudflared(base(dataDir, { fetchImpl: net.fetchImpl, onProgress: (p: CloudflaredInstallProgress) => applyInstallProgress(tracker, p) })).catch(e => e);
+    await vi.waitFor(() => expect(net.calls).toEqual(["pkg", "github"]));
+    const running = tracker.snapshot.steps.at(-1)!;
+    expect(running.step).toBe("download");
+    expect(running.endedAt).toBeUndefined();
+    expect(tracker.snapshot.steps.filter(s => s.step === "download")).toHaveLength(1);
+    expect(tracker.snapshot.steps.some(s => s.step === "verify")).toBe(false);
+    expect(tracker.snapshot.download?.fallback).toBe("failed");
+    answer(new Response("not found", { status: 404 }));
+    const err = await pending;
+    tracker.fail(failureOf(err.kind)); // what PublicWebLink does with a failed start
+    expect(tracker.snapshot.failed).toEqual({ step: "download", reason: "download-failed" });
+    // control: the package missing and GitHub missing also fail at ②
+    const both = new PublicLinkProgressTracker(() => performance.now(), () => {});
+    const e2 = await ensureCloudflared(base(scratch(), { fetchImpl: network({ pkg: 404, github: 404 }).fetchImpl, onProgress: (p: CloudflaredInstallProgress) => applyInstallProgress(both, p) })).catch(e => e);
+    both.fail(failureOf(e2.kind));
+    expect(both.snapshot.failed).toEqual({ step: "download", reason: "download-failed" });
   });
 });

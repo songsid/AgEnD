@@ -1,6 +1,6 @@
 /**
  * #1554: one file out of a Debian package, in Node, with no new dependency — for cloudflared's pkg.cloudflare.com
- * `.deb`, a fallback source when GitHub is slow. What comes out proves nothing by itself: the caller checks it
+ * `.deb`, the first source on Linux (GitHub is the fallback). What comes out proves nothing by itself: the caller checks it
  * against the pinned SHA256 like every other download.
  *
  * Shapes accepted, as cloudflared 2026.9.3's packages have them: an `ar` archive (`!<arch>\n`, 60-byte headers,

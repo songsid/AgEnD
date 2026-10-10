@@ -70,7 +70,16 @@ export class PublicLinkProgressTracker {
     else this.set({ ...this.state, install: "installed", version });
   }
   downloaded(received: number, total: number | null, fallback?: "slow" | "failed"): void {
-    this.set({ ...this.state, download: { received, total, ...(fallback ? { fallback } : {}) } });
+    const download = { received, total, ...(fallback ? { fallback } : {}) };
+    const running = this.state.steps.at(-1);
+    if (fallback && !this.state.failed && running?.step === "verify" && running.endedAt === undefined) {
+      // #1554: the package was fetched, then failed verification, and GitHub is downloading now — ② is active again.
+      // One row per step: ③ goes back to not begun, and ② runs on from its first start (its time includes that try).
+      const steps = this.state.steps.slice(0, -1).map(s => s.step === "download" ? { step: s.step, startedAt: s.startedAt } : s);
+      this.set({ ...this.state, download, steps });
+      return;
+    }
+    this.set({ ...this.state, download });
   }
   /** Every running step ends now. */
   complete(): void {

@@ -135,7 +135,7 @@ export interface EnsureCloudflaredOptions {
   timeoutMs?: number;
   /** No bytes for this long fails the attempt (default 60 s). */
   stallMs?: number;
-  /** When GitHub's pace is judged, and the projected total that sends the download to the package source. */
+  /** When the first source's pace is judged (the package, on Linux), and the projected total that sends it to GitHub. */
   slowCheckMs?: number;
   slowProjectionMs?: number;
   maxBytes?: number;
@@ -314,9 +314,14 @@ async function downloadPackage(asset: CloudflaredAsset, url: string, dir: string
     await fetchToFile(url, debPart, opts, judgePace, (received, total) => tell(opts, { phase: "downloading", received, total }));
     tell(opts, { phase: "verifying" });
     throwIfCancelled(opts.signal);
+    // Reading our own private file failing is a local problem (no other source would fix it); only what the package
+    // turns out to contain is a source problem.
+    const debBytes = await readFile(debPart).catch(err => {
+      throw new CloudflaredInstallError("install-failed", `cannot read ${debPart}: ${(err as Error).message}`);
+    });
     let binary: Buffer;
     try {
-      binary = await extractDebFile(await readFile(debPart), "usr/bin/cloudflared", opts.maxBytes ?? MAX_DOWNLOAD_BYTES);
+      binary = await extractDebFile(debBytes, "usr/bin/cloudflared", opts.maxBytes ?? MAX_DOWNLOAD_BYTES);
     } catch (err) {
       throw new PackageFormatError(`${url}: ${(err as Error).message}`);
     }
@@ -350,6 +355,8 @@ async function downloadRelease(asset: CloudflaredAsset, version: string, dir: st
   const part = join(dir, `.cloudflared.${tag}.part`);
   const unpack = `${part}.d`;
   const stampTmp = `${stampPath(target)}.${tag}`;
+  // A fallback is downloading from the moment it starts, before GitHub answers: ② is the active step again.
+  if (fallbackReason) tell(opts, { phase: "downloading", received: 0, total: null, fallback: { reason: fallbackReason } });
   try {
     const sha = await fetchToFile(releaseUrl(asset, version), part, opts, judgePace,
       (received, total) => tell(opts, { phase: "downloading", received, total, ...(fallbackReason ? { fallback: { reason: fallbackReason } } : {}) }));
@@ -404,6 +411,17 @@ async function fetchToFile(url: string, file: string, opts: EnsureCloudflaredOpt
   const timer = setTimeout(() => stop("ceiling"), opts.timeoutMs ?? DOWNLOAD_CEILING_MS);
   timer.unref?.();
   let stall: ReturnType<typeof setTimeout> | undefined;
+  // The timers stop a silent download; these deadlines are what admission is judged by, so a result that arrives
+  // after a deadline (the timer not yet run) is not accepted as if it were on time.
+  const attemptStart = performance.now();
+  let lastByteAt = attemptStart;
+  const admit = () => {
+    const now = performance.now();
+    if (!stopped && now - lastByteAt > (opts.stallMs ?? STALL_TIMEOUT_MS)) stopped = "stalled";
+    if (!stopped && now - attemptStart > (opts.timeoutMs ?? DOWNLOAD_CEILING_MS)) stopped = "ceiling";
+    if (stopped) { abort.abort(); throw new Error(`stopped: ${stopped}`); }
+    lastByteAt = now;
+  };
   const moved = () => {
     if (stall) clearTimeout(stall);
     stall = setTimeout(() => stop("stalled"), opts.stallMs ?? STALL_TIMEOUT_MS);
@@ -433,6 +451,7 @@ async function fetchToFile(url: string, file: string, opts: EnsureCloudflaredOpt
   try {
     try {
       res = await transport.fetch(url, { signal: abort.signal, redirect: "follow" });
+      admit();
     } catch (err) {
       throw failed(err);
     }
@@ -464,6 +483,7 @@ async function fetchToFile(url: string, file: string, opts: EnsureCloudflaredOpt
       for (;;) {
         let chunk: ReadableStreamReadResult<Uint8Array>;
         try { chunk = await reader.read(); } catch (err) { throw failed(err); }
+        try { admit(); } catch (err) { throw failed(err); }
         if (chunk.done) break;
         bytes += chunk.value.byteLength;
         if (bytes > (opts.maxBytes ?? MAX_DOWNLOAD_BYTES)) throw new CloudflaredInstallError("download-failed", "the download is larger than any cloudflared");
