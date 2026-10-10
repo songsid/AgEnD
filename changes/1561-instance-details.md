@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Web: one instance's Details page, and a Chat / View / Details switch (#1561).** Each instance now has a Details page at `/ui/fleet/agent/<name>`. It shows the instance's runtime and recent activity, and a read-only summary of its configuration: directory, where it is bound, tags and description. **Edit in Settings** opens that agent's settings. The ⋯ menu starts, restarts, stops, pauses, wakes or deletes the instance, with the same confirmations as in the chat. On an instance's pages, the header switches between its **Chat**, **View** and **Details**; on a phone these appear as tabs under the header. While you have an instance open, **Fleet** now takes you to that instance's Details instead of always landing on Tasks. On Details or a Fleet tab, clicking an instance in the sidebar opens its Details.
