@@ -1,0 +1,185 @@
+{
+  "agend_base": "56f73788f59c91bb3053963c771f1b8d632ee3f6",
+  "frames": [
+    {
+      "version": "0.162.0",
+      "phase": "tier-catalog-idle",
+      "raw_path": "0.162.0/tier-catalog-idle/0004.txt",
+      "raw_sha256": "3d694152112bc6c20e981d6c64e5aa5650e38005634d072c5d4834bac5fd626e",
+      "fixture": "v01620/tier-catalog-idle.pane.txt",
+      "sha256": "98420b8f9048ac6c62f083096e3a140ccb2da897168d299c4952ca05db595e31"
+    },
+    {
+      "version": "0.162.0",
+      "phase": "tier-save-success",
+      "raw_path": "0.162.0/tier-save-success/0002.txt",
+      "raw_sha256": "588e83847e89dc7c504cfc480614e9eec13f4f01a2d72e4bd0c07035333a0259",
+      "fixture": "v01620/tier-save-success.pane.txt",
+      "sha256": "78a3d1018b47d9e3cb3adc60766c9c5a7755f3f36f330352b831b35fea8aff9a"
+    },
+    {
+      "version": "0.162.0",
+      "phase": "tier-save-failed",
+      "raw_path": "0.162.0/tier-save-failed/0002.txt",
+      "raw_sha256": "4c5c867709a7cb8b3a27491535776998de54aeed71d656d7cec0e67d525dfea8",
+      "fixture": "v01620/tier-save-failed.pane.txt",
+      "sha256": "23f258dfd23217c5cd35dbccf539f1e19f6eaabf148ec15396a3eae5ba611776"
+    },
+    {
+      "version": "0.162.0",
+      "phase": "turn-after-failed-save",
+      "raw_path": "0.162.0/turn-after-failed-save/0004.txt",
+      "raw_sha256": "49117f17827325ee290d7bb3fc51362966c42c4b9ef2b73ea76c9656562c5329",
+      "fixture": "v01620/turn-after-failed-save.pane.txt",
+      "sha256": "2dabc09b9081529fc16be332b24a70459ee19e4a1f14e58b5eb45d89507cbea8"
+    },
+    {
+      "version": "0.162.0",
+      "phase": "resumed-idle",
+      "raw_path": "0.162.0/resumed-idle/0004.txt",
+      "raw_sha256": "aae4afc1598ab095bb7888b8fbbf1700b5e008b14d8c0f4de82cd9625e0db5c5",
+      "fixture": "v01620/resumed-idle.pane.txt",
+      "sha256": "5c8d8e2e0ee7d21e5e6144eb1ea760a13f5d6af9fadf0e31d2de05b64234294a"
+    },
+    {
+      "version": "0.162.0",
+      "phase": "resumed-tier-save-failed",
+      "raw_path": "0.162.0/resumed-tier-save-failed/0002.txt",
+      "raw_sha256": "0113ca03ad79b1d817ad29721f049f6f12c7fee198c01f9c59b2acfde0c32246",
+      "fixture": "v01620/resumed-tier-save-failed.pane.txt",
+      "sha256": "d4e38ec77685c90acbab5f9a9b2ddc881bef85d7b0607f72eb6e97a0cf702f74"
+    },
+    {
+      "version": "0.162.0",
+      "phase": "resumed-turn-after-failed-save",
+      "raw_path": "0.162.0/resumed-turn-after-failed-save/0004.txt",
+      "raw_sha256": "5cbe247ee3c9ae4dbfa7b38ad3ffd6a3aa610881910141802afd61f176971058",
+      "fixture": "v01620/resumed-turn-after-failed-save.pane.txt",
+      "sha256": "0f7b9d9b4c2f23799ca0a852203e1c6851009d96f9eee4ca90160172a3e61296"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "tier-catalog-idle",
+      "raw_path": "0.162.1/tier-catalog-idle/0005.txt",
+      "raw_sha256": "742f5954ac86fc022c5a37d8ddb994dd5154ab367203ce0ca43016fce4f0e518",
+      "fixture": "v01621/tier-catalog-idle.pane.txt",
+      "sha256": "a2311f2aad37e812261408928758ca7a217140a0e335ac374ad5441743b28f40"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "tier-save-success",
+      "raw_path": "0.162.1/tier-save-success/0002.txt",
+      "raw_sha256": "119ff31b8cc6594e66b1fefb3040b049b1aaf68754e2e2383eccb6f1a433a882",
+      "fixture": "v01621/tier-save-success.pane.txt",
+      "sha256": "3e095e47cd2ab87e429ab5ef026905e3ef09f47d7659f3b86faf3ceeff4f4cd1"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "tier-save-failed",
+      "raw_path": "0.162.1/tier-save-failed/0002.txt",
+      "raw_sha256": "ecef7b75674465c1ba6bb5cd28e299710d3852949e326fe8beaf168830bee3cc",
+      "fixture": "v01621/tier-save-failed.pane.txt",
+      "sha256": "4efc972c24b409405034287b8bbb5a9036d54ff6bffaa6c36b4fe4227550af51"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "turn-after-failed-save",
+      "raw_path": "0.162.1/turn-after-failed-save/0004.txt",
+      "raw_sha256": "9bdef45132f36cf0d936000b4b81d7ba7c097b2d0675f7bed56af202c93a3859",
+      "fixture": "v01621/turn-after-failed-save.pane.txt",
+      "sha256": "0a0229191563ea4c2ad337cf5e731e048c7025b5e696669a87791d88c76555c7"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "resumed-idle",
+      "raw_path": "0.162.1/resumed-idle/0005.txt",
+      "raw_sha256": "8c305f4362c33d73f08279296e0dfb4c06bffb0d031065ec256c7a81fcc1a43f",
+      "fixture": "v01621/resumed-idle.pane.txt",
+      "sha256": "d290f2ee23fa2285752ea4eb438ef5a96b0855f719d5deb4fac26b9bc359e83d"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "resumed-tier-save-failed",
+      "raw_path": "0.162.1/resumed-tier-save-failed/0002.txt",
+      "raw_sha256": "3bde3b13abf7a9b68f65d948e9f8dca9635dc7a777cba76f9d800acbcfe5c52d",
+      "fixture": "v01621/resumed-tier-save-failed.pane.txt",
+      "sha256": "ba3327612b4a4250ff7432341c3cf2294370533c1efdb5250adca57314a572d1"
+    },
+    {
+      "version": "0.162.1",
+      "phase": "resumed-turn-after-failed-save",
+      "raw_path": "0.162.1/resumed-turn-after-failed-save/0004.txt",
+      "raw_sha256": "645d3148abc3e36510d467e72c2513b8bd66ddf6ddd63c823f18d4396f7c640d",
+      "fixture": "v01621/resumed-turn-after-failed-save.pane.txt",
+      "sha256": "9cc2c7e70451dc400511b75eef22e30aeeb7d25eabdca25415ff08bede11441c"
+    }
+  ],
+  "native_versions": {
+    "0.162.0": {
+      "sha256": "50ed828f357c655a3c82054d346cab8434f24901f14ec19b8267571bdd008b38",
+      "sessions": [
+        {
+          "phase": "before",
+          "exit": 1,
+          "sessions": [],
+          "error": "no server running on /tmp/tmux-1000/cx01620-df7cd6"
+        },
+        {
+          "phase": "active",
+          "exit": 0,
+          "sessions": [
+            "mock",
+            "tier"
+          ],
+          "error": ""
+        },
+        {
+          "phase": "after",
+          "exit": 1,
+          "sessions": [],
+          "error": "no server running on /tmp/tmux-1000/cx01620-df7cd6"
+        }
+      ]
+    },
+    "0.162.1": {
+      "sha256": "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1",
+      "sessions": [
+        {
+          "phase": "before",
+          "exit": 1,
+          "sessions": [],
+          "error": "no server running on /tmp/tmux-1000/cx01621-df7cd6"
+        },
+        {
+          "phase": "active",
+          "exit": 0,
+          "sessions": [
+            "mock",
+            "tier"
+          ],
+          "error": ""
+        },
+        {
+          "phase": "after",
+          "exit": 1,
+          "sessions": [],
+          "error": "no server running on /tmp/tmux-1000/cx01621-df7cd6"
+        }
+      ]
+    }
+  },
+  "normalization": [
+    "Only scratch paths are redacted (a wrapped path may be joined), then trailing viewport blank rows removed. Other warning/composer/footer rows are retained.",
+    "Quota stderr timestamp and ANSI colour removed. RPC responses are unmodified."
+  ],
+  "limits": [
+    "Mock-model service tiers are supplied through the upstream model_catalog_json option; the real bundled catalogue has Fast tiers, but the custom mock model does not.",
+    "Quota native receipts are app-server stdio RPC, not TUI captures. Tokens are generated synthetically for loopback, never real credentials.",
+    "Guardian instruction is source-only model context, not a captured TUI modal or a native Guardian rehearsal."
+  ],
+  "upstream_tags": {
+    "rust-v0.160.0": "a956835d020762cb2b570053af06f643a11c0ecc",
+    "rust-v0.162.0": "c1382380de69521303b416720a52f42d51af6248",
+    "rust-v0.162.1": "092d3acd6bec3e3a14bdc7e7a2810ab628ab759d"
+  }
+}

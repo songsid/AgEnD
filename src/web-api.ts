@@ -365,7 +365,9 @@ export function handleWebRequest(
       prompts: ctx.listWebPrompts?.() ?? [],
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll.
       needs: ctx.needsYouItems?.() ?? [],
-      cursor: history ? `${history.boot}-${history.lastId}` : null,
+      // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
+      // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
+      cursor: history ? history.pollCursor() : null,
     });
     return true;
   }
