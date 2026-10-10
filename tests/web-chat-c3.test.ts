@@ -831,6 +831,47 @@ describe("the chat panel (the real page modules)", () => {
     } finally { (globalThis as any).ResizeObserver = saved; }
   });
 
+  it("#1584: a pinned view stays flush when the dock under it grows by less than the slack; a reader scrolled up is not moved", async () => {
+    const observers: Array<{ cb: () => void; targets: unknown[]; off: boolean }> = [];
+    const saved = (globalThis as any).ResizeObserver;
+    (globalThis as any).ResizeObserver = class { o: { cb: () => void; targets: unknown[]; off: boolean };
+      constructor(cb: () => void) { this.o = { cb, targets: [], off: false }; observers.push(this.o); }
+      observe(t: unknown) { this.o.targets.push(t); } disconnect() { this.o.off = true; } };
+    try {
+      const c = await chatPage();
+      c.stream.emit("status", frame(inst("w")));
+      await c.mount("w");
+      const sc = c.p.root.querySelector(".scroller");
+      const resize = () => { for (const o of observers) if (!o.off) o.cb(); };
+      const jump = () => c.p.root.querySelector(".jump-latest");
+      Object.assign(sc, { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000 });
+      fire(sc, "scroll");                                          // at the bottom: pinned
+      sc.clientHeight = 468;                                       // the working line appeared under the thread (32 px)
+      resize();
+      await settle();
+      expect([sc.scrollTop, !!jump()], "pinned: flush again — the newest bubble is not left behind the dock").toEqual([2000, false]);
+      sc.scrollTop = 1532 - 30; fire(sc, "scroll");                // the reader moves up 30 px: still "at the bottom" for the pill…
+      expect(!!jump()).toBe(false);
+      sc.scrollTop = 200; fire(sc, "scroll");                      // …and up into history: unpinned
+      sc.clientHeight = 436;                                       // the dock grows again
+      resize();
+      await settle();
+      expect([sc.scrollTop, !!jump()], "a reader in history is never moved").toEqual([200, true]);
+      await c.p.unmount();
+    } finally { (globalThis as any).ResizeObserver = saved; }
+  });
+
+  it("#1584: the Send button does not take the focus from the composer (mousedown is not a focus move)", async () => {
+    const c = await chatPage();
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    const box = c.p.root.querySelector("#msgIn");
+    box.value = "hi"; fire(box, "input"); await settle();
+    const e = fire(c.p.root.querySelector("#sendBtn"), "mousedown", { cancelable: true });
+    expect(e.defaultPrevented).toBe(true);
+    await c.p.unmount();
+  });
+
   it("while polling, the ticks come with the poll — the chat's history is never re-read in the background (#1253 review)", async () => {
     const c = await chatPage("poll");
     c.store().ingest(msg(1, "web-user", "hi", { instance: "w", messageId: "web-1", delivery: "processing" }));
