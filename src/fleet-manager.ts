@@ -14641,6 +14641,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
+    // #1592: the web chat shows what was asked, as for every other inbound — the user's own words (no chat-log
+    // context), as a user (#1306: never a role read from text), in the room's history (#1565).
+    this.emitSseEvent("message", {
+      instance: instanceName, sender: msg.username, role: "user",
+      text: text.slice(0, WEB_CHAT_TEXT_MAX), ts: new Date().toISOString(),
+    });
     this.trackInboundMsg(instanceName, { ...msg, threadId: replyThreadId });
     void this.sendCancelButton(instanceName);
   }
