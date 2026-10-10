@@ -16,6 +16,9 @@ import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
 import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers.js";
 import { museUsageRevision } from "../muse-usage-relay.js";
+import { statSync } from "node:fs";
+import { join } from "node:path";
+import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
 import { usageExpiryText, usageResetText, usageText } from "./i18n.js";
 
@@ -26,7 +29,11 @@ export interface UsageApiContext {
   getActiveUsageProviderIds?(): ReadonlySet<string>;
 }
 
-export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
+/**
+ * `refreshing` (#1585): this is the last snapshot, served while a fresh one is being fetched — `fetchedAt` says how old
+ * it is. Only the dashboard panel is ever answered this way; chat, tools and Discord presence wait for a fresh one.
+ */
+export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[]; refreshing?: boolean };
 
 /** Keep primary account limits even at zero; hide only unused per-model noise. */
 export function isVisibleUsageMetric(metric: UsageMetric): boolean {
@@ -87,7 +94,23 @@ const STALE_MAX_MS = 60 * 60 * 1000;
  * require a larger refactor; this is an accepted trade-off. */
 const RETRY_AFTER_MAX_MS = 15 * 60 * 1000; // 15 minutes
 
-let cache: { at: number; ttlMs: number; payload: UsagePayload; museRevision: number } | null = null;
+let cache: { at: number; ttlMs: number; payload: UsagePayload; museRevision: number; configKey: string } | null = null;
+
+/**
+ * #1585: which fleet config a snapshot was taken under — fleet.yaml's and classicBot.yaml's size and mtime. A stale
+ * snapshot is served only under the config it was fetched for: a credential profile or binding added, removed or
+ * moved since means another set of accounts, so that read waits for a fresh one. Metadata only; at most every 5 s.
+ */
+let configKeyMemo: { at: number; key: string } | null = null;
+const CONFIG_KEY_MS = 5_000;
+function usageConfigKey(now = Date.now()): string {
+  if (configKeyMemo && now - configKeyMemo.at < CONFIG_KEY_MS) return configKeyMemo.key;
+  const parts = ["fleet.yaml", "classicBot.yaml"].map((f) => {
+    try { const st = statSync(join(getAgendHome(), f)); return `${f}:${st.size}:${st.mtimeMs}`; } catch { return `${f}:-`; }
+  });
+  configKeyMemo = { at: now, key: parts.join("|") };
+  return configKeyMemo.key;
+}
 let inflight: Promise<UsagePayload> | null = null;
 let lastForcedFetchStartedAt: number | null = null;
 /** Last successful per-provider rows, for stale-while-rate-limited. */
@@ -100,6 +123,7 @@ let fetcher: () => Promise<UsagePayload> = fetchAllUsage;
 export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null): void {
   fetcher = fn ?? fetchAllUsage;
   cache = null;
+  configKeyMemo = null;
   inflight = null;
   lastForcedFetchStartedAt = null;
   lastGood.clear();
@@ -218,11 +242,11 @@ function hasTransientEmpty(payload: UsagePayload): boolean {
 }
 
 function json(res: ServerResponse, code: number, body: unknown): void {
-  res.writeHead(code, { "Content-Type": "application/json" });
+  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
   res.end(JSON.stringify(body));
 }
 
-async function usage(force: boolean): Promise<UsagePayload> {
+async function usage(force: boolean, allowStale = false): Promise<UsagePayload> {
   // A user's first force refresh must work even immediately after an automatic
   // fetch (notably when Kiro refreshed its token just after that fetch). Only
   // repeated force requests are floored to protect vendor endpoints.
@@ -235,7 +259,15 @@ async function usage(force: boolean): Promise<UsagePayload> {
     || now - lastForcedFetchStartedAt >= FORCE_FLOOR_MS
   );
   const museRevision = museUsageRevision();
+  const configKey = usageConfigKey(now);
   if (!effectiveForce && cache && now - cache.at < cache.ttlMs && cache.museRevision === museRevision) return cache.payload;
+  // #1585, stale-while-revalidate (the dashboard panel only): an expired snapshot from the same config and Muse revision,
+  // younger than STALE_MAX_MS, is answered at once while the one refresh the expiry would have started anyway runs.
+  // Vendors are called exactly as before — the same condition starts the same single shared fetch; only the panel stops
+  // waiting for it.
+  const servable = allowStale && !effectiveForce && cache && cache.museRevision === museRevision
+    && cache.configKey === configKey && now - cache.at < STALE_MAX_MS;
+  const stale = servable ? cache!.payload : null;
   inflight ??= (() => {
     if (effectiveForce) lastForcedFetchStartedAt = Date.now();
     return fetcher()
@@ -252,11 +284,16 @@ async function usage(force: boolean): Promise<UsagePayload> {
           ttlMs: Math.max(transient ? TRANSIENT_CACHE_MS : CACHE_MS, maxRetryAfterMs),
           payload: resolved,
           museRevision,
+          configKey,
         };
         return resolved;
       })
       .finally(() => { inflight = null; });
   })();
+  if (stale) {
+    inflight.catch(() => { /* a failed background refresh: the next read tries again, as before */ });
+    return { ...stale, refreshing: true };
+  }
   return inflight;
 }
 
@@ -266,8 +303,8 @@ async function usage(force: boolean): Promise<UsagePayload> {
  * surfaces, because the 5-minute TTL exists to protect vendor rate limits and a
  * second entry point that bypassed it would defeat that.
  */
-export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>): Promise<UsagePayload> {
-  return filterUsageProviders(await usage(force), providerIds);
+export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>, opts: { allowStale?: boolean } = {}): Promise<UsagePayload> {
+  return filterUsageProviders(await usage(force, opts.allowStale === true), providerIds);
 }
 
 /**
@@ -446,7 +483,9 @@ export function handleUsageRequest(
     return true;
   }
 
-  getUsageSnapshot(url.searchParams.has("force"), ctx.getActiveUsageProviderIds?.())
+  // #1585: the panel opens from the last snapshot at once (refreshing behind it); never a browser or proxy cache — the
+  // snapshot lives in this process, behind the same gate as every read, and goes when a request may not see it.
+  getUsageSnapshot(url.searchParams.has("force"), ctx.getActiveUsageProviderIds?.(), { allowStale: true })
     .then(payload => json(res, 200, payload))
     .catch(err => {
       ctx.logger.debug({ err }, "ai-usage fetch failed");
