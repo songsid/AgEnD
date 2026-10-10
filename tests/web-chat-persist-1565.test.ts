@@ -16,6 +16,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebChatHistory, type WebChatMessage } from "../src/web-chat-history.js";
 import { WebChatDiskStore, WEB_CHAT_FILE, WEB_CHAT_FILE_MAX_BYTES } from "../src/web-chat-store.js";
 import { MAX_SERVED_BYTES, publicAttachment, WebFileLedger } from "../src/web-upload.js";
+// #1599: FleetManager's logger is a pino transport whose worker thread opens `<AGEND_HOME>/daemon.log` asynchronously —
+// after the test that made it is over, racing afterEach's rmSync of the scratch home (CI: ENOTEMPTY). This file has no
+// use for the log: the logger is silent, so nothing writes into the scratch home once a test's own work is done.
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
+});
 
 const homes: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); for (const h of homes.splice(0)) rmSync(h, { recursive: true, force: true }); });
@@ -349,5 +356,12 @@ describe("the fleet restores the configured instances only", () => {
     expect(lstatSync(fileOf(h, "alpha")).isFile()).toBe(true);
     // Its file is served again by the fleet's own ledger, by id.
     expect(fm.webFiles.read(fid)?.bytes.toString()).toBe("kept file");
+    // #1599: quiescent before cleanup — the store's writes are done, and nothing else appears in the scratch home
+    // afterwards (a late writer there is what made afterEach's rmSync fail with ENOTEMPTY).
+    await fm.webChatStore?.flush();
+    const listing = () => (readdirSync(h, { recursive: true }) as string[]).sort();
+    const settled = listing();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(listing()).toEqual(settled);
   });
 });
