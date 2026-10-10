@@ -65,6 +65,14 @@ export function UsageMetric({ m }) {
   const sub = [note, expiryText(m.expiresAt)].filter(Boolean).join(" · ");
   return html`<div class="u-metric"><div class="u-row"><span class="u-label">${label}</span><span class="u-val">${val}</span></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}</div>`;
 }
+/** "Updated 3 min ago" (#1585): how old the numbers are — the panel may show the last snapshot while a fresh one comes. */
+export function updatedAgo(fetchedAt, now = Date.now()) {
+  const ms = now - new Date(fetchedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 60_000) return tn("usageUpdatedJustNow");
+  const min = Math.floor(ms / 60_000);
+  return tn("usageUpdatedAgo", { age: min < 60 ? tn("usageMinutes", { n: min }) : tn("usageHours", { n: Math.floor(min / 60) }) });
+}
+
 /** `owner`: the navigation that opened it — its reads and the minute's timer live and end with it. */
 export function UsageDialog({ onClose, owner = "" }) {
   const lease = useLease(`usage-dialog:${owner}`);
@@ -84,6 +92,13 @@ export function UsageDialog({ onClose, owner = "" }) {
     finally { reads.end(token); }
   };
   useEffect(() => { load(false); lease.interval(() => load(false), 60_000); }, [lease]);
+  // #1585: the server answered with the last snapshot while it fetches a fresh one — read again shortly (the same
+  // cache: no vendor call of its own) so the fresh numbers replace it without waiting for the minute's tick.
+  useEffect(() => {
+    if (!data || !data.refreshing) return undefined;
+    const timer = setTimeout(() => load(false), 4_000);
+    return () => clearTimeout(timer);
+  }, [data]);
   const key = (p) => String(p.id || p.name || "");
   const ordered = (providers) => {
     const rank = new Map(order.map((id, i) => [id, i]));
@@ -118,7 +133,7 @@ export function UsageDialog({ onClose, owner = "" }) {
           : html`${(p.metrics || []).map((m, j) => html`<${UsageMetric} key=${j} m=${m} />`)}
             ${!p.stale && p.hint ? html`<p class="note">${usageText(p.hint, p.hintI18n)}</p>` : !(p.metrics || []).length ? html`<p class="note">${tn("usage.no_data")}</p>` : null}`}
       </section>`)}
-      <div class="u-foot"><span class="note">${tn("usageUpdated")} ${new Date(data.fetchedAt).toLocaleTimeString()}</span>
+      <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
   }
   return html`<${Dialog} title=${tn("usage.title")} onClose=${onClose} wide=${true}>${content}</${Dialog}>`;

@@ -196,3 +196,26 @@ describe("#1563 review: View's Help says the new cycle", () => {
     expect(pg.root.querySelectorAll("dialog .help-list li").map((li: any) => li.textContent).find((x: string) => x.includes("→")) ?? null).toContain(want);
   });
 });
+
+describe("#1585: the usage footer says how old the numbers are, and replaces a refreshing snapshot", () => {
+  const foot = (pg: AppPage) => pg.root.querySelector("dialog .u-foot .note")?.textContent ?? null;
+  const names = (pg: AppPage) => [...pg.root.querySelectorAll("dialog .u-provider strong")].map((e: any) => e.textContent);
+  it.each([["en", "Updated 3 min ago · Refreshing…"], ["zh-TW", "3 分鐘前更新 · 更新中…"]])("%s: the age and that a fresh one is coming", async (lang, want) => {
+    const pg = await app("/view/web-dev");
+    (await import("/assets/app-i18n.js")).setLang(lang); await settle(4);
+    usageHeld = [Promise.resolve({ providers: [{ id: "p", name: "STALE", status: "ok", metrics: [] }], fetchedAt: new Date(Date.now() - 3 * 60_000).toISOString(), refreshing: true })];
+    pg.root.querySelector(".panel-head .hd-usage").click(); await settle(6);
+    expect(foot(pg)).toBe(want);
+  });
+  it("a refreshing snapshot is read again shortly: the fresh numbers replace it (no Refresh press, no minute's wait)", async () => {
+    const pg = await app("/view/web-dev");
+    usageHeld = [
+      Promise.resolve({ providers: [{ id: "p", name: "STALE", status: "ok", metrics: [] }], fetchedAt: new Date(Date.now() - 6 * 60_000).toISOString(), refreshing: true }),
+      Promise.resolve({ providers: [{ id: "p", name: "FRESH", status: "ok", metrics: [] }], fetchedAt: new Date().toISOString() }),
+    ];
+    pg.root.querySelector(".panel-head .hd-usage").click(); await settle(6);
+    expect([names(pg), foot(pg)?.includes("Refreshing")]).toEqual([["STALE"], true]);
+    await new Promise((r) => setTimeout(r, 4_300)); await settle(6);
+    expect([names(pg), foot(pg)]).toEqual([["FRESH"], "Updated just now"]);
+  }, 15_000);
+});
