@@ -344,7 +344,12 @@ html.lb-open .scroller { overflow: hidden; }
 .pv-label { font-size: var(--fs-xs); font-weight: var(--fw-bold); color: var(--text-2); margin-right: auto; font-family: var(--font-mono); }
 .pv-note { font-size: var(--fs-xs); color: var(--text-3); margin-top: 6px; }
 .pv-note:empty { display: none; }
-.pv-banner { margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); font-size: var(--fs-xs); background: var(--warn-bg); border: 1px solid var(--warn-line); }
+.pv-banner { margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); font-size: var(--fs-xs); background: var(--warn-bg); border: 1px solid var(--warn-line);
+  display: flex; align-items: flex-start; gap: var(--s-2); }
+.pv-banner[hidden] { display: none; }
+.pv-banner-text { flex: 1; min-width: 0; }
+/* #1568: "I understand" hides the banner until the next sign-in; .preview-frame's border below never depends on it. */
+.pv-banner .pv-ack { flex: none; }
 .pv-holder:empty { display: none; }
 .pv-holder { margin-top: var(--s-2); }
 .preview-frame { display: block; width: 100%; border: 2px solid var(--warn-line); border-radius: var(--r-sm); background: #ffffff; }

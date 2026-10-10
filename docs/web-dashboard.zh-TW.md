@@ -103,7 +103,7 @@ agent 的回覆裡有 ` ```html ` 區塊，或附上 `.html`／`.htm` 檔案時�
 - **檔案和區塊用法相同。** 檔案的卡片在回覆的附件下方。只有在你按 **預覽** 或 **在面板中開啟** 時，才會向 fleet 讀取它的 HTML，並在和區塊相同的沙箱框架裡執行；檔案絕不會在 dashboard 自己的位址上開啟。**下載** 就是卡片上方那個檔案本身的連結。fleet 已經沒有的檔案（agent 改寫了它，或 fleet 重新啟動過）會直接說明，請 agent 再傳一次。
 - **上限 1 MiB。** 超過 1 MiB（以 UTF-8 計）的區塊或檔案不提供預覽。檔案會先檢查列出的大小才讀取，讀到的位元組數也會再檢查一次。檔案一律以 UTF-8 讀取。
 - **每台裝置預設都是關閉的，要你自己打開。** 用側欄底部的 **Allow HTML previews on this device**，或卡片的 **⋯** 選單。它只會問一次，並說明這代表什麼；關掉時，所有正在執行的預覽都會停止。
-- **每次都要你按下才會執行。** **預覽** 會在卡片下方的框架裡執行，並顯示這段說明：*「Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.」* 按 **停止** 關閉。一次只會執行一個預覽。
+- **每次都要你按下才會執行。** **預覽** 會在卡片下方的框架裡執行，並顯示這段說明：*「Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.」* 按說明上的 **我知道了** 可以隱藏它，直到你下次登入；預覽外圍的黃色框線一律保留。按 **停止** 關閉。一次只會執行一個預覽。
 - **下載** 會把區塊的 HTML 存成 `reply.html`（檔案保留原本的檔名），絕不會在 dashboard 裡開啟。
 - **在面板中開啟** 會把區塊放到對話旁邊，空間比較大。在手機上它是全螢幕的頁面，按 **←** 回到對話。
   - 從閒置的卡片開啟時，面板有自己的 **預覽** 要你按。從正在執行的預覽開啟時，同一個按鈕會把那個預覽移到面板裡。
