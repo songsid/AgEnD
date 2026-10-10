@@ -39,7 +39,9 @@ const QUEUED = ["busy-queued", "busy-queued-long", "long-busy-queued", "tool-que
   // The 2.1.294 audit's capture: a message queued mid-turn, unchanged from 2.1.293.
   .concat("claude-2.1.294-busy-queued.pane.txt")
   // …and the 2.1.295 audit's, unchanged again.
-  .concat("claude-2.1.295-busy-queued.pane.txt");
+  .concat("claude-2.1.295-busy-queued.pane.txt")
+  // …and the 2.1.296 audit's (#1567), unchanged once more.
+  .concat("claude-2.1.296-busy-queued.pane.txt");
 
 describe("the backend", () => {
   const backend = new ClaudeCodeBackend("/nonexistent-1169");

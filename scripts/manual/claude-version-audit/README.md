@@ -3,6 +3,13 @@
 These are the scripts behind the version-gate audits of the claude-code backend, under decisions ffb8104e and af2f9f41:
 - **#1427** compared 2.1.292 → 2.1.294. Its fixtures are `tests/fixtures/claude-2.1.294-*.pane.txt`, held by `tests/claude-2.1.294-surfaces.test.ts`.
 - **The 2.1.295 audit** compared 2.1.294 → 2.1.295. Its fixtures are `tests/fixtures/claude-2.1.295-*.pane.txt`, held by `tests/claude-2.1.295-surfaces.test.ts`.
+- **The 2.1.296 audit** (2026-10-10) compared 2.1.295 → 2.1.296 with `OLD=295 NEW=296` and the same three passes. Its fixtures are `tests/fixtures/claude-2.1.296-*.pane.txt` (the 29 live screens of the 2.1.295 set), held by `tests/claude-2.1.296-surfaces.test.ts`.
+  - **Frames:** all 45 screens plus the 24 error frames classify identically under the production predicates. The only differences are spinner verbs, the mock's reply counter and the dangerous-command countdown.
+  - **predlits.py:** 233 literals, 68 in the binaries; 7 counts moved, all in embedded changelog prose (`Login expired` / `Not logged in` / `fresh machine` lines). The live error strings are unchanged.
+  - **Cold-resume prompt (#1434):** every literal of `claudeColdResumePromptState` (title, rows, description, body, footer parts) has the same count. It still never appears in the rig.
+  - **Transcript:** the same record types; queue-operation is still enqueue (with content) then dequeue.
+  - **`--continue`:** in both versions it resumes the session file with the newest mtime, whatever its timestamps (checked with a one-hour mtime gap both ways). Frame 113 differed only because `age-session.py` rewrote the two files milliseconds apart.
+  - `dialogdiff.py` is dominated by minified-code churn on this pair, so it was not used for the verdict.
 
 Both were run on 2026-10-08. `OLD` and `NEW` pick the pair; they default to 292 and 294, so the commands for the first audit stay unchanged.
 
@@ -13,6 +20,7 @@ Both were run on 2026-10-08. `OLD` and `NEW` pick the pair; they default to 292 
 | 2.1.292 | `a967e7b1d8b4e47ee421d5433027880347952b0c0857abf880e2c942a4ec93b3` | the copy kept from the 2.1.292 audit |
 | 2.1.294 | `27122ca7b624f537546fbef35b80c66370d974ff258f3d9b10ac50bb8771f262` | `~/.local/share/claude/versions/2.1.294` (host auto-update) |
 | 2.1.295 | `4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358` | `~/.local/share/claude/versions/2.1.295` (host auto-update) |
+| 2.1.296 | `24972e3bc859fab2b46ed4c1e51f7d6130f06d3bd550811a114640de3370d0de` | `~/.local/share/claude/versions/2.1.296` (host auto-update, found by the daily check 2026-10-10) |
 
 ## Isolation
 
