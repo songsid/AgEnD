@@ -1,6 +1,6 @@
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
 import { basename } from "node:path";
-import { draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
+import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
@@ -97,7 +97,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const channels = wizardChannels(cfg);
     // #1519 P1 (S1): a new connection only — one that would take another's id or token env is refused, not proposed.
     if (newConnectionConflict(patch as WizardPlanInput, { channels })) throw new SettingsConfirmationError(409, "connection_exists");
-    const plan = planQuickstart(patch as WizardPlanInput, { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
+    if (agentConflict(patch as WizardPlanInput, cfg)) throw new SettingsConfirmationError(409, "agent_conflict");
+    const plan = planQuickstart(withExistingAgent(patch as WizardPlanInput, cfg), { channels, has_fleet: !!Object.keys(cfg.instances).length, backends: [] });
     const draft = draftQuickstart(cfg, patch as WizardPlanInput, plan);
     const normalizedBefore = structuredClone(cfg); normalizedBefore.channels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []); delete normalizedBefore.channel;
     const what = patch.connection_only === true ? `connection ${plan.channel_id}` : `instance ${patch.instance_name}`;

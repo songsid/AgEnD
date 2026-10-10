@@ -6,7 +6,7 @@
 // reached only by the dynamic imports below, in "full" mode. A test walks the static imports over real HTTP and asserts
 // none of them names /ui/.
 import { html, render } from "./app-html.js";
-import { Shell, handleKey, showDialog, closeDrawer, retryable } from "./app-shell.js";
+import { Shell, handleKey, showDialog, closeDrawer, retryable, setNewInstanceOpener } from "./app-shell.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity } from "./app-store.js";
@@ -72,6 +72,7 @@ if (mode === "full") {
     try { m = await loadFleet(); } catch { toast(t("app.loadFailed"), false); return; }
     showDialog(m.CreateInstanceDialog);
   };
+  setNewInstanceOpener(onNewInstance);
 } else appStore.set({ connection: "none" });
 
 startRouter(window);

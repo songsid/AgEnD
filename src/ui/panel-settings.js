@@ -35,6 +35,7 @@ import {
 } from "./settings-dialogs.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
+import { FirstRunCard, takeWizardRequest } from "./first-run.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const ICONS = { agents: "bot", bots: "plug", classic: "room", general: "sliders", advanced: "code" };
@@ -197,6 +198,8 @@ export function SettingsPanel({ route, navKey }) {
   };
 
   const ctx = data && !data.error ? makeCtx(data, setData, stage, unstage, reload, reloadLive, () => mount.current()) : null;
+  // #1519 P7: "Connect a chat app" on the first-run card elsewhere came here for the wizard: it opens once the data is in.
+  useEffect(() => { if (ctx && takeWizardRequest()) setDialog({ kind: "wizard", key: navKey }); }, [!!ctx, navKey]);
   const sectionBody = !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
@@ -220,6 +223,7 @@ export function SettingsPanel({ route, navKey }) {
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
       <${PendingChanges} inline=${true} />
+      ${ctx && (section === "agents" || section === "bots") ? html`<${FirstRunCard} onConnect=${() => setDialog({ kind: "wizard", key: navKey })} />` : null}
       ${sectionBody}
     </div></div>
     ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} />` : null}
@@ -676,7 +680,7 @@ function Developer({ ctx }) {
         ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
       <button type="button" class="btn btn-sm" onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
       <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
-      <button type="button" class="btn btn-sm" title="fleet.yaml" onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">fleet.yaml</span></button>
+      <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button>
     </div>
     ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck="false" wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`

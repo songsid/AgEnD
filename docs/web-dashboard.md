@@ -203,11 +203,13 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 
 ## `/settings`
 
-**Agents**, **Connections**, **ClassicBot**, **General** and **Developer** (the whole `fleet.yaml` as YAML or JSON) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`.
+**Agents**, **Connections**, **ClassicBot**, **General** and **Developer** (the whole `fleet.yaml` as YAML or JSON) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
+
+A fleet with no chat connection yet (web only) shows a card above the chat and the Agents and Connections tabs: **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser.
 
 - **Changes are staged, then applied together.** An agent's or a connection's **Settings** dialog stages its changes when you press **Stage change**; General's **Review changes** does the same. The bar at the bottom counts them and says what applying them costs (immediately, a restart of that agent, or a restart of AgEnD); **Apply changes** applies them all, **Discard** drops them. Staged changes stay while you move between tabs; leaving Settings with any asks **Discard N pending changes?** first.
 - **Once you press Apply, it carries on without you.** You can open the chat or anything else: the writes, the reload and its progress go on, a line at the top says how it is going, and Settings shows the details when you come back. A second Apply waits until the first is done. When a change needs AgEnD itself restarted, **Restart AgEnD** is offered (with its own confirmation).
-- **New agent** is the same dialog as the sidebar's ✎ (New instance).
+- **New agent** is the same dialog as the sidebar's **+** (New instance).
 - **Bot tokens are entered here, not in `.env`.** **New connection** and the **Setup wizard** ask for the bot's token in a password field; **Verify** asks Telegram or Discord whose token it is and shows the bot ("This is @your_bot.") before anything is saved.
   - The token is stored on this computer in `~/.agend/.env`, under a name AgEnD generates (`AGEND_DISCORD_TOKEN`, `AGEND_DISCORD_2_TOKEN`, `AGEND_TELEGRAM_PERSONA1_TOKEN`…). **Advanced** shows it, read-only, for people who manage `.env` themselves; nobody has to type one.
   - Both always **add** a connection. A second bot on the same platform, even in the same server, becomes its own connection (`discord-2`, …); an existing connection is never replaced. To change a connection's token, open its **Settings** → **Advanced** → **Replace**.

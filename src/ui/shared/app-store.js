@@ -21,8 +21,9 @@ export function createStore(initial) {
 /** The app's store. `ready`: a status frame has arrived (before it, an unknown instance may just not be listed yet).
  *  `exec`: each instance's raw execution state (working / idle / stuck / null); `awaiting`: what it
  *  waits on at its terminal (text, "" when unknown), absent when it waits on nothing. `hydration`: a late catch-up
- *  (app-stream.js catchUp) — "catching" / "retrying" / "failed" / "ok"; `retryHydration` asks for it again. */
-export const appStore = createStore({ ready: false, instances: [], uptime: 0, exec: {}, awaiting: {}, connection: "connecting", needs: [],
+ *  (app-stream.js catchUp) — "catching" / "retrying" / "failed" / "ok"; `retryHydration` asks for it again.
+ *  `connections`: how many chat connections the fleet has (#1519 P7: 0 is web-only — the first-run card); null until known. */
+export const appStore = createStore({ ready: false, instances: [], uptime: 0, exec: {}, awaiting: {}, connection: "connecting", needs: [], connections: null,
   hydration: "none", retryHydration: null });
 
 /** Fold one status frame (stream or poll) into the store. */
@@ -34,7 +35,8 @@ export function applyStatus(d) {
     exec[i.name] = (i.execution_state !== undefined ? i.execution_state : i.state) ?? null;
     if (i.state === "awaiting_input") awaiting[i.name] = typeof i.interaction_summary === "string" ? i.interaction_summary : "";
   }
-  appStore.set({ ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting });
+  appStore.set({ ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting,
+    connections: typeof d.connections === "number" ? d.connections : null });
 }
 
 /** One "activity" event: an instance started or stopped working. */

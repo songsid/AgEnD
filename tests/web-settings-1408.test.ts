@@ -441,7 +441,7 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     const bar = p.root.querySelector(".s-dev-bar");
     const labelled = [...bar.querySelectorAll("button")].filter(b => b.querySelector(".lbl"));
     // Below 480px .lbl is screen-reader only: the title is what a pointer sees, the label what a reader hears.
-    expect(labelled.map(b => [b.getAttribute("title"), b.querySelector(".lbl").textContent])).toEqual([["Copy", "Copy"], ["fleet.yaml", "fleet.yaml"]]);
+    expect(labelled.map(b => [b.getAttribute("title"), b.querySelector(".lbl").textContent])).toEqual([["Copy", "Copy"], ["Download fleet.yaml", "Download fleet.yaml"]]);
     btn(p.root.querySelector(".s-dev"), "Edit").click(); await settle(2);
     expect(p.root.querySelector("textarea.s-yaml").getAttribute("wrap")).toBe("off");
   });

@@ -64,14 +64,19 @@ it("ordinary cached capabilities do not bypass external /ui authentication", asy
   expect((await h.request("/ui/config", { defaults: { model: "ordinary" } }, false, false)).status).toBe(401);
   expect(h.save).not.toHaveBeenCalled();
 });
-it("Quickstart's target-keyed writer draft exposes the old directory and full connection order", async () => {
-  // #1519 P1 (S1): the wizard always adds a connection, under a token env no connection holds.
-  const h = harness(), body = { ...setupPayload, token_env: "NEW_BOT_TOKEN", instance_name: "owner_a", working_directory: "/new/approved" };
+it("Quickstart's target-keyed writer draft names the agent it binds and the full connection order", async () => {
+  // #1519 P1 (S1): the wizard always adds a connection, under a token env no connection holds. #1519 P7: it never
+  // overwrites an agent — an existing one is connected as it is (only its channel_id changes).
+  const h = harness(), body = { ...setupPayload, token_env: "NEW_BOT_TOKEN", instance_name: "owner_a", existing_agent: true };
   h.config.channels.unshift({ ...h.config.channels[0], id: "other", bot_token_env: "OTHER_BOT_TOKEN", group_id: "-100999" }); h.save(); h.save.mockClear();
   const effectA = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", body, { config: h.config, classic: {} });
   const effectB = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, instance_name: "owner_b" }, { config: h.config, classic: {} });
   const summary = effectA.diff!.summary.join("\n");
-  expect(summary).toContain("instances.owner\\_a.working\\_directory: /old/a → /new/approved");
+  expect(summary).toContain("instances.owner\\_a.channel\\_id");
+  expect(summary).not.toContain("working\\_directory");
+  // The same name as a new agent is refused: it would overwrite owner_a.
+  expect(() => prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body, existing_agent: undefined, working_directory: "/new/approved" }, { config: h.config, classic: {} }))
+    .toThrow(expect.objectContaining({ status: 409, message: "agent_conflict" }));
   expect(effectA.diff!.summary).not.toEqual(effectB.diff!.summary);
   expect(summary).toContain("ordered connections / primary");
   // The token env another connection holds is refused, never proposed as a replacement.
@@ -80,6 +85,7 @@ it("Quickstart's target-keyed writer draft exposes the old directory and full co
   const pending = await h.request("/api/settings/quickstart/commit", body);
   expect(pending.status).toBe(202); expect(pending.body.pending_change.summary).toEqual(effectA.diff!.summary);
   expect((await h.store.decide(pending.body.pending_change.id, "confirm", actor)).state).toBe("applied");
-  expect(h.config.instances.owner_a.working_directory).toBe("/new/approved"); expect(h.config.instances.owner_b.working_directory).toBe("/old/b");
+  expect([h.config.instances.owner_a.working_directory, h.config.instances.owner_a.channel_id]).toEqual(["/old/a", "telegram"]);
+  expect(h.config.instances.owner_b).toEqual({ working_directory: "/old/b" });
   expect(h.config.channels.map((item: any) => item.id)).toEqual(["other", "primary", "telegram"]);
 });

@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Web: a first-run card on a web-only fleet, and the setup wizard can connect an agent you already have (#1549).** With no Telegram or Discord connection, Chat and Settings › Agents / Connections show a card: **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser. The wizard's first step offers **An agent you already have** or **A new agent**. An existing agent keeps its directory, backend and settings, and only its chat connection becomes the new bot. A new agent can no longer take an existing agent's name and overwrite it. Chat with no agent at all offers **New instance**, and the sidebar's New instance button is now a **+**. The Developer download button now reads **Download fleet.yaml**, and the New instance dialog's "Topic name" field is now **Name**.
