@@ -233,7 +233,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 
 只有需要下載 AgEnD 自己的 cloudflared 時才會出現第 1–3 步；第一次之後只會看到第 4–6 步。失敗的那一步會標出原因，再執行一次 `/dashboard` 即可重試。選單上只有這些文字和數字，不會出現連結或登入碼。
 
-使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕、新選單、`/dashboard revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
+使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。Linux 先從 pkg.cloudflare.com 下載，失敗或太慢時改用 GitHub，第 ② 步會標出改用的來源；macOS 只用 GitHub。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕、新選單、`/dashboard revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
 
 獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 preview、SSE、`/health`、`/agent` 或發碼 API。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
 
