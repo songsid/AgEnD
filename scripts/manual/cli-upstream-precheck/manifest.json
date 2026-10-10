@@ -1,0 +1,2482 @@
+{
+ "format": 1,
+ "source": "scripts/manual/cli-upstream-precheck/sources.json",
+ "backends": {
+  "claude": {
+   "literals": [
+    {
+     "text": "Resume from summary",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 146,
+     "symbol": "CLAUDE_RESUME_PROMPT_DEFAULT"
+    },
+    {
+     "text": "from summary",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 153,
+     "symbol": "CLAUDE_RESUME_PROMPT_MENU"
+    },
+    {
+     "text": "full session as-is",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 153,
+     "symbol": "CLAUDE_RESUME_PROMPT_MENU"
+    },
+    {
+     "text": "Don't ask me again",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 157,
+     "symbol": "RESUME_NEVER_ASK_ROW"
+    },
+    {
+     "text": "Enter to confirm",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 158,
+     "symbol": "RESUME_DIALOG_FOOTER"
+    },
+    {
+     "text": "Esc to cancel",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 158,
+     "symbol": "RESUME_DIALOG_FOOTER"
+    },
+    {
+     "text": "to navigate",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 158,
+     "symbol": "RESUME_DIALOG_FOOTER"
+    },
+    {
+     "text": "to select",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 158,
+     "symbol": "RESUME_DIALOG_FOOTER"
+    },
+    {
+     "text": "Resume this conversation",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 209,
+     "symbol": "COLD_RESUME_TITLE"
+    },
+    {
+     "text": "Start a new conversation",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 211,
+     "symbol": "COLD_RESUME_NEW_ROW"
+    },
+    {
+     "text": "Claude can look this one up if you refer to it later",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 212,
+     "symbol": "COLD_RESUME_NEW_DESCRIPTION"
+    },
+    {
+     "text": "Esc to resume",
+     "kind": "string",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 214,
+     "symbol": "COLD_RESUME_FOOTER_PARTS"
+    },
+    {
+     "text": "↑/↓ pick a row first",
+     "kind": "string",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 214,
+     "symbol": "COLD_RESUME_FOOTER_PARTS"
+    },
+    {
+     "text": "↑↓ pick a row first",
+     "kind": "string",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 214,
+     "symbol": "COLD_RESUME_FOOTER_PARTS"
+    },
+    {
+     "text": "This conversation has been inactive for",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 221,
+     "symbol": "COLD_RESUME_BODY"
+    },
+    {
+     "text": "Your unsent message will still be there after you answer",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 221,
+     "symbol": "COLD_RESUME_BODY"
+    },
+    {
+     "text": "and is",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 221,
+     "symbol": "COLD_RESUME_BODY"
+    },
+    {
+     "text": "of your 5-hour usage limit",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 221,
+     "symbol": "COLD_RESUME_BODY"
+    },
+    {
+     "text": "tokens long. Resuming it will use",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 221,
+     "symbol": "COLD_RESUME_BODY"
+    },
+    {
+     "text": "Press up to edit queued messages",
+     "kind": "string",
+     "surface": "input-box",
+     "file": "src/backend/claude-code.ts",
+     "line": 281,
+     "symbol": "CLAUDE_QUEUED_PLACEHOLDER"
+    },
+    {
+     "text": "ctrl+x ctrl+s to send now",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/claude-code.ts",
+     "line": 286,
+     "symbol": "CLAUDE_QUEUE_MARKER_ROW"
+    },
+    {
+     "text": "Pasted text",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/claude-code.ts",
+     "line": 291,
+     "symbol": "CLAUDE_COLLAPSED_PASTE"
+    },
+    {
+     "text": "Enter to confirm · Esc to cancel",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 359,
+     "symbol": "CLAUDE_CONFIRM_FOOTER"
+    },
+    {
+     "text": "Accessing workspace",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/claude-code.ts",
+     "line": 406,
+     "symbol": "TRUST_TITLE"
+    },
+    {
+     "text": "Quick safety check: Is this a project you created or one you trust",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/claude-code.ts",
+     "line": 406,
+     "symbol": "TRUST_TITLE"
+    },
+    {
+     "text": "No, continue without these permissions",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/claude-code.ts",
+     "line": 409,
+     "symbol": "TRUST_DECLINE_ROW"
+    },
+    {
+     "text": "No, exit",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/claude-code.ts",
+     "line": 409,
+     "symbol": "TRUST_DECLINE_ROW"
+    },
+    {
+     "text": "Yes, I trust this folder",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/claude-code.ts",
+     "line": 410,
+     "symbol": "TRUST_ACCEPT_ROW"
+    },
+    {
+     "text": "WARNING: Claude Code running in Bypass Permissions mode",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/claude-code.ts",
+     "line": 414,
+     "symbol": "BYPASS_TITLE"
+    },
+    {
+     "text": "Yes, I accept",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 416,
+     "symbol": "BYPASS_ACCEPT_ROW"
+    },
+    {
+     "text": "Choose the text style that looks best with your terminal",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 461,
+     "symbol": "THEME_TITLE"
+    },
+    {
+     "text": "Auto (match terminal",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 464,
+     "symbol": "THEME_BELOW_ROW"
+    },
+    {
+     "text": "Syntax highlighting",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 464,
+     "symbol": "THEME_BELOW_ROW"
+    },
+    {
+     "text": "Syntax theme",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 464,
+     "symbol": "THEME_BELOW_ROW"
+    },
+    {
+     "text": "To change this later, run /theme",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 464,
+     "symbol": "THEME_BELOW_ROW"
+    },
+    {
+     "text": "Press Enter to continue",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 478,
+     "symbol": "claudeSecurityNotesActive"
+    },
+    {
+     "text": "Security notes",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 479,
+     "symbol": "claudeSecurityNotesActive"
+    },
+    {
+     "text": "Enter to confirm · Esc to skip",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 487,
+     "symbol": "claudeTerminalSetupActive"
+    },
+    {
+     "text": "Use Claude Code's terminal setup",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 489,
+     "symbol": "claudeTerminalSetupActive"
+    },
+    {
+     "text": "No, maybe later with /terminal-setup",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 490,
+     "symbol": "claudeTerminalSetupActive"
+    },
+    {
+     "text": "Paste code here if prompted",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 502,
+     "symbol": "claudeLoginScreenActive"
+    },
+    {
+     "text": "Browser didn't open? Use the url below to sign in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 504,
+     "symbol": "claudeLoginScreenActive"
+    },
+    {
+     "text": "Select login method",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/claude-code.ts",
+     "line": 508,
+     "symbol": "claudeLoginScreenActive"
+    },
+    {
+     "text": "\\d+(?:\\.\\d+)?[dhms](?: \\d+[dhms])*(?: \\([^)\\n]*\\))?",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 524,
+     "symbol": "CLAUDE_RETRY_WAIT"
+    },
+    {
+     "text": "[ \\t]·[ \\t]Retrying in ",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 525,
+     "symbol": "CLAUDE_RETRY_SUFFIX"
+    },
+    {
+     "text": "\\n(?:[ \\t]*\\n|[ \\t]*⎿(?![ \\t\\u00a0]*Interrupted\\b)[^\\n]*\\n|[ \\t]{10,}(?:tmux (?:detected|focus-events)[^\\n]*|\\S \\w+ · /effort)[ \\t]*\\n)*",
+     "kind": "string",
+     "surface": "idle-busy",
+     "file": "src/backend/claude-code.ts",
+     "line": 555,
+     "symbol": "CLAUDE_LIVE_TAIL"
+    },
+    {
+     "text": ")\\b[^\\n]*?[ \\t]·[ \\t]Retrying in ",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 560,
+     "symbol": "claudeRetryRow"
+    },
+    {
+     "text": "Do you want to proceed",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 569,
+     "symbol": "CLAUDE_DANGEROUS_COMMAND_PROMPT"
+    },
+    {
+     "text": "Esc to cancel · Tab to amend",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 628,
+     "symbol": "claudeBashPermissionActive"
+    },
+    {
+     "text": "Bash command",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 630,
+     "symbol": "claudeBashPermissionActive"
+    },
+    {
+     "text": "Yes, and always allow access to",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 642,
+     "symbol": "claudeBashPermissionActive"
+    },
+    {
+     "text": "from this project",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 642,
+     "symbol": "claudeBashPermissionActive"
+    },
+    {
+     "text": "Yes, and switch to auto mode · auto mode handles these prompts for you",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 643,
+     "symbol": "claudeBashPermissionActive"
+    },
+    {
+     "text": "Background work is running",
+     "kind": "regex",
+     "surface": "exit",
+     "file": "src/backend/claude-code.ts",
+     "line": 662,
+     "symbol": "CLAUDE_BACKGROUND_WORK_EXIT"
+    },
+    {
+     "text": "Exit and stop tasks",
+     "kind": "regex",
+     "surface": "exit",
+     "file": "src/backend/claude-code.ts",
+     "line": 670,
+     "symbol": "claudeBackgroundWorkExitActive"
+    },
+    {
+     "text": "Claude Code will automatically deny this request in",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/claude-code.ts",
+     "line": 686,
+     "symbol": "claudeCommandRequestIdentity"
+    },
+    {
+     "text": "API Error: Rate limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 986,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "API Error: Request rejected (429",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 992,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Login expired",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 996,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Not logged in",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 996,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Please run /login",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 996,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "API Error: Authentication",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 997,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "There's an issue with the selected model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1006,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "is not available on your",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1006,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "or ask your admin to enable this model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1006,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "API Error: Overloaded",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1011,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "API Error: Repeated 529 Overloaded errors",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1015,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "API key",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1056,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Fix external",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1056,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "auth token",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1056,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Usage limit reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1069,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "continuing automatically at",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1069,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "or type",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1069,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "credit balance is too low",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/claude-code.ts",
+     "line": 1085,
+     "symbol": "ClaudeCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Configuration error",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1099,
+     "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "contains invalid JSON",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1099,
+     "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "Claude Bypass Permissions warning",
+     "kind": "string",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1130,
+     "symbol": "ClaudeCodeBackend.getStartupDialogs"
+    },
+    {
+     "text": "Claude workspace trust dialog",
+     "kind": "string",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1131,
+     "symbol": "ClaudeCodeBackend.getStartupDialogs"
+    },
+    {
+     "text": "Resume Session",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/claude-code.ts",
+     "line": 1137,
+     "symbol": "ClaudeCodeBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "no conversation found",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 1277,
+     "symbol": "ClaudeCodeBackend.resumeMissingPattern"
+    },
+    {
+     "text": "no conversation to",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 1277,
+     "symbol": "ClaudeCodeBackend.resumeMissingPattern"
+    },
+    {
+     "text": "no previous",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/claude-code.ts",
+     "line": 1277,
+     "symbol": "ClaudeCodeBackend.resumeMissingPattern"
+    }
+   ]
+  },
+  "codex": {
+   "literals": [
+    {
+     "text": "Context[ \t]+(?:d+%[ \t]+(?:left|used)|d+…|…)",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 48,
+     "symbol": "CODEX_CONTEXT_ITEM"
+    },
+    {
+     "text": "Folder access",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 330,
+     "symbol": "codexTrustPromptState"
+    },
+    {
+     "text": "Trust this folder",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 333,
+     "symbol": "codexTrustPromptState.question"
+    },
+    {
+     "text": "Trusting will apply",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 344,
+     "symbol": "codexTrustPromptState.hasRootNote"
+    },
+    {
+     "text": "repository root",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 344,
+     "symbol": "codexTrustPromptState.hasRootNote"
+    },
+    {
+     "text": "Trust and continue",
+     "kind": "string",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 360,
+     "symbol": "codexTrustPromptState.safeChoice"
+    },
+    {
+     "text": "enter continue",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 362,
+     "symbol": "codexTrustPromptState.safeChoice"
+    },
+    {
+     "text": "esc quit",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 362,
+     "symbol": "codexTrustPromptState.safeChoice"
+    },
+    {
+     "text": "Open restricted",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 378,
+     "symbol": "codexTrustVariantActive"
+    },
+    {
+     "text": "Do you trust the files in this folder",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/codex.ts",
+     "line": 382,
+     "symbol": "codexTrustVariantActive.question"
+    },
+    {
+     "text": "Press enter to confirm or esc to continue working",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 422,
+     "symbol": "USAGE_LIMIT_ESC_HINT"
+    },
+    {
+     "text": "Continue with Luna Reserve",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 426,
+     "symbol": "USAGE_LIMIT_CONTINUE"
+    },
+    {
+     "text": "Ask Codex to do anything",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 467,
+     "symbol": "codexUsageLimitMenuVisible"
+    },
+    {
+     "text": "Approaching rate limits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 480,
+     "symbol": "codexRateSwitchVisible"
+    },
+    {
+     "text": "Switch to",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 480,
+     "symbol": "codexRateSwitchVisible"
+    },
+    {
+     "text": "for lower credit usage",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 480,
+     "symbol": "codexRateSwitchVisible"
+    },
+    {
+     "text": "Keep current model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 489,
+     "symbol": "codexRateSwitchVisible"
+    },
+    {
+     "text": "enter select",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 538,
+     "symbol": "codexRateSwitchPickerVisible"
+    },
+    {
+     "text": "esc back",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 538,
+     "symbol": "codexRateSwitchPickerVisible"
+    },
+    {
+     "text": "Keep current model (never show again",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 539,
+     "symbol": "codexRateSwitchPickerVisible"
+    },
+    {
+     "text": "Press enter to continue",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 552,
+     "symbol": "codexUnknownSelectionVisible"
+    },
+    {
+     "text": "^[ \t]*•[ \t]+(?:Reconnecting to (?:app-)?server(?:…|...)|Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch)[ \t]+(d+[hms](?:[ \t]+d+[hms])*)[ \t]*$",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 626,
+     "symbol": "CODEX_DISCONNECT_ROW"
+    },
+    {
+     "text": "^s*r retrys+(?:f forks+)?esc/",
+     "kind": "template",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 650,
+     "symbol": "CODEX_SESSION_LOCK_FOOTER"
+    },
+    {
+     "text": "^s*enter continue · esc use session · ",
+     "kind": "template",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 651,
+     "symbol": "CODEX_RESUME_CWD_FOOTER"
+    },
+    {
+     "text": "This conversation is open in another app",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 666,
+     "symbol": "codexSessionLockVisible"
+    },
+    {
+     "text": "Close it there and press R to continue here",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 667,
+     "symbol": "codexSessionLockVisible"
+    },
+    {
+     "text": "Working directory · resume",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 687,
+     "symbol": "codexResumeCwdPickerVisible.header"
+    },
+    {
+     "text": "Use session directory",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 690,
+     "symbol": "codexResumeCwdPickerVisible"
+    },
+    {
+     "text": "Use current directory",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 691,
+     "symbol": "codexResumeCwdPickerVisible"
+    },
+    {
+     "text": "Update now",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 702,
+     "symbol": "codexUpdatePickerVisible"
+    },
+    {
+     "text": "Skip until next version",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 709,
+     "symbol": "codexUpdatePickerVisible"
+    },
+    {
+     "text": "Update available",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 712,
+     "symbol": "codexUpdatePickerVisible"
+    },
+    {
+     "text": "Release notes: https://github.com/openai/codex/releases/latest",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 713,
+     "symbol": "codexUpdatePickerVisible"
+    },
+    {
+     "text": "esc to interrupt",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 769,
+     "symbol": "CODEX_LIVE_STATUS_ROW"
+    },
+    {
+     "text": "[p{L}p{N}][p{L}p{N}._:/+-]*(?:[ \t]+(?:none|low|medium|high|xhigh|max|minimal|standard))?(?:[ \t]+(?:fast|flex|priority))?",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 796,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.model-with-reasoning"
+    },
+    {
+     "text": "d+(?:.d+)?[kKmM]?[ \t]+window",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 811,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.context-window-size"
+    },
+    {
+     "text": "weekly[ \t]+d+(?:.d+)?%(?:[ \t]+(?:left|used))?(?:[ \t]+@?[^\r\n·]+)?",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 813,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.weekly-limit"
+    },
+    {
+     "text": "d+(?:.d+)?[kKmM]?[ \t]+(?:tokens?[ \t]+)?used",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 814,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.used-tokens"
+    },
+    {
+     "text": "d+(?:.d+)?[kKmM]?[ \t]+in",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 815,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.total-input-tokens"
+    },
+    {
+     "text": "d+(?:.d+)?[kKmM]?[ \t]+out",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 816,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.total-output-tokens"
+    },
+    {
+     "text": "Fast[ \t]+(?:on|off)",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 819,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.fast-mode"
+    },
+    {
+     "text": "Raw output",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 820,
+     "symbol": "CODEX_STATUS_LINE_VALUE_PATTERNS.raw-output"
+    },
+    {
+     "text": "OpenAI Codex (v",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 841,
+     "symbol": "codexBoxedResumeLoading"
+    },
+    {
+     "text": "Resuming session",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/codex.ts",
+     "line": 853,
+     "symbol": "codexBoxedResumeLoading.resume"
+    },
+    {
+     "text": " migrated from ",
+     "kind": "template",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 967,
+     "symbol": "CodexBackend.resolveShortHome"
+    },
+    {
+     "text": " rename failed (",
+     "kind": "template",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 977,
+     "symbol": "CodexBackend.resolveShortHome"
+    },
+    {
+     "text": "legacy path remains in use: ",
+     "kind": "template",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 978,
+     "symbol": "CodexBackend.resolveShortHome"
+    },
+    {
+     "text": "check_for_update_on_startup = false",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 1268,
+     "symbol": "CodexBackend.disableStartupUpdateCheck.updated"
+    },
+    {
+     "text": "check_for_update_on_startup = false\n",
+     "kind": "string",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 1275,
+     "symbol": "CodexBackend.disableStartupUpdateCheck.LINE"
+    },
+    {
+     "text": "\n[tui]\nstatus_line = [\"",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1356,
+     "symbol": "CodexBackend.enableContextStatusLine"
+    },
+    {
+     "text": "the verified edit could not be written: ",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1377,
+     "symbol": "CodexBackend.enableContextStatusLine.reason"
+    },
+    {
+     "text": "write failed",
+     "kind": "string",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1377,
+     "symbol": "CodexBackend.enableContextStatusLine.reason"
+    },
+    {
+     "text": "(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1670,
+     "symbol": "CodexBackend.getReadyPattern.noContextReady"
+    },
+    {
+     "text": "Messages to be submitted",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/codex.ts",
+     "line": 1778,
+     "symbol": "CodexBackend.isStableUnknownLayoutIdlePane"
+    },
+    {
+     "text": "|Error:|API Error:)s*[sS]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceededs+yours+currents+quota)\b",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1802,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|Error:|API Error:)s*[sS]{0,240}?(?:[\"'](?:status|code)[\"']s*:s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1815,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|Error:|API Error:)s*[sS]{0,240}?(?:[\"'](?:status|code)[\"']s*:s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1828,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "ve hit your usage limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1838,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "^[ \t]*•[ \t]+Reconnect failed[ \t]+—[ \t]+check the endpoint, then relaunch[ \t]+(d+[hms](?:[ \t]+d+[hms])*)[ \t]*$",
+     "kind": "template",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1848,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Selected model is at capacity. Please try a different model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/codex.ts",
+     "line": 1887,
+     "symbol": "CodexBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Release notes: https://github.com/openai/codex/releases",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/codex.ts",
+     "line": 2036,
+     "symbol": "CodexBackend.updatePickerDialog.pattern"
+    },
+    {
+     "text": "no conversation found",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no conversation to",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no previous",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "codex login --device-auth",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 187,
+     "symbol": "LOGIN_FLOWS.codex.command"
+    },
+    {
+     "text": "Sign in with ChatGPT",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 189,
+     "symbol": "LOGIN_FLOWS.codex.loginScreenPattern"
+    },
+    {
+     "text": "Successfully logged in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 193,
+     "symbol": "LOGIN_FLOWS.codex.successPattern"
+    }
+   ]
+  },
+  "opencode": {
+   "literals": [
+    {
+     "text": "opencode [project",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/opencode-permission.ts",
+     "line": 35,
+     "symbol": "looksLikeOpencodeHelp"
+    },
+    {
+     "text": "enter confirm",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/opencode-permission.ts",
+     "line": 113,
+     "symbol": "HINT_INLINE"
+    },
+    {
+     "text": "ctrl+f fullscreen",
+     "kind": "regex",
+     "surface": "other",
+     "file": "src/backend/opencode-permission.ts",
+     "line": 114,
+     "symbol": "HINT_LINE"
+    },
+    {
+     "text": "Allow always",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/opencode-permission.ts",
+     "line": 161,
+     "symbol": "PERMISSION_OPTIONS"
+    },
+    {
+     "text": "Allow once",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/opencode-permission.ts",
+     "line": 161,
+     "symbol": "PERMISSION_OPTIONS"
+    },
+    {
+     "text": "Ask anything",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/opencode.ts",
+     "line": 131,
+     "symbol": "OpenCodeBackend.getReadyPattern"
+    },
+    {
+     "text": "ctrl+p commands",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/opencode.ts",
+     "line": 131,
+     "symbol": "OpenCodeBackend.getReadyPattern"
+    },
+    {
+     "text": "too many requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/opencode.ts",
+     "line": 140,
+     "symbol": "OpenCodeBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Permission required",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/opencode.ts",
+     "line": 296,
+     "symbol": "OpenCodeBackend.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "Always allow",
+     "kind": "regex",
+     "surface": "approval",
+     "file": "src/backend/opencode.ts",
+     "line": 309,
+     "symbol": "OpenCodeBackend.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "no conversation found",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no conversation to",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no previous",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "Don't trust",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10702,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "I accept",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10703,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "I trust",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10703,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "No, exit",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10703,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "No, quit",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10703,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "Trust folder",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10703,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "Yes, continue",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10703,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "Resume Session",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10704,
+     "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
+    },
+    {
+     "text": "command not found",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10906,
+     "symbol": "Daemon.dismissDialogsUntilReady"
+    },
+    {
+     "text": "not found",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/daemon.ts",
+     "line": 10906,
+     "symbol": "Daemon.dismissDialogsUntilReady"
+    }
+   ]
+  },
+  "muse": {
+   "literals": [
+    {
+     "text": "Allow this",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/muse.ts",
+     "line": 85,
+     "symbol": "MUSE_DIALOG_CHROME"
+    },
+    {
+     "text": "Approve this",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/muse.ts",
+     "line": 85,
+     "symbol": "MUSE_DIALOG_CHROME"
+    },
+    {
+     "text": "Enter to choose",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/muse.ts",
+     "line": 85,
+     "symbol": "MUSE_DIALOG_CHROME"
+    },
+    {
+     "text": "Use Up/Down",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/muse.ts",
+     "line": 85,
+     "symbol": "MUSE_DIALOG_CHROME"
+    },
+    {
+     "text": "to cancel",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/muse.ts",
+     "line": 85,
+     "symbol": "MUSE_DIALOG_CHROME"
+    },
+    {
+     "text": "to select",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/muse.ts",
+     "line": 85,
+     "symbol": "MUSE_DIALOG_CHROME"
+    },
+    {
+     "text": "esc to interrupt",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/muse.ts",
+     "line": 89,
+     "symbol": "MUSE_BUSY"
+    },
+    {
+     "text": "Esc to quit",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/muse.ts",
+     "line": 201,
+     "symbol": "museLoginScreenActive"
+    },
+    {
+     "text": "Log in with browser",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/muse.ts",
+     "line": 201,
+     "symbol": "museLoginScreenActive"
+    },
+    {
+     "text": "Set an API key",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/muse.ts",
+     "line": 201,
+     "symbol": "museLoginScreenActive"
+    },
+    {
+     "text": "Muse Code",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/muse.ts",
+     "line": 475,
+     "symbol": "MuseBackend.getReadyPattern"
+    },
+    {
+     "text": "too many requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 581,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "still unauthorized after a token refresh; run `muse login` again",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 594,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|your saved login is no longer valid\\. Log in again or use a different account",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 595,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|your API key from META_API_KEY was rejected",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 596,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|Not logged in\\. Run \\S+(?: \\S+)? again to log in",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 597,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|Not logged in\\W+run /login to get started",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 598,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "out of credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 602,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "usage limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/muse.ts",
+     "line": 602,
+     "symbol": "MuseBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Do you trust this workspace",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/muse.ts",
+     "line": 614,
+     "symbol": "MuseBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "Log in to",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/muse.ts",
+     "line": 623,
+     "symbol": "MuseBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "device code",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/muse.ts",
+     "line": 623,
+     "symbol": "MuseBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "muse login",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/muse.ts",
+     "line": 623,
+     "symbol": "MuseBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "has no saved log",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/muse.ts",
+     "line": 718,
+     "symbol": "MuseBackend.resumeMissingPattern"
+    },
+    {
+     "text": "retained session not found: session",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/backend/muse.ts",
+     "line": 718,
+     "symbol": "MuseBackend.resumeMissingPattern"
+    }
+   ]
+  },
+  "kiro-cli": {
+   "literals": [
+    {
+     "text": "Editing queued message",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 100,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "Kiro is working",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 100,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "ask a question or describe a task",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 100,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "describe what",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 100,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "running shell command",
+     "kind": "regex",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 100,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "^›[ \t]+Kiro is working(?:[ \t]+·[ \t]+[^·]+?)?[ \t]+·[ \t]+",
+     "kind": "template",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 103,
+     "symbol": "readKiroComposer.working"
+    },
+    {
+     "text": "Type to steer[ \\t]+·[ \\t]+[^·]+?[ \\t]+to queue$",
+     "kind": "template",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 105,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "Type to queue(?:[ \\t]+·[ \\t]+[^·]+?[ \\t]+to steer)?$",
+     "kind": "template",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 106,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "^›[ \t]+ask a question or describe a task",
+     "kind": "template",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 107,
+     "symbol": "readKiroComposer.idle"
+    },
+    {
+     "text": "[ \\t]+↵[ \\t]+·[ \\t]+exit plan mode: shift\\+tab$",
+     "kind": "template",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 109,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "[ \\t]+·[ \\t]+/tangent to go back[ \\t]+·[ \\t]+/tangent ls to view$",
+     "kind": "template",
+     "surface": "input-box",
+     "file": "src/backend/kiro.ts",
+     "line": 110,
+     "symbol": "readKiroComposer"
+    },
+    {
+     "text": "Select model (type to search",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/kiro.ts",
+     "line": 175,
+     "symbol": "kiroModelPickerAtTail"
+    },
+    {
+     "text": "Warning: Kiro is running in trust all tools mode",
+     "kind": "string",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 186,
+     "symbol": "KIRO_TRUST_HEADER"
+    },
+    {
+     "text": "Do you trust the files",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 187,
+     "symbol": "KIRO_TRUST_PATTERN"
+    },
+    {
+     "text": "Yes, I accept",
+     "kind": "string",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 188,
+     "symbol": "KIRO_TRUST_OPTIONS"
+    },
+    {
+     "text": "Yes, and don't ask again",
+     "kind": "string",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 188,
+     "symbol": "KIRO_TRUST_OPTIONS"
+    },
+    {
+     "text": "esc to cancel",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 226,
+     "symbol": "kiroTrustPromptState"
+    },
+    {
+     "text": "to navigate",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 226,
+     "symbol": "kiroTrustPromptState"
+    },
+    {
+     "text": "to select",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/kiro.ts",
+     "line": 226,
+     "symbol": "kiroTrustPromptState"
+    },
+    {
+     "text": "Kiro is having trouble responding right now",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 281,
+     "symbol": "kiroUnavailableModelPickerActive"
+    },
+    {
+     "text": "The model you",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 288,
+     "symbol": "kiroUnavailableModelPickerActive"
+    },
+    {
+     "text": "ve selected is temporarily unavailable. Please select a different model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 288,
+     "symbol": "kiroUnavailableModelPickerActive"
+    },
+    {
+     "text": "x credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 290,
+     "symbol": "kiroUnavailableModelPickerActive.cursorRow"
+    },
+    {
+     "text": "CLI 3.0 is becoming the default experience",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 398,
+     "symbol": "KIRO_V3_EASE_IN.header"
+    },
+    {
+     "text": "Don't ask again",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 399,
+     "symbol": "KIRO_V3_EASE_IN.options"
+    },
+    {
+     "text": "Remind me later",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 399,
+     "symbol": "KIRO_V3_EASE_IN.options"
+    },
+    {
+     "text": "Switch to 3.0 and upgrade my configs",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 399,
+     "symbol": "KIRO_V3_EASE_IN.options"
+    },
+    {
+     "text": "Your agent configs are still in the 2.0 format",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 402,
+     "symbol": "KIRO_AGENT_UPGRADE.header"
+    },
+    {
+     "text": "Enable auto-upgrade",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 403,
+     "symbol": "KIRO_AGENT_UPGRADE.options"
+    },
+    {
+     "text": "Not now",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 403,
+     "symbol": "KIRO_AGENT_UPGRADE.options"
+    },
+    {
+     "text": "Classic is being deprecated with the Kiro CLI 3.0",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 414,
+     "symbol": "KIRO_CLASSIC_NUDGE.header"
+    },
+    {
+     "text": "Switch to 3.0 and upgrade my agent configs",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 415,
+     "symbol": "KIRO_CLASSIC_NUDGE.options"
+    },
+    {
+     "text": "Kiro V3 ease-in prompt",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 450,
+     "symbol": "KIRO_ENGINE_PROMPT_DIALOGS"
+    },
+    {
+     "text": "Kiro 3.0 agent-config upgrade prompt",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 451,
+     "symbol": "KIRO_ENGINE_PROMPT_DIALOGS"
+    },
+    {
+     "text": "Kiro Classic deprecation nudge",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/backend/kiro.ts",
+     "line": 452,
+     "symbol": "KIRO_ENGINE_PROMPT_DIALOGS"
+    },
+    {
+     "text": "/agent swap ",
+     "kind": "template",
+     "surface": "other",
+     "file": "src/backend/kiro.ts",
+     "line": 1260,
+     "symbol": "KiroBackend.agentSwitch.command"
+    },
+    {
+     "text": ".json (its \"prompt\" field)",
+     "kind": "template",
+     "surface": "other",
+     "file": "src/backend/kiro.ts",
+     "line": 1286,
+     "symbol": "KiroBackend.instructionsSource"
+    },
+    {
+     "text": "All tools are now trusted|Trust All Tools active|Credits:.*Time:",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/kiro.ts",
+     "line": 1299,
+     "symbol": "KiroBackend.getReadyPattern"
+    },
+    {
+     "text": "|ask a question or describe a task|\\d+%.*[!❯>]|",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/kiro.ts",
+     "line": 1300,
+     "symbol": "KiroBackend.getReadyPattern"
+    },
+    {
+     "text": "using tool",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/kiro.ts",
+     "line": 1344,
+     "symbol": "KiroBackend.getPaneActivity.announcements"
+    },
+    {
+     "text": "Completed in",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/kiro.ts",
+     "line": 1349,
+     "symbol": "KiroBackend.getPaneActivity"
+    },
+    {
+     "text": "Please use '/model",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1357,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "not available",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1357,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Response timed out",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1358,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "You are not logged in|ExpiredTokenException|no device registration found for token",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1400,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|Access denied:.*bearer token.*invalid",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1401,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "|^\\s*\\d+:\\s*(?:dispatch failure[^\\n]*?)?No token\\s*$",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1402,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "dispatch failure (timeout",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1427,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "request timed out: error sending request for url",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1427,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Transport to MCP server",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1457,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "is closed",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1457,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "non-JSON-RPC output to stdout which caused the connection to close",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1457,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "having trouble responding",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1483,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Are you sure",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/kiro.ts",
+     "line": 1547,
+     "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
+    },
+    {
+     "text": "This will erase the conversation history",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/kiro.ts",
+     "line": 1547,
+     "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
+    },
+    {
+     "text": "no conversation found",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no conversation to",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no previous",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "Press enter to continue to the browser or esc to cancel",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 176,
+     "symbol": "KIRO_EXPIRED_LOGIN_SCREEN"
+    },
+    {
+     "text": "let's get you signed in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 176,
+     "symbol": "KIRO_EXPIRED_LOGIN_SCREEN"
+    },
+    {
+     "text": "Select login method|",
+     "kind": "template",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 179,
+     "symbol": "KIRO_LOGIN_SCREEN"
+    },
+    {
+     "text": "kiro-cli login",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 214,
+     "symbol": "LOGIN_FLOWS.kiro-cli.command"
+    },
+    {
+     "text": "Logged in successfully",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 232,
+     "symbol": "LOGIN_FLOWS.kiro-cli.successPattern"
+    },
+    {
+     "text": "Logged in with",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 232,
+     "symbol": "LOGIN_FLOWS.kiro-cli.successPattern"
+    },
+    {
+     "text": "kiro-cli logout",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 238,
+     "symbol": "LOGIN_FLOWS.kiro-cli.preCommand.command"
+    },
+    {
+     "text": "Already logged in, please logout",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 240,
+     "symbol": "LOGIN_FLOWS.kiro-cli.failures.pattern"
+    },
+    {
+     "text": "error: dispatch failure",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 241,
+     "symbol": "LOGIN_FLOWS.kiro-cli.failures.pattern"
+    }
+   ]
+  },
+  "grok": {
+   "literals": [
+    {
+     "text": "You hit your weekly limit",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 16,
+     "symbol": "grokWeeklyLimitDialog.pattern"
+    },
+    {
+     "text": "Tab:next answer",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 30,
+     "symbol": "grokWeeklyLimitDialog.isActive"
+    },
+    {
+     "text": "You hit your weekly limit.",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 39,
+     "symbol": "grokWeeklyLimitDialog.isActive.title"
+    },
+    {
+     "text": "1 (○) Upgrade tier",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 40,
+     "symbol": "grokWeeklyLimitDialog.isActive.upgrade"
+    },
+    {
+     "text": "Upgrade to a higher tier for more usage",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 40,
+     "symbol": "grokWeeklyLimitDialog.isActive.upgrade"
+    },
+    {
+     "text": "2 (○) Buy more credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 41,
+     "symbol": "grokWeeklyLimitDialog.isActive.credits"
+    },
+    {
+     "text": "Purchase credits to keep using Grok Build",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 41,
+     "symbol": "grokWeeklyLimitDialog.isActive.credits"
+    },
+    {
+     "text": "navigate · y copy",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 42,
+     "symbol": "grokWeeklyLimitDialog.isActive.submit"
+    },
+    {
+     "text": "Grok Build",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/grok.ts",
+     "line": 222,
+     "symbol": "GrokBackend.getReadyPattern"
+    },
+    {
+     "text": "too many requests",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 256,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "insufficient credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 258,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "out of credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 258,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "Do you trust the contents",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/grok.ts",
+     "line": 299,
+     "symbol": "GrokBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "Log in to continue",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/grok.ts",
+     "line": 305,
+     "symbol": "GrokBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "Waiting for approval",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/grok.ts",
+     "line": 305,
+     "symbol": "GrokBackend.getStartupDialogs.pattern"
+    },
+    {
+     "text": "no conversation found",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no conversation to",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no previous",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "grok login",
+     "kind": "string",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 199,
+     "symbol": "LOGIN_FLOWS.grok.command"
+    },
+    {
+     "text": "Run `grok login",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 201,
+     "symbol": "LOGIN_FLOWS.grok.loginScreenPattern"
+    },
+    {
+     "text": "Login successful",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 207,
+     "symbol": "LOGIN_FLOWS.grok.successPattern"
+    },
+    {
+     "text": "Signed in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 207,
+     "symbol": "LOGIN_FLOWS.grok.successPattern"
+    }
+   ]
+  },
+  "agy": {
+   "literals": [
+    {
+     "text": "Select login method",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/antigravity.ts",
+     "line": 50,
+     "symbol": "agyLoginScreenActive"
+    },
+    {
+     "text": "You are currently not signed in",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/backend/antigravity.ts",
+     "line": 51,
+     "symbol": "agyLoginScreenActive"
+    },
+    {
+     "text": "esc to cancel",
+     "kind": "regex",
+     "surface": "idle-busy",
+     "file": "src/backend/antigravity.ts",
+     "line": 60,
+     "symbol": "AGY_LEGACY_BUSY_ROW"
+    },
+    {
+     "text": "^[\\u2800-\\u28FF][ \\t]+\\p{L}[^\\n]*?(?:…|\\.\\.\\.)[ \\t]*(?:\\(esc to cancel\\)|\\d+(?:\\.\\d+)?s)?[ \\t]*\\r?\\n",
+     "kind": "string",
+     "surface": "idle-busy",
+     "file": "src/backend/antigravity.ts",
+     "line": 66,
+     "symbol": "AGY_WORKING_ROW_ABOVE_COMPOSER"
+    },
+    {
+     "text": "Do you trust the contents of this project",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/antigravity.ts",
+     "line": 88,
+     "symbol": "agyTrustDialogState"
+    },
+    {
+     "text": "Yes, I trust this folder",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/antigravity.ts",
+     "line": 91,
+     "symbol": "agyTrustDialogState.yes"
+    },
+    {
+     "text": "No, exit",
+     "kind": "regex",
+     "surface": "trust",
+     "file": "src/backend/antigravity.ts",
+     "line": 92,
+     "symbol": "agyTrustDialogState"
+    },
+    {
+     "text": "\\? for shortcuts|^\\s*",
+     "kind": "template",
+     "surface": "idle-busy",
+     "file": "src/backend/antigravity.ts",
+     "line": 369,
+     "symbol": "AntigravityBackend.getReadyPattern"
+    },
+    {
+     "text": "quota reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 485,
+     "symbol": "AntigravityBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "failed to construct executor",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 499,
+     "symbol": "AntigravityBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "unknown model key",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/antigravity.ts",
+     "line": 499,
+     "symbol": "AntigravityBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "0] Skip",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/antigravity.ts",
+     "line": 540,
+     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "1] Good",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/antigravity.ts",
+     "line": 540,
+     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "2] Fine",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/antigravity.ts",
+     "line": 540,
+     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "3] Bad",
+     "kind": "regex",
+     "surface": "dialog",
+     "file": "src/backend/antigravity.ts",
+     "line": 540,
+     "symbol": "AntigravityBackend.getRuntimeDialogs.pattern"
+    },
+    {
+     "text": "no conversation found",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no conversation to",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "no previous",
+     "kind": "regex",
+     "surface": "resume",
+     "file": "src/daemon.ts",
+     "line": 739,
+     "symbol": "LEGACY_NO_CONVERSATION"
+    },
+    {
+     "text": "not logged into Antigravity",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 280,
+     "symbol": "LOGIN_FLOWS.antigravity.loginScreenPattern"
+    },
+    {
+     "text": "for shortcuts",
+     "kind": "regex",
+     "surface": "onboarding",
+     "file": "src/login-flows.ts",
+     "line": 287,
+     "symbol": "LOGIN_FLOWS.antigravity.successPattern"
+    }
+   ]
+  }
+ }
+}

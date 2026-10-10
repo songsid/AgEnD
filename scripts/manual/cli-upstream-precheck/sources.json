@@ -1,0 +1,96 @@
+{
+  "_comment": [
+    "Where each backend's detectors live: the text AgEnD matches in the CLI's pane. build-manifest.ts reads every string",
+    "literal, template part and regex text run in these places (src/, real TypeScript AST) into manifest.json.",
+    "An entry is a whole file minus `exclude` (declaration names), or only the declarations named in `symbols`.",
+    "`surfaces` names a declaration's surface when its name does not say it (build-manifest.ts guesses from the name).",
+    "Never pane text, so never kept: AgEnD's own fields of a dialog/error entry (description, message, …), the",
+    "arguments of t(), logger calls and Error constructors."
+  ],
+  "backends": {
+    "claude": [
+      { "file": "src/backend/claude-code.ts",
+        "exclude": ["COLD_RESUME_DESCRIPTION", "COLD_RESUME_HOLD_DESCRIPTION", "CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE",
+          "claudeConfirmDialogEntries", "CLAUDE_TRUST_ENTRIES", "CLAUDE_BYPASS_ENTRIES", "writeStatusLineScript", "buildCommand",
+          "writeConfig", "preTrust", "preApproveApiKey", "hasOAuthSession", "hasProjectSession", "listModels", "listApiModels",
+          "getContextUsage", "getSessionId", "probeCLIEnv"],
+        "surfaces": { "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
+          "CLAUDE_BOX_RULE": "input-box", "CLAUDE_CONFIRM_FOOTER": "dialog", "THEME_TITLE": "onboarding", "THEME_BELOW_ROW": "onboarding",
+          "BYPASS_TITLE": "trust", "CLAUDE_BYPASS_DIALOG_PATTERN": "trust", "CLAUDE_DANGEROUS_COMMAND_PROMPT": "approval",
+          "DANGER_OPTION_ROW": "approval", "DANGER_FOOTER": "approval", "claudeCommandRequestIdentity": "approval",
+          "CLAUDE_BACKGROUND_WORK_EXIT": "exit", "quitBlockedByDialog": "exit", "claudeLiveTail": "idle-busy", "CLAUDE_LIVE_TAIL": "idle-busy" } },
+      { "file": "src/daemon.ts", "symbols": ["detectMalformedClaudeToolCall"], "surfaces": { "detectMalformedClaudeToolCall": "error" } },
+      { "file": "src/login-flows.ts", "symbols": ["claude"], "surfaces": { "claude": "onboarding" } }
+    ],
+    "codex": [
+      { "file": "src/backend/codex.ts",
+        "exclude": ["stripAgendMcpTables", "tomlString", "codexTrustPaths", "setTomlTableBoolean", "effectiveTuiStatusLine",
+          "projectTrustTable", "effectiveProjectTrust", "setProjectTrusted", "CODEX_CONTEXT_STATUS_ITEM", "CODEX_CONTEXT_STATUS_ITEMS",
+          "CODEX_RUN_STATE_STATUS_ITEMS", "renderMcpServer", "buildCommand", "writeConfig", "consumeLaunchWarning", "cleanup",
+          "probeCLIEnv", "CODEX_FALLBACK_MODELS"],
+        "surfaces": { "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
+          "getBottomReadyPattern": "idle-busy", "getQueuedInputMarker": "input-box", "CODEX_NATIVE_FOOTER_FIELDS": "idle-busy",
+          "CODEX_STATUS_LINE_VALUE_PATTERNS": "idle-busy", "USAGE_LIMIT_ESC_HINT": "error", "USAGE_LIMIT_OPTION": "error",
+          "USAGE_LIMIT_CONTINUE": "error", "codexUsageLimitMenuVisible": "error", "codexRateSwitchVisible": "error",
+          "codexRateSwitchPickerVisible": "error", "rateSwitchPickerDialog": "error", "usageLimitLunaReserveDialog": "error",
+          "CODEX_CTRL": "resume", "CODEX_SESSION_LOCK_FOOTER": "resume", "CODEX_RESUME_CWD_FOOTER": "resume",
+          "codexUpdatePickerVisible": "dialog", "updatePickerDialog": "dialog", "unknownSelectionHoldDialog": "dialog",
+          "isProxyReplyChromeLine": "idle-busy", "getInputUnavailableTransients": "resume" } },
+      { "file": "src/daemon.ts", "symbols": ["isCodexResumeScreen", "LEGACY_NO_CONVERSATION"], "surfaces": { "isCodexResumeScreen": "exit", "LEGACY_NO_CONVERSATION": "resume" } },
+      { "file": "src/login-flows.ts", "symbols": ["codex"], "surfaces": { "codex": "onboarding" } },
+      { "file": "src/context-percent.ts", "symbols": ["parseContextPercent"], "surfaces": { "parseContextPercent": "idle-busy" } }
+    ],
+    "opencode": [
+      { "file": "src/backend/opencode.ts",
+        "exclude": ["helpAdvertisesAutoFlag", "looksLikeOpencodeHelp", "listModels", "listSessions", "buildCommand", "writeConfig", "probeCLIEnv"],
+        "surfaces": { "getReadyPattern": "idle-busy", "getRuntimeDialogs": "approval" } },
+      { "file": "src/backend/opencode-permission.ts", "surfaces": { "COMPOSER": "idle-busy" } },
+      { "file": "src/daemon.ts", "symbols": ["dismissDialogsUntilReady", "LEGACY_NO_CONVERSATION"],
+        "surfaces": { "dismissDialogsUntilReady": "dialog", "LEGACY_NO_CONVERSATION": "resume" } },
+      { "file": "src/context-percent.ts", "symbols": ["parseContextPercent"], "surfaces": { "parseContextPercent": "idle-busy" } }
+    ],
+    "muse": [
+      { "file": "src/backend/muse.ts",
+        "exclude": ["museSessionCwd", "getSessionId", "museSessionDirs", "requiresDeliveryEnterRetry", "getClearInputKeys", "buildCommand",
+          "writeConfig", "listModels", "probeCLIEnv"],
+        "surfaces": { "MUSE_SEPARATOR": "input-box", "MUSE_STATUS_BAR": "input-box", "MUSE_DIALOG_CHROME": "dialog", "MUSE_BUSY": "idle-busy",
+          "MUSE_LOGIN_MENU": "onboarding", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
+          "getStartupDialogs": "trust", "getRuntimeDialogs": "approval", "resumeMissingPattern": "resume" } }
+    ],
+    "kiro-cli": [
+      { "file": "src/backend/kiro.ts",
+        "exclude": ["helpAdvertisesFlag", "parseKiroAgentEngines", "KIRO_HELP_OPTION_ROW", "isKiroChatHelp", "compatibilityFromHelp",
+          "probeKiroCliCompatibilitySync", "readModelsPayload", "planKiroLaunch", "buildCommand", "writeConfig", "probeCLIEnv", "listModels"],
+        "surfaces": { "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy", "getBottomReadyPattern": "idle-busy",
+          "KIRO_COMPOSER_ROW": "input-box", "KIRO_PROMPT_CURSOR": "onboarding", "KIRO_PROMPT_FOOTER": "onboarding",
+          "KIRO_V3_EASE_IN": "onboarding", "KIRO_AGENT_UPGRADE": "onboarding", "KIRO_CLASSIC_NUDGE": "onboarding",
+          "kiroLaunchPromptState": "onboarding", "kiroLaunchPromptDialogs": "onboarding", "KIRO_ENGINE_PROMPT_DIALOGS": "onboarding",
+          "kiroModelPickerAtTail": "dialog", "getClearConfirmationDialog": "dialog", "kiroUnavailableModelPickerActive": "error",
+          "LEGACY_PROMPT_ROW": "input-box", "TUI_STATUS_ROW": "input-box", "RULE_ROW": "input-box", "TUI_HINT_ROW": "input-box",
+          "readActiveKiroAgent": "input-box", "getPaneActivity": "idle-busy", "getStartupDialogs": "dialog", "getRuntimeDialogs": "dialog" } },
+      { "file": "src/login-flows.ts", "symbols": ["KIRO_EXPIRED_LOGIN_SCREEN", "KIRO_LOGIN_SCREEN", "kiro-cli"],
+        "surfaces": { "KIRO_EXPIRED_LOGIN_SCREEN": "onboarding", "KIRO_LOGIN_SCREEN": "onboarding", "kiro-cli": "onboarding" } },
+      { "file": "src/daemon.ts", "symbols": ["LEGACY_NO_CONVERSATION"], "surfaces": { "LEGACY_NO_CONVERSATION": "resume" } },
+      { "file": "src/context-percent.ts", "symbols": ["parseContextPercent"], "surfaces": { "parseContextPercent": "idle-busy" } }
+    ],
+    "grok": [
+      { "file": "src/backend/grok.ts", "exclude": ["parseGrokModelsOutput", "buildCommand", "writeConfig", "probeCLIEnv", "listModels"],
+        "surfaces": { "grokWeeklyLimitDialog": "error", "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy",
+          "getStartupDialogs": "onboarding", "getRuntimeDialogs": "approval" } },
+      { "file": "src/login-flows.ts", "symbols": ["grok"], "surfaces": { "grok": "onboarding" } },
+      { "file": "src/daemon.ts", "symbols": ["LEGACY_NO_CONVERSATION"], "surfaces": { "LEGACY_NO_CONVERSATION": "resume" } },
+      { "file": "src/context-percent.ts", "symbols": ["parseTokenContextRatio"], "surfaces": { "parseTokenContextRatio": "idle-busy" } }
+    ],
+    "agy": [
+      { "file": "src/backend/antigravity.ts",
+        "exclude": ["parseAgyEffortLevels", "parseAntigravityModelsOutput", "enableStatusLine", "writeMcpEnvWrapper", "ensureGlobalMcpLauncher",
+          "buildCommand", "writeConfig", "probeCLIEnv", "listModels"],
+        "surfaces": { "AGY_LEGACY_BUSY_ROW": "idle-busy", "AGY_WORKING_ROW_ABOVE_COMPOSER": "idle-busy", "getReadyPattern": "idle-busy",
+          "getBusyPattern": "idle-busy", "getStartupDialogs": "trust", "getRuntimeDialogs": "dialog" } },
+      { "file": "src/login-flows.ts", "symbols": ["antigravity"], "surfaces": { "antigravity": "onboarding" } },
+      { "file": "src/daemon.ts", "symbols": ["LEGACY_NO_CONVERSATION"], "surfaces": { "LEGACY_NO_CONVERSATION": "resume" } },
+      { "file": "src/usage/provider-alerts.ts", "symbols": ["parseResetsIn"], "surfaces": { "parseResetsIn": "error" } },
+      { "file": "src/context-percent.ts", "symbols": ["parseContextPercent"], "surfaces": { "parseContextPercent": "idle-busy" } }
+    ]
+  }
+}
