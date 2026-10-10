@@ -10,6 +10,10 @@ import vm from "node:vm";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { installDom, settle } from "./helpers/mini-dom.js";
 import { h, page, type AppPage } from "./helpers/app-harness.js";
+import { EventEmitter } from "node:events";
+import { PREVIEW_OFF_CODES } from "../src/web-preview.js";
+import { serveAppShell } from "../src/web-api.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
 
 const BOOT = "e".repeat(32);
 const ORIGIN = "http://127.0.0.1:19280";
@@ -185,9 +189,9 @@ describe("every word has both languages", () => {
   it("each key preview.js says and each server code has an en and a zh-TW string", async () => {
     const src = readFileSync(join(process.cwd(), "src", "ui", "preview.js"), "utf8");
     const keys = [...src.matchAll(/say\("([A-Za-z_]+)"/g)].map(m => m[1]!).filter(k => !k.endsWith("_"));   // "pvServer_" + code: the codes below
-    const server = readFileSync(join(process.cwd(), "src", "web-preview.ts"), "utf8");
-    const codes = [...(server.match(/export type PreviewOffCode = ([^;]+);/)?.[1] ?? "").matchAll(/"([a-zA-Z]+)"/g)].map(m => `pvServer_${m[1]}`);
-    expect(codes.length, "the server's codes").toBe(7);
+    // The server's one list (#1556 review): a code added there without its words fails here.
+    const codes = PREVIEW_OFF_CODES.map(c => `pvServer_${c}`);
+    expect(codes.length, "the server's codes").toBeGreaterThanOrEqual(9);
     const missing: string[] = [];
     for (const lang of ["en", "zh-TW"]) {
       i18n.setLang(lang);
@@ -196,5 +200,38 @@ describe("every word has both languages", () => {
     i18n.setLang("en");
     expect(keys.length).toBeGreaterThanOrEqual(12);
     expect(missing).toEqual([]);
+  });
+});
+
+// ── #1556 review: the chat's own adapter, and the pages that never ask for availability ──
+
+describe("the chat's dictionary adapter (panel-chat boot), for real", () => {
+  const BOOTED = { dashboardOrigin: ORIGIN, previewOrigin: "http://127.0.0.1:19281", previewBoot: BOOT, previewReason: "" };
+  afterEach(() => { PV.init(BOOTED); });   // init without opts keeps the chat's adapter
+  it("a code the page's dictionary does not have (a newer server): the server's own text, never the key", () => {
+    i18n.setLang("zh-TW");
+    PV.init({ dashboardOrigin: ORIGIN, previewOrigin: "", previewBoot: "", previewReason: "server words", previewReasonCode: "somethingNewer" });
+    expect(PV.availability().reason).toBe("server words");
+  });
+  it("a known one: in the page's language", () => {
+    i18n.setLang("zh-TW");
+    PV.init({ dashboardOrigin: ORIGIN, previewOrigin: "", previewBoot: "", previewReason: "Previews are not available on this fleet.", previewReasonCode: "publicLink" });
+    expect(PV.availability().reason).toBe("公開連結不提供預覽。要預覽，請在執行 AgEnD 的那台機器上開啟儀表板。");
+  });
+});
+
+describe("the public link and other pages still say why, by code", () => {
+  function shellBody(gateway: boolean, mode: "full" | "view-only") {
+    const req: any = Object.assign(new EventEmitter(), { method: "GET", url: "/ui", headers: { host: "x.trycloudflare.com" } });
+    if (gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "e1", expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+    let body = "";
+    const res: any = { setHeader() {}, writeHead() {}, end(t: string) { body = t; } };
+    serveAppShell(req, res, { previewForUi: () => { throw new Error("not asked on these pages"); } } as never, mode);
+    const tag = /<body[^>]*>/.exec(body)?.[0] ?? "";
+    return { code: /data-preview-reason-code="([^"]*)"/.exec(tag)?.[1] ?? null, reason: /data-preview-reason="([^"]*)"/.exec(tag)?.[1] ?? null };
+  }
+  it("the public link: publicLink; a page that is not the full app: notOffered — the server's English kept beside it", () => {
+    expect(shellBody(true, "full")).toEqual({ code: "publicLink", reason: "Previews are not available on this fleet." });
+    expect(shellBody(false, "view-only")).toEqual({ code: "notOffered", reason: "Previews are not available on this fleet." });
   });
 });

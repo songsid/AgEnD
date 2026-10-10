@@ -83,8 +83,13 @@ export interface PreviewAvailability {
   code: PreviewOffCode | null;
 }
 
-/** #1554: why previews are off for a load, for the page's own words (chat.pvServer_<code>). */
-export type PreviewOffCode = "fleetOff" | "unchecked" | "noPort" | "notListed" | "needOrigin" | "needHttps" | "sameOrigin";
+/**
+ * #1554: why previews are off for a load, for the page's own words (chat.pvServer_<code>). The first seven come from
+ * previewAvailability; `publicLink` and `notOffered` from the app shell, which asks it for neither the public link nor
+ * a page that is not the full app. One list: the page's dictionary is checked against it.
+ */
+export const PREVIEW_OFF_CODES = ["fleetOff", "unchecked", "noPort", "notListed", "needOrigin", "needHttps", "sameOrigin", "publicLink", "notOffered"] as const;
+export type PreviewOffCode = typeof PREVIEW_OFF_CODES[number];
 
 const DEFAULT_PORT: Record<string, string> = { "http:": "80", "https:": "443" };
 
