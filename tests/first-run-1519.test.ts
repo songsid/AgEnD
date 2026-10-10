@@ -9,7 +9,7 @@
  * No server, no fleet: the quickstart route on a scratch config, the app's modules on a mini DOM with a fake fetch.
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,6 +120,66 @@ describe("#1549 review: a topic belongs to its chat — moving an agent to anoth
     const cfg = fleetWith({ channel_id: "telegram", topic_id: 30 });
     const diff = prepareSettingsEffect("POST", "/api/settings/quickstart/commit", { ...body("-100222"), token: "fake-test-token" }, { config: cfg as never, classic: {} }).diff!;
     expect(diff.summary.join("\n")).toMatch(/instances\.alpha\.topic\\_id/);
+  });
+});
+
+describe("#1549 review r2: after a restart, topics are made and Generals bound only in the agent's own connection", () => {
+  const TG = (id: string, group: string, env: string) => ({ id, type: "telegram", mode: "topic", bot_token_env: env, group_id: group, access: { mode: "locked", allowed_users: [] } });
+  const DC = (id: string, guild: string, general?: string) => ({ id, type: "discord", mode: "topic", bot_token_env: `AGEND_TEST_${id.toUpperCase().replace(/-/g, "_")}_TOKEN`, group_id: guild,
+    access: { mode: "locked", allowed_users: [] }, ...(general ? { options: { general_channel_id: general } } : {}) });
+  /** The fleet as a restart loads it (the real loader), its topics made by the real autoCreateTopics (topic creation inert). */
+  async function restart(fleet: Record<string, unknown>) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-test-topic-restart-"));
+    const path = join(dir, "fleet.yaml");
+    writeFileSync(path, JSON.stringify(fleet));                    // JSON is YAML
+    const fm = new FleetManager(dir) as any;
+    clearInterval(fm.sessionPruneTimer);
+    fm.loadConfig(path);
+    fm.createForumTopic = vi.fn(async () => 42);
+    fm.saveFleetConfig = vi.fn();
+    await fm.topicCommands.autoCreateTopics();
+    fm.routing.rebuild(fm.fleetConfig);
+    const route = (source: string, chatId: string, thread: string) => fm.resolveInboundTarget({ source, chatId }, thread)?.name ?? null;
+    return { fm, route, done: () => rmSync(dir, { recursive: true, force: true }) };
+  }
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("an agent moved to telegram-2 (no topic there) gets no topic made in the primary's group; control: the primary's own agent does", async () => {
+    vi.stubEnv("AGEND_TEST_TG1_TOKEN", "fake-primary");
+    const r = await restart({ defaults: {}, channels: [TG("telegram", "-100111", "AGEND_TEST_TG1_TOKEN"), TG("telegram-2", "-100222", "AGEND_TEST_TG2_TOKEN")],
+      instances: { alpha: { working_directory: "/w/alpha", channel_id: "telegram-2" }, beta: { working_directory: "/w/beta" } } });
+    try {
+      expect([r.fm.fleetConfig.instances.alpha.topic_id ?? null, r.fm.fleetConfig.instances.beta.topic_id ?? null]).toEqual([null, 42]);
+      expect(r.fm.createForumTopic.mock.calls.map((c: unknown[]) => c[0])).toEqual(["beta"]);
+      expect([r.route("telegram", "-100222", "42"), r.route("telegram", "-100111", "42")]).toEqual([null, "beta"]);
+    } finally { r.done(); }
+  });
+
+  it("a General moved to discord-2 with no General of its own stays unbound — never the old bot's General; control: its own General is used", async () => {
+    vi.stubEnv("AGEND_TEST_DISCORD_TOKEN", "fake-primary");
+    const fleet = (second: Record<string, unknown>) => ({ defaults: {}, channels: [DC("discord", "111", "111111111111111111"), second],
+      instances: { alpha: { working_directory: "/w/alpha", channel_id: "discord-2", general_topic: true } } });
+    const without = await restart(fleet(DC("discord-2", "222")));
+    try {
+      expect(without.fm.fleetConfig.instances.alpha.topic_id ?? null).toBeNull();
+      expect(without.route("discord", "222", "111111111111111111")).toBeNull();
+    } finally { without.done(); }
+    const own = await restart(fleet(DC("discord-2", "222", "987654321098765432")));
+    try {
+      expect(own.fm.fleetConfig.instances.alpha.topic_id ?? null).toBe("987654321098765432");
+    } finally { own.done(); }
+  });
+
+  it("an agent whose connection is not configured is left unbound (nothing borrowed); a Telegram General of the primary still gets 1", async () => {
+    vi.stubEnv("AGEND_TEST_TG1_TOKEN", "fake-primary");
+    const r = await restart({ defaults: {}, channels: [TG("telegram", "-100111", "AGEND_TEST_TG1_TOKEN")],
+      instances: { lost: { working_directory: "/w/lost", channel_id: "gone" }, lostgeneral: { working_directory: "/w/g", channel_id: "gone", general_topic: true },
+        general: { working_directory: "/w/general", general_topic: true } } });
+    try {
+      const t = (n: string) => r.fm.fleetConfig.instances[n].topic_id ?? null;
+      expect([t("lost"), t("lostgeneral"), t("general")]).toEqual([null, null, 1]);
+      expect(r.fm.createForumTopic).not.toHaveBeenCalled();
+    } finally { r.done(); }
   });
 });
 
