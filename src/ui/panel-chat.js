@@ -421,6 +421,7 @@ function Composer({ name, lease, busy }) {
       <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
         disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
       <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || !!s.sending[name]}
+        onMouseDown=${(e) => e.preventDefault()}
         aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
     </div></div>`;
 }

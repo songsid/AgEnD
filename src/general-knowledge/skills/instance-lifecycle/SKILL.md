@@ -24,4 +24,5 @@ roles: [general]
 
 - `get_fleet_status` / `describe_instance("<name>")` — status + idle/working/stuck + last
   activity (the daemon derives the state; don't scrape pane prompts).
-- For the raw screen, see the fleet-health skill (`get_instance_logs` / tmux capture).
+- For the raw screen, see the fleet-health skill (`get_instance_logs` / tmux capture), including
+  why faint text in another instance's input box is a CLI suggestion, not the operator's input.

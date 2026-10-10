@@ -320,11 +320,17 @@ export function createThread(list, scroller, opts) {
     for (const node of list.querySelectorAll(".html-card[data-card], .html-card[data-att]")) { const f = cardRefresh.get(node); if (f) f(); }
   }
 
+  // Near the bottom (48 px slack): where the READER counts as at the newest message — for the pill and for pinning on scroll.
   const nearBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);
+  // #1584: at the exact bottom — what a pinned view is kept at. The slack is the reader's, not the layout's: a dock that
+  // grew by less than 48 px (the working line, a command card, the composer shrinking after a send) used to leave the
+  // newest bubble clipped behind it, and the next growth past 48 px put the pill over it.
+  const atBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight, 1);
   function reportJump() { opts.onJump({ show: !nearBottom(), unseen }); }
   function toBottom() { scroller.scrollTop = scroller.scrollHeight; pinned = true; lastTop = scroller.scrollTop; }
-  // Sizes change without a scroll event (layout after the render): follow them while pinned.
-  const resized = () => { if (pinned && !nearBottom()) toBottom(); reportJump(); };
+  // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
+  // stays flush with the bottom; a reader who scrolled up is never moved.
+  const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
   const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
 

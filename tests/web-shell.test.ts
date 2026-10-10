@@ -382,17 +382,15 @@ describe("the app's stream falls back to polling when it is silent, and stops wh
     expect(f.fetched.at(-1), "the poll resumes from the stream's cursor").toBe("/ui/poll?after=b-7");
   });
 
-  it("a failing stream re-fires onerror on every retry, but the 5 s deadline is armed once, not pushed back", () => {
+  it("#1580: a failing stream is closed at once (no browser retry) and probed once; a second onerror of it changes nothing", () => {
     const f = fakeEnv();
     const stream = createStream({ mode: "full", env: f.env });
     stream.start();
     f.advance(3_000);
-    f.sources[0]!.onerror!();                        // the first failure: the poll is due 5 s after it (t = 8 s)
-    f.advance(2_000);
-    f.sources[0]!.onerror!();                        // the browser's retry fails again: the deadline must not move
-    f.advance(2_999);
-    expect(f.fetched, "t = 7.999 s").toEqual([]);
-    f.advance(1);
-    expect(f.fetched, "t = 8 s").toEqual(["/ui/poll?after="]);
+    const fail = f.sources[0]!.onerror!;
+    fail();                                          // the first failure: one probe, now
+    fail();                                          // the closed stream's (a late event): ignored
+    expect(f.fetched).toEqual(["/ui/poll?after="]);
+    expect(f.sources).toHaveLength(1);
   });
 });
