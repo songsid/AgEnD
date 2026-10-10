@@ -347,7 +347,10 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
         const res = await fetch("/health", { cache: "no-store" });
         if (res.status) {
           $("finishMsg").className = "msg ok";
-          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up.";
+          // #1519 P7: the fleet answers on this address now — its dashboard is here too.
+          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up, or open its dashboard: ";
+          const link = document.createElement("a"); link.href = "/"; link.textContent = location.origin + "/";
+          $("finishMsg").append(link, " (sign in with agend web --code on the machine running AgEnD, or send /dashboard to your bot).");
           return;
         }
       } catch { /* not listening yet */ }
@@ -370,3 +373,26 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 </body>
 </html>
 `;
+
+/**
+ * #1490: the setup pages' Content-Security-Policy. Their one `<script>` and one `<style>` are inline, so each response
+ * gets a fresh nonce for exactly those (setupPage); nothing else may run, load from elsewhere, post elsewhere, or frame
+ * the page. fetch() goes to this origin only (the setup host's own API).
+ */
+export function setupContentSecurityPolicy(nonce: string): string {
+  return [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}'`,
+    `style-src 'nonce-${nonce}'`,
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
+/** A setup page with `nonce` on its inline `<script>` and `<style>` tags — the only ones the policy admits. */
+export function setupPage(html: string, nonce: string): string {
+  return html.replace(/<script>/g, `<script nonce="${nonce}">`).replace(/<style>/g, `<style nonce="${nonce}">`);
+}

@@ -40,6 +40,9 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
+/** #1519 P7: the last line of a successful install (npm shows it with --foreground-scripts; install.sh says the same). */
+var NEXT_STEP = "  Next: run `agend quickstart` to set up AgEnD.";
+
 function main(deps) {
   var d = deps || {};
   var pkg = select.packageDir(d.launcherDir || __dirname);
@@ -61,6 +64,7 @@ function main(deps) {
   var pin = select.pinnedRuntime(pkg.manifest, host);
   var support = platform.runtimeSupport(host);
   var log = d.log || function (line) { process.stdout.write(line + "\n"); };
+  var installed = function () { log(NEXT_STEP); return 0; };
 
   if (pin && support.supported) {
     var candidate = select.runtimeCandidate(pkg.dir, pin);
@@ -96,19 +100,19 @@ function main(deps) {
       fs.writeFileSync(keyTmp, key);
       fs.renameSync(keyTmp, path.join(pkg.dir, select.KEY));
       log("  ✓ AgEnD will run on its bundled Node " + seen.node + " (verified: N-API " + seen.napi + ", a database opened in the main thread and a worker)");
-      return 0;
+      return installed();
     }
     if (select.qualifies(running, engines)) {
       log("  ⚠ AgEnD's bundled Node was not installed (--omit=optional?); it will run on this Node " + running.node);
-      return 0;
+      return installed();
     }
     refuse("its bundled Node (" + pin.name + ") was not installed, and this Node " + running.node + " is older than AgEnD needs (" + engines + ")",
       "If optional dependencies were omitted or a registry mirror blocks " + pin.name + ", allow it and retry; or install Node " + engines + " first.");
   }
-  if (select.qualifies(running, engines)) return 0;
+  if (select.qualifies(running, engines)) return installed();
   refuse((pin ? support.reason : "this release bundles no Node") + ", and this Node " + running.node + " is older than AgEnD needs (" + engines + ")",
     "Install Node " + engines + ", then: npm install -g @songsid/agend@" + pkg.manifest.version);
 }
 
-module.exports = { main: main, PROOF: PROOF };
+module.exports = { main: main, PROOF: PROOF, NEXT_STEP: NEXT_STEP };
 if (require.main === module) process.exit(main() || 0);

@@ -5,6 +5,7 @@ import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { validPublicLinkPatch } from "./public-web-link.js";
 import { permitWebContinuation } from "./web-continuation.js";
+import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
  * Settings Web API (`/settings`) — CRUD over fleet.yaml + classicBot.yaml.
  *
@@ -306,11 +307,11 @@ export function handleSettingsRequest(
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet") {
-    json(res, 200, ctx.fleetConfig ?? {});
+    json(res, 200, redactInlineSecrets(ctx.fleetConfig ?? {}));
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet/raw") {
-    json(res, 200, ctx.getRawFleetConfig());
+    json(res, 200, redactInlineSecrets(ctx.getRawFleetConfig()));
     return true;
   }
   if (method === "GET" && path === "/api/settings/classic") {
@@ -679,7 +680,9 @@ export function handleSettingsRequest(
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
-      const merged = { ...cfg.defaults, ...body };
+      const restored = restoreRedactedSecrets(body, cfg.defaults);
+      if ("path" in restored) return json(res, 400, { error: `redacted value has no stored credential: defaults.${restored.path}` });
+      const merged = { ...cfg.defaults, ...restored.value };
       // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
       // how the instance save handles model ("" → delete) and nullable overrides.
       if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
@@ -712,7 +715,13 @@ export function handleSettingsRequest(
           normalizedBody.push(raw);
           continue;
         }
-        const candidate = { ...(raw as Record<string, unknown>) };
+        const sent = raw as Record<string, unknown>;
+        const sentId = typeof sent.id === "string" ? sent.id : typeof sent.type === "string" ? sent.type : `channel-${index}`;
+        // A placeholder is put back only from the one connection that owns the id: with two owners, refused.
+        const owners = currentChannels.filter((channel, i) => (channel.id ?? channel.type ?? `channel-${i}`) === sentId).length;
+        const restored = restoreRedactedSecrets(sent, owners === 1 ? currentById.get(sentId) : undefined);
+        if ("path" in restored) return json(res, 400, { ok: false, error: `redacted value has no stored credential: channels[${index}].${restored.path}` }, true);
+        const candidate = { ...restored.value };
         const group = normalizeChannelIdValue(candidate.group_id, `channels[${index}].group_id`);
         if (!group.ok) return json(res, 400, { ok: false, error: group.error }, true);
         if (group.value !== undefined) candidate.group_id = group.value;
@@ -1037,7 +1046,9 @@ export function handleSettingsRequest(
   const commitInstance = (name: string, exists: boolean, body: unknown): void => {
     if (typeof body !== "object" || body === null || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
     const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
-    const patch = body as Record<string, unknown>;
+    const restored = restoreRedactedSecrets(body as Record<string, unknown>, base);
+    if ("path" in restored) { json(res, 400, { error: `redacted value has no stored credential: instances.${name}.${restored.path}` }); return; }
+    const patch = restored.value;
     let mergedInst: Record<string, any>;
     try { mergedInst = normalizeSettingsInstancePatch(base, patch); }
     catch { json(res, 400, { error: "unsupported_instance_null" }); return; }

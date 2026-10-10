@@ -184,7 +184,7 @@ It is on by default (`reply_completion_guard: true`); set `false` per instance, 
 
 Which backends have it:
 - **Claude Code** and successful **Kiro** legacy/TUI launches.
-- **Codex**, which additionally needs codex's own session log to show that the turn holding your message ended and that nothing started after it. An interrupted turn (Esc) or one that ended on a provider error is left alone. A turn that cannot be found in the log is left alone too, as before.
+- **Codex** and **Muse**, which additionally need the CLI's own session log to show that the turn holding your message ended and that nothing started after it. On Muse, a message typed mid-run starts a second run; that one must end too. An interrupted turn (Esc) or one that ended on a provider error is left alone. A turn that cannot be found in the log is left alone too, as before.
 
 Other backends do not have it.
 

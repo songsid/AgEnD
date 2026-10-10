@@ -8,6 +8,7 @@ import { execSync } from "node:child_process";
 import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
+import { dashboardLines, dashboardPort } from "./next-steps.js";
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
@@ -770,21 +771,25 @@ export async function runSetupWizard(): Promise<void> {
   // ── System service (optional) ──
   console.log();
   const installSvc = await confirm(rl, "Install as system service?", false);
+  let serviceRunning = false;
   if (installSvc) {
-    const { installService, detectPlatform } = await import("./service-installer.js");
-    const svcPath = installService({
-      label: "com.agend.fleet",
-      execPath: canonicalCliEntry(),
-      path: process.env.PATH!,
-      workingDirectory: DATA_DIR,
-      logPath: join(DATA_DIR, "fleet.log"),
-    });
-    console.log(`  ${green("✓")} ${svcPath}`);
-    const plat = detectPlatform();
-    if (plat === "macos") {
-      console.log(`  Run: ${dim(`launchctl load ${svcPath}`)}`);
-    } else {
-      console.log(`  Run: ${dim("systemctl --user enable --now agend")}`);
+    // #1519 P7: installed AND started, as quickstart does — the unit is com.agend.fleet, not "agend" (the old hint
+    // named a unit that does not exist).
+    try {
+      const { installService, activateService } = await import("./service-installer.js");
+      const svcPath = installService({
+        label: "com.agend.fleet",
+        execPath: canonicalCliEntry(),
+        path: process.env.PATH!,
+        workingDirectory: DATA_DIR,
+        logPath: join(DATA_DIR, "fleet.log"),
+      });
+      console.log(`  ${green("✓")} ${svcPath}`);
+      activateService(svcPath, join(DATA_DIR, "fleet.pid"));
+      console.log(`  ${green("✓")} Fleet service installed and running.`);
+      serviceRunning = true;
+    } catch (err) {
+      console.log(`  ${yellow("⚠")}  Could not install the service automatically (${(err as Error).message}).`);
     }
   }
 
@@ -792,12 +797,14 @@ export async function runSetupWizard(): Promise<void> {
   console.log(`\n${green("✓")} ${bold("Setup complete!")}`);
   console.log(`  Bot: ${channelType === "telegram" ? "@" : ""}${botUsername}`);
   console.log(`  Config: ${FLEET_CONFIG_PATH}`);
-  if (channelType === "discord") {
-    console.log(`  ${dim("Install Discord plugin: npm install -g @songsid/agend-plugin-discord")}`);
-  }
   console.log();
-  console.log(`  Start the fleet:`);
-  console.log(`    ${dim("agend fleet start")}`);
+  if (!serviceRunning) {
+    console.log(`  Start the fleet:`);
+    console.log(`    ${dim("agend fleet start")}`);
+  }
+  const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH));
+  console.log(`  ${bold(where)}`);
+  console.log(`  ${dim(signIn)}`);
   if (channelType === "discord") {
     console.log();
     console.log(`  ${dim("Classic Bot Mode: Use /start in any Discord channel to start an agent. Use /chat to talk.")}`);
