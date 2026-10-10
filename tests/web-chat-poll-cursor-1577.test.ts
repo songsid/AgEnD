@@ -67,9 +67,20 @@ describe("a page that already holds the restored history is not sent it again", 
     const second = call(`/ui/poll?after=${JSON.parse(first).cursor}`, ctx).res.body;
     expect([first.includes("w-aa1"), second.includes("w-aa1"), second.includes("x-cc2")]).toEqual([true, false, false]);
   });
-  it("nothing retained at all: the cursor is this boot's 0, as before", () => {
+  it("nothing retained at all: the cursor is this boot's 0, as before — also once the restored chats were deleted", () => {
     const h = new WebChatHistory({ boot: "bb" });
     expect(poll(ctxWith(h), "")).toMatchObject({ messages: [], cursor: "bb-0" });
+    const r = restarted();
+    r.h.forget("w"); r.h.forget("x");
+    expect(poll(r.ctx, "")).toMatchObject({ messages: [], cursor: "bb-0" });
+  });
+  it("once this process has said something, its newest id is the cursor — even if that chat was deleted since", () => {
+    const { h, ctx } = restarted();
+    h.record({ instance: "gone", sender: "u", text: "said", ts: "2026-10-11T00:00:00Z" });
+    h.forget("gone");
+    const p = poll(ctx, "");
+    expect([shape(p), p.cursor]).toEqual([ALL, "bb-1"]);
+    expect(shape(poll(ctx, p.cursor))).toEqual([]);
   });
 });
 
