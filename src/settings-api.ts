@@ -717,7 +717,9 @@ export function handleSettingsRequest(
         }
         const sent = raw as Record<string, unknown>;
         const sentId = typeof sent.id === "string" ? sent.id : typeof sent.type === "string" ? sent.type : `channel-${index}`;
-        const restored = restoreRedactedSecrets(sent, currentById.get(sentId));
+        // A placeholder is put back only from the one connection that owns the id: with two owners, refused.
+        const owners = currentChannels.filter((channel, i) => (channel.id ?? channel.type ?? `channel-${i}`) === sentId).length;
+        const restored = restoreRedactedSecrets(sent, owners === 1 ? currentById.get(sentId) : undefined);
         if ("path" in restored) return json(res, 400, { ok: false, error: `redacted value has no stored credential: channels[${index}].${restored.path}` }, true);
         const candidate = { ...restored.value };
         const group = normalizeChannelIdValue(candidate.group_id, `channels[${index}].group_id`);

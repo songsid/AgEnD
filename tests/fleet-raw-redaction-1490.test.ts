@@ -11,7 +11,7 @@ import yaml from "js-yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
-import { REDACTED_SECRET } from "../src/settings-redaction.js";
+import { REDACTED_SECRET, redactInlineSecrets, restoreRedactedSecrets } from "../src/settings-redaction.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -128,5 +128,53 @@ defaults:`);
     const r = await call(fm, method, route, body(raw));
     expect([r.status, r.body.error]).toEqual([400, `redacted value has no stored credential: ${at}`]);
     expect(readFileSync(path, "utf8")).toBe(before);
+  });
+});
+
+describe("review round 1 (#1548): the boundaries of the placeholder", () => {
+  it("two connections sharing an id: the placeholder is refused, never filled from the other one", async () => {
+    const dup = FILE.replace("defaults:", `  - id: dc
+    type: discord
+    bot_token_env: DC_TWO_TOKEN
+    bot_token: fake-marker-second
+    access:
+      mode: locked
+      allowed_users: [1]
+defaults:`);
+    const { path, fm } = fixture(dup);
+    const before = readFileSync(path, "utf8");
+    const channels = (await call(fm, "GET", "/api/settings/fleet/raw")).body.channels;
+    channels[0].options = { ...channels[0].options, status_emojis: { delivered: "✅" } };
+    const r = await call(fm, "PUT", "/api/settings/fleet/channels", channels);
+    expect([r.status, r.body.error]).toEqual([400, "redacted value has no stored credential: channels[0].bot_token"]);
+    expect(readFileSync(path, "utf8")).toBe(before);
+    expect((fm.fleetConfig!.channels ?? []).map(ch => (ch as unknown as Record<string, unknown>).bot_token)).toEqual(["fake-marker-channel", "fake-marker-second"]);
+  });
+  it("an instance named __proto__ is kept by both reads", async () => {
+    const { fm } = fixture(FILE);
+    const created = await call(fm, "POST", "/api/settings/fleet/instances/__proto__", { working_directory: "/tmp/proto" });
+    expect(created.status, JSON.stringify(created.body)).toBe(200);
+    for (const route of ["/api/settings/fleet/raw", "/api/settings/fleet"]) {
+      const instances = (await call(fm, "GET", route)).body.instances;
+      expect([route, Object.hasOwn(instances, "__proto__"), instances.__proto__?.working_directory]).toEqual([route, true, "/tmp/proto"]);
+    }
+  });
+  it("both copies keep an own __proto__ key as data", () => {
+    const sent = JSON.parse(`{"__proto__":{"token":"${REDACTED_SECRET}","x":1}}`);
+    const redacted = redactInlineSecrets(JSON.parse('{"__proto__":{"token":"fake-marker-proto","x":1}}'));
+    expect([Object.hasOwn(redacted, "__proto__"), JSON.stringify(redacted)]).toEqual([true, `{"__proto__":{"token":"${REDACTED_SECRET}","x":1}}`]);
+    const restored = restoreRedactedSecrets(sent, JSON.parse('{"__proto__":{"token":"fake-marker-proto"}}'));
+    expect("value" in restored && [Object.hasOwn(restored.value, "__proto__"), JSON.stringify(restored.value)])
+      .toEqual([true, '{"__proto__":{"token":"fake-marker-proto","x":1}}']);
+  });
+  it.each([
+    ["with no description before", FILE],
+    ["over an existing description", FILE.replace("    working_directory: /tmp/worker", "    working_directory: /tmp/worker\n    description: before")],
+  ])("the placeholder's text in an ordinary field is saved as text, %s", async (_label, source) => {
+    const { path, fm } = fixture(source);
+    const r = await call(fm, "PATCH", "/api/settings/fleet/instances/worker", { description: REDACTED_SECRET });
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    const saved = yaml.load(readFileSync(path, "utf8")) as any;
+    expect([saved.instances.worker.description, saved.instances.worker.persona.bot_token]).toEqual([REDACTED_SECRET, "fake-marker-persona"]);
   });
 });
