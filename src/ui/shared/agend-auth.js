@@ -26,18 +26,24 @@
   try { window.localStorage.removeItem("agend_web_token"); } catch { /* no storage, nothing stored */ }
 
   const nativeFetch = window.fetch.bind(window);
-  let csrfPending = null;
+  let sessionPending = null;
 
-  function csrf() {
-    if (!csrfPending) {
-      csrfPending = nativeFetch("/auth/session", { credentials: "same-origin", cache: "no-store" })
+  /**
+   * This page's sign-in, read once from GET /auth/session: { csrf, handle } or null (no session, or the read failed —
+   * asked again next time). The CSRF value and the session handle (#1568: what "until the next sign-in" is keyed by)
+   * come from the one read.
+   */
+  function session() {
+    if (!sessionPending) {
+      sessionPending = nativeFetch("/auth/session", { credentials: "same-origin", cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => (j && typeof j.csrf === "string" ? j.csrf : null))
+        .then((j) => (j && typeof j.csrf === "string" ? { csrf: j.csrf, handle: typeof j.handle === "string" ? j.handle : null } : null))
         .catch(() => null)
-        .then((value) => { if (!value) csrfPending = null; return value; });
+        .then((value) => { if (!value) sessionPending = null; return value; });
     }
-    return csrfPending;
+    return sessionPending;
   }
+  function csrf() { return session().then((s) => (s ? s.csrf : null)); }
 
   let bannerShown = false;
   function sessionEndedBanner() {
@@ -77,6 +83,8 @@
 
   window.AgendAuth = {
     csrf,
+    /** #1568: the session handle of this page's sign-in, or null when there is none. */
+    sessionHandle() { return session().then((s) => (s && s.handle ? s.handle : null)); },
     async signOut() {
       const value = await csrf();
       const r = await nativeFetch("/auth/logout", { method: "POST", credentials: "same-origin", headers: value ? { "X-Agend-CSRF": value } : {} });
