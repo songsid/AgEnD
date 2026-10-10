@@ -79,7 +79,17 @@ export interface PreviewAvailability {
   previewOrigin: string | null;
   /** Why it is disabled, when it is. */
   reason: string | null;
+  /** The same reason as a stable code the page translates (#1554); null when enabled. */
+  code: PreviewOffCode | null;
 }
+
+/**
+ * #1554: why previews are off for a load, for the page's own words (chat.pvServer_<code>). The first seven come from
+ * previewAvailability; `publicLink` and `notOffered` from the app shell, which asks it for neither the public link nor
+ * a page that is not the full app. One list: the page's dictionary is checked against it.
+ */
+export const PREVIEW_OFF_CODES = ["fleetOff", "unchecked", "noPort", "notListed", "needOrigin", "needHttps", "sameOrigin", "publicLink", "notOffered"] as const;
+export type PreviewOffCode = typeof PREVIEW_OFF_CODES[number];
 
 const DEFAULT_PORT: Record<string, string> = { "http:": "80", "https:": "443" };
 
@@ -98,24 +108,24 @@ export function dashboardOriginFor(hostHeader: string | undefined, secure: boole
  */
 export function previewAvailability(settings: PreviewSettings | null, hostHeader: string | undefined, secure: boolean, accepted?: readonly string[]): PreviewAvailability {
   const dashboardOrigin = dashboardOriginFor(hostHeader, secure);
-  const off = (reason: string): PreviewAvailability => ({ dashboardOrigin, previewOrigin: null, reason });
-  if (!settings || !settings.enabled) return off("Previews are turned off for this fleet (web.preview: false).");
-  if (!dashboardOrigin) return off("This address cannot be checked.");
-  if (settings.port === null && !settings.origin) return off("Previews have no port: set web.preview_port (health_port is the highest port).");
+  const off = (code: PreviewOffCode, reason: string): PreviewAvailability => ({ dashboardOrigin, previewOrigin: null, reason, code });
+  if (!settings || !settings.enabled) return off("fleetOff", "Previews are turned off for this fleet (web.preview: false).");
+  if (!dashboardOrigin) return off("unchecked", "This address cannot be checked.");
+  if (settings.port === null && !settings.origin) return off("noPort", "Previews have no port: set web.preview_port (health_port is the highest port).");
   // The page must be at an origin the shim takes HTML from (and that may frame it) — exactly, or a frame would never
   // render. A name in web.allowed_hosts served on a non-default port must be listed with that port.
-  if (accepted && !accepted.includes(dashboardOrigin)) return off(`Previews are not offered at ${dashboardOrigin}: list this address (with its port) in web.allowed_hosts, and set web.preview_origin.`);
+  if (accepted && !accepted.includes(dashboardOrigin)) return off("notListed", `Previews are not offered at ${dashboardOrigin}: list this address (with its port) in web.allowed_hosts, and set web.preview_origin.`);
   let preview: string;
   if (settings.origin) preview = settings.origin;
   else {
     const host = hostnameOf(hostHeader!)!;
-    if (!LOOPBACK_HOST_NAMES.includes(host)) return off("Previews need web.preview_origin when the dashboard is reached through a tunnel or proxy.");
+    if (!LOOPBACK_HOST_NAMES.includes(host)) return off("needOrigin", "Previews need web.preview_origin when the dashboard is reached through a tunnel or proxy.");
     preview = `http://${host}:${settings.port}`;
   }
   // An https page cannot frame an http preview (mixed content).
-  if (dashboardOrigin.startsWith("https:") && preview.startsWith("http:")) return off("Previews need an https web.preview_origin when the dashboard is reached over https.");
-  if (preview === dashboardOrigin) return off("The preview origin cannot be the dashboard's own.");
-  return { dashboardOrigin, previewOrigin: preview, reason: null };
+  if (dashboardOrigin.startsWith("https:") && preview.startsWith("http:")) return off("needHttps", "Previews need an https web.preview_origin when the dashboard is reached over https.");
+  if (preview === dashboardOrigin) return off("sameOrigin", "The preview origin cannot be the dashboard's own.");
+  return { dashboardOrigin, previewOrigin: preview, reason: null, code: null };
 }
 
 /**

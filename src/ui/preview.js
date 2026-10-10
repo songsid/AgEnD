@@ -25,7 +25,18 @@
   var NEVER_KEY = "agend_html_preview_never";   // sessionStorage: "1" — never preview on this device (this session)
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
-  var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "" };
+  var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "" };
+  // #1554: the page's words. `say(key, english, …values)` asks the app's dictionary (init's opts.text) and keeps the
+  // English here when it has none — so this file still works, and reads the same, without the app.
+  var text = null;
+  function say(key, english) {
+    var values = Array.prototype.slice.call(arguments, 2);
+    var s = null;
+    if (text) { try { s = text.apply(null, [key].concat(values)); } catch (e) { s = null; } }
+    if (typeof s === "string" && s && s !== key) return s;
+    for (var i = 0; i < values.length; i++) english = english.split("{" + i + "}").join(String(values[i]));
+    return english;
+  }
   var changed = [];   // the page's "this device's choice changed" callbacks (checkbox, cards)
   var live = new Map();   // cardKey → { key, iframe, ch, holder, state, … }   (at most one: one running preview per page)
   var listening = false;
@@ -41,14 +52,19 @@
     return s;
   }
 
-  /** What the server said about this page load (the <body data-*> attributes /ui was served with). */
-  function init(data) {
+  /**
+   * What the server said about this page load (the <body data-*> attributes /ui was served with). opts.text(key,
+   * …values): the app's dictionary for this file's words (#1554); without it they are the English below.
+   */
+  function init(data, opts) {
     cfg = {
       dashboardOrigin: String((data && data.dashboardOrigin) || ""),
       previewOrigin: String((data && data.previewOrigin) || ""),
       boot: String((data && data.previewBoot) || ""),
       reason: String((data && data.previewReason) || ""),
+      reasonCode: String((data && data.previewReasonCode) || ""),
     };
+    if (opts && typeof opts.text === "function") text = opts.text;
     if (!listening && typeof root.addEventListener === "function") {
       root.addEventListener("message", onMessage);
       // The opt-in is per device: another tab of this dashboard turning it off (or clearing storage) stops the
@@ -96,13 +112,18 @@
    * a frame from the wrong place), and the device must have opted in and not switched previews off.
    */
   function availability() {
-    if (!cfg.previewOrigin || !cfg.boot) return { ok: false, why: "server", reason: cfg.reason || "Previews are not available here." };
+    if (!cfg.previewOrigin || !cfg.boot) {
+      // The server's reason, in the page's language when the server named it (a code), else as the server wrote it.
+      var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, cfg.reason || "Previews are not available here.", cfg.dashboardOrigin) : "";
+      return { ok: false, why: "server", reason: server || cfg.reason || say("pvWhyServer", "Previews are not available here.") };
+    }
     var at = root.location && root.location.origin;
     if (!cfg.dashboardOrigin || at !== cfg.dashboardOrigin) {
-      return { ok: false, why: "origin", reason: "Previews are off: this page is at " + at + ", but the fleet believes it is at " + (cfg.dashboardOrigin || "an unknown address") + " (a proxy that rewrites Host). Pass the external Host through, or set web.preview_origin." };
+      return { ok: false, why: "origin", reason: say("pvWhyOrigin", "Previews are off: this page is at {0}, but the fleet believes it is at {1} (a proxy that rewrites Host). Pass the external Host through, or set web.preview_origin.",
+        at, cfg.dashboardOrigin || say("pvUnknownAddress", "an unknown address")) };
     }
-    if (never()) return { ok: false, why: "never", reason: "Previews are switched off on this device for this session." };
-    if (!optedIn()) return { ok: false, why: "optin", reason: "Previews are off on this device. Allow them from the card's menu or the sidebar." };
+    if (never()) return { ok: false, why: "never", reason: say("pvWhyNever", "Previews are switched off on this device for this session.") };
+    if (!optedIn()) return { ok: false, why: "optin", reason: say("pvWhyOptin", "Previews are off on this device. Allow them from the card's menu or the sidebar.") };
     return { ok: true, why: "", reason: "" };
   }
 
@@ -134,7 +155,7 @@
   function start(key, holder, html, ui, opts) {
     var a = availability();
     if (!a.ok) { ui.state("unavailable", a.reason); return false; }
-    if (typeof html !== "string" || utf8Bytes(html) > LIMITS.maxBytes) { ui.state("unavailable", "This HTML is over 1 MiB; it is not previewed."); return false; }
+    if (typeof html !== "string" || utf8Bytes(html) > LIMITS.maxBytes) { ui.state("unavailable", say("pvHtmlOver", "This HTML is over 1 MiB; it is not previewed.")); return false; }
     stopAll("another");
     var doc = holder.ownerDocument;
     var iframe = mountPreview(doc);
@@ -146,7 +167,7 @@
     if (card.fill) iframe.classList.add("fill");
     live.set(key, card);
     card.readyTimer = root.setTimeout(function () {
-      if (live.get(key) === card && !card.rendered) stop(key, "unavailable", "Preview unavailable: the preview did not answer within 3 s. If an earlier preview froze, it may still be running — open the dashboard in a new tab. Over SSH, forward the preview port too.");
+      if (live.get(key) === card && !card.rendered) stop(key, "unavailable", say("pvNoAnswer", "Preview unavailable: the preview did not answer within 3 s. If an earlier preview froze, it may still be running — open the dashboard in a new tab. Over SSH, forward the preview port too."));
     }, LIMITS.readyMs);
     holder.appendChild(iframe);
     if (!card.fill) setHeight(card, LIMITS.minHeight);
@@ -163,7 +184,7 @@
       // Best effort: a frame that froze this tab freezes this timer too. Only while the page is visible.
       var hidden = root.document && root.document.visibilityState === "hidden";
       if (hidden) { armWatchdog(card); return; }
-      stop(card.key, "stopped", "The preview stopped answering, so it was closed.");
+      stop(card.key, "stopped", say("pvStoppedAnswering", "The preview stopped answering, so it was closed."));
     }, LIMITS.watchdogMs);
   }
 
@@ -181,7 +202,7 @@
   function stopAll(why) {
     var keys = [];
     live.forEach(function (_c, k) { keys.push(k); });
-    for (var i = 0; i < keys.length; i++) stop(keys[i], "stopped", why === "off" ? "Previews were switched off on this device." : why === "another" ? "Another preview started." : "");
+    for (var i = 0; i < keys.length; i++) stop(keys[i], "stopped", why === "off" ? say("pvSwitchedOff", "Previews were switched off on this device.") : why === "another" ? say("pvAnother", "Another preview started.") : "");
     return keys;
   }
   /** Stop every preview inside `node` (before the chat replaces, moves or removes it); returns the stopped keys. */
@@ -214,7 +235,7 @@
     if (Object.keys(d).sort().join(",") !== KEYS[d.type]) return;
     if (d.type === "ready") {
       if (d.ch !== null || typeof d.boot !== "string" || card.rendered) return;
-      if (d.boot !== cfg.boot) { stop(card.key, "unavailable", "Preview unavailable: something else answered on the preview port."); return; }
+      if (d.boot !== cfg.boot) { stop(card.key, "unavailable", say("pvWrongBoot", "Preview unavailable: something else answered on the preview port.")); return; }
       if (!availability().ok) { stop(card.key, "unavailable", availability().reason); return; }
       card.rendered = true;
       root.clearTimeout(card.readyTimer); card.readyTimer = null;
@@ -227,7 +248,7 @@
     if (d.type === "heartbeat") {
       // A heartbeat never outlives the permission: if this device stopped allowing previews (and the storage event
       // was missed), the next heartbeat ends it.
-      if (!availability().ok) { stop(card.key, "stopped", "Previews were switched off on this device."); return; }
+      if (!availability().ok) { stop(card.key, "stopped", say("pvSwitchedOff", "Previews were switched off on this device.")); return; }
       armWatchdog(card);
       return;
     }
@@ -266,5 +287,7 @@
     init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, listeners: listeners, onStorage: onStorage,
     start: start, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveCount: liveCount, liveFrame: liveFrame,
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
+    /** The banner every running preview carries, in the page's language (#1554); BANNER is its English. */
+    banner: function () { return say("pvBanner", BANNER); },
   };
 });

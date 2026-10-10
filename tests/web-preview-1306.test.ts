@@ -148,7 +148,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       expect(bodyAttrs(r.body)).toEqual({
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
         "data-mode": "full", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
-        "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "",
+        "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "",
       });
       const lh = await raw(h.port, "GET", "/ui", { host: `localhost:${h.port}`, cookie: h.cookie });
       expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame`);
@@ -164,6 +164,8 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       const a = bodyAttrs(r.body);
       expect([a["data-dashboard-origin"], a["data-preview-origin"], a["data-preview-boot"]]).toEqual(["https://fleet.example.net", "", ""]);
       expect(a["data-preview-reason"]).toMatch(/web\.preview_origin/);
+      // #1554: and the same reason as a code the page says in its own language.
+      expect(a["data-preview-reason-code"]).toBe("notListed");
     } finally { h.stop(); }
   });
 
@@ -216,7 +218,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
 describe("which preview origin a /ui load gets (§3.2)", () => {
   const s = (o: Partial<PreviewSettings> = {}): PreviewSettings => ({ enabled: true, port: 19281, origin: null, ...o });
   it("loopback: the same loopback name on the preview port", () => {
-    expect(previewAvailability(s(), "127.0.0.1:19280", false)).toEqual({ dashboardOrigin: "http://127.0.0.1:19280", previewOrigin: "http://127.0.0.1:19281", reason: null });
+    expect(previewAvailability(s(), "127.0.0.1:19280", false)).toEqual({ dashboardOrigin: "http://127.0.0.1:19280", previewOrigin: "http://127.0.0.1:19281", reason: null, code: null });
     expect(previewAvailability(s(), "localhost:19280", false).previewOrigin).toBe("http://localhost:19281");
     expect(previewAvailability(s(), "[::1]:19280", false).previewOrigin).toBe("http://[::1]:19281");
     expect(previewAvailability(s(), "LOCALHOST:19280", false).dashboardOrigin).toBe("http://localhost:19280");
@@ -228,12 +230,12 @@ describe("which preview origin a /ui load gets (§3.2)", () => {
     expect(previewAvailability(s({ origin: "https://preview.example.net" }), "127.0.0.1:19280", false).previewOrigin).toBe("https://preview.example.net");
   });
   it("an https dashboard never gets an http preview (mixed content); a default port is not part of the origin", () => {
-    expect(previewAvailability(s(), "localhost:19280", true)).toMatchObject({ previewOrigin: null, reason: expect.stringMatching(/https/) });
+    expect(previewAvailability(s(), "localhost:19280", true)).toMatchObject({ previewOrigin: null, reason: expect.stringMatching(/https/), code: "needHttps" });
     expect(previewAvailability(s({ origin: "http://preview.example.net" }), "fleet.example.net", true).previewOrigin).toBeNull();
     expect(previewAvailability(s(), "fleet.example.net:443", true).dashboardOrigin).toBe("https://fleet.example.net");
   });
   it("off, or no listener: disabled with a reason", () => {
-    expect(previewAvailability(s({ enabled: false }), "127.0.0.1:19280", false).previewOrigin).toBeNull();
+    expect(previewAvailability(s({ enabled: false }), "127.0.0.1:19280", false)).toMatchObject({ previewOrigin: null, code: "fleetOff" });
     expect(previewAvailability(null, "127.0.0.1:19280", false).previewOrigin).toBeNull();
   });
   it("settings: preview_port defaults to health_port + 1; an ephemeral web listener gets an ephemeral one", () => {
