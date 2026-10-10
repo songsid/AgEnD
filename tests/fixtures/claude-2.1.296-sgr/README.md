@@ -22,3 +22,5 @@ Each screen comes as two files: `*.pane.txt` is `capture-pane -p` (what the daem
 | `pasted-over-suggestion` | a delivery-shaped paste typed over the suggestion | the paste replaces the suggestion, and Enter submitted exactly the pasted text |
 
 In plain text, a suggestion and typed text are the same: `❯` + U+00A0 + text.
+
+`suggestion.output.log` is the instance's `output.log` for the same suggestion state. It was recorded with `tmux pipe-pane` into a file, like AgEnD's own, during a second run of the same rig (two turns, then the suggestion). It is a cursor-addressed stream with no newline at all. The suggestion is in it as `ESC[7m` a `ESC[27m` `ESC[2m` `dd a correction note to that decision` `ESC[22m`. `get_instance_logs` returns this stream; since #1582 it marks the faint run `⟨dim⟩…⟨/dim⟩`.
