@@ -10,7 +10,11 @@
 - 在 **Linux（glibc 2.28 以上）和 macOS 11 以上的 x64 或 arm64** 上，AgEnD 2.2 自帶 Node 22.23.3（`@songsid/agend-node-<os>-<cpu>`，會隨 AgEnD 一起安裝），不管 PATH 上是哪個 Node，都用自帶的那個執行。你不需要自己升級 Node。
 - **其他平台**（musl Linux 例如 Alpine、32 位元、其他系統）需要 PATH 上的 Node 是 **22.14 以上**（或 23.6+、24+），版本太舊時會拒絕安裝。
 
-**這次升級不要用 2.1.12 的 `agend update`。** 它會先移除已安裝的 AgEnD，再安裝新版（#1487），所以新版一旦被拒絕安裝，結果就是一個 `agend` 都不剩。請改用 npm 安裝（下面的 2.3）：直接安裝如果被拒絕，舊版會原封不動地留著。
+**從任何 2.1.x 升級，請用 `npm install -g @songsid/agend@<2.2 版本>`，不要用 `agend update` 或 `/update`。**
+
+- **原因（#1487）：** 2.1 的更新程式會*先*移除已安裝的 AgEnD，再安裝新版。之後的安裝只要因為任何原因失敗，就什麼都不剩：AgEnD 2.2 拒絕安裝在你的主機、網路或 registry 出問題，或是 proxy。沒有 `agend` 指令；正在跑的 fleet 只能撐到下一次重啟或登入，之後服務就無法啟動。這在真的 Mac 上重現過：launchd 回報 `EX_CONFIG`，fleet 起不來。
+- **直接用 `npm install -g` 沒有移除這一步：** 如果被拒絕，你目前的版本會留著。
+- **如果 `agend update` 已經這樣失敗，** 請看[第 7 節](#7-如果從-21-執行-agend-update-已經失敗)。
 
 ## 2. 照步驟升級
 
@@ -131,3 +135,14 @@ bot token 等機密，請在主機自己的 dashboard 上輸入，不要透過�
 
 **可以在瀏覽器裡輸入 bot token 嗎？**
 可以。2.2 的 Settings → 連線會請你輸入 token，向平台驗證並顯示 bot 名稱後才儲存。token 存在 `~/.agend/.env`，之後不會再顯示。這個變更仍然需要確認（#1423）。
+
+## 7. 如果從 2.1 執行 `agend update` 已經失敗
+
+跡象：`agend: command not found`；或更新最後顯示「Failed to update」（聊天室裡是「❌ 更新在「下載／安裝」階段失敗」）；或 AgEnD 2.2 的安裝拒絕訊息說先前的 AgEnD 已經被移除。你的資料目錄沒有被動到，只是程式不見了。把一個版本裝回來：
+
+```sh
+npm install -g @songsid/agend@2.1.12   # 或者等你的主機可以安裝時，改裝 2.2 版本
+agend install                          # 重寫並啟動服務；即使 fleet 看起來還活著也要做
+```
+
+即使舊的 fleet 還在回應，也要執行 `agend install`。它是從已刪除的檔案在跑，在服務被重寫之前，重啟或登入後都不會回來。
