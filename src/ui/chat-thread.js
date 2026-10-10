@@ -274,16 +274,23 @@ export function createThread(list, scroller, opts) {
     button.textContent = ok ? tr("chat.copied") : tr("chat.copyFailed");
     setTimeout(() => { button.textContent = was; }, 1200);
   }
-  /** The thread's own buttons (Copy, Wrap, fold), delegated from the thread element. */
-  function onClick(e) {
-    // A chat image: a plain left click (or Enter on it) shows it in the page; with a modifier key the link does what
-    // the browser does (a new tab, a new window, a download). A middle click is not a click event at all.
+  /**
+   * A chat image: a plain left click (or Enter on it) shows it in the page — this message's images, from the one
+   * clicked. With a modifier key the link does what the browser does (a new tab, a new window, a download); a middle
+   * click is not a click event at all. True when it was an image (whether or not it opened).
+   */
+  function onImageClick(e) {
     const img = e.target && e.target.closest ? e.target.closest("a.att-img") : null;
-    if (img && list.contains(img) && opts.openImage && !e.defaultPrevented && (e.button ?? 0) === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+    if (!img || !list.contains(img)) return false;
+    if (opts.openImage && !e.defaultPrevented && (e.button ?? 0) === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
       const links = [...(img.closest(".atts") || img).querySelectorAll("a.att-img")];
       if (opts.openImage(links.length ? links : [img], img)) e.preventDefault();
-      return;
     }
+    return true;
+  }
+  /** The thread's own buttons (Copy, Wrap, fold), delegated from the thread element. */
+  function onClick(e) {
+    if (onImageClick(e)) return;
     const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
     if (!el || !list.contains(el)) return;
     const act = el.dataset.act;
