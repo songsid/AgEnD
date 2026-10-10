@@ -18,6 +18,7 @@ function world(opts: { random?: number } = {}) {
   let fleet: Mode = "down";
   let answer: (url: string) => unknown = () => ({ status: { instances: [] }, messages: [], cursor: "bb-0", deliveries: [], prompts: [], needs: [] });
   const hangs: Array<{ ok: (v: unknown) => void; no: (e: Error) => void }> = [];
+  const all: Array<{ ok: (v: unknown) => void; no: (e: Error) => void } | null> = [];
   class ES {
     url: string; listeners: Record<string, Function> = {}; onerror: Function | null = null; closed = false;
     constructor(url: string) { this.url = url; sources.push(this); made.push(Date.now()); }
@@ -42,7 +43,7 @@ function world(opts: { random?: number } = {}) {
       fetched.push({ t: Date.now(), url });
       if (fleet === "down") return Promise.reject(new TypeError("Failed to fetch"));
       if (fleet === "401") return Promise.resolve({ ok: false, status: 401, json: async () => ({}) });
-      if (fleet === "hang") return new Promise((ok, no) => hangs.push({ ok, no }));
+      if (fleet === "hang") return new Promise((ok, no) => { const h = { ok, no }; hangs.push(h); all.push(h); });
       return Promise.resolve({ ok: true, status: 200, json: async () => answer(url) });
     },
   };
@@ -56,7 +57,9 @@ function world(opts: { random?: number } = {}) {
     /** The reads on their way fail (the network) — or answer 401 (the session ended). */
     failHeld() { for (const r of hangs.splice(0)) r.no(new TypeError("Failed to fetch")); },
     held401() { for (const r of hangs.splice(0)) r.ok({ ok: false, status: 401, json: async () => ({}) }); },
-    get heldCount() { return hangs.length; },
+    get heldCount() { return hangs.filter(Boolean).length; },
+    /** Answer the i-th read made while the fleet hung (in the order they were made). */
+    releaseAt(i: number, body: unknown) { const r = all[i]; all[i] = null; r?.ok({ ok: true, status: 200, json: async () => body }); },
   };
 }
 async function load() {
@@ -315,12 +318,11 @@ describe("work in flight is owned: suspend, resume and a stream back live let go
     expect(s.hydration()).toBe("retrying");
     let oldSettled = false;
     s.catchUp().then(() => { oldSettled = true; });          // the catch-up in flight (joined)
-    s.suspend();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(oldSettled, "settled, not waiting forever").toBe(true);
     w.fleet = "up";
-    s.resume();
-    w.sources.at(-1).frame("status", status);
+    s.suspend(); s.resume();                                 // back at once (the back-forward cache)
+    w.sources.at(-1).frame("status", status);                // the new stream speaks: a NEW catch-up, not the old one
+    await vi.advanceTimersByTimeAsync(0);
+    expect(oldSettled, "the old one settled, not waiting forever").toBe(true);
     await vi.advanceTimersByTimeAsync(20_000);
     expect([s.hydration(), s.connection()]).toEqual(["ok", "live"]);
     s.close();
@@ -408,6 +410,31 @@ describe("work in flight is owned: suspend, resume and a stream back live let go
     expect(seen).toEqual([]);
     s.close();
   });
+  it("P2 ③: and it does not touch the newer catch-up's held events — they wait for that read's snapshot", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await load();
+    const w = world();
+    const seen: string[] = [];
+    const s = createStream({ mode: "full", env: w.env });
+    s.on("message", (m: { id: string }) => seen.push(m.id));
+    s.start();
+    w.sources[0].frame("status", status);
+    w.sources[0].onerror();
+    await vi.advanceTimersByTimeAsync(1000);
+    w.fleet = "hang";
+    w.sources[1].frame("status", status);                    // catch-up read A, held
+    s.suspend(); s.resume();
+    w.sources.at(-1).frame("status", status);                // catch-up read B, held
+    w.sources.at(-1).frame("message", { id: "LIVE" }, "cc-9"); // live, held behind B's snapshot
+    w.releaseAt(0, snapOf({ messages: [{ id: "A-OLD" }] }));  // A answers late: let go of — applies and releases nothing
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual([]);
+    w.releaseAt(1, snapOf({ messages: [{ id: "B-NEW" }] }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seen).toEqual(["B-NEW", "LIVE"]);
+    s.close();
+  });
+
   it("P2 ③ control: answered without a suspend, it is applied", async () => {
     vi.useFakeTimers();
     const { createStream } = await load();
@@ -440,6 +467,9 @@ describe("work in flight is owned: suspend, resume and a stream back live let go
     w.release(snapOf());
     await vi.advanceTimersByTimeAsync(60_000);
     expect(w.fetched).toHaveLength(1);
+    s.resume();                                              // back: its own first poll, and nothing queued from before
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(w.fetched).toHaveLength(2);
     s.close();
   });
 });
@@ -458,6 +488,7 @@ describe("a 401 from any read ends it — once, with everything queued", () => {
     w.sources[1].frame("status", status);
     await vi.advanceTimersByTimeAsync(10_000);
     expect([s.connection(), w.fetched.length, w.open().length]).toEqual(["ended", 1, 0]);
+    expect(s.hydration(), "the catch-up does not retry a read that ended the session").not.toBe("retrying");
   });
   it("the public link: poll A answered 401 with another queued behind it — ended, one read", async () => {
     vi.useFakeTimers();
