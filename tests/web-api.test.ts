@@ -225,6 +225,23 @@ describe("backend detection endpoint", () => {
   });
 });
 
+describe("/ui/instance/:name: the read-only config summary Details shows (#1523 N2, Q1 = B)", () => {
+  it("tags (strings only) and where it is bound — channel, topic, General — and nothing else of the config", async () => {
+    const ctx = makeCtx({
+      fleetConfig: { channel: { group_id: 1 }, defaults: {}, teams: {}, instances: {
+        a: { working_directory: "/w/a", tags: ["Platform", 7, "web"], channel_id: "discord-2", topic_id: 1234, general_topic: true, bot_token_env: "SECRET_NAME" },
+        b: { working_directory: "/w/b" },
+      } },
+      getInstanceDir: () => "/tmp/nonexistent",
+    } as never);
+    const a = JSON.parse((await callAndWait("GET", "/ui/instance/a", undefined, ctx)).body);
+    expect([a.tags, a.binding]).toEqual([["Platform", "web"], { channel_id: "discord-2", topic_id: "1234", general_topic: true }]);
+    expect(JSON.stringify(a)).not.toContain("SECRET_NAME");
+    const b = JSON.parse((await callAndWait("GET", "/ui/instance/b", undefined, ctx)).body);
+    expect([b.tags, b.binding]).toEqual([[], { channel_id: null, topic_id: null, general_topic: false }]);
+  });
+});
+
 describe("/ui/instance/:name new fields (B2 wiring)", () => {
   it("returns model, model_source, effort, effort_source, context_pct, display_name", async () => {
     const ctx = makeCtx({

@@ -300,7 +300,8 @@ describe("5. the skip link is the browser's", () => {
     expect(p.window.location.pathname).toBe(path);
     expect(p.root.querySelector("#main").getAttribute("tabindex")).toBe("-1");
     // Control: a real route link is still taken over.
-    const link = p.root.querySelector('a.side-row[href="/ui/fleet"]');
+    // (#1523 N2: with an instance open, Fleet goes to its Details — still a route link.)
+    const link = p.root.querySelector('a.side-row[href^="/ui/fleet"]');
     const e2 = fire(link, "click", { button: 0 });
     expect(e2.defaultPrevented).toBe(true);
     expect(nav.navStore.get().seq).toBe(seq + 1);

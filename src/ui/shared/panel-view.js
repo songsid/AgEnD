@@ -11,6 +11,7 @@ import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { useLease } from "./app-ctx.js";
 import { PanelHeader, setTitle, onPanelKey, signInHref } from "./app-shell.js";
+import { InstanceSwitch } from "./instance-switch.js";
 import { backendLabel, STATUS_KEYS } from "./instance-nav.js";
 import { viewStore } from "./view-roster-store.js";
 import { navigate } from "./app-nav.js";
@@ -209,7 +210,8 @@ export function ViewPanel({ route, navKey }) {
 
   return html`<div class="panel p-view">
     <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")}
-      sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}>${actions}</${PanelHeader}>
+      sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}
+      nav=${it && !viewOnly ? html`<${InstanceSwitch} name=${name} current="view" />` : null}>${actions}</${PanelHeader}>
     ${body}
     ${open === "edit" && it ? html`<${EditProfile} key=${navKey} it=${it} onClose=${() => setDialog(null)} />` : null}
     ${open === "usage" ? html`<${UsageDialog} onClose=${() => setDialog(null)} />` : null}

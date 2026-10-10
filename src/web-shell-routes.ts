@@ -21,7 +21,9 @@ export type ShellRoute =
   | { panel: "fleet"; tab: FleetTab }
   | { panel: "view"; instance: string | null }
   | { panel: "settings"; section: SettingsSection }
-  | { panel: "needs" };
+  | { panel: "needs" }
+  // #1523 N2: Details, "the Fleet side of one instance" (/ui/fleet/agent/<name>).
+  | { panel: "details"; instance: string };
 
 /** What a path is: the app shell (with its route), a malformed shell path (400), or not the shell at all (null). */
 export type ShellMatch = { kind: "shell"; route: ShellRoute } | { kind: "malformed" } | null;
@@ -52,6 +54,12 @@ export function shellRoute(method: string, path: string): ShellMatch {
   // #1386 part (b): the Needs you list. A page, not a read of the list — that arrives only over SSE `needs` and
   // /ui/poll (#1374: no new read for it).
   if (path === "/ui/needs") return { kind: "shell", route: { panel: "needs" } };
+  // #1523 N2: one instance's Details. `agent` is not a Fleet tab, and a tab is one segment: no path means both.
+  const details = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(path);
+  if (details) {
+    const name = decodeSegment(details[1]!);
+    return name !== null && isSafeInstanceName(name) ? { kind: "shell", route: { panel: "details", instance: name } } : { kind: "malformed" };
+  }
   const fleet = /^\/ui\/fleet\/([^/]+)$/.exec(path);
   if (fleet) return (FLEET_TABS as readonly string[]).includes(fleet[1]!) ? { kind: "shell", route: { panel: "fleet", tab: fleet[1] as FleetTab } } : null;
   const chat = /^\/ui\/chat\/([^/]+)$/.exec(path);
@@ -101,4 +109,7 @@ export function chatPath(instance: string): string {
 }
 export function viewPath(instance: string): string {
   return `/view/${encodeURIComponent(instance)}`;
+}
+export function detailsPath(instance: string): string {
+  return `/ui/fleet/agent/${encodeURIComponent(instance)}`;
 }

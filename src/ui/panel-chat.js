@@ -11,10 +11,12 @@ import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, onPanelKey, setTitle, addFooterItem, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
+import { detailsPath } from "/assets/app-route.js";
+import { InstanceSwitch } from "/assets/instance-switch.js";
 import { navigate } from "/assets/app-nav.js";
 import { Menu } from "/assets/ui-menu.js";
 import { Dialog } from "/assets/ui-dialog.js";
-import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
+import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -153,7 +155,7 @@ function NotFound({ name }) {
 }
 
 function ChatView({ name, inst, lease, exec, awaiting }) {
-  const [dialog, setDialog] = useState(null);       // "details" | "delete" | null
+  const [dialog, setDialog] = useState(null);       // "delete" | null
   const [wrap, setWrap] = useState(codeWrap);
   const view = useRef(null), split = useRef(null), thread = useRef(null);
   useEffect(() => { wrapListeners.add(setWrap); return () => wrapListeners.delete(setWrap); }, []);
@@ -191,7 +193,8 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   };
   const items = [
-    { key: "details", label: t("chat.details"), icon: "info", onSelect: () => setDialog("details") },
+    // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
+    { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) },
     running ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
     running ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
@@ -204,7 +207,7 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", inst.model)} aria-label=${t("chat.chipModel", inst.model)} onClick=${() => pick("model")}>${inst.model}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${name} sub=${sub}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="chat-split" ref=${split}>
       <div class="chat-main">
         <${Thread} name=${name} th=${thread} />
@@ -214,7 +217,6 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
         keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${() => setPreviewOptIn(true)} />
     </div>
     <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
-    ${dialog === "details" ? html`<${DetailsDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
   </div>`;
 }
@@ -430,52 +432,8 @@ function FileChip({ f, i, name }) {
 
 // ── Dialogs ──
 
-function DetailsDialog({ name, onClose }) {
-  const lease = useLease(`details:${name}`);
-  const [d, setD] = useState(null);
-  const [failed, setFailed] = useState(false);
-  const body = useRef(null);
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await lease.fetch(`/ui/instance/${encodeURIComponent(name)}`, { headers: { "Content-Type": "application/json" } });
-        if (!lease.current()) return;
-        const j = await r.json();
-        if (!lease.current()) return;
-        setD(j);
-      } catch { if (lease.current()) setFailed(true); }
-    })();
-  }, [lease]);
-  // Bars are sized after they are drawn, through the CSSOM (never a style attribute).
-  useLayoutEffect(() => { if (body.current) for (const f of body.current.querySelectorAll(".progress-fill[data-pct]")) f.style.width = `${f.dataset.pct}%`; });
-  const src = (s) => (s === "instance" ? ` ${t("chat.configured")}` : s === "fleet-default" ? ` ${t("chat.fleetDefault")}` : "");
-  const bar = (pct, level) => html`<span class="progress-bar"><span class=${`progress-fill${level ? ` ${level}` : ""}`} data-pct=${Math.max(0, Math.min(Number(pct) || 0, 100))}></span></span>`;
-  const row = (k, v) => html`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  let content;
-  if (failed) content = html`<${ErrorState} message=${t("chat.loadFailed")} />`;
-  else if (!d) content = html`<${Skeleton} lines=${6} />`;
-  else {
-    const sl = d.statusline || {}, cost = sl.cost?.total_cost_usd ?? 0, ctx = d.context_pct;
-    const rl5 = sl.rate_limits?.five_hour?.used_percentage ?? 0, rl7 = sl.rate_limits?.seven_day?.used_percentage ?? 0;
-    content = html`<section class="card"><h3>${t("chat.dInstance")}</h3>
-        ${row(t("chat.dName"), d.name)}${row(t("chat.dStatus"), d.status)}${row(t("chat.dDisplay"), d.display_name || "--")}
-        ${row(t("chat.dDescription"), d.description || "--")}${row(t("chat.dDirectory"), html`<span class="mono">${d.working_directory}</span>`)}</section>
-      <section class="card"><h3>${t("chat.dRuntime")}</h3>
-        ${row(t("chat.dBackend"), d.backend || "--")}
-        ${row(t("chat.dModel"), `${d.model || sl.model?.display_name || "--"}${d.model_source === "live" ? "" : src(d.model_source)}`)}
-        ${d.effort ? row(t("chat.dEffort"), `${d.effort}${src(d.effort_source)}`) : null}
-        ${row(t("chat.dCost"), `$${cost.toFixed(2)} ${t("chat.dCostNote")}`)}
-        ${row(t("chat.dContext"), html`<span class="pct">${ctx != null ? `${Math.round(ctx)}%` : "--"}</span>${ctx != null ? bar(ctx, ctx > 80 ? "warn" : "") : null}`)}
-        ${row(t("chat.dRate5"), html`<span class="pct">${Math.round(rl5)}%</span>${bar(rl5, rl5 > 90 ? "error" : rl5 > 70 ? "warn" : "")}`)}
-        ${row(t("chat.dRate7"), html`<span class="pct">${Math.round(rl7)}%</span>${bar(rl7, rl7 > 90 ? "error" : rl7 > 70 ? "warn" : "")}`)}</section>
-      ${d.recent_activity?.length ? html`<section class="card"><h3>${t("chat.dActivity")}</h3>${d.recent_activity.map((a, i) => html`<div key=${i} class="activity">
-        <span class="mono muted">${a.timestamp ? new Date(`${a.timestamp.replace(" ", "T")}Z`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
-        <span class="ev">${a.event}</span> ${a.summary || ""}</div>`)}</section>` : null}`;
-  }
-  return html`<${Dialog} title=${t("chat.details")} onClose=${onClose} wide=${true}><div ref=${body}>${content}</div></${Dialog}>`;
-}
-
-function DeleteDialog({ name, onClose }) {
+/** Delete an instance (typed confirmation; a fleet admin may have to confirm, #1423). Chat's ⋯ and Details' ⋯. */
+export function DeleteDialog({ name, onClose }) {
   // The dialog's own lease: it ends when the dialog goes (closed, or the chat left for another page). The delete
   // may still finish on the server, and says so, but a dialog that is gone never closes or navigates the page the
   // person is on now (#1425 review).

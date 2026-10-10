@@ -164,7 +164,9 @@ Chat's ⋯ → "Details" goes here instead of the dialog.
 
 ## 4. Decisions for the user
 
-| # | Question | Options | Proposed |
+Decided by the user on 2026-10-10 ("照建議"): Q1 = B, Q2 = A, Q4 = A. Q3 = A and Q5 were decided earlier.
+
+| # | Question | Options | Decided |
 |---|---|---|---|
 | Q1 | What does **Details** (the Fleet side of one instance) show? | A: the current details dialog as a page (runtime + recent activity) · B: A + a read-only config summary (directory, binding, tags, description) with "Edit in Settings", + start/stop/pause actions · C: B + the full config editor inline | **B** |
 | Q2 | **Text size** steps, shared by Chat, View and Fleet | A: S / M / L everywhere; View also keeps "Fit" · B: View's current three (fit / comfortable / compact) everywhere · C: a slider (90–130 %) | **A** |

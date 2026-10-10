@@ -152,6 +152,17 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .panel-sub { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
+/* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
+.inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }
+.inst-switch .seg-item { min-height: 30px; }
+/* #1523 N2: Details. */
+.p-details .d-tags { display: inline-flex; flex-wrap: wrap; gap: var(--s-1); }
+.p-details .d-edit { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-2); }
+@media (max-width: 899px) {
+  .panel-head:has(.inst-switch) { flex-wrap: wrap; }
+  .inst-switch.seg { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 0 var(--s-1); }
+  .inst-switch .seg-item { justify-content: center; border-radius: var(--r-sm); }
+}
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; }
 .panel-body.center { display: flex; align-items: center; justify-content: center; padding: var(--s-6); }
 .col { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5) var(--s-8); }

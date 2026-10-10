@@ -8,7 +8,7 @@ import { ConfirmHost } from "./ui-confirm.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav } from "./instance-nav.js";
@@ -108,7 +108,8 @@ export function signInHref() {
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
-  const on = (panel) => !!route && route.panel === panel;
+  const on = (panel) => !!route && (route.panel === panel || (panel === "fleet" && route.panel === "details"));
+  const openInstance = openInstanceOf(route);
   // A count badge is hidden at 0; its number is also in the link's accessible name.
   const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
     aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t("app.needsCount", count)})` : undefined} onClick=${closeDrawer}>
@@ -137,7 +138,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     </div>
     <nav class="side-nav" aria-label=${t("app.menu")}>
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
-      ${navLink("fleet", "/ui/fleet", "fleet", t("app.fleet"))}
+      ${navLink("fleet", openInstance ? detailsPath(openInstance) : "/ui/fleet", "fleet", t("app.fleet"))}
       ${navLink("view", "/view", "view", t("app.view"))}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
@@ -169,28 +170,41 @@ function Prefs() {
   </div>`;
 }
 
-/** The header every panel shows: ☰ (phone, or a collapsed sidebar), its title and status, then its actions. */
-export function PanelHeader({ title, sub, children, headingRef }) {
+/**
+ * The header every panel shows: ☰ (phone, or a collapsed sidebar), its title and status, then its actions. `nav`
+ * (#1523 N2): an instance page's view switch — beside the title on a wide screen, a row of tabs under it on a phone.
+ */
+export function PanelHeader({ title, sub, children, headingRef, nav }) {
   const shell = useStore(shellStore);
   return html`<header class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
+    ${nav || null}
     <div class="panel-actions">${children}</div>
   </header>`;
+}
+
+/**
+ * #1523 N2: the instance a page is about — Chat, View or Details of it — or null. With one open, Fleet goes to its
+ * Details (the user's complaint: Fleet always landed on Tasks), and Chat and View keep it; with none, as before.
+ */
+export function openInstanceOf(route) {
+  return route && (route.panel === "chat" || route.panel === "view" || route.panel === "details") && route.instance ? route.instance : null;
 }
 
 function BottomTabs({ route, viewOnly }) {
   const app = useStore(appStore);
   let last = null;
   try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
-  const chatHref = route && route.panel === "chat" && route.instance ? chatPath(route.instance) : last ? chatPath(last) : "/ui";
+  const open = openInstanceOf(route);
+  const chatHref = open && route.panel !== "view" ? chatPath(open) : route && route.panel === "chat" && route.instance ? chatPath(route.instance) : last ? chatPath(last) : "/ui";
   const anyAwaiting = Object.keys(app.awaiting).length;
   const tab = (href, icon, label, active, badge, badgeLabel) => html`<a class=${`tab${active ? " active" : ""}`} href=${href} aria-current=${active ? "page" : undefined}>
     <${Icon} name=${icon} size=${20} /><span>${label}</span>${badge ? html`<span class="tab-badge" aria-label=${badgeLabel || t("app.needsYou")}>${badge}</span>` : null}</a>`;
   let lastView = null;
   try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
-  const viewHref = route && route.panel === "view" && route.instance ? viewPath(route.instance) : viewPath(lastView);
+  const viewHref = route && (route.panel === "view" || route.panel === "details") && route.instance ? viewPath(route.instance) : viewPath(lastView);
   if (viewOnly) {
     return html`<nav class="tabs" aria-label=${t("app.menu")}>
       ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
@@ -200,7 +214,7 @@ function BottomTabs({ route, viewOnly }) {
   return html`<nav class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
     ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
-    ${tab("/ui/fleet", "fleet", t("app.fleet"), route && route.panel === "fleet")}
+    ${tab(open ? detailsPath(open) : "/ui/fleet", "fleet", t("app.fleet"), route && (route.panel === "fleet" || route.panel === "details"))}
     ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
     ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
   </nav>`;

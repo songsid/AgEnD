@@ -698,12 +698,21 @@ export function handleWebRequest(
     const effort = (effortStrategy === "unsupported" || isAgy) ? null : (effortResolved?.effort ?? null);
     const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : (effortResolved?.source ?? "unset");
 
+    // The instance's other fleet.yaml fields this read shows (the context's type names only the ones it always needed).
+    const more = config as { tags?: unknown; channel_id?: unknown; general_topic?: unknown };
     json(res, 200, {
       name,
       status: ctx.getInstanceStatus(name),
       description: config.description,
       display_name: config.display_name,
       working_directory: config.working_directory,
+      // #1523 N2 (Q1 = B): the read-only config summary on Details — tags and where it is bound. Nothing secret.
+      tags: Array.isArray(more.tags) ? more.tags.filter((x: unknown): x is string => typeof x === "string") : [],
+      binding: {
+        channel_id: typeof more.channel_id === "string" ? more.channel_id : null,
+        topic_id: config.topic_id != null ? String(config.topic_id) : null,
+        general_topic: more.general_topic === true,
+      },
       backend,
       context_pct,
       model,
