@@ -124,7 +124,7 @@ describe("precheck.py is static by construction", () => {
   it("imports nothing that runs a program or opens a connection", () => {
     const src = readFileSync(PRECHECK, "utf8");
     expect(src.match(/^\s*(?:import|from)\s+(\S+)/gm)!.map((l) => l.trim().split(/\s+/)[1]).sort())
-      .toEqual(["bisect", "json", "os", "re", "sys", "tarfile", "zipfile", "zlib"]);
+      .toEqual(["bisect", "io", "json", "os", "re", "sys", "tarfile", "zipfile", "zlib"]);
     expect(src).not.toMatch(/subprocess|socket|urllib|http\.|os\.system|os\.exec|os\.spawn|popen|ctypes|extractall|\.extract\(|__import__|eval\(|exec\(/);
   });
 });
@@ -166,6 +166,7 @@ describe("precheck.py's verdict", () => {
     const r = pair(OLD.replace("Rate limited, retrying soon", "Rate limit hit, retrying"));
     expect(r.verdict).toBe("PRECHECK: MAJOR");
     expect(r.out).toMatch(/REASON: 1 detector literal\(s\) missing: \[error\] "Rate limited, retrying soon"/);
+    expect(r.out).toMatch(/BASIS: hard=[1-9]\d* \(missing 1,/);
   });
   it("only a count changed: MINOR", () => {
     expect(pair(OLD.replace("tail", `esc to interrupt now${pad(4)}tail`)).verdict).toBe("PRECHECK: MINOR");
@@ -264,25 +265,38 @@ describe("new prompts are found wherever they sit, in every text form (P1-2)", (
     const f = files(`${OLD}${T}${pad(4)}Do you want to connect to OpenAI?`, `${OLD}${T}${pad(4)}Do you want to connect to GitHub?`);
     expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
   });
-  it("control: a new question inside embedded markdown documentation (**bold**) is not a screen: MINOR, listed apart", () => {
-    const f = files(`${OLD}${T}${pad(4)}`, `${OLD}${T}${pad(4)}Make sure **Allow self-hosted environments** is on?`);
+  it("markdown ** proves nothing: a new question with ** beside a known literal is MAJOR, with a hint (R2 P1)", () => {
+    const f = files(`${OLD}${T}${pad(4)}`, `${OLD}${T}${pad(4)}Do you want to **share** all credentials?`);
     const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, /in documentation text \(markdown \*\*bold\*\*\): 1/.test(r.out)]).toEqual(["PRECHECK: MINOR", true]);
+    expect([r.verdict, /hint: has markdown \*\*/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+    expect(r.out).toContain("BASIS: hard=0 (missing 0, incomplete 0, coverage 0, unhinted new prompts 0); hinted=1");
   });
-  it("…but the same question without markdown, beside a known literal, is MAJOR", () => {
-    const f = files(`${OLD}${T}${pad(4)}`, `${OLD}${T}${pad(4)}Make sure Allow self-hosted environments is on?`);
-    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  it("control: the same emphasized question unchanged is NONE", () => {
+    const same = `${OLD}${T}${pad(4)}Do you want to **share** all credentials?`;
+    const f = files(same, same);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: NONE");
   });
   it("control: a Bun string table's length byte after a string is not part of it (NONE)", () => {
     const head = Buffer.from(`${OLD}${T}${pad(4)}Yes, and always allow access to `);
     const f = files(Buffer.concat([head, Buffer.from([0x03, 0, 0, 0x80])]), Buffer.concat([head, Buffer.from([0x39, 0, 0, 0x80])]));   // "9" = the next entry's length
     expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: NONE");
   });
-  it("control: only the neighbour of a kept prompt changed, and the neighbour was already there (MINOR, said so)", () => {
+  it("a changed question after a kept prefix is MAJOR even when its words are elsewhere in the old release (R2 P1)", () => {
+    const base = `${OLD}${pad(3000)}remove all files?${pad(3000)}`;
+    const f = files(`${base}${T}${pad(4)}Do you want to proceed: keep current settings?`, `${base}${T}${pad(4)}Do you want to proceed: remove all files?`);
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /hint: the old release has/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("…and when the old release has only the first words of the new ending (R2 P1)", () => {
+    const base = `${OLD}${pad(3000)}remove the current worki with no deletion${pad(3000)}`;
+    const f = files(`${base}${T}${pad(4)}Do you want to proceed: keep current settings?`, `${base}${T}${pad(4)}Do you want to proceed: remove the current working directory and its contents?`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("an old prompt beside a changed neighbour is MAJOR too (a native string boundary cannot be proven), with a hint", () => {
     const old = `${OLD}${R}${pad(4)}Yes, proceed${T}${pad(30)}Yes, proceedn  No, quit${pad(4)}`;
     const f = files(old, old.replace(`Yes, proceed${T}`, `Yes, proceedn${T}`));
     const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, /ONLY ITS NEIGHBOURING STRING CHANGED: 1/.test(r.out)]).toEqual(["PRECHECK: MINOR", true]);
+    expect([r.verdict, /only a neighbouring string changed\?/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
   });
   it("…but a neighbour the old release never had is a new prompt (MAJOR)", () => {
     const old = `${OLD}${R}${pad(4)}Yes, proceed${T}${pad(30)}Yes, proceedn  No, quit${pad(4)}`;
@@ -346,5 +360,87 @@ describe("every failure still ends with the verdict line, and a non-zero exit (P
     writeFileSync(join(d, "old.bin"), OLD);
     const r = run(join(d, "old.bin"), join(d, "bad.zip"), manifestFile(d));
     expect([r.verdict, r.status !== 0]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+});
+
+describe("compressed and archived input is read whole or the scan is incomplete (R2 P1)", () => {
+  const MARK = Buffer.from([T, B, R].join("\0"));
+  const gz = (b: Buffer) => gzipSync(b);
+  const verdict = (old: Buffer, neu: Buffer, extra: string[] = []) => { const f = files(old, neu); return run(f.old, f.neu, f.m, extra); };
+  it("control: one gzip member, and a gzip of a tar, read whole: NONE", () => {
+    expect(verdict(MARK, gz(MARK)).verdict).toBe("PRECHECK: NONE");
+    const d = scratch(); mkdirSync(join(d, "p")); writeFileSync(join(d, "p", "cli"), MARK);
+    execFileSync("tar", ["-czf", join(d, "c.tgz"), "-C", d, "p"]);
+    expect(verdict(MARK, readFileSync(join(d, "c.tgz"))).verdict).toBe("PRECHECK: NONE");
+  });
+  it("every gzip member is read: a new question in member 2 is found", () => {
+    const r = verdict(MARK, Buffer.concat([gz(MARK), gz(Buffer.from(`${T}${pad(4)}${NEW_Q}`))]));
+    expect(r.verdict).toBe("PRECHECK: MAJOR");
+    expect(r.out).toContain("share all credentials");
+  });
+  it("a truncated second gzip member is incomplete", () => {
+    const r = verdict(MARK, Buffer.concat([gz(Buffer.concat([MARK, Buffer.alloc(1024)])), Buffer.from([0x1f, 0x8b, 0x08, 0x00])]));
+    expect([r.verdict, /truncated gzip|broken gzip/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("the bound counts all members together", () => {
+    const r = verdict(MARK, Buffer.concat([gz(MARK), gz(Buffer.from("z".repeat(4166)))]), ["--max-member", "1024"]);
+    expect([r.verdict, /decompresses to more than 1024 bytes/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a zip cut before its central directory is a broken zip, never read as raw bytes", () => {
+    const d = scratch();
+    execFileSync("python3", ["-I", "-c", `import zipfile; z=zipfile.ZipFile(${JSON.stringify(join(d, "c.zip"))},"w",zipfile.ZIP_STORED); z.writestr("cli", open(0,"rb").read()); z.close()`], { input: MARK });
+    const zip = readFileSync(join(d, "c.zip"));
+    const r = verdict(MARK, zip.subarray(0, zip.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))));
+    expect([r.verdict, /broken zip/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a tar whose header was changed (checksum wrong) is a broken tar, never read as raw bytes", () => {
+    const d = scratch(); mkdirSync(join(d, "p")); writeFileSync(join(d, "p", "cli"), MARK);
+    execFileSync("tar", ["-cf", join(d, "c.tar"), "-C", d, "p/cli"]);
+    const tar = readFileSync(join(d, "c.tar"));
+    tar[0] = tar[0]! ^ 1;
+    const r = verdict(MARK, tar);
+    expect([r.verdict, /INCOMPLETE \(new\): c?.*(broken tar|bad checksum)/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a corrupt header after the first member, which tar readers stop at silently, is incomplete", () => {
+    const d = scratch(); mkdirSync(join(d, "p"));
+    writeFileSync(join(d, "p", "a"), MARK);
+    writeFileSync(join(d, "p", "b"), `${T}${pad(4)}${NEW_Q}`);
+    execFileSync("tar", ["-cf", join(d, "c.tar"), "-C", d, "p/a", "p/b"]);
+    const tar = readFileSync(join(d, "c.tar"));
+    const second = tar.indexOf(Buffer.from("p/b\0"));
+    tar[second] = tar[second]! ^ 1;                       // its checksum no longer matches
+    const r = verdict(MARK, tar);
+    expect([r.verdict, /data after the last readable tar header/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("the bound counts the members together: two that fit alone but not together", () => {
+    const r = verdict(MARK, Buffer.concat([gz(Buffer.concat([MARK, Buffer.from("a".repeat(600))])), gz(Buffer.from("b".repeat(700)))]), ["--max-member", "1024"]);
+    expect([r.verdict, /decompresses to more than 1024 bytes/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("a tar.gz whose outer gzip CRC is wrong is incomplete (the gzip is checked to its end)", () => {
+    const d = scratch(); mkdirSync(join(d, "p")); writeFileSync(join(d, "p", "cli"), MARK);
+    execFileSync("tar", ["-czf", join(d, "c.tgz"), "-C", d, "p"]);
+    const bad = readFileSync(join(d, "c.tgz"));
+    bad[bad.length - 8] = bad[bad.length - 8]! ^ 1;
+    const r = verdict(MARK, bad);
+    expect([r.verdict, /broken gzip/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+});
+
+describe("UTF-16 questions are read whole, at their real place (R2 P2)", () => {
+  const u = (s: string) => Buffer.from(s, "utf16le");
+  const BASE = Buffer.concat([Buffer.from("binary-prefix\x01\x02"), u(T), Buffer.alloc(8), u(B), Buffer.alloc(8), u(R), Buffer.alloc(8)]);
+  it("a question with CJK in it is found", () => {
+    const f = files(BASE, Buffer.concat([BASE, u(T), Buffer.alloc(4), u("Do you want to share 私密 credentials?")]));
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("its physical end places it: a literal 590 bytes after a long UTF-16 question is near it", () => {
+    const q = u("Do you want to share all credentials with every outside collaborator and publish every stored password?");
+    const f = files(BASE, Buffer.concat([BASE, Buffer.alloc(800), q, Buffer.alloc(590), u(T)]));
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("control: 1000 bytes away it is elsewhere (MINOR)", () => {
+    const q = u("Do you want to share all credentials with every outside collaborator and publish every stored password?");
+    const f = files(BASE, Buffer.concat([BASE, Buffer.alloc(1200), q, Buffer.alloc(1000), u(T)]));
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MINOR");
   });
 });

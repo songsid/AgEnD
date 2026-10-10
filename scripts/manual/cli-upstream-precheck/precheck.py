@@ -18,10 +18,11 @@ MAJOR  a literal that the old artifact has is missing from the new one; or a new
        detector literal (a dialog, approval, trust, onboarding, resume, error, chrome surface); or the old artifact
        shows too few of the backend's literals for this check to see the CLI at all; or either artifact could not be
        read in full (unreadable, too large, a broken archive or gzip); or the run failed. Never NONE by omission.
-MINOR  counts changed, a literal appeared, or new prompt-like strings elsewhere (or only a neighbouring string changed).
+MINOR  counts changed, a literal appeared, or new prompt-like strings away from every known detector literal.
 NONE   nothing of the above.
 """
 import bisect
+import io
 import json
 import os
 import re
@@ -52,14 +53,16 @@ PROMPTS = [
     rb"(?:[Rr]esume|[Cc]ontinue) (?:this |the |from |previous )" + TEXT + rb"{2,80}",
 ]
 PROMPT_RE = re.compile(b"|".join(b"(?:" + p + b")" for p in PROMPTS))
-UTF16_RUN_RE = re.compile(rb"(?:[\x20-\x7e]\x00){8,}")
+# UTF-16LE text: anchored on ASCII code units (xx 00), with short stretches of other BMP characters between them
+# ("share 私密 credentials"); plain UTF-8 text never matches (it has no 00 bytes).
+UTF16_RUN_RE = re.compile(rb"(?:[\x20-\x7e]\x00){4,}(?:(?:[\x00-\xff][\x01-\xd7\xe0-\xff]|[\xa0-\xff]\x00){1,16}(?:[\x20-\x7e]\x00){2,})*")
 QUIET_SURFACES = {"other"}           # a new prompt near only these does not make the release MAJOR
 INTERP_RE = re.compile(r"\$\{[^}]*\}?")
 CUT_RE = re.compile(r"[\x00-\x1f\x7f�].*", re.S)
 # A Bun/JSC string table: each entry is followed by the next one's 4-byte length, high byte 0x80. When that length's
 # low byte is printable it reads as the string's last character ("…allow access to 9" + "\x00\x00\x80").
 BUN_HEADER = b"\x00\x00\x80"
-# Markdown emphasis: a CLI's own dialogs never carry it; the docs and skills a binary embeds do.
+# Markdown emphasis: a hint for the auditor that a string may be embedded documentation — never an exemption.
 MARKDOWN_RE = re.compile(r"\*\*")
 
 
@@ -77,7 +80,7 @@ def fail(msg, code=3):
 def normalize(raw):
     """A prompt-like string as compared across releases: minified names inside ${…} do not count, nor what runs on
     past the string's end (a control character or undecodable byte). Nothing else is cut: a string that differs is a
-    new string unless the comparison has evidence that only its neighbour changed (neighbour_only)."""
+    new string (what it may be is only hinted, never exempted)."""
     text = CUT_RE.sub("", raw.decode("utf-8", "replace"))
     text = INTERP_RE.sub("${}", text)
     return " ".join(text.split()).strip()
@@ -106,27 +109,72 @@ def read_bounded(fh, limit, what):
     return data
 
 
-def gunzip_bounded(data, limit, what):
-    """Decompress gzip data without ever holding more than `limit` bytes of output (plus one chunk)."""
+def gunzip_all(fh, limit, what):
+    """A gzip file's decompressed bytes: every member (RFC 1952 §2.2) with its CRC and length checked by zlib at its end,
+    all of it within `limit` bytes (refused while expanding, never expanded in full first). A truncated or broken stream
+    is refused; after the last member only zero padding may follow."""
+    out, total = [], 0
     d = zlib.decompressobj(16 + zlib.MAX_WBITS)
-    out = []
-    size = 0
-    buf = data
+    member_open = True
     try:
         while True:
-            piece = d.decompress(buf, CHUNK)
-            size += len(piece)
-            if size > limit:
-                raise Incomplete("%s: decompresses to more than %d bytes" % (what, limit))
-            out.append(piece)
-            if d.eof:
-                break
-            buf = d.unconsumed_tail
-            if not buf and not piece:
-                raise Incomplete("%s: truncated gzip" % what)
+            chunk = fh.read(CHUNK)
+            if not chunk:
+                if member_open:
+                    raise Incomplete("%s: truncated gzip" % what)
+                return b"".join(out)
+            data = chunk
+            while data:
+                if not member_open:
+                    if data[:2] == b"\x1f\x8b":            # the next member
+                        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                        member_open = True
+                    elif data.strip(b"\x00") == b"":
+                        break                               # zero padding after the last member
+                    else:
+                        raise Incomplete("%s: data after the gzip stream" % what)
+                piece = d.decompress(data, CHUNK)
+                while True:
+                    total += len(piece)
+                    if total > limit:
+                        raise Incomplete("%s: decompresses to more than %d bytes" % (what, limit))
+                    out.append(piece)
+                    if d.eof or not d.unconsumed_tail:
+                        break
+                    piece = d.decompress(d.unconsumed_tail, CHUNK)
+                if d.eof:
+                    member_open = False
+                    data = d.unused_data
+                else:
+                    data = b""
     except zlib.error as e:
         raise Incomplete("%s: broken gzip (%s)" % (what, e))
-    return b"".join(out)
+
+
+def is_tar(block):
+    return len(block) >= 262 and block[257:262] == b"ustar"
+
+
+def tar_members(tar, data, name, limit):
+    """Every regular member of a tar read from `data`; then what follows the last header must be zero blocks (a corrupt
+    header otherwise ends the listing early, without an error)."""
+    try:
+        for m in tar:
+            if not m.isreg():
+                continue
+            if m.size > limit:
+                raise Incomplete("%s!%s: larger than %d bytes" % (name, m.name, limit))
+            fh = tar.extractfile(m)
+            if fh is None:
+                raise Incomplete("%s!%s: cannot be read" % (name, m.name))
+            body = read_bounded(fh, limit, name + "!" + m.name)
+            if len(body) != m.size:
+                raise Incomplete("%s!%s: truncated member" % (name, m.name))
+            yield name + "!" + m.name, body
+        if data[tar.offset:].strip(b"\x00"):
+            raise Incomplete("%s: data after the last readable tar header (a corrupt header?)" % name)
+    except tarfile.TarError as e:
+        raise Incomplete("%s: broken tar (%s)" % (name, e))
 
 
 def blobs(path, limit, issues, notes):
@@ -160,39 +208,42 @@ def blobs(path, limit, issues, notes):
 
 
 def file_blobs(p, name, limit, issues):
+    """A file's blobs. A gzip, zip or tar file (by its magic bytes) is read as one, strictly: a broken one is never
+    read as raw bytes instead."""
     try:
         if os.path.getsize(p) > limit:
             raise Incomplete("%s: larger than %d bytes" % (name, limit))
-        if tarfile.is_tarfile(p):
-            with tarfile.open(p, "r:*") as tar:
-                for m in tar:
-                    if not m.isreg():
-                        continue
-                    if m.size > limit:
-                        issues.append("%s!%s: larger than %d bytes" % (name, m.name, limit))
-                        continue
-                    fh = tar.extractfile(m)
-                    if fh is None:
-                        issues.append("%s!%s: cannot be read" % (name, m.name))
-                        continue
-                    yield name + "!" + m.name, read_bounded(fh, limit, name + "!" + m.name)
-            return
-        if zipfile.is_zipfile(p):
-            with zipfile.ZipFile(p) as z:
-                for info in z.infolist():
-                    if info.is_dir():
-                        continue
-                    if info.file_size > limit:
-                        issues.append("%s!%s: larger than %d bytes" % (name, info.filename, limit))
-                        continue
-                    with z.open(info) as fh:
-                        yield name + "!" + info.filename, read_bounded(fh, limit, name + "!" + info.filename)
-            return
         with open(p, "rb") as fh:
-            data = read_bounded(fh, limit, name)
-        if data[:2] == b"\x1f\x8b":
-            data = gunzip_bounded(data, limit, name)
-        yield name, data
+            head = fh.read(512)
+            fh.seek(0)
+            if head[:2] == b"\x1f\x8b":
+                data = gunzip_all(fh, limit, name)             # every member, every CRC, within the bound
+                if is_tar(data[:512]):
+                    with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tar:
+                        for item in tar_members(tar, data, name, limit):
+                            yield item
+                else:
+                    yield name, data
+                return
+            if head[:4] == b"PK\x03\x04":
+                if not zipfile.is_zipfile(p):
+                    raise Incomplete("%s: broken zip" % name)
+                with zipfile.ZipFile(p) as zf:
+                    for info in zf.infolist():
+                        if info.is_dir():
+                            continue
+                        if info.file_size > limit:
+                            raise Incomplete("%s!%s: larger than %d bytes" % (name, info.filename, limit))
+                        with zf.open(info) as member:
+                            yield name + "!" + info.filename, read_bounded(member, limit, name + "!" + info.filename)
+                return
+            if is_tar(head):
+                data = read_bounded(fh, limit, name)
+                with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tar:
+                    for item in tar_members(tar, data, name, limit):
+                        yield item
+                return
+            yield name, read_bounded(fh, limit, name)
     except Incomplete as e:
         issues.append(str(e))
     except (OSError, EOFError, tarfile.TarError, zipfile.BadZipFile, zlib.error, RuntimeError) as e:
@@ -209,16 +260,20 @@ def forms(text):
 
 
 def prompt_matches(data):
-    """(offset, raw bytes) of every prompt-like string, in UTF-8 and in UTF-16LE text, at its byte offset."""
+    """(start, end, raw bytes) of every prompt-like string, in UTF-8 and in UTF-16LE text; start and end are byte
+    offsets in `data` (for UTF-16, of the code units themselves)."""
     for m in PROMPT_RE.finditer(data):
         raw = m.group(0)
         if data[m.end():m.end() + 3] == BUN_HEADER and len(raw) > 1:
             raw = raw[:-1]                 # the next entry's length byte, not part of the string
-        yield m.start(), raw
+        yield m.start(), m.end(), raw
     for run in UTF16_RUN_RE.finditer(data):
-        text = run.group(0).decode("utf-16-le", "replace").encode("utf-8", "replace")
-        for m in PROMPT_RE.finditer(text):
-            yield run.start() + 2 * m.start(), m.group(0)
+        text = run.group(0).decode("utf-16-le", "replace")
+        u8 = text.encode("utf-8", "replace")
+        for m in PROMPT_RE.finditer(u8):
+            c0 = len(u8[:m.start()].decode("utf-8", "ignore"))
+            c1 = len(u8[:m.end()].decode("utf-8", "ignore"))
+            yield run.start() + len(text[:c0].encode("utf-16-le")), run.start() + len(text[:c1].encode("utf-16-le")), m.group(0)
 
 
 def scan(path, literals, want_offsets, limit):
@@ -244,33 +299,23 @@ def scan(path, literals, want_offsets, limit):
                         at = data.find(f, at + 1)
         offsets.sort()
         keys = [o for o, _ in offsets]
-        for start, raw in prompt_matches(data):
+        for start, end, raw in prompt_matches(data):
             cand = normalize(raw)
             if len(cand) < 12:
                 continue
             near = prompts.setdefault(cand, set())
             if want_offsets and keys:
                 lo = bisect.bisect_left(keys, start - NEAR)
-                hi = bisect.bisect_right(keys, start + len(raw) + NEAR)
+                hi = bisect.bisect_right(keys, end + NEAR)
                 for _, i in offsets[lo:hi]:
                     near.add(i)
     return counts, prompts, files, size, issues, notes
 
 
-def present_in(path, needles, limit):
-    """Which of `needles` (bytes) occur anywhere in the artifact (a read-only pass over the old artifact)."""
-    found = set()
-    issues, notes = [], []
-    for _, data in blobs(path, limit, issues, notes):
-        for n in needles:
-            if n not in found and n in data:
-                found.add(n)
-    return found, issues
-
-
 def neighbour_candidates(cand, old_prompts):
-    """(head, tail) splits of `cand` at a boundary where the head begins an old prompt-like string: if the tail (the
-    neighbour) also exists in the old artifact, only the neighbouring string changed."""
+    """(head, tail) splits of `cand` at a boundary where the head begins an old prompt-like string. A hint for the
+    auditor that only a neighbouring string may have changed — never an exemption: a byte boundary between two native
+    strings cannot be proven from the bytes."""
     out = []
     for i in boundaries(cand):
         head, tail = cand[:i], cand[i:].strip()
@@ -360,44 +405,36 @@ def main(argv):
     show("COUNT CHANGED", changed)
     show("APPEARED (not in old, in new)", appeared)
 
-    # A new prompt-like string, unless the old artifact shows it is an old one beside a different neighbour.
+    # Every prompt-like string the old release does not have is new; beside a known detector literal, it is MAJOR. What
+    # it looks like (embedded docs, an old prompt with another neighbour) is said as a hint for the auditor, not used.
     fresh = sorted(c for c in p_new if c not in p_old)
-    splits = {c: neighbour_candidates(c, p_old) for c in fresh}
-    needles = {t for s in splits.values() for _, t in s}
-    found, i_third = present_in(old, needles, limit) if needles else (set(), [])
-    on_surface, elsewhere, neighbour, docs = [], [], [], []
+    on_surface, elsewhere = [], []
     for c in fresh:
-        same = next((h for h, t in splits[c] if t in found), None) if not i_third else None
-        if same is not None:
-            neighbour.append((c, same))
-            continue
-        if MARKDOWN_RE.search(c):            # "**bold**": documentation the binary embeds, not a screen it paints
-            docs.append(c)
-            continue
+        hints = []
+        if MARKDOWN_RE.search(c):
+            hints.append("has markdown ** (embedded docs?)")
+        split = neighbour_candidates(c, p_old)
+        if split:
+            hints.append("the old release has %s… (only a neighbouring string changed?)" % json.dumps(split[0][0][:40], ensure_ascii=False))
         surfaces = sorted({literals[i]["surface"] for i in p_new[c]})
-        loud = [s for s in surfaces if s not in QUIET_SURFACES]
-        (on_surface if loud else elsewhere).append((c, loud or surfaces, sorted(p_new[c])[:3]))
+        loud = [s_ for s_ in surfaces if s_ not in QUIET_SURFACES]
+        (on_surface if loud else elsewhere).append((c, loud or surfaces, sorted(p_new[c])[:3], hints))
     print("\nNEW PROMPT-LIKE STRINGS near a known detector literal: %d" % len(on_surface))
-    for c, surfaces, near in on_surface:
-        print("  [%s] %s   near %s" % (",".join(surfaces), json.dumps(c[:140], ensure_ascii=False), "; ".join(json.dumps(literals[i]["text"][:40], ensure_ascii=False) for i in near)))
+    for c, surfaces, near, hints in on_surface:
+        print("  [%s] %s   near %s%s" % (",".join(surfaces), json.dumps(c[:140], ensure_ascii=False), "; ".join(json.dumps(literals[i]["text"][:40], ensure_ascii=False) for i in near),
+                                     ("   hint: " + "; ".join(hints)) if hints else ""))
     print("\nNEW PROMPT-LIKE STRINGS elsewhere: %d" % len(elsewhere))
-    for c, _, _ in elsewhere[:40]:
-        print("  " + json.dumps(c[:140], ensure_ascii=False))
+    for c, _, _, hints in elsewhere[:40]:
+        print("  " + json.dumps(c[:140], ensure_ascii=False) + (("   hint: " + "; ".join(hints)) if hints else ""))
     if len(elsewhere) > 40:
         print("  … %d more" % (len(elsewhere) - 40))
-    print("\nNEW PROMPT-LIKE STRINGS in documentation text (markdown **bold**): %d" % len(docs))
-    for c in docs[:20]:
-        print("  " + json.dumps(c[:140], ensure_ascii=False))
-    print("\nPROMPT KEPT, ONLY ITS NEIGHBOURING STRING CHANGED: %d" % len(neighbour))
-    for c, same in neighbour[:20]:
-        print("  %s   (kept: %s)" % (json.dumps(c[:140], ensure_ascii=False), json.dumps(same, ensure_ascii=False)))
     gone_prompts = sorted(c for c in p_old if c not in p_new)
     print("\nPROMPT-LIKE STRINGS gone in the new artifact: %d" % len(gone_prompts))
     for c in gone_prompts[:20]:
         print("  " + json.dumps(c[:140], ensure_ascii=False))
 
     reasons_major, reasons_minor = [], []
-    incomplete = ["old: " + x for x in i_old] + ["new: " + x for x in i_new] + ["old (neighbour check): " + x for x in i_third]
+    incomplete = ["old: " + x for x in i_old] + ["new: " + x for x in i_new]
     if incomplete:
         reasons_major.append("the scan was incomplete, so it cannot vouch for this release — %s" % "; ".join(incomplete[:4]))
     if len(present) < MIN_COVERAGE:
@@ -405,21 +442,23 @@ def main(argv):
     if missing:
         reasons_major.append("%d detector literal(s) missing: %s" % (len(missing), "; ".join("[%s] %s" % (literals[i]["surface"], json.dumps(literals[i]["text"][:60], ensure_ascii=False)) for i in missing[:5])))
     if on_surface:
-        reasons_major.append("%d new prompt-like string(s) on a known surface: %s" % (len(on_surface), "; ".join("[%s] %s" % (",".join(s), json.dumps(c[:60], ensure_ascii=False)) for c, s, _ in on_surface[:5])))
+        reasons_major.append("%d new prompt-like string(s) on a known surface: %s" % (len(on_surface), "; ".join("[%s] %s" % (",".join(sf), json.dumps(c[:60], ensure_ascii=False)) for c, sf, _, _ in on_surface[:5])))
     if changed:
         reasons_minor.append("%d literal count(s) changed" % len(changed))
     if appeared:
         reasons_minor.append("%d literal(s) appeared" % len(appeared))
     if elsewhere:
         reasons_minor.append("%d new prompt-like string(s) away from known literals" % len(elsewhere))
-    if docs:
-        reasons_minor.append("%d new prompt-like string(s) in documentation text" % len(docs))
-    if neighbour:
-        reasons_minor.append("%d prompt-like string(s) kept, beside a neighbouring string that changed" % len(neighbour))
     verdict = "MAJOR" if reasons_major else "MINOR" if reasons_minor else "NONE"
     print("")
     for r in reasons_major + reasons_minor:
         print("REASON: " + r)
+    # For triage only — the verdict is the next line. "hard": nothing explains it; "hinted": a new prompt near a
+    # literal that carries a hint (embedded docs? another neighbour?) the bytes cannot prove either way.
+    hinted = sum(1 for _, _, _, h in on_surface if h)
+    print("BASIS: hard=%d (missing %d, incomplete %d, coverage %d, unhinted new prompts %d); hinted=%d" % (
+        len(missing) + len(incomplete) + (1 if len(present) < MIN_COVERAGE else 0) + len(on_surface) - hinted,
+        len(missing), len(incomplete), 1 if len(present) < MIN_COVERAGE else 0, len(on_surface) - hinted, hinted))
     print("PRECHECK: " + verdict)
     return 4 if verdict == "MAJOR" and incomplete else 0
 
