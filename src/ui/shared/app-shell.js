@@ -227,9 +227,17 @@ function ConnectionLine() {
     return html`<div class="conn" role="status">${hydration === "failed" ? t("app.hydrateFailed") : t("app.hydrating")}
       ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}</div>`;
   }
-  if (connection === "live" || connection === "none") return null;
+  if (connection === "reconnecting") return html`<${Reconnecting} />`;
+  if (connection === "live" || connection === "none" || connection === "ended") return null;   // ended: agend-auth's banner
   const text = connection === "polling" ? t("app.connPolling") : connection === "down" ? t("app.connDown") : null;
   return text ? html`<div class="conn" role="status">${text}</div>` : null;
+}
+/** #1580: the fleet is not answering (a restart): said, with when the next try is — never a silent stale page. */
+function Reconnecting() {
+  const { retryAt } = useStore(appStore);
+  useTick(true);
+  const s = typeof retryAt === "number" ? Math.max(0, Math.ceil((retryAt - NOW()) / 1000)) : 0;
+  return html`<div class="conn reconnecting" role="status">${s > 0 ? t("app.connReconnectingIn", s) : t("app.connReconnecting")}</div>`;
 }
 
 const NOW = () => (typeof performance !== "undefined" ? performance.now() : Date.now());

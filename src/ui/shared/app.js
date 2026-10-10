@@ -37,6 +37,12 @@ if (mode === "full") {
   stream.on("status", applyStatus);
   stream.on("activity", applyActivity);
   stream.on("connection", (connection) => appStore.set({ connection }));
+  // #1580: when the next reconnect try is (the connection line counts down to it; monotonic, like the stream's clock).
+  stream.on("retry", (r) => appStore.set({ retryAt: (typeof performance !== "undefined" ? performance.now() : Date.now()) + r.inMs }));
+  // #1580: a page that leaves closes its stream and every timer (nothing half-open behind it); one restored from the
+  // back-forward cache reconnects and catches up.
+  window.addEventListener("pagehide", () => stream.suspend());
+  window.addEventListener("pageshow", (e) => { if (e.persisted) stream.resume(); });
   // A chat that loaded late catches up on what is open now; the shell shows that while it is not done, with Retry.
   stream.on("hydration", (hydration) => appStore.set({ hydration }));
   appStore.set({ retryHydration: () => stream.catchUp() });

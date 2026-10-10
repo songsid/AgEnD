@@ -18,6 +18,9 @@ import { readStream } from "./read-stream.js";
 export { UsageMetric } from "./usage-dialog.js";
 import { backendLabel, STATUS_KEYS } from "./instance-nav.js";
 import { viewStore } from "./view-roster-store.js";
+
+/** #1580: the app's stream says the fleet is not answering (a restart): the View's polls skip their turn until it is. */
+const fleetUnreachable = () => appStore.get().connection === "reconnecting";
 import { navigate } from "./app-nav.js";
 import { viewPath } from "./app-route.js";
 import { Dialog } from "./ui-dialog.js";
@@ -129,6 +132,7 @@ export function ViewPanel({ route, navKey }) {
     const reads = readStream(lease);
     const load = async () => {
       if (typeof document !== "undefined" && document.hidden) return;
+      if (fleetUnreachable()) return;                      // #1580: the app's stream is reconnecting — no read storm
       const token = reads.begin();
       if (!token) return;
       try {
@@ -213,6 +217,7 @@ function Terminal({ name, lease, density }) {
     const reads = readStream(lease);
     const refresh = async () => {
       if (document.hidden) return;
+      if (fleetUnreachable()) return;                      // #1580: every 0.8 s would be a connection storm through a relay
       // A selection inside the pane is being copied: keep this frame until it is released.
       const sel = typeof window.getSelection === "function" ? window.getSelection() : null;
       if (sel && sel.toString().length > 0 && sel.anchorNode && pre.current && pre.current.contains(sel.anchorNode)) return;
