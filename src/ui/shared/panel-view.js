@@ -37,9 +37,11 @@ function tn(key, values = {}) {
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this page only */ } };
 
-// ── ANSI (SGR) → markup ── A coloured run is <span class="ansi" data-fg data-bg data-b>, never a style attribute (#1300);
-// paintAnsi() sets the colours through the style object once it is on the page. The colours are the palette's or rgb()
-// of numbers — nothing from the pane's text.
+// ── ANSI (SGR) → markup ── A coloured run is <span class="ansi" data-fg data-bg data-b data-dim>, never a style attribute
+// (#1300); paintAnsi() sets the colours through the style object once it is on the page. The colours are the palette's or
+// rgb() of numbers — nothing from the pane's text. Dim (SGR 2) is kept because a CLI paints text that is not input dim:
+// Claude Code's prompt suggestion and empty-box placeholder sit in the composer exactly like typed text but faint (#1582,
+// suzuke/agend-terminal#3744). Reverse video (7) swaps the run's colours, the terminal's own standing in for unset ones.
 const BASE = ["#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5"];
 const BRIGHT = ["#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff"];
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -49,14 +51,17 @@ function xterm256(n) {
   if (n < 232) { n -= 16; const r = Math.floor(n / 36), g = Math.floor((n % 36) / 6), b = n % 6; const v = (x) => (x ? x * 40 + 55 : 0); return `rgb(${v(r)},${v(g)},${v(b)})`; }
   const l = (n - 232) * 10 + 8; return `rgb(${l},${l},${l})`;
 }
+/** The `.v-pre` terminal's own colours (app.css), for a reversed run whose colours were not set. */
+const TERM_FG = "#d0d0d0", TERM_BG = "#000000";
 export function ansiToHtml(text) {
-  let out = "", fg = null, bg = null, bold = false, open = false;
+  let out = "", fg = null, bg = null, bold = false, dim = false, reverse = false, open = false;
   const attrs = () => {
     let f = fg;
     if (bold && typeof f === "number" && f < 8) f = BRIGHT[f];
     else if (typeof f === "number") f = BASE[f];
-    const b = bg == null ? null : typeof bg === "number" ? BASE[bg] : bg;
-    return (f ? ` data-fg="${esc(f)}"` : "") + (b ? ` data-bg="${esc(b)}"` : "") + (bold ? " data-b" : "");
+    let b = bg == null ? null : typeof bg === "number" ? BASE[bg] : bg;
+    if (reverse) [f, b] = [b ?? TERM_BG, f ?? TERM_FG];
+    return (f ? ` data-fg="${esc(f)}"` : "") + (b ? ` data-bg="${esc(b)}"` : "") + (bold ? " data-b" : "") + (dim ? " data-dim" : "");
   };
   const flush = () => { if (open) { out += "</span>"; open = false; } };
   const openSpan = () => { const a = attrs(); if (a) { out += `<span class="ansi"${a}>`; open = true; } };
@@ -71,9 +76,12 @@ export function ansiToHtml(text) {
     if (codes.length === 0) codes.push(0);
     for (let i = 0; i < codes.length; i++) {
       const c = codes[i];
-      if (c === 0) { fg = bg = null; bold = false; }
+      if (c === 0) { fg = bg = null; bold = dim = reverse = false; }
       else if (c === 1) bold = true;
-      else if (c === 22) bold = false;
+      else if (c === 2) dim = true;
+      else if (c === 22) bold = dim = false;   // "normal intensity": neither bold nor faint
+      else if (c === 7) reverse = true;
+      else if (c === 27) reverse = false;
       else if (c === 39) fg = null;
       else if (c === 49) bg = null;
       else if (c >= 30 && c <= 37) fg = c - 30;

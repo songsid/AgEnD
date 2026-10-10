@@ -567,6 +567,8 @@ html.lb-open .scroller { overflow: hidden; }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }
 .v-pre { margin: 0; min-width: 100%; min-height: 100%; font-family: var(--font-mono); line-height: 1.2; white-space: pre; color: #d0d0d0; }
 .v-pre .ansi[data-b] { font-weight: var(--fw-bold); }
+/* #1582: faint text (SGR 2) — a CLI's suggestion or placeholder, never input — stays faint here. */
+.v-pre .ansi[data-dim] { opacity: .5; }
 .v-term-note { position: absolute; left: var(--s-3); right: var(--s-3); top: var(--s-3); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); color: #f0f0f0; font-size: var(--fs-sm); }
 .v-probe { position: absolute; visibility: hidden; white-space: pre; left: -9999px; top: 0; font-size: 100px; }
 .v-card { flex-shrink: 0; display: flex; align-items: center; gap: var(--s-3); padding: var(--s-2) var(--s-4); background: var(--bg); padding-bottom: max(var(--s-2), env(safe-area-inset-bottom)); }

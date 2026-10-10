@@ -183,8 +183,10 @@ describe("② the code goes privately to the recorded owner only, and only while
     h.adapter.sendDirect.mockClear(); h.adapter.sendText.mockClear();
     const ask = await h.call("/auth/request-code", "POST", { cookie });
     expect(ask.status).toBe(202);
-    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(1);
+    // #1586: the request's DM, then the code alone (Telegram: a tap on the monospace code copies it).
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2);
     const [to, text, opts] = h.adapter.sendDirect.mock.calls[0]!;
+    expect(h.adapter.sendDirect.mock.calls[1]).toEqual(["admin", `<code>${CODE.exec(String(text))![0]}</code>`, { format: "html", disablePreview: true }]);
     expect(to).toBe("admin");
     expect(text).toMatch(CODE);
     expect(opts).toEqual({ disablePreview: true });
@@ -249,11 +251,11 @@ describe("③ rate limits per device and for the whole fleet, plus the existing 
     mono += 30_000;
     const soon = await h.call("/auth/request-code", "POST", { cookie });
     expect(soon.status).toBe(429); expect(soon.out["Retry-After"]).toBe("30");
-    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(1);
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2);     // one request: its DM and the code alone (#1586)
     for (let n = 2; n <= CODE_REQUEST_LIMITS.devicePerHour; n++) { mono += 60_000; expect((await h.call("/auth/request-code", "POST", { cookie })).status, `#${n}`).toBe(202); }
     mono += 60_000;
     expect((await h.call("/auth/request-code", "POST", { cookie })).status).toBe(429);
-    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(CODE_REQUEST_LIMITS.devicePerHour);
+    expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2 * CODE_REQUEST_LIMITS.devicePerHour);
   });
 
   it("for the whole fleet: a second device inside 20 s waits", async () => {
@@ -495,3 +497,25 @@ describe("the sign-in page offers the button only to a returning device", () => 
     expect(limited.$("resend").hidden).toBe(false);
   });
 });
+
+describe("#1586 review (Prism r1): the resend's code-only follow-up never outlives the owner", () => {
+  it.each([true, false])("owner removed while the follow-up waits = %s", async (demote) => {
+    const h = rig();
+    const cookie = await h.returning();
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    h.adapter.sendDirect.mockImplementation(async (user: string, text: string) => {
+      if (text.startsWith("<code>")) await held;
+      return { chatId: user, messageId: "dm" };
+    });
+    const device = h.fm.verifyReturningDevice(cookie.split("=")[1])!;
+    const asked = h.fm.requestReturningCode(device, { surface: "local", label: "Chrome on macOS" });
+    await flush();
+    expect(h.adapter.sendDirect.mock.calls.at(-1)![1]).toMatch(/^<code>/);
+    if (demote) h.owner.access.allowed_users = ["admin2"];
+    release();
+    expect(await asked).toEqual({ kind: demote ? "refused" : "sent" });
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(!demote);
+  });
+});
+
