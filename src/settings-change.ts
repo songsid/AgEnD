@@ -12,7 +12,8 @@ const immediate = new Set([
   "echo_to_channel", "status_emojis", "persona", "emoji", "hang_detector", "guardian", "watchdog", "timeout_minutes",
   "enabled", "startup_concurrency", "spawn_concurrency", "spawn_stagger_ms", "warm_cap", "idle_timeout",
 ]);
-const secretKeys = /^(?:token|secret|password|api_key|bot_token|web_token)$/i;
+/** A config key whose value is a credential: confirmed by fingerprint, never shown (and redacted on read, #1490). */
+export const SETTINGS_SECRET_KEY = /^(?:token|secret|password|api_key|bot_token|web_token)$/i;
 const publicKeys = new Set(["id", "type", "group_id", "general_channel_id", "bot_token_env", "token_env", "mode",
   "working_directory", "project_roots", "adapter_id", "adapterId", "channelId", "instanceName", "createdBy", "createdAt",
   "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions"]);
@@ -81,8 +82,8 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
-    if (unknownImmediateChild(path) && !secretKeys.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
-    if (secretKeys.test(key)) { section = "secret"; add(`${label}: fingerprint ${fingerprint(old)} → ${fingerprint(next)}`); return; }
+    if (unknownImmediateChild(path) && !SETTINGS_SECRET_KEY.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
+    if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(`${label}: fingerprint ${fingerprint(old)} → ${fingerprint(next)}`); return; }
     if (idLists.has(key)) {
       section = "access";
       if ((old !== undefined && !Array.isArray(old)) || (next !== undefined && !Array.isArray(next))) {
