@@ -1,0 +1,55 @@
+{
+  "agend_base": "e3dce70c310cb60b0db6aafb6a84af2e6c292022",
+  "node": "v22.22.2",
+  "upstream_tags": {
+    "rust-v0.162.0": "c1382380de69521303b416720a52f42d51af6248",
+    "rust-v0.162.1": "092d3acd6bec3e3a14bdc7e7a2810ab628ab759d"
+  },
+  "compare_api_status": "diverged; direct two-tag diff independently agrees",
+  "changed_files": [
+    "codex-rs/Cargo.toml",
+    "codex-rs/cli/tests/daemon_startup.rs",
+    "codex-rs/tui/src/bottom_pane/async_questions/mod.rs",
+    "codex-rs/tui/src/bottom_pane/async_questions/snapshots/codex_tui__bottom_pane__async_questions__tests__question_multiline.snap",
+    "codex-rs/tui/src/bottom_pane/async_questions/state_tests.rs",
+    "codex-rs/tui/src/daemon_recovery.rs",
+    "codex-rs/tui/src/daemon_startup.rs",
+    "codex-rs/tui/src/daemon_startup_tests.rs",
+    "codex-rs/tui/src/startup_orchestration.rs",
+    "codex-rs/tui/tests/suite/daemon_compatibility.rs"
+  ],
+  "binaries": {
+    "0.162.0": {
+      "sha256": "50ed828f357c655a3c82054d346cab8434f24901f14ec19b8267571bdd008b38",
+      "size": 294410952
+    },
+    "0.162.1": {
+      "sha256": "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1",
+      "size": 294415048
+    }
+  },
+  "literal_scan": {
+    "candidate_count": 279,
+    "present_in_baseline": 46,
+    "changed_present_literal_counts": 0
+  },
+  "native_paired_surfaces": 17,
+  "real_exact_cwd_and_runtime_e2e": {
+    "0.162.0": {
+      "numTotalTests": 6,
+      "numPassedTests": 6,
+      "numFailedTests": 0,
+      "numPendingTests": 0
+    },
+    "0.162.1": {
+      "numTotalTests": 6,
+      "numPassedTests": 6,
+      "numFailedTests": 0,
+      "numPendingTests": 0
+    }
+  },
+  "upstream_snapshot": "multiline question is an upstream snapshot, not a native capture",
+  "normalization": "scratch absolute root/run path identifiers and mock ports; trailing empty viewport rows omitted in E2E loading fixtures; version labels, Unicode, timing rows and layout otherwise retained",
+  "isolation": "explicit private tmux -L; scratch HOME/AGEND_HOME/CODEX_HOME; mock API no account; existing E2E auth symlink no prompt/turn; bot tokens absent; coredump_filter=0",
+  "e2e_capture_instrumentation_restored_sha256": "9586b19ab801b36a3d5d9550f476ebd8f5a0a72cb3317c34f5631406d18fb081"
+}

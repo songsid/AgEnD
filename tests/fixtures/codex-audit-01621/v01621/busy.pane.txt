@@ -1,0 +1,25 @@
+
+  >_ OpenAI Codex (v0.162.1)
+     /audit/run-VERSION/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› hello
+
+
+• ok
+
+  Worked for <1s • 22:57
+
+
+› again
+
+
+• Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 2 warnings · f2 to view

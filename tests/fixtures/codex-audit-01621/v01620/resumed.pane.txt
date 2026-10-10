@@ -1,0 +1,45 @@
+
+› third
+
+
+• ok
+
+  Worked for <1s • 22:57
+
+
+› fourth
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or
+try again at 11:57 PM.
+
+
+› fifth
+
+
+■ unexpected status 401 Unauthorized: Incorrect API key provided, url: http://127.0.0.1:MOCK_PORT/v1/responses
+
+
+› sixth
+
+
+■ We’re currently experiencing high demand, which may cause temporary errors.
+
+
+› seventh
+
+
+■ Selected model is at capacity. Please try a different model.
+
+
+› /compact keep the decisions
+
+
+• ok
+
+  Worked for <1s • 22:58
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                          ⚠ 1 warning · f2 to view
