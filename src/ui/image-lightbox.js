@@ -33,13 +33,21 @@ export function openLightbox(links, clicked) {
   lightboxStore.set({ open: { items, index, opener: clicked, seq: ++seq } });
   return true;
 }
-export function closeLightbox() { if (lightboxStore.get().open) lightboxStore.set({ open: null }); }
+/**
+ * Close it — the one way every close goes: ✕, the dark area, Esc, the dialog's own close (the browser's, a form with
+ * method=dialog), the chat leaving. The store is the truth; unmounting the dialog is the one cleanup (scroll unlocked,
+ * focus back on the thumbnail). `seq`: only that lightbox — a late close of one already replaced closes nothing.
+ */
+export function closeLightbox(seq) {
+  const open = lightboxStore.get().open;
+  if (open && (seq === undefined || open.seq === seq)) lightboxStore.set({ open: null });
+}
 
 /** Rendered by the chat; gone with it (another instance, another panel). */
 export function LightboxHost() {
   const { open } = useStore(lightboxStore);
   useEffect(() => () => closeLightbox(), []);
-  return open ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} onClose=${closeLightbox} />` : null;
+  return open ? html`<${ImageLightbox} key=${open.seq} items=${open.items} index=${open.index} opener=${open.opener} onClose=${() => closeLightbox(open.seq)} />` : null;
 }
 
 function ImageLightbox({ items, index, opener, onClose }) {
@@ -66,6 +74,9 @@ function ImageLightbox({ items, index, opener, onClose }) {
     if (!d) return undefined;
     // Esc: the browser fires "cancel"; closing goes through the store so its state stays the truth.
     const onCancel = (e) => { e.preventDefault(); onClose(); };
+    // The dialog closed by itself — the browser (a close request it did not ask about) or a form with method=dialog:
+    // the same close as every other, so the store and the cleanup follow (#1558 review).
+    const onNativeClose = () => onClose();
     // The dark area (the dialog itself, or the stage around the image) closes it; the image and the controls do not.
     const onClick = (e) => { if (e.target === d || (e.target && e.target.classList && e.target.classList.contains("lb-stage"))) onClose(); };
     const onKey = (e) => {
@@ -73,9 +84,10 @@ function ImageLightbox({ items, index, opener, onClose }) {
       if (e.key === "ArrowRight") { e.preventDefault(); step(1); } else if (e.key === "ArrowLeft") { e.preventDefault(); step(-1); }
     };
     d.addEventListener("cancel", onCancel);
+    d.addEventListener("close", onNativeClose);
     d.addEventListener("click", onClick);
     d.addEventListener("keydown", onKey);
-    return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("click", onClick); d.removeEventListener("keydown", onKey); };
+    return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("close", onNativeClose); d.removeEventListener("click", onClick); d.removeEventListener("keydown", onKey); };
   }, [onClose, many, items.length]);
   const label = item.name ? t("chat.lbLabel", item.name) : t("chat.lbLabelNoName");
   return html`<dialog ref=${ref} class="lb" role="dialog" aria-modal="true" aria-label=${label}>

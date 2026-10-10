@@ -151,3 +151,40 @@ describe("only a chat file URL is shown", () => {
     expect(lb.lightboxStore.get().open.items).toEqual([{ src: `/ui/file/${A}`, name: "x" }]);
   });
 });
+
+describe("#1558 review: the dialog's own close is the same close", () => {
+  const closedAndFocused = (doc: any) => [isOpen(doc), lb.lightboxStore.get().open ? "open" : null, doc.activeElement === thumbs(doc)[0], doc.documentElement.classList.contains("lb-open")];
+  it("the browser (or a form with method=dialog) closes the dialog: the store follows, the scroll unlocks, focus goes back", async () => {
+    const doc = await chat([msg(1, [photo(A, "cat.png")])]);
+    await clickThumb(doc, 0);
+    const d = box(doc);
+    d.open = false; d.removeAttribute("open");             // what the browser does before it fires "close"
+    fire(d, "close", { bubbles: false }); await settle();
+    expect(closedAndFocused(doc)).toEqual([null, null, true, false]);
+  });
+  it("a late close of a lightbox already replaced closes nothing (the newer one stays)", async () => {
+    const doc = await chat([msg(1, [photo(A, "a.png")]), msg(2, [photo(B, "b.png")])]);
+    await clickThumb(doc, 0);
+    const first = lb.lightboxStore.get().open.seq;
+    box(doc).querySelector(".lb-close").click(); await settle();
+    await clickThumb(doc, 1);
+    lb.closeLightbox(first); await settle();
+    expect([isOpen(doc), shown(doc)]).toEqual(["open", `/ui/file/${B}`]);
+  });
+  it("the existing ways still close it once each: ✕, the dark area, Esc, the chat leaving", async () => {
+    const doc = await chat([msg(1, [photo(A, "cat.png")])]);
+    const results: unknown[] = [];
+    for (const how of ["x", "stage", "esc"] as const) {
+      await clickThumb(doc, 0);
+      if (how === "x") box(doc).querySelector(".lb-close").click();
+      else if (how === "stage") fire(box(doc).querySelector(".lb-stage"), "click");
+      else fire(box(doc), "cancel", { bubbles: false });
+      await settle();
+      results.push([how, ...closedAndFocused(doc)]);
+    }
+    await clickThumb(doc, 0);
+    await current!.mount(h(panel.ChatPanel, { route: { instance: "x" }, navKey: "two" }));
+    results.push(["leave", isOpen(doc), lb.lightboxStore.get().open ? "open" : null, doc.documentElement.classList.contains("lb-open")]);
+    expect(results).toEqual([["x", null, null, true, false], ["stage", null, null, true, false], ["esc", null, null, true, false], ["leave", null, null, false]]);
+  });
+});
