@@ -13,7 +13,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { constants as fsConstants, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, join, sep } from "node:path";
 
 export const UPLOAD_LIMITS = {
   /** One file. */
@@ -324,6 +324,48 @@ export class WebFileLedger {
     } finally {
       if (fd !== null) closeSync(fd);
     }
+  }
+
+  /**
+   * #1565: the path to keep with a message's file id, so the file can be served again after a restart — null when
+   * nothing is served under the id, or it is an upload no message has taken (web-pending-…): that is never kept.
+   */
+  storablePath(id: string): string | null {
+    const file = isFileId(id) ? this.served.get(id) : undefined;
+    return file && !basename(file.realPath).startsWith(PENDING_PREFIX) ? file.realPath : null;
+  }
+
+  /** #1565: these ids are no longer shown (their message left the history's window): nothing is served under them. */
+  dropServed(ids: Iterable<string>): void { for (const id of ids) this.served.delete(id); }
+
+  /**
+   * #1565: serve again, under the id it had, a file a message showed before the fleet restarted — only if it still
+   * passes every check: an id of ours in shape; never an upload no message took (web-pending-…); the path itself not a
+   * symlink, and a regular file within MAX_SERVED_BYTES; its real path inside this instance's inbox
+   * (`workspaces/<instance>/inbox`, itself not a link elsewhere). Null when any check fails (the message then shows the
+   * name as unavailable). Fetched by id only, as ever: the stored path is the fleet's own file, never a request's.
+   */
+  restoreServed(entry: { id: unknown; path: unknown; name?: unknown; mime?: unknown; kind?: unknown }, instance: string, inboxDir: string): ServedFile | null {
+    if (typeof entry.id !== "string" || !isFileId(entry.id) || typeof entry.path !== "string" || !entry.path) return null;
+    if (basename(entry.path).startsWith(PENDING_PREFIX)) return null;
+    let real: string;
+    let own: ReturnType<typeof lstatSync>;
+    try {
+      own = lstatSync(entry.path);
+      if (own.isSymbolicLink() || !own.isFile() || own.size > MAX_SERVED_BYTES) return null;
+      const inbox = realpathSync(inboxDir);
+      if (inbox !== join(realpathSync(dirname(inboxDir)), basename(inboxDir))) return null;
+      real = realpathSync(entry.path);
+      if (!real.startsWith(inbox + sep)) return null;
+    } catch {
+      return null;
+    }
+    const kind = entry.kind === "photo" || entry.kind === "document" ? entry.kind : undefined;
+    const file = this.registerServed({ id: entry.id, path: real, instance,
+      ...(typeof entry.name === "string" ? { name: entry.name } : {}), ...(typeof entry.mime === "string" ? { mime: entry.mime } : {}), ...(kind ? { kind } : {}) });
+    // The file checked is the file registered (nothing swapped in between).
+    if (file && (file.realPath !== real || file.dev !== own.dev || file.ino !== own.ino)) { this.served.delete(file.id); return null; }
+    return file;
   }
 
   /** Forget an instance's files (it was deleted). The files themselves are its workspace's to remove. */

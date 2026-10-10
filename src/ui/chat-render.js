@@ -479,6 +479,12 @@
     var cards = !!(opts && opts.htmlCards);
     var out = [], after = [];
     attachments.forEach(function (a) {
+      // #1565: a file from before the fleet restarted that could not be served again — its name, marked unavailable;
+      // no link (it has no id), no card.
+      if (a && a.gone === true && typeof a.name === "string") {
+        out.push('<span class="att-file att-gone"' + (opts && opts.goneTitle ? ' title="' + escapeHtml(opts.goneTitle) + '"' : "") + ">📎 " + escapeHtml(a.name) + ' <span class="att-size">' + escapeHtml(opts && opts.goneLabel ? opts.goneLabel : formatSize(a.size)) + "</span></span>");
+        return;
+      }
       if (!a || typeof a.id !== "string" || !/^[0-9a-f]{32}$/.test(a.id)) return;
       if (cards && isHtmlAttachment(a)) after.push('<div class="html-card" data-att="' + a.id + '"></div>');
       var url = "/ui/file/" + a.id;

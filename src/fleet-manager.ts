@@ -27,7 +27,7 @@ import { createServer, type Server } from "node:http";
 import { Worker } from "node:worker_threads";
 import { ProbeWorkerPool, type ProbeWorker } from "./probe-worker-pool.js";
 import type { BackendProbeInput, BackendProbeResult } from "./backend/cli-env-probe.js";
-import { join, dirname, basename, delimiter, isAbsolute } from "node:path";
+import { join, dirname, basename, delimiter, isAbsolute, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
@@ -169,6 +169,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
+import { WebChatDiskStore } from "./web-chat-store.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
@@ -1132,6 +1133,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private sseClients = new Set<import("node:http").ServerResponse>();
   /** The web chat's recent messages: what `/ui/history` serves and what a reconnecting SSE stream is sent. */
   readonly webChatHistory = new WebChatHistory();
+  /** #1565: the web chat history's files (set at fleet start, once the home and the instances are known). */
+  private webChatStore: WebChatDiskStore | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
   readonly webFiles = new WebFileLedger();
   /**
@@ -5436,6 +5439,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ch of this.classicChannels.getAll()) {
       if (ch.adapterId) this.instanceWorldBinding.set(ch.instanceName, ch.adapterId);
     }
+
+    // #1565: the web chat as it was before this process — the configured instances' only (fleet.yaml and ClassicBot
+    // rooms), before the dashboard serves anything; from now on every change is written back (off the loop).
+    this.restoreWebChat(fleet);
 
     // Poll classicBot.yaml for external changes every 30s
     this.classicReloadTimer = setInterval(() => {
@@ -13658,6 +13665,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * #1565: restore the web chat history of the configured instances from disk and keep writing it back. A file that
+   * is skipped says so in the log; nothing here stops the fleet.
+   */
+  private restoreWebChat(fleet: FleetConfig): void {
+    try {
+      const store = new WebChatDiskStore({ home: getAgendHome(), logger: this.logger, ownerOf: (name) => this.webChatOwner(name) });
+      const names = new Set<string>([...Object.keys(fleet.instances ?? {}), ...(this.classicChannels?.getAll().map(c => c.instanceName) ?? [])]);
+      // A kept message's files are served again under their ids only from the instance's own inbox, by the ledger's
+      // checks (web-upload.ts restoreServed); they leave the ledger with their message.
+      this.webChatHistory.setFiles({
+        storablePath: (id) => this.webFiles.storablePath(id),
+        restore: (entry, instance) => this.webFiles.restoreServed(entry, instance, join(getAgendHome(), "workspaces", instance, "inbox")),
+        drop: (ids) => this.webFiles.dropServed(ids),
+      });
+      let restored = 0;
+      for (const name of names) restored += this.webChatHistory.restore(name, store.load(name));
+      this.webChatStore = store;
+      this.webChatHistory.setStore(store);
+      if (restored) this.logger.info({ restored, instances: names.size }, "Web chat history restored from disk");
+    } catch (err) {
+      this.logger.warn({ err }, "Web chat history could not be restored; it starts empty");
+    }
+  }
+
+  /** #1565: who an instance is, for its web chat file: its working directory, or its ClassicBot room; null if neither. */
+  private webChatOwner(name: string): string | null {
+    const insts = this.fleetConfig?.instances ?? {};
+    if (Object.prototype.hasOwnProperty.call(insts, name)) { const wd = insts[name]!.working_directory; return `dir:${wd ? resolvePath(wd) : ""}`; }
+    const room = this.classicChannels?.getAll().find(c => c.instanceName === name);
+    return room ? `room:${room.channelId}:${room.adapterId ?? ""}` : null;
+  }
+
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
     // #1386: a prompt opened or closed, or an instance's state moved — "Needs you" may have changed.
@@ -15985,6 +16025,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1490 P3: stop() now returns a Promise; await it so the final
     // ledger flush completes before process.exit(0) in doStopAll's caller.
     const cacheStopped = this.cacheService?.stop() ?? Promise.resolve();
+    // #1565: the web chat's last changes reach the disk (bounded: a slow disk does not hold the shutdown).
+    const webChatStopped = this.webChatStore ? Promise.race([this.webChatStore.flush().catch(() => {}), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
@@ -16014,6 +16056,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     await needsStopped;
     await settingsControlStopped;
     await cacheStopped;
+    await webChatStopped;
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();
