@@ -156,7 +156,7 @@
       "label": "啟動",
       "cmd": "agend fleet start"
     },
-    "footer": "打開 Telegram，傳訊息，開始用手機寫 code。"
+    "footer": "打開 Telegram、Discord 或網頁儀表板，傳訊息，開始用手機寫 code。"
   },
   "howitworks": {
     "sectionLabel": "運作原理",

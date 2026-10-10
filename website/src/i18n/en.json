@@ -156,7 +156,7 @@
       "label": "Launch",
       "cmd": "agend fleet start"
     },
-    "footer": "Open Telegram, send a message, start coding from your phone."
+    "footer": "Open Telegram, Discord or the web dashboard, send a message, start coding from your phone."
   },
   "howitworks": {
     "sectionLabel": "HOW IT WORKS",

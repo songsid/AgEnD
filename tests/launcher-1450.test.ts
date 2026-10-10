@@ -132,6 +132,8 @@ describe("postinstall: prove the bundled Node, write the receipt", () => {
     expect(receipt).toMatchObject({ pinnedVersion: process.versions.node, platform: "linux", arch: "x64", libc: "glibc" });
     expect(receipt.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(r.stdout).toContain("a database opened in the main thread and a worker");
+    // #1519 P7: the install's last line is the next step.
+    expect(r.stdout.trim().split("\n").at(-1)).toBe("  Next: run `agend quickstart` to set up AgEnD.");
   });
 
   // #1450 (user, 2026-10-09): the Node running npm is not judged when the bundled Node is there to prove.
@@ -150,6 +152,7 @@ describe("postinstall: prove the bundled Node, write the receipt", () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("did not pass its check");
     expect(existsSync(join(f.pkg, ".agend-runtime.json"))).toBe(false);
+    expect(r.stdout, "a refused install has no next step").not.toContain("Next: run");
   });
 
   it.each([["main-only", "a worker"], ["broken", "the main thread"]] as const)("better-sqlite3 that fails (%s) in %s is refused, no receipt", (sqlite, _where) => {

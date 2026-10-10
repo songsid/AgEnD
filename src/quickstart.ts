@@ -13,6 +13,7 @@ import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
 import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
+import { dashboardLines, dashboardPort } from "./next-steps.js";
 
 /** `fleet restart --reload` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH). */
 const delayedRestart = (): [string, string[]] => {
@@ -252,8 +253,9 @@ interface PlatformResult {
   generalChannelId?: string;
 }
 
-async function runTelegramFlow(rl: import("node:readline/promises").Interface): Promise<PlatformResult> {
-  console.log(bold("Telegram Bot"));
+/** `step`: "Step 3/4" when it is a step of the whole setup (#1519 P7); none when it adds a platform later. */
+async function runTelegramFlow(rl: import("node:readline/promises").Interface, step?: string): Promise<PlatformResult> {
+  console.log(bold(step ? `${step}: Telegram Bot` : "Telegram Bot"));
   console.log(`  1. Open BotFather: ${dim("https://t.me/BotFather")}`);
   console.log(`  2. Send /newbot and pick a name`);
   console.log(`  3. Copy the token`);
@@ -300,8 +302,8 @@ async function runTelegramFlow(rl: import("node:readline/promises").Interface): 
   return { type: "telegram", token, tokenEnvName, botUsername, groupId, userId };
 }
 
-async function runDiscordFlow(rl: import("node:readline/promises").Interface): Promise<PlatformResult> {
-  console.log(bold("Discord Bot"));
+async function runDiscordFlow(rl: import("node:readline/promises").Interface, step?: string): Promise<PlatformResult> {
+  console.log(bold(step ? `${step}: Discord Bot` : "Discord Bot"));
   console.log(`  1. Go to Discord Developer Portal: ${dim("https://discord.com/developers/applications")}`);
   console.log(`  2. New Application → Bot → Reset Token → Copy`);
   console.log(`  3. Enable ${bold("Message Content Intent")} under Bot → Privileged Gateway Intents`);
@@ -546,6 +548,13 @@ export async function runQuickstart(): Promise<void> {
 
   const rl = createInterface({ input: stdin, output: stdout });
 
+  // #1519 P7: every way out of a quickstart that leaves a fleet says where its dashboard is and how to sign in.
+  const printDashboard = () => {
+    const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH));
+    console.log(`\n  ${bold(where)}`);
+    console.log(`  ${dim(signIn)}`);
+  };
+  const printDone = () => { printDashboard(); console.log(`\n${bold("═══ Done ═══")}\n`); };
   try {
     console.log(`\n${bold("═══ AgEnD Quickstart ═══")}\n`);
 
@@ -565,7 +574,7 @@ export async function runQuickstart(): Promise<void> {
 
       if (action === "3" && hasDiscord) {
         await addPersonaBot(rl);
-        console.log(`\n${bold("═══ Done ═══")}\n`);
+        printDone();
         return;
       }
 
@@ -611,7 +620,7 @@ export async function runQuickstart(): Promise<void> {
         }
 
         await maybeUpdateClassicBot(rl);
-        console.log(`\n${bold("═══ Done ═══")}\n`);
+        printDone();
         return;
       }
 
@@ -632,7 +641,7 @@ export async function runQuickstart(): Promise<void> {
         if (available.length === 0) {
           console.log(`  Both platforms already configured.`);
           await maybeUpdateClassicBot(rl);
-          console.log(`\n${bold("═══ Done ═══")}\n`);
+          printDone();
           return;
         }
 
@@ -691,14 +700,14 @@ export async function runQuickstart(): Promise<void> {
           } catch { /* not running, user will start manually */ }
         }
 
-        console.log(`\n${bold("═══ Done ═══")}\n`);
+        printDone();
         return;
       }
 
       if (action !== "4") {
         // Skip (default, option 5). Options 1/2/3 already returned above.
         await maybeUpdateClassicBot(rl);
-        console.log(`\n${bold("═══ Done ═══")}\n`);
+        printDone();
         return;
       }
       // action === "4" → overwrite requires fleet to be stopped
@@ -717,7 +726,7 @@ export async function runQuickstart(): Promise<void> {
 
     // ── Step 1: Backend ──────────────────────────────────
 
-    console.log(bold("Step 1/3: Backend"));
+    console.log(bold("Step 1/4: Backend"));
     const found = detectBackends();
 
     let backend: string;
@@ -754,17 +763,17 @@ export async function runQuickstart(): Promise<void> {
     // Collect platform configs
     const platforms: PlatformResult[] = [];
     if (channelChoice === "telegram" || channelChoice === "both") {
-      platforms.push(await runTelegramFlow(rl));
+      platforms.push(await runTelegramFlow(rl, "Step 3/4"));
     }
     if (channelChoice === "discord" || channelChoice === "both") {
-      platforms.push(await runDiscordFlow(rl));
+      platforms.push(await runDiscordFlow(rl, "Step 3/4"));
     }
 
     const primaryPlatform = platforms[0];
 
     // ── Project roots ────────────────────────────────────
 
-    console.log(bold("Project Roots (optional)"));
+    console.log(bold("Step 4/4: Project Roots (optional)"));
     console.log(`  ${dim("Directories containing your projects. Agents use these to find repos.")}\n`);
 
     const roots = detectProjectRoots();
@@ -902,6 +911,7 @@ export async function runQuickstart(): Promise<void> {
     if (!serviceRunning) {
       console.log(`  Start the fleet: ${bold("agend fleet start")}`);
     }
+    printDashboard();
 
     // Shell completion. bash costs nothing to say yes to (a static file, no
     // rc edit); zsh is asked separately because it appends a line to ~/.zshrc.
