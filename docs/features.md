@@ -150,6 +150,8 @@ An agent can offer choices people click instead of typing (2.2). The same button
   - Buttons need `text` and go on its last message. They cannot be combined with `stickers`; `files` are sent after the text as usual.
   - An invalid `buttons` is the reply's error, and nothing is sent.
 - **A click** reaches the agent as an ordinary message from the person who clicked: `[button] Deploy`, or `[button] Deploy (value: deploy-prod)` when the value differs. It also shows in the web chat.
+  - Discord and Telegram clicks use the same working/cancel bubble as typed messages, including its progress and idle/reply cleanup. Received and processing status reactions appear on the reply carrying the buttons, since a click creates no new platform message. Web choices use the same daemon-driven working/Stop state; their synthetic message ids are never sent to a platform reaction API.
+  - If delivery fails, the platform status changes to failed and the choice reopens for retry. A successful retry replaces the failed status through the same delivery reconciler.
 - **One choice per reply.** The first permitted click answers for everyone. The buttons then show the choice and who made it on every surface: on Discord they are disabled with the choice marked, Telegram shows a single "✓ Deploy — alice" button, and the web chat disables them. A later click is told "Already answered."
 - **Who may click:** whoever may message that instance there.
   - In a fleet topic, the connection's allowed users.
