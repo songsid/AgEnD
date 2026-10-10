@@ -116,9 +116,11 @@ function fixture(opts: { pin?: string | null; runtime?: "ok" | "wrong-version" |
 }
 
 /** Run the postinstall in a child, with the host and running Node injected. */
-function postinstall(f: ReturnType<typeof fixture>, versions = NOW) {
+function postinstall(f: ReturnType<typeof fixture>, versions = NOW, env: Record<string, string> = {}) {
   const driver = `process.exit(require(${JSON.stringify(join(f.launcherDir, "postinstall.cjs"))}).main({ launcherDir: ${JSON.stringify(f.launcherDir)}, host: ${JSON.stringify(HOST)}, versions: ${JSON.stringify(versions)} }) || 0)`;
-  return spawnSync(process.execPath, ["-e", driver], { encoding: "utf8", timeout: 60_000 });
+  // A private data directory unless a test gives one (#1487 reads <AGEND_HOME>/update-in-progress.json).
+  return spawnSync(process.execPath, ["-e", driver], { encoding: "utf8", timeout: 60_000,
+    env: { ...process.env, AGEND_HOME: f.root, AGEND_UPDATE_KEEPS_PREVIOUS: "", ...env } });
 }
 const choose = (f: ReturnType<typeof fixture>, deps: Record<string, unknown> = {}) =>
   select.selectRuntime(f.launcherDir, { env: {}, host: HOST, versions: NOW, ...deps });
@@ -165,6 +167,29 @@ describe("postinstall: prove the bundled Node, write the receipt", () => {
 
   it("a runtime package of the wrong version is refused", () => {
     expect(postinstall(fixture({ runtime: "wrong-version" })).status).toBe(1);
+  });
+
+  // #1487: AgEnD 2.1's updater removed the previous AgEnD before this install; "the previous install stays" is false then.
+  it("a refusal started by AgEnD 2.1's updater says the previous AgEnD is already gone, with the restore commands", () => {
+    const f = fixture({ runtime: "wrong-version" });
+    writeFileSync(join(f.root, "update-in-progress.json"), JSON.stringify({ startedAt: Date.now() - 30_000, pid: 4242 }));
+    const r = postinstall(f);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain("npm is rolling this install back.\n");
+    expect(r.stderr).not.toMatch(/previous install(, if any,)? stays/);
+    expect(r.stderr).toContain("REMOVED the previous AgEnD");
+    expect(r.stderr).toMatch(/npm install -g @songsid\/agend@2\.1\.12\n\s+agend install/);
+  });
+
+  it("a plain npm install says it conditionally; 2.2's own updater (AGEND_UPDATE_KEEPS_PREVIOUS) says the previous one stays", () => {
+    const plain = postinstall(fixture({ runtime: "wrong-version" }));
+    expect(plain.status).toBe(1);
+    expect(plain.stderr).toContain("unless AgEnD 2.1's updater started this");
+    expect(plain.stderr).toContain("If this install was started by AgEnD 2.1's updater");
+    const ours = postinstall(fixture({ runtime: "wrong-version" }), NOW, { AGEND_UPDATE_KEEPS_PREVIOUS: "1" });
+    expect(ours.status).toBe(1);
+    expect(ours.stderr).toContain("the previous install stays.");
+    expect(ours.stderr).not.toContain("2.1's updater");
   });
 
   it("runtime skipped (optional omitted): a qualifying Node proceeds with a warning; an old Node is refused", () => {
