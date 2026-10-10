@@ -3,9 +3,7 @@
 The first, mechanical step of the daily upstream-CLI watch (decision ffb8104e).
 1. `~/.agend/scripts/check-cli-versions.sh` reports a backend CLI whose newest upstream release has not been audited.
 2. This precheck compares that release with the last audited one: the text AgEnD's detectors match on, statically.
-3. Its last line is the verdict:
-   - **MAJOR** goes to a full live audit (dev-claude or Fable).
-   - **NONE** or **MINOR** is marked audited (`check-cli-versions.sh --mark-audited`), with the output kept as the record.
+3. Its last line is the verdict, and the line before it the `BASIS` (see "The daily flow" below for what each leads to).
 
 It never runs a CLI, never starts tmux and never touches the network.
 - Archives are read in memory, member by member; nothing is extracted, and nothing is written.
@@ -45,7 +43,22 @@ The sections above them hold the evidence:
 | `NEW PROMPT-LIKE STRINGS elsewhere` | the same kind of string, away from every detector literal → MINOR |
 | `INCOMPLETE (old/new): …` | a part that could not be read in full → MAJOR |
 
-Just above the verdict, `BASIS: hard=N (…); hinted=M` is for triage. `hard` counts what nothing explains: missing literals, an incomplete scan, no coverage, new prompts near a literal with no hint. `hinted` counts new prompts near a literal that carry a hint. A MAJOR with `hard=0` has only hinted reasons: the auditor reads the hints and the bytes shown, and dismisses them or opens the live audit. The verdict itself does not change.
+The last two lines are fixed in format, for the schedule to parse:
+
+```
+BASIS: hard=<int>; hinted=<int>
+PRECHECK: MAJOR|MINOR|NONE
+```
+
+`hard` counts what nothing explains: missing literals, an incomplete scan, no coverage, new prompts near a literal with no hint (and a run that failed: `hard=1`). `hinted` counts new prompts near a literal that carry a hint. `BASIS-DETAIL:` just above says which. The verdict itself never changes with the hints.
+
+### The daily flow (what the schedule does with them)
+
+| last lines | what happens |
+|---|---|
+| `PRECHECK: MAJOR`, `hard>0` | full ffb8104e live audit, and the user is @-mentioned |
+| `PRECHECK: MAJOR`, `hard=0` | haiku hands the report's printed bytes (the hinted strings and the literals near them) to an auditor for a quick look: a false alarm is marked audited with no @-mention; anything else becomes the full audit |
+| `PRECHECK: MINOR` or `NONE` | marked audited (`check-cli-versions.sh --mark-audited <cli> <version>`), the report kept as the record |
 
 A new prompt-like string may carry a `hint:` for the auditor — `has markdown ** (embedded docs?)`, or `the old release has "…"… (only a neighbouring string changed?)` when it begins like an old one. A hint never changes the verdict: neither can be proven from the bytes, so such a string beside a detector literal is still MAJOR, and the auditor decides.
 | `PROMPT-LIKE STRINGS gone` | for the auditor; not part of the verdict |

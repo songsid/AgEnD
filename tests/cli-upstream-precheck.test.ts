@@ -166,7 +166,8 @@ describe("precheck.py's verdict", () => {
     const r = pair(OLD.replace("Rate limited, retrying soon", "Rate limit hit, retrying"));
     expect(r.verdict).toBe("PRECHECK: MAJOR");
     expect(r.out).toMatch(/REASON: 1 detector literal\(s\) missing: \[error\] "Rate limited, retrying soon"/);
-    expect(r.out).toMatch(/BASIS: hard=[1-9]\d* \(missing 1,/);
+    expect(r.out.trim().split("\n").at(-2)).toMatch(/^BASIS: hard=[1-9]\d*; hinted=0$/);
+    expect(r.out).toContain("BASIS-DETAIL: missing 1,");
   });
   it("only a count changed: MINOR", () => {
     expect(pair(OLD.replace("tail", `esc to interrupt now${pad(4)}tail`)).verdict).toBe("PRECHECK: MINOR");
@@ -214,6 +215,14 @@ describe("precheck.py's verdict", () => {
     try { execFileSync("python3", ["-I", PRECHECK, "fake", join(d, "none"), join(d, "none"), "--manifest", manifestFile(d)], { encoding: "utf8" }); }
     catch (e) { out = String((e as { stdout?: string }).stdout ?? ""); }
     expect(out.trim().split("\n").at(-1)).toBe("PRECHECK: MAJOR");
+    expect(out.trim().split("\n").at(-2)).toBe("BASIS: hard=1; hinted=0");
+  });
+  it("every run's last two lines are BASIS: hard=<int>; hinted=<int> and the verdict (the schedule parses them)", () => {
+    for (const neu of [OLD, OLD.replace("Rate limited, retrying soon", "x"), `${OLD}${T}${pad(4)}Do you want to **share** all credentials?`]) {
+      const lines = pair(neu).out.trim().split("\n");
+      expect(lines.at(-2), neu.slice(-40)).toMatch(/^BASIS: hard=\d+; hinted=\d+$/);
+      expect(lines.at(-1)).toMatch(/^PRECHECK: (MAJOR|MINOR|NONE)$/);
+    }
   });
 });
 
@@ -269,7 +278,7 @@ describe("new prompts are found wherever they sit, in every text form (P1-2)", (
     const f = files(`${OLD}${T}${pad(4)}`, `${OLD}${T}${pad(4)}Do you want to **share** all credentials?`);
     const r = run(f.old, f.neu, f.m);
     expect([r.verdict, /hint: has markdown \*\*/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
-    expect(r.out).toContain("BASIS: hard=0 (missing 0, incomplete 0, coverage 0, unhinted new prompts 0); hinted=1");
+    expect(r.out.trim().split("\n").at(-2)).toBe("BASIS: hard=0; hinted=1");
   });
   it("control: the same emphasized question unchanged is NONE", () => {
     const same = `${OLD}${T}${pad(4)}Do you want to **share** all credentials?`;

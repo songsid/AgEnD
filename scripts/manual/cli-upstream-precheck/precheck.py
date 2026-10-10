@@ -73,6 +73,7 @@ class Incomplete(Exception):
 def fail(msg, code=3):
     print("error: " + msg, file=sys.stderr)
     print("REASON: the precheck could not run: " + msg)
+    print("BASIS: hard=1; hinted=0")
     print("PRECHECK: MAJOR")
     sys.exit(code)
 
@@ -455,10 +456,13 @@ def main(argv):
         print("REASON: " + r)
     # For triage only — the verdict is the next line. "hard": nothing explains it; "hinted": a new prompt near a
     # literal that carries a hint (embedded docs? another neighbour?) the bytes cannot prove either way.
+    # The BASIS line's format is fixed (the daily schedule parses it): "BASIS: hard=<int>; hinted=<int>".
     hinted = sum(1 for _, _, _, h in on_surface if h)
-    print("BASIS: hard=%d (missing %d, incomplete %d, coverage %d, unhinted new prompts %d); hinted=%d" % (
-        len(missing) + len(incomplete) + (1 if len(present) < MIN_COVERAGE else 0) + len(on_surface) - hinted,
-        len(missing), len(incomplete), 1 if len(present) < MIN_COVERAGE else 0, len(on_surface) - hinted, hinted))
+    coverage = 1 if len(present) < MIN_COVERAGE else 0
+    hard = len(missing) + len(incomplete) + coverage + len(on_surface) - hinted
+    print("BASIS-DETAIL: missing %d, incomplete %d, coverage %d, unhinted new prompts %d, hinted new prompts %d" % (
+        len(missing), len(incomplete), coverage, len(on_surface) - hinted, hinted))
+    print("BASIS: hard=%d; hinted=%d" % (hard, hinted))
     print("PRECHECK: " + verdict)
     return 4 if verdict == "MAJOR" and incomplete else 0
 
