@@ -15,6 +15,12 @@ const R = () => globalThis.AgendChatRender;
 const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1";
 /** #1589: how much of a text attachment is shown before "Show all". */
 export const TEXT_PREVIEW_LINES = 200;
+/** #1589: the most elements one formatted text card may build (table cells, highlight spans, Markdown elements), Show all
+ *  included. Lines and the 1 MiB read do not bound it (one 200 KB line can be 100,000 cells): past it the card is plain
+ *  text, one text node. */
+export const TEXT_PREVIEW_NODES = 4000;
+/** A csv/tsv wider than this is shown as text, as Markdown tables are capped at 20 columns. */
+export const TEXT_PREVIEW_COLUMNS = 50;
 const P = () => globalThis.AgendPreview;
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
@@ -153,16 +159,28 @@ export function createThread(list, scroller, opts) {
       const lines = text.split(/\r?\n/);
       const cut = !all && lines.length > TEXT_PREVIEW_LINES;
       const shown = cut ? lines.slice(0, TEXT_PREVIEW_LINES) : lines;
+      const src = shown.join("\n");
+      // Formatting is built only within TEXT_PREVIEW_NODES: the markup is measured as a string first, never as DOM.
+      const plain = () => {
+        const pre = el("pre", "tc-pre"), code = el("code", null, src);
+        pre.append(code); body.append(el("div", "pv-note", tr("chat.tcPlain")), pre);
+      };
       if (type === "md") {
-        const md = el("div", "md"); md.innerHTML = R().renderMarkdown(shown.join("\n")); body.append(md);
+        const html = R().renderMarkdown(src);
+        if (tagCount(html) > TEXT_PREVIEW_NODES) plain();
+        else { const md = el("div", "md"); md.innerHTML = html; body.append(md); }
       } else if (type === "csv" || type === "tsv") {
-        body.append(csvTable(shown.join("\n"), type === "tsv" ? "\t" : ",", el));
+        const table = csvTable(src, type === "tsv" ? "\t" : ",", el);
+        if (table) body.append(table); else plain();
       } else {
-        const pre = el("pre", "tc-pre"), code = el("code");
         const lang = type === "json" ? "json" : type.startsWith("code:") ? type.slice(5) : "";
-        const lit = lang ? R().highlight(shown.join("\n"), lang) : null;
-        if (lit != null) code.innerHTML = lit; else code.textContent = shown.join("\n");
-        pre.append(code); body.append(pre);
+        const lit = lang ? R().highlight(src, lang) : null;
+        if (lit != null && tagCount(lit) > TEXT_PREVIEW_NODES) plain();
+        else {
+          const pre = el("pre", "tc-pre"), code = el("code");
+          if (lit != null) code.innerHTML = lit; else code.textContent = src;
+          pre.append(code); body.append(pre);
+        }
       }
       if (cut) {
         const more = el("button", "btn btn-sm tc-more", trf("chat.tcShowAll", lines.length)); more.type = "button";
@@ -176,6 +194,7 @@ export function createThread(list, scroller, opts) {
       reading = true; note.textContent = tr("chat.pvLoading");
       const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size });
       reading = false;
+      if (!ph.isConnected) return;                       // the card left the page while it was read: nothing to draw
       if (!r.ok) { note.textContent = r.reason === "over" ? tr("chat.tcOver") : attReason(r.reason); return; }
       note.textContent = "";
       text = r.code;
@@ -183,6 +202,12 @@ export function createThread(list, scroller, opts) {
       draw();
       body.hidden = false; show.textContent = tr("chat.tcHide");
     };
+  }
+  /** How many elements an HTML string would build: its opening tags (escaped text has none). */
+  function tagCount(html) {
+    let n = 0;
+    for (let i = html.indexOf("<"); i !== -1; i = html.indexOf("<", i + 1)) { const c = html.charCodeAt(i + 1); if ((c | 32) >= 97 && (c | 32) <= 122) n++; }
+    return n;
   }
   /** A csv/tsv as a table: quoted fields ("a, b", "say ""hi""") kept whole; every cell is textContent. */
   function csvTable(src, sep, el) {
@@ -199,6 +224,9 @@ export function createThread(list, scroller, opts) {
       else cell += c;
     }
     if (cell !== "" || row.length) { row.push(cell.replace(/\r$/, "")); rows.push(row); }
+    // Within the card's budget, or not a table at all (the caller shows it as text).
+    let cells = 0;
+    for (const r of rows) { cells += r.length; if (r.length > TEXT_PREVIEW_COLUMNS || cells + rows.length > TEXT_PREVIEW_NODES) return null; }
     const table = el("table", "tc-table");
     rows.forEach((r, i) => {
       const tr_ = el("tr");

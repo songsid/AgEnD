@@ -223,6 +223,47 @@ describe("media and text show inline in the chat (#1589)", () => {
     await click(missing.querySelector(".tc-show"));
     expect(missing.querySelector(".pv-note").textContent).toMatch(/no longer available/);
   });
+  it("formatting has a budget the lines and 1 MiB do not give: one wide csv line or a dense code line becomes plain text", async () => {
+    const wide = Array(100000).fill("x").join(","), dense = "0 ".repeat(10000), ticks = "`a` ".repeat(5000);
+    const cols = `${Array(60).fill("h").join(",")}\n${Array(60).fill("v").join(",")}`;   // 120 cells, but 60 columns
+    serve({ [ID(4)]: wide, [ID(6)]: dense, [ID(3)]: ticks, [ID(5)]: cols });
+    const doc = await chat([att(4, "wide.csv"), att(6, "values.js"), att(3, "ticks.md"), att(5, "cols.csv")]);
+    const cards = [...doc.querySelectorAll(".text-card")] as any[];
+    for (const c of cards) await click(c.querySelector(".tc-show"));
+    for (const c of cards) {
+      expect(c.querySelectorAll("*").length).toBeLessThan(20);   // a handful of elements, not 100,000 cells or spans
+      expect(c.querySelector(".tc-body .pv-note").textContent).toBe("Too large to format here: shown as plain text.");
+    }
+    expect(cards.map(c => c.querySelector(".tc-body code").textContent.length)).toEqual([wide.length, dense.length, ticks.length, cols.length]);
+  });
+  it("Show all does not lift the budget: a long csv is a table at 200 lines and text when all of it would pass the budget", async () => {
+    serve({ [ID(4)]: Array.from({ length: 450 }, (_, i) => Array(10).fill(i).join(",")).join("\n") });
+    const doc = await chat([att(4, "long.csv")]);
+    const card = doc.querySelector(".text-card");
+    await click(card.querySelector(".tc-show"));
+    expect(card.querySelectorAll("tr").length).toBe(200);
+    await click(card.querySelector(".tc-more"));
+    expect([card.querySelector("table"), card.querySelector(".tc-body code").textContent.split("\n").length]).toEqual([null, 450]);
+  });
+  it("short ordinary files are still formatted (the control)", async () => {
+    serve({ [ID(4)]: "a,b\n1,2", [ID(6)]: "const x = 1;", [ID(3)]: "- one\n- `two`" });
+    const doc = await chat([att(4, "data.csv"), att(6, "app.js"), att(3, "notes.md")]);
+    for (const b of doc.querySelectorAll(".text-card .tc-show")) await click(b);
+    expect([doc.querySelectorAll(".text-card td").length, doc.querySelectorAll(".text-card .tc-pre span").length > 0, doc.querySelectorAll(".text-card li").length]).toEqual([2, true, 2]);
+    expect(doc.querySelector(".text-card .tc-body .pv-note")).toBe(null);
+  });
+  it("a read that ends after the card left the page draws nothing", async () => {
+    let release!: () => void;
+    globalThis.fetch = vi.fn(() => new Promise(r => { release = () => r({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("const OLD = 1;").buffer }); })) as any;
+    const doc = await chat([att(6, "old.js")]);
+    const card = doc.querySelector(".text-card");
+    card.querySelector(".tc-show").onclick();
+    await settle();
+    await current!.unmount(); current!.restore(); current = null;
+    expect(card.isConnected).toBe(false);
+    release(); await settle(); await settle(); await settle();
+    expect(card.querySelector("code") === null).toBe(true);
+  });
   it("the public link shows downloads only: no media, no text card", async () => {
     const doc = await chat([att(1, "clip.mp4"), att(3, "notes.md")], true);
     expect([doc.querySelector("video"), doc.querySelector(".text-card"), doc.querySelectorAll("a.att-file").length]).toEqual([null, null, 2]);
