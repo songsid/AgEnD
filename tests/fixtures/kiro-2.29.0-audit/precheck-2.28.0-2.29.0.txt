@@ -1,0 +1,21 @@
+precheck kiro-cli (manifest scripts/manual/cli-upstream-precheck/sources.json, 67 literals)
+  old: <2.28.0>/kirocli-x86_64-linux.tar.gz — 8 file(s), 292.4 MB
+  new: <2.29.0>/kirocli-x86_64-linux.tar.gz — 8 file(s), 293.6 MB
+
+literals in the old artifact: 37 of 67 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 1
+  [onboarding] 8 -> 9  "kiro-cli login"   (src/login-flows.ts:214 LOGIN_FLOWS.kiro-cli.command)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 0
+
+NEW PROMPT-LIKE STRINGS elsewhere: 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 0
+
+REASON: 1 literal count(s) changed
+PRECHECK: MINOR
