@@ -178,8 +178,19 @@ export const COMMANDS: readonly CommandSpec[] = [
 
 const BY_NAME = new Map(COMMANDS.map(spec => [spec.name, spec]));
 
+/**
+ * #1569: other names for a command. An alias is the SAME row — its permission gate, scopes, disabled state, refusals and
+ * subcommands are the target's, never a copy that could drift. Every lookup by name resolves through this.
+ */
+export const COMMAND_ALIASES: Readonly<Record<string, string>> = Object.freeze({ web: "dashboard" });
+
+/** The command-table name a typed or slash name stands for (itself unless it is an alias). */
+export function canonicalCommand(name: string): string {
+  return Object.prototype.hasOwnProperty.call(COMMAND_ALIASES, name) ? COMMAND_ALIASES[name]! : name;
+}
+
 export function commandSpec(name: string): CommandSpec | undefined {
-  return BY_NAME.get(name);
+  return BY_NAME.get(canonicalCommand(name));
 }
 
 /** The rule for one scope on one platform: the Discord column for Discord, the Telegram column for Telegram. */
@@ -199,7 +210,7 @@ export function isLocked(spec: CommandSpec): boolean {
 
 /** The prefix for a slash command's menu description: generated, never typed. Unknown names get none. */
 export function slashLock(name: string): string {
-  const spec = BY_NAME.get(name);
+  const spec = BY_NAME.get(canonicalCommand(name));
   return spec && isLocked(spec) ? "🔒 " : "";
 }
 
@@ -216,7 +227,7 @@ export const TELEGRAM_MENUS = {
   /** The fleet's forum group (its `chat` and `chat_administrators` scopes): the General topic and the instance topics. */
   fleet: {
     scopes: ["general", "fleet"],
-    names: ["status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
+    names: ["status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
       "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility"],
   },
   /**
@@ -246,7 +257,7 @@ export function isLockedOnTelegram(spec: CommandSpec, scopes: readonly CommandSc
 export function telegramMenu(menu: TelegramMenu): Array<{ name: string; lock: string; argHint?: string }> {
   const { scopes, names } = TELEGRAM_MENUS[menu];
   return names.map(name => {
-    const spec = BY_NAME.get(name);
+    const spec = BY_NAME.get(canonicalCommand(name));
     if (!spec) throw new Error(`Telegram ${menu} menu lists /${name}, which the command table does not know`);
     const argHint = TELEGRAM_ARG_HINTS[name];
     return { name, lock: isLockedOnTelegram(spec, scopes) ? "🔒 " : "", ...(argHint ? { argHint } : {}) };

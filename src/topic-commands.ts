@@ -489,7 +489,8 @@ const GENERAL_FORMS: TypedForms = [
   ["login", withArgs("login")],
   ["install-cli", text => LEGACY_INSTALL_RE.test(text)],
   ["update", bare("update")],
-  ["dashboard", withArgs("dashboard")],
+  // #1569: /web is the same command — recognized here as /dashboard, so the gate, refusals and handler are one path.
+  ["dashboard", text => withArgs("dashboard")(text) || withArgs("web")(text)],
   ["visibility", text => VISIBILITY_RE.test(text)],
 ];
 const INSTANCE_FORMS: TypedForms = [
@@ -695,7 +696,7 @@ export class TopicCommands {
     if (!this.ctx.hasFleetAdmins(msg.adapterId)) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
     if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
 
-    const arg = (msg.text ?? "").trim().replace(/^\/dashboard(?:@\S+)?/i, "").trim().toLowerCase();
+    const arg = (msg.text ?? "").trim().replace(/^\/(?:dashboard|web)(?:@\S+)?/i, "").trim().toLowerCase();
     if (arg === "revoke") {
       const result = this.ctx.revokeWebSessions?.() ?? { count: 0, durable: true };
       // Not durable: they are signed out now, but a restart may bring them back — say so, never "done".

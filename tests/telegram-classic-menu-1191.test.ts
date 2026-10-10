@@ -51,7 +51,7 @@ const tg = (over: Partial<ChannelConfig> = {}): ChannelConfig =>
 
 // What each menu says, written out by hand from the table's Telegram column.
 const FLEET_MENU = [
-  ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["ctx", ""], ["compact", "🔒 "], ["steer", ""], ["btw", ""],
+  ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["web", "🔒 "], ["ctx", ""], ["compact", "🔒 "], ["steer", ""], ["btw", ""],
   ["clear", "🔒 "], ["model", "🔒 "], ["effort", "🔒 "], ["pause", "🔒 "], ["wake", "🔒 "], ["restart", "🔒 "],
   ["collab", "🔒 "], ["update", "🔒 "], ["profile", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
 ];

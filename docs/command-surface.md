@@ -115,6 +115,10 @@ Buttons have their own handler gates; menu visibility and a slash command's gate
 
 Source: `src/fleet-manager.ts:10443`, `:11592`, `:14413`, `:14719`, `:11126`. Stale/unknown callback IDs do not grant authority.
 
+## Aliases
+
+`/web` is `/dashboard` under a shorter name (#1569). It is the same command-table row, so its cells are the `/dashboard` cells above, in both tables: the same gate, the same disabled reply, the same refusals and `/web revoke`. Discord registers it as its own slash command, and the Telegram fleet menu lists it right after `/dashboard`.
+
 ## Maintaining the matrix
 
 `tests/command-surface-docs-1148.test.ts` checks both languages' command cells and menu membership against the command table, with explicit Classic real-handler exceptions. `tests/command-gates-by-platform.test.ts` exercises the real handlers. Update both documents when a rule, menu or route changes. Do not infer a Telegram handler from a Discord cell.

@@ -8,7 +8,7 @@ The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lis
 |---------|-------------|----------------|------------|
 | `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
-| `/dashboard` | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/dashboard revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
+| `/dashboard` (or `/web`) | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/dashboard revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
 | `/ctx` | Show agent context usage | — | All |
 | `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | All in fleet topics |
 | `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI ([details](commands.md#steer-btw-and-clear-backend-support)) | All |
