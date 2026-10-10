@@ -26,6 +26,7 @@ import { PreviewPanel, openPanel, panelStore, shownKey } from "./preview-panel.j
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot, startTour } from "./chat-tour.js";
 import { FirstRunCard } from "./first-run.js";
+import { LightboxHost, openLightbox } from "./image-lightbox.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -213,6 +214,7 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
       <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
         keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${() => setPreviewOptIn(true)} />
     </div>
+    <${LightboxHost} />
     <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
     ${dialog === "details" ? html`<${DetailsDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
@@ -231,6 +233,7 @@ function Thread({ name, th }) {
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
       replyButtonBusy: (id) => store.state.rbBusy.has(id),
       panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o) },   // #1481
+      openImage: openLightbox,                                               // an image, full size, in the page
     });
     th.current = thread;
     thread.render(store.state.msgs[name] || [], { restore: store.state.scrollMemo[name] ?? null });
