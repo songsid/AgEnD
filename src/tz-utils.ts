@@ -45,3 +45,25 @@ export function localWallToUtcDb(wall: string, tz = resolveTz()): string {
 export function localTodayDate(tz = resolveTz()): string {
   return new Date().toLocaleString("sv-SE", { timeZone: tz, hour12: false }).slice(0, 10);
 }
+
+/**
+ * #1586: an instant as a person reads it, in the fleet's zone — `YYYY-MM-DD HH:MM (UTC+8)`, `(UTC+5:30)`, `(UTC-4)`,
+ * `(UTC)` at offset 0. The offset is always shown, so the time cannot be read in another zone. A `tz` the runtime does
+ * not know falls back to UTC instead of throwing: a message must still go out.
+ */
+export function formatFleetTime(ms: number, tz = resolveTz()): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return String(ms);
+  let wall: string;
+  try {
+    wall = d.toLocaleString("sv-SE", { timeZone: tz, hour12: false });
+  } catch {
+    wall = d.toLocaleString("sv-SE", { timeZone: "UTC", hour12: false });
+  }
+  // The offset at THIS instant (DST-safe): the wall clock read as if it were UTC, minus the instant itself.
+  const offsetMin = Math.round((new Date(wall.replace(" ", "T") + "Z").getTime() - Math.floor(d.getTime() / 1000) * 1000) / 60_000);
+  const sign = offsetMin < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMin);
+  const offset = abs === 0 ? "UTC" : `UTC${sign}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, "0")}` : ""}`;
+  return `${wall.slice(0, 16)} (${offset})`;
+}

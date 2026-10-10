@@ -243,14 +243,13 @@ describe("the stream's modes (#1408 §3)", () => {
     s.close();
   });
 
-  it("local: a silent or broken stream falls back to /ui/poll every 5 s, and stops when it speaks again", async () => {
+  it("local: a silent stream falls back to /ui/poll every 5 s, and stops when it speaks again", async () => {
     vi.useFakeTimers();
     const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
     const f = fakeEnv();
     const s = createStream({ mode: "full", env: f.env });
     s.start();
-    f.sources[0].onerror(); f.sources[0].onerror();
-    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(f.polls).toHaveLength(1);
     expect(s.connection()).toBe("polling");
     await vi.advanceTimersByTimeAsync(10_000);
@@ -259,6 +258,29 @@ describe("the stream's modes (#1408 §3)", () => {
     await vi.advanceTimersByTimeAsync(20_000);
     expect(f.polls).toHaveLength(3);
     expect(f.sources).toHaveLength(1);
+    s.close();
+  });
+
+  it("local (#1580): a broken stream with the fleet reachable polls every 5 s, and the stream is retried on the backoff — one at a time", async () => {
+    vi.useFakeTimers();
+    const { createStream } = await import("/assets/app-stream.js") as { createStream(o: unknown): any };
+    const f = fakeEnv();
+    const s = createStream({ mode: "full", env: { ...f.env, random: () => 1 } });
+    s.start();
+    const fail = f.sources[0].onerror;
+    fail(); fail();                                          // the second is the closed one's (a late event): ignored
+    expect(f.sources[0].closed, "closed at once: never the browser's own retry").toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect([f.polls.length, s.connection()], "one probe, answered: the fleet is there").toEqual([1, "polling"]);
+    await vi.advanceTimersByTimeAsync(1_000);                // the first reconnect step (1 s)
+    expect(f.sources).toHaveLength(2);
+    expect(f.sources.filter((x: any) => !x.closed)).toHaveLength(1);
+    f.sources[1].listeners.status({ data: JSON.stringify({ instances: [] }) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.connection()).toBe("live");
+    const polls = f.polls.length;                            // its catch-up read, at most
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(f.polls.length, "live again: no more polling").toBe(polls);
     s.close();
   });
 
@@ -469,8 +491,7 @@ describe("catching up (#1425 review r3)", () => {
     const h = heldEnv();
     const s = createStream({ mode: "full", env: h.env });
     s.start();
-    h.sources[0].onerror();
-    await vi.advanceTimersByTimeAsync(5_000);                  // fallback read A, held
+    await vi.advanceTimersByTimeAsync(15_000);                 // a silent stream: fallback read A, held
     expect(h.reads).toHaveLength(1);
     for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
     h.reads[0]!.open(snap());
@@ -489,8 +510,7 @@ describe("catching up (#1425 review r3)", () => {
     const seen: string[] = [];
     for (const n of ["prompts", "prompt", "prompt_resolved"]) s.on(n, (d: any) => seen.push(`${n}:${d.nonce ?? (Array.isArray(d) ? d.map((x: any) => x.nonce).join("+") : "")}`));
     s.start();
-    h.sources[0].onerror();
-    await vi.advanceTimersByTimeAsync(5_000);                 // the stream is down: fallback poll A starts, and hangs
+    await vi.advanceTimersByTimeAsync(15_000);                // the stream says nothing: fallback poll A starts, and hangs
     expect(h.reads).toHaveLength(1);
     const done = s.catchUp();                                 // the chat attaches now (Retry)
     expect(h.reads).toHaveLength(1);

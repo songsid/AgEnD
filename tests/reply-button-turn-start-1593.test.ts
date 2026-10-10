@@ -84,6 +84,7 @@ function fixture(type: "discord" | "telegram" | "web", classic = false) {
       getChannelIdByInstance: (name: string) => name === "w" ? room : undefined,
       getAdapterIdByInstance: () => type,
       getAll: () => [{ instanceName: "w", channelId: room, adapterId: type }],
+      getContextLines: () => 5,
       isCollab: () => false,
     };
   }
@@ -156,6 +157,7 @@ describe("a reply choice is a user turn", () => {
       expect(h.store.state.exec.w).toBe("working");
       expect(h.store.state.workingSince.w).toBe(123);
       expect(h.fm.webChatHistory.list("w").at(-1)).toMatchObject({ role: "user", sender: "alice" });
+      expect(h.fm.webChatHistory.list("w")).toHaveLength(1);
       expect(h.buttons.viewOf(h.prepared.id).state).toBe("chosen");
       expect(ack).toHaveBeenCalledWith(t("reply_buttons.sent", "B：直接上 VM 改"));
     });
@@ -179,6 +181,20 @@ describe("a reply choice is a user turn", () => {
     expect(h.payloads).toHaveLength(1);
     expect(h.alerts).toHaveLength(1);
     expect(h.fm.lastInboundMsg.get("w").messageId).toBe("typed");
+  });
+  it.each(["discord", "telegram"] as const)("%s typed Classic carry: one user row and one cancel bubble after delivery", async type => {
+    const h = fixture(type, true);
+    vi.spyOn(h.fm, "getRecentChatLog").mockReturnValue("");
+    const msg = { source: type, adapterId: type, chatId: h.where.chatId, messageId: "typed-classic", userId: "owner", username: "alice", timestamp: new Date() };
+    await h.fm.forwardToClassicInstance("w", "Do B", msg); await flush();
+    expect(h.payloads).toHaveLength(1); expect(h.alerts).toHaveLength(1);
+    expect(h.fm.webChatHistory.list("w")).toMatchObject([{ role: "user", text: "Do B" }]);
+    expect(h.events.filter(e => e.event === "message")).toHaveLength(1);
+    const rejected = fixture(type, true);
+    vi.spyOn(rejected.fm, "getRecentChatLog").mockReturnValue("");
+    vi.spyOn(rejected.fm, "deliverToInstance").mockRejectedValue(new Error("inert unavailable"));
+    await rejected.fm.forwardToClassicInstance("w", "not delivered", msg); await flush();
+    expect(rejected.alerts).toEqual([]); expect(rejected.fm.webChatHistory.list("w")).toEqual([]);
   });
   it("the choice carries and consumes the same pending reaction context as typed input", async () => {
     const h = fixture("discord");
