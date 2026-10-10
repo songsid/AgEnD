@@ -162,7 +162,7 @@ export function ViewPanel({ route, navKey }) {
   })), [lease]);
 
   // Aa and ◔ are every page's (HeaderTools); Help is View's own.
-  const actions = html`<${HeaderTools} view=${true} />
+  const actions = html`<${HeaderTools} view=${true} navKey=${navKey} />
     <button type="button" class="icon-btn" onClick=${() => setDialog("help")} aria-label=${tn("helpButton")} title=${tn("helpButton")}><${Icon} name="info" /></button>`;
 
   let body;

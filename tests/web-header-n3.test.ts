@@ -13,7 +13,10 @@ import { installDom, MiniEvent } from "./helpers/mini-dom.js";
 const mounted: AppPage[] = [];
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
 const INSTANCES = [live("web-dev")];
+/** /api/ai-usage answers a test holds (each read takes the next); otherwise answered at once. */
+let usageHeld: Array<Promise<unknown>> = [];
 async function fakeFetch(url: string) {
+  if (url.startsWith("/api/ai-usage") && usageHeld.length) { const b = await usageHeld.shift(); return { ok: true, status: 200, json: async () => b, text: async () => JSON.stringify(b) }; }
   const body: unknown = url.startsWith("/ui/instance/") ? { name: "web-dev", status: "running", kind: "agent", working_directory: "/w", tags: [], binding: { channel_id: null, implicit: false, topic_id: null, general_topic: false }, statusline: {}, recent_activity: [] }
     : url === "/api/profiles" ? [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }]
     : url.startsWith("/api/ai-usage") ? { providers: [], fetchedAt: 1 } : url.startsWith("/ui/") ? [] : {};
@@ -39,7 +42,11 @@ beforeAll(async () => {
   chat.boot({ stream: { on() {} }, boot: null, deps: { fetch: () => new Promise(() => {}) } });
   base.restore();
 });
-afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } });
+afterEach(async () => {
+  for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
+  usageHeld = [];
+  (await import("/assets/app-i18n.js")).setLang("en");
+});
 
 const PANELS = () => new Map([
   ["chat", { load: async () => chat.ChatPanel }], ["details", { load: async () => details.DetailsPanel }],
@@ -148,5 +155,44 @@ describe("no style attribute (#1300): one attribute on the root, one custom prop
     expect(css).toMatch(/:root\[data-text-size="s"\] \{ --text-scale: 0\.9; \}/);
     expect(css).toMatch(/:root\[data-text-size="l"\] \{ --text-scale: 1\.15; \}/);
     expect(css).toMatch(/\.thread, \.p-details \.panel-body, \.p-fleet \.panel-body \{[^}]*--fs-md: calc\(15px \* var\(--text-scale\)\)/);
+  });
+});
+
+describe("#1563 review: the usage dialog belongs to the navigation that opened it", () => {
+  const gate = () => { let open!: (v: unknown) => void; const p = new Promise((r) => { open = r; }); return { p, open }; };
+  const OLD = { providers: [{ id: "p", name: "OLD NAVIGATION", status: "ok", metrics: [] }], fetchedAt: 1 };
+  const shown = (pg: AppPage) => [pg.root.querySelector("dialog .u-provider strong")?.textContent ?? null, pg.root.querySelector("dialog") ? "dialog" : null];
+  async function openUsageThen(path: string, then: (pg: AppPage) => Promise<void>) {
+    const pg = await app(path);
+    const held = gate();
+    usageHeld = [held.p];
+    pg.root.querySelector(".panel-head .hd-usage").click(); await settle(4);
+    const before = shown(pg);
+    await then(pg);
+    const afterNav = shown(pg);
+    held.open(OLD); await settle(6);
+    return [before, afterNav, shown(pg)];
+  }
+  it.each([
+    ["View A → View B", "/view/web-dev", async () => { await go("/view/other"); }],
+    ["the same View route again", "/view/web-dev", async () => { await go("/view/web-dev"); }],
+    ["another Fleet tab", "/ui/fleet/tasks", async () => { await go("/ui/fleet/org"); }],
+    ["a language switch", "/ui/fleet/tasks", async () => { (await import("/assets/app-i18n.js")).setLang("zh-TW"); await settle(6); }],
+  ])("%s: the dialog goes, and the old navigation's late answer is never shown", async (_n, path, then) => {
+    const r = await openUsageThen(path, then);
+    expect(r).toEqual([[null, "dialog"], [null, null], [null, null]]);
+  });
+  it("control: the same navigation — the answer lands in its dialog", async () => {
+    const r = await openUsageThen("/view/web-dev", async () => { await settle(2); });
+    expect(r).toEqual([[null, "dialog"], [null, "dialog"], ["OLD NAVIGATION", "dialog"]]);
+  });
+});
+
+describe("#1563 review: View's Help says the new cycle", () => {
+  it.each([["en", "Text size cycles Fit → S → M → L."], ["zh-TW", "「字級」會在剛好填滿 → 小 → 中 → 大之間切換。"]])("%s", async (lang, want) => {
+    const pg = await app("/view/web-dev");
+    (await import("/assets/app-i18n.js")).setLang(lang); await settle(6);
+    pg.root.querySelector(".p-view .panel-actions > button.icon-btn").click(); await settle(4);
+    expect(pg.root.querySelectorAll("dialog .help-list li").map((li: any) => li.textContent).find((x: string) => x.includes("→")) ?? null).toContain(want);
   });
 });

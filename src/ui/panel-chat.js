@@ -144,7 +144,7 @@ export function ChatPanel({ route, navKey }) {
   }
   if (!app.ready) return html`<div class="panel p-chat"><${PanelHeader} title=${name} /><div class="panel-body"><${Skeleton} lines=${5} /></div></div>`;
   if (!inst) return html`<${NotFound} name=${name} />`;
-  return html`<${ChatView} key=${name} name=${name} inst=${inst} lease=${lease} exec=${app.exec[name]}
+  return html`<${ChatView} key=${name} name=${name} inst=${inst} lease=${lease} navKey=${navKey} exec=${app.exec[name]}
     awaiting=${Object.prototype.hasOwnProperty.call(app.awaiting, name) ? app.awaiting[name] : null} />`;
 }
 
@@ -156,7 +156,7 @@ function NotFound({ name }) {
       action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} /></div></div>`;
 }
 
-function ChatView({ name, inst, lease, exec, awaiting }) {
+function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const [dialog, setDialog] = useState(null);       // "delete" | null
   const [wrap, setWrap] = useState(codeWrap);
   const view = useRef(null), split = useRef(null), thread = useRef(null);
@@ -209,7 +209,7 @@ function ChatView({ name, inst, lease, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", inst.model)} aria-label=${t("chat.chipModel", inst.model)} onClick=${() => pick("model")}>${inst.model}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${HeaderTools} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="chat-split" ref=${split}>
       <div class="chat-main">
         <${Thread} name=${name} th=${thread} />

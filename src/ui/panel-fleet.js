@@ -105,7 +105,7 @@ export function FleetPanel({ route, navKey }) {
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, config: Config }[tab] || Tasks;
   return html`<div class="panel p-fleet">
-    <${PanelHeader} title=${t("fleet.title")}><${HeaderTools} /></${PanelHeader}>
+    <${PanelHeader} title=${t("fleet.title")}><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     <nav class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
     <div class="panel-body"><div class=${`col${tab === "org" || tab === "cache" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>

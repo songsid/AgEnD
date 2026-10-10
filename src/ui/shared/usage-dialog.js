@@ -65,8 +65,9 @@ export function UsageMetric({ m }) {
   const sub = [note, expiryText(m.expiresAt)].filter(Boolean).join(" · ");
   return html`<div class="u-metric"><div class="u-row"><span class="u-label">${label}</span><span class="u-val">${val}</span></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}</div>`;
 }
-export function UsageDialog({ onClose }) {
-  const lease = useLease("usage-dialog");
+/** `owner`: the navigation that opened it — its reads and the minute's timer live and end with it. */
+export function UsageDialog({ onClose, owner = "" }) {
+  const lease = useLease(`usage-dialog:${owner}`);
   const [data, setData] = useState(undefined);       // undefined: loading; null: failed
   const [order, setOrder] = useState(() => { try { const a = JSON.parse(stored(USAGE_ORDER_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch { return []; } });
   const reads = useMemo(() => readStream(lease), [lease]);

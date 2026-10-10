@@ -73,16 +73,21 @@ export function usageOffered() {
   try { return document.body && document.body.dataset ? document.body.dataset.usagePanel !== "0" : true; } catch { return true; }
 }
 
-/** ◔: the usage dialog (usage-dialog.js). */
-export function UsageButton() {
-  const [open, setOpen] = useState(false);
+/**
+ * ◔: the usage dialog (usage-dialog.js). It belongs to the navigation that opened it (`navKey`, #1408 §4; #1563
+ * review): another route, the same route again, another tab of the panel or a language switch closes it, and its
+ * reads and timer end with it — the dialog's lease is that navigation's.
+ */
+export function UsageButton({ navKey }) {
+  const [openFor, setOpenFor] = useState(null);
   if (!usageOffered()) return null;
-  return html`<button type="button" class="btn btn-ghost btn-sm hd-usage" onClick=${() => setOpen(true)} aria-label=${t("app.usage")} title=${t("app.usage")}>
+  const open = openFor !== null && openFor === navKey;
+  return html`<button type="button" class="btn btn-ghost btn-sm hd-usage" onClick=${() => setOpenFor(navKey)} aria-label=${t("app.usage")} title=${t("app.usage")}>
       <${Icon} name="chart" size=${16} /><span class="hide-narrow" aria-hidden="true">${t("app.usage")}</span></button>
-    ${open ? html`<${UsageDialog} onClose=${() => setOpen(false)} />` : null}`;
+    ${open ? html`<${UsageDialog} key=${navKey} owner=${navKey} onClose=${() => setOpenFor(null)} />` : null}`;
 }
 
-/** The shared controls, in the one order every page uses. */
-export function HeaderTools({ view = false }) {
-  return html`<${TextSizeButton} view=${view} /><${UsageButton} />`;
+/** The shared controls, in the one order every page uses. `navKey`: the page's navigation (the usage dialog's owner). */
+export function HeaderTools({ view = false, navKey }) {
+  return html`<${TextSizeButton} view=${view} /><${UsageButton} navKey=${navKey} />`;
 }

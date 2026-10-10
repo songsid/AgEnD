@@ -33,11 +33,11 @@ export function DetailsPanel({ route, navKey }) {
       <div class="panel-body center"><${Empty} icon="alert" title=${t("chat.notFound", name)} hint=${t("chat.notFoundHint")}
         action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} /></div></div>`;
   }
-  return html`<${DetailsView} key=${name} name=${name} inst=${inst} exec=${app.exec[name]}
+  return html`<${DetailsView} key=${name} name=${name} inst=${inst} navKey=${navKey} exec=${app.exec[name]}
     awaiting=${Object.prototype.hasOwnProperty.call(app.awaiting, name) ? app.awaiting[name] : null} />`;
 }
 
-function DetailsView({ name, inst, exec, awaiting }) {
+function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const lease = useLease(`details:${name}`);
   const [d, setD] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -140,7 +140,7 @@ function DetailsView({ name, inst, exec, awaiting }) {
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;
   }
   return html`<div class="panel p-details">
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}${content}</div></div>
   </div>`;
 }
