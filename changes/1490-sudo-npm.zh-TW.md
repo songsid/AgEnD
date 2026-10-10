@@ -1,4 +1,4 @@
 ---
 section: Fixed
 ---
-- **`retireSystemCopy`：使用安裝時相同的 npm，而非重新查詢 PATH。** npm 二進位路徑在 `runUpdateInstall` 中解析一次（nvm 安裝時取自 `nvmBin`，系統安裝時透過 `command -v npm`），存入安裝結果並傳給 `retireSystemCopy`。這確保安裝與清理的一致性——nvm 安裝使用 nvm 的 npm，而非父行程 PATH 中的 npm。函式現在回傳 `{ ok: boolean }`，讓呼叫端能感知清理失敗。缺少路徑或非絕對路徑為明確失敗，不再靜默略過。(#1490 P3)
+- **`retireSystemCopy`：nvm 安裝時所有 npm 操作改用 `join(nvmBin, "npm")`。** npm 二進位路徑固定為 `join(plan.nvmBin, "npm")`——與 `inInstallEnv` 透過修改 PATH 後實際呼叫的 npm 相同。此路徑用於 prefix 鎖定、rollback root、install、verification 和 retirement，確保 `outcome.npmPath` 與實際執行的二進位一致。`retireSystemCopy` 接受明確路徑並回傳 `{ ok: boolean }`；呼叫端在失敗時設定 `process.exitCode = 1`。非 nvm 安裝不需要 retirement，也不進行任何查詢。(#1490 P3)
