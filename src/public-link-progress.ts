@@ -27,7 +27,8 @@ export interface PublicLinkProgress {
   /** `checking` until the install answered; `download` shows ①–③, `installed` hides them. */
   readonly install: "checking" | "installed" | "download";
   readonly version?: string;
-  readonly download?: { readonly received: number; readonly total: number | null };
+  /** `fallback`: the bytes come from GitHub because the pkg.cloudflare.com package was too slow or failed (#1554). */
+  readonly download?: { readonly received: number; readonly total: number | null; readonly fallback?: "slow" | "failed" };
   readonly failed?: { readonly step: PublicLinkStep; readonly reason: PublicLinkFailure };
 }
 
@@ -68,7 +69,9 @@ export class PublicLinkProgressTracker {
     if (download) this.begin("download", { install: "download", version });
     else this.set({ ...this.state, install: "installed", version });
   }
-  downloaded(received: number, total: number | null): void { this.set({ ...this.state, download: { received, total } }); }
+  downloaded(received: number, total: number | null, fallback?: "slow" | "failed"): void {
+    this.set({ ...this.state, download: { received, total, ...(fallback ? { fallback } : {}) } });
+  }
   /** Every running step ends now. */
   complete(): void {
     const at = this.now();
@@ -111,6 +114,8 @@ function stepLabel(step: PublicLinkStep, p: PublicLinkProgress): string {
     case "download": {
       const d = p.download;
       if (!d) return t("dashboard.progress.download");
+      const amount = d.total ? `${megabytes(d.received)} / ${megabytes(d.total)} MB` : `${megabytes(d.received)} MB`;
+      if (d.fallback) return t("dashboard.progress.download_fallback", amount, t(`dashboard.progress.fallback_${d.fallback}`));
       return d.total ? t("dashboard.progress.download_of", megabytes(d.received), megabytes(d.total)) : t("dashboard.progress.download_bytes", megabytes(d.received));
     }
     default:

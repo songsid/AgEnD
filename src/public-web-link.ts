@@ -172,7 +172,7 @@ export class PublicWebLink {
       const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
         onProgress: p => {
           if (p.phase === "checked") e.progress.installChecked(p.download, p.version);
-          else if (p.phase === "downloading") e.progress.downloaded(p.received, p.total);
+          else if (p.phase === "downloading") e.progress.downloaded(p.received, p.total, p.fallback?.reason);
           else e.progress.begin("verify");
         } });
       if (!this.current(e)) throw new Error("closed");
