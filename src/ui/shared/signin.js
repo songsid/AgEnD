@@ -120,13 +120,13 @@
     const button = $("resend");
     const msg = $("msg");
     msg.textContent = "";
-    msg.classList.remove("ok");
+    msg.classList?.remove("ok");
     button.disabled = true;
     try {
       const r = await fetch("/auth/request-code", {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}",
       });
-      if (r.status === 202) { msg.classList.add("ok"); msg.textContent = t("resent"); $("code").focus(); }
+      if (r.status === 202) { msg.classList?.add("ok"); msg.textContent = t("resent"); $("code").focus(); }
       else if (r.status === 429) msg.textContent = t("resend_wait");
       else { msg.textContent = t("resend_refused"); if (r.status === 401) button.hidden = true; }
     } catch {
@@ -152,7 +152,7 @@
     const button = $("go");
     const msg = $("msg");
     msg.textContent = "";
-    msg.classList.remove("ok");
+    msg.classList?.remove("ok");
     button.disabled = true;
     button.textContent = t("working");
     try {

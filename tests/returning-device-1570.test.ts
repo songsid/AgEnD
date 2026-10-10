@@ -311,6 +311,7 @@ describe("④ the DM says who asked and how to stop it", () => {
     expect(text).toContain("Chrome on macOS");
     expect(text).toContain("local network");
     expect(text).toContain("/dashboard revoke");
+    expect(text).toContain("any earlier code no longer works");      // one code at a time: the owner's /dashboard code is gone
   });
 });
 
