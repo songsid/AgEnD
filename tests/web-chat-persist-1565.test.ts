@@ -145,12 +145,14 @@ describe("restored as it is safe to show it", () => {
     let p = "";
     const rows: unknown[] = [];
     const { ms, ledger } = await restoredFrom(rows, (h) => { p = path(h); rows.push(row(1, { attachments: [att(id, p)] })); });
-    return { a: ms[0]!.attachments![0]!, read: ledger.read(id) };
+    const r = ledger.read(id);
+    // What the id serves, small enough to compare (an oversized file must never be served at all).
+    return { a: ms[0]!.attachments![0]!, read: r ? (r.bytes.length <= 64 ? r.bytes.toString() : `${r.bytes.length} bytes`) : null };
   }
   const gone = (name = "f.txt") => ({ gone: true, kind: "document", name, size: 5, mime: "text/plain; charset=utf-8" });
   it("a file in the instance's inbox is served again under its id", async () => {
     const { a, read } = await oneFile((h) => put(join(inboxOf(h, "alpha"), "web-1-x.txt")));
-    expect([a, read?.bytes.toString()]).toEqual([{ id: ID("1"), kind: "document", name: "f.txt", size: 5, mime: "text/plain; charset=utf-8" }, "hello"]);
+    expect([a, read]).toEqual([{ id: ID("1"), kind: "document", name: "f.txt", size: 5, mime: "text/plain; charset=utf-8" }, "hello"]);
   });
   it("check: the real path is inside workspaces/<instance>/inbox — a file elsewhere (another instance's inbox too) is unavailable", async () => {
     const out = await oneFile((h) => put(join(h, "workspaces", "alpha", "notes.txt")));
