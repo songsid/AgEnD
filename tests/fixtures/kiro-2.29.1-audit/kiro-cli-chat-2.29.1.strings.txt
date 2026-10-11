@@ -1,0 +1,33 @@
+## 'Kiro rate limit reached:': count 1
+ your conversation
+ to analyze your context usage
+
+Your login session has expired. Please log in again using:
+
+ ⚠️  Kiro rate limit reached:
+
+Unable to verify subscription status: Authentication Error
+The context window has overflowed, summarizing the history.
+
+## 'Request quota exceeded. Please wait a moment and try again.': count 1
+t always be Somectrlc receivedAn error occurred processing the current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right nowThe limits reset on The conversation history has overflowedAuthentication fai
+
+## 'Monthly request limit reached': count 1
+Unable to verify subscription status: Authentication Error
+The context window has overflowed, summarizing the history...Monthly request limit reached/compact --help to compact your conversation. See  for compaction options
+    q login
+
+/clear to reset your conversation
+
+## 'The limits reset on ': count 1
+lease log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right nowThe limits reset on The conversation history has overflowedAuthentication failed. Your session may have expired. Run ` login` to re-authenti
+
+## 'Kiro is having trouble responding right now': count 1
+the current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right nowThe limits reset on The conversation history has overflowedAuthentication failed. Your session may have expired. Run ` l
+
+## 'Please try a shorter message.': count 1
+eset your conversation state
+Your prompt is too long even after truncation.
+Your conversation is too large to continue.
+Please try a shorter message.
+event crates/chat-cli/src/cli/chat/mod.rs:3169event crates/chat-cli/src/cli/chat/mod.rs:3167Shutting down MCP servers..

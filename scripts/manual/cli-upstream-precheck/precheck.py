@@ -20,6 +20,11 @@ MAJOR  a literal that the old artifact has is missing from the new one; or a new
        read in full (unreadable, too large, a broken archive or gzip); or the run failed. Never NONE by omission.
 MINOR  counts changed, a literal appeared, or new prompt-like strings away from every known detector literal.
 NONE   nothing of the above.
+
+A native binary keeps its strings side by side with no separator, so two strings may be read as one. A "new" string
+that is one half of such an old pair (cut at a string boundary), whose other half is still somewhere in the new
+artifact, carries a hint that only the string order may have changed (#1636). It is still a new prompt: the bytes
+cannot show the two halves are still shown together.
 """
 import bisect
 import io
@@ -327,6 +332,41 @@ def neighbour_candidates(cand, old_prompts):
     return out
 
 
+def split_parts(cand, gone):
+    """(old string, the rest of it) when `cand` is the head or the tail of a prompt-like string the old release had and
+    the new one does not, cut at a string boundary. A native binary's string pool holds strings with no separator, so
+    two strings that sat side by side in the old release may have been read as one, and a new order then makes one of
+    them look new (#1636: kiro-cli 2.29.1). A HINT for the auditor, never an exemption: a boundary is a heuristic, and
+    the rest being somewhere in the new artifact does not show it is still shown with this string — the same bytes
+    fit a prompt that lost its warning sentence."""
+    out = []
+    for o in gone:
+        if len(o) <= len(cand):
+            continue
+        if o.startswith(cand) and len(cand) in boundaries(o):
+            rest = o[len(cand):].strip()
+        elif o.endswith(cand) and len(o) - len(cand) in boundaries(o):
+            rest = o[:len(o) - len(cand)].strip()
+        else:
+            continue
+        if len(rest) >= 6:
+            out.append((o, rest))
+    return out
+
+
+def rests_present(path, rests, limit):
+    """Which of `rests` occur in the artifact, in any of a literal's byte forms (a second read, only when needed)."""
+    want = {r: forms(r) for r in rests}
+    found = set()
+    for _, data in blobs(path, limit, [], []):
+        for r, fs in want.items():
+            if r not in found and any(f in data for f in fs):
+                found.add(r)
+        if len(found) == len(want):
+            break
+    return found
+
+
 def load_manifest(path, backend):
     try:
         with open(path, encoding="utf-8") as fh:
@@ -409,9 +449,18 @@ def main(argv):
     # Every prompt-like string the old release does not have is new; beside a known detector literal, it is MAJOR. What
     # it looks like (embedded docs, an old prompt with another neighbour) is said as a hint for the auditor, not used.
     fresh = sorted(c for c in p_new if c not in p_old)
+    gone_prompts = sorted(c for c in p_old if c not in p_new)
+    # #1636: a string that was one half of an old glued pair, whose other half is still somewhere in the new artifact,
+    # may be the old text in a new string order — said as a hint for the auditor; it stays a new prompt.
+    splits = {c: split_parts(c, gone_prompts) for c in fresh}
+    wanted = sorted({rest for parts in splits.values() for _, rest in parts})
+    have = rests_present(new, wanted, limit) if wanted else set()
     on_surface, elsewhere = [], []
     for c in fresh:
         hints = []
+        glued = [(o, rest) for o, rest in splits[c] if rest in have]
+        if glued:
+            hints.append("the old release had it glued to %s, which the new one still has elsewhere (only the string order changed?)" % json.dumps(glued[0][1][:40], ensure_ascii=False))
         if MARKDOWN_RE.search(c):
             hints.append("has markdown ** (embedded docs?)")
         split = neighbour_candidates(c, p_old)
@@ -429,7 +478,6 @@ def main(argv):
         print("  " + json.dumps(c[:140], ensure_ascii=False) + (("   hint: " + "; ".join(hints)) if hints else ""))
     if len(elsewhere) > 40:
         print("  … %d more" % (len(elsewhere) - 40))
-    gone_prompts = sorted(c for c in p_old if c not in p_new)
     print("\nPROMPT-LIKE STRINGS gone in the new artifact: %d" % len(gone_prompts))
     for c in gone_prompts[:20]:
         print("  " + json.dumps(c[:140], ensure_ascii=False))

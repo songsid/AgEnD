@@ -792,6 +792,37 @@ function publishKiroCompatibility(binaryPath: string, compatibility: KiroCliComp
   lastKiroCompatibility = { binaryPath, compatibility, at: new Date().toISOString() };
 }
 
+/**
+ * #1636: regex source for `text` as it may sit in a pane read without joining wrapped rows (the error monitor's
+ * capture has no `-J`, and `window-size latest` lets an attached terminal make the pane narrow): tmux wraps at the
+ * column, mid-word, and drops a row's trailing spaces — so a row break may fall between any two characters, and a
+ * space may be lost at a row's end. Nothing else is loosened: a gap between words is a space or a row break, never
+ * nothing (Prism, #1637 R3), and the words and their order are exact.
+ */
+export function wrapTolerant(text: string): string {
+  const chars = [...text];
+  let out = "";
+  chars.forEach((ch, i) => {
+    if (ch === " ") { out += "(?:[ \\t]*\\n[ \\t]*|[ \\t]+)"; return; }          // a space, or one row break (spaces either side)
+    if (i > 0 && chars[i - 1] !== " ") out += "\\n?";                          // a break inside a word
+    out += ch.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+  });
+  return out;
+}
+const KIRO_MESSAGE_LEAD = "^[ \\t]*(?:\u25CF[ \\t]*)?(?:\u26A0\uFE0F?[ \\t]*)?";   // a row start, then the TUI's ● and the ⚠️, if any
+/** #1636: kiro's throttling lines (upstream Amazon Q Developer CLI, Throttling branch); see getErrorPatterns. */
+export const KIRO_RATE_LIMIT_SCREEN = new RegExp(
+  KIRO_MESSAGE_LEAD + wrapTolerant("Kiro rate limit reached:") + "[ \\t]*\\r?\\n[ \\t]*"
+  + wrapTolerant("Request quota exceeded. Please wait a moment and try again."),
+  "m",
+);
+/** #1636: kiro's monthly cap (MonthlyLimitReached branch); see getErrorPatterns. */
+export const KIRO_REQUEST_LIMIT_SCREEN = new RegExp(
+  KIRO_MESSAGE_LEAD + "(?:" + ["Hourly", "Daily", "Weekly", "Monthly"].map(wrapTolerant).join("|") + ")"
+  + wrapTolerant(" request limit reached") + "(?:[ \\t]*$|" + wrapTolerant(" - The limits reset on") + "\\b)",
+  "m",
+);
+
 /** Startup budget for a `--resume` launch (60% first output, 40% ready). */
 export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
 
@@ -1465,6 +1496,35 @@ export class KiroBackend implements CliBackend {
         // resolveErrorMessage formats the LAST match in the pane, and kiro prints
         // the stdout sentence after the transport line, so the name is usually not
         // in the match that gets formatted.
+      },
+      // #1636: throttling as the chat prints it. kiro's chat path (upstream Amazon Q Developer CLI,
+      // crates/chat-cli/src/cli/chat/mod.rs, Throttling branch) prints
+      //    ⚠️  Kiro rate limit reached:
+      //       Request quota exceeded. Please wait a moment and try again.
+      // with `display_err_message = false` — no `having trouble responding` header and no exception name — so
+      // nothing below ever matched it. Both lines are required, the first at a line start (after the TUI's `●`
+      // bullet or the warning sign, if any): an agent quoting the message in a sentence (this fleet discusses
+      // AgEnD's own errors) does not match. Both lines are matched as a narrow pane may wrap them (wrapTolerant;
+      // Prism, #1637 R2).
+      {
+        pattern: KIRO_RATE_LIMIT_SCREEN,
+        type: "rate_limit",
+        action: "notify",
+        message: "Kiro rate limit reached — the service asked to wait; retry shortly",
+      },
+      // #1636: the monthly cap (MonthlyLimitReached branch: it prints this and returns, again with no header). The
+      // phrase is its whole line — the free tier's form, followed by a paragraph that ends with the reset date — or
+      // is followed on the same line by ` - The limits reset on MM/01.` (a subscriber's form). Not a later line: the
+      // free tier's reset date sits five lines below and more once the pane wraps, and the error monitor reads the
+      // pane without joining wrapped rows, so a narrow pane (window-size latest) can split that sentence anywhere
+      // (Prism, #1637 R1); the phrase and the same-line reset are matched as a narrow pane may wrap them
+      // (wrapTolerant, R2). A mention inside a sentence, a list item or quotes does not match. kiro has only a
+      // monthly cap today; every period is accepted so a new one is not silently missed.
+      {
+        pattern: KIRO_REQUEST_LIMIT_SCREEN,
+        type: "rate_limit",
+        action: "notify",
+        message: "Kiro request limit reached — it resets on the date kiro shows",
       },
       // Real throttling, matched on the exceptions kiro actually raises (all four
       // are present in the binary) rather than on the shared header.

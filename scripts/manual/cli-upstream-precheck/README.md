@@ -60,6 +60,8 @@ PRECHECK: MAJOR|MINOR|NONE
 | `PRECHECK: MAJOR`, `hard=0` | haiku hands the report's printed bytes (the hinted strings and the literals near them) to an auditor for a quick look: a false alarm is marked audited with no @-mention; anything else becomes the full audit |
 | `PRECHECK: MINOR` or `NONE` | marked audited (`check-cli-versions.sh --mark-audited <cli> <version>`), the report kept as the record |
 
+**A new string order is only a hint (#1636).** A native binary keeps its strings side by side with no separator, so two neighbours may be read as one string (kiro-cli 2.29.0: `rate limit reached:Please try a shorter message.`). When a later release only stores them in another order, one half looks new and the glued pair looks gone, though no byte of either changed. A new string that is the head or the tail of such a gone old string, cut at a string boundary, whose other half is still somewhere in the new artifact, carries the hint `the old release had it glued to "…", which the new one still has elsewhere (only the string order changed?)`. It is still a new prompt — MAJOR beside a detector literal, counted as `hinted`: the same bytes fit a prompt that lost its warning sentence, or one that moved next to a detector, so only the auditor can tell.
+
 A new prompt-like string may carry a `hint:` for the auditor — `has markdown ** (embedded docs?)`, or `the old release has "…"… (only a neighbouring string changed?)` when it begins like an old one. A hint never changes the verdict: neither can be proven from the bytes, so such a string beside a detector literal is still MAJOR, and the auditor decides.
 | `PROMPT-LIKE STRINGS gone` | for the auditor; not part of the verdict |
 

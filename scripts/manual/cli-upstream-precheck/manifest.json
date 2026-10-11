@@ -2333,11 +2333,51 @@
      "symbol": "readActiveKiroAgent"
     },
     {
+     "text": "Kiro rate limit reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 814,
+     "symbol": "KIRO_RATE_LIMIT_SCREEN"
+    },
+    {
+     "text": "Please wait a moment and try again",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 815,
+     "symbol": "KIRO_RATE_LIMIT_SCREEN"
+    },
+    {
+     "text": "Request quota exceeded",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 815,
+     "symbol": "KIRO_RATE_LIMIT_SCREEN"
+    },
+    {
+     "text": "The limits reset on",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 821,
+     "symbol": "KIRO_REQUEST_LIMIT_SCREEN"
+    },
+    {
+     "text": "request limit reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 821,
+     "symbol": "KIRO_REQUEST_LIMIT_SCREEN"
+    },
+    {
      "text": "/agent swap ",
      "kind": "template",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 1260,
+     "line": 1290,
      "symbol": "KiroBackend.agentSwitch.command"
     },
     {
@@ -2345,7 +2385,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/kiro.ts",
-     "line": 1286,
+     "line": 1316,
      "symbol": "KiroBackend.instructionsSource"
     },
     {
@@ -2353,7 +2393,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 1299,
+     "line": 1329,
      "symbol": "KiroBackend.getReadyPattern"
     },
     {
@@ -2361,7 +2401,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 1299,
+     "line": 1329,
      "symbol": "KiroBackend.getReadyPattern"
     },
     {
@@ -2369,7 +2409,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 1344,
+     "line": 1374,
      "symbol": "KiroBackend.getPaneActivity.announcements"
     },
     {
@@ -2377,7 +2417,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/kiro.ts",
-     "line": 1349,
+     "line": 1379,
      "symbol": "KiroBackend.getPaneActivity"
     },
     {
@@ -2385,7 +2425,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1357,
+     "line": 1387,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2393,7 +2433,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1357,
+     "line": 1387,
      "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
@@ -2401,7 +2441,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1357,
+     "line": 1387,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2409,7 +2449,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1358,
+     "line": 1388,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2417,7 +2457,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1400,
+     "line": 1430,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2425,7 +2465,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1400,
+     "line": 1430,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2433,7 +2473,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1400,
+     "line": 1430,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2441,7 +2481,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1401,
+     "line": 1431,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2449,7 +2489,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1401,
+     "line": 1431,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2457,7 +2497,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1402,
+     "line": 1432,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2465,7 +2505,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1402,
+     "line": 1432,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2473,7 +2513,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1406,
+     "line": 1436,
      "symbol": "KiroBackend.getErrorPatterns.type"
     },
     {
@@ -2481,7 +2521,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1427,
+     "line": 1457,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2489,7 +2529,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1427,
+     "line": 1457,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2497,7 +2537,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1457,
+     "line": 1487,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2505,7 +2545,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1457,
+     "line": 1487,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2513,31 +2553,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1457,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "RequestThrottledException",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/kiro.ts",
-     "line": 1472,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "SlowDownException",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/kiro.ts",
-     "line": 1472,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "TooManyRequestsException",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/kiro.ts",
-     "line": 1472,
+     "line": 1487,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2545,15 +2561,39 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1473,
+     "line": 1510,
      "symbol": "KiroBackend.getErrorPatterns.type"
+    },
+    {
+     "text": "RequestThrottledException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1531,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "SlowDownException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1531,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "TooManyRequestsException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1531,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
      "text": "having trouble responding",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1483,
+     "line": 1542,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2561,7 +2601,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 1547,
+     "line": 1606,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
@@ -2569,7 +2609,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 1547,
+     "line": 1606,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
