@@ -68,7 +68,6 @@ function assertLinks(h: ReturnType<typeof exchange>, media?: string) {
   const csp = String(h.headers["content-security-policy"]).replace(/'nonce-[^']+'/g, "'nonce-fixture'");
   expect(csp).toBe(BASE_CSP.replace("script-src 'self'", "script-src 'self' 'nonce-fixture'")
     .replace("style-src 'self'", "style-src 'self' 'nonce-fixture'")
-    .replace("img-src 'self' data: blob:", "img-src 'self' data: blob: https://cdn.discordapp.com/emojis/")
     + (media ? `; media-src ${media}` : ""));
 }
 

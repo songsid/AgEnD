@@ -60,7 +60,7 @@ import type { ProviderSecretStatus } from "./provider-secret-registry.js";
 import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
-  builtinStatusEmojis, customEmojiValue, emojiImageUrl, previewStatusEmojis,
+  builtinStatusEmojis, customEmojiValue, emojiProxyUrl, previewStatusEmojis,
   type GuildEmoji, type GuildEmojiGroup,
 } from "./status-emojis.js";
 
@@ -348,6 +348,7 @@ export function handleSettingsRequest(
         platform,
         platformConfig: "channel_config" in body ? body.channel_config : named?.options?.status_emojis,
         instanceConfig: body.instance_config,
+        imageUrl: emojiProxyUrl,          // #1630: the page shows it from the dashboard's own route, never Discord's CDN
       }));
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -360,7 +361,7 @@ export function handleSettingsRequest(
       if (!result.ok) return json(res, 409, { error: result.error });
       const pickable = (e: GuildEmoji) => {
         const value = customEmojiValue(e);
-        return { ...e, value, image_url: emojiImageUrl(value) };
+        return { ...e, value, image_url: emojiProxyUrl(value) };     // #1630: from the dashboard's own route
       };
       json(res, 200, {
         fetched_at: result.fetched_at,

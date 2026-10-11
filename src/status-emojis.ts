@@ -220,7 +220,16 @@ export function customEmojiValue(e: { name: string; id: string; animated?: boole
   return `<${e.animated ? "a" : ""}:${e.name}:${e.id}>`;
 }
 
-/** Discord's public CDN renders a known custom emoji id without any token. */
+/**
+ * #1630: the same picture from the dashboard's own route (/ui/img/emoji/<id>, cached on the host) — what a web page shows,
+ * so the panels' CSP needs no Discord source. Only an emoji of the fleet's servers is served there.
+ */
+export function emojiProxyUrl(raw: string): string | null {
+  const e = normalizeEmoji(raw);
+  return e?.kind === "custom" ? `/ui/img/emoji/${e.id}` : null;
+}
+
+/** Discord's public CDN renders a known custom emoji id without any token (what an agent may fetch; never a web page). */
 export function emojiImageUrl(raw: string): string | null {
   const e = normalizeEmoji(raw);
   if (e?.kind !== "custom") return null;
@@ -237,7 +246,7 @@ export interface StatusEmojiPreviewEntry {
   applied: string;
   /** `:name:` for custom emoji, the emoji otherwise. */
   display: string;
-  /** CDN image for a custom emoji; null for unicode. */
+  /** The picture of a custom emoji (the CDN, or the dashboard's route for a web page); null for unicode. */
   image_url: string | null;
 }
 
@@ -249,7 +258,8 @@ export interface StatusEmojiPreview {
   avoid: string[];
 }
 
-export function previewStatusEmojis(input: Omit<ResolveStatusEmojisInput, "onInvalid">): StatusEmojiPreview {
+export function previewStatusEmojis(input: Omit<ResolveStatusEmojisInput, "onInvalid"> & { imageUrl?: (raw: string) => string | null }): StatusEmojiPreview {
+  const imageUrl = input.imageUrl ?? emojiImageUrl;
   const problems: StatusEmojiPreview["problems"] = [];
   const resolved = resolveStatusEmojis({ ...input, onInvalid: (source, key, value, problem) => problems.push({ source, key, value, problem }) });
   const usable = (cfg: unknown, key: StatusEmojiKey): boolean => {
@@ -264,7 +274,7 @@ export function previewStatusEmojis(input: Omit<ResolveStatusEmojisInput, "onInv
       source: usable(input.instanceConfig, key) ? "instance" : usable(input.platformConfig, key) ? "platform" : "builtin",
       applied: key === "progress_prefix" ? textForm(input.platform, value) : reactionForm(input.platform, value),
       display: displayForm(value),
-      image_url: emojiImageUrl(value),
+      image_url: imageUrl(value),
     };
   });
   return { platform: input.platform, entries, problems, avoid: statusAvoidList(resolved) };
