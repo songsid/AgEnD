@@ -23,7 +23,7 @@ import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from ".
 import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
-  formatCrossInstanceInboundMessage,
+  formatCrossInstanceInboundMessage, type AgentMode,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
 } from "./cross-instance-envelope.js";
 import {
@@ -195,8 +195,11 @@ function rejectOversizedCrossInstanceEnvelope(
   message: string,
   meta: Record<string, string>,
   respond: Respond,
+  /** #1650: the footer differs by the receiver's mode — its own, or the longer of the two when targets are not known yet. */
+  mode: AgentMode | "either" = "mcp",
 ): boolean {
-  const actual = Buffer.byteLength(formatCrossInstanceInboundMessage(message, meta), "utf8");
+  const size = (m: AgentMode) => Buffer.byteLength(formatCrossInstanceInboundMessage(message, meta, m), "utf8");
+  const actual = mode === "either" ? Math.max(size("mcp"), size("cli")) : size(mode);
   if (actual <= MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES) return false;
   respond(null, t(
     "cross_instance.envelope_too_large",
@@ -445,7 +448,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // (keeps from_instance as the machine name so the reply-back target stays valid).
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
   if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
-  if (rejectOversizedCrossInstanceEnvelope(message, ipcMeta, respond)) return;
+  if (rejectOversizedCrossInstanceEnvelope(message, ipcMeta, respond, ctx.fleetConfig?.instances[targetName]?.agent_mode === "cli" ? "cli" : "mcp")) return;
 
   // Fire-and-queue: hand the message to the fleet and respond immediately.
   // deliverToInstance owns waking a paused target, the idle gate and retries;
@@ -1504,6 +1507,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     message,
     makeBroadcastMeta("bcast-9999999999999-zzzzzz", "bcast-9999999999999"),
     respond,
+    "either",
   )) return;
 
   // Resolve target list: team, explicit targets, tag filter, or all running

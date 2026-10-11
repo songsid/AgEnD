@@ -42,6 +42,7 @@ import type { FleetInstructionsParams } from "./instructions.js";
 import {
   formatCrossInstanceInboundMessage,
   renderCrossInstanceHandoffMetadata,
+  type AgentMode,
 } from "./cross-instance-envelope.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import { agendMessageInInput, bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
@@ -6238,13 +6239,16 @@ export class Daemon extends EventEmitter {
    * here — a steered message must read EXACTLY like a queued one to the
    * agent, or the two drift apart in what the agent is told about replying.
    */
+  /** #1650: how this instance talks to the fleet — MCP tools, or agend-agent commands (agent_mode: cli). */
+  private agentMode(): AgentMode { return this.config.agent_mode === "cli" ? "cli" : "mcp"; }
+
   private formatInboundMessage(content: string, meta: Record<string, string>): string {
     const user = meta.user || "unknown";
     const fromInstance = meta.from_instance;
 
     let formatted: string;
     if (fromInstance) {
-      formatted = formatCrossInstanceInboundMessage(content, meta);
+      formatted = formatCrossInstanceInboundMessage(content, meta, this.agentMode());
     } else {
       const via = meta.source ? ` via ${meta.source}` : "";
       const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
@@ -6256,7 +6260,10 @@ export class Daemon extends EventEmitter {
         formatted = `[Recent reactions: ${meta.pending_reactions}]\n${formatted}`;
       }
       formatted += renderHandoffMetadata(meta);
-      formatted += "\n(Reply using the reply tool — do NOT respond with direct text)";
+      // #1650: a CLI-mode agent has no reply tool — it answers with the agend-agent command.
+      formatted += this.agentMode() === "cli"
+        ? '\n(Reply with agend-agent reply "…" — do NOT respond with direct text)'
+        : "\n(Reply using the reply tool — do NOT respond with direct text)";
     }
     if (meta.reply_to_text) {
       formatted += `\n(reply_to: "${meta.reply_to_text}")`;
