@@ -16,7 +16,7 @@ const PNG = (n = 1) => ({ bytes: Buffer.alloc(16, n), ext: "png" as const });
 
 function cache() {
   const dir = join(mkdtempSync(join(tmpdir(), "agend-1630-")), "cache", "avatars"); dirs.push(join(dir, "..", ".."));
-  const clock = { wall: Date.UTC(2026, 9, 11), mono: 1_000 };
+  const clock = { wall: Date.now(), mono: 1_000 };              // the wall clock starts where file mtimes are written
   const errors: string[] = [];
   const c = new WebImageCache({ dir, now: () => clock.wall, mono: () => clock.mono, onError: (key) => errors.push(key) });
   let calls = 0;
@@ -62,9 +62,12 @@ describe("the host cache", () => {
     expect(w.calls(), "fresh: not fetched again").toBe(1);
     w.age(1000);
     const got = await w.c.get("k", load);
-    expect(got!.bytes[0], "the stale copy, at once").toBe(1);
-    await w.c.refresh("k", load);
-    expect([w.calls(), w.c.read("k")!.bytes[0]]).toEqual([2, 2]);
+    expect([got!.bytes[0], w.calls()], "the stale copy at once, and a refresh started behind it").toEqual([1, 2]);
+    for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+    expect([w.calls(), w.c.read("k")!.bytes[0]], "the refreshed copy replaced it").toEqual([2, 2]);
+    w.age(WEB_IMAGE_MAX_AGE_MS);
+    w.c.peek("k", load);
+    expect(w.calls(), "peek refreshes a stale file too").toBe(3);
   });
   it("a failed fetch keeps the copy it had, and the key is quiet for an hour (monotonic), then tried again", async () => {
     const w = cache();

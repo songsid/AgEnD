@@ -152,6 +152,14 @@ describe("the image routes", () => {
       .toEqual([200, "image/png", true, "nosniff", "private, max-age=86400"]);
     for (const k of ["discord", "telegram-2", "nope", "__proto__", "..%2F..%2Fetc"]) expect((await get(f.fm, `/ui/img/bot/${k}`)).status, k).toBe(404);
   });
+  it("an own bot that stops being one (a second instance joins its connection) is no longer served, cached or not", async () => {
+    const f = fleet();
+    f.frame(); await flush();
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(200);
+    f.fm.fleetConfig.instances.duo = { working_directory: f.dir, channel_id: "discord-2" };
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(404);
+    expect(f.frame().solo!.avatar).toEqual({ kind: "initial", text: "S" });
+  });
   it("the route never fetches: before the frame asked, there is nothing to serve", async () => {
     const f = fleet();
     expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(404);
@@ -163,6 +171,8 @@ describe("the image routes", () => {
     const ok = await get(f.fm, "/ui/img/avatar/a");
     expect([ok.status, ok.type, ok.body.equals(Buffer.alloc(5, 8))]).toEqual([200, "image/jpeg", true]);
     for (const k of ["b", "ghost", "constructor", "__proto__"]) expect((await get(f.fm, `/ui/img/avatar/${k}`)).status, k).toBe(404);
+    uploadProfile(f.dir, "gone", "gone.png", Buffer.alloc(5, 1));      // a profile left behind by a removed instance
+    expect((await get(f.fm, "/ui/img/avatar/gone")).status).toBe(404);
   });
   it("a server emoji of the fleet's Discord bots: fetched once from the CDN, then from the host cache; any other id: 404", async () => {
     const f = fleet();
