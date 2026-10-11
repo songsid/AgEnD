@@ -151,3 +151,12 @@
 @media (prefers-reduced-motion: reduce) {
   :root { --t-fast: 0ms; --t-med: 0ms; }
 }
+
+/* #1611: on a touch screen or the phone layout, no text field is under 16px — iOS Safari zooms the page in when one under
+   16px gets the focus, and never zooms back. One rule for every page that loads this file (the app, the sign-in page):
+   the small type sizes are 16px ON the controls themselves, so every control sized from them (the filter, search,
+   settings fields, selects, the composer) computes to 16px, and a larger one (the sign-in code, 22px) stays as it is.
+   Pinch zoom is left alone (no maximum-scale / user-scalable in the viewport); the desktop look does not change. */
+@media (pointer: coarse), (max-width: 899px) {
+  input, select, textarea { --fs-xs: 16px; --fs-sm: 16px; --fs-md: 16px; }
+}

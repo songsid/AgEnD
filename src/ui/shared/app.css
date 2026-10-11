@@ -518,7 +518,6 @@ html.lb-open .scroller { overflow: hidden; }
   .thread { padding: var(--s-3) var(--s-3) var(--s-2); gap: var(--s-5); }
   .col { padding: var(--s-3) var(--s-3) var(--s-8); }
   .dock { padding: 0 max(var(--s-2), env(safe-area-inset-right)) var(--s-2) max(var(--s-2), env(safe-area-inset-left)); }
-  .composer textarea { font-size: 16px; }          /* under 16px, iOS Safari zooms the page on focus */
   .hint { display: none; }
   .msg.user { max-width: 88%; }
   /* Code wraps on a phone: a long line scrolled sideways inside a scrolling page is unreadable (rough edge 9). */
