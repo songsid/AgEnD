@@ -108,8 +108,10 @@ describe("the store keeps the configured limits", () => {
     expect(w.auth(old.sessionId, true), "6 h window after the lengthening").not.toBeNull();
     const fresh = w.signIn();
     expect(fresh.record.absoluteExpiry - fresh.record.created, "a new session: 48 h").toBe(48 * H);
-    w.clock.now += 6 * H + 1;                                         // 12 h after old's sign-in
-    expect(w.auth(old.sessionId), "its 12 h absolute limit was not raised").toBeNull();
+    w.clock.now += 5 * H;                                             // 11 h after old's sign-in: used, so not idle
+    expect(w.auth(old.sessionId, true)).not.toBeNull();
+    w.clock.now += H + 1;                                             // 12 h after sign-in, used 1 h ago
+    expect(w.auth(old.sessionId), "its 12 h absolute limit was not raised (it was used an hour ago)").toBeNull();
   });
   it("a policy shortened while the fleet was down applies when the sessions are read back", () => {
     const dir = home();
@@ -118,8 +120,8 @@ describe("the store keeps the configured limits", () => {
     before.clock.now += 90 * M;
     before.store.flush();
     const after = new WebSessionStore({ dataDir: dir, now: () => before.clock.now, localPolicy: () => ({ absoluteMs: 12 * H, idleMs: 1 * H }) });
+    expect(after.size, "not even read back").toBe(0);
     expect(after.authenticate(s.sessionId, EPOCH, { touch: false })).toBeNull();
-    expect(after.size).toBe(0);
   });
   it("sign-out, sign out everywhere and a rotated token still end sessions", () => {
     const w = world({ absoluteMs: 720 * H, idleMs: 720 * H });
