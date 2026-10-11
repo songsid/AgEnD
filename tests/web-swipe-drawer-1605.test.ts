@@ -35,9 +35,9 @@ async function world(opts: { narrow?: boolean } = {}) {
   const inWide = el("span", {}, wide);
   Object.assign(wide, { scrollWidth: 900, clientWidth: 300 });
   (globalThis as any).getComputedStyle = (e: any) => ({ overflowX: e === wide ? "auto" : "visible" });
-  const state = { open: false, opens: 0, closes: 0 };
+  const state = { open: false, opens: 0, closes: 0, narrow: opts.narrow ?? true };
   const { installSwipe } = await import("../src/ui/shared/app-swipe.js") as any;
-  off = installSwipe({ doc, win: globalThis, isDrawer: () => (globalThis as any).matchMedia("(max-width: 899px)").matches,
+  off = installSwipe({ doc, win: globalThis, isDrawer: () => state.narrow,
     isOpen: () => state.open, open: () => { state.open = true; state.opens++; }, close: () => { state.open = false; state.closes++; } });
   /** One finger from (x0,y0) to (x1,y1), starting on `target`. */
   const swipe = (target: any, x0: number, y0: number, x1: number, y1: number) => {
@@ -101,6 +101,25 @@ describe("phone: swipe the drawer open and shut", () => {
     w.bubble.dispatchEvent(new MiniEvent("touchend", { bubbles: true, touches: [], changedTouches: [{ clientX: 200, clientY: 400 }] }));
     const tabs = w.el("nav", { class: "tabs" });
     w.swipe(tabs, 60, 800, 200, 800);
+    expect(w.state.opens).toBe(0);
+  });
+});
+
+describe("phone: only the drawer and its scrim close it", () => {
+  it("open, a swipe left that starts in the chat (not on the drawer or the scrim) does not close it", async () => {
+    const w = await world();
+    w.swipe(w.bubble, 60, 400, 160, 410);
+    w.swipe(w.bubble, 300, 400, 100, 400);
+    expect([w.state.open, w.state.closes]).toEqual([true, 0]);
+  });
+  it("the width can change mid-gesture (a rotation): only a gesture that is a drawer's at both ends counts", async () => {
+    const w = await world({ narrow: false });
+    w.bubble.dispatchEvent(new MiniEvent("touchstart", { bubbles: true, touches: [{ clientX: 60, clientY: 400 }] }));
+    w.state.narrow = true;                                   // rotated to a phone layout before the finger lifts
+    w.bubble.dispatchEvent(new MiniEvent("touchend", { bubbles: true, touches: [], changedTouches: [{ clientX: 200, clientY: 400 }] }));
+    w.bubble.dispatchEvent(new MiniEvent("touchstart", { bubbles: true, touches: [{ clientX: 60, clientY: 400 }] }));
+    w.state.narrow = false;                                  // and the other way
+    w.bubble.dispatchEvent(new MiniEvent("touchend", { bubbles: true, touches: [], changedTouches: [{ clientX: 200, clientY: 400 }] }));
     expect(w.state.opens).toBe(0);
   });
 });
