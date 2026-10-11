@@ -36,7 +36,7 @@ async function world(opts: { narrow?: boolean } = {}) {
   Object.assign(wide, { scrollWidth: 900, clientWidth: 300 });
   (globalThis as any).getComputedStyle = (e: any) => ({ overflowX: e === wide ? "auto" : "visible" });
   const state = { open: false, opens: 0, closes: 0, narrow: opts.narrow ?? true };
-  const { installSwipe } = await import("../src/ui/shared/app-swipe.js") as any;
+  const { installSwipe } = await import("/assets/app-swipe.js") as any;      // served from /assets/ (the shell's closure)
   off = installSwipe({ doc, win: globalThis, isDrawer: () => state.narrow,
     isOpen: () => state.open, open: () => { state.open = true; state.opens++; }, close: () => { state.open = false; state.closes++; } });
   /** One finger from (x0,y0) to (x1,y1), starting on `target`. */
