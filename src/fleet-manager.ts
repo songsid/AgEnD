@@ -11084,7 +11084,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // on the sign-in DM, armed by the first tap). A double tap, or a late second one from an old keyboard, lands
       // here with the spent nonce — and collapsing would wipe the message's text and the live buttons. The clicker is
       // told; the message is left alone.
-      if ([...this.pendingNonceButtons.values()].some(e => e.prefix === prefix && e.chatId === data.chatId && e.messageId === data.messageId)) {
+      // #1617: and of the same bot — two bots' DM message ids can collide; another bot's live prompt says nothing here.
+      if ([...this.pendingNonceButtons.values()].some(e => e.prefix === prefix && e.adapterId === callbackAdapterId && e.chatId === data.chatId && e.messageId === data.messageId)) {
         data.ack?.(t("buttons.stale_notice"));
         return "consumed";
       }

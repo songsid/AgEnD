@@ -164,6 +164,23 @@ describe("#1610: closing the public link takes two steps", () => {
     expect(h.s.publicWebLink.status().state).toBe("open");
   });
 
+  it("#1617: another bot's live prompt on a colliding message id does not hold back this bot's stale-click cleanup", async () => {
+    const h = rig(); const close = await openLink(h);
+    await dmClick(h, close.nonce, "close");                                   // bot "owner" now has a live confirm step on DM "dm"
+    // A second bot, same user, same DM message id: its stale button is collapsed as any stale button is.
+    const other = { id: "other", type: "telegram", editMessageRemoveButtons: vi.fn(async () => {}), sendText: vi.fn(async () => ({ messageId: "x", chatId: "admin" })) };
+    const ack = vi.fn();
+    const claimed = h.s.consumeNonceCallback("dashboard:", /^dashboard:([0-9a-f]{32}):(local|public|close|confirm|keep)$/,
+      { callbackData: `dashboard:${close.nonce}:close`, chatId: "admin", messageId: "dm", userId: "admin", ack }, "other", other);
+    expect(claimed).toBe("consumed");
+    expect(other.editMessageRemoveButtons).toHaveBeenCalledWith("admin", "dm", t("buttons.stale"), undefined);
+    // …while the same click through the bot that owns the live step leaves the message alone (#1610).
+    h.adapter.editMessageRemoveButtons.mockClear();
+    await dmClick(h, close.nonce, "close", { ack: vi.fn() });
+    expect(h.adapter.editMessageRemoveButtons).not.toHaveBeenCalled();
+    expect(pending(h, true)).toBeTruthy();
+  });
+
   it("a confirm on the close button's own nonce, or a close on the confirm step, is refused unconsumed", async () => {
     const h = rig(); const close = await openLink(h);
     const ack = vi.fn();
