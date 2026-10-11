@@ -55,11 +55,17 @@ export interface UpdateInstallPlan {
    * on that exact selection, never on a fresh `nvm use 22` that could pick another Node 22 in between (#1472 review).
    */
   nvmBin?: string;
+  /**
+   * #1441 B: decide whether the target can run, in the install environment, before the lock and npm — called once the
+   * install environment is fixed (for an nvm install: after the exact Node 22 is selected). `run` runs argv there, the
+   * way the install does; `npm` is the npm binary the install invokes. A refusal stops the update with nothing changed.
+   */
+  preflight?(env: { run(argv: string[], timeoutMs: number): CommandResult; npm: string }): { ok: true } | { ok: false; message: string };
 }
 
 export type UpdateInstallOutcome =
   | { ok: true; agendPath: string; version: string; dir: string; bin: string; entry: string; node: string; rollback?: { root: string; prefix: string; preimage: PackagePreimage | null }; /** nvm transition: retire the old system copy once activation settles. */ retireSystemCopy?: true; /** Absolute path of the npm binary used to install this version — same binary passed to sudo for retirement. */ npmPath?: string }
-  | { ok: false; stage: "lock" | "install" | "verify"; message: string };
+  | { ok: false; stage: "preflight" | "lock" | "install" | "verify"; message: string };
 
 /**
  * The `bash -c` script that puts nvm's Node 22 on PATH for the rest of the same shell (nvm only changes its own shell),
@@ -249,6 +255,11 @@ export function runUpdateInstall(plan: UpdateInstallPlan, runner: CommandRunner)
   // The npm binary to invoke: for nvm installs, the absolute path from nvmBin so that
   // every npm call uses the same binary that will be recorded in the outcome.
   const npmBin = resolvedNpmPath ?? "npm";
+  if (plan.preflight) {
+    const fixed = plan;
+    const verdict = plan.preflight({ run: (argv, timeoutMs) => inInstallEnv(runner, fixed, argv, { timeoutMs }), npm: npmBin });
+    if (!verdict.ok) return { ok: false, stage: "preflight", message: verdict.message };
+  }
 
   // C1: lock the prefix npm is about to change — read in the install environment, as npm itself sees it — before npm.
   // #1487: this updater never unlinks first, so a refused install keeps the previous one; the install hooks read this to
