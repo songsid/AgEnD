@@ -35,9 +35,12 @@ describe("the cross-instance footer", () => {
 
 describe("the CLI footer's arguments survive a shell (#1653 review)", () => {
   /** What /bin/sh makes of a command line: its words, one per line. */
-  const words = (cmdline: string) => execFileSync("/bin/sh", ["-c", `set -- ${cmdline}; printf '%s\\n' "$@"`], { encoding: "utf8" }).split("\n").slice(0, -1);
+  const words = (cmdline: string) => {
+    try { return execFileSync("/bin/sh", ["-c", `set -- ${cmdline}; printf '%s\\n' "$@"`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\n").slice(0, -1); }
+    catch { return ["<the shell refused it>"]; }
+  };
   it("shellArg keeps any value as one argument — spaces, $, backquotes, command substitution, quotes", () => {
-    for (const v of ["cid-1", "review batch 7", "review-$task", "a'b", "$(touch /tmp/agend-1653-x)", "`id`", "two  spaces", "q\"d", "it's \"x\""]) {
+    for (const v of ["cid-1", "review batch 7", "review-$task", "a'b", "$(printf INJECTED)", "`id`", "two  spaces", "q\"d", "it's \"x\""]) {
       expect(words(shellArg(v)), v).toEqual([v]);
     }
     expect([shellArg("cid-1791734461429-bnqfpp"), shellArg("lead")]).toEqual(["cid-1791734461429-bnqfpp", "lead"]);   // plain values read as before
