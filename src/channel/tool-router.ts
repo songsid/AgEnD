@@ -108,9 +108,9 @@ export function routeToolCall(
         .catch(e => respond(null, e.message));
       return true;
     case "edit_message": {
-      // #1651: the same mapping as reply's format ("markdown" → the adapter's "html"). A text edit is the call it
-      // always was — no options argument at all.
-      const format = args.format === "markdown" ? "html" as const : undefined;
+      // #1651: "markdown" reaches the adapter as markdown — Telegram converts it escape-first, so a `<` or `&` in the
+      // text is shown, not refused. A text edit is the call it always was — no options argument at all.
+      const format = args.format === "markdown" ? "markdown" as const : undefined;
       const messageId = args.message_id as string ?? "", text = args.text as string ?? "";
       (format ? adapter.editMessage(chatId, messageId, text, threadId, { format }) : adapter.editMessage(chatId, messageId, text, threadId))
         .then(() => respond("ok"))

@@ -1439,7 +1439,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   /** #1651: `_opts.format` changes nothing here — Discord always renders Markdown (as sendText ignores it too). */
-  async editMessage(chatId: string, messageId: string, text: string, threadId?: string, _opts?: { format?: "html" }): Promise<void> {
+  async editMessage(chatId: string, messageId: string, text: string, threadId?: string, _opts?: { format?: "html" | "markdown" }): Promise<void> {
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses). chatId is the guild id in the channels topology, so the
     // message actually lives in threadId (when set) or a specific text channel.

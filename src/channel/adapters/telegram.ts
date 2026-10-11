@@ -9,6 +9,7 @@ import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
 import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy, StickerInfo, StickerList, StickerPreview, StickerTarget, ReplyButtonsOutcome } from "../types.js";
 import { downloadStickerImage } from "../sticker-download.js";
+import { isTelegramParseRefusal, markdownToTelegramHtml } from "../telegram-markdown.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { t } from "../../locale.js";
@@ -968,8 +969,22 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return { messageId, chatId, threadId };
   }
 
-  /** #1651: an edit renders like the reply it edits — format "html" is parse_mode HTML, as on sendMessage. */
-  async editMessage(chatId: string, messageId: string, text: string, _threadId?: string, opts?: { format?: "html" }): Promise<void> {
+  /**
+   * #1651: an edit renders like the reply it edits — format "html" is parse_mode HTML, as on sendMessage. "markdown"
+   * (an agent's edit_message) is converted escape-first to Telegram HTML; if Telegram still refuses the markup, the
+   * same text is retried once as plain text, so an edit that went through before #1651 still goes through.
+   */
+  async editMessage(chatId: string, messageId: string, text: string, _threadId?: string, opts?: { format?: "html" | "markdown" }): Promise<void> {
+    if (opts?.format === "markdown") {
+      try {
+        await this.bot.api.editMessageText(Number(chatId), Number(messageId), markdownToTelegramHtml(text), { parse_mode: "HTML" });
+      } catch (err) {
+        if (!isTelegramParseRefusal(err)) throw err;
+        console.warn(`[telegram] edit markup refused; retrying as plain text: ${errorMessage(err)}`);
+        await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
+      }
+      return;
+    }
     await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, ...(opts?.format === "html" ? [{ parse_mode: "HTML" as const }] : []));
   }
 

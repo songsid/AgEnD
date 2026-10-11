@@ -50,7 +50,7 @@ export const EditMessageArgs = z.object({
   ...ChannelAddressFields,
   message_id: NonEmptyString,
   text: NonEmptyString,
-  format: MessageFormat.optional().describe("Rendering mode, as for reply. Default: 'text'."),
+  format: MessageFormat.optional().describe("Rendering mode, as for reply. Default: 'text'. Tables and code blocks don't re-render on edit."),
 });
 
 export const DownloadAttachmentArgs = z.object({

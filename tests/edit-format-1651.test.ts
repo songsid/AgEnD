@@ -1,7 +1,8 @@
 /**
- * #1651 (baseline: the issue body): edit_message.format means what reply's means — "markdown" is the adapter's "html";
- * Telegram renders it (parse_mode HTML on editMessageText, as on sendMessage); Discord always renders Markdown, so an
- * edit there is unchanged. The real tool router and the real adapters' editMessage with their platform calls stubbed.
+ * #1651 (baseline: the issue body): edit_message.format means what reply's means. "markdown" reaches the adapter as
+ * markdown; Telegram converts it escape-first and renders it with parse_mode HTML (tests/edit-escape-1651.test.ts);
+ * Discord always renders Markdown, so an edit there is unchanged. The real tool router and the real adapters'
+ * editMessage with their platform calls stubbed.
  */
 import { describe, expect, it, vi } from "vitest";
 import { routeToolCall } from "../src/channel/tool-router.js";
@@ -15,10 +16,10 @@ describe("the tool router passes edit_message's format, mapped like reply's", ()
     routeToolCall({ editMessage } as never, "edit_message", { chat_id: "c1", message_id: "m1", text: "**hi**", ...args }, "th1", (r) => { result = r; });
     return { editMessage, done: () => result };
   };
-  it("markdown → the adapter's html", async () => {
+  it("markdown reaches the adapter as markdown (Telegram converts it escape-first)", async () => {
     const r = route({ format: "markdown" });
     await Promise.resolve();
-    expect(r.editMessage.mock.calls).toEqual([["c1", "m1", "**hi**", "th1", { format: "html" }]]);
+    expect(r.editMessage.mock.calls).toEqual([["c1", "m1", "**hi**", "th1", { format: "markdown" }]]);
     await Promise.resolve();
     expect(r.done()).toBe("ok");
   });
@@ -58,8 +59,9 @@ describe("Discord: always Markdown, so an edit is what it was", () => {
     (adapter as unknown as { _fetchTextChannel(id: string): Promise<unknown> })._fetchTextChannel = async () => ({
       messages: { fetch: async () => ({ edit: async (body: unknown) => { edits.push(body); } }) },
     });
+    await adapter.editMessage("g1", "m1", "**bold**", "t1", { format: "markdown" });
     await adapter.editMessage("g1", "m1", "**bold**", "t1", { format: "html" });
     await adapter.editMessage("g1", "m1", "**bold**", "t1");
-    expect(edits).toEqual(["**bold**", "**bold**"]);
+    expect(edits).toEqual(["**bold**", "**bold**", "**bold**"]);
   });
 });
