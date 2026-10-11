@@ -11077,6 +11077,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // it as stale rather than acting across kinds (fail closed).
     if (pending && pending.prefix !== prefix) pending = undefined;
     if (!match || !pending) {
+      // #1610 (Fable r1): the same message may already carry the prompt's NEXT step (the public link's 確定關閉 / 取消
+      // on the sign-in DM, armed by the first tap). A double tap, or a late second one from an old keyboard, lands
+      // here with the spent nonce — and collapsing would wipe the message's text and the live buttons. The clicker is
+      // told; the message is left alone.
+      if ([...this.pendingNonceButtons.values()].some(e => e.prefix === prefix && e.chatId === data.chatId && e.messageId === data.messageId)) {
+        data.ack?.(t("buttons.stale_notice"));
+        return "consumed";
+      }
       const adapter = receivingAdapter ?? this.adapter;
       // The clicker always hears why nothing happens (#1133); collapsing the
       // dead buttons is a courtesy that can fail (>48h on Telegram, message gone).

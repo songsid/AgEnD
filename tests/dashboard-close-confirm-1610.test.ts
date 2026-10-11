@@ -138,6 +138,32 @@ describe("#1610: closing the public link takes two steps", () => {
     expect(h.s.publicWebLink.status().state).toBe("open");
   });
 
+  it("Fable r1: a double tap on 關閉公開連結 leaves the message alone — no text edit, one swap — and the confirm still closes", async () => {
+    const h = rig(); const close = await openLink(h);
+    h.adapter.editMessageRemoveButtons.mockClear(); h.adapter.replaceMessageButtons.mockClear();
+    await dmClick(h, close.nonce, "close");
+    const ack = vi.fn();
+    await dmClick(h, close.nonce, "close", { ack });                     // the second tap: a spent nonce
+    expect(ack).toHaveBeenCalledWith(t("buttons.stale_notice"));
+    expect(h.adapter.editMessageRemoveButtons).not.toHaveBeenCalled();
+    expect(h.adapter.replaceMessageButtons).toHaveBeenCalledTimes(1);
+    await dmClick(h, pending(h, true).nonce, "confirm");
+    expect(h.s.publicWebLink.status().state).toBe("closed");
+  });
+
+  it("Fable r1: after 取消, the old 確定關閉 changes neither the text nor the restored button", async () => {
+    const h = rig(); const close = await openLink(h);
+    await dmClick(h, close.nonce, "close");
+    const step = pending(h, true);
+    await dmClick(h, step.nonce, "keep");
+    h.adapter.editMessageRemoveButtons.mockClear(); h.adapter.replaceMessageButtons.mockClear();
+    await dmClick(h, step.nonce, "confirm", { ack: vi.fn() });
+    expect(h.adapter.editMessageRemoveButtons).not.toHaveBeenCalled();
+    expect(h.adapter.replaceMessageButtons).not.toHaveBeenCalled();
+    expect(pending(h, false)).toBeTruthy();                                // the restored close button is still live
+    expect(h.s.publicWebLink.status().state).toBe("open");
+  });
+
   it("a confirm on the close button's own nonce, or a close on the confirm step, is refused unconsumed", async () => {
     const h = rig(); const close = await openLink(h);
     const ack = vi.fn();
