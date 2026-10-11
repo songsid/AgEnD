@@ -214,6 +214,11 @@ export class TranscriptMonitor extends EventEmitter {
     return this.transcriptPath !== null;
   }
 
+  /** #1641 R2: whether the current turn's state is known (see TranscriptSource.turnStateKnown); a source that cannot say does not. */
+  turnStateKnown(): boolean {
+    return this.source ? this.source.turnStateKnown?.() === true : true;
+  }
+
   setTranscriptPath(path: string): void {
     if (this.transcriptPath !== path) {
       this.resetOffset();
@@ -227,5 +232,7 @@ export class TranscriptMonitor extends EventEmitter {
     this.transcriptPath = null;
     this.source?.reset();
     this.saveOffset();
+    // #1641 R2: everything read before the re-baseline is about a transcript no longer followed from there.
+    this.emit("reset");
   }
 }

@@ -5277,6 +5277,8 @@ export class Daemon extends EventEmitter {
     // Monotonic: a wall-clock correction must neither end nor extend the open-turn hold (#1641 R1).
     const touch = () => { this.transcriptActivityAt = performance.now(); };
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => { this.transcriptTurns.observe(turns, performance.now()); touch(); });
+    // #1641 R2: a re-baselined source starts over, and so does what it said (an open turn read before is withdrawn).
+    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; } });
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     return monitor;
   }
@@ -5288,6 +5290,8 @@ export class Daemon extends EventEmitter {
    */
   private transcriptTurnState(now = performance.now()): "open" | "closed" | "unknown" {
     if (this.backend?.turnEndFromTranscript !== true || this.transcriptMonitor?.following() !== true) return "unknown";
+    // #1641 R2: an empty ledger after a baseline that could not see the current turn's start is not "closed".
+    if (this.transcriptMonitor.turnStateKnown?.() !== true) return "unknown";
     const since = this.transcriptTurns.openSince();
     if (since === null) return "closed";
     return now - Math.max(since, this.transcriptActivityAt) < TRANSCRIPT_OPEN_TURN_QUIET_MS ? "open" : "unknown";

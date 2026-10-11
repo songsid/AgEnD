@@ -12,14 +12,15 @@
  * Fixtures: tests/fixtures/codex-0160-false-stuck-1641 (sol's real stream and rollout).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Daemon, PaneStateMachine, TRANSCRIPT_OPEN_TURN_QUIET_MS, UNKNOWN_LAYOUT_STABLE_MS } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import type { TranscriptTurnEvent } from "../src/transcript-turns.js";
-import { CodexRolloutSource } from "../src/transcript-sources.js";
+import { CodexRolloutSource, lastRolloutTurnBoundary, ROLLOUT_TURN_SCAN_MAX_BYTES } from "../src/transcript-sources.js";
+import { resetSharedRolloutIndexesForTests } from "../src/rollout-index.js";
 import { ALWAYS_ON_BLOCK_NOTICE_MS, WakeCoordinator, type WakeCoordinatorDeps } from "../src/wake-coordinator.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale } from "../src/locale.js";
@@ -48,6 +49,7 @@ const monitors: Array<{ stop(): void }> = [];
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date", "performance"] }); vi.setSystemTime(Date.parse("2026-10-11T09:28:15Z")); setLocale("en"); });
 afterEach(() => {
   for (const m of monitors.splice(0)) m.stop();
+  resetSharedRolloutIndexesForTests();
   vi.useRealTimers();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
@@ -74,7 +76,7 @@ function harness(pane: string, opts: { following?: boolean } = {}) {
   daemon.controlClient = { isIdle: () => true, hasOutputSince: () => false, getLastOutputAt: () => 0, getObservationResetAt: () => 0 };
   daemon.instanceStateMachine = new PaneStateMachine(backend.getReadyPattern(), STUCK_MS, Date.now(), backend.getBusyPattern());
   daemon.instanceStateMonitorActive = true;
-  daemon.transcriptMonitor = { following: () => opts.following !== false };
+  daemon.transcriptMonitor = { following: () => opts.following !== false, turnStateKnown: () => true };
   const sweep = () => daemon.captureAndEvaluateInstanceState("safety_sweep");
   const rollout = (...events: TranscriptTurnEvent[]) => { daemon.transcriptTurns.observe(events, performance.now()); daemon.transcriptActivityAt = performance.now(); };
   const recoveries = () => logger.info.mock.calls.filter(([, msg]) => typeof msg === "string" && msg.startsWith("Stuck instance recovered")).length;
@@ -188,13 +190,23 @@ describe("#1641: the transcript outranks the pane while a turn is running", () =
   });
 });
 
+const META = JSON.stringify({ type: "session_meta", payload: { id: "01a0ed7a-923c-7901-814b-3fc596fea75a", cwd: "/tmp" } });
+/** History a baseline must never replay: a user message, a tool call and its output, an assistant answer. */
+const CHATTER = [
+  JSON.stringify({ timestamp: "2026-10-11T14:25:17.000Z", type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "history-user-text" }] } }),
+  JSON.stringify({ type: "response_item", payload: { type: "function_call", name: "shell", arguments: "{\"command\":[\"ls\"]}" } }),
+  JSON.stringify({ type: "response_item", payload: { type: "function_call_output", name: "shell" } }),
+  JSON.stringify({ type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "history answer" }] } }),
+];
+
 describe("#1641 R1: the real rollout source → monitor → daemon, and the edges Prism found", () => {
+  beforeEach(() => { resetSharedRolloutIndexesForTests(0); });   // each poll lists the scratch tree afresh
   /** A rollout for cwd /tmp (the harness's working directory) under a scratch sessions dir, read by the REAL source. */
-  async function realRollout(h: ReturnType<typeof harness>) {
+  async function realRollout(h: ReturnType<typeof harness>, history: string[] = []) {
     const sessions = join(h.dir, "sessions"), day = join(sessions, "2026", "10", "11");
     mkdirSync(day, { recursive: true });
     const file = join(day, "rollout-2026-10-11T09-00-00-01a0ed7a-923c-7901-814b-3fc596fea75a.jsonl");
-    writeFileSync(file, JSON.stringify({ type: "session_meta", payload: { id: "01a0ed7a-923c-7901-814b-3fc596fea75a", cwd: "/tmp" } }) + "\n");
+    writeFileSync(file, [META, ...history].map(l => l + "\n").join(""));
     const monitor = h.daemon.buildTranscriptMonitor(new CodexRolloutSource("/tmp", sessions));
     monitors.push(monitor);
     h.daemon.transcriptMonitor = monitor;
@@ -203,6 +215,154 @@ describe("#1641 R1: the real rollout source → monitor → daemon, and the edge
     await poll();                                          // adopts the file at its end
     return { file, poll, append: (line: string) => appendFileSync(file, line + "\n") };
   }
+
+  /** A second rollout for the same cwd, newer than the first: what a restarted codex writes. */
+  function newerRollout(h: ReturnType<typeof harness>, lines: string[] = []) {
+    const file = join(h.dir, "sessions", "2026", "10", "11", "rollout-2026-10-11T10-00-00-01a0ed7b-0000-7000-8000-000000000000.jsonl");
+    writeFileSync(file, [META, ...lines].map(l => l + "\n").join(""));
+    const later = (statSync(file).mtimeMs + 3_600_000) / 1000;   // file times are real time (Date is faked here)
+    utimesSync(file, later, later);
+    return file;
+  }
+
+  it("R2 P1: a turn already running when the source attached (task_started before the EOF baseline) holds the pane working", async () => {
+    for (const [history, want] of [
+      [[ROLLOUT_LINES[0]!, ROLLOUT_LINES[1]!, ROLLOUT_LINES[2]!, ...CHATTER], "working"],   // Prism's witness: open at attach
+      [[ROLLOUT_LINES[2]!, ...CHATTER, ROLLOUT_LINES[3]!], "idle"],                       // control: it had ended
+      [[], "idle"],                                                                        // no turn ever started: known closed
+    ] as const) {
+      const h = harness(READY_0156);
+      const tools: unknown[] = [];
+      const r = await realRollout(h, [...history]);
+      h.daemon.transcriptMonitor.on("tool_use", (name: string) => tools.push(name));
+      h.daemon.transcriptMonitor.on("assistant_text", (text: string) => tools.push(text));
+      await r.poll();
+      await h.sweep();
+      expect(h.daemon.instanceState, JSON.stringify(history.map(l => l.slice(0, 60)))).toBe(want);
+      // Only the boundary is carried in: no tool, text or user record of the history is replayed.
+      expect(tools).toEqual([]);
+      expect(h.daemon.transcriptTurns.verdict("history-user-text", 0)).toBe("unknown");
+    }
+  });
+
+  it("R2 P1: the carried-in turn ends when its task_complete arrives, and a steer after the baseline belongs to it", async () => {
+    const h = harness(READY_0156);
+    const r = await realRollout(h, [ROLLOUT_LINES[2]!, ...CHATTER]);
+    const steer = JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "steer-after-baseline" }] } });
+    const armedAt = Date.now();
+    r.append(steer); await r.poll();
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("working");
+    expect(h.daemon.transcriptTurns.verdict("steer-after-baseline", armedAt)).toBe("running");
+    r.append(ROLLOUT_LINES[3]!); await r.poll();
+    advance(SWEEP_MS);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+    expect(h.daemon.transcriptTurns.verdict("steer-after-baseline", armedAt)).toBe("ended");
+  });
+
+  it("R2 P1: the boundary scan reads across chunks and stops at its bound: beyond it the state is unknown, not closed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1641-scan-"));
+    dirs.push(dir);
+    const file = join(dir, "r.jsonl");
+    for (const tail of [1, 128 * 1024, 256 * 1024 - 200, 256 * 1024 + 300, 700 * 1024]) {
+      // The boundary line lands before, across and after the 256 KiB chunk edge, under `tail` bytes of later records.
+      const filler = JSON.stringify({ type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "x".repeat(tail) }] } });
+      writeFileSync(file, [META, ROLLOUT_LINES[0]!, ROLLOUT_LINES[2]!, filler].map(l => l + "\n").join(""));
+      const size = readFileSync(file).length;
+      expect(await lastRolloutTurnBoundary(file, size), `tail ${tail}`).toEqual({ kind: "start", turnId: "01a12b5a-8a28-7c71-be92-80abb14607e2" });
+      expect(await lastRolloutTurnBoundary(file, size, tail + 10), `bound ${tail}`).toBeNull();
+    }
+    writeFileSync(file, [META, ROLLOUT_LINES[2]!, ROLLOUT_LINES[3]!].map(l => l + "\n").join(""));
+    expect(await lastRolloutTurnBoundary(file, readFileSync(file).length)).toEqual({ kind: "end", turnId: "01a12b5a-8a28-7c71-be92-80abb14607e2" });
+    writeFileSync(file, META + "\n");
+    expect(await lastRolloutTurnBoundary(file, readFileSync(file).length)).toEqual({ kind: "none" });
+  });
+
+  it("R2 P1: an unknown baseline (no boundary within the scan) keeps the old fallbacks — the pane decides, recovery waits #978's window", async () => {
+    const h = harness(IDLE_LOOKING);
+    // A turn that started more than the scan bound before the baseline: its start is out of reach.
+    const filler = JSON.stringify({ type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "x".repeat(ROLLOUT_TURN_SCAN_MAX_BYTES) }] } });
+    const r = await realRollout(h, [ROLLOUT_LINES[0]!, ROLLOUT_LINES[1]!, filler]);
+    await r.poll();
+    expect([h.daemon.transcriptMonitor.following(), h.daemon.transcriptMonitor.turnStateKnown()]).toEqual([true, false]);
+    await solAfterRestart(h);
+    await h.sweep();
+    expect([h.daemon.instanceState, h.recovered()]).toEqual(["stuck", false]);   // not "closed": no instant recovery
+    advance(UNKNOWN_LAYOUT_STABLE_MS);
+    await h.sweep();
+    expect([h.daemon.instanceState, h.recovered()]).toEqual(["idle", true]);
+    // The next boundary read makes it known again: a turn starting holds the pane, its end releases it.
+    for (const [line, known, want] of [[ROLLOUT_LINES[2]!, true, "working"], [ROLLOUT_LINES[3]!, true, "idle"]] as const) {
+      (h.daemon.transcriptMonitor as any).source.turnKnown = false;     // each boundary on its own proves the state
+      r.append(line); await r.poll();
+      expect(h.daemon.transcriptMonitor.turnStateKnown()).toBe(known);
+      advance(SWEEP_MS);
+      await h.sweep();
+      expect(h.daemon.instanceState === "stuck" ? "working" : h.daemon.instanceState).toBe(want);   // held busy may read stuck
+    }
+  });
+
+  it("R2 P2: a switch to a newer rollout withdraws the old one's open turn; a turn open in the new one still holds", async () => {
+    for (const [newLines, want] of [
+      [[], "idle"],                                   // Prism's witness: A's open turn must not keep vetoing
+      [[ROLLOUT_LINES[2]!.replace(/01a12b5a/g, "01a12b5c")], "working"],   // B's own open turn does
+    ] as const) {
+      const h = harness(READY_0156);
+      const r = await realRollout(h);
+      r.append(ROLLOUT_LINES[2]!); await r.poll();
+      await h.sweep();
+      expect(h.daemon.instanceState).toBe("working");
+      newerRollout(h, [...newLines]);
+      await r.poll();
+      expect(h.daemon.transcriptMonitor.turnStateKnown()).toBe(true);   // B is new: read from its start, every boundary seen
+      advance(SWEEP_MS);
+      await h.sweep();
+      // Held busy reads `stuck` here (the still pane outlived STUCK_MS) — busy either way, never idle.
+      const read = h.daemon.instanceState === "stuck" ? "working" : h.daemon.instanceState;
+      expect(read, `B holds ${newLines.length} records`).toBe(want);
+    }
+  });
+
+  it("R2 P2: Prism's control — A ends first, then B: idle; and a switch noticed by a checkpoint withdraws A's turn too", async () => {
+    const h = harness(READY_0156);
+    const r = await realRollout(h);
+    const armedAt = Date.now();
+    r.append(ROLLOUT_LINES[2]!); r.append(CHATTER[0]!.replace(/"timestamp":"[^"]*"/, `"timestamp":"${new Date().toISOString()}"`));
+    r.append(ROLLOUT_LINES[3]!); await r.poll();
+    newerRollout(h); await r.poll();
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+    // Only an OPEN turn is withdrawn: one that ended in A keeps its verdict for the reply guard.
+    expect(h.daemon.transcriptTurns.verdict("history-user-text", armedAt)).toBe("ended");
+
+    const h2 = harness(READY_0156);
+    const r2 = await realRollout(h2);
+    r2.append(ROLLOUT_LINES[2]!); await r2.poll();
+    await h2.sweep();
+    expect(h2.daemon.instanceState).toBe("working");
+    newerRollout(h2);
+    expect(await h2.daemon.transcriptMonitor.reconciliationCheckpoint()).not.toBeNull();   // the switch happens here
+    await r2.poll();
+    advance(SWEEP_MS);
+    await h2.sweep();
+    expect(h2.daemon.instanceState).toBe("idle");
+  });
+
+  it("R2 P2: a re-baseline of the same rollout drops what was read and re-derives the turn from the file", async () => {
+    for (const [lines, want] of [[[ROLLOUT_LINES[2]!], "working"], [[ROLLOUT_LINES[2]!, ROLLOUT_LINES[3]!], "idle"]] as const) {
+      const h = harness(READY_0156);
+      const r = await realRollout(h);
+      for (const l of lines) r.append(l);
+      await r.poll();
+      h.daemon.transcriptMonitor.resetOffset();
+      expect(h.daemon.transcriptTurns.openSince()).toBeNull();          // withdrawn with the re-baseline
+      await r.poll();                                                    // re-adopted at its end: the scan decides
+      advance(SWEEP_MS);
+      await h.sweep();
+      expect(h.daemon.instanceState, `${lines.length} records`).toBe(want);
+    }
+  });
 
   it("P1-1: open → working, closed → idle, through the real source; a lost rollout is unknown (the pane decides)", async () => {
     const h = harness(READY_0156);

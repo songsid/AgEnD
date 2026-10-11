@@ -28,7 +28,7 @@ import { measureSyncWork } from "./sync-work-attribution.js";
  */
 
 import { closeSync, existsSync, openSync, readSync, realpathSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open as openFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
@@ -74,6 +74,53 @@ export interface TranscriptSource {
    * and whenever the last poll found none — then nothing it reports is evidence about the turn.
    */
   following?(): boolean;
+  /**
+   * #1641 R2: whether the source knows the state of the CURRENT turn: it read the transcript from its start, found the
+   * last turn boundary before its baseline, or has read one since. Until then an empty ledger proves nothing.
+   */
+  turnStateKnown?(): boolean;
+}
+
+/** #1641 R2: how far back from the baseline a rollout is scanned for the last turn boundary (a turn writes a lot). */
+export const ROLLOUT_TURN_SCAN_MAX_BYTES = 16 * 1024 * 1024;
+const ROLLOUT_TURN_SCAN_CHUNK = 256 * 1024;
+
+/**
+ * #1641 R2: the last turn boundary (task_started / task_complete / turn_aborted) a codex rollout holds before `end`,
+ * scanning back at most ROLLOUT_TURN_SCAN_MAX_BYTES: `none` when the whole prefix holds none (no turn ever started),
+ * null when the bound ran out first (unknown). Nothing else is read or replayed.
+ */
+export async function lastRolloutTurnBoundary(path: string, end: number, maxBytes = ROLLOUT_TURN_SCAN_MAX_BYTES):
+  Promise<{ kind: "start"; turnId: string } | { kind: "end"; turnId: string } | { kind: "none" } | null> {
+  const fh = await openFile(path, "r");
+  try {
+    const stop = Math.max(0, end - maxBytes);
+    let pos = end;
+    let carry = Buffer.alloc(0);
+    while (pos > stop) {
+      const from = Math.max(stop, pos - ROLLOUT_TURN_SCAN_CHUNK);
+      const chunk = Buffer.alloc(pos - from);
+      await fh.read(chunk, 0, chunk.length, from);
+      pos = from;
+      const buf = Buffer.concat([chunk, carry]);
+      const lines = buf.toString("utf8").split("\n");
+      // The first piece may be the tail of a line that starts in an earlier chunk (unless this is the scan's start).
+      carry = pos > stop ? Buffer.from(lines.shift() ?? "", "utf8") : Buffer.alloc(0);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i]!;
+        if (!/"(?:task_started|task_complete|turn_aborted)"/.test(line)) continue;
+        let entry: Record<string, unknown>;
+        try { entry = JSON.parse(line); } catch { continue; }
+        const p = entry.payload as Record<string, unknown> | undefined;
+        if (entry.type !== "event_msg" || !p || typeof p.turn_id !== "string") continue;
+        if (p.type === "task_started") return { kind: "start", turnId: p.turn_id };
+        if (p.type === "task_complete" || p.type === "turn_aborted") return { kind: "end", turnId: p.turn_id };
+      }
+    }
+    return stop === 0 ? { kind: "none" } : null;
+  } finally {
+    await fh.close();
+  }
 }
 
 const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts: [] };
@@ -118,13 +165,25 @@ export class CodexRolloutSource implements TranscriptSource {
 
   /** #1641: the last poll found this instance's rollout and read it (see TranscriptSource.following). */
   private lastPollFollowed = false;
+  /** #1641 R2: the turn open in the current file (its task_started read, no end yet), and whether that is known. */
+  private openTurn: string | null = null;
+  private turnKnown = false;
+  /** #1641 R2: boundaries decided at adoption (the old file's open turn ended, the new file's open turn carried in). */
+  private pendingTurns: TranscriptTurnEvent[] = [];
 
   following(): boolean {
     return this.lastPollFollowed && this.currentFile !== null;
   }
 
+  turnStateKnown(): boolean {
+    return this.turnKnown;
+  }
+
   reset(): void {
     this.lastPollFollowed = false;
+    this.openTurn = null;
+    this.turnKnown = false;
+    this.pendingTurns = [];
     this.currentFile = null;
     this.byteOffset = 0;
     this.openTurnId = "";
@@ -139,12 +198,38 @@ export class CodexRolloutSource implements TranscriptSource {
     try {
       // A line boundary, not the size: a record being written now is read once complete (#1250).
       const offset = await lastLineBoundary(active.path);
+      if (active.path !== this.currentFile) await this.adopt(active.path, offset);   // a switch, whoever notices it
       this.currentFile = active.path;
       this.byteOffset = offset;
       return { path: active.path, offset, sessionId: active.path };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Follow `path` from `offset` (#1641 R2). A baseline past an existing file's start skips its history — but not the
+   * state of its current turn: the last boundary before the baseline says whether a turn is running now (carried in as
+   * its start; no tool, user or text record is replayed), and none within the scan bound leaves it unknown until one is
+   * read. A turn left open in the file being replaced belongs to that file, no longer followed: its busy evidence is
+   * withdrawn (retracted, not ended — nothing says how it ended).
+   */
+  private async adopt(path: string, offset: number): Promise<void> {
+    let baseline: Awaited<ReturnType<typeof lastRolloutTurnBoundary>> = null;
+    let known = offset === 0;                              // read from its start: every boundary will be read
+    if (offset > 0) {
+      try {
+        baseline = await lastRolloutTurnBoundary(path, offset);
+        known = baseline !== null;                         // `none`: the whole prefix holds no turn — known closed
+      } catch { known = false; }
+    }
+    if (this.openTurn) this.pendingTurns.push({ kind: "retract", turnId: this.openTurn });
+    this.openTurn = baseline?.kind === "start" ? baseline.turnId : null;
+    if (this.openTurn) this.pendingTurns.push({ kind: "start", turnId: this.openTurn });
+    this.turnKnown = known;
+    this.currentFile = path;
+    this.byteOffset = offset;
+    this.openTurnId = this.openTurn ?? "";                 // a steer after the baseline belongs to the carried-in turn
   }
 
   private snapshotExistingFiles(): void {
@@ -217,19 +302,17 @@ export class CodexRolloutSource implements TranscriptSource {
       if (captured !== undefined) {
         try { offset = await lastLineBoundary(active.path, captured); } catch { this.lastPollFollowed = false; return EMPTY; }
       }
-      this.currentFile = active.path;
-      this.byteOffset = offset;
-      this.openTurnId = "";
+      await this.adopt(active.path, offset);
     }
 
     let read: Awaited<ReturnType<typeof readNewLines>>;
-    try { read = await readNewLines(this.currentFile, this.byteOffset); } catch (err) { this.lastPollFollowed = false; throw err; }
+    try { read = await readNewLines(active.path, this.byteOffset); } catch (err) { this.lastPollFollowed = false; throw err; }
     const { lines, newOffset } = read;
     this.byteOffset = newOffset;
     this.lastPollFollowed = true;
 
     const events = emptyEvents();
-    const turns: TranscriptTurnEvent[] = [];
+    const turns: TranscriptTurnEvent[] = this.pendingTurns.splice(0);
     for (const line of lines) {
       let entry: Record<string, unknown>;
       try { entry = JSON.parse(line); } catch { continue; }
@@ -240,9 +323,13 @@ export class CodexRolloutSource implements TranscriptSource {
       if (entry.type === "event_msg") {
         if (p.type === "task_started" && typeof p.turn_id === "string") {
           this.openTurnId = p.turn_id;
+          this.openTurn = p.turn_id;
+          this.turnKnown = true;
           turns.push({ kind: "start", turnId: p.turn_id });
         } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
           const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
+          if (this.openTurn === p.turn_id) this.openTurn = null;
+          this.turnKnown = true;
           turns.push({ kind: "end", turnId: p.turn_id, end });
         }
         continue;

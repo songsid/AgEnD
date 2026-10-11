@@ -8,11 +8,16 @@
  * directory never carries our text — no match is "unknown", and unknown never starts a recovery (fail-safe).
  */
 
-/** One boundary record, in transcript order. `turnId` is empty when the record came before any start was read. */
+/**
+ * One boundary record, in transcript order. `turnId` is empty when the record came before any start was read.
+ * `retract` is not a record: the source stopped following the transcript that turn belongs to (#1641 R2), so whatever
+ * it said about that turn is no longer evidence — the turn is forgotten, not ended (its delivery's verdict is unknown).
+ */
 export type TranscriptTurnEvent =
   | { readonly kind: "start"; readonly turnId: string }
   | { readonly kind: "user"; readonly turnId: string; readonly text: string; readonly at: number }
-  | { readonly kind: "end"; readonly turnId: string; readonly end: "complete" | "aborted" | "error" };
+  | { readonly kind: "end"; readonly turnId: string; readonly end: "complete" | "aborted" | "error" }
+  | { readonly kind: "retract"; readonly turnId: string };
 
 /**
  * `ended`: our turn and every turn after it ended normally. `running`: our turn, or one after it, has not ended.
@@ -43,6 +48,7 @@ export class TranscriptTurnLedger {
         if (this.turns.length > MAX_TURNS) this.turns.splice(0, this.turns.length - MAX_TURNS);
         continue;
       }
+      if (e.kind === "retract") { this.turns = this.turns.filter(t => t.id !== e.turnId); continue; }
       const turn = e.turnId ? this.turns.find(t => t.id === e.turnId) : undefined;
       if (!turn) continue; // a record from a turn whose start we never read cannot be attributed
       if (e.kind === "user") turn.users.push({ text: normalizeTurnText(e.text), at: e.at });
