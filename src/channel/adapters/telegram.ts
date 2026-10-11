@@ -968,8 +968,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return { messageId, chatId, threadId };
   }
 
-  async editMessage(chatId: string, messageId: string, text: string): Promise<void> {
-    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
+  /** #1651: an edit renders like the reply it edits — format "html" is parse_mode HTML, as on sendMessage. */
+  async editMessage(chatId: string, messageId: string, text: string, _threadId?: string, opts?: { format?: "html" }): Promise<void> {
+    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, ...(opts?.format === "html" ? [{ parse_mode: "HTML" as const }] : []));
   }
 
   /** Edit text and drop the inline keyboard (omitting reply_markup clears it). */

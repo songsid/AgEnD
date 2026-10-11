@@ -106,7 +106,8 @@ export interface ChannelAdapter extends EventEmitter {
   sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage>;
   /** threadId locates the message when it lives in a topic/thread (Discord forum
    * topics are their own channel and won't be found by a guild text-channel scan). */
-  editMessage(chatId: string, messageId: string, text: string, threadId?: string): Promise<void>;
+  /** #1651: `format` as on sendText — "html" renders where the platform has a parse mode (Telegram); Discord always renders Markdown. */
+  editMessage(chatId: string, messageId: string, text: string, threadId?: string, opts?: { format?: "html" }): Promise<void>;
   /** Edit a message's text AND remove any inline buttons/components. Used to
    * retire a Cancel button after the agent replies or a timeout elapses.
    * threadId locates the message when it lives in a topic/thread (Discord

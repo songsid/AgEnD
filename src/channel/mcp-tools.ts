@@ -17,14 +17,15 @@ type JsonSchemaObject = {
   [k: string]: unknown;
 };
 
-/** Strip `$schema`/`$defs` that some MCP clients reject. */
+/** Strip client-incompatible keys and server-owned channel routing metadata. */
 function toToolInputSchema(schema: ZodType): JsonSchemaObject {
   const raw = z.toJSONSchema(schema) as Record<string, unknown>;
   const { $schema: _s, $defs: _d, ...rest } = raw;
   if (rest.type !== "object") {
     throw new Error("Expected object-typed zod schema for MCP tool input");
   }
-  return rest as JsonSchemaObject;
+  const { chat_id: _chat, thread_id: _thread, ...properties } = rest.properties as Record<string, unknown>;
+  return { ...rest, properties } as JsonSchemaObject;
 }
 
 type ToolDef = {
@@ -147,6 +148,21 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["list_deployments", schemas.ListDeploymentsArgs,
     "List active template deployments with their instances and status."],
 ];
+
+/** The runtime schemas, including internal routing fields, for every MCP tool. */
+export const OUTBOUND_TOOL_SCHEMAS: ReadonlyMap<string, ZodType> = new Map(
+  DEFS.map(([name, schema]) => [name, schema]),
+);
+
+// Derive routing capability from the schemas themselves. A new schema with a
+// chat_id is covered without adding its name to a second whitelist.
+const channelAddressTools = new Set(DEFS
+  .filter(([, schema]) => Object.hasOwn(z.toJSONSchema(schema).properties ?? {}, "chat_id"))
+  .map(([name]) => name));
+
+export function usesChannelAddress(tool: string): boolean {
+  return channelAddressTools.has(tool);
+}
 
 export const TOOLS: ToolDef[] = DEFS.map(([name, schema, description]) => ({
   name,
