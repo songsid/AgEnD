@@ -12,7 +12,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
 | **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/advanced` (`/settings` is Agents) |
 
-`/ui`, `/view` and `/settings` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings**, the theme, the language and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
+`/ui`, `/view` and `/settings` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings** and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
 The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It is reachable from the machine itself unless you set up a way in: see [Reaching it from elsewhere](#reaching-it-from-elsewhere).
 
@@ -64,7 +64,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
-- **First time here?** The first time `/ui` opens on a device, a short tour points out the instance list, files, Stop and the *needs you* badge. **Tour** at the bottom of the sidebar shows it again.
+- **First time here?** The first time `/ui` opens on a device, a short tour points out the instance list, files, Stop and the *needs you* badge. **Settings → This device → Tour** shows it again.
 
 ### The layout
 - The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
@@ -72,7 +72,8 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
 - The sidebar button at its top hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it, and choosing something, tapping outside it or Esc closes it. A phone also has tabs along the bottom (Chat, Fleet, View, Settings); they make room while the keyboard is open.
 - The header shows the instance's name and state, the **Chat / View / Details** switch, **Text size** and **Usage** (the same two, in the same order, on Chat, View, Details and Fleet). **Text size** goes S → M → L and is one setting for this browser: chosen on any page, it is the size on every page and after a reload. Its **⋯** menu holds **Instance details** (the Details page) and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
-- **Theme** and **Language** (bottom of the sidebar): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser. The language applies to every panel.
+- **Theme** and **Language** (**Settings → This device**; on `/view` without signing in, the ☀ button beside **Sign in**): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser. The language applies to every panel.
+- The bottom of the sidebar is one row: **Settings** and **Session**. **Settings → This device** holds what this browser chooses for itself: theme, language, HTML previews and the tour.
 - **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
 
 ### Keyboard and screen readers
@@ -104,7 +105,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.htm` file, a card under it can run that HTML for you.
 - **Files and blocks work the same.** A file's card sits under the reply's files. Its HTML is read from the fleet only when you click **Preview** or **Open in panel**, and it runs in the same sandboxed frame as a block. The file is never opened on the dashboard's own address. **Download** is the file's own link above the card. A file the fleet no longer has (the agent rewrote it, or the fleet restarted) says so; ask the agent to send it again.
 - **Up to 1 MiB.** A block or a file over 1 MiB (as UTF-8) gets no preview. A file's listed size is checked before anything is read, and its bytes are checked again after. Files are read as UTF-8.
-- **Off on every device until you turn it on.** Use **Allow HTML previews on this device** at the bottom of the sidebar, or the card's **⋯** menu. It asks once and says what it means. Turning it off stops every running preview.
+- **Off on every device until you turn it on.** Use **Allow HTML previews on this device** in **Settings → This device**, or the card's **⋯** menu. It asks once and says what it means. Turning it off stops every running preview.
 - **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **I understand** on the banner hides it until you next sign in. The amber border around the preview always stays. **Stop** closes it. One preview runs at a time.
 - **Download** saves a block's HTML as `reply.html` (a file keeps its own name). It is never opened in the dashboard.
 - **Open in panel** shows the block beside the conversation, with room to use it. On a phone it is a full-screen sheet; **←** goes back to the chat.
@@ -299,7 +300,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | **403** when opening the dashboard through a proxy or tunnel | Its `Host` is not allowed: add it to `web.allowed_hosts`. |
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
 | "Your session has ended" | 2 hours without use, 12 hours since sign-in, or someone revoked. Sign in again. |
-| The dashboard briefly says "disconnected", then keeps updating | The live stream is blocked on your path, so it switched to polling every 5 seconds. Nothing to do. |
+| Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds. Nothing to do — it is not shown as a problem. |
 | `/dashboard` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 

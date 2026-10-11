@@ -10,7 +10,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { PanelHeader, onPanelKey, setTitle, addFooterItem, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
+import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { detailsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
@@ -27,7 +27,7 @@ import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { PreviewPanel, openPanel, panelStore, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
-import { installTour, refreshTourSpot, startTour } from "./chat-tour.js";
+import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { FirstRunCard } from "./first-run.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 
@@ -77,21 +77,11 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     if (auth && typeof auth.sessionHandle === "function") auth.sessionHandle().then((h) => P().setBannerScope(h), () => P().setBannerScope(null));
     else P().setBannerScope(null);
   }
-  addFooterItem("previews", PreviewOptIn);
-  addFooterItem("tour", TourButton);
+  // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
   return store;
 }
 
-function PreviewOptIn() {
-  const [on, setOn] = useState(P() ? P().optedIn() : false);
-  useEffect(() => (P() ? P().onChange(() => setOn(P().optedIn())) : undefined), []);
-  return html`<label class="side-row toggle"><input type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
-    <span>${t("chat.previews")}</span></label>`;
-}
-function TourButton() {
-  return html`<button type="button" id="tourBtn" class="side-row" title=${t("chat.tourBtnTitle")} onClick=${startTour}><${Icon} name="info" /><span>${t("chat.tour")}</span></button>`;
-}
 
 // ── Code wrap: this browser's choice (agend_code_wrap). On a phone, code wraps whatever it is (app.css).
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
