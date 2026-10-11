@@ -130,6 +130,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-device-row { display: flex; gap: var(--s-2); }
 /* #1620: Settings → Web — the lead, and the read-only list of what is set in fleet.yaml. */
 .s-web .sub { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+.s-web-fields:disabled select { opacity: 0.6; }   /* over the public link: dimmed like the inputs (.field input:disabled) */
 .s-web-ro { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-1) var(--s-3); margin: 0; font-size: var(--fs-sm); }
 .s-web-ro > div { display: contents; }
 .s-web-ro dt { color: var(--text-3); }

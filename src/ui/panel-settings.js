@@ -696,8 +696,9 @@ function General({ ctx }) {
 /**
  * #1620: Settings → Web — the dashboard's own settings, in one write (PUT /api/settings/fleet/web). Editable: the local
  * session limits, the browser terminal (on/off, its minutes), web echo and the public link's menu; everything else
- * under web: / web_terminal: is listed read-only (it decides what the dashboard listens on and exposes: fleet.yaml and
- * a restart). The server judges each change: loosening one waits for a General admin, tightening applies at once. Over
+ * under web: / web_terminal: is listed read-only (it decides what the dashboard listens on and exposes: fleet.yaml, then
+ * agend reload). The server judges each change: loosening one waits for a fleet admin in General, tightening applies at
+ * once. Over
  * the temporary public link none of it can be changed — the form says so and stays disabled (the server refuses too).
  */
 export const WEB_READ_ONLY = [
