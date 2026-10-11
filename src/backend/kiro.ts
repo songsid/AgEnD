@@ -796,13 +796,14 @@ function publishKiroCompatibility(binaryPath: string, compatibility: KiroCliComp
  * #1636: regex source for `text` as it may sit in a pane read without joining wrapped rows (the error monitor's
  * capture has no `-J`, and `window-size latest` lets an attached terminal make the pane narrow): tmux wraps at the
  * column, mid-word, and drops a row's trailing spaces — so a row break may fall between any two characters, and a
- * space may be lost at a row's end. Nothing else is loosened: the words and their order are exact.
+ * space may be lost at a row's end. Nothing else is loosened: a gap between words is a space or a row break, never
+ * nothing (Prism, #1637 R3), and the words and their order are exact.
  */
 export function wrapTolerant(text: string): string {
   const chars = [...text];
   let out = "";
   chars.forEach((ch, i) => {
-    if (ch === " ") { out += "(?:[ \\t]*\\n)?[ \\t]*"; return; }               // one row break at most, spaces either side
+    if (ch === " ") { out += "(?:[ \\t]*\\n[ \\t]*|[ \\t]+)"; return; }          // a space, or one row break (spaces either side)
     if (i > 0 && chars[i - 1] !== " ") out += "\\n?";                          // a break inside a word
     out += ch.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   });
@@ -818,7 +819,7 @@ export const KIRO_RATE_LIMIT_SCREEN = new RegExp(
 /** #1636: kiro's monthly cap (MonthlyLimitReached branch); see getErrorPatterns. */
 export const KIRO_REQUEST_LIMIT_SCREEN = new RegExp(
   KIRO_MESSAGE_LEAD + "(?:" + ["Hourly", "Daily", "Weekly", "Monthly"].map(wrapTolerant).join("|") + ")"
-  + wrapTolerant(" request limit reached") + "(?:[ \\t]*$|" + wrapTolerant(" - The limits reset on") + ")",
+  + wrapTolerant(" request limit reached") + "(?:[ \\t]*$|" + wrapTolerant(" - The limits reset on") + "\\b)",
   "m",
 );
 

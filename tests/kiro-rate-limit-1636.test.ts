@@ -101,7 +101,18 @@ describe("#1636: kiro's rate limit and monthly cap are classified", () => {
   it("wrapTolerant allows one row break per gap, never a blank row, and keeps the words exact", () => {
     const re = new RegExp(`^${wrapTolerant("Kiro rate limit")}$`);
     expect(["Kiro rate limit", "Kiro\nrate limit", "Kiro rate li\nmit", "Kiro \nrate limit", "Kiro\n rate limit"].map(t => re.test(t))).toEqual([true, true, true, true, true]);
-    expect(["Kiro\n\nrate limit", "Kiro rate\n\nlimit", "Kiro rate limits", "Kiro rates limit"].map(t => re.test(t))).toEqual([false, false, false, false]);
+    expect(["Kiro\n\nrate limit", "Kiro rate\n\nlimit", "Kiro rate limits", "Kiro rates limit", "Kiroratelimit", "Kiro ratelimit"].map(t => re.test(t))).toEqual([false, false, false, false, false, false]);
+  });
+
+  it("Prism R3: words run together or a reset that is not \"reset on\" do not match", () => {
+    for (const pane of [
+      "Monthlyrequestlimitreached",
+      "Kiroratelimitreached:\nRequestquotaexceeded.Pleasewaitamomentandtryagain.",
+      "Monthly request limit reached - The limits reset once testing finishes.",
+    ]) {
+      expect(classify(pane), pane).toBeUndefined();
+    }
+    expect(classify("Monthly\nrequest limit reached")).toMatchObject({ type: "rate_limit" });   // a real row break between words
   });
 
   it("an expired login on the same pane still wins: auth pauses, first match", () => {
