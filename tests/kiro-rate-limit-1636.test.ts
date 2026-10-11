@@ -2,7 +2,7 @@ import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { KiroBackend } from "../src/backend/kiro.js";
+import { KiroBackend, wrapTolerant } from "../src/backend/kiro.js";
 
 /**
  * #1636: kiro's chat prints its rate limit and its monthly cap WITHOUT the `Kiro is having trouble responding right
@@ -47,8 +47,11 @@ const LIMIT_REACHED_TEXT = [
   "2. Wait until next month when your limit automatically resets.",
 ].join("\n");
 const MONTHLY_FREE_TIER = `Monthly request limit reached\n\n${LIMIT_REACHED_TEXT} The limits reset on 11/01.\n\nUse /subscribe to upgrade your subscription.\n\n> `;
-/** The same as an 80-column pane shows it: every long line wrapped (capture-pane without -J). */
-const wrap80 = (text: string) => text.split("\n").flatMap(line => line.length <= 80 ? [line] : line.match(/.{1,80}/g)!).join("\n");
+/** A pane `columns` wide, read as the error monitor reads it (capture-pane without -J): every row cut at the column,
+ *  mid-word, and its trailing spaces dropped. */
+const wrapAt = (text: string, columns: number) =>
+  text.split("\n").flatMap(line => (line.length <= columns ? [line] : line.match(new RegExp(`.{1,${columns}}`, "g"))!)).map(r => r.trimEnd()).join("\n");
+const wrap80 = (text: string) => wrapAt(text, 80);
 
 /** Exactly what the monitor does: the first pattern in array order wins. */
 function classify(pane: string) {
@@ -71,6 +74,34 @@ describe("#1636: kiro's rate limit and monthly cap are classified", () => {
     for (const pane of [MONTHLY_FREE_TIER, wrap80(MONTHLY_FREE_TIER), wrap80(MONTHLY_FREE_TIER).replace(/\n> $/, "")]) {
       expect(classify(pane), pane).toMatchObject({ type: "rate_limit", action: "notify", message: expect.stringMatching(/request limit reached — it resets/) });
     }
+  });
+
+  it("Prism R2: a narrow pane wraps the rate-limit pair and the subscriber's reset line mid-word — both still classify", () => {
+    for (const columns of [40, 48]) {
+      for (const [pane, message] of [[THROTTLED, /Kiro rate limit reached/], [MONTHLY_INLINE, /request limit reached — it resets/]] as const) {
+        const narrow = wrapAt(pane, columns);
+        expect(narrow, "the wrap really splits a phrase").not.toBe(pane);
+        expect(classify(narrow), narrow).toMatchObject({ type: "rate_limit", action: "notify", message: expect.stringMatching(message) });
+      }
+    }
+  });
+
+  it("…and the quotes stay unmatched when the pane wraps them too", () => {
+    for (const columns of [40, 48]) {
+      for (const quote of [
+        "When kiro prints Monthly request limit reached - The limits reset on 11/01. AgEnD notifies.",
+        "kiro prints ⚠️  Kiro rate limit reached: and then Request quota exceeded. Please wait a moment and try again.",
+        "- Monthly request limit reached",
+      ]) {
+        expect(classify(wrapAt(quote, columns)), wrapAt(quote, columns)).toBeUndefined();
+      }
+    }
+  });
+
+  it("wrapTolerant allows one row break per gap, never a blank row, and keeps the words exact", () => {
+    const re = new RegExp(`^${wrapTolerant("Kiro rate limit")}$`);
+    expect(["Kiro rate limit", "Kiro\nrate limit", "Kiro rate li\nmit", "Kiro \nrate limit", "Kiro\n rate limit"].map(t => re.test(t))).toEqual([true, true, true, true, true]);
+    expect(["Kiro\n\nrate limit", "Kiro rate\n\nlimit", "Kiro rate limits", "Kiro rates limit"].map(t => re.test(t))).toEqual([false, false, false, false]);
   });
 
   it("an expired login on the same pane still wins: auth pauses, first match", () => {
