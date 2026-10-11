@@ -12,13 +12,14 @@
  * Fixtures: tests/fixtures/codex-0160-false-stuck-1641 (sol's real stream and rollout).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Daemon, PaneStateMachine, TRANSCRIPT_OPEN_TURN_QUIET_MS, UNKNOWN_LAYOUT_STABLE_MS } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import type { TranscriptTurnEvent } from "../src/transcript-turns.js";
+import { CodexRolloutSource } from "../src/transcript-sources.js";
 import { ALWAYS_ON_BLOCK_NOTICE_MS, WakeCoordinator, type WakeCoordinatorDeps } from "../src/wake-coordinator.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale } from "../src/locale.js";
@@ -28,6 +29,9 @@ const FIX = fileURLToPath(new URL("./fixtures/codex-0160-false-stuck-1641/", imp
 const IDLE_LOOKING = readFileSync(join(FIX, "warnings-footer-idle-composer.pane.txt"), "utf8");
 const WORKING = readFileSync(join(FIX, "working-0s-warnings-footer.pane.txt"), "utf8");
 const READY_0156 = readFileSync(fileURLToPath(new URL("./fixtures/codex-0156-ready.pane.txt", import.meta.url)), "utf8");
+const LOADING_0159 = readFileSync(fileURLToPath(new URL("./fixtures/codex-0159-resume-loading.pane.txt", import.meta.url)), "utf8");
+/** The rollout records themselves, as codex writes them (the source parses these). */
+const ROLLOUT_LINES = readFileSync(join(FIX, "rollout-task-events.jsonl"), "utf8").trim().split("\n");
 /** Sol's real turn records, in rollout order — mapped as the codex rollout source maps them (#1510). */
 const ROLLOUT: TranscriptTurnEvent[] = readFileSync(join(FIX, "rollout-task-events.jsonl"), "utf8").trim().split("\n").map(line => {
   const p = JSON.parse(line).payload;
@@ -39,10 +43,18 @@ const STUCK_MS = 60_000;
 /** The safety sweep's interval: what separates two of these captures in life. */
 const SWEEP_MS = 60_000;
 const dirs: string[] = [];
-let now = Date.parse("2026-10-11T09:28:15Z");
-beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(now); setLocale("en"); });
-afterEach(() => { vi.useRealTimers(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
-const advance = (ms: number) => { now += ms; vi.setSystemTime(now); };
+const monitors: Array<{ stop(): void }> = [];
+// Both clocks are fake: elapsed time moves Date and performance.now together; a wall-clock correction moves Date alone.
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date", "performance"] }); vi.setSystemTime(Date.parse("2026-10-11T09:28:15Z")); setLocale("en"); });
+afterEach(() => {
+  for (const m of monitors.splice(0)) m.stop();
+  vi.useRealTimers();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+/** Time passing (both clocks). */
+const advance = (ms: number) => { vi.advanceTimersByTime(ms); };
+/** A wall-clock correction only (NTP, a suspended VM): performance.now does not move. */
+const jumpWallClock = (ms: number) => { vi.setSystemTime(Date.now() + ms); };
 
 function harness(pane: string, opts: { following?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-1641-"));
@@ -64,9 +76,10 @@ function harness(pane: string, opts: { following?: boolean } = {}) {
   daemon.instanceStateMonitorActive = true;
   daemon.transcriptMonitor = { following: () => opts.following !== false };
   const sweep = () => daemon.captureAndEvaluateInstanceState("safety_sweep");
-  const rollout = (...events: TranscriptTurnEvent[]) => { daemon.transcriptTurns.observe(events, Date.now()); daemon.transcriptActivityAt = Date.now(); };
-  const recovered = () => logger.info.mock.calls.some(([, msg]) => typeof msg === "string" && msg.startsWith("Stuck instance recovered"));
-  return { daemon, state, sweep, rollout, recovered, logger };
+  const rollout = (...events: TranscriptTurnEvent[]) => { daemon.transcriptTurns.observe(events, performance.now()); daemon.transcriptActivityAt = performance.now(); };
+  const recoveries = () => logger.info.mock.calls.filter(([, msg]) => typeof msg === "string" && msg.startsWith("Stuck instance recovered")).length;
+  const recovered = () => recoveries() > 0;
+  return { daemon, state, sweep, rollout, recovered, recoveries, logger, dir };
 }
 
 /** Sol from 17:28: the restart's first reading of its Context-less idle pane, then the pane holding still. */
@@ -175,6 +188,112 @@ describe("#1641: the transcript outranks the pane while a turn is running", () =
   });
 });
 
+describe("#1641 R1: the real rollout source → monitor → daemon, and the edges Prism found", () => {
+  /** A rollout for cwd /tmp (the harness's working directory) under a scratch sessions dir, read by the REAL source. */
+  async function realRollout(h: ReturnType<typeof harness>) {
+    const sessions = join(h.dir, "sessions"), day = join(sessions, "2026", "10", "11");
+    mkdirSync(day, { recursive: true });
+    const file = join(day, "rollout-2026-10-11T09-00-00-01a0ed7a-923c-7901-814b-3fc596fea75a.jsonl");
+    writeFileSync(file, JSON.stringify({ type: "session_meta", payload: { id: "01a0ed7a-923c-7901-814b-3fc596fea75a", cwd: "/tmp" } }) + "\n");
+    const monitor = h.daemon.buildTranscriptMonitor(new CodexRolloutSource("/tmp", sessions));
+    monitors.push(monitor);
+    h.daemon.transcriptMonitor = monitor;
+    monitor.startPolling(3_600_000);                        // following needs a polling monitor; polls are driven below
+    const poll = () => monitor.pollIncrement();
+    await poll();                                          // adopts the file at its end
+    return { file, poll, append: (line: string) => appendFileSync(file, line + "\n") };
+  }
+
+  it("P1-1: open → working, closed → idle, through the real source; a lost rollout is unknown (the pane decides)", async () => {
+    const h = harness(READY_0156);
+    const r = await realRollout(h);
+    expect(h.daemon.transcriptMonitor.following()).toBe(true);
+    r.append(ROLLOUT_LINES[2]!); await r.poll();           // task_started
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("working");
+    r.append(ROLLOUT_LINES[3]!); await r.poll();           // task_complete
+    advance(SWEEP_MS);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+    r.append(ROLLOUT_LINES[2]!.replace(/01a12b5a/g, "01a12b5b")); await r.poll();   // another turn starts
+    unlinkSync(r.file); await r.poll();                    // and the rollout disappears: not following any more
+    expect(h.daemon.transcriptMonitor.following()).toBe(false);
+    advance(SWEEP_MS);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+  });
+
+  it("P1-1: a monitor that is not polling is not following, whatever its source last read", async () => {
+    const h = harness(READY_0156);
+    const r = await realRollout(h);
+    r.append(ROLLOUT_LINES[2]!); await r.poll();
+    h.daemon.transcriptMonitor.stop();
+    expect(h.daemon.transcriptMonitor.following()).toBe(false);
+  });
+
+  it("P1-2: output that overtook the probe cannot keep an idle-looking pane idle while a turn is open", async () => {
+    for (const open of [true, false]) {
+      const h = harness(READY_0156);
+      await h.sweep();
+      expect(h.daemon.instanceState).toBe("idle");
+      if (open) h.rollout(STARTED_2225);
+      let release!: (pane: string) => void;
+      h.daemon.tmux.capturePane = () => new Promise<string>(r => { release = r; });
+      const expected = Date.now();
+      h.daemon.instanceStateLastOutputAt = expected;
+      const probe = h.daemon.captureAndEvaluateInstanceState("output_probe", expected);
+      advance(1);
+      h.daemon.instanceStateLastOutputAt = Date.now();     // more output while the capture was in flight
+      release(READY_0156);
+      await probe;
+      expect(h.daemon.instanceState, open ? "open turn" : "cosmetic output, no turn").toBe(open ? "working" : "idle");
+    }
+  });
+
+  it("P2-1: once recovered, a still pane stays idle sweep after sweep — one recovery logged, no flapping back to stuck", async () => {
+    const h = harness(IDLE_LOOKING, { following: false });
+    await solAfterRestart(h);
+    await h.sweep();
+    advance(UNKNOWN_LAYOUT_STABLE_MS);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+    const states: string[] = [];
+    for (let i = 0; i < 3; i++) { advance(SWEEP_MS); await h.sweep(); states.push(h.daemon.instanceState); }
+    expect([states, h.recoveries()]).toEqual([["idle", "idle", "idle"], 1]);
+  });
+
+  it("P2-2: codex's resume load (the #1031 transient) never recovers, however long it holds; the idle composer does", async () => {
+    const h = harness(LOADING_0159, { following: false });
+    h.daemon.spawnGeneration++;
+    h.daemon.inputTransientGuardGeneration = h.daemon.spawnGeneration;
+    expect(h.daemon.inputTransientInPane(LOADING_0159)).toBeTruthy();
+    await solAfterRestart(h);
+    await h.sweep();
+    advance(UNKNOWN_LAYOUT_STABLE_MS);
+    await h.sweep();
+    expect([h.daemon.instanceState, h.recovered()]).toEqual(["stuck", false]);
+  });
+
+  it("P2-3: the open-turn hold runs on elapsed time — a wall-clock jump, forward or back, does not end it", async () => {
+    const h = harness(READY_0156);
+    h.rollout(STARTED_2225);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("working");
+    // (The pane's own stuck timer is wall-clock and older than #1641, so a forward jump may read it stuck; what
+    // matters here is that the hold is not lifted: never idle while the turn is open.)
+    jumpWallClock(TRANSCRIPT_OPEN_TURN_QUIET_MS + 1);
+    await h.sweep();
+    expect(h.daemon.instanceState).not.toBe("idle");
+    jumpWallClock(-2 * TRANSCRIPT_OPEN_TURN_QUIET_MS);
+    await h.sweep();
+    expect(h.daemon.instanceState).not.toBe("idle");
+    jumpWallClock(TRANSCRIPT_OPEN_TURN_QUIET_MS - 1);        // the wall clock back where it was (older wall-clock timers aside)
+    advance(TRANSCRIPT_OPEN_TURN_QUIET_MS);                 // real elapsed quiet: the pane decides
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+  });
+});
+
 describe("#1641: a stuck target with waiting work is visible", () => {
   let seq = 0;
   let clock = 5_000_000;
@@ -209,6 +328,52 @@ describe("#1641: a stuck target with waiting work is visible", () => {
     hold.delete("sol");                                   // recovered: it takes its work
     c.scan();
     hold.set("sol", "The CLI appears stuck.");            // a new episode
+    c.scan();
+    expect(notices).toHaveLength(2);
+    c.stop();
+  });
+
+  it("P2-4: a delivered queue ends the episode — the next blocked queue is reported again after its own 30 min", () => {
+    const rows = [row("sol")];
+    const hold = new Map([["sol", "The CLI appears stuck."]]);
+    const { c, notices } = coordinator(rows, hold);
+    clock += ALWAYS_ON_BLOCK_NOTICE_MS;
+    c.scan(); c.scan();
+    expect(notices).toHaveLength(1);
+    rows[0]!.state = "delivered" as any;
+    c.noteDelivered("sol");
+    c.scan();                                             // nothing pending: the scan never visits the target
+    rows.push(row("sol"));
+    clock += ALWAYS_ON_BLOCK_NOTICE_MS;
+    c.scan(); c.scan();
+    expect(notices).toHaveLength(2);
+    c.stop();
+  });
+
+  it("P2-4: a delivery ends the episode even with more still queued: stuck again, the remaining wait is reported again", () => {
+    const rows = [row("sol"), row("sol")];
+    const { c, notices } = coordinator(rows, new Map([["sol", "The CLI appears stuck."]]));
+    clock += ALWAYS_ON_BLOCK_NOTICE_MS;
+    c.scan();
+    expect(notices).toHaveLength(1);
+    rows[0]!.state = "delivered" as any;                  // it took one, then went stuck again with the other waiting
+    c.noteDelivered("sol");
+    c.scan();
+    expect(notices).toHaveLength(2);
+    c.scan();
+    expect(notices).toHaveLength(2);                       // once per episode
+    c.stop();
+  });
+
+  it("P2-4: an emptied queue (no delivery noted) also ends the episode", () => {
+    const rows = [row("sol")];
+    const { c, notices } = coordinator(rows, new Map([["sol", "The CLI appears stuck."]]));
+    clock += ALWAYS_ON_BLOCK_NOTICE_MS;
+    c.scan();
+    rows.splice(0);
+    c.scan();
+    rows.push(row("sol"));
+    clock += ALWAYS_ON_BLOCK_NOTICE_MS;
     c.scan();
     expect(notices).toHaveLength(2);
     c.stop();

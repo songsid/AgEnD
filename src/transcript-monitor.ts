@@ -204,8 +204,13 @@ export class TranscriptMonitor extends EventEmitter {
     this.saveOffset();
   }
 
-  /** #1641: whether a transcript is being followed at all (its turn boundaries are evidence only then). */
+  /**
+   * #1641: whether a transcript is being followed right now (its turn boundaries are evidence only then): polling, and
+   * — for a source lane (codex's rollout) — the source's own word that its last poll found and read our transcript; a
+   * source that cannot say is not following.
+   */
   following(): boolean {
+    if (this.source) return this.pollTimer !== null && this.source.following?.() === true;
     return this.transcriptPath !== null;
   }
 

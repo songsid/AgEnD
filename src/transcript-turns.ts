@@ -35,7 +35,7 @@ const ARM_SKEW_MS = 30_000;
 export class TranscriptTurnLedger {
   private turns: Turn[] = [];
 
-  observe(events: readonly TranscriptTurnEvent[], now = Date.now()): void {
+  observe(events: readonly TranscriptTurnEvent[], now = performance.now()): void {
     for (const e of events) {
       if (e.kind === "start") {
         if (!e.turnId || this.turns.some(t => t.id === e.turnId)) continue;
@@ -54,7 +54,7 @@ export class TranscriptTurnLedger {
   reset(): void { this.turns = []; }
 
   /**
-   * #1641: when the earliest turn still open (a start read, no end yet) was first read — any turn, whoever's message
+   * #1641: when (performance.now()) the earliest turn still open (a start read, no end yet) was first read — any turn, whoever's message
    * started it — or null when every turn read since this monitor began has ended. Only meaningful while the monitor
    * follows a transcript: an empty ledger with nothing followed is "unknown", not "closed" (the daemon checks that).
    */

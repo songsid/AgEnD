@@ -198,6 +198,7 @@ export class WakeCoordinator {
     s.parkedUntil = 0;
     s.parkReason = null;
     s.claimBlockNoticeSent = false;
+    s.alwaysOnBlockNoticeSent = false;      // #1641: the target took work — the episode is over
   }
 
   /** Free warm slots under the hard cap, counting every target exactly once. */
@@ -257,6 +258,8 @@ export class WakeCoordinator {
       into.set(row.targetInstance, list);
     }
     for (const [target, rows] of alwaysOn) this.checkAlwaysOnTarget(target, rows, now);
+    // #1641: a queue that emptied ended its episode too (the scan never visits a target with nothing pending).
+    for (const [target, s] of this.states) if (s.alwaysOnBlockNoticeSent && !alwaysOn.has(target)) s.alwaysOnBlockNoticeSent = false;
     // Capacity is handed out oldest-work-first.
     const ordered = [...byTarget.entries()].sort((a, b) => a[1][0]!.createdSeq - b[1][0]!.createdSeq);
     let nextDue = Number.POSITIVE_INFINITY;

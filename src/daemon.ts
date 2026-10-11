@@ -1465,9 +1465,9 @@ export class Daemon extends EventEmitter {
   private turnReplyGuard = new TurnReplyGuard();
   /** #1510: turn boundaries from the CLI's transcript, for a backend whose guard reads its turn end there. */
   private transcriptTurns = new TranscriptTurnLedger();
-  /** #1641: when this launch's transcript monitor last read anything (a turn boundary, a tool, assistant text). */
+  /** #1641: when this launch's transcript monitor last read anything (a turn boundary, a tool, assistant text); performance.now(). */
   private transcriptActivityAt = 0;
-  /** #1641: the composer a stuck pane is being watched on, with no transcript to ask (see recoverStuck). */
+  /** #1641: the launch and composer a stuck pane's idle evidence is about, and since when (performance.now()); see recoverStuck. */
   private stuckRecoveryKey: string | null = null;
   private stuckRecoverySince = 0;
   /** #1510: since when (monotonic) this generation has been held as running in the transcript. */
@@ -5274,8 +5274,9 @@ export class Daemon extends EventEmitter {
     const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source);
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
-    const touch = () => { this.transcriptActivityAt = Date.now(); };
-    monitor.on("turns", (turns: TranscriptTurnEvent[]) => { this.transcriptTurns.observe(turns); touch(); });
+    // Monotonic: a wall-clock correction must neither end nor extend the open-turn hold (#1641 R1).
+    const touch = () => { this.transcriptActivityAt = performance.now(); };
+    monitor.on("turns", (turns: TranscriptTurnEvent[]) => { this.transcriptTurns.observe(turns, performance.now()); touch(); });
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     return monitor;
   }
@@ -5285,7 +5286,7 @@ export class Daemon extends EventEmitter {
    * and the transcript moved within TRANSCRIPT_OPEN_TURN_QUIET_MS. `closed`: every turn read since this launch's monitor
    * began has ended. `unknown`: not a transcript backend, nothing followed, or an open turn gone quiet (a missed end).
    */
-  private transcriptTurnState(now = Date.now()): "open" | "closed" | "unknown" {
+  private transcriptTurnState(now = performance.now()): "open" | "closed" | "unknown" {
     if (this.backend?.turnEndFromTranscript !== true || this.transcriptMonitor?.following() !== true) return "unknown";
     const since = this.transcriptTurns.openSince();
     if (since === null) return "closed";
@@ -5301,27 +5302,26 @@ export class Daemon extends EventEmitter {
   private recoverStuck(pane: string, snapshot: InstanceStateSnapshot, changeAt: number, turn: "open" | "closed" | "unknown"): InstanceStateSnapshot {
     const machine = this.instanceStateMachine;
     const idleComposer = this.backend?.isStableUnknownLayoutIdlePane?.(pane) === true;
-    if (!machine || !idleComposer || turn === "open") {
+    // The resume load (#1031: `Resuming session…` over the same composer) is input that is not open yet (#1641 R1).
+    if (!machine || !idleComposer || turn === "open" || this.inputTransientInPane(pane)) {
       this.stuckRecoveryKey = null;
       return snapshot;
     }
-    const now = Date.now();
-    if (turn === "unknown") {
-      const key = pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "");
-      if (key !== this.stuckRecoveryKey) {
-        this.stuckRecoveryKey = key;
-        this.stuckRecoverySince = now;
-        return snapshot;
-      }
-      if (now - this.stuckRecoverySince < UNKNOWN_LAYOUT_STABLE_MS) return snapshot;
+    // The evidence is about this launch and this screen. Once it holds, it keeps holding — a still pane reads stuck
+    // again at the next sweep (its footer is still unreadable) and must not start the window over (#1641 R1).
+    const mono = performance.now();
+    const key = `${this.spawnGeneration}:${this.launchAttempt}\n${pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "")}`;
+    if (key !== this.stuckRecoveryKey) {
+      this.stuckRecoveryKey = key;
+      this.stuckRecoverySince = mono;
     }
-    this.stuckRecoveryKey = null;
+    if (turn === "unknown" && mono - this.stuckRecoverySince < UNKNOWN_LAYOUT_STABLE_MS) return snapshot;
     // A footer this build cannot read stays unreadable: the same still pane reads stuck again at every sweep and is
     // recovered again. Only the edge into idle is news.
     const fields = { evidence: turn === "closed" ? "transcript_no_open_turn" : "stable_empty_composer", unchangedForMs: snapshot.unchangedForMs };
     if (this.instanceState !== "idle") this.logger.info(fields, "Stuck instance recovered — the CLI shows its idle composer and is not running a turn (#1641)");
     else this.logger.debug(fields, "Still idle on its unreadable footer — the stuck reading was recovered again (#1641)");
-    return machine.observe(pane, now, { settled: true, changeAt, forceReady: true });
+    return machine.observe(pane, Date.now(), { settled: true, changeAt, forceReady: true });
   }
 
   private replyCompletionGuardEnabled(): boolean {
@@ -5725,7 +5725,9 @@ export class Daemon extends EventEmitter {
           // a pair every ~1.6s for as long as the repaint lasted (#1116). Real
           // work cannot hide behind this: it changes the layout, the next
           // output arms another probe, and the debounce capture still fires.
-          if (this.instanceState === "idle" && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true) return;
+          // #1641: never while the transcript shows a turn running — that idle-looking screen is mid-turn.
+          if (this.instanceState === "idle" && this.backend?.isPeriodicRedrawIdlePane?.(pane) === true
+            && this.transcriptTurnState() !== "open") return;
           // A second burst overtook the probe. Do not bless its stale capture as
           // idle: continuous output is the safer working signal, while the next
           // quiet probe/debounce can still prove that it was only repainting.

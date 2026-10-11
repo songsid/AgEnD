@@ -69,6 +69,11 @@ export interface TranscriptSource {
   checkpoint?(): Promise<TranscriptCheckpoint | null>;
   /** Release anything held between polls; the next poll may acquire it again. */
   close?(): void;
+  /**
+   * #1641: whether the last poll found and read this instance's own transcript. False before the first, after a reset,
+   * and whenever the last poll found none — then nothing it reports is evidence about the turn.
+   */
+  following?(): boolean;
 }
 
 const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts: [] };
@@ -111,7 +116,15 @@ export class CodexRolloutSource implements TranscriptSource {
     this.snapshotExistingFiles();
   }
 
+  /** #1641: the last poll found this instance's rollout and read it (see TranscriptSource.following). */
+  private lastPollFollowed = false;
+
+  following(): boolean {
+    return this.lastPollFollowed && this.currentFile !== null;
+  }
+
   reset(): void {
+    this.lastPollFollowed = false;
     this.currentFile = null;
     this.byteOffset = 0;
     this.openTurnId = "";
@@ -188,7 +201,9 @@ export class CodexRolloutSource implements TranscriptSource {
     // staying pinned to the old one goes silently blind (#528 trap 1).
     const candidates = this.candidateFiles();
     const active = candidates.find(c => this.fileBelongsToUs(c.path));
-    if (!active) return EMPTY;
+    // Cleared only by a real loss (none found, an adoption or read that failed) — never for the length of a poll's
+    // await, when a capture reading following() would drop the veto mid-turn.
+    if (!active) { this.lastPollFollowed = false; return EMPTY; }
 
     if (active.path !== this.currentFile) {
       // Existing rollout: continue at the EOF captured when the source was
@@ -200,15 +215,18 @@ export class CodexRolloutSource implements TranscriptSource {
       const captured = this.initialOffsets.get(active.path);
       let offset = 0;
       if (captured !== undefined) {
-        try { offset = await lastLineBoundary(active.path, captured); } catch { return EMPTY; }
+        try { offset = await lastLineBoundary(active.path, captured); } catch { this.lastPollFollowed = false; return EMPTY; }
       }
       this.currentFile = active.path;
       this.byteOffset = offset;
       this.openTurnId = "";
     }
 
-    const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
+    let read: Awaited<ReturnType<typeof readNewLines>>;
+    try { read = await readNewLines(this.currentFile, this.byteOffset); } catch (err) { this.lastPollFollowed = false; throw err; }
+    const { lines, newOffset } = read;
     this.byteOffset = newOffset;
+    this.lastPollFollowed = true;
 
     const events = emptyEvents();
     const turns: TranscriptTurnEvent[] = [];
