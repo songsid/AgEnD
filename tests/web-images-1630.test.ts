@@ -3,7 +3,7 @@
  * an instance. The real WebImageCache on a scratch directory with a wall clock and a monotonic clock the test moves;
  * the real avatarFor / ownBotConnections / firstCharacter / accentColor.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -24,7 +24,9 @@ function cache() {
   /** Age the files on disk by `ms` of wall time (their mtime), as a day passing would. */
   const age = (ms: number) => { clock.wall += ms; };
   const touchAll = (ms: number) => { for (const f of readdirSync(dir)) { const t = (clock.wall - ms) / 1000; utimesSync(join(dir, f), t, t); } };
-  return { dir, c, clock, errors, loader, age, touchAll, calls: () => calls };
+  /** Puts the wall clock exactly at the newest file's real mtime (a file is written a few ms after the test began). */
+  const atFileTime = () => { clock.wall = Math.max(...readdirSync(dir).map(f => statSync(join(dir, f)).mtimeMs)); };
+  return { dir, c, clock, errors, loader, age, touchAll, atFileTime, calls: () => calls };
 }
 
 describe("the host cache", () => {
@@ -58,6 +60,7 @@ describe("the host cache", () => {
     let n = 1;
     const load = w.loader(async () => PNG(n++));
     await w.c.refresh("k", load);
+    w.atFileTime();
     w.age(WEB_IMAGE_MAX_AGE_MS - 1000);
     w.c.peek("k", load);
     expect(w.calls(), "fresh: not fetched again").toBe(1);
