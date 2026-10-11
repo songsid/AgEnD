@@ -6,7 +6,8 @@
 // reached only by the dynamic imports below, in "full" mode. A test walks the static imports over real HTTP and asserts
 // none of them names /ui/.
 import { html, render } from "./app-html.js";
-import { Shell, handleKey, showDialog, closeDrawer, retryable, setNewInstanceOpener } from "./app-shell.js";
+import { Shell, handleKey, showDialog, closeDrawer, openDrawer, shellStore, retryable, setNewInstanceOpener } from "./app-shell.js";
+import { installSwipe } from "./app-swipe.js";
 import { startRouter, navStore, navigate } from "./app-nav.js";
 import { createStream } from "./app-stream.js";
 import { appStore, applyStatus, applyActivity } from "./app-store.js";
@@ -97,5 +98,12 @@ startRouter(window);
 }
 
 document.addEventListener("keydown", handleKey);
+// #1605: on a phone (the sidebar is a drawer), swipe right in the main area to open it, left to close it — the same
+// open/close as ☰ and the scrim. Nothing that owns a sideways drag (code, tables, the terminal, inputs, dialogs) and
+// never the left edge (iOS: "back").
+installSwipe({
+  isDrawer: () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches,
+  isOpen: () => shellStore.get().drawer, open: openDrawer, close: closeDrawer,
+});
 
 render(html`<${Shell} panels=${panels} onNewInstance=${onNewInstance} viewOnly=${mode === "view-only"} />`, document.getElementById("app"));
