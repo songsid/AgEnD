@@ -182,8 +182,10 @@ describe("phones and assistive tech (segment 3)", () => {
     expect(narrow).toMatch(/\.toasts \{ top: calc\(60px \+ env\(safe-area-inset-top\)\)/);
   });
 
-  it("on a phone the composer's text is 16px (smaller, and iOS zooms the page on focus)", () => {
-    expect(narrow).toMatch(/\.composer textarea \{ font-size: 16px; \}/);
+  it("on a phone the composer's text is 16px (smaller, and iOS zooms the page on focus) — through the shared #1611 rule", () => {
+    // The composer is sized from --fs-md, which tokens.css makes 16px on every text field on a phone (#1611).
+    expect(readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8")).toMatch(/\.composer textarea \{[^}]*font-size: var\(--fs-md\)/);
+    expect(readFileSync(join(process.cwd(), "src", "ui", "shared", "tokens.css"), "utf8")).toMatch(/@media \(pointer: coarse\), \(max-width: 899px\) \{\s*input, select, textarea \{ --fs-xs: 16px; --fs-sm: 16px; --fs-md: 16px; \}/);
   });
 
   it("the conversation is a log that is not read out message by message; one polite status line carries the coarse events", () => {
