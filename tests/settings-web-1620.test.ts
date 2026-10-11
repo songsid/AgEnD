@@ -20,9 +20,22 @@ import { settingsChangeDiff } from "../src/settings-change.js";
 import { noteSettingsWrite } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+import { FleetManager } from "../src/fleet-manager.js";
+
+// The real FleetManager's loader and saver below: nothing may log to a file or start a process.
+vi.mock("../src/logger.js", () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), child() { return this; } }),
+  rotateLogIfNeeded: () => { throw new Error("log rotation is outside this harness"); },
+  rotateLogIfNeededAsync: async () => { throw new Error("log rotation is outside this harness"); },
+}));
+vi.mock("node:child_process", async importOriginal => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  const blocked = () => { throw new Error("process execution is outside this harness"); };
+  return { ...original, spawn: blocked, spawnSync: blocked, exec: blocked, execSync: blocked, execFile: blocked, execFileSync: blocked, fork: blocked };
+});
 
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [];
-afterEach(() => { for (const store of stores.splice(0)) store.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); for (const store of stores.splice(0)) store.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 5 }); });
 
 const WEB = "/api/settings/fleet/web";
 /** What the gate would decide for this body against this fleet.yaml: null = applies directly. */
@@ -61,6 +74,21 @@ describe("the classifier judges these by direction", () => {
     expect(judge({ web_terminal: { enabled: null } }, { web_terminal: { enabled: false } })?.summary.slice(1)).toEqual(["fleet.web\\_terminal.enabled: false → default"]);
     expect(judge({ web_terminal: { ttl_minutes: null } }, { web_terminal: { ttl_minutes: 20 } })).toBeNull();
   });
+  it("judged as the policy the store enforces, not the stored numbers: a stored value it falls back from (#1627 review)", () => {
+    // absolute 1000 is enforced as the 12 h default: 24 lengthens sessions.
+    expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 1000 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.absolute\\_hours: 1000 → 24"]);
+    // idle 1000 is enforced as the 2 h default: 4 lengthens the idle window.
+    expect(judge({ session: { local: { idle_hours: 4 } } }, { web: { session: { local: { absolute_hours: 48, idle_hours: 1000 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.idle\\_hours: 1000 → 4"]);
+    // An idle window cut by the absolute limit is lifted by a longer absolute limit: confirmed, naming what changed.
+    expect(judge({ session: { local: { absolute_hours: 4 } } }, { web: { session: { local: { absolute_hours: 1, idle_hours: 3 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.absolute\\_hours: 1 → 4"]);
+    // Controls: an effective 6 → 24 is still confirmed, 48 → 24 still applies; 1000 → 6 (effective 12 → 6) applies.
+    expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 6 } } } })).not.toBeNull();
+    expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 48 } } } })).toBeNull();
+    expect(judge({ session: { local: { absolute_hours: 6 } } }, { web: { session: { local: { absolute_hours: 1000 } } } })).toBeNull();
+  });
   it("one loosening in a batch of tightenings is confirmed — and only it is named", () => {
     const diff = judge({ session: { local: { absolute_hours: 6, idle_hours: 4 } }, web_terminal: { enabled: false } });
     expect(diff?.summary.slice(1)).toEqual(["fleet.web.session.local.idle\\_hours: default → 4"]);
@@ -73,7 +101,8 @@ describe("the classifier judges these by direction", () => {
   it("what the handler or the validator would refuse is refused here, before anything is proposed", () => {
     expect(() => judge({ session: { local: { idle_hours: 24 } } })).toThrow("invalid_settings_effect");
     for (const body of [{ web_terminal: { ttl_minutes: 21 } }, { web_terminal: { ttl_minutes: 0 } }, { web_terminal: { enabled: "false" } },
-      { web_terminal: { bind: "0.0.0.0" } }, { session: { local: { absolute_hours: "48" } } }, { session: { gateway: {} } }])
+      { web_terminal: { bind: "0.0.0.0" } }, { session: { local: { absolute_hours: "48" } } }, { session: { gateway: {} } },
+      { allowed_hosts: ["other.invalid"] }, { view_access: "open" }, { echo_to_channel: "false" }, { public_link: { ttl_minutes: 481 } }])
       expect(() => judge(body), JSON.stringify(body)).toThrow("invalid_web_settings");
   });
   it("web echo stays immediate and the public link's menu stays confirmed, as before", () => {
@@ -188,5 +217,94 @@ describe("never over the temporary public link", () => {
     const h = harness();
     expect((await h.request({ session: { local: { absolute_hours: 6 } } })).status).toBe(200);
     expect((await h.request({ session: { local: { absolute_hours: 5 } } }, { direct: true, key: "k-2" })).status).toBe(200);
+  });
+});
+
+/**
+ * #1627 review: the real FleetManager — fleet.yaml read by its loader (a hand-written file the validator would refuse
+ * included) and written by its saver, whose fsync seam can fail the atomic write before the rename — behind the real
+ * gate and the real handler.
+ */
+function realFleet(yamlText: string) {
+  const root = mkdtempSync(join(tmpdir(), "agend-test-1620-fm-")); roots.push(root); vi.stubEnv("AGEND_HOME", root);
+  const path = join(root, "fleet.yaml");
+  writeFileSync(path, yamlText);
+  const fm = new FleetManager(root) as any;
+  fm.loadConfig(path);
+  const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
+  const baselines = new SettingsBaselines({ dataDir: root, configPath: () => fm.configPath, config: () => fm.fleetConfig, current: () => 0 });
+  const gate = new SettingsHttpConfirmation(store, {
+    principal: () => ({ id: "session-a", label: "browser", source: "web_session", current: () => true }),
+    baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
+  });
+  let key = 0;
+  const request = (body: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const req = new EventEmitter() as any;
+    req.method = "PUT"; req.url = WEB; req.headers = { "idempotency-key": `fm-${++key}`, cookie: "opaque" }; req.destroy = () => undefined;
+    let status = 0;
+    const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
+      end(text: string) { resolve({ status, body: JSON.parse(text) }); } } as any;
+    const url = new URL(WEB, "http://localhost");
+    try { expect(gate.handle(req, res, url, (r: any, s: any, u: URL) => handleSettingsRequest(r, s, u, fm))).toBe(true);
+      queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); }); }
+    catch (err) { reject(err); }
+  });
+  const file = () => readFileSync(path, "utf8");
+  const live = () => structuredClone({ web: fm.fleetConfig.web, web_terminal: fm.fleetConfig.web_terminal, hasWeb: "web" in fm.fleetConfig });
+  const failSaves = () => { fm.fsyncForTest = () => { throw Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO" }); }; };
+  return { fm, store, request, file, live, failSaves };
+}
+
+describe("the real loader and saver (#1627 review)", () => {
+  it("a hand-written limit the store falls back from: 'tightening' it is a real lengthening — proposed, not written", async () => {
+    const a = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 1000\n");
+    const before = a.file();
+    const r = await a.request({ session: { local: { absolute_hours: 24 } } });
+    expect([r.status, r.body.result, a.file()]).toEqual([202, "pending_confirmation", before]);
+    const b = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 48\n      idle_hours: 1000\n");
+    const before2 = b.file();
+    const r2 = await b.request({ session: { local: { idle_hours: 4 } } });
+    expect([r2.status, r2.body.result, b.file()]).toEqual([202, "pending_confirmation", before2]);
+  });
+  it("controls: an effective 6 → 24 is proposed; 48 → 24 is written at once", async () => {
+    const a = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 6\n");
+    expect((await a.request({ session: { local: { absolute_hours: 24 } } })).status).toBe(202);
+    const b = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 48\n");
+    expect((await b.request({ session: { local: { absolute_hours: 24 } } })).status).toBe(200);
+    expect((yaml.load(b.file()) as any).web.session.local).toEqual({ absolute_hours: 24 });
+    expect(b.fm.fleetConfig.web.session.local.absolute_hours).toBe(24);
+  });
+  it("a save that fails (fsync before the rename): 500, fleet.yaml byte for byte unchanged, and the live config what the file says", async () => {
+    const h = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 24\n      idle_hours: 4\nweb_terminal:\n  enabled: true\n  ttl_minutes: 15\n");
+    const before = h.file(), live = h.live();
+    h.failSaves();
+    const r = await h.request({ session: { local: { absolute_hours: 6, idle_hours: 1 } }, web_terminal: { enabled: false, ttl_minutes: 5 } });
+    expect(r.status).toBe(500);
+    expect(h.file()).toBe(before);
+    expect(h.live()).toEqual(live);
+  });
+  it("…also when there was no web: section at all — the live config gets none", async () => {
+    const h = realFleet("instances: {}\n");
+    const live = h.live(), hadTerminal = "web_terminal" in h.fm.fleetConfig;
+    h.failSaves();
+    expect((await h.request({ session: { local: { absolute_hours: 6 } }, web_terminal: { enabled: false } })).status).toBe(500);
+    expect([h.live(), "web_terminal" in h.fm.fleetConfig]).toEqual([live, hadTerminal]);
+    expect([h.fm.fleetConfig.web?.session, h.fm.fleetConfig.web_terminal]).toEqual([undefined, undefined]);
+  });
+  it("a confirmed loosening whose save fails: the receipt says failed, the file and the live config keep the terminal off", async () => {
+    const h = realFleet("instances: {}\nweb_terminal:\n  enabled: false\n");
+    const r = await h.request({ web_terminal: { enabled: true } });
+    expect(r.status).toBe(202);
+    h.failSaves();
+    const outcome = await h.store.decide(r.body.pending_change.id, "confirm", admin());
+    expect(outcome.state).toBe("failed");
+    expect([(yaml.load(h.file()) as any).web_terminal, h.fm.fleetConfig.web_terminal]).toEqual([{ enabled: false }, { enabled: false }]);
+  });
+  it("control: the same confirmed loosening with a working save is written and live", async () => {
+    const h = realFleet("instances: {}\nweb_terminal:\n  enabled: false\n");
+    const r = await h.request({ web_terminal: { enabled: true } });
+    const outcome = await h.store.decide(r.body.pending_change.id, "confirm", admin());
+    expect(outcome.state).toBe("applied");
+    expect([(yaml.load(h.file()) as any).web_terminal, h.fm.fleetConfig.web_terminal]).toEqual([{ enabled: true }, { enabled: true }]);
   });
 });

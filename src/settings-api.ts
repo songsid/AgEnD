@@ -3,8 +3,7 @@ import { settingsRequestExecution, settingsWrite } from "./settings-request-capa
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { validPublicLinkPatch } from "./public-web-link.js";
-import { webSessionPatch, webTerminalPatch } from "./web-settings-patch.js";
+import { parseWebSettingsBody } from "./web-settings-patch.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
@@ -654,24 +653,16 @@ export function handleSettingsRequest(
       if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
-      if (!body || typeof body !== "object" || Array.isArray(body)
-        || Object.keys(body).some(key => !["echo_to_channel", "public_link", "session", "web_terminal"].includes(key))) return json(res, 400, { error: "unknown web field" });
-      const patch = body as { echo_to_channel?: unknown; public_link?: unknown; session?: unknown; web_terminal?: unknown };
-      if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return json(res, 400, { error: "echo_to_channel must be a boolean" });
-      if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return json(res, 400, { error: "invalid public_link settings" });
-      // #1620: { session: { local: { absolute_hours?, idle_hours? } } } and { web_terminal: { enabled?, ttl_minutes? } };
-      // null puts a value back to its default. Bounds are the validator's (run on the whole result below).
-      const sessionPatch = webSessionPatch(patch.session);
-      if (sessionPatch === "invalid") return json(res, 400, { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" });
-      const terminalPatch = webTerminalPatch(patch.web_terminal);
-      if (terminalPatch === "invalid") return json(res, 400, { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" });
+      const parsed = parseWebSettingsBody(body);
+      if ("error" in parsed) return json(res, 400, { error: parsed.error });
+      const { session: sessionPatch, terminal: terminalPatch } = parsed;
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
-      if (typeof patch.echo_to_channel === "boolean") { web.echo_to_channel = patch.echo_to_channel; changes.push({ path: ["web", "echo_to_channel"], value: patch.echo_to_channel }); }
-      if (validPublicLinkPatch(patch.public_link)) {
-        if (Object.keys(patch.public_link).length) web.public_link = { ...web.public_link, ...patch.public_link };
-        for (const [key, value] of Object.entries(patch.public_link)) changes.push({ path: ["web", "public_link", key], value });
+      if (parsed.echo !== undefined) { web.echo_to_channel = parsed.echo; changes.push({ path: ["web", "echo_to_channel"], value: parsed.echo }); }
+      if (parsed.publicLink) {
+        if (Object.keys(parsed.publicLink).length) web.public_link = { ...web.public_link, ...parsed.publicLink };
+        for (const [key, value] of Object.entries(parsed.publicLink)) changes.push({ path: ["web", "public_link", key], value });
       }
       if (sessionPatch) {
         const local: Record<string, number> = { ...web.session?.local };
@@ -693,7 +684,17 @@ export function handleSettingsRequest(
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig({ ...cfg, web, web_terminal: webTerminal });
       if (rejectIfWorse(res, before, after)) return;
-      settingsWrite(req, () => { cfg.web = web; if (terminalPatch) cfg.web_terminal = webTerminal; ctx.saveFleetConfig(changes); });
+      const previous = { web: cfg.web, hadWeb: "web" in cfg, terminal: cfg.web_terminal, hadTerminal: "web_terminal" in cfg };
+      try {
+        settingsWrite(req, () => { cfg.web = web; if (terminalPatch) cfg.web_terminal = webTerminal; ctx.saveFleetConfig(changes); });
+      } catch (err) {
+        // #1627 review: the save refused (fleet.yaml unchanged): memory goes back to what the file still says — a session
+        // limit or the browser terminal must never be live while the file (and the next start) says otherwise.
+        if (previous.hadWeb) cfg.web = previous.web; else delete (cfg as { web?: unknown }).web;
+        if (previous.hadTerminal) cfg.web_terminal = previous.terminal; else delete (cfg as { web_terminal?: unknown }).web_terminal;
+        ctx.logger.warn({ err }, "settings: web save refused");
+        return json(res, 500, { ok: false, error: (err as Error).message });
+      }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;

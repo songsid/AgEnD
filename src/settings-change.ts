@@ -3,6 +3,7 @@ import { SettingsConfirmationError, type SettingsChangeSection } from "./setting
 import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
+import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -45,10 +46,10 @@ const scalar = (value: unknown): boolean => value === undefined || value === nul
  * #1620: web exposure settings that are judged by DIRECTION. Tightening (a shorter session, the browser terminal off,
  * a shorter terminal session) applies directly; loosening goes to the #1423 confirmation — whatever the key's name says
  * elsewhere (`enabled` is an immediate key everywhere else). `undefined` (the key removed) is its default.
+ * The terminal's minutes are compared as stored: the loader's clamp to 1..20 never reverses an order, so a stored
+ * decrease is never an effective increase.
  */
 const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolean; looser(old: any, next: any): boolean }> = [
-  { path: ["fleet", "web", "session", "local", "absolute_hours"], def: 12, looser: (a, b) => b > a },
-  { path: ["fleet", "web", "session", "local", "idle_hours"], def: 2, looser: (a, b) => b > a },
   { path: ["fleet", "web_terminal", "enabled"], def: true, looser: (a, b) => b === true && a !== true },
   { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
 ];
@@ -59,6 +60,30 @@ function loosens(path: readonly string[], old: unknown, next: unknown): boolean 
   const a = old === undefined || old === null ? rule.def : old, b = next === undefined || next === null ? rule.def : next;
   if (typeof a !== typeof rule.def || typeof b !== typeof rule.def) return true;   // not a value of its kind: never quietly
   return rule.looser(a, b);
+}
+const SESSION_LOCAL = ["fleet", "web", "session", "local"] as const;
+const SESSION_KEYS: readonly string[] = ["absolute_hours", "idle_hours"];
+/**
+ * #1620 (#1627 review): the local session limits are judged as the policy they GIVE — what the store enforces
+ * (localSessionPolicy), not the stored numbers: a hand-written `absolute_hours: 1000` is enforced as the 12 h default,
+ * so 1000 → 24 lengthens sessions and is confirmed. Returns the changed keys to name (empty: it only tightens), or
+ * null when the change is not just these two limits (it is then walked key by key, as before).
+ */
+function sessionChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {
+  if ((old !== undefined && old !== null && !object(old)) || (next !== undefined && next !== null && !object(next))) return null;
+  const a: Record<string, unknown> = object(old) ? old : {}, b: Record<string, unknown> = object(next) ? next : {};
+  const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
+  if (changed.some(k => !SESSION_KEYS.includes(k))) return null;
+  const before = localSessionPolicy(a), after = localSessionPolicy(b);
+  const looser: Record<string, boolean> = { absolute_hours: after.absoluteMs > before.absoluteMs, idle_hours: after.idleMs > before.idleMs };
+  // A new value the store would not take as written (out of bounds, not a number) is never applied quietly.
+  const taken = (v: unknown) => v === undefined || v === null
+    || (typeof v === "number" && Number.isFinite(v) && v >= LOCAL_SESSION_HOURS.min && v <= LOCAL_SESSION_HOURS.max);
+  const odd = changed.filter(k => !taken(b[k]));
+  if (!odd.length && !looser.absolute_hours && !looser.idle_hours) return [];
+  const named = changed.filter(k => looser[k] || odd.includes(k));
+  // Looser through the other key (a longer absolute limit lifts the idle window it was cutting): name what changed.
+  return (named.length ? named : changed).map(k => [k, a[k], b[k]]);
 }
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
@@ -98,6 +123,14 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
   };
   const walk = (old: unknown, next: unknown, path: string[]): void => {
     if (same(old, next)) return;
+    if (path.length === SESSION_LOCAL.length && SESSION_LOCAL.every((k, i) => path[i] === k)) {
+      const looser = sessionChange(old, next);
+      if (looser) {
+        if (looser.length && section !== "secret") section = "access";
+        for (const [key, a, b] of looser) add(`${settingsDisplay([...path, key].join("."))}: ${settingsDisplay(a ?? "default")} → ${settingsDisplay(b ?? "default")}`);
+        return;
+      }
+    }
     const direction = loosens(path, old, next);
     if (direction === false) return;                             // #1620: tightening applies directly
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
