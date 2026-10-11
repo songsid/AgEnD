@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { GrammyError, HttpError } from "grammy";
 import { markdownToTelegramHtml, isTelegramParseRefusal } from "../src/channel/telegram-markdown.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
+import { routeToolCall } from "../src/channel/tool-router.js";
 
 const refusal = (description: string, error_code = 400) =>
   new GrammyError("Call to 'editMessageText' failed!", { ok: false, error_code, description }, "editMessageText", {});
@@ -43,6 +44,22 @@ describe("markdownToTelegramHtml escapes first", () => {
     expect(markdownToTelegramHtml("[x](https://e.test/a\"onclick)")).toBe("[x](https://e.test/a\"onclick)");
     expect(markdownToTelegramHtml("[x](https://e.test/**y**)")).toBe("<a href=\"https://e.test/**y**\">x</a>");
   });
+  // #1657 review P2: a fence or multi-backtick span keeps its text exactly — escaped, never formatted.
+  it("fenced code and multi-backtick spans stay literal (escaped only); outside them bold and `code` still render", () => {
+    expect(markdownToTelegramHtml("**outside**\n```js\nconst marker = '**literal**';\n```\nand `a<b`"))
+      .toBe("<b>outside</b>\n```js\nconst marker = '**literal**';\n```\nand <code>a&lt;b</code>");
+    expect(markdownToTelegramHtml("```a<b && **literal**```")).toBe("```a&lt;b &amp;&amp; **literal**```");
+    expect(markdownToTelegramHtml("``x `y` _z_`` then _it_")).toBe("``x `y` _z_`` then <i>it</i>");
+    // An unclosed fence is only its own backticks; the rest is ordinary text.
+    expect(markdownToTelegramHtml("``` then **b**")).toBe("``` then <b>b</b>");
+    // A run closes only on a run of the same length.
+    expect(markdownToTelegramHtml("```a``b```**c**")).toBe("```a``b```<b>c</b>");
+    expect(markdownToTelegramHtml("``a ```b`` **c**")).toBe("``a ```b`` <b>c</b>");
+    expect(markdownToTelegramHtml("``a ```b **c**``")).toBe("``a ```b **c**``");
+    // A single backtick pairs only with a single backtick on the same line.
+    expect(markdownToTelegramHtml("`a ``b`` c")).toBe("`a ``b`` c");
+    expect(markdownToTelegramHtml("`a\nb` **c**")).toBe("`a\nb` <b>c</b>");
+  });
   it("overlapping emphasis never misnests", () => {
     expect(markdownToTelegramHtml("**a *b** c*")).toBe("**a *b** c*");
     expect(markdownToTelegramHtml("~~a **b**~~")).toBe("~~a <b>b</b>~~");
@@ -50,7 +67,7 @@ describe("markdownToTelegramHtml escapes first", () => {
 
   // Any input: the only tags are the ones the converter writes, properly nested; every other & < > is an entity.
   it("output is always well-formed Telegram HTML (generated inputs)", () => {
-    const alphabet = ["*", "**", "_", "~~", "`", "[", "]", "(", ")", "<", ">", "&", "a", "b", " ", "\n", "https://h.test/", "<b>", "&amp;"];
+    const alphabet = ["*", "**", "_", "~~", "`", "``", "```", "```js\n", "[", "]", "(", ")", "<", ">", "&", "a", "b", " ", "\n", "https://h.test/", "<b>", "&amp;"];
     let seed = 1651;
     const rand = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
     const bad: string[] = [];
@@ -68,6 +85,39 @@ describe("markdownToTelegramHtml escapes first", () => {
       if (!ok || stack.length || /[<>]/.test(rest) || /&(?!amp;|lt;|gt;)/.test(rest)) bad.push(JSON.stringify(input) + " → " + JSON.stringify(html));
     }
     expect(bad).toEqual([]);
+  });
+});
+
+// #1657 review P1: the converter runs on the fleet's event loop before any API call, on text as long as a tool
+// argument allows (262144 characters) — so it must stay linear for adversarial input, not rely on Telegram's limit.
+describe("the converter is linear on schema-sized input", () => {
+  const N = 262_144;
+  const fill = (unit: string) => unit.repeat(Math.ceil(N / unit.length)).slice(0, N);
+  const shapes = ["[", "[a", "[a]", "[a](", "[a](https://x", "`", "`a", "`a\n", "``a", "```a", "`".repeat(3) + "a``", "*", "*a", "**a", "_a", "a_", "~~a", "<", "&",
+    // every run length once (unclosed fences of distinct lengths)
+    Array.from({ length: 700 }, (_, k) => "`".repeat(k + 2) + "a").join("")];
+  it("each adversarial shape converts in well under a second", () => {
+    const slow: string[] = [];
+    for (const shape of shapes) {
+      const text = fill(shape);
+      const t0 = performance.now();
+      markdownToTelegramHtml(text);
+      const ms = performance.now() - t0;
+      if (ms > 1000) slow.push(`${JSON.stringify(shape.slice(0, 12))}: ${Math.round(ms)}ms`);
+    }
+    expect(slow).toEqual([]);
+  });
+  it("through the real router and adapter: a 262144-character edit reaches editMessageText promptly", async () => {
+    const editMessageText = vi.fn(async () => undefined);
+    const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
+    (adapter as unknown as { bot: unknown }).bot = { api: { editMessageText } };
+    const text = fill("[");
+    const t0 = performance.now();
+    const result = await new Promise((resolve) => {
+      routeToolCall(adapter, "edit_message", { chat_id: "100", message_id: "7", text, format: "markdown" }, undefined, (r, e) => resolve(e ?? r));
+    });
+    expect([result, editMessageText.mock.calls.length, (editMessageText.mock.calls[0] as unknown[])[2] === text, performance.now() - t0 < 2000])
+      .toEqual(["ok", 1, true, true]);
   });
 });
 
