@@ -4492,6 +4492,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return [...names];
   }
 
+  /** #1624: migration cannot infer ownership from the running daemon roster.
+   * Stopped/paused ClassicBot entries count too; their workspace is exactly
+   * the one startClassicInstance builds, not this FleetManager's dataDir.
+   */
+  kiroPeerWorkingDirectories(name: string): string[] {
+    if (!this.fleetConfig || !this.classicChannels) throw new Error("Kiro peer configuration is not loaded");
+    const peers: string[] = [];
+    for (const [peer, cfg] of Object.entries(this.fleetConfig.instances)) {
+      if (peer === name || (cfg.backend ?? this.fleetConfig.defaults?.backend ?? "claude-code") !== "kiro-cli") continue;
+      if (typeof cfg.working_directory !== "string" || !cfg.working_directory) throw new Error("Kiro peer cwd is unknown");
+      peers.push(cfg.working_directory);
+    }
+    for (const ch of this.classicChannels.getAll()) {
+      if (ch.instanceName === name) {
+        if (Object.hasOwn(this.fleetConfig.instances, name)) throw new Error("Kiro instance name has two configurations");
+        continue;
+      }
+      if (this.classicChannels.getBackendByInstance(ch.instanceName, this.fleetConfig.defaults?.backend) === "kiro-cli") {
+        peers.push(join(getAgendHome(), "workspaces", ch.instanceName));
+      }
+    }
+    return peers;
+  }
+
   /**
    * Probe the same executable set exposed by the web backend catalog.
    *

@@ -193,3 +193,25 @@ All filesystem roots are scratch dirs. No kiro, fleet or tmux is launched (bd0c8
   - untagged legacy steering is kept with a one-time warning;
   - a malformed `mcp.json` or a failed unlink warns and is never reported as isolated.
 - **Capability:** help without `--agent` or `--resume-id` gives today's command and one warning.
+
+## Pre-ledger upgrade addendum (#1624)
+
+The original adoption gate assumed an engine ledger entry existed. The ledger
+arrived in 2.1.11, so upgrades from <=2.1.10 could start fresh despite retained
+conversations. The approved [#1624 baseline](https://github.com/songsid/AgEnD/issues/1624#issuecomment-6108657635)
+adds a fallback only with no identity state and no instance launch record. It
+requires a capable Kiro, the same engine store, a complete current fleet plus
+ClassicBot roster proving the canonical cwd is unshared, and an unclaimed newest
+conversation. The roster is read synchronously at identity resolution, after
+TUI's async store preparation. Stopped entries count; unknown configuration
+refuses adoption. Damage/unreadability is never absence.
+
+The same durable pending intent, exclusive claim, identity and ledger path
+records this adoption. Existing fresh marks, deliberate fresh starts, key
+changes, exact resume and evidence-only take-up retain their original rules.
+Ambiguity is recorded fresh and produces one launch notice; the next launch
+reads that fresh record, rather than trying adoption again. Old Kiro launches
+remain legacy; a later upgrade across 2.21 uses their existing old-style ledger
+entry. V3 is unchanged. Already-fresh beta.1 identities need operator recovery
+([English](../kiro-upgrade-recovery.md), [zh-TW](../kiro-upgrade-recovery.zh-TW.md)),
+not automatic repair.

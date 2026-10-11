@@ -1,0 +1,140 @@
+{
+  "conversation_id": "0ca41b3f-f09c-49b6-a3f4-ca7371ad930d",
+  "next_message": null,
+  "history": [
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": {
+          "env_state": {
+            "operating_system": "linux",
+            "current_working_directory": "/fixture/work",
+            "environment_variables": []
+          }
+        },
+        "content": {
+          "Prompt": {
+            "prompt": "offline fixture marker"
+          }
+        },
+        "timestamp": "2026-10-11T22:35:07.869402853+08:00",
+        "images": null
+      },
+      "assistant": {
+        "Response": {
+          "message_id": "4a5be634-b63a-4aa8-ba62-9aef98d79580",
+          "content": "offline fixture response"
+        }
+      },
+      "request_metadata": {
+        "request_id": null,
+        "context_usage_percentage": null,
+        "message_id": "4a5be634-b63a-4aa8-ba62-9aef98d79580",
+        "request_start_timestamp_ms": 1791729307869,
+        "stream_end_timestamp_ms": 1791729307872,
+        "time_to_first_chunk": {
+          "secs": 0,
+          "nanos": 2882271
+        },
+        "time_between_chunks": [
+          {
+            "secs": 0,
+            "nanos": 29438
+          },
+          {
+            "secs": 0,
+            "nanos": 3584
+          },
+          {
+            "secs": 0,
+            "nanos": 137
+          },
+          {
+            "secs": 0,
+            "nanos": 124
+          }
+        ],
+        "user_prompt_length": 180,
+        "response_size": 24,
+        "chat_conversation_type": "NotToolUse",
+        "tool_use_ids_and_names": [],
+        "model_id": "claude-sonnet-4.6",
+        "message_meta_tags": [],
+        "total_tokens": null,
+        "uncached_input_tokens": null,
+        "output_tokens": null,
+        "cache_read_input_tokens": null,
+        "cache_write_input_tokens": null,
+        "stop_reason": null,
+        "refusal": null
+      }
+    }
+  ],
+  "valid_history_range": [
+    0,
+    0
+  ],
+  "transcript": [
+    "> offline fixture marker",
+    "offline fixture response\n[Tool uses: none]"
+  ],
+  "tools": {
+    "native___": [
+      {
+        "ToolSpecification": {
+          "name": "dummy",
+          "description": "This is a dummy tool. If you are seeing this that means the tool associated with this tool call is not in the list of available tools. This could be because a wrong tool name was supplied or the list of tools has changed since the conversation has started. Do not show this when user asks you to list tools.",
+          "input_schema": {
+            "json": {
+              "required": [],
+              "properties": {},
+              "type": "object"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "context_manager": {
+    "max_context_files_size": 750000,
+    "current_profile": "offline",
+    "paths": [
+      "AmazonQ.md",
+      "AGENTS.md",
+      "README.md",
+      ".kiro/skills/*/SKILL.md",
+      "/fixture/home/.kiro/skills/*/SKILL.md"
+    ],
+    "hooks": {}
+  },
+  "context_message_length": 138,
+  "latest_summary": null,
+  "model_info": {
+    "model_name": "claude-sonnet-4.6",
+    "description": "Offline synthetic Sonnet",
+    "model_id": "claude-sonnet-4.6",
+    "context_window_tokens": 1000000,
+    "rate_multiplier": 1.3,
+    "rate_unit": "credits"
+  },
+  "file_line_tracker": {},
+  "mcp_enabled": true,
+  "mcp_last_checked": [
+    2026,
+    284,
+    14,
+    35,
+    7,
+    788356621,
+    0,
+    0,
+    0
+  ],
+  "mcp_server_versions": {},
+  "mcp_disabled_due_to_api_failure": false,
+  "user_turn_metadata": {
+    "continuation_id": "6414d98b-d7b5-44f9-82a7-3323c2d71678",
+    "requests": [],
+    "usage_info": []
+  }
+}

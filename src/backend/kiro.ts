@@ -18,7 +18,7 @@ import {
   type KiroIdentityDecision, resolveKiroIdentity, listKiroV1Sessions, listKiroV2Sessions, confirmKiroAgentSwitch,
   kiroAgentConfirmed, forgetKiroIdentity, kiroIdentityNeedsStore, kiroCanonicalDirectory, KiroIdentityError, type KiroStoreRead,
 } from "./kiro-identity.js";
-import { readKiroLedger } from "./kiro-engine-ledger.js";
+import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
 import { type BackendAgentSwitch, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
@@ -632,11 +632,12 @@ export function kiroV2SessionsDir(): string {
 
 /**
  * Adoption evidence (#906 §2): the engine ledger shows this instance launched here — same directory, credential
- * profile and engine — before #906 (no "--agent" in that launch). A new instance has no such record and starts fresh
- * instead of taking a sibling's conversation.
+ * profile and engine — before #906 (no "--agent" in that launch). Without that
+ * evidence, only the separately guarded #1624 pre-ledger fallback may adopt.
  */
 export function kiroLaunchedHereBefore(instance: string, workingDirectory: string, credentialProfile: string | null, engine: "v1" | "v2", ledgerPath?: string): boolean {
-  const entry = readKiroLedger(ledgerPath)[instance];
+  const ledger = readKiroLedger(ledgerPath);
+  const entry = Object.hasOwn(ledger, instance) ? ledger[instance] : undefined;
   if (!entry || resolve(entry.workingDirectory) !== resolve(workingDirectory) || entry.credentialProfile !== credentialProfile) return false;
   return entry.lastLaunch.ui === (engine === "v1" ? "legacy" : "tui") && !entry.lastLaunch.flags.includes("--agent");
 }
@@ -1020,8 +1021,9 @@ export class KiroBackend implements CliBackend {
     this.noteVersionGate();
     const credentialProfile = resolveCredentialProfile(config.backendOptions);
     // #906: the plan writeConfig resolved for this attempt (a direct buildCommand, as in tests, resolves its own).
-    const lp = this.launchPlan && this.launchPlan.cwd === config.workingDirectory && this.launchPlan.skipResume === !!config.skipResume
-      ? this.launchPlan : this.planInstanceLaunch(config);
+    const prepared = this.launchPlan && this.launchPlan.cwd === config.workingDirectory && this.launchPlan.skipResume === !!config.skipResume;
+    const lp = prepared ? this.launchPlan! : this.planInstanceLaunch(config);
+    if (!prepared && lp.reason) this.addLaunchWarning(lp.reason);
     this.launchPlan = null;
     this.activePlan = lp;
     this.activeSpec = lp.mode === "legacy" ? null : this.agentSpec(config);
@@ -1169,12 +1171,12 @@ export class KiroBackend implements CliBackend {
     const plan = this.planInstanceLaunch(config);
     this.preparedV2Store = null;
     this.launchPlan = plan;
+    if (plan.reason) this.addLaunchWarning(plan.reason);
     const spec = this.agentSpec(config);
     const root = dirname(this.instanceDir);
     if (plan.mode === "legacy") {
       // Not isolated (an old kiro-cli, or adoption with an unreadable store): the shared files as before, each
       // written only where it is free, and removed only by provenance.
-      if (plan.reason) this.addLaunchWarning(plan.reason);
       this.noteShared("mcp.json", writeSharedKiroMcpEntries(spec));
       if (config.instructions) this.noteShared("steering", writeTaggedKiroSteering(spec, config.instructions));
       this.noteShared("mcp.json", removeSharedKiroMcpEntries(spec, root, false));
@@ -1267,12 +1269,22 @@ export class KiroBackend implements CliBackend {
           ? listKiroV1Sessions(config.workingDirectory, kiroV1DbPath(credentialProfile))
           : this.readPreparedV2Store(config),
         launchedBefore: () => kiroLaunchedHereBefore(config.instanceName, config.workingDirectory, credentialProfile, engine),
+        upgradeAdoption: () => {
+          if (!kiroHasNoLaunchRecord(config.instanceName)) return null;
+          try {
+            const peers = config.peerWorkingDirectories?.();
+            if (!peers || !peers.every(p => typeof p === "string" && p.length > 0)) return "unknown-peers";
+            const cwd = kiroCanonicalDirectory(config.workingDirectory);
+            return peers.some(p => kiroCanonicalDirectory(p) === cwd) ? "shared-directory" : "eligible";
+          } catch { return "unknown-peers"; }
+        },
       });
     }
     if (decision.mode === "legacy") return legacy(t("kiro.identity_legacy", decision.reason));
     return decision.mode === "resume"
       ? { ...base, mode: "resume", id: decision.id, agent, agentConfirmed: decision.agentConfirmed, reason: null }
-      : { ...base, mode: "fresh", agent, agentConfirmed: true, reason: null };
+      : { ...base, mode: "fresh", agent, agentConfirmed: true,
+        reason: decision.notice ? t(`kiro.upgrade_${decision.notice.replaceAll("-", "_")}`) : null };
   }
 
   /**
