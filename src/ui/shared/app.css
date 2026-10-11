@@ -114,6 +114,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .av .av-dot { position: absolute; right: -2px; bottom: -2px; margin: 0; box-shadow: 0 0 0 2px var(--bg-sidebar); }
 .inst.active .av .av-dot, .inst:hover .av .av-dot { box-shadow: 0 0 0 2px var(--surface-2); }
 .dot.hollow { background: transparent; border: 1.5px solid var(--text-3); }
+/* On a grey avatar a grey dot needs more contrast: stopped is a stronger grey, paused a clear ring around the sidebar colour. */
+.av .av-dot.off { background: var(--text-2); }
+.av .av-dot.hollow { box-sizing: border-box; width: 10px; height: 10px; background: var(--bg-sidebar); border: 2.5px solid var(--text-2); }
 .inst .av { margin-top: 1px; }
 .inst-id { font-family: var(--font-mono); }
 .inst-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
