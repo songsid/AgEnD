@@ -17,6 +17,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
@@ -240,6 +241,15 @@ function ipcRequest(
 // to avoid drift between MCP and additive system prompt paths.
 // ---------------------------------------------------------------------------
 
+/**
+ * #1634: the AgEnD version this server belongs to (it was a hard-coded "0.3.0") — in serverInfo and in the
+ * instructions, so an agent can tell that a tool description it loaded earlier came from an older version.
+ */
+const AGEND_VERSION: string | undefined = (() => {
+  try { return (createRequire(import.meta.url)("../../package.json") as { version?: string }).version; }
+  catch { return undefined; }
+})();
+
 function buildMcpInstructions(): string {
   // Compact on purpose: Claude Code truncates MCP instructions around 2KB, so
   // this carries only the non-negotiable contract. The full guidance
@@ -248,6 +258,7 @@ function buildMcpInstructions(): string {
   return buildMcpCoreInstructions({
     instanceName: process.env.AGEND_INSTANCE_NAME ?? "unknown",
     workingDirectory: process.env.AGEND_WORKING_DIR ?? process.cwd(),
+    agendVersion: AGEND_VERSION,
     runtimeIdentity: {
       kind: process.env.AGEND_INSTANCE_KIND === "classic" ? "classic" : "fleet-topic",
       backend: process.env.AGEND_BACKEND ?? "unknown",
@@ -257,7 +268,7 @@ function buildMcpInstructions(): string {
 }
 
 const mcp = new Server(
-  { name: "agend", version: "0.3.0" },
+  { name: "agend", version: AGEND_VERSION ?? "unknown" },
   {
     capabilities: {
       tools: {},

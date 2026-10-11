@@ -7,9 +7,9 @@ roles: [general]
 ## Check health
 
 Prefer the fleet tools — they already know each instance's state:
-- `get_fleet_status` — status + execution state (idle / working / stuck) for every instance.
-- `describe_instance("<name>")` — one instance's status, last activity, description.
-- `list_instances` — quick roster.
+- `list_instances` — every instance with its status and `instance_state`: idle / working / stuck / paused / awaiting_input (the CLI is waiting at an on-screen dialog or input).
+- `describe_instance("<name>")` — one instance's status, state, last activity, description.
+- `get_fleet_status` — just the counts: total, running, paused, stopped.
 
 The daemon derives idle/working/stuck itself (per-backend), so you do **not** need to
 scrape prompts. Don't hand-write pane-text checks like `X% !>` — that prompt is
@@ -20,7 +20,7 @@ kiro-specific and wrong for claude-code / codex / grok / antigravity.
 When the user wants the live screen (not just a status word):
 - `get_instance_logs("<name>")` — recent output (the raw terminal stream).
 - Raw terminal (last resort, no tool for the live pane):
-  `tmux capture-pane -t agend:<name> -e -p | tail -20` — keep `-e`: without it the screen's styling is lost.
+  `tmux capture-pane -t agend:<name> -e -p | tail -20` on the default AGEND_HOME (an isolated home uses session `agend-<hash>` on its own `-L` socket; `agend attach <name>` works in both) — keep `-e`: without it the screen's styling is lost.
 
 **Faint text is not input.** A CLI paints its own suggestion or placeholder in the input box
 exactly like typed text, only faint (Claude Code: `❯ Try "…"`, or a suggested next prompt).

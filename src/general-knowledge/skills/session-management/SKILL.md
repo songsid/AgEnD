@@ -8,7 +8,8 @@ roles: [general]
 
 When AgEnD sees `auth_error` it **pauses** that instance (`pausePending` sticky):
 - One notification **per backend** (not per instance) — log in once, same-backend peers recover.
-- Auth is **per-user global** across backends: claude-code, codex, kiro, grok, opencode, antigravity.
+- Auth is **per backend**: one re-login restores every instance on that backend (claude-code, codex, kiro-cli, grok, opencode, antigravity, muse).
+- Re-login: `/login <backend>` (opencode: `opencode auth login` in a terminal), then wake the affected instance.
 - Messages while paused stay in the **queue** — do not re-send.
 - After the user re-auths: `wake` / normal wake clears `pausePending`.
 
@@ -24,7 +25,7 @@ Verified by running each one, not read from docs.
 | **codex** | ⚠️ no index — parse rollout files | ✅ `codex exec resume <id>` | ❌ must parse the rollout |
 | **antigravity** | ❌ index covers ~23%, 2 months stale | ✅ `agy --conversation <id>` | ⚠️ `title` empty, use `preview` |
 
-**Restoring a specific session is a manual operator action, not an AgEnD feature.** AgEnD always launches a backend on its *most recent* session (`--continue` / `--last` / `--resume`). To reach any other session someone must drive the pane or the CLI by hand.
+**Restoring a specific session is a manual operator action, not an AgEnD feature.** AgEnD launches each backend on the instance's own session: codex `resume <id>` (the thread for this exact directory; `--last` only as a fallback when the session DB is unreadable and no other codex instance shares the repository), grok `--resume <id>`, kiro its own conversation id, claude-code `--continue` (only when the instance has a `session-id` marker and the directory has a Claude transcript). To reach any other session someone must drive the pane or the CLI by hand.
 
 **kiro is the exception worth knowing:** its export → `/chat load` works on a **live, idle instance** with no restart. Every other backend needs the instance stopped (or the CLI run manually) because the session is chosen by a launch flag.
 
@@ -118,7 +119,7 @@ grep -h '"type":"ai-title"' <file>.jsonl | tail -1
 ```
 A session with no `ai-title` line is simply untitled — say so rather than inventing a label.
 
-**Restore:** `claude -r <session-id>` (or `claude --resume` for a picker that accepts a search term). `-c` / `--continue` takes the most recent for the cwd — that is what AgEnD launches with.
+**Restore:** `claude -r <session-id>` (or `claude --resume` for a picker that accepts a search term). `-c` / `--continue` takes the most recent for the cwd — AgEnD launches with it only when the instance has a `session-id` marker and the cwd has a Claude transcript.
 
 > ⚠️ **Check the ID exists before using it.** AgEnD guards `--continue` precisely because resuming a session that isn't there sends claude into a restart loop. Confirm the `<id>.jsonl` file is present in the encoded project dir first.
 
@@ -150,7 +151,7 @@ for ts, sid in sorted(out, reverse=True):
 ```
 It opens many files, but only one line each, so it stays cheap.
 
-**Restore:** `codex exec resume <session-id> "<prompt>"` non-interactively, or `codex resume <session-id>` for the TUI (bare `codex resume` opens a picker). `codex resume --last` is what AgEnD launches with. The ID argument also accepts a session *name*.
+**Restore:** `codex exec resume <session-id> "<prompt>"` non-interactively, or `codex resume <session-id>` for the TUI (bare `codex resume` opens a picker). AgEnD launches `codex resume <id>` with the thread recorded for this exact directory; `codex resume --last` is only its fallback (an unreadable session DB, no other codex instance in the repository). The ID argument also accepts a session *name*.
 
 **Summary:** ❌ none available without parsing. `session_meta` carries only id/cwd/timestamp; to describe a session you must read further `event_msg` lines. Tell the user the timestamp and let them pick, rather than guessing at a topic.
 
@@ -186,6 +187,6 @@ cur.execute("SELECT conversation_id, preview, step_count, last_modified_time "
 ## Fork (source must be idle)
 
 - **kiro:** `/chat save name.json -f` → `create_instance` → copy workspace file → `/chat load name.json`
-- **claude-code:** copy the newest `*.jsonl` into the target's encoded project dir → start (uses `--continue`)
+- **claude-code:** copy the newest `*.jsonl` into the target's encoded project dir → start (AgEnD adds `--continue` only if the target's instance dir also has its `session-id` marker)
 - **grok:** `/fork` inside the TUI branches the conversation into a peer session
 - Prefer `replace_instance` when the whole session is poisoned (see instance-lifecycle)
