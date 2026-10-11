@@ -232,6 +232,7 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 - `delivery_mode`：`steer`（插進進行中的回合）或 `idle_queue`（作為下一則訊息），與 `send_to_instance` 回報的一致。
 - `submission_mode`：最近一次嘗試的寫入方式：`idle_submit`、`steer`、`native_queue_handoff`（交給忙碌中 CLI 自己的佇列）或 `raw_paste`。
 - `consumed_at` / `consumed_via`：steer 或交給原生佇列的訊息，早在模型讀到之前就已被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。當 CLI 的 transcript（claude-code、codex）顯示這則投遞自己的 marker 被取用，就記下時間，以及它是作為自己的回合（`turn`）還是併入進行中的回合（`mid_turn`）。這也是唯一能把 `uncertain` 變成 `delivered` 的情況；此時尚未寄給寄件者的失敗通知會被撤回。找不到 marker 絕不改變任何紀錄。
+- `waiting_reason`（#1641）：在 `queued` 或 `retry_wait` 的紀錄上，以文字說明目標為什麼沒有接收（「CLI 看起來卡住了。」、已暫停、有對話框、登入失敗），只是單純排在後面時為 null。常駐的目標若有排隊中的工作因為這類原因等了 30 分鐘，會在它的主題通知一次。
 
 instance 只看得到自己送出或收到的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet：回傳「Delivery not found」就代表不是。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
 

@@ -21,7 +21,7 @@ export type TranscriptTurnEvent =
  */
 export type TranscriptTurnVerdict = "ended" | "running" | "aborted" | "error" | "unknown";
 
-interface Turn { id: string; users: Array<{ text: string; at: number }>; end?: "complete" | "aborted" | "error" }
+interface Turn { id: string; users: Array<{ text: string; at: number }>; end?: "complete" | "aborted" | "error"; seenAt: number }
 
 /** The same words, whatever the paste did to line breaks and indentation. */
 export function normalizeTurnText(text: string): string {
@@ -35,11 +35,11 @@ const ARM_SKEW_MS = 30_000;
 export class TranscriptTurnLedger {
   private turns: Turn[] = [];
 
-  observe(events: readonly TranscriptTurnEvent[]): void {
+  observe(events: readonly TranscriptTurnEvent[], now = Date.now()): void {
     for (const e of events) {
       if (e.kind === "start") {
         if (!e.turnId || this.turns.some(t => t.id === e.turnId)) continue;
-        this.turns.push({ id: e.turnId, users: [] });
+        this.turns.push({ id: e.turnId, users: [], seenAt: now });
         if (this.turns.length > MAX_TURNS) this.turns.splice(0, this.turns.length - MAX_TURNS);
         continue;
       }
@@ -52,6 +52,16 @@ export class TranscriptTurnLedger {
 
   /** Forget everything: the daemon does this for each new transcript monitor (a launch re-baselines the source). */
   reset(): void { this.turns = []; }
+
+  /**
+   * #1641: when the earliest turn still open (a start read, no end yet) was first read — any turn, whoever's message
+   * started it — or null when every turn read since this monitor began has ended. Only meaningful while the monitor
+   * follows a transcript: an empty ledger with nothing followed is "unknown", not "closed" (the daemon checks that).
+   */
+  openSince(): number | null {
+    const open = this.turns.filter(t => !t.end);
+    return open.length ? Math.min(...open.map(t => t.seenAt)) : null;
+  }
 
   /** See TranscriptTurnVerdict. `armedAt` is the wall-clock time the delivery armed the guard. */
   verdict(deliveredText: string | undefined, armedAt: number): TranscriptTurnVerdict {

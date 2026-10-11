@@ -106,6 +106,12 @@ const REPLY_GUARD_IDLE_CONFIRM_MS = 60_000;
  * down like a turn the transcript cannot place — never a recovery.
  */
 const TRANSCRIPT_RUNNING_HOLD_MAX_MS = 30 * 60_000;
+/**
+ * #1641: an open turn in the CLI's transcript holds the instance busy (no paste, whatever the pane shows) only while the
+ * transcript is still moving: a turn whose end was missed must not pin the instance busy forever. A live turn writes
+ * often; a long silent tool run shows its own busy row on the pane.
+ */
+export const TRANSCRIPT_OPEN_TURN_QUIET_MS = 15 * 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
@@ -1459,6 +1465,11 @@ export class Daemon extends EventEmitter {
   private turnReplyGuard = new TurnReplyGuard();
   /** #1510: turn boundaries from the CLI's transcript, for a backend whose guard reads its turn end there. */
   private transcriptTurns = new TranscriptTurnLedger();
+  /** #1641: when this launch's transcript monitor last read anything (a turn boundary, a tool, assistant text). */
+  private transcriptActivityAt = 0;
+  /** #1641: the composer a stuck pane is being watched on, with no transcript to ask (see recoverStuck). */
+  private stuckRecoveryKey: string | null = null;
+  private stuckRecoverySince = 0;
   /** #1510: since when (monotonic) this generation has been held as running in the transcript. */
   private transcriptRunningSince: { generation: number; at: number } | null = null;
   /** Prevent a visible stale XML fragment from being recovered on later turns. */
@@ -5262,8 +5273,55 @@ export class Daemon extends EventEmitter {
   private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
     const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source);
     this.transcriptTurns.reset();
-    monitor.on("turns", (turns: TranscriptTurnEvent[]) => this.transcriptTurns.observe(turns));
+    this.transcriptActivityAt = 0;
+    const touch = () => { this.transcriptActivityAt = Date.now(); };
+    monitor.on("turns", (turns: TranscriptTurnEvent[]) => { this.transcriptTurns.observe(turns); touch(); });
+    for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     return monitor;
+  }
+
+  /**
+   * #1641: what the CLI's own transcript (codex's rollout) says about its turn. `open`: a turn started and has not ended,
+   * and the transcript moved within TRANSCRIPT_OPEN_TURN_QUIET_MS. `closed`: every turn read since this launch's monitor
+   * began has ended. `unknown`: not a transcript backend, nothing followed, or an open turn gone quiet (a missed end).
+   */
+  private transcriptTurnState(now = Date.now()): "open" | "closed" | "unknown" {
+    if (this.backend?.turnEndFromTranscript !== true || this.transcriptMonitor?.following() !== true) return "unknown";
+    const since = this.transcriptTurns.openSince();
+    if (since === null) return "closed";
+    return now - Math.max(since, this.transcriptActivityAt) < TRANSCRIPT_OPEN_TURN_QUIET_MS ? "open" : "unknown";
+  }
+
+  /**
+   * #1641: a stuck pane that is in fact an idle CLI (a footer this build cannot read) must not stay stuck for hours with
+   * every delivery parked behind it. It recovers when the backend sees its own live, EMPTY composer with no busy, queued
+   * or dialog marker (isStableUnknownLayoutIdlePane) AND the transcript shows no open turn — or, with no transcript to
+   * ask, that same composer held unchanged for UNKNOWN_LAYOUT_STABLE_MS (#978's rule). An open turn never recovers.
+   */
+  private recoverStuck(pane: string, snapshot: InstanceStateSnapshot, changeAt: number, turn: "open" | "closed" | "unknown"): InstanceStateSnapshot {
+    const machine = this.instanceStateMachine;
+    const idleComposer = this.backend?.isStableUnknownLayoutIdlePane?.(pane) === true;
+    if (!machine || !idleComposer || turn === "open") {
+      this.stuckRecoveryKey = null;
+      return snapshot;
+    }
+    const now = Date.now();
+    if (turn === "unknown") {
+      const key = pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "");
+      if (key !== this.stuckRecoveryKey) {
+        this.stuckRecoveryKey = key;
+        this.stuckRecoverySince = now;
+        return snapshot;
+      }
+      if (now - this.stuckRecoverySince < UNKNOWN_LAYOUT_STABLE_MS) return snapshot;
+    }
+    this.stuckRecoveryKey = null;
+    // A footer this build cannot read stays unreadable: the same still pane reads stuck again at every sweep and is
+    // recovered again. Only the edge into idle is news.
+    const fields = { evidence: turn === "closed" ? "transcript_no_open_turn" : "stable_empty_composer", unchangedForMs: snapshot.unchangedForMs };
+    if (this.instanceState !== "idle") this.logger.info(fields, "Stuck instance recovered — the CLI shows its idle composer and is not running a turn (#1641)");
+    else this.logger.debug(fields, "Still idle on its unreadable footer — the stuck reading was recovered again (#1641)");
+    return machine.observe(pane, now, { settled: true, changeAt, forceReady: true });
   }
 
   private replyCompletionGuardEnabled(): boolean {
@@ -5703,6 +5761,10 @@ export class Daemon extends EventEmitter {
       // decisions about *now*. The old double-observe expressed that by calling
       // observe twice, which silently disabled the "content moved" branch.
       const structuredPeriodicIdle = this.backend?.isPeriodicRedrawIdlePane;
+      // #1641: the transcript outranks the pane: while it shows the turn running, no reading of this pane is idle (codex
+      // hides its status row while streaming, leaving the idle composer and footer in view mid-turn).
+      const transcriptTurn = this.transcriptTurnState();
+      const transcriptBusy = transcriptTurn === "open";
       let snapshot: InstanceStateSnapshot;
       if (deliveryFallback !== null) {
         // A missing footer cannot fall through to a broad ready match. All
@@ -5711,7 +5773,7 @@ export class Daemon extends EventEmitter {
           settled: true,
           changeAt: observedChangeAt,
           forceReady: deliveryFallback,
-          forceBusy: !deliveryFallback || paneActivity !== null,
+          forceBusy: !deliveryFallback || paneActivity !== null || transcriptBusy,
         });
       } else if (structuredPeriodicIdle && reason === "output_probe") {
         const idlePane = structuredPeriodicIdle.call(this.backend, pane);
@@ -5730,6 +5792,7 @@ export class Daemon extends EventEmitter {
             snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
               settled: true,
               changeAt: observedChangeAt,
+              forceBusy: transcriptBusy,
             });
           }
         } else {
@@ -5762,6 +5825,7 @@ export class Daemon extends EventEmitter {
               settled: true,
               changeAt: observedChangeAt,
               forceReady: true,
+              forceBusy: transcriptBusy,
             });
           } else {
             snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
@@ -5808,6 +5872,7 @@ export class Daemon extends EventEmitter {
           snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
             settled: true,
             changeAt: observedChangeAt,
+            forceBusy: transcriptBusy,
           });
         } else {
           this.instanceStatePeriodicIdleConfirmations = 0;
@@ -5823,9 +5888,10 @@ export class Daemon extends EventEmitter {
         snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
           settled,
           changeAt: observedChangeAt,
-          forceBusy: paneActivity !== null,
+          forceBusy: paneActivity !== null || transcriptBusy,
         });
       }
+      if (snapshot.state === "stuck") snapshot = this.recoverStuck(pane, snapshot, observedChangeAt, transcriptTurn);
       this.applyInstanceStateSnapshot(snapshot, pane);
 
       // Backends without a transcript feed can still say what they are doing, if

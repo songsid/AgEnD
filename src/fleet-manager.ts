@@ -1615,7 +1615,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
     this.ensureDeliveryOutbox();
-    return this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
+    const page = this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
+    // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
+    return {
+      ...page,
+      items: page.items.map(item => (item.state === "queued" || item.state === "retry_wait")
+        ? { ...item, waiting_reason: this.deliveryWaitingReason(item.target_instance) }
+        : item),
+    };
+  }
+
+  /** #1641: why a target is not taking queued work right now, or null when nothing known holds it. */
+  private deliveryWaitingReason(target: string): string | null {
+    if (this.lifecycle.isPaused(target)) return t("delivery.hold_state", "paused");
+    return this.daemons.get(target)?.notAcceptingReason?.() ?? null;
   }
 
   getDaemonBootId(instanceName: string): string | undefined {

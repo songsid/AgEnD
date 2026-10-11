@@ -185,6 +185,12 @@ export interface DeliveryStatusItem {
   consumed_via: ConsumedVia | null;
   /** #926: the reply this request is owed, when it asked for one. */
   reply_obligation?: { state: "open" | "answered"; opened_at: string; last_asked_at: string; nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null } | null;
+  /**
+   * #1641: while `queued` / `retry_wait`, why the target is not taking it, in words (`The CLI appears stuck.`, paused, a
+   * dialog, a login failure); null when nothing known holds it (it is simply next in line). Added by the fleet, which
+   * knows the target's live state; absent on other states.
+   */
+  waiting_reason?: string | null;
 }
 
 /**

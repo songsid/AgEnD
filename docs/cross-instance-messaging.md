@@ -33,7 +33,7 @@ Instance 之間、以及外部 CLI session 與 daemon instance 之間的通訊�
 
 ### `delivery_status`
 
-查一則跨 instance 訊息的投遞狀態（queued / delivering / delivered / failed / uncertain）。`uncertain` 時以這裡的答案為準，不要重送。另有 `delivery_mode`（`steer` / `idle_queue`）、`submission_mode`，以及 `consumed_at` / `consumed_via`：CLI 的 transcript 顯示它真的取用了這則訊息的時間與方式（`turn` / `mid_turn`，#1201）——「已收進輸入」不等於「已讀」。
+查一則跨 instance 訊息的投遞狀態（queued / delivering / delivered / failed / uncertain）。`uncertain` 時以這裡的答案為準，不要重送。另有 `delivery_mode`（`steer` / `idle_queue`）、`submission_mode`，以及 `consumed_at` / `consumed_via`：CLI 的 transcript 顯示它真的取用了這則訊息的時間與方式（`turn` / `mid_turn`，#1201）——「已收進輸入」不等於「已讀」。還在排隊時，`waiting_reason` 會說明目標為什麼沒接收（例如「CLI 看起來卡住了。」，#1641）；是 null 就表示只是排在後面。
 
 ### `start_instance` / `create_instance` / `restart_instance` / `wake_instance`
 

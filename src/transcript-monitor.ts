@@ -204,6 +204,11 @@ export class TranscriptMonitor extends EventEmitter {
     this.saveOffset();
   }
 
+  /** #1641: whether a transcript is being followed at all (its turn boundaries are evidence only then). */
+  following(): boolean {
+    return this.transcriptPath !== null;
+  }
+
   setTranscriptPath(path: string): void {
     if (this.transcriptPath !== path) {
       this.resetOffset();
