@@ -53,7 +53,7 @@ describe("buildFleetInstructions", () => {
     const result = buildFleetInstructions(base);
     expect(result).toContain("react: add an emoji reaction — needs `message_id` + `emoji`");
     expect(result).toContain("edit_message: update a sent message — needs `message_id` + `text`");
-    expect(result).toContain("`message_id` comes from the inbound message header line `(message_id: ... | correlation_id: ...)`");
+    expect(result).toContain("`message_id` comes from the inbound message header line `(message_id: … | …)`, which lists the fields that are set.");
     expect(result).not.toContain("react(emoji, message_id)");
   });
 
@@ -226,5 +226,31 @@ describe("buildInstructionReloadNotice", () => {
     const notice = buildInstructionReloadNotice("codex", "worker", "/tmp/worker");
     expect(notice).not.toContain("Re-read your steering files");
     expect(notice).toContain("do not scan other instruction directories");
+  });
+});
+
+describe("#1634: what the injected texts say is what main does", () => {
+  const base = { instanceName: "test-inst", workingDirectory: "/home/user/project" };
+  it("the MCP instructions name the AgEnD version (an agent can tell an older tool copy) and stay within Claude Code's ~2 KB", () => {
+    const withVersion = buildMcpCoreInstructions({ ...base, agendVersion: "2.2.0-beta.2", runtimeIdentity: { kind: "fleet-topic", backend: "claude-code", model: "x".repeat(40) } });
+    expect(withVersion.split("\n")[0]).toBe("You are **test-inst** in an AgEnD fleet (AgEnD 2.2.0-beta.2). Working directory: `/home/user/project`. Runtime: kind=fleet-topic, backend=claude-code, model=" + "x".repeat(40) + ".");
+    expect(Buffer.byteLength(withVersion, "utf-8")).toBeLessThan(2048);
+    expect(buildMcpCoreInstructions(base).split("\n")[0]).toBe("You are **test-inst** in an AgEnD fleet. Working directory: `/home/user/project`.");
+  });
+  it("the MCP server reports the package's version, not a hard-coded one", () => {
+    const src = readFileSync(new URL("../src/channel/mcp-server.ts", import.meta.url), "utf-8");
+    expect(src).not.toMatch(/version: "\d+\.\d+\.\d+"/);
+    expect(src).toMatch(/\{ name: "agend", version: AGEND_VERSION \?\? "unknown" \}/);
+    expect(src).toMatch(/agendVersion: AGEND_VERSION,/);
+  });
+  it("reply's buttons and stickers, the web-chat sender, and the real image / file / reply_to markers are taught", () => {
+    const r = buildFleetInstructions(base);
+    expect(r).toContain("`buttons` (1–10, `{label, value?}`); a click comes back as a message `[button] <label>`");
+    expect(r).toContain("`stickers` (up to 3 ids from `list_stickers`; not together with buttons)");
+    expect(r).toContain("web-chat user (`via web`)");
+    expect(r).toContain("`[📷 Image: PATH]` in a message: Read PATH");
+    expect(r).toContain('`(reply_to: "…")` after a message');
+    expect(r).not.toContain("has image_path");
+    expect(r).not.toContain("reply_to_text");
   });
 });

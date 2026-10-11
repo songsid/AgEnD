@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **Agents: what AgEnD tells them matches what it does again (#1634).** The fleet instructions, the agent CLI reference, General's core rules, the tool descriptions and fifteen bundled skills were checked against the code. They now describe `reply`'s buttons and stickers, messages from the web chat, the real image / file / quote markers, delivery states (accepted is not delivered; never resend on `uncertain`), `get_fleet_status` (counts only; per-instance state is on `list_instances`), what `agend fleet restart` does (graceful; `--reload` for new code), `--yes` from a fleet session, how each backend resumes its own session, per-backend logins, the reply guard on Codex and Muse, the refused `kiro_ui: v3`, and the current model-listing commands. The MCP server now reports the real AgEnD version (it said 0.3.0) and names it in its instructions, so an agent can tell that a tool description it loaded earlier is older.

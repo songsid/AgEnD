@@ -55,11 +55,17 @@ The `channel_id` field explicitly binds a general to an adapter. Without it, mat
 |---------|---------|-----|
 | One general for two platforms | TG messages reply in DC | Add a second general with `channel_id` |
 | `channels:` without unique `id` per entry | Adapter collision | Set `id: discord` / `id: telegram` |
-| Using `channel:` (singular) for multi-platform | Second platform ignored | Switch to `channels:` array |
+| Using `channel:` (singular) for multi-platform | Second platform ignored | Switch to `channels:` array (`channel:` is deprecated; the validator warns when both are set) |
+
+## Web chat
+
+The dashboard's web chat is one more way in, not a `channels:` entry: its messages reach an instance as
+`[user:… via web, …]` and are answered with `reply` like any other. By default each is also copied to the
+instance's own topic (`web.echo_to_channel: false` turns that off; ClassicBot rooms only with `web_echo: true`).
 
 ## Single → Multi Migration
 
 1. Change `channel:` to `channels:` array, add `id` to existing entry
 2. Add new platform entry with its own `id`
 3. Add a general instance for the new platform with `channel_id: <new-adapter-id>`
-4. Restart fleet: `agend fleet restart`
+4. Restart the whole process — connections are created when it starts: `agend fleet restart --reload` (`--yes` from a fleet session)
