@@ -2443,7 +2443,7 @@ program
     console.log("Web token rotated.");
     console.log("Every previously issued dashboard link and browser session is now rejected.");
     console.log("A running fleet picks this up immediately — no restart needed.");
-    console.log("Sign in again with `agend web` (prints a one-time code), or /dashboard in your chat channel.");
+    console.log("Sign in again with `agend web` (prints a one-time code), or /web in your chat channel.");
   });
 
   program

@@ -28,7 +28,7 @@ import { measureSyncWork } from "./sync-work-attribution.js";
  */
 
 import { closeSync, existsSync, openSync, readSync, realpathSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open as openFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
@@ -69,6 +69,76 @@ export interface TranscriptSource {
   checkpoint?(): Promise<TranscriptCheckpoint | null>;
   /** Release anything held between polls; the next poll may acquire it again. */
   close?(): void;
+  /**
+   * #1641: whether the last poll found and read this instance's own transcript. False before the first, after a reset,
+   * and whenever the last poll found none — then nothing it reports is evidence about the turn.
+   */
+  following?(): boolean;
+  /**
+   * #1641 R2: whether the source knows the state of the CURRENT turn: it read the transcript from its start, found the
+   * last turn boundary before its baseline, or has read one since. Until then an empty ledger proves nothing.
+   */
+  turnStateKnown?(): boolean;
+  /** #1641 R3: turn records a checkpoint decided (it moved the source past them), for the monitor to hand on at once. */
+  takeTurns?(): TranscriptTurnEvent[];
+}
+
+/** #1641 R3: the complete records in [from, to) — `to` is a line boundary (a checkpoint's), so nothing is cut. */
+async function readLineRange(path: string, from: number, to: number): Promise<string[]> {
+  const fh = await openFile(path, "r");
+  try {
+    const buffer = Buffer.alloc(to - from);
+    for (let filled = 0; filled < buffer.length;) {
+      const { bytesRead } = await fh.read(buffer, filled, buffer.length - filled, from + filled);
+      if (bytesRead <= 0) throw new Error(`readLineRange: no progress reading ${path} at ${from + filled}`);
+      filled += bytesRead;
+    }
+    return buffer.toString("utf8").split("\n").filter(line => line.trim());
+  } finally {
+    await fh.close();
+  }
+}
+
+/** #1641 R2: how far back from the baseline a rollout is scanned for the last turn boundary (a turn writes a lot). */
+export const ROLLOUT_TURN_SCAN_MAX_BYTES = 16 * 1024 * 1024;
+const ROLLOUT_TURN_SCAN_CHUNK = 256 * 1024;
+
+/**
+ * #1641 R2: the last turn boundary (task_started / task_complete / turn_aborted) a codex rollout holds before `end`,
+ * scanning back at most ROLLOUT_TURN_SCAN_MAX_BYTES: `none` when the whole prefix holds none (no turn ever started),
+ * null when the bound ran out first (unknown). Nothing else is read or replayed.
+ */
+export async function lastRolloutTurnBoundary(path: string, end: number, maxBytes = ROLLOUT_TURN_SCAN_MAX_BYTES):
+  Promise<{ kind: "start"; turnId: string } | { kind: "end"; turnId: string } | { kind: "none" } | null> {
+  const fh = await openFile(path, "r");
+  try {
+    const stop = Math.max(0, end - maxBytes);
+    let pos = end;
+    let carry = Buffer.alloc(0);
+    while (pos > stop) {
+      const from = Math.max(stop, pos - ROLLOUT_TURN_SCAN_CHUNK);
+      const chunk = Buffer.alloc(pos - from);
+      await fh.read(chunk, 0, chunk.length, from);
+      pos = from;
+      const buf = Buffer.concat([chunk, carry]);
+      const lines = buf.toString("utf8").split("\n");
+      // The first piece may be the tail of a line that starts in an earlier chunk (unless this is the scan's start).
+      carry = pos > stop ? Buffer.from(lines.shift() ?? "", "utf8") : Buffer.alloc(0);
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i]!;
+        if (!/"(?:task_started|task_complete|turn_aborted)"/.test(line)) continue;
+        let entry: Record<string, unknown>;
+        try { entry = JSON.parse(line); } catch { continue; }
+        const p = entry.payload as Record<string, unknown> | undefined;
+        if (entry.type !== "event_msg" || !p || typeof p.turn_id !== "string") continue;
+        if (p.type === "task_started") return { kind: "start", turnId: p.turn_id };
+        if (p.type === "task_complete" || p.type === "turn_aborted") return { kind: "end", turnId: p.turn_id };
+      }
+    }
+    return stop === 0 ? { kind: "none" } : null;
+  } finally {
+    await fh.close();
+  }
 }
 
 const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts: [] };
@@ -111,7 +181,32 @@ export class CodexRolloutSource implements TranscriptSource {
     this.snapshotExistingFiles();
   }
 
+  /** #1641: the last poll found this instance's rollout and read it (see TranscriptSource.following). */
+  private lastPollFollowed = false;
+  /** #1641 R2: the turn open in the current file (its task_started read, no end yet), and whether that is known. */
+  private openTurn: string | null = null;
+  private turnKnown = false;
+  /** #1641 R2: boundaries decided at adoption (the old file's open turn ended, the new file's open turn carried in). */
+  private pendingTurns: TranscriptTurnEvent[] = [];
+
+  following(): boolean {
+    return this.lastPollFollowed && this.currentFile !== null;
+  }
+
+  turnStateKnown(): boolean {
+    return this.turnKnown;
+  }
+
+  /** #1641 R3: turn records decided outside a poll (a checkpoint's adoption or skipped range), handed over now. */
+  takeTurns(): TranscriptTurnEvent[] {
+    return this.pendingTurns.splice(0);
+  }
+
   reset(): void {
+    this.lastPollFollowed = false;
+    this.openTurn = null;
+    this.turnKnown = false;
+    this.pendingTurns = [];
     this.currentFile = null;
     this.byteOffset = 0;
     this.openTurnId = "";
@@ -126,12 +221,80 @@ export class CodexRolloutSource implements TranscriptSource {
     try {
       // A line boundary, not the size: a record being written now is read once complete (#1250).
       const offset = await lastLineBoundary(active.path);
+      if (active.path !== this.currentFile) await this.adopt(active.path, offset);   // a switch, whoever notices it
+      else if (offset > this.byteOffset) {
+        // #1641 R3: the range this checkpoint skips is never polled — its turn boundaries (and user records) are taken
+        // now, so the turn state stays the file's. Tool and text records stay skipped, as before.
+        for (const line of await readLineRange(active.path, this.byteOffset, offset)) {
+          let entry: Record<string, unknown>;
+          try { entry = JSON.parse(line); } catch { continue; }
+          this.turnRecord(entry, this.pendingTurns);
+        }
+      }
       this.currentFile = active.path;
       this.byteOffset = offset;
       return { path: active.path, offset, sessionId: active.path };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Follow `path` from `offset` (#1641 R2). A baseline past an existing file's start skips its history — but not the
+   * state of its current turn: the last boundary before the baseline says whether a turn is running now (carried in as
+   * its start; no tool, user or text record is replayed), and none within the scan bound leaves it unknown until one is
+   * read. A turn left open in the file being replaced belongs to that file, no longer followed: its busy evidence is
+   * withdrawn (retracted, not ended — nothing says how it ended).
+   */
+  private async adopt(path: string, offset: number): Promise<void> {
+    let baseline: Awaited<ReturnType<typeof lastRolloutTurnBoundary>> = null;
+    let known = offset === 0;                              // read from its start: every boundary will be read
+    if (offset > 0) {
+      try {
+        baseline = await lastRolloutTurnBoundary(path, offset);
+        known = baseline !== null;                         // `none`: the whole prefix holds no turn — known closed
+      } catch { known = false; }
+    }
+    if (this.openTurn) this.pendingTurns.push({ kind: "retract", turnId: this.openTurn });
+    this.openTurn = baseline?.kind === "start" ? baseline.turnId : null;
+    if (this.openTurn) this.pendingTurns.push({ kind: "start", turnId: this.openTurn });
+    this.turnKnown = known;
+    this.currentFile = path;
+    this.byteOffset = offset;
+    this.openTurnId = this.openTurn ?? "";                 // a steer after the baseline belongs to the carried-in turn
+  }
+
+  /**
+   * A turn record (a boundary, or a user message) into `turns`, keeping the open turn current; true when `entry` was
+   * one (or another event_msg), so the caller looks no further. #1510: codex 0.162 writes one task_started per turn and
+   * ends it with task_complete (last_agent_message null after a provider error) or turn_aborted; a steer lands inside
+   * the open turn as another user message.
+   */
+  private turnRecord(entry: Record<string, unknown>, turns: TranscriptTurnEvent[]): boolean {
+    const p = entry.payload as Record<string, unknown> | undefined;
+    if (!p) return false;
+    if (entry.type === "event_msg") {
+      if (p.type === "task_started" && typeof p.turn_id === "string") {
+        this.openTurnId = p.turn_id;
+        this.openTurn = p.turn_id;
+        this.turnKnown = true;
+        turns.push({ kind: "start", turnId: p.turn_id });
+      } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
+        const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
+        if (this.openTurn === p.turn_id) this.openTurn = null;
+        this.turnKnown = true;
+        turns.push({ kind: "end", turnId: p.turn_id, end });
+      }
+      return true;
+    }
+    if (entry.type === "response_item" && p.type === "message" && p.role === "user") {
+      const text = (p.content as Array<Record<string, unknown>> | undefined ?? [])
+        .map(block => typeof block.text === "string" ? block.text : "").join("\n");
+      const at = Date.parse(String(entry.timestamp ?? ""));
+      if (text.trim() && Number.isFinite(at)) turns.push({ kind: "user", turnId: this.openTurnId, text, at });
+      return true;
+    }
+    return false;
   }
 
   private snapshotExistingFiles(): void {
@@ -188,7 +351,9 @@ export class CodexRolloutSource implements TranscriptSource {
     // staying pinned to the old one goes silently blind (#528 trap 1).
     const candidates = this.candidateFiles();
     const active = candidates.find(c => this.fileBelongsToUs(c.path));
-    if (!active) return EMPTY;
+    // Cleared only by a real loss (none found, an adoption or read that failed) — never for the length of a poll's
+    // await, when a capture reading following() would drop the veto mid-turn.
+    if (!active) { this.lastPollFollowed = false; return EMPTY; }
 
     if (active.path !== this.currentFile) {
       // Existing rollout: continue at the EOF captured when the source was
@@ -200,43 +365,26 @@ export class CodexRolloutSource implements TranscriptSource {
       const captured = this.initialOffsets.get(active.path);
       let offset = 0;
       if (captured !== undefined) {
-        try { offset = await lastLineBoundary(active.path, captured); } catch { return EMPTY; }
+        try { offset = await lastLineBoundary(active.path, captured); } catch { this.lastPollFollowed = false; return EMPTY; }
       }
-      this.currentFile = active.path;
-      this.byteOffset = offset;
-      this.openTurnId = "";
+      await this.adopt(active.path, offset);
     }
 
-    const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
+    let read: Awaited<ReturnType<typeof readNewLines>>;
+    try { read = await readNewLines(active.path, this.byteOffset); } catch (err) { this.lastPollFollowed = false; throw err; }
+    const { lines, newOffset } = read;
     this.byteOffset = newOffset;
+    this.lastPollFollowed = true;
 
     const events = emptyEvents();
-    const turns: TranscriptTurnEvent[] = [];
+    const turns: TranscriptTurnEvent[] = this.pendingTurns.splice(0);
     for (const line of lines) {
       let entry: Record<string, unknown>;
       try { entry = JSON.parse(line); } catch { continue; }
       const p = entry.payload as Record<string, unknown> | undefined;
       if (!p) continue;
-      // #1510: codex 0.162 writes one task_started per turn and ends it with task_complete (last_agent_message null
-      // after a provider error) or turn_aborted; a steer lands inside the open turn as another user message.
-      if (entry.type === "event_msg") {
-        if (p.type === "task_started" && typeof p.turn_id === "string") {
-          this.openTurnId = p.turn_id;
-          turns.push({ kind: "start", turnId: p.turn_id });
-        } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
-          const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
-          turns.push({ kind: "end", turnId: p.turn_id, end });
-        }
-        continue;
-      }
+      if (this.turnRecord(entry, turns)) continue;
       if (entry.type !== "response_item") continue;
-      if (p.type === "message" && p.role === "user") {
-        const text = (p.content as Array<Record<string, unknown>> | undefined ?? [])
-          .map(block => typeof block.text === "string" ? block.text : "").join("\n");
-        const at = Date.parse(String(entry.timestamp ?? ""));
-        if (text.trim() && Number.isFinite(at)) turns.push({ kind: "user", turnId: this.openTurnId, text, at });
-        continue;
-      }
       if (p.type === "function_call") {
         let input: unknown = p.arguments;
         if (typeof input === "string") { try { input = JSON.parse(input); } catch { /* keep raw */ } }

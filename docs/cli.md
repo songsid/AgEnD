@@ -8,7 +8,7 @@ The Telegram fleet menu (General topic and instance topics, `setMyCommands`) lis
 |---------|-------------|----------------|------------|
 | `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
-| `/dashboard` (or `/web`) | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/dashboard revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
+| `/web` (`/dashboard` alias) | Sign in to the web dashboard and web chat: the sign-in link and a one-time code (spoilered on Telegram, visible only to you on Discord). On a `localhost` dashboard it also says how to reach it from a phone. `/web revoke` (on Discord, the `action: revoke` option) signs every browser out | `[revoke]` | 🔒 admin |
 | `/ctx` | Show agent context usage | — | All |
 | `/compact` | Compact agent context | `[instructions]` — steers the summary, Claude Code only | All in fleet topics |
 | `/steer` | Interject into the agent's current turn instead of queueing for idle | `<message>` required; `claude-code`/`codex`/`grok`/`muse`, and `kiro-cli` on its verified TUI ([details](commands.md#steer-btw-and-clear-backend-support)) | All |
@@ -246,7 +246,7 @@ A user guide to the whole dashboard (panels, chat, files, Stop, sessions, reachi
 [web-dashboard.md](web-dashboard.md).
 
 The dashboard signs in with a **one-time code**, not a link that carries a
-credential. Send `/dashboard` to your bot (or run `agend web --code` on the host)
+credential. Send `/web` to your bot (or run `agend web --code` on the host)
 and you get the sign-in page address plus an 8-character code — `ABCD-EFGH`,
 typed with or without the dash, in any case. Type it into the sign-in page and
 you are signed in to `/ui`, `/view` and `/settings` for as long as the session
@@ -261,13 +261,13 @@ records request URLs.
   `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
   hours without use, whichever comes first — the server decides, not the
   browser. It survives a fleet restart (Settings can restart the fleet).
-- **`/dashboard revoke`** in the chat (on Discord, the `/dashboard` slash command with `action: revoke`) signs every browser out and withdraws any
+- **`/web revoke`** in the chat (on Discord, the `/web` slash command with `action: revoke`) signs every browser out and withdraws any
   unused code. `agend web-token rotate` does the same and also rotates the token
   the CLI uses; a running fleet picks it up with no restart. The sign-in
   endpoints also list your signed-in devices and end one or all of them
   (`GET/DELETE /auth/sessions`).
 - **Each sign-in is announced** in the General topic ("New web sign-in: Chrome on
-  macOS"). If it was not you, send `/dashboard revoke`. Turn this off with
+  macOS"). If it was not you, send `/web revoke`. Turn this off with
   `web.notify_login: false`.
 - **Writes need more than the cookie.** The panels add a per-session
   `X-Agend-CSRF` header to every write, and the server also requires a matching

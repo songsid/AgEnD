@@ -21,7 +21,7 @@ The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It 
 The dashboard signs in with a **one-time code**, never with a link that carries a credential.
 
 1. Get a code, either way:
-   - in General, use **`/dashboard`** (fleet admins only; Discord native slash). Choose local sign-in or a temporary public link. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (tap it to copy: Telegram shows it as code, Discord as inline code). A public link's expiry is shown in the fleet's time zone, with its UTC offset.
+   - in General, use **`/web`** (fleet admins only; Discord native slash). Choose local sign-in or a temporary public link. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (tap it to copy: Telegram shows it as code, Discord as inline code). A public link's expiry is shown in the fleet's time zone, with its UTC offset.
    - on the host, run **`agend web`**. It prints the code and opens the sign-in page. `agend web --code` only prints them.
 2. Open the sign-in page and type the 8-character code (`ABCD-EFGH`, with or without the dash, in any case).
 
@@ -30,7 +30,7 @@ About the codes:
 - Five wrong tries use up a code. Enough wrong tries across codes pause sign-in for a few minutes. While no code has been issued, there is nothing to guess.
 - Local sign-ins are announced in General unless `web.notify_login: false`. Public sign-ins always require a confirmed public notice.
 
-**Send me a new code.** A browser that signed in before with a code from `/dashboard` shows this button on the sign-in page, so you do not have to go back to chat. The new code goes by DM to the person who received that earlier code, never into a group, and only while they are still a fleet admin. The DM names the browser and whether it asked through the public link or the local network. Like any new code, it replaces the previous one, including one `/dashboard` sent a moment ago. It can be asked for once a minute and five times an hour per browser (and a few times a minute for the whole fleet). It is not available while sign-in is paused after wrong codes. A code from `agend web` does not make a browser eligible. On a public link the button only works while that same link is open, and the sign-in is announced in General as usual. `/dashboard revoke` and `agend web-token rotate` remove the button from every browser.
+**Send me a new code.** A browser that signed in before with a code from `/web` shows this button on the sign-in page, so you do not have to go back to chat. The new code goes by DM to the person who received that earlier code, never into a group, and only while they are still a fleet admin. The DM names the browser and whether it asked through the public link or the local network. Like any new code, it replaces the previous one, including one `/web` sent a moment ago. It can be asked for once a minute and five times an hour per browser (and a few times a minute for the whole fleet). It is not available while sign-in is paused after wrong codes. A code from `agend web` does not make a browser eligible. On a public link the button only works while that same link is open, and the sign-in is announced in General as usual. `/web revoke` and `agend web-token rotate` remove the button from every browser.
 
 An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) is **not** a way in. It opens the sign-in page, and the token is removed from the address bar.
 
@@ -50,8 +50,8 @@ Use any of these if you see a sign-in you did not make, or a device you no longe
 
 | Where | How |
 |---|---|
-| Telegram | `/dashboard revoke` |
-| Discord | the `/dashboard` slash command, with **`action: revoke`** |
+| Telegram | `/web revoke` |
+| Discord | the `/web` slash command, with **`action: revoke`** |
 | On the host | `agend web-token rotate`. This also rotates the token the CLI uses; a running fleet picks it up with no restart. |
 | In the browser | Session menu → **Sign out everywhere** |
 
@@ -233,7 +233,7 @@ A fleet with no chat connection yet (web only) shows a card above the chat and t
 
 ### Temporary public link from a phone
 
-In the owning General, an admin can choose **Open temporary public link** from `/dashboard` (Discord native slash; Telegram typed). Nothing is downloaded or exposed until that click. The bot DMs the link and code; Discord has an awaited ephemeral fallback. Telegram users must `/start` the bot privately first. No code is posted in General.
+In the owning General, an admin can choose **Open temporary public link** from `/web` (Discord native slash; Telegram typed). Nothing is downloaded or exposed until that click. The bot DMs the link and code; Discord has an awaited ephemeral fallback. Telegram users must `/start` the bot privately first. No code is posted in General.
 
 While it starts, the menu you clicked shows each step with its seconds, updated at most every 2 s (3 s on Telegram):
 
@@ -244,9 +244,9 @@ While it starts, the menu you clicked shows each step with its seconds, updated 
 5. wait for the public address to answer;
 6. send you the link privately.
 
-Steps 1–3 appear only when AgEnD's copy must be fetched; after the first time it is steps 4–6. A step that fails is marked with its reason, and running `/dashboard` again retries. The menu shows only these words and numbers, never the link or the code.
+Steps 1–3 appear only when AgEnD's copy must be fetched; after the first time it is steps 4–6. A step that fails is marked with its reason, and running `/web` again retries. The menu shows only these words and numbers, never the link or the code.
 
-It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/dashboard revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
+It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/web revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
 
 The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; preview, SSE, `/health`, `/agent` and code issuance are excluded. Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.
 
@@ -312,7 +312,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
 | "Your session has ended" | 2 hours without use, 12 hours since sign-in, or someone revoked. Sign in again. |
 | Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds. Nothing to do — it is not shown as a problem. |
-| `/dashboard` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
+| `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 
 ### Confirming sensitive changes

@@ -8,11 +8,16 @@
  * directory never carries our text — no match is "unknown", and unknown never starts a recovery (fail-safe).
  */
 
-/** One boundary record, in transcript order. `turnId` is empty when the record came before any start was read. */
+/**
+ * One boundary record, in transcript order. `turnId` is empty when the record came before any start was read.
+ * `retract` is not a record: the source stopped following the transcript that turn belongs to (#1641 R2), so whatever
+ * it said about that turn is no longer evidence — the turn is forgotten, not ended (its delivery's verdict is unknown).
+ */
 export type TranscriptTurnEvent =
   | { readonly kind: "start"; readonly turnId: string }
   | { readonly kind: "user"; readonly turnId: string; readonly text: string; readonly at: number }
-  | { readonly kind: "end"; readonly turnId: string; readonly end: "complete" | "aborted" | "error" };
+  | { readonly kind: "end"; readonly turnId: string; readonly end: "complete" | "aborted" | "error" }
+  | { readonly kind: "retract"; readonly turnId: string };
 
 /**
  * `ended`: our turn and every turn after it ended normally. `running`: our turn, or one after it, has not ended.
@@ -21,7 +26,7 @@ export type TranscriptTurnEvent =
  */
 export type TranscriptTurnVerdict = "ended" | "running" | "aborted" | "error" | "unknown";
 
-interface Turn { id: string; users: Array<{ text: string; at: number }>; end?: "complete" | "aborted" | "error" }
+interface Turn { id: string; users: Array<{ text: string; at: number }>; end?: "complete" | "aborted" | "error"; seenAt: number }
 
 /** The same words, whatever the paste did to line breaks and indentation. */
 export function normalizeTurnText(text: string): string {
@@ -35,14 +40,15 @@ const ARM_SKEW_MS = 30_000;
 export class TranscriptTurnLedger {
   private turns: Turn[] = [];
 
-  observe(events: readonly TranscriptTurnEvent[]): void {
+  observe(events: readonly TranscriptTurnEvent[], now = performance.now()): void {
     for (const e of events) {
       if (e.kind === "start") {
         if (!e.turnId || this.turns.some(t => t.id === e.turnId)) continue;
-        this.turns.push({ id: e.turnId, users: [] });
+        this.turns.push({ id: e.turnId, users: [], seenAt: now });
         if (this.turns.length > MAX_TURNS) this.turns.splice(0, this.turns.length - MAX_TURNS);
         continue;
       }
+      if (e.kind === "retract") { this.turns = this.turns.filter(t => t.id !== e.turnId); continue; }
       const turn = e.turnId ? this.turns.find(t => t.id === e.turnId) : undefined;
       if (!turn) continue; // a record from a turn whose start we never read cannot be attributed
       if (e.kind === "user") turn.users.push({ text: normalizeTurnText(e.text), at: e.at });
@@ -52,6 +58,16 @@ export class TranscriptTurnLedger {
 
   /** Forget everything: the daemon does this for each new transcript monitor (a launch re-baselines the source). */
   reset(): void { this.turns = []; }
+
+  /**
+   * #1641: when (performance.now()) the earliest turn still open (a start read, no end yet) was first read — any turn, whoever's message
+   * started it — or null when every turn read since this monitor began has ended. Only meaningful while the monitor
+   * follows a transcript: an empty ledger with nothing followed is "unknown", not "closed" (the daemon checks that).
+   */
+  openSince(): number | null {
+    const open = this.turns.filter(t => !t.end);
+    return open.length ? Math.min(...open.map(t => t.seenAt)) : null;
+  }
 
   /** See TranscriptTurnVerdict. `armedAt` is the wall-clock time the delivery armed the guard. */
   verdict(deliveredText: string | undefined, armedAt: number): TranscriptTurnVerdict {

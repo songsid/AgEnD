@@ -76,7 +76,15 @@ export class TranscriptMonitor extends EventEmitter {
 
   /** Snapshot the active durable conversation before an outbox pane write. */
   async reconciliationCheckpoint(): Promise<TranscriptCheckpoint | null> {
-    if (this.source?.checkpoint) return this.source.checkpoint();
+    if (this.source?.checkpoint) {
+      const generation = this.generation;
+      const checkpoint = await this.source.checkpoint();
+      // #1641 R3: what the checkpoint moved past (a switch's retract and carried-in start, a skipped boundary) reaches
+      // the ledger before the delivery it guards — not at the next poll.
+      const turns = this.source.takeTurns?.() ?? [];
+      if (turns.length && generation === this.generation) this.emit("turns", turns);
+      return checkpoint;
+    }
     const path = await this.resolveTranscriptPath();
     if (!path) return null;
     try {
@@ -204,6 +212,21 @@ export class TranscriptMonitor extends EventEmitter {
     this.saveOffset();
   }
 
+  /**
+   * #1641: whether a transcript is being followed right now (its turn boundaries are evidence only then): polling, and
+   * — for a source lane (codex's rollout) — the source's own word that its last poll found and read our transcript; a
+   * source that cannot say is not following.
+   */
+  following(): boolean {
+    if (this.source) return this.pollTimer !== null && this.source.following?.() === true;
+    return this.transcriptPath !== null;
+  }
+
+  /** #1641 R2: whether the current turn's state is known (see TranscriptSource.turnStateKnown); a source that cannot say does not. */
+  turnStateKnown(): boolean {
+    return this.source ? this.source.turnStateKnown?.() === true : true;
+  }
+
   setTranscriptPath(path: string): void {
     if (this.transcriptPath !== path) {
       this.resetOffset();
@@ -217,5 +240,7 @@ export class TranscriptMonitor extends EventEmitter {
     this.transcriptPath = null;
     this.source?.reset();
     this.saveOffset();
+    // #1641 R2: everything read before the re-baseline is about a transcript no longer followed from there.
+    this.emit("reset");
   }
 }

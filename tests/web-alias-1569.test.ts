@@ -92,8 +92,10 @@ describe("#1569: the command table — one row, two names", () => {
     const menu = telegramMenu("fleet");
     const at = menu.findIndex(e => e.name === "dashboard");
     expect(menu[at + 1]).toEqual({ name: "web", lock: menu[at]!.lock });
-    expect(t("slash.web")).toContain("/dashboard");
-    setLocale("zh-TW"); expect(t("slash.web")).toContain("/dashboard");
+    expect(t("slash.web")).not.toContain("/dashboard");
+    expect(t("slash.dashboard")).toContain("/web");
+    setLocale("zh-TW"); expect(t("slash.web")).not.toContain("/dashboard");
+    expect(t("slash.dashboard")).toContain("/web");
   });
 });
 
@@ -117,6 +119,18 @@ describe("#1569: Discord /web does exactly what /dashboard does", () => {
 });
 
 describe("#1569: Telegram /web does exactly what /dashboard does", () => {
+  it.each(["en", "zh-TW"] as const)("General-only guidance advertises /web for either name (%s)", async language => {
+    setLocale(language);
+    for (const command of ["/web", "/dashboard"]) {
+      const result = await typed(command, "admin", undefined, "T1");
+      expect(result.handled).toBe(true);
+      expect(result.armed).toBe(0);
+      expect(result.dms).toEqual([]);
+      expect(JSON.stringify(result.posts)).toContain(JSON.stringify(t("cmd.use_in_general", "/web")).slice(1, -1));
+      expect(JSON.stringify(result.posts)).not.toContain("/dashboard");
+    }
+  });
+
   it.each([
     ["General, a fleet admin (the menu)", "", "admin", undefined, "T0"],
     ["General, a member (the refusal)", "", "member", undefined, "T0"],
@@ -128,7 +142,7 @@ describe("#1569: Telegram /web does exactly what /dashboard does", () => {
     const web = await typed(`/web${args}`, user, admins, thread);
     expect(web).toEqual(dashboard);
     expect(web.handled, "a command, not text for the agent").toBe(true);
-    if (thread === "T1") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("cmd.use_in_general", "/dashboard")).slice(1, -1));
+    if (thread === "T1") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("cmd.use_in_general", "/web")).slice(1, -1));
     else if (user === "member") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("not_authorized")).slice(1, -1));
     else if (admins && admins.length === 0) expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("dashboard.disabled")).slice(1, -1));
     else if (args === " revoke") expect(web.revoked).toBe(1);

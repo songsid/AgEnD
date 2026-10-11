@@ -1616,7 +1616,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
     this.ensureDeliveryOutbox();
-    return this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
+    const page = this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
+    // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
+    return {
+      ...page,
+      items: page.items.map(item => (item.state === "queued" || item.state === "retry_wait")
+        ? { ...item, waiting_reason: this.deliveryWaitingReason(item.target_instance) }
+        : item),
+    };
+  }
+
+  /** #1641: why a target is not taking queued work right now, or null when nothing known holds it. */
+  private deliveryWaitingReason(target: string): string | null {
+    if (this.lifecycle.isPaused(target)) return t("delivery.hold_state", "paused");
+    return this.daemons.get(target)?.notAcceptingReason?.() ?? null;
   }
 
   getDaemonBootId(instanceName: string): string | undefined {
@@ -18741,7 +18754,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Never the token: fleet.log is readable by anything that can read the
       // data dir, is copied into bug reports, and is tailed in shared terminals.
       // `/dashboard` and `agend web` are the ways to get an authorized link.
-      this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /dashboard or `agend web`)");
+      this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /web or `agend web`)");
       this.logger.info({ url: `http://localhost:${port}/view` }, "Web View available");
       // #1306: the preview listener starts once the web listener is bound — its frame-ancestors name the real port.
       const bound = this.healthServer?.address();

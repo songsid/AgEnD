@@ -46,7 +46,7 @@
 | `/login` | ✓ | H:F | H:F | H:F | H:F |
 | `/update` | ✓ | H:F | H:F | H:F | H:F |
 | `/doctor` | ✓ | H:F | H:F | H:F | H:F |
-| `/dashboard` | ✓ | H:F | H:F | H:F | H:F |
+| `/web` (`/dashboard`) | ✓ | H:F | H:F | H:F | H:F |
 | `/visibility` | ✓ | H:F | H:F | H:F | H:F |
 | `/sysinfo` | ✓ | H:A | H:A | H:A | H:A |
 | `/usage` | ✓ | H:A | H:A | H:A | H:A |
@@ -78,7 +78,7 @@
 | `/login` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/update` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/doctor` | ✓ | — | H:F | R:G | P | S/P | S/R |
-| `/dashboard` | ✓ | — | H:F | R:G | P | S/P | S/R |
+| `/web` (`/dashboard`) | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/visibility` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/sysinfo` | ✓ | — | H:A | R:G | P | S/P | S/R |
 | `/usage` | ✓ | — | H:A | R:G | P | S/P | S/R |
@@ -117,7 +117,7 @@
 
 ## 別名
 
-`/web` 就是 `/dashboard` 的短名稱（#1569）。它是命令表裡的同一列，所以兩張表裡它的 cell 就是上面 `/dashboard` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣有 `/web revoke`。Discord 把它註冊成獨立的 slash 指令，Telegram fleet 選單把它列在 `/dashboard` 後面。
+`/web` 是建議使用的名稱，`/dashboard` 保留為別名（#1569）。兩者是命令表裡的同一列，也就是兩張表裡上面 `/web` 的 cell：同樣的權限、同樣的停用回覆、同樣的拒絕訊息，也同樣支援 `revoke`。Discord 註冊兩個 slash 名稱；Telegram fleet 選單仍把 `/web` 列在 `/dashboard` 後面。
 
 ## 維護矩陣
 

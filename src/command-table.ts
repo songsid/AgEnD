@@ -166,7 +166,7 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "login", slash: true, denied: PERMISSION_DENIED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "login") },
   { name: "update", slash: true, denied: NOT_AUTHORIZED, disabled: ["update.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "update") },
   { name: "doctor", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "doctor") },
-  { name: "dashboard", slash: true, denied: NOT_AUTHORIZED, disabled: ["dashboard.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "dashboard") },
+  { name: "dashboard", slash: true, denied: NOT_AUTHORIZED, disabled: ["dashboard.disabled"], scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "web") },
   // #1302: a fleet setting, so a fleet admin even to read it — the same as /doctor.
   { name: "visibility", slash: true, denied: NOT_AUTHORIZED, scopes: everywhere("fleet-admin"), telegram: tgGeneralOnly(FLEET_ADMIN, "visibility") },
   // Informational. `/tips on|off|advanced on` change settings and are gated by the handler on that argument.

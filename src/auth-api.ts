@@ -50,7 +50,7 @@ import { buildDeviceCookie, readDeviceCookie, type ReturningDevice } from "./web
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const LOGIN_REFUSED_MESSAGE =
-  "That code did not work — it may be wrong, expired or already used. Ask for a new one with /dashboard.";
+  "That code did not work — it may be wrong, expired or already used. Ask for a new one with /web.";
 export const LOGIN_PAUSED_MESSAGE = "Too many wrong codes — sign-in is paused for a few minutes.";
 
 const MAX_LOGIN_BODY = 1024;
@@ -72,7 +72,7 @@ export interface AuthApiContext {
     Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }>;
 }
 
-export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /dashboard.";
+export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /web.";
 
 /** The only files `/assets/` will serve. A map, not a directory: nothing else can be named into it. */
 const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {

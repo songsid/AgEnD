@@ -46,7 +46,7 @@ The tables distinguish menu visibility, AgEnD handling, refusal and ordinary tex
 | `/login` | ✓ | H:F | H:F | H:F | H:F |
 | `/update` | ✓ | H:F | H:F | H:F | H:F |
 | `/doctor` | ✓ | H:F | H:F | H:F | H:F |
-| `/dashboard` | ✓ | H:F | H:F | H:F | H:F |
+| `/web` (`/dashboard`) | ✓ | H:F | H:F | H:F | H:F |
 | `/visibility` | ✓ | H:F | H:F | H:F | H:F |
 | `/sysinfo` | ✓ | H:A | H:A | H:A | H:A |
 | `/usage` | ✓ | H:A | H:A | H:A | H:A |
@@ -78,7 +78,7 @@ The tables distinguish menu visibility, AgEnD handling, refusal and ordinary tex
 | `/login` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/update` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/doctor` | ✓ | — | H:F | R:G | P | S/P | S/R |
-| `/dashboard` | ✓ | — | H:F | R:G | P | S/P | S/R |
+| `/web` (`/dashboard`) | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/visibility` | ✓ | — | H:F | R:G | P | S/P | S/R |
 | `/sysinfo` | ✓ | — | H:A | R:G | P | S/P | S/R |
 | `/usage` | ✓ | — | H:A | R:G | P | S/P | S/R |
@@ -117,7 +117,7 @@ Source: `src/fleet-manager.ts:10443`, `:11592`, `:14413`, `:14719`, `:11126`. St
 
 ## Aliases
 
-`/web` is `/dashboard` under a shorter name (#1569). It is the same command-table row, so its cells are the `/dashboard` cells above, in both tables: the same gate, the same disabled reply, the same refusals and `/web revoke`. Discord registers it as its own slash command, and the Telegram fleet menu lists it right after `/dashboard`.
+`/web` is the recommended name; `/dashboard` remains an alias (#1569). They share one command-table row, shown as `/web` in both tables above: the same gate, the same disabled reply, the same refusals and the same `revoke` subcommand. Discord registers both slash names; the Telegram fleet menu still lists `/web` right after `/dashboard`.
 
 ## Maintaining the matrix
 

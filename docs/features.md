@@ -232,6 +232,7 @@ Each row also says how it was routed and what became of it after it reached the 
 - `delivery_mode` is `steer` (into the live turn) or `idle_queue` (as the next message), as `send_to_instance` reported it.
 - `submission_mode` is how the latest attempt was written: `idle_submit`, `steer`, `native_queue_handoff` (into a busy CLI's own queue) or `raw_paste`.
 - `consumed_at` / `consumed_via`: a steer or a native-queue hand-off is accepted into the CLI's input long before the model reads it. Claude Code takes it at the next tool boundary or when the turn ends. When the CLI's transcript (claude-code, codex) shows the delivery's own marker taken, the row records when, and whether it came as its own turn (`turn`) or inside the running one (`mid_turn`). That is also the one thing that turns an `uncertain` row into `delivered`; a failure notice not yet sent to the sender is then withdrawn. No match never changes a row.
+- `waiting_reason` (#1641): on a `queued` or `retry_wait` row, why the target is not taking it, in words ("The CLI appears stuck.", paused, a dialog, a login failure), or null when it is simply next in line. If an always-on target's queued work has waited 30 minutes for such a reason, its topic is told once.
 
 An instance only sees rows it sent or received (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` is how an agent checks that a peer message really came through the fleet: "Delivery not found" means it did not. Every tool profile has `delivery_status`, `minimal` included.
 
@@ -531,7 +532,7 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 - **Topic mode**: one text channel per instance under an "AgEnD Agents" category (rename with `options.category_name`), plus a General channel.
 - **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode (on by default after `/start`) triggers the agent only when the bot is @-mentioned.
 - **Several bots in one server**: each bot is its own `channels[]` entry; a bot answers only messages that mention it and never answers for another bot.
-- **Slash commands**: 25, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/effort`, `/dashboard`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
+- **Slash commands**: 25, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/effort`, `/web`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
 - **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / effort pickers.
 - **Reactions**: reactions on the bot's messages (including other bots') reach the agent; delivery-status stamps are configurable per instance or channel; persona emoji can use server emoji.
 - **Attachments**: images, files and audio are downloaded; forwarded messages keep their images; replying to an image includes it.
@@ -622,7 +623,7 @@ Simplified 4-question setup wizard for new users. Auto-detects installed backend
 
 The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web-user: …`, and the agent's replies show in both. Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
 
-Sign in with a one-time code: send `/dashboard` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
+Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
 ## Remote CLI sign-in (`/login`)
 
@@ -931,7 +932,7 @@ In headless environments (SSH, Docker), the URL must be opened manually on anoth
 
 | Command | Description |
 |---------|-------------|
-| `/dashboard` | Open web dashboard |
+| `/web` (`/dashboard`) | Open web dashboard |
 | `/home` | Go to home screen |
 | `/resume` | Resume previous session |
 | `/rename` | Rename current session |

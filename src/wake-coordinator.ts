@@ -32,6 +32,11 @@ export const PARK_BASE_MS = 60_000;
 export const PARK_MAX_MS = 30 * 60_000;
 /** Queued work on an awake target that has not been claimed for this long is reported once (§1.4). */
 export const CLAIM_BLOCK_NOTICE_MS = 5 * 60_000;
+/**
+ * #1641: queued work on an always-on target (no wake management) that the target is not taking — stuck, a dialog, a
+ * login failure — is reported once after this long. Nobody else would say: the sender sees only `queued`.
+ */
+export const ALWAYS_ON_BLOCK_NOTICE_MS = 30 * 60_000;
 /** How far `warm_cap` may be exceeded for leased work (§1.6). */
 export const DEFAULT_WARM_OVERFLOW = 2;
 export const WATCHDOG_INTERVAL_MS = 30_000;
@@ -81,6 +86,8 @@ interface TargetState {
   parkReason: string | null;
   authNoticeSent: boolean;
   claimBlockNoticeSent: boolean;
+  /** #1641: the always-on block notice was sent for the current episode (cleared once the target takes work again). */
+  alwaysOnBlockNoticeSent?: boolean;
 }
 
 export class WakeCoordinator {
@@ -191,6 +198,7 @@ export class WakeCoordinator {
     s.parkedUntil = 0;
     s.parkReason = null;
     s.claimBlockNoticeSent = false;
+    s.alwaysOnBlockNoticeSent = false;      // #1641: the target took work — the episode is over
   }
 
   /** Free warm slots under the hard cap, counting every target exactly once. */
@@ -242,12 +250,16 @@ export class WakeCoordinator {
   private scanOnce(): void {
     const now = this.deps.now();
     const byTarget = new Map<string, OutboxDelivery[]>();
+    const alwaysOn = new Map<string, OutboxDelivery[]>();
     for (const row of this.deps.listPending()) {
-      if (!this.active(row.targetInstance)) continue;
-      const list = byTarget.get(row.targetInstance) ?? [];
+      const into = this.active(row.targetInstance) ? byTarget : alwaysOn;
+      const list = into.get(row.targetInstance) ?? [];
       list.push(row);
-      byTarget.set(row.targetInstance, list);
+      into.set(row.targetInstance, list);
     }
+    for (const [target, rows] of alwaysOn) this.checkAlwaysOnTarget(target, rows, now);
+    // #1641: a queue that emptied ended its episode too (the scan never visits a target with nothing pending).
+    for (const [target, s] of this.states) if (s.alwaysOnBlockNoticeSent && !alwaysOn.has(target)) s.alwaysOnBlockNoticeSent = false;
     // Capacity is handed out oldest-work-first.
     const ordered = [...byTarget.entries()].sort((a, b) => a[1][0]!.createdSeq - b[1][0]!.createdSeq);
     let nextDue = Number.POSITIVE_INFINITY;
@@ -279,6 +291,28 @@ export class WakeCoordinator {
     if (Number.isFinite(nextDue)) this.kick(Math.max(1, nextDue - now));
     // Awake targets with work still waiting: make sure the pump looks again.
     if (wakeableAwake && !this.stopped) this.deps.kickPump();
+  }
+
+  /**
+   * #1641: an always-on target is never woken or parked here, but its queued work can still be stuck behind it (the pump
+   * does not claim for a target that is not accepting). Once the head has waited ALWAYS_ON_BLOCK_NOTICE_MS while the
+   * target gives a reason, its topic is told once; the notice re-arms when the target takes work again.
+   */
+  private checkAlwaysOnTarget(target: string, rows: OutboxDelivery[], now: number): void {
+    const s = this.state(target);
+    const waiting = rows.filter(r => r.state === "queued" || r.state === "retry_wait");
+    const inFlight = rows.some(r => r.state === "delivering" || r.state === "submission_started" || r.state === "reconciliation_pending");
+    const reason = waiting.length && !inFlight ? this.deps.notAcceptingReason(target) : null;
+    if (!reason) {
+      s.alwaysOnBlockNoticeSent = false;
+      return;
+    }
+    const head = waiting[0]!;
+    const headAge = now - (head.createdAt ? Date.parse(head.createdAt) : now);
+    if (s.alwaysOnBlockNoticeSent || headAge < ALWAYS_ON_BLOCK_NOTICE_MS) return;
+    s.alwaysOnBlockNoticeSent = true;
+    this.deps.logger.warn({ target, waiting: waiting.length, headAgeMs: headAge, reason }, "Queued work is waiting on an always-on target that is not taking it");
+    this.deps.notifyTarget(target, t("delivery.wake_waiting", target, waiting.length, Math.round(headAge / 60_000), reason));
   }
 
   /**

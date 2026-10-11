@@ -69,7 +69,7 @@ npm install -g @songsid/agend@2.2.0
 **只發生一次：**
 - **Kiro：** 每個 instance 第一次恢復時，會在投遞任何訊息之前，先在 pane 裡輸入 `/agent swap <agent>`（#906）。15 秒內無法確認切換時，會保留舊設定、發出說明，下次啟動再試。等所有使用該目錄的 fleet 都升級後，再手動刪掉舊的 `.kiro/steering/agend-<instance>.md`。
   - 從 2.1.11 之前升級也支援一次性的 Kiro 對話認領（#1624），會檢查共用 cwd 與 claim；見 [認領與 beta.1 復原](kiro-upgrade-recovery.zh-TW.md)。
-- **網頁登入：** 每個人都要重新登入一次。舊的 `?token=` 連結和書籤都會打開登入頁。對 bot 傳 `/dashboard`，或在主機上執行 `agend web --code`，就能拿到一次性代碼（8 個字元，5 分鐘內有效）。
+- **網頁登入：** 每個人都要重新登入一次。舊的 `?token=` 連結和書籤都會打開登入頁。對 bot 傳 `/web`，或在主機上執行 `agend web --code`，就能拿到一次性代碼（8 個字元，5 分鐘內有效）。
 - **General 會收到一則 web chat 介紹**（#1366），每個平台只送一次，記錄在 `AGEND_HOME/upgrade-notices.json`。
 
 **從此以後的政策：**
@@ -86,7 +86,7 @@ agend fleet status       # 每個 instance 都在執行
 agend health             # fleet 有回應
 ```
 接著：
-- 登入網頁 dashboard（在聊天裡傳 `/dashboard`，或執行 `agend web --code`），打開一個 instance 的聊天。
+- 登入網頁 dashboard（在聊天裡傳 `/web`，或執行 `agend web --code`），打開一個 instance 的聊天。
 - 分別從聊天 App 和網頁傳一則訊息給某個 instance，兩邊都要送得到。
 - 打開網頁側欄的 **Needs you**：所有等你處理的事（登入、確認）都列在那裡。
 - 有用 Kiro 的話：確認每個 Kiro instance 在 `/agent swap` 之後都回應過一次。
@@ -119,9 +119,9 @@ agend health             # fleet 有回應
 **我的 fleet.yaml 還是舊的單一 `channel:` 寫法，有問題嗎？**
 可以照常使用。2.2 的 Settings 會把它安全地存成 `channels:` 清單（#1056）。如果還在 2.1.x，檔案是 `channel:` 寫法時，請不要在 Settings 裡儲存連線，先手動改成 `channels:` 清單。
 
-**`/dashboard` 裡的「公開連結」是什麼？**
+**`/web` 裡的「公開連結」是什麼？**
 一個暫時性的 HTTPS 網址（透過 cloudflared，第一次使用時自動安裝），讓你從其他裝置打開 dashboard。
-- `/dashboard` 預設會提供這個選項，但只有管理員在那裡選了，才會真的建立連結，而且連結會私下傳給你。
+- `/web` 預設會提供這個選項，但只有管理員在那裡選了，才會真的建立連結，而且連結會私下傳給你。
 - `web.public_link.allow_public: false` 會拿掉這個選項，並關閉已經開著的連結。
 - `web.public_link.ttl_minutes` 設定它固定的有效時間（預設 120 分鐘，可設 1 到 480）。
 - `web.public_link.protocol` 決定 cloudflared 的連線方式：`http2`（預設）、`quic` 或 `auto`。
@@ -131,8 +131,8 @@ bot token 等機密，請在主機自己的 dashboard 上輸入，不要透過�
 **Settings → 狀態 emoji 裡，Discord 伺服器的 emoji 顯示成破圖。**
 2.2 已修正：頁面現在允許載入 Discord 的 emoji 圖片。升級後重新整理頁面即可。
 
-**`/dashboard` 以前給的是帶 token 的連結，現在怎麼變成代碼？**
-對，連結會打開登入頁，在那裡輸入代碼（只能用一次，5 分鐘內有效）。`/dashboard revoke` 會讓所有瀏覽器登出。
+**`/web` 以前給的是帶 token 的連結，現在怎麼變成代碼？**
+對，連結會打開登入頁，在那裡輸入代碼（只能用一次，5 分鐘內有效）。`/web revoke` 會讓所有瀏覽器登出。
 
 **可以在瀏覽器裡輸入 bot token 嗎？**
 可以。2.2 的 Settings → 連線會請你輸入 token，向平台驗證並顯示 bot 名稱後才儲存。token 存在 `~/.agend/.env`，之後不會再顯示。這個變更仍然需要確認（#1423）。
