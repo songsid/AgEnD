@@ -287,7 +287,7 @@ describe("the Settings editor: picked == previewed == reacted (#1005 addendum 3)
     const previewImg = p.root.querySelectorAll(".se-preview img").find((i: any) => i.getAttribute("src") === "/ui/img/emoji/333333333333333333")!;
     const glyph = previewImg.parentNode;
     fire(previewImg, "error"); await quick();
-    expect([glyph.querySelector("img"), glyph.querySelector(".se-alt")?.textContent ?? null]).toEqual([null, ":done:"]);
+    expect([!!glyph.querySelector("img"), glyph.querySelector(".se-alt")?.textContent ?? null]).toEqual([false, ":done:"]);
 
     // Store what was picked, then react through the real status path.
     const dir = tmp();
