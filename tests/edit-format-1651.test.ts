@@ -22,10 +22,10 @@ describe("the tool router passes edit_message's format, mapped like reply's", ()
     await Promise.resolve();
     expect(r.done()).toBe("ok");
   });
-  it("text, or no format: none passed (the edit is plain, as before)", () => {
+  it("text, or no format: exactly the call it always was — no options argument (the edit is plain, as before)", () => {
     for (const args of [{ format: "text" }, {}]) {
       const r = route(args);
-      expect(r.editMessage.mock.calls, JSON.stringify(args)).toEqual([["c1", "m1", "**hi**", "th1", undefined]]);
+      expect([r.editMessage.mock.calls, r.editMessage.mock.calls[0]!.length], JSON.stringify(args)).toEqual([[["c1", "m1", "**hi**", "th1"]], 4]);
     }
   });
 });
