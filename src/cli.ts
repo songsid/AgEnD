@@ -1599,6 +1599,37 @@ program
       return;
     }
 
+    // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
+    let needsSudo = false;
+    try {
+      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      const { accessSync, constants } = await import("node:fs");
+      try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
+    } catch { /* assume no sudo needed */ }
+
+    // ── #1441 B: can the target run here, on the Node it will actually run on? ──
+    // Read where the install runs (#1623 review): a direct install runs `npm` and the release's `node` from this
+    // environment, so it is decided now, before anything is touched. An nvm install runs nvm's npm and Node 22, which
+    // exist only once nvm has selected them: runUpdateInstall decides it there, before the lock and npm.
+    const preflight = targetVersion ? await import("./update-preflight.js") : null;
+    if (preflight && targetVersion && !needsSudo) {
+      const verdict = preflight.preflightUpdate({
+        run: (argv, timeoutMs) => {
+          const r = spawnSync(argv[0]!, argv.slice(1), { encoding: "utf-8", timeout: timeoutMs, stdio: ["ignore", "pipe", "ignore"] });
+          return { status: r.status, stdout: r.stdout ?? "" };
+        },
+        npm: "npm",
+      }, pkg, targetVersion, "the `node` on PATH");
+      if (verdict.kind === "refuse") {
+        console.error(`\n${verdict.message}\n`);
+        // A chat-started /update (Discord, Telegram, an agent) is waiting on this: the reason is its outcome.
+        setUpdateProgressStage(DATA_DIR, "failed", { error: `Not updated: ${verdict.summary}. Nothing was changed.` });
+        process.exitCode = 1;
+        return;
+      }
+      if (verdict.kind === "unknown") console.log(verdict.note);
+    }
+
     if (targetVersion) {
       console.log(`\n  Updating AgEnD v${pkgVersion} → v${targetVersion}...\n`);
     } else {
@@ -1620,14 +1651,6 @@ program
       process.exit(1);
     };
     setUpdateProgressStage(DATA_DIR, "downloading");
-
-    // ── Check if npm global needs sudo ──
-    let needsSudo = false;
-    try {
-      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
-      const { accessSync, constants } = await import("node:fs");
-      try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
-    } catch { /* assume no sudo needed */ }
 
     if (needsSudo) {
       // ── nvm path: install without sudo ──
@@ -1661,6 +1684,9 @@ program
     const installed = runUpdateInstall(
       {
         pkg, targetVersion, viaNvm: needsSudo, nvmSh, rollback: true,
+        ...(preflight && targetVersion && needsSudo
+          ? { preflight: preflight.installPreflight(pkg, targetVersion, "the Node 22 nvm selected", { log: m => console.log(m), error: m => console.error(m) }) }
+          : {}),
         lock: prefix => {
           const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, {
             pid: process.pid, processStart: admission.processStart, newToken: () => randomBytes(16).toString("hex"),
