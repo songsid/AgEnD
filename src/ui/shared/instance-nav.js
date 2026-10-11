@@ -195,7 +195,10 @@ export function labelOf(it) {
   const d = it && typeof it.display_name === "string" ? it.display_name.trim() : "";
   return d || nameOf(it);
 }
-const sameOrigin = (src) => typeof src === "string" && /^\/ui\/img\/(bot|avatar|emoji)\/[^?#\s]+(\?v=[0-9A-Za-z%._-]*)?$/.test(src);
+// One path segment under /ui/img/<kind>/ — no further slash or backslash, and not a dot segment ("." / ".." or their
+// %2e spellings, which a browser resolves too): the picture can only ever be one of those routes (#1642 review).
+const sameOrigin = (src) => typeof src === "string"
+  && /^\/ui\/img\/(bot|avatar|emoji)\/(?!(?:\.|%2[eE]){1,2}(?:\?|$))[^/\\?#\s]+(\?v=[0-9A-Za-z%._-]*)?$/.test(src);
 /** The avatar to draw: the server's, if it is one the page may load; else the first character. */
 export function avatarOf(it) {
   const a = it && it.avatar;

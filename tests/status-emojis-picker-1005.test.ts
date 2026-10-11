@@ -78,8 +78,8 @@ describe("status-emoji catalog and preview routes (#1005 phase 3.2)", () => {
     });
     expect(r.status).toBe(200);
     const by = Object.fromEntries(r.body.entries.map((e: any) => [e.key, e]));
-    expect(by.received).toMatchObject({ source: "platform", applied: "inbox:111111111111111111", display: ":inbox:", image_url: "https://cdn.discordapp.com/emojis/111111111111111111.png" });
-    expect(by.delivered).toMatchObject({ source: "instance", applied: "done:222222222222222222", image_url: "https://cdn.discordapp.com/emojis/222222222222222222.gif" });
+    expect(by.received).toMatchObject({ source: "platform", applied: "inbox:111111111111111111", display: ":inbox:", image_url: "/ui/img/emoji/111111111111111111" });
+    expect(by.delivered).toMatchObject({ source: "instance", applied: "done:222222222222222222", image_url: "/ui/img/emoji/222222222222222222" });
     expect(by.failed).toMatchObject({ source: "builtin", value: "❌", image_url: null });
     expect(r.body.problems).toEqual([expect.objectContaining({ source: "instance", key: "failed", value: "👀✅" })]);
     expect(r.body.avoid).toEqual([":inbox:", "⏳", "👀", ":done:", "❌"]);
@@ -138,7 +138,7 @@ describe("guild emoji listing (#1005 phase 3.2)", () => {
     }
   });
 
-  it("serves them in the stored config form with a CDN image, and says why when it cannot", async () => {
+  it("serves them in the stored config form with the dashboard's own image (#1630), and says why when it cannot", async () => {
     const listGuildEmojis = vi.fn(async (_c: string, refresh?: boolean) => refresh
       ? { ok: false as const, error: "Missing Access" }
       : { ok: true as const, fetched_at: 1, emojis: [{ id: "333333333333333333", name: "done", animated: true, available: true }] });
@@ -146,7 +146,7 @@ describe("guild emoji listing (#1005 phase 3.2)", () => {
     const ok = await request("/api/settings/status-emojis/guild-emojis?channel=dc", ctx);
     expect(ok.status).toBe(200);
     expect(ok.body.emojis).toEqual([{ id: "333333333333333333", name: "done", animated: true, available: true,
-      value: "<a:done:333333333333333333>", image_url: "https://cdn.discordapp.com/emojis/333333333333333333.gif" }]);
+      value: "<a:done:333333333333333333>", image_url: "/ui/img/emoji/333333333333333333" }]);
     const refused = await request("/api/settings/status-emojis/guild-emojis?channel=dc&refresh=1", ctx);
     expect(listGuildEmojis).toHaveBeenLastCalledWith("dc", true);
     expect(refused).toEqual({ status: 409, body: { error: "Missing Access" } });
@@ -265,7 +265,7 @@ async function mountSection(section: "agents" | "bots") {
 describe("the Settings editor: picked == previewed == reacted (#1005 addendum 3)", () => {
   uiHooks();
 
-  it("picking a server emoji stores <a:name:id>, previews its CDN image, and the bot reacts with name:id", async () => {
+  it("picking a server emoji stores <a:name:id>, previews its image (from the dashboard's own route, #1630), and the bot reacts with name:id", async () => {
     server = context({ listGuildEmojis: async () => ({ ok: true, fetched_at: 1, emojis: [{ id: "333333333333333333", name: "done", animated: true, available: true }] }) });
     const editor = await mountEditor({ platform: "discord", channel: "dc-picked",
       previewBody: (map: unknown) => ({ channel_id: "dc", instance_config: map }) });
@@ -274,7 +274,7 @@ describe("the Settings editor: picked == previewed == reacted (#1005 addendum 3)
     await quick();
     const serverButton = row("delivered").querySelectorAll("button").find((b: any) => b.getAttribute("title") === ":done:")!;
     const img = serverButton.querySelector("img")!;
-    expect(img.getAttribute("src")).toBe("https://cdn.discordapp.com/emojis/333333333333333333.gif");
+    expect(img.getAttribute("src")).toBe("/ui/img/emoji/333333333333333333");
     expect(img.getAttribute("referrerpolicy")).toBe("no-referrer");
     await click(serverButton);
     await quick();
@@ -282,7 +282,12 @@ describe("the Settings editor: picked == previewed == reacted (#1005 addendum 3)
     expect(editor.value()).toEqual({ delivered: "<a:done:333333333333333333>" });
     const lastPreview = previews().at(-1)!;
     expect(lastPreview.body).toEqual({ channel_id: "dc", instance_config: { delivered: "<a:done:333333333333333333>" } });
-    expect(p.root.querySelectorAll(".se-preview img").map((i: any) => i.getAttribute("src"))).toContain("https://cdn.discordapp.com/emojis/333333333333333333.gif");
+    expect(p.root.querySelectorAll(".se-preview img").map((i: any) => i.getAttribute("src"))).toContain("/ui/img/emoji/333333333333333333");
+    // #1630: an emoji the dashboard does not serve (not one of the fleet's servers) shows as its :name:, not a broken image.
+    const previewImg = p.root.querySelectorAll(".se-preview img").find((i: any) => i.getAttribute("src") === "/ui/img/emoji/333333333333333333")!;
+    const glyph = previewImg.parentNode;
+    fire(previewImg, "error"); await quick();
+    expect([!!glyph.querySelector("img"), glyph.querySelector(".se-alt")?.textContent ?? null]).toEqual([false, ":done:"]);
 
     // Store what was picked, then react through the real status path.
     const dir = tmp();
@@ -602,7 +607,7 @@ describe("the picker lists each server the bot is in that ClassicBot admits (#10
     expect(r.status).toBe(200);
     expect(r.body.guilds).toEqual([
       { id: "guild-1", name: "Main", primary: true, emojis: [{ id: "111111111111111111", name: "home", animated: false, available: true,
-        value: "<:home:111111111111111111>", image_url: "https://cdn.discordapp.com/emojis/111111111111111111.png" }] },
+        value: "<:home:111111111111111111>", image_url: "/ui/img/emoji/111111111111111111" }] },
       { id: "guild-2", name: "Classic HQ", primary: false, error: "Discord refused the emoji list: Missing Access" },
     ]);
   });
@@ -623,7 +628,7 @@ describe("the picker lists each server the bot is in that ClassicBot admits (#10
         const hints = row("delivered").querySelectorAll("p.note").filter((e: any) => e.textContent.startsWith("Another server's emoji"));
         expect(hints).toHaveLength(1);
         const away = row("delivered").querySelectorAll("button").find((b: any) => b.getAttribute("title") === ":away:")!;
-        expect(away.querySelector("img")!.getAttribute("src")).toBe("https://cdn.discordapp.com/emojis/222222222222222222.gif");
+        expect(away.querySelector("img")!.getAttribute("src")).toBe("/ui/img/emoji/222222222222222222");
         await click(away);
         await quick();
         expect(editor.value()).toEqual({ delivered: "<a:away:222222222222222222>" });

@@ -68,6 +68,7 @@ npm install -g @songsid/agend@2.2.0
 
 **Once, on the first start:**
 - **Kiro:** each instance, on its first resume, gets `/agent swap <agent>` typed into its pane before anything is delivered (#906). If the switch cannot be confirmed within 15 s, the old setup stays, a notice says so, and the next start tries again. Delete old `.kiro/steering/agend-<instance>.md` files by hand once every fleet using that directory has upgraded.
+  - Upgrading from before 2.1.11 also supports one-time Kiro conversation adoption (#1624), with shared-cwd and claim safeguards; see [adoption and beta.1 recovery](kiro-upgrade-recovery.md).
 - **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/dashboard` to your bot, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
 - **General gets one message about web chat** (#1366), once per platform, recorded in `AGEND_HOME/upgrade-notices.json`.
 

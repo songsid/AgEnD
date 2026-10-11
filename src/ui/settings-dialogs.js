@@ -108,8 +108,13 @@ export function orderedStatusMap(map, keys) {
   for (const key of keys) { const v = map && map[key]; if (typeof v === "string" && v.trim()) out[key] = v.trim(); }
   return Object.keys(out).length ? out : null;
 }
-// no-referrer: nothing here should tell a third-party image host where it was loaded from.
-const EmojiImg = ({ url, alt }) => html`<img src=${url} alt=${alt} referrerpolicy="no-referrer" loading="lazy" />`;
+// #1630: from the dashboard's own route (/ui/img/emoji/<id>). An emoji the fleet's servers do not have is not served
+// there: then its :name: as text, never a broken image.
+const EmojiImg = ({ url, alt }) => {
+  const [broken, setBroken] = useState("");
+  return broken === url ? html`<span class="se-alt">${alt}</span>`
+    : html`<img src=${url} alt=${alt} referrerpolicy="no-referrer" loading="lazy" onError=${() => setBroken(url)} />`;
+};
 
 /**
  * One status_emojis map. `platform` and `channel` say where it applies; `previewBody(map)` is what the preview resolves.

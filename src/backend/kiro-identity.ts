@@ -15,7 +15,8 @@
  *                          Named by a hash of the instance name, so any instance name AgEnD allows (CJK included)
  *                          has one; the name itself is inside.
  *
- *  - Adoption (no state file at all, and the engine ledger shows this instance launched here before #906): the
+ *  - Adoption (no state file at all, and either the engine ledger shows this instance launched here before #906,
+ *    or the pre-ledger upgrade fallback proves this is the only configured kiro instance in the directory): the
  *    newest conversation for the directory is claimed and recorded before the launch. An unreadable store then is
  *    legacy mode — the old command, not isolated, nothing recorded — and the next launch tries again. A claim this
  *    instance completed whose record could not be written is taken up again on the retry, never given up.
@@ -154,7 +155,7 @@ export type KiroIdentityDecision =
   /** Not isolated: the old command, nothing recorded. */
   | { mode: "legacy"; reason: string }
   | { mode: "resume"; id: string; agentConfirmed: boolean }
-  | { mode: "fresh" };
+  | { mode: "fresh"; notice?: "shared-directory" | "claimed-conversation" | "unknown-peers" };
 
 export interface ResolveKiroIdentityOptions {
   instance: string;
@@ -167,6 +168,11 @@ export interface ResolveKiroIdentityOptions {
   readStore: () => KiroStoreRead;
   /** Whether this instance launched in this directory, with this profile and engine, before #906. */
   launchedBefore: () => boolean;
+  /** Only for an absent launch record, on a capable binary. Consults the current
+   * complete configured roster at the synchronous adoption boundary, not a
+   * snapshot taken before v2 discovery. null means no upgrade fallback.
+   */
+  upgradeAdoption?: () => "eligible" | "shared-directory" | "unknown-peers" | null;
   now?: () => number;
 }
 
@@ -323,7 +329,7 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   };
   /** Recorded first: until it is, the old record still says which conversation this instance holds. */
   /** `alsoGivingUp`: a conversation held outside the record (a pending adoption's) given up with this fresh start. */
-  const startFresh = (store?: KiroStoreRead, alsoGivingUp?: string): KiroIdentityDecision => {
+  const startFresh = (store?: KiroStoreRead, alsoGivingUp?: string): Extract<KiroIdentityDecision, { mode: "fresh" }> => {
     const listed = store ?? opts.readStore();
     const abandoned = new Set(record?.abandoned ?? []);
     if (record?.id) abandoned.add(record.id);
@@ -373,22 +379,35 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
     return fresh;
   }
 
-  // Adoption: only with no state file at all, and only for an instance that ran here before (#906 §2). The chosen
+  // Adoption: only with no state file at all, with old launch evidence or the
+  // one-time unshared-directory upgrade fallback (#1624). A durably fresh mark
+  // always takes the evidence-only path below. The chosen
   // conversation is recorded (pending) before it is claimed, so a retry after any failure takes up that exact
   // conversation — never whichever is newest by then.
   if (read.kind === "none") {
-    if (opts.skipResume || !opts.launchedBefore()) return startFresh();
+    if (opts.skipResume) return startFresh();
+    const previousLaunch = opts.launchedBefore();
+    const upgrade = previousLaunch ? null : opts.upgradeAdoption?.() ?? null;
+    if (!previousLaunch && upgrade !== "eligible") {
+      const fresh = startFresh();
+      return upgrade ? { ...fresh, notice: upgrade } : fresh;
+    }
     const store = opts.readStore();
     if (store.kind === "unreadable") return { mode: "legacy", reason: store.detail };
     const newest = store.sessions.filter(s => SAFE_ID.test(s.id)).sort((x, y) => y.updatedAt - x.updatedAt)[0];
-    if (!newest || claimOf(p.claims, newest.id) !== null) return startFresh(store);
+    if (!newest) return startFresh(store);
+    if (claimOf(p.claims, newest.id) !== null) {
+      const fresh = startFresh(store);
+      return upgrade === "eligible" ? { ...fresh, notice: "claimed-conversation" } : fresh;
+    }
     try {
       mkdirSync(p.instances, { recursive: true, mode: 0o700 });
       writePending(p.pending, { ...pendingMap, [key]: newest.id });
     } catch { throw new KiroIdentityError(`cannot write ${p.pending}`); }
     if (!claim(p.claims, newest.id, instance)) {
       settlePending();
-      return startFresh(store);
+      const fresh = startFresh(store);
+      return upgrade === "eligible" ? { ...fresh, notice: "claimed-conversation" } : fresh;
     }
     if (!save({ engine, workingDirectory, credentialProfile, id: newest.id, since: now(), known: [], abandoned: [], agentConfirmed: false })) {
       throw new KiroIdentityError(`cannot write ${p.state}`); // the pending entry and the claim stand: the retry takes this id

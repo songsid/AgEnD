@@ -97,10 +97,12 @@ export interface CliBackendConfig {
   /** Daemon-owned localhost Muse usage relay, prepared before spawn. */
   museBaseUrl?: string;
   /**
-   * Working directories of the fleet's OTHER instances on the same backend,
+   * Working directories of the OTHER configured instances on the same backend,
    * read lazily. Codex needs it only when its session DB is unreadable, to
    * decide whether `resume --last` could take a sibling worktree's session
-   * (#984). Absent means "unknown", which a backend must treat as unsafe.
+   * (#984). Kiro's pre-ledger adoption (#1624) needs the complete fleet +
+   * ClassicBot roster, including stopped instances, to prove an unshared cwd.
+   * Absent means "unknown", which a backend must treat as unsafe.
    */
   peerWorkingDirectories?: () => string[];
 }

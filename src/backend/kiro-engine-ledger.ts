@@ -79,6 +79,21 @@ export function readKiroLedger(path: string = kiroLedgerPath()): KiroLedger {
   return {};
 }
 
+/** #1624: absence alone permits the pre-ledger upgrade fallback. The forgiving
+ * display reader above cannot prove that: it drops invalid entries and treats
+ * I/O failures as empty. Never turn damaged/unreadable history into adoption.
+ */
+export function kiroHasNoLaunchRecord(instance: string, path: string = kiroLedgerPath()): boolean {
+  let text: string;
+  try { text = readFileSync(path, "utf8"); } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "ENOENT";
+  }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return isObject(parsed) && !Object.hasOwn(parsed, instance);
+  } catch { return false; }
+}
+
 /** Write via a temp file and rename; the temp file is removed whatever happens. Throws on failure. */
 export function writeFileAtomic(path: string, data: string): void {
   const tmp = `${path}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;

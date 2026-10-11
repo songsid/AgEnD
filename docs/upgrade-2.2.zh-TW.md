@@ -68,6 +68,7 @@ npm install -g @songsid/agend@2.2.0
 
 **只發生一次：**
 - **Kiro：** 每個 instance 第一次恢復時，會在投遞任何訊息之前，先在 pane 裡輸入 `/agent swap <agent>`（#906）。15 秒內無法確認切換時，會保留舊設定、發出說明，下次啟動再試。等所有使用該目錄的 fleet 都升級後，再手動刪掉舊的 `.kiro/steering/agend-<instance>.md`。
+  - 從 2.1.11 之前升級也支援一次性的 Kiro 對話認領（#1624），會檢查共用 cwd 與 claim；見 [認領與 beta.1 復原](kiro-upgrade-recovery.zh-TW.md)。
 - **網頁登入：** 每個人都要重新登入一次。舊的 `?token=` 連結和書籤都會打開登入頁。對 bot 傳 `/dashboard`，或在主機上執行 `agend web --code`，就能拿到一次性代碼（8 個字元，5 分鐘內有效）。
 - **General 會收到一則 web chat 介紹**（#1366），每個平台只送一次，記錄在 `AGEND_HOME/upgrade-notices.json`。
 

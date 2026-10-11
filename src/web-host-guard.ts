@@ -124,25 +124,15 @@ export function applyWebSecurityHeaders(res: ServerResponse): void {
 }
 
 /**
- * The one remote image source a panel may load: Discord's custom-emoji CDN, which the status-emoji editor shows
- * (status-emojis.ts emojiImageUrl). Path-scoped — a source ending in "/" admits only what is under it, so the rest of
- * cdn.discordapp.com (attachments, avatars) stays refused, and a redirect elsewhere is refused too. It is an image
- * source only: script still cannot connect or post anywhere but this origin. What it gives up is that Discord sees the
- * viewer's address when the editor is open (the request carries no referrer — EmojiImg sets no-referrer).
- */
-export const DISCORD_EMOJI_IMG_SRC = "https://cdn.discordapp.com/emojis/";
-
-/**
- * The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's nonce for scripts and styles,
- * Discord's emoji CDN for images (DISCORD_EMOJI_IMG_SRC),
- * and — for /ui only, when a preview origin was chosen for this load (#1306) — `frame-src <preview origin>/frame`:
+ * The panel policy for one response: WEB_CONTENT_SECURITY_POLICY with this response's nonce for scripts and styles —
+ * images stay 'self' (#1630: Discord's emoji pictures come from the dashboard's own /ui/img/emoji/, so no remote image
+ * source is admitted any more, and Discord never sees a viewer's address) — and — for /ui only, when a preview origin was chosen for this load (#1306) — `frame-src <preview origin>/frame`:
  * path-scoped, so nothing else of that origin can be framed or navigated to. Without it, frames fall back to
  * default-src 'self'.
  */
 export function panelContentSecurityPolicy(nonce: string, opts: { frameSrc?: string; mediaSrc?: string } = {}): string {
   let policy = rewriteDirective(WEB_CONTENT_SECURITY_POLICY, "script-src 'self'", `script-src 'self' 'nonce-${nonce}'`);
   policy = rewriteDirective(policy, "style-src 'self'", `style-src 'self' 'nonce-${nonce}'`);
-  policy = rewriteDirective(policy, "img-src 'self' data: blob:", `img-src 'self' data: blob: ${DISCORD_EMOJI_IMG_SRC}`);
   if (opts.frameSrc) policy = `${policy}; frame-src ${opts.frameSrc}`;
   // #1589: the app shell's audio/video — exactly <dashboard origin>/ui/file/ (or 'none'); without it media falls back
   // to default-src 'self' as before.

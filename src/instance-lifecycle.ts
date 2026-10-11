@@ -225,6 +225,10 @@ export interface LifecycleContext {
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
   isClassicInstance?(name: string): boolean;
+  /** All OTHER configured kiro cwd's, fleet + ClassicBot, including stopped
+   * instances. Absent means the complete roster cannot be proven (#1624).
+   */
+  kiroPeerWorkingDirectories?(name: string): string[];
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
   isPlannedRestart(): boolean;
   /** Suppress only incident kinds caused by the active tmux server storm. */
@@ -1549,7 +1553,9 @@ export class InstanceLifecycle {
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
     // Read at each spawn so a fleet.yaml reload is honoured (#984).
-    daemon.setPeerWorkingDirectories(() => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
+    daemon.setPeerWorkingDirectories(backendName === "kiro-cli"
+      ? this.ctx.kiroPeerWorkingDirectories ? () => this.ctx.kiroPeerWorkingDirectories!(name) : undefined
+      : () => peerWorkingDirectories(this.ctx.fleetConfig, name, backendName));
     daemon.setStatusEmojiAvoidList(() => this.ctx.statusEmojiAvoidList?.(name));
     // Before start: the first spawn builds the command and emits its launch
     // warning synchronously inside Daemon.start, long before

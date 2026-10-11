@@ -183,10 +183,10 @@ describe("the panel policy extends whole directives of the base, or refuses (#15
       expect(() => rewriteDirective(base, base.startsWith("script") ? "script-src 'self'" : "img-src 'self' data: blob:", "z"), base).toThrow(/has no/);
     }
   });
-  it("the panel policy is the base with its three directives extended, and nothing else changed", () => {
+  it("the panel policy is the base with its two directives extended (#1630: images stay 'self'), and nothing else changed", () => {
     const p = panelContentSecurityPolicy("abc").split("; ");
     const base = WEB_CONTENT_SECURITY_POLICY.split("; ");
     expect(p.length).toBe(base.length);
-    expect(p.filter((d, i) => d !== base[i])).toEqual(["script-src 'self' 'nonce-abc'", "style-src 'self' 'nonce-abc'", "img-src 'self' data: blob: https://cdn.discordapp.com/emojis/"]);
+    expect(p.filter((d, i) => d !== base[i])).toEqual(["script-src 'self' 'nonce-abc'", "style-src 'self' 'nonce-abc'"]);
   });
 });
