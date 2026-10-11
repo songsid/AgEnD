@@ -359,6 +359,12 @@ export interface WebConfig {
   /** Tell the admin channel when someone signs in to the web panel (default true). */
   notify_login?: boolean;
   /**
+   * #1620: how long a web session lasts. Only the LOCAL surface (the dashboard reached directly — loopback, a LAN, a
+   * tailnet) is configurable; a public-link session's limits stay fixed. Hours, 1 ≤ idle_hours ≤ absolute_hours ≤ 720;
+   * defaults 12 (absolute, from sign-in) and 2 (idle, since the last use). Shortening applies to existing sessions.
+   */
+  session?: { local?: { absolute_hours?: number; idle_hours?: number } };
+  /**
    * #1306: HTML previews in the web chat (default true). false: no preview listener; cards show Source and
    * Download only. Even when true, a browser runs a preview only after that device opted in.
    */
