@@ -1480,12 +1480,15 @@ export class KiroBackend implements CliBackend {
         action: "notify",
         message: "Kiro rate limit reached — the service asked to wait; retry shortly",
       },
-      // #1636: the monthly cap (MonthlyLimitReached branch: it prints this and returns, again with no header).
-      // The phrase opens its line, and the reset sentence follows on that line (` - The limits reset on 11/01.`)
-      // or within the next few lines — a quote of the phrase alone, or mid-sentence, does not match. kiro has only
-      // a monthly cap today; every period is accepted so a new one is not silently missed (quota-warning's guard).
+      // #1636: the monthly cap (MonthlyLimitReached branch: it prints this and returns, again with no header). The
+      // phrase is its whole line — the free tier's form, followed by a paragraph that ends with the reset date — or
+      // is followed on the same line by ` - The limits reset on MM/01.` (a subscriber's form). Not a later line: the
+      // free tier's reset date sits five lines below and more once the pane wraps, and the error monitor reads the
+      // pane without joining wrapped rows, so a narrow pane (window-size latest) can split that sentence anywhere
+      // (Prism, #1637 R1). A mention inside a sentence, a list item or quotes does not match. kiro has only a
+      // monthly cap today; every period is accepted so a new one is not silently missed (quota-warning's guard).
       {
-        pattern: /^[ \t]*(?:●[ \t]*)?(?:⚠️?[ \t]*)?(?:Hourly|Daily|Weekly|Monthly) request limit reached\b[^\n]*(?:\n[^\n]*){0,4}?The limits reset on \d{1,2}\/\d{1,2}\./m,
+        pattern: /^[ \t]*(?:●[ \t]*)?(?:⚠️?[ \t]*)?(?:Hourly|Daily|Weekly|Monthly) request limit reached(?:[ \t]*$|[ \t]+-[ \t]+The limits reset on\b)/m,
         type: "rate_limit",
         action: "notify",
         message: "Kiro request limit reached — it resets on the date kiro shows",

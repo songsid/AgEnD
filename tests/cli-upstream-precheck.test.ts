@@ -314,28 +314,43 @@ describe("new prompts are found wherever they sit, in every text form (P1-2)", (
   });
 });
 
-describe("#1636: a new string order alone is not a new prompt", () => {
+describe("#1636: a new string order is a hint for the auditor, never an exemption", () => {
   // kiro-cli 2.29.0 → 2.29.1: "rate limit reached:" sat directly before "Please try a shorter message." and was read
-  // as one string; 2.29.1 stores them apart. Not a byte of either changed — the precheck said MAJOR all the same.
+  // as one string; 2.29.1 stores them apart. The bytes cannot prove that is all that happened (Prism, #1637 R1), so
+  // the new half stays a new prompt and the auditor is told what it may be.
   const GLUED = "Rate limit reached:Please try a shorter message.";
-  it("one half of an old glued pair, the other half still present: listed on its own, and nothing else (no MAJOR)", () => {
+  const HINT = /hint: the old release had it glued to "Please try a shorter message\.", which the new one still has elsewhere \(only the string order changed\?\)/;
+  it("one half of an old glued pair, the other half still present: MAJOR, hinted (hard=0)", () => {
     const f = files(`${OLD}${T}${pad(4)}${GLUED}${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit reached:${pad(400)}Please try a shorter message.${pad(4)}`);
     const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: NONE", "BASIS: hard=0; hinted=0"]);
-    expect(r.out).toMatch(/one half of an old glued pair \(only the string order changed\): 1\n {2}"Rate limit reached:" {3}was read as part of "Rate limit reached:Please try a shorter message\."/);
+    expect([r.verdict, r.out.trim().split("\n").at(-2), HINT.test(r.out)]).toEqual(["PRECHECK: MAJOR", "BASIS: hard=0; hinted=1", true]);
   });
-  it("…but when the other half is gone from the new release, the shorter string is a new prompt (MAJOR)", () => {
+  it("…the other half gone from the new release: MAJOR with no such hint (hard=1)", () => {
     const f = files(`${OLD}${T}${pad(4)}${GLUED}${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit reached:${pad(4)}`);
-    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.out.trim().split("\n").at(-2), /glued to/.test(r.out)]).toEqual(["PRECHECK: MAJOR", "BASIS: hard=1; hinted=0", false]);
   });
-  it("…and a cut that is not a string boundary proves nothing (MAJOR), even with the rest present", () => {
-    const f = files(`${OLD}${T}${pad(4)}Rate limited by the proxy server${pad(4)}`, `${OLD}${T}${pad(4)}Rate limited by the${pad(400)}proxy server${pad(4)}`);
-    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  it("…a cut that is not a string boundary gets no such hint, even with the rest present", () => {
+    const f = files(`${OLD}${T}${pad(4)}Rate limit reached by the proxy server${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit reached by the${pad(400)}proxy server${pad(4)}`);
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /glued to/.test(r.out)]).toEqual(["PRECHECK: MAJOR", false]);
   });
-  it("the tail half too: \"Retrying in …\" split from the string before it", () => {
+  it("the tail half too: \"Retrying in …\" split from the string before it is hinted", () => {
     const f = files(`${OLD}${T}${pad(4)}Rate limit hit.Retrying in 5 seconds${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit hit.${pad(400)}Retrying in 5 seconds${pad(4)}`);
     const r = run(f.old, f.neu, f.m);
-    expect([r.verdict, /one half of an old glued pair \(only the string order changed\): 2/.test(r.out)]).toEqual(["PRECHECK: NONE", true]);
+    expect([r.verdict, /glued to "Rate limit hit\."/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true]);
+  });
+  it("Prism R1 ①: a trust prompt that lost its warning (the warning now far away) is MAJOR, not excused", () => {
+    const far = pad(3000);
+    const f = files(`${OLD}${T}${pad(4)}Yes, I trust this folder.Do not execute its hooks.${pad(4)}${far}Do not execute its hooks.${pad(4)}`,
+      `${OLD}${T}${pad(4)}Yes, I trust this folder.${pad(4)}${far}Do not execute its hooks.${pad(4)}`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("Prism R1 ②: an old string moved next to a detector literal, its other half left far away, is MAJOR", () => {
+    const far = pad(3000);
+    const f = files(`${OLD}${far}Rate limit reached:Please remove all pending jobs.${pad(4)}${far}${T}${pad(4)}`,
+      `${OLD}${far}Please remove all pending jobs.${pad(4)}${far}${T}${pad(4)}Rate limit reached:${pad(4)}`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
   });
 });
 

@@ -27,7 +27,7 @@ const THROTTLED_TUI = [
 ].join("\n");
 /** MonthlyLimitReached with a subscription: the reset date on the same line. */
 const MONTHLY_INLINE = ["Monthly request limit reached - The limits reset on 11/01.", "", "> "].join("\n");
-/** Without one: the reset sentence a few lines below (upstream's free-tier paragraph ends with it). */
+/** Without one: the phrase alone on its line, the reset sentence a few lines below. */
 const MONTHLY_BELOW = [
   "Monthly request limit reached",
   "",
@@ -35,6 +35,20 @@ const MONTHLY_BELOW = [
   "",
   "Use /subscribe to upgrade your subscription.",
 ].join("\n");
+
+/**
+ * The free-tier layout as upstream builds it (MonthlyLimitReached: the phrase, "\n\n", ui_text::limit_reached_text(),
+ * then " The limits reset on MM/01."): the reset date lands on the 5th line after the phrase (Prism, #1637 R1).
+ */
+const LIMIT_REACHED_TEXT = [
+  "You've used all your free requests for this month. You have two options:",
+  "",
+  "1. Upgrade to a paid subscription for increased limits. See our Pricing page for what's included> https://aws.amazon.com/q/developer/pricing/",
+  "2. Wait until next month when your limit automatically resets.",
+].join("\n");
+const MONTHLY_FREE_TIER = `Monthly request limit reached\n\n${LIMIT_REACHED_TEXT} The limits reset on 11/01.\n\nUse /subscribe to upgrade your subscription.\n\n> `;
+/** The same as an 80-column pane shows it: every long line wrapped (capture-pane without -J). */
+const wrap80 = (text: string) => text.split("\n").flatMap(line => line.length <= 80 ? [line] : line.match(/.{1,80}/g)!).join("\n");
 
 /** Exactly what the monitor does: the first pattern in array order wins. */
 function classify(pane: string) {
@@ -51,20 +65,30 @@ describe("#1636: kiro's rate limit and monthly cap are classified", () => {
     expect(classify(pane)).toMatchObject({ type: "rate_limit", action: "notify", message: expect.stringMatching(/request limit reached — it resets/) });
   });
 
+  it("the monthly cap with upstream's whole free-tier text, as written and wrapped at 80 columns, is rate_limit / notify", () => {
+    expect(MONTHLY_FREE_TIER.split("\n").findIndex(l => l.includes("The limits reset on"))).toBe(5);
+    expect(wrap80(MONTHLY_FREE_TIER)).not.toContain("The limits reset on");          // the wrap splits it
+    for (const pane of [MONTHLY_FREE_TIER, wrap80(MONTHLY_FREE_TIER), wrap80(MONTHLY_FREE_TIER).replace(/\n> $/, "")]) {
+      expect(classify(pane), pane).toMatchObject({ type: "rate_limit", action: "notify", message: expect.stringMatching(/request limit reached — it resets/) });
+    }
+  });
+
   it("an expired login on the same pane still wins: auth pauses, first match", () => {
     const pane = `${THROTTLED}\nYou are not logged in, please log in with kiro-cli login\n`;
     expect(classify(pane)).toMatchObject({ type: "auth_error", action: "pause" });
     expect(classify(`${MONTHLY_INLINE}\nExpiredTokenException: The security token included in the request is expired`)).toMatchObject({ type: "auth_error" });
   });
 
-  it("a quote does not match: mid-sentence, one line of the pair, or the monthly phrase without its reset date", () => {
+  it("a quote does not match: mid-sentence, one line of the pair, or the monthly phrase inside a sentence, a list item or quotes", () => {
     for (const pane of [
       "kiro prints ⚠️  Kiro rate limit reached: and then Request quota exceeded. Please wait a moment and try again.",
       "If it says Kiro rate limit reached:\n    Request quota exceeded. Please wait a moment and try again. we notify.",
       " ⚠️  Kiro rate limit reached:\n\n> ",
       "    Request quota exceeded. Please wait a moment and try again.",
       "When kiro prints Monthly request limit reached - The limits reset on 11/01. AgEnD notifies.",
-      "Monthly request limit reached\n\n> ",
+      "Monthly request limit reached, so I stopped for today.",
+      "- Monthly request limit reached",
+      "`Monthly request limit reached`",
     ]) {
       expect(classify(pane), pane).toBeUndefined();
     }

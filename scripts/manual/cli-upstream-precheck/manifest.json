@@ -2545,7 +2545,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1488,
+     "line": 1491,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2553,7 +2553,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1488,
+     "line": 1491,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2561,7 +2561,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1496,
+     "line": 1499,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2569,7 +2569,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1496,
+     "line": 1499,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2577,7 +2577,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1496,
+     "line": 1499,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2585,7 +2585,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1507,
+     "line": 1510,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2593,7 +2593,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 1571,
+     "line": 1574,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
@@ -2601,7 +2601,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 1571,
+     "line": 1574,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
