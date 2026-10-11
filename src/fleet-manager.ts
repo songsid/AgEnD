@@ -5036,13 +5036,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /**
    * #1586: the sign-in code once more, as a message of its own, so a phone can copy it by itself: Telegram's monospace
-   * `<code>` copies on a tap, and a message holding nothing else copies whole on a long-press (Discord: Copy Text). It
-   * goes by the same private route the sign-in message took. A convenience: that message already holds the code, so a
-   * follow-up that fails changes nothing about the delivery.
+   * `<code>` copies on a tap; on Discord it is inline code (#1606: `` `ABCD-EFGH` ``, one backtick each side, still the
+   * whole message), which a phone also copies on a tap. A code holding a backtick (none can: the alphabet is A–Z, 2–7
+   * and the dash) goes bare rather than break the markdown. It goes by the same private route the sign-in message took.
+   * A convenience: that message already holds the code, so a follow-up that fails changes nothing about the delivery.
    */
   private async sendCodeAlone(send: (body: string, opts: SendOpts) => Promise<unknown>, platform: string, display: string): Promise<void> {
     const telegram = platform === "telegram";
-    const body = telegram ? `<code>${display.replace(/[&<>]/g, c => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"))}</code>` : display;
+    const body = telegram ? `<code>${display.replace(/[&<>]/g, c => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : "&gt;"))}</code>`
+      : platform === "discord" && !display.includes("`") ? `\`${display}\`` : display;
     try {
       // Its own 5 s, never the sign-in delivery's budget: a slow convenience must not fail a delivery already confirmed.
       await withinBudget(send(body, telegram ? { format: "html", disablePreview: true } : { disablePreview: true }), performance.now() + 5_000);

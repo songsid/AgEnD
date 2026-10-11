@@ -519,3 +519,15 @@ describe("#1586 review (Prism r1): the resend's code-only follow-up never outliv
   });
 });
 
+describe("#1606: on Discord the resend's code-only message is inline code", () => {
+  it("the request's DM, then exactly `CODE`", async () => {
+    const h = rig();
+    const cookie = await h.returning();
+    (h.adapter as { type: string }).type = "discord";
+    h.adapter.sendDirect.mockClear();
+    expect((await h.call("/auth/request-code", "POST", { cookie })).status).toBe(202);
+    const code = CODE.exec(String(h.adapter.sendDirect.mock.calls[0]![1]))![0];
+    expect(h.adapter.sendDirect.mock.calls[1]).toEqual(["admin", `\`${code}\``, { disablePreview: true }]);
+  });
+});
+
