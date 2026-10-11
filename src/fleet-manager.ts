@@ -72,6 +72,7 @@ import { startEventLoopWatch, type EventLoopWatch } from "./event-loop-watch.js"
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
+import { usesChannelAddress } from "./channel/mcp-tools.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, SendOpts, TopicPresence, StickerInfo, StickerList, StickerPreview, StickerTarget } from "./channel/types.js";
 import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
@@ -8080,10 +8081,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ?? (webOnlyReply ? WEB_ONLY_REPLY_SINK : null);
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
+    // Only channel-addressing schemas receive ClassicBot routing metadata.
+    // Non-channel calls (notably strict delivery_status) retain their arguments.
     // For classic instances: force chat_id to channelId and clear thread_id
     // (daemon may have set chat_id to guild_id which is wrong for DC; TG may have set thread_id which causes 'thread not found')
     const classicChannelId = this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
-    if (classicChannelId) {
+    if (classicChannelId && usesChannelAddress(tool)) {
       args.chat_id = classicChannelId;
       // #1085: a Telegram forum ClassicBot replies in the topic it was asked
       // in. Any other thread_id (threadless Telegram, where it echoes the chat
