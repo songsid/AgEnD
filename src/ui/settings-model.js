@@ -24,8 +24,9 @@ export function changedFields(next, baseline) {
 /** #1302: cross-instance notices. Unset, or a value the fleet does not know, means full. */
 export const visibilityDefault = (defaults) => (VISIBILITY_MODES.includes(defaults && defaults.cross_instance_visibility) ? defaults.cross_instance_visibility : "full");
 
+/** The backends whose turn end the reply guard can see (backend replyCompletionGuard: claude-code, codex and muse since #1510, kiro legacy/tui), with the MCP server it needs. */
 export const replyGuardSupported = (backend, mode, kiroUi = "legacy") =>
-  mode === "mcp" && (backend === "claude-code" || (backend === "kiro-cli" && ["legacy", "tui"].includes(kiroUi || "legacy")));
+  mode === "mcp" && (["claude-code", "codex", "muse"].includes(backend) || (backend === "kiro-cli" && ["legacy", "tui"].includes(kiroUi || "legacy")));
 
 /**
  * The backend picker's options. A current value it does not offer (the removed gemini-cli, #1280 review) stays first

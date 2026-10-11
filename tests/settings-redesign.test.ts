@@ -209,21 +209,24 @@ describe("Settings P0 redesign shell", () => {
   });
 
   it("wires the reply completion guard: the rule, the General note, and the agent's kiro mode", async () => {
-    // The rule itself: Claude Code in MCP mode; Kiro legacy or TUI in MCP mode; everything else stored but inactive.
+    // The rule itself: Claude Code, Codex and Muse in MCP mode (#1510); Kiro legacy or TUI in MCP mode; everything else stored but inactive.
     expect(replyGuardSupported("claude-code", "mcp")).toBe(true);
     expect(replyGuardSupported("claude-code", "cli")).toBe(false);
     for (const ui of [undefined, "legacy", "tui"]) expect(replyGuardSupported("kiro-cli", "mcp", ui)).toBe(true);
     for (const ui of ["v3", "unknown"]) expect(replyGuardSupported("kiro-cli", "mcp", ui)).toBe(false);
     expect(replyGuardSupported("kiro-cli", "cli", "legacy")).toBe(false);
-    expect(replyGuardSupported("codex", "mcp")).toBe(false);
+    for (const backend of ["codex", "muse"]) expect([replyGuardSupported(backend, "mcp"), replyGuardSupported(backend, "cli")], backend).toEqual([true, false]);
+    for (const backend of ["opencode", "grok", "antigravity"]) expect(replyGuardSupported(backend, "mcp"), backend).toBe(false);
 
     // General: the note follows the picked backend, and the stored value is what the checkbox shows.
     await mountSettings("general");
     expect(p.root.querySelector("#g-be")!.value).toBe("claude-code");
     const general = p.root.querySelector(".s-general")!;
-    expect(general.textContent).toContain("Available for Claude Code and Kiro legacy/TUI in MCP mode.");
+    expect(general.textContent).toContain("Available for Claude Code, Codex, Muse and Kiro legacy/TUI in MCP mode.");
     await choose(p.root.querySelector("#g-be")!, "codex");
-    expect(p.root.querySelector(".s-general")!.textContent).toContain("Stored but inactive: codex in mcp mode does not support reply-drop recovery.");
+    expect(p.root.querySelector(".s-general")!.textContent).toContain("Available for Claude Code, Codex, Muse and Kiro legacy/TUI in MCP mode.");
+    await choose(p.root.querySelector("#g-be")!, "opencode");
+    expect(p.root.querySelector(".s-general")!.textContent).toContain("Stored but inactive: opencode in mcp mode does not support reply-drop recovery.");
 
     // An agent on Kiro with its UI set to v3: the agent's own form says the stored guard is inactive there.
     w = world({ fleet: { defaults: { backend: "claude-code", kiro_ui: "v3" }, instances: { "kiro-t2": { backend: "kiro-cli", working_directory: "/w" } }, channels: [] },
