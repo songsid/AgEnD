@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { EventEmitter } from "node:events";
 import Database from "better-sqlite3";
 
 vi.mock("node:child_process", async importOriginal => ({
@@ -24,6 +25,7 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const { handleViewRequest, resolveInstanceIdentity } = await import("../src/view-api.js");
 
 const dirs: string[] = [];
+const TOKEN = "t".repeat(48);
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 function writeProfiles(dir: string, rows: Array<[string, string | null, string | null, string | null]>) {
@@ -84,6 +86,40 @@ describe("one identity rule for the status frame and /api/profiles", () => {
     const fm = fleet(dir);
     const rows = (fm.getUiStatus() as { instances: Array<Record<string, unknown>> }).instances;
     expect([rows.find(r => r.name === "web-dev")?.display_name, existsSync(join(dir, "profiles.db"))]).toEqual(["Config alias", false]);
+  });
+
+  it("#1630: a blank profile alias is no alias — the agent's own name (or the room's) shows again", () => {
+    for (const blank of ["", "   "]) {
+      expect(resolveInstanceIdentity({ cfg: { display_name: "Agent's own" }, profile: { display_name: blank, description: null, role: null } }).display_name, JSON.stringify(blank)).toBe("Agent's own");
+      expect(resolveInstanceIdentity({ classic: { displayName: "Room" }, profile: { display_name: blank, description: null, role: null } }).display_name).toBe("Room");
+      expect(resolveInstanceIdentity({ profile: { display_name: blank, description: null, role: null } }).display_name).toBeNull();
+    }
+  });
+  it("#1630: an alias cleared before (stored as \"\") recovers in both lanes; clearing in View now stores no alias at all", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-identity-")); dirs.push(dir);
+    writeProfiles(dir, [["web-dev", "", null, null]]);
+    const fm = fleet(dir);
+    const statusName = () => (fm.getUiStatus() as { instances: Array<Record<string, unknown>> }).instances.find(i => i.name === "web-dev")?.display_name;
+    expect([statusName(), profilesOf(fm, dir).find(r => r.instance_name === "web-dev")?.display_name]).toEqual(["Config alias", "Config alias"]);
+    // Through the real handler: set an alias, then clear it.
+    const post = (body: unknown) => new Promise<number>(resolve => {
+      let status = 0;
+      const req = Object.assign(new EventEmitter(), { method: "POST", headers: { "x-agend-token": TOKEN, "content-type": "application/json" }, url: "/api/profile/web-dev" });
+      const res = { writeHead(code: number) { status = code; return res; }, setHeader() {}, end() { resolve(status); } } as unknown as ServerResponse;
+      handleViewRequest(req as unknown as IncomingMessage, res, new URL("http://localhost/api/profile/web-dev"), {
+        webToken: TOKEN, dataDir: dir, fleetConfig: fm.fleetConfig, classicChannels: fm.classicChannels,
+        logger: { debug() {}, info() {}, warn() {}, error() {} }, getInstanceStatus: () => "running",
+        getUiStatus: () => fm.getUiStatus(), resolveInstanceModel: () => ({ model: "" }),
+      } as never);
+      queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); });
+    });
+    expect(await post({ display_name: "From View" })).toBe(200);
+    expect(statusName()).toBe("From View");
+    expect(await post({ display_name: "" })).toBe(200);
+    expect(statusName(), "the agent's own name again").toBe("Config alias");
+    const db = new Database(join(dir, "profiles.db"));
+    expect((db.prepare("SELECT display_name FROM instance_profile WHERE instance_name = ?").get("web-dev") as { display_name: unknown }).display_name, "stored as no alias").toBeNull();
+    db.close();
   });
 
   it("the rule itself: profile → config → ClassicBot room for the alias; non-string tags dropped", () => {
