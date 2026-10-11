@@ -5,6 +5,7 @@ import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credenti
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
 import { previewOriginProblem } from "./web-preview.js";
+import { DEFAULT_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -394,6 +395,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       const problem = previewOriginProblem(config.web.preview_origin, config);
       if (problem) err("web.preview_origin", problem);
     }
+    if (config.web.session !== undefined) validateWebSession(config.web.session, err);
     if (config.web.allowed_hosts !== undefined) {
       if (!Array.isArray(config.web.allowed_hosts)) {
         err("web.allowed_hosts", "must be a list of host names");
@@ -548,4 +550,35 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   }
 
   return { valid: errors.length === 0, errors, warnings };
+}
+
+/**
+ * #1620: `web.session` — only `local` (the dashboard reached directly); a public-link session's limits are fixed.
+ * Hours, decimals allowed (1.5 = 90 minutes), 1 ≤ idle_hours ≤ absolute_hours ≤ 720; one left out is its default
+ * (12 absolute, 2 idle) for the comparison.
+ */
+function validateWebSession(session: unknown, err: (path: string, message: string) => void): void {
+  if (!isObj(session)) { err("web.session", "must be a mapping"); return; }
+  for (const key of Object.keys(session)) {
+    if (key !== "local") err(`web.session.${key}`, key === "gateway" ? "is not configurable: a public-link session's limits are fixed" : "unknown key (local)");
+  }
+  const local = (session as Record<string, unknown>).local;
+  if (local === undefined) return;
+  if (!isObj(local)) { err("web.session.local", "must be a mapping"); return; }
+  const l = local as Record<string, unknown>;
+  for (const key of Object.keys(l)) if (key !== "absolute_hours" && key !== "idle_hours") err(`web.session.local.${key}`, "unknown key (absolute_hours, idle_hours)");
+  const { min, max } = LOCAL_SESSION_HOURS;
+  const ok = (key: "absolute_hours" | "idle_hours"): number | null => {
+    const v = l[key];
+    if (v === undefined) return null;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < min || v > max) { err(`web.session.local.${key}`, `must be a number of hours from ${min} to ${max}`); return NaN; }
+    return v;
+  };
+  const abs = ok("absolute_hours"), idle = ok("idle_hours");
+  if (Number.isNaN(abs) || Number.isNaN(idle)) return;
+  const absolute = abs ?? DEFAULT_SESSION_POLICY.local.absoluteMs / 3_600_000;
+  const idleH = idle ?? DEFAULT_SESSION_POLICY.local.idleMs / 3_600_000;
+  if (idleH > absolute) {
+    err("web.session.local.idle_hours", `must not exceed absolute_hours (${idleH} > ${absolute}${abs === null ? ", the default" : ""}${idle === null ? "; idle_hours is the default" : ""})`);
+  }
 }
