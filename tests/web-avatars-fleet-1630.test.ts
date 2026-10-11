@@ -131,7 +131,9 @@ describe("the status frame: what stands for each instance", () => {
     const f = fleet();
     vi.spyOn(f.fm, "ownBots").mockImplementation(() => { throw new Error("broken connection table"); });
     vi.spyOn(f.fm, "webIdentityImage").mockImplementation(() => { throw new Error("broken avatar"); });
-    expect(Object.values(f.frame()).map(i => i.avatar)).toEqual(["A", "B", "S", "P", "P"].map(text => ({ kind: "initial", text })));
+    let frame: Record<string, { avatar: unknown }> | string;
+    try { frame = f.frame(); } catch (err) { frame = `the frame failed: ${(err as Error).message}`; }
+    expect(typeof frame === "string" ? frame : Object.values(frame).map(i => i.avatar)).toEqual(["A", "B", "S", "P", "P"].map(text => ({ kind: "initial", text })));
   });
   it("every image in the frame is a same-origin /ui/img URL", async () => {
     const f = fleet({ persona: { a: "<:blob:123456789012345678>" } });

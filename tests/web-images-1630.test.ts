@@ -75,7 +75,7 @@ describe("the host cache", () => {
     w.age(WEB_IMAGE_MAX_AGE_MS);
     const failing = w.loader(async () => { throw new Error("HTTP 503"); });
     await w.c.refresh("k", failing);
-    expect([w.c.read("k")!.bytes[0], w.errors]).toEqual([1, ["k"]]);
+    expect([w.c.read("k")?.bytes[0], w.errors]).toEqual([1, ["k"]]);
     w.clock.mono += WEB_IMAGE_RETRY_MS - 1;
     await w.c.refresh("k", failing);
     w.clock.wall -= 10 * WEB_IMAGE_MAX_AGE_MS;                   // the wall clock jumping back changes nothing
