@@ -108,7 +108,22 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   flex-shrink: 0; font-size: 11px; line-height: 16px; font-weight: var(--fw-semibold); padding: 0 var(--s-2); border-radius: var(--r-full);
   background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-line); white-space: nowrap;
 }
-.side-foot { display: flex; flex-direction: column; gap: 1px; padding: var(--s-2); }
+/* #1604: one row — Settings and Session (the anonymous View reader: Sign in and the theme/language popover). Their
+   pop-ups open over the whole footer's width. */
+.side-foot { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-2); position: relative; }
+.side-foot > .side-row, .side-foot > .session { flex: 1; min-width: 0; }
+.side-foot > .session { position: static; }
+.side-foot .side-row span:not(.dot):not(.meta) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-foot .session .meta { display: none; }
+.prefs-pop > summary { list-style: none; cursor: pointer; }
+.prefs-pop > summary::-webkit-details-marker { display: none; }
+.prefs.labelled { flex-direction: column; gap: var(--s-2); padding: 0; }
+.prefs.labelled .pref { flex: none; gap: var(--s-2); color: var(--text); }
+.prefs.labelled .pref-label { min-width: 7em; font-size: var(--fs-sm); }
+.prefs.labelled .pref select { flex: 0 1 14em; height: 34px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: var(--fs-sm); padding: 0 var(--s-2); }
+.s-device { display: flex; flex-direction: column; gap: var(--s-3); }
+.s-device .sub { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+.s-device-row { display: flex; gap: var(--s-2); }
 .prefs { display: flex; gap: var(--s-2); padding: var(--s-1) var(--s-3); }
 .pref { display: flex; align-items: center; gap: var(--s-1); color: var(--text-2); flex: 1; min-width: 0; }
 .pref select { flex: 1; min-width: 0; height: 30px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }

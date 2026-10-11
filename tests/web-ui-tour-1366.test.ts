@@ -154,28 +154,33 @@ describe("the first sign-in tour (#1366)", () => {
     expect([p.card(), p.doc.activeElement?.id]).toEqual([null, "sbOpen"]);
   });
 
-  it("the sidebar's Tour button does the same: the drawer closes first and the card opens (#1366)", async () => {
+  it("Settings → This device's Tour button does the same: the drawer closes first and the card opens (#1366, #1604)", async () => {
     const p = await load({ storage: { [TOUR_KEY]: "1" }, narrow: true, install: false });
-    // The chat's boot() adds the sidebar footer, with the Tour button, and installs the tour.
+    // The chat's boot() installs the tour; its replay lives in Settings → This device now (#1604), not the sidebar.
     // @ts-expect-error — a JS module of the app, with no types (as app-harness.ts does for preact)
     const panel = await import("../src/ui/panel-chat.js");
     const { appStore } = await import("/assets/app-store.js");
     panel.boot({ stream: { on() {} }, boot: undefined, deps: { fetch: () => new Promise(() => {}) } });
     appStore.set({ ready: true, instances: [] });
+    expect(p.shell.shellStore.get().footer, "the chat adds nothing to the sidebar footer any more").toBeUndefined();
     const preact = await import("/assets/preact.module.js");
-    const footer = p.shell.shellStore.get().footer.find((f: { key: string }) => f.key === "tour");
+    // @ts-expect-error — a JS module of the app, with no types
+    const settings = await import("../src/ui/panel-settings.js");
+    const nav = await import("/assets/app-nav.js");
+    nav.startRouter((globalThis as any).window);                      // the app starts its router at load (app.js)
     const host = p.doc.createElement("div"); p.doc.body.append(host);
-    preact.render(preact.h(footer.Component, {}), host);
+    preact.render(preact.h(settings.DeviceSection, {}), host);
     await settle();
     const btn = host.querySelector("#tourBtn") as any;
     expect(btn.textContent).toMatch(/Tour/);
     p.shell.openDrawer();
     (p.doc.getElementById("sbOpen") as any).focus();
     btn.click();
-    await settle();
+    await settle(); await settle();
     expect(p.shell.shellStore.get().drawer).toBe(false);
     expect(p.text()).toMatch(/Pick an instance/);
     expect(p.doc.activeElement?.textContent).toBe("Next");
+    expect((globalThis as any).location.pathname, "replayed on the chat it points at").toBe("/ui");
   });
 
   it("on a phone it outlines what is on screen: ☰ for the instance list, the tab's badge for 'needs you' (#1408 step 5)", async () => {
