@@ -88,8 +88,11 @@ export function resolveInstanceIdentity(input: {
 }): InstanceIdentity {
   const { cfg, classic, profile } = input;
   const tags = Array.isArray(cfg?.tags) ? cfg.tags : classic ? ["classic"] : [];
+  // A blank profile alias is no alias (#1630): the agent's own name (set_display_name) or the room's shows again — also
+  // for an alias cleared before View stored "" for it.
+  const alias = typeof profile?.display_name === "string" && profile.display_name.trim() ? profile.display_name : null;
   return {
-    display_name: profile?.display_name ?? cfg?.display_name ?? classic?.displayName ?? null,
+    display_name: alias ?? cfg?.display_name ?? classic?.displayName ?? null,
     description: profile?.description ?? cfg?.description ?? null,
     role: profile?.role ?? null,
     tags: tags.filter((t): t is string => typeof t === "string"),
@@ -408,7 +411,8 @@ export function handleViewRequest(
           VALUES (@n, @d, @r, @desc, @t)
           ON CONFLICT(instance_name) DO UPDATE SET
             display_name = @d, role = @r, description = @desc, updated_at = @t`)
-          .run({ n: name, d: body.display_name ?? null, r: body.role ?? null, desc: body.description ?? null, t: Date.now() });
+          // A cleared display name removes the override (#1630): stored as none, never as "".
+          .run({ n: name, d: typeof body.display_name === "string" && body.display_name.trim() ? body.display_name : null, r: body.role ?? null, desc: body.description ?? null, t: Date.now() });
         json(res, 200, { ok: true });
       }).catch(err => json(res, 400, { error: (err as Error).message }));
       return true;
