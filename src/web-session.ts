@@ -53,18 +53,17 @@ export const DEFAULT_SESSION_POLICY: Readonly<Record<SessionSurface, SessionPoli
 export const LOCAL_SESSION_HOURS = { min: 1, max: 720 } as const;
 
 /**
- * #1620: the local policy `web.session.local` asks for, or the default for what it leaves out. Defensive: a value the
- * validator would refuse (not a number, out of bounds, idle above absolute) gives the default for that field rather
- * than a looser one.
+ * #1620: the local policy `web.session.local` asks for, or the default for what it leaves out. Defensive — a value the
+ * validator would refuse never gives a looser policy than asked for or than the default: below the minimum is the
+ * minimum, above the maximum or not a number is the default, and an idle window above the absolute limit is cut to it
+ * (#1622 review).
  */
 export function localSessionPolicy(cfg: { absolute_hours?: unknown; idle_hours?: unknown } | undefined): SessionPolicy {
   const def = DEFAULT_SESSION_POLICY.local;
-  const hours = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= LOCAL_SESSION_HOURS.min && v <= LOCAL_SESSION_HOURS.max ? v : null);
-  const abs = hours(cfg?.absolute_hours);
-  const idle = hours(cfg?.idle_hours);
-  const absoluteMs = abs !== null ? abs * HOUR : def.absoluteMs;
-  const idleMs = idle !== null ? idle * HOUR : def.idleMs;
-  return idleMs <= absoluteMs ? { absoluteMs, idleMs } : def;
+  const ms = (v: unknown, fallback: number): number => typeof v !== "number" || !Number.isFinite(v) || v > LOCAL_SESSION_HOURS.max ? fallback
+    : Math.max(v, LOCAL_SESSION_HOURS.min) * HOUR;
+  const absoluteMs = ms(cfg?.absolute_hours, def.absoluteMs);
+  return { absoluteMs, idleMs: Math.min(ms(cfg?.idle_hours, def.idleMs), absoluteMs) };
 }
 
 /** More than this and the least recently used one is dropped. */

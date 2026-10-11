@@ -52,9 +52,13 @@ describe("the setting: web.session.local", () => {
     expect(errorsOf({ session: { local: { absolute: 24 } } })).toEqual(["web.session.local.absolute: unknown key (absolute_hours, idle_hours)"]);
     expect(errorsOf({ session: 24 })).toEqual(["web.session: must be a mapping"]);
   });
-  it("defensive: a value the validator would refuse never gives a looser policy than the default", () => {
+  it("defensive: a value the validator would refuse never gives a looser policy than asked for or than the default (#1622 review)", () => {
     expect(localSessionPolicy({ absolute_hours: 9999, idle_hours: 9999 })).toEqual(DEFAULT_SESSION_POLICY.local);
-    expect(localSessionPolicy({ absolute_hours: 10, idle_hours: 20 })).toEqual(DEFAULT_SESSION_POLICY.local);
+    expect(localSessionPolicy({ absolute_hours: "48", idle_hours: null })).toEqual(DEFAULT_SESSION_POLICY.local);
+    expect(localSessionPolicy({ absolute_hours: 10, idle_hours: 20 }), "idle cut to absolute").toEqual({ absoluteMs: 10 * H, idleMs: 10 * H });
+    expect(localSessionPolicy({ absolute_hours: 1, idle_hours: 2 }), "not the default 12 h").toEqual({ absoluteMs: 1 * H, idleMs: 1 * H });
+    expect(localSessionPolicy({ absolute_hours: 0.5 }), "below the minimum: the minimum").toEqual({ absoluteMs: 1 * H, idleMs: 1 * H });
+    expect(localSessionPolicy({ absolute_hours: 6, idle_hours: 0 })).toEqual({ absoluteMs: 6 * H, idleMs: 1 * H });
     expect(localSessionPolicy({ absolute_hours: 720, idle_hours: 720 })).toEqual({ absoluteMs: 720 * H, idleMs: 720 * H });
   });
 });

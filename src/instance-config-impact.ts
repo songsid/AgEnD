@@ -95,6 +95,11 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.public_link.allow_public": "now",
   "web.public_link.ttl_minutes": "now",
   "web.public_link.protocol": "now",
+  // #1620: read at every session check, and by /login when it starts a terminal.
+  "web.session.local.absolute_hours": "now",
+  "web.session.local.idle_hours": "now",
+  "web_terminal.enabled": "now",
+  "web_terminal.ttl_minutes": "now",
   "defaults.locale": "now",
   "fleet.channels": "fleet",
   "fleet.channel.access.mode": "fleet",

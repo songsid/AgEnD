@@ -43,7 +43,7 @@ import { startTour } from "./chat-tour.js";
 import "./chat-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
-const ICONS = { device: "user", agents: "bot", bots: "plug", classic: "room", general: "sliders", advanced: "code" };
+const ICONS = { device: "user", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
@@ -229,7 +229,8 @@ export function SettingsPanel({ route, navKey }) {
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
     : section === "bots" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
     : section === "classic" ? html`<${Classic} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
-    : section === "general" ? html`<${General} key=${data.loadedAt} ctx=${ctx} staged=${staged} />`
+    : section === "general" ? html`<${General} key=${data.loadedAt} ctx=${ctx} />`
+    : section === "web" ? html`<${WebSection} key=${data.loadedAt} ctx=${ctx} staged=${staged} />`
     : html`<${Developer} ctx=${ctx} />`;
   // A dialog belongs to the navigation that opened it (its draft names one object, never another).
   const open = dialog && dialog.key === navKey ? dialog : null;
@@ -570,17 +571,13 @@ function Classic({ ctx, search, openDialog }) {
  * ClassicBot defaults, web) — each only with what differs from what this form showed, so changing one hot default
  * never also stages untouched settings as a fleet restart.
  */
-function General({ ctx, staged }) {
+function General({ ctx }) {
   const { schema } = ctx;
   const d = ctx.fleet.defaults || {}, c = (ctx.classic && ctx.classic.defaults) || {};
   const hang = d.hang_detector || {}, startup = d.startup || {};
   const primary = channelsOf(ctx.fleet)[0];
-  const web = ctx.fleet.web || {};
-  const originalPublic = useMemo(() => ({ allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2" }), []);
-  const originalEcho = web.echo_to_channel ?? true;
-  const original = useMemo(() => ({ c: structuredClone(c), web: structuredClone(ctx.fleet.web) }), []);
+  const original = useMemo(() => ({ c: structuredClone(c) }), []);
   const [f, setF] = useState(() => ({
-    echo: originalEcho, pub: originalPublic.allow_public, ttl: String(originalPublic.ttl_minutes), protocol: originalPublic.protocol,
     backend: d.backend || "claude-code", model: d.model || "", locale: d.locale || "", auto: String(d.auto_pause_after ?? 0),
     agent_mode: d.agent_mode || "mcp", tool_set: d.tool_set || "full", tool_progress: d.tool_progress ?? "off",
     visibility: visibilityDefault(d), reply: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
@@ -598,7 +595,6 @@ function General({ ctx, staged }) {
     auto: nonNegative(f.auto), hang: positive(f.hang),
     concurrency: !Number.isInteger(num(f.concurrency)) || num(f.concurrency) < 1 || num(f.concurrency) > 20 ? "concurrencyRange" : "",
     stagger: !Number.isFinite(num(f.stagger)) || f.stagger.trim() === "" || num(f.stagger) < 0 || num(f.stagger) > 30000 ? "staggerRange" : "",
-    ttl: !Number.isInteger(num(f.ttl)) || num(f.ttl) < 1 || num(f.ttl) > 480 ? "publicTtl" : "",
   };
   const warnings = { concurrency: num(f.concurrency) > 4 ? "concurrencyWarning" : "", stagger: num(f.stagger) < 100 ? "staggerWarning" : "" };
   const ready = !Object.values(errors).some(Boolean);
@@ -638,29 +634,12 @@ function General({ ctx, staged }) {
       ctx.stage("defaults:classic", { label: tn("updateClassicDefaults"), impact: hotOnly ? "now" : "fleet",
         request: { method: "PUT", url: "/api/settings/classic/defaults", body: classicPatch } });
     }
-    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: num(f.ttl), protocol: f.protocol }, originalPublic);
-    const webPatch = { ...(f.echo !== originalEcho ? { echo_to_channel: f.echo } : {}), ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}) };
-    if (Object.keys(webPatch).length) {
-      ctx.stage("web:echo", { label: tn("publicLink"),
-        impact: batchImpact(schema, [...(webPatch.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []), ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`)], (k) => impactOf(schema, k)),
-        request: { method: "PUT", url: "/api/settings/fleet/web", body: webPatch } });
-    } else if (staged.has("web:echo")) ctx.unstage("web:echo");
     setMsg(tn("readyApply"));
   };
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
   return html`<div class="form s-general">
-    <section class="card"><h3>${tn("webChat")}</h3>
-      <label class="check"><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
-      <p class="note">${tn("webEchoHint")}</p>
-      <label class="check"><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
-      <p class="note">${tn("publicLinkHint")}</p>
-      <div class="grid2">
-        <div class="field"><label for="publicWebTtl">${tn("publicTtl")}</label><input id="publicWebTtl" type="number" min="1" max="480" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
-        <div class="field"><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>
-      </div>
-    </section>
     <section class="card"><h3>${tn("defaultsTitle")}</h3>
       <div class="grid2">
         <div class="field">${L(tn("language"), "defaults.locale", "g-locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
@@ -709,6 +688,117 @@ function General({ ctx, staged }) {
       <section class="card"><h3>${tn("accessTitle")}</h3>
         <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
     </${Drawer}>
+    <div class="save-row"><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${review}>${tn("reviewChanges")}</button>
+      ${msg ? html`<span class="note" role="status">${msg}</span>` : null}</div>
+  </div>`;
+}
+
+/**
+ * #1620: Settings → Web — the dashboard's own settings, in one write (PUT /api/settings/fleet/web). Editable: the local
+ * session limits, the browser terminal (on/off, its minutes), web echo and the public link's menu; everything else
+ * under web: / web_terminal: is listed read-only (it decides what the dashboard listens on and exposes: fleet.yaml and
+ * a restart). The server judges each change: loosening one waits for a General admin, tightening applies at once. Over
+ * the temporary public link none of it can be changed — the form says so and stays disabled (the server refuses too).
+ */
+export const WEB_READ_ONLY = [
+  "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin",
+  "web.usage_panel", "web.provider_secrets", "web_terminal.bind", "web_terminal.tunnel",
+];
+function WebSection({ ctx, staged }) {
+  const { schema } = ctx;
+  const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
+  const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
+  const original = useMemo(() => ({
+    echo: web.echo_to_channel ?? true,
+    pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2" },
+    session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
+    terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
+  }), []);
+  const text = (v) => (v === null || v === undefined ? "" : String(v));
+  const [f, setF] = useState(() => ({
+    echo: original.echo, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol,
+    abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
+    termOn: original.terminal.enabled !== false, termTtl: text(original.terminal.ttl_minutes),
+  }));
+  const [msg, setMsg] = useState(null);
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+  // Empty = the default (null in the write: the key is removed from fleet.yaml).
+  const value = (v) => (v.trim() === "" ? null : Number(v));
+  const hours = (v) => { const n = value(v); return n !== null && (!Number.isFinite(n) || n < 1 || n > 720) ? "sessionRange" : ""; };
+  const abs = value(f.abs) ?? 12, idle = value(f.idle) ?? 2;
+  const errors = {
+    ttl: !Number.isInteger(Number(f.ttl)) || Number(f.ttl) < 1 || Number(f.ttl) > 480 ? "publicTtl" : "",
+    abs: hours(f.abs),
+    idle: hours(f.idle) || (!hours(f.abs) && idle > abs ? "sessionIdleOver" : ""),
+    termTtl: value(f.termTtl) !== null && (!Number.isInteger(value(f.termTtl)) || value(f.termTtl) < 1 || value(f.termTtl) > 20) ? "webTerminalTtlRange" : "",
+  };
+  const ready = !overPublicLink && !Object.values(errors).some(Boolean);
+  const review = () => {
+    if (!ready) return;
+    const publicPatch = changedFields({ allow_public: f.pub, ttl_minutes: Number(f.ttl), protocol: f.protocol }, original.pub);
+    const sessionPatch = changedFields({ absolute_hours: value(f.abs), idle_hours: value(f.idle) }, original.session);
+    // The checkbox shows the default (on) for an unset key: only a real toggle is written; on again = back to the default.
+    const terminalPatch = changedFields({ enabled: f.termOn === (original.terminal.enabled !== false) ? original.terminal.enabled : f.termOn ? null : false,
+      ttl_minutes: value(f.termTtl) }, original.terminal);
+    const body = {
+      ...(f.echo !== original.echo ? { echo_to_channel: f.echo } : {}),
+      ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
+      ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
+      ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
+    };
+    const fields = [
+      ...(body.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []),
+      ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
+      ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
+      ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
+    ];
+    if (fields.length) {
+      ctx.stage("web", { label: tn("sec_web"), impact: batchImpact(schema, fields, (k) => impactOf(schema, k)),
+        request: { method: "PUT", url: "/api/settings/fleet/web", body } });
+    } else if (staged.has("web")) ctx.unstage("web");
+    setMsg(tn("readyApply"));
+  };
+  const shown = (path) => {
+    const [top, key] = path.split(".");
+    const v = (top === "web" ? web : term)[key];
+    return v === undefined ? tn("notSet") : typeof v === "object" ? JSON.stringify(v) : String(v);
+  };
+  return html`<div class="form s-web">
+    <p class="sub">${tn("webLead")}</p>
+    ${overPublicLink ? html`<p class="note" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
+    <fieldset class="s-web-fields" disabled=${overPublicLink}>
+    <section class="card"><h3>${tn("webSessionTitle")}</h3>
+      <p class="note">${tn("webSessionHint")}</p>
+      <div class="grid2">
+        <div class="field"><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 12)}
+          class=${errors.abs ? "invalid" : ""} value=${f.abs} onInput=${(e) => set("abs")(e.target.value)} /><${Feedback} error=${errors.abs} /></div>
+        <div class="field"><label for="webSessionIdle">${tn("sessionIdle")}</label><input id="webSessionIdle" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 2)}
+          class=${errors.idle ? "invalid" : ""} value=${f.idle} onInput=${(e) => set("idle")(e.target.value)} /><${Feedback} error=${errors.idle} /></div>
+      </div>
+    </section>
+    <section class="card"><h3>${tn("webTerminalTitle")}</h3>
+      <p class="note">${tn("webTerminalHint")}</p>
+      <label class="check"><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
+      <div class="grid2">
+        <div class="field"><label for="webTerminalTtl">${tn("webTerminalTtl")}</label><input id="webTerminalTtl" type="number" min="1" max="20" step="1" placeholder=${tn("defaultHours", 10)}
+          class=${errors.termTtl ? "invalid" : ""} value=${f.termTtl} onInput=${(e) => set("termTtl")(e.target.value)} /><${Feedback} error=${errors.termTtl} /></div>
+      </div>
+    </section>
+    <section class="card"><h3>${tn("webChat")}</h3>
+      <label class="check"><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
+      <p class="note">${tn("webEchoHint")}</p>
+      <label class="check"><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
+      <p class="note">${tn("publicLinkHint")}</p>
+      <div class="grid2">
+        <div class="field"><label for="publicWebTtl">${tn("publicTtl")}</label><input id="publicWebTtl" type="number" min="1" max="480" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
+        <div class="field"><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>
+      </div>
+    </section>
+    </fieldset>
+    <section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
+      <p class="note">${tn("webReadOnlyLead")}</p>
+      <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
+    </section>
     <div class="save-row"><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${review}>${tn("reviewChanges")}</button>
       ${msg ? html`<span class="note" role="status">${msg}</span>` : null}</div>
   </div>`;

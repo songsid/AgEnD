@@ -650,23 +650,48 @@ export function handleSettingsRequest(
       if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      // #1620: never over the temporary public link (the confirmation gate refuses it first; this is the second wall).
+      if (gatewayRequestContext(req)) return json(res, 403, { error: "web_settings_not_over_public_link" });
       if (!body || typeof body !== "object" || Array.isArray(body)
-        || Object.keys(body).some(key => key !== "echo_to_channel" && key !== "public_link")) return json(res, 400, { error: "unknown web field" });
-      const patch = body as { echo_to_channel?: unknown; public_link?: unknown };
+        || Object.keys(body).some(key => !["echo_to_channel", "public_link", "session", "web_terminal"].includes(key))) return json(res, 400, { error: "unknown web field" });
+      const patch = body as { echo_to_channel?: unknown; public_link?: unknown; session?: unknown; web_terminal?: unknown };
       if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return json(res, 400, { error: "echo_to_channel must be a boolean" });
       if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return json(res, 400, { error: "invalid public_link settings" });
+      // #1620: { session: { local: { absolute_hours?, idle_hours? } } } and { web_terminal: { enabled?, ttl_minutes? } };
+      // null puts a value back to its default. Bounds are the validator's (run on the whole result below).
+      const sessionPatch = webSessionPatch(patch.session);
+      if (sessionPatch === "invalid") return json(res, 400, { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" });
+      const terminalPatch = webTerminalPatch(patch.web_terminal);
+      if (terminalPatch === "invalid") return json(res, 400, { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: integer|null }" });
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
+      let webTerminal = cfg.web_terminal;
       if (typeof patch.echo_to_channel === "boolean") { web.echo_to_channel = patch.echo_to_channel; changes.push({ path: ["web", "echo_to_channel"], value: patch.echo_to_channel }); }
       if (validPublicLinkPatch(patch.public_link)) {
         if (Object.keys(patch.public_link).length) web.public_link = { ...web.public_link, ...patch.public_link };
         for (const [key, value] of Object.entries(patch.public_link)) changes.push({ path: ["web", "public_link", key], value });
       }
+      if (sessionPatch) {
+        const local: Record<string, number> = { ...web.session?.local };
+        for (const [key, value] of Object.entries(sessionPatch)) {
+          if (value === null) { delete local[key]; changes.push({ path: ["web", "session", "local", key], value: undefined, remove: true }); }
+          else { local[key] = value; changes.push({ path: ["web", "session", "local", key], value }); }
+        }
+        web.session = { ...web.session, local };
+      }
+      if (terminalPatch) {
+        const wt: Record<string, unknown> = { ...cfg.web_terminal };
+        for (const [key, value] of Object.entries(terminalPatch)) {
+          if (value === null) { delete wt[key]; changes.push({ path: ["web_terminal", key], value: undefined, remove: true }); }
+          else { wt[key] = value; changes.push({ path: ["web_terminal", key], value }); }
+        }
+        webTerminal = wt as typeof cfg.web_terminal;
+      }
       if (!changes.length) return json(res, 200, { ok: true });
       const before = validateFleetConfig(cfg);
-      const after = validateFleetConfig({ ...cfg, web });
+      const after = validateFleetConfig({ ...cfg, web, web_terminal: webTerminal });
       if (rejectIfWorse(res, before, after)) return;
-      settingsWrite(req, () => { cfg.web = web; ctx.saveFleetConfig(changes); });
+      settingsWrite(req, () => { cfg.web = web; if (terminalPatch) cfg.web_terminal = webTerminal; ctx.saveFleetConfig(changes); });
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -1116,4 +1141,34 @@ export function handleSettingsRequest(
 
   json(res, 404, { error: "not found" });
   return true;
+}
+
+/** #1620: `session` of a PUT /api/settings/fleet/web body — the local limits only; null clears one. */
+function webSessionPatch(raw: unknown): Record<string, number | null> | null | "invalid" {
+  if (raw === undefined) return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
+  const keys = Object.keys(raw);
+  if (keys.some(k => k !== "local")) return "invalid";
+  const local = (raw as { local?: unknown }).local;
+  if (local === undefined) return null;
+  if (!local || typeof local !== "object" || Array.isArray(local)) return "invalid";
+  const out: Record<string, number | null> = {};
+  for (const [k, v] of Object.entries(local)) {
+    if ((k !== "absolute_hours" && k !== "idle_hours") || !(v === null || (typeof v === "number" && Number.isFinite(v)))) return "invalid";
+    out[k] = v as number | null;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** #1620: `web_terminal` of a PUT /api/settings/fleet/web body — enabled and ttl_minutes only; null clears one. */
+function webTerminalPatch(raw: unknown): Record<string, boolean | number | null> | null | "invalid" {
+  if (raw === undefined) return null;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
+  const out: Record<string, boolean | number | null> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === "enabled" && (v === null || typeof v === "boolean")) out[k] = v;
+    else if (k === "ttl_minutes" && (v === null || (typeof v === "number" && Number.isInteger(v)))) out[k] = v;
+    else return "invalid";
+  }
+  return Object.keys(out).length ? out : null;
 }

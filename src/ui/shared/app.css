@@ -128,6 +128,12 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .s-device { display: flex; flex-direction: column; gap: var(--s-3); }
 .s-device .sub { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
 .s-device-row { display: flex; gap: var(--s-2); }
+/* #1620: Settings → Web — the lead, and the read-only list of what is set in fleet.yaml. */
+.s-web .sub { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
+.s-web-ro { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-1) var(--s-3); margin: 0; font-size: var(--fs-sm); }
+.s-web-ro > div { display: contents; }
+.s-web-ro dt { color: var(--text-3); }
+.s-web-ro dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .prefs { display: flex; gap: var(--s-2); padding: var(--s-1) var(--s-3); }
 .pref { display: flex; align-items: center; gap: var(--s-1); color: var(--text-2); flex: 1; min-width: 0; }
 .pref select { flex: 1; min-width: 0; height: 30px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }

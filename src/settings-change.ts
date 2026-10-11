@@ -41,6 +41,25 @@ const IMMEDIATE_CHILDREN: Readonly<Record<string, ReadonlySet<string>>> = {
 };
 const SENSITIVE_SEGMENT = /access|permission|admin|credential|secret|public_link|mcp|auth|pre_task|instruction|project_roots/i;
 const scalar = (value: unknown): boolean => value === undefined || value === null || typeof value !== "object";
+/**
+ * #1620: web exposure settings that are judged by DIRECTION. Tightening (a shorter session, the browser terminal off,
+ * a shorter terminal session) applies directly; loosening goes to the #1423 confirmation — whatever the key's name says
+ * elsewhere (`enabled` is an immediate key everywhere else). `undefined` (the key removed) is its default.
+ */
+const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolean; looser(old: any, next: any): boolean }> = [
+  { path: ["fleet", "web", "session", "local", "absolute_hours"], def: 12, looser: (a, b) => b > a },
+  { path: ["fleet", "web", "session", "local", "idle_hours"], def: 2, looser: (a, b) => b > a },
+  { path: ["fleet", "web_terminal", "enabled"], def: true, looser: (a, b) => b === true && a !== true },
+  { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
+];
+/** null: not a directional key (judged as before); true/false: whether this change loosens it. */
+function loosens(path: readonly string[], old: unknown, next: unknown): boolean | null {
+  const rule = DIRECTIONAL.find(r => r.path.length === path.length && r.path.every((k, i) => k === path[i]));
+  if (!rule) return null;
+  const a = old === undefined || old === null ? rule.def : old, b = next === undefined || next === null ? rule.def : next;
+  if (typeof a !== typeof rule.def || typeof b !== typeof rule.def) return true;   // not a value of its kind: never quietly
+  return rule.looser(a, b);
+}
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
 function ordinary(path: readonly string[], old: unknown, next: unknown): boolean {
@@ -78,7 +97,11 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       throw new SettingsConfirmationError(413, "confirmation_diff_too_large");
   };
   const walk = (old: unknown, next: unknown, path: string[]): void => {
-    if (same(old, next) || ordinary(path, old, next)) return;
+    if (same(old, next)) return;
+    const direction = loosens(path, old, next);
+    if (direction === false) return;                             // #1620: tightening applies directly
+    if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
+    if (ordinary(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.

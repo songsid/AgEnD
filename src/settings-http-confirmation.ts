@@ -6,6 +6,7 @@ import { cacheSettingsBody, createSettingsReplay, settingsRequestExecution } fro
 import { prepareSettingsEffect, isSettingsMutation, type SettingsEffectContext } from "./settings-effect.js";
 import { SettingsConfirmationStore, SettingsConfirmationError, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 
 export interface SettingsPrincipal {
   id: string; label: string; source: SettingsPendingView["source"]; current(): boolean;
@@ -37,6 +38,9 @@ export class SettingsHttpConfirmation {
       json(res, result === null ? 404 : 200, result === null ? { error: "not_found" } : result); return true;
     }
     if (!isSettingsMutation(method, path)) return false;
+    // #1620: the web settings (sessions, the browser terminal, the public link itself) are never changed over the
+    // temporary public link — the same rule as tokens and secrets: refused before anything is proposed.
+    if (path === "/api/settings/fleet/web" && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     void this.prepare(req, res, url, next).catch(err => json(res, err instanceof SettingsConfirmationError ? err.status : 409,
       { error: err instanceof SettingsConfirmationError ? err.code : "settings_confirmation_unavailable" }));
     return true;

@@ -68,8 +68,19 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (after.fleet.defaults.locale === null || after.fleet.defaults.locale === "") delete after.fleet.defaults.locale;
   } else if (path === "/api/settings/fleet/web") {
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
-    const patch = record(body); after.fleet.web = { ...cfg.web, ...patch };
+    const { web_terminal: terminal, session, ...patch } = record(body); after.fleet.web = { ...cfg.web, ...patch };
     if (patch.public_link) after.fleet.web.public_link = { ...cfg.web?.public_link, ...patch.public_link };
+    // #1620: the local session limits (null = back to the default), and the top-level web_terminal section.
+    if (session !== undefined) {
+      const local: Record<string, any> = { ...cfg.web?.session?.local, ...record(record(session).local ?? {}) };
+      for (const k of Object.keys(local)) if (local[k] === null) delete local[k];
+      after.fleet.web.session = { ...cfg.web?.session, local };
+    }
+    if (terminal !== undefined) {
+      const wt: Record<string, any> = { ...cfg.web_terminal, ...record(terminal) };
+      for (const k of Object.keys(wt)) if (wt[k] === null) delete wt[k];
+      after.fleet.web_terminal = wt;
+    }
   } else if (path === "/api/settings/classic/defaults") {
     after.classic.defaults = { ...(before.classic.defaults ?? {}), ...record(body) };
     for (const key of ["tool_progress", "reply_completion_guard"]) if (after.classic.defaults[key] === null) delete after.classic.defaults[key];
