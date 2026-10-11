@@ -1,6 +1,6 @@
 ---
 name: credential-profiles
-description: Run agents on more than one subscription of the same backend. Use when someone asks for a worker on a different account, wants an agent moved to another subscription, or asks which subscription an agent is using. Currently kiro-cli only.
+description: Run agents on more than one subscription of the same backend. Use when someone asks for a worker on a different account, wants an agent moved to another subscription, or asks which subscription an agent is using. Currently kiro-cli and codex.
 roles: [general]
 ---
 
@@ -47,8 +47,8 @@ CODEX_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/codex/<profile>" codex l
 
 ```
 create_instance(
-  name: "research-b",
-  working_directory: "/home/you/projects/app",
+  topic_name: "research-b",
+  directory: "/home/you/projects/app",
   backend: "kiro-cli",
   backend_options: { "kiro-cli": { "credential_profile": "personal" } },
 )
@@ -66,8 +66,10 @@ update_instance_config(
 )
 ```
 
-The credentials are read when the CLI starts, so **the instance is restarted
-for you** and the reply says `restarted: true`.
+The credentials are read when the CLI starts, so a running instance **is
+restarted for you** and the reply says `restarted: true`. A paused or stopped one
+is not started: the reply says `restarted: false`, and the switch applies at its
+next start.
 
 **For kiro**, a switch is always a **new conversation**, and the reply says so
 (`conversation_carried_over: false`). kiro keeps its conversations in the same
@@ -116,7 +118,8 @@ Say "the default login", not "no subscription".
 `get_usage` returns one row per subscription: `Kiro (work)` and
 `Kiro (personal)` rather than a single `Kiro`. Read them out separately — they
 are two quotas, and adding them together would give a number that is true of
-neither. An agent with no profile appears under the plain `Kiro` row.
+neither. An agent with no profile appears under the plain `Kiro` row. Codex works
+the same way: `Codex (<profile>)` rows next to the plain `Codex`.
 
 A profile that is configured but has never been logged in still gets a row,
 reading **Signed out — run `kiro-cli` to log in**. That is the reminder to go

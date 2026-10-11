@@ -8,7 +8,7 @@ When creating a new instance with `create_instance`:
 
 **Pre-checks (mandatory):**
 1. **Check for duplicate working directory** — Run `list_instances` and verify no existing instance uses the same `working_directory`. Two instances sharing a directory causes file conflicts and race conditions.
-2. **Verify the directory exists** — If specifying a directory, confirm it exists on disk before calling create.
+2. **Verify the directory exists** — If specifying a directory, confirm it exists on disk before calling create. When the fleet sets `project_roots`, it must also be inside one of them, or create is refused.
 3. **Use unique names** — The instance name is derived from `topic_name` or `basename(directory)`. Avoid generic names like "dev" or "test" that may collide.
 
 **Post-checks (mandatory):**
@@ -23,12 +23,13 @@ When creating a new instance with `create_instance`:
 ## What NOT to Do (Dangerous Operations)
 
 - **Don't delete `~/.agend/fleet.yaml`** while fleet is running
-- **Don't delete `~/.agend/fleet.pid`** manually — use `agend fleet stop`
+- **Don't delete `~/.agend/fleet.pid`** manually — use `agend fleet stop` (from a fleet session it needs `--yes`, and it stops every instance)
 - **Don't kill tmux server** (`tmux kill-server`) — kills all agent sessions
 - **Don't edit instance output.log** — it's actively written by the daemon
 - **Don't run two fleet processes** on the same AGEND_HOME — port/socket conflicts
 - **Don't change `channel.group_id`** without re-creating all topics — routing breaks
 - **Don't remove an instance from fleet.yaml** that has active work — stop it first
+- **Don't try to get around a Settings confirmation** — a sensitive change made in the web Settings (access, secrets, connections, …) waits for a fleet admin to confirm it in General, or with `agend settings confirm <id>` on the host
 
 ## Access Mode Reference
 
@@ -37,7 +38,7 @@ fleet.yaml `channel.access.mode` valid values:
 | Mode | Behavior |
 |------|----------|
 | `locked` | Only `allowed_users` can interact (default) |
-| `pairing` | Users can request access via `/pair` command |
+| `pairing` | A user sends `/pair` (Telegram), gets a code, and the owner grants access |
 | `open` | All users can interact, no restrictions |
 
 Example:
@@ -46,7 +47,7 @@ channel:
   access:
     mode: open          # everyone can use
     # mode: locked      # whitelist only (add allowed_users)
-    # mode: pairing     # users self-register via /pair
+    # mode: pairing     # /pair gives a code the owner approves
     allowed_users: [123456789]  # only needed for locked/pairing
 ```
 
@@ -72,14 +73,14 @@ Always use a dedicated subdirectory like `/home/user/projects/my-project` or let
 Use layered memory to minimize context usage:
 
 1. **Fleet Decision** — short, shared rules only (role, workflow rules, TODOs). Keep concise (~20 lines guideline). If it exceeds this, consider whether the details belong in soul.md instead.
-2. **soul.md** (workspace root) — full memory: architecture, decisions, history. Loaded as steering.
+2. **soul.md** (workspace root) — full memory: architecture, decisions, history. AgEnD does not load it for you: read it when you need it.
    - If soul.md doesn't exist, do NOT create one unprompted. Only create when the user explicitly asks.
-3. **Skills** (`.kiro/skills/`) — reusable workflows. On-demand loading.
+3. **Skills** — reusable workflows, loaded on demand, in your backend's skills directory: `.kiro/skills/` (kiro), `.claude/skills/` (claude-code), `.agents/skills/` (codex, opencode, muse, antigravity), `.grok/skills/` (grok).
 
 Rules:
 - Keep Fleet Decisions minimal. Move details to soul.md.
 - Each instance maintains its own soul.md (not shared).
-- Good workflows → **propose** converting to a skill. Create in `.kiro/skills/<name>/SKILL.md` only after user approval.
+- Good workflows → **propose** converting to a skill. Create `<skills directory>/<name>/SKILL.md` (see Skills above) only after user approval.
 - Global skills (`src/general-knowledge/skills/`) only for knowledge ALL instances need.
 - Never put architecture details or bug history in Fleet Decisions.
 - After completing a **multi-step task that introduced new architectural knowledge or a reusable process**, suggest updating soul.md. Do NOT ask after routine tasks (reviews, single-file fixes, Q&A).

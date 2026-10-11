@@ -14,7 +14,7 @@ AgEnD selects a provider; the backend CLI owns endpoint and credential definitio
 |---|---|
 | Codex | Select with `backend_options.codex.provider`; define the provider in Codex `config.toml`. |
 | OpenCode | Define the provider in `opencode.json`; use model ID `<provider>/<model>`. |
-| Claude Code, Kiro CLI, Antigravity, Grok | Provider is fixed by the CLI; do not set `backend_options` for provider selection. |
+| Claude Code, Kiro CLI, Antigravity, Grok, Muse | Provider is fixed by the CLI; do not set `backend_options` for provider selection. |
 
 ## Create a Codex custom-provider instance
 

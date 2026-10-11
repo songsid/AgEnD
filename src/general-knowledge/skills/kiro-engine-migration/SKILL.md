@@ -54,3 +54,9 @@ The user has already been shown the plain notice in this topic. When they ask, e
   conversation, and the move cannot be undone.
 - Never run `kiro-cli` yourself, and never delete or edit anything under `~/.kiro` or kiro's data directory.
 - Never reply to the `[system:kiro-incompat]` notice itself. It is information, not a request.
+
+## One kiro agent per instance (#906)
+
+Since kiro-cli 2.21, each AgEnD kiro instance (tui / v2 engine) runs as its own kiro agent, holding only its own
+AgEnD MCP server and instructions, and resumes its own conversation by id — instances sharing a working directory
+no longer see each other's tools. Legacy (`kiro_ui: legacy`) launches are unchanged.

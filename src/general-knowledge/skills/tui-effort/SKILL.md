@@ -18,8 +18,8 @@ instances:
 ```
 
 **kiro_ui 模式差異：**
-- `kiro_ui: tui`：Kiro v2 TUI（預設推薦）；本 skill 適用。
-- `kiro_ui: v3`：v3 unified agent harness；是不同的 agent engine，不只是換皮膚。session 格式與 v2 不相容，不能互 resume。若要使用 v3，需另外實測 `/effort` 行為。
+- `kiro_ui: tui`：Kiro v2 TUI（需明確設定；預設是 `legacy`）；本 skill 適用。
+- `kiro_ui: v3`：目前會被設定驗證拒絕，不要設定。
 - `kiro_ui: legacy`：舊 UI，互動行為不同，本 skill 不適用。
 
 若修改 `kiro_ui`，先 reload 再 restart：
