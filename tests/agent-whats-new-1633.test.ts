@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGENT_WHATS_NEW, agendVersion, compareVersions, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "../src/agent-whats-new.js";
+import { AGENT_WHATS_NEW, agendVersion, packageReleaseVersion, compareVersions, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "../src/agent-whats-new.js";
 import { Daemon } from "../src/daemon.js";
 import type { TmuxManager } from "../src/tmux-manager.js";
 
@@ -27,8 +27,12 @@ describe("versions", () => {
       compareVersions("2.2.0-alpha.6", "2.2.0-beta.1"), compareVersions("v2.2.0", "2.2.0"), compareVersions("unknown", "2.2.0"),
     ]).toEqual([-1, -1, 0, 1, -1, 1, -1, 0, null]);
   });
-  it("the running version is the package's", () => {
-    expect(agendVersion()).toBe(JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf-8")).version);
+  it("the released version: a published package's; a source checkout (a .git beside package.json) has a placeholder → none (#1638 review)", () => {
+    const released = scratch(), checkout = scratch();
+    for (const d of [released, checkout]) writeFileSync(join(d, "package.json"), JSON.stringify({ name: "@songsid/agend", version: "2.2.0-beta.2" }));
+    writeFileSync(join(checkout, ".git"), "gitdir: /elsewhere\n");                     // a worktree's .git is a file
+    expect([packageReleaseVersion(released), packageReleaseVersion(checkout), packageReleaseVersion(scratch())]).toEqual(["2.2.0-beta.2", null, null]);
+    expect(agendVersion(), "this test runs from a checkout").toBeNull();
   });
 });
 
@@ -57,7 +61,7 @@ describe("what an instance is told", () => {
   });
   it("the notice names the exact parameters and tells the agent to reload an older tool copy, not to reply", () => {
     const text = whatsNewNotice("2.2.0-beta.2", AGENT_WHATS_NEW);
-    for (const s of ["[system:whats-new] AgEnD is now 2.2.0-beta.2.", "`buttons: [{label, value?}]` (1–10)", "`[button] <label>`", "`stickers` (up to 3 ids from `list_stickers`",
+    for (const s of ["[system:whats-new] AgEnD is now 2.2.0-beta.2.", "`buttons: [{label, value?}]` (1–10)", "`[button] <label>`", "`[button] <label> (value: <value>)` when the value differs", "`stickers` (up to 3 ids from `list_stickers`",
       "`preview_stickers`", "`[user:… via web, …]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`tool_set` and `skipPermissions`",
       "`ToolSearch` with `select:<tool>`", "Do not reply to this message."]) expect(text, s).toContain(s);
     expect(text.split("\n").length).toBe(AGENT_WHATS_NEW.length + 2);

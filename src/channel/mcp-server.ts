@@ -17,7 +17,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
+import { agendVersion } from "../agent-whats-new.js";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
@@ -243,12 +243,10 @@ function ipcRequest(
 
 /**
  * #1634: the AgEnD version this server belongs to (it was a hard-coded "0.3.0") — in serverInfo and in the
- * instructions, so an agent can tell that a tool description it loaded earlier came from an older version.
+ * instructions, so an agent can tell that a tool description it loaded earlier came from an older version. A source
+ * checkout has only a placeholder version and names none (#1638 review).
  */
-const AGEND_VERSION: string | undefined = (() => {
-  try { return (createRequire(import.meta.url)("../../package.json") as { version?: string }).version; }
-  catch { return undefined; }
-})();
+const AGEND_VERSION: string | undefined = agendVersion() ?? undefined;
 
 function buildMcpInstructions(): string {
   // Compact on purpose: Claude Code truncates MCP instructions around 2KB, so

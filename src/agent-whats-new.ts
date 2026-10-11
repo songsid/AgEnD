@@ -10,9 +10,9 @@
  * - An instance that never launched before is told nothing: everything current is recorded as known — it starts with
  *   the current schemas. One upgraded from before this record existed (it has launched: `prev-instructions`) is told.
  */
-import { createRequire } from "node:module";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface WhatsNewEntry {
   /** Stable: the record keeps it. */
@@ -24,7 +24,7 @@ export interface WhatsNewEntry {
 
 export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.2-reply-buttons", since: "2.2.0-beta.1",
-    text: "`reply` takes `buttons: [{label, value?}]` (1–10); a click comes back to you as a message `[button] <label>`. Buttons expire after 24 h." },
+    text: "`reply` takes `buttons: [{label, value?}]` (1–10); a click comes back to you as a message `[button] <label>`, or `[button] <label> (value: <value>)` when the value differs. Buttons expire after 24 h." },
   { id: "2.2-reply-stickers", since: "2.2.0-beta.1",
     text: "`reply` takes `stickers` (up to 3 ids from `list_stickers`; look at them first with `preview_stickers`). Not together with buttons." },
   { id: "2.2-web-chat", since: "2.2.0-beta.1",
@@ -37,10 +37,21 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "`create_instance` / `update_instance_config` refuse `tool_set` and `skipPermissions` (they are set in Settings or fleet.yaml)." },
 ];
 
-/** The running AgEnD version (package.json next to the code), or null. */
+/**
+ * The released AgEnD version this code belongs to, or null. A source checkout (a `.git` beside its package.json) has a
+ * placeholder version — the release sets the real one (publish.yml `npm pkg set version=<tag>`) — so it has none:
+ * naming it would mislead an agent comparing its tool copies (#1638 review), and no notice is sent for it.
+ */
+export function packageReleaseVersion(packageRoot: string): string | null {
+  if (existsSync(join(packageRoot, ".git"))) return null;
+  try {
+    const version = (JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf-8")) as { version?: unknown }).version;
+    return typeof version === "string" && version ? version : null;
+  } catch { return null; }
+}
+/** The released version of the running AgEnD (see packageReleaseVersion), or null. */
 export function agendVersion(): string | null {
-  try { return (createRequire(import.meta.url)("../package.json") as { version?: unknown }).version as string ?? null; }
-  catch { return null; }
+  return packageReleaseVersion(fileURLToPath(new URL("..", import.meta.url)));
 }
 
 /** SemVer order with prereleases (2.2.0-beta.1 < 2.2.0-beta.2 < 2.2.0); null when either is not a version. */

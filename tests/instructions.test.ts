@@ -245,7 +245,7 @@ describe("#1634: what the injected texts say is what main does", () => {
   });
   it("reply's buttons and stickers, the web-chat sender, and the real image / file / reply_to markers are taught", () => {
     const r = buildFleetInstructions(base);
-    expect(r).toContain("`buttons` (1–10, `{label, value?}`); a click comes back as a message `[button] <label>`");
+    expect(r).toContain("`buttons` (1–10, `{label, value?}`); a click comes back as a message `[button] <label>` (or `[button] <label> (value: <value>)` when the value differs)");
     expect(r).toContain("`stickers` (up to 3 ids from `list_stickers`; not together with buttons)");
     expect(r).toContain("web-chat user (`via web`)");
     expect(r).toContain("`[📷 Image: PATH]` in a message: Read PATH");
