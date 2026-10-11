@@ -887,13 +887,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       }
 
       // Send first chunk directly to get the messageId; enqueue the rest
-      const parseMode = opts?.format === "html" ? "HTML" as const : undefined;
-      this.bot.api
-        .sendMessage(Number(chatId), chunks[0], {
-          ...threadOptions(threadId),
-          parse_mode: parseMode,
-          ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
-        })
+      this.sendFormattedChunk(chatId, chunks[0], opts?.format, {
+        ...threadOptions(threadId),
+        ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+      })
         .then((msg) => {
           const result: SentMessage = {
             messageId: String(msg.message_id),
@@ -911,6 +908,24 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   /**
+   * One plain-path message. "html" is the caller's own HTML. "markdown" (an agent's reply, #1658) is converted
+   * escape-first to Telegram HTML per chunk — Telegram's length limit counts the text after parsing, so the raw chunk
+   * size still holds — and if Telegram refuses the markup, the same chunk is sent once more as plain text.
+   */
+  private async sendFormattedChunk(chatId: string, chunk: string, format: SendOpts["format"], extra: Parameters<Bot["api"]["sendMessage"]>[2]) {
+    if (format !== "markdown") {
+      return this.bot.api.sendMessage(Number(chatId), chunk, { ...extra, parse_mode: format === "html" ? "HTML" : undefined });
+    }
+    try {
+      return await this.bot.api.sendMessage(Number(chatId), markdownToTelegramHtml(chunk), { ...extra, parse_mode: "HTML" });
+    } catch (err) {
+      if (!isTelegramParseRefusal(err)) throw err;
+      console.warn(`[telegram] reply markup refused; sending as plain text: ${errorMessage(err)}`);
+      return this.bot.api.sendMessage(Number(chatId), chunk, { ...extra, parse_mode: undefined });
+    }
+  }
+
+  /**
    * #1266: a reply with buttons. Every part is sent and awaited here — not queued — so the keyboard goes on the part
    * that really is last, and the caller learns which message carries it. Plain messages, not a rich message: a
    * keyboard is a sendMessage parameter.
@@ -921,12 +936,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const chunks: string[] = [];
     for (let offset = 0; offset < text.length; offset += chunkLimit) chunks.push(text.slice(offset, offset + chunkLimit));
     if (!chunks.length) throw new Error("Empty text");
-    const parseMode = opts.format === "html" ? "HTML" as const : undefined;
     let first: string | undefined, last = "";
     for (const [i, chunk] of chunks.entries()) {
-      const msg = await this.bot.api.sendMessage(Number(chatId), chunk, {
+      const msg = await this.sendFormattedChunk(chatId, chunk, opts.format, {
         ...threadOptions(opts.threadId),
-        parse_mode: parseMode,
         ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
         ...(i === chunks.length - 1 ? { reply_markup: { inline_keyboard: keyboard } } : {}),
       });

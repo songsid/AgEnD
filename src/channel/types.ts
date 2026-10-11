@@ -248,7 +248,8 @@ export interface SendOpts {
   allowedMentions?: { parse: Array<"roles" | "users" | "everyone"> };
   threadId?: string;
   replyTo?: string;
-  format?: "text" | "html";
+  /** "html": the caller's own platform HTML. "markdown": an agent's markdown (#1658 — Telegram converts it escape-first). */
+  format?: "text" | "html" | "markdown";
   chunkLimit?: number;
   /** Suppress the link/web-page preview for URLs in the message (Telegram). */
   disablePreview?: boolean;

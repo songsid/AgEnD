@@ -71,7 +71,8 @@ export function routeToolCall(
         return true;
       }
       const replyThreadId = args.thread_id as string ?? threadId;
-      const format = args.format === "markdown" ? "html" as const : undefined;
+      // #1658: markdown reaches the adapter as markdown — Telegram converts it escape-first (its rich path is unchanged).
+      const format = args.format === "markdown" ? "markdown" as const : undefined;
       // Stickers (#1226) go with the text, as the platform does it — and were checked by the fleet before this
       // call; an adapter that cannot send them says so rather than dropping them.
       const stickers = Array.isArray(args.stickers) ? (args.stickers as unknown[]).filter((x): x is string => typeof x === "string") : [];
