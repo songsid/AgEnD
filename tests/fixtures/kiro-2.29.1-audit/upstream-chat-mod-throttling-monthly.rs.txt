@@ -1,0 +1,92 @@
+// Excerpt, aws/amazon-q-developer-cli (Apache-2.0), crates/chat-cli/src/cli/chat/mod.rs at the default branch read 2026-10-11.
+// Kiro's chat binary carries the same strings with "Kiro" for "Amazon Q" (see kiro-cli-chat-*.strings.txt).
+// constants.rs: RATE_LIMIT_PREFIX = " ⚠️  Amazon Q rate limit reached:"; TROUBLE_RESPONDING = "Amazon Q is having trouble responding right now".
+
+                        return Ok(());
+                    }
+                },
+                ConverseStreamErrorKind::Throttling => {
+                    let err = "Request quota exceeded. Please wait a moment and try again.".to_string();
+                    self.conversation.append_transcript(err.clone());
+                    execute!(
+                        self.stderr,
+                        style::SetAttribute(Attribute::Bold),
+                        StyledText::error_fg(),
+                        style::Print(error_messages::RATE_LIMIT_PREFIX),
+                        style::Print("\n"),
+                        style::Print(format!("    {}\n\n", err.clone())),
+                        StyledText::reset_attributes(),
+                        StyledText::reset(),
+                    )?;
+                    (error_messages::TROUBLE_RESPONDING, eyre!(err), false)
+                },
+                // …
+                ConverseStreamErrorKind::MonthlyLimitReached => {
+                    let subscription_status = get_subscription_status(os).await;
+                    if subscription_status.is_err() {
+                        execute!(
+                            self.stderr,
+                            StyledText::error_fg(),
+                            style::Print(format!(
+                                "Unable to verify subscription status: {}\n\n",
+                                subscription_status.as_ref().err().unwrap()
+                            )),
+                            StyledText::reset(),
+                        )?;
+                    }
+
+                    execute!(
+                        self.stderr,
+                        StyledText::warning_fg(),
+                        style::Print("Monthly request limit reached"),
+                        StyledText::reset(),
+                    )?;
+
+                    let limits_text = format!(
+                        "The limits reset on {:02}/01.",
+                        OffsetDateTime::now_utc().month().next() as u8
+                    );
+
+                    if subscription_status.is_err()
+                        || subscription_status.is_ok_and(|s| s == ActualSubscriptionStatus::None)
+                    {
+                        execute!(
+                            self.stderr,
+                            style::Print(format!("\n\n{} {limits_text}", ui_text::limit_reached_text())),
+                            StyledText::secondary_fg(),
+                            style::Print("\n\nUse "),
+                            StyledText::success_fg(),
+                            style::Print("/subscribe"),
+                            StyledText::secondary_fg(),
+                            style::Print(" to upgrade your subscription.\n\n"),
+                            StyledText::reset(),
+                        )?;
+                    } else {
+                        execute!(
+                            self.stderr,
+                            StyledText::warning_fg(),
+                            style::Print(format!(" - {limits_text}\n\n")),
+                            StyledText::reset(),
+                        )?;
+                    }
+
+                    self.inner = Some(ChatState::PromptUser {
+                        skip_printing_tools: false,
+                    });
+
+                    return Ok(());
+        // … (after the match: the context header is printed only when display_err_message is true)
+
+        if display_err_message {
+            // Remove non-ASCII and ANSI characters.
+            let re = Regex::new(r"((\x9B|\x1B\[)[0-?]*[ -\/]*[@-~])|([^\x00-\x7F]+)").unwrap();
+
+            queue!(
+                self.stderr,
+                style::SetAttribute(Attribute::Bold),
+                StyledText::error_fg(),
+            )?;
+
+            let text = re.replace_all(&format!("{}: {:?}\n", context, report), "").into_owned();
+
+            queue!(self.stderr, style::Print(&text),)?;

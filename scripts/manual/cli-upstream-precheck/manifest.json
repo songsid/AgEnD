@@ -2517,27 +2517,19 @@
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "RequestThrottledException",
+     "text": "Kiro rate limit reached",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1472,
+     "line": 1478,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
-     "text": "SlowDownException",
+     "text": "Request quota exceeded. Please wait a moment and try again",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1472,
-     "symbol": "KiroBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "TooManyRequestsException",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/kiro.ts",
-     "line": 1472,
+     "line": 1478,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2545,15 +2537,55 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1473,
+     "line": 1479,
      "symbol": "KiroBackend.getErrorPatterns.type"
+    },
+    {
+     "text": "The limits reset on",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1488,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "request limit reached",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1488,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "RequestThrottledException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1496,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "SlowDownException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1496,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "TooManyRequestsException",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/kiro.ts",
+     "line": 1496,
+     "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
      "text": "having trouble responding",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/kiro.ts",
-     "line": 1483,
+     "line": 1507,
      "symbol": "KiroBackend.getErrorPatterns.pattern"
     },
     {
@@ -2561,7 +2593,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 1547,
+     "line": 1571,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {
@@ -2569,7 +2601,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/kiro.ts",
-     "line": 1547,
+     "line": 1571,
      "symbol": "KiroBackend.getClearConfirmationDialog.pattern"
     },
     {

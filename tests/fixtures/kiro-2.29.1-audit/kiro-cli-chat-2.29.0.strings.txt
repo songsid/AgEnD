@@ -1,0 +1,37 @@
+## 'Kiro rate limit reached:': count 1
+Unable to verify subscription status: Your conversation is too large to continue.
+Monthly request limit reached ⚠️  Kiro rate limit reached:Please try a shorter message.
+
+Your login session has expired. Please log in again using:
+
+Authentication Error
+Your pro
+
+## 'Request quota exceeded. Please wait a moment and try again.': count 1
+t always be Somectrlc receivedAn error occurred processing the current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right nowThe limits reset on The conversation history has overflowedAuthentication fai
+
+## 'Monthly request limit reached': count 1
+gin
+
+ to analyze your context usage
+
+
+Unable to verify subscription status: Your conversation is too large to continue.
+Monthly request limit reached ⚠️  Kiro rate limit reached:Please try a shorter message.
+
+Your login session has expired. Please log in again usin
+
+## 'The limits reset on ': count 1
+lease log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right nowThe limits reset on The conversation history has overflowedAuthentication failed. Your session may have expired. Run ` login` to re-authenti
+
+## 'Kiro is having trouble responding right now': count 1
+the current stateAuthentication expired - please log in againRequest quota exceeded. Please wait a moment and try again.Kiro is having trouble responding right nowThe limits reset on The conversation history has overflowedAuthentication failed. Your session may have expired. Run ` l
+
+## 'Please try a shorter message.': count 1
+ption status: Your conversation is too large to continue.
+Monthly request limit reached ⚠️  Kiro rate limit reached:Please try a shorter message.
+
+Your login session has expired. Please log in again using:
+
+Authentication Error
+Your prompt is too long even after tr

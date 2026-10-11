@@ -1,0 +1,26 @@
+precheck kiro-cli (manifest scripts/manual/cli-upstream-precheck/sources.json, 77 literals)
+  old: <scratch>/kiro-cli/2.29.0 — 8 file(s), 293.6 MB
+  new: <scratch>/kiro-cli/2.29.1 — 8 file(s), 293.8 MB
+
+literals in the old artifact: 52 of 77 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 1
+  [error] 36 -> 35  "ExpiredTokenException"   (src/backend/kiro.ts:1400 KiroBackend.getErrorPatterns.pattern)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 1
+  [error] "rate limit reached:"   near "not available"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 1
+  "rate limit reached:Please try a shorter message."
+
+REASON: 1 new prompt-like string(s) on a known surface: [error] "rate limit reached:"
+REASON: 1 literal count(s) changed
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 1, hinted new prompts 0
+BASIS: hard=1; hinted=0
+PRECHECK: MAJOR

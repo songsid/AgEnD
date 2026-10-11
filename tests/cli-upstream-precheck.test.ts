@@ -314,6 +314,31 @@ describe("new prompts are found wherever they sit, in every text form (P1-2)", (
   });
 });
 
+describe("#1636: a new string order alone is not a new prompt", () => {
+  // kiro-cli 2.29.0 → 2.29.1: "rate limit reached:" sat directly before "Please try a shorter message." and was read
+  // as one string; 2.29.1 stores them apart. Not a byte of either changed — the precheck said MAJOR all the same.
+  const GLUED = "Rate limit reached:Please try a shorter message.";
+  it("one half of an old glued pair, the other half still present: listed on its own, and nothing else (no MAJOR)", () => {
+    const f = files(`${OLD}${T}${pad(4)}${GLUED}${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit reached:${pad(400)}Please try a shorter message.${pad(4)}`);
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, r.out.trim().split("\n").at(-2)]).toEqual(["PRECHECK: NONE", "BASIS: hard=0; hinted=0"]);
+    expect(r.out).toMatch(/one half of an old glued pair \(only the string order changed\): 1\n {2}"Rate limit reached:" {3}was read as part of "Rate limit reached:Please try a shorter message\."/);
+  });
+  it("…but when the other half is gone from the new release, the shorter string is a new prompt (MAJOR)", () => {
+    const f = files(`${OLD}${T}${pad(4)}${GLUED}${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit reached:${pad(4)}`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("…and a cut that is not a string boundary proves nothing (MAJOR), even with the rest present", () => {
+    const f = files(`${OLD}${T}${pad(4)}Rate limited by the proxy server${pad(4)}`, `${OLD}${T}${pad(4)}Rate limited by the${pad(400)}proxy server${pad(4)}`);
+    expect(run(f.old, f.neu, f.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("the tail half too: \"Retrying in …\" split from the string before it", () => {
+    const f = files(`${OLD}${T}${pad(4)}Rate limit hit.Retrying in 5 seconds${pad(4)}`, `${OLD}${T}${pad(4)}Rate limit hit.${pad(400)}Retrying in 5 seconds${pad(4)}`);
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /one half of an old glued pair \(only the string order changed\): 2/.test(r.out)]).toEqual(["PRECHECK: NONE", true]);
+  });
+});
+
 describe("a scan that could not read everything is MAJOR, whatever else it saw (P1-3, P2-2)", () => {
   const MARKERS = [T, B, R].join("\0");
   it("an unreadable directory inside the artifact", () => {

@@ -1466,6 +1466,30 @@ export class KiroBackend implements CliBackend {
         // the stdout sentence after the transport line, so the name is usually not
         // in the match that gets formatted.
       },
+      // #1636: throttling as the chat prints it. kiro's chat path (upstream Amazon Q Developer CLI,
+      // crates/chat-cli/src/cli/chat/mod.rs, Throttling branch) prints
+      //    ⚠️  Kiro rate limit reached:
+      //       Request quota exceeded. Please wait a moment and try again.
+      // with `display_err_message = false` — no `having trouble responding` header and no exception name — so
+      // nothing below ever matched it. Both lines are required, the first at a line start (after the TUI's `●`
+      // bullet or the warning sign, if any): an agent quoting the message in a sentence (this fleet discusses
+      // AgEnD's own errors) does not match.
+      {
+        pattern: /^[ \t]*(?:●[ \t]*)?(?:⚠️?[ \t]*)?Kiro rate limit reached:[ \t]*\r?\n[ \t]*Request quota exceeded\. Please wait a moment and try again\./m,
+        type: "rate_limit",
+        action: "notify",
+        message: "Kiro rate limit reached — the service asked to wait; retry shortly",
+      },
+      // #1636: the monthly cap (MonthlyLimitReached branch: it prints this and returns, again with no header).
+      // The phrase opens its line, and the reset sentence follows on that line (` - The limits reset on 11/01.`)
+      // or within the next few lines — a quote of the phrase alone, or mid-sentence, does not match. kiro has only
+      // a monthly cap today; every period is accepted so a new one is not silently missed (quota-warning's guard).
+      {
+        pattern: /^[ \t]*(?:●[ \t]*)?(?:⚠️?[ \t]*)?(?:Hourly|Daily|Weekly|Monthly) request limit reached\b[^\n]*(?:\n[^\n]*){0,4}?The limits reset on \d{1,2}\/\d{1,2}\./m,
+        type: "rate_limit",
+        action: "notify",
+        message: "Kiro request limit reached — it resets on the date kiro shows",
+      },
       // Real throttling, matched on the exceptions kiro actually raises (all four
       // are present in the binary) rather than on the shared header.
       {
