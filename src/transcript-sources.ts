@@ -79,6 +79,24 @@ export interface TranscriptSource {
    * last turn boundary before its baseline, or has read one since. Until then an empty ledger proves nothing.
    */
   turnStateKnown?(): boolean;
+  /** #1641 R3: turn records a checkpoint decided (it moved the source past them), for the monitor to hand on at once. */
+  takeTurns?(): TranscriptTurnEvent[];
+}
+
+/** #1641 R3: the complete records in [from, to) — `to` is a line boundary (a checkpoint's), so nothing is cut. */
+async function readLineRange(path: string, from: number, to: number): Promise<string[]> {
+  const fh = await openFile(path, "r");
+  try {
+    const buffer = Buffer.alloc(to - from);
+    for (let filled = 0; filled < buffer.length;) {
+      const { bytesRead } = await fh.read(buffer, filled, buffer.length - filled, from + filled);
+      if (bytesRead <= 0) throw new Error(`readLineRange: no progress reading ${path} at ${from + filled}`);
+      filled += bytesRead;
+    }
+    return buffer.toString("utf8").split("\n").filter(line => line.trim());
+  } finally {
+    await fh.close();
+  }
 }
 
 /** #1641 R2: how far back from the baseline a rollout is scanned for the last turn boundary (a turn writes a lot). */
@@ -179,6 +197,11 @@ export class CodexRolloutSource implements TranscriptSource {
     return this.turnKnown;
   }
 
+  /** #1641 R3: turn records decided outside a poll (a checkpoint's adoption or skipped range), handed over now. */
+  takeTurns(): TranscriptTurnEvent[] {
+    return this.pendingTurns.splice(0);
+  }
+
   reset(): void {
     this.lastPollFollowed = false;
     this.openTurn = null;
@@ -199,6 +222,15 @@ export class CodexRolloutSource implements TranscriptSource {
       // A line boundary, not the size: a record being written now is read once complete (#1250).
       const offset = await lastLineBoundary(active.path);
       if (active.path !== this.currentFile) await this.adopt(active.path, offset);   // a switch, whoever notices it
+      else if (offset > this.byteOffset) {
+        // #1641 R3: the range this checkpoint skips is never polled — its turn boundaries (and user records) are taken
+        // now, so the turn state stays the file's. Tool and text records stay skipped, as before.
+        for (const line of await readLineRange(active.path, this.byteOffset, offset)) {
+          let entry: Record<string, unknown>;
+          try { entry = JSON.parse(line); } catch { continue; }
+          this.turnRecord(entry, this.pendingTurns);
+        }
+      }
       this.currentFile = active.path;
       this.byteOffset = offset;
       return { path: active.path, offset, sessionId: active.path };
@@ -230,6 +262,39 @@ export class CodexRolloutSource implements TranscriptSource {
     this.currentFile = path;
     this.byteOffset = offset;
     this.openTurnId = this.openTurn ?? "";                 // a steer after the baseline belongs to the carried-in turn
+  }
+
+  /**
+   * A turn record (a boundary, or a user message) into `turns`, keeping the open turn current; true when `entry` was
+   * one (or another event_msg), so the caller looks no further. #1510: codex 0.162 writes one task_started per turn and
+   * ends it with task_complete (last_agent_message null after a provider error) or turn_aborted; a steer lands inside
+   * the open turn as another user message.
+   */
+  private turnRecord(entry: Record<string, unknown>, turns: TranscriptTurnEvent[]): boolean {
+    const p = entry.payload as Record<string, unknown> | undefined;
+    if (!p) return false;
+    if (entry.type === "event_msg") {
+      if (p.type === "task_started" && typeof p.turn_id === "string") {
+        this.openTurnId = p.turn_id;
+        this.openTurn = p.turn_id;
+        this.turnKnown = true;
+        turns.push({ kind: "start", turnId: p.turn_id });
+      } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
+        const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
+        if (this.openTurn === p.turn_id) this.openTurn = null;
+        this.turnKnown = true;
+        turns.push({ kind: "end", turnId: p.turn_id, end });
+      }
+      return true;
+    }
+    if (entry.type === "response_item" && p.type === "message" && p.role === "user") {
+      const text = (p.content as Array<Record<string, unknown>> | undefined ?? [])
+        .map(block => typeof block.text === "string" ? block.text : "").join("\n");
+      const at = Date.parse(String(entry.timestamp ?? ""));
+      if (text.trim() && Number.isFinite(at)) turns.push({ kind: "user", turnId: this.openTurnId, text, at });
+      return true;
+    }
+    return false;
   }
 
   private snapshotExistingFiles(): void {
@@ -318,30 +383,8 @@ export class CodexRolloutSource implements TranscriptSource {
       try { entry = JSON.parse(line); } catch { continue; }
       const p = entry.payload as Record<string, unknown> | undefined;
       if (!p) continue;
-      // #1510: codex 0.162 writes one task_started per turn and ends it with task_complete (last_agent_message null
-      // after a provider error) or turn_aborted; a steer lands inside the open turn as another user message.
-      if (entry.type === "event_msg") {
-        if (p.type === "task_started" && typeof p.turn_id === "string") {
-          this.openTurnId = p.turn_id;
-          this.openTurn = p.turn_id;
-          this.turnKnown = true;
-          turns.push({ kind: "start", turnId: p.turn_id });
-        } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
-          const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
-          if (this.openTurn === p.turn_id) this.openTurn = null;
-          this.turnKnown = true;
-          turns.push({ kind: "end", turnId: p.turn_id, end });
-        }
-        continue;
-      }
+      if (this.turnRecord(entry, turns)) continue;
       if (entry.type !== "response_item") continue;
-      if (p.type === "message" && p.role === "user") {
-        const text = (p.content as Array<Record<string, unknown>> | undefined ?? [])
-          .map(block => typeof block.text === "string" ? block.text : "").join("\n");
-        const at = Date.parse(String(entry.timestamp ?? ""));
-        if (text.trim() && Number.isFinite(at)) turns.push({ kind: "user", turnId: this.openTurnId, text, at });
-        continue;
-      }
       if (p.type === "function_call") {
         let input: unknown = p.arguments;
         if (typeof input === "string") { try { input = JSON.parse(input); } catch { /* keep raw */ } }

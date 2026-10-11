@@ -76,7 +76,15 @@ export class TranscriptMonitor extends EventEmitter {
 
   /** Snapshot the active durable conversation before an outbox pane write. */
   async reconciliationCheckpoint(): Promise<TranscriptCheckpoint | null> {
-    if (this.source?.checkpoint) return this.source.checkpoint();
+    if (this.source?.checkpoint) {
+      const generation = this.generation;
+      const checkpoint = await this.source.checkpoint();
+      // #1641 R3: what the checkpoint moved past (a switch's retract and carried-in start, a skipped boundary) reaches
+      // the ledger before the delivery it guards — not at the next poll.
+      const turns = this.source.takeTurns?.() ?? [];
+      if (turns.length && generation === this.generation) this.emit("turns", turns);
+      return checkpoint;
+    }
     const path = await this.resolveTranscriptPath();
     if (!path) return null;
     try {

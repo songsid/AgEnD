@@ -364,6 +364,55 @@ describe("#1641 R1: the real rollout source → monitor → daemon, and the edge
     }
   });
 
+  /** The delivery path's own checkpoint (durableAttemptEvidence → reconciliationCheckpoint), as before a pane write. */
+  const deliveryCheckpoint = (h: ReturnType<typeof harness>) => h.daemon.durableAttemptEvidence(undefined, false, false);
+
+  it("R3 P1: a checkpoint that moves past a task_started in the same rollout hands it to the ledger — it is never skipped", async () => {
+    const h = harness(READY_0156);
+    const r = await realRollout(h);
+    const tools: unknown[] = [];
+    h.daemon.transcriptMonitor.on("tool_use", (name: string) => tools.push(name));
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");                      // control: A holds no turn
+    const armedAt = Date.now();
+    const steer = JSON.stringify({ timestamp: new Date().toISOString(), type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "skipped-steer" }] } });
+    r.append(ROLLOUT_LINES[2]!); r.append(steer); r.append(CHATTER[1]!);
+    await deliveryCheckpoint(h);                                     // Prism's witness (a): no poll in between
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("working");
+    expect(h.daemon.transcriptTurns.verdict("skipped-steer", armedAt)).toBe("running");   // user records are taken too
+    expect(tools).toEqual([]);                                        // tool and text records stay skipped, as before
+    await r.poll();
+    advance(1_000);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("working");                   // and the next poll does not lose it
+    r.append(ROLLOUT_LINES[3]!); await r.poll();
+    advance(SWEEP_MS);
+    await h.sweep();
+    expect(h.daemon.instanceState).toBe("idle");
+  });
+
+  it("R3 P1: a checkpoint that switches to a newer rollout carries its open turn in before it returns; a completed one stays idle", async () => {
+    for (const [lines, want] of [
+      [[ROLLOUT_LINES[2]!], "working"],                               // Prism's witness (b)
+      [[ROLLOUT_LINES[2]!, ROLLOUT_LINES[3]!], "idle"],                // control: B's turn completed
+    ] as const) {
+      const h = harness(READY_0156);
+      await realRollout(h);
+      await h.sweep();
+      expect(h.daemon.instanceState).toBe("idle");
+      newerRollout(h, [...lines]);
+      const evidence = await deliveryCheckpoint(h);
+      expect(JSON.stringify(evidence)).toContain("01a0ed7b");          // the checkpoint is B's
+      await h.sweep();
+      expect(h.daemon.instanceState, `B holds ${lines.length}`).toBe(want);
+      await (h.daemon.transcriptMonitor as any).pollIncrement();       // and a poll after it agrees
+      advance(1_000);
+      await h.sweep();
+      expect(h.daemon.instanceState, `B holds ${lines.length}, polled`).toBe(want);
+    }
+  });
+
   it("P1-1: open → working, closed → idle, through the real source; a lost rollout is unknown (the pane decides)", async () => {
     const h = harness(READY_0156);
     const r = await realRollout(h);
