@@ -28,7 +28,7 @@ export interface UpdaterCallerProbe {
   /** mtime of update-in-progress.json, or null when it is absent or unreadable. */
   markerMtimeMs(): number | null;
   /** Its parsed content, or null. */
-  marker(): { pid?: unknown; progress?: { version?: unknown } } | null;
+  marker(): { pid?: unknown; progress?: { version?: unknown }; [field: string]: unknown } | null;
   /** The parent pid of `pid`, or null when it cannot be read. */
   parentOf(pid: number): number | null;
   alive(pid: number): boolean;
