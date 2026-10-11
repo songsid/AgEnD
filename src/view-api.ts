@@ -402,17 +402,27 @@ export function handleViewRequest(
     if (method === "POST") {
       readBody(req, 256 * 1024).then(buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
-        let body: { display_name?: string; role?: string; description?: string };
+        let body: Record<string, unknown>;
         try { body = JSON.parse(buf.toString("utf-8") || "{}"); }
         catch { json(res, 400, { error: "invalid JSON" }); return; }
+        if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
+        // #1630: only the fields the request carries change — one left out stays as it is; a blank one ("" or spaces)
+        // clears it (no override: a cleared display name lets the agent's own show again, #1644).
+        const set: Array<[string, string | null]> = [];
+        for (const key of ["display_name", "role", "description"] as const) {
+          if (!Object.hasOwn(body, key)) continue;
+          const v = body[key];
+          if (v !== null && typeof v !== "string") { json(res, 400, { error: `${key} must be a string` }); return; }
+          set.push([key, typeof v === "string" && v.trim() ? v : null]);
+        }
+        if (!set.length) { json(res, 200, { ok: true }); return; }
         const db = profileDb(ctx.dataDir);
-        // avatar_path is managed by the avatar upload route — don't clobber it here.
-        db.prepare(`INSERT INTO instance_profile (instance_name, display_name, role, description, updated_at)
-          VALUES (@n, @d, @r, @desc, @t)
-          ON CONFLICT(instance_name) DO UPDATE SET
-            display_name = @d, role = @r, description = @desc, updated_at = @t`)
-          // A cleared display name removes the override (#1630): stored as none, never as "".
-          .run({ n: name, d: typeof body.display_name === "string" && body.display_name.trim() ? body.display_name : null, r: body.role ?? null, desc: body.description ?? null, t: Date.now() });
+        // Column names come only from the fixed list above; avatar_path is the avatar route's — never touched here.
+        const cols = set.map(([k]) => k);
+        db.prepare(`INSERT INTO instance_profile (instance_name, ${cols.join(", ")}, updated_at)
+          VALUES (@n, ${cols.map(c => `@${c}`).join(", ")}, @t)
+          ON CONFLICT(instance_name) DO UPDATE SET ${cols.map(c => `${c} = excluded.${c}`).join(", ")}, updated_at = excluded.updated_at`)
+          .run({ n: name, t: Date.now(), ...Object.fromEntries(set) });
         json(res, 200, { ok: true });
       }).catch(err => json(res, 400, { error: (err as Error).message }));
       return true;
