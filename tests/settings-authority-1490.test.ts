@@ -74,8 +74,10 @@ describe("#1490 normalized Settings authority", () => {
   });
   it("request body authority fields cannot replace the server-owned projection", () => {
     const cfg = config();
+    // #1627 review: the web body is read by the handler's own parser first — `authority` is not a web field, so it is
+    // refused before any projection (it used to reach the projection and be refused there).
     expect(() => prepareSettingsEffect("PUT", "/api/settings/fleet/web", { public_link: { ttl_minutes: 60 },
-      authority: { connections: ["b"], primaryGeneral: false, unknown: false } }, { config: cfg, classic: {} })).toThrow("unsupported_sensitive_effect");
+      authority: { connections: ["b"], primaryGeneral: false, unknown: false } }, { config: cfg, classic: {} })).toThrow("invalid_web_settings");
   });
   it("Quickstart new-connection consent retains primary F and a rebound instance's old owner", () => {
     const cfg = config(), body = { platform: "telegram", token: "test-secret", token_env: "FIXTURE_NEW", channel_id: "new",

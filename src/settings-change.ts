@@ -81,9 +81,9 @@ function sessionChange(old: unknown, next: unknown): Array<[string, unknown, unk
     || (typeof v === "number" && Number.isFinite(v) && v >= LOCAL_SESSION_HOURS.min && v <= LOCAL_SESSION_HOURS.max);
   const odd = changed.filter(k => !taken(b[k]));
   if (!odd.length && !looser.absolute_hours && !looser.idle_hours) return [];
-  const named = changed.filter(k => looser[k] || odd.includes(k));
-  // Looser through the other key (a longer absolute limit lifts the idle window it was cutting): name what changed.
-  return (named.length ? named : changed).map(k => [k, a[k], b[k]]);
+  // Each key names its own loosening: the absolute limit never depends on idle_hours, and the idle window a longer
+  // absolute limit lifts (it was cut to it) is named by absolute_hours, which grew.
+  return changed.filter(k => looser[k] || odd.includes(k)).map(k => [k, a[k], b[k]]);
 }
 /** A key under a named map (an instance or connection name), not a field: its name says nothing about its kind. */
 const namedEntry = (path: readonly string[], at: number): boolean => ["channels", "instances"].includes(path.at(at - 1) ?? "");
