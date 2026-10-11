@@ -180,7 +180,7 @@ describe("the first sign-in tour (#1366)", () => {
     send.remove();
     btn.click();
     await settle(); await settle();
-    expect(p.card(), "not before the chat has drawn").toBeFalsy();
+    expect(!!p.card(), "not before the chat has drawn").toBe(false);
     p.doc.body.append(send);
     await new Promise(r => setTimeout(r, 150)); await settle();
     expect(p.shell.shellStore.get().drawer).toBe(false);
