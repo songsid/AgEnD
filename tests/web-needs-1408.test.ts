@@ -67,6 +67,14 @@ describe("the panel renders the server's list and reads nothing itself (#1374)",
     expect(reqs).toEqual([]);
   });
 
+  it("#1630: a group is headed by the instance's display name, its name on hover", async () => {
+    app.appStore.set({ instances: [{ name: "api-server", status: "running", display_name: "Gateway" }, { name: "qa-bot", status: "running" }] });
+    await mount(); await settle(4);
+    const heads = p.root.querySelectorAll(".n-group-head a");
+    expect(heads.map((a: any) => [a.textContent, a.getAttribute("title"), a.getAttribute("href")])).toEqual([
+      ["Gateway", "api-server", "/ui/chat/api-server"], ["qa-bot", "qa-bot", "/ui/chat/qa-bot"], ["docs-writer", "docs-writer", "/ui/chat/docs-writer"]]);
+  });
+
   it("grouped by instance in the server's order, in the server's words, each with Open; the store's next list is what shows", async () => {
     await mount(); await settle(4);
     expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["api-server", "qa-bot", "docs-writer"]);

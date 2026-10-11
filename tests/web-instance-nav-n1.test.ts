@@ -88,8 +88,10 @@ describe("one list on every page", () => {
 
   it("live state on every page: working, needs you, stopped and crashed dots, and the needs-you badge", async () => {
     const pg = await app("/view/web-dev");
-    const dot = (name: string) => pg.root.querySelectorAll("#instanceList a.inst").find((a: any) => a.querySelector(".inst-name").textContent === name)!.querySelector(".dot").getAttribute("class");
-    expect(["web-dev", "api-server", "docs-writer", "qa-bot", "room-1"].map(dot)).toEqual(["dot busy", "dot warn", "dot ok", "dot off", "dot bad"]);
+    // #1630: the dot sits on the avatar, with its state as its label (not colour alone).
+    const dotOf = (name: string) => pg.root.querySelectorAll("#instanceList a.inst").find((a: any) => a.getAttribute("href").endsWith(`/${name}`))!.querySelector(".dot");
+    expect(["web-dev", "api-server", "docs-writer", "qa-bot", "room-1"].map(n => dotOf(n).getAttribute("class"))).toEqual(["av-dot dot busy", "av-dot dot warn", "av-dot dot ok", "av-dot dot off", "av-dot dot bad"]);
+    expect(["web-dev", "api-server", "docs-writer", "qa-bot", "room-1"].map(n => dotOf(n).getAttribute("aria-label"))).toEqual(["working", "needs you", "idle", "stopped", "crashed"]);
     expect(pg.root.querySelectorAll("#instanceList .badge-await").length).toBe(1);
   });
 
@@ -162,8 +164,9 @@ describe("the identity the status frame carries (one rule with /api/profiles)", 
     for (const path of ["/ui/chat/web-dev", "/view/web-dev", "/ui/fleet"]) {
       await go(path);
       const row = pg.root.querySelector("#instanceList a.inst") as any;
-      expect([rowNames(pg), row?.querySelector(".inst-alias")?.textContent, row?.getAttribute("title")?.split("\n").at(-1)], path)
-        .toEqual([["docs-writer"], "Sentinel", "Writes the release notes"]);
+      // #1630: called by its display name, the instance name on hover.
+      expect([rowNames(pg), row?.querySelector(".inst-alias")?.textContent, row?.getAttribute("title")?.split("\n").slice(0, 2), row?.getAttribute("title")?.split("\n").at(-1)], path)
+        .toEqual([["Sentinel"], undefined, ["Sentinel", "(docs-writer)"], "Writes the release notes"]);
     }
   });
 });

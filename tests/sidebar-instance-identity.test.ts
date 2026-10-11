@@ -67,13 +67,12 @@ const viewPayload = {
 const awaiting = (name: string, summary?: string) => ({ ...dashboardPayload, name, state: "awaiting_input", ...(summary === undefined ? {} : { interaction_summary: summary }) });
 
 describe("sidebar instance identity", () => {
-  it("renders raw dashboard identity first and display_name as the optional subtitle", async () => {
+  it("#1630: the row is called by its display name; the instance name is on hover (and on the row only for a shared display name)", async () => {
     const pg = await sidebar([dashboardPayload]);
     const [row] = rows(pg);
-    expect(row!.querySelector(".inst-name")!.textContent).toBe("classic-rd1web-miraculous-agent");
-    expect(row!.querySelector(".inst-alias")!.textContent).toBe("Mira｜奇蹟網頁企劃");
-    const text = row!.textContent;
-    expect(text.indexOf("classic-rd1web-miraculous-agent")).toBeLessThan(text.indexOf("Mira｜奇蹟網頁企劃"));
+    expect(row!.querySelector(".inst-name")!.textContent).toBe("Mira｜奇蹟網頁企劃");
+    expect(row!.querySelector(".inst-alias")).toBeNull();
+    expect(row!.getAttribute("title")!.split("\n").slice(0, 2)).toEqual(["Mira｜奇蹟網頁企劃", "(classic-rd1web-miraculous-agent)"]);
   });
 
   it("an instance waiting on a terminal prompt gets a 'needs you' badge on the second line, its summary as the tooltip (#1307)", async () => {
@@ -152,13 +151,12 @@ describe("sidebar instance identity", () => {
     expect(row!.getAttribute("title")!.startsWith(hostile)).toBe(true);
   });
 
-  it("the View roster renders raw identity first and display_name as the optional subtitle", async () => {
+  it("#1630: the View roster too: the display name, the instance name on hover", async () => {
     const pg = await viewSidebar([viewPayload]);
     const [row] = pg.root.querySelectorAll("a.v-inst");
-    expect(row!.querySelector(".inst-name")!.textContent).toBe("classic-rd1web-miraculous-agent");
-    expect(row!.querySelector(".inst-alias")!.textContent).toBe("Mira｜奇蹟網頁企劃");
-    const text = row!.textContent;
-    expect(text.indexOf("classic-rd1web-miraculous-agent")).toBeLessThan(text.indexOf("Mira｜奇蹟網頁企劃"));
+    expect(row!.querySelector(".inst-name")!.textContent).toBe("Mira｜奇蹟網頁企劃");
+    expect(row!.querySelector(".inst-alias")).toBeNull();
+    expect(row!.getAttribute("title")!).toContain("(classic-rd1web-miraculous-agent)");
   });
 
   it("the View roster renders no subtitle when display_name is missing or equals the raw identity", async () => {

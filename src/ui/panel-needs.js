@@ -15,6 +15,7 @@ import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
+import { labelOf } from "/assets/instance-nav.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -107,7 +108,9 @@ export function groupNeeds(items) {
 
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { needs, chatOwner: owner } = useStore(appStore);
+  const { needs, chatOwner: owner, instances } = useStore(appStore);
+  // #1630: a group is headed by the instance's display name (its name on hover), as the sidebar shows it.
+  const nameFor = (instance) => { const it = (instances || []).find((i) => i && i.name === instance); return it ? labelOf(it) : instance; };
   const items = Array.isArray(needs) ? needs : [];
   const [, tick] = useState(0);
   useEffect(() => { setTitle(tn("title")); }, [navKey]);
@@ -122,7 +125,7 @@ export function NeedsPanel({ navKey }) {
     <div class="panel-body"><div class="col">
       ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn("emptyHint")} />`
         : groups.map((g) => html`<section key=${g.instance} class="n-group" aria-label=${g.instance}>
-          <h2 class="n-group-head"><a href=${chatPath(g.instance)}>${g.instance}</a></h2>
+          <h2 class="n-group-head"><a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a></h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`)}
       <${NotifyToggle} />
