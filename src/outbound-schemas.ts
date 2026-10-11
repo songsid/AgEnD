@@ -13,9 +13,17 @@ const NonEmptyString = z.string().min(1);
 
 const MessageFormat = z.enum(["text", "markdown"]);
 
+// Internal routing metadata, filled by the daemon/fleet rather than the model.
+// Only channel-addressing schemas accept it; mcp-tools omits it from listings.
+const ChannelAddressFields = {
+  chat_id: z.string().optional(),
+  thread_id: z.string().optional(),
+};
+
 // ── Channel interaction (handled outside outbound-handlers.ts) ──────────
 
 export const ReplyArgs = z.object({
+  ...ChannelAddressFields,
   text: z.string().optional()
     .describe("The message. Required unless you send stickers; with stickers it may be omitted."),
   reply_to: z.string().optional()
@@ -33,17 +41,20 @@ export const ReplyArgs = z.object({
 });
 
 export const ReactArgs = z.object({
+  ...ChannelAddressFields,
   message_id: NonEmptyString,
   emoji: NonEmptyString,
 });
 
 export const EditMessageArgs = z.object({
+  ...ChannelAddressFields,
   message_id: NonEmptyString,
   text: NonEmptyString,
   format: MessageFormat.optional().describe("Currently ignored: an edit is sent without a rendering mode."),
 });
 
 export const DownloadAttachmentArgs = z.object({
+  ...ChannelAddressFields,
   file_id: NonEmptyString.describe("The attachment_file_id from inbound meta"),
 });
 
