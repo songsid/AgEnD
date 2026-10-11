@@ -125,11 +125,11 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     expect(menu).toMatch(/\(UTC\+8\)/);
   });
 
-  it("Discord local: the code follows alone as plain text (long-press → Copy Text)", async () => {
+  it("Discord local: the code follows alone as inline code (#1606: a tap copies it)", async () => {
     const h = rig("discord"); await h.slash(); await h.click("local");
     const calls = h.adapter.sendDirect.mock.calls;
     expect(calls).toHaveLength(2);
-    expect(calls[1]).toEqual(["admin", codeOf(calls[0]![1]), { disablePreview: true }]);
+    expect(calls[1]).toEqual(["admin", `\`${codeOf(calls[0]![1])}\``, { disablePreview: true }]);   // #1606: inline code
   });
 
   it("Discord ephemeral fallback: the code follows by the same route, a second private reply", async () => {
@@ -138,7 +138,7 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     await h.click("local", { respondPrivate: privateReply });
     expect(privateReply).toHaveBeenCalledTimes(2);
     expect(privateReply.mock.calls[0]![0]).toContain(t("dashboard.code_next"));
-    expect(privateReply.mock.calls[1]![0]).toBe(codeOf(privateReply.mock.calls[0]![0]));
+    expect(privateReply.mock.calls[1]![0]).toBe(`\`${codeOf(privateReply.mock.calls[0]![0])}\``);
   });
 
   it("a code-only follow-up that fails changes nothing: the delivery succeeds and the code still works", async () => {
@@ -158,7 +158,7 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     const h = rig("discord"); await h.slash("admin", "T1");
     expect(h.adapter.sendDirect.mock.calls).toHaveLength(2);
     expect(h.adapter.sendDirect.mock.calls[0]![1]).toContain(t("dashboard.code_next"));
-    expect(h.adapter.sendDirect.mock.calls[1]![1]).toBe(codeOf(h.adapter.sendDirect.mock.calls[0]![1]));
+    expect(h.adapter.sendDirect.mock.calls[1]![1]).toBe(`\`${codeOf(h.adapter.sendDirect.mock.calls[0]![1])}\``);
 
     const g = rig("discord"); g.adapter.sendDirect.mockRejectedValue(Error("DM disabled")); await g.slash("admin", "T1");
     expect(g.respond).toHaveBeenCalledTimes(1);
@@ -173,7 +173,7 @@ describe("#1586 review (Prism r1): the follow-up's wait never outlives the owner
     let release!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });
     h.adapter.sendDirect.mockImplementation(async (user: string, text: string) => {
-      if (/^<code>|^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(text)) await held;
+      if (/^<code>|^`?[A-Z0-9]{4}-[A-Z0-9]{4}`?$/.test(text)) await held;
       return { chatId: user, messageId: "dm" };
     });
     return () => release();
@@ -203,7 +203,7 @@ describe("#1586 review (Prism r1): the follow-up's wait never outlives the owner
   it("a follow-up that never answers, with the clock already past the delivery's budget: the DM stands and is reported sent", async () => {
     const h = rig("discord");
     h.adapter.sendDirect.mockImplementation(async (user: string, text: string) => {
-      if (/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(text)) return new Promise<never>(() => {});
+      if (/^`?[A-Z0-9]{4}-[A-Z0-9]{4}`?$/.test(text)) return new Promise<never>(() => {});
       return { chatId: user, messageId: "dm" };
     });
     const slash = h.slash("admin", "T1"); await flush();
@@ -211,6 +211,29 @@ describe("#1586 review (Prism r1): the follow-up's wait never outlives the owner
     await vi.advanceTimersByTimeAsync(5_000); await slash; await flush();
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(true);
     expect(h.respond).toHaveBeenLastCalledWith(t("dashboard.private_sent_dm"));
+  });
+});
+
+describe("#1606 Discord: the code-only message is inline code, alone; Telegram stays <code>", () => {
+  it("every caller: the menu (local), /dashboard outside General, and the ephemeral fallback all send exactly `CODE`", async () => {
+    const menu = rig("discord"); await menu.slash(); await menu.click("local");
+    expect(menu.adapter.sendDirect.mock.calls[1]![1]).toMatch(/^`[A-Z2-7]{4}-[A-Z2-7]{4}`$/);
+    const outside = rig("discord"); await outside.slash("admin", "T1");
+    expect(outside.adapter.sendDirect.mock.calls[1]![1]).toMatch(/^`[A-Z2-7]{4}-[A-Z2-7]{4}`$/);
+    // /web is /dashboard under a shorter name (#1569): the same path, the same follow-up.
+    const web = rig("discord");
+    await web.s.dispatchSlash({ command: "web", guildId: "G", channelId: "T1", userId: "admin", username: "admin", options: {}, respond: web.respond, respondButtons: web.respondButtons }, "owner", web.adapter);
+    expect(web.adapter.sendDirect.mock.calls[1]![1]).toMatch(/^`[A-Z2-7]{4}-[A-Z2-7]{4}`$/);
+    const tg = rig(); await tg.typed(); await tg.click("local");
+    expect(tg.adapter.sendDirect.mock.calls[1]![1]).toMatch(/^<code>[A-Z2-7]{4}-[A-Z2-7]{4}<\/code>$/);
+  });
+
+  it("a backtick can never be in a code: the alphabet is A–Z, 2–7 and the dash (and one would go bare, not break the markdown)", async () => {
+    const { generateOneTimeCode, formatOneTimeCode } = await import("../src/auth/one-time-code.js");
+    for (let n = 0; n < 2000; n++) expect(formatOneTimeCode(generateOneTimeCode())).toMatch(/^[A-Z2-7]{4}-[A-Z2-7]{4}$/);
+    const sent: string[] = [];
+    await (rig("discord").s).sendCodeAlone(async (body: string) => { sent.push(body); }, "discord", "AB`C-DEFG");
+    expect(sent).toEqual(["AB`C-DEFG"]);
   });
 });
 
