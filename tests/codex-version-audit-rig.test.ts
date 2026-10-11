@@ -135,12 +135,20 @@ exit 0
       return child;
     };
     const a = fake(rootA), b = fake(rootB);
-    await new Promise(r => setTimeout(r, 300));
+    // #1618: not a fixed sleep — on a loaded runner `exec -a` may not have applied yet when the kill scans. Both fakes
+    // are what the scan looks for (their cmdline names the app-server) before it runs; b has gone before a is checked.
+    // Bounded, on the monotonic clock.
+    const cmdline = (pid: number | undefined) => { try { return readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch { return ""; } };
+    const until = async (cond: () => boolean, ms = 10_000) => {
+      const end = performance.now() + ms;
+      while (!cond()) { if (performance.now() > end) return false; await new Promise(r => setTimeout(r, 20)); }
+      return true;
+    };
+    expect(await until(() => [a, b].every(c => cmdline(c.pid).startsWith("codex-app-server-fake"))), "both fakes are running as the app-server").toBe(true);
     const out = rig(rootB, ["kill"]);
     expect(out.stdout).toContain(`kill ${b.pid}`);
     expect(out.stdout).not.toContain(`kill ${a.pid}`);
-    await new Promise(r => setTimeout(r, 300));
-    expect(b.exitCode !== null || b.signalCode !== null).toBe(true);
+    expect(await until(() => b.exitCode !== null || b.signalCode !== null), "b exited").toBe(true);
     expect(a.exitCode === null && a.signalCode === null).toBe(true);
   });
 
