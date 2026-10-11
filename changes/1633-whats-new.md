@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Agents: after an upgrade, each one is told once what is new for it (#1633).** An agent whose session started under an older AgEnD may not know new tool parameters: Claude Code keeps the tool descriptions it loaded earlier in its conversation, so it never saw `reply`'s `buttons` or `stickers`. Now each existing instance gets one short notice, just before the next message it receives (never in the middle of a turn, never to an instance nobody writes to). It lists the agent-facing changes with their exact parameter names, and says to reload a tool's description that looks older. Each item is sent once per instance, and the record of what was sent survives restarts. New instances get nothing, since they already start with the current tools. A version with nothing new for agents sends nothing.
