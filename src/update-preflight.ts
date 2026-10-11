@@ -173,7 +173,7 @@ function refusal(m: TargetManifest, why: string, installable: boolean): string {
 // npm judges `engines.node` with semver. This is the same grammar — `||` alternatives of space-separated comparators
 // (`<`, `<=`, `>`, `>=`, `=`, `~`, `^`, x-ranges with x/X/* or missing parts) and hyphen ranges — for a stable version
 // (Node's own versions have no prerelease). Anything outside it (prerelease tags, `~>`, leading zeros, an empty `||`
-// alternative, ...) is null: "cannot tell", never a guess.
+// alternative, a version part past Number.MAX_SAFE_INTEGER, ...) is null: "cannot tell", never a guess.
 
 type Triple = [number, number, number];
 interface Comparator { op: "<" | "<=" | ">" | ">="; v: Triple }
@@ -243,6 +243,7 @@ export function satisfiesNodeRange(version: string, range: string): boolean | nu
   const vm = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());
   if (!vm) return null;
   const v: Triple = [Number(vm[1]), Number(vm[2]), Number(vm[3])];
+  if (v.some(n => !Number.isSafeInteger(n))) return null;
   const alternatives = range.trim().split("||").map(a => a.trim());
   if (alternatives.length === 1 && alternatives[0] === "") return true;
   let any = false;
@@ -260,7 +261,9 @@ export function satisfiesNodeRange(version: string, range: string): boolean | nu
         set.push(...c);
       }
     }
-    if (!set) return null;
+    // semver refuses any version part above Number.MAX_SAFE_INTEGER — written, or produced by expanding x/~/^/hyphen
+    // upper bounds (`^9007199254740991` → <9007199254740992.0.0) — so such a range has no npm meaning: cannot tell.
+    if (!set || set.some(c => c.v.some(n => !Number.isSafeInteger(n)))) return null;
     if (set.every(c => {
       const d = compare(v, c.v);
       return c.op === "<" ? d < 0 : c.op === "<=" ? d <= 0 : c.op === ">" ? d > 0 : d >= 0;

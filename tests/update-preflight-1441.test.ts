@@ -140,7 +140,27 @@ describe("satisfiesNodeRange: npm's range semantics for a stable Node (golden ro
       expect(satisfiesNodeRange("22.23.3", range), range).toBeNull();
     }
     expect(satisfiesNodeRange("23.0.0-pre", ENGINES)).toBeNull();
+    expect(satisfiesNodeRange("9007199254740992.0.0", ">=22")).toBeNull();
     expect(satisfiesNodeRange("22", ENGINES)).toBeNull();
+  });
+});
+
+describe("satisfiesNodeRange: version parts past Number.MAX_SAFE_INTEGER have no npm meaning (#1623 r2 review)", () => {
+  // semver 7.7.4 validRange() is null for all of these: a written part past the limit, or an upper bound that x/~/^/
+  // hyphen expansion pushes past it.
+  const invalid = ["<9007199254740992", ">=9007199254740992", "<=9007199254740991", "^9007199254740991", "~9007199254740991",
+    "9007199254740991.x", ">9007199254740991", "22 - 9007199254740991", "22.9007199254740992", "^22.0.9007199254740992", "99999999999999999999"];
+  it.each(invalid)("%s: null, and the update verdict is unknown — never system, never refuse", range => {
+    expect(satisfiesNodeRange("22.23.3", range)).toBeNull();
+    expect(evaluateUpdateTarget({ manifest: target({ engines: range, runtimePins: {} }), host: muslX64, system: onPath("22.23.3") }).kind).toBe("unknown");
+    expect(evaluateUpdateTarget({ manifest: target({ engines: range }), host: glibcX64, system: onPath("22.23.3") }).kind).toBe("unknown");
+  });
+  it("controls: the largest safe parts still evaluate (semver agrees)", () => {
+    expect(satisfiesNodeRange("22.23.3", "<9007199254740991")).toBe(true);
+    expect(satisfiesNodeRange("22.23.3", ">=9007199254740991")).toBe(false);
+    expect(satisfiesNodeRange("22.23.3", "<=9007199254740990")).toBe(true);
+    expect(satisfiesNodeRange("22.23.3", "^9007199254740990")).toBe(false);
+    expect(satisfiesNodeRange("22.23.3", "~22.9007199254740990")).toBe(false);
   });
 });
 
