@@ -957,3 +957,5 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   .cmd-palette .cmd-desc { white-space: normal; flex-basis: 100%; }
   .cmd-choices .btn, .quick-actions .btn { min-height: var(--tap); }
 }
+/* #1630: a Discord server emoji in a chat message, the size of the text around it. */
+.md img.emoji { display: inline-block; width: 1.375em; height: 1.375em; object-fit: contain; vertical-align: -0.3em; margin: 0 0.05em; }

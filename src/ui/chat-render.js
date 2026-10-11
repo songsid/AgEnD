@@ -51,11 +51,21 @@
     return s;
   }
 
+  // #1630: a Discord server emoji, `<:name:id>` / `<a:name:id>` — escaped by now — drawn as its picture. Only an id the
+  // page knows (the fleet's servers: /ui/emojis) and only from the dashboard's own route; the src is built from the
+  // matched digits, the name (word characters only) goes into alt/title. An unknown id stays the literal text.
+  var EMOJI_RE = /&lt;(a?):([A-Za-z0-9_]{2,32}):(\d{15,25})&gt;/g;
+  function emojiImg(id, name) {
+    return '<img class="emoji" src="/ui/img/emoji/' + id + '" alt=":' + name + ':" title=":' + name + ':" decoding="async">';
+  }
+
   /** Inline Markdown over ALREADY-ESCAPED text. */
   function inline(escaped, store) {
     var s = escaped;
     // `code` first: nothing inside it is Markdown.
     s = s.replace(/`([^`\n]+)`/g, function (_m, code) { return stash(store, "<code>" + code + "</code>"); });
+    var known = store.emojis;
+    if (known) s = s.replace(EMOJI_RE, function (m, _a, name, id) { return known(id) ? stash(store, emojiImg(id, name)) : m; });
     // [label](url)
     s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, function (m, label, url) {
       var href = safeHref(url);
@@ -273,6 +283,8 @@
     var cards = !!(opts && opts.htmlCards);
     var src = String(text == null ? "" : text).replace(/\r\n?/g, "\n").replace(/\u0000/g, "");   // \u0000 is the placeholder mark
     var store = [];
+    // #1630: which server emoji ids the page knows (a function id → boolean); without it every `<:name:id>` stays text.
+    store.emojis = opts && typeof opts.emojis === "function" ? opts.emojis : null;
     var html = "";
     var re = new RegExp(FENCE_RE.source, "g");
     var last = 0;

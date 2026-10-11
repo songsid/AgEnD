@@ -611,7 +611,8 @@ describe("chat-thread.js renders message text only through the renderer", () => 
     const thread = readFileSync(join(process.cwd(), "src", "ui", "chat-thread.js"), "utf8");
     expect(thread.match(/^import .*$/m)?.[0]).toContain("./chat-render.js");
     // HTML cards (#1306) only for a message the server marked agent — never from sender or text.
-    expect(thread).toContain('R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)');
+    // #1630: the same rule, written as a flag; the emoji lookup is the page's own (never message text).
+    expect(thread).toContain('R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis })');
     for (const file of ["chat-thread.js", "chat-store.js", "panel-chat.js"]) {
       const src = readFileSync(join(process.cwd(), "src", "ui", file), "utf8");
       expect(src, file).not.toMatch(/innerHTML\s*=\s*[^;]*x\.text(?!\))/);

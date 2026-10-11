@@ -48,9 +48,11 @@ describe("which fences get a card (§6.1)", () => {
   });
   it("the chat asks for cards only for role \"agent\" — from the server, never sender or text", () => {
     const THREAD = readFileSync(join(UI, "chat-thread.js"), "utf8");
-    expect(THREAD).toContain('R().renderMarkdown(x.text, x.role === "agent" ? { htmlCards: true } : undefined)');
+    // #1630: the same rule, written as a flag; the emoji lookup is the page's own (never message text).
+    expect(THREAD).toContain('R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis })');
     const code = (src: string) => src.split("\n").filter(l => !/^\s*(\*|\/\/)/.test(l));
-    const sites = uiFiles().flatMap(f => code(readFileSync(f, "utf8")).filter(l => /htmlCards:\s*true/.test(l)).map(() => f.slice(UI.length + 1)));
+    // Any place that can turn cards on (literally, or from the server's role): still only the thread's one line.
+    const sites = uiFiles().flatMap(f => code(readFileSync(f, "utf8")).filter(l => /htmlCards:\s*(true|x\.role === "agent")/.test(l)).map(() => f.slice(UI.length + 1)));
     expect(sites, "one call site").toEqual(["chat-thread.js"]);
   });
 });
