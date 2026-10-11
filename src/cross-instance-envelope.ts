@@ -30,6 +30,15 @@ export function isRedundantTaskSummary(content: string, taskSummary: string | un
   return body.length > 0 && body.startsWith(summary);
 }
 
+/**
+ * #1650 (#1653 review): one shell argument that keeps `value` exactly — POSIX single quotes, a quote inside written as
+ * '\'' — so a correlation id like "review batch 7" or "review-$task" reaches agend-agent as it was sent. A plain value
+ * (letters, digits, - _ . : / @ % + = ,) stays bare, so the usual `cid-…` reads as before.
+ */
+export function shellArg(value: string): string {
+  return /^[A-Za-z0-9_.:\/@%+=,-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 /** How the receiving agent talks to the fleet: MCP tools, or `agend-agent` commands (agent_mode: cli, no MCP server). */
 export type AgentMode = "mcp" | "cli";
 
@@ -40,9 +49,9 @@ export type AgentMode = "mcp" | "cli";
 export function crossInstanceReplyFooter(meta: Record<string, string>, mode: AgentMode = "mcp"): string {
   const required = meta.requires_reply === "true";
   if (mode === "cli") {
-    const from = meta.from_instance || "SENDER";
+    const from = shellArg(meta.from_instance || "SENDER");
     return required
-      ? `\n(A reply IS required: agend-agent report ${from} "…" ${meta.correlation_id || "CORRELATION_ID"} — or agend-agent send ${from} "…". Not direct text.)`
+      ? `\n(A reply IS required: agend-agent report ${from} "…" ${shellArg(meta.correlation_id || "CORRELATION_ID")} — or agend-agent send ${from} "…". Not direct text.)`
       : `\n(If you need to reply, use agend-agent send ${from} "…", NOT direct text. If there is nothing to add, you may stay silent.)`;
   }
   return required

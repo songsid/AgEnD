@@ -9,7 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { crossInstanceReplyFooter, formatCrossInstanceInboundMessage } from "../src/cross-instance-envelope.js";
+import { crossInstanceReplyFooter, formatCrossInstanceInboundMessage, shellArg } from "../src/cross-instance-envelope.js";
+import { execFileSync } from "node:child_process";
 import { Daemon } from "../src/daemon.js";
 import { outboundHandlers, setCrossInstanceRetryForTests } from "../src/outbound-handlers.js";
 
@@ -29,6 +30,28 @@ describe("the cross-instance footer", () => {
       .toBe('\n(If you need to reply, use agend-agent send lead "…", NOT direct text. If there is nothing to add, you may stay silent.)');
     const cli = formatCrossInstanceInboundMessage("hi", { from_instance: "lead", requires_reply: "true", correlation_id: "cid-7" }, "cli");
     expect([cli.includes("report_result"), cli.includes("send_to_instance"), cli.includes("agend-agent report lead")]).toEqual([false, false, true]);
+  });
+});
+
+describe("the CLI footer's arguments survive a shell (#1653 review)", () => {
+  /** What /bin/sh makes of a command line: its words, one per line. */
+  const words = (cmdline: string) => execFileSync("/bin/sh", ["-c", `set -- ${cmdline}; printf '%s\\n' "$@"`], { encoding: "utf8" }).split("\n").slice(0, -1);
+  it("shellArg keeps any value as one argument — spaces, $, backquotes, command substitution, quotes", () => {
+    for (const v of ["cid-1", "review batch 7", "review-$task", "a'b", "$(touch /tmp/agend-1653-x)", "`id`", "two  spaces", "q\"d", "it's \"x\""]) {
+      expect(words(shellArg(v)), v).toEqual([v]);
+    }
+    expect([shellArg("cid-1791734461429-bnqfpp"), shellArg("lead")]).toEqual(["cid-1791734461429-bnqfpp", "lead"]);   // plain values read as before
+  });
+  it("the report command the footer suggests gives agend-agent the sender and the correlation id exactly", () => {
+    for (const cid of ["review batch 7", "review-$task", "cid-control-1"]) {
+      const footer = crossInstanceReplyFooter({ from_instance: "lead", requires_reply: "true", correlation_id: cid }, "cli");
+      const cmd = /agend-agent report (.*) — or/.exec(footer)![1]!;
+      expect(words(cmd), cid).toEqual(["lead", "…", cid]);
+    }
+    // The sender too (an instance name is plain today; the footer does not rely on that).
+    const odd = crossInstanceReplyFooter({ from_instance: "odd $name", requires_reply: "true", correlation_id: "c1" }, "cli");
+    expect(words(/agend-agent report (.*) — or/.exec(odd)![1]!)).toEqual(["odd $name", "…", "c1"]);
+    expect(words(/agend-agent send (.*) "…"\. Not/.exec(odd)![1]!)).toEqual(["odd $name"]);
   });
 });
 
