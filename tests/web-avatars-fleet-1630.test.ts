@@ -68,7 +68,7 @@ function get(fm: any, path: string, opts: { token?: boolean } = {}) {
   return new Promise<{ status: number; type?: string; body: Buffer; headers: Record<string, unknown> }>(resolve => {
     let status = 0; const headers: Record<string, unknown> = {};
     const res: any = { headersSent: false, destroyed: false, setHeader(k: string, v: unknown) { headers[k.toLowerCase()] = v; },
-      writeHead(code: number, h?: Record<string, unknown>) { status = code; this.headersSent = true; for (const [k, v] of Object.entries(h ?? {})) headers[k.toLowerCase()] = v; },
+      writeHead(code: number, h?: Record<string, unknown>) { status = code; res.headersSent = true; for (const [k, v] of Object.entries(h ?? {})) headers[k.toLowerCase()] = v; },
       end(b?: string | Buffer) { resolve({ status, type: headers["content-type"] as string | undefined, body: Buffer.from(b ?? ""), headers }); } } as unknown as ServerResponse;
     const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: opts.token === false ? {} : { "x-agend-token": TOKEN }, destroy() {}, resume() {} }) as unknown as IncomingMessage;
     const ctx = { webToken: TOKEN, sseClients: new Set(), fleetConfig: fm.fleetConfig, logger: { info() {}, debug() {}, warn() {}, error() {} }, getUiStatus: () => ({}),
