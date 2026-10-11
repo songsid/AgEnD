@@ -206,10 +206,10 @@ describe("Discord /dashboard: the ephemeral menu is answered and edited through 
     expect(menu.content).toContain(t("dashboard.public_risk"));
     expect(buttons(menu)).toBeGreaterThan(0);
     await h.click(menu, "local"); await h.settle();
-    // #1586: the sign-in DM, then the code alone (Discord: long-press → Copy Text gives exactly the code).
+    // #1586: the sign-in DM, then the code alone — #1606: as inline code, so a phone copies it on a tap.
     expect(h.discord.dms()).toHaveLength(2);
     expect(h.discord.dms()[0].content).toMatch(CODE);
-    expect(h.discord.dms()[1].content).toBe(CODE.exec(h.discord.dms()[0].content)![0]);
+    expect(h.discord.dms()[1].content).toBe(`\`${CODE.exec(h.discord.dms()[0].content)![0]}\``);
     expect(menu.content).toBe(t("dashboard.private_sent_dm"));
     expect(buttons(menu), "the spent buttons are gone").toBe(0);
     expect(h.discord.channelFetches, "an ephemeral message is never looked up in a channel (10008 + a scan)").toBe(0);

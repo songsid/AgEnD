@@ -21,7 +21,7 @@ The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It 
 The dashboard signs in with a **one-time code**, never with a link that carries a credential.
 
 1. Get a code, either way:
-   - in General, use **`/dashboard`** (fleet admins only; Discord native slash). Choose local sign-in or a temporary public link. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (Telegram: tap it; Discord: long-press → Copy Text). A public link's expiry is shown in the fleet's time zone, with its UTC offset.
+   - in General, use **`/dashboard`** (fleet admins only; Discord native slash). Choose local sign-in or a temporary public link. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (tap it to copy: Telegram shows it as code, Discord as inline code). A public link's expiry is shown in the fleet's time zone, with its UTC offset.
    - on the host, run **`agend web`**. It prints the code and opens the sign-in page. `agend web --code` only prints them.
 2. Open the sign-in page and type the 8-character code (`ABCD-EFGH`, with or without the dash, in any case).
 
