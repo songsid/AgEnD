@@ -96,10 +96,11 @@ export function resolveInstanceIdentity(input: {
   };
 }
 /** Profiles by instance, for a status read: only when profiles.db already exists — a status read never creates it. */
-export function profileIdentities(dataDir: string): Map<string, Pick<ProfileRow, "display_name" | "description" | "role">> {
+export function profileIdentities(dataDir: string): Map<string, Pick<ProfileRow, "display_name" | "description" | "role" | "avatar_path">> {
   if (!existsSync(join(dataDir, "profiles.db"))) return new Map();
   try {
-    const rows = profileDb(dataDir).prepare("SELECT instance_name, display_name, description, role FROM instance_profile").all() as ProfileRow[];
+    // avatar_path: #1630 — the picture uploaded in View stands for the instance first.
+    const rows = profileDb(dataDir).prepare("SELECT instance_name, display_name, description, role, avatar_path FROM instance_profile").all() as ProfileRow[];
     return new Map(rows.map(r => [r.instance_name, r]));
   } catch { return new Map(); }
 }

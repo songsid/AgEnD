@@ -154,6 +154,13 @@ export interface ChannelAdapter extends EventEmitter {
    */
   fetchStickerPreview?(sticker: StickerInfo): Promise<StickerPreview | null>;
   /**
+   * #1630: this bot's own avatar, downloaded here (a Telegram file URL carries the token, which must not leave the
+   * adapter). null when the bot has none set — a platform default says nothing about which bot it is.
+   */
+  fetchBotAvatar?(): Promise<StickerPreview | null>;
+  /** #1630: this bot's colour (its highest coloured role) in the server `channelId` belongs to, or null for none. */
+  botAccentColor?(channelId?: string): Promise<string | null>;
+  /**
    * Send stickers, after `text` when there is any (#1226). Discord: on the same
    * message as the text's last chunk (`sticker_ids`); Telegram: the text, then
    * one sendSticker per sticker, in order. Every send is awaited — a sticker

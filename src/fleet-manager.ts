@@ -175,6 +175,9 @@ import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtons
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { downloadStickerImage } from "./channel/sticker-download.js";
+import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
+import { accentColor, avatarFor, ownBotConnections, type AvatarDescriptor } from "./instance-avatar.js";
 import { envFileKeys } from "./token-env-name.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
@@ -9889,6 +9892,94 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private guildEmojiCache = new Map<string, { fetched_at: number; emojis: GuildEmoji[] }>();
   private guildEmojiFetches = new Map<string, Promise<{ fetched_at: number; emojis: GuildEmoji[] }>>();
 
+  // ── #1630: what stands for an instance in the web app, and Discord server emoji in web chat ──
+  private webImageCaches: { avatars: WebImageCache; emoji: WebImageCache } | null = null;
+  private webImageCache(kind: "avatars" | "emoji"): WebImageCache {
+    const onError = (key: string, err: unknown) => this.logger.debug({ err: (err as Error)?.message, key }, "web image fetch failed (kept what was cached)");
+    this.webImageCaches ??= {
+      avatars: new WebImageCache({ dir: join(this.dataDir, "cache", "avatars"), onError }),
+      emoji: new WebImageCache({ dir: join(this.dataDir, "cache", "emoji"), onError }),
+    };
+    return this.webImageCaches[kind];
+  }
+  /** instance → the connection that is its own bot (not the primary, answering for it alone). */
+  private ownBots(): Map<string, string> {
+    const instances = this.fleetConfig?.instances ?? {};
+    const assignments: Array<readonly [string, string | undefined]> = Object.keys(instances).map(n => [n, this.getInstanceAdapterId(n)] as const);
+    for (const room of this.classicChannels?.getAll() ?? []) {
+      if (!Object.hasOwn(instances, room.instanceName)) assignments.push([room.instanceName, this.getInstanceAdapterId(room.instanceName)]);
+    }
+    return ownBotConnections(this.getPrimaryAdapterId(), assignments);
+  }
+  /** keyed `<connection>\0<channel>`: the bot's colour there, refreshed at most daily (monotonic), one read at a time. */
+  private webAccents = new Map<string, { value: string | null; until: number }>();
+  private webAccentReads = new Set<string>();
+  private webAccent(connection: string, channelId: string | undefined): string | null {
+    const adapter = this.adapters.get(connection);
+    if (!adapter?.botAccentColor) return null;
+    const key = `${connection}\0${channelId ?? ""}`, now = performance.now(), cached = this.webAccents.get(key);
+    if ((!cached || now >= cached.until) && !this.webAccentReads.has(key)) {
+      this.webAccentReads.add(key);
+      adapter.botAccentColor(channelId)
+        .then(value => { this.webAccents.set(key, { value: accentColor(value), until: performance.now() + WEB_IMAGE_MAX_AGE_MS }); },
+          () => { this.webAccents.set(key, { value: cached?.value ?? null, until: performance.now() + WEB_IMAGE_RETRY_MS }); })
+        .finally(() => this.webAccentReads.delete(key));
+    }
+    return cached?.value ?? null;
+  }
+  /** One instance's avatar and ring for the status frame. Synchronous: what is cached now; fetches run behind. */
+  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, own: Map<string, string>): { avatar: AvatarDescriptor; accent?: string } {
+    let profileVersion: string | null = null;
+    if (profileAvatar && imageMimeForFile(profileAvatar)) {
+      try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileAvatar))).mtimeMs).toString(36); } catch { /* removed */ }
+    }
+    const connection = own.get(name), adapter = connection ? this.adapters.get(connection) : undefined;
+    const bot = connection && adapter?.fetchBotAvatar
+      ? this.webImageCache("avatars").peek(`bot:${connection}`, () => adapter.fetchBotAvatar!()) : null;
+    const cfg = this.ownInstanceConfig(name);
+    const avatar = avatarFor({ name, displayName, profileVersion, bot: bot && connection ? { connection, version: bot.version } : null,
+      personaEmoji: (cfg?.status_emojis as Record<string, unknown> | undefined)?.delivered });
+    // The ring belongs to the bot's own face: only when that is what is shown.
+    const accent = !profileVersion && bot && connection
+      ? this.webAccent(connection, cfg ? (cfg.topic_id == null ? undefined : String(cfg.topic_id)) : this.classicChannels?.getChannelIdByInstance(name))
+      : null;
+    return accent ? { avatar, accent } : { avatar };
+  }
+  /** GET /ui/img/bot|avatar/<key>: what is cached, never a fetch. Only an own-bot connection, or a known instance's upload. */
+  webImage(kind: "bot" | "avatar", key: string): CachedImage | null {
+    if (kind === "bot") {
+      if (![...this.ownBots().values()].includes(key)) return null;
+      return this.webImageCache("avatars").read(`bot:${key}`);
+    }
+    const known = Object.hasOwn(this.fleetConfig?.instances ?? {}, key) || this.classicChannels?.getChannelIdByInstance(key) !== undefined;
+    if (!known) return null;
+    const file = profileIdentities(this.dataDir).get(key)?.avatar_path;
+    const mime = file ? imageMimeForFile(file) : null;
+    if (!file || !mime) return null;
+    try {
+      const path = join(this.dataDir, "avatars", basename(file));
+      return { bytes: readFileSync(path), mime, version: Math.floor(statSync(path).mtimeMs).toString(36) };
+    } catch { return null; }
+  }
+  /** GET /ui/emojis: the custom emoji of every server the fleet's Discord bots are in (the Settings picker's cache). */
+  async webEmojiList(): Promise<Array<{ id: string; name: string; animated: boolean }>> {
+    const out = new Map<string, { id: string; name: string; animated: boolean }>();
+    for (const [id, world] of this.worlds) {
+      if (world.type !== "discord") continue;
+      const listed = await this.listGuildEmojis(id);
+      if (listed.ok) for (const e of listed.emojis) if (!out.has(e.id)) out.set(e.id, { id: e.id, name: e.name, animated: e.animated });
+    }
+    return [...out.values()];
+  }
+  /** GET /ui/img/emoji/<id>: only an emoji of those servers; fetched once from Discord's CDN, then from the host cache. */
+  async webEmoji(id: string): Promise<CachedImage | null> {
+    if (!/^\d{15,25}$/.test(id)) return null;
+    const emoji = (await this.webEmojiList()).find(e => e.id === id);
+    if (!emoji) return null;
+    return this.webImageCache("emoji").get(`emoji:${id}`, () =>
+      downloadStickerImage(`https://cdn.discordapp.com/emojis/${id}.${emoji.animated ? "gif" : "png"}?size=64`, { maxBytes: WEB_IMAGE_MAX_BYTES }));
+  }
+
   /**
    * What `instanceName` may pick as its persona emoji (the `list_emojis`
    * tool): its current status set with where each value comes from, the
@@ -18724,6 +18815,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // /api/profiles (resolveInstanceIdentity) — the sidebar groups, searches and labels with it on every page.
     const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
     const profiles = profileIdentities(this.dataDir);
+    // #1630: decorative — whatever goes wrong deciding an avatar never costs the frame (every instance gets its first character).
+    let ownBots = new Map<string, string>();
+    try { ownBots = this.ownBots(); } catch (err) { this.logger.debug({ err }, "own bots unreadable (getUiStatus)"); }
 
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
@@ -18761,9 +18855,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
+      let image: { avatar: AvatarDescriptor; accent?: string };
+      try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, ownBots); }
+      catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
         name,
         display_name: identity.display_name || undefined,
+        avatar: image.avatar,
+        ...(image.accent ? { accent: image.accent } : {}),
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,

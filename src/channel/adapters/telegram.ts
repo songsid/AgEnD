@@ -1307,6 +1307,23 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    * A still picture of a sticker: a static sticker is its own picture; an animated or video one has a thumbnail,
    * when Telegram made one. Downloaded here — the file URL carries the bot token, which must not leave the adapter.
    */
+  /**
+   * #1630: this bot's own profile photo — the smallest size at least 64 px wide — downloaded here (the file URL carries
+   * the token); null when it has none.
+   */
+  async fetchBotAvatar(): Promise<StickerPreview | null> {
+    const id = this.getBotUserId();
+    if (!id) throw new Error("not started");
+    const photos = await this.bot.api.getUserProfilePhotos(Number(id), { limit: 1 });
+    const sizes = photos.photos[0];
+    if (!sizes?.length) return null;
+    const pick = [...sizes].sort((a, b) => a.width - b.width).find(p => p.width >= 64) ?? sizes[sizes.length - 1]!;
+    const file = await this.bot.api.getFile(pick.file_id);
+    if (!file.file_path) throw new Error("Telegram gave no file for this photo");
+    const token = (this.bot as unknown as { token: string }).token;
+    return downloadStickerImage(`${this.apiRoot}/file/bot${token}/${file.file_path}`, { fallbackExt: "jpg", maxBytes: 256 * 1024 });
+  }
+
   async fetchStickerPreview(sticker: StickerInfo): Promise<StickerPreview | null> {
     const fileId = sticker.format === "webp" ? sticker.id : sticker.thumbnailId;
     if (!fileId) return null;

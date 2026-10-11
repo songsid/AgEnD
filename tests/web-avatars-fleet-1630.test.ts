@@ -1,0 +1,199 @@
+/**
+ * #1630 (design: the comment on #1630), through the real FleetManager: the status frame's `avatar` / `accent` (the
+ * fallback order, the shared-bot skip, the ring only on the bot's own face), the same-origin image routes (only an own
+ * bot, a known instance's upload, an emoji of the fleet's servers), session-gated, passive, and on the public link's
+ * read-only allowlist. Fake adapters and a stubbed fetch for Discord's CDN — no platform is called; nothing forks.
+ */
+import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import Database from "better-sqlite3";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("node:child_process", async importOriginal => ({
+  ...await importOriginal<typeof import("node:child_process")>(),
+  execFile: vi.fn(() => { throw new Error("must not fork"); }), execFileSync: vi.fn(() => { throw new Error("must not fork"); }),
+  spawn: vi.fn(() => { throw new Error("must not fork"); }), spawnSync: vi.fn(() => { throw new Error("must not fork"); }),
+}));
+
+const { FleetManager } = await import("../src/fleet-manager.js");
+const { handleWebRequest } = await import("../src/web-api.js");
+const { isPassiveWebRead } = await import("../src/web-auth.js");
+const { isPublicWebRoute } = await import("../src/public-web-gateway.js");
+
+const TOKEN = "t".repeat(48);
+const dirs: string[] = [];
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+const flush = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setImmediate(r)); };
+const PNG = (n: number) => ({ bytes: Buffer.alloc(12, n), ext: "png" as const });
+
+/** A fleet: discord (primary, shared by a and b), discord-2 (solo's own bot), telegram-2 (shared by p1 and p2). */
+function fleet(opts: { soloAvatar?: () => Promise<{ bytes: Buffer; ext: "png" } | null>; accent?: string | null; persona?: Record<string, unknown> } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "agend-1630-fm-")); dirs.push(dir);
+  const fm = new FleetManager(dir) as any;
+  fm.fleetConfig = {
+    defaults: { backend: "claude-code" },
+    channels: [{ id: "discord", type: "discord" }, { id: "discord-2", type: "discord" }, { id: "telegram-2", type: "telegram" }],
+    instances: {
+      a: { working_directory: dir, display_name: "Alpha", ...(opts.persona?.a ? { status_emojis: { delivered: opts.persona.a } } : {}) },
+      b: { working_directory: dir },
+      solo: { working_directory: dir, channel_id: "discord-2", topic_id: "555" },
+      p1: { working_directory: dir, channel_id: "telegram-2" }, p2: { working_directory: dir, channel_id: "telegram-2" },
+    },
+  };
+  const calls = { avatar: 0, accent: [] as Array<string | undefined>, primaryAvatar: 0 };
+  fm.adapters.set("discord", { fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(1); }, botAccentColor: async () => "#ff0000" });
+  fm.adapters.set("discord-2", {
+    fetchBotAvatar: async () => { calls.avatar++; return opts.soloAvatar ? opts.soloAvatar() : PNG(2); },
+    botAccentColor: async (channel?: string) => { calls.accent.push(channel); return opts.accent === undefined ? "#E91E63" : opts.accent; },
+  });
+  fm.adapters.set("telegram-2", { fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(3); } });
+  fm.classicChannels = { getAll: () => [], getChannelIdByInstance: () => undefined, getBackendByInstance: () => "claude-code", getModel: () => undefined, getAdapterIdByInstance: () => undefined, getDefaults: () => ({}), isGuildAllowed: () => true };
+  vi.spyOn(fm, "getInstanceStatus").mockReturnValue("running");
+  const frame = () => Object.fromEntries((fm.getUiStatus() as { instances: Array<{ name: string; avatar: unknown; accent?: string }> }).instances.map(i => [i.name, { avatar: i.avatar, accent: i.accent }]));
+  return { dir, fm, calls, frame };
+}
+function uploadProfile(dir: string, name: string, file: string, bytes: Buffer) {
+  mkdirSync(join(dir, "avatars"), { recursive: true });
+  writeFileSync(join(dir, "avatars", file), bytes);
+  const db = new Database(join(dir, "profiles.db"));
+  db.exec(`CREATE TABLE IF NOT EXISTS instance_profile (instance_name TEXT PRIMARY KEY, display_name TEXT, avatar_path TEXT, role TEXT, description TEXT, updated_at INTEGER);`);
+  db.prepare("INSERT INTO instance_profile (instance_name, avatar_path, updated_at) VALUES (?, ?, 0)").run(name, file);
+  db.close();
+}
+/** GET through the real route, with the fleet's real methods behind it. */
+function get(fm: any, path: string, opts: { token?: boolean } = {}) {
+  return new Promise<{ status: number; type?: string; body: Buffer; headers: Record<string, unknown> }>(resolve => {
+    let status = 0; const headers: Record<string, unknown> = {};
+    const res = { headersSent: false, destroyed: false, setHeader(k: string, v: unknown) { headers[k.toLowerCase()] = v; },
+      writeHead(code: number, h?: Record<string, unknown>) { status = code; this.headersSent = true; for (const [k, v] of Object.entries(h ?? {})) headers[k.toLowerCase()] = v; },
+      end(b?: string | Buffer) { resolve({ status, type: headers["content-type"] as string | undefined, body: Buffer.from(b ?? ""), headers }); } } as unknown as ServerResponse;
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: opts.token === false ? {} : { "x-agend-token": TOKEN }, destroy() {}, resume() {} }) as unknown as IncomingMessage;
+    const ctx = { webToken: TOKEN, sseClients: new Set(), fleetConfig: fm.fleetConfig, logger: { info() {}, debug() {}, warn() {}, error() {} }, getUiStatus: () => ({}),
+      webImage: (k: "bot" | "avatar", key: string) => fm.webImage(k, key), webEmoji: (id: string) => fm.webEmoji(id), webEmojiList: () => fm.webEmojiList() };
+    expect(handleWebRequest(req, res, new URL(`http://127.0.0.1:19280${path}`), ctx as never)).toBe(true);
+  });
+}
+
+describe("the status frame: what stands for each instance", () => {
+  it("nothing cached yet: the fallbacks at once, the own bot's avatar fetched behind — then its picture, versioned", async () => {
+    const f = fleet();
+    const first = f.frame();
+    expect(first.solo).toEqual({ avatar: { kind: "initial", text: "S" }, accent: undefined });
+    await flush();
+    const second = f.frame();
+    expect(second.solo!.avatar).toEqual({ kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord-2\?v=[0-9a-z]+$/) });
+    expect(f.calls.avatar).toBe(1);
+  });
+  it("the shared bot is skipped — the primary's and a bot two instances share are never fetched or shown", async () => {
+    const f = fleet();
+    f.frame(); await flush();
+    const frame = f.frame();
+    expect([frame.a!.avatar, frame.b!.avatar, frame.p1!.avatar, frame.p2!.avatar]).toEqual([
+      { kind: "initial", text: "A" }, { kind: "initial", text: "B" }, { kind: "initial", text: "P" }, { kind: "initial", text: "P" }]);
+    expect(f.calls.primaryAvatar).toBe(0);
+  });
+  it("a bot with no avatar set falls through (to the persona emoji or the first character)", async () => {
+    const f = fleet({ soloAvatar: async () => null });
+    f.frame(); await flush();
+    expect(f.frame().solo).toEqual({ avatar: { kind: "initial", text: "S" }, accent: undefined });
+  });
+  it("a failed fetch falls back too, and keeps a picture it already had", async () => {
+    const fail = fleet({ soloAvatar: async () => { throw new Error("HTTP 500"); } });
+    fail.frame(); await flush();
+    expect(fail.frame().solo!.avatar).toEqual({ kind: "initial", text: "S" });
+  });
+  it("the persona emoji (status_emojis.delivered), then the display name's first character", () => {
+    const f = fleet({ persona: { a: "🦊" } });
+    expect(f.frame().a!.avatar).toEqual({ kind: "emoji", text: "🦊" });
+    const g = fleet({ persona: { a: "<:blob:123456789012345678>" } });
+    expect(g.frame().a!.avatar).toEqual({ kind: "emoji", src: "/ui/img/emoji/123456789012345678", alt: ":blob:" });
+  });
+  it("the picture uploaded in View comes first, before even the own bot", async () => {
+    const f = fleet();
+    uploadProfile(f.dir, "solo", "solo.png", Buffer.alloc(9, 4));
+    f.frame(); await flush();
+    expect(f.frame().solo).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/avatar\/solo\?v=/) }, accent: undefined });
+  });
+  it("the ring: the bot's colour in the instance's own channel, only on the bot's own face; none when Discord has none", async () => {
+    const f = fleet();
+    f.frame(); await flush(); f.frame(); await flush();
+    const frame = f.frame();
+    expect([frame.solo!.accent, frame.a!.accent, frame.b!.accent]).toEqual(["#e91e63", undefined, undefined]);
+    expect(f.calls.accent).toEqual(["555"]);
+    const none = fleet({ accent: null });
+    none.frame(); await flush(); none.frame(); await flush();
+    expect(none.frame().solo!.accent).toBeUndefined();
+  });
+  it("an avatar is decorative: whatever fails deciding it, the frame is still served (every instance its first character)", () => {
+    const f = fleet();
+    vi.spyOn(f.fm, "ownBots").mockImplementation(() => { throw new Error("broken connection table"); });
+    vi.spyOn(f.fm, "webIdentityImage").mockImplementation(() => { throw new Error("broken avatar"); });
+    expect(Object.values(f.frame()).map(i => i.avatar)).toEqual(["A", "B", "S", "P", "P"].map(text => ({ kind: "initial", text })));
+  });
+  it("every image in the frame is a same-origin /ui/img URL", async () => {
+    const f = fleet({ persona: { a: "<:blob:123456789012345678>" } });
+    uploadProfile(f.dir, "b", "b.webp", Buffer.alloc(9, 4));
+    f.frame(); await flush();
+    const srcs = Object.values(f.frame()).map(i => (i.avatar as { src?: string }).src).filter(Boolean);
+    expect(srcs.length).toBe(3);
+    for (const src of srcs) expect(src).toMatch(/^\/ui\/img\/(bot|avatar|emoji)\//);
+  });
+});
+
+describe("the image routes", () => {
+  it("an own bot's cached avatar is served, typed, nosniff, private; the primary, a shared bot or an unknown name: 404", async () => {
+    const f = fleet();
+    f.frame(); await flush();
+    const own = await get(f.fm, "/ui/img/bot/discord-2");
+    expect([own.status, own.type, own.body.equals(Buffer.alloc(12, 2)), own.headers["x-content-type-options"], own.headers["cache-control"]])
+      .toEqual([200, "image/png", true, "nosniff", "private, max-age=86400"]);
+    for (const k of ["discord", "telegram-2", "nope", "__proto__", "..%2F..%2Fetc"]) expect((await get(f.fm, `/ui/img/bot/${k}`)).status, k).toBe(404);
+  });
+  it("the route never fetches: before the frame asked, there is nothing to serve", async () => {
+    const f = fleet();
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(404);
+    expect(f.calls.avatar).toBe(0);
+  });
+  it("a known instance's uploaded picture; an unknown or inherited name, or no upload: 404", async () => {
+    const f = fleet();
+    uploadProfile(f.dir, "a", "a.jpg", Buffer.alloc(5, 8));
+    const ok = await get(f.fm, "/ui/img/avatar/a");
+    expect([ok.status, ok.type, ok.body.equals(Buffer.alloc(5, 8))]).toEqual([200, "image/jpeg", true]);
+    for (const k of ["b", "ghost", "constructor", "__proto__"]) expect((await get(f.fm, `/ui/img/avatar/${k}`)).status, k).toBe(404);
+  });
+  it("a server emoji of the fleet's Discord bots: fetched once from the CDN, then from the host cache; any other id: 404", async () => {
+    const f = fleet();
+    f.fm.worlds.set("discord", { type: "discord", adapter: { listGuildEmojis: async () => [{ id: "123456789012345678", name: "blob", animated: false, available: true }, { id: "223456789012345678", name: "dance", animated: true, available: true }] } });
+    const fetched: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => { fetched.push(url); return new Response(Buffer.alloc(10, 6), { status: 200, headers: { "content-type": url.includes(".gif") ? "image/gif" : "image/png" } }); }));
+    expect((await get(f.fm, "/ui/emojis")).body.toString()).toBe(JSON.stringify({ emojis: [{ id: "123456789012345678", name: "blob", animated: false }, { id: "223456789012345678", name: "dance", animated: true }] }));
+    const one = await get(f.fm, "/ui/img/emoji/123456789012345678");
+    const again = await get(f.fm, "/ui/img/emoji/123456789012345678");
+    const gif = await get(f.fm, "/ui/img/emoji/223456789012345678");
+    expect([one.status, one.type, again.status, gif.type]).toEqual([200, "image/png", 200, "image/gif"]);
+    expect(fetched).toEqual(["https://cdn.discordapp.com/emojis/123456789012345678.png?size=64", "https://cdn.discordapp.com/emojis/223456789012345678.gif?size=64"]);
+    for (const id of ["999999999999999999", "abc", "1"]) expect((await get(f.fm, `/ui/img/emoji/${id}`)).status, id).toBe(404);
+    expect(fetched.length, "an unknown id is never fetched").toBe(2);
+  });
+  it("no Discord bot: an empty emoji list", async () => {
+    const f = fleet();
+    expect((await get(f.fm, "/ui/emojis")).body.toString()).toBe('{"emojis":[]}');
+  });
+  it("session-gated: without a credential, 401 and no picture", async () => {
+    const f = fleet();
+    f.frame(); await flush();
+    for (const p of ["/ui/img/bot/discord-2", "/ui/img/emoji/123456789012345678", "/ui/emojis"]) {
+      const r = await get(f.fm, p, { token: false });
+      expect([r.status, String(r.type).startsWith("image/")], p).toEqual([401, false]);
+    }
+  });
+  it("loading a picture is not a person's activity (passive), and the public link may read them — only read", () => {
+    for (const p of ["/ui/img/bot/discord-2", "/ui/img/avatar/a", "/ui/img/emoji/1", "/ui/emojis"]) {
+      expect([isPassiveWebRead("GET", p), isPublicWebRoute("GET", p), isPublicWebRoute("POST", p)], p).toEqual([true, true, false]);
+    }
+    expect([isPassiveWebRead("GET", "/ui/img/other/x"), isPublicWebRoute("GET", "/ui/img/other/x")]).toEqual([false, false]);
+  });
+});

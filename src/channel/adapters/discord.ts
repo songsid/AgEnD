@@ -1605,6 +1605,27 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return { scope: `server ${typeof name === "string" && name ? name : guildId}`, stickers };
   }
 
+  /** #1630: this bot's own avatar (static, 64 px) from Discord's CDN, downloaded here; null when none is set. */
+  async fetchBotAvatar(): Promise<StickerPreview | null> {
+    const user = ((await this.readyClient()) as any).user;
+    if (!user) throw new Error("not logged in");
+    if (typeof user.avatar !== "string" || !user.avatar) return null;       // Discord's default avatar: says nothing
+    return downloadStickerImage(user.displayAvatarURL({ extension: "png", size: 64, forceStatic: true }), { maxBytes: 256 * 1024 });
+  }
+
+  /**
+   * #1630: this bot's colour in the server `channelId` belongs to — its highest coloured role (`displayHexColor`), read
+   * from its own member (`members.me`: no GuildMembers intent needed); null for none.
+   */
+  async botAccentColor(channelId?: string): Promise<string | null> {
+    const client = (await this.readyClient()) as any;
+    const guildId = await this.guildOfChannel(channelId);
+    const guild = client.guilds?.cache?.get?.(guildId) ?? await client.guilds.fetch(guildId);
+    const me = guild?.members?.me ?? await guild?.members?.fetchMe?.();
+    const hex = me?.displayHexColor;
+    return typeof hex === "string" && hex !== "#000000" ? hex : null;
+  }
+
   /** A still picture of a listed sticker, from Discord's media CDN; null for a Lottie sticker (no still image). */
   async fetchStickerPreview(sticker: StickerInfo): Promise<StickerPreview | null> {
     if (!/^\d{15,25}$/.test(sticker.id)) throw new Error("not a Discord sticker id");
