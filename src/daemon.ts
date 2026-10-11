@@ -1,4 +1,5 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
+import { agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -1611,6 +1612,8 @@ export class Daemon extends EventEmitter {
   private recentPastes: Array<{ generation: number; text: string }> = [];
   private pendingInstructionsUpdate: string | undefined;
   private pendingInstructionsNotice = false;
+  /** #1633: the one-time "what's new for you" notice, pasted before the next real delivery; recorded once pasted. */
+  private pendingWhatsNew: { notice: string; ids: string[]; version: string } | null = null;
   // Whether the warmup steering-reload notice should be injected after spawn.
   // Set in trySpawn by comparing the freshly-built instructions against the
   // last value the agent was told about (prev-instructions). Skipped when
@@ -6524,6 +6527,18 @@ export class Daemon extends EventEmitter {
           );
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
+        if (this.pendingWhatsNew) {
+          // #1633: here, inside the delivery lock and ahead of a real delivery — never into a busy turn, never to an
+          // instance nobody writes to. Recorded only once pasted: a failed or cancelled paste stays pending.
+          const whatsNew = this.pendingWhatsNew;
+          const pasted = await this.deliverMessage(whatsNew.notice, undefined, { deliveryEpoch });
+          if (pasted && this.pendingWhatsNew === whatsNew) {
+            this.pendingWhatsNew = null;
+            try { recordWhatsNew(this.instanceDir, whatsNew.ids, whatsNew.version); }
+            catch (err) { this.logger.warn({ err }, "what's-new record not written — the notice may repeat once"); }
+          }
+          if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+        }
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
@@ -10458,6 +10473,19 @@ export class Daemon extends EventEmitter {
     } catch { /* non-fatal */ }
   }
 
+  /** #1633: what this instance has not been told about its AgEnD version yet (see agent-whats-new.ts). */
+  private prepareWhatsNew(fresh: boolean, version: string | null = agendVersion()): void {
+    try {
+      const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version });
+      if (!plan) { this.pendingWhatsNew = null; return; }
+      if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
+      this.pendingWhatsNew = plan;
+      this.logger.info({ entries: plan.ids }, "what's-new notice pending for the next delivery");
+    } catch (err) {
+      this.logger.debug({ err }, "what's-new not prepared");
+    }
+  }
+
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
@@ -10468,6 +10496,8 @@ export class Daemon extends EventEmitter {
     // instructionsReloadedOnResume) so the warmup steering-reload can be
     // skipped when nothing changed.
     this.lastBuiltInstructions = backendConfig.instructions ?? "";
+    // #1633: decided before prev-instructions is first written — its absence is what says "never launched before".
+    this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));
     {
       const prevFile = join(this.instanceDir, "prev-instructions");
       let prev = "";
