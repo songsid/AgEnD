@@ -62,7 +62,7 @@ describe("what an instance is told", () => {
   it("the notice names the exact parameters and tells the agent to reload an older tool copy, not to reply", () => {
     const text = whatsNewNotice("2.2.0-beta.2", AGENT_WHATS_NEW);
     for (const s of ["[system:whats-new] AgEnD is now 2.2.0-beta.2.", "`buttons: [{label, value?}]` (1–10)", "`[button] <label>`", "`[button] <label> (value: <value>)` when the value differs", "`stickers` (up to 3 ids from `list_stickers`",
-      "`preview_stickers`", "`[user:… via web, …]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`tool_set` and `skipPermissions`",
+      "`preview_stickers`", "`[user:… via web, …]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions`",
       "`ToolSearch` with `select:<tool>`", "Do not reply to this message."]) expect(text, s).toContain(s);
     expect(text.split("\n").length).toBe(AGENT_WHATS_NEW.length + 2);
   });
@@ -75,6 +75,12 @@ describe("the record", () => {
     recordWhatsNew(d, ["b", "c"], "2.2.0-beta.2");
     expect(readWhatsNewRecord(d)).toEqual({ announced: ["a", "b", "c"], version: "2.2.0-beta.2" });
     expect(planWhatsNew({ record: readWhatsNewRecord(d), fresh: false, version: "2.2.0", entries: [{ id: "a", since: "2.2.0", text: "" }] })).toBeNull();
+  });
+  it("a record that cannot be read is never written over — its history is not dropped (#1639 review)", () => {
+    const d = scratch();
+    writeFileSync(join(d, "whats-new.json"), "{not json");
+    expect(() => recordWhatsNew(d, ["a"], "2.2.0")).toThrow("unreadable");
+    expect(readFileSync(join(d, "whats-new.json"), "utf-8")).toBe("{not json");
   });
   it("missing → null; corrupt or the wrong shape → unreadable", () => {
     const d = scratch();
@@ -160,6 +166,39 @@ describe("the daemon", () => {
     const w = daemon();
     w.d["prepareWhatsNew"](false, "2.1.12");
     expect(w.d["pendingWhatsNew"]).toBeNull();
+  });
+  it("the record is judged again just before the paste: corrupted while the delivery waited → nothing sent, file untouched (#1639 review)", async () => {
+    const w = daemon();
+    recordWhatsNew(w.dir, ALL.slice(1), V);                     // told everything but buttons
+    w.d["prepareWhatsNew"](false, V);
+    expect(w.d["pendingWhatsNew"]?.ids).toEqual([ALL[0]]);
+    writeFileSync(join(w.dir, "whats-new.json"), "{corrupt");
+    await w.deliver("first");
+    expect([w.pastes.some(p => p.startsWith("[system:whats-new]")), w.pastes.some(p => p.includes("first")), w.d["pendingWhatsNew"]]).toEqual([false, true, null]);
+    expect(readFileSync(join(w.dir, "whats-new.json"), "utf-8")).toBe("{corrupt");
+  });
+  it("corrupted while the notice was being pasted: the unknown history is not overwritten, and the next launch sends nothing (#1639 review)", async () => {
+    const w = daemon();
+    recordWhatsNew(w.dir, ALL.slice(1), V);
+    w.d["prepareWhatsNew"](false, V);
+    w.d["deliverMessage"] = vi.fn(async (text: string) => {
+      w.pastes.push(text);
+      if (text.startsWith("[system:whats-new]")) writeFileSync(join(w.dir, "whats-new.json"), "{corrupt");
+      return true;
+    });
+    await w.deliver("first");
+    expect(readFileSync(join(w.dir, "whats-new.json"), "utf-8")).toBe("{corrupt");
+    w.d["prepareWhatsNew"](false, V);
+    expect(w.d["pendingWhatsNew"]).toBeNull();
+  });
+  it("entries recorded while the delivery waited are not sent again; the rest are, and the record keeps everything (control)", async () => {
+    const w = daemon();
+    w.d["prepareWhatsNew"](false, V);
+    recordWhatsNew(w.dir, ALL.slice(0, 2), V);                    // two of them recorded meanwhile
+    await w.deliver("first");
+    const notice = w.pastes.find(p => p.startsWith("[system:whats-new]"))!;
+    expect([notice.split("\n").length, notice.includes("`buttons:"), notice.includes("`delivery_status`")]).toEqual([ALL.length - 2 + 2, false, true]);
+    expect(announcedIn(w.dir)).toEqual([...ALL.slice(0, 2), ...ALL.slice(2)]);
   });
   it("nobody writes to it: nothing is pasted at all", () => {
     const w = daemon();

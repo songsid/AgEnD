@@ -1,5 +1,5 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
-import { agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew } from "./agent-whats-new.js";
+import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -6527,10 +6527,10 @@ export class Daemon extends EventEmitter {
           );
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
-        if (this.pendingWhatsNew) {
+        const whatsNew = this.pendingWhatsNew ? this.currentWhatsNew(this.pendingWhatsNew) : null;
+        if (whatsNew) {
           // #1633: here, inside the delivery lock and ahead of a real delivery — never into a busy turn, never to an
           // instance nobody writes to. Recorded only once pasted: a failed or cancelled paste stays pending.
-          const whatsNew = this.pendingWhatsNew;
           const pasted = await this.deliverMessage(whatsNew.notice, undefined, { deliveryEpoch });
           if (pasted && this.pendingWhatsNew === whatsNew) {
             this.pendingWhatsNew = null;
@@ -10471,6 +10471,23 @@ export class Daemon extends EventEmitter {
       try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
       this.logger.debug("Warmup sent after idle");
     } catch { /* non-fatal */ }
+  }
+
+  /**
+   * #1633 (#1639 review): the pending notice as the record stands NOW, just before the paste — it was decided at launch,
+   * and the record may have changed while the delivery waited. Unreadable → nothing is sent (and nothing pending);
+   * entries recorded meanwhile are dropped from it; none left → nothing.
+   */
+  private currentWhatsNew(pending: { notice: string; ids: string[]; version: string }): { notice: string; ids: string[]; version: string } | null {
+    const record = readWhatsNewRecord(this.instanceDir);
+    if (record === "unreadable") { this.pendingWhatsNew = null; return null; }
+    const known = new Set(record?.announced ?? []);
+    const ids = pending.ids.filter(id => !known.has(id));
+    if (!ids.length) { this.pendingWhatsNew = null; return null; }
+    if (ids.length === pending.ids.length) return pending;
+    const narrowed = { notice: whatsNewNotice(pending.version, AGENT_WHATS_NEW.filter(e => ids.includes(e.id))), ids, version: pending.version };
+    this.pendingWhatsNew = narrowed;
+    return narrowed;
   }
 
   /** #1633: what this instance has not been told about its AgEnD version yet (see agent-whats-new.ts). */

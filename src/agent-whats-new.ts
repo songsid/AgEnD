@@ -34,7 +34,7 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.2-task-list", since: "2.2.0-beta.1",
     text: "`task` `list` returns live tasks only by default: `filter_status` (one or a list) for done or cancelled, `verbose: true` for full records." },
   { id: "2.2-create-refusals", since: "2.2.0-beta.1",
-    text: "`create_instance` / `update_instance_config` refuse `tool_set` and `skipPermissions` (they are set in Settings or fleet.yaml)." },
+    text: "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions` (both are set in Settings or fleet.yaml)." },
 ];
 
 /**
@@ -90,10 +90,14 @@ export function readWhatsNewRecord(instanceDir: string): WhatsNewRecord | null |
   } catch { return "unreadable"; }
 }
 
-/** Adds `ids` to the record (temp file + rename). */
+/**
+ * Adds `ids` to the record (temp file + rename). Refuses — and leaves the file as it is — when the record exists but
+ * cannot be read: writing would drop the history it holds (#1639 review).
+ */
 export function recordWhatsNew(instanceDir: string, ids: readonly string[], version: string): void {
   const prior = readWhatsNewRecord(instanceDir);
-  const announced = [...new Set([...(prior && prior !== "unreadable" ? prior.announced : []), ...ids])];
+  if (prior === "unreadable") throw new Error("whats-new.json is unreadable; left as it is");
+  const announced = [...new Set([...(prior ? prior.announced : []), ...ids])];
   const path = join(instanceDir, RECORD), tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify({ announced, version }) + "\n", { mode: 0o600 });
   renameSync(tmp, path);
