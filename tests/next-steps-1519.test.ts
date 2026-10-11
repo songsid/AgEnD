@@ -41,7 +41,7 @@ describe("where the dashboard is", () => {
   });
   it("no file: the default; the lines name the address and both ways to sign in", () => {
     expect(dashboardPort(join(tempDir(), "missing.yaml"))).toBe(19280);
-    expect(dashboardLines(24680)).toEqual(["Web dashboard: http://localhost:24680/", "Sign in with `agend web --code` on this machine, or send /dashboard to your bot."]);
+    expect(dashboardLines(24680)).toEqual(["Web dashboard: http://localhost:24680/", "Sign in with `agend web --code` on this machine, or send /web to your bot."]);
   });
 });
 
@@ -63,7 +63,7 @@ describe("agend quickstart", () => {
     }
     const text = out.join("\n");
     expect(text).toContain("Web dashboard: http://localhost:24680/");
-    expect(text).toContain("Sign in with `agend web --code` on this machine, or send /dashboard to your bot.");
+    expect(text).toContain("Sign in with `agend web --code` on this machine, or send /web to your bot.");
     expect(text.indexOf("Web dashboard")).toBeLessThan(text.indexOf("═══ Done ═══"));
     expect(text.indexOf("Web dashboard"), "found at all").toBeGreaterThan(-1);
   });
@@ -114,7 +114,7 @@ describe("agend setup", () => {
     const form = SRC("setup-form.ts");
     expect(form).toContain('link.href = "/"; link.textContent = location.origin + "/";');
     // The page may be open on a phone through a tunnel: "this machine" would be the phone (#1550 review).
-    expect(form).toContain("sign in with agend web --code on the machine running AgEnD, or send /dashboard to your bot");
+    expect(form).toContain("sign in with agend web --code on the machine running AgEnD, or send /web to your bot");
   });
 });
 

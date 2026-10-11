@@ -105,7 +105,7 @@ agend quickstart                # 2. Setup — backend, bot token, done
 agend fleet start               # 3. Launch your fleet 🎉 (skip if quickstart installed it as a service)
 ```
 
-Open Telegram or Discord, send a message to your bot, and start working from your phone. Or open the web dashboard at `http://localhost:19280/`. To sign in, run `agend web --code` on this machine, or send `/dashboard` to your bot.
+Open Telegram or Discord, send a message to your bot, and start working from your phone. Or open the web dashboard at `http://localhost:19280/`. To sign in, run `agend web --code` on this machine, or send `/web` to your bot.
 
 > **Discord?** `agend quickstart` supports Discord too — it's built in, no extra install needed. See [Discord setup guide](docs/features.md#discord-adapter).
 

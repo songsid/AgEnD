@@ -203,7 +203,7 @@ describe("② the code goes privately to the recorded owner only, and only while
     h.owner.access.allowed_users = ["admin2"];
     const ask = await h.call("/auth/request-code", "POST", { cookie });
     expect(ask.status).toBe(503);
-    expect(ask.json().error).toMatch(/\/dashboard/);
+    expect(ask.json().error).toMatch(/\/web/);
     expect(h.adapter.sendDirect).not.toHaveBeenCalled();
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
   });
@@ -304,7 +304,7 @@ describe("③ rate limits per device and for the whole fleet, plus the existing 
 });
 
 describe("④ the DM says who asked and how to stop it", () => {
-  it("names the browser and the surface, and suggests /dashboard revoke", async () => {
+  it("names the browser and the surface, and suggests /web revoke", async () => {
     const h = rig();
     const cookie = await h.returning();
     h.adapter.sendDirect.mockClear();
@@ -312,7 +312,7 @@ describe("④ the DM says who asked and how to stop it", () => {
     const text = String(h.adapter.sendDirect.mock.calls[0]![1]);
     expect(text).toContain("Chrome on macOS");
     expect(text).toContain("local network");
-    expect(text).toContain("/dashboard revoke");
+    expect(text).toContain("/web revoke");
     expect(text).toContain("any earlier code no longer works");      // one code at a time: the owner's /dashboard code is gone
   });
 });
@@ -486,10 +486,10 @@ describe("the sign-in page offers the button only to a returning device", () => 
     expect(p.$("msg").classList.set.has("ok")).toBe(true);
   });
 
-  it("a refusal says to use /dashboard; a 401 also hides the button; 429 asks to wait", async () => {
+  it("a refusal says to use /web; a 401 also hides the button; 429 asks to wait", async () => {
     const refused = await page(true, 401);
     await refused.click();
-    expect(refused.$("msg").textContent).toMatch(/\/dashboard/);
+    expect(refused.$("msg").textContent).toMatch(/\/web/);
     expect(refused.$("resend").hidden).toBe(true);
     const limited = await page(true, 429);
     await limited.click();

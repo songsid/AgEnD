@@ -18741,7 +18741,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // Never the token: fleet.log is readable by anything that can read the
       // data dir, is copied into bug reports, and is tailed in shared terminals.
       // `/dashboard` and `agend web` are the ways to get an authorized link.
-      this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /dashboard or `agend web`)");
+      this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /web or `agend web`)");
       this.logger.info({ url: `http://localhost:${port}/view` }, "Web View available");
       // #1306: the preview listener starts once the web listener is bound — its frame-ancestors name the real port.
       const bound = this.healthServer?.address();

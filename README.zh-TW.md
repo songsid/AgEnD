@@ -105,7 +105,7 @@ agend quickstart                # 2. 設定 — backend、bot token，搞定
 agend fleet start               # 3. 啟動 fleet 🎉（quickstart 已安裝成系統服務就不用）
 ```
 
-打開 Telegram 或 Discord，傳訊息給你的 bot，就能用手機開始工作。也可以打開網頁儀表板 `http://localhost:19280/`。要登入，在這台機器上執行 `agend web --code`，或傳 `/dashboard` 給你的 bot。
+打開 Telegram 或 Discord，傳訊息給你的 bot，就能用手機開始工作。也可以打開網頁儀表板 `http://localhost:19280/`。要登入，在這台機器上執行 `agend web --code`，或傳 `/web` 給你的 bot。
 
 > **用 Discord？** `agend quickstart` 也支援 Discord，已內建，不用另外安裝。詳見 [Discord 設定說明](docs/features.zh-TW.md#discord-adapter)。
 

@@ -10,7 +10,7 @@ import {
   type WebSessionStore,
 } from "./web-session.js";
 
-export const WEB_TOKEN_INVALID_MESSAGE = "Token expired or invalid — run /dashboard again";
+export const WEB_TOKEN_INVALID_MESSAGE = "Token expired or invalid — run /web again";
 /** No credential at all. Distinct from "wrong credential" so a browser that
  * silently drops cookies is diagnosable instead of looking like a bad token. */
 export const WEB_SESSION_REQUIRED_MESSAGE =
@@ -55,7 +55,7 @@ function tokenPath(dataDir: string): string {
 
 /**
  * Load the fleet-wide web bearer token, creating it only when absent/invalid.
- * A fleet restart must not revoke every previously issued /dashboard URL.
+ * A fleet restart must not revoke every previously issued /web URL.
  */
 export function loadOrCreateWebToken(dataDir: string): string {
   mkdirSync(dataDir, { recursive: true });

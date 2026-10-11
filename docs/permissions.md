@@ -40,7 +40,7 @@ These are command role requirements; an applicable instance, backend capability 
 
 | Commands | Discord General / instance | Discord Classic | Telegram General | Telegram instance topic | Telegram Classic |
 |----------|----------------------------|-----------------|------------------|-------------------------|------------------|
-| `/status`, `/restart`, `/login`, `/update`, `/doctor`, `/dashboard`, `/visibility` | F | F | F | Refuse: use General | — |
+| `/status`, `/restart`, `/login`, `/update`, `/doctor`, `/web` (`/dashboard` alias), `/visibility` | F | F | F | Refuse: use General | — |
 | `/profile` | General only: F | Refuse | F | Refuse: use General | — |
 | `/model`, `/clear` | F | F or C | F | F | F or C |
 | `/effort` | F | F or C | F | F | — |

@@ -69,7 +69,7 @@ npm install -g @songsid/agend@2.2.0
 **Once, on the first start:**
 - **Kiro:** each instance, on its first resume, gets `/agent swap <agent>` typed into its pane before anything is delivered (#906). If the switch cannot be confirmed within 15 s, the old setup stays, a notice says so, and the next start tries again. Delete old `.kiro/steering/agend-<instance>.md` files by hand once every fleet using that directory has upgraded.
   - Upgrading from before 2.1.11 also supports one-time Kiro conversation adoption (#1624), with shared-cwd and claim safeguards; see [adoption and beta.1 recovery](kiro-upgrade-recovery.md).
-- **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/dashboard` to your bot, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
+- **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/web` to your bot, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
 - **General gets one message about web chat** (#1366), once per platform, recorded in `AGEND_HOME/upgrade-notices.json`.
 
 **From now on (policies):**
@@ -86,7 +86,7 @@ agend fleet status       # every instance running
 agend health             # the fleet answers
 ```
 Then:
-- Sign in to the web dashboard (`/dashboard` in chat, or `agend web --code`) and open an instance's chat.
+- Sign in to the web dashboard (`/web` in chat, or `agend web --code`) and open an instance's chat.
 - Send a message to one instance from your chat app and from the web; both should reach it.
 - Open **Needs you** in the web sidebar: anything waiting for you (a sign-in, a confirmation) is listed there.
 - Kiro users: check each Kiro instance answered once after its `/agent swap`.
@@ -119,9 +119,9 @@ Do this only if you must. 2.1.12 does not enforce several 2.2 security policies 
 **My fleet.yaml uses the old single `channel:` key. Is that a problem?**
 It still works. 2.2 Settings saves it safely as a `channels:` list (#1056). On 2.1.x, do not save connections in Settings with a `channel:` file: convert it to a `channels:` list first.
 
-**What is the "public link" in `/dashboard`?**
+**What is the "public link" in `/web`?**
 A temporary HTTPS address (through cloudflared, installed on first use) to open the dashboard from another device.
-- `/dashboard` offers it by default, but a link is created only when an admin chooses it there, and it is delivered privately.
+- `/web` offers it by default, but a link is created only when an admin chooses it there, and it is delivered privately.
 - `web.public_link.allow_public: false` removes the option and closes any link already open.
 - `web.public_link.ttl_minutes` sets its fixed lifetime (default 120, from 1 to 480).
 - `web.public_link.protocol` chooses how cloudflared connects: `http2` (the default), `quic` or `auto`.
@@ -131,8 +131,8 @@ Enter bot tokens and other secrets on the host's own dashboard, not through the 
 **Discord server emoji show as broken images in Settings → Status emojis.**
 Fixed in 2.2: the page now allows Discord's emoji images. Reload the page after upgrading.
 
-**`/dashboard` used to give me a link with a token. Now it gives a code?**
-Yes. The link opens the sign-in page; type the code (one use, 5 minutes). `/dashboard revoke` signs every browser out.
+**`/web` used to give me a link with a token. Now it gives a code?**
+Yes. The link opens the sign-in page; type the code (one use, 5 minutes). `/web revoke` signs every browser out.
 
 **Can I enter a bot token in the browser?**
 Yes. In 2.2, Settings → Connections asks for the token, checks it with the platform and shows the bot's name before saving. It is stored in `~/.agend/.env` and never shown again. The change still needs confirmation (#1423).
