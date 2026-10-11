@@ -152,12 +152,13 @@ function verifyInstanceToken(
 }
 
 /**
- * #1489: refuse a request before (or instead of) reading its body. The bytes still in flight are discarded, never
- * buffered (`resume()`); Node itself stops reading a connection whose response ended before its body did, so a large
- * unauthenticated upload is refused after a few MiB, not drained (tests/agent-endpoint-socket-1489.test.ts).
+ * #1489: refuse a request before (or instead of) reading its body. `Connection: close` makes the server end the socket
+ * once the answer is written — even for a client that asked for keep-alive and keeps uploading (Prism r1: without it a
+ * keep-alive client's whole upload is read and discarded). The bytes still in flight until then are discarded, never
+ * buffered (`resume()`). Real-socket proof: tests/agent-endpoint-socket-1489.test.ts.
  */
 function refuseEarly(req: IncomingMessage, res: ServerResponse, status: number, error: string): void {
-  res.writeHead(status);
+  res.writeHead(status, { "Connection": "close" });
   res.end(JSON.stringify({ error }));
   req.resume();
 }
