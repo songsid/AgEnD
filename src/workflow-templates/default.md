@@ -19,7 +19,7 @@
 
 Use the **Task Board** (`task` tool) for multi-step work:
 - Break work into discrete tasks with clear deliverables
-- Update status as you progress (pending → in_progress → done)
+- Update status as you progress (open → claimed → done; or blocked / cancelled)
 - Other instances can check your task board for status instead of asking
 
 ## Context Protection

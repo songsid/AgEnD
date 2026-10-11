@@ -21,16 +21,16 @@ capability (cheap/fast vs deep reasoning), or the backend needs one to behave
 | Backend | Omit `model` means | Notes |
 |---|---|---|
 | kiro-cli | account default | **`model: auto`** lets kiro pick per turn — usually what you want |
-| claude-code | account default | ids are aliases: `sonnet`, `opus`, `haiku`, `opusplan`, `default` |
+| claude-code | account default | ids are aliases: `sonnet`, `opus`, `haiku`, `opusplan`, `default`, `Fable`; `list_models` also offers the account's full ids (with `[1m]` variants) |
 | codex | account default | |
 | grok | account default | |
 | antigravity | account default | |
-| opencode | provider default | ids are **`provider/model`**, e.g. `opencode/big-pickle` |
+| opencode | provider default | ids are **`provider/model`**, as `opencode models` prints them |
 
 ## Discover real names
 
-**Use the `list_models` tool** — it reads the fleet's probe cache (refreshed every
-24h) and falls back to a live probe:
+**Use the `list_models` tool** — it reads the fleet's probe cache (re-probed when
+older than 1 h; never used past 24 h) and falls back to a live probe:
 
 - `list_models({ backend: "kiro-cli" })` → the account catalog
 - `list_models({ instance_name: "x" })` → read through **that instance's** config
@@ -47,11 +47,11 @@ Underlying commands, if you need them by hand:
 
 | Backend | Command |
 |---|---|
-| kiro-cli | `kiro-cli --list-models` |
+| kiro-cli | `kiro-cli chat --list-models --format json` |
 | grok | `grok models` |
 | opencode | `opencode models` |
 | antigravity | `agy models` |
-| codex | **no command** — the CLI writes `models_cache.json` in its CODEX_HOME |
+| codex | `codex debug models` (with its CODEX_HOME set) — refreshes `models_cache.json` when it is older than a few minutes |
 | claude-code | fixed alias set (no command) |
 
 ## Setting one on create_instance
@@ -65,9 +65,9 @@ Underlying commands, if you need them by hand:
 ## Two traps
 
 **antigravity: keep the effort suffix.** The suffix is part of the selectable id,
-not decoration — `gemini-3.6-flash-medium` and `gemini-3.6-flash-low` are
-different models. Take the id from `list_models`, not the display label the TUI
-shows (`Gemini 3.5 Flash (Medium)`).
+not decoration — the same model at two effort levels is two different ids. Take
+the id from `list_models` (e.g. `gemini-3.6-flash-high`), not the display label
+the TUI shows.
 
 **Pass-through: AgEnD does not gate model names.** An unknown id is warned about,
 then handed to the CLI anyway. So a name missing from `list_models` may still be

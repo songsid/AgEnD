@@ -21,7 +21,7 @@ export const ReplyArgs = z.object({
   reply_to: z.string().optional()
     .describe("Message ID to thread under. Use message_id from the inbound block."),
   files: z.array(z.string()).optional()
-    .describe("Absolute file paths to attach. Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (up to 1 MiB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets."),
+    .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (up to 1 MiB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets."),
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
   stickers: z.array(NonEmptyString).max(3).optional()
     .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
@@ -40,7 +40,7 @@ export const ReactArgs = z.object({
 export const EditMessageArgs = z.object({
   message_id: NonEmptyString,
   text: NonEmptyString,
-  format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
+  format: MessageFormat.optional().describe("Currently ignored: an edit is sent without a rendering mode."),
 });
 
 export const DownloadAttachmentArgs = z.object({
@@ -58,10 +58,10 @@ export const CreateScheduleArgs = z.object({
     .describe("One-shot ISO-8601 datetime with offset, e.g. '2026-07-26T14:00:00+08:00'. Mutually exclusive with cron."),
   message: NonEmptyString.describe("Message to inject when triggered"),
   target: z.string().optional()
-    .describe("Target instance name. Defaults to this instance if omitted."),
+    .describe("Target instance name. Defaults to this instance if omitted. Targeting another instance needs the full, coordinator or general tool set."),
   label: z.string().optional().describe("Human-readable name for this schedule"),
   timezone: z.string().optional()
-    .describe("IANA timezone, e.g. 'Asia/Taipei'. Defaults to Asia/Taipei."),
+    .describe("IANA timezone, e.g. 'Asia/Taipei'. Defaults to the fleet's defaults.scheduler.default_timezone (Asia/Taipei unless set)."),
   silent: z.boolean().optional()
     .describe("Silent mode: inject directly into the agent's tmux pane without posting to the channel. Useful for heartbeat or background tasks."),
 }).refine(data => (data.cron ? 1 : 0) + (data.at ? 1 : 0) === 1, {
@@ -259,7 +259,7 @@ export const ListModelsArgs = z.object({
 
 export const GetInstanceLogsArgs = z.object({
   name: NonEmptyString.describe("The instance name to get logs for"),
-  lines: z.number().int().positive().optional().describe("Number of lines to return (default: 50)"),
+  lines: z.number().int().positive().optional().describe("Number of lines to return (default: 50, max 200)"),
 });
 
 export const GetFleetConfigArgs = z.object({

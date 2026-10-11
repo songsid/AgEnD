@@ -40,16 +40,16 @@ instances:
     backend: kiro-cli
     kiro_ui: legacy    # default — current stable behavior
     # kiro_ui: tui     # try the newer TUI
-    # kiro_ui: v3      # try the v3 profile
 ```
+`kiro_ui: v3` is refused by validation — do not set it.
 Leave unset (or `legacy`) unless testing a newer profile. Ignored by other backends.
 
 ## Reply completion guard
 
 `reply_completion_guard` detects a human-channel turn that ended without a
 delivered reply and asks the agent to send one bounded recovery reply. It is
-enabled by default for Claude Code in MCP mode and Kiro legacy/TUI in MCP mode.
-Kiro v3 is excluded because its turn-end signal is unverified. Codex and other
+enabled by default for Claude Code, Codex, Muse and Kiro legacy/TUI (it needs the
+MCP server). Kiro v3 is excluded because its turn-end signal is unverified. Other
 backends keep the setting but do not claim the protection is active.
 
 Prefer a narrow per-instance override when one worker repeatedly finishes work
@@ -79,14 +79,14 @@ it does not turn tool-call text into proof that the reply reached the channel.
 Fix all errors before `agend reload`; warnings are advisory.
 
 **Common fleet.yaml mistakes:**
-- Missing `channel.mode` field → error on start
+- `channel.mode` left out → it is `topic` (say so explicitly if you mean another mode)
 - Wrong indentation (YAML is indent-sensitive)
 - `topic_id` as string vs number (both work, but be consistent)
 - `backend` typo (valid: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `muse`); `gemini-cli` was removed in 2.1.12 — use `antigravity`
 - `model` using wrong format for the backend
 
 **Common classicBot.yaml mistakes:**
-- `allowed_guilds` values must be strings (Discord IDs are too large for YAML integers)
+- `allowed_guilds` values should be quoted strings: numbers are accepted, but a Discord ID above 2^53 loses digits as a YAML integer
 - Channel IDs as keys must be quoted strings
 - Missing `defaults` section (optional but recommended)
 

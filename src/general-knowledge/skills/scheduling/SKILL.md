@@ -8,15 +8,17 @@ roles: [general, worker]
 
 - `create_schedule` — make a schedule (recurring or one-shot).
 - `list_schedules` — list all (optionally filter by target instance).
-- `update_schedule` — change cron/at/message/timezone/enabled of an existing one.
+- `update_schedule` — change cron/at/message/target/label/timezone/enabled of an existing one.
 - `delete_schedule` — remove one.
 
 A schedule injects `message` into the `target` instance when it fires
-(`target` defaults to the current instance).
+(`target` defaults to the current instance). With the worker or standard tool set you may
+manage only schedules that target you and that you created; for anything else ask the
+coordinator with `report_result`.
 
 ## Three ways to schedule
 
-**1. Recurring (cron)** — `cron` + optional `timezone` (IANA, default `Asia/Taipei`):
+**1. Recurring (cron)** — `cron` + optional `timezone` (IANA; default the fleet's `defaults.scheduler.default_timezone`, `Asia/Taipei` unless set):
 ```
 create_schedule({ cron: "0 9 * * *", message: "Daily standup summary", timezone: "Asia/Taipei" })
 ```
