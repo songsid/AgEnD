@@ -7,7 +7,7 @@
 // - a row opens the view you are in (View → View, everywhere else → Chat);
 // - the list is never remounted on navigation, and only its own scrollTop follows the active row (#1515).
 // Public (/assets/): an anonymous View reader gets the same list, fed by View's roster read instead of status frames.
-import { html, useLayoutEffect, useRef } from "./app-html.js";
+import { html, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { chatPath, detailsPath, viewPath } from "./app-route.js";
@@ -177,11 +177,73 @@ function persistOrder(groupNames, instByGroup) {
   navStore.set({ order: { groups: new Map(groupNames.map((g, i) => [g, i])), insts: new Map(rows.filter((r) => r.item_type === "instance").map((r) => [r.item_name, r.sort_index])) } });
 }
 
+// ── #1630: what stands for an instance (design: the comment on #1630) ──
+// The server decides (the status frame's `avatar` / `accent`); the page only draws it. The anonymous View roster has
+// neither: its rows get the first character. A picture is only ever a same-origin /ui/img/ path — never a platform's
+// CDN (CSP img-src stays 'self'); one that fails to load falls back to the first character, never a broken image.
+
+const GRAPHEMES = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+/** The first user-perceived character, upper-cased where that means anything. */
+export function firstCharacter(text) {
+  const s = String(text == null ? "" : text).trim();
+  if (!s) return "?";
+  if (GRAPHEMES) for (const { segment } of GRAPHEMES.segment(s)) return segment.toLocaleUpperCase();
+  return Array.from(s)[0].toLocaleUpperCase();
+}
+/** What a row is called: the display name when it has one, else the instance name (shown on hover and in Details). */
+export function labelOf(it) {
+  const d = it && typeof it.display_name === "string" ? it.display_name.trim() : "";
+  return d || nameOf(it);
+}
+const sameOrigin = (src) => typeof src === "string" && /^\/ui\/img\/(bot|avatar|emoji)\/[^?#\s]+(\?v=[0-9A-Za-z%._-]*)?$/.test(src);
+/** The avatar to draw: the server's, if it is one the page may load; else the first character. */
+export function avatarOf(it) {
+  const a = it && it.avatar;
+  if (a && a.kind === "image" && sameOrigin(a.src)) return { kind: "image", src: a.src };
+  if (a && a.kind === "emoji" && sameOrigin(a.src)) return { kind: "emoji", src: a.src, alt: typeof a.alt === "string" ? a.alt : "" };
+  if (a && a.kind === "emoji" && typeof a.text === "string" && a.text.trim()) return { kind: "emoji", text: a.text.trim() };
+  return { kind: "initial", text: a && a.kind === "initial" && typeof a.text === "string" && a.text ? a.text : firstCharacter(labelOf(it)) };
+}
+const ACCENT = /^#[0-9a-f]{6}$/i;
+/** The status dot on the avatar: needs you, crashed, paused, stopped, looks stuck, working, idle — colour AND a label. */
+export function dotState(it, exec, awaiting) {
+  if (awaiting != null) return "needs";
+  if (!it || it.status === "crashed") return "crashed";
+  if (it.status === "paused") return "paused";
+  if (it.status !== "running") return "stopped";
+  return exec === "stuck" ? "stuck" : exec === "working" ? "working" : "idle";
+}
+const DOT = {
+  needs: ["warn", () => t("app.needsYou")], crashed: ["bad", () => t("app.statusCrashed")], paused: ["off hollow", () => t("app.statusPaused")],
+  stopped: ["off", () => t("app.statusStopped")], stuck: ["warn", () => t("app.statusStuck")], working: ["busy", () => t("app.statusWorking")],
+  idle: ["ok", () => t("app.statusIdle")],
+};
+export function dotLabel(state) { return (DOT[state] || DOT.stopped)[1](); }
+
+/** An instance's avatar with its status dot. The ring (its bot's colour) is a CSS custom property set through the CSSOM. */
+export function InstanceAvatar({ it, state }) {
+  const a = avatarOf(it);
+  const [broken, setBroken] = useState("");
+  const el = useRef(null);
+  const accent = typeof it.accent === "string" && ACCENT.test(it.accent) && a.kind === "image" ? it.accent : "";
+  useLayoutEffect(() => {
+    const node = el.current;
+    if (!node || !node.style) return;
+    if (accent) node.style.setProperty("--ring", accent); else node.style.removeProperty("--ring");
+  }, [accent]);
+  const src = a.kind !== "initial" && a.src && broken !== a.src ? a.src : "";
+  const text = a.kind === "emoji" && a.text ? a.text : a.kind === "initial" ? a.text : firstCharacter(labelOf(it));
+  const [cls] = DOT[state] || DOT.stopped;
+  const label = dotLabel(state);
+  return html`<span ref=${el} class=${`av${accent ? " ring" : ""}${a.kind === "emoji" ? " av-emoji" : ""}`}>
+    ${src ? html`<img src=${src} alt="" decoding="async" onError=${() => setBroken(src)} />` : html`<span class="av-text" aria-hidden="true">${text}</span>`}
+    <span class=${`av-dot dot ${cls}`} role="img" aria-label=${label} title=${label}></span></span>`;
+}
+
 // ── The list ──
 
 const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet === "working" ? t("app.statusWorking") : facet === "idle" ? t("app.statusIdle")
   : facet === "crashed" ? t("app.statusCrashed") : t("app.statusStopped"));
-const dotClass = (facet, exec) => (facet === "needs" ? "warn" : facet === "crashed" ? "bad" : facet === "stopped" ? "off" : exec === "stuck" ? "warn" : facet === "working" ? "busy" : "ok");
 
 /**
  * The sidebar's instance list. `route`: the page's (which instance is open, and which view a row opens). `items`: the
@@ -207,6 +269,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const f = nav.filter;
   const shown = filterSidebar(groupNames, instByGroup, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   const backends = [...new Set(items.map((it) => it.backend).filter((b) => typeof b === "string" && b))].sort((a, b) => backendLabel(a).localeCompare(backendLabel(b)));
+  // #1630: a display name two rows share would tell them apart from nothing — only then does the row keep its name too.
+  const labelCount = new Map();
+  for (const it of items) { const l = labelOf(it); labelCount.set(l, (labelCount.get(l) || 0) + 1); }
   const toggle = (g) => { const c = new Set(navStore.get().collapsed); if (c.has(g)) c.delete(g); else c.add(g); setCollapsed(c); };
   // From the store, not this render's copy: two clicks before the next render must both count.
   const flip = (key, value) => { const cur = new Set(navStore.get().filter[key]); if (cur.has(value)) cur.delete(value); else cur.add(value); setNavFilter({ [key]: [...cur] }); };
@@ -257,17 +322,18 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${g}</span><span class="count">${names.length}</span></button>
         ${folded ? null : html`<ul class="inst-list">${names.map((name) => {
           const it = byName.get(name);
-          const alias = typeof it.display_name === "string" && it.display_name.trim() && it.display_name.trim() !== name ? it.display_name.trim() : "";
+          const label = labelOf(it);
+          // The instance name under a display name only when another row has the same display name.
+          const twin = label !== name && (labelCount.get(label) || 0) > 1 ? name : "";
           const facet = facetOf(name);
           const waiting = own(awaiting, name) ? awaiting[name] : null;
           const on = name === active;
           return html`<li key=${name}><a class=${`inst v-inst${on ? " active" : ""}`} href=${rowPath(name)} title=${instanceTooltip(it)}
               aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g })}>
-            <span class=${`dot ${dotClass(facet, own(exec, name) ? exec[name] : null)}`} aria-hidden="true"></span>
-            <span class="inst-text"><span class="inst-name">${name}</span>
-              ${alias || facet === "needs" ? html`<span class="inst-sub">${alias ? html`<span class="inst-alias">${alias}</span>` : null}
-                ${facet === "needs" ? html`<span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}
-              <span class="sr-only">${statusText(facet)}</span></span>
+            <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} />
+            <span class="inst-text"><span class="inst-name">${label}</span>
+              ${twin || facet === "needs" ? html`<span class="inst-sub">${twin ? html`<span class="inst-alias inst-id">${twin}</span>` : null}
+                ${facet === "needs" ? html`<span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}</span>
             <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
             <span class=${`cli-icon cli-${KNOWN_BACKENDS.has(it.backend) ? it.backend : "other"}`} title=${backendLabel(it.backend)} aria-label=${tn("tooltipBackend", { value: backendLabel(it.backend) })}></span>
           </a></li>`;

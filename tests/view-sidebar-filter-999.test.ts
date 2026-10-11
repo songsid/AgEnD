@@ -51,7 +51,8 @@ function Slot() {
   return h(nav.RosterNav, {});
 }
 const mountView = () => p.mount(h("div", {}, h(view.ViewPanel, { route: { panel: "view", instance: "agend-dev-claude" }, navKey: "view:x|1|en" }), h(Slot, {})));
-const rowNames = () => p.root.querySelectorAll(".v-inst").map((a: any) => a.querySelector(".inst-name")!.textContent);
+// The instance each row opens (#1630: the row shows its display name; the name is in the link).
+const rowNames = () => p.root.querySelectorAll(".v-inst").map((a: any) => decodeURIComponent(a.getAttribute("href").split("/").pop()));
 const groupHeads = () => p.root.querySelectorAll(".v-group-head").map((b: any) => b.querySelector(".grow")!.textContent);
 const input = () => p.root.querySelector("#filterInput")!;
 const typeInto = async (value: string) => { input().value = value; fire(input(), "input"); await settle(); };

@@ -103,6 +103,22 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .inst:hover { background: var(--surface-2); }
 .inst.active { background: var(--surface-2); }
 .inst .dot { margin-top: 8px; }
+/* #1630: the avatar (a picture, an emoji or the first character), its status dot, and an optional ring in its bot's colour (--ring, set through the CSSOM). */
+.av { position: relative; flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--surface-2); color: var(--text-2);
+  display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 1; }
+.av img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.av.av-emoji { background: transparent; font-size: 18px; font-weight: normal; }
+.av.av-emoji img { width: 22px; height: 22px; border-radius: 0; object-fit: contain; }
+.av.ring { box-shadow: 0 0 0 2px var(--ring, transparent); }
+.av-text { overflow: hidden; }
+.av .av-dot { position: absolute; right: -2px; bottom: -2px; margin: 0; box-shadow: 0 0 0 2px var(--bg-sidebar); }
+.inst.active .av .av-dot, .inst:hover .av .av-dot { box-shadow: 0 0 0 2px var(--surface-2); }
+.dot.hollow { background: transparent; border: 1.5px solid var(--text-3); }
+/* On a grey avatar a grey dot needs more contrast: stopped is a stronger grey, paused a clear ring around the sidebar colour. */
+.av .av-dot.off { background: var(--text-2); }
+.av .av-dot.hollow { box-sizing: border-box; width: 10px; height: 10px; background: var(--bg-sidebar); border: 2.5px solid var(--text-2); }
+.inst .av { margin-top: 1px; }
+.inst-id { font-family: var(--font-mono); }
 .inst-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .inst-name { font-size: var(--fs-sm); line-height: var(--lh-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inst.active .inst-name { font-weight: var(--fw-semibold); }

@@ -65,7 +65,8 @@ function Slot() {
 }
 const mountView = (name = "alpha") => p.mount(h("div", {}, h(view.ViewPanel, { route: { panel: "view", instance: name }, navKey: `view:${name}|1|en` }), h(Slot, {})));
 const rows = () => p.root.querySelectorAll("a.v-inst");
-const rowName = (a: any) => a.querySelector(".inst-name").textContent;
+// The instance a row opens (#1630: the row shows its display name; the name is in the link).
+const rowName = (a: any) => decodeURIComponent(a.getAttribute("href").split("/").pop());
 const rowOf = (name: string) => rows().find((a: any) => rowName(a) === name)!;
 const card = () => p.root.querySelector(".v-card")!;
 const usageButton = () => p.root.querySelectorAll(".panel-actions .btn").find((b: any) => b.textContent.includes("Usage"))!;
