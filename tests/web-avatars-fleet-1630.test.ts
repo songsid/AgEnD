@@ -293,6 +293,48 @@ describe("an answer that waited is re-checked before it is sent (#1635 review)",
     expect((await pending).body.toString()).toBe('{"emojis":[]}');
   });
 
+  // r2: two Discord connections — A's list arrives at once, B's is awaited; A goes (or is replaced) meanwhile.
+  const A_EMOJI = { id: EMOJI, name: "blob", animated: false, available: true };
+  it.each(["removed", "replaced"] as const)("the list: A %s while B's list was awaited → A's emoji is not in it (r2)", async how => {
+    const f = fleet();
+    const b = held<unknown[]>();
+    f.fm.worlds.set("discord", { type: "discord", adapter: { listGuildEmojis: async () => [A_EMOJI] } });
+    f.fm.worlds.set("discord-2", { type: "discord", adapter: { listGuildEmojis: () => b.promise } });
+    const pending = get(f.fm, "/ui/emojis");
+    await flush();
+    if (how === "removed") f.fm.worlds.delete("discord");
+    else f.fm.worlds.set("discord", { type: "discord", adapter: { listGuildEmojis: async () => [] } });
+    b.release([]);
+    expect((await pending).body.toString()).toBe('{"emojis":[]}');
+  });
+  it("control: both worlds stay → both lists", async () => {
+    const f = fleet();
+    const b = held<unknown[]>();
+    f.fm.worlds.set("discord", { type: "discord", adapter: { listGuildEmojis: async () => [A_EMOJI] } });
+    f.fm.worlds.set("discord-2", { type: "discord", adapter: { listGuildEmojis: () => b.promise } });
+    const pending = get(f.fm, "/ui/emojis");
+    await flush();
+    b.release([{ id: "223456789012345678", name: "dance", animated: true, available: true }]);
+    expect(JSON.parse((await pending).body.toString()).emojis.map((e: { id: string }) => e.id)).toEqual([EMOJI, "223456789012345678"]);
+  });
+  it.each([true, false])("the picture: the final membership check awaits B while A goes → 404 (A removed: %s; control 200)", async removeA => {
+    const f = fleet();
+    let bCalls = 0; const bSecond = held<unknown[]>();
+    f.fm.worlds.set("discord", { type: "discord", adapter: { listGuildEmojis: async () => [A_EMOJI] } });
+    f.fm.worlds.set("discord-2", { type: "discord", adapter: { listGuildEmojis: () => (++bCalls === 1 ? Promise.resolve([]) : bSecond.promise) } });
+    const cdn = held<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => cdn.promise));
+    const pending = get(f.fm, `/ui/img/emoji/${EMOJI}`);
+    await flush();                                                // first list done; the download is out
+    f.fm.guildEmojiCache.clear();                                 // the lists' 10-minute cache has run out meanwhile
+    cdn.release(new Response(Buffer.alloc(10, 6), { status: 200, headers: { "content-type": "image/png" } }));
+    await flush();                                                // the final check: A's list taken, B's awaited
+    if (removeA) f.fm.worlds.delete("discord");
+    bSecond.release([]);
+    expect((await pending).status).toBe(removeA ? 404 : 200);
+    expect(bCalls, "the final check really read B again").toBe(2);
+  });
+
   /** A signed-in browser (a local session cookie, or a public-link session on its exposure) — no header token. */
   async function asSession(f: ReturnType<typeof fleet>, path: string, opts: { gateway: boolean; revoke: boolean; hold: "list" | "cdn" }) {
     const { WebSessionStore, tokenEpoch } = await import("../src/web-session.js");

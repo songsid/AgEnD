@@ -9994,13 +9994,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** GET /ui/emojis: the custom emoji of every server the fleet's Discord bots are in (the Settings picker's cache). */
   async webEmojiList(): Promise<Array<{ id: string; name: string; animated: boolean }>> {
-    const out = new Map<string, { id: string; name: string; animated: boolean }>();
-    for (const [id, world] of this.worlds) {
+    const adopted: Array<{ id: string; world: AdapterWorld; emojis: GuildEmoji[] }> = [];
+    for (const [id, world] of [...this.worlds]) {
       if (world.type !== "discord") continue;
       const listed = await this.listGuildEmojis(id);
-      // The world read may be gone (or replaced) by the time its list arrives: then its servers are not the fleet's.
-      if (this.worlds.get(id) !== world) continue;
-      if (listed.ok) for (const e of listed.emojis) if (!out.has(e.id)) out.set(e.id, { id: e.id, name: e.name, animated: e.animated });
+      if (listed.ok) adopted.push({ id, world, emojis: listed.emojis });
+    }
+    // After the LAST await (#1635 review r2): only the lists whose world is still the one that was read — a connection
+    // removed or replaced while a later list was awaited takes its servers along, whenever it went.
+    const out = new Map<string, { id: string; name: string; animated: boolean }>();
+    for (const a of adopted) {
+      if (this.worlds.get(a.id) !== a.world) continue;
+      for (const e of a.emojis) if (!out.has(e.id)) out.set(e.id, { id: e.id, name: e.name, animated: e.animated });
     }
     return [...out.values()];
   }
