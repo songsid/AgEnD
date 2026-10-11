@@ -72,6 +72,7 @@ const CASES: Array<[string, string]> = [
   ["/settings/bots", "settings:bots"],
   ["/settings/classic", "settings:classic"],
   ["/settings/general", "settings:general"],
+  ["/settings/web", "settings:web"],          // #1620
   ["/settings/advanced", "settings:advanced"],
   ["/settings/bogus", "none"],
   ["/settings/", "none"],

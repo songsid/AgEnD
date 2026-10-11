@@ -1,0 +1,192 @@
+/**
+ * #1620 part 2 (baseline: the maintainer's comment on the issue): Settings → Web writes the local session limits, the
+ * browser terminal (enabled / ttl_minutes), web echo and the public link's menu through PUT /api/settings/fleet/web.
+ * A change that LOOSENS access waits for the #1423 General-admin confirmation; one that TIGHTENS it applies at once;
+ * over the temporary public link none of it can be changed. The real classifier and effect projection; the real
+ * confirmation gate in front of the real handler, on a fleet.yaml on disk.
+ */
+import { EventEmitter } from "node:events";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import yaml from "js-yaml";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
+import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
+import { SettingsBaselines } from "../src/settings-baseline.js";
+import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+import { prepareSettingsEffect } from "../src/settings-effect.js";
+import { settingsChangeDiff } from "../src/settings-change.js";
+import { noteSettingsWrite } from "../src/settings-transaction.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+
+const roots: string[] = [], stores: SettingsConfirmationStore[] = [];
+afterEach(() => { for (const store of stores.splice(0)) store.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+const WEB = "/api/settings/fleet/web";
+/** What the gate would decide for this body against this fleet.yaml: null = applies directly. */
+const judge = (body: unknown, fleet: Record<string, unknown> = {}) =>
+  prepareSettingsEffect("PUT", WEB, body, { config: { defaults: {}, instances: {}, ...fleet } as any, classic: {} }).diff;
+
+describe("the classifier judges these by direction", () => {
+  it("tightening applies directly: a shorter session or idle time, the terminal off, a shorter terminal session", () => {
+    expect(judge({ session: { local: { absolute_hours: 6 } } })).toBeNull();
+    expect(judge({ session: { local: { idle_hours: 1 } } })).toBeNull();
+    expect(judge({ session: { local: { absolute_hours: 6, idle_hours: 1 } } })).toBeNull();
+    expect(judge({ web_terminal: { enabled: false } })).toBeNull();
+    expect(judge({ web_terminal: { ttl_minutes: 5 } })).toBeNull();
+    expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 48 } } } })).toBeNull();
+    // The projection keeps what the body leaves out: a shorter terminal session never reads as "enabled → default".
+    expect(judge({ web_terminal: { ttl_minutes: 5 } }, { web_terminal: { enabled: false, ttl_minutes: 15 } })).toBeNull();
+    expect(judge({ session: { local: { absolute_hours: 6 } } }, { web: { session: { local: { idle_hours: 1 } } } })).toBeNull();
+  });
+  it("loosening waits for a General admin: each one is named, old → new, in the access section", () => {
+    const cases: Array<[unknown, Record<string, unknown>, string]> = [
+      [{ session: { local: { absolute_hours: 24 } } }, {}, "fleet.web.session.local.absolute\\_hours: default → 24"],
+      [{ session: { local: { idle_hours: 6 } } }, {}, "fleet.web.session.local.idle\\_hours: default → 6"],
+      [{ web_terminal: { enabled: true } }, { web_terminal: { enabled: false } }, "fleet.web\\_terminal.enabled: false → true"],
+      [{ web_terminal: { ttl_minutes: 15 } }, {}, "fleet.web\\_terminal.ttl\\_minutes: default → 15"],
+      [{ web_terminal: { ttl_minutes: 15 } }, { web_terminal: { ttl_minutes: 12 } }, "fleet.web\\_terminal.ttl\\_minutes: 12 → 15"],
+    ];
+    for (const [body, fleet, line] of cases) {
+      const diff = judge(body, fleet);
+      expect([diff?.section, diff?.summary.slice(1)], JSON.stringify(body)).toEqual(["access", [line]]);
+    }
+  });
+  it("back to the default (null) is judged against the default: from below it loosens, from above it tightens", () => {
+    expect(judge({ session: { local: { absolute_hours: null } } }, { web: { session: { local: { absolute_hours: 6 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.absolute\\_hours: 6 → default"]);
+    expect(judge({ session: { local: { absolute_hours: null } } }, { web: { session: { local: { absolute_hours: 24, idle_hours: 2 } } } })).toBeNull();
+    expect(judge({ web_terminal: { enabled: null } }, { web_terminal: { enabled: false } })?.summary.slice(1)).toEqual(["fleet.web\\_terminal.enabled: false → default"]);
+    expect(judge({ web_terminal: { ttl_minutes: null } }, { web_terminal: { ttl_minutes: 20 } })).toBeNull();
+  });
+  it("one loosening in a batch of tightenings is confirmed — and only it is named", () => {
+    const diff = judge({ session: { local: { absolute_hours: 6, idle_hours: 4 } }, web_terminal: { enabled: false } });
+    expect(diff?.summary.slice(1)).toEqual(["fleet.web.session.local.idle\\_hours: default → 4"]);
+  });
+  it("the classifier itself: a value of the wrong kind is never judged a tightening (whatever reaches it)", () => {
+    const diff = settingsChangeDiff({ fleet: { web_terminal: { enabled: true } } }, { fleet: { web_terminal: { enabled: "false" } } }, { operation: "PUT x" });
+    expect(diff?.section).toBe("access");
+    expect(settingsChangeDiff({ fleet: { web: { session: { local: { idle_hours: 2 } } } } }, { fleet: { web: { session: { local: { idle_hours: "1" } } } } }, { operation: "PUT x" })).not.toBeNull();
+  });
+  it("what the handler or the validator would refuse is refused here, before anything is proposed", () => {
+    expect(() => judge({ session: { local: { idle_hours: 24 } } })).toThrow("invalid_settings_effect");
+    for (const body of [{ web_terminal: { ttl_minutes: 21 } }, { web_terminal: { ttl_minutes: 0 } }, { web_terminal: { enabled: "false" } },
+      { web_terminal: { bind: "0.0.0.0" } }, { session: { local: { absolute_hours: "48" } } }, { session: { gateway: {} } }])
+      expect(() => judge(body), JSON.stringify(body)).toThrow("invalid_web_settings");
+  });
+  it("web echo stays immediate and the public link's menu stays confirmed, as before", () => {
+    expect(judge({ echo_to_channel: false })).toBeNull();
+    expect(judge({ public_link: { allow_public: false } })).not.toBeNull();
+  });
+  it("the schema says all four apply now (read at every check / by /login when it starts)", () => {
+    const impacts = buildSettingsImpactSchema().impacts;
+    expect(["web.session.local.absolute_hours", "web.session.local.idle_hours", "web_terminal.enabled", "web_terminal.ttl_minutes"].map(k => impacts[k]))
+      .toEqual(["now", "now", "now", "now"]);
+  });
+});
+
+function harness(fleet: Record<string, unknown> = {}) {
+  const root = mkdtempSync(join(tmpdir(), "agend-test-1620-")); roots.push(root);
+  const path = join(root, "fleet.yaml");
+  const config: any = { defaults: {}, instances: {}, ...structuredClone(fleet) };
+  writeFileSync(path, yaml.dump(config));
+  let revision = 0;
+  const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
+  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() } } as unknown as SettingsApiContext;
+  const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
+  const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
+  const gate = new SettingsHttpConfirmation(store, {
+    principal: req => req.headers.cookie ? { id: "session-a", label: "browser", source: "web_session", current: () => true } : null,
+    baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
+  });
+  const dispatched = vi.fn();
+  /** Through the gate (as the server mounts it) unless `direct`; `publicLink` binds the request to the public link's listener. */
+  async function request(body: unknown, opts: { publicLink?: boolean; direct?: boolean; key?: string } = {}) {
+    return new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req = new EventEmitter() as any;
+      req.method = "PUT"; req.url = WEB; req.headers = { "idempotency-key": opts.key ?? "k-1", cookie: "opaque" }; req.destroy = () => undefined;
+      if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
+      let status = 0;
+      const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
+        end(text: string) { resolve({ status, body: JSON.parse(text) }); } } as any;
+      const next = (r: any, s: any, u: URL) => { dispatched(); return handleSettingsRequest(r, s, u, ctx); };
+      const url = new URL(WEB, "http://localhost");
+      try { expect(opts.direct ? next(req, res, url) : gate.handle(req, res, url, next)).toBe(true);
+        queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); }); }
+      catch (err) { reject(err); }
+    });
+  }
+  const raw = () => yaml.load(readFileSync(path, "utf8")) as any;
+  return { config, save, store, request, raw, dispatched };
+}
+const admin = () => ({ label: "F", current: () => true });
+
+describe("through the gate and the real handler", () => {
+  it("tightening is written at once — fleet.yaml and the live config", async () => {
+    const h = harness();
+    const r = await h.request({ session: { local: { absolute_hours: 6, idle_hours: 1 } }, web_terminal: { enabled: false, ttl_minutes: 5 } });
+    expect(r.status).toBe(200);
+    expect([h.raw().web.session, h.raw().web_terminal]).toEqual([{ local: { absolute_hours: 6, idle_hours: 1 } }, { enabled: false, ttl_minutes: 5 }]);
+    expect([h.config.web.session.local.idle_hours, h.config.web_terminal.enabled]).toEqual([1, false]);
+  });
+  it("loosening is proposed, written only when a General admin confirms it", async () => {
+    const h = harness({ web_terminal: { enabled: false } });
+    const r = await h.request({ session: { local: { absolute_hours: 72, idle_hours: 8 } }, web_terminal: { enabled: true } });
+    expect([r.status, r.body.result]).toEqual([202, "pending_confirmation"]);
+    expect(h.save).not.toHaveBeenCalled();
+    expect([h.raw().web, h.raw().web_terminal]).toEqual([undefined, { enabled: false }]);
+    const outcome = await h.store.decide(r.body.pending_change.id, "confirm", admin());
+    expect(outcome.state).toBe("applied");
+    expect([h.raw().web.session.local, h.raw().web_terminal]).toEqual([{ absolute_hours: 72, idle_hours: 8 }, { enabled: true }]);
+  });
+  it("null puts a value back to its default: the key leaves fleet.yaml, the others stay", async () => {
+    const h = harness({ web: { usage_panel: false, session: { local: { absolute_hours: 24, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15, bind: "127.0.0.1" } });
+    expect((await h.request({ session: { local: { absolute_hours: null } }, web_terminal: { ttl_minutes: null } })).status).toBe(200);
+    expect(h.raw().web).toEqual({ usage_panel: false, session: { local: { idle_hours: 6 } } });
+    expect(h.raw().web_terminal).toEqual({ enabled: false, bind: "127.0.0.1" });
+  });
+  it.each([
+    [{ session: { local: { absolute_hours: "24" } } }], [{ session: { gateway: { idle_hours: 1 } } }], [{ session: { local: { absolute: 24 } } }],
+    [{ web_terminal: { enabled: "no" } }], [{ web_terminal: { ttl_minutes: 1.5 } }], [{ web_terminal: { ttl_minutes: 21 } }], [{ web_terminal: { ttl_minutes: 0 } }], [{ web_terminal: { bind: "0.0.0.0" } }], [{ web_terminal: { tunnel: {} } }],
+    [{ session: [] }], [{ web_terminal: null }], [{ allowed_hosts: ["evil"] }],
+  ])("the handler refuses a malformed or read-only field without writing (%j)", async body => {
+    const h = harness({ web_terminal: { enabled: false } }), before = readFileSync(join(roots.at(-1)!, "fleet.yaml"), "utf8");
+    expect((await h.request(body, { direct: true })).status).toBe(400);
+    expect(readFileSync(join(roots.at(-1)!, "fleet.yaml"), "utf8")).toBe(before);
+    expect(h.save).not.toHaveBeenCalled();
+  });
+  it("the handler applies the validator to the whole result: idle above absolute is refused", async () => {
+    const h = harness({ web: { session: { local: { absolute_hours: 4 } } } });
+    expect((await h.request({ session: { local: { idle_hours: 6 } } }, { direct: true })).status).toBe(400);
+    expect((await h.request({ session: { local: { idle_hours: 4 } } }, { direct: true, key: "k-2" })).status).toBe(200);
+    expect(h.raw().web.session.local).toEqual({ absolute_hours: 4, idle_hours: 4 });
+  });
+});
+
+describe("never over the temporary public link", () => {
+  it.each([
+    ["a tightening", { session: { local: { absolute_hours: 6 } } }],
+    ["a loosening", { web_terminal: { ttl_minutes: 20 } }],
+    ["web echo", { echo_to_channel: false }],
+    ["the public link's own menu", { public_link: { allow_public: false } }],
+  ])("%s: refused by the gate — nothing proposed, nothing dispatched, nothing written", async (_what, body) => {
+    const h = harness();
+    const r = await h.request(body, { publicLink: true });
+    expect([r.status, r.body.error]).toEqual([403, "web_settings_not_over_public_link"]);
+    expect([h.store.list("session-a"), h.dispatched.mock.calls.length, h.save.mock.calls.length]).toEqual([[], 0, 0]);
+  });
+  it("and by the handler itself, for anything that reaches it without the gate", async () => {
+    const h = harness();
+    const r = await h.request({ session: { local: { absolute_hours: 6 } } }, { publicLink: true, direct: true });
+    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+    expect(h.raw().web).toBeUndefined();
+  });
+  it("the same requests from the dashboard's own address go through (control)", async () => {
+    const h = harness();
+    expect((await h.request({ session: { local: { absolute_hours: 6 } } })).status).toBe(200);
+    expect((await h.request({ session: { local: { absolute_hours: 5 } } }, { direct: true, key: "k-2" })).status).toBe(200);
+  });
+});

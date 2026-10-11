@@ -154,10 +154,20 @@ describe("public credential scopes, real auth handlers", () => {
   });
   it("a public Settings body buffered across close cannot save config", async () => {
     const store = new WebSessionStore(); const p = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "fixture", tokenEpoch: tokenEpoch(token) }); let current = true;
-    const h = request("/api/settings/fleet/web", "PUT", { origin, cookie: `__Host-agend_session=${p.sessionId}`, "x-agend-csrf": csrfTokenFor(p.sessionId) }); bind(h.req, () => current);
+    // #1620: /api/settings/fleet/web is refused over the public link before its body is read (below), so the buffered
+    // body is a defaults edit here.
+    const h = request("/api/settings/fleet/defaults", "PUT", { origin, cookie: `__Host-agend_session=${p.sessionId}`, "x-agend-csrf": csrfTokenFor(p.sessionId) }); bind(h.req, () => current);
     const cfg = { defaults: {}, instances: {} }, save = vi.fn();
     handleSettingsRequest(h.req as never, h.res as never, new URL(h.req.url, origin), { webToken: token, webSessions: store, fleetConfig: cfg, saveFleetConfig: save } as never);
-    current = false; h.feed({ public_link: { allow_public: false } }); await flush(); expect(save).not.toHaveBeenCalled(); expect(h.status()).toBe(401);
+    current = false; h.feed({ model: "x" }); await flush(); expect(save).not.toHaveBeenCalled(); expect(h.status()).toBe(401);
+  });
+  it("a public request to the web settings is refused at once, before its body (#1620)", async () => {
+    const store = new WebSessionStore(); const p = store.create({ tier: "admin", surface: "gateway", exposureId: id, label: "fixture", tokenEpoch: tokenEpoch(token) });
+    const h = request("/api/settings/fleet/web", "PUT", { origin, cookie: `__Host-agend_session=${p.sessionId}`, "x-agend-csrf": csrfTokenFor(p.sessionId) }); bind(h.req, () => true);
+    const cfg = { defaults: {}, instances: {} }, save = vi.fn();
+    handleSettingsRequest(h.req as never, h.res as never, new URL(h.req.url, origin), { webToken: token, webSessions: store, fleetConfig: cfg, saveFleetConfig: save } as never);
+    expect(h.status()).toBe(403);
+    h.feed({ echo_to_channel: false }); await flush(); expect(save).not.toHaveBeenCalled();
   });
   it("exposure revocation never signs out local sessions", () => {
     const store = new WebSessionStore(); const local = store.create({ tier: "admin", surface: "local", label: "local", tokenEpoch: tokenEpoch(token) });

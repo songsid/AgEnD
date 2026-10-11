@@ -36,10 +36,14 @@ function literalKeys(source: string, marker: string): string[] {
 
 /** Every field path the Settings UI names: literal ones, and the ones its forms build from their keys. */
 function badgedFields(): string[] {
+  // #1620: Settings → Web lists the web settings it does NOT edit (WEB_READ_ONLY) by path; they are not form fields.
+  const readOnly = /export const WEB_READ_ONLY = \[[^\]]*\];/;
+  expect(ui, "the Web section's read-only list").toMatch(readOnly);
+  const edited = ui.replace(readOnly, "");
   const literal = [
-    ...[...ui.matchAll(/impact(?:Of)?\(\s*(?:schema,\s*)?"([^"]+)"\)/g)].map(m => m[1]!),
+    ...[...edited.matchAll(/impact(?:Of)?\(\s*(?:schema,\s*)?"([^"]+)"\)/g)].map(m => m[1]!),
     // A field's label carries its path: L(tn("…"), "classic.admin_users"), field="instance.backend", and so on.
-    ...[...ui.matchAll(/"((?:instance|classic|classic_defaults|defaults|fleet|web)\.[a-z_]+(?:\.[a-z_]+)*)"/g)].map(m => m[1]!),
+    ...[...edited.matchAll(/"((?:instance|classic|classic_defaults|defaults|fleet|web)\.[a-z_]+(?:\.[a-z_]+)*)"/g)].map(m => m[1]!),
   ];
   const built = [
     ...literalKeys(sources["settings-model.js"]!, "const next = {").map(k => `instance.${k}`),

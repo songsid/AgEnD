@@ -4,6 +4,7 @@ import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecut
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { validPublicLinkPatch } from "./public-web-link.js";
+import { webSessionPatch, webTerminalPatch } from "./web-settings-patch.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
@@ -645,13 +646,14 @@ export function handleSettingsRequest(
 
   // One hot web toggle; an unrelated Settings edit never materializes defaults.
   if (method === "PUT" && path === "/api/settings/fleet/web") {
+    // #1620: never over the temporary public link — refused before the body is read (the confirmation gate refuses it
+    // first; this is the second wall, for any path that reaches the handler without it).
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 4096).then(buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
-      // #1620: never over the temporary public link (the confirmation gate refuses it first; this is the second wall).
-      if (gatewayRequestContext(req)) return json(res, 403, { error: "web_settings_not_over_public_link" });
       if (!body || typeof body !== "object" || Array.isArray(body)
         || Object.keys(body).some(key => !["echo_to_channel", "public_link", "session", "web_terminal"].includes(key))) return json(res, 400, { error: "unknown web field" });
       const patch = body as { echo_to_channel?: unknown; public_link?: unknown; session?: unknown; web_terminal?: unknown };
@@ -662,7 +664,7 @@ export function handleSettingsRequest(
       const sessionPatch = webSessionPatch(patch.session);
       if (sessionPatch === "invalid") return json(res, 400, { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" });
       const terminalPatch = webTerminalPatch(patch.web_terminal);
-      if (terminalPatch === "invalid") return json(res, 400, { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: integer|null }" });
+      if (terminalPatch === "invalid") return json(res, 400, { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" });
       const changes: RawConfigPatch[] = [];
       const web = { ...cfg.web };
       let webTerminal = cfg.web_terminal;
@@ -1141,34 +1143,4 @@ export function handleSettingsRequest(
 
   json(res, 404, { error: "not found" });
   return true;
-}
-
-/** #1620: `session` of a PUT /api/settings/fleet/web body — the local limits only; null clears one. */
-function webSessionPatch(raw: unknown): Record<string, number | null> | null | "invalid" {
-  if (raw === undefined) return null;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
-  const keys = Object.keys(raw);
-  if (keys.some(k => k !== "local")) return "invalid";
-  const local = (raw as { local?: unknown }).local;
-  if (local === undefined) return null;
-  if (!local || typeof local !== "object" || Array.isArray(local)) return "invalid";
-  const out: Record<string, number | null> = {};
-  for (const [k, v] of Object.entries(local)) {
-    if ((k !== "absolute_hours" && k !== "idle_hours") || !(v === null || (typeof v === "number" && Number.isFinite(v)))) return "invalid";
-    out[k] = v as number | null;
-  }
-  return Object.keys(out).length ? out : null;
-}
-
-/** #1620: `web_terminal` of a PUT /api/settings/fleet/web body — enabled and ttl_minutes only; null clears one. */
-function webTerminalPatch(raw: unknown): Record<string, boolean | number | null> | null | "invalid" {
-  if (raw === undefined) return null;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "invalid";
-  const out: Record<string, boolean | number | null> = {};
-  for (const [k, v] of Object.entries(raw)) {
-    if (k === "enabled" && (v === null || typeof v === "boolean")) out[k] = v;
-    else if (k === "ttl_minutes" && (v === null || (typeof v === "number" && Number.isInteger(v)))) out[k] = v;
-    else return "invalid";
-  }
-  return Object.keys(out).length ? out : null;
 }

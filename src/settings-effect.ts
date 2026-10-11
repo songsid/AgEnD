@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
+import { webSessionPatch, webTerminalPatch } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
@@ -70,14 +71,17 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     const { web_terminal: terminal, session, ...patch } = record(body); after.fleet.web = { ...cfg.web, ...patch };
     if (patch.public_link) after.fleet.web.public_link = { ...cfg.web?.public_link, ...patch.public_link };
-    // #1620: the local session limits (null = back to the default), and the top-level web_terminal section.
-    if (session !== undefined) {
-      const local: Record<string, any> = { ...cfg.web?.session?.local, ...record(record(session).local ?? {}) };
+    // #1620: the local session limits (null = back to the default), and the top-level web_terminal section — read as
+    // the handler reads them: what it would refuse is refused here, never proposed.
+    const sessionPatch = webSessionPatch(session), terminalPatch = webTerminalPatch(terminal);
+    if (sessionPatch === "invalid" || terminalPatch === "invalid") throw new SettingsConfirmationError(400, "invalid_web_settings");
+    if (sessionPatch) {
+      const local: Record<string, any> = { ...cfg.web?.session?.local, ...sessionPatch };
       for (const k of Object.keys(local)) if (local[k] === null) delete local[k];
       after.fleet.web.session = { ...cfg.web?.session, local };
     }
-    if (terminal !== undefined) {
-      const wt: Record<string, any> = { ...cfg.web_terminal, ...record(terminal) };
+    if (terminalPatch) {
+      const wt: Record<string, any> = { ...cfg.web_terminal, ...terminalPatch };
       for (const k of Object.keys(wt)) if (wt[k] === null) delete wt[k];
       after.fleet.web_terminal = wt;
     }

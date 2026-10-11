@@ -90,7 +90,7 @@ describe("web echo config and Settings (#1320 A)", () => {
   });
 });
 
-// ── The General section's web chat, rendered (#1408 step 3: the panel in the mini DOM, a fake fetch for the server) ──
+// ── The web chat card, rendered — in Settings → Web since #1620 (#1408 step 3: the panel in the mini DOM, a fake fetch for the server) ──
 
 const schema = buildSettingsImpactSchema();
 let p: AppPage;
@@ -128,12 +128,12 @@ afterEach(async () => {
   resetOperation(); resetConfirmations();
 });
 
-/** The General section with the given fleet.yaml (its web block, if any). */
-async function general(web?: Record<string, unknown>) {
+/** Settings → Web with the given fleet.yaml (its web block, if any). */
+async function webSection(web?: Record<string, unknown>) {
   fleet = { defaults: { locale: "en" }, instances: {}, channels: [], ...(web ? { web } : {}) };
   const { SettingsPanel } = await import("/ui/js/panel-settings.js");
   await p.unmount();
-  await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "general" }, navKey: "settings:general" }));
+  await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "web" }, navKey: "settings:web" }));
   await settle(12);
   const $ = (id: string) => p.root.querySelector(`#${id}`)!;
   const click = async (el: any) => { fire(el, "click"); await settle(); };
@@ -153,7 +153,7 @@ async function general(web?: Record<string, unknown>) {
 
 describe("web echo config and Settings, as rendered (#1320 A)", () => {
   it("public-link controls display defaults without writing, then send only edited leaves (#1367)", async () => {
-    const h = await general();
+    const h = await webSection();
     expect(h.$("publicWebLink").checked).toBe(true);
     expect(Number(h.$("publicWebTtl").value)).toBe(120);
     await h.save(); await h.apply();
@@ -167,7 +167,7 @@ describe("web echo config and Settings, as rendered (#1320 A)", () => {
     const before = schema.impacts["web.public_link.ttl_minutes"];
     schema.impacts["web.public_link.ttl_minutes"] = "fleet";
     try {
-      const h = await general();
+      const h = await webSection();
       await h.type(h.$("publicWebTtl"), "30");
       await h.check(h.$("webEchoToChannel"), false);
       await h.save();
@@ -177,9 +177,9 @@ describe("web echo config and Settings, as rendered (#1320 A)", () => {
   });
 
   it("public-link Settings rejects invalid TTL before staging any unrelated edits (#1367)", async () => {
-    const h = await general();
+    const h = await webSection();
     await h.type(h.$("publicWebTtl"), "481");
-    await h.choose(h.$("g-tp"), "standard");
+    await h.type(h.$("webSessionAbsolute"), "6");
     await h.check(h.$("webEchoToChannel"), false);
     expect(h.button("Review changes")!.disabled).toBe(true);
     expect(h.$("publicWebTtl").getAttribute("class")).toBe("invalid");
@@ -189,17 +189,15 @@ describe("web echo config and Settings, as rendered (#1320 A)", () => {
   });
 
   it("the live Settings save callback keeps an absent toggle absent on unrelated edits", async () => {
-    const h = await general();
+    const h = await webSection();
     expect(h.$("webEchoToChannel").checked).toBe(true);
-    const toolProgress = h.$("g-tp");
-    await h.choose(toolProgress, "standard");
+    await h.type(h.$("webSessionAbsolute"), "6");
     await h.save(); await h.apply();
-    expect(h.writes().some(s => s.path.endsWith("/web"))).toBe(false);
-    expect(h.writes()).toEqual(expect.arrayContaining([expect.objectContaining({ path: "/api/settings/fleet/defaults", body: { tool_progress: "standard" } })]));
+    expect(h.writes().filter(s => s.path.endsWith("/web"))).toEqual([{ method: "PUT", path: "/api/settings/fleet/web", body: { session: { local: { absolute_hours: 6 } } } }]);
   });
 
   it("changing a staged toggle back removes its pending write", async () => {
-    const h = await general();
+    const h = await webSection();
     await h.check(h.$("webEchoToChannel"), false);
     await h.save();
     expect(h.pending()).not.toBeNull();
@@ -210,7 +208,7 @@ describe("web echo config and Settings, as rendered (#1320 A)", () => {
   });
 
   it.each([undefined, true, false])("the live checkbox stages only an actual toggle from %s", async initial => {
-    const h = await general(initial === undefined ? undefined : { echo_to_channel: initial, usage_panel: false });
+    const h = await webSection(initial === undefined ? undefined : { echo_to_channel: initial, usage_panel: false });
     expect(h.$("webEchoToChannel").checked).toBe(initial ?? true);
     await h.save(); await h.apply();
     expect(h.writes().some(s => s.path.endsWith("/web"))).toBe(false);
