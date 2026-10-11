@@ -46,6 +46,27 @@ export const DEFAULT_SESSION_POLICY: Readonly<Record<SessionSurface, SessionPoli
   gateway: { absoluteMs: 4 * HOUR, idleMs: 30 * MINUTE },
 };
 
+/**
+ * #1620: the bounds an operator may set the LOCAL policy within (`web.session.local.*`, in hours). The gateway's
+ * policy is never configurable: a session there is reachable from the internet.
+ */
+export const LOCAL_SESSION_HOURS = { min: 1, max: 720 } as const;
+
+/**
+ * #1620: the local policy `web.session.local` asks for, or the default for what it leaves out. Defensive: a value the
+ * validator would refuse (not a number, out of bounds, idle above absolute) gives the default for that field rather
+ * than a looser one.
+ */
+export function localSessionPolicy(cfg: { absolute_hours?: unknown; idle_hours?: unknown } | undefined): SessionPolicy {
+  const def = DEFAULT_SESSION_POLICY.local;
+  const hours = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= LOCAL_SESSION_HOURS.min && v <= LOCAL_SESSION_HOURS.max ? v : null);
+  const abs = hours(cfg?.absolute_hours);
+  const idle = hours(cfg?.idle_hours);
+  const absoluteMs = abs !== null ? abs * HOUR : def.absoluteMs;
+  const idleMs = idle !== null ? idle * HOUR : def.idleMs;
+  return idleMs <= absoluteMs ? { absoluteMs, idleMs } : def;
+}
+
 /** More than this and the least recently used one is dropped. */
 export const MAX_WEB_SESSIONS = 8;
 
@@ -63,7 +84,8 @@ export interface SessionRecord {
   readonly idHash: string;
   readonly created: number;
   lastSeen: number;
-  readonly absoluteExpiry: number;
+  /** #1620: lowered (never raised) when the local policy is shortened — see WebSessionStore.limit(). */
+  absoluteExpiry: number;
   idleExpiry: number;
   readonly tier: SessionTier;
   readonly surface: SessionSurface;
@@ -155,6 +177,11 @@ export interface WebSessionStoreOptions {
   readonly fileOps?: Partial<SessionFileOps>;
   readonly now?: () => number;
   readonly policy?: Partial<Record<SessionSurface, SessionPolicy>>;
+  /**
+   * #1620: the local policy, read at every check (fleet.yaml's `web.session.local`, which a Settings save or a reload
+   * can change while the fleet runs). Takes precedence over `policy.local`.
+   */
+  readonly localPolicy?: () => SessionPolicy;
   readonly maxSessions?: number;
   readonly onWarn?: (message: string) => void;
 }
@@ -180,6 +207,7 @@ export class WebSessionStore {
   private readonly byHash = new Map<string, SessionRecord>();
   private readonly now: () => number;
   private readonly policy: Record<SessionSurface, SessionPolicy>;
+  private readonly localPolicy: (() => SessionPolicy) | null;
   private readonly maxSessions: number;
   private readonly path: string | null;
   private readonly warn: (message: string) => void;
@@ -195,6 +223,7 @@ export class WebSessionStore {
       local: opts.policy?.local ?? DEFAULT_SESSION_POLICY.local,
       gateway: opts.policy?.gateway ?? DEFAULT_SESSION_POLICY.gateway,
     };
+    this.localPolicy = opts.localPolicy ?? null;
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
@@ -205,7 +234,30 @@ export class WebSessionStore {
   get size(): number { return this.byHash.size; }
 
   /** How long a session on this surface may sit unused before it ends. For showing people, not for deciding. */
-  idleWindowMs(surface: SessionSurface): number { return this.policy[surface].idleMs; }
+  idleWindowMs(surface: SessionSurface): number { return this.policyFor(surface).idleMs; }
+
+  /** The policy in force for a surface now (#1620: the local one as configured at this moment; the gateway's fixed). */
+  private policyFor(surface: SessionSurface): SessionPolicy {
+    return surface === "local" && this.localPolicy ? this.localPolicy() : this.policy[surface];
+  }
+
+  /**
+   * #1620: a session's limits under the policy in force NOW. Shortening takes effect on existing sessions: the
+   * absolute limit is never later than created + the current absolute window, the idle limit never later than the
+   * last use + the current idle window. Lengthening never raises an existing session's absolute limit (an expired
+   * or shortened session cannot be revived by a config change); the next use moves its idle limit by the new window,
+   * up to that absolute limit. New sessions get the new windows whole.
+   */
+  private limit(record: SessionRecord): void {
+    const p = this.policyFor(record.surface);
+    const absoluteExpiry = Math.min(record.absoluteExpiry, record.created + p.absoluteMs);
+    const idleExpiry = Math.min(record.idleExpiry, record.lastSeen + p.idleMs, absoluteExpiry);
+    if (absoluteExpiry !== record.absoluteExpiry || idleExpiry !== record.idleExpiry) {
+      record.absoluteExpiry = absoluteExpiry;
+      record.idleExpiry = idleExpiry;
+      this.dirty = true;
+    }
+  }
 
   /**
    * Make a session. The id is returned once and never stored; the caller puts it
@@ -215,7 +267,7 @@ export class WebSessionStore {
     const now = this.now();
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
-    const policy = this.policy[input.surface];
+    const policy = this.policyFor(input.surface);
     const absoluteExpiry = now + policy.absoluteMs;
     const record: SessionRecord = {
       handle: randomBytes(8).toString("hex"),
@@ -255,6 +307,7 @@ export class WebSessionStore {
     if (record.surface !== (opts.surface ?? "local")
       || (record.surface === "gateway" && (!opts.exposureId || record.exposureId !== opts.exposureId))) return null;
     const now = this.now();
+    this.limit(record);
     if (now >= record.absoluteExpiry || now >= record.idleExpiry || record.tokenEpoch !== currentEpoch) {
       this.byHash.delete(record.idHash);
       this.persistNow();
@@ -262,7 +315,7 @@ export class WebSessionStore {
     }
     if (opts.touch !== false) {
       record.lastSeen = now;
-      record.idleExpiry = Math.min(now + this.policy[record.surface].idleMs, record.absoluteExpiry);
+      record.idleExpiry = Math.min(now + this.policyFor(record.surface).idleMs, record.absoluteExpiry);
       this.dirty = true;
       this.persistIfDue(now);
     }
@@ -271,6 +324,7 @@ export class WebSessionStore {
 
   /** Recheck a retained server record without retaining/replaying its bearer cookie. */
   isCurrent(record: SessionRecord, currentEpoch: string): boolean {
+    if (this.byHash.get(record.idHash) === record) this.limit(record);
     return this.byHash.get(record.idHash) === record && !this.pending.has(record.idHash)
       && record.tokenEpoch === currentEpoch && this.now() < record.absoluteExpiry && this.now() < record.idleExpiry;
   }
@@ -353,6 +407,7 @@ export class WebSessionStore {
   private purgeExpired(now: number): void {
     let removed = false;
     for (const [hash, record] of this.byHash) {
+      this.limit(record);
       if (now >= record.absoluteExpiry || now >= record.idleExpiry) { this.byHash.delete(hash); this.pending.delete(hash); removed = true; }
     }
     if (removed) this.dirty = true;
@@ -447,8 +502,10 @@ export class WebSessionStore {
     const now = this.now();
     for (const entry of list) {
       if (!isRecord(entry)) continue;
-      if (now >= entry.absoluteExpiry || now >= entry.idleExpiry) continue;
-      this.byHash.set(entry.idHash, { ...entry });
+      const record = { ...entry };
+      this.limit(record);                  // #1620: a policy shortened while the fleet was down applies at once
+      if (now >= record.absoluteExpiry || now >= record.idleExpiry) continue;
+      this.byHash.set(record.idHash, record);
     }
     while (this.byHash.size > this.maxSessions) this.evictLeastRecentlyUsed();
     this.persisted = new Set([...this.byHash.keys()].filter(hash => !this.pending.has(hash)));

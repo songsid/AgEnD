@@ -307,12 +307,14 @@ describe("persistence", () => {
     clock.now += DEFAULT_SESSION_POLICY.local.absoluteMs + 1;
     const second = new WebSessionStore({ dataDir: dir, ...opts });
     expect(second.authenticate(sessionId, EPOCH)).toBeNull();
-    // ...and it does not survive by being loaded just inside the cap either.
+    // ...and it does not survive by being loaded just inside the cap either: #1620 evaluates the policy at every
+    // check, so an idle expiry on disk later than the last use + the idle window is not honoured at all (the file
+    // never holds one: a use writes both together) — unused since sign-in, this session is long idle.
     clock.now = 1_000_000 + DEFAULT_SESSION_POLICY.local.absoluteMs - 1000;
     const third = new WebSessionStore({ dataDir: dir, ...opts });
-    expect(third.authenticate(sessionId, EPOCH, { touch: false })).not.toBeNull();
-    clock.now += 2000;
+    expect(third.authenticate(sessionId, EPOCH, { touch: false })).toBeNull();
     // A check that never touches the record cannot lean on the clamp a touch would have applied.
+    clock.now += 2000;
     expect(third.authenticate(sessionId, EPOCH, { touch: false })).toBeNull();
   });
 
