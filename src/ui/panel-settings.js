@@ -269,9 +269,16 @@ export function DeviceSection() {
     let last = null;
     try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
     navigate(last ? chatPath(last) : "/ui");
-    // The tour points at the chat's own controls: start it once the chat has drawn (bounded wait).
+    // The tour points at the chat's own controls: start it once the CHAT has drawn — its Send button, not #main (the
+    // shell's landmark is on every page, Settings included) — waiting at most ~3 s (#1608 review). The focus goes to
+    // the composer (or the main area) first: the tour returns it there when it ends, not to this button, which is gone.
     let tries = 0;
-    const go = () => { if (document.getElementById("main") || ++tries > 30) startTour(); else setTimeout(go, 100); };
+    const go = () => {
+      if (!document.getElementById("sendBtn") && ++tries <= 30) { setTimeout(go, 100); return; }
+      const here = document.getElementById("msgIn") || document.getElementById("main");
+      if (here && typeof here.focus === "function") here.focus();
+      startTour();
+    };
     setTimeout(go, 0);
   };
   return html`<section class="card s-device"><h3>${tn("sec_device")}</h3>
