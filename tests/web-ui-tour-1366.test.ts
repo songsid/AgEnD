@@ -221,9 +221,11 @@ describe("the first sign-in tour (#1366)", () => {
   it("#1609: left for another page while it waited — the old replay does nothing there", async () => {
     const { p, nav, send } = await replayHarness();
     nav.navigate("/ui/fleet");
+    (p.doc.getElementById("sbOpen") as any).focus();          // where the person is on that page
     p.doc.body.append(send);                                  // (an element with that id shows up later, anywhere)
     await new Promise(r => setTimeout(r, 400)); await settle();
     expect(!!p.card()).toBe(false);
+    expect(p.doc.activeElement?.id, "nor does it move the focus there").toBe("sbOpen");
   });
   it("#1609: away and back to the same chat (a new navigation, the same URL) — the old replay does nothing", async () => {
     const { p, nav, send } = await replayHarness();
