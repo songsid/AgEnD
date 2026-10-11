@@ -1,0 +1,5 @@
+---
+section: Added
+---
+- **Web: a Settings → Web section (#1620).** It edits how long a dashboard sign-in lasts here and how long it may sit unused (`web.session.local.*`), the browser terminal that `/login` opens (on or off, and its minutes), web echo and the public link's menu — web echo and the public link moved here from General. A change that loosens access (a longer session or idle time, the browser terminal turned back on or given more minutes) waits for a fleet admin to confirm it in General or with `agend settings confirm <id>`; one that tightens access applies at once. The other web settings are listed read-only, to be edited in `fleet.yaml`. None of them can be changed over a temporary public link.
+- **Web: a misconfigured session limit never gives a longer sign-in (#1620).** A value the validator would refuse no longer falls back to the 12-hour default when that is longer than what was asked: an idle time above the session length is cut to it, and a value below 1 hour counts as 1 hour.

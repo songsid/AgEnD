@@ -10,7 +10,7 @@ AgEnD 的 web dashboard 是 fleet 自己跑的一個小型 web server，上面�
 |---|---|
 | **`/ui`**：網頁 app | 跟 agent 對話（聊天、檔案、中止回覆）、看誰正在工作，管理 instance、task、排程與 team。每個聊天都有自己的網址 `/ui/chat/<name>`；Fleet 在 `/ui/fleet`（`/ui/fleet/schedules`、`…/teams`、`…/org`、`…/cache`、`…/config`）；**等你處理** 在 `/ui/needs` |
 | **`/view`** | 以讀取為主的總覽：每個 agent 的即時終端、名單、用量，也可以編輯 agent 的個人檔案與頭像 |
-| **`/settings`** | fleet 設定——agent、連線、ClassicBot、預設值、`fleet.yaml`——可以套用並重啟。每個分頁都有自己的網址：`/settings/bots`、`…/classic`、`…/general`、`…/advanced`（`/settings` 是 Agent） |
+| **`/settings`** | fleet 設定——agent、連線、ClassicBot、預設值、`fleet.yaml`——可以套用並重啟。每個分頁都有自己的網址：`/settings/bots`、`…/classic`、`…/general`、`…/web`、`…/advanced`（`/settings` 是 Agent） |
 
 `/ui`、`/view` 和 `/settings` 是同一個有側欄的 app：instance 清單、**Fleet**、**檢視**、**設定**和 **Session** 選單都在側欄。在裡面切換不會重新載入頁面，上一頁／下一頁也可以用。打開 `/` 會進入 `/ui`，並回到你上次開著的聊天。舊的 `/ui#instance=<name>` 連結仍然有效，登入後也會帶到正確的聊天。
 
@@ -212,12 +212,13 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 
 ## `/settings`
 
-**Agent**、**連線**、**ClassicBot**、**一般**和**開發者**（以 YAML 或 JSON 呈現整份 `fleet.yaml`）是分頁，各有自己的網址。搜尋框可篩選 agent、連線和 ClassicBot 房間；**設定精靈** 的四個步驟和 `agend quickstart` 相同；它一律新增一個連線，接到新的 agent 或你已有的 agent。
+**Agent**、**連線**、**ClassicBot**、**一般**、**網頁**和**開發者**（以 YAML 或 JSON 呈現整份 `fleet.yaml`）是分頁，各有自己的網址。搜尋框可篩選 agent、連線和 ClassicBot 房間；**設定精靈** 的四個步驟和 `agend quickstart` 相同；它一律新增一個連線，接到新的 agent 或你已有的 agent。
 
 還沒有任何聊天連線（只用網頁）的 fleet，會在聊天頁和設定的 Agent／連線分頁上方顯示一張卡片：**連接聊天應用程式** 會開啟設定精靈，**只用網頁** 會在這個瀏覽器裡隱藏它。
 
-- **變更會先暫存，再一起套用。** 在 agent 或連線的 **設定** 對話框按 **暫存變更** 就會暫存；一般分頁的 **檢查變更** 也一樣。下方的列會顯示數量和套用的代價（立即生效、重新啟動該 agent，或重新啟動 AgEnD）；**套用變更** 一次套用全部，**捨棄** 則全部丟掉。在分頁之間切換時暫存的變更會保留；帶著暫存變更離開設定時，會先問 **要捨棄 N 項尚未套用的變更嗎？**
+- **變更會先暫存，再一起套用。** 在 agent 或連線的 **設定** 對話框按 **暫存變更** 就會暫存；一般或網頁分頁的 **檢查變更** 也一樣。下方的列會顯示數量和套用的代價（立即生效、重新啟動該 agent，或重新啟動 AgEnD）；**套用變更** 一次套用全部，**捨棄** 則全部丟掉。在分頁之間切換時暫存的變更會保留；帶著暫存變更離開設定時，會先問 **要捨棄 N 項尚未套用的變更嗎？**
 - **按下套用後，即使離開也會繼續。** 你可以去聊天或任何地方：寫入、重新載入和進度都會繼續，頂端會有一行顯示進度，回到設定時可以看到細節。前一次套用完成前，不能再套用一次。需要重新啟動 AgEnD 本身時，會提供 **重新啟動 AgEnD**（另有確認）。
+- **網頁** 分頁是 dashboard 本身的設定：從這裡登入後可維持多久、閒置多久登出（`web.session.local.*`；留空 = 預設值）、`/login` 開啟的瀏覽器終端機（開或關，以及分鐘數）、web 同步和公開連結選單。放寬存取的變更——延長 session 或閒置時間、重新開啟瀏覽器終端機或增加分鐘數、公開連結——要等 fleet admin 在 General 確認（或用 `agend settings confirm <id>`，見下方「確認敏感變更」）；收緊存取的變更立即套用。其他網頁設定只列出、不能修改：它們決定 dashboard 監聽和公開的內容，請在 `fleet.yaml` 編輯。透過臨時公開連結無法變更這些設定：分頁會說明原因，伺服器也會拒絕。
 - **新增 agent** 和側欄的 **+**（新增 instance）是同一個對話框。
 - **Bot token 在這裡輸入，不用編輯 `.env`。** **新增連線** 和 **設定精靈** 會用密碼欄位請你貼上 bot 的 token；**驗證** 會向 Telegram 或 Discord 確認這是哪個 bot，並在儲存前顯示（「這是 @your_bot。」）。
   - token 存在這台電腦的 `~/.agend/.env`，名稱由 AgEnD 自動產生（`AGEND_DISCORD_TOKEN`、`AGEND_DISCORD_2_TOKEN`、`AGEND_TELEGRAM_PERSONA1_TOKEN`…）。**進階** 會以唯讀方式顯示，給自行管理 `.env` 的人參考；不需要任何人手動輸入。
@@ -282,6 +283,13 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.public_link.allow_public` | `true` | 提供需主動選擇的公開選項；停用也關閉現有入口 |
 | `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘，不延長現有入口 |
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
+| `web.echo_to_channel` | `true` | 將 web chat 訊息複製到 instance 自己的 Telegram 或 Discord 主題 |
+| `web.session.local.absolute_hours` | `12` | 從 dashboard 本身網址登入後可維持多久，1–720 小時 |
+| `web.session.local.idle_hours` | `2` | 閒置多久後登出，1–720 小時，且不超過 `absolute_hours` |
+| `web_terminal.enabled` | `true` | `false`：`/login` 會拒絕（沒有瀏覽器終端機） |
+| `web_terminal.ttl_minutes` | `10` | `/login` 的瀏覽器終端機開啟多久，1–20 分鐘 |
+
+**設定 → 網頁** 可編輯 `web.echo_to_channel`、`web.public_link.*`、`web.session.local.*` 與 `web_terminal.enabled` / `ttl_minutes`；其他設定（包含 `web.provider_secrets`、`web_terminal.bind`、`web_terminal.tunnel`）只列出、不能在這裡修改。
 
 完整設定說明：[configuration.zh-TW.md](configuration.zh-TW.md)；CLI 指令：[cli.zh-TW.md](cli.zh-TW.md)。
 
@@ -306,7 +314,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 
 ### 確認敏感變更
 
-變更存取／F／C 名單、secret、connection 目的地／順序、公開曝光或控制類 instance 設定會回傳 `202 pending_confirmation`。請求人可用 `GET /api/settings/pending[/:id]` 列出或輪詢，並用 `DELETE /api/settings/pending/:id` 撤回尚未被認領的請求；其他 session 會得到 404。輪詢屬被動讀取，不延長登入有效期；`remaining_ms` 用來倒數，顯示的時間戳不是授權期限。
+變更存取／F／C 名單、secret、connection 目的地／順序、公開曝光、控制類 instance 設定，或放寬網頁設定（延長本機 session 或閒置時間、開啟瀏覽器終端機或增加分鐘數）會回傳 `202 pending_confirmation`。請求人可用 `GET /api/settings/pending[/:id]` 列出或輪詢，並用 `DELETE /api/settings/pending/:id` 撤回尚未被認領的請求；其他 session 會得到 404。輪詢屬被動讀取，不延長登入有效期；`remaining_ms` 用來倒數，顯示的時間戳不是授權期限。
 
 Fleet admin 在 General 核對遮蔽 secret 的 diff 後確認。Chat 不可用時執行本機命令 `agend settings confirm <id>`；Reject、到期或 session 撤銷都不套用變更。Apply 重試須沿用相同的 `Idempotency-Key` 與 body，回到同一個請求。終態失敗後應重新檢查並用新 key 提出；secret 必須重新輸入。在網頁 app 中，等待確認的請求會在任何面板顯示成一張卡片，附倒數時間和 **撤回**（見 [`/settings`](#settings)）。
 

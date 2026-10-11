@@ -10,7 +10,7 @@ AgEnD's web dashboard is three panels on one small web server that the fleet run
 |---|---|
 | **`/ui`**: the app | Talk to your agents (chat, files, Stop reply), see who is working, and manage instances, tasks, schedules and teams. Each chat has its own address, `/ui/chat/<name>`; Fleet is `/ui/fleet` (`/ui/fleet/schedules`, `…/teams`, `…/org`, `…/cache`, `…/config`); **Needs you** is `/ui/needs` |
 | **`/view`** | A read-mostly view of every agent: live terminal, roster, usage, and editing each agent's profile and avatar |
-| **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/advanced` (`/settings` is Agents) |
+| **`/settings`** | Fleet settings — agents, connections, ClassicBot, defaults, `fleet.yaml` — with apply and restart. Each section has its own address: `/settings/bots`, `…/classic`, `…/general`, `…/web`, `…/advanced` (`/settings` is Agents) |
 
 `/ui`, `/view` and `/settings` are one app with a sidebar: the instances, **Fleet**, **View**, **Settings** and the **Session** menu. Moving around inside it does not reload the page, and Back/Forward work. `/` opens `/ui`, which goes back to the chat you had open last. Old links of the form `/ui#instance=<name>` still work, also through signing in.
 
@@ -212,12 +212,13 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 
 ## `/settings`
 
-**Agents**, **Connections**, **ClassicBot**, **General** and **Developer** (the whole `fleet.yaml` as YAML or JSON) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
+**Agents**, **Connections**, **ClassicBot**, **General**, **Web** and **Developer** (the whole `fleet.yaml` as YAML or JSON) are tabs, each with its own address. The search box filters agents, connections and ClassicBot rooms; **Setup wizard** runs the same four steps as `agend quickstart`; it always adds a connection, for a new agent or one you already have.
 
 A fleet with no chat connection yet (web only) shows a card above the chat and the Agents and Connections tabs: **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser.
 
-- **Changes are staged, then applied together.** An agent's or a connection's **Settings** dialog stages its changes when you press **Stage change**; General's **Review changes** does the same. The bar at the bottom counts them and says what applying them costs (immediately, a restart of that agent, or a restart of AgEnD); **Apply changes** applies them all, **Discard** drops them. Staged changes stay while you move between tabs; leaving Settings with any asks **Discard N pending changes?** first.
+- **Changes are staged, then applied together.** An agent's or a connection's **Settings** dialog stages its changes when you press **Stage change**; General's or Web's **Review changes** does the same. The bar at the bottom counts them and says what applying them costs (immediately, a restart of that agent, or a restart of AgEnD); **Apply changes** applies them all, **Discard** drops them. Staged changes stay while you move between tabs; leaving Settings with any asks **Discard N pending changes?** first.
 - **Once you press Apply, it carries on without you.** You can open the chat or anything else: the writes, the reload and its progress go on, a line at the top says how it is going, and Settings shows the details when you come back. A second Apply waits until the first is done. When a change needs AgEnD itself restarted, **Restart AgEnD** is offered (with its own confirmation).
+- **Web** holds the dashboard's own settings: how long a sign-in lasts here and how long it may sit unused (`web.session.local.*`; empty = the default), the browser terminal `/login` opens (on or off, and its minutes), web echo and the public link's menu. A change that loosens access — a longer session or idle time, the browser terminal turned back on or given more minutes, the public link — waits for a fleet admin to confirm it in General (or `agend settings confirm <id>`, see [Confirming sensitive changes](#confirming-sensitive-changes)); one that tightens access applies at once. The other web settings are listed read-only: they decide what the dashboard listens on and exposes, so they are edited in `fleet.yaml`. Over a temporary public link none of this can be changed: the section says so and the server refuses it.
 - **New agent** is the same dialog as the sidebar's **+** (New instance).
 - **Bot tokens are entered here, not in `.env`.** **New connection** and the **Setup wizard** ask for the bot's token in a password field; **Verify** asks Telegram or Discord whose token it is and shows the bot ("This is @your_bot.") before anything is saved.
   - The token is stored on this computer in `~/.agend/.env`, under a name AgEnD generates (`AGEND_DISCORD_TOKEN`, `AGEND_DISCORD_2_TOKEN`, `AGEND_TELEGRAM_PERSONA1_TOKEN`…). **Advanced** shows it, read-only, for people who manage `.env` themselves; nobody has to type one.
@@ -282,6 +283,13 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.public_link.allow_public` | `true` | Offer the opt-in action; disabling also closes an existing link |
 | `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
+| `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
+| `web.session.local.absolute_hours` | `12` | How long a sign-in at the dashboard's own address lasts, 1–720 hours |
+| `web.session.local.idle_hours` | `2` | How long it may sit unused, 1–720 hours and at most `absolute_hours` |
+| `web_terminal.enabled` | `true` | `false`: `/login` refuses (no browser terminal) |
+| `web_terminal.ttl_minutes` | `10` | How long a `/login` browser terminal stays open, 1–20 minutes |
+
+**Settings → Web** edits `web.echo_to_channel`, `web.public_link.*`, `web.session.local.*` and `web_terminal.enabled` / `ttl_minutes`; it lists the others read-only (with `web.provider_secrets`, `web_terminal.bind` and `web_terminal.tunnel`).
 
 Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli.md).
 
@@ -306,7 +314,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 
 ### Confirming sensitive changes
 
-Changing access/F/C lists, secrets, connection destinations/order, public exposure or control-bearing instance settings returns `202 pending_confirmation`. The requester can list/poll `GET /api/settings/pending[/:id]` and withdraw an unclaimed request with `DELETE /api/settings/pending/:id`. Other sessions receive 404. Polling is passive and does not extend sign-in lifetime; `remaining_ms` is the countdown, and the display timestamp is not an authorization deadline.
+Changing access/F/C lists, secrets, connection destinations/order, public exposure, control-bearing instance settings, or loosening a web setting (a longer local session or idle time, the browser terminal turned on or given more minutes) returns `202 pending_confirmation`. The requester can list/poll `GET /api/settings/pending[/:id]` and withdraw an unclaimed request with `DELETE /api/settings/pending/:id`. Other sessions receive 404. Polling is passive and does not extend sign-in lifetime; `remaining_ms` is the countdown, and the display timestamp is not an authorization deadline.
 
 Confirm the redacted diff in General as a fleet admin. If chat is unavailable, use the host command `agend settings confirm <id>`; Reject, expiry or session revocation does not apply the change. Apply retries must reuse the same `Idempotency-Key` and body, which returns the same request. After a terminal failure, review and submit a new key; secrets must be entered again. In the web app, a request waiting for confirmation shows as a card in any panel, with its countdown and **Withdraw** (see [`/settings`](#settings)).
 

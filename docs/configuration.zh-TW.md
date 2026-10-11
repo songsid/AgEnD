@@ -58,9 +58,9 @@ health_port: 19280
 | `profiles` | object | — | 可供模板引用的 backend/model 預設組合 |
 | `health_port` | number | `19280` | HTTP 健康檢查/API 伺服器埠 |
 | `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名稱：附加在 Discord slash 指令說明後面，並顯示在每個 backend 選單下方（`🖥 Fleet：…`）。同一個 guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行它的那個 fleet——這個標籤用來分辨它們。預設：本機主機名稱；AgEnD home 不是 `~/.agend` 時再加上該目錄名稱 |
-| `web` | object | — | `usage_panel: false` 隱藏 `/view` 的 AI 額度面板並停用 `/api/ai-usage`（預設 `true`）；`allowed_hosts: [name, …]` 加入反向代理或轉送使用的 Host 名稱。內建允許 `localhost`、`127.0.0.1`、`[::1]` 與設定的 `hostname`；其餘 Host 回 403，`/login` 瀏覽器終端也使用此清單；`session.local.absolute_hours`／`session.local.idle_hours` 設定直接連到 dashboard（本機、區網、tailnet）時登入可維持多久——登入後幾小時、未使用幾小時（預設 `12`／`2`；`1 ≤ idle_hours ≤ absolute_hours ≤ 720`，可用小數；公開連結的 4 小時／閒置 30 分鐘固定、不可設定；變更不需重啟即生效，改短也會結束已超過新期限的 session） |
+| `web` | object | — | `usage_panel: false` 隱藏 `/view` 的 AI 額度面板並停用 `/api/ai-usage`（預設 `true`）；`allowed_hosts: [name, …]` 加入反向代理或轉送使用的 Host 名稱。內建允許 `localhost`、`127.0.0.1`、`[::1]` 與設定的 `hostname`；其餘 Host 回 403，`/login` 瀏覽器終端也使用此清單；`session.local.absolute_hours`／`session.local.idle_hours` 設定直接連到 dashboard（本機、區網、tailnet）時登入可維持多久——登入後幾小時、未使用幾小時（預設 `12`／`2`；`1 ≤ idle_hours ≤ absolute_hours ≤ 720`，可用小數；公開連結的 4 小時／閒置 30 分鐘固定、不可設定；變更不需重啟即生效，改短也會結束已超過新期限的 session；也可在 **設定 → 網頁** 修改，延長時需 fleet admin 確認） |
 | `needs_you` | object | — | **「等你處理」**（#1386）：一份列出所有在等人處理的事的清單——fleet 的提示（沒有回應／已結束／在終端機上等待）、instance 停在權限、危險指令、登入或其他對話框、因需要登入而暫停或已崩潰的 instance，以及 fleet 無法確認或無法送達的傳遞（最近 24 小時）。`needs_you.live_message`（預設 `true`）：每個 bot 在**自己的** General 維持一則即時訊息，只列出它負責的 instance——處理掉就編輯更新，有新的事就重新發一則（最多每分鐘一次）；每一行都連到該提示自己的按鈕或 instance 的討論串，無法確認或送達的傳遞會有**已確認**按鈕，限該 bot 的管理員使用。`needs_you.dm`（預設 `false`）：有新的事時也私訊該 bot 的管理員（終端機等待需持續 5 秒才通知；最多每分鐘一則）。網頁儀表板會顯示所有 bot 的項目。兩個設定都不需重啟即生效。 |
-| `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10），以及 `tunnel` —— `/login` 的公開連結，每次登入都會提供，除非設 `allow_public: false`；見下方「人不在機器旁完成 /login」 |
+| `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10；`enabled` 與 `ttl_minutes` 也可在 **設定 → 網頁** 修改，開啟終端機或增加分鐘數需 fleet admin 確認），以及 `tunnel` —— `/login` 的公開連結，每次登入都會提供，除非設 `allow_public: false`；見下方「人不在機器旁完成 /login」 |
 
 ---
 
@@ -578,6 +578,6 @@ Codex profile **只換 `auth.json` 的來源**。Instance 仍使用自己的 COD
 
 ### Web chat 主題同步（2.2 web 線）
 
-fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 一般設定 → Web chat** 切換。同步文字使用 `🌐 web · web-user: …`，附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 與 ClassicBot 群組不做同步。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
+fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 網頁 → 網頁聊天** 切換。同步文字使用 `🌐 web · web-user: …`，附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 與 ClassicBot 群組不做同步。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
 
 同步本文與附件名稱的 mention／command token 改成可見 ASCII 標籤，例如 `[mention: 200]`、`[at: botname]`、`[command: cmd at bot]`。先做相容正規化與 format-character 移除；URL、email local part 與一般路徑斜線保留。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。共用 ingress 在作者是該平台已設定的 fleet bot 帳號、且本文以固定 `🌐 web · ` 開頭時丟棄副本，不依賴 echo 開關或 send ACK。同平台只要還有任一已設定 world 的 bot 身分未知，也會在 trigger 判斷前丟棄帶平台 bot 作者旗標的前綴候選並記 debug。這段暫時隔離不影響人類貼上的前綴；身分全部就緒後，非 fleet bot 維持原 admission／collab 規則。不將未知作者當成 fleet bot，也不使用近期 message-ID cache。
