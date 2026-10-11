@@ -428,9 +428,9 @@ describe("launchd: loaded job = its plist, prove the new plist, ONE bootout+boot
 });
 
 describe("detached: no service manager", () => {
-  it("restarts through the verified binary", () => {
+  it("restarts through the verified binary — and never refreshes, which would create a unit or plist (#1631)", () => {
     const m = manager([]);
     expect(activateService({ kind: "detached" }, verified, m.deps)).toEqual({ ok: true, via: "restart" });
-    expect(m.calls).toEqual(["refresh", "restart"]);
+    expect(m.calls).toEqual(["restart"]);
   });
 });

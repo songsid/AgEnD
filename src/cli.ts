@@ -1489,7 +1489,8 @@ program
         realpath: path => { try { return realpathSync(path); } catch { return null; } },
         readFirstLine: path => { try { return readFileSync(path, "utf-8").split("\n", 1)[0] ?? null; } catch { return null; } },
         isExecutable: path => { try { accessSync(path, constants.X_OK); return statSync(path).isFile(); } catch { return false; } },
-        // `agend install` activates by default; the update owns stop/start, so only the file is refreshed here.
+        // `agend install` activates by default; the update owns stop/start, so only the file is refreshed here. Only
+        // an existing service is refreshed: a detached fleet's update never calls this (#1631).
         refresh: () => {
           const result = capture(newAgend.command, [...newAgend.args, "install", "--no-activate"]);
           if (result.status === 0) console.log("  ✓ Service file refreshed");
@@ -1746,9 +1747,21 @@ program
   .option("--activate", "Deprecated; service activation is now the default")
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
-    const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath } = await import(
+    const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath, getServicePath, getSystemServicePath } = await import(
       "./service-installer.js"
     );
+    // #1631 B: an older updater (2.2.0-beta.1 and before) refreshes a hand-started fleet's service too, through this
+    // command — which would CREATE a unit or plist, and every later update would then take a manager it may not reach
+    // as the authority. When no service exists and it is certain this is that updater's refresh, write nothing. A
+    // manual `agend install` (with or without --no-activate) creates the service as always.
+    if (opts.activate === false && getServicePath() === null && getSystemServicePath() === null) {
+      const { startedByUpdater, systemUpdaterCallerProbe } = await import("./updater-caller.js");
+      const caller = startedByUpdater(systemUpdaterCallerProbe(DATA_DIR, pkgVersion));
+      if (caller.updater) {
+        console.log("  No service to refresh: this update runs a hand-started fleet, so none was created (`agend install` creates one).");
+        return;
+      }
+    }
     const execPath = canonicalCliEntry();
     const serviceVars = {
       label: "com.agend.fleet",

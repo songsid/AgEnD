@@ -201,11 +201,12 @@ describe("a second `agend update` after a failed verification (built CLI, stubbe
 
   it("a working installed package gets the restart — through the INSTALLED binary, not the one invoked", { timeout: 60_000 }, () => {
     // The invoking CLI is a different checkout (this build's copy) of the same version; PATH resolves the installed
-    // package. Refresh and restart must go through the installed `agend`; the invoking checkout's own restart (which
-    // would signal the stand-in fleet) must not run (#1449 review).
+    // package. The restart must go through the installed `agend`; the invoking checkout's own restart (which would
+    // signal the stand-in fleet) must not run (#1449 review). No service file exists, so nothing is refreshed: the
+    // refresh would create one (#1631).
     const { out, calls, fleetAlive } = update("2.2.0", { beta: "2.2.0", latest: "2.2.0" }, ["--stable"], { staleFleet: true });
     expect(out).toContain("verified — restarting the fleet onto it");
-    expect(calls).toContain("agend install --no-activate");
+    expect(calls).not.toContain("agend install --no-activate");
     expect(calls).toContain("agend restart");
     expect(fleetAlive, "only the installed agend (an inert stub here) was asked to restart").toBe(true);
   });

@@ -362,8 +362,10 @@ function recoverSystemd(
  */
 export function activateService(manager: ServiceManager, verified: VerifiedTarget, deps: ActivationDeps): ActivationOutcome {
   if (manager.kind === "detached") {
-    const refreshed = deps.refresh();
-    if (refreshed.status !== 0) deps.log("  ⚠ Service file refresh reported an error (no service installed; continuing)");
+    // #1631: no service file existed when this update started, so there is nothing to refresh — and the refresh
+    // (`install --no-activate`) would CREATE a unit or plist. The next update would then take that manager as the
+    // authority, and where it cannot be reached (no user systemd, no GUI launchd session) the fail-safe above rolls
+    // every later update back. A service is created only by `agend install` itself.
     const restart = deps.restart();
     if (restart === "pending") return restartPending();
     return restart === "restarted" ? { ok: true, via: "restart" } : { ok: false, stopped: false,
