@@ -17,6 +17,7 @@ const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-1633-")); dirs.push(d); return d; };
 const ALL = AGENT_WHATS_NEW.map(e => e.id);
+const announcedIn = (dir: string) => { const r = readWhatsNewRecord(dir); return r && r !== "unreadable" ? r.announced : r; };
 
 describe("versions", () => {
   it("SemVer order with prereleases; not a version → null", () => {
@@ -113,7 +114,7 @@ describe("the daemon", () => {
     expect(readWhatsNewRecord(up.dir), "not recorded before it is pasted").toBeNull();
     const fresh = daemon();
     fresh.d["prepareWhatsNew"](true, V);
-    expect([fresh.d["pendingWhatsNew"], readWhatsNewRecord(fresh.dir)?.announced]).toEqual([null, ALL]);
+    expect([fresh.d["pendingWhatsNew"], announcedIn(fresh.dir)]).toEqual([null, ALL]);
   });
   it("trySpawn decides 'new' before prev-instructions is first written", () => {
     const src = readFileSync(join(process.cwd(), "src", "daemon.ts"), "utf-8");
@@ -128,7 +129,7 @@ describe("the daemon", () => {
     await w.deliver("first");
     expect(w.pastes.length).toBe(2);
     expect([w.pastes[0]!.startsWith("[system:whats-new]"), w.pastes[1]!.includes("first")]).toEqual([true, true]);
-    expect([w.d["pendingWhatsNew"], readWhatsNewRecord(w.dir)?.announced]).toEqual([null, ALL]);
+    expect([w.d["pendingWhatsNew"], announcedIn(w.dir)]).toEqual([null, ALL]);
     await w.deliver("second");
     expect(w.pastes.length).toBe(3);
     expect(w.pastes[2]!.includes("second")).toBe(true);
@@ -142,7 +143,7 @@ describe("the daemon", () => {
     w.outcome.notice = true;
     await w.deliver("second");
     expect(w.pastes.filter(p => p.startsWith("[system:whats-new]")).length).toBe(2);
-    expect(readWhatsNewRecord(w.dir)?.announced).toEqual(ALL);
+    expect(announcedIn(w.dir)).toEqual(ALL);
   });
   it("after a restart it is not told again (the record decides), even if the launch says 'upgraded'", async () => {
     const w = daemon();
