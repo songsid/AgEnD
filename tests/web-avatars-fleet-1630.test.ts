@@ -5,7 +5,7 @@
  * read-only allowlist. Fake adapters and a stubbed fetch for Discord's CDN — no platform is called; nothing forks.
  */
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,12 +44,13 @@ function fleet(opts: { soloAvatar?: () => Promise<{ bytes: Buffer; ext: "png" } 
     },
   };
   const calls = { avatar: 0, accent: [] as Array<string | undefined>, primaryAvatar: 0 };
-  fm.adapters.set("discord", { fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(1); }, botAccentColor: async () => "#ff0000" });
+  fm.adapters.set("discord", { getBotUserId: () => "100000000000000001", fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(1); }, botAccentColor: async () => "#ff0000" });
   fm.adapters.set("discord-2", {
+    getBotUserId: () => "111111111111111111",
     fetchBotAvatar: async () => { calls.avatar++; return opts.soloAvatar ? opts.soloAvatar() : PNG(2); },
     botAccentColor: async (channel?: string) => { calls.accent.push(channel); return opts.accent === undefined ? "#E91E63" : opts.accent; },
   });
-  fm.adapters.set("telegram-2", { fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(3); } });
+  fm.adapters.set("telegram-2", { getBotUserId: () => "300000000", fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(3); } });
   fm.classicChannels = { getAll: () => [], getChannelIdByInstance: () => undefined, getBackendByInstance: () => "claude-code", getModel: () => undefined, getAdapterIdByInstance: () => undefined, getDefaults: () => ({}), isGuildAllowed: () => true };
   vi.spyOn(fm, "getInstanceStatus").mockReturnValue("running");
   const frame = () => Object.fromEntries((fm.getUiStatus() as { instances: Array<{ name: string; avatar: unknown; accent?: string }> }).instances.map(i => [i.name, { avatar: i.avatar, accent: i.accent }]));
@@ -207,5 +208,123 @@ describe("the image routes", () => {
       expect([isPassiveWebRead("GET", p), isPublicWebRoute("GET", p), isPublicWebRoute("POST", p)], p).toEqual([true, true, false]);
     }
     expect([isPassiveWebRead("GET", "/ui/img/other/x"), isPublicWebRoute("GET", "/ui/img/other/x")]).toEqual([false, false]);
+  });
+});
+
+// ── #1635 review: ownership is the configured connection AND the bot actually behind it; answers re-checked ──
+
+const B_ID = "222222222222222222";
+const held = <T,>() => { let release!: (v: T) => void; const promise = new Promise<T>(r => { release = r; }); return { promise, release }; };
+
+describe("an own bot is a configured connection, and the bot that is there now (#1635 review)", () => {
+  it("a connection removed from fleet.yaml is nobody's own bot — even if an instance still names it", async () => {
+    const f = fleet();
+    f.frame(); await flush();
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(200);
+    f.fm.fleetConfig.channels = f.fm.fleetConfig.channels.filter((c: { id: string }) => c.id !== "discord-2");
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(404);
+    expect(f.frame().solo!.avatar).toEqual({ kind: "initial", text: "S" });
+  });
+  it("a bot put in its place (a replaced token, same connection id) gets its own picture, never the old one's", async () => {
+    const f = fleet();
+    f.frame(); await flush();                                     // bot A's picture (bytes 2) cached
+    let bReads = 0;
+    f.fm.adapters.set("discord-2", { getBotUserId: () => B_ID, fetchBotAvatar: async () => { bReads++; return PNG(9); }, botAccentColor: async () => "#00ff00" });
+    expect(f.frame().solo!.avatar, "not A's face while B's is fetched").toEqual({ kind: "initial", text: "S" });
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status, "nor A's picture on the route").toBe(404);
+    await flush();
+    const r = await get(f.fm, "/ui/img/bot/discord-2");
+    expect([r.status, r.body.equals(Buffer.alloc(12, 9)), bReads]).toEqual([200, true, 1]);
+  });
+  it("the old bot's late answer is not the new bot's: A's fetch released after B took over changes nothing", async () => {
+    const a = held<{ bytes: Buffer; ext: "png" }>();
+    const f = fleet({ soloAvatar: () => a.promise });
+    f.frame(); await flush();                                     // A's fetch is out
+    f.fm.adapters.set("discord-2", { getBotUserId: () => B_ID, fetchBotAvatar: async () => PNG(9) });
+    f.frame(); await flush();                                     // B's picture cached
+    a.release(PNG(2)); await flush();
+    const r = await get(f.fm, "/ui/img/bot/discord-2");
+    expect([r.status, r.body.equals(Buffer.alloc(12, 9))]).toEqual([200, true]);
+    expect(readdirSync(join(f.dir, "cache", "avatars")).length, "A's late answer was not kept either").toBe(1);
+  });
+  it("the ring too: A's colour arriving after B took over is not B's; B's own colour is read", async () => {
+    const f = fleet();
+    const aColour = held<string>();
+    f.fm.adapters.set("discord-2", { getBotUserId: () => "111111111111111111", fetchBotAvatar: async () => PNG(2), botAccentColor: () => aColour.promise });
+    f.frame(); await flush(); f.frame(); await flush();          // A's picture shown, A's colour read held
+    let bColourReads = 0;
+    f.fm.adapters.set("discord-2", { getBotUserId: () => B_ID, fetchBotAvatar: async () => PNG(9), botAccentColor: async () => { bColourReads++; return "#00ff00"; } });
+    f.frame(); await flush(); f.frame(); await flush();
+    aColour.release("#E91E63"); await flush();
+    expect([f.frame().solo!.accent, bColourReads]).toEqual(["#00ff00", 1]);
+  });
+  it("control: the same bot's held fetch is read once and then shown", async () => {
+    const a = held<{ bytes: Buffer; ext: "png" }>();
+    const f = fleet({ soloAvatar: () => a.promise });
+    f.frame(); await flush(); f.frame(); await flush();
+    a.release(PNG(2)); await flush();
+    expect([f.calls.avatar, (f.frame().solo!.avatar as { kind: string }).kind]).toEqual([1, "image"]);
+  });
+});
+
+describe("an answer that waited is re-checked before it is sent (#1635 review)", () => {
+  const EMOJI = "123456789012345678";
+  const discordWorld = (f: ReturnType<typeof fleet>, list: () => Promise<unknown[]>) =>
+    f.fm.worlds.set("discord", { type: "discord", adapter: { listGuildEmojis: list } });
+  it("an emoji whose server left while it was downloaded: 404, not the old picture", async () => {
+    const f = fleet();
+    discordWorld(f, async () => [{ id: EMOJI, name: "blob", animated: false, available: true }]);
+    const cdn = held<Response>();
+    vi.stubGlobal("fetch", vi.fn(() => cdn.promise));
+    const pending = get(f.fm, `/ui/img/emoji/${EMOJI}`);
+    await flush();
+    f.fm.worlds.delete("discord");
+    cdn.release(new Response(Buffer.alloc(10, 6), { status: 200, headers: { "content-type": "image/png" } }));
+    expect((await pending).status).toBe(404);
+  });
+  it("a server list that arrives after its connection went is not the fleet's", async () => {
+    const f = fleet();
+    const list = held<unknown[]>();
+    discordWorld(f, () => list.promise);
+    const pending = get(f.fm, "/ui/emojis");
+    await flush();
+    f.fm.worlds.delete("discord");
+    list.release([{ id: EMOJI, name: "blob", animated: false, available: true }]);
+    expect((await pending).body.toString()).toBe('{"emojis":[]}');
+  });
+
+  /** A signed-in browser (a local session cookie, or a public-link session on its exposure) — no header token. */
+  async function asSession(f: ReturnType<typeof fleet>, path: string, opts: { gateway: boolean; revoke: boolean; hold: "list" | "cdn" }) {
+    const { WebSessionStore, tokenEpoch } = await import("../src/web-session.js");
+    const { bindGatewayRequest } = await import("../src/web-request-context.js");
+    const store = new WebSessionStore();
+    const s = store.create({ tier: "admin", surface: opts.gateway ? "gateway" : "local", ...(opts.gateway ? { exposureId: "e".repeat(32) } : {}), label: "t", tokenEpoch: tokenEpoch(TOKEN) });
+    const list = held<unknown[]>(), cdn = held<Response>();
+    discordWorld(f, () => (opts.hold === "list" ? list.promise : Promise.resolve([{ id: EMOJI, name: "blob", animated: false, available: true }])));
+    vi.stubGlobal("fetch", vi.fn(() => cdn.promise));
+    const done = new Promise<{ status: number; type?: string }>(resolve => {
+      let status = 0; const headers: Record<string, unknown> = {};
+      const res: any = { headersSent: false, destroyed: false, setHeader(k: string, v: unknown) { headers[k.toLowerCase()] = v; },
+        writeHead(code: number) { status = code; res.headersSent = true; }, end() { resolve({ status, type: headers["content-type"] as string | undefined }); } };
+      const host = opts.gateway ? "sample.trycloudflare.com" : "127.0.0.1:19280";
+      const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: { host, cookie: `${opts.gateway ? "__Host-agend_session" : "agend_session"}=${s.sessionId}` }, destroy() {}, resume() {} });
+      if (opts.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://sample.trycloudflare.com", isCurrent: () => true });
+      const ctx = { webToken: TOKEN, webSessions: store, sseClients: new Set(), fleetConfig: f.fm.fleetConfig, logger: { info() {}, debug() {}, warn() {}, error() {} }, getUiStatus: () => ({}),
+        webImage: (k: "bot" | "avatar", key: string) => f.fm.webImage(k, key), webEmoji: (id: string) => f.fm.webEmoji(id), webEmojiList: () => f.fm.webEmojiList() };
+      expect(handleWebRequest(req as never, res, new URL(`http://${host}${path}`), ctx as never)).toBe(true);
+    });
+    await flush();
+    if (opts.revoke) store.revokeById(s.sessionId);
+    list.release([{ id: EMOJI, name: "blob", animated: false, available: true }]);
+    cdn.release(new Response(Buffer.alloc(10, 6), { status: 200, headers: { "content-type": "image/png" } }));
+    return done;
+  }
+  it.each([false, true])("a session revoked while the answer was out gets 401 and nothing (public link: %s); the same session not revoked gets it", async gateway => {
+    for (const [path, hold] of [["/ui/emojis", "list"], [`/ui/img/emoji/${EMOJI}`, "cdn"]] as const) {
+      const revoked = await asSession(fleet(), path, { gateway, revoke: true, hold });
+      expect([revoked.status, String(revoked.type).startsWith("image/")], `${path} revoked`).toEqual([401, false]);
+      const kept = await asSession(fleet(), path, { gateway, revoke: false, hold });
+      expect(kept.status, `${path} control`).toBe(200);
+    }
   });
 });

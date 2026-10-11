@@ -3,7 +3,7 @@
  * an instance. The real WebImageCache on a scratch directory with a wall clock and a monotonic clock the test moves;
  * the real avatarFor / ownBotConnections / firstCharacter / accentColor.
  */
-import { existsSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -49,6 +49,7 @@ describe("the host cache", () => {
     const load = w.loader(() => new Promise(r => { release = () => r(PNG()); }));
     const a = w.c.refresh("k", load), b = w.c.refresh("k", load);
     w.c.peek("k", load); void w.c.get("k", load);
+    await new Promise(r => setImmediate(r));                      // the fetch starts on a later tick
     release(); await Promise.all([a, b]);
     expect(w.calls()).toBe(1);
   });
@@ -62,11 +63,13 @@ describe("the host cache", () => {
     expect(w.calls(), "fresh: not fetched again").toBe(1);
     w.age(1000);
     const got = await w.c.get("k", load);
+    await new Promise(r => setImmediate(r));
     expect([got!.bytes[0], w.calls()], "the stale copy at once, and a refresh started behind it").toEqual([1, 2]);
     for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
     expect([w.calls(), w.c.read("k")!.bytes[0]], "the refreshed copy replaced it").toEqual([2, 2]);
     w.age(WEB_IMAGE_MAX_AGE_MS);
     w.c.peek("k", load);
+    await new Promise(r => setImmediate(r));
     expect(w.calls(), "peek refreshes a stale file too").toBe(3);
   });
   it("a failed fetch keeps the copy it had, and the key is quiet for an hour (monotonic), then tried again", async () => {
@@ -84,6 +87,21 @@ describe("the host cache", () => {
     w.clock.mono += 1;
     await w.c.refresh("k", failing);
     expect(w.calls()).toBe(3);
+  });
+  it("a loader that throws at once still releases its key: tried again after the hour (#1635 review)", async () => {
+    const w = cache();
+    const throwsNow = w.loader((() => { throw new Error("sync"); }) as never);
+    await w.c.refresh("k", throwsNow);
+    w.clock.mono += WEB_IMAGE_RETRY_MS;
+    await w.c.refresh("k", throwsNow);
+    expect([w.calls(), w.errors]).toEqual([2, ["k", "k"]]);
+  });
+  it("a write that fails leaves no temporary file behind (#1635 review)", async () => {
+    const w = cache();
+    const { createHash } = await import("node:crypto");
+    mkdirSync(join(w.dir, `${createHash("sha256").update("k").digest("hex").slice(0, 32)}.png`), { recursive: true });   // the target is a directory
+    await w.c.refresh("k", w.loader(async () => PNG()));
+    expect([w.errors, readdirSync(w.dir).filter(n => n.endsWith(".tmp"))]).toEqual([["k"], []]);
   });
   it("a failed first fetch leaves nothing: peek stays null (the caller falls back)", async () => {
     const w = cache();

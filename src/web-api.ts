@@ -265,6 +265,17 @@ function json(res: ServerResponse, status: number, data: unknown): void {
 }
 
 /**
+ * #1630 (#1635 review): an answer that waited on something (a list, a download) is sent only if the request is still
+ * allowed — the session not revoked meanwhile, a public link's exposure still current. Otherwise 401, and nothing.
+ */
+function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): boolean {
+  if (!permitWebContinuation(req, res, ctx)) return false;
+  if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) return true;
+  json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
+  return false;
+}
+
+/**
  * Handle a Web UI request. Returns true if handled, false to pass through.
  */
 export function handleWebRequest(
@@ -498,6 +509,7 @@ export function handleWebRequest(
     try { key = decodeURIComponent(imageMatch[2]!); } catch { json(res, 404, { error: "No such image" }); return true; }
     const send = (image: CachedImage | null): void => {
       if (res.headersSent || res.destroyed) return;
+      if (!stillAuthorized(req, res, url, ctx)) return;
       if (!image) { json(res, 404, { error: "No such image" }); return; }
       res.setHeader("Content-Type", image.mime);
       res.setHeader("X-Content-Type-Options", "nosniff");
@@ -512,7 +524,8 @@ export function handleWebRequest(
     return true;
   }
   if (method === "GET" && path === "/ui/emojis") {
-    (ctx.webEmojiList ? ctx.webEmojiList() : Promise.resolve([])).then(emojis => json(res, 200, { emojis }), () => json(res, 200, { emojis: [] }));
+    const answer = (emojis: Array<{ id: string; name: string; animated: boolean }>) => { if (!res.headersSent && !res.destroyed && stillAuthorized(req, res, url, ctx)) json(res, 200, { emojis }); };
+    (ctx.webEmojiList ? ctx.webEmojiList() : Promise.resolve([])).then(answer, () => answer([]));
     return true;
   }
 

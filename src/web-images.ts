@@ -95,7 +95,8 @@ export class WebImageCache {
     if (running) return running;
     const quiet = this.quietUntil.get(key);
     if (quiet !== undefined && this.mono < quiet) return Promise.resolve();
-    const run = (async () => {
+    // Started on a later tick, after it is registered: a loader that throws at once must still release the key.
+    const run = Promise.resolve().then(async () => {
       try {
         const got = await loader();
         if (!got) { this.remove(key); this.quietUntil.set(key, this.mono + (this.opts.maxAgeMs ?? WEB_IMAGE_MAX_AGE_MS)); return; }
@@ -106,9 +107,9 @@ export class WebImageCache {
         this.quietUntil.set(key, this.mono + (this.opts.retryMs ?? WEB_IMAGE_RETRY_MS));
         this.opts.onError?.(key, err);
       } finally {
-        this.inflight.delete(key);
+        if (this.inflight.get(key) === run) this.inflight.delete(key);
       }
-    })();
+    });
     this.inflight.set(key, run);
     return run;
   }
@@ -117,8 +118,13 @@ export class WebImageCache {
     mkdirSync(this.opts.dir, { recursive: true, mode: 0o700 });
     const base = this.base(key), path = join(this.opts.dir, `${base}.${image.ext}`);
     const tmp = `${path}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
-    writeFileSync(tmp, image.bytes, { mode: 0o600 });
-    renameSync(tmp, path);
+    try {
+      writeFileSync(tmp, image.bytes, { mode: 0o600 });
+      renameSync(tmp, path);
+    } catch (err) {
+      try { unlinkSync(tmp); } catch { /* never created */ }
+      throw err;
+    }
     for (const ext of EXTS) if (ext !== image.ext) { try { unlinkSync(join(this.opts.dir, `${base}.${ext}`)); } catch { /* none */ } }
     this.prune();
   }
