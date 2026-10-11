@@ -85,7 +85,7 @@ const typed = (text: string, userId: string, threadId = "30", adapterId = "tg-a"
 
 
 
-const GENERAL_ONLY = ["status", "restart", "login", "profile", "update", "doctor", "dashboard", "visibility", "sysinfo", "usage"];
+const GENERAL_ONLY = ["status", "restart", "login", "profile", "update", "doctor", "dashboard", "web", "visibility", "sysinfo", "usage"];
 
 describe("a General-only command in a Telegram instance topic points to General, for everyone, and reaches no agent", () => {
   for (const name of GENERAL_ONLY) {
@@ -95,7 +95,8 @@ describe("a General-only command in a Telegram instance topic points to General,
         const delivered = vi.fn();
         r.any.deliverToInstance = delivered;
         expect(await r.any.topicCommands.handleInstanceCommand(typed(`/${name}`, who, "30"), "alpha"), who).toBe(true);
-        expect(r.replies.map(x => x.text), who).toEqual([t("cmd.use_in_general", `/${name}`)]);
+        const shown = name === "dashboard" ? "/web" : `/${name}`;
+        expect(r.replies.map(x => x.text), who).toEqual([t("cmd.use_in_general", shown)]);
         expect(delivered, who).not.toHaveBeenCalled();
       }
     });
