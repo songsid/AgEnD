@@ -984,6 +984,13 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    * refuses ANY edit on messages older than 48 hours; callers needing a
    * guaranteed user-visible outcome must also send a fresh message.
    */
+  /** #1610: keyboard-only replacement — the message text stays as posted (the 48 h edit limit applies). */
+  async replaceMessageButtons(chatId: string, messageId: string, choices: Choice[]): Promise<void> {
+    await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
+      reply_markup: { inline_keyboard: choices.map(c => [{ text: c.label, callback_data: c.id }]) },
+    });
+  }
+
   async removeMessageButtons(chatId: string, messageId: string): Promise<void> {
     await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
       reply_markup: { inline_keyboard: [] },

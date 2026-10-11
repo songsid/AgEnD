@@ -144,17 +144,22 @@ function privateNotice(interaction: { followUp(options: { content: string; flags
 function privateComponentReplies(interaction: {
   message: { flags?: { has(flag: MessageFlags): boolean } | null };
   channelId: string | null;
-  editReply(options: { content: string; components: []; allowedMentions: { parse: [] }; message?: string }): Promise<unknown>;
+  editReply(options: { content?: string; components: [] | ReturnType<typeof buttonRows>; allowedMentions?: { parse: [] }; message?: string }): Promise<unknown>;
   followUp(options: { content: string; flags: number; allowedMentions: { parse: [] }; components: ReturnType<typeof buttonRows> }): Promise<{ id: string }>;
 }, callbackData: string): {
   editClicked?: (text: string) => Promise<void>;
+  replaceClickedButtons?: (choices: Choice[]) => Promise<void>;
   respondPrivate?: (text: string, choices?: Choice[]) => Promise<SentMessage & { retire: (text: string) => Promise<void> }>;
 } {
   const edit = async (text: string, message?: string): Promise<void> => {
     await interaction.editReply({ content: truncatePreview(text, DISCORD_MAX_LENGTH), components: [], allowedMentions: { parse: [] }, ...(message ? { message } : {}) });
   };
   return {
-    ...(interaction.message.flags?.has(MessageFlags.Ephemeral) ? { editClicked: (text: string) => edit(text) } : {}),
+    ...(interaction.message.flags?.has(MessageFlags.Ephemeral) ? {
+      editClicked: (text: string) => edit(text),
+      // #1610: only the buttons change — the content (a sign-in message) stays as it is.
+      replaceClickedButtons: async (choices: Choice[]) => { await interaction.editReply({ components: buttonRows(choices) }); },
+    } : {}),
     ...(callbackData.startsWith("dashboard:") ? { respondPrivate: async (text: string, choices?: Choice[]) => {
       const sent = await interaction.followUp({ content: text, flags: MessageFlags.Ephemeral | MessageFlags.SuppressEmbeds, allowedMentions: { parse: [] }, components: choices ? buttonRows(choices) : [] });
       return { chatId: interaction.channelId ?? "", messageId: sent.id, retire: (outcome: string) => edit(outcome, sent.id) };
@@ -1477,6 +1482,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   /** Edit text and clear components (Discord keeps components on a plain edit,
    * so we must pass an empty array to drop the Cancel button). */
+  /** #1610: keyboard-only replacement — Discord keeps the content when only components are edited. */
+  async replaceMessageButtons(chatId: string, messageId: string, choices: Choice[], threadId?: string): Promise<void> {
+    const channel = await this._fetchTextChannel(threadId ?? chatId);
+    const msg = await channel.messages.fetch(messageId);
+    await msg.edit({ components: buttonRows(choices) });
+  }
+
   /** Keyboard-only removal — Discord keeps the original content untouched. */
   async removeMessageButtons(chatId: string, messageId: string, threadId?: string): Promise<void> {
     const channel = await this._fetchTextChannel(threadId ?? chatId);

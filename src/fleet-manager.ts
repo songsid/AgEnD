@@ -560,6 +560,8 @@ interface NonceButtonEntry {
   requesterUserId?: string;
   publicExposureId?: string;
   dashboardOwner?: LoginCodeOwner;
+  /** #1610: this nonce is the close button's confirm step (確定關閉 / 取消), armed on the same message. */
+  closeStep?: boolean;
   /** Callback prefix including the colon, e.g. "exit-restart:". */
   prefix: string;
   instanceName: string;
@@ -630,6 +632,8 @@ interface AdapterCallbackData {
    * fetch answers 10008 Unknown Message. Replaces the text and drops the buttons.
    */
   editClicked?: (text: string) => Promise<void>;
+  /** #1610 (Discord, ephemeral): replace the clicked message's buttons through its interaction, keeping its text. */
+  replaceClickedButtons?: (choices: Choice[]) => Promise<void>;
 }
 
 /** A message only its interaction can edit (a Discord ephemeral reply): `retire` replaces its text and drops its buttons. */
@@ -5052,6 +5056,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ err: (err as Error)?.message }, "The code-only follow-up was not sent; the sign-in message holds the code");
     }
   }
+  /**
+   * #1610: re-arm the public link's close prompt on the SAME message — as its confirm step (確定關閉 / 取消) or back as
+   * the close button — with a fresh nonce carrying the same owner gate (owner, requester, exposure, message, adapter),
+   * and swap the message's buttons keyboard-only: its text is the sign-in message, which must stay. A swap that fails
+   * disarms the new nonce and leaves the link open (the General menu and /dashboard revoke still close it).
+   */
+  private async armDashboardCloseStep(prev: NonceButtonEntry, confirm: boolean, data: AdapterCallbackData): Promise<void> {
+    const nonce = randomBytes(16).toString("hex");
+    const { timer: _timer, nonce: _old, ...rest } = prev;
+    const entry: NonceButtonEntry = { ...rest, nonce, closeStep: confirm, createdAt: Date.now() };
+    entry.timer = setTimeout(() => {
+      if (this.pendingNonceButtons.get(nonce) !== entry) return;
+      this.pendingNonceButtons.delete(nonce);
+      this.collapseNoncePrompt(entry)?.catch(err => this.logger.debug({ err }, "Failed to expire the public link's close prompt"));
+    }, 5 * 60_000);
+    entry.timer.unref?.();
+    this.pendingNonceButtons.set(nonce, entry);
+    const choices: Choice[] = confirm
+      ? [{ id: `dashboard:${nonce}:confirm`, label: t("dashboard.public_close_confirm") }, { id: `dashboard:${nonce}:keep`, label: t("dashboard.public_close_keep") }]
+      : [{ id: `dashboard:${nonce}:close`, label: t("dashboard.public_close") }];
+    try {
+      if (data.replaceClickedButtons) await data.replaceClickedButtons(choices);
+      else if (prev.adapter.replaceMessageButtons) await prev.adapter.replaceMessageButtons(prev.chatId, prev.messageId ?? data.messageId, choices, prev.threadId);
+      else throw new Error("adapter cannot replace buttons");
+    } catch (err) {
+      if (this.pendingNonceButtons.get(nonce) === entry) this.pendingNonceButtons.delete(nonce);
+      clearTimeout(entry.timer);
+      this.logger.warn({ err: (err as Error)?.message }, "Could not swap the public link's close buttons; the link stays open");
+    }
+  }
+
   /** Why the DM did not go, for the log only (Discord 50007 = the user does not accept DMs from this server's members). */
   private logDashboardDmFailure(err: unknown): void {
     const code = (err as { code?: unknown })?.code;
@@ -5087,13 +5122,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return posted !== null;
   }
   private async handleDashboardCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
-    const claimed = this.consumeNonceCallback("dashboard:", /^dashboard:([0-9a-f]{32}):(local|public|close)$/, data, adapterId, adapter);
+    // #1610: `confirm`/`keep` answer the close button's confirm step and nothing else; `close` is never a confirm step.
+    // A click of the wrong kind is refused like a non-admin's — unconsumed, so the real buttons still work.
+    const kind = /:([a-z]+)$/.exec(data.callbackData)?.[1];
+    const stepAction = kind === "confirm" || kind === "keep";
+    const claimed = this.consumeNonceCallback("dashboard:", /^dashboard:([0-9a-f]{32}):(local|public|close|confirm|keep)$/, data, adapterId, adapter,
+      undefined, (userId, e) => this.isFleetAdmin(userId, adapterId) && stepAction === (e.closeStep === true));
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry, action } = claimed;
     const owner = entry.dashboardOwner;
     if (!owner || !this.publicOwnerCurrent(owner)) { data.ack?.(t("not_authorized")); return true; }
-    if (action === "close") {
+    if (action === "close" || action === "keep") {
+      // A tap on 關閉公開連結 closes nothing: it offers 確定關閉 / 取消 on the same message (the button sits right above
+      // the code a phone taps to copy). 取消 puts the close button back. Both only re-arm the same, owner-gated prompt.
+      if (!entry.publicExposureId) return true;
+      await this.armDashboardCloseStep(entry, action === "close", data);
+      return true;
+    }
+    if (action === "confirm") {
       if (!entry.publicExposureId) return true;
       const result = await this.publicWebLink?.close("admin close", entry.publicExposureId);
       if (result?.confirmed === false) data.ack?.(t("dashboard.public_cleanup"));

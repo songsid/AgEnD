@@ -235,8 +235,14 @@ describe("Discord /dashboard: the ephemeral menu is answered and edited through 
     expect(h.discord.channelFetches).toBe(0);
     expect(logs.some(l => l.msg === "Dashboard DM not delivered; answering privately where the command was used" && (l.obj as { code?: number }).code === 50007),
       "the DM refusal is logged with Discord's code").toBe(true);
-    // Its close button works on the private message itself.
+    // Its close button works on the private message itself — in two steps (#1610): the first tap only swaps the
+    // buttons, through the click's own interaction, and leaves the sign-in text as it was.
+    const signIn = here[0].content;
     await h.click(here[0], "close"); await h.settle();
+    expect(h.s.publicWebLink.status().state).toBe("open");
+    expect(here[0].content).toBe(signIn);
+    expect(JSON.stringify(here[0].components)).toMatch(/dashboard:[0-9a-f]{32}:confirm/);
+    await h.click(here[0], "confirm"); await h.settle();
     expect(h.s.publicWebLink.status().state).toBe("closed");
     expect(here[0].content).toBe(t("dashboard.public_closed"));
     expect(buttons(here[0])).toBe(0);
@@ -436,3 +442,14 @@ describe("Discord /dashboard public link: an unexpected throw", () => {
     expect(menuEdits(h, menu).length, "no refresh after the outcome").toBe(edits.length);
   });
 });
+
+describe("#1610: the Discord adapter replaces a message's buttons without touching its content", () => {
+  it("replaceMessageButtons edits components only", async () => {
+    const h = rig();
+    const m = h.discord.create({ channelId: "T0", ephemeral: false, content: "sign-in text with the code", components: [] });
+    await (h.s.adapters.get("owner") as DiscordAdapter).replaceMessageButtons("T0", m.id, [{ id: "dashboard:" + "a".repeat(32) + ":confirm", label: "Close link" }]);
+    expect(m.content).toBe("sign-in text with the code");
+    expect(JSON.stringify(m.components)).toContain(":confirm");
+  });
+});
+

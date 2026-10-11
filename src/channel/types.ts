@@ -114,6 +114,8 @@ export interface ChannelAdapter extends EventEmitter {
   editMessageRemoveButtons?(chatId: string, messageId: string, text: string, threadId?: string): Promise<void>;
   /** Remove a message's buttons while keeping its text untouched. */
   removeMessageButtons?(chatId: string, messageId: string, threadId?: string): Promise<void>;
+  /** #1610: replace a message's buttons, keeping its text untouched (a confirm step on a message whose text matters). */
+  replaceMessageButtons?(chatId: string, messageId: string, choices: Choice[], threadId?: string): Promise<void>;
   /** #1266: this adapter puts `SendOpts.replyButtons` on the message it sends. */
   readonly supportsReplyButtons?: boolean;
   /** #1266: show a reply's buttons as ended — the choice and who made it, or expired — on the message carrying them. */

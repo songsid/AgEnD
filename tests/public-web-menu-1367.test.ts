@@ -22,7 +22,7 @@ function rig(platform: "telegram" | "discord" = "telegram") {
   const adapter = { id: "owner", type: platform, sendText: vi.fn(async (chat: string, _text: string, opts?: any) => ({ chatId: chat, threadId: opts?.threadId, messageId: "safe" })),
     notifyAlert: vi.fn(async (chat: string, _alert: any, opts?: any) => ({ chatId: chat, threadId: opts?.threadId, messageId: "menu" })),
     sendDirect: vi.fn(async (user: string, _text: string, _opts?: any) => ({ chatId: platform === "discord" ? "DM" : user, messageId: "dm" })),
-    editMessageRemoveButtons: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
+    editMessageRemoveButtons: vi.fn(async () => {}), replaceMessageButtons: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
   const owner = { id: "owner", type: platform, group_id: "G", bot_token_env: "NONE", access: { mode: "open", allowed_users: ["admin", "admin2"] } };
   fm.fleetConfig = { defaults: {}, channel: owner, channels: [owner, { ...owner, id: "other", group_id: "OTHER", access: { mode: "open", allowed_users: ["foreign-admin"] } }], instances: {
     general: { working_directory: dir, general_topic: true, topic_id: "T0", channel_id: "owner" },
@@ -107,7 +107,12 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     const h = rig("discord"); h.adapter.sendDirect.mockRejectedValue(Error("DM disabled")); await h.slash(); const privateReply = vi.fn(async () => ({ messageId: "private", chatId: "T0" }));
     await h.click("public", { respondPrivate: privateReply }); expect(privateReply).toHaveBeenCalled(); expect(h.s.publicWebLink.status().state).toBe("open");
     const e = [...h.s.pendingNonceButtons.values()].find((e: any) => e.messageId === "private") as any;
-    await h.s.dispatchAdapterCallback({ callbackData: `dashboard:${e.nonce}:close`, chatId: "G", threadId: "T0", messageId: "private", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
+    // #1610: two steps — the first tap swaps the ephemeral message's buttons through its own interaction.
+    const replaceClickedButtons = vi.fn(async () => {});
+    await h.s.dispatchAdapterCallback({ callbackData: `dashboard:${e.nonce}:close`, chatId: "G", threadId: "T0", messageId: "private", userId: "admin", ack: vi.fn(), replaceClickedButtons }, "owner", h.adapter);
+    expect(h.s.publicWebLink.status().state).toBe("open");
+    const step = [...h.s.pendingNonceButtons.values()].find((x: any) => x.messageId === "private" && x.closeStep) as any;
+    await h.s.dispatchAdapterCallback({ callbackData: `dashboard:${step.nonce}:confirm`, chatId: "G", threadId: "T0", messageId: "private", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
     expect(h.s.publicWebLink.status().state).toBe("closed");
   });
   it("Discord dashboard outside General finishes deferred response after private DM", async () => {

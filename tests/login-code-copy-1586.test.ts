@@ -28,7 +28,7 @@ function rig(platform: "telegram" | "discord" = "telegram") {
   const adapter = { id: "owner", type: platform, sendText: vi.fn(async (chat: string, _text: string, opts?: any) => ({ chatId: chat, threadId: opts?.threadId, messageId: "safe" })),
     notifyAlert: vi.fn(async (chat: string, _alert: any, opts?: any) => ({ chatId: chat, threadId: opts?.threadId, messageId: "menu" })),
     sendDirect: vi.fn(async (user: string, _text: string, _opts?: any) => ({ chatId: platform === "discord" ? "DM" : user, messageId: "dm" })),
-    editMessageRemoveButtons: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
+    editMessageRemoveButtons: vi.fn(async () => {}), replaceMessageButtons: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
   const owner = { id: "owner", type: platform, group_id: "G", bot_token_env: "NONE", access: { mode: "open", allowed_users: ["admin", "admin2"] } };
   fm.fleetConfig = { defaults: {}, channel: owner, channels: [owner, { ...owner, id: "other", group_id: "OTHER", access: { mode: "open", allowed_users: ["foreign-admin"] } }], instances: {
     general: { working_directory: dir, general_topic: true, topic_id: "T0", channel_id: "owner" },
