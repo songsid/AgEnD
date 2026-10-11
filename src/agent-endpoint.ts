@@ -151,6 +151,18 @@ function verifyInstanceToken(
   }
 }
 
+/**
+ * #1489: refuse a request before (or instead of) reading its body. `Connection: close` makes the server end the socket
+ * once the answer is written — even for a client that asked for keep-alive and keeps uploading (Prism r1: without it a
+ * keep-alive client's whole upload is read and discarded). The bytes still in flight until then are discarded, never
+ * buffered (`resume()`). Real-socket proof: tests/agent-endpoint-socket-1489.test.ts.
+ */
+function refuseEarly(req: IncomingMessage, res: ServerResponse, status: number, error: string): void {
+  res.writeHead(status, { "Connection": "close" });
+  res.end(JSON.stringify({ error }));
+  req.resume();
+}
+
 export function handleAgentRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -178,9 +190,7 @@ export function handleAgentRequest(
 
   // Fast-path rejection: header absent.
   if (!headerValue) {
-    req.resume(); // drain the socket so the client isn't left hanging
-    res.writeHead(401);
-    res.end(JSON.stringify({ error: "Missing instance token" }));
+    refuseEarly(req, res, 401, "Missing instance token");
     return;
   }
 
@@ -197,16 +207,12 @@ export function handleAgentRequest(
     instanceFromHeader = decodeURIComponent(encodedInstance);
   } catch {
     // Malformed percent-encoding → treat as invalid token.
-    req.resume();
-    res.writeHead(401);
-    res.end(JSON.stringify({ error: "Invalid or missing instance token" }));
+    refuseEarly(req, res, 401, "Invalid or missing instance token");
     return;
   }
 
   if (!instanceFromHeader || !verifyInstanceToken(ctx, instanceFromHeader, tokenFromHeader)) {
-    req.resume();
-    res.writeHead(401);
-    res.end(JSON.stringify({ error: "Invalid or missing instance token" }));
+    refuseEarly(req, res, 401, "Invalid or missing instance token");
     return;
   }
 
@@ -215,6 +221,13 @@ export function handleAgentRequest(
   // same limit. Agent CLI payloads are small (instance name, op, and args
   // for a single MCP-like call) so 512 KiB is generous.
   const MAX_AGENT_BODY = 512 * 1024; // 512 KiB — same as web-api.ts:243
+  // A declared length over the cap is answered before a byte is read — the client gets its 413. (A chunked body that
+  // crosses the cap is cut off by the bounded reader below: a reset, never a buffer past the cap.)
+  const declared = Number(req.headers["content-length"]);
+  if (Number.isFinite(declared) && declared > MAX_AGENT_BODY) {
+    refuseEarly(req, res, 413, "Request body too large");
+    return;
+  }
   void (async () => {
     let bodyBuf: Buffer;
     try {
