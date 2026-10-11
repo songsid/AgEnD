@@ -12,6 +12,10 @@ h1, h2, h3, p, ul, ol, figure, fieldset { margin: 0; padding: 0; }
 fieldset { border: 0; min-width: 0; }
 ul, ol { list-style: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* #1615: and a field with no size of its own, inside small text, is still never under 16px on a touch screen or the phone
+   layout (iOS zooms on focusing one; #1611's tokens only reach a field sized from them). After the reset above, as weak
+   as it (an element selector: any rule of a field's own still wins), keeping a larger inherited size. */
+@media (pointer: coarse), (max-width: 899px) { input, select, textarea { font-size: max(16px, 1em); } }
 a { color: inherit; text-decoration: none; }
 [hidden] { display: none !important; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

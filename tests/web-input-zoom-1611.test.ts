@@ -36,12 +36,23 @@ describe("#1611: text fields are never under 16px on a phone", () => {
       for (const m of css.matchAll(/([^{}]*\b(?:input|select|textarea)\b[^{}]*)\{([^}]*)\}/g)) {
         const size = /font(?:-size)?:\s*([^;]+)/.exec(m[2]!)?.[1]?.trim();
         if (!size) continue;
-        const ok = size === "inherit" || /var\(--fs-(?:xs|sm|md)\)/.test(size) || [...size.matchAll(/(\d+(?:\.\d+)?)px/g)].every(x => Number(x[1]) >= 16) && /\dpx/.test(size);
+        // #1615: `inherit` is no pass — an inherited size is the container's; only the reset may say it, and the floor
+        // below it (next test) is what keeps a field that has no size of its own at 16px.
+        const reset = name === "app.css" && m[1]!.trim() === "button, input, select, textarea";
+        const ok = reset || /var\(--fs-(?:xs|sm|md)\)/.test(size) || /^max\(16px, 1em\)$/.test(size)
+          || ([...size.matchAll(/(\d+(?:\.\d+)?)px/g)].every(x => Number(x[1]) >= 16) && /\dpx/.test(size));
         if (!ok) offenders.push(`${name}: ${m[1]!.trim()} → ${size}`);
       }
     }
     expect(offenders).toEqual([]);
   });
+  it("#1615: a field with no size of its own has a 16px floor on a phone — after the reset, as weak as it, keeping a larger one", () => {
+    const css = noComments(read("shared/app.css"));
+    const reset = css.indexOf("button, input, select, textarea { font: inherit; color: inherit; }");
+    const floor = css.indexOf("@media (pointer: coarse), (max-width: 899px) { input, select, textarea { font-size: max(16px, 1em); } }");
+    expect([reset >= 0, floor > reset]).toEqual([true, true]);
+  });
+
   it("the composer has no rule of its own any more — the shared one sizes it", () => {
     expect(noComments(read("shared/app.css"))).not.toMatch(/\.composer textarea \{ font-size: 16px; \}/);
   });
