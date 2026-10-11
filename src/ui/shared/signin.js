@@ -4,7 +4,7 @@
 // (a SameSite=Strict cookie is not sent on a navigation that came from a chat app), probe the session
 // from *here* — a same-site request does carry the cookie — and carry on to the page that was asked
 // for; (2) otherwise take the one-time code and exchange it. A browser that signed in before with a code from
-// /dashboard (a returning device, #1570) is also offered "Send me a new code": the server sends it privately to the
+// /web (a returning device, #1570) is also offered "Send me a new code": the server sends it privately to the
 // person who received that earlier code — the page never learns who that is.
 (() => {
   "use strict";
@@ -13,24 +13,24 @@
     en: {
       checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter the one-time code from your chat channel.",
       label: "One-time code", submit: "Sign in", working: "Signing in…",
-      hint: "Send /dashboard to your AgEnD bot, or run “agend web --code” on the host. A code works once and expires in 5 minutes.",
-      refused: "That code did not work — it may be wrong, expired or already used. Ask for a new one with /dashboard.",
+      hint: "Send /web to your AgEnD bot, or run “agend web --code” on the host. A code works once and expires in 5 minutes.",
+      refused: "That code did not work — it may be wrong, expired or already used. Ask for a new one with /web.",
       paused: "Too many wrong codes — sign-in is paused for a few minutes.",
       network: "Could not reach AgEnD. Check the connection and try again.",
       resend: "Send me a new code", resent: "A new code was sent to you privately in chat. Enter it above.",
       resend_wait: "A code was asked for a moment ago — wait a little and try again.",
-      resend_refused: "A new code could not be sent. Ask for one with /dashboard.",
+      resend_refused: "A new code could not be sent. Ask for one with /web.",
     },
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "請輸入聊天頻道給你的一次性登入碼。",
       label: "一次性登入碼", submit: "登入", working: "登入中…",
-      hint: "在 AgEnD bot 傳 /dashboard，或在主機執行「agend web --code」。登入碼只能用一次，5 分鐘內有效。",
-      refused: "登入碼無效：可能輸入錯誤、已過期或已使用。請用 /dashboard 再要一個。",
+      hint: "在 AgEnD bot 傳 /web，或在主機執行「agend web --code」。登入碼只能用一次，5 分鐘內有效。",
+      refused: "登入碼無效：可能輸入錯誤、已過期或已使用。請用 /web 再要一個。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
       resend: "傳一組新的登入碼給我", resent: "新的登入碼已私訊給你，請在上方輸入。",
       resend_wait: "剛剛才要過登入碼，請稍候再試。",
-      resend_refused: "無法傳送新的登入碼。請用 /dashboard 再要一個。",
+      resend_refused: "無法傳送新的登入碼。請用 /web 再要一個。",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";

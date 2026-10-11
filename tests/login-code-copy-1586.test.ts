@@ -102,7 +102,7 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     expect(to).toBe("admin");
     expect(text).toMatch(CODE);
     expect(text).toContain(t("dashboard.code_next"));
-    expect(text).toContain("/dashboard revoke");
+    expect(text).toContain("/web revoke");
     expect(opts.choices[0].id).toMatch(/^dashboard:[a-f0-9]{32}:close$/);        // the close button stays on the sign-in DM
     expect(calls[1]).toEqual(["admin", `<code>${codeOf(text)}</code>`, { format: "html", disablePreview: true }]);
     expect(h.adapter.sendText.mock.calls.flat().join(" ")).not.toMatch(CODE);   // never into the group

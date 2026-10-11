@@ -22,6 +22,6 @@ export function dashboardPort(configPath: string): number {
 export function dashboardLines(port: number): [string, string] {
   return [
     `Web dashboard: http://localhost:${port}/`,
-    "Sign in with `agend web --code` on this machine, or send /dashboard to your bot.",
+    "Sign in with `agend web --code` on this machine, or send /web to your bot.",
   ];
 }

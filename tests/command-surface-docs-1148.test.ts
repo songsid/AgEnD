@@ -8,7 +8,9 @@ const scopes: CommandScope[] = ["general", "fleet", "classic", "none"];
 const languages = ["", ".zh-TW"];
 function tables(suffix: string) {
   const text = readFileSync(new URL(`../docs/command-surface${suffix}.md`, import.meta.url), "utf8");
-  const rows = [...text.matchAll(/^\| `\/(\w+)` \| (.*) \|$/gm)].map(m => [m[1], m[2].split(" | ")] as const);
+  // The public primary name is /web; the canonical table identity remains dashboard.
+  const rows = [...text.matchAll(/^\| `\/(\w+)`(?: \(`\/(\w+)`\))? \| (.*) \|$/gm)]
+    .map(m => [m[1] === "web" && m[2] === "dashboard" ? "dashboard" : m[1], m[3].split(" | ")] as const);
   return { discord: rows.filter(([, cells]) => cells.length === 5), telegram: rows.filter(([, cells]) => cells.length === 7) };
 }
 function cell(rule: PlatformRule, scope: CommandScope): string {

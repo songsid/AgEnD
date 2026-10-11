@@ -157,7 +157,7 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
 ## Everyday tips
 
 - **Open an instance for one job**: tell General "open an instance just for next week's presentation, use Codex this time". Once it exists, keep working in that channel.
-- **Is it still running? Open `/dashboard`**: it replies with links to the management pages.
+- **Is it still running? Open `/web`**: it replies with links to the management pages.
   - View: each instance's state, recent output, and how much of your AI subscription is left.
   - Settings: instance settings, such as how long before an idle instance auto-pauses.
   - It is an admin command, and the default localhost URL only opens on the host. On Telegram, use it in General.
@@ -178,9 +178,9 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
 | View, compact or clear context | `/ctx`, `/compact`, `/clear` |
 | Switch model or reasoning level | `/model`, `/effort` |
 | Pause or wake manually | `/pause`, `/wake` (a paused instance also wakes on a new message) |
-| Status, usage and settings | `/dashboard` (admin), `/usage`, `/sysinfo` |
+| Status, usage and settings | `/web` (admin), `/usage`, `/sysinfo` |
 
-Slash commands are handled by AgEnD itself, not guessed by a model. `/dashboard`, for example, is answered directly with links, while `/chat` and `/steer` pass their text to the assistant. In Telegram groups, use `/command@botname`.
+Slash commands are handled by AgEnD itself, not guessed by a model. `/web`, for example, is answered directly with links, while `/chat` and `/steer` pass their text to the assistant. In Telegram groups, use `/command@botname`.
 
 ---
 

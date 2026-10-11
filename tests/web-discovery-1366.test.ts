@@ -99,7 +99,7 @@ describe("the one-time web chat notice in General", () => {
     const [dcChat, , dcOpts] = sends(fm, "discord")[0];
     expect([dcChat, dcOpts]).toEqual(["guild-1", { threadId: "chan-general" }]);
     expect(tgText).toMatch(/web chat/i);
-    expect(tgText).toContain("/dashboard");
+    expect(tgText).toContain("/web");
     expect(tgText).toContain(WEB_REMOTE_DOCS_URL);
 
     const next = twoPlatforms();                               // a restart: same AGEND_HOME, fresh process

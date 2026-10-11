@@ -21,7 +21,7 @@ server 只聽 **`127.0.0.1`**，port 是 `health_port`（預設 **19280**）。�
 dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 
 1. 取得登入碼，兩種方式擇一：
-   - 在 General 使用 **`/dashboard`**（限 fleet admin；Discord 原生 slash），選本機登入或臨時公開連結。選單不含碼，bot 會私送連結與一次性登入碼，接著再把登入碼單獨傳一則，手機上就能只複製登入碼（點一下即可複製：Telegram 以程式碼格式顯示，Discord 以行內程式碼顯示）。公開連結的期限以 fleet 的時區顯示，並附上 UTC 偏移。
+   - 在 General 使用 **`/web`**（限 fleet admin；Discord 原生 slash），選本機登入或臨時公開連結。選單不含碼，bot 會私送連結與一次性登入碼，接著再把登入碼單獨傳一則，手機上就能只複製登入碼（點一下即可複製：Telegram 以程式碼格式顯示，Discord 以行內程式碼顯示）。公開連結的期限以 fleet 的時區顯示，並附上 UTC 偏移。
    - 在主機上執行 **`agend web`**，會印出登入碼並開啟登入頁；`agend web --code` 則只印出來、不開瀏覽器。
 2. 打開登入頁，輸入 8 個字元的登入碼（`ABCD-EFGH`，有沒有連字號、大小寫都可以）。
 
@@ -30,7 +30,7 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 - 同一組輸錯 5 次就作廢；跨多組累計輸錯太多次，會暫停登入幾分鐘。還沒發出任何登入碼時，根本沒有東西可以猜。
 - 本機登入預設通知 General，可用 `web.notify_login: false` 關閉；公開登入一律需要已確認的公開通知。
 
-**傳一組新的登入碼給我。** 曾用 `/dashboard` 的登入碼登入過的瀏覽器，登入頁會出現這個按鈕，不必回聊天室再要。新的碼只會私訊給收到上一組碼的那個人，絕不會發到群組，而且對方必須仍是 fleet 管理員。私訊會寫出是哪個瀏覽器、經由公開連結還是本機網路要求的。和任何新的碼一樣，它會取代前一組，包括 `/dashboard` 剛送出的那組。每個瀏覽器一分鐘一次、一小時五次（整個 fleet 另有每分鐘幾次的上限）；輸錯碼導致登入暫停期間不能要。`agend web` 給的碼不會讓瀏覽器取得這個按鈕。公開連結上，只有同一條連結仍開著時才有效，登入照常在 General 公告。`/dashboard revoke` 與 `agend web-token rotate` 會讓所有瀏覽器失去這個按鈕。
+**傳一組新的登入碼給我。** 曾用 `/web` 的登入碼登入過的瀏覽器，登入頁會出現這個按鈕，不必回聊天室再要。新的碼只會私訊給收到上一組碼的那個人，絕不會發到群組，而且對方必須仍是 fleet 管理員。私訊會寫出是哪個瀏覽器、經由公開連結還是本機網路要求的。和任何新的碼一樣，它會取代前一組，包括 `/web` 剛送出的那組。每個瀏覽器一分鐘一次、一小時五次（整個 fleet 另有每分鐘幾次的上限）；輸錯碼導致登入暫停期間不能要。`agend web` 給的碼不會讓瀏覽器取得這個按鈕。公開連結上，只有同一條連結仍開著時才有效，登入照常在 General 公告。`/web revoke` 與 `agend web-token rotate` 會讓所有瀏覽器失去這個按鈕。
 
 舊的 `?token=` 連結或書籤（例如舊版印出的 `/ui?token=…`）**不能**用來登入：它會開到登入頁，網址列裡的 token 也會被清掉。
 
@@ -50,8 +50,8 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 
 | 在哪裡 | 怎麼做 |
 |---|---|
-| Telegram | `/dashboard revoke` |
-| Discord | `/dashboard` slash 指令，選 **`action: revoke`** |
+| Telegram | `/web revoke` |
+| Discord | `/web` slash 指令，選 **`action: revoke`** |
 | 主機上 | `agend web-token rotate`（同時也會輪替 CLI 用的 token；執行中的 fleet 會直接套用，不用重啟） |
 | 瀏覽器裡 | Session 選單 →**全部登出** |
 
@@ -233,7 +233,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 
 ### 手機使用臨時公開連結
 
-管理員在所屬 General 的 `/dashboard` 選 **開啟臨時公開連結**（Discord 原生 slash；Telegram 輸入指令）。按下前不下載、不開入口。bot 私送連結與登入碼；Discord 私訊失敗時改用須確認送達的 ephemeral 回覆。Telegram 請先私訊 bot 的 `/start`。General 絕不貼登入碼。
+管理員在所屬 General 的 `/web` 選 **開啟臨時公開連結**（Discord 原生 slash；Telegram 輸入指令）。按下前不下載、不開入口。bot 私送連結與登入碼；Discord 私訊失敗時改用須確認送達的 ephemeral 回覆。Telegram 請先私訊 bot 的 `/start`。General 絕不貼登入碼。
 
 啟動期間，你按的那個選單會逐步顯示每個階段與經過秒數，最多每 2 秒更新一次（Telegram 為 3 秒）：
 
@@ -244,9 +244,9 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 5. 等待公開網址可以連上；
 6. 私送連結給你。
 
-只有需要下載 AgEnD 自己的 cloudflared 時才會出現第 1–3 步；第一次之後只會看到第 4–6 步。失敗的那一步會標出原因，再執行一次 `/dashboard` 即可重試。選單上只有這些文字和數字，不會出現連結或登入碼。
+只有需要下載 AgEnD 自己的 cloudflared 時才會出現第 1–3 步；第一次之後只會看到第 4–6 步。失敗的那一步會標出原因，再執行一次 `/web` 即可重試。選單上只有這些文字和數字，不會出現連結或登入碼。
 
-使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。Linux 先從 pkg.cloudflare.com 下載，失敗或太慢時改用 GitHub，第 ② 步會標出改用的來源；macOS 只用 GitHub。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕（要按兩下：關閉公開連結，再按確定關閉；按取消會恢復原狀）、新選單、`/dashboard revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
+使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。Linux 先從 pkg.cloudflare.com 下載，失敗或太慢時改用 GitHub，第 ② 步會標出改用的來源；macOS 只用 GitHub。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕（要按兩下：關閉公開連結，再按確定關閉；按取消會恢復原狀）、新選單、`/web revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
 
 獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 preview、SSE、`/health`、`/agent` 或發碼 API。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
 
@@ -312,7 +312,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 登入頁說登入碼錯誤 | 登入碼只能用一次、5 分鐘後到期，而且只有最新的那組有效：請重新取得。 |
 | 「登入已結束」 | 閒置 2 小時、登入已滿 12 小時，或有人執行了 revoke：重新登入即可。 |
 | 更新會晚幾秒才出現，沒有即時串流 | 你這條連線傳不了即時串流（或這是公開連結），頁面改成每 5 秒輪詢：不需要處理，也不會當成問題顯示。 |
-| `/dashboard` 回覆「disabled」 | 這個 bot 沒有設定任何 fleet admin：把你的使用者加進它的 `allowed_users`。 |
+| `/web` 回覆「disabled」 | 這個 bot 沒有設定任何 fleet admin：把你的使用者加進它的 `allowed_users`。 |
 | 在登入頁，瀏覽器的開發者工具顯示 `/auth/session` 有紅色的 **401** | 這是預期行為：頁面會先檢查你是否已經登入，「沒有」就會回 401。不需要處理。 |
 
 ### 確認敏感變更

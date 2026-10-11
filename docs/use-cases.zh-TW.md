@@ -157,7 +157,7 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
 ## 日常使用技巧
 
 - **開一個專門做事的 instance**：對 General 說「幫我開一個 instance，專門準備下週的分享簡報，這次用 Codex」。建好之後，到那個頻道繼續工作就好。
-- **它還在跑嗎？先開 `/dashboard`**：會回傳管理頁的連結。
+- **它還在跑嗎？先開 `/web`**：會回傳管理頁的連結。
   - View：看各 instance 的狀態、最近的輸出，以及 AI 訂閱還剩多少用量。
   - Settings：調整 instance 設定，例如閒置多久自動暫停。
   - 這是管理員指令，預設的 localhost 網址只能在主機上打開。Telegram 請在 General 使用。
@@ -178,9 +178,9 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
 | 查看／壓縮／清空上下文 | `/ctx`、`/compact`、`/clear` |
 | 切換模型或推理強度 | `/model`、`/effort` |
 | 手動暫停／喚醒 | `/pause`、`/wake`（暫停中的 instance 收到訊息也會自動喚醒） |
-| 看狀態、用量、設定 | `/dashboard`（管理員）、`/usage`、`/sysinfo` |
+| 看狀態、用量、設定 | `/web`（管理員）、`/usage`、`/sysinfo` |
 
-斜線指令由 AgEnD 程式先處理，不是丟給模型猜。例如 `/dashboard` 是程式直接回連結；`/chat`、`/steer` 則會把內容送進助理。Telegram 在群組中請用 `/指令@bot名`。
+斜線指令由 AgEnD 程式先處理，不是丟給模型猜。例如 `/web` 是程式直接回連結；`/chat`、`/steer` 則會把內容送進助理。Telegram 在群組中請用 `/指令@bot名`。
 
 ---
 

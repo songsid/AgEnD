@@ -271,7 +271,7 @@ describe("POST /auth/login", () => {
     const h = await startFleet();
     await signIn(h);
     await signIn(h);
-    expect(h.notices.filter(n => n.includes("/dashboard revoke"))).toHaveLength(2);
+    expect(h.notices.filter(n => n.includes("/web revoke"))).toHaveLength(2);
     // Two sign-ins from the same kind of browser are still two notices: the throttle keys on the text.
     expect(new Set(h.notices).size).toBe(2);
     await stop(h.fm);
@@ -633,7 +633,7 @@ describe("signin.js, run against a fake page", () => {
       expect(made.map((e) => [e.tag, e.textContent]), language).toEqual([["code", "agend web --code"]]);
       expect(hint.children!.length, language).toBe(3);
       expect(hint.children![1], language).toBe(made[0]);
-      expect(String(hint.children![0]) + "agend web --code" + String(hint.children![2]), language).toContain("/dashboard");
+      expect(String(hint.children![0]) + "agend web --code" + String(hint.children![2]), language).toContain("/web");
       expect(title.children, language).toBeNull();
       expect(title.textContent.length, language).toBeGreaterThan(0);
     }

@@ -30,8 +30,37 @@ export function isRedundantTaskSummary(content: string, taskSummary: string | un
   return body.length > 0 && body.startsWith(summary);
 }
 
-/** Exact cross-instance block pasted by the receiving daemon. */
-export function formatCrossInstanceInboundMessage(content: string, meta: Record<string, string>): string {
+/**
+ * #1650 (#1653 review): one shell argument that keeps `value` exactly — POSIX single quotes, a quote inside written as
+ * '\'' — so a correlation id like "review batch 7" or "review-$task" reaches agend-agent as it was sent. A plain value
+ * (letters, digits, - _ . : / @ % + = ,) stays bare, so the usual `cid-…` reads as before.
+ */
+export function shellArg(value: string): string {
+  return /^[A-Za-z0-9_.:\/@%+=,-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/** How the receiving agent talks to the fleet: MCP tools, or `agend-agent` commands (agent_mode: cli, no MCP server). */
+export type AgentMode = "mcp" | "cli";
+
+/**
+ * #1650: how to answer, in the receiver's own terms — MCP tool names, or the agend-agent commands of
+ * agent-cli-instructions.md (a CLI-mode agent has no MCP server; naming tools it lacks told it nothing).
+ */
+export function crossInstanceReplyFooter(meta: Record<string, string>, mode: AgentMode = "mcp"): string {
+  const required = meta.requires_reply === "true";
+  if (mode === "cli") {
+    const from = shellArg(meta.from_instance || "SENDER");
+    return required
+      ? `\n(A reply IS required: agend-agent report ${from} "…" ${shellArg(meta.correlation_id || "CORRELATION_ID")} — or agend-agent send ${from} "…". Not direct text.)`
+      : `\n(If you need to reply, use agend-agent send ${from} "…", NOT direct text. If there is nothing to add, you may stay silent.)`;
+  }
+  return required
+    ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
+    : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
+}
+
+/** Exact cross-instance block pasted by the receiving daemon (in the receiver's mode, #1650). */
+export function formatCrossInstanceInboundMessage(content: string, meta: Record<string, string>, mode: AgentMode = "mcp"): string {
   const fromInstance = meta.from_instance || "unknown";
   const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
   let formatted = `[from:${fromLabel}] ${content}`;
@@ -41,8 +70,6 @@ export function formatCrossInstanceInboundMessage(content: string, meta: Record<
     ? { ...meta, task_summary: "" }
     : meta;
   formatted += renderCrossInstanceHandoffMetadata(renderMeta);
-  formatted += meta.requires_reply === "true"
-    ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
-    : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
+  formatted += crossInstanceReplyFooter(meta, mode);
   return formatted;
 }
