@@ -192,6 +192,56 @@ describe("the first sign-in tour (#1366)", () => {
     expect(p.doc.activeElement?.id).toBe("msgIn");
   });
 
+  // #1609 review: the replay belongs to the chat navigation it made — not after a timeout, not on another page, not on a
+  // later navigation to the same chat.
+  async function replayHarness() {
+    const p = await load({ storage: { [TOUR_KEY]: "1" }, narrow: false, install: false });
+    // @ts-expect-error — a JS module of the app, with no types
+    const panel = await import("../src/ui/panel-chat.js");
+    panel.boot({ stream: { on() {} }, boot: undefined, deps: { fetch: () => new Promise(() => {}) } });
+    const preact = await import("/assets/preact.module.js");
+    // @ts-expect-error — a JS module of the app, with no types
+    const settings = await import("../src/ui/panel-settings.js");
+    const nav = await import("/assets/app-nav.js");
+    nav.startRouter((globalThis as any).window);
+    const host = p.doc.createElement("div"); p.doc.body.append(host);
+    preact.render(preact.h(settings.DeviceSection, {}), host);
+    await settle();
+    const send = p.doc.getElementById("sendBtn") as any;
+    send.remove();                                            // the chat has not drawn yet
+    (host.querySelector("#tourBtn") as any).click();
+    await settle();
+    return { p, nav, send };
+  }
+  it("#1609: a chat that never draws (its module failed, an unknown instance) gets no tour — the wait ends, it does not fall through", async () => {
+    const { p } = await replayHarness();
+    await new Promise(r => setTimeout(r, 3600)); await settle();
+    expect(!!p.card()).toBe(false);
+  });
+  it("#1609: left for another page while it waited — the old replay does nothing there", async () => {
+    const { p, nav, send } = await replayHarness();
+    nav.navigate("/ui/fleet");
+    p.doc.body.append(send);                                  // (an element with that id shows up later, anywhere)
+    await new Promise(r => setTimeout(r, 400)); await settle();
+    expect(!!p.card()).toBe(false);
+  });
+  it("#1609: away and back to the same chat (a new navigation, the same URL) — the old replay does nothing", async () => {
+    const { p, nav, send } = await replayHarness();
+    nav.navigate("/ui/fleet");
+    nav.navigate("/ui");
+    p.doc.body.append(send);
+    await new Promise(r => setTimeout(r, 400)); await settle();
+    expect(!!p.card()).toBe(false);
+  });
+  it("#1609 control: the same chat drawing within the wait gets the tour, and Skip returns to the composer", async () => {
+    const { p, send } = await replayHarness();
+    p.doc.body.append(send);
+    await new Promise(r => setTimeout(r, 300)); await settle();
+    expect(!!p.card()).toBe(true);
+    p.click(p.button("Skip"));
+    expect(p.doc.activeElement?.id).toBe("msgIn");
+  });
+
   it("on a phone it outlines what is on screen: ☰ for the instance list, the tab's badge for 'needs you' (#1408 step 5)", async () => {
     const p = await load({ narrow: true });
     expect(p.spotted()).toEqual(["sbOpen"]);

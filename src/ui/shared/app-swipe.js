@@ -65,6 +65,8 @@ export function installSwipe({ doc = document, win = window, isDrawer, isOpen, o
     const s = start;
     start = null;
     if (!s || !e.changedTouches || !e.changedTouches.length || !isDrawer()) return;
+    // A dialog, the lightbox or the preview panel that came up during the gesture still owns it (#1609 review).
+    if (modalUp()) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - s.x, dy = t.clientY - s.y;
     if (Math.abs(dx) < SWIPE.MIN_DX || Math.abs(dy) >= Math.abs(dx) / 2) return;   // short, or mostly vertical: a scroll

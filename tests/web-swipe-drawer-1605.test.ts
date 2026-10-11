@@ -94,6 +94,22 @@ describe("phone: swipe the drawer open and shut", () => {
     w.swipe(w.bubble, 60, 400, 200, 400);
     expect(w.state.opens, "and once they are gone, it works").toBe(1);
   });
+  it("an overlay that comes up DURING the gesture still owns it: a dialog, the lightbox, the preview panel (#1609 review)", async () => {
+    const w = await world();
+    const midway = (bring: () => () => void) => {
+      w.bubble.dispatchEvent(new MiniEvent("touchstart", { bubbles: true, touches: [{ clientX: 60, clientY: 400 }] }));
+      const gone = bring();
+      w.bubble.dispatchEvent(new MiniEvent("touchend", { bubbles: true, touches: [], changedTouches: [{ clientX: 180, clientY: 405 }] }));
+      gone();
+    };
+    midway(() => { const d = w.el("dialog", { open: "" }); return () => d.remove(); });
+    midway(() => { w.doc.documentElement.classList.add("lb-open"); return () => w.doc.documentElement.classList.remove("lb-open"); });
+    midway(() => { const pv = w.el("aside", { class: "pv-panel" }); return () => pv.remove(); });
+    expect(w.state.opens).toBe(0);
+    midway(() => () => {});                                   // control: the same gesture with no overlay opens it
+    expect(w.state.opens).toBe(1);
+  });
+
   it("a second finger (a pinch) cancels it; outside the main area (the bottom tabs) it does not open", async () => {
     const w = await world();
     w.bubble.dispatchEvent(new MiniEvent("touchstart", { bubbles: true, touches: [{ clientX: 60, clientY: 400 }] }));
