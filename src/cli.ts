@@ -1599,6 +1599,33 @@ program
       return;
     }
 
+    // ── Check if npm global needs sudo (read-only; decides the nvm path the preflight judges) ──
+    let needsSudo = false;
+    try {
+      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      const { accessSync, constants } = await import("node:fs");
+      try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
+    } catch { /* assume no sudo needed */ }
+
+    // ── #1441 B: can the target run here, on the Node it will actually run on? Decided before anything is touched ──
+    if (targetVersion) {
+      const { evaluateUpdateTarget, lookupTargetManifest, runtimePlatform } = await import("./update-preflight.js");
+      const probe = spawnSync("node", ["-p", "process.versions.node + ' ' + process.execPath"], { encoding: "utf-8", timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] });
+      const [systemNode, systemNodePath] = probe.status === 0 ? (probe.stdout ?? "").trim().split(" ") : [];
+      const verdict = evaluateUpdateTarget({
+        manifest: lookupTargetManifest(targetVersion), host: runtimePlatform.hostPlatform(),
+        systemNode: systemNode || null, systemNodePath: systemNodePath || null, viaNvm: needsSudo,
+      });
+      if (verdict.kind === "refuse") {
+        console.error(`\n${verdict.message}\n`);
+        // A chat-started /update (Discord, Telegram, an agent) is waiting on this: the reason is its outcome.
+        setUpdateProgressStage(DATA_DIR, "failed", { error: `Not updated: ${verdict.summary}. Nothing was changed.` });
+        process.exitCode = 1;
+        return;
+      }
+      if (verdict.kind === "unknown") console.log(verdict.note);
+    }
+
     if (targetVersion) {
       console.log(`\n  Updating AgEnD v${pkgVersion} → v${targetVersion}...\n`);
     } else {
@@ -1620,14 +1647,6 @@ program
       process.exit(1);
     };
     setUpdateProgressStage(DATA_DIR, "downloading");
-
-    // ── Check if npm global needs sudo ──
-    let needsSudo = false;
-    try {
-      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
-      const { accessSync, constants } = await import("node:fs");
-      try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
-    } catch { /* assume no sudo needed */ }
 
     if (needsSudo) {
       // ── nvm path: install without sudo ──
