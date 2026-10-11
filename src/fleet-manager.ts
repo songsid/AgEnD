@@ -9940,10 +9940,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if ((!cached || now >= cached.until) && !this.webAccentReads.has(key)) {
       this.webAccentReads.add(key);
       adapter.botAccentColor(channelId)
-        .then(value => {
-          // A bot replaced while the read was out: its answer is not the new bot's (and not worth keeping).
-          if (this.botStillOwns(connection, owner)) this.webAccents.set(key, { value: accentColor(value), until: performance.now() + WEB_IMAGE_MAX_AGE_MS });
-        }, () => { this.webAccents.set(key, { value: cached?.value ?? null, until: performance.now() + WEB_IMAGE_RETRY_MS }); })
+        // Keyed by the bot's id: a replaced bot's late answer lands under its own key, which the new bot never reads.
+        .then(value => { this.webAccents.set(key, { value: accentColor(value), until: performance.now() + WEB_IMAGE_MAX_AGE_MS }); }, () => { this.webAccents.set(key, { value: cached?.value ?? null, until: performance.now() + WEB_IMAGE_RETRY_MS }); })
         .finally(() => this.webAccentReads.delete(key));
     }
     return cached?.value ?? null;
