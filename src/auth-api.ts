@@ -87,7 +87,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
   ...Object.fromEntries([
     "app.js", "app-html.js", "app-i18n.js", "app-route.js", "app-nav.js", "app-ctx.js", "app-stream.js", "app-store.js",
-    "app-shell.js", "app-session.js", "app-needs.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
+    "app-shell.js", "app-session.js", "app-needs.js", "app-swipe.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
     // alpha.2 (N1): the sidebar's one instance list, and View's roster read it shows to an anonymous reader.

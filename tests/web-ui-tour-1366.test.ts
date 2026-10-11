@@ -175,12 +175,21 @@ describe("the first sign-in tour (#1366)", () => {
     expect(btn.textContent).toMatch(/Tour/);
     p.shell.openDrawer();
     (p.doc.getElementById("sbOpen") as any).focus();
+    // #1608 review: it waits for the CHAT (its Send button), not the shell's #main that every page has.
+    const send = p.doc.getElementById("sendBtn") as any;
+    send.remove();
     btn.click();
     await settle(); await settle();
+    expect(!!p.card(), "not before the chat has drawn").toBe(false);
+    p.doc.body.append(send);
+    await new Promise(r => setTimeout(r, 150)); await settle();
     expect(p.shell.shellStore.get().drawer).toBe(false);
     expect(p.text()).toMatch(/Pick an instance/);
     expect(p.doc.activeElement?.textContent).toBe("Next");
     expect((globalThis as any).location.pathname, "replayed on the chat it points at").toBe("/ui");
+    // Ended: the focus goes back to the composer — a place that is still there (not Settings' gone button).
+    p.click(p.button("Skip"));
+    expect(p.doc.activeElement?.id).toBe("msgIn");
   });
 
   it("on a phone it outlines what is on screen: ☰ for the instance list, the tab's badge for 'needs you' (#1408 step 5)", async () => {
