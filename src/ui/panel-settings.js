@@ -12,9 +12,9 @@ import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js"
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
+import { DevicePrefs, PanelHeader, PendingChanges, setTitle } from "/assets/app-shell.js";
 import { navigate, setLeaveGuard } from "/assets/app-nav.js";
-import { settingsPath, SETTINGS_SECTIONS } from "/assets/app-route.js";
+import { chatPath, settingsPath, SETTINGS_SECTIONS } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -37,9 +37,13 @@ import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
 import { FirstRunCard, takeWizardRequest } from "./first-run.js";
 import { takeAgentRequest } from "./settings-request.js";
+// #1604: This device — the preview opt-in (one path: the app's confirm, then preview.js) and the tour, from the chat.
+import { setPreviewOptIn } from "./panel-chat.js";
+import { startTour } from "./chat-tour.js";
+import "./chat-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
-const ICONS = { agents: "bot", bots: "plug", classic: "room", general: "sliders", advanced: "code" };
+const ICONS = { device: "user", agents: "bot", bots: "plug", classic: "room", general: "sliders", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
@@ -218,7 +222,9 @@ export function SettingsPanel({ route, navKey }) {
     const insts = (ctx.fleet && ctx.fleet.instances) || {};
     if (own(insts, want.name)) setDialog({ kind: "agent", name: want.name, inst: insts[want.name], key: navKey });
   }, [!!ctx, navKey]);
-  const sectionBody = !data ? html`<${Skeleton} lines=${6} />`
+  // #1604: This device needs no configuration: shown at once, whatever the configuration read does.
+  const sectionBody = section === "device" ? html`<${DeviceSection} />`
+    : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
     : section === "bots" ? html`<${Bots} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`
@@ -248,6 +254,33 @@ export function SettingsPanel({ route, navKey }) {
     ${open && ctx ? renderDialog(open, ctx, close) : null}
     ${open && open.kind === "help" ? html`<${HelpDialog} onClose=${close} />` : null}
   </div>`;
+}
+
+/**
+ * #1604: what this browser chooses for itself — moved here from the sidebar footer, each with the storage it always had:
+ * theme (theme.js), language (app-i18n.js), HTML previews on this device (preview.js, through the app's confirm), and
+ * the chat tour (replayed on the chat it points at).
+ */
+export function DeviceSection() {
+  const P = () => globalThis.AgendPreview;
+  const [on, setOn] = useState(P() ? P().optedIn() : false);
+  useEffect(() => (P() ? P().onChange(() => setOn(P().optedIn())) : undefined), []);
+  const replay = () => {
+    let last = null;
+    try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
+    navigate(last ? chatPath(last) : "/ui");
+    // The tour points at the chat's own controls: start it once the chat has drawn (bounded wait).
+    let tries = 0;
+    const go = () => { if (document.getElementById("main") || ++tries > 30) startTour(); else setTimeout(go, 100); };
+    setTimeout(go, 0);
+  };
+  return html`<section class="card s-device"><h3>${tn("sec_device")}</h3>
+    <p class="sub">${tn("deviceLead")}</p>
+    <${DevicePrefs} labels=${true} />
+    ${P() ? html`<label class="check"><input type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
+      <span>${t("chat.previews")}</span></label>` : null}
+    <div class="s-device-row"><button type="button" id="tourBtn" class="btn" title=${t("chat.tourBtnTitle")} onClick=${replay}><${Icon} name="info" size=${16} />${t("chat.tour")}</button></div>
+  </section>`;
 }
 
 /** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */

@@ -2,7 +2,7 @@
 // a test runs both over one list of cases). Pure: no DOM, no history.
 
 export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "config"];
-export const SETTINGS_SECTIONS = ["agents", "bots", "classic", "general", "advanced"];
+export const SETTINGS_SECTIONS = ["device", "agents", "bots", "classic", "general", "advanced"];   // #1604: device first
 const MAX_INSTANCE_NAME = 128;
 const PATH_SEPARATOR_OR_CONTROL = /[/\\\u0000-\u001f\u007f]/;
 

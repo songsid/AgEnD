@@ -96,10 +96,11 @@ describe("AI usage readability", () => {
     }
   });
 
-  it("the language switch is in the shell's sidebar, not in the panel's toolbar", async () => {
+  it("the language switch is the shell's (Settings → This device, or the View reader's footer popover), not the panel's toolbar", async () => {
     await openUsage([]);
-    expect(p.root.querySelector('select[aria-label="Language"]')).toBeNull();      // the shell's sidebar is not in this mount
-    expect(appShell).toContain('<span class="sr-only">${t("app.language")}</span>');
+    expect(p.root.querySelector('select[aria-label="Language"]')).toBeNull();      // the shell's controls are not in this mount
+    expect(appShell).toContain("export function DevicePrefs(");                    // #1604: one component, two places
+    expect(appShell).toContain('aria-label=${t("app.language")}');
     expect(appShell).toContain("side-foot");
   });
 });

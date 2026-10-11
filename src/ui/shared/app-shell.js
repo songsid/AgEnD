@@ -14,7 +14,7 @@ import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav } from "./instance-nav.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
-export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), footer: [], keyboard: false, dialog: null, side: null });
+export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
 
 /**
  * The mounted panel's own sidebar section, in place of the instance list (View's roster: its groups, filter and order,
@@ -48,10 +48,6 @@ export function toggleSidebar() {
   const collapsed = !shellStore.get().collapsed;
   shellStore.set({ collapsed });
   try { localStorage.setItem("agend_sidebar", collapsed ? "hidden" : "shown"); } catch { /* this page only */ }
-}
-/** A panel module adds a control to the sidebar footer (the chat adds the preview opt-in and the tour). */
-export function addFooterItem(key, Component) {
-  shellStore.set(s => ({ ...s, footer: [...s.footer.filter(x => x.key !== key), { key, Component }] }));
 }
 
 // ── Keys ── One document listener for the page. Esc closes what is on top first (the drawer); then the panel's own
@@ -125,8 +121,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <nav class="side-nav" aria-label=${t("app.menu")}>${navLink("view", "/view", "view", t("app.view"))}</nav>
       ${shell.side ? html`<${shell.side.Component} />` : html`<${ViewOnlyNav} route=${route} />`}
       <div class="side-foot">
-        <${Prefs} />
         <a class="side-row" href=${signInHref()}><${Icon} name="user" /><span>${t("app.signIn")}</span></a>
+        <${PrefsPopover} />
       </div>
     </aside>`;
   }
@@ -145,8 +141,6 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
         exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />`}
     <div class="side-foot">
       ${navLink("settings", settingsPath(), "settings", t("app.settings"))}
-      ${shell.footer.map(({ key, Component }) => html`<${Component} key=${key} />`)}
-      <${Prefs} />
       <${SessionMenu} />
     </div>
   </aside>`;
@@ -157,17 +151,29 @@ function ViewOnlyNav({ route }) {
   return html`<${RosterNav} route=${route} viewOnly=${true} onPick=${closeDrawer} />`;
 }
 
-function Prefs() {
+/**
+ * This browser's theme and language (#1604: Settings → This device; for the anonymous View reader, the footer's
+ * popover). The same stores as ever: AgendTheme (theme.js) and setLang (app-i18n.js) — only where they are shown moved.
+ */
+export function DevicePrefs({ labels = false } = {}) {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
   const [l, setL] = useState(lang());
-  return html`<div class="prefs">
-    <label class="pref"><${Icon} name="sun" size=${16} /><span class="sr-only">${t("app.theme")}</span>
+  return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
+    <label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
       <select value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); }}>
         <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>
-    <label class="pref"><${Icon} name="globe" size=${16} /><span class="sr-only">${t("app.language")}</span>
+    <label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
       <select value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); }}>
         <option value="en">English</option><option value="zh-TW">中文</option></select></label>
   </div>`;
+}
+
+/** #1604: the anonymous View reader has no Settings: theme and language from one compact control beside Sign in. */
+function PrefsPopover() {
+  return html`<details class="prefs-pop">
+    <summary class="icon-btn" aria-label=${t("app.devicePrefs")} title=${t("app.devicePrefs")}><${Icon} name="sun" /></summary>
+    <div class="pop" role="group" aria-label=${t("app.devicePrefs")}><${DevicePrefs} labels=${true} /></div>
+  </details>`;
 }
 
 /**
@@ -228,9 +234,10 @@ function ConnectionLine() {
       ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}</div>`;
   }
   if (connection === "reconnecting") return html`<${Reconnecting} />`;
-  if (connection === "live" || connection === "none" || connection === "ended") return null;   // ended: agend-auth's banner
-  const text = connection === "polling" ? t("app.connPolling") : connection === "down" ? t("app.connDown") : null;
-  return text ? html`<div class="conn" role="status">${text}</div>` : null;
+  // #1603: polling is a working transport (the public link polls by design; a buffering proxy makes a page poll), not
+  // a fault — messages still arrive, at most ~5 s late, and there is nothing to do: no strip. Live, none, and ended
+  // (agend-auth's banner says that) draw nothing either; only reconnecting and a failed catch-up are shown.
+  return null;
 }
 /** #1580: the fleet is not answering (a restart): said, with when the next try is — never a silent stale page. */
 function Reconnecting() {
