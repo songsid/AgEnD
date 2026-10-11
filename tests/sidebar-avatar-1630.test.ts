@@ -71,14 +71,14 @@ describe("the avatar", () => {
       base("rel", { avatar: { kind: "emoji", src: "//evil.example/x.png", alt: ":x:" } }),
       base("other", { avatar: { kind: "image", src: "/ui/file/abc" } }),
     ]);
-    for (const n of ["cdn", "js", "rel", "other"]) expect([row(pg, n).querySelector("img"), row(pg, n).querySelector(".av-text").textContent], n).toEqual([null, n[0]!.toUpperCase()]);
+    for (const n of ["cdn", "js", "rel", "other"]) expect([row(pg, n).querySelector("img")?.getAttribute("src") ?? null, row(pg, n).querySelector(".av-text")?.textContent ?? null], n).toEqual([null, n[0]!.toUpperCase()]);
     for (const img of pg.root.querySelectorAll("img")) expect(img.getAttribute("src")).toMatch(/^\/ui\/img\//);
   });
   it("a picture that fails to load is replaced by the first character, never a broken image", async () => {
     const pg = await sidebar([base("pic", { display_name: "Pixel", avatar: { kind: "image", src: "/ui/img/bot/discord-2?v=abc" } })]);
     fire(row(pg, "pic").querySelector("img"), "error");
     await settle();
-    expect([row(pg, "pic").querySelector("img"), row(pg, "pic").querySelector(".av-text").textContent]).toEqual([null, "P"]);
+    expect([row(pg, "pic").querySelector("img")?.getAttribute("src") ?? null, row(pg, "pic").querySelector(".av-text")?.textContent ?? null]).toEqual([null, "P"]);
   });
 });
 
