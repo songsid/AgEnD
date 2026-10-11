@@ -107,11 +107,14 @@ export function routeToolCall(
         .then(() => respond("ok"))
         .catch(e => respond(null, e.message));
       return true;
-    case "edit_message":
-      adapter.editMessage(chatId, args.message_id as string ?? "", args.text as string ?? "", threadId)
+    case "edit_message": {
+      // #1651: the same mapping as reply's format ("markdown" → the adapter's "html"); a text edit passes none.
+      const format = args.format === "markdown" ? "html" as const : undefined;
+      adapter.editMessage(chatId, args.message_id as string ?? "", args.text as string ?? "", threadId, format ? { format } : undefined)
         .then(() => respond("ok"))
         .catch(e => respond(null, e.message));
       return true;
+    }
     case "download_attachment":
       adapter.downloadAttachment(args.file_id as string ?? "")
         .then(path => respond(path))
