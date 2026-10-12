@@ -93,7 +93,8 @@ async function app(path: string) {
 async function reload(prev: AppPage, path: string) { await prev.unmount(); prev.restore(); mounted.splice(mounted.indexOf(prev), 1); return app(path); }
 const go = async (path: string) => { const { navigate } = await import("/assets/app-nav.js"); navigate(path); await settle(6); };
 const route = async () => (await import("/assets/app-nav.js")).navStore.get().route;
-const fleetLink = (pg: AppPage) => (pg.root.querySelectorAll(".side-nav a.side-row").find((a: any) => a.getAttribute("href")?.startsWith("/ui/fleet")) as any) ?? null;
+// The "Fleet" row (#1675's "Fleet overview" above it, also a /ui/fleet link, is another row).
+const fleetLink = (pg: AppPage) => (pg.root.querySelectorAll(".side-nav a.side-row").find((a: any) => a.getAttribute("href")?.startsWith("/ui/fleet") && !a.classList.contains("side-overview")) as any) ?? null;
 const fleetTab = (pg: AppPage) => (pg.root.querySelectorAll("nav.tabs a.tab").find((a: any) => a.getAttribute("href")?.startsWith("/ui/fleet")) as any) ?? null;
 const sw = (pg: AppPage) => pg.root.querySelectorAll(".inst-switch a.seg-item").map((a: any) => [a.textContent, a.getAttribute("href"), a.getAttribute("aria-current") ?? null]);
 const menuItems = async (pg: AppPage) => {

@@ -8,7 +8,7 @@ import { ConfirmHost } from "./ui-confirm.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
-import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath, fleetPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
@@ -105,7 +105,8 @@ export function signInHref() {
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
-  const on = (panel) => !!route && (route.panel === panel || (panel === "fleet" && route.panel === "details"));
+  // #1675: the Fleet panel is "Fleet overview"'s (one current row); the "Fleet" row is current on an instance's Details.
+  const on = (panel) => !!route && (panel === "fleet" ? route.panel === "details" : route.panel === panel);
   const openInstance = openInstanceOf(route);
   // A count badge is hidden at 0; its number is also in the link's accessible name.
   const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
@@ -127,6 +128,11 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       </div>
     </aside>`;
   }
+  // #1675: the whole fleet, on its Org chart (#1389), from anywhere — top left, so at the top of a phone's drawer too. The
+  // "Fleet" row under it goes to the open instance's Details (#1523 N2); this one is the Fleet panel, any of its tabs.
+  const onFleet = !!route && route.panel === "fleet";
+  const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetPath("org")}
+    aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
     <div class="side-head">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
@@ -134,6 +140,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="plus" /></button>
     </div>
     <nav class="side-nav" aria-label=${t("app.menu")}>
+      ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
       ${navLink("fleet", openInstance ? detailsPath(openInstance) : "/ui/fleet", "fleet", t("app.fleet"))}
       ${navLink("view", "/view", "view", t("app.view"))}
