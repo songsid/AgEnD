@@ -31,7 +31,7 @@ import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-ch
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
-import { OPERATOR, parseWebPrefsPatch, type WebPrefsStore } from "./web-prefs.js";
+import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
@@ -615,7 +615,7 @@ export function handleWebRequest(
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "set required" }); return; }
-      const parsed = parseWebPrefsPatch(body.set);
+      const parsed = prefs.parsePatch(body.set);
       if (!parsed.ok) { json(res, 400, { error: parsed.error }); return; }
       const now = writer();
       if (now !== 200) { refuse(now); return; }

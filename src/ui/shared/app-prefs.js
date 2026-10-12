@@ -1,7 +1,7 @@
 // #1665: the web preferences that follow the person between devices — kept on the host (/ui/prefs), with this browser's
 // localStorage, under the keys every panel already reads, as the cache. Design: the comment on #1665.
 //
-// - Synced: theme, language, the sidebar (order, folds, filter) and the HTML-preview opt-in. The tour and the first-run
+// - Synced: theme, language, the sidebar (order, folds, filter, favorites — #1664) and the HTML-preview opt-in. The tour and the first-run
 //   card stay on each device, as every layout choice does.
 // - The signed-in page is served with the host's values (<html data-prefs>). This module, imported before any panel
 //   reads its key, copies them into the cache: the host wins once it has a value — and, on a device already in step
@@ -30,6 +30,7 @@ export const SYNCED = {
   "nav.order": { ls: "agend_view_sidebar_order", ...json },
   "nav.collapsed": { ls: "agend_instance_collapsed", ...json },
   "nav.filter": { ls: "agend_instance_filter", ...json },
+  "nav.favorites": { ls: "agend_favorites", ...json },   // #1664
   "preview.optIn": { ls: "agend_html_preview", toLocal: (v) => (v ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
 };
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);

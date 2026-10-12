@@ -164,7 +164,15 @@ register("view", {
   "profileTitle": "Edit {name}'s profile",
   "avatar": "Avatar",
   "collapseProfile": "Hide the profile",
-  "instancesLabel": "Instances"
+  "instancesLabel": "Instances",
+  "favorites": "Favorites",
+  "favAdd": "Add {name} to favorites",
+  "favRemove": "Remove {name} from favorites",
+  "favEdit": "Edit",
+  "favDone": "Done",
+  "favUp": "Move {name} up",
+  "favDown": "Move {name} down",
+  "favFull": "Favorites are full ({max})"
  },
  "zh-TW": {
   "editProfile": "編輯個人資料",
@@ -326,6 +334,14 @@ register("view", {
   "profileTitle": "編輯 {name} 的個人資料",
   "avatar": "頭像",
   "collapseProfile": "隱藏個人資料",
-  "instancesLabel": "Instances"
+  "instancesLabel": "Instances",
+  "favorites": "最愛",
+  "favAdd": "把 {name} 加入最愛",
+  "favRemove": "把 {name} 從最愛移除",
+  "favEdit": "編輯",
+  "favDone": "完成",
+  "favUp": "把 {name} 上移",
+  "favDown": "把 {name} 下移",
+  "favFull": "最愛已滿（{max} 個）"
  }
 });

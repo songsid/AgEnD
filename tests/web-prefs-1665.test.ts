@@ -65,7 +65,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     theme: "dark", lang: "zh-TW",
     "nav.order": [{ item_type: "group", item_name: "Ops", sort_index: 0, group_name: null }, { item_type: "instance", item_name: "alpha", sort_index: 0, group_name: "Ops" }],
     "nav.collapsed": ["Ops"], "nav.filter": { q: "rev", status: ["working"], cli: ["claude-code"] },
-    "preview.optIn": true,
+    "nav.favorites": ["alpha"], "preview.optIn": true,
   };
   const INVALID: Record<string, unknown[]> = {
     theme: ["blue", "", 1],
@@ -75,19 +75,20 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
       [{ item_type: "instance", item_name: "a", sort_index: 0, group_name: "G", extra: 1 }], Array.from({ length: 1001 }, (_, i) => ({ item_type: "group", item_name: `g${i}`, sort_index: i, group_name: null }))],
     "nav.collapsed": [["a", "a"], [""], ["x".repeat(129)], "Ops", [1]],
     "nav.filter": [{ q: "", status: [] }, { q: "x".repeat(201), status: [], cli: [] }, { q: "", status: ["busy"], cli: [] }, { q: "", status: [], cli: ["Bad Name"] }, []],
+    "nav.favorites": [["alpha", "alpha"], "alpha", [""]],
     "preview.optIn": ["true", 1],
   };
   it("covers every key the store knows", () => {
     expect([Object.keys(VALID).sort(), Object.keys(INVALID).sort()]).toEqual([[...WEB_PREF_KEYS].sort(), [...WEB_PREF_KEYS].sort()]);
   });
   it("a valid value for every key is accepted (all at once), and null clears", () => {
-    const r = parseWebPrefsPatch({ ...VALID, theme: null });
+    const r = parseWebPrefsPatch({ ...VALID, theme: null }, (n) => n === "alpha");
     expect(r.ok && [...r.patch.entries()]).toEqual(Object.entries({ ...VALID, theme: null }));
   });
   it("an invalid value is refused, per key", () => {
     const accepted: string[] = [];
     for (const [key, values] of Object.entries(INVALID)) for (const v of values) {
-      if (parseWebPrefsPatch({ [key]: v }).ok) accepted.push(`${key}=${JSON.stringify(v).slice(0, 40)}`);
+      if (parseWebPrefsPatch({ [key]: v }, (n) => n === "alpha").ok) accepted.push(`${key}=${JSON.stringify(v).slice(0, 40)}`);
     }
     expect(accepted).toEqual([]);
   });

@@ -14,7 +14,7 @@ import { chatPath, detailsPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
 import { viewStore } from "./view-roster-store.js";
-import { onPrefsChanged, savePref } from "./app-prefs.js";
+import { onPrefsChanged, prefsWritable, savePref } from "./app-prefs.js";
 import "./view-strings.js";
 
 /** view.* text with named values. */
@@ -105,6 +105,7 @@ export function instanceTooltip(it) {
 const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";   // View's key since #999: everyone's arrangement carries over
 const COLLAPSED_KEY = "agend_instance_collapsed";
 const FILTER_KEY = "agend_instance_filter";
+const FAVORITES_KEY = "agend_favorites";   // #1664
 function readOrder() {
   const groups = new Map(), insts = new Map();
   try {
@@ -125,6 +126,9 @@ function readFilter() {
     const f = JSON.parse(stored(FILTER_KEY) || "{}");
     return { q: f && typeof f.q === "string" ? f.q : "", status: strings(f && f.status).filter((s) => STATUS_FACETS.includes(s)), cli: strings(f && f.cli) };
   } catch { return { q: "", status: [], cli: [] }; }
+}
+function readFavorites() {
+  try { const a = JSON.parse(stored(FAVORITES_KEY) || "[]"); return Array.isArray(a) ? [...new Set(a.filter((x) => typeof x === "string"))] : []; } catch { return []; }
 }
 /** Display order: this browser's saved order first, then new groups/instances by tag and name. */
 export function computeOrder(roster, order) {
@@ -159,9 +163,9 @@ function moveIn(arr, moving, target, before) {
 }
 
 /** The list's state for the page's life: this browser's order, folded groups and filter (each also kept in storage). */
-export const navStore = createStore({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter() });
+export const navStore = createStore({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() });
 /** Read them again from this browser's storage — what a page load does (the store above is made that way). */
-export function loadNavPrefs() { navStore.set({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter() }); }
+export function loadNavPrefs() { navStore.set({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() }); }
 /** Change the filter ({ q?, status?, cli? }): the same on every page, and kept by this browser. */
 export function setNavFilter(patch) {
   const filter = { ...navStore.get().filter, ...patch };
@@ -170,7 +174,32 @@ export function setNavFilter(patch) {
 }
 function setCollapsed(collapsed) { navStore.set({ collapsed }); savePref("nav.collapsed", [...collapsed]); }
 // Another device rearranged, folded or filtered: this page's list follows (its cache is already updated).
-onPrefsChanged((keys) => { if (keys.has("nav.order") || keys.has("nav.collapsed") || keys.has("nav.filter")) loadNavPrefs(); });
+onPrefsChanged((keys) => { if (keys.has("nav.order") || keys.has("nav.collapsed") || keys.has("nav.filter") || keys.has("nav.favorites")) loadNavPrefs(); });
+
+// ── #1664: favorites — starred instances, pinned at the top in the order they were starred (or moved) ──
+export const MAX_FAVORITES = 50;
+/** The favorites that are instances now (`known`: the names listed): what is shown, and the base of every change — so
+ *  a deleted instance is dropped, never sent back to the host (which would refuse it). */
+function liveFavorites(known) { return navStore.get().favorites.filter((n) => known.has(n)); }
+function setFavorites(next) { navStore.set({ favorites: next }); savePref("nav.favorites", next); }
+/** Star or unstar `name`. False: not done (the list is full). */
+export function toggleFavorite(name, known) {
+  const cur = liveFavorites(known);
+  if (cur.includes(name)) { setFavorites(cur.filter((n) => n !== name)); return true; }
+  if (cur.length >= MAX_FAVORITES || !known.has(name)) return false;
+  setFavorites([...cur, name]);
+  return true;
+}
+/** Move a favorite one place up (-1) or down (+1). */
+export function moveFavorite(name, delta, known) {
+  const cur = liveFavorites(known);
+  const from = cur.indexOf(name), to = from + delta;
+  if (from < 0 || to < 0 || to >= cur.length) return;
+  cur.splice(to, 0, cur.splice(from, 1)[0]);
+  setFavorites(cur);
+}
+/** The Favorites group's key among the tag groups: no tag can be it (a group name is never a control character). */
+const FAV_GROUP = "\u0000favorites";
 function persistOrder(groupNames, instByGroup) {
   const rows = [];
   groupNames.forEach((g, i) => rows.push({ item_type: "group", item_name: g, sort_index: i, group_name: null }));
@@ -261,6 +290,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
+  // #1664: "☆ Edit" — the stars on every row (on a phone the only way to them) and ↑ ↓ on the favorites.
+  const [editing, setEditing] = useState(false);
   // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details, or a Fleet tab (Q4 = A), → Details;
   // everywhere else → Chat. The anonymous reader only ever has View.
   const rowPath = viewOnly || (route && route.panel === "view") ? viewPath
@@ -271,8 +302,18 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const byName = new Map(items.map((it) => [nameOf(it), it]));
   const facetOf = (name) => statusFacet(byName.get(name), own(exec, name) ? exec[name] : null, own(awaiting, name) ? awaiting[name] : null);
   const { groupNames, instByGroup } = computeOrder(items, nav.order);
+  // #1664: the favorites that are instances now, as a group of their own on top; the other groups keep the rest, in
+  // their order. Changing them: a signed-in page that may write preferences (not the public link, not the anonymous
+  // reader — they still see the list).
+  const known = new Set(byName.keys());
+  const favs = nav.favorites.filter((n) => known.has(n));
+  const favSet = new Set(favs);
+  const canStar = !viewOnly && prefsWritable();
+  const shownGroups = favs.length ? [FAV_GROUP, ...groupNames] : groupNames;
+  const shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n))]));
+  if (favs.length) shownInsts.set(FAV_GROUP, favs);
   const f = nav.filter;
-  const shown = filterSidebar(groupNames, instByGroup, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
+  const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   const backends = [...new Set(items.map((it) => it.backend).filter((b) => typeof b === "string" && b))].sort((a, b) => backendLabel(a).localeCompare(backendLabel(b)));
   // #1630: a display name two rows share would tell them apart from nothing — only then does the row keep its name too.
   const labelCount = new Map();
@@ -314,35 +355,49 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     <div class="nav-facet-list" role="group" aria-label=${label}>${values.map((value) => html`<label key=${value} class="nav-chip">
       <input type="checkbox" checked=${f[key].includes(value)} onChange=${() => flip(key, value)} /><span>${text(value)}</span></label>`)}</div>
   </details>`;
+  const row = (name, g, i, count) => {
+    const it = byName.get(name);
+    const label = labelOf(it);
+    // The instance name under a display name only when another row has the same display name.
+    const twin = label !== name && (labelCount.get(label) || 0) > 1 ? name : "";
+    const facet = facetOf(name);
+    const waiting = own(awaiting, name) ? awaiting[name] : null;
+    const on = name === active;
+    const fav = g === FAV_GROUP, starred = favSet.has(name);
+    const full = !starred && favs.length >= MAX_FAVORITES;
+    return html`<li key=${name} class="v-li"><a class=${`inst v-inst${on ? " active" : ""}`} href=${rowPath(name)} title=${instanceTooltip(it)}
+        aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
+      <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} />
+      <span class="inst-text"><span class="inst-name">${label}</span>
+        ${twin || facet === "needs" ? html`<span class="inst-sub">${twin ? html`<span class="inst-alias inst-id">${twin}</span>` : null}
+          ${facet === "needs" ? html`<span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}</span>
+      <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
+      <span class=${`cli-icon cli-${KNOWN_BACKENDS.has(it.backend) ? it.backend : "other"}`} title=${backendLabel(it.backend)} aria-label=${tn("tooltipBackend", { value: backendLabel(it.backend) })}></span>
+    </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })} title=${tn("favUp", { name: label })}
+        disabled=${i === 0} onClick=${() => moveFavorite(name, -1, known)}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
+        aria-label=${tn("favDown", { name: label })} title=${tn("favDown", { name: label })} disabled=${i === count - 1} onClick=${() => moveFavorite(name, 1, known)}><${Icon} name="down" size=${14} /></button>` : null}${canStar
+      ? html`<button type="button" class=${`icon-btn inst-star${starred ? " on" : ""}`} aria-pressed=${starred ? "true" : "false"} disabled=${full}
+          aria-label=${tn(starred ? "favRemove" : "favAdd", { name: label })} title=${full ? tn("favFull", { max: MAX_FAVORITES }) : tn(starred ? "favRemove" : "favAdd", { name: label })}
+          onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}</li>`;
+  };
   // The list scrolls; the filter under it stays in view (#999), so it sits outside the scrolling section.
-  return html`<div class="view-roster inst-nav">
+  return html`<div class=${`view-roster inst-nav${editing && canStar ? " fav-editing" : ""}`}>
     <div class="side-section" id="instanceList" ref=${list}>
-    <h2 class="side-label">${tn("instancesLabel")}</h2>
+    <div class="side-head"><h2 class="side-label">${tn("instancesLabel")}</h2>
+      ${canStar && items.length ? html`<button type="button" class="chip-btn fav-edit" aria-pressed=${editing ? "true" : "false"} onClick=${() => setEditing(!editing)}>
+        ${editing ? tn("favDone") : html`<${Icon} name="star" size=${12} />${tn("favEdit")}`}</button>` : null}</div>
     ${!loaded ? html`<${Skeleton} lines=${4} />` : !items.length ? html`<p class="side-empty">${t("app.noInstances")}</p>` : null}
     ${shown.groups.map(({ group: g, names }) => {
+      // #1664: Favorites — always open, not dragged (↑ ↓ in Edit), named in the page's language.
+      if (g === FAV_GROUP) return html`<div key=${g} class="v-group v-fav" role="group" aria-label=${tn("favorites")}>
+        <div class="v-group-head fav-head"><${Icon} name="star" size=${14} cls="fav-mark" /><span class="grow">${tn("favorites")}</span><span class="count">${names.length}</span></div>
+        <ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul></div>`;
       const folded = nav.collapsed.has(g);
       return html`<div key=${g} class="v-group">
         <button type="button" class="v-group-head" aria-expanded=${folded ? "false" : "true"} onClick=${() => toggle(g)}
           title=${tn(folded ? "expandGroup" : "collapseGroup", { group: g })} ...${dragProps({ type: "group", name: g })}>
           <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><span class="grow">${g}</span><span class="count">${names.length}</span></button>
-        ${folded ? null : html`<ul class="inst-list">${names.map((name) => {
-          const it = byName.get(name);
-          const label = labelOf(it);
-          // The instance name under a display name only when another row has the same display name.
-          const twin = label !== name && (labelCount.get(label) || 0) > 1 ? name : "";
-          const facet = facetOf(name);
-          const waiting = own(awaiting, name) ? awaiting[name] : null;
-          const on = name === active;
-          return html`<li key=${name}><a class=${`inst v-inst${on ? " active" : ""}`} href=${rowPath(name)} title=${instanceTooltip(it)}
-              aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g })}>
-            <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} />
-            <span class="inst-text"><span class="inst-name">${label}</span>
-              ${twin || facet === "needs" ? html`<span class="inst-sub">${twin ? html`<span class="inst-alias inst-id">${twin}</span>` : null}
-                ${facet === "needs" ? html`<span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}</span>
-            <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
-            <span class=${`cli-icon cli-${KNOWN_BACKENDS.has(it.backend) ? it.backend : "other"}`} title=${backendLabel(it.backend)} aria-label=${tn("tooltipBackend", { value: backendLabel(it.backend) })}></span>
-          </a></li>`;
-        })}</ul>`}
+        ${folded ? null : html`<ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul>`}
       </div>`;
     })}
     ${loaded && shown.active && !shown.groups.length ? html`<p class="side-empty">${tn("filterNone")}</p>` : null}

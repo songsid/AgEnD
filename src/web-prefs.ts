@@ -37,6 +37,10 @@ function uniqueStrings(v: unknown, max: number, each: (s: unknown) => boolean, w
   return v as string[];
 }
 
+/** #1664: at most this many favorites. */
+export const MAX_FAVORITES = 50;
+const FAVORITES = "nav.favorites";
+
 /** The status chips of the sidebar filter (src/ui/shared/instance-nav.js STATUS_FACETS). */
 const STATUS_FACETS = new Set(["working", "needs", "idle", "stopped", "crashed"]);
 
@@ -67,6 +71,9 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
     if (isInvalid(cli)) return cli;
     return { q: v.q, status, cli };
   }],
+  // #1664: the starred instances, in the order they were starred (or moved). Whether each one exists is checked where
+  // the fleet is known (parseWebPrefsPatch's `exists`); a deleted one is dropped on read and when it is removed.
+  [FAVORITES, (v) => uniqueStrings(v, MAX_FAVORITES, name, FAVORITES)],
   // HTML previews allowed. Who may write it at all is the route's business (a signed-in session, never the public link).
   ["preview.optIn", (v) => (typeof v === "boolean" ? v : bad("preview.optIn: true or false"))],
 ]);
@@ -84,8 +91,11 @@ export type WebPrefsWrite =
   | { ok: true; view: WebPrefsView; changed: string[] }
   | { ok: false; status: 400 | 503; error: string };
 
-/** A request's `set`: own keys only, each known, each valid — or the first reason it is not. All or nothing. */
-export function parseWebPrefsPatch(set: unknown): { ok: true; patch: Map<string, unknown> } | { ok: false; error: string } {
+/**
+ * A request's `set`: own keys only, each known, each valid — or the first reason it is not. All or nothing.
+ * `exists`: whether an instance of that name is in the fleet now (#1664: a favorite must be one).
+ */
+export function parseWebPrefsPatch(set: unknown, exists?: (name: string) => boolean): { ok: true; patch: Map<string, unknown> } | { ok: false; error: string } {
   if (!plain(set)) return { ok: false, error: "set: an object of preference keys" };
   const patch = new Map<string, unknown>();
   const keys = Object.keys(set);
@@ -97,6 +107,10 @@ export function parseWebPrefsPatch(set: unknown): { ok: true; patch: Map<string,
     if (raw === null) { patch.set(key, null); continue; }
     const value = validate(raw);
     if (isInvalid(value)) return { ok: false, error: value.invalid };
+    if (key === FAVORITES) {
+      const unknown = (value as string[]).find((n) => !exists || !exists(n));
+      if (unknown !== undefined) return { ok: false, error: `unknown_instance: ${unknown.slice(0, 64)}` };
+    }
     patch.set(key, value);
   }
   return { ok: true, patch };
@@ -107,7 +121,14 @@ type State = { buckets: Map<string, Bucket>; rev: number };
 
 export class WebPrefsStore {
   private state: State | "unreadable" | null = null;
-  constructor(private readonly dir: string, private readonly opts: { now?: () => number; write?: (path: string, data: string) => void } = {}) {}
+  /**
+   * `exists` (#1664): whether an instance of that name is in the fleet now — a favorite that is not is never served,
+   * and is never accepted.
+   */
+  constructor(private readonly dir: string, private readonly opts: { now?: () => number; write?: (path: string, data: string) => void; exists?: (name: string) => boolean } = {}) {}
+
+  /** parseWebPrefsPatch against this fleet. */
+  parsePatch(set: unknown): ReturnType<typeof parseWebPrefsPatch> { return parseWebPrefsPatch(set, this.opts.exists); }
 
   get path(): string { return join(this.dir, WEB_PREFS_FILE); }
 
@@ -158,10 +179,25 @@ export class WebPrefsStore {
 
   rev(): number { const s = this.load(); return s === "unreadable" ? 0 : s.rev; }
 
+  /** #1664: an instance was removed — drop it from every favorites list (a write, and a new rev, only if one had it). */
+  forgetInstance(name: string): void {
+    const state = this.load();
+    if (state === "unreadable") return;
+    for (const [identity, bucket] of state.buckets) {
+      const list = bucket.values.get(FAVORITES) as string[] | undefined;
+      if (list && list.includes(name)) this.write(identity, new Map([[FAVORITES, list.filter((n) => n !== name)]]));
+    }
+  }
+
   private viewOf(state: State, identity: string): WebPrefsView {
     const values: Record<string, unknown> = Object.create(null);
     const bucket = state.buckets.get(identity);
     if (bucket) for (const [k, v] of bucket.values) values[k] = v;
+    // #1664: a favorite whose instance was deleted is dropped (paused or stopped ones are still instances: kept).
+    if (Object.hasOwn(values, FAVORITES)) {
+      const exists = this.opts.exists;
+      values[FAVORITES] = (values[FAVORITES] as string[]).filter((n) => !!exists && exists(n));
+    }
     return { values: { ...values }, rev: state.rev };
   }
 

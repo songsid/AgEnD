@@ -1155,7 +1155,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webFiles = new WebFileLedger();
   private webPrefsStore?: WebPrefsStore;
   /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
-  get webPrefs(): WebPrefsStore { return (this.webPrefsStore ??= new WebPrefsStore(this.dataDir)); }
+  get webPrefs(): WebPrefsStore {
+    // #1664: a favorite must be an instance of this fleet now — fleet.yaml's (own keys) or a ClassicBot room's.
+    return (this.webPrefsStore ??= new WebPrefsStore(this.dataDir, {
+      exists: (name) => Object.hasOwn(this.fleetConfig?.instances ?? {}, name)
+        || (this.classicChannels?.getAll() ?? []).some((ch) => ch.instanceName === name),
+    }));
+  }
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -9791,6 +9797,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
     this.webFiles.forget(name);
+    // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
+    try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
