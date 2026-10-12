@@ -3394,6 +3394,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return posted;
   }
 
+  /**
+   * #1666: a delivered web chat message starts the same cancel/progress lifecycle in the instance's topic as a platform
+   * inbound (afterUserInboundDelivered): the same bubble, ticker and retire rules. Not its ✅ tracking — the web message
+   * id is no platform message, and the echo is the fleet's own post. The web send calls this on the echo's lane.
+   */
+  startWebChatProgress(instanceName: string): Promise<void> {
+    if (this.shuttingDown) return Promise.resolve();
+    return this.sendCancelButton(instanceName);
+  }
+
   reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void {
     const epoch = this.getDeliveryEpoch(instanceName);
     const deadlineAt = performance.now() + 5_000;

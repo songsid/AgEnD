@@ -169,6 +169,8 @@ export interface WebApiContext {
   getGroupIdForInstance?(name: string): string;
   /** Reserve display ordering before IPC handoff, then settle delivery without waiting for the echo. */
   reserveWebChannelEcho?(name: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void;
+  /** #1666: the cancel/progress bubble a platform inbound starts, posted in the instance's topic. */
+  startWebChatProgress?(name: string): Promise<void>;
   readonly daemons: Map<string, unknown>;
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
@@ -1179,6 +1181,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       }
       settleEcho?.(true);
       settleClassicEcho?.(true);
+      // #1666: the same cancel/progress bubble a platform inbound starts, in the topic the echo went to — a second turn
+      // on the echo's lane, so the topic reads "echo, then bubble" and a cancel in between drops it (the lane's epoch).
+      if (settleEcho && ctx.startWebChatProgress) {
+        const startProgress = ctx.startWebChatProgress.bind(ctx);
+        ctx.reserveWebChannelEcho?.(instance, () => startProgress(instance))(true);
+      }
       ctx.webFiles?.commit(files);
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
