@@ -1104,16 +1104,17 @@ of their own version.
 
 ## Host memory pressure
 
-One fleet-wide sampler reads host memory every 30 seconds and before every spawn admission (startup, wake, restart and recovery). On **Linux** it throttles new CLIs, and never touches running ones:
+One fleet-wide sampler reads host memory every 30 seconds and before every spawn admission (startup, wake, restart and recovery). On **Linux** it uses PSI stall measurements plus RAM safety floors to throttle new CLIs, and never touches running ones:
 
+- PSI `full avg10 ≥ 20%` is **critical**; `some avg60 ≥ 10%` or `full avg10 ≥ 5%` is **elevated**. The central [policy table](memory-pressure.md) documents all thresholds.
 - available RAM below `max(300 MiB, 2% of RAM)`, or below `max(2 × that, 5% of RAM)` with swap at most 5% free → **critical**: no new CLI starts; the request waits and is retried after 5, 10, 20, 40 and then every 60 seconds;
-- RAM below that second threshold, or swap at most 5% free → **elevated**: one start at a time, at least 5 seconds apart (an unreadable sample is treated the same way, never as zero RAM);
+- RAM below that second threshold, or (without PSI) RAM below twice that threshold together with swap at most 5% free → **elevated**: one start at a time, at least 5 seconds apart (an unreadable sample is treated the same way, never as zero RAM);
 - after a critical hold clears, starts ramp back up slowly for 30 seconds.
 
-`/health` always carries a `hostMemory` block (level, RAM and swap, trend), and pressure marks it degraded. On **macOS** the level is the kernel's own alarm (`kern.memorystatus_vm_pressure_level`: 2 slows, 4 holds), never the free-memory or swap numbers.
+`/health` always carries a `hostMemory` block (level, RAM and swap, trend; on Linux, PSI and the trigger), and pressure marks it degraded. On **macOS** the level is the kernel's own alarm (`kern.memorystatus_vm_pressure_level`: 2 slows, 4 holds), never the free-memory or swap numbers.
 
 **Fleet notices follow the level, not a timer (#1685):**
-- one notice when pressure rises, and one "back to normal" line when it ends;
+- one notice naming the trigger when pressure rises, and one "back to normal" line when it ends; cold swap alone is no longer pressure with ample RAM;
 - nothing in between, and no repeat if the same level comes back within an hour;
 - macOS's routine warning level (2) sends no chat notice: it still slows new starts, and the Fleet page shows it. Only critical (4) is announced.
 

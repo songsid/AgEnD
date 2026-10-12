@@ -29,7 +29,7 @@ import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { createMentionIndex } from "./chat-mentions.js";
-import { PreviewPanel, openPanel, panelStore, shownKey } from "./preview-panel.js";
+import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { FirstRunCard } from "./first-run.js";
@@ -58,11 +58,12 @@ function announce(text) {
 
 /**
  * This device's preview opt-in: asks once (the app's dialog) and says what it means; turning it off stops every
- * running preview. Resolves to the choice in force.
+ * running preview. Resolves to the choice in force. commit(apply): runs `apply` (the change itself) — the panel's Allow
+ * wraps it to know which change of the choice is its own (#1704).
  */
-export async function setPreviewOptIn(on) {
+export async function setPreviewOptIn(on, commit = (apply) => apply()) {
   if (on && !P().optedIn() && !(await confirmDialog({ message: t("chat.pvConfirm"), confirmLabel: t("chat.pvAllowButton") }))) on = false;
-  P().setOptIn(on);
+  commit(() => P().setOptIn(on));
   // #1665: kept on the host for every device (only a signed-in page writes it; never the public link).
   savePref("preview.optIn", P().optedIn());
   return P().optedIn();
@@ -224,7 +225,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />
       </div>
       <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
-        keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${() => setPreviewOptIn(true)} />
+        keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
     </div>
     <${LightboxHost} />
     <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
@@ -243,7 +244,7 @@ function Thread({ name, th }) {
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
       replyButtonBusy: (id) => store.state.rbBusy.has(id),
-      panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o) },   // #1481
+      panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
       openImage: openLightbox,                                               // an image, full size, in the page
       emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
       mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names

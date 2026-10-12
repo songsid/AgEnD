@@ -1,7 +1,12 @@
 # Host memory pressure
 
-One fleet sampler reads Linux `/proc/meminfo` every 30 seconds and before spawn
-admission. It prefers `MemAvailable` over `MemFree` and distinguishes no swap
+One fleet sampler reads Linux `/proc/meminfo` and, when available,
+`/proc/pressure/memory` every 30 seconds and before spawn admission. PSI
+reports the percentage of time tasks stall on memory, rather than how full
+swap is ([kernel format and semantics](https://docs.kernel.org/accounting/psi.html)).
+The diagnostic-only memory reader does not request PSI; there is no new timer
+or subprocess. A missing, unreadable or malformed PSI file falls back to RAM
+and never creates a pressure hold by itself. It prefers `MemAvailable` over `MemFree` and distinguishes no swap
 from missing swap information. On Linux and other non-macOS platforms, portable
 fallback reports free RAM and unknown swap; free RAM alone can slow starts but
 cannot impose an indefinite hold because reclaimable cache may account for the
@@ -17,28 +22,44 @@ Shutdown rejects queued and nested waiters and clears their retry timer.
 
 | Condition | Action |
 | --- | --- |
+| Linux PSI `full avg10 >= 20%` | Wait; start no new CLI |
+| Linux PSI `some avg60 >= 10%` or `full avg10 >= 5%` | At most one operation at a time, starts at least 5 seconds apart |
 | Measured available RAM below `max(300 MiB, 2% of RAM)` on a non-macOS host | Wait; start no new CLI |
 | Measured available RAM below `max(2 × critical threshold, 5% of RAM)` **and** swap free at most 5% of a nonzero swap total on a non-macOS host | Wait; start no new CLI |
-| RAM below that second threshold, or swap free at most 5% of a nonzero swap total, on a non-macOS host | At most one operation at a time, starts at least 5 seconds apart |
+| RAM below that second threshold on a non-macOS host | At most one operation at a time, starts at least 5 seconds apart |
+| Linux PSI unavailable, RAM below 2×that second threshold, and nonzero swap at most 5% free | At most one operation at a time, starts at least 5 seconds apart |
+| Other non-macOS host with nonzero swap at most 5% free | Existing slow admission |
 | Invalid/unreadable Linux or other non-macOS sample | Same slow admission; never treat unknown as zero RAM |
 | macOS kernel alarm `1` | Configured concurrency/stagger; no RAM/swap ratio restrictions |
 | macOS kernel alarm `2` | At most one operation at a time, starts at least 5 seconds apart |
 | macOS kernel alarm `4` | Wait; start no new CLI |
 | Missing/invalid macOS kernel alarm | Normal concurrency/stagger and storm/workspace limits; no memory-pressure restriction or channel notice |
-| Healthy RAM and swap | Configured concurrency/stagger, subject to the existing storm cap |
+| Healthy Linux RAM and PSI (even with full cold swap), or healthy RAM/swap on other hosts | Configured concurrency/stagger, subject to the existing storm cap |
 
 On Linux and other non-macOS hosts, critical waits retry after 5, 10, 20, 40 and then 60 seconds (maximum), retaining
 the original request without running/retrying the spawn operation. A critical
-hold cannot end below 1.5 times its RAM threshold. After a hold clears, the first
+RAM hold cannot end below 1.5 times its RAM threshold. A PSI hold ends when
+`full avg10 < 20%`, unless a RAM safety condition still requires it. The
+percentages above are initial AgEnD policy thresholds, not kernel-prescribed
+limits or a calibrated OOM forecast. After a hold clears, the first
 actual resumed admission starts a 30-second slow ramp, even if background
-sampling detected recovery before the retry deadline. An elevated state clears
-at or above 1.2 times the low-RAM threshold and, when known, above 10% swap free.
+sampling detected recovery before the retry deadline. RAM elevated hysteresis clears at or above 1.2 times the low-RAM threshold.
+Each Linux RAM/swap release threshold is armed only by its own actual trigger,
+including when PSI fires simultaneously. A PSI-only level never arms a RAM or
+swap hold that was not triggered; missing PSI cannot inherit such a hold either.
+On Linux, swap release hysteresis applies only when PSI is unavailable and RAM
+is below 2×the low threshold; above that RAM boundary, cold swap cannot pin
+elevated. Inside it, swap must exceed 10% free to clear that clause. PSI has no
+additional release threshold; the existing ramp and notice damping still apply.
 Configured stagger and storm limits remain additional restrictions. Active
 CLIs are never killed or cancelled by this policy.
 
 `/health` adds `hostMemory` alongside the distinct fleet process/cgroup `memory`:
 level, RAM/swap values, sample timestamp, recovery flag, bounded sample count,
 and change per minute in RAM available/swap free over at most 12 samples.
+Linux snapshots also identify the trigger and include the measured PSI
+averages. Notices name PSI some/full with its window, low RAM, low RAM plus
+swap, or the recovery ramp; swap-free remains diagnostic.
 Trend needs at least one minute; missing swap stays null. Health reads use the
 cached snapshot and cannot create trend samples. Elevated or critical pressure
 marks health degraded, including a verified macOS kernel alarm. Unknown macOS
@@ -89,8 +110,8 @@ notice or warning is sent. Once per fleet sampler start/stop lifecycle, an info
 log records the unknown raw pressure output (bounded to 1024 UTF-16 units, or
 null when unreadable). Repeated unknown samples do not spend the notice
 cooldown. There is no free-% fallback; that would need separate calibration
-from a real Mac. Linux's existing thresholds, hysteresis, fallback and unknown
-policy are unchanged.
+from a real Mac. Linux's separate PSI/RAM policy is documented above; it cannot affect the
+Darwin kernel-only policy.
 
 The kernel command runs only on the existing 30-second fleet sampler, alongside
 `/usr/bin/vm_stat` and `/usr/sbin/sysctl vm.swapusage`. Literal argv, `LC_ALL=C`,

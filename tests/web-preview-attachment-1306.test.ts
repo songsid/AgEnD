@@ -208,14 +208,12 @@ describe("a read the card moved on from is dropped", () => {
 });
 
 describe("Open in panel", () => {
-  it("reads the file, opens the panel without running it; Code shows the file; Download keeps the file's name", async () => {
+  it("reads the file, opens the panel and runs it there (#1704: one click); Code shows the file; Download keeps the file's name", async () => {
     serveFiles({ [ID1]: PAGE(1) });
     const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
     await click(card(doc).querySelector(".pv-open"));
     const open = pp.panelStore.get().open;
-    expect([open.key, open.code, open.att.name, PV.liveCount()]).toEqual([`b-1:a${ID1}`, PAGE(1), "style-switcher.html", 0]);
-    await click(doc.querySelector(".pv-panel-run"));
-    expect(PV.running(pp.frameKey(`b-1:a${ID1}`))).toBe(true);
+    expect([open.key, open.code, open.att.name, PV.liveCount(), PV.running(pp.frameKey(`b-1:a${ID1}`))]).toEqual([`b-1:a${ID1}`, PAGE(1), "style-switcher.html", 1, true]);
     const saved: string[] = [];
     vi.spyOn(globalThis.URL, "createObjectURL").mockReturnValue("blob:x");
     vi.spyOn(globalThis.URL, "revokeObjectURL").mockImplementation(() => {});

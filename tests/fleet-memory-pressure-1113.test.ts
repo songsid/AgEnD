@@ -101,9 +101,9 @@ describe("fleet host memory wiring", () => {
   }
 
   it("#1685: Linux elevated held for an hour, measurements moving: one notice", async () => {
-    const { fm, attach, sendText, set } = make(memory(4_000, 0));
+    const { fm, attach, sendText, set } = make(memory(1_200, 0));
     attach(); fm.memoryPressure.start();
-    await holdFor(60 * 60_000, i => memory(4_000 - (i % 7) * 10, i % 3), set);
+    await holdFor(60 * 60_000, i => memory(1_200 - (i % 7) * 10, i % 3), set);
     expect(fm.memoryPressure.snapshot().level).toBe("elevated");
     expect(notices(sendText)).toHaveLength(1);
     expect(notices(sendText)[0]).toContain("Host memory pressure");
@@ -130,9 +130,9 @@ describe("fleet host memory wiring", () => {
   });
 
   it("#1685: an escalation inside the damping window still notifies (Linux elevated → critical; macOS 2 → 4)", async () => {
-    const linux = make(memory(4_000, 0));
+    const linux = make(memory(1_200, 0));
     linux.attach(); linux.fm.memoryPressure.start();
-    await holdFor(5 * 60_000, () => memory(4_000, 0), linux.set);
+    await holdFor(5 * 60_000, () => memory(1_200, 0), linux.set);
     linux.set(memory(100, 0)); await vi.advanceTimersByTimeAsync(30_000);
     expect(notices(linux.sendText)).toHaveLength(2);
     expect(notices(linux.sendText)[1]).toContain("wait for memory");
@@ -145,7 +145,7 @@ describe("fleet host memory wiring", () => {
   });
 
   it("#1685: recovery posts one line — and none after a spell that posted nothing", async () => {
-    const linux = make(memory(4_000, 0));
+    const linux = make(memory(1_200, 0));
     linux.attach(); linux.fm.memoryPressure.start();
     linux.set(memory()); await holdFor(10 * 60_000, () => memory(), linux.set);
     expect(notices(linux.sendText)).toHaveLength(2);
@@ -158,22 +158,22 @@ describe("fleet host memory wiring", () => {
   });
 
   it("#1685: flapping inside the hour notifies once and recovers once; after the hour, a new rise is told again", async () => {
-    const { fm, attach, sendText, set } = make(memory(4_000, 0));
+    const { fm, attach, sendText, set } = make(memory(1_200, 0));
     attach(); fm.memoryPressure.start();
     // 50 minutes of elevated ↔ normal every 2 minutes.
-    await holdFor(50 * 60_000, i => (Math.floor(i / 4) % 2 === 0 ? memory(4_000, 0) : memory()), set);
+    await holdFor(50 * 60_000, i => (Math.floor(i / 4) % 2 === 0 ? memory(1_200, 0) : memory()), set);
     expect(notices(sendText).filter(x => x.includes("Host memory pressure"))).toHaveLength(1);
     expect(recovered(sendText)).toHaveLength(1);
     // Normal past the hour, then elevated again: a new notice (the damping is an hour, not forever).
     await holdFor(15 * 60_000, () => memory(), set);
-    set(memory(4_000, 0)); await vi.advanceTimersByTimeAsync(30_000);
+    set(memory(1_200, 0)); await vi.advanceTimersByTimeAsync(30_000);
     expect(notices(sendText).filter(x => x.includes("Host memory pressure"))).toHaveLength(2);
   });
 
   // #1687 review (Prism P2-1, P2-2): a spell handles a level once — told, or held back by the damping hour — and keeps
   // it held back however long it lasts; normal ends the spell, and a recovered line still owed never hides the next one.
   const platforms = [
-    { name: "Linux elevated", setup: (fm: FleetManager) => fm, up: () => memory(4_000, 0), down: () => memory(), crit: () => memory(100, 0) },
+    { name: "Linux elevated", setup: (fm: FleetManager) => fm, up: () => memory(1_200, 0), down: () => memory(), crit: () => memory(100, 0) },
     { name: "macOS critical", setup: (fm: FleetManager) => darwin(fm), up: () => kernel(4), down: () => kernel(1), crit: () => kernel(4) },
   ];
   const pressure = (sendText: ReturnType<typeof vi.fn>) => notices(sendText).filter(x => !x.includes("back to normal"));
@@ -303,7 +303,7 @@ describe("fleet host memory wiring", () => {
   });
 
   it("changing measurements never re-notify (#1685: no timed repeat), and critical escalation is immediate", async () => {
-    const { fm, attach, sendText, logger, set } = make(memory(4_000, 0));
+    const { fm, attach, sendText, logger, set } = make(memory(1_200, 0));
     attach(); fm.memoryPressure.start();
     expect(sendText).toHaveBeenCalledTimes(1);
     set(memory(100, 0)); fm.memoryPressure.sample();

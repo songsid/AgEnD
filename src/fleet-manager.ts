@@ -2037,9 +2037,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (last !== undefined && mono - last < MEMORY_NOTICE_DAMPING_MS) { spell.level = level; return; }
     const size = (bytes: number | null) => bytes === null ? t("memory.unknown") : `${Math.round(bytes / 1024 / 1024)} MiB`;
     const action = t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing");
+    const ram = t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes));
+    const psi = snapshot.memory.linuxPsi;
+    const signal = this.memoryPressure.platform !== "linux" ? ram
+      : snapshot.signal === "psi-some" && psi ? t("memory.psi_some", psi.someAvg60, ram)
+      : snapshot.signal === "psi-full" && psi ? t("memory.psi_full", psi.fullAvg10, ram)
+      : snapshot.signal === "available-swap" ? t("memory.low_ram_swap", ram)
+      : snapshot.signal === "recovery" ? t("memory.recovering_signal", ram) : ram;
     const text = this.memoryPressure.platform === "darwin"
       ? t("memory.kernel_pressure", snapshot.memory.darwinPressureLevel ?? t("memory.unknown"), size(snapshot.memory.availableBytes), size(snapshot.memory.swapFreeBytes), action)
-      : t("memory.pressure", t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes)), size(snapshot.memory.swapFreeBytes), action);
+      : t("memory.pressure", signal, size(snapshot.memory.swapFreeBytes), action);
     if (this.notifyFleetError(text, { throttle: false })) {
       this.memoryNoticeAt[level] = mono;
       this.memorySpell = { level, posted: true };
