@@ -7103,16 +7103,12 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #1691: the catch-all's predicate — the tracked prompt is active and this pane still shows exactly it. A pane read
-   * that does not (the prompt gone, or another one) ends the evidence there and then: a return needs a fresh minute
-   * (#1695 review), whichever capture saw it first.
+   * #1691: the catch-all's predicate — the tracked prompt is active and this pane still shows exactly it (any reader:
+   * the scan, a probe, an interaction re-capture). Ending the evidence on a read without it is noteFreshPaneRead's.
    */
   private unrecognisedPromptActive(pane: string): boolean {
     const current = this.unrecognisedPromptCurrent();
-    if (!current?.active) return false;
-    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return true;
-    this.unrecognisedPrompt = null;
-    return false;
+    return !!current?.active && this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen;
   }
 
   /**

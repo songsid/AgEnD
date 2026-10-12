@@ -244,6 +244,16 @@ describe("#1695 r2 P2-4: a fresh read before the minute is up resets it too", ()
     } finally { r.stop(); }
   });
 
+  it("an interaction re-capture (not a probe, not the scan) without the prompt is not the catch-all's evidence", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(await r.held()).toBe("dialog");
+      expect(r.d.interactionEvidence(AT_PROMPT, r.d.runtimeDialogs())).toBeNull();
+      expect(r.d.interactionEvidence(SWITCH, r.d.runtimeDialogs())?.kind, "control: the prompt itself").toBe("dialog");
+    } finally { r.stop(); }
+  });
+
   it("a read taken before the capture that last confirmed it cannot void it (capture order)", async () => {
     const r = rig();
     try {
