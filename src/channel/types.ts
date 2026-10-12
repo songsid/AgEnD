@@ -115,7 +115,7 @@ export interface ChannelAdapter extends EventEmitter {
    * retire a Cancel button after the agent replies or a timeout elapses.
    * threadId locates the message when it lives in a topic/thread (Discord
    * forum topics are their own channel and won't be found by a guild scan). */
-  editMessageRemoveButtons?(chatId: string, messageId: string, text: string, threadId?: string): Promise<void>;
+  editMessageRemoveButtons?(chatId: string, messageId: string, text: string, threadId?: string, urlButtons?: Array<{ label: string; url: string }>): Promise<void>;
   /** Remove a message's buttons while keeping its text untouched. */
   removeMessageButtons?(chatId: string, messageId: string, threadId?: string): Promise<void>;
   /** #1610: replace a message's buttons, keeping its text untouched (a confirm step on a message whose text matters). */
@@ -260,6 +260,11 @@ export interface SendOpts {
    * callback (`rb:<set>:<index>`), never the label or value. Only adapters with `supportsReplyButtons` honour it.
    */
   replyButtons?: Array<{ id: string; label: string }>;
+  /**
+   * #1686: URL buttons on the message's last chunk (Telegram inline_keyboard `url` rows). Ignored by adapters
+   * that do not support them (Discord, etc.).
+   */
+  urlButtons?: Array<{ label: string; url: string }>;
 }
 
 /** #1266: how a reply's buttons end — one chosen (by whom), or expired with none chosen. */

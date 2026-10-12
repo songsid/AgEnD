@@ -192,7 +192,13 @@ async function main(): Promise<void> {
     case "team-create": args = { name: rest[0] ?? "", members: rest.slice(1) }; break;
     case "team-list": break;
     case "team-delete": args = { name: rest[0] ?? "" }; break;
-    case "team-update": args = { name: rest[0] ?? "", add: rest[1], remove: rest[2] }; break;
+    case "team-update": {
+      // team-update <name> [add,…] [remove,…] [description] — the lists comma-separated ("" for none); a description of
+      // "" clears it, none leaves it (#1689: update_team takes lists, so a bare string was refused before).
+      const list = (s?: string) => (s ? s.split(",").map(x => x.trim()).filter(Boolean) : undefined);
+      args = { name: rest[0] ?? "", add: list(rest[1]), remove: list(rest[2]), ...(rest[3] !== undefined ? { description: rest[3] } : {}) };
+      break;
+    }
 
     // Deployments
     case "deploy": args = { template: rest[0] ?? "", directory: rest[1] ?? "", name: rest[2], branch: rest[3] }; break;

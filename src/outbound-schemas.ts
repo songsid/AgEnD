@@ -465,6 +465,8 @@ export const UpdateTeamArgs = z.object({
     .describe("Instance names to add (duplicates ignored)"),
   remove: z.array(z.string()).optional()
     .describe("Instance names to remove"),
+  description: z.string().max(2000).optional()
+    .describe("New description of the team's purpose; an empty string clears it. A team cannot be renamed."),
 });
 
 export const ListTeamsArgs = z.object({});

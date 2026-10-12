@@ -5136,6 +5136,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await (owner.binding as ChannelAdapter).sendText(owner.chatId, t("dashboard.menu_failed"), { threadId: owner.threadId }).catch(() => undefined);
     }
   }
+
+  /**
+   * #1686: build the Telegram deep-link that opens a DM with this bot pre-seeded with `/start web`.
+   * Returns null when no botUsername is known or the username fails Telegram's format validation.
+   */
+  private tgStartWebUrl(adapterId: string): string | null {
+    const username = this.worlds.get(adapterId)?.botUsername;
+    if (!username || !/^[A-Za-z0-9_]{5,32}$/.test(username)) return null;
+    return `https://t.me/${username}?start=web`;
+  }
   private async sendLocalDashboard(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     if (this.shuttingDown || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(data.userId, adapterId)) { await data.respond(t("not_authorized")); return; }
     const text = this.topicCommands.getDashboardText();
@@ -5237,10 +5247,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapter = owner.binding as ChannelAdapter;
     const status = this.getPublicWebStatus();
     const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
+    const tgHint = adapter.type === "telegram" ? this.tgStartWebUrl(owner.adapterId) : null;
     const menuText = this.topicCommands.getDashboardText(false, !publicAllowed)
       + (publicAllowed ? "\n\n" + t("dashboard.public_risk") : "")
       + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
-      + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : "");
+      + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : "")
+      + (tgHint ? "\n" + t("dashboard.menu_tg_hint", tgHint) : "");
     const choices = [{ action: "local", label: t("dashboard.local") },
       ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
@@ -5364,8 +5376,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here");
     await progress;
     await steps?.close(); // the last step edit has landed: the outcome cannot be overwritten by it
+    // #1686: attach the deep-link button on the failure outcome (Telegram only; Discord and the editClicked path ignore urlButtons).
+    const failUrlButtons = (!ok && (owner.binding as ChannelAdapter).type === "telegram")
+      ? (() => { const u = this.tgStartWebUrl(adapterId); return u ? [{ label: t("dashboard.start_web_label"), url: u }] : undefined; })()
+      : undefined;
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
-      lastSteps ? renderPublicLinkProgress(lastSteps, performance.now(), outcome) : outcome, data.editClicked);
+      lastSteps ? renderPublicLinkProgress(lastSteps, performance.now(), outcome) : outcome, data.editClicked, failUrlButtons);
     return true;
   }
 
@@ -7596,12 +7612,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
+          // #1686: intercept /start web before the ClassicBot admission flow runs.
+          // /start alone already opens the DM for future bot-to-user messages — no further action needed.
+          const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
+          if (requestedBackend === "web" && isPrivateChat) {
+            if (this.isFleetAdmin(msg.userId, msg.adapterId ?? "")) {
+              await msgAdapter?.sendText(chatId, t("dashboard.start_web_ack"));
+            }
+            // Non-fleet-admins: /start alone is enough to open the DM channel; no further action.
+            return;
+          }
           // All new starts, including explicit backend and later chooser callbacks,
           // share validateClassicStart. Existing channels are recognized first.
           const blocker = this.validateClassicStart(chatId, msg.userId, undefined, msg.adapterId);
           if (blocker) { await msgAdapter?.sendText(chatId, blocker); return; }
           const channelName = msg.username || chatId;
-          const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
           if (requestedBackend) {
             // handleClassicStart binds the instance to this adapter authoritatively.
             const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId, requestedBackend);
@@ -11802,18 +11827,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     text: string,
     /** The click's own edit of a private prompt (AdapterCallbackData.editClicked); preferred over the prompt's. */
     editClicked?: (text: string) => Promise<void>,
+    /** #1686: URL buttons to attach when editing the outcome (Telegram only; ignored when editClicked or retire is set). */
+    urlButtons?: Array<{ label: string; url: string }>,
   ): Promise<void> {
     this.webPromptGone(pending, text);
     try {
       const retire = editClicked ?? pending.retire;
       if (retire) { await retire(text); return; }
       if (!pending.adapter.editMessageRemoveButtons) throw new Error("adapter cannot remove prompt buttons");
-      await pending.adapter.editMessageRemoveButtons(
-        pending.chatId,
-        messageId,
-        text,
-        pending.threadId,
-      );
+      if (urlButtons) {
+        await pending.adapter.editMessageRemoveButtons(pending.chatId, messageId, text, pending.threadId, urlButtons);
+      } else {
+        await pending.adapter.editMessageRemoveButtons(pending.chatId, messageId, text, pending.threadId);
+      }
     } catch (err) {
       // The action was already atomically consumed. An edit failure must not
       // undo that or make the button actionable again — but the edit is the
