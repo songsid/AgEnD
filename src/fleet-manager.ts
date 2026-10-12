@@ -1145,6 +1145,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private memoryNoticeAt: Partial<Record<"elevated" | "critical", number>> = {};
   /** #1685: the highest level notified since memory was last normal (null: nothing posted this episode). */
   private memoryNoticeLevel: "elevated" | "critical" | null = null;
+  /** #1685: the host_memory value the last status frame carried, so a change re-sends the frame. */
+  private memoryIndicatorShown: "elevated" | "critical" | null = null;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
   private mirrorBuffer: string[] = [];
@@ -1954,9 +1956,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), cpus().length);
   }
 
-  /** #1685: "elevated" or "critical" while host memory pressure slows or holds new agents; otherwise null. */
+  /** #1685: "elevated" or "critical" while host memory pressure slows or holds new agents; otherwise null (an
+   *  unknown macOS reading — the advisory case — is unknown, so null too). */
   private hostMemoryIndicator(): "elevated" | "critical" | null {
-    if (!this.memoryPressure || this.memoryPressure.advisoryOnly()) return null;
+    if (!this.memoryPressure) return null;
     const level = this.memoryPressure.snapshot().level;
     return level === "elevated" || level === "critical" ? level : null;
   }
@@ -1970,8 +1973,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.debug({ hostMemory: snapshot }, "Host memory sample");
     }
     const changed = snapshot.level !== this.memoryLogLevel;
-    // #1685: the dashboard's indicator (the status frame's host_memory) follows the level as it changes.
-    if (changed && !this.memoryPressure.advisoryOnly()) this.emitSseEvent("status", this.getUiStatus());
+    // #1685: the dashboard's indicator (the status frame's host_memory) is re-sent when it changes.
+    const indicator = this.hostMemoryIndicator();
+    if (indicator !== this.memoryIndicatorShown) { this.memoryIndicatorShown = indicator; this.emitSseEvent("status", this.getUiStatus()); }
     if (this.memoryPressure.advisoryOnly()) {
       // The sampler logs the unknown kernel value once per lifecycle; no warning/cooldown here.
       this.memoryLogLevel = snapshot.level;

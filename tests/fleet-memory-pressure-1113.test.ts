@@ -170,6 +170,20 @@ describe("fleet host memory wiring", () => {
     expect(notices(sendText).filter(x => x.includes("Host memory pressure"))).toHaveLength(2);
   });
 
+  it("#1685: the dashboard's status frame is re-sent when host_memory changes — not on every sample", async () => {
+    const { fm, attach, set } = make(kernel(1));
+    darwin(fm); attach();
+    const frames: unknown[] = [];
+    vi.spyOn(fm, "emitSseEvent").mockImplementation((event: string, data: unknown) => { if (event === "status") frames.push((data as any).host_memory); });
+    fm.memoryPressure.start();
+    await holdFor(2 * 60_000, () => kernel(1), set);
+    expect(frames).toEqual([]);
+    await holdFor(5 * 60_000, i => kernel(2, 2_900 - i), set);
+    set(kernel(4)); await vi.advanceTimersByTimeAsync(30_000);
+    await holdFor(2 * 60_000, () => kernel(1), set);
+    expect(frames).toEqual(["elevated", "critical", null]);
+  });
+
   it("#1685: macOS kernel 2 still slows the fleet's admission to one start at a time, 5 seconds apart", async () => {
     const { fm, attach } = make(kernel(2));
     darwin(fm); attach(); fm.memoryPressure.start();
