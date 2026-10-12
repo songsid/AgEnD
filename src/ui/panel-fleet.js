@@ -23,6 +23,8 @@ import { CacheReport } from "./fleet-cache.js";
 
 register("fleet", {
   en: {
+    hostMemory_elevated: "Host memory pressure: elevated — new agents start one at a time, at least 5 s apart",
+    hostMemory_critical: "Host memory pressure: critical — new agents wait for memory to recover",
     title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", config: "Config",
     newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
     noTasks: "No tasks yet", noTasksHint: "Create one to coordinate fleet work.", noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
@@ -43,6 +45,8 @@ register("fleet", {
     fleetDefault: "Use the fleet default", notInstalled: "(not installed)", deprecated: "(deprecated)", instanceCreated: "Instance created",
   },
   "zh-TW": {
+    hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
+    hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
     title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", config: "設定",
     newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
     noTasks: "還沒有 task", noTasksHint: "建立一個來協調 fleet 的工作。", noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
@@ -104,8 +108,11 @@ export function FleetPanel({ route, navKey }) {
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   const Body = { tasks: Tasks, schedules: Schedules, teams: Teams, org: Org, cache: Cache, config: Config }[tab] || Tasks;
+  // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
+  const { hostMemory } = useStore(appStore);
+  const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}</span>` : null;
   return html`<div class="panel p-fleet">
-    <${PanelHeader} title=${t("fleet.title")}><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+    <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     <nav class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
     <div class="panel-body"><div class=${`col${tab === "org" || tab === "cache" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>

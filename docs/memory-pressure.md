@@ -46,10 +46,16 @@ alarms remain diagnostic and do not degrade health. The systemd watchdog remains
 independent of health.
 
 On hosts with actionable pressure, structured warnings include the snapshot/trend on transitions
-and at most every 10 minutes in an unchanged state. Full samples are debug logs. Localized General
-notices have a separate 10-minute cooldown independent of changing measurements;
-critical escalation can notify immediately. No adapter means the notice cooldown
-is unspent. The existing notifier counts dispatch, rather than platform delivery.
+and at most every 10 minutes in an unchanged state. Full samples are debug logs.
+
+Localized General notices follow the level, not a timer (#1685):
+- **A rise posts once.** A notice is sent once when the level rises to one that goes to chat, above anything already notified since memory was last normal. It is never repeated while the level holds, however the measurements move.
+- **Recovery.** One "back to normal" line is sent when the level returns to normal, but only if that spell posted a notice.
+- **Flapping is damped.** A level notified less than an hour ago, measured on a monotonic clock, is not announced again, even after a recovery. A first rise to critical within that hour still is.
+- **Which levels go to chat.** On Linux and other non-macOS hosts, elevated and critical do. On macOS only critical (kernel `4`) does. Kernel `2` is routine there, so it is logged, slows admission, degrades health and appears on the dashboard's Fleet page (the status frame's `host_memory`), but sends no chat notice.
+- **No adapter yet, or a failed dispatch.** Nothing counts as notified, so the notice goes out on a later sample.
+
+The existing notifier counts dispatch, rather than platform delivery.
 
 Sampling starts before the first CLI and stops before asynchronous fleet shutdown.
 On non-macOS hosts at cold boot, a memory hold can precede adapter/health-listener
@@ -74,8 +80,8 @@ A verified warning slows new starts; critical holds them with the existing
 30-second slow ramp applies (including a full ramp from the actual resumed
 admission); its duration uses a monotonic clock. The ramp is temporal, with no
 RAM/swap hysteresis on macOS. Configured, storm and workspace limits still apply.
-Already running agents are unaffected. Notices identify the kernel alarm and
-label the byte figures as diagnostics.
+Already running agents are unaffected. A critical notice identifies the kernel alarm and
+labels the byte figures as diagnostics. A warning (`2`) sends no chat notice (#1685).
 
 An unreadable, missing or noncanonical alarm is unknown: admission returns to
 configured limits, any previous pressure hold/ramp clears, and no pressure

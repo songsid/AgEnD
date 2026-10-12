@@ -1077,7 +1077,14 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 - RAM 低於第二個門檻，或 swap 剩不到 5% → **elevated**：一次只啟動一個，間隔至少 5 秒（讀不到樣本時也比照處理，絕不當作 RAM 為零）；
 - critical 解除後，啟動速度會在 30 秒內慢慢回升。
 
-`/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢）；在 Linux 上，記憶體壓力也會讓它標成 degraded，並發出 fleet 通知，冷卻時間 10 分鐘（升級到 critical 會立刻通知）。在 **macOS** 上，從 #1257 起樣本只寫進日誌：不會放慢或擋下任何東西、不發通知，`/health` 也不回報壓力，因為 macOS 的可用記憶體和 swap 數字，在記憶體充裕的機器上也會觸發警示。詳見英文版 [memory-pressure.md](memory-pressure.md)。
+`/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢），有記憶體壓力時會標成 degraded。在 **macOS** 上，等級取自核心自己的警示（`kern.memorystatus_vm_pressure_level`：2 放慢、4 暫停），絕不看可用記憶體或 swap 數字。
+
+**Fleet 通知跟著等級走，不是定時重發（#1685）：**
+- 壓力升高時通知一次，恢復正常時一行「已恢復」；
+- 中間不再重發；同一等級在一小時內再出現也不重發；
+- macOS 例行的警告等級（2）不發聊天通知：仍會放慢新的啟動，並顯示在 Fleet 頁面；只有 critical（4）會通知。
+
+詳見英文版 [memory-pressure.md](memory-pressure.md)。
 
 ## 「需要你處理」收件匣（#1386 / #1398）
 
