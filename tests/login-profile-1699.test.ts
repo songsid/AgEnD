@@ -197,6 +197,23 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
     expect(f.postNonceButtonPrompt.mock.calls[1][0].extra).toBeUndefined();
   });
 
+  it("the fleet's wiring of the controller: buttons carry the profile into their nonce entry; recovery gets it", async () => {
+    const f: any = Object.create(FleetManager.prototype);
+    f.logger = { debug() {}, info() {}, warn() {}, error() {} };
+    f.postNonceButtonPromptOrThrow = vi.fn(async () => {});
+    f.recoverBackendInstances = vi.fn(async () => ({ woken: [], restarted: [], pending: [] }));
+    const deps = (f.webLogin as any).deps as LoginControllerDeps;
+    const base = { prefix: "login-confirm:", instanceName: "claude-code", chat: chat(), message: "m", choices: [], expiredText: "x" };
+    await deps.postButtons({ ...base, profile: "work" });
+    expect(f.postNonceButtonPromptOrThrow.mock.calls[0][0].extra).toEqual({ loginProfile: "work" });
+    await deps.postButtons(base);
+    expect(f.postNonceButtonPromptOrThrow.mock.calls[1][0].extra).toBeUndefined();
+    await deps.recoverBackendInstances("claude-code", "work");
+    expect(f.recoverBackendInstances).toHaveBeenLastCalledWith("claude-code", undefined, "work");
+    await deps.recoverBackendInstances("claude-code");
+    expect(f.recoverBackendInstances).toHaveBeenLastCalledWith("claude-code", undefined, null);
+  });
+
   it("recovery after a login touches only the instances on that login", async () => {
     const f: any = Object.create(FleetManager.prototype);
     f.fleetConfig = { defaults: {}, instances: {
