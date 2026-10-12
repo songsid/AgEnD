@@ -1073,16 +1073,19 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 一個全 fleet 共用的取樣器每 30 秒讀取一次主機記憶體，每次准許啟動之前（啟動、喚醒、重啟和復原）也會讀取。在 **Linux** 上，它會節流新的 CLI，但絕不碰已在執行的：
 
-- 可用 RAM 低於 `max(300 MiB, RAM 的 2%)`，或低於 `max(前者的 2 倍, RAM 的 5%)` 且 swap 剩不到 5% → **critical**：不啟動任何新的 CLI；請求會等待，並在 5、10、20、40 秒後重試，之後每 60 秒一次；
-- RAM 低於第二個門檻，或 swap 剩不到 5% → **elevated**：一次只啟動一個，間隔至少 5 秒（讀不到樣本時也比照處理，絕不當作 RAM 為零）；
+- PSI `full avg10 ≥ 20%` 是 **critical**；`some avg60 ≥ 10%` 或 `full avg10 ≥ 5%` 是 **elevated**。完整門檻統一列在[政策表](memory-pressure.md)。
+- 可用 RAM 低於 `max(300 MiB, RAM 的 2%)`，或低於 `max(前者的 2 倍, RAM 的 5%)` 且 swap 剩餘至多 5% → **critical**：不啟動任何新的 CLI；請求會等待，並在 5、10、20、40 秒後重試，之後每 60 秒一次；
+- RAM 低於第二個門檻，或（讀不到 PSI 時）RAM 低於其兩倍且 swap 剩餘至多 5% → **elevated**：一次只啟動一個，間隔至少 5 秒（讀不到樣本時也比照處理，絕不當作 RAM 為零）；
 - critical 解除後，啟動速度會在 30 秒內慢慢回升。
 
-`/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢），有記憶體壓力時會標成 degraded。在 **macOS** 上，等級取自核心自己的警示（`kern.memorystatus_vm_pressure_level`：2 放慢、4 暫停），絕不看可用記憶體或 swap 數字。
+`/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢；Linux 另帶 PSI 與觸發訊號），有記憶體壓力時會標成 degraded。在 **macOS** 上，等級取自核心自己的警示（`kern.memorystatus_vm_pressure_level`：2 放慢、4 暫停），絕不看可用記憶體或 swap 數字。
 
 **Fleet 通知跟著等級走，不是定時重發（#1685）：**
 - 壓力升高時通知一次，恢復正常時一行「已恢復」；
 - 中間不再重發；同一等級在一小時內再出現也不重發；
 - macOS 例行的警告等級（2）不發聊天通知：仍會放慢新的啟動，並顯示在 Fleet 頁面；只有 critical（4）會通知。
+
+Linux 通知會指出 PSI 的停滯百分比／時間窗，或 RAM 偏低等實際訊號。RAM 充足時，冷頁佔滿 swap 不再單獨觸發警告；PSI 讀不到或格式不對會退回 RAM 判定，不會因此卡住啟動。
 
 詳見英文版 [memory-pressure.md](memory-pressure.md)。
 

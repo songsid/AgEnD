@@ -3,6 +3,7 @@ import { DarwinMemoryProbe } from "./darwin-memory.js";
 import { platform } from "node:os";
 
 export type MemoryPressureLevel = "normal" | "elevated" | "critical" | "unknown";
+export type LinuxMemoryPressureSignal = "psi-some" | "psi-full" | "available" | "available-swap" | "recovery";
 export interface MemoryPressureSnapshot {
   level: MemoryPressureLevel;
   memory: HostMemory | null;
@@ -11,6 +12,8 @@ export interface MemoryPressureSnapshot {
   samples: number;
   /** Change per minute over the bounded observation window; negative means draining. */
   trend: { availableBytesPerMinute: number; swapFreeBytesPerMinute: number | null } | null;
+  /** The current Linux trigger, for diagnostics/notices; not an independent policy. */
+  signal?: LinuxMemoryPressureSignal | null;
 }
 
 interface Options {
@@ -27,6 +30,8 @@ interface Options {
 const MiB = 1024 * 1024;
 export const MEMORY_SAMPLE_MS = 30_000;
 export const MEMORY_RECOVERY_MS = 30_000;
+/** AgEnD policy, in percent; documented together in docs/memory-pressure.md. */
+export const LINUX_PSI_THRESHOLDS = Object.freeze({ someAvg60Elevated: 10, fullAvg10Elevated: 5, fullAvg10Critical: 20 });
 
 /** One fleet sampler/policy, shared by spawn admission and health. Linux reads stay synchronous; macOS uses a bounded async probe. */
 export class MemoryPressure {
@@ -51,7 +56,7 @@ export class MemoryPressure {
 
   constructor(private readonly options: Options = {}) {
     this.platform = options.platform ?? platform();
-    this.read = options.read ?? (() => readHostMemory({ platform: this.platform }));
+    this.read = options.read ?? (() => readHostMemory({ platform: this.platform, includePressure: this.platform === "linux" }));
     this.now = options.now ?? Date.now;
     this.monotonicNow = options.monotonicNow ?? (() => performance.now());
     this.native = this.platform === "darwin" && !options.read ? options.darwinProbe ?? new DarwinMemoryProbe({ includePressure: true }) : null;
@@ -82,16 +87,19 @@ export class MemoryPressure {
     if (this.advisoryOnly()) return this.snapshot();
     this.recoveryUntil = (this.platform === "darwin" ? this.monotonicNow() : this.now()) + MEMORY_RECOVERY_MS;
     this.current = { ...this.current, recovering: true,
+      ...(this.platform === "linux" && this.current.level === "normal" ? { signal: "recovery" as const } : {}),
       level: this.current.level === "normal" ? "elevated" : this.current.level };
     return this.snapshot();
   }
 
   /** Health readers cannot create samples or move recovery deadlines. */
   snapshot(): MemoryPressureSnapshot {
-    return { ...this.current, memory: this.current.memory && { ...this.current.memory }, trend: this.current.trend && { ...this.current.trend } };
+    return { ...this.current, memory: this.current.memory && { ...this.current.memory,
+      ...(this.current.memory.linuxPsi !== undefined ? { linuxPsi: this.current.memory.linuxPsi && { ...this.current.memory.linuxPsi } } : {}) },
+      trend: this.current.trend && { ...this.current.trend } };
   }
 
-  /** Unknown Darwin kernel alarms cannot restrict admission or spend a notice cooldown. Linux is unchanged. */
+  /** Only unknown Darwin kernel alarms bypass pressure admission; unavailable Linux PSI uses RAM fallback. */
   advisoryOnly(): boolean {
     return this.platform === "darwin" && this.current.level === "unknown";
   }
@@ -147,6 +155,11 @@ export class MemoryPressure {
       if (value && Number.isFinite(value.totalBytes) && value.totalBytes > 0
         && value.availableBytes !== null && Number.isFinite(value.availableBytes) && value.availableBytes >= 0 && value.availableBytes <= value.totalBytes) {
         memory = { ...value, availableBytes: value.availableBytes };
+        if (value.linuxPsi !== undefined) {
+          const psi = value.linuxPsi;
+          memory.linuxPsi = psi && [psi.someAvg60, psi.fullAvg10].every(n => Number.isFinite(n) && n >= 0 && n <= 100)
+            ? { ...psi } : null;
+        }
         if (value.swapTotalBytes === null || value.swapFreeBytes === null
           || !Number.isFinite(value.swapTotalBytes) || !Number.isFinite(value.swapFreeBytes)
           || value.swapTotalBytes < 0 || value.swapFreeBytes < 0 || value.swapFreeBytes > value.swapTotalBytes) {
@@ -156,25 +169,39 @@ export class MemoryPressure {
     } catch { /* Unavailable data slows admissions; it cannot deadlock the fleet. */ }
 
     let level: MemoryPressureLevel = "unknown";
+    let signal: LinuxMemoryPressureSignal | null = null;
     if (memory) {
+      const linux = this.platform === "linux";
+      const psi = linux ? memory.linuxPsi : null;
       const critical = Math.max(this.options.criticalBytes ?? 300 * MiB, memory.totalBytes * 0.02);
       const low = Math.max(critical * 2, memory.totalBytes * 0.05);
       const swapRatio = memory.swapTotalBytes && memory.swapFreeBytes !== null
         ? memory.swapFreeBytes / memory.swapTotalBytes : null;
       const swapTight = swapRatio !== null && swapRatio <= 0.05;
-      const criticalNow = memory.availableKind === "available"
+      const psiCritical = !!psi && psi.fullAvg10 >= LINUX_PSI_THRESHOLDS.fullAvg10Critical;
+      const psiFullElevated = !!psi && psi.fullAvg10 >= LINUX_PSI_THRESHOLDS.fullAvg10Elevated;
+      const psiSomeElevated = !!psi && psi.someAvg60 >= LINUX_PSI_THRESHOLDS.someAvg60Elevated;
+      const ramCritical = memory.availableKind === "available"
         && (memory.availableBytes < critical || (memory.availableBytes < low && swapTight));
+      const criticalNow = ramCritical || psiCritical;
       // MemFree alone cannot distinguish healthy reclaimable cache from pressure.
       // It can throttle, but must never impose an indefinite Linux procfs-failure hold.
       if (criticalNow || (this.current.level === "critical"
         && memory.availableKind === "available" && memory.availableBytes < critical * 1.5)) {
         level = "critical";
+        signal = psiCritical ? "psi-full" : memory.availableBytes < critical || !ramCritical ? "available" : "available-swap";
         this.recoveryUntil = 0;
       } else {
         if (this.current.level === "critical") this.recoveryUntil = at + MEMORY_RECOVERY_MS;
-        const lingering = this.current.level === "elevated"
-          && (memory.availableBytes < low * 1.2 || (swapRatio !== null && swapRatio <= 0.1));
-        level = memory.availableBytes < low || swapTight || lingering || at < this.recoveryUntil ? "elevated" : "normal";
+        // Cold swap is not pressure. Its fallback and release hysteresis need low RAM too.
+        const swapCanElevate = !linux || (!psi && memory.availableBytes < low * 2);
+        const swapLingering = swapCanElevate && swapRatio !== null && swapRatio <= 0.1;
+        const lingering = this.current.level === "elevated" && (memory.availableBytes < low * 1.2 || swapLingering);
+        level = psiFullElevated || psiSomeElevated || memory.availableBytes < low
+          || (swapTight && swapCanElevate) || lingering || at < this.recoveryUntil ? "elevated" : "normal";
+        if (level === "elevated") signal = psiFullElevated ? "psi-full" : psiSomeElevated ? "psi-some"
+          : memory.availableBytes < low || (lingering && memory.availableBytes < low * 1.2) ? "available"
+          : (swapTight && swapCanElevate) || (lingering && swapLingering) ? "available-swap" : "recovery";
       }
       const last = this.history.at(-1);
       // Admission bursts must not fill history with near-identical microsecond samples.
@@ -198,7 +225,8 @@ export class MemoryPressure {
           ? (last.memory.swapFreeBytes - first.memory.swapFreeBytes) / minutes : null,
       };
     }
-    this.current = { level, memory, sampledAt: at, recovering: at < this.recoveryUntil, samples: this.history.length, trend };
+    this.current = { level, memory, sampledAt: at, recovering: at < this.recoveryUntil, samples: this.history.length, trend,
+      ...(this.platform === "linux" ? { signal } : {}) };
     if (this.timer) {
       try { this.options.onSample?.(this.snapshot()); } catch { /* Diagnostics must not break admission or polling. */ }
     }

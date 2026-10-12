@@ -57,9 +57,9 @@ describe("Darwin kernel pressure is the only admission signal", () => {
     expect(p.sample()).toMatchObject({ level: "elevated", recovering: true });
     now++; expect(p.sample()).toMatchObject({ level: "normal", recovering: false });
   });
-  it("Linux keeps its existing swap, critical and unknown policies even with Darwin metadata", () => {
+  it("Linux ignores Darwin metadata and cold swap alone is normal (#1707)", () => {
     const p = new MemoryPressure({ platform: "linux", read: () => ({ ...reported(1) }) });
-    expect(p.sample().level).toBe("elevated"); // Linux's 5% swap condition is unchanged.
+    expect(p.sample().level).toBe("normal"); // #1707: ample RAM makes cold swap non-actionable.
     const healthy = new MemoryPressure({ platform: "linux", read: () => ({ ...reported(4), swapFreeBytes: 4_000 * MiB }) });
     expect(healthy.sample().level).toBe("normal"); // Ignores Darwin's critical alarm.
     const unknown = new MemoryPressure({ platform: "linux", read: () => { throw new Error("missing procfs"); } });
