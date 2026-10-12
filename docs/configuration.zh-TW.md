@@ -496,7 +496,8 @@ instances:
         credential_profile: personal
 ```
 
-同一有效 profile 共用登入，不同名稱各自隔離。繼承 defaults 後仍無有效 profile 時，
+同一有效 profile 共用登入，不同名稱各自隔離。某個 profile 的登入過期時，警示會寫出該 profile、只列出用它的
+instance，並附上為它登入的指令。繼承 defaults 後仍無有效 profile 時，
 不新增 profile 目錄，也不修改原本的共用登入啟動方式。Profile 位於
 `~/.agend/credential-profiles/<backend>/<profile>`，可由多個 instance 共用。
 
