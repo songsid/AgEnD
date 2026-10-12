@@ -65,6 +65,9 @@ describe("#1690: the dialog, read from the real 2.1.296 panes", () => {
     expect(claudeSwitchDialog(SWITCH_ON_NO)?.cursor).toBe(2);
     expect(claudeSwitchDialog(AT_PROMPT)).toBeNull();
     expect(claudeSwitchDialog(fixture("numbered-output-after-turn"))).toBeNull();
+    // The dialog quoted in the transcript (an agent pasting a capture), with claude's own prompt under it: not it.
+    const block = SWITCH.slice(SWITCH.indexOf("   Switch model?"), SWITCH.indexOf("     2. No, go back") + "     2. No, go back".length);
+    expect(claudeSwitchDialog(AT_PROMPT.replace(/^❯[ \t\u00a0]*$/m, `${block}\n\n❯ `))).toBeNull();
   });
   it("matches by display name: aliases and ids resolve; another family, a raw echo of default, or a mismatched 1M do not", () => {
     for (const [r, s] of [["opus", "Opus 5.5"], ["Opus", "Opus 5.5"], ["claude-sonnet-5-5", "Sonnet 5.5"], ["opus[1m]", "Opus 5.5 (1M context)"], ["default", "Opus 5.5"]] as const) {
@@ -91,6 +94,14 @@ describe("#1690: our own switch answers its own dialog", () => {
     expect(result.outcome).toBe("switched");
     expect(r.keys).toEqual(["Up", "Enter"]);
     expect(r.seenAtKey.map(p => claudeSwitchDialog(p)?.cursor)).toEqual([2, 1]);
+  });
+
+  it("the cursor moves off 'Yes' between the read and the Enter → the Enter is not sent", async () => {
+    let reads = 0;
+    const r = rig(SWITCH);
+    r.d.tmux.capturePane = async () => (++reads >= 2 ? SWITCH_ON_NO : SWITCH);   // the re-read under the lock sees row 2
+    await r.d.answerOwnSwitchDialog({ requested: "opus" });
+    expect(r.keys).not.toContain("Enter");
   });
 
   it("a cursor that does not move → no Enter, ever; not confirmed, left held for a human", async () => {
@@ -129,6 +140,45 @@ describe("#1690: our own switch answers its own dialog", () => {
     await vi.advanceTimersByTimeAsync(OWN_SWITCH_WAIT_MS + 1_000);
     expect(await pending).toEqual({ outcome: "not_confirmed" });
     expect(r.keys).toEqual([]);
+  });
+});
+
+describe("#1690: the raw_paste route carries our switch and reports it back", () => {
+  function routed(reached: boolean) {
+    const r = rig(AT_PROMPT);
+    const broadcast: any[] = [];
+    r.d.ipcServer = { broadcast: (m: unknown) => broadcast.push(m), send: () => {} };
+    r.d.wake = async () => {};
+    r.d.deliverMessage = async (_text: string, _x: unknown, opts: any) => { opts.verdict.reached = reached; opts.verdict.paneWriteStarted = reached; return reached; };
+    const during: unknown[] = [];
+    r.d.answerOwnSwitchDialog = async (spec: unknown) => {
+      during.push([spec, r.d.ownSwitch?.requested ?? null, (await r.d.probeBlockingDialog()).state]);
+      return { outcome: "switched", confirmed: true, shown: "Opus 5.5" };
+    };
+    return { r, broadcast, during };
+  }
+
+  it("held while it is answered; the outcome goes back with its id; released after", async () => {
+    const { r, broadcast, during } = routed(true);
+    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/model opus", runtime_switch: { id: "sw-1", kind: "model", requested: "opus" } });
+    await r.d.pasteLock;
+    expect(during).toEqual([[expect.objectContaining({ requested: "opus" }), "opus", "dialog"]]);
+    expect(broadcast).toEqual([{ type: "runtime_switch_result", id: "sw-1", outcome: "switched", confirmed: true, shown: "Opus 5.5" }]);
+    expect([r.d.ownSwitch, (await r.d.probeBlockingDialog()).state]).toEqual([null, "clear"]);
+  });
+
+  it("a paste that never reached the pane is reported 'not sent', and nothing is answered", async () => {
+    const { r, broadcast, during } = routed(false);
+    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/model opus", runtime_switch: { id: "sw-2", kind: "model", requested: "opus" } });
+    await r.d.pasteLock;
+    expect([during, broadcast]).toEqual([[], [{ type: "runtime_switch_result", id: "sw-2", outcome: "not_sent" }]]);
+  });
+
+  it("an ordinary raw paste (no switch spec) answers nothing and reports nothing", async () => {
+    const { r, broadcast, during } = routed(true);
+    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact" });
+    await r.d.pasteLock;
+    expect([during, broadcast]).toEqual([[], []]);
   });
 });
 
