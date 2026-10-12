@@ -307,6 +307,13 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .pill.open { background: var(--accent-dim); color: var(--accent); }
 .pill.claimed { background: var(--warn-bg); color: var(--warn); }
 .pill.done { color: var(--ok); }
+/* #1724: a disabled schedule — its own look (not the green of "done"): a dashed, muted badge and a dimmed row */
+.pill.off { background: transparent; color: var(--text-3); border: 1px dashed var(--border-strong); }
+.row-item.is-off { opacity: 0.62; }
+.sched-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.sched-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-sub { font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sched-mode { margin-bottom: var(--s-2); }
 .save-row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
 
 /* ── Chat ── */

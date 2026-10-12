@@ -23,7 +23,10 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
-import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
+import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArgs } from "./outbound-schemas.js";
+import { scheduleView } from "./web-schedules.js";
+import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
+import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
@@ -60,14 +63,6 @@ const TaskUpdateSchema = z.object({
   title: z.string().max(512).optional(),
   description: z.string().max(MAX_TEXT).optional(),
   priority: z.string().max(64).optional(),
-}).strict();
-
-const ScheduleCreateSchema = z.object({
-  cron: z.string().min(1).max(256),
-  message: z.string().min(1).max(MAX_TEXT),
-  target: z.string().min(1).max(256),
-  label: z.string().max(256).optional(),
-  timezone: z.string().max(128).optional(),
 }).strict();
 
 const TeamCreateSchema = z.object({
@@ -265,6 +260,10 @@ export interface WebApiContext {
     };
     list(target?: string): unknown[];
     create(params: unknown): unknown;
+    /** #1724: the update MCP update_schedule makes (cron and at clear each other). */
+    update?(id: string, params: Record<string, unknown>): unknown;
+    /** #1426: a pending retry of a schedule's occurrence, for the row's "retrying". */
+    getRetry?(id: string): unknown;
     delete(id: string): void;
   } | null;
 }
@@ -991,19 +990,42 @@ export function handleWebRequest(
 
   if (method === "GET" && path === "/ui/schedules") {
     if (!ctx.scheduler) { json(res, 200, { schedules: [] }); return true; }
-    json(res, 200, { schedules: ctx.scheduler.list() });
+    // #1724: each row with its next run and one-shot time in the fleet's zone — worked out here, not on the page.
+    const scheduler = ctx.scheduler;
+    const now = Date.now();
+    json(res, 200, {
+      schedules: (scheduler.list() as Schedule[]).map((s) => scheduleView(s, (scheduler.getRetry?.(s.id) as ScheduleRetry | null) ?? null, now)),
+      // The zone a new schedule (and a "Once" date and time typed without one) is read in.
+      default_timezone: (ctx.fleetConfig as { defaults?: { scheduler?: { default_timezone?: string } } } | null | undefined)?.defaults?.scheduler?.default_timezone
+        ?? DEFAULT_SCHEDULER_CONFIG.default_timezone,
+    });
     return true;
   }
 
+  // #1724: who may write a schedule, asked again once the body is in (a session revoked meanwhile, a non-admin tier).
+  const scheduleWriterGone = (): boolean => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    return verdict.kind !== "allow" || (verdict.via === "session" && verdict.session?.tier !== "admin");
+  };
+
   if (method === "POST" && path === "/ui/schedules") {
+    // #1724: schedules are not created, edited or deleted over the public link (absent from its manifest too, #1689).
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "schedule_not_over_public_link" }); return true; }
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     (async () => {
       try {
         const body = await parseBody(req);
         if (!permitWebContinuation(req, res, ctx)) return;
-        const parsed = parseOrReject(ScheduleCreateSchema, body, res);
+        if (scheduleWriterGone()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+        // #1724: the create_schedule tool's own schema — cron or at (exactly one) — plus a target, which the web names.
+        const parsed = parseOrReject(CreateScheduleArgs, body, res);
         if (!parsed) return;
-        const schedule = ctx.scheduler!.create(parsed);
+        if (typeof parsed.target !== "string" || !parsed.target) { json(res, 400, { error: "target: an instance is required" }); return; }
+        const schedule = ctx.scheduler!.create({
+          cron: parsed.cron, at: parsed.at, message: parsed.message, target: parsed.target, label: parsed.label, timezone: parsed.timezone,
+          ...(parsed.silent !== undefined ? { silent: parsed.silent } : {}),
+          source: "web", reply_chat_id: "", reply_thread_id: null,
+        });
         json(res, 200, schedule);
       } catch (err) { json(res, 400, { error: (err as Error).message }); }
     })();
@@ -1011,7 +1033,28 @@ export function handleWebRequest(
   }
 
   const schedDelMatch = path.match(/^\/ui\/schedules\/(.+)$/);
+  // #1724: Edit — the update_schedule tool's validation (UpdateScheduleArgs) and its call (scheduler.update): cron and at
+  // clear each other there; silent is not touched.
+  if (method === "PATCH" && schedDelMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "schedule_not_over_public_link" }); return true; }
+    if (!ctx.scheduler || typeof ctx.scheduler.update !== "function") { json(res, 500, { error: "Scheduler not initialized" }); return true; }
+    const id = decodeURIComponent(schedDelMatch[1]);
+    (async () => {
+      try {
+        const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (scheduleWriterGone()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+        if (!body || typeof body !== "object" || Array.isArray(body) || Object.hasOwn(body, "id")) { json(res, 400, { error: "expected the fields to change (the id is the path's)" }); return; }
+        const parsed = parseOrReject(UpdateScheduleArgs, { ...(body as Record<string, unknown>), id }, res);
+        if (!parsed) return;
+        const { id: _id, ...changes } = parsed;
+        json(res, 200, ctx.scheduler!.update!(id, changes));
+      } catch (err) { json(res, 400, { error: (err as Error).message }); }
+    })();
+    return true;
+  }
   if (method === "DELETE" && schedDelMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "schedule_not_over_public_link" }); return true; }
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     try {
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
