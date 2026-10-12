@@ -311,6 +311,7 @@ describe("#1699: logins and invariant 5 (a switch starts fresh, with a handover)
     const h = harness(instance, "");
     const { error } = await update(h.ctx, { backend_options: { "claude-code": { credential_profile: "team" } } });
     expect(error).toContain(`CLAUDE_CONFIG_DIR=${JSON.stringify(profileDir("team"))} claude auth login`);
+    expect(error, "#1699 part 2: or from chat").toContain("or from chat: /login claude-code team");
     expect(instance.backend_options).toBeUndefined();
     expect(h.restartSingleInstance).not.toHaveBeenCalled();
   });
