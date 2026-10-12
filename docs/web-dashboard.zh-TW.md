@@ -124,6 +124,13 @@ agent 的回覆裡有 ` ```html ` 區塊，或附上 `.html`／`.htm` 檔案時�
 - **它能做什麼、不能做什麼。** 預覽在另一個位址的沙箱裡執行，所以無法使用你的登入、讀取你的 session，也無法操作 dashboard。但它**可能**可以把資料傳出去（沒有瀏覽器能擋住所有管道），所以只預覽你信任的 HTML。
 - **只有 agent 的回覆**（由 fleet 標記）才會有卡片。來自人的 HTML（web、Telegram 或 Discord）一律只顯示成程式碼，人上傳的 `.html` 檔也只是一般下載連結。被長度上限截斷的區塊不會有預覽：請 agent 改用 `.html` 檔案傳送。agent 也被告知完整頁面優先用檔案，因為長區塊在 Discord 與 Telegram 上會被切開。
 - **在哪裡能用。** 預覽來自第二個本機 port：`health_port + 1`（19281）。透過 SSH 使用時也要轉送它：`ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`。透過 tunnel 或 proxy 時需要設定 `web.preview_origin`（對應到那個 port 的另一個主機名稱），而且 proxy 必須原樣傳遞外部的 `Host`。不符合時，卡片會說明預覽為什麼關閉，只提供程式碼與 **下載**。
+- **在臨時公開連結上（#1723）** 也能預覽，用手機也可以。
+  - 公開連結會在背景為預覽另開一條自己的 quick tunnel。連結不等它：自己的通道一好就可以用。
+  - 預覽通道還沒好時，卡片會顯示「預覽啟動中…」，好了就照常執行。開不起來時連結照常可用，卡片會說明原因。
+  - 它隨連結一起關閉。
+  - 它的網址是另一個 `trycloudflare.com` 名稱。`trycloudflare.com` 在 Public Suffix List 上，所以框架和儀表板是不同的站點，隔離得比本機預設（同一名稱的另一個 port）更好。
+  - 你這台裝置的選擇（**允許 HTML 預覽**）照樣適用，而且無法透過公開連結更改。
+  - `web.preview_on_public_link: false` 會關閉這個功能。若已設定 `web.preview_origin`，就改用它，不另開通道。
 - **⋯ → 這台裝置永不預覽 HTML** 會在這個瀏覽器工作階段裡，隱藏所有卡片的 **預覽**。
 - **卡住的預覽** 可以按 **停止** 關掉；但它可能繼續佔用該分頁的預覽程序，之後在同一個分頁裡的新預覽可能無法啟動，請在新分頁打開 dashboard。
 
@@ -251,7 +258,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 
 使用 AgEnD 固定版本、checksum 驗證的 cloudflared，不採用 PATH 上的任意程式。Linux 先從 pkg.cloudflare.com 下載，失敗或太慢時改用 GitHub，第 ② 步會標出改用的來源；macOS 只用 GitHub。一次只能開一條 tunnel，與公開 `/login` 終端共用名額。期限固定 **兩小時**，含啟動時間；再次取得連結不延長。Settings 可改為 1–480 分鐘或停用選項。私送的關閉按鈕（要按兩下：關閉公開連結，再按確定關閉；按取消會恢復原狀）、新選單、`/web revoke`、到期及 fleet 關閉都會關入口。子行程無法確認停止時封鎖下一條 tunnel，但網頁存取已關閉。
 
-獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 preview、SSE、`/health`、`/agent` 或發碼 API。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
+獨立 gateway 只接受當前 tunnel Host 與核准面板路由；`/view` 一律要登入，不暴露 SSE、`/health`、`/agent` 或發碼 API；預覽框架也絕不從它提供（預覽有自己的通道，見 [HTML 預覽](#html-預覽)）。聊天立即輪詢。關閉會撤回該入口的碼與 session，本機 session 另行隔離。Host 只暫時允許，不寫入 `allowed_hosts`。
 
 這是完整 web-admin 權限，含終端、檔案、設定與主機操作。Cloudflare 終止 TLS，能看到流量。不要轉傳連結或碼。公開 session 啟用前，所屬 General 必須在五秒內確認收到 🔐 公開登入通知，即使 `notify_login: false` 也一樣；平台故障可能使登入不可用。公開猜碼也可能耗盡共用登入 breaker。自行設定的 proxy 仍需自己的保護。
 
@@ -286,6 +293,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.preview` | `true` | `false`：完全不提供 HTML 預覽（卡片只顯示程式碼與下載） |
 | `web.preview_port` | `health_port + 1` | 預覽 listener 的 port（只聽 `127.0.0.1`） |
 | `web.preview_origin` | — | 透過 tunnel 或 proxy 預覽時，對應到預覽 port 的另一個主機名稱 |
+| `web.preview_on_public_link` | `true` | `false`：臨時公開連結不提供預覽（不另開通道） |
 | `web.public_link.allow_public` | `true` | 提供需主動選擇的公開選項；停用也關閉現有入口 |
 | `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘，不延長現有入口 |
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |

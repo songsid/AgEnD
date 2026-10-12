@@ -124,6 +124,13 @@ When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.ht
 - **What it can and cannot do.** The preview runs in a sandbox on a separate address, so it cannot use your sign-in, read your session or act on the dashboard. It **may** be able to send data out (no browser blocks every way), so preview only HTML you trust.
 - **Only agents' replies** get a card, marked so by the fleet. HTML from people (on the web, Telegram or Discord) is only ever shown as code, and a `.html` file a person uploads stays a plain download. A block cut off by the length limit gets no preview: ask the agent to send a `.html` file instead. Agents are told to prefer a file for whole pages, since a long block is split on Discord and Telegram.
 - **Where it works.** Previews come from a second local port, `health_port + 1` (19281). Over SSH, forward it too: `ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`. Through a tunnel or proxy they need `web.preview_origin`, a separate host name mapped to that port; the proxy must pass the external `Host` through. Otherwise the card says why previews are off, and shows the code and **Download** only.
+- **On the temporary public link (#1723)** previews work too, from a phone as well.
+  - The link opens a second quick tunnel of its own for them, in the background. The link never waits for it: it is ready as soon as its own tunnel is.
+  - Until the preview tunnel is up, a card says *Preview is starting…*, then runs as usual. If it cannot open, the link keeps working and the card says why.
+  - It closes with the link.
+  - Its address is another `trycloudflare.com` name. `trycloudflare.com` is on the Public Suffix List, so the frame is a different site from the dashboard: more isolated than the local default (a second port on the same name).
+  - Your device's choice (**Allow HTML previews**) applies, and it cannot be changed over the link.
+  - `web.preview_on_public_link: false` turns this off. A `web.preview_origin` you configured is used instead of a second tunnel.
 - **⋯ → Never preview HTML on this device** hides **Preview** on every card for this browser session.
 - **A preview that hangs** can be stopped with **Stop**; it may keep using that tab's preview process, so new previews in that tab may not start until you open the dashboard in a new tab.
 
@@ -251,7 +258,7 @@ Steps 1–3 appear only when AgEnD's copy must be fetched; after the first time 
 
 It uses AgEnD's pinned, checksum-verified cloudflared, never an arbitrary executable on PATH. On Linux it is fetched from pkg.cloudflare.com first and from GitHub when that fails or is too slow; step ② says when it switches. macOS uses GitHub only. Only one tunnel can run; a public `/login` terminal shares that slot. The fixed lifetime is **two hours**, including startup; reuse does not renew it. Settings can set 1–480 minutes or disable the option. A private close button (two taps: Close link, then confirm; Cancel puts it back), a fresh menu, `/web revoke`, expiry and fleet shutdown close access. Unconfirmed child cleanup blocks another tunnel, but web access is already closed.
 
-The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; preview, SSE, `/health`, `/agent` and code issuance are excluded. Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.
+The separate gateway accepts only its current tunnel Host and reviewed panel routes. `/view` always requires sign-in there; SSE, `/health`, `/agent` and code issuance are excluded, and the preview frame is never served from it (previews have their own tunnel, see [HTML previews](#html-previews)). Chat polls immediately. Closing revokes that exposure's codes and sessions; local sessions stay separate. The host is ephemeral, never persisted in `allowed_hosts`.
 
 This grants full web-admin access, including terminals, files, settings and host actions. Cloudflare terminates TLS and can see traffic. Do not forward the link or code. A confirmed public 🔐 notice in the owning General is required within five seconds before a session becomes usable, even with `notify_login: false`; platform outages can block sign-in. Public guesses can consume the shared sign-in breaker. A proxy you configure yourself needs its own protection.
 
@@ -286,6 +293,7 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.preview` | `true` | `false`: no HTML previews at all (cards show the code and Download only) |
 | `web.preview_port` | `health_port + 1` | The preview listener's port, on `127.0.0.1` |
 | `web.preview_origin` | — | A separate host name, mapped to the preview port, for previews through a tunnel or proxy |
+| `web.preview_on_public_link` | `true` | `false`: no previews over the temporary public link (no second tunnel) |
 | `web.public_link.allow_public` | `true` | Offer the opt-in action; disabling also closes an existing link |
 | `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
