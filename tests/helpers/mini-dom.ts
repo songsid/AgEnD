@@ -152,6 +152,10 @@ export class MiniElement extends MiniNode {
   get attributes() { return [...this.attrs].map(([name, value]) => ({ name, value })); }
   get id() { return this.getAttribute("id") ?? ""; } set id(v: string) { this.setAttribute("id", v); }
   get className() { return this.getAttribute("class") ?? ""; } set className(v: string) { this.setAttribute("class", v); }
+  // Boolean IDL properties as a browser has them: Preact sets a prop through the property when the element has one, so
+  // the string "false" becomes true (ToBoolean) and renders spellcheck="true" — the trap a markup-only fake would hide.
+  get spellcheck() { return this.getAttribute("spellcheck") !== "false"; } set spellcheck(v: unknown) { this.setAttribute("spellcheck", v ? "true" : "false"); }
+  get draggable() { return this.getAttribute("draggable") === "true"; } set draggable(v: unknown) { this.setAttribute("draggable", v ? "true" : "false"); }
   get classList() {
     const el = this;
     const list = () => el.className.split(/\s+/).filter(Boolean);

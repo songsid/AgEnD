@@ -1,5 +1,8 @@
 # #926：要求回覆的訊息，回覆義務要被追蹤（reply obligation）
 
+> #1694 後續實作：重啟提醒改為每個 daemon boot 一則、最多十筆加其他筆數；回覆義務在 `last_asked_at` 起算的 TTL（預設 24 小時）到期後為 `expired`，記錄 `expired_at`，不再提醒 owner，寄件者最多收到一次逾期通知。回合結束與相同 correlation_id 才結案的規則不變。以下保留 #926 的原始設計基線，現行設定見 [configuration.zh-TW.md](../configuration.zh-TW.md)。
+
+
 狀態：**已實作**（CHANGELOG 2.1.7，#926 已關閉）。sweep 在 `FleetManager.sweepReplyObligations()`（`src/fleet-manager.ts`），obligation 存在 outbox 的 `reply_obligations` 表（`src/delivery-outbox.ts`）。逾時預設採 15 分鐘（`DEFAULT_REPLY_OVERDUE_MINUTES`），下文已依程式更正。
 相關：#926、#929 durable outbox、#910 submit proof、#856 可驗證 message_id。
 
