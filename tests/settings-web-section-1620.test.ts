@@ -143,7 +143,8 @@ describe("Settings → Web, as rendered", () => {
     const rows = p.root.querySelectorAll(".s-web-ro > div").map((d: any) => [d.querySelector("dt").textContent, d.querySelector("dd").textContent]);
     expect(rows).toEqual([
       ["web.allowed_hosts", "[\"box.lan\"]"], ["web.view_access", "session"], ["web.notify_login", "not set (default)"], ["web.preview", "false"],
-      ["web.preview_port", "not set (default)"], ["web.preview_origin", "not set (default)"], ["web.usage_panel", "not set (default)"],
+      ["web.preview_port", "not set (default)"], ["web.preview_origin", "not set (default)"], ["web.preview_on_public_link", "not set (default)"],
+      ["web.usage_panel", "not set (default)"],
       ["web.provider_secrets", "not set (default)"], ["web_terminal.bind", "0.0.0.0"], ["web_terminal.tunnel", "not set (default)"],
     ]);
     expect(p.root.querySelectorAll(".s-web-ro input, .s-web-ro select, .s-web-ro textarea").length).toBe(0);
