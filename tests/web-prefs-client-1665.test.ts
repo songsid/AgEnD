@@ -170,6 +170,27 @@ describe("the app's modules", () => {
       expect([early, requests.filter((r) => r.method === "GET").length, ls("agend_theme")]).toEqual([[1, "light"], 2, "dark"]);
     } finally { spy.mockRestore(); }
   });
+  it("a revision announced while a read is out is read right after it — and a newer one soon after a success is not held back", async () => {
+    let clock = 1000;
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    try {
+      const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { "nav.collapsed": ["A"] }, rev: 1 });
+      const store = await import("/assets/app-store.js");
+      m.bootPrefs();
+      const first = held();
+      let n = 0;
+      intercept = (method) => (method === "GET" && n++ === 0 ? first.p as Promise<any> : undefined);
+      store.applyStatus({ instances: [], prefs_rev: 2 });           // read 1: held
+      hostValues = { "nav.collapsed": ["A", "B"] }; hostRev = 3;
+      store.applyStatus({ instances: [], prefs_rev: 3 });           // announced while read 1 is out
+      first.release(reply(200, { values: { "nav.collapsed": ["A"] }, rev: 2 }));
+      await ticks(60);
+      const afterBoth = [requests.filter((r) => r.method === "GET").length, ls("agend_instance_collapsed")];
+      clock += 100; hostValues = { "nav.collapsed": ["C"] }; hostRev = 4;
+      store.applyStatus({ instances: [], prefs_rev: 4 }); await ticks(60);
+      expect([afterBoth, ls("agend_instance_collapsed")]).toEqual([[2, '["A","B"]'], '["C"]']);
+    } finally { spy.mockRestore(); }
+  });
   it("P2-4: on a device in step with the host, a key the host does not have is the default — the stale copy goes", async () => {
     await boot({ storage: { agend_prefs_synced: "1", agend_instance_collapsed: '["Old"]', agend_html_preview: "on", agend_lang: "zh-TW" }, host: { theme: "dark" } });
     expect([ls("agend_instance_collapsed"), ls("agend_html_preview"), ls("agend_lang"), ls("agend_theme")]).toEqual([null, null, null, "dark"]);

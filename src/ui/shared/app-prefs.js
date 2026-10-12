@@ -189,17 +189,19 @@ export async function migratePrefs() {
 /** The app's boot ("full" mode): the first-load migration, then another device's changes at each status frame. */
 export function bootPrefs() {
   if (!initial) return;
-  // Each new revision the frames announce, read once (the store changes many times a second). Seen only once its read
-  // succeeded: a failed one is read again at a later frame, at most every RETRY_MS.
-  let seen = rev, busy = false, lastTry = -Infinity;
-  appStore.subscribe((s) => {
-    const r = s.prefsRev;
+  // Each new revision the frames announce, read once (the store changes many times a second); one announced while a read
+  // is out is read as soon as it ends. Seen only once its read succeeded: after a failed read the next try waits for a
+  // later frame, at least RETRY_MS on.
+  let seen = rev, busy = false, failedAt = -Infinity;
+  const check = () => {
+    const r = appStore.get().prefsRev;
     if (typeof r !== "number" || r === seen || busy) return;
     if (r === rev) { seen = r; return; }
-    if (now() - lastTry < RETRY_MS) return;
-    lastTry = now();
+    if (now() - failedAt < RETRY_MS) return;
     busy = true;
-    refresh().then((ok) => { if (ok) seen = r; }, () => {}).finally(() => { busy = false; });
-  });
+    refresh().then((ok) => { if (ok) seen = r; else failedAt = now(); }, () => { failedAt = now(); })
+      .finally(() => { busy = false; check(); });
+  };
+  appStore.subscribe(check);
   migratePrefs();
 }
