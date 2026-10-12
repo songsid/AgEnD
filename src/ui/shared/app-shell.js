@@ -13,6 +13,7 @@ import { SessionMenu } from "./app-session.js";
 import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav } from "./instance-nav.js";
+import { UsageRail } from "./header-tools.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
@@ -362,6 +363,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly ? null : html`<${OperationLine} route=${nav.route} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
+    <${UsageRail} route=${nav.route} />
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
