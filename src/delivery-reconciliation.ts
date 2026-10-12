@@ -276,10 +276,11 @@ function withoutPasteWrapper(text: string, backend: string): string {
 export type TranscriptNeedle = string | { readonly rawText: string };
 
 /**
- * #1647: a raw paste's exact text as a user entry of the CLI's own — a body that, whitespace aside and without Claude
+ * #1647: a raw paste's exact text as a user entry of the CLI's own — a message that, whitespace aside and without Claude
  * Code's paste wrapper, IS the pasted text — is the record of the turn that took the paste. The delta starts at the
  * checkpoint taken before the write, so an earlier copy of the same words (a schedule repeats them every run) is never
- * in it. A quote of the text inside a longer message, a tool result or a queued entry is not.
+ * in it. A quote of the text inside a longer message, a tool result or a queued entry is not. Raw text is not unique
+ * the way a delivery marker is: the caller must hold a transcript that belongs to the target alone (#1663 P1-2).
  */
 export function transcriptDeltaHasRawText(rawDelta: string, backend: string, rawText: string): boolean {
   const wanted = normalizeTurnText(rawText);
@@ -287,8 +288,10 @@ export function transcriptDeltaHasRawText(rawDelta: string, backend: string, raw
   for (const line of rawDelta.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
-      const body = userTextsFromEntry(JSON.parse(line) as unknown, backend)[0];
-      if (body !== undefined && normalizeTurnText(withoutPasteWrapper(body, backend)) === wanted) return true;
+      // The WHOLE user message must be the paste: one text body (Claude's string or single text block, Codex's single
+      // input_text). A message of several blocks is not judged — its first block alone is not the message (#1663 P1-1).
+      const texts = userTextsFromEntry(JSON.parse(line) as unknown, backend);
+      if (texts.length === 1 && normalizeTurnText(withoutPasteWrapper(texts[0]!, backend)) === wanted) return true;
     } catch { /* incomplete/malformed JSONL is not proof */ }
   }
   return false;

@@ -3,8 +3,10 @@
  * named the causes the log never showed: kiro (`raw-paste-submit-proof:no-positive-acceptance-proof`, one residue look
  * right after Enter while kiro still repaints its composer) and claude-code (`post-submit-proof:stranded`, the same race).
  *
- * - A turn that starts on the paste settles it `delivered`: kiro's own pane (its execution state's edge into `working`
- *   after the Enter), claude-code/codex's transcript (a user entry that IS the pasted text, past the write checkpoint).
+ * - A paste the CLI took settles it `delivered`: kiro's own input row (the text gone, or kiro's busy marker in its place,
+ *   with output after the Enter — looked at more than once, within the budget from the Enter, under the write's fence);
+ *   claude-code's transcript (a user message that IS the pasted text, past the write checkpoint — its transcript is this
+ *   instance's alone). Not codex: its rollout is chosen by working directory, so its raw paste stays uncertain.
  * - Without one, it stays `uncertain` with the pane's reason. Never a second paste, never a second Enter.
  * - A silent schedule's row is never a Needs-you item; a human-originated row still is.
  *
@@ -20,6 +22,7 @@ import { DeliveryOutbox, isSilentScheduleDelivery } from "../src/delivery-outbox
 import { scanTranscriptForDeliveryMarker, transcriptDeltaHasRawText } from "../src/delivery-reconciliation.js";
 import { t, setLocale } from "../src/locale.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { KiroBackend } from "../src/backend/kiro.js";
 
 const roots: string[] = [];
 const daemons: any[] = [];
@@ -59,6 +62,14 @@ describe("transcriptDeltaHasRawText: the raw paste's own user entry", () => {
     expect(transcriptDeltaHasRawText(JSON.stringify({ type: "queue-operation", operation: "enqueue", content: PATROL }) + "\n", "claude-code", PATROL)).toBe(false);
     expect(transcriptDeltaHasRawText(JSON.stringify({ type: "assistant", message: { role: "assistant", content: PATROL } }) + "\n", "claude-code", PATROL)).toBe(false);
     expect(transcriptDeltaHasRawText(claudeUser(PATROL), "claude-code", "")).toBe(false);
+  });
+  it("the whole message must be the paste: a message of several text blocks whose first is the paste is not (#1663 P1-1)", () => {
+    const blocks = JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: PATROL }, { type: "text", text: "another request" }] } }) + "\n";
+    expect(transcriptDeltaHasRawText(blocks, "claude-code", PATROL)).toBe(false);
+    const codexTwo = JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: PATROL }, { type: "input_text", text: "another request" }] } }) + "\n";
+    expect(transcriptDeltaHasRawText(codexTwo, "codex", PATROL)).toBe(false);
+    const single = JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: PATROL }] } }) + "\n";
+    expect(transcriptDeltaHasRawText(single, "claude-code", PATROL)).toBe(true);   // one block: the message
   });
   it("only past the checkpoint: the same words from the previous run are before it", async () => {
     const dir = tmp(), path = join(dir, "session.jsonl");
@@ -169,64 +180,119 @@ function rawPasteHarness(opts: { backend: Record<string, unknown> | ((dir: strin
   return { daemon, outbox, row, tmux, transcript, state, evidence, settled, run, pump };
 }
 
-const kiroBackend = { binaryName: "kiro-cli", getBottomReadyPattern: () => /^❯ ?$/m, dropsEnterWhileBusy: () => true };
+/** The real KiroBackend (legacy UI: prompt row `N% !>` with the typed text on it, spinner as the last row while busy). */
+const KIRO_COMPAT = { version: "kiro-cli 2.29.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true, agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, source: "version" as const };
+const kiroBackend = (dir: string) => new KiroBackend(dir, KIRO_COMPAT);
+const KIRO_READY = "Kiro is ready.\n\n2% !> ";
 
-describe("kiro (no transcript): the pane's own turn start settles a raw paste", () => {
-  /** The live race: output at once, the composer repainted late — so the one residue look still sees the paste. */
+describe("kiro (no transcript): its own input row, looked at more than once, settles a raw paste", () => {
+  /** The live race: output at once, the composer repainted late — so the confirmation's one residue look sees the paste. */
   function kiro(controlClient?: Record<string, unknown>) {
-    const h = rawPasteHarness({ backend: kiroBackend, controlClient });
+    const h = rawPasteHarness({ backend: kiroBackend, controlClient: { hasOutputSince: vi.fn(() => true), ...controlClient } });
     vi.spyOn(h.daemon, "confirmSubmittedAfterEnter").mockResolvedValue(false);
-    const residue = vi.spyOn(h.daemon, "pasteResidue").mockResolvedValue("present");
-    return { ...h, residue };
+    /** The pane before the paste is the empty prompt (the delivery gate's view); `after` is what it shows once pasted. */
+    let pasted = false;
+    h.tmux.pasteBuffer.mockImplementation(async () => { pasted = true; return true; });
+    const paneAfterPaste = (after: () => string) => h.tmux.capturePane.mockImplementation(async () => pasted ? after() : KIRO_READY);
+    const isPasted = () => pasted;
+    /** Hold only the looks AFTER the paste (the delivery gate's pre-write look answers at once). */
+    const holdResidueAfterPaste = (answer: () => Promise<"present" | "absent" | "unknown">) => {
+      const real = h.daemon.pasteResidue.bind(h.daemon);
+      vi.spyOn(h.daemon, "pasteResidue").mockImplementation((formatted: unknown) => pasted ? answer() : real(formatted));
+    };
+    return { ...h, paneAfterPaste, isPasted, holdResidueAfterPaste };
   }
 
-  it("the execution state goes idle → working after the Enter (through the real snapshot path): delivered, one paste, one Enter", async () => {
+  it("the text leaves the input row a moment later (the real pasteResidue on the pane): delivered, one paste, one Enter", async () => {
     const h = kiro();
-    h.tmux.sendSpecialKey.mockImplementation(async () => {
-      setTimeout(() => h.daemon.applyInstanceStateSnapshot({ state: "working", unchangedForMs: 0 }, "⠋ Thinking..."), 600);
-      return true;
-    });
-    h.run();
-    await h.pump(100);
-    expect(h.state()).toBe("delivered");
-    expect(h.evidence()).toBe("raw-paste-pane-turn-start");
-    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
-    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
-  });
-
-  it("no turn start and the text still in the box for the whole window: uncertain with the pane's reason — no second Enter", async () => {
-    const h = kiro();
-    h.run();
-    await h.pump(100);
-    expect(h.state()).toBe("uncertain");
-    expect(h.outbox.get(h.row.deliveryId)?.lastError).toBe("raw-paste-submit-proof:no-positive-acceptance-proof");
-    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
-    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
-  });
-
-  it("a working edge from BEFORE the Enter is not this paste's turn: uncertain", async () => {
-    const h = kiro();
-    h.daemon.applyInstanceStateSnapshot({ state: "working", unchangedForMs: 0 }, "⠋ Thinking...");
-    h.run();
-    await h.pump(100);
-    expect(h.state()).toBe("uncertain");
-  });
-
-  it("the text leaves the input row (a later look) with output after the Enter: delivered", async () => {
-    const h = kiro({ hasOutputSince: vi.fn(() => true) });
-    h.residue.mockResolvedValueOnce("present").mockResolvedValue("absent");
+    let entered = false;
+    h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => { entered = true; }, 600); return true; });
+    h.paneAfterPaste(() => entered ? KIRO_READY : `${KIRO_READY}${PATROL}`);
     h.run();
     await h.pump(100);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("raw-paste-left-input-after-output");
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("kiro's own busy marker replaces the composer (pasteResidue's rule): delivered", async () => {
+    const h = kiro();
+    let entered = false;
+    h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => { entered = true; }, 600); return true; });
+    h.paneAfterPaste(() => entered ? `${KIRO_READY}${PATROL}\n⠋ Thinking...` : `${KIRO_READY}${PATROL}`);
+    h.run();
+    await h.pump(100);
+    expect(h.state()).toBe("delivered");
+  });
+
+  it("a repaint the state machine reads as `working` is not evidence: the text still in the row → uncertain (#1663 P1-3)", async () => {
+    const h = kiro();
+    h.paneAfterPaste(() => `${KIRO_READY}${PATROL}`);
+    h.tmux.sendSpecialKey.mockImplementation(async () => {
+      setTimeout(() => h.daemon.applyInstanceStateSnapshot({ state: "working", unchangedForMs: 0 }, `${KIRO_READY}${PATROL}`), 600);
+      return true;
+    });
+    h.run();
+    await h.pump(100);
+    expect(h.state()).toBe("uncertain");
+    expect(h.outbox.get(h.row.deliveryId)?.lastError).toBe("raw-paste-submit-proof:no-positive-acceptance-proof");
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("the text in the row for the whole budget: uncertain with the pane's reason — no second Enter, no second paste", async () => {
+    const h = kiro();
+    h.paneAfterPaste(() => `${KIRO_READY}${PATROL}`);
+    h.run();
+    await h.pump(100);
+    expect(h.state()).toBe("uncertain");
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
   });
 
   it("the text left the row but nothing printed after the Enter (a wiped paste): not taken — uncertain", async () => {
     const h = kiro({ hasOutputSince: vi.fn(() => false) });
-    h.residue.mockResolvedValue("absent");
+    h.tmux.capturePane.mockResolvedValue(KIRO_READY);
     h.run();
     await h.pump(100);
+    expect(h.state()).toBe("uncertain");
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("an answer that lands after the budget from the Enter proves nothing (#1663 P2-1)", async () => {
+    const h = kiro();
+    // The first look is held 6 s: past CONFIRM_BUSY_POLLS×POLL + POST_ENTER_PROOF_WINDOW_MS from the Enter.
+    h.paneAfterPaste(() => `${KIRO_READY}${PATROL}`);
+    h.holdResidueAfterPaste(() => new Promise(r => setTimeout(() => r("absent"), 6_000)));
+    h.run();
+    await h.pump(100);
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.state()).toBe("uncertain");
+  });
+
+  it("entering the look after the budget already ran out: nothing is accepted (#1663 P2-1)", async () => {
+    const h = kiro();
+    h.tmux.capturePane.mockResolvedValue(KIRO_READY);
+    (h.daemon.confirmSubmittedAfterEnter as any).mockImplementation(() => new Promise(r => setTimeout(() => r(false), 6_000)));
+    h.run();
+    await h.pump(100);
+    expect(h.state()).toBe("uncertain");
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stop during a held look: the late 'absent' is not this write's proof — never delivered (#1663 P2-2)", async () => {
+    const h = kiro();
+    h.paneAfterPaste(() => `${KIRO_READY}${PATROL}`);
+    h.holdResidueAfterPaste(() => new Promise(r => setTimeout(() => {
+      h.daemon.fenceDeliveryWritesForStop();
+      r("absent");
+    }, 500)));
+    h.run();
+    await h.pump(100);
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
     expect(h.state()).toBe("uncertain");
   });
 });
@@ -242,7 +308,8 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
   }
   const entry = (backendName: "claude-code" | "codex") => backendName === "codex" ? codexUser(PATROL) : claudeWrapped(PATROL);
 
-  it.each(["claude-code", "codex"] as const)("%s: the entry arrives after the pane window (the second fleet's 8 s): delivered by the transcript", async backendName => {
+  it("claude-code: the entry arrives after the pane window (the second fleet's 8 s): delivered by its own transcript", async () => {
+    const backendName = "claude-code";
     const h = cli(backendName);
     h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => appendFileSync(h.transcript, entry(backendName)), 6_000); return true; });
     h.run();
@@ -253,13 +320,25 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
   });
 
-  it.each(["claude-code", "codex"] as const)("%s: no entry for the whole wait (only the previous run's, before the checkpoint): uncertain with the pane's reason", async backendName => {
-    const h = cli(backendName);
+  it("claude-code: no entry for the whole wait (only the previous run's, before the checkpoint): uncertain with the pane's reason", async () => {
+    const h = cli("claude-code");
     h.run();
     await h.pump(200);
     expect(h.state()).toBe("uncertain");
     expect(h.outbox.get(h.row.deliveryId)?.lastError).toMatch(/^post-submit-proof:unproven; no-transcript-turn \(no-match\)$/);
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("codex: its rollout is chosen by working directory (another instance can write the same text there) — even a matching entry proves nothing: uncertain with the pane's reason (#1663 P1-2)", async () => {
+    const h = cli("codex");
+    const prove = vi.spyOn(h.daemon, "proveDeliveryFromTranscript");
+    h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => appendFileSync(h.transcript, entry("codex")), 2_000); return true; });
+    h.run();
+    await h.pump(200);
+    expect(h.state()).toBe("uncertain");
+    expect(h.outbox.get(h.row.deliveryId)?.lastError).toBe("post-submit-proof:unproven");
+    expect(prove).not.toHaveBeenCalled();
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
   });
 

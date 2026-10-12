@@ -547,9 +547,16 @@ const POST_ENTER_PROOF_WINDOW_MS = 3_000;
 /** A final bounded observation before an ambiguous Codex submit can be classified. */
 const CODEX_LATE_PROOF_MS = 5_000;
 const POST_ENTER_PROOF_POLL_MS = 250;
-/** #1647: a raw paste a pane with no transcript showed taken — its turn started, or its text left the input row. */
-const RAW_PASTE_PANE_TURN_START = "raw-paste-pane-turn-start";
+/** #1647: a raw paste a pane with no transcript showed taken — its text left the input row (or the CLI's own busy marker
+ * replaced it), with output after the Enter. */
 const RAW_PASTE_LEFT_INPUT = "raw-paste-left-input-after-output";
+/**
+ * #1647/#1663 P1-2: backends whose transcript AgEnD holds for this instance alone, so a raw paste's exact text in it is
+ * this paste's turn. claude-code: the path is its own statusline.json's transcript_path (written by this instance's
+ * CLI). Not codex: its rollout is chosen by working directory, which another instance can share, and AgEnD holds no
+ * session id to bind it — so a codex raw paste the pane could not prove stays uncertain.
+ */
+const RAW_TEXT_TRANSCRIPT_BACKENDS: readonly string[] = ["claude-code"];
 /**
  * A readerless CLI's delivery is proven by its own transcript, which lags the pane by a flush. Only a delta that was
  * read and carried no marker for this long is held against the delivery — a late flush must not raise a false ⚠️.
@@ -1430,8 +1437,6 @@ export class Daemon extends EventEmitter {
   private preRotationContextPct = 0;
   private hangDetector: HangDetector | null = null;
   private instanceState: InstanceState = "idle";
-  /** performance.now() of the last edge into `working` — a raw paste's turn start on a pane with no transcript (#1647). */
-  private workingEdgeAt = Number.NEGATIVE_INFINITY;
   private instanceStateMachine: PaneStateMachine | null = null;
   private pendingWork = new PendingWorkTracker();
   /** Fallback safety sweep used only when no shared tmux control client exists. */
@@ -2121,8 +2126,8 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "delivered", OUTPUT_EDGE_ONLY_EVIDENCE);
       return;
     }
-    // #1647: a raw paste on a pane with no transcript (kiro), taken by the CLI as shown by its own pane.
-    if (verdict.proof === RAW_PASTE_PANE_TURN_START || verdict.proof === RAW_PASTE_LEFT_INPUT) {
+    // #1647: a raw paste on a pane with no transcript (kiro), taken by the CLI as its own input row shows.
+    if (verdict.proof === RAW_PASTE_LEFT_INPUT) {
       this.finishDurableDelivery(delivery, "delivered", verdict.proof, verdict);
       return;
     }
@@ -3988,7 +3993,7 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt && verdict.paneWriteStarted) {
           const unproven = `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`;
           const checkpoint = verdict.transcriptCheckpoint;
-          if (checkpoint && ["claude-code", "codex"].includes(checkpoint.backend)) {
+          if (checkpoint && RAW_TEXT_TRANSCRIPT_BACKENDS.includes(checkpoint.backend)) {
             // #1647: the pane could not show it, but the CLI's transcript records the turn the paste started — later
             // than the pane window sometimes. Wait for it there (bounded), off the paste lock.
             this.logger.info({ deliveryId: durableAttempt.deliveryId, unproven },
@@ -4823,7 +4828,6 @@ export class Daemon extends EventEmitter {
       if (unblockedTurn && unblockedTurn.phase === "awaiting") this.maybeProxyReplyOnTurnEnd(pane);
     }
     this.instanceState = snapshot.state;
-    if (previous !== "working" && snapshot.state === "working") this.workingEdgeAt = performance.now();
     this.acceptedInstanceSnapshot = { ...snapshot };
 
     // OpenCode creates its session lazily on the first submitted message.
@@ -7940,22 +7944,28 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #1647: whether a raw paste on a pane with no transcript (kiro) was taken, by what its own pane shows within
-   * POST_ENTER_PROOF_WINDOW_MS of the Enter: the execution state's edge into `working` after it (the turn the paste
-   * started — the target was idle when it was pasted into, and this paste holds the pane lock), or the pasted text gone
-   * from the input row with output after the Enter. Null: neither — the caller settles uncertain, never a second Enter.
+   * #1647: whether a raw paste on a pane with no transcript (kiro) was taken: its text gone from the input row (or the
+   * CLI's own busy marker shown instead — pasteResidue's rule) with output after the Enter. That is the confirmation's
+   * own rule, looked at more than once: kiro repaints its composer late, so the single look right after Enter misread
+   * pastes it took. A generic `working` reading is not evidence (#1663 P1-3: a repaint looks like work).
+   *
+   * Bounded by the budget that confirmation already has, measured from the Enter (#1663 P2-1): the busy wait plus the
+   * post-Enter proof window. Every reading is asked again after its await — still this write's owner (`current`: the
+   * caller's fence, no stop, the same tmux and spawn, #1663 P2-2) and still inside the budget — before it counts; a late
+   * or fenced answer proves nothing. Null: not shown — the caller settles uncertain, never a second Enter.
    */
   private async rawPasteTakenOnPane(
-    windowId: string, enterAt: number, enterMono: number, formatted: string,
-  ): Promise<typeof RAW_PASTE_PANE_TURN_START | typeof RAW_PASTE_LEFT_INPUT | null> {
-    const generation = this.spawnGeneration, tmux = this.tmux;
-    const deadline = performance.now() + POST_ENTER_PROOF_WINDOW_MS;
+    windowId: string, enterAt: number, enterMono: number, formatted: string, current: () => boolean,
+  ): Promise<typeof RAW_PASTE_LEFT_INPUT | null> {
+    const deadline = enterMono + CONFIRM_BUSY_POLLS * CONFIRM_BUSY_POLL_MS + POST_ENTER_PROOF_WINDOW_MS;
+    const live = () => current() && performance.now() <= deadline;
     for (;;) {
-      if (this.spawnGeneration !== generation || this.tmux !== tmux) return null;
-      if (this.workingEdgeAt >= enterMono) return RAW_PASTE_PANE_TURN_START;
-      if (this.controlClient?.hasOutputSince?.(windowId, enterAt) && await this.pasteResidue(formatted) === "absent"
-        && this.spawnGeneration === generation && this.tmux === tmux) return RAW_PASTE_LEFT_INPUT;
-      if (performance.now() >= deadline) return null;
+      if (!live()) return null;
+      if (this.controlClient?.hasOutputSince?.(windowId, enterAt)) {
+        const residue = await this.pasteResidue(formatted);
+        if (!live()) return null;
+        if (residue === "absent") return RAW_PASTE_LEFT_INPUT;
+      }
       await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
     }
   }
@@ -8268,7 +8278,9 @@ export class Daemon extends EventEmitter {
           };
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
           // reply, or still be painting the paste) — this delivery's exact marker only, or a raw paste's exact text (#1647).
-          if (["claude-code", "codex"].includes(attemptEvidence.backend)) {
+          // A raw paste's text only where the transcript is this instance's alone (RAW_TEXT_TRANSCRIPT_BACKENDS).
+          if (["claude-code", "codex"].includes(attemptEvidence.backend)
+            && (!rawPaste || RAW_TEXT_TRANSCRIPT_BACKENDS.includes(attemptEvidence.backend))) {
             signature.transcript = this.transcriptProofFor(verdict.transcriptCheckpoint,
               rawPaste ? { rawText: formatted } : durableAttempt.deliveryId, spawnAtWrite,
               stillCurrent, kind => { verdict.transcriptProof = kind; });
@@ -8604,8 +8616,9 @@ export class Daemon extends EventEmitter {
         }
         if (!submitted && rawPaste) {
           // #1647: kiro paints output at once but its composer late, so one residue look right after Enter misreads a
-          // paste it took. Its own pane says when a turn starts; never a second Enter (a raw command must not run twice).
-          const taken = await this.rawPasteTakenOnPane(windowId, enterAt, enterMono, formatted);
+          // paste it took. Keep looking within the confirmation's own budget from the Enter, under this write's fence;
+          // never a second Enter (a raw command must not run twice).
+          const taken = await this.rawPasteTakenOnPane(windowId, enterAt, enterMono, formatted, steerCurrent);
           if (!taken) {
             verdict.phase = "raw-paste-submit-proof";
             verdict.proof = "no-positive-acceptance-proof";
