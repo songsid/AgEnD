@@ -355,6 +355,28 @@ describe("review r2", () => {
     expect([pp.panelStore.get().open?.key, PV.running(`b-1:a${ID1}`), PV.running(pp.frameKey(`b-2:a${ID2}`)), PV.liveCount()]).toEqual([`b-2:a${ID2}`, false, true, 1]);
   });
 
+  it("review r4: A's Preview in its card is reading when the panel's own Preview runs B: A answers — B keeps running, A does not start", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1) });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);
+    await openIn(doc, 1);
+    await click(doc.querySelector(".pv-panel-stop"));
+    await click(cards(doc)[0].querySelector(".pv-run"));
+    await click(doc.querySelector(".pv-panel-run"));
+    expect(PV.running(pp.frameKey("b-2:f0"))).toBe(true);
+    await f.release(ID1);
+    expect([PV.running(`b-1:a${ID1}`), PV.running(pp.frameKey("b-2:f0")), PV.liveCount()]).toEqual([false, true, 1]);
+  });
+
+  it("review r4 control: the same without the panel's Preview — A's read completes and runs in its card", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1) });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);
+    await openIn(doc, 1);
+    await click(doc.querySelector(".pv-panel-stop"));
+    await click(cards(doc)[0].querySelector(".pv-run"));
+    await f.release(ID1);
+    expect([PV.running(`b-1:a${ID1}`), PV.liveCount()]).toEqual([true, 1]);
+  });
+
   it("A's Preview in its card is reading when the panel (showing B) is closed: A still runs in its card — a close is not a newer click", async () => {
     const f = heldFiles({ [ID1]: PAGE(1) });
     const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);

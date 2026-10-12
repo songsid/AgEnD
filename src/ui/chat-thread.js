@@ -319,11 +319,15 @@ export function createThread(list, scroller, opts) {
     const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
     // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
     // A Preview click is newer than any Open in panel still reading (#1704): it claims the panel's turn too — and, its
-    // own HTML read, starts only if no newer click claimed meanwhile (a late read never undoes a newer choice).
+    // own HTML read, starts only if no newer click claimed meanwhile and no preview was started since (the panel's own
+    // Preview): a late read never undoes a newer choice. A close is neither, so it does not drop this click.
     run.onclick = () => {
       if (!P().availability().ok || reading) return;     // this card already reading: that click stays the one
-      const mine = panel ? (panel.claim(), panel.claims()) : 0;
-      withCode((c) => { if (panel && panel.claims() !== mine) { refresh(); return; } P().start(key, holder, c, ui); });
+      const mine = panel ? (panel.claim(), panel.claims()) : 0, started = P().startCount();
+      withCode((c) => {
+        if ((panel && panel.claims() !== mine) || P().startCount() !== started) { refresh(); return; }
+        P().start(key, holder, c, ui);
+      });
     };
     stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
     // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
