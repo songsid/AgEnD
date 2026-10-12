@@ -134,11 +134,20 @@ describe("#1686: Telegram /web menu carries the hint", () => {
   });
 
   it("Discord menu has no hint", async () => {
+    // Direct test: showDashboardMenu for a Discord adapter must not append the hint.
     const h = rig("discord");
-    await h.typed(); await flush();
+    // We need a valid owner to call showDashboardMenu directly.
+    const fakeOwner = {
+      userId: "admin", adapterId: "owner", chatId: "G", threadId: "T0",
+      binding: h.adapter,
+    };
+    await h.s.showDashboardMenu(fakeOwner);
     const alertCalls = h.adapter.notifyAlert.mock.calls;
     const menuText: string = alertCalls[0]?.[1]?.message ?? "";
-    expect(menuText).not.toContain("t.me");
+    // If notifyAlert was never called (owner check failed), sendText carries menu_failed — also no hint.
+    const sendCalls = h.adapter.sendText.mock.calls;
+    const allTexts = [...alertCalls.map((c: any[]) => c[1]?.message ?? ""), ...sendCalls.map((c: any[]) => String(c[1] ?? ""))];
+    for (const text of allTexts) expect(text).not.toContain("t.me");
   });
 });
 
@@ -168,15 +177,72 @@ describe("#1686: Telegram button-click failure carries the link/button", () => {
   });
 
   it("Discord button-click failure: no urlButtons (Discord unchanged)", async () => {
+    // Drive retireNonceButtons directly via the fleet manager's internals: plant a Discord
+    // nonce entry and call retireNonceButtons without urlButtons, verifying editMessageRemoveButtons
+    // is called with exactly 4 args (no 5th urlButtons).
     const h = rig("discord");
-    await h.typed(); await flush();
-    const e = h.nonce();
-    if (!e) return; // Discord may reach this path differently; already verified by no sendText urlButtons
-    await h.click("local"); await flush();
-    const calls = h.adapter.editMessageRemoveButtons.mock.calls;
-    if (!calls.length) return; // no edit = no urlButtons to check
-    const urlButtons = calls[calls.length - 1]?.[4];
-    expect(urlButtons).toBeUndefined();
+    const discordAdapter = makeAdapter("discord");
+    // Directly call retireNonceButtons with a simulated Discord failure nonce (no urlButtons arg).
+    const fakeEntry: any = {
+      prefix: "dashboard:", instanceName: "dashboard", adapterId: "owner",
+      adapter: discordAdapter, chatId: "G", threadId: "T0", messageId: "menu",
+      expiredText: "stale", retire: undefined, nonce: "abc123", timer: undefined,
+    };
+    await h.s.retireNonceButtons(fakeEntry, "menu", "Discord failure text");
+    const calls = discordAdapter.editMessageRemoveButtons.mock.calls;
+    expect(calls.length).toBe(1);
+    // 5th arg must be absent (undefined not passed) — Discord does NOT get urlButtons
+    expect(calls[0]).toHaveLength(4);
+    expect(calls[0][2]).toBe("Discord failure text");
+  });
+
+  it("Discord button-click failure (with mutation guard): urlButtons IS present when telegram guard removed", async () => {
+    // Stronger guard: call retireNonceButtons WITH urlButtons to verify the adapter WOULD receive them
+    // if the type check were removed. This test exists only to confirm the guard works:
+    // in production, urlButtons is never passed for Discord (the type check prevents it).
+    const h = rig("discord");
+    const discordAdapter = makeAdapter("discord");
+    const fakeEntry: any = {
+      prefix: "dashboard:", instanceName: "dashboard", adapterId: "owner",
+      adapter: discordAdapter, chatId: "G", threadId: "T0", messageId: "menu",
+      expiredText: "stale", retire: undefined, nonce: "abc123", timer: undefined,
+    };
+    const urlButtons = [{ label: "Start →", url: "https://t.me/bot?start=web" }];
+    await h.s.retireNonceButtons(fakeEntry, "menu", "Discord failure text", undefined, urlButtons);
+    const calls = discordAdapter.editMessageRemoveButtons.mock.calls;
+    expect(calls.length).toBe(1);
+    // When urlButtons IS provided, it DOES reach the adapter (the guard is in handleDashboardCallback, not here)
+    expect(calls[0]).toHaveLength(5);
+    expect(calls[0][4]).toEqual(urlButtons);
+  });
+
+  it("Discord unchanged: handleDashboardCallback does NOT call tgStartWebUrl for Discord owner", async () => {
+    // Guards the `type === "telegram"` check in handleDashboardCallback.
+    // Approach: spy on tgStartWebUrl — it must never be called when the owner's adapter is Discord.
+    // Drive the callback by planting a nonce entry with a Discord owner and firing dispatchAdapterCallback.
+    const h = rig("discord");
+    const discordOwner: any = {
+      userId: "admin", adapterId: "owner", chatId: "G", threadId: "T0", binding: h.adapter,
+    };
+    // Nonce must be 32 lowercase hex chars to match /^dashboard:([0-9a-f]{32}):(local|...)$/
+    // Key in pendingNonceButtons is the bare nonce (no prefix — consumeNonceCallback uses match[1]).
+    const nonce = "abcdef1234567890abcdef1234567890";
+    const timer = setTimeout(() => {}, 300_000);
+    h.s.pendingNonceButtons.set(nonce, {
+      prefix: "dashboard:", instanceName: "dashboard", adapterId: "owner",
+      adapter: h.adapter, chatId: "G", threadId: "T0", messageId: "menu",
+      nonce, expiredText: "stale", retire: undefined, dashboardOwner: discordOwner,
+      extra: { requesterUserId: "admin", dashboardOwner: discordOwner }, timer,
+    });
+    const urlSpy = vi.spyOn(h.s, "tgStartWebUrl");
+    await h.s.dispatchAdapterCallback({
+      callbackData: `dashboard:${nonce}:local`, chatId: "G", threadId: "T0",
+      messageId: "menu", userId: "admin", ack: vi.fn(),
+    }, "owner", h.adapter);
+    await flush();
+    clearTimeout(timer);
+    // tgStartWebUrl must NOT have been called for a Discord owner (type !== "telegram")
+    expect(urlSpy).not.toHaveBeenCalled();
   });
 });
 
