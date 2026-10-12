@@ -38,7 +38,7 @@ const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), c
 beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "agend-1691-")); mkdirSync(join(dir, "inst")); logger.warn.mockClear(); });
 afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); setLocale("en"); });
 
-function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" | "opencode"; start?: string } = {}) {
+function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" | "opencode"; start?: string; ready?: RegExp } = {}) {
   const screen = { text: opts.start ?? SWITCH };
   const keys: string[] = [];
   const pasted: string[] = [];
@@ -48,6 +48,7 @@ function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" |
       : new ClaudeCodeBackend(join(dir, "inst"));
   const backend = Object.create(real) as ClaudeCodeBackend;
   if (opts.extraDialogs) (backend as any).getRuntimeDialogs = () => [...real.getRuntimeDialogs(), ...opts.extraDialogs!];
+  if (opts.ready) (backend as any).getReadyPattern = () => opts.ready;
   const d: any = new Daemon("w", {
     working_directory: dir, backend: kind, log_level: "silent",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
@@ -161,6 +162,34 @@ describe("#1695 P2-1: a draft in muse's or opencode's own input box is the CLI's
   });
 });
 
+describe("#1695 r2 P2-1: muse's own menu cursor is not its composer", () => {
+  /** muse's screen with its input box replaced by an unknown selection menu (no muse composer on screen). */
+  const MUSE_MENU = (() => {
+    const rows = MUSE_IDLE.split("\n");
+    const rule = rows.findIndex(r => /^─{8,}/.test(r));
+    return [...rows.slice(0, rule), "Choose a rollout strategy?", "❯ 1. Apply the selected strategy", "  2. Keep the existing strategy", ""].join("\n");
+  })();
+  it("an unknown numbered menu at muse's bottom is caught (its ❯ satisfies muse's ready pattern, but there is no input box)", async () => {
+    expect(new MuseBackend(join(dir, "inst")).inputDraft(MUSE_MENU), "no muse input box").toBeNull();
+    expect(unrecognisedPromptShape(MUSE_MENU)?.kind).toBe("numbered");
+    const r = rig({ backend: "muse", start: MUSE_MENU });
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect([await r.held(), r.awaiting(), unrecognised(r.parked).length, r.keys.length]).toEqual(["dialog", true, 1, 0]);
+    } finally { r.stop(); }
+  });
+});
+
+describe("#1695 r2 P2-1: a backend with no reader whose ready pattern is a cursor glyph", () => {
+  it("the menu's own ❯ row never counts as its ready chrome: the menu is caught", async () => {
+    const r = rig({ backend: "opencode", start: SWITCH, ready: /❯|ctrl\+p commands/m });
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect([await r.held(), unrecognised(r.parked).length]).toEqual(["dialog", 1]);
+    } finally { r.stop(); }
+  });
+});
+
 describe("#1695 P2-2: motion anywhere on the screen restarts the minute", () => {
   it.each([
     ["a busy spinner under the block", (i: number) => `${SWITCH.trimEnd()}\n✢ Accomplishing… (${i}s · ↓ 38.0k tokens)\n`],
@@ -196,6 +225,34 @@ describe("#1695 P2-2: motion anywhere on the screen restarts the minute", () => 
       r.d.tmux.capturePane = capture;   // control: quiet captures — active after a minute
       await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
       expect(unrecognised(r.parked)).toHaveLength(1);
+    } finally { r.stop(); }
+  });
+});
+
+describe("#1695 r2 P2-4: a fresh read before the minute is up resets it too", () => {
+  it("55 s in, a probe sees it gone, it comes back before any scan: 15 s later still not active; a fresh minute later it is", async () => {
+    const r = rig();
+    try {
+      await r.poll(55_000);
+      r.screen.text = AT_PROMPT;
+      expect(await r.held()).toBe("clear");
+      r.screen.text = SWITCH;
+      await r.poll(15_000);
+      expect([await r.held(), r.awaiting(), unrecognised(r.parked).length]).toEqual(["clear", false, 0]);
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS);
+      expect(await r.held(), "control: its own minute").toBe("dialog");
+    } finally { r.stop(); }
+  });
+
+  it("a read taken before the capture that last confirmed it cannot void it (capture order)", async () => {
+    const r = rig();
+    try {
+      await r.poll(30_000);
+      const tracked = r.d.unrecognisedPrompt;
+      r.d.noteFreshPaneRead(AT_PROMPT, tracked.seenAt - 1);   // an older read, finishing late
+      expect(r.d.unrecognisedPrompt).toBe(tracked);
+      r.d.noteFreshPaneRead(AT_PROMPT, tracked.seenAt + 1);   // a newer one
+      expect(r.d.unrecognisedPrompt).toBeNull();
     } finally { r.stop(); }
   });
 });

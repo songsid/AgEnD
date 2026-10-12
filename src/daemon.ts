@@ -669,7 +669,7 @@ const STARTUP_DIALOG_BUDGET_MS = 30_000;
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** #1691: a prompt no table knows must sit unchanged this long (monotonic) before it holds deliveries and is reported. */
 export const UNRECOGNISED_PROMPT_STABLE_MS = 60_000;
-/** #1691: the last rows a backend without a composer reader shows its ready chrome in (status bar, prompt hint). */
+/** #1691: the rows under a prompt a backend without a composer reader shows its ready chrome in (status bar, hint). */
 const COMPOSER_TAIL_ROWS = 4;
 /** After a runtime dialog's keys, how long the pane gets to repaint before it is read again to see whether they took. */
 const DIALOG_ANSWER_SETTLE_MS = 300;
@@ -1399,6 +1399,8 @@ export class Daemon extends EventEmitter {
     screen: string;
     /** The launch the evidence belongs to: a respawn, a new launch fence or frozen monitors void it (#1695 review). */
     owner: InteractionOwner;
+    /** When (performance.now) the capture that last confirmed it was taken: an older read cannot void it (#1695 r2). */
+    seenAt: number;
   } | null = null;
   /**
    * #1691: the catch-all for that prompt, as a hold-only runtime dialog — so the delivery hold, awaiting_input, the
@@ -7023,20 +7025,28 @@ export class Daemon extends EventEmitter {
    * #1691: is the pane at the CLI's own idle composer? Then whatever looks like a prompt above it is transcript output
    * (an agent's numbered list, a quoted "[y/n]"), not a prompt. The backend's own reading, most specific first.
    */
-  private cliComposerShowing(pane: string): boolean {
+  private cliComposerShowing(pane: string, shape: PromptShape): boolean {
     const backend = this.backend;
     if (!backend) return false;
     if (backend.readInputRow) return backend.readInputRow(pane) !== null;
+    // muse: its live input box — null when the bottom of the screen is not its layout (#829), e.g. a selection menu.
+    if (backend.inputDraft) return backend.inputDraft(pane) !== null;
     if (backend.isDeliveryInputReadyPane) return backend.isDeliveryInputReadyPane(pane);
     const bottom = backend.getBottomReadyPattern?.();
     if (bottom) { bottom.lastIndex = 0; return bottom.test(pane); }
-    // No reader of its own (muse, opencode, grok, …): its ready chrome in the last rows of the screen — a status bar or prompt
-    // hint drawn under the input box, never transcript text (nothing is drawn below it). Not the whole pane: a reply
-    // quoting "ctrl+p commands" higher up is not the CLI at its prompt.
+    // No reader of its own (opencode, grok, …): its ready chrome BELOW the prompt rows — a status bar or prompt hint drawn
+    // under its input box (opencode's "ctrl+p commands"), which a prompt shown in place of the input has nothing of. Not
+    // the whole pane (a reply quoting "ctrl+p commands" higher up), and never the prompt's own rows: a ready pattern that
+    // is just a cursor glyph would otherwise read the menu's own "❯ 1." as the CLI's prompt (#1695 r2).
+    const rows = pane.replace(/\r/g, "").split("\n").map(r => r.trimEnd());
+    const lastOwn = (shape.block.split("\n").at(-1) ?? "").trim();
+    let end = -1;
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.trim() === lastOwn) { end = i; break; }
+    if (end < 0) return false;
+    const below = rows.slice(end + 1).filter(r => r.trim() !== "").slice(0, COMPOSER_TAIL_ROWS).join("\n");
     const ready = backend.getReadyPattern();
-    const tail = pane.replace(/\r/g, "").split("\n").map(r => r.trimEnd()).filter(r => r.trim() !== "").slice(-COMPOSER_TAIL_ROWS).join("\n");
     ready.lastIndex = 0;
-    return ready.test(tail);
+    return below !== "" && ready.test(below);
   }
 
   /**
@@ -7050,7 +7060,7 @@ export class Daemon extends EventEmitter {
     if (busy) { busy.lastIndex = 0; if (busy.test(pane)) return null; }
     if ((this.backend?.getRuntimeDialogs?.() ?? []).some(dialog => Daemon.dialogMatches(dialog, pane))) return null;
     if (LOGIN_FLOWS[this.config.backend ?? "claude-code"]?.loginScreenActive?.(pane)) return null;
-    if (this.cliComposerShowing(pane)) return null;
+    if (this.cliComposerShowing(pane, shape)) return null;
     return shape;
   }
 
@@ -7068,9 +7078,10 @@ export class Daemon extends EventEmitter {
     // Restart the minute on any change: another prompt, motion anywhere on the screen, output that arrived while this
     // capture was taken, or evidence from another launch (#1695 review).
     if (!current || current.block !== shape.block || current.screen !== screen || outputMoved) {
-      this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false, screen, owner };
+      this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false, screen, owner, seenAt: mono };
       return;
     }
+    current.seenAt = mono;
     if (!current.active && mono - current.since >= UNRECOGNISED_PROMPT_STABLE_MS) {
       current.active = true;
       // A [y/n] the interactive-prompt detector knows was already told (interactive_prompt, after 10 s): held and
@@ -7102,6 +7113,18 @@ export class Daemon extends EventEmitter {
     if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return true;
     this.unrecognisedPrompt = null;
     return false;
+  }
+
+  /**
+   * #1691: a fresh pane read outside the scan (a delivery probe), taken at `mono`: when it no longer shows exactly the
+   * tracked prompt, the evidence ends — counting or active, so a return needs a fresh minute (#1695 r2). Only a read
+   * taken after the capture that last confirmed the evidence can void it: an older one says nothing about now.
+   */
+  private noteFreshPaneRead(pane: string, mono: number): void {
+    const current = this.unrecognisedPromptCurrent();
+    if (!current || mono < current.seenAt) return;
+    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return;
+    this.unrecognisedPrompt = null;
   }
 
   /** #1691: the screen as the stability clock compares it (trailing blanks are not motion). */
@@ -7357,13 +7380,17 @@ export class Daemon extends EventEmitter {
    */
   private async probeBlockingDialog(): Promise<{ state: "dialog"; dialog: RuntimeDialog } | { state: "clear" } | { state: "unknown" }> {
     if (!this.tmux || !this.backend) return { state: "clear" };
+    // #1691: a probe is a fresh read — it may end unrecognised-prompt evidence even when no dialog is listed.
+    const tracking = this.unrecognisedPrompt !== null;
     const dialogs = this.deliveryBlockingDialogs();
-    if (dialogs.length === 0) return { state: "clear" };
+    if (dialogs.length === 0 && !tracking) return { state: "clear" };
+    const probeMono = performance.now();
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch (err) {
       this.logger.debug({ err }, "capture-pane failed during the dialog probe — pane state unknown");
       return { state: "unknown" };
     }
+    if (tracking) this.noteFreshPaneRead(pane, probeMono);
     for (const dialog of dialogs) {
       if (!Daemon.dialogMatches(dialog, pane)) continue;
       // Same one-shot fence as the scanners: a safety choice already sent in
