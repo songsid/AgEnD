@@ -16240,7 +16240,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (strategy === "runtime" && backendName === "claude-code") {
       const result = await this.runRuntimeModelSwitch(instanceName, model);
       if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
-      if (result.outcome === "not_sent") return `${warn}${t("effort.not_running", instanceName)}`;
+      if (result.outcome === "not_sent") return `${warn}${t("model.switch_not_sent", instanceName, model)}`;
       const persistedNow = this.persistInstanceModel(instanceName, model);
       if (!persistedNow) return `${warn}${t("model.persist_failed", instanceName)}`;
       const head = result.outcome === "switched"
