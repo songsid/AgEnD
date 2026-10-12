@@ -159,19 +159,19 @@ describe("#1686: Telegram button-click failure carries the link/button", () => {
     await h.typed(); await flush();
     expect(h.nonce()).toBeTruthy();
     await h.click("local"); await flush();
-    const calls = h.adapter.editMessageRemoveButtons.mock.calls;
+    const calls = (h.adapter.editMessageRemoveButtons.mock.calls as any[][]);
     expect(calls.length).toBeGreaterThan(0);
-    const urlButtons = calls[calls.length - 1]?.[4];
+    const urlButtons = calls[calls.length - 1]?.[4] as Array<{ label: string; url: string }> | undefined;
     expect(Array.isArray(urlButtons)).toBe(true);
-    expect(urlButtons[0]?.url).toBe(`https://t.me/${VALID}?start=web`);
-    expect(urlButtons[0]?.label).toBe(t("dashboard.start_web_label"));
+    expect(urlButtons![0]?.url).toBe(`https://t.me/${VALID}?start=web`);
+    expect(urlButtons![0]?.label).toBe(t("dashboard.start_web_label"));
   });
 
   it("outcome text does NOT contain the sign-in code", async () => {
     const h = rig("telegram");
     await h.typed(); await flush();
     await h.click("local"); await flush();
-    const calls = h.adapter.editMessageRemoveButtons.mock.calls;
+    const calls = (h.adapter.editMessageRemoveButtons.mock.calls as any[][]);
     const text: string = calls[calls.length - 1]?.[2] ?? "";
     expect(text).not.toMatch(/[A-Z2-7]{4}-[A-Z2-7]{4}/);
   });
@@ -189,7 +189,7 @@ describe("#1686: Telegram button-click failure carries the link/button", () => {
       expiredText: "stale", retire: undefined, nonce: "abc123", timer: undefined,
     };
     await h.s.retireNonceButtons(fakeEntry, "menu", "Discord failure text");
-    const calls = discordAdapter.editMessageRemoveButtons.mock.calls;
+    const calls = (discordAdapter.editMessageRemoveButtons.mock.calls as any[][]);
     expect(calls.length).toBe(1);
     // 5th arg must be absent (undefined not passed) — Discord does NOT get urlButtons
     expect(calls[0]).toHaveLength(4);
@@ -209,7 +209,7 @@ describe("#1686: Telegram button-click failure carries the link/button", () => {
     };
     const urlButtons = [{ label: "Start →", url: "https://t.me/bot?start=web" }];
     await h.s.retireNonceButtons(fakeEntry, "menu", "Discord failure text", undefined, urlButtons);
-    const calls = discordAdapter.editMessageRemoveButtons.mock.calls;
+    const calls = (discordAdapter.editMessageRemoveButtons.mock.calls as any[][]);
     expect(calls.length).toBe(1);
     // When urlButtons IS provided, it DOES reach the adapter (the guard is in handleDashboardCallback, not here)
     expect(calls[0]).toHaveLength(5);
@@ -254,11 +254,11 @@ describe("#1686: no code in a group on any path", () => {
     await h.typed(); await flush();
     await h.click("local"); await flush();
     const codePattern = /[A-Z2-7]{4}-[A-Z2-7]{4}/;
-    for (const call of h.adapter.sendText.mock.calls) {
+    for (const call of (h.adapter.sendText.mock.calls as any[][])) {
       const text = String(call[1] ?? "");
       expect(text).not.toMatch(codePattern);
     }
-    for (const call of h.adapter.editMessageRemoveButtons.mock.calls) {
+    for (const call of (h.adapter.editMessageRemoveButtons.mock.calls as any[][])) {
       const text = String(call[2] ?? "");
       expect(text).not.toMatch(codePattern);
     }
