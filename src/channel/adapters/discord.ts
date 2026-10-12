@@ -1372,6 +1372,28 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   getBotUserId(): string | undefined { return this.client.user?.id; }
 
+  /**
+   * #1682: names for mention ids, from what discord.js already holds — the guild members (their display name), the
+   * users, the roles and the channels in its caches. Never a request: an id it has not seen is simply not named.
+   */
+  mentionNames(query: { u: string[]; r: string[]; c: string[] }): { u: Record<string, string>; r: Record<string, string>; c: Record<string, string> } {
+    const out = { u: Object.create(null) as Record<string, string>, r: Object.create(null) as Record<string, string>, c: Object.create(null) as Record<string, string> };
+    const client = this.client;
+    const guilds = [...(client.guilds?.cache?.values() ?? [])];
+    for (const id of query.u) {
+      let name: string | undefined;
+      for (const g of guilds) { const m = g.members?.cache?.get(id); if (m) { name = m.displayName; break; } }
+      if (!name) { const u = client.users?.cache?.get(id); if (u) name = u.globalName ?? u.username; }
+      if (name) out.u[id] = name;
+    }
+    for (const id of query.r) for (const g of guilds) { const r = g.roles?.cache?.get(id); if (r) { out.r[id] = r.name; break; } }
+    for (const id of query.c) {
+      const ch = client.channels?.cache?.get(id) as { name?: unknown } | undefined;
+      if (ch && typeof ch.name === "string") out.c[id] = ch.name;
+    }
+    return out;
+  }
+
   /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
   async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const user = await this.client.users.fetch(userId);

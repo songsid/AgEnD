@@ -172,6 +172,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
+import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { WebPrefsStore } from "./web-prefs.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
@@ -1153,6 +1154,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webChatStore: WebChatDiskStore | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
   readonly webFiles = new WebFileLedger();
+  /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
+  readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
   /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
   get webPrefs(): WebPrefsStore {
@@ -7389,6 +7392,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    // #1682: who wrote, for the web chat's mention pills (a person, never one of the fleet's bots: those are named by
+    // the instance they belong to).
+    if (!msg.isBotMessage && msg.userId && msg.username) this.seenUsers.record(msg.userId, msg.username);
     // Platform author identity is the authority. This runs before routing,
     // collab/commands/access/dedup and does not depend on any echo setting/ACK.
     const fleetBotIds = new Set<string>();
@@ -10091,6 +10097,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { bytes: readFileSync(path), mime, version: Math.floor(statSync(path).mtimeMs).toString(36) };
     } catch { return null; }
   }
+  /**
+   * #1682 GET /ui/mentions: names for the mention ids a page found in what it rendered — from memory only, in order: the
+   * fleet's bots (an instance's own bot is that instance's label), the people seen on inbound messages, and the Discord
+   * adapters' caches (members, users, roles, channels). Never a request.
+   */
+  webMentionNames(query: MentionQuery): MentionNames {
+    const bots: MentionSource = (q) => {
+      const u: Record<string, string> = Object.create(null);
+      if (!q.u.length) return { u };
+      let own = new Map<string, string>();
+      try { own = this.ownBots(); } catch { /* none known */ }
+      const profiles = profileIdentities(this.dataDir);
+      const rooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
+      for (const [instance, connection] of own) {
+        const id = this.adapters.get(connection)?.getBotUserId?.();
+        if (!id || !q.u.includes(id)) continue;
+        const cfg = Object.hasOwn(this.fleetConfig?.instances ?? {}, instance) ? this.fleetConfig!.instances[instance] : undefined;
+        u[id] = resolveInstanceIdentity({ cfg, classic: rooms.get(instance), profile: profiles.get(instance) }).display_name || instance;
+      }
+      return { u };
+    };
+    const seen: MentionSource = (q) => {
+      const u: Record<string, string> = Object.create(null);
+      for (const id of q.u) { const name = this.seenUsers.get(id); if (name) u[id] = name; }
+      return { u };
+    };
+    const caches: MentionSource[] = [...this.adapters.values()].filter(a => typeof a.mentionNames === "function").map(a => (q: MentionQuery) => a.mentionNames!(q));
+    return resolveMentions(query, [bots, seen, ...caches]);
+  }
+
   /** GET /ui/emojis: the custom emoji of every server the fleet's Discord bots are in (the Settings picker's cache). */
   async webEmojiList(): Promise<Array<{ id: string; name: string; animated: boolean }>> {
     const adopted: Array<{ id: string; world: AdapterWorld; emojis: GuildEmoji[] }> = [];

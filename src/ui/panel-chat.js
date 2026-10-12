@@ -28,6 +28,7 @@ import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { createEmojiIndex } from "./chat-emojis.js";
+import { createMentionIndex } from "./chat-mentions.js";
 import { PreviewPanel, openPanel, panelStore, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
@@ -45,6 +46,7 @@ export let store = null;
 let announceTimer = null;
 /** #1630: which Discord server emoji this page may draw (created with the store, in boot). */
 let emojiIndex = null;
+let mentionIndex = null;   // #1682: the names of the mentions shown
 function announce(text) {
   let el = document.getElementById("announcer");
   if (!el) { el = document.createElement("div"); el.id = "announcer"; el.className = "sr-only"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite"); el.setAttribute("aria-atomic", "true"); document.body.appendChild(el); }
@@ -73,6 +75,7 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     fetch: (...a) => fetch(...a), toast, announce, t, setTimeout: (fn, ms) => setTimeout(fn, ms), confirm: confirmDialog, ...deps,
   });
   emojiIndex = createEmojiIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
+  mentionIndex = createMentionIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   store.attach(stream);
   // #1306: what the server said about previews for this load. The page-wide message and storage listeners this adds
   // belong to the app, once (they are never per mount).
@@ -243,11 +246,14 @@ function Thread({ name, th }) {
       panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o) },   // #1481
       openImage: openLightbox,                                               // an image, full size, in the page
       emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
+      mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
     });
     th.current = thread;
     // #1630: the server-emoji list is read once a message shows a tag; when it arrives, those messages are drawn again.
-    const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); };
+    // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
+    const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
     const offEmojis = emojiIndex ? emojiIndex.subscribe(() => thread.render(store.state.msgs[name] || [])) : () => {};
+    const offMentions = mentionIndex ? mentionIndex.subscribe(() => thread.render(store.state.msgs[name] || [])) : () => {};
     thread.render(store.state.msgs[name] || [], { restore: store.state.scrollMemo[name] ?? null });
     wantEmojis(store.state.msgs[name]);
     const off = store.subscribe((instance, kind) => {
@@ -262,7 +268,7 @@ function Thread({ name, th }) {
     sc.addEventListener("scroll", onScroll, { passive: true });
     ls.addEventListener("click", thread.onClick);
     return () => {
-      off(); offPv(); offPanel(); offEmojis();
+      off(); offPv(); offPanel(); offEmojis(); offMentions();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       thread.dispose();                     // the whole thread goes: every preview in it stops first
