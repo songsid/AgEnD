@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon, UNRECOGNISED_PROMPT_STABLE_MS } from "../src/daemon.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { MuseBackend } from "../src/backend/muse.js";
+import { OpenCodeBackend } from "../src/backend/opencode.js";
 import { InstanceLifecycle, type IncidentEventSource, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { presentationState } from "../src/interaction-observation.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
@@ -36,15 +38,18 @@ const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), c
 beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "agend-1691-")); mkdirSync(join(dir, "inst")); logger.warn.mockClear(); });
 afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); setLocale("en"); });
 
-function rig(opts: { extraDialogs?: object[] } = {}) {
-  const screen = { text: SWITCH };
+function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" | "opencode"; start?: string } = {}) {
+  const screen = { text: opts.start ?? SWITCH };
   const keys: string[] = [];
   const pasted: string[] = [];
-  const real = new ClaudeCodeBackend(join(dir, "inst"));
+  const kind = opts.backend ?? "claude-code";
+  const real = kind === "muse" ? new MuseBackend(join(dir, "inst")) as any
+    : kind === "opencode" ? new OpenCodeBackend(join(dir, "inst")) as any
+      : new ClaudeCodeBackend(join(dir, "inst"));
   const backend = Object.create(real) as ClaudeCodeBackend;
   if (opts.extraDialogs) (backend as any).getRuntimeDialogs = () => [...real.getRuntimeDialogs(), ...opts.extraDialogs!];
   const d: any = new Daemon("w", {
-    working_directory: dir, backend: "claude-code", log_level: "silent",
+    working_directory: dir, backend: kind, log_level: "silent",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
   } as any, join(dir, "inst"), false, backend, undefined, logger);
@@ -126,6 +131,110 @@ describe("#1691: an agent's numbered output is not a prompt", () => {
         await r.poll(5_000);
       }
       expect([r.parked.length, r.awaiting(), r.keys.length]).toEqual([0, false, 0]);
+    } finally { r.stop(); }
+  });
+});
+
+// ── #1695 review (Prism): the four P2 groups, each with its control ─────────────────────────────────────────────
+const MUSE_IDLE = readFileSync(join(process.cwd(), "tests", "fixtures", "muse-1.4.4", "echo-idle.pane.txt"), "utf8");
+const OPENCODE_IDLE = readFileSync(join(process.cwd(), "tests", "fixtures", "opencode-1.18.34-ready-after-tool-auto.pane.txt"), "utf8");
+const YN = "Overwrite config.yaml? [y/N]";
+/** The question typed into the CLI's own input row (a draft), nothing else changed. */
+const MUSE_DRAFT = MUSE_IDLE.replace(/^❯[ \t\u00a0]*$/m, `❯ ${YN}`);
+const OPENCODE_DRAFT = (() => {
+  const rows = OPENCODE_IDLE.split("\n");
+  const build = rows.findIndex(r => /Build auto · Mock Model/.test(r));
+  rows[build - 1] = rows[build - 1]!.replace(/┃.*$/, `┃  ${YN}`);
+  return rows.join("\n");
+})();
+
+describe("#1695 P2-1: a draft in muse's or opencode's own input box is the CLI's input, not a prompt", () => {
+  it.each([["muse", MUSE_DRAFT, MUSE_IDLE], ["opencode", OPENCODE_DRAFT, OPENCODE_IDLE]] as const)("%s: held for three minutes — nothing (and the idle screen too)", async (backend, draft, idle) => {
+    expect(unrecognisedPromptShape(draft)?.kind, "shaped like a prompt at the bottom").toBe("yes-no");
+    for (const pane of [draft, idle]) {
+      const r = rig({ backend, start: pane });
+      try {
+        await r.poll(3 * 60_000);
+        expect([r.parked.length, r.awaiting(), await r.held(), r.keys.length], backend).toEqual([0, false, "clear", 0]);
+      } finally { r.stop(); }
+    }
+  });
+});
+
+describe("#1695 P2-2: motion anywhere on the screen restarts the minute", () => {
+  it.each([
+    ["a busy spinner under the block", (i: number) => `${SWITCH.trimEnd()}\n✢ Accomplishing… (${i}s · ↓ 38.0k tokens)\n`],
+    ["a ticking footer that is no busy indicator", (i: number) => `${SWITCH.trimEnd()}\n  updated ${i}s ago\n`],
+  ])("%s for 100 s: not active; once it stops, active after a minute (control)", async (_n, frame) => {
+    const r = rig();
+    try {
+      for (let i = 0; i < 20; i++) { r.screen.text = frame(i); await r.poll(5_000); }
+      expect([r.parked.length, r.awaiting(), await r.held()]).toEqual([0, false, "clear"]);
+      r.screen.text = SWITCH;
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect([unrecognised(r.parked).length, await r.held()]).toEqual([1, "dialog"]);
+    } finally { r.stop(); }
+  });
+
+  it("output that arrived while the pane was captured restarts it", async () => {
+    const r = rig();
+    try {
+      // Output lands while each capture is being taken (same screen text): the capture is not quiet evidence.
+      const capture = r.d.tmux.capturePane;
+      r.d.tmux.capturePane = async () => { r.d.instanceStateLastOutputAt = Date.now(); return capture(); };
+      await r.poll(100_000);
+      expect([r.parked.length, r.awaiting()]).toEqual([0, false]);
+      r.d.tmux.capturePane = capture;   // control: quiet captures — active after a minute
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(unrecognised(r.parked)).toHaveLength(1);
+    } finally { r.stop(); }
+  });
+});
+
+describe("#1695 P2-3: evidence never outlives its launch", () => {
+  it("active, then a respawn: the new launch's first probe is clear; it builds its own minute", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(await r.held()).toBe("dialog");
+      r.d.beginSpawn(); r.d.endSpawn();
+      expect(await r.held(), "first probe of the new launch").toBe("clear");
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(await r.held(), "control: its own minute").toBe("dialog");
+    } finally { r.stop(); }
+  });
+
+  it("55 s into the minute, then a respawn: 15 s later it is not active", async () => {
+    const r = rig();
+    try {
+      await r.poll(55_000);
+      r.d.beginSpawn(); r.d.endSpawn();
+      await r.poll(15_000);
+      expect([r.awaiting(), await r.held(), unrecognised(r.parked).length]).toEqual([false, "clear", 0]);
+    } finally { r.stop(); }
+  });
+
+  it("frozen monitors or another launch fence void it too", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      r.d.launchFenceEpoch++;
+      expect(await r.held()).toBe("clear");
+    } finally { r.stop(); }
+  });
+});
+
+describe("#1695 P2-4: a fresh read without the prompt ends the evidence", () => {
+  it("probe clear, then the prompt back before any scan: still clear — it needs a fresh minute", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      r.screen.text = AT_PROMPT;
+      expect(await r.held()).toBe("clear");
+      r.screen.text = SWITCH;
+      expect(await r.held(), "no scan in between").toBe("clear");
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(await r.held(), "control: a fresh minute").toBe("dialog");
     } finally { r.stop(); }
   });
 });

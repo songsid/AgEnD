@@ -669,6 +669,8 @@ const STARTUP_DIALOG_BUDGET_MS = 30_000;
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** #1691: a prompt no table knows must sit unchanged this long (monotonic) before it holds deliveries and is reported. */
 export const UNRECOGNISED_PROMPT_STABLE_MS = 60_000;
+/** #1691: the last rows a backend without a composer reader shows its ready chrome in (status bar, prompt hint). */
+const COMPOSER_TAIL_ROWS = 4;
 /** After a runtime dialog's keys, how long the pane gets to repaint before it is read again to see whether they took. */
 const DIALOG_ANSWER_SETTLE_MS = 300;
 /** Consecutive answers one runtime dialog ignored (still on screen right after the keys) before it is reported for a human. */
@@ -1391,7 +1393,13 @@ export class Daemon extends EventEmitter {
    * #1691: the prompt at the bottom of the pane that no backend table knows — its block, since when (performance.now)
    * it has been unchanged, and whether that has lasted UNRECOGNISED_PROMPT_STABLE_MS. Updated by the runtime scan.
    */
-  private unrecognisedPrompt: { block: string; shape: PromptShape; since: number; active: boolean; reportedElsewhere: boolean } | null = null;
+  private unrecognisedPrompt: {
+    block: string; shape: PromptShape; since: number; active: boolean; reportedElsewhere: boolean;
+    /** The whole screen the minute is counted on: any motion anywhere (a spinner, a timer, a footer) restarts it. */
+    screen: string;
+    /** The launch the evidence belongs to: a respawn, a new launch fence or frozen monitors void it (#1695 review). */
+    owner: InteractionOwner;
+  } | null = null;
   /**
    * #1691: the catch-all for that prompt, as a hold-only runtime dialog — so the delivery hold, awaiting_input, the
    * Needs-you item and the single parked report are the existing ones. Never answered (hold-only, no keys).
@@ -3503,7 +3511,7 @@ export class Daemon extends EventEmitter {
         // The scan of this pane is synchronous until it answers a dialog (an await) or ends: attributed (#1235).
         scanStartedAt = performance.now();
         if (stale()) return;
-        this.trackUnrecognisedPrompt(pane, captureMono);
+        this.trackUnrecognisedPrompt(pane, captureMono, this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureAt);
         // The backend's dialogs, and #1691's catch-all while an unrecognised prompt is active (decided just above).
         const dialogs = this.runtimeDialogs();
         if (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureAt) {
@@ -6131,6 +6139,7 @@ export class Daemon extends EventEmitter {
   /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
   private freezeRuntimeMonitors(): void {
     this.runtimeMonitorsFrozen = true;
+    this.unrecognisedPrompt = null;
     this.launchFenceEpoch++;
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
@@ -7008,7 +7017,7 @@ export class Daemon extends EventEmitter {
    */
   private runtimeDialogs(): RuntimeDialog[] {
     const dialogs = this.backend?.getRuntimeDialogs?.() ?? [];
-    return this.unrecognisedPrompt?.active ? [...dialogs, this.unrecognisedPromptDialog] : dialogs;
+    return this.unrecognisedPromptCurrent()?.active ? [...dialogs, this.unrecognisedPromptDialog] : dialogs;
   }
 
   /**
@@ -7019,15 +7028,29 @@ export class Daemon extends EventEmitter {
     const backend = this.backend;
     if (!backend) return false;
     if (backend.readInputRow) return backend.readInputRow(pane) !== null;
+    // muse: its live input box, null when the bottom of the screen is not its layout (#829).
+    if (backend.inputDraft) return backend.inputDraft(pane) !== null;
     if (backend.isDeliveryInputReadyPane) return backend.isDeliveryInputReadyPane(pane);
     const bottom = backend.getBottomReadyPattern?.();
-    return bottom ? bottom.test(pane) : false;
+    if (bottom) { bottom.lastIndex = 0; return bottom.test(pane); }
+    // No reader of its own (opencode, grok, …): its ready chrome in the last rows of the screen — a status bar or prompt
+    // hint drawn under the input box, never transcript text (nothing is drawn below it). Not the whole pane: a reply
+    // quoting "ctrl+p commands" higher up is not the CLI at its prompt.
+    const ready = backend.getReadyPattern();
+    const tail = pane.replace(/\r/g, "").split("\n").map(r => r.trimEnd()).filter(r => r.trim() !== "").slice(-COMPOSER_TAIL_ROWS).join("\n");
+    ready.lastIndex = 0;
+    return ready.test(tail);
   }
 
-  /** #1691: the prompt shape this pane shows, when nothing else explains it (no known dialog, login, idle composer). */
+  /**
+   * #1691: the prompt shape this pane shows, when nothing else explains it (no known dialog, login, idle composer, and
+   * the CLI is not showing its busy indicator).
+   */
   private unrecognisedPromptCandidate(pane: string): PromptShape | null {
     const shape = unrecognisedPromptShape(pane);
     if (!shape) return null;
+    const busy = this.backend?.getBusyPattern?.() ?? null;
+    if (busy) { busy.lastIndex = 0; if (busy.test(pane)) return null; }
     if ((this.backend?.getRuntimeDialogs?.() ?? []).some(dialog => Daemon.dialogMatches(dialog, pane))) return null;
     if (LOGIN_FLOWS[this.config.backend ?? "claude-code"]?.loginScreenActive?.(pane)) return null;
     if (this.cliComposerShowing(pane)) return null;
@@ -7039,12 +7062,16 @@ export class Daemon extends EventEmitter {
    * becomes active (held, awaiting_input, reported once by trackDialogParked). Any other screen ends it. A turn keeps
    * changing the pane (spinner, timer, streamed text), so its clock never completes mid-turn.
    */
-  private trackUnrecognisedPrompt(pane: string, mono: number): void {
+  private trackUnrecognisedPrompt(pane: string, mono: number, outputMoved: boolean): void {
     const shape = this.unrecognisedPromptCandidate(pane);
     if (!shape) { this.unrecognisedPrompt = null; return; }
-    const current = this.unrecognisedPrompt;
-    if (!current || current.block !== shape.block) {
-      this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false };
+    const screen = Daemon.stableScreen(pane);
+    const owner = this.interactionOwner();
+    const current = this.unrecognisedPromptCurrent();
+    // Restart the minute on any change: another prompt, motion anywhere on the screen, output that arrived while this
+    // capture was taken, or evidence from another launch (#1695 review).
+    if (!current || current.block !== shape.block || current.screen !== screen || outputMoved) {
+      this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false, screen, owner };
       return;
     }
     if (!current.active && mono - current.since >= UNRECOGNISED_PROMPT_STABLE_MS) {
@@ -7057,11 +7084,32 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  /** #1691: the catch-all's predicate — the tracked prompt is active and this pane still shows exactly it. */
-  private unrecognisedPromptActive(pane: string): boolean {
+  /** #1691: the tracked evidence, if it still belongs to this launch (else it is dropped). */
+  private unrecognisedPromptCurrent(): NonNullable<Daemon["unrecognisedPrompt"]> | null {
     const current = this.unrecognisedPrompt;
+    if (current && (this.runtimeMonitorsFrozen || !sameInteractionOwner(current.owner, this.interactionOwner()))) {
+      this.unrecognisedPrompt = null;
+      return null;
+    }
+    return current;
+  }
+
+  /**
+   * #1691: the catch-all's predicate — the tracked prompt is active and this pane still shows exactly it. A pane read
+   * that does not (the prompt gone, or another one) ends the evidence there and then: a return needs a fresh minute
+   * (#1695 review), whichever capture saw it first.
+   */
+  private unrecognisedPromptActive(pane: string): boolean {
+    const current = this.unrecognisedPromptCurrent();
     if (!current?.active) return false;
-    return this.unrecognisedPromptCandidate(pane)?.block === current.block;
+    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return true;
+    this.unrecognisedPrompt = null;
+    return false;
+  }
+
+  /** #1691: the screen as the stability clock compares it (trailing blanks are not motion). */
+  private static stableScreen(pane: string): string {
+    return pane.replace(/\r/g, "").split("\n").map(r => r.trimEnd()).join("\n").trimEnd();
   }
 
   /** Passive input-unavailable phases relevant to the current spawn only. */
@@ -9984,6 +10032,7 @@ export class Daemon extends EventEmitter {
    */
   private beginSpawn(): void {
     this.dialogAnswers = null;
+    this.unrecognisedPrompt = null;   // #1691: a new launch builds its own minute
     this.capacityNudge = null;
     this.lastErrorEpisode = null;
     this.nudgeBaselines = null;
