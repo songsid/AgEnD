@@ -249,6 +249,10 @@ describe("#1699: logins and invariant 5 (a switch starts fresh, with a handover)
     const odd = profileDir("odd");
     mkdirSync(join(odd, ".claude.json"), { recursive: true });   // EISDIR: there, not readable
     expect(claudeStoreHasLogin(odd)).toBeNull();
+    const nul = profileDir("null");
+    mkdirSync(nul, { recursive: true });
+    writeFileSync(join(nul, ".credentials.json"), "null");          // valid JSON, not a credentials file
+    expect(claudeStoreHasLogin(nul)).toBeNull();
     writeJson(join(profileDir("absent"), "x.json"), {});
     expect(claudeStoreHasLogin(profileDir("absent")), "neither file: signed out").toBe(false);
   });
