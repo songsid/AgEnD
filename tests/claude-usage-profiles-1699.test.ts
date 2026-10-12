@@ -188,6 +188,47 @@ describe("macOS: the profile's own Keychain item", () => {
   });
 });
 
+describe("review r1: the Keychain as claude reads it", () => {
+  /** A Keychain holding one item: `service` under `account` → `secret`. */
+  const keychain = (account: string, secret: string, username: () => string = () => "unused") =>
+    setClaudeKeychainForTests({ platform: "darwin", username, read: async (service, acct) => (service === claudeKeychainService(profileHome("work")) && acct === account ? secret : null) });
+  const KEY = JSON.stringify({ claudeAiOauth: { accessToken: "dummy-keychain-work" } });
+  const workRow = () => providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never)[0];
+
+  it("no $USER: the OS user name is the account", async () => {
+    delete process.env.USER;
+    keychain("dummy-os-user", KEY, () => "dummy-os-user");
+    const u = await workRow().fetch();
+    expect([bearers, session(u), await getClaudeOAuthToken(profileHome("work"))]).toEqual([["dummy-keychain-work"], 44, "dummy-keychain-work"]);
+  });
+
+  it("a $USER claude would not use (not [a-zA-Z0-9._-]+), or no name at all: claude-code-user", async () => {
+    process.env.USER = "bad account";
+    keychain("claude-code-user", KEY);
+    const a = await workRow().fetch();
+    delete process.env.USER;
+    keychain("claude-code-user", KEY, () => { throw new Error("no passwd entry"); });
+    bearers = [];
+    const b = await workRow().fetch();
+    expect([session(a), session(b), bearers]).toEqual([44, 44, ["dummy-keychain-work"]]);
+  });
+
+  it("an item with no OAuth in it is the profile's login (none): an older .credentials.json beside it is not read", async () => {
+    keychain("someone", JSON.stringify({ mcpOAuth: {} }));
+    process.env.USER = "someone";
+    credentials(profileHome("work"), "dummy-team");
+    const u = await workRow().fetch();
+    expect([bearers, u.metrics, u.hintI18n?.key, await getClaudeOAuthToken(profileHome("work"))]).toEqual([[], [], "usage.hint.claude_profile_signed_out_chat", null]);
+  });
+
+  it("control: an item that is not a credentials document (unparseable) is no item — the file is read", async () => {
+    keychain("someone", "not json");
+    process.env.USER = "someone";
+    credentials(profileHome("work"), "dummy-work");
+    expect(session(await workRow().fetch())).toBe(22);
+  });
+});
+
 describe("statusline rate limits stay with their subscription", () => {
   /** The usage API is down: each row falls back to the limits its own instances wrote. */
   const apiDown = () => vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) })));
@@ -206,6 +247,35 @@ describe("statusline rate limits stay with their subscription", () => {
     const again = [];
     for (const r of rows) again.push([r.id, session(await r.fetch())]);
     expect(again).toEqual([["claude", 15], ["claude:work", 55]]);
+  });
+
+  it("review r1: a token in the environment can sign the profile's instances in — their readings are not the profile's", async () => {
+    statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
+    apiDown();
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "dummy-shared";
+    const workRow = () => providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never)[0];
+    const signedOut = await workRow().fetch();                        // (a) no login of its own
+    credentials(profileHome("work"), "dummy-work");
+    const failing = await workRow().fetch();                          // (b) its own login, API down
+    expect([session(signedOut), signedOut.hintI18n?.key, session(failing), failing.status]).toEqual([null, "usage.hint.claude_profile_signed_out_chat", null, "error"]);
+  });
+
+  it("review r1: the same with the token exported in a shell rc (the pane's shell reads it)", async () => {
+    statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
+    credentials(profileHome("work"), "dummy-work");
+    apiDown();
+    writeFileSync(join(root, ".bashrc"), "export CLAUDE_CODE_OAUTH_TOKEN=dummy-shared\n");
+    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const u = await work.fetch();
+    expect([session(u), u.status]).toEqual([null, "error"]);
+  });
+
+  it("review r1 control: no token in the environment — the profile's own reading is its fallback", async () => {
+    statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
+    credentials(profileHome("work"), "dummy-work");
+    apiDown();
+    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    expect(session(await work.fetch())).toBe(71);
   });
 
   it("another profile's reading is not this profile's; a reading with no transcript path is the shared login's", async () => {

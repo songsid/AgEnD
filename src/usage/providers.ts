@@ -35,7 +35,7 @@ import {
 } from "../backend/credential-profile.js";
 import { claudeKeychainService } from "../backend/claude-code.js";
 import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { getProviderRateLimit } from "./provider-alerts.js";
 import { MUSE_USAGE_STALE_MS, readMuseUsageSnapshot } from "../muse-usage-relay.js";
 import {
@@ -323,10 +323,21 @@ const readKeychainItem: KeychainRead = (service, account) => new Promise(done =>
     done(err ? null : String(stdout).trim() || null);
   });
 });
-let claudeKeychain: { platform: NodeJS.Platform; read: KeychainRead } = { platform: process.platform, read: readKeychainItem };
-/** Test seam (#1699): the platform and the Keychain read; null restores both. */
+const defaultKeychain = () => ({ platform: process.platform, read: readKeychainItem, username: () => userInfo().username });
+let claudeKeychain: { platform: NodeJS.Platform; read: KeychainRead; username: () => string } = defaultKeychain();
+/** Test seam (#1699): the platform, the Keychain read and the OS user name; null restores all three. */
 export function setClaudeKeychainForTests(seam: Partial<typeof claudeKeychain> | null): void {
-  claudeKeychain = seam ? { ...claudeKeychain, ...seam } : { platform: process.platform, read: readKeychainItem };
+  claudeKeychain = seam ? { ...claudeKeychain, ...seam } : defaultKeychain();
+}
+
+/**
+ * The account claude files its Keychain item under (2.1.296, as Prism read it from the official darwin bundle, #1713
+ * review): `$USER`, else the OS user name; one that cannot be read or is not `[a-zA-Z0-9._-]+` is "claude-code-user".
+ */
+function claudeKeychainAccount(): string {
+  let name: string | undefined;
+  try { name = process.env.USER || claudeKeychain.username(); } catch { name = undefined; }
+  return name && /^[a-zA-Z0-9._-]+$/.test(name) ? name : "claude-code-user";
 }
 
 /**
@@ -337,11 +348,27 @@ export function setClaudeKeychainForTests(seam: Partial<typeof claudeKeychain> |
  */
 async function readClaudeProfileLogin(configDir: string): Promise<ClaudeOAuthFile | null> {
   if (claudeKeychain.platform === "darwin") {
-    const secret = await claudeKeychain.read(claudeKeychainService(configDir), process.env.USER || "claude-code-user");
-    const fromKeychain = secret ? claudeOAuthOf(secret) : null;
-    if (fromKeychain) return fromKeychain;
+    // As claude: a credentials document in the Keychain is THE login — one with no OAuth in it (say only MCP
+    // logins) means no OAuth login, and an older `.credentials.json` beside it is not consulted (#1713 review).
+    const secret = await claudeKeychain.read(claudeKeychainService(configDir), claudeKeychainAccount());
+    const document = secret ? credentialsDocument(secret) : null;
+    if (document) return claudeOAuthOf(secret!);
   }
   return readClaudeCredentialsFile(configDir);
+}
+
+/** A credentials document (any JSON object), or null — unparseable is no document, as claude reads its storage. */
+function credentialsDocument(json: string): Record<string, unknown> | null {
+  try { const v: unknown = JSON.parse(json); return v && typeof v === "object" ? v as Record<string, unknown> : null; } catch { return null; }
+}
+
+/**
+ * Whether a token the profile's own login does not control can reach claude in a profile's pane: AgEnD sets only
+ * `CLAUDE_CONFIG_DIR` for a profile, so `CLAUDE_CODE_OAUTH_TOKEN` from the fleet's environment, or exported in a
+ * shell rc the pane's shell reads, still signs it in — and outranks the stored login (#1713 review).
+ */
+function envTokenReachesClaude(): boolean {
+  return !!process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || !!tokenFromShellRc((path) => readFileSync(path, "utf-8"));
 }
 
 /** `path` is `dir` or inside it. */
@@ -379,11 +406,13 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
 
   // Read before anything else: it costs one stat per instance, needs no token,
   // and it is what keeps the panel useful when the API path cannot run at all.
+  // A profile's: only readings written under its own `projects/` — and only when nothing but its own login can
+  // have signed those instances in. Where the conversation is says which config dir, not whose subscription: with
+  // a token in the environment the readings may be another account's, so none is this row's (#1713 review).
   const profilesRoot = resolve(getAgendHome(), "credential-profiles", "claude-code");
-  const statusline = readStatuslineRateLimits(undefined, undefined,
-    profileHome !== null ? (path) => path !== null && isWithin(path, join(profileHome, "projects"))
-      : scope.besideProfiles ? (path) => path === null || !isWithin(path, profilesRoot)
-        : undefined);
+  const statusline = profileHome !== null
+    ? (envTokenReachesClaude() ? null : readStatuslineRateLimits(undefined, undefined, (path) => path !== null && isWithin(path, join(profileHome, "projects"))))
+    : readStatuslineRateLimits(undefined, undefined, scope.besideProfiles ? (path) => path === null || !isWithin(path, profilesRoot) : undefined);
 
   const auth = profileHome !== null ? resolveClaudeAuth(file, {}, () => null) : resolveClaudeAuth(file);
   if (auth === null) {
