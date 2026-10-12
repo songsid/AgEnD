@@ -145,6 +145,21 @@ describe("one text size, across pages and page loads", () => {
 });
 
 describe("no style attribute (#1300): one attribute on the root, one custom property in the stylesheet", () => {
+  // #1674: on Chat, Details and Fleet the size is pure CSS — the root's attribute, read through --text-scale by the
+  // panel's scaled container — so a click changes it at once, with the panel still mounted and no navigation.
+  it.each([
+    ["Chat", "/ui/chat/web-dev", ".thread"],
+    ["Details", "/ui/fleet/agent/web-dev", ".p-details .panel-body"],
+    ["Fleet", "/ui/fleet/org", ".p-fleet .panel-body"],
+  ])("#1674: %s — Aa while it is mounted changes the size at once, on the container the stylesheet scales", async (_n, path, scaled) => {
+    const pg = await app(path, { agend_text_size: "m", agend_view_fit: "0" });
+    const panel = pg.root.querySelector(".panel");
+    expect(pg.root.querySelector(scaled), "the scaled container is on the page").not.toBeNull();
+    for (const want of ["l", "s", "m"]) {
+      pg.root.querySelector(".panel-head .hd-text").click(); await settle();
+      expect([pg.document.documentElement.dataset.textSize, pg.root.querySelector(".panel") === panel], want).toEqual([want, true]);
+    }
+  });
   it("the root carries data-text-size and no style; nothing in the headers has a style attribute", async () => {
     const pg = await app("/ui/fleet/agent/web-dev", { agend_text_size: "l", agend_view_fit: "0" });
     expect([pg.document.documentElement.getAttribute("data-text-size"), pg.document.documentElement.getAttribute("style")]).toEqual(["l", null]);
