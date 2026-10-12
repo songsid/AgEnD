@@ -360,6 +360,8 @@ export function handleViewRequest(
       return true;
     }
     if (method === "POST") {
+      // #1665: not over the public link (its route manifest no longer offers this write either).
+      if (gatewayRequestContext(req)) { json(res, 403, { error: "sort_order_not_over_public_link" }); return true; }
       readBody(req, 512 * 1024).then(buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
         let body: Array<{ item_type: string; item_name: string; sort_index: number; group_name?: string | null }>;

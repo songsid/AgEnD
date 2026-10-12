@@ -89,7 +89,7 @@ describe("the panel offers the same Allow previews", () => {
   it("not allowed: the panel says so (this browser, this address) with Allow previews; Preview is off", async () => {
     const { doc } = await panelNotAllowed();
     expect([note(doc), allowBtn(doc)?.textContent ?? null, runDisabled(doc)])
-      .toEqual(["HTML previews are off on this device (this browser, at this address). Allow previews", "Allow previews", true]);
+      .toEqual(["HTML previews are off. Allow previews", "Allow previews", true]);
   });
 
   it("Allow asks with the same confirm (chat.pvConfirm); confirmed: stored, Preview enabled — and nothing runs until it is clicked", async () => {
@@ -123,8 +123,8 @@ describe("the panel offers the same Allow previews", () => {
 describe("the notices in the page's language", () => {
   it("zh-TW: the panel's notice and button, the card's notice and the running banner", async () => {
     const { doc, pg } = await panelNotAllowed("zh-TW");
-    expect([note(doc), allowBtn(doc)?.textContent ?? null]).toEqual(["這台裝置（這個瀏覽器、這個網址）還沒允許 HTML 預覽。 允許預覽", "允許預覽"]);
-    expect(doc.querySelectorAll(".msg.agent .html-card .pv-note")[1]?.textContent ?? null, "the card not in the panel").toBe("這台裝置（這個瀏覽器、這個網址）還沒允許 HTML 預覽。可從這張卡片的 ⋯ 選單或側欄允許。");
+    expect([note(doc), allowBtn(doc)?.textContent ?? null]).toEqual(["還沒允許 HTML 預覽。 允許預覽", "允許預覽"]);
+    expect(doc.querySelectorAll(".msg.agent .html-card .pv-note")[1]?.textContent ?? null, "the card not in the panel").toBe("還沒允許 HTML 預覽。可從這張卡片的 ⋯ 選單或「設定 → 偏好設定」允許。");
     pg.storage.set("agend_html_preview", "on"); PV.onStorage({ key: "agend_html_preview" }); await settle();
     doc.querySelector(".pv-panel-run").click(); await settle();
     expect(doc.querySelector(".pv-panel .pv-banner .pv-banner-text")?.textContent ?? null).toBe("預覽會在隔離的框架裡執行 agent 的 HTML。它無法使用你的登入，但可能把資料傳出去。只預覽你信任的內容。預覽可能讓這個分頁變慢或卡住。");

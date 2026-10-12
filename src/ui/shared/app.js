@@ -5,6 +5,8 @@
 // session, and so is View (panel-view.js, loaded on demand). The panels that need a session live under /ui/js/ and are
 // reached only by the dynamic imports below, in "full" mode. A test walks the static imports over real HTTP and asserts
 // none of them names /ui/.
+// #1665 first: the host's preferences go into this browser's cache before any module below reads its key.
+import { bootPrefs } from "./app-prefs.js";
 import { html, render } from "./app-html.js";
 import { Shell, handleKey, showDialog, closeDrawer, openDrawer, shellStore, retryable, setNewInstanceOpener } from "./app-shell.js";
 import { installSwipe } from "./app-swipe.js";
@@ -79,6 +81,8 @@ if (mode === "full") {
   panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });
   // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
   startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
+  // #1665: this device's first upload of its own choices (once), then another device's changes at each status frame.
+  bootPrefs();
   onNewInstance = async () => {
     closeDrawer();                                 // on a phone the dialog opens from the drawer: the drawer goes first
     let m;

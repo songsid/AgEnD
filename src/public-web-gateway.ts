@@ -17,10 +17,12 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "POST" && ["/auth/login", "/auth/logout", "/auth/request-code"].includes(path)) return true;
   if (method === "DELETE" && /^\/auth\/sessions(?:\/[0-9a-f]{16})?$/.test(path)) return true;
   if (reads && /^\/api\/(pane|profile|avatar)\/[^/]+$/.test(path)) return true;
-  if (method === "POST" && (path === "/api/sort-order" || /^\/api\/(profile|avatar)\/[^/]+$/.test(path))) return true;
+  // #1665: the sidebar's order is a host preference now (/ui/prefs, read-only here); the old fleet-wide /api/sort-order
+  // write, which the page no longer makes, is not offered on the public link either.
+  if (method === "POST" && /^\/api\/(profile|avatar)\/[^/]+$/.test(path)) return true;
   if (method === "POST" && (/^\/stop\/[^/]+$/.test(path) || /^\/api\/instance\/[^/]+\/start$/.test(path))) return true;
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
-  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|cache)$/.test(path)) return true;
+  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|cache|prefs)$/.test(path)) return true;
   // #1630: avatars and server emoji, read-only — nothing a signed-in public user cannot already see in the page.
   if (method === "GET" && /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis)$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/(send|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|teams|config)$/.test(path)) return true;

@@ -245,6 +245,14 @@ describe("FleetManager status composers", () => {
     const tags = Object.fromEntries(rows.map(r => [r.name, r.tags]));
     expect([tags.worker, tags.claude, tags.classic]).toEqual([["AgEnD", "web"], [], ["classic"]]);
   });
+  it("#1665: the status frame carries the host preferences' revision (another device re-reads /ui/prefs), never their values", () => {
+    const fm = fleet(); config(shared, "model"); cache(shared, [["model", five]]);
+    const before = (fm.getUiStatus() as { prefs_rev: number }).prefs_rev;
+    fm.webPrefs.write("operator", new Map<string, unknown>([["theme", "dark"]]));
+    const frame = fm.getUiStatus() as Record<string, unknown>;
+    expect([before, frame.prefs_rev, JSON.stringify(frame).includes('"dark"')]).toEqual([0, 1, false]);
+    rmSync(join(root, "web-prefs.json"), { force: true });
+  });
   it("renders repeated fleet/Classic status without constructors, probes or home mutation", () => {
     const fm = fleet(); config(shared, "model"); cache(shared, [["model", five]]);
     arm();

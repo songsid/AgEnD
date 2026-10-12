@@ -1,14 +1,33 @@
 // #1408 §4: one dictionary for the app, namespaced (app.*, chat.*, fleet.*, …). A panel registers its own namespace
 // when it loads; t("chat.send") resolves it in the chosen language and falls back to English, then to the key.
-// The language is this browser's choice (agend_lang, the key every panel has used), else the device's.
+// The language is the person's choice — kept on the host since #1665 and cached in this browser as agend_lang, the key
+// every panel has used — else the device's.
 
 const tables = { en: {}, "zh-TW": {} };
 const listeners = new Set();
 
-function stored() {
-  try { const v = localStorage.getItem("agend_lang"); return v === "en" || v === "zh-TW" ? v : null; } catch { return null; }
+/** The device's own language: what applies when none is chosen. */
+export function deviceLanguage() { return typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "zh-TW" : "en"; }
+function cacheLang(v) { try { if (v) localStorage.setItem("agend_lang", v); else localStorage.removeItem("agend_lang"); } catch { /* this page only */ } }
+/**
+ * #1665: the signed-in page carries the host's values (<html data-prefs>) — the same rule as theme.js: the host's
+ * language is this page's (the browser's copy is refreshed, best effort); none chosen on the host and this device in
+ * step with it: the device's language; not in step yet, or no data-prefs: this browser's copy, else the device's.
+ */
+function initialLang() {
+  let d = null;
+  try { d = JSON.parse(document.documentElement.getAttribute("data-prefs") || "null"); } catch { d = null; }
+  if (d && typeof d === "object" && d.values && typeof d.values === "object") {
+    const host = d.values.lang;
+    if (host === "en" || host === "zh-TW") { cacheLang(host); return host; }
+    let inStep = false;
+    try { inStep = localStorage.getItem("agend_prefs_synced") === "1"; } catch { inStep = false; }
+    if (inStep) { cacheLang(null); return deviceLanguage(); }
+  }
+  try { const v = localStorage.getItem("agend_lang"); if (v === "en" || v === "zh-TW") return v; } catch { /* none */ }
+  return deviceLanguage();
 }
-let current = stored() || (typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "zh-TW" : "en");
+let current = initialLang();
 
 /** Add a namespace: `register("chat", { en: {...}, "zh-TW": {...} })`. */
 export function register(ns, byLang) {
@@ -19,11 +38,14 @@ export function register(ns, byLang) {
 
 export function lang() { return current; }
 
-/** Choose a language for this browser; every subscriber re-renders (a new navigation lease, §4). */
-export function setLang(next) {
+/**
+ * Choose a language; every subscriber re-renders (a new navigation lease, §4). `{ store: false }`: this page only —
+ * the host's "none chosen" arriving from another device (app-prefs.js), which leaves no copy in this browser.
+ */
+export function setLang(next, opts = {}) {
   if (next !== "en" && next !== "zh-TW") return;
   current = next;
-  try { localStorage.setItem("agend_lang", next); } catch { /* this page only */ }
+  if (opts.store !== false) cacheLang(next);
   if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = next === "zh-TW" ? "zh-Hant" : "en";
   for (const fn of listeners) fn(next);
 }
@@ -41,7 +63,7 @@ register("app", {
     brand: "AgEnD", fleet: "Fleet", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance",
     collapse: "Hide the sidebar", expand: "Show the sidebar", openMenu: "Open the sidebar", closeMenu: "Close the sidebar",
     theme: "Theme", themeSystem: "System", themeLight: "Light", themeDark: "Dark", language: "Language",
-    previews: "Allow HTML previews on this device", tour: "Tour", tourTitle: "Show the web chat tour again",
+    previews: "Allow HTML previews", tour: "Tour", tourTitle: "Show the web chat tour again",
     needsYou: "needs you", approxNote: "Read from the terminal, so approximate", chat: "Chat", details: "Details", instanceViews: "Views of {0}",
     textSize: "Text size: {0}", textSize_s: "S", textSize_m: "M", textSize_l: "L", textSize_fit: "Fit", usage: "Usage",
     statusRunning: "running", statusStopped: "stopped", statusPaused: "paused", statusCrashed: "crashed", statusWorking: "working", statusStuck: "looks stuck", statusIdle: "idle",
@@ -70,7 +92,7 @@ register("app", {
     brand: "AgEnD", fleet: "Fleet", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance",
     collapse: "隱藏側邊欄", expand: "顯示側邊欄", openMenu: "打開側邊欄", closeMenu: "關閉側邊欄",
     theme: "主題", themeSystem: "跟隨系統", themeLight: "淺色", themeDark: "深色", language: "語言",
-    previews: "允許這台裝置預覽 HTML", tour: "導覽", tourTitle: "再看一次網頁聊天導覽",
+    previews: "允許預覽 HTML", tour: "導覽", tourTitle: "再看一次網頁聊天導覽",
     needsYou: "等你回應", approxNote: "從終端畫面判讀，僅供參考", chat: "聊天", details: "詳細資訊", instanceViews: "{0} 的檢視",
     textSize: "字級：{0}", textSize_s: "小", textSize_m: "中", textSize_l: "大", textSize_fit: "剛好填滿", usage: "用量",
     statusRunning: "執行中", statusStopped: "已停止", statusPaused: "已暫停", statusCrashed: "已當掉", statusWorking: "工作中", statusStuck: "似乎卡住", statusIdle: "閒置",

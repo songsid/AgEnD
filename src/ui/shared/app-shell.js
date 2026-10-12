@@ -10,6 +10,7 @@ import { appStore, createStore, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
+import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav } from "./instance-nav.js";
 
@@ -158,12 +159,15 @@ function ViewOnlyNav({ route }) {
 export function DevicePrefs({ labels = false } = {}) {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
   const [l, setL] = useState(lang());
+  // #1665: what is in force, as it changes — another device's choice arriving while this is open is shown at once.
+  useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
+  useEffect(() => onLang(setL), []);
   return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
     <label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
-      <select value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); }}>
+      <select value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
         <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>
     <label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
-      <select value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); }}>
+      <select value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
         <option value="en">English</option><option value="zh-TW">中文</option></select></label>
   </div>`;
 }
