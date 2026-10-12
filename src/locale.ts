@@ -24,6 +24,10 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 
 const enMessages = {
     "memory.pressure": "⚠️ Host memory pressure: {0}, {1} swap free. {2} Existing agents keep running; check other memory-heavy host processes.",
+    "memory.psi_some": "PSI some {0}% stalled over 60 s; {1}",
+    "memory.psi_full": "PSI full {0}% stalled over 10 s; {1}",
+    "memory.low_ram_swap": "low RAM with nearly full swap; {0}",
+    "memory.recovering_signal": "recovering from earlier memory pressure; {0}",
     "memory.kernel_pressure": "⚠️ macOS kernel memory pressure level: {0}. Estimated available RAM: {1}; swap free: {2} (diagnostic only). {3} Existing agents keep running.",
     "memory.available": "{0} RAM available",
     "memory.free": "{0} RAM free (available RAM could not be measured)",
@@ -942,6 +946,10 @@ const enMessages = {
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "memory.pressure": "⚠️ 主機記憶體吃緊：{0}，swap 剩餘 {1}。{2} 已在執行的 agent 會繼續工作；請檢查主機上其他大量使用記憶體的程式。",
+    "memory.psi_some": "PSI some：60 秒內停滯 {0}%；{1}",
+    "memory.psi_full": "PSI full：10 秒內停滯 {0}%；{1}",
+    "memory.low_ram_swap": "RAM 偏低且 swap 幾乎已滿；{0}",
+    "memory.recovering_signal": "先前記憶體壓力的恢復期；{0}",
     "memory.kernel_pressure": "⚠️ macOS 核心記憶體壓力等級：{0}。估計可用記憶體：{1}；swap 剩餘：{2}（僅供診斷）。{3} 已在執行的 agent 會繼續工作。",
     "memory.available": "可用記憶體 {0}",
     "memory.free": "空閒記憶體 {0}（無法量到可用記憶體）",

@@ -229,8 +229,8 @@ describe("SpawnGate memory resilience", () => {
     await Promise.all(runs);
   });
 
-  it("throttles healthy-RAM/exhausted-swap to one start per five seconds", async () => {
-    const gate = make(() => memory(4_000, 0));
+  it("throttles low-headroom/exhausted-swap to one start per five seconds", async () => {
+    const gate = make(() => memory(1_200, 0));
     const started: string[] = [];
     const first = deferred();
     const a = gate.run(task("a"), async () => { started.push("a"); await first.promise; });
@@ -316,7 +316,7 @@ describe("SpawnGate memory resilience", () => {
       await enter.promise;
       await gate.run(task("b"), async () => { started.push("b"); await blockers[1].promise; });
     });
-    state = memory(4_000, 0);
+    state = memory(1_200, 0);
     enter.resolve();
     await vi.advanceTimersByTimeAsync(20_000);
     expect(started).toEqual(["a"]);
@@ -328,7 +328,7 @@ describe("SpawnGate memory resilience", () => {
   });
 
   it("limits outer lifecycle admissions under pressure as well as physical spawns", async () => {
-    const gate = make(() => memory(4_000, 0), 10);
+    const gate = make(() => memory(1_200, 0), 10);
     const blockers = [deferred(), deferred()];
     const started: string[] = [];
     const runs = blockers.map((b, i) => gate.run({ ...task(`i${i}`), stage: "lifecycle" }, async () => { started.push(`i${i}`); await b.promise; }));

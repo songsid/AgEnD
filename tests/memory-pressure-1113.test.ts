@@ -45,7 +45,7 @@ describe("host memory pressure", () => {
 
   it.each([
     [100, 4_000, "critical"], [700, 0, "critical"], [700, 4_000, "elevated"],
-    [4_000, 0, "elevated"], [4_000, null, "normal"], [4_000, 4_000, "normal"],
+    [4_000, 0, "normal"], [4_000, null, "normal"], [4_000, 4_000, "normal"],
   ] as const)("classifies available=%s MiB swapFree=%s MiB as %s", (available, swapFree, expected) => {
     expect(new MemoryPressure({ read: () => memory(available, swapFree) }).sample().level).toBe(expected);
   });
@@ -76,7 +76,7 @@ describe("host memory pressure", () => {
 
   it.each([
     [850, 4_000, 960, 4_000],
-    [4_000, 480, 4_000, 801],
+    [1_200, 480, 1_200, 801],
   ])("keeps hysteresis after recovery with RAM=%s MiB and swap=%s MiB", async (available, swap, clearRam, clearSwap) => {
     let state = memory(100, 0);
     const pressure = new MemoryPressure({ read: () => state });
