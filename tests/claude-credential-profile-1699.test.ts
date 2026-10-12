@@ -15,6 +15,9 @@ import { ClaudeCodeBackend, claudeProfileConfigDir, claudeProjectKey } from "../
 import { claudeStoreHasLogin, credentialProfileHome, credentialProfileLogin, credentialSwitchStartsFresh } from "../src/backend/credential-profile.js";
 import { readResumeFingerprint } from "../src/turn-resume.js";
 import { outboundHandlers, type OutboundContext } from "../src/outbound-handlers.js";
+import { Daemon } from "../src/daemon.js";
+import { CacheService } from "../src/cache-service.js";
+import { FleetManager } from "../src/fleet-manager.js";
 
 const KEY = "test-api-key-not-a-secret-000000000000";
 const ENV = ["AGEND_HOME", "HOME", "CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"] as const;
@@ -147,18 +150,52 @@ describe("#1699 invariant 3: every reader of the config dir follows the profile"
     expect(readResumeFingerprint("claude", { instanceDir: inst, workingDirectory: work, claudeConfigDir: profileDir("team") })).not.toBeNull();
   });
 
-  it("the daemon hands its instance's profile dir to the resume reader", async () => {
-    const { Daemon } = await import("../src/daemon.js");
+  it("the daemon hands its instance's profile dir to the resume reader", () => {
     const d: any = new Daemon("w", { working_directory: work, backend: "claude-code", backend_options: { "claude-code": { credential_profile: "team" } } } as any,
       inst, false, backend(), undefined, { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } as any);
-    expect(d.claudeConfigDir()).toBe(profileDir("team"));
+    expect(d.resumeRoots(work)).toEqual({ instanceDir: inst, workingDirectory: work, claudeConfigDir: profileDir("team") });
     const plain: any = new Daemon("w", { working_directory: work, backend: "claude-code" } as any, inst, false, backend(), undefined,
       { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } as any);
-    expect(plain.claudeConfigDir()).toBe(join(home, ".claude"));
+    expect(plain.resumeRoots(work).claudeConfigDir).toBe(join(home, ".claude"));
+  });
+
+  it("the launch hands preTrust the same config writeConfig got — the profile's .claude.json is the one trusted", async () => {
+    const d: any = new Daemon("w", { working_directory: work, backend: "claude-code", log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 }, context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      backend_options: { "claude-code": { credential_profile: "team" } } } as any,
+      inst, false, undefined, undefined, { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } as any);
+    d.backend = { binaryName: "claude", writeConfig: vi.fn(), preTrust: vi.fn(), buildCommand: vi.fn(() => { throw new Error("stop after preTrust"); }) };
+    await expect(d.trySpawnInsideGate()).rejects.toThrow(/stop after preTrust/);
+    expect(d.backend.preTrust).toHaveBeenCalledWith(work, d.backend.writeConfig.mock.calls[0][0]);
+    expect(d.backend.writeConfig.mock.calls[0][0].backendOptions).toEqual({ credential_profile: "team" });
+  });
+
+  it("the fleet's per-instance dir (cache ledger): fleet.yaml profile, fleet default, a ClassicBot room's launched or configured login", () => {
+    const fm = Object.create(FleetManager.prototype);
+    fm.lifecycle = { daemons: new Map([["room-running", { getConfigSnapshot: () => ({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "launched" } } }) }]]) };
+    fm.classicChannels = { getCredentialProfileByInstance: (name: string) => (name.startsWith("room") ? { state: "profile", name: "configured" } : { state: "shared" }) };
+    fm.fleetConfig = { defaults: {}, instances: {
+      plain: { working_directory: work },
+      team: { working_directory: work, backend_options: { "claude-code": { credential_profile: "team" } } },
+      other: { working_directory: work, backend_options: { codex: { credential_profile: "team" } } },
+    } };
+    expect(fm.claudeConfigDirOf("plain")).toBe(join(home, ".claude"));
+    expect(fm.claudeConfigDirOf("team")).toBe(profileDir("team"));
+    expect(fm.claudeConfigDirOf("other"), "another backend's profile is not claude's").toBe(join(home, ".claude"));
+    expect(fm.claudeConfigDirOf("room-running"), "a running room: what it was launched on").toBe(profileDir("launched"));
+    expect(fm.claudeConfigDirOf("room-stopped"), "a stopped room: its configured login").toBe(profileDir("configured"));
+    expect(fm.claudeConfigDirOf("lobby")).toBe(join(home, ".claude"));
+    fm.classicChannels.getAll = () => [{ instanceName: "room-stopped" }];
+    fm.classicChannels.getBackendByInstance = () => "claude-code";
+    fm.backendNameOf = () => "claude-code";
+    fm.getInstanceDir = (name: string) => join(agendHome, "instances", name);
+    expect(Object.fromEntries(fm.cacheInstances().map((i: { name: string; claudeConfigDir: string }) => [i.name, i.claudeConfigDir])), "the cache ledger gets each one's dir")
+      .toEqual({ plain: join(home, ".claude"), team: profileDir("team"), other: join(home, ".claude"), "room-stopped": profileDir("configured") });
+    fm.fleetConfig.defaults = { backend_options: { "claude-code": { credential_profile: "dflt" } } };
+    expect(fm.claudeConfigDirOf("plain"), "fleet default").toBe(profileDir("dflt"));
   });
 
   it("the cache ledger lists the profile's transcripts for a profiled instance", async () => {
-    const { CacheService } = await import("../src/cache-service.js");
     session(profileDir("team"), work, "profile-session");
     session(join(home, ".claude"), work, "shared-session");
     const svc: any = new CacheService({

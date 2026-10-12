@@ -68,6 +68,7 @@ import {
   writeInFlightTurnMarker,
   type InFlightTurnMarker,
   type ResumeBackend,
+  type ResumeRoots,
 } from "./turn-resume.js";
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
@@ -5090,11 +5091,7 @@ export class Daemon extends EventEmitter {
         backend: resumeBackend ?? "unknown",
         cwd: resumeCwd,
         armedAt: Date.now(),
-        before: readResumeFingerprint(normalizeResumeBackend(resumeBackend), {
-          instanceDir: this.instanceDir,
-          workingDirectory: resumeCwd,
-          claudeConfigDir: this.claudeConfigDir(),
-        }),
+        before: readResumeFingerprint(normalizeResumeBackend(resumeBackend), this.resumeRoots(resumeCwd)),
       });
     }
   }
@@ -5143,7 +5140,7 @@ export class Daemon extends EventEmitter {
       && this.spawnGeneration === gateSpawn
       && this.launchFenceEpoch === gateFence;
     const backend = this.resolveResumeBackend() ?? normalizeResumeBackend(marker.backend);
-    const roots = { instanceDir: this.instanceDir, workingDirectory: this.config.working_directory ?? "", claudeConfigDir: this.claudeConfigDir() };
+    const roots = this.resumeRoots(this.config.working_directory ?? "");
     // This boot's CLI spawn is what the daemon itself caused: pre-restart
     // writes (including pre-crash progress) are excluded, and the flush
     // grace holds the decision until post-spawn writes are observable.
@@ -11447,6 +11444,16 @@ export class Daemon extends EventEmitter {
     return snapshot;
   }
 
+  /** #1699: the claude config dir this instance's CLI uses — its credential profile's, else exactly as before. */
+  private claudeConfigDir(): string {
+    return claudeConfigDirFor(claudeProfileConfigDir(this.config.backend_options?.["claude-code"]));
+  }
+
+  /** Where this instance's CLI keeps the conversation a turn resume is judged on (#1699: claude's follows the profile). */
+  private resumeRoots(workingDirectory: string): ResumeRoots {
+    return { instanceDir: this.instanceDir, workingDirectory, claudeConfigDir: this.claudeConfigDir() };
+  }
+
   /**
    * The credential profile's store this instance's CLI writes to, if any.
    *
@@ -11456,11 +11463,6 @@ export class Daemon extends EventEmitter {
    * Built with the same `getAgendHome()` the launch prefix uses, or the two
    * would disagree about where the profile is.
    */
-  /** #1699: the claude config dir this instance's CLI uses — its credential profile's, else exactly as before. */
-  private claudeConfigDir(): string {
-    return claudeConfigDirFor(claudeProfileConfigDir(this.config.backend_options?.["claude-code"]));
-  }
-
   private credentialProfileStore(): string | undefined {
     const backendName = this.config.backend ?? "claude-code";
     let profile: string | null;
