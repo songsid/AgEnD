@@ -157,6 +157,37 @@ describe("the text size control (#1523 N3, Q2 = A: S / M / L shared; View keeps 
     expect([p.storage.get("agend_view_fit"), densityButton().getAttribute("title"), fontPx()]).toEqual(["1", "Text size: Fit", "16.58px"]);
   });
 
+  // #1674: the choice stays after the next pane refresh (every 800 ms) and the next resize, with View still mounted.
+  // Before the fix those handlers held the fit of the render that mounted the terminal, and put the old size back.
+  it("#1674: a size chosen while View is mounted stays after the next pane refresh and the next resize", async () => {
+    await pageLoad();
+    await mount();
+    await resizeBox(1012, 610);
+    expect(fontPx()).toBe("16.58px");                     // Fit
+    densityButton().click(); await settle(); await wait(20);
+    expect(fontPx()).toBe("13.27px");                     // S, at once
+    await wait(950);                                      // one pane refresh later
+    expect(fontPx(), "the pane refresh keeps S").toBe("13.27px");
+    await resizeBox(1012, 612, "window");
+    expect(fontPx(), "a window resize keeps S").toBe("13.27px");
+    await resizeBox(1012, 610, "container");
+    expect(fontPx(), "the terminal's own resize keeps S").toBe("13.27px");
+    densityButton().click(); await settle(); densityButton().click(); await settle(); await wait(950);   // M, then L
+    expect(fontPx(), "L after a refresh").toBe("20.73px");
+    densityButton().click(); await settle(); await wait(950);                                          // Fit
+    expect([densityButton().getAttribute("title"), fontPx()]).toEqual(["Text size: Fit", "16.58px"]);
+  });
+
+  it("#1674: another tab's choice (the storage event) applies while View is mounted, and stays", async () => {
+    await pageLoad();
+    await mount();
+    await resizeBox(1012, 610);
+    p.storage.set("agend_text_size", "l"); p.storage.set("agend_view_fit", "0");
+    (p.window as any)._fire(Object.assign(new MiniEvent("storage"), { key: "agend_text_size" }), false);
+    await settle(); await wait(950);
+    expect([densityButton().getAttribute("title"), fontPx()]).toEqual(["Text size: L", "20.73px"]);
+  });
+
   it("a page load reads this browser's choice; View's old agend_view_density is taken over once (compact → S)", async () => {
     p.storage.set("agend_view_density", "compact");
     p.storage.delete("agend_text_size"); p.storage.delete("agend_view_fit");
