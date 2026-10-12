@@ -2,6 +2,7 @@ import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
@@ -42,6 +43,16 @@ export function claudeProfileConfigDir(backendOptions: Record<string, unknown> |
  */
 export function claudeConfigDirFor(profileDir: string | null | undefined): string {
   return profileDir || process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+}
+
+/**
+ * #1699: the macOS Keychain item holding the login of claude run with `CLAUDE_CONFIG_DIR=<configDir>` — claude
+ * 2.1.296's own naming: the exact string it was given, NFC-normalised, hashed (sha256, first 8 hex digits). So the dir
+ * must be spelled exactly as at launch (credentialProfileHome: absolute, no trailing slash). Only a named profile has
+ * one: the shared login, with the variable unset, is the unsuffixed "Claude Code-credentials".
+ */
+export function claudeKeychainService(configDir: string): string {
+  return `Claude Code-credentials-${createHash("sha256").update(configDir.normalize("NFC")).digest("hex").slice(0, 8)}`;
 }
 
 /** Claude Code's top-level config file: `<profile dir>/.claude.json` for a profile, else honoring CLAUDE_CONFIG_DIR. */

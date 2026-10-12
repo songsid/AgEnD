@@ -31,7 +31,8 @@
  * window is currently binding, or extra-usage credits; only the API has those.
  *
  * Merge rule across instances: **the freshest file wins.** Every instance on
- * this machine shares one account, so they are all observing the same counter;
+ * one subscription shares one account (a credential profile is a subscription
+ * of its own, #1699 — the caller says which), so they observe the same counter;
  * when two readings disagree the newer one is simply the more recent
  * observation. Taking the maximum instead would be wrong precisely when it
  * matters — a pre-reset 95% from an hour ago would drown out a fresh 4%.
@@ -56,6 +57,8 @@ export interface StatuslineRateLimits {
   instance: string;
   /** When that instance last wrote the file. */
   observedAtMs: number;
+  /** Where claude said the conversation is (#1699: under a credential profile's own config dir for a profile). */
+  transcriptPath: string | null;
 }
 
 /** A statusline window's `resets_at` as epoch ms, or null when it has no usable reset time. */
@@ -96,8 +99,8 @@ function readOne(dir: string, name: string, now: number): StatuslineRateLimits |
     return null; // no statusline: not a claude-code instance, or it never ran
   }
 
-  let parsed: { rate_limits?: unknown };
-  try { parsed = JSON.parse(raw) as { rate_limits?: unknown }; } catch { return null; }
+  let parsed: { rate_limits?: unknown; transcript_path?: unknown };
+  try { parsed = JSON.parse(raw) as { rate_limits?: unknown; transcript_path?: unknown }; } catch { return null; }
 
   // The CLI writes this file mid-turn, so a truncated read is normal, not a bug.
   const rl = parsed.rate_limits as { five_hour?: unknown; seven_day?: unknown } | undefined;
@@ -107,16 +110,20 @@ function readOne(dir: string, name: string, now: number): StatuslineRateLimits |
   const sevenDay = parseWindow(rl.seven_day, now);
   if (!fiveHour && !sevenDay) return null;
 
-  return { fiveHour, sevenDay, instance: name, observedAtMs };
+  const transcriptPath = typeof parsed.transcript_path === "string" && parsed.transcript_path ? parsed.transcript_path : null;
+  return { fiveHour, sevenDay, instance: name, observedAtMs, transcriptPath };
 }
 
 /**
  * The most recent rate-limit reading any claude-code instance has written, or
- * null when no instance has one worth using.
+ * null when no instance has one worth using. `from` keeps only the readings of
+ * one subscription (#1699): it is asked where each reading's conversation is —
+ * a credential profile's instances write under that profile's own config dir.
  */
 export function readStatuslineRateLimits(
   agendHome: string = getAgendHome(),
   now: number = Date.now(),
+  from?: (transcriptPath: string | null) => boolean,
 ): StatuslineRateLimits | null {
   const instancesDir = join(agendHome, "instances");
   let names: string[];
@@ -133,6 +140,7 @@ export function readStatuslineRateLimits(
     // Too old to trust: the window may have reset since, and an over-report is
     // the failure that makes people stop believing the panel.
     if (now - reading.observedAtMs > STATUSLINE_MAX_AGE_MS) continue;
+    if (from && !from(reading.transcriptPath)) continue;
     if (!best || reading.observedAtMs > best.observedAtMs) best = reading;
   }
   return best;

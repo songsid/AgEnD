@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Usage per Claude Code profile (#1699, part 3).** Each Claude Code credential profile in use now has its own usage row (`Claude (work)`, `claude:work`) in `/usage`, `get_usage` and the dashboard's usage rail and dialog, next to the default `Claude` row. Each row reads that profile's own login (on macOS, the Keychain item claude keeps for the profile's directory), never the default one. When the usage API can't answer, a row falls back only to the rate limits its own instances wrote. A profile that isn't logged in says "Not logged in" and shows the exact command that signs it in, never another account's numbers. Before this, an instance on a Claude profile had no usage row at all. A fleet without Claude profiles looks exactly as before.

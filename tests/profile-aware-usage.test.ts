@@ -116,14 +116,16 @@ describe("one usage row per subscription", () => {
     ]);
   });
 
-  it("does not touch a backend that has no credential home yet", () => {
-    // claude-code has no credential home yet, so a profile written against
-    // it is configuration with nothing to act on — and must not grow a row.
-    const config = { defaults: {}, instances: { a: { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } } } };
+  it("does not touch a backend that has no credential home", () => {
+    // grok has no credential home, so a profile written against it is
+    // configuration with nothing to act on — and must not grow a row.
+    // (claude-code has one since #1699: its rows are tests/claude-usage-profiles-1699.test.ts.)
+    const config = { defaults: {}, instances: { a: { backend: "grok", backend_options: { grok: { credential_profile: "work" } } } } };
+    const withGrok = [...base, { id: "grok", name: "Grok", fetch: vi.fn() }];
 
-    const rows = providersForConfig(config as never, base);
+    const rows = providersForConfig(config as never, withGrok as never);
 
-    expect(rows.map(r => r.id)).toEqual(["claude", "kiro"]);
+    expect(rows.map(r => r.id)).toEqual(["claude", "kiro", "grok"]);
   });
 });
 

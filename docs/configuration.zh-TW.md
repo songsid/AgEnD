@@ -581,7 +581,11 @@ macOS 上 claude 把登入存在鑰匙圈（Keychain），項目名稱依 profil
 `Kiro (personal)`；使用共用登入時顯示預設列。僅供 stopped／crashed instance 使用的
 來源會被過濾。
 
-Claude Code profile 目前還沒有自己的額度列；Claude 那一列仍讀取預設登入。
+Claude Code profile 也有自己的額度列：`Claude (work)` 只讀 `work` profile 自己的登入
+（macOS 上是它的鑰匙圈項目），不會讀預設登入。用量 API 無法回應時，各列只會改用自己
+instance 的 statusline 寫下的額度。尚未登入的 profile 會顯示「尚未登入」與登入用的
+那行指令，不會顯示其他帳號的數字。沒有 Claude profile 的 fleet 仍只有一列 `Claude`，
+與以前完全相同。
 
 有效的 Kiro profile 沒有可讀登入資料時仍顯示 signed-out 提示。是否顯示也依 provider
 而異：Codex 缺少 OAuth 額度查詢憑證時會省略，包括只有 API key 的 profile。各列不相加；
