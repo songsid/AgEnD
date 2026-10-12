@@ -44,6 +44,9 @@ percentages above are initial AgEnD policy thresholds, not kernel-prescribed
 limits or a calibrated OOM forecast. After a hold clears, the first
 actual resumed admission starts a 30-second slow ramp, even if background
 sampling detected recovery before the retry deadline. RAM elevated hysteresis clears at or above 1.2 times the low-RAM threshold.
+Each Linux RAM/swap release threshold is armed only by its own actual trigger,
+including when PSI fires simultaneously. A PSI-only level never arms a RAM or
+swap hold that was not triggered; missing PSI cannot inherit such a hold either.
 On Linux, swap release hysteresis applies only when PSI is unavailable and RAM
 is below 2×the low threshold; above that RAM boundary, cold swap cannot pin
 elevated. Inside it, swap must exceed 10% free to clear that clause. PSI has no
