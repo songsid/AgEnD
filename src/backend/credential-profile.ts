@@ -88,9 +88,11 @@ export interface CredentialHomeSpec {
    * A profile nobody has logged into is not an empty session — the CLI stops at
    * an interactive sign-in prompt and waits there, so an agent pointed at one
    * never starts. A backend that cannot answer this omits it, and the switch is
-   * allowed rather than blocked on a check that does not exist.
+   * allowed rather than blocked on a check that does not exist. `null`: the store
+   * is there but cannot be read, so it can say neither (#1699) — the same as no
+   * check, never "signed out".
    */
-  hasLogin?: (storeHome: string) => boolean;
+  hasLogin?: (storeHome: string) => boolean | null;
   /** The subcommand that logs a store in, for telling the user what to run. */
   loginSubcommand: string;
   /** The CLI binary that subcommand belongs to, when it is not the backend's name (claude-code → `claude`). */
@@ -221,19 +223,26 @@ const CLAUDE_HOME: CredentialHomeSpec = {
 /**
  * A Claude Code login in a config dir: an OAuth token in `.credentials.json` (Linux), or the account claude records in
  * `.claude.json` when it signs in (every platform — on macOS the token itself is in the Keychain, which this never
- * reads). Shape only, never a value.
+ * reads). Shape only, never a value. Neither file there: signed out. A file there that cannot be read or parsed, and
+ * no proof in the other: null — unknown, never "signed out" (#1699).
  */
-export function claudeStoreHasLogin(storeHome: string): boolean {
-  try {
-    const creds = JSON.parse(readFileSync(join(storeHome, ".credentials.json"), "utf8")) as { claudeAiOauth?: { accessToken?: unknown } };
-    if (typeof creds.claudeAiOauth?.accessToken === "string" && creds.claudeAiOauth.accessToken.length > 0) return true;
-  } catch { /* none here: the account record is the other proof */ }
-  try {
-    const cfg = JSON.parse(readFileSync(join(storeHome, ".claude.json"), "utf8")) as { oauthAccount?: { accountUuid?: unknown } };
-    return typeof cfg.oauthAccount?.accountUuid === "string" && cfg.oauthAccount.accountUuid.length > 0;
-  } catch {
-    return false;
-  }
+export function claudeStoreHasLogin(storeHome: string): boolean | null {
+  let unreadable = false;
+  const read = (name: string): Record<string, any> | null => {
+    try {
+      const value: unknown = JSON.parse(readFileSync(join(storeHome, name), "utf8"));
+      if (value && typeof value === "object") return value as Record<string, any>;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    }
+    unreadable = true;
+    return null;
+  };
+  const token = read(".credentials.json")?.claudeAiOauth?.accessToken;
+  if (typeof token === "string" && token.length > 0) return true;
+  const account = read(".claude.json")?.oauthAccount?.accountUuid;
+  if (typeof account === "string" && account.length > 0) return true;
+  return unreadable ? null : false;
 }
 
 /** Backends that can hold more than one login. */
@@ -466,7 +475,9 @@ export function credentialProfileLogin(
   const spec = credentialHomeSpec(backendName);
   if (!spec?.hasLogin) return { state: "unknown" };
   const storeHome = credentialProfileStoreHome(dataDir, backendName, profile);
-  if (spec.hasLogin(storeHome)) return { state: "logged-in" };
+  const login = spec.hasLogin(storeHome);
+  if (login === null) return { state: "unknown" };
+  if (login) return { state: "logged-in" };
   return {
     state: "signed-out",
     // The whole command, not a description of one: this is read by an agent

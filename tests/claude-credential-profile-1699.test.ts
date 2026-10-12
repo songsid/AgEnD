@@ -238,6 +238,21 @@ describe("#1699: logins and invariant 5 (a switch starts fresh, with a handover)
     expect(claudeStoreHasLogin(profileDir("c"))).toBe(false);
   });
 
+  it("a login file that is there but cannot be read is UNKNOWN — never signed out (a switch is not refused over it)", () => {
+    const dir = profileDir("broken");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".credentials.json"), "{ half-written");
+    expect(claudeStoreHasLogin(dir)).toBeNull();
+    expect(credentialProfileLogin(agendHome, "claude-code", "broken")).toEqual({ state: "unknown" });
+    writeJson(join(dir, ".claude.json"), OAUTH);
+    expect(claudeStoreHasLogin(dir), "the other file still proves it").toBe(true);
+    const odd = profileDir("odd");
+    mkdirSync(join(odd, ".claude.json"), { recursive: true });   // EISDIR: there, not readable
+    expect(claudeStoreHasLogin(odd)).toBeNull();
+    writeJson(join(profileDir("absent"), "x.json"), {});
+    expect(claudeStoreHasLogin(profileDir("absent")), "neither file: signed out").toBe(false);
+  });
+
   it("a signed-out profile names the exact command: CLAUDE_CONFIG_DIR=<home> claude auth login", () => {
     const login = credentialProfileLogin(agendHome, "claude-code", "team");
     expect(login).toEqual({ state: "signed-out", loginCommand: `CLAUDE_CONFIG_DIR=${JSON.stringify(profileDir("team"))} claude auth login` });
