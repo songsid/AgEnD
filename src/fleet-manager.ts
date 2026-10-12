@@ -2027,7 +2027,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.notifyFleetError(text, { throttle: false })) {
       this.memoryNoticeAt[level] = mono;
       this.memorySpell = { level, posted: true };
-      this.memoryRecoveredOwed = false;   // pressure is back: an older "back to normal" is no longer true
     }
   }
 

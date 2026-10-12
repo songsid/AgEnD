@@ -199,8 +199,7 @@ describe("fleet host memory wiring", () => {
     expect(recovered(sendText)).toEqual([]);
     set(p.crit()); await vi.advanceTimersByTimeAsync(30_000);
     expect(pressure(sendText)).toHaveLength(2);
-    // Control: the line owed by the first spell was dropped by the new notice (pressure is back); this spell's own
-    // recovery is told once when dispatch works again.
+    // Control: once dispatch works again, the next return to normal is told once (one line for both spells).
     refuseRecovered = false;
     await holdFor(5 * 60_000, p.down, set);
     expect(recovered(sendText)).toHaveLength(1);
