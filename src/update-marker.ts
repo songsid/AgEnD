@@ -52,6 +52,8 @@ export interface UpdateProgressState {
   version?: string;
   error?: string;
   failedStage?: UpdateProgressStage;
+  /** Non-fatal cleanup note (e.g. old system copy left behind, #1660). */
+  warning?: string;
 }
 
 export interface UpdateMarker {
@@ -126,7 +128,7 @@ export function readUpdateProgress(dataDir: string): (UpdateMarker & { progress:
 export function setUpdateProgressStage(
   dataDir: string,
   stage: UpdateProgressStage,
-  details: { version?: string; error?: string } = {},
+  details: { version?: string; error?: string; warning?: string } = {},
 ): boolean {
   const marker = readMarker(dataDir);
   if (!marker?.progress) return false;
@@ -137,6 +139,7 @@ export function setUpdateProgressStage(
     stage,
     ...(details.version !== undefined ? { version: details.version } : {}),
     ...(details.error !== undefined ? { error: details.error.replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
+    ...(details.warning !== undefined ? { warning: details.warning.replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
     ...(stage === "failed" ? { failedStage: previousStage } : {}),
   };
   return writeMarker(dataDir, marker);

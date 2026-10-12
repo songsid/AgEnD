@@ -1517,6 +1517,13 @@ program
           if (!retireResult.ok) {
             console.error(`  ✗ Old system install was not removed: ${retireResult.reason}`);
             process.exitCode = 1;
+          } else if (retireResult.warning) {
+            // #1660: cleanup only — the new version runs. Exit 0, but carry
+            // the manual-removal line to chat via the update marker.
+            console.log(`  ⚠️  ${retireResult.warning}.`);
+            const { readUpdateProgress } = await import("./update-marker.js");
+            const stage = readUpdateProgress(DATA_DIR)?.progress.stage;
+            if (stage) setUpdateProgressStage(DATA_DIR, stage, { warning: retireResult.warning });
           }
         } else {
           console.log("  Note: the old system install was kept, since the new one is not running yet.");

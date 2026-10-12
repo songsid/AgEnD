@@ -6172,6 +6172,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         version: agendVersion,
         pausedNames,
         failedNames,
+        // #1660: non-fatal cleanup note recorded by the updater (e.g. old
+        // system copy left behind) rides the marker across the restart.
+        warningText: pendingUpdateProgress?.progress.warning,
         tipText: pendingProgressOperation === "update" && this.tipsEnabled()
           ? (() => {
               const tip = this.pickAvailableTip();
@@ -6197,6 +6200,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text = t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "))
             + (pausedNames.length > 0 ? `\n⏸ Paused: ${pausedNames.join(", ")}` : "");
         }
+        // #1660: same cleanup note as the in-place summary above.
+        if (pendingUpdateProgress?.progress.warning) text += `\n\n⚠️ ${pendingUpdateProgress.progress.warning}`;
         await this.sendFleetStartCompletionFallback(
           String(fleet.channel.group_id),
           text,

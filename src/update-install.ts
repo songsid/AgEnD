@@ -332,7 +332,7 @@ export function activationSettled(
  * effort, and never waits for a password. Before that point the old copy is the rollback for the old service.
  */
 export type RetireSystemCopyResult =
-  | { ok: true }
+  | { ok: true; /** The old copy is still there: cleanup, not failure. */ warning?: string }
   | { ok: false; reason: string };
 
 /**
@@ -351,9 +351,19 @@ export function retireSystemCopy(runner: CommandRunner, npmPath?: string): Retir
   }
   const result = runner.run("sudo", ["-n", npmPath, "uninstall", "-g", "@songsid/agend"], { inherit: true, timeoutMs: 10_000 });
   if (result.status !== 0) {
-    const reason = `sudo npm uninstall failed (status ${result.status})`;
-    runner.log(`  ⚠️  ${reason}; the old system copy may still exist.`);
-    return { ok: false, reason };
+    // #1660: retiring the old copy is cleanup. The new version is installed,
+    // verified and running at this point, so a refused removal must not fail
+    // the update — it becomes a warning that names the manual removal.
+    // `-n` is non-interactive: sudo fails fast here, it never prompts.
+    let where = "";
+    try {
+      const root = runner.run("sudo", ["-n", npmPath, "root", "-g"], { timeoutMs: 10_000 });
+      const dir = root.stdout.trim().split("\n").pop()?.trim() ?? "";
+      if (root.status === 0 && dir) where = ` (still at ${dir}/@songsid/agend)`;
+    } catch { /* best effort only; the warning below stands without it */ }
+    const warning = `Old system install was not removed (sudo refused)${where}; remove it by hand: sudo ${npmPath} uninstall -g @songsid/agend`;
+    runner.log(`  ⚠️  ${warning}.`);
+    return { ok: true, warning };
   }
   return { ok: true };
 }
