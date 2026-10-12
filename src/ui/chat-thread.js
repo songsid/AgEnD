@@ -75,7 +75,7 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
       : "";
     const tools = `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
-    return `<div class="msg status${more ? " folded" : ""}"><div class="meta"><span class="time">${time}</span></div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
+    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta"><span class="time">${time}</span></div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -463,7 +463,7 @@ export function createThread(list, scroller, opts) {
     if (act === "copyMsg") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) copyFrom(el, x.text); }
     else if (act === "copyCode") { const pre = el.closest(".codeblock")?.querySelector("pre"); if (pre) copyFrom(el, pre.textContent); }
     else if (act === "toggleFold") {
-      const box = el.closest(".codeblock, .msg.status"); if (!box) return;
+      const box = el.closest(".codeblock, .msg.status-line"); if (!box) return;
       const folded = box.classList.toggle("folded");
       el.textContent = !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAll", el.dataset.lines) : tr("chat.showMore");
     } else if (act === "toggleWrap") opts.toggleWrap();

@@ -8,7 +8,7 @@
  * The real handlers run against a recording adapter and a recording durable admission: no daemon, CLI, tmux or real
  * fleet (bd0c88aa).
  */
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -199,7 +199,7 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
     try {
       th.render([status(1, "alice → w:\n**bold** <i>raw</i>\n```html\n<b>card</b>\n```")]);
       const msg = list.querySelector(".msg");
-      expect([msg.classList.contains("status"), msg.classList.contains("user"), msg.classList.contains("agent")]).toEqual([true, false, false]);
+      expect([msg.classList.contains("status-line"), msg.classList.contains("status"), msg.classList.contains("user"), msg.classList.contains("agent")], "status-line, never the header badge class status").toEqual([true, false, false, false]);
       expect(list.querySelector(".st-text").textContent).toBe("alice → w:\n**bold** <i>raw</i>\n```html\n<b>card</b>\n```");
       for (const sel of [".html-card", ".md", "strong", "i", "b", "pre", ".codeblock", ".rb-row"]) expect(list.querySelector(sel), sel).toBeNull();
       expect(list.querySelector(".st-more")).toBeNull();
@@ -211,7 +211,7 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
     try {
       const lines = Array.from({ length: 9 }, (_, i) => `line ${i}`).join("\n");
       th.render([status(1, lines), status(2, "y".repeat(700)), status(3, "short")]);
-      const msgs = [...list.querySelectorAll(".msg.status")] as any[];
+      const msgs = [...list.querySelectorAll(".msg.status-line")] as any[];
       expect(msgs.map(m => m.classList.contains("folded"))).toEqual([true, true, false]);
       const [many, wide] = msgs.map(m => m.querySelector(".st-more"));
       expect([many.textContent, wide.textContent]).toEqual(["Show all 9 lines", "Show more"]);
@@ -242,5 +242,38 @@ describe("#1672: a status line is not announced as a reply", () => {
     expect(announced).toEqual([]);
     store.ingest({ boot: "x", id: 2, instance: "w", sender: "agend-x", role: "agent", text: "reply", ts: "2026-01-01T00:00:00Z" });
     expect(announced).toEqual(["chat.a11yReplied:agend-x"]);
+  });
+});
+
+/**
+ * A status line's time drawn one character per line ("下 / 午 / 1 / 1 / : / 5 / 0"): its class was `status`, the
+ * header's inline-flex badge class (app.css `.status`). That made the message itself a flex row of meta | body | tools,
+ * and a long body squeezed the meta down to its min-content, one character under the message's overflow-wrap: anywhere.
+ * The layout is checked in a real browser by the smoke; here, the cascade that decides it.
+ */
+describe("#1672 follow-up: a message's time stays on one line", () => {
+  const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(m => ({ selectors: m[1]!.split(",").map(s => s.trim()), decl: m[2]! }));
+  const standaloneDisplay = (cls: string) => rules.filter(r => r.selectors.includes(`.${cls}`) && /(?:^|;)\s*display\s*:/.test(r.decl)).map(r => r.selectors.join(", "));
+
+  it("no class on a message is a stand-alone rule that changes how the message itself is laid out", () => {
+    const { dom, list, th } = thread();
+    try {
+      th.render([
+        status(1, "agend-leader → w: " + "a long status message that runs on and on ".repeat(8)),
+        status(2, "short"),
+        { boot: "x", id: 3, instance: "w", sender: "agend-w", role: "agent", text: "hi @agend-dev-claude", ts: "2026-01-01T00:00:00Z" },
+        { boot: "x", id: 4, instance: "w", sender: "han", role: "user", text: "hello", ts: "2026-01-01T00:00:00Z" },
+      ]);
+      const classes = new Set(([...list.querySelectorAll(".msg")] as any[]).flatMap(m => String(m.className).split(/\s+/).filter(Boolean)));
+      expect([...classes].sort()).toEqual(expect.arrayContaining(["agent", "msg", "status-line", "user"]));
+      for (const cls of classes) expect(standaloneDisplay(cls), `.${cls} on a message`).toEqual([]);
+    } finally { dom.restore(); }
+  });
+
+  it("the time itself never wraps and never gives up its width to a neighbour", () => {
+    const rule = rules.find(r => r.selectors.includes(".msg .time"));
+    expect(rule?.decl).toMatch(/white-space\s*:\s*nowrap/);
+    expect(rule?.decl).toMatch(/flex\s*:\s*none/);
   });
 });
