@@ -436,8 +436,14 @@ describe("the General skill", () => {
   });
 
   it("gives a login command that works when AGEND_HOME is not the default", () => {
-    expect(skill).toContain("${AGEND_HOME:-~/.agend}");
+    expect(skill).toContain("${AGEND_HOME:-$HOME/.agend}");
     expect(skill).not.toMatch(/XDG_DATA_HOME=~\/\.agend/);
+    // A "~" in the default of a quoted ${…:-…} is never expanded (bash and sh): the login would go to "./~" (#1706).
+    expect(skill).not.toContain(":-~");
+  });
+
+  it("tells the agent to relay the refusal's own command, not one it assembled (claude names its Keychain item after the path)", () => {
+    expect(skill).toMatch(/relay the command from the refusal, character for\s+character/);
   });
 
   it("says how to go back to the default login", () => {
