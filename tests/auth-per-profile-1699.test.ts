@@ -140,10 +140,13 @@ describe("#1699 follow-up: the probe cache and the pre-flight are per login", ()
 });
 
 describe("#1699 follow-up: the real probe process gets the profile's variable ON TOP of the fleet's environment", () => {
-  it("valid only with the variable; PATH still there (the shell is found)", async () => {
-    const check = { argv: ["sh", "-c", 'printf %s "$AGEND_PROBE_1699"'], validPattern: /^\/profile\/home$/ };
-    expect(await checkAuthStatus(check, { AGEND_PROBE_1699: "/profile/home" })).toBe("valid");
-    expect(await checkAuthStatus(check)).toBe("invalid");
+  it("valid only with the variable — and the fleet's own environment still reaches the CLI (HOME, PATH, its login)", async () => {
+    process.env.AGEND_PROBE_INHERIT_1699 = "kept";
+    try {
+      const check = { argv: ["sh", "-c", 'printf %s "$AGEND_PROBE_1699:$AGEND_PROBE_INHERIT_1699"'], validPattern: /^\/profile\/home:kept$/ };
+      expect(await checkAuthStatus(check, { AGEND_PROBE_1699: "/profile/home" })).toBe("valid");
+      expect(await checkAuthStatus(check)).toBe("invalid");
+    } finally { delete process.env.AGEND_PROBE_INHERIT_1699; }
   });
 });
 
