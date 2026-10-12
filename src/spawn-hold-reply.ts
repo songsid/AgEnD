@@ -12,13 +12,13 @@ export async function withSpawnHoldReply<T>(reply: ActionReply["reply"], action:
 }
 
 /** Capture at enqueue: pumping another request must not choose its reply recipient. */
-export function captureSpawnHoldReply(): (() => void) | undefined {
+export function captureSpawnHoldReply(current: () => boolean): (() => void) | undefined {
   const owner = replies.getStore();
   if (!owner) return undefined;
   return () => {
     if (!owner.active || owner.told) return;
     owner.told = true;
     // Reporting never delays admission or changes the queued operation's outcome.
-    void Promise.resolve().then(() => owner.active ? owner.reply(t("memory.action_held")) : undefined).catch(() => {});
+    void Promise.resolve().then(() => owner.active && current() ? owner.reply(t("memory.action_held")) : undefined).catch(() => {});
   };
 }

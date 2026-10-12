@@ -124,6 +124,24 @@ describe("#1712 memory protection without chat broadcasts", () => {
     set("normal"); await vi.advanceTimersByTimeAsync(120_000); expect(await Promise.all(runs)).toEqual([42, 42, 42]);
   });
 
+  it("a synchronously cancelled hold sends no stale waiting reply", async () => {
+    const { fm } = make("linux", "critical"); const reply = vi.fn().mockResolvedValue(undefined);
+    const operation = vi.fn(async () => 42);
+    const result = withSpawnHoldReply(reply, () => fm.spawnGate.run({ instanceName: "cancelled", workingDirectory: "/fixture/cancelled", reason: "startup" }, operation));
+    const stopped = result.catch(() => {}); fm.spawnGate.shutdown();
+    await vi.advanceTimersByTimeAsync(0); await stopped;
+    expect(reply).not.toHaveBeenCalled(); expect(operation).not.toHaveBeenCalled();
+  });
+
+  it("Darwin unknown releases admission without a stale critical reply", async () => {
+    const { fm, set } = make("darwin", "critical"); const reply = vi.fn().mockResolvedValue(undefined);
+    const operation = vi.fn(async () => 42);
+    const result = withSpawnHoldReply(reply, () => fm.spawnGate.run({ instanceName: "released", workingDirectory: "/fixture/released", reason: "wake" }, operation));
+    set("unknown"); fm.memoryPressure.sample();
+    await vi.advanceTimersByTimeAsync(0); await result;
+    expect(reply).not.toHaveBeenCalled(); expect(operation).toHaveBeenCalledOnce();
+  });
+
   it.each(["start", "restart", "wake"] as const)("web %s returns the hold reason once and completes the queued operation after recovery", async action => {
     const { fm, f, set, notify } = make("linux", "critical");
     vi.spyOn(f, "webToken", "get").mockReturnValue("fixture".repeat(8));

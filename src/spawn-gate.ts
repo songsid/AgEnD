@@ -76,7 +76,8 @@ export class SpawnGate {
     // before the nested physical spawn. Reacquiring its own slot would deadlock.
     return new Promise<T>((resolve, reject) => {
       const queue = this.activeInstances.has(task.instanceName) ? this.nestedQueue : this.queue;
-      queue.push({ task, run: operation, resolve, reject, heldReply: captureSpawnHoldReply() } as QueuedTask);
+      queue.push({ task, run: operation, resolve, reject,
+        heldReply: captureSpawnHoldReply(() => !this.stopped && this.memoryPressure.snapshot().level === "critical") } as QueuedTask);
       this.pump();
     });
   }
