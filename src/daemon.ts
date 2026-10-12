@@ -4136,12 +4136,17 @@ export class Daemon extends EventEmitter {
     return { outcome: "not_confirmed" };
   }
 
-  /** #1690: claude's "Set model to …" line after the last echo of our `/model <requested>` (no dialog was needed). */
+  /**
+   * #1690: claude's "Set model to …" line under our `/model <requested>` (no dialog was needed). Only the newest command
+   * on the pane counts: an older identical `/model` with its result further up (switched away and back) must not pass
+   * for this one before it has even painted — that left its dialog unanswered (live, 2.1.296).
+   */
   static switchResultAfterCommand(pane: string, requested: string): boolean {
     const rows = pane.replace(/\r/g, "").split("\n");
-    let echo = -1;
-    for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.includes(`/model ${requested}`)) { echo = i; break; }
-    return echo >= 0 && rows.slice(echo + 1).some(row => /^\s*⎿?\s*Set model to /.test(row));
+    let last = -1;
+    for (let i = rows.length - 1; i >= 0; i--) if (/^❯[ \t\u00a0]+\S/.test(rows[i]!)) { last = i; break; }
+    if (last < 0 || rows[last]!.replace(/^❯[ \t\u00a0]+/, "").trimEnd() !== `/model ${requested}`) return false;
+    return rows.slice(last + 1).some(row => /^\s*⎿?\s*Set model to /.test(row));
   }
 
   /**

@@ -133,6 +133,14 @@ describe("#1690: our own switch answers its own dialog", () => {
     expect(r.keys).toEqual([]);
   });
 
+  it("an older identical /model with its result further up is not this one's result (live 2.1.296: switched away and back)", () => {
+    const stale = AT_PROMPT.replace(/^❯[ \t\u00a0]*$/m,
+      "❯ /model opus\n  ⎿  Set model to Opus 5.5 and saved as your default for new sessions\n\n❯ a turn on opus\n\n● mock reply 3\n\n❯ /model sonnet\n  ⎿  Set model to Sonnet 5.5 and saved as your default for new sessions\n\n❯ a turn on sonnet\n\n● mock reply 4\n\n❯ /model opus\n\n❯ ");
+    expect(Daemon.switchResultAfterCommand(stale, "opus"), "the newest /model opus has no result yet").toBe(false);
+    expect(Daemon.switchResultAfterCommand(SET_DIRECT, "opus")).toBe(true);
+    expect(Daemon.switchResultAfterCommand(SET_DIRECT, "sonnet"), "another model's command").toBe(false);
+  });
+
   it("neither the dialog nor a result within the wait → not confirmed, no keys", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
     const r = rig(AT_PROMPT);
