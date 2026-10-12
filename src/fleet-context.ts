@@ -152,7 +152,7 @@ export interface FleetContext {
     threadId?: string;
     /** The requesting human — required by web mode (admin re-check, private token delivery). */
     userId?: string;
-  }, opts?: { skipAuthCheck?: boolean; tokenPresent?: boolean }): Promise<string | null>;
+  }, opts?: { skipAuthCheck?: boolean; tokenPresent?: boolean; profile?: string }): Promise<string | null>;
   /** Abort the active login session. */
   cancelLoginSession?(): Promise<string>;
   /** Human-readable effective model for an instance (resolves inherited defaults). */

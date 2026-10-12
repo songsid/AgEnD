@@ -32,7 +32,7 @@ import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
-import { credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
@@ -219,7 +219,8 @@ export interface LifecycleContext {
    * Offer a one-tap re-login beside an auth alert. Optional: contexts without
    * it (tests, lightweight fleets) still get the alert's written remedy.
    */
-  offerBackendLogin?(targetInstance: string, backend: string): Promise<void>;
+  /** `profile` (#1699 part 2): the button signs that credential profile in, not the backend's default login. */
+  offerBackendLogin?(targetInstance: string, backend: string, profile?: string): Promise<void>;
   /**
    * The credential profile an instance's CLI signs in with on `backend` (#1699 follow-up), or null for that backend's
    * default login. Absent: every instance is on the default login (as before profiles).
@@ -706,9 +707,13 @@ export class InstanceLifecycle {
     const scope = others.length
       ? `${affected.length} instances on ${on}: ${affected.join(", ")}`
       : profile ? `\`${name}\` (${backend}, profile \`${profile}\`)` : `\`${name}\` (${backend})`;
-    // A profile is signed in on the host with its own variable: `/login <backend>` would sign the DEFAULT login in.
+    // A profile is signed in with its own variable: `/login <backend>` would sign the DEFAULT login in. claude-code's
+    // can be signed in from chat (`/login <backend> <profile>`, #1699 part 2); the others' on the host.
     const profileLogin = profile ? credentialProfileLoginCommand(getAgendHome(), backend, profile) : null;
-    const remedy = profileLogin
+    const chatLogin = !!profileLogin && CHAT_PROFILE_LOGIN_BACKENDS.has(backend);
+    const remedy = chatLogin
+      ? `Use \`/login ${backend} ${profile}\` to sign that profile in remotely (or run \`${profileLogin}\` on the host).`
+      : profileLogin
       ? `Run \`${profileLogin}\` on the host, then wake the affected instance(s).`
       : backend === "opencode"
         ? "Run `opencode auth login` in a terminal, then wake the affected instance(s)."
@@ -719,11 +724,11 @@ export class InstanceLifecycle {
     const dispatched = this.notifyIncident(notificationTarget, "auth_error",
       `🔑 ${message}\n\nAffects ${scope}. ${shared} ${remedy}`);
     // Only alongside an alert somebody actually saw: a button on its own, or one
-    // trailing a suppressed alert, is a control with no explanation next to it. Never for a profile: the button signs
-    // the backend's default login in.
-    if (dispatched && !profileLogin) {
-      void this.ctx.offerBackendLogin?.(notificationTarget, backend)
-        .catch(err => this.ctx.logger.warn({ err, backend }, "Could not offer the re-login button"));
+    // trailing a suppressed alert, is a control with no explanation next to it. For a profile only where its login
+    // runs from chat, and then the button carries the profile — the plain button signs the default login in.
+    if (dispatched && (!profileLogin || chatLogin)) {
+      void (profile ? this.ctx.offerBackendLogin?.(notificationTarget, backend, profile) : this.ctx.offerBackendLogin?.(notificationTarget, backend))
+        ?.catch(err => this.ctx.logger.warn({ err, backend, profile }, "Could not offer the re-login button"));
     }
   }
 

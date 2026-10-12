@@ -1265,6 +1265,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
                   { name: "opencode", value: "opencode" },
                 ],
               },
+              // #1699 part 2: sign a credential profile in (claude-code), instead of the backend's default login.
+              { name: "profile", description: t("slash.option.login_profile"), type: ApplicationCommandOptionType.String, required: false },
               { name: "cancel", description: t("slash.option.login_cancel"), type: ApplicationCommandOptionType.Boolean, required: false },
             ],
           },

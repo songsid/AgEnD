@@ -82,12 +82,18 @@ describe.each(BACKENDS)("#1699 follow-up — $backend: an instance on a profile 
     const text = String(r.notifyInstanceTopic.mock.calls[0][1]);
     expect(text).toContain(`2 instances on \`${b.backend}\` profile \`work\`: w1, w2`);
     expect(text).not.toContain("plain");
-    expect(text).toContain(`Run \`${b.env}=${JSON.stringify(home)} ${b.login}\` on the host`);
-    expect(text).not.toContain(`/login ${b.backend}`);
     await vi.waitFor(() => expect(r.daemons.w1!.requestPauseWhenIdle).toHaveBeenCalled());
     expect(r.daemons.w1!.clearSuspectedAuthFailure).not.toHaveBeenCalled();
     await new Promise(res => setTimeout(res, 20));
-    expect(r.offerBackendLogin, "the /login button signs the DEFAULT login in").not.toHaveBeenCalled();
+    if (b.backend === "claude-code") {
+      // #1699 part 2: a claude-code profile signs in from chat — the remedy names it, the button carries it.
+      expect(text).toContain(`Use \`/login claude-code work\` to sign that profile in remotely (or run \`${b.env}=${JSON.stringify(home)} ${b.login}\` on the host)`);
+      expect(r.offerBackendLogin).toHaveBeenCalledWith("w1", "claude-code", "work");
+    } else {
+      expect(text).toContain(`Run \`${b.env}=${JSON.stringify(home)} ${b.login}\` on the host`);
+      expect(text).not.toContain(`/login ${b.backend}`);
+      expect(r.offerBackendLogin, "the plain /login button signs the DEFAULT login in").not.toHaveBeenCalled();
+    }
   });
 
   it("the reverse: the default login expired while the profile's is fine — the profile's instance is cleared, the default one alerted", async () => {

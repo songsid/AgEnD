@@ -195,7 +195,7 @@ import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
-import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
+import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
@@ -301,7 +301,7 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
-import { credentialHomeSpec, credentialProfileHome, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
   classifyInstanceChange,
@@ -570,6 +570,8 @@ interface NonceButtonEntry {
   closeStep?: boolean;
   /** Callback prefix including the colon, e.g. "exit-restart:". */
   prefix: string;
+  /** #1699 part 2: a login button's credential profile — its click signs that profile in, never the default login. */
+  loginProfile?: string;
   instanceName: string;
   adapterId: string;
   adapter: ChannelAdapter;
@@ -11326,7 +11328,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
+    extra?: Pick<NonceButtonEntry, "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor">;
     timeoutMs?: number;
   }): Promise<string> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -12636,8 +12638,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Backends with no remote login flow (opencode logs in from a terminal) get
    * no button — the alert's own wording already tells them what to run.
    */
-  async offerBackendLogin(targetInstance: string, backend: string): Promise<void> {
+  async offerBackendLogin(targetInstance: string, backend: string, profile?: string): Promise<void> {
     if (!LOGIN_FLOWS[backend]) return;
+    if (profile && !CHAT_PROFILE_LOGIN_BACKENDS.has(backend)) return;   // that profile signs in on the host
+    const shown = profile ? t("login.profile_label", backend, profile) : backend;
     const adapterId = this.getInstanceAdapterId(targetInstance);
     const adapter = this.getAdapterForInstance(targetInstance);
     const chatId = this.getGroupIdForInstance(targetInstance);
@@ -12656,9 +12660,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId,
       chatId,
       threadId,
-      message: t("login.offer", backend),
-      choices: [{ action: backend, label: t("login.offer_action", backend) }],
+      message: t("login.offer", shown),
+      choices: [{ action: backend, label: t("login.offer_action", shown) }],
       expiredText: t("buttons.stale"),
+      ...(profile ? { extra: { loginProfile: profile } } : {}),
     });
   }
 
@@ -13556,7 +13561,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         fleetConfig: () => this.fleetConfig,
         isFleetAdmin: (userId, adapterId) => this.isFleetAdmin(userId, adapterId),
         eventLog: () => this.eventLog,
-        recoverBackendInstances: backend => this.recoverBackendInstances(backend),
+        recoverBackendInstances: (backend, profile) => this.recoverBackendInstances(backend, undefined, profile ?? null),
         claimWindow: backend => this.loginWindow.tryClaim("web", backend),
         releaseWindow: claim => { this.loginWindow.release(claim); },
         isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
@@ -13565,11 +13570,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         reserveTunnel: owner => this.getTunnelLane().reserve("login", owner),
         // Throws when the prompt cannot be posted: the controller tells the
         // user so instead of leaving "Starting…" as the last word (#1133).
-        postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
+        postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText, profile }) => {
           await this.postNonceButtonPromptOrThrow({
             prefix, alertType: "login", instanceName,
             adapter: chat.adapter, adapterId: chat.adapterId, chatId: chat.chatId, threadId: chat.threadId,
             message, choices, expiredText,
+            ...(profile ? { extra: { loginProfile: profile } } : {}),
           });
         },
       });
@@ -13805,7 +13811,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async startLoginSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean } = {}): Promise<string | null> {
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean; profile?: string } = {}): Promise<string | null> {
     // `/login` is the one entry point (#1131): a CLI that is not installed yet
     // is installed first, and the install's success signs in (startInstallSession).
     // A confirmation click (skipAuthCheck) continues a sign-in already decided:
@@ -13815,10 +13821,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     // A removed backend (#1280) is neither installed nor signed into: say what replaces it.
     if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
+    // #1699 part 2: a profile is admitted before anything is installed for it — a name that is not one, or a backend
+    // whose profiles sign in on the host, is refused here, not after an install it did not need.
+    if (opts.profile !== undefined) {
+      const admitted = admitProfileLogin(wanted, opts.profile);
+      if ("refusal" in admitted) return admitted.refusal;
+      opts = { ...opts, profile: admitted.profile };
+    }
     if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
-      return this.startInstallSession(wanted, chat);
+      return opts.profile !== undefined
+        ? this.startInstallSession(wanted, chat, { profile: opts.profile })
+        : this.startInstallSession(wanted, chat);
     }
     this.recordLoginFlow(wanted, "login", chat.userId);
     return this.launchSignIn(backendArg, chat, opts);
@@ -13836,7 +13851,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The sign-in itself, in the web terminal, for a CLI that is installed. */
   private async launchSignIn(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean } = {}): Promise<string | null> {
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean; profile?: string } = {}): Promise<string | null> {
     return this.webLogin.start(backendArg, chat, opts);
   }
 
@@ -13912,6 +13927,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async recoverBackendInstances(
     backend: string,
     deadlineMs = POST_LOGIN_RECOVERY_DEADLINE_MS,
+    /** #1699 part 2: the login just signed in — a profile, or null for the backend's default one. */
+    profile: string | null = null,
   ): Promise<PostLoginRecovery> {
     const woken: string[] = [];
     const restarted: string[] = [];
@@ -13919,6 +13936,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const deadline = Date.now() + deadlineMs;
     for (const name of this.configuredBackendInstanceNames()) {
       if (this.backendNameOf(name) !== backend) continue;
+      // Only the instances on the login that changed: another profile's (or the default's) credentials did not.
+      if (this.credentialProfileOf(name, backend) !== profile) continue;
       const status = this.getInstanceStatus(name);
       if (status !== "paused" && status !== "running") continue;
       const result = await runBeforeDeadline(async () => {
@@ -13959,15 +13978,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry, action: backend } = claimed;
+    const profile = entry.loginProfile;
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
-      t("login.starting_backend", backend));
-    const text = await this.startLoginSession(backend, {
+      t("login.starting_backend", profile ? t("login.profile_label", backend, profile) : backend));
+    const chat = {
       adapter: entry.adapter,
       adapterId: entry.adapterId,
       chatId: entry.chatId,
       threadId: entry.threadId,
       userId: data.userId,
-    });
+    };
+    const text = profile ? await this.startLoginSession(backend, chat, { profile }) : await this.startLoginSession(backend, chat);
     if (text) await this.postPromptOutcome(entry, text);
     return true;
   }
@@ -13989,11 +14010,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === "consumed") return true;
     const { entry, action } = claimed;
     const backend = entry.instanceName;
+    const profile = entry.loginProfile;
+    const shown = profile ? t("login.profile_label", backend, profile) : backend;
     if (action === "cancel") {
-      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.cancelled", backend));
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.cancelled", shown));
       return true;
     }
-    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.starting_backend", backend));
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.starting_backend", shown));
     const text = await this.startLoginSession(backend, {
       adapter: entry.adapter,
       adapterId: entry.adapterId,
@@ -14005,6 +14028,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       tokenPresent: action === "go-relogin" || action === "go-relogin-tunnel",
       // The consent is the button itself: only the explicit "Open public link" actions carry it.
       tunnel: action === "go-tunnel" || action === "go-relogin-tunnel",
+      ...(profile ? { profile } : {}),
     });
     if (text) await this.postPromptOutcome(entry, text);
     return true;
@@ -14048,7 +14072,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Start a CLI install session. Caller enforces admin. */
   async startInstallSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }): Promise<string> {
+  }, signIn: { profile?: string } = {}): Promise<string> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
@@ -14130,7 +14154,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // without a click.
         // launchSignIn, not startLoginSession: if the new binary were still
         // not visible, startLoginSession would route straight back to an install.
-        const next = await this.launchSignIn(backend, chat, {}).catch((err: unknown) =>
+        // A `/login <backend> <profile>` that had to install first signs that profile in, not the default login.
+        const next = await this.launchSignIn(backend, chat, signIn.profile !== undefined ? { profile: signIn.profile } : {}).catch((err: unknown) =>
           t("login.failed", backend, (err as Error)?.message ?? String(err)));
         if (next) {
           await chat.adapter.sendText(chat.chatId, next, { threadId: chat.threadId })
@@ -14238,8 +14263,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const chat = { adapter, adapterId, chatId: data.channelId, userId: data.userId };
     if (data.options?.cancel === true) { await data.respond(await this.cancelLoginSession()); return; }
     const backend = String(data.options?.backend ?? "").trim();
+    // #1699 part 2: a supplied profile is never dropped — a blank one is refused by the admission like any bad name,
+    // and one without a backend is refused rather than becoming the default login's picker.
+    const profileSupplied = data.options?.profile !== undefined && data.options?.profile !== null;
+    const profile = profileSupplied ? String(data.options?.profile).trim() : undefined;
+    if (profileSupplied && !backend) { await data.respond(t("login.profile_needs_backend")); return; }
     if (backend) {
-      const text = await this.startLoginSession(backend, chat);
+      const text = profile !== undefined ? await this.startLoginSession(backend, chat, { profile }) : await this.startLoginSession(backend, chat);
       await data.respond(text ?? t("login.confirm_posted"));
       return;
     }

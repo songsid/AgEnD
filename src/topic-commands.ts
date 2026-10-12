@@ -1,4 +1,5 @@
 import { PaneContextCache } from "./pane-context-cache.js";
+import { LOGIN_BACKEND_ALIASES } from "./login-flows.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { LOOPBACK_HOST_NAMES } from "./web-host-guard.js";
 import { WEB_REMOTE_DOCS_URL } from "./upgrade-notices.js";
@@ -1285,11 +1286,17 @@ export class TopicCommands {
       await adapter.sendText(msg.chatId, await this.ctx.cancelLoginSession(), { threadId: msg.threadId });
       return;
     }
-    if (/\s/.test(arg)) {
+    // `<backend> [profile]` (#1699 part 2): a second word is the credential profile to sign in; nothing more.
+    const words = arg.split(/\s+/);
+    // A profile only after a backend this fleet can sign in: `/login reinstall codex` stays a usage error (#1137).
+    if (words.length > 2 || (words.length === 2 && !Object.hasOwn(LOGIN_BACKEND_ALIASES, words[0]!.toLowerCase()))) {
       await adapter.sendText(msg.chatId, t("login.usage"), { threadId: msg.threadId });
       return;
     }
-    const started = await this.ctx.startLoginSession(arg, chat);
+    const [backend, profile] = words as [string, string | undefined];
+    const started = profile !== undefined
+      ? await this.ctx.startLoginSession(backend, chat, { profile })
+      : await this.ctx.startLoginSession(backend, chat);
     // null → the still-valid-auth confirmation prompt was posted instead.
     if (started) await adapter.sendText(msg.chatId, started, { threadId: msg.threadId });
   }
