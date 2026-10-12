@@ -1,0 +1,50 @@
+
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude Code[0m [38;5;246mv2.1.296[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mSonnet 5.5 · API Usage Billing[39m
+[38;5;174m ▝▝   ▝▝ [39m  [38;5;246m/home/u/project[39m
+
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model sonnet[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mSonnet 5.5[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯ [38;5;231mhello from the audit[39m
+
+[38;5;231m[49m●[39m mock reply 2
+
+[38;5;246m✻[39m [38;5;246mSautéed for 0s · done 3:26 PM[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[38;5;153m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+[39m   [1m[38;5;220mSwitch model?[0m
+   [38;5;246mYour next response will be slower and use more tokens[39m
+
+   This conversation is cached for the current model. Switching to [1mOpus 5.5[0m means the full history gets re-read on your next message.
+
+   [38;5;153m❯[39m [38;5;246m1. [38;5;153mYes, switch to Opus 5.5[39m
+     [38;5;246m2. [39mNo, go back
+

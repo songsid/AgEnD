@@ -17,6 +17,7 @@ function makeFm(instances: Record<string, object> = {}): FleetManager {
   (fm as any).logger = { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() };
   (fm as any).instanceIpcClients = new Map();
   (fm as any).classicChannels = null;
+  (fm as any).runtimeSwitchWaiters = new Map();   // #1690: a constructor field (this helper skips the constructor)
   // Stub downstream dependencies
   (fm as any).backendNameForInstance = () => "claude-code";
   (fm as any).getInstanceDir = () => "/tmp/dev";
@@ -85,7 +86,11 @@ describe("applyModel — newline / control-char rejection (#1490 P3a)", () => {
     const fm = makeFm({ dev: {} });
     const saved = (fm as any).saveFleetConfig as ReturnType<typeof vi.fn>;
     // Simulate a running instance so strategy=runtime proceeds to persist
-    (fm as any).instanceIpcClients.set("dev", { connected: true });
+    // #1690: claude-code's runtime switch waits for the daemon's word — answered here as switched.
+    (fm as any).instanceIpcClients.set("dev", { connected: true, send: (msg: any) => {
+      if (msg.runtime_switch) queueMicrotask(() => (fm as any).runtimeSwitchWaiters.get(msg.runtime_switch.id)?.({ outcome: "switched", confirmed: false }));
+      return true;
+    } });
     (fm as any).pasteRawToClassicInstance = vi.fn();
 
     const result = await (fm as any).applyModel("dev", "claude-sonnet-4-5");

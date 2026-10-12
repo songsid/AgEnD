@@ -1,0 +1,50 @@
+[38;5;174m ▝▝   ▝▝ [39m  [38;5;246m/home/u/project[39m
+
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model sonnet[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mSonnet 5.5[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯ [38;5;231mhello from the audit[39m
+
+[38;5;231m[49m●[39m mock reply 2
+
+[38;5;246m✻[39m [38;5;246mSautéed for 0s · done 3:26 PM[39m
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model opus[39m [49m
+[38;5;246m  ⎿  [39mKept model as [38;5;153mSonnet 5.5[39m
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model opus[39m [49m
+[38;5;246m  ⎿  [39mKept model as [38;5;153mSonnet 5.5[39m
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model opus[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mOpus 5.5[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model opsu[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mopsu[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model sonet[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153msonet[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model foo-bar[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mfoo-bar[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model claude-sonnet-5-5[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mSonnet 5.5[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯[39m [38;5;231m/model haiku[39m
+[38;5;246m[49m  ⎿  [39mSet model to [38;5;153mHaiku 5.5[39m and saved as your default for new sessions
+
+[38;5;246m[48;5;237m❯ [38;5;231ma turn on haiku[39m
+
+[38;5;231m[49m●[39m mock reply 8
+
+[38;5;246m✻[39m [38;5;246mCrunched for 0s · done 3:27 PM[39m
+[38;5;153m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+[39m   [1m[38;5;220mSwitch model?[0m
+   [38;5;246mYour next response will be slower and use more tokens[39m
+
+   This conversation is cached for the current model. Switching to [1mopsu[0m means the full history gets re-read on your next message.
+
+   [38;5;153m❯[39m [38;5;246m1. [38;5;153mYes, switch to opsu[39m
+     [38;5;246m2. [39mNo, go back
+

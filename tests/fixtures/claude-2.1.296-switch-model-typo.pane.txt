@@ -1,0 +1,50 @@
+ ▝▝   ▝▝   /home/u/project
+
+
+❯ /model sonnet
+  ⎿  Set model to Sonnet 5.5 and saved as your default for new sessions
+
+❯ hello from the audit
+
+● mock reply 2
+
+✻ Sautéed for 0s · done 3:26 PM
+
+❯ /model opus
+  ⎿  Kept model as Sonnet 5.5
+
+❯ /model opus
+  ⎿  Kept model as Sonnet 5.5
+
+❯ /model opus
+  ⎿  Set model to Opus 5.5 and saved as your default for new sessions
+
+❯ /model opsu
+  ⎿  Set model to opsu and saved as your default for new sessions
+
+❯ /model sonet
+  ⎿  Set model to sonet and saved as your default for new sessions
+
+❯ /model foo-bar
+  ⎿  Set model to foo-bar and saved as your default for new sessions
+
+❯ /model claude-sonnet-5-5
+  ⎿  Set model to Sonnet 5.5 and saved as your default for new sessions
+
+❯ /model haiku
+  ⎿  Set model to Haiku 5.5 and saved as your default for new sessions
+
+❯ a turn on haiku
+
+● mock reply 8
+
+✻ Crunched for 0s · done 3:27 PM
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+   Switch model?
+   Your next response will be slower and use more tokens
+
+   This conversation is cached for the current model. Switching to opsu means the full history gets re-read on your next message.
+
+   ❯ 1. Yes, switch to opsu
+     2. No, go back
+
