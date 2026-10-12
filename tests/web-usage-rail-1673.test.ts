@@ -169,7 +169,7 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     usageBtn(pg).click(); await settle(8);
     expect([hasDialog(pg), rail(pg)]).toEqual([true, false]);
     scr.set(true); await settle(8);
-    expect([hasDialog(pg), rail(pg)]).toEqual([false, true]);
+    expect([hasDialog(pg), rail(pg), usageReads], "the dialog's read, then the rail's — the closing dialog reads nothing more").toEqual([false, true, 2]);
   });
 
   // #1679 review (P2): widening closes the dialog for good — hiding the rail and narrowing again never brings it back.
