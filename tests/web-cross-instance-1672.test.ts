@@ -265,7 +265,7 @@ describe("#1672 follow-up: a message's time stays on one line", () => {
         { boot: "x", id: 3, instance: "w", sender: "agend-w", role: "agent", text: "hi @agend-dev-claude", ts: "2026-01-01T00:00:00Z" },
         { boot: "x", id: 4, instance: "w", sender: "han", role: "user", text: "hello", ts: "2026-01-01T00:00:00Z" },
       ]);
-      const classes = new Set(([...list.querySelectorAll(".msg")] as any[]).flatMap(m => [...m.classList] as string[]));
+      const classes = new Set(([...list.querySelectorAll(".msg")] as any[]).flatMap(m => String(m.className).split(/\s+/).filter(Boolean)));
       expect([...classes].sort()).toEqual(expect.arrayContaining(["agent", "msg", "status-line", "user"]));
       for (const cls of classes) expect(standaloneDisplay(cls), `.${cls} on a message`).toEqual([]);
     } finally { dom.restore(); }
