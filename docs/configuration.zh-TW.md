@@ -550,9 +550,23 @@ Codex profile **只換 `auth.json` 的來源**。Instance 仍使用自己的 COD
 
 ### Claude Code
 
+在聊天室為 profile 登入（fleet admin）：
+
+```
+/login claude-code work
+```
+
+它會在 `/login claude-code` 用的同一個瀏覽器終端裡，為該 profile 執行 `claude auth login`，
+所以用手機也能完成。Discord 上用 `/login` 並選 `backend: claude-code`、`profile: work`。
+也可以在主機上登入：
+
 ```bash
 CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login
 ```
+
+登入成功後，AgEnD 只喚醒或重啟使用該登入的 instance：profile 登入不會動到使用預設登入的
+instance，反之亦然。Kiro 與 Codex 的 profile 仍要在主機上登入：`/login kiro-cli work`
+會回覆要在主機執行的完整指令。
 
 Claude Code profile 是一個獨立的 `CLAUDE_CONFIG_DIR`。登入、帳號、各專案的信任設定、
 `settings.json` 與所有對話（`projects/`、`sessions/`、`history.jsonl`）都屬於該 profile。
@@ -564,7 +578,7 @@ Claude Code profile 是一個獨立的 `CLAUDE_CONFIG_DIR`。登入、帳號、�
 macOS 上 claude 把登入存在鑰匙圈（Keychain），項目名稱依 profile 目錄而定；
 兩個 profile 不會共用或覆寫彼此的項目，預設登入也不受影響。
 
-`update_instance_config` 拒絕切換時，請照回覆中的指令原樣執行：它帶著 AgEnD 啟動時用的完整絕對路徑，
+`update_instance_config` 拒絕切換時，請用 `/login claude-code <profile>`，或照回覆中的指令原樣執行：它帶著 AgEnD 啟動時用的完整絕對路徑，
 而 macOS 的鑰匙圈項目正是依這個路徑字串命名。
 
 沒有 profile 的 instance 啟動方式與以前完全相同：AgEnD 不設定 `CLAUDE_CONFIG_DIR`
