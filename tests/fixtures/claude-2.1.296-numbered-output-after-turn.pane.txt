@@ -1,0 +1,50 @@
+
+  ⎿  Set model to sonet and saved as your default for new sessions
+
+❯ /model foo-bar
+  ⎿  Set model to foo-bar and saved as your default for new sessions
+
+❯ /model claude-sonnet-5-5
+  ⎿  Set model to Sonnet 5.5 and saved as your default for new sessions
+
+❯ /model haiku
+  ⎿  Set model to Haiku 5.5 and saved as your default for new sessions
+
+❯ a turn on haiku
+
+● mock reply 8
+
+✻ Crunched for 0s · done 3:27 PM
+
+❯ /model opsu
+  ⎿  Kept model as Haiku 5.5
+
+❯ a turn on haiku again
+
+● mock reply 10
+
+✻ Brewed for 0s · done 3:27 PM
+
+❯ /effort high
+  ⎿  Set effort level to high (saved as your default for new sessions): Comprehensive implementation with extensive testing and documentation
+
+❯ NUMLIST please
+
+● Here are the options:
+
+  ❯ 1. Yes, switch to Opus
+    2. No, go back
+
+  Proceed? [y/n]
+
+  thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking
+  thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking thinking
+  thinking thinking thinking thinking thinking thinking
+
+✻ Churned for 27s · done 3:30 PM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents

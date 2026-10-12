@@ -91,6 +91,10 @@ class H(BaseHTTPRequestHandler):
             blocks = [("tool", {"command": "sleep 25; echo waited", "description": "Wait 25 seconds"})]; stop = "tool_use"
         elif "QUOTEMARK" in text:
             blocks = [("quote", None)]
+        elif "NUMLIST" in text:
+            # #1691: agent output shaped like a selection prompt (a cursor glyph on numbered options, a y/n question),
+            # streamed over ~20 s so it can be captured mid-turn and after the turn ends.
+            blocks = [("text", "Here are the options:\n\n❯ 1. Yes, switch to Opus\n  2. No, go back\n\nProceed? [y/n]\n\n" + "thinking " * 40)]; delay = 0.5
         elif "SLOW" in text:
             blocks = [("text", "slow " * 50)]; delay = 0.5
         elif "HUGE" in text:
