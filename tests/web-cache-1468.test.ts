@@ -8,7 +8,7 @@
  */
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleWebRequest } from "../src/web-api.js";
@@ -17,6 +17,12 @@ import { isPassiveWebRead } from "../src/web-auth.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
+/** The real roster methods cacheReport builds on (#1699: each instance's claude config dir); not running, no profile. */
+const rosterMethods = {
+  cacheInstances: (FleetManager.prototype as any).cacheInstances,
+  claudeConfigDirOf: (FleetManager.prototype as any).claudeConfigDirOf,
+  classicLaunchedProfile: () => null,
+};
 const token = "c".repeat(48);
 function call(path: string, over: Record<string, unknown> = {}, headers: Record<string, string> = { "x-agend-token": token }) {
   const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: { host: "127.0.0.1:19280", ...headers } });
@@ -49,7 +55,7 @@ describe("the route", () => {
     const dir = mkdtempSync(join(tmpdir(), "cache-fm-"));
     try {
       const fake: any = { fleetConfig: { instances: {} }, dataDir: dir, getInstanceDir: (n: string) => join(dir, n), backendNameOf: () => "claude-code",
-        logger: { info() {}, warn() {}, debug() {}, error() {} } };
+        logger: { info() {}, warn() {}, debug() {}, error() {} }, ...rosterMethods };
       const r = await (FleetManager.prototype as any).cacheReport.call(fake, "__proto__");
       expect(r.window).toBe("7d");
       expect(r.instances).toEqual([]);
@@ -68,13 +74,17 @@ describe("#1470 review 11: ClassicBot rooms are analysed too", () => {
         classicChannels: {
           getAll: () => [{ instanceName: "room-cx" }, { instanceName: "room-cl" }, { instanceName: "dev" }],
           getBackendByInstance: (n: string, d?: string) => (n === "room-cx" ? "codex" : d),
+          getCredentialProfileByInstance: () => ({ state: "shared" }),
         },
+        ...rosterMethods,
       };
       const r = await (FleetManager.prototype as any).cacheReport.call(fake, "7d");
       fake.cacheService.stop();
       const roster = fake.cacheService.o.instances();
       expect(roster.map((i: any) => [i.name, i.backend])).toEqual([["dev", "claude-code"], ["room-cx", "codex"], ["room-cl", "claude-code"]]);
       expect(roster[1].workingDirectory.endsWith(join("workspaces", "room-cx"))).toBe(true);
+      // #1699: each carries the claude config dir its CLI uses — with no profile, the shared one, as before.
+      expect(new Set(roster.map((i: any) => i.claudeConfigDir))).toEqual(new Set([process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude")]));
       expect(r.instances.map((i: any) => i.name)).toEqual(["dev", "room-cx", "room-cl"]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
