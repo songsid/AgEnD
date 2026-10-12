@@ -695,7 +695,9 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 每個主題依自己的 instance 而定：`instances.<name>.cross_instance_visibility`，否則 `defaults.cross_instance_visibility`，否則 `full`。Fleet 管理員可用 `/visibility full|summary|hidden`（Telegram General topic 或 Discord）設定 fleet 預設值，並存入 `fleet.yaml`；只打 `/visibility` 會顯示目前設定，以及有自己設定的 instance。Settings 有 fleet 預設值（Defaults）與每個 agent 的覆寫（agent → 進階）。變更立即生效，不需重啟。
 
-只有這些主題貼文會改變。訊息照常送達，[Mirror Topic](#mirror-topic) 仍會收到每一則訊息，General topic 在任何模式下都不會出現這些貼文。
+同樣的內容也會出現在各 instance 的 web chat（#1672），規則與模式相同；沒有聊天平台的 fleet、或沒有主題的 instance 也一樣。它們顯示為淡色、唯讀的狀態列：純文字，絕不當成 agent 的回覆（沒有預覽卡片），過長時會先收合。它們計入聊天紀錄的上限，重啟後仍在。
+
+只有這些貼文會改變。訊息照常送達，[Mirror Topic](#mirror-topic) 仍會收到每一則訊息，General topic 在任何模式下都不會出現這些貼文。
 
 ## Mirror Topic
 

@@ -720,7 +720,9 @@ When one instance sends another a message (`send_to_instance`, `delegate_task`, 
 
 Each topic follows its own instance: `instances.<name>.cross_instance_visibility`, else `defaults.cross_instance_visibility`, else `full`. A fleet admin sets the fleet default with `/visibility full|summary|hidden` (Telegram General topic, or Discord), which saves it to `fleet.yaml`; `/visibility` alone shows the current setting and the instances that have their own. Settings has the fleet default (Defaults) and a per-agent override (agent → Advanced). A change applies at once, with no restart.
 
-Only these topic posts change. Messages are delivered exactly as before, the [Mirror Topic](#mirror-topic) still receives every message, and General topics never show these posts in any mode.
+The same lines appear in each instance's web chat (#1672), by the same rules and the same mode, even on a fleet with no chat platform or for an instance with no topic. They are drawn as muted, read-only status lines: plain text, never an agent's reply (no preview cards), and a long one is folded until opened. They count toward the chat history's limits and are there again after a restart.
+
+Only these posts change. Messages are delivered exactly as before, the [Mirror Topic](#mirror-topic) still receives every message, and General topics never show these posts in any mode.
 
 ## Mirror Topic
 
