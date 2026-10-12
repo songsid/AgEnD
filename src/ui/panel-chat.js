@@ -485,7 +485,7 @@ function DeleteDialog({ name, onClose }) {
       <button type="button" class="btn btn-danger" disabled=${typed !== want || busy} onClick=${go}>${t("chat.deleteGo")}</button>`}>
     <p>${t("chat.deleteHelp", name)}</p>
     <label class="field"><span class="sr-only">${t("chat.deleteHelp", name)}</span>
-      <input type="text" value=${typed} autocomplete="off" spellcheck="false" placeholder=${want} onInput=${(e) => setTyped(e.target.value)}
+      <input type="text" value=${typed} autocomplete="off" spellcheck=${false} placeholder=${want} onInput=${(e) => setTyped(e.target.value)}
         onKeyDown=${(e) => { if (e.key === "Enter") go(); }} /></label>
   </${Dialog}>`;
 }

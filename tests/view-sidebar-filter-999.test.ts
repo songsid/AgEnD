@@ -191,8 +191,9 @@ describe("sidebar filter wiring (#999)", () => {
     await mountView();
     expect(p.root.querySelector(".v-group-head")!.getAttribute("draggable")).toBe("true");
     await typeInto("a");
-    expect(p.root.querySelector(".v-group-head")!.getAttribute("draggable")).toBeNull();
-    expect(p.root.querySelector(".v-inst")!.getAttribute("draggable")).toBeNull();
+    // Preact clears a dropped prop through its property (draggable = "" → false): a browser renders draggable="false".
+    expect(p.root.querySelector(".v-group-head")!.getAttribute("draggable")).toBe("false");
+    expect(p.root.querySelector(".v-inst")!.getAttribute("draggable")).toBe("false");
   });
 
   it("the new strings exist in English and Traditional Chinese", () => {

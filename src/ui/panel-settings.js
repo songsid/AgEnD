@@ -847,7 +847,7 @@ function Developer({ ctx }) {
       <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
       <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button>
     </div>
-    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck="false" wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
+    ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
       : html`<pre class="s-yaml">${text}</pre>`}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}

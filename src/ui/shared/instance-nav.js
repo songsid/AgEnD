@@ -347,7 +347,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // Drag to reorder: only the full list (a filtered subset would be ambiguous), groups among groups, instances within
   // their group.
   const dragProps = (item) => shown.active ? {} : {
-    draggable: "true",
+    draggable: true,
     onDragStart: (e) => { drag.current = item; e.currentTarget.classList.add("dragging"); try { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data */ } },
     onDragEnd: (e) => { e.currentTarget.classList.remove("dragging"); drag.current = null; },
     onDragOver: (e) => {
@@ -440,7 +440,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     </div>
     <div class="v-filter">
       <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("filterPh")}</span>
-        <input ref=${filterRef} id="filterInput" type="text" autocomplete="off" spellcheck="false" placeholder=${tn("filterPh")} value=${f.q}
+        <input ref=${filterRef} id="filterInput" type="text" autocomplete="off" spellcheck=${false} placeholder=${tn("filterPh")} value=${f.q}
           onInput=${(e) => setNavFilter({ q: e.target.value })}
           onKeyDown=${(e) => { if (e.key === "Escape" && f.q) { e.preventDefault(); e.stopPropagation(); setNavFilter({ q: "" }); } }} />
         ${f.q ? html`<button type="button" class="icon-btn v-filter-clear" aria-label=${tn("filterClear")} title=${tn("filterClear")}

@@ -109,7 +109,7 @@ import {
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
-import { DeliveryOutbox, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
+import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -1690,7 +1690,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #926: a restart kills the turn that was working on a request, and a
     // resumed CLI does not pick it back up. Remind the owner once per restart.
     try {
-      outbox.remindReplyObligations(name, { reason: "restart", graceMs: 0, since: new Date() });
+      const now = new Date();
+      this.expireReplyObligations(now);
+      outbox.remindReplyObligations(name, { reason: "restart", graceMs: 0, now, since: now, restartId: daemonBootId });
     } catch (err) {
       this.logger.error({ err, owner: name }, "Could not persist the post-restart reply reminder");
     }
@@ -1707,6 +1709,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!outbox || this.shuttingDown) return;
     const stateOf = (name: string) => this.daemons.get(name)?.getInstanceState();
     try {
+      this.expireReplyObligations(now);
       for (const name of this.daemons.keys()) {
         if (stateOf(name) === "idle") outbox.remindReplyObligations(name, { now, graceMs: REPLY_REMINDER_GRACE_MS, reason: "turn-ended" });
       }
@@ -1714,6 +1717,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       outbox.notifyOverdueReplyObligations({ now, overdueMs: minutes * 60_000, ownerIdle: name => stateOf(name) !== "working" });
     } catch (err) {
       this.logger.error({ err }, "Reply-obligation sweep failed");
+    }
+  }
+
+  private expireReplyObligations(now: Date): void {
+    const hours = this.fleetConfig?.defaults?.reply_obligation_ttl_hours;
+    const duration = typeof hours === "number" && hours > 0 && Number.isFinite(hours * 3_600_000)
+      ? hours * 3_600_000 : DEFAULT_REPLY_OBLIGATION_TTL_MS;
+    for (const row of this.deliveryOutbox!.expireReplyObligations({ now, ttlMs: duration })) {
+      this.logger.info({ owner: row.ownerInstance, requester: row.requesterInstance,
+        correlationId: row.correlationId, lastAskedAt: row.lastAskedAt, expiredAt: row.expiredAt }, "Reply obligation expired");
     }
   }
 
