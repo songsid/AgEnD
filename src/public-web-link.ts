@@ -95,15 +95,15 @@ export class PublicWebLink {
   }) { this.now = deps.now ?? (() => performance.now()); }
 
   get exposureId(): string | undefined { return this.entry?.id; }
-  /**
-   * #1723: the preview of exposure `exposureId`, as a page of it may use it — null when that exposure is not the open
-   * one, or has no preview.
-   */
   /** #1723: the open exposure's dashboard origin (`https://<host>`), for a configured preview origin to accept; else null. */
   openDashboardOrigin(): string | null {
     const e = this.entry;
     return e && e.phase === "open" && e.url && this.current(e) ? new URL(e.url).origin : null;
   }
+  /**
+   * #1723: the preview of exposure `exposureId`, as a page of it may use it — null when that exposure is not the open
+   * one, or has no preview.
+   */
   previewStatus(exposureId: string): PublicPreviewStatus | null {
     const e = this.entry;
     if (!e || e.id !== exposureId || e.phase !== "open" || !this.current(e) || !e.preview) return null;
