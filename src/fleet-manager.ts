@@ -5147,13 +5147,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.webLoginCodes!.revokeIfCurrent(login.issuanceId);
       this.logger.info({ err: (err as Error)?.message }, "Dashboard private delivery was not confirmed");
-      const failText = t("dashboard.private_failed");
-      const startUrl = adapter?.type === "telegram" ? this.tgStartWebUrl(adapterId) : null;
-      if (startUrl && adapter) {
-        await adapter.sendText(data.channelId, failText, { urlButtons: [{ label: t("dashboard.start_web_label"), url: startUrl }] }).catch(() => undefined);
-      } else {
-        await data.respond(failText).catch(() => undefined);
-      }
+      await data.respond(t("dashboard.private_failed")).catch(() => undefined);
     }
   }
   /**
@@ -7583,16 +7577,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
+          // #1686: intercept /start web before the ClassicBot admission flow runs.
+          // /start alone already opens the DM for future bot-to-user messages — no further action needed.
+          const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
+          if (requestedBackend === "web" && isPrivateChat) {
+            if (this.isFleetAdmin(msg.userId, msg.adapterId ?? "")) {
+              await msgAdapter?.sendText(chatId, t("dashboard.start_web_ack"));
+            }
+            // Non-fleet-admins: /start alone is enough to open the DM channel; no further action.
+            return;
+          }
           // All new starts, including explicit backend and later chooser callbacks,
           // share validateClassicStart. Existing channels are recognized first.
           const blocker = this.validateClassicStart(chatId, msg.userId, undefined, msg.adapterId);
           if (blocker) { await msgAdapter?.sendText(chatId, blocker); return; }
           const channelName = msg.username || chatId;
-          const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
-          // #1686: /start web in a private DM from a fleet admin → acknowledge that /web is now available.
-          if (requestedBackend === "web" && isPrivateChat && this.isFleetAdmin(msg.userId, msg.adapterId ?? "")) {
-            await msgAdapter?.sendText(chatId, t("dashboard.start_web_ack")); return;
-          }
           if (requestedBackend) {
             // handleClassicStart binds the instance to this adapter authoritatively.
             const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId, requestedBackend);

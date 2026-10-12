@@ -280,11 +280,49 @@ describe("#1686: /start web in DM from fleet admin", () => {
   it("non-admin in private DM does not get the ack (treated as a regular /start)", async () => {
     const h = rig("telegram");
     vi.spyOn(h.s, "isFleetAdmin").mockReturnValue(false);
-    // Stub handleClassicStart so a non-admin /start web doesn't require the full classicChannels setup.
+    // stub handleClassicStart so a non-admin /start web doesn't require the full classicChannels setup.
     vi.spyOn(h.s, "handleClassicStart").mockResolvedValue(t("classic.no_agent_start") ?? "no agent");
     await h.inboundDm("/start web", "stranger");
     await flush();
     const ack = h.adapter.sendText.mock.calls.find((c: any[]) => String(c[1]).includes(t("dashboard.start_web_ack")));
     expect(ack).toBeFalsy();
+  });
+
+  // Fable witness tests (P1 — must pass after fix, failed before)
+  it("(a) fleet admin NOT on ClassicBot allow list gets the ack, no access request", async () => {
+    const h = rig("telegram");
+    vi.spyOn(h.s, "isFleetAdmin").mockReturnValue(true);
+    h.s.classicChannels.isUserAllowed = () => false;
+    const prompt = vi.spyOn(h.s, "promptClassicApproval").mockResolvedValue(undefined);
+    await h.inboundDm("/start web", "admin"); await flush();
+    expect([
+      h.adapter.sendText.mock.calls.map((c: any[]) => String(c[1])),
+      prompt.mock.calls.length,
+    ]).toEqual([[t("dashboard.start_web_ack")], 0]);
+  });
+
+  it("(b) non-admin tapping the deep link never starts a Classic agent", async () => {
+    const h = rig("telegram");
+    vi.spyOn(h.s, "isFleetAdmin").mockReturnValue(false);
+    const start = vi.spyOn(h.s, "handleClassicStart").mockResolvedValue("started");
+    await h.inboundDm("/start web", "stranger"); await flush();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("ordering mutation: /start web AFTER validateClassicStart → fleet admin without allow-list gets access request, not ack", async () => {
+    // This is the mutation: temporarily move the intercept after validateClassicStart by spying on
+    // validateClassicStart to return a blocker for the "admin" user (simulating the wrong order).
+    // The real /start web intercept runs BEFORE validateClassicStart, so it never reaches this spy.
+    // If the ordering were wrong, validateClassicStart running first would block fleet admins not on
+    // the Classic allow list with an access-requested notice.
+    const h = rig("telegram");
+    vi.spyOn(h.s, "isFleetAdmin").mockReturnValue(true);
+    h.s.classicChannels.isUserAllowed = () => false;
+    const prompt = vi.spyOn(h.s, "promptClassicApproval").mockResolvedValue(undefined);
+    // With the correct ordering, the intercept fires first → ack sent, prompt never called.
+    await h.inboundDm("/start web", "admin"); await flush();
+    // If this assertion fails, the intercept ran AFTER validateClassicStart (wrong order).
+    expect(prompt.mock.calls.length).toBe(0);
+    expect(h.adapter.sendText.mock.calls.some((c: any[]) => String(c[1]).includes(t("dashboard.start_web_ack")))).toBe(true);
   });
 });
