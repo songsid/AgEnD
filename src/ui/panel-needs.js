@@ -15,7 +15,7 @@ import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
 import { chatPath } from "/assets/app-route.js";
-import { labelOf } from "/assets/instance-nav.js";
+import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -109,8 +109,9 @@ export function groupNeeds(items) {
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
   const { needs, chatOwner: owner, instances } = useStore(appStore);
-  // #1630: a group is headed by the instance's display name (its name on hover), as the sidebar shows it.
-  const nameFor = (instance) => { const it = (instances || []).find((i) => i && i.name === instance); return it ? labelOf(it) : instance; };
+  const names = useStore(namesStore);
+  // #1630/#1722: a group is headed by the instance's leading name (the "Names" preference), as the sidebar shows it.
+  const nameFor = (instance) => { const it = (instances || []).find((i) => i && i.name === instance); return it ? namesOf(it, names.primary).primary : instance; };
   const items = Array.isArray(needs) ? needs : [];
   const [, tick] = useState(0);
   useEffect(() => { setTitle(tn("title")); }, [navKey]);

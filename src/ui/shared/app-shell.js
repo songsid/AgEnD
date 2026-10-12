@@ -12,8 +12,8 @@ import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, detailsPath, fl
 import { SessionMenu } from "./app-session.js";
 import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
-import { InstanceNav, RosterNav } from "./instance-nav.js";
-import { UsageRail } from "./header-tools.js";
+import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
+import { UsageRail, usageRailStore } from "./header-tools.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
@@ -42,6 +42,144 @@ export function closeDialog() { shellStore.set({ dialog: null }); }
 
 function readCollapsed() { try { return localStorage.getItem("agend_sidebar") === "hidden"; } catch { return false; } }
 const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
+
+// ── #1722: the sidebar's width — this device's (the #1665 split: a width depends on the screen), through the CSSOM ──
+export const SIDEBAR_W = { min: 200, max: 480, def: 260, step: 16, mainMin: 480 };
+const SIDEBAR_W_KEY = "agend_sidebar_w";
+const win = () => (typeof window !== "undefined" ? window : null);
+const viewportWidth = () => { const w = win(); return w && typeof w.innerWidth === "number" && w.innerWidth > 0 ? w.innerWidth : 1366; };
+/** The width the sidebar may have on a viewport `vw` px wide: within [min, max], and leaving the main pane mainMin. */
+export function clampSidebarWidth(w, vw) {
+  const max = Math.max(SIDEBAR_W.min, Math.min(SIDEBAR_W.max, vw - SIDEBAR_W.mainMin));
+  return Math.round(Math.min(max, Math.max(SIDEBAR_W.min, w)));
+}
+function storedSidebarWidth() { try { const v = Number(localStorage.getItem(SIDEBAR_W_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } }
+/** { width: px | null } — null: the default width (tokens.css). */
+export const sidebarWidthStore = createStore({ width: null });
+/** Set the width (clamped to this viewport); `save`: this device keeps it. null: back to the default, nothing kept. */
+/**
+ * The room the main pane has beside the sidebar: the window, less the usage rail when it is on screen (#1673 — shown
+ * open, ≥ 1200 px; its CSS width when the layout gives none). #1722 review: the sidebar never leaves main under 480.
+ */
+function mainBudget() {
+  const vw = viewportWidth();
+  if (vw < 1200 || typeof document === "undefined") return vw;
+  const rail = document.querySelector(".u-rail");
+  if (!rail) return vw;
+  const w = Math.round(rail.getBoundingClientRect ? rail.getBoundingClientRect().width : 0) || RAIL_W;
+  return vw - w;
+}
+const RAIL_W = 320;
+/** Show a width (clamped to the room there is now) — this page only; null: the default width. Nothing is kept. */
+function showSidebarWidth(w) {
+  const root = document.documentElement;
+  if (w == null) { root.style.removeProperty("--sidebar-w"); sidebarWidthStore.set({ width: null }); return null; }
+  const v = clampSidebarWidth(w, mainBudget());
+  root.style.setProperty("--sidebar-w", `${v}px`);   // CSSOM: the page's CSP allows no style attribute
+  sidebarWidthStore.set({ width: v });
+  return v;
+}
+/** Set the width (clamped to the room there is now); `save`: this device keeps it. null: back to the default, nothing kept. */
+export function setSidebarWidth(w, save = false) {
+  if (w == null) {
+    try { localStorage.removeItem(SIDEBAR_W_KEY); } catch { /* this page only */ }
+    return showSidebarWidth(null);
+  }
+  const v = showSidebarWidth(w);
+  // Kept: the choice within the window, not the squeeze beside the rail — it comes back when the rail goes.
+  if (save) { try { localStorage.setItem(SIDEBAR_W_KEY, String(clampSidebarWidth(w, viewportWidth()))); } catch { /* this page only */ } }
+  return v;
+}
+/** A drag in progress (one at a time): its end(commit). Only it may set the width until it ends. */
+let activeDrag = null;
+/**
+ * This device's kept width, shown within the room there is now — again whenever that changes (the window, the usage
+ * rail, the page). A squeeze is shown, never kept: the device's choice comes back when there is room. On a phone (the
+ * drawer) none applies, and a drag in progress is cancelled.
+ */
+function applyKeptSidebarWidth() {
+  if (narrow()) {
+    if (activeDrag) activeDrag.end(false);
+    showSidebarWidth(null);
+    return;
+  }
+  if (activeDrag) return;
+  const w = storedSidebarWidth();
+  if (w != null) showSidebarWidth(w);
+}
+const afterPaint = (fn) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => fn()) : setTimeout(fn, 0));
+/** The separator on the sidebar's right edge: drag, ← → (16 px), Home / End, Enter or a double-click resets. */
+function SidebarResize() {
+  const { width } = useStore(sidebarWidthStore);
+  useStore(usageRailStore);   // the rail's room is the separator's limit too
+  useLayoutEffect(() => {
+    applyKeptSidebarWidth();
+    // The room changes with the window, the rail (opened, closed) and the page (a page with no rail): shown again,
+    // once the page has drawn its change.
+    const again = () => afterPaint(applyKeptSidebarWidth);
+    const offRail = usageRailStore.subscribe(again);
+    const offNav = navStore.subscribe(again);
+    const w = win();
+    if (w && typeof w.addEventListener === "function") w.addEventListener("resize", applyKeptSidebarWidth);
+    return () => {
+      offRail(); offNav();
+      if (w && typeof w.removeEventListener === "function") w.removeEventListener("resize", applyKeptSidebarWidth);
+      if (activeDrag) activeDrag.end(false);   // unmounted mid-drag: nothing kept, nothing left behind
+    };
+  }, []);
+  const now = width ?? SIDEBAR_W.def;
+  const onKey = (e) => {
+    const cur = sidebarWidthStore.get().width ?? SIDEBAR_W.def;
+    if (e.key === "ArrowRight") setSidebarWidth(cur + SIDEBAR_W.step, true);
+    else if (e.key === "ArrowLeft") setSidebarWidth(cur - SIDEBAR_W.step, true);
+    else if (e.key === "Home") setSidebarWidth(SIDEBAR_W.min, true);
+    else if (e.key === "End") setSidebarWidth(SIDEBAR_W.max, true);
+    else if (e.key === "Enter") setSidebarWidth(null);
+    else return;
+    e.preventDefault();
+  };
+  // One pointer owns a drag. Only its release keeps the width; a cancel, a lost capture, the drawer or an unmount
+  // puts back the width shown before it and keeps nothing — and no event of it can write after it ended. What is kept
+  // is where the pointer went (within the window), not what the room beside the rail let it show.
+  const onDown = (e) => {
+    if (e.button !== 0 || activeDrag || narrow()) return;
+    e.preventDefault();
+    const handle = e.currentTarget, pointerId = e.pointerId;
+    const before = sidebarWidthStore.get().width;
+    let chosen = null;   // the pointer's own width this drag; null: it never moved
+    const left = handle.parentElement ? handle.parentElement.getBoundingClientRect().left : 0;
+    const mine = {};
+    const own = (ev) => activeDrag === mine && (ev.pointerId === undefined || ev.pointerId === pointerId);
+    const move = (ev) => { if (own(ev)) { chosen = ev.clientX - left; showSidebarWidth(chosen); } };
+    const up = (ev) => { if (own(ev)) mine.end(true); };
+    const cancel = (ev) => { if (own(ev)) mine.end(false); };
+    mine.end = (commit) => {
+      if (activeDrag !== mine) return;
+      activeDrag = null;
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", cancel);
+      handle.removeEventListener("lostpointercapture", cancel);
+      handle.classList.remove("dragging");
+      document.body.classList.remove("side-resizing");
+      try { handle.releasePointerCapture(pointerId); } catch { /* not held */ }
+      if (commit && chosen != null) setSidebarWidth(chosen, true);
+      else showSidebarWidth(before);
+    };
+    activeDrag = mine;
+    try { handle.setPointerCapture(pointerId); } catch { /* the move still works while over the handle */ }
+    handle.classList.add("dragging");
+    document.body.classList.add("side-resizing");
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", cancel);
+    handle.addEventListener("lostpointercapture", cancel);
+  };
+  return html`<div class="side-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sidebar"
+    aria-label=${t("app.resizeSidebar")} title=${t("app.resizeSidebarHint")} aria-valuemin=${String(SIDEBAR_W.min)}
+    aria-valuemax=${String(clampSidebarWidth(Infinity, mainBudget()))} aria-valuenow=${String(now)}
+    onKeyDown=${onKey} onPointerDown=${onDown} ondblclick=${() => setSidebarWidth(null)}></div>`;
+}
 
 export function openDrawer() { shellStore.set({ drawer: true }); }
 export function closeDrawer() { if (shellStore.get().drawer) shellStore.set({ drawer: false }); }
@@ -127,6 +265,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
         <a class="side-row" href=${signInHref()}><${Icon} name="user" /><span>${t("app.signIn")}</span></a>
         <${PrefsPopover} />
       </div>
+      <${SidebarResize} />
     </aside>`;
   }
   // #1675: the whole fleet, on its Org chart (#1389), from anywhere — top left, so at the top of a phone's drawer too. The
@@ -152,6 +291,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       ${navLink("settings", settingsPath(), "settings", t("app.settings"))}
       <${SessionMenu} />
     </div>
+    <${SidebarResize} />
   </aside>`;
 }
 
@@ -167,6 +307,7 @@ function ViewOnlyNav({ route }) {
 export function DevicePrefs({ labels = false } = {}) {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
   const [l, setL] = useState(lang());
+  const names = useStore(namesStore);   // #1722
   // #1665: what is in force, as it changes — another device's choice arriving while this is open is shown at once.
   useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
   useEffect(() => onLang(setL), []);
@@ -177,6 +318,9 @@ export function DevicePrefs({ labels = false } = {}) {
     <label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
       <select value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
         <option value="en">English</option><option value="zh-TW">中文</option></select></label>
+    <label class="pref"><${Icon} name="user" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.names")}</span>
+      <select value=${names.primary} aria-label=${t("app.names")} onChange=${(e) => setNamesPrimary(e.target.value)}>
+        <option value="nickname">${t("app.namesNickname")}</option><option value="instance">${t("app.namesInstance")}</option></select></label>
   </div>`;
 }
 
