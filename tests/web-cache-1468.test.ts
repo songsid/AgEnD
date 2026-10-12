@@ -21,7 +21,8 @@ import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 const rosterMethods = {
   cacheInstances: (FleetManager.prototype as any).cacheInstances,
   claudeConfigDirOf: (FleetManager.prototype as any).claudeConfigDirOf,
-  classicLaunchedProfile: () => null,
+  credentialProfileOf: (FleetManager.prototype as any).credentialProfileOf,
+  daemons: new Map(),
 };
 const token = "c".repeat(48);
 function call(path: string, over: Record<string, unknown> = {}, headers: Record<string, string> = { "x-agend-token": token }) {

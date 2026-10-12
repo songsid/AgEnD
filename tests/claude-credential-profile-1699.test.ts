@@ -207,7 +207,10 @@ describe("#1699 invariant 3: every reader of the config dir follows the profile"
   it("the fleet's per-instance dir (cache ledger): fleet.yaml profile, fleet default, a ClassicBot room's launched or configured login", () => {
     const fm = Object.create(FleetManager.prototype);
     fm.lifecycle = { daemons: new Map([["room-running", { getConfigSnapshot: () => ({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "launched" } } }) }]]) };
-    fm.classicChannels = { getCredentialProfileByInstance: (name: string) => (name.startsWith("room") ? { state: "profile", name: "configured" } : { state: "shared" }) };
+    fm.classicChannels = {
+      getCredentialProfileByInstance: (name: string) => (name.startsWith("room") ? { state: "profile", name: "configured" } : { state: "shared" }),
+      getBackendByInstance: () => "claude-code",
+    };
     fm.fleetConfig = { defaults: {}, instances: {
       plain: { working_directory: work },
       team: { working_directory: work, backend_options: { "claude-code": { credential_profile: "team" } } },
@@ -220,7 +223,6 @@ describe("#1699 invariant 3: every reader of the config dir follows the profile"
     expect(fm.claudeConfigDirOf("room-stopped"), "a stopped room: its configured login").toBe(profileDir("configured"));
     expect(fm.claudeConfigDirOf("lobby")).toBe(join(home, ".claude"));
     fm.classicChannels.getAll = () => [{ instanceName: "room-stopped" }];
-    fm.classicChannels.getBackendByInstance = () => "claude-code";
     fm.backendNameOf = () => "claude-code";
     fm.getInstanceDir = (name: string) => join(agendHome, "instances", name);
     expect(Object.fromEntries(fm.cacheInstances().map((i: { name: string; claudeConfigDir: string }) => [i.name, i.claudeConfigDir])), "the cache ledger gets each one's dir")

@@ -487,6 +487,22 @@ export type CredentialProfileLogin =
   | { readonly state: "signed-out"; readonly loginCommand: string }
   | { readonly state: "unknown" };
 
+/**
+ * The environment a backend's CLI needs to act on a profile's login — the same variable and path its launch uses
+ * (#1699 follow-up: the token-free auth probe of an instance on a profile). Null for a backend without profiles.
+ */
+export function credentialProfileEnv(dataDir: string, backendName: string, profile: string): Record<string, string> | null {
+  const spec = credentialHomeSpec(backendName);
+  return spec ? { [spec.env]: credentialProfileHome(dataDir, backendName, profile) } : null;
+}
+
+/** The whole shell line that signs a profile in, for a person to run on the host. Null for a backend without profiles. */
+export function credentialProfileLoginCommand(dataDir: string, backendName: string, profile: string): string | null {
+  const spec = credentialHomeSpec(backendName);
+  if (!spec) return null;
+  return `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${spec.binary ?? backendName} ${spec.loginSubcommand}`;
+}
+
 export function credentialProfileLogin(
   dataDir: string,
   backendName: string,
@@ -503,7 +519,7 @@ export function credentialProfileLogin(
     // The whole command, not a description of one: this is read by an agent
     // relaying it to a person who has to run it, and a paraphrase of a shell
     // line is how a person ends up logging the wrong profile in.
-    loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${spec.binary ?? backendName} ${spec.loginSubcommand}`,
+    loginCommand: credentialProfileLoginCommand(dataDir, backendName, profile)!,
   };
 }
 

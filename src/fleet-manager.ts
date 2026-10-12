@@ -301,7 +301,7 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
-import { credentialProfileHome, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { credentialHomeSpec, credentialProfileHome, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
   classifyInstanceChange,
@@ -5742,8 +5742,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // before instances spawn, so a CLI that comes up on its sign-in screen gets
     // an instant 🔑 verdict instead of decaying into crash/MCP-died noise.
     this.lifecycle.primeAuthVerification(
-      Object.values(fleet.instances).map(config =>
-        config.backend ?? fleet.defaults?.backend ?? "claude-code"),
+      Object.values(fleet.instances).map(config => {
+        const backend = config.backend ?? fleet.defaults?.backend ?? "claude-code";
+        // #1699 follow-up: each instance's own login — a profile is probed with its own environment.
+        return { backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, fleet.defaults, backend) : null };
+      }),
     );
 
     // Start tmux control mode client for idle detection
@@ -11647,17 +11650,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private cacheService: CacheService | null = null;
 
   /**
-   * #1699: the claude config dir an instance's CLI uses — its credential profile's (fleet.yaml, or the ClassicBot room's
-   * launched or would-be login), else exactly as before (CLAUDE_CONFIG_DIR or ~/.claude).
+   * #1699: the credential profile an instance's CLI signs in with on `backend` — fleet.yaml's (with its defaults), or a
+   * ClassicBot room's launched or would-be login when the room runs that backend. Null: the backend's default login
+   * (also for a backend that has no profiles, where the option is ignored).
+   */
+  credentialProfileOf(name: string, backend: string): string | null {
+    if (!credentialHomeSpec(backend)) return null;
+    const cfg = this.fleetConfig?.instances?.[name];
+    if (cfg) return instanceCredentialProfile(cfg, this.fleetConfig?.defaults, backend);
+    const launched = this.daemons.get(name)?.getConfigSnapshot?.();
+    if (launched) return (launched.backend ?? "claude-code") === backend ? profileName(profileOf(launched.backend_options, backend)) : null;
+    if (!this.classicChannels || this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend) !== backend) return null;
+    return profileName(this.classicChannels.getCredentialProfileByInstance(name, this.fleetConfig?.defaults));
+  }
+
+  /**
+   * #1699: the claude config dir an instance's CLI uses — its credential profile's, else exactly as before
+   * (CLAUDE_CONFIG_DIR or ~/.claude).
    */
   claudeConfigDirOf(name: string): string {
-    const cfg = this.fleetConfig?.instances?.[name];
-    const profile = cfg
-      ? instanceCredentialProfile(cfg, this.fleetConfig?.defaults, "claude-code")
-      : (() => {
-        const classic = this.classicLaunchedProfile(name) ?? this.classicChannels?.getCredentialProfileByInstance(name, this.fleetConfig?.defaults);
-        return classic ? profileName(classic) : null;
-      })();
+    const profile = this.credentialProfileOf(name, "claude-code");
     return claudeConfigDirFor(profile ? credentialProfileHome(getAgendHome(), "claude-code", profile) : null);
   }
   /** The instances the cache analysis reads: fleet.yaml's, then the ClassicBot rooms (their workspace under the AgEnD home, their own backend). */
