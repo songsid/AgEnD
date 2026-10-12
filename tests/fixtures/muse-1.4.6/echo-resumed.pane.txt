@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.6
+
+  resumed session 01a13040-cd44-7443-8805-409345ecdf2a
+
+❯ hello there
+
+◆ echo: hello there
+
+  session 01a13040-cd44-7443-8805-409345ecdf2a does not record a usable model for provider echo; using the provider
+  default model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  echo · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.6
+
+❯ say something
+
+◆ mock reply 1
+
+❯ run the escalated check
+
+◆ Ran echo perm-check — denied
+  └ unsandboxed execution requires human approval, but approval prompts are disabled
+
+◆ mock reply 20
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

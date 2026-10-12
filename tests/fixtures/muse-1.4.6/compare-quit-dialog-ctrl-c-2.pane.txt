@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.6
+
+❯ start background work
+
+◆ Backgrounded · Wait in the background · 1.5s · ctrl+o
+
+◆ mock reply 7
+
+  (↓ to view terminals)
+
+muse: exit reap left managed process state behind: ExitReapReport { swept: 0, survivors: 1, unswept: 0, detached_threads
+_joined: true }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

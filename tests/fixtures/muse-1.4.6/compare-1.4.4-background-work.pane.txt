@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.4
+
+❯ start background work
+
+◆ Backgrounded · Wait in the background · 1.5s · ctrl+o
+
+  (↓ to view terminals)
+
+◆ mock reply 7
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+main · ↓ to select
+└ ◆ Wait in the background  running                                                                                  11s
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

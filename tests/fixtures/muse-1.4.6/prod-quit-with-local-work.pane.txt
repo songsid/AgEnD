@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.6
+
+❯ start background work
+
+◆ Backgrounded · Wait in the background · 1.6s · ctrl+o
+
+◆ mock reply 7
+
+  (↓ to view terminals)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+  Local work is still active
+  The following will stop when you exit:
+
+  background task · tool.bash
+
+  ❯ 1. Exit anyway
+    2. Stay
+
+  Enter to confirm · Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+main · ↓ to select
+└ ◆ Wait in the background  running                                                                                  15s
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+

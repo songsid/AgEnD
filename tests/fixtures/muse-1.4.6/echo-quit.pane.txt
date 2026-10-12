@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.6
+
+❯ hello there
+
+◆ echo: hello there
+
+To continue this session, run muse resume 01a13040-cd44-7443-8805-409345ecdf2a
+
+EXITED=0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
