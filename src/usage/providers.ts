@@ -364,11 +364,35 @@ function credentialsDocument(json: string): Record<string, unknown> | null {
 
 /**
  * Whether a token the profile's own login does not control can reach claude in a profile's pane: AgEnD sets only
- * `CLAUDE_CONFIG_DIR` for a profile, so `CLAUDE_CODE_OAUTH_TOKEN` from the fleet's environment, or exported in a
- * shell rc the pane's shell reads, still signs it in — and outranks the stored login (#1713 review).
+ * `CLAUDE_CONFIG_DIR` for a profile, so `CLAUDE_CODE_OAUTH_TOKEN` from the fleet's environment, or set in a shell rc
+ * the pane's shell reads, still signs it in — and outranks the stored login (#1713 review).
  */
 function envTokenReachesClaude(): boolean {
-  return !!process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || !!tokenFromShellRc((path) => readFileSync(path, "utf-8"));
+  return !!process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() || shellRcSetsClaudeToken((path) => readFileSync(path, "utf-8"));
+}
+
+/**
+ * Whether a shell rc sets `CLAUDE_CODE_OAUTH_TOKEN` at all — any assignment, export or declaration that is not a
+ * comment, whatever its value: `"$OTHER"` or `${OTHER}` is a token once the pane's shell expands it, so unlike
+ * tokenFromShellRc (which must hand the API a literal bearer) this never discounts one it cannot read (#1713 review).
+ * Files those rcs `source` are not followed.
+ */
+export function shellRcSetsClaudeToken(
+  read: (path: string) => string,
+  home = homedir(),
+  files: readonly string[] = SHELL_RC_FILES,
+): boolean {
+  const sets = [
+    /^[ \t]*(?:(?:export|readonly|local|declare|typeset)(?:[ \t]+-[a-zA-Z]+)*[ \t]+(?:[^#\n]*[ \t])?)?CLAUDE_CODE_OAUTH_TOKEN[ \t]*=/m,
+    /^[ \t]*(?:export|declare[ \t]+-[a-zA-Z]*x[a-zA-Z]*|typeset[ \t]+-[a-zA-Z]*x[a-zA-Z]*)[ \t]+(?:[^#\n]*[ \t])?CLAUDE_CODE_OAUTH_TOKEN\b/m,
+    /^[ \t]*setenv[ \t]+CLAUDE_CODE_OAUTH_TOKEN\b/m,
+  ];
+  for (const file of files) {
+    let content: string;
+    try { content = read(join(home, file)); } catch { continue; }
+    if (sets.some((re) => re.test(content))) return true;
+  }
+  return false;
 }
 
 /** `path` is `dir` or inside it. */

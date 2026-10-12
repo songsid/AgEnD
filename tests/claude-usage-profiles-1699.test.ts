@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchAllUsage, fetchClaudeUsage, getClaudeOAuthToken, providersForConfig, setClaudeKeychainForTests, setUsageProvidersForTests } from "../src/usage/providers.js";
+import { fetchAllUsage, fetchClaudeUsage, getClaudeOAuthToken, providersForConfig, setClaudeKeychainForTests, setUsageProvidersForTests, shellRcSetsClaudeToken } from "../src/usage/providers.js";
 import { filterUsageProviders, formatUsageSummary } from "../src/usage/usage-api.js";
 import { claudeKeychainService, claudeProfileConfigDir } from "../src/backend/claude-code.js";
 import { credentialProfileHome } from "../src/backend/credential-profile.js";
@@ -268,6 +268,43 @@ describe("statusline rate limits stay with their subscription", () => {
     const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
     const u = await work.fetch();
     expect([session(u), u.status]).toEqual([null, "error"]);
+  });
+
+  it("review r2: a shell rc setting the token from another variable ($X, ${X}) reaches claude too — the readings are not the profile's", async () => {
+    const outcomes = [];
+    for (const rc of ['SHARED_TOKEN=dummy-shared\nexport CLAUDE_CODE_OAUTH_TOKEN="$SHARED_TOKEN"\n', 'SHARED_TOKEN=dummy-shared\nexport CLAUDE_CODE_OAUTH_TOKEN="${SHARED_TOKEN}"\n']) {
+      statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
+      credentials(profileHome("work"), "dummy-work");
+      apiDown();
+      writeFileSync(join(root, ".bashrc"), rc);
+      const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+      const u = await work.fetch();
+      outcomes.push([u.status, session(u)]);
+    }
+    expect(outcomes).toEqual([["error", null], ["error", null]]);
+  });
+
+  it("review r2 control: an rc exporting only another variable leaves the profile's own reading as its fallback", async () => {
+    statusline("on-work", 71, join(profileHome("work"), "projects", "-w", "s.jsonl"), 1_000);
+    credentials(profileHome("work"), "dummy-work");
+    apiDown();
+    writeFileSync(join(root, ".bashrc"), "export SHARED_TOKEN=dummy-shared\n");
+    const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
+    const u = await work.fetch();
+    expect([u.status, session(u)]).toEqual(["ok", 71]);
+  });
+
+  it("what counts as an rc setting the token (any assignment, export or declaration — not a comment, not another name)", () => {
+    const sets = (rc: string) => shellRcSetsClaudeToken(() => rc, "/h", ["rc"]);
+    const yes = ["CLAUDE_CODE_OAUTH_TOKEN=x", "export CLAUDE_CODE_OAUTH_TOKEN=x", '  export CLAUDE_CODE_OAUTH_TOKEN="$T"', "export CLAUDE_CODE_OAUTH_TOKEN=${T}",
+      "export A=1 CLAUDE_CODE_OAUTH_TOKEN=$T", "export CLAUDE_CODE_OAUTH_TOKEN", "declare -x CLAUDE_CODE_OAUTH_TOKEN=$T", "typeset -x CLAUDE_CODE_OAUTH_TOKEN",
+      "readonly CLAUDE_CODE_OAUTH_TOKEN=x", "setenv CLAUDE_CODE_OAUTH_TOKEN x", "CLAUDE_CODE_OAUTH_TOKEN=", "export CLAUDE_CODE_OAUTH_TOKEN=$(cat ~/.tok)"];
+    const no = ["# export CLAUDE_CODE_OAUTH_TOKEN=x", "export SHARED_TOKEN=x", "echo $CLAUDE_CODE_OAUTH_TOKEN", "export MY_CLAUDE_CODE_OAUTH_TOKEN=x", "export A=1 # CLAUDE_CODE_OAUTH_TOKEN=x", ""];
+    expect([yes.filter((l) => !sets(l)), no.filter((l) => sets(l))]).toEqual([[], []]);
+    expect(shellRcSetsClaudeToken(() => { throw new Error("ENOENT"); }, "/h", ["rc"])).toBe(false);
+    // Every rc is read: a harmless .bashrc does not hide the .zshrc that sets it.
+    const rcs: Record<string, string> = { "/h/.bashrc": "export PATH=$PATH:~/bin\n", "/h/.zshrc": 'export CLAUDE_CODE_OAUTH_TOKEN="$T"\n' };
+    expect(shellRcSetsClaudeToken((p) => { if (p in rcs) return rcs[p]; throw new Error("ENOENT"); }, "/h")).toBe(true);
   });
 
   it("review r1 control: no token in the environment — the profile's own reading is its fallback", async () => {
