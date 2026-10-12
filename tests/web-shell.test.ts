@@ -94,9 +94,11 @@ describe("GET /ui/poll", () => {
 
 describe("a passive poll is not activity (#1251 review): it never keeps an idle session alive", () => {
   // The real listener: the outer gate and the /ui handler's own check, a real session cookie, the store's clock
-  // driven by the test. Local sessions end after 2h idle (12h absolute).
+  // driven by the test. These cases reason about sessions that end after 2h idle (12h absolute) — the mechanism; the
+  // shipped default is 48h/48h (#1670), so the store is given the policy they test.
   async function signedInAt(h: Awaited<ReturnType<typeof startFleet>>, clock: { t: number }) {
     (h.fm as unknown as { webSessions: { now: () => number } }).webSessions.now = () => clock.t;
+    (h.fm as unknown as { webSessions: { localPolicy: () => unknown } }).webSessions.localPolicy = () => ({ absoluteMs: 12 * 3_600_000, idleMs: 2 * 3_600_000 });
     const login = await raw(h.port, "POST", "/auth/login", { "content-type": "application/json", origin: h.origin }, JSON.stringify({ code: h.fm.issueDashboardLogin()!.display }));
     expect(login.status).toBe(200);
     return String(login.headers["set-cookie"]).split(";")[0]!;
