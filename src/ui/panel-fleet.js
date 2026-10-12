@@ -35,7 +35,8 @@ register("fleet", {
     cron: "Cron expression", message: "Message", target: "Target instance", label: "Label", teamName: "Team name", members: "Members",
     titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
     deleteSchedule: "Delete this schedule?", deleteTeam: "Delete team “{0}”?", taskCreated: "Task created", scheduleCreated: "Schedule created", scheduleDeleted: "Schedule deleted",
-    teamCreated: "Team created", teamDeleted: "Team deleted", taskDone: "Task updated", configSaved: "Config saved", configRestart: " (restart the fleet to apply channel changes)",
+    teamCreated: "Team created", teamDeleted: "Team deleted", teamUpdated: "Team updated", edit: "Edit", editTeam: "Edit team",
+    teamNoRename: "Renaming isn't supported — create a new team and delete this one.", taskDone: "Task updated", configSaved: "Config saved", configRestart: " (restart the fleet to apply channel changes)",
     channel: "Channel", type: "Type", tokenEnv: "Bot token env", groupId: "Group ID", show: "Show", hide: "Hide", access: "Access control", mode: "Mode", locked: "Locked", open: "Open",
     allowedUsers: "Allowed users", allowedUsersNote: "Comma-separated user IDs", defaults: "Defaults", backend: "Backend", roots: "Project roots", addRoot: "Add root", removeRoot: "Remove",
     saveNote: "Saving rewrites fleet.yaml (its comments are lost).",
@@ -57,7 +58,8 @@ register("fleet", {
     cron: "Cron 表示式", message: "訊息", target: "目標 instance", label: "標籤", teamName: "Team 名稱", members: "成員",
     titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
     deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除 team「{0}」嗎？", taskCreated: "Task 已建立", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
-    teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", taskDone: "Task 已更新", configSaved: "設定已儲存", configRestart: "（請重新啟動 fleet 以套用頻道變更）",
+    teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", teamUpdated: "Team 已更新", edit: "編輯", editTeam: "編輯 team",
+    teamNoRename: "不支援重新命名：請建立新的 team，再刪除這個。", taskDone: "Task 已更新", configSaved: "設定已儲存", configRestart: "（請重新啟動 fleet 以套用頻道變更）",
     channel: "頻道", type: "類型", tokenEnv: "Bot token 環境變數", groupId: "Group ID", show: "顯示", hide: "隱藏", access: "存取控制", mode: "模式", locked: "鎖定", open: "開放",
     allowedUsers: "允許的使用者", allowedUsersNote: "以逗號分隔的使用者 ID", defaults: "預設值", backend: "Backend", roots: "專案根目錄", addRoot: "新增根目錄", removeRoot: "移除",
     saveNote: "儲存會改寫 fleet.yaml（其中的註解會遺失）。",
@@ -174,9 +176,13 @@ function Schedules({ lease }) {
   ${creating ? html`<${CreateSchedule} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
+/** #1689: the public link changes no team (the server refuses it): it lists them only. */
+const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
+
 function Teams({ lease }) {
   const [version, setVersion] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(null);   // #1689: { name, members, description } of the team being edited
   const state = useLoad(lease, "/ui/teams", version);
   async function del(name) {
     if (!(await confirmDialog({ message: t("fleet.deleteTeam", name), confirmLabel: t("fleet.delete"), danger: true }))) return;
@@ -186,14 +192,17 @@ function Teams({ lease }) {
   }
   return html`<${Loaded} state=${state}>${(d) => {
     const entries = Object.entries(d.teams || {});
-    return html`<${ListHead} count=${entries.length === 1 ? t("fleet.countTeam") : t("fleet.countTeams", entries.length)} label=${t("fleet.newTeam")} action=${{ onClick: () => setCreating(true) }} />
+    const writable = !publicLink();
+    return html`<${ListHead} count=${entries.length === 1 ? t("fleet.countTeam") : t("fleet.countTeams", entries.length)} label=${t("fleet.newTeam")} action=${writable ? { onClick: () => setCreating(true) } : null} />
       ${entries.length ? html`<ul class="rows">${entries.map(([name, team]) => html`<li key=${name} class="row-item">
         <span class="grow strong">${name}</span><span class="muted">${(team.members || []).join(", ")}</span>
-        <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(name)}>${t("fleet.delete")}</button></li>`)}</ul>`
+        ${writable ? html`<button type="button" class="btn btn-ghost btn-sm team-edit" onClick=${() => setEditing({ name, members: [...(team.members || [])], description: team.description || "" })}>${t("fleet.edit")}</button>
+        <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(name)}>${t("fleet.delete")}</button>` : null}</li>`)}</ul>`
         : html`<${Empty} icon="team" title=${t("fleet.noTeams")} hint=${t("fleet.noTeamsHint")} />`}
 `;
   }}</${Loaded}>
-  ${creating ? html`<${CreateTeam} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
+  ${creating ? html`<${CreateTeam} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}
+  ${editing ? html`<${CreateTeam} team=${editing} onClose=${() => setEditing(null)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
 /** #1389: the org chart — its structure read once per opening, its live state from the app store (fleet-org.js). */
@@ -293,7 +302,7 @@ export function FormDialog({ title, onClose, submit, children, ready = true }) {
     // the dialog goes at once and the shell follows the request. From then on the dialog is done: the decision is
     // said in a toast, and nothing here closes, refreshes or acts again.
     try {
-      const res = await confirmedWrite(submit.path, { method: "POST", body, label: title,
+      const res = await confirmedWrite(submit.path, { method: submit.method || "POST", body, label: title,
         onPending: () => { handedOver = true; toast(t("app.pendingSent")); if (lease.current()) { setBusy(false); onClose(); } } });
       r = res.ok ? res.body || {} : { error: (res.body && res.body.error) || `HTTP ${res.status}` };
     } catch (err) { r = { error: err.message }; }
@@ -306,7 +315,7 @@ export function FormDialog({ title, onClose, submit, children, ready = true }) {
   }
   return html`<${Dialog} title=${title} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${t("fleet.cancel")}</button>
-      <button type="button" class="btn btn-primary" onClick=${go} disabled=${busy || !ready}>${busy ? t("fleet.creating") : t("fleet.create")}</button>`}>
+      <button type="button" class="btn btn-primary" onClick=${go} disabled=${busy || !ready}>${busy ? t("fleet.creating") : submit.label || t("fleet.create")}</button>`}>
     <form class="form" onSubmit=${(e) => { e.preventDefault(); go(); }}><fieldset class="form" disabled=${busy}>${children}</fieldset></form></${Dialog}>`;
 }
 const field = (label, input) => html`<label class="field"><span>${label}</span>${input}</label>`;
@@ -349,21 +358,34 @@ function CreateSchedule({ onClose, onDone }) {
   </${FormDialog}>`;
 }
 
-function CreateTeam({ onClose, onDone }) {
+/**
+ * New team, or (#1689) `team` given: edit that one — the same form, filled in from it: its members ticked (one no longer
+ * in the fleet listed too, so it can be taken out), its description; the name is not editable (a team is not renamed).
+ * Saved with PATCH /ui/teams/<name> (the update_team path on the host).
+ */
+function CreateTeam({ onClose, onDone, team = null }) {
   const { instances } = useStore(appStore);
-  const [f, setF] = useState({ name: "", desc: "", members: [] });
-  const toggle = (n) => setF({ ...f, members: f.members.includes(n) ? f.members.filter(x => x !== n) : [...f.members, n] });
-  const submit = { path: "/ui/teams", done: t("fleet.teamCreated"), after: onDone, collect: () => {
-    if (!f.name.trim() || !f.members.length) { toast(t("fleet.teamFieldsRequired"), false); return null; }
-    const body = { name: f.name.trim(), members: f.members };
-    if (f.desc.trim()) body.description = f.desc.trim();
-    return body;
-  } };
-  return html`<${FormDialog} title=${t("fleet.newTeam")} onClose=${onClose} submit=${submit}>
-    ${field(`${t("fleet.teamName")} *`, html`<input value=${f.name} onInput=${(e) => setF({ ...f, name: e.target.value })} />`)}
-    ${field(t("fleet.taskDesc"), html`<input value=${f.desc} onInput=${(e) => setF({ ...f, desc: e.target.value })} />`)}
-    <fieldset class="field"><legend>${t("fleet.members")} *</legend><div class="checks">${instances.map(i => html`<label key=${i.name} class="check">
-      <input type="checkbox" checked=${f.members.includes(i.name)} onChange=${() => toggle(i.name)} />${i.name}</label>`)}</div></fieldset>
+  const [f, setF] = useState(team ? { name: team.name, desc: team.description || "", members: [...team.members] } : { name: "", desc: "", members: [] });
+  // From the state as it is, not this render's copy: two ticks before the next render must both count.
+  const toggle = (n) => setF((cur) => ({ ...cur, members: cur.members.includes(n) ? cur.members.filter(x => x !== n) : [...cur.members, n] }));
+  const names = [...new Set([...instances.map(i => i.name), ...(team ? team.members : [])])];
+  const submit = team
+    ? { path: `/ui/teams/${encodeURIComponent(team.name)}`, method: "PATCH", label: t("fleet.save"), done: t("fleet.teamUpdated"), after: onDone, collect: () => {
+      if (!f.members.length) { toast(t("fleet.teamFieldsRequired"), false); return null; }
+      return { members: f.members, description: f.desc.trim() };
+    } }
+    : { path: "/ui/teams", done: t("fleet.teamCreated"), after: onDone, collect: () => {
+      if (!f.name.trim() || !f.members.length) { toast(t("fleet.teamFieldsRequired"), false); return null; }
+      const body = { name: f.name.trim(), members: f.members };
+      if (f.desc.trim()) body.description = f.desc.trim();
+      return body;
+    } };
+  return html`<${FormDialog} title=${team ? t("fleet.editTeam") : t("fleet.newTeam")} onClose=${onClose} submit=${submit}>
+    ${field(`${t("fleet.teamName")} *`, html`<input value=${f.name} readOnly=${!!team} aria-readonly=${team ? "true" : undefined} onInput=${(e) => { const v = e.target.value; setF((cur) => ({ ...cur, name: v })); }} />`)}
+    ${team ? html`<p class="note">${t("fleet.teamNoRename")}</p>` : null}
+    ${field(t("fleet.taskDesc"), html`<input value=${f.desc} onInput=${(e) => { const v = e.target.value; setF((cur) => ({ ...cur, desc: v })); }} />`)}
+    <fieldset class="field"><legend>${t("fleet.members")} *</legend><div class="checks">${names.map(n => html`<label key=${n} class="check">
+      <input type="checkbox" checked=${f.members.includes(n)} onChange=${() => toggle(n)} />${n}</label>`)}</div></fieldset>
   </${FormDialog}>`;
 }
 
