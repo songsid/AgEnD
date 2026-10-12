@@ -142,6 +142,21 @@ describe("#1691: a known dialog keeps its own path", () => {
   });
 });
 
+describe("#1691: a [y/n] the interactive-prompt detector already tells", () => {
+  it("is held and awaiting input, but told once — by interactive_prompt, not a second time by the catch-all", async () => {
+    const r = rig();
+    const told: unknown[] = [];
+    r.d.on("interactive_prompt", (e: unknown) => told.push(e));
+    try {
+      r.screen.text = "Installing dependencies…\n\nOverwrite the existing config.yaml? [y/N]\n";
+      await r.poll(3 * 60_000);
+      expect(told).toHaveLength(1);
+      expect(unrecognised(r.parked)).toEqual([]);
+      expect([r.awaiting(), await r.held(), r.keys.length]).toEqual([true, "dialog", 0]);
+    } finally { r.stop(); }
+  });
+});
+
 describe("#1691: a known dialog AgEnD answers stays its own even when the answer does not take", () => {
   it("answered every scan and still on screen: never the catch-all (no hold, no unrecognised report)", async () => {
     const known = { pattern: /Switch model\?/, isActive: (pane: string) => /Switch model\?/.test(pane), keys: ["Escape"], description: "Claude model switch (answered)" };
