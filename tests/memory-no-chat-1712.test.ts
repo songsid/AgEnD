@@ -185,6 +185,17 @@ describe("#1712 memory protection without chat broadcasts", () => {
     expect(operation).toHaveBeenCalledOnce(); expect(reply).toHaveBeenCalledOnce();
   });
 
+  it("bot ingress clears an inherited human reply scope", async () => {
+    const { fm, f, set, sendText, notify } = make("linux", "critical");
+    const reply = vi.fn().mockResolvedValue(undefined), operation = vi.fn(async () => undefined);
+    // Only the existing ingress core/spawning handler is inert; the wrapper and real gate run.
+    vi.spyOn(f, "handleInboundMessageCore").mockImplementation(() => fm.spawnGate.run({ instanceName: "bot-work", workingDirectory: "/fixture/bot-work", reason: "wake" }, operation));
+    const result = withSpawnHoldReply(reply, () => f.handleInboundMessage({ isBotMessage: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reply).not.toHaveBeenCalled(); expect(sendText).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled();
+    set("normal"); await vi.advanceTimersByTimeAsync(120_000); await result; expect(operation).toHaveBeenCalledOnce();
+  });
+
   it.each(["start", "restart", "wake"] as const)("web %s returns the hold reason once and completes the queued operation after recovery", async action => {
     const { fm, f, set, notify } = make("linux", "critical");
     vi.spyOn(f, "webToken", "get").mockReturnValue("fixture".repeat(8));

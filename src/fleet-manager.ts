@@ -7437,7 +7437,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
-    if (msg.isBotMessage) return this.handleInboundMessageCore(msg);
+    if (msg.isBotMessage) return withSpawnHoldReply(undefined, () => this.handleInboundMessageCore(msg));
     const adapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapters.get(msg.adapterId ?? "") ?? this.adapter;
     return withSpawnHoldReply(text => adapter?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
       () => this.handleInboundMessageCore(msg));

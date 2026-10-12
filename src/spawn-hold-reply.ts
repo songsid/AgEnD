@@ -5,10 +5,10 @@ interface ActionReply { active: boolean; told: boolean; reply: (text: string) =>
 const replies = new AsyncLocalStorage<ActionReply | undefined>();
 
 /** A reply belongs to this user action, never to a background recovery or General. */
-export async function withSpawnHoldReply<T>(reply: ActionReply["reply"], action: () => Promise<T>): Promise<T> {
-  const owner: ActionReply = { active: true, told: false, reply };
+export async function withSpawnHoldReply<T>(reply: ActionReply["reply"] | undefined, action: () => Promise<T>): Promise<T> {
+  const owner: ActionReply | undefined = reply ? { active: true, told: false, reply } : undefined;
   try { return await replies.run(owner, action); }
-  finally { owner.active = false; }
+  finally { if (owner) owner.active = false; }
 }
 
 /** A later pump must run this operation in its enqueue context, including an absent owner. */
