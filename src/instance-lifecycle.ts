@@ -1063,7 +1063,7 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string }) => {
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
       // exactly the destructive default for Claude's resume prompt. The text
@@ -1083,6 +1083,14 @@ export class InstanceLifecycle {
       // (Kept `description` for kind === "dialog" rather than a dedicated
       // kiro interactionKind: a new union member would flow into the category
       // labels, summaries and every exhaustive match for one picker's text.)
+      // #1691: a prompt no table knows — what it asks (one sanitised, bounded line from the daemon, never the pane), and
+      // that AgEnD will not press anything.
+      if (data.unrecognised) {
+        const asked = data.question ? t("inst.unrecognised_prompt_question", data.question) : "";
+        this.notifyIncident(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked));
+        this.ctx.notifyFleetError?.(t("fleet.unrecognised_prompt", name, asked));
+        return;
+      }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
         ? t("inst.dialog_parked_hold", name, data.description)
