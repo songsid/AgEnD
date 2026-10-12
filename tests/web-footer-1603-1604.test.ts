@@ -115,7 +115,7 @@ describe("#1604: Settings → This device", () => {
     box.checked = true; fire(box, "change"); await settle(6);
     expect([asked.length, pg.storage.get("agend_html_preview")]).toEqual([1, "on"]);   // asked once (the same question), then allowed — the device's own key
     expect(asked[0]).toMatch(/Allow HTML previews\?\n\nThis applies on every device where you are signed in\./);
-    expect(sec.querySelector("#tourBtn")?.textContent?.trim()).toBe("Tour");
+    expect(pg.root.querySelector(".s-local #tourBtn")?.textContent?.trim()).toBe("Tour");   // #1665: the tour is this device's
     delete g.confirm;
   });
   it("#1665: two cards — what is synced across devices (saying so), and what stays on this one; the public link says its changes stay here", async () => {
@@ -131,7 +131,7 @@ describe("#1604: Settings → This device", () => {
       const cards = [...pg.root.querySelectorAll(".s-device")] as any[];
       expect(cards.map((c) => [c.querySelector("h3").textContent, c.querySelector(".sub").textContent, !!c.querySelector('select[aria-label="Theme"]')]), String(publicLink)).toEqual([
         ["Synced across your devices", publicLink ? "On the public link these are read-only: a change here stays in this browser." : "Changes here apply on every device where you are signed in.", true],
-        ["This device only", "Text size, view fit, the sidebar shown or hidden, panel widths and desktop notifications stay on each device.", false],
+        ["This device only", "The tour, text size, view fit, the sidebar shown or hidden, panel widths and desktop notifications stay on each device.", false],
       ]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }

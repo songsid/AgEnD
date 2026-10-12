@@ -97,8 +97,7 @@ describe("the app's modules", () => {
       { set: { lang: "zh-TW" }, onlyIfUnset: true },
       { set: { "nav.filter": { q: "x", status: [], cli: [] } }, onlyIfUnset: true },
       { set: { "preview.optIn": true }, onlyIfUnset: true },
-      { set: { "seen.tour": true }, onlyIfUnset: true },
-    ]);
+    ]);                                         // the tour this device has seen stays its own: never uploaded
     expect([hostValues.theme, hostValues.lang, ls("agend_prefs_synced")]).toEqual(["light", "zh-TW", "1"]);
     // Uploaded once: the next run (the next load) sends nothing.
     requests.length = 0;
@@ -176,10 +175,10 @@ describe("the app's modules", () => {
     expect([...nav.navStore.get().collapsed]).toEqual(["Ops", "Web"]);
   });
 
-  it("every place a synced choice is made sends it: theme and language (Preferences), previews, the tour, the first-run card", async () => {
+  it("every place a synced choice is made sends it: theme and language (Preferences), previews — the tour and the first-run card stay on the device", async () => {
     const themes: string[] = [];
     (globalThis as any).AgendTheme = { get: () => "system", set: (v: string) => themes.push(v) };
-    await boot({ storage: { agend_prefs_synced: "1", agend_tour_done: "1" }, host: {} });
+    await boot({ storage: { agend_prefs_synced: "1" }, host: {} });
     const { h, render } = await import("/assets/app-html.js");
     const { DevicePrefs } = await import("/assets/app-shell.js");
     const root = pg.document.createElement("div"); pg.document.body.appendChild(root);
@@ -198,7 +197,8 @@ describe("the app's modules", () => {
     // @ts-expect-error — a JS module of the app, with no types
     (await import("../src/ui/first-run.js")).dismissFirstRun();
     await new Promise((r) => setTimeout(r, 450));
-    expect([themes, posts()]).toEqual([["dark"], [{ set: { theme: "dark", lang: "zh-TW", "preview.optIn": true, "seen.tour": true, "seen.firstRun": true } }]]);
+    expect([themes, posts(), ls("agend_tour_done"), ls("agend_firstrun_dismissed")])
+      .toEqual([["dark"], [{ set: { theme: "dark", lang: "zh-TW", "preview.optIn": true } }], "1", "1"]);
     render(null, root);
   });
 

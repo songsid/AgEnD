@@ -64,7 +64,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     theme: "dark", lang: "zh-TW",
     "nav.order": [{ item_type: "group", item_name: "Ops", sort_index: 0, group_name: null }, { item_type: "instance", item_name: "alpha", sort_index: 0, group_name: "Ops" }],
     "nav.collapsed": ["Ops"], "nav.filter": { q: "rev", status: ["working"], cli: ["claude-code"] },
-    "preview.optIn": true, "seen.tour": true, "seen.firstRun": false,
+    "preview.optIn": true,
   };
   const INVALID: Record<string, unknown[]> = {
     theme: ["blue", "", 1],
@@ -75,7 +75,6 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "nav.collapsed": [["a", "a"], [""], ["x".repeat(129)], "Ops", [1]],
     "nav.filter": [{ q: "", status: [] }, { q: "x".repeat(201), status: [], cli: [] }, { q: "", status: ["busy"], cli: [] }, { q: "", status: [], cli: ["Bad Name"] }, []],
     "preview.optIn": ["true", 1],
-    "seen.tour": ["1"], "seen.firstRun": [0],
   };
   it("covers every key the store knows", () => {
     expect([Object.keys(VALID).sort(), Object.keys(INVALID).sort()]).toEqual([[...WEB_PREF_KEYS].sort(), [...WEB_PREF_KEYS].sort()]);
@@ -91,6 +90,9 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     }
     expect(accepted).toEqual([]);
   });
+  it("the tour and the first-run card are not synced (the user's call): not keys of the store", () => {
+    expect([parseWebPrefsPatch({ "seen.tour": true }).ok, parseWebPrefsPatch({ "seen.firstRun": true }).ok, WEB_PREF_KEYS.some((k) => k.startsWith("seen."))]).toEqual([false, false, false]);
+  });
   it("unknown keys, __proto__ and constructor included, are refused — and refuse the whole request", () => {
     const outcomes = ['{"__proto__":"dark"}', '{"constructor":true}', '{"toString":1}', '{"themes":"dark"}', '{"theme":"dark","__proto__":{"x":1}}']
       .map((raw) => parseWebPrefsPatch(JSON.parse(raw)));
@@ -103,10 +105,10 @@ describe("the store: one operator bucket on disk", () => {
   it("writes atomically to <home>/web-prefs.json (0600), raises rev on a change only, and reads back after a restart", () => {
     const dir = tmp();
     const a = new WebPrefsStore(dir);
-    const w1 = a.write(OPERATOR, new Map<string, unknown>([["theme", "dark"], ["seen.tour", true]]));
+    const w1 = a.write(OPERATOR, new Map<string, unknown>([["theme", "dark"], ["preview.optIn", true]]));
     const w2 = a.write(OPERATOR, new Map<string, unknown>([["theme", "dark"]]));     // the same value: no change
-    const w3 = a.write(OPERATOR, new Map<string, unknown>([["seen.tour", null]]));   // cleared
-    expect([w1.ok && w1.changed, w2.ok && w2.changed, w3.ok && w3.changed, a.rev()]).toEqual([["theme", "seen.tour"], [], ["seen.tour"], 2]);
+    const w3 = a.write(OPERATOR, new Map<string, unknown>([["preview.optIn", null]]));   // cleared
+    expect([w1.ok && w1.changed, w2.ok && w2.changed, w3.ok && w3.changed, a.rev()]).toEqual([["theme", "preview.optIn"], [], ["preview.optIn"], 2]);
     expect(statSync(join(dir, "web-prefs.json")).mode & 0o777).toBe(0o600);
     const b = new WebPrefsStore(dir);
     expect(b.read(OPERATOR)).toEqual({ values: { theme: "dark" }, rev: 2 });
@@ -170,7 +172,7 @@ describe("/ui/prefs", () => {
   });
   it("the public link can read but can never write — any key, the preview opt-in included — and the manifest does not offer the write", async () => {
     const outcomes: unknown[] = [];
-    for (const set of [{ theme: "dark" }, { "preview.optIn": true }, { "seen.tour": true }, { "nav.order": [] }]) {
+    for (const set of [{ theme: "dark" }, { "preview.optIn": true }, { lang: "en" }, { "nav.order": [] }]) {
       const t = setup({ publicLink: true });
       const w = t.write({ set });
       await flush();
@@ -203,9 +205,9 @@ describe("/ui/prefs", () => {
   it("onlyIfUnset through the route", async () => {
     const t = setup();
     t.prefs.write(OPERATOR, new Map([["theme", "light"]]));
-    const w = t.write({ set: { theme: "dark", "seen.tour": true }, onlyIfUnset: true });
+    const w = t.write({ set: { theme: "dark", lang: "zh-TW" }, onlyIfUnset: true });
     await flush();
-    expect(w.json()).toEqual({ values: { theme: "light", "seen.tour": true }, rev: 2, changed: ["seen.tour"] });
+    expect(w.json()).toEqual({ values: { theme: "light", lang: "zh-TW" }, rev: 2, changed: ["lang"] });
   });
   it("a write without the session's CSRF header is refused by the gate", async () => {
     const t = setup();

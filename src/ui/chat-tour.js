@@ -8,7 +8,6 @@
 // the agent (#1369 review).
 import { t, onLang } from "/assets/app-i18n.js";
 import { shellStore, closeDrawer } from "/assets/app-shell.js";
-import { savePref } from "/assets/app-prefs.js";
 import "./chat-strings.js";
 
 const TOUR_KEY = "agend_tour_done";
@@ -86,7 +85,7 @@ function onCardClick(e) {
 }
 
 export function endTour() {
-  savePref("seen.tour", true);   // #1665: seen once, seen on every device (cached here as TOUR_KEY)
+  try { localStorage.setItem(TOUR_KEY, "1"); } catch { /* this page only */ }
   at = -1;
   if (spot) spot.classList.remove("tour-spot");
   spot = null;

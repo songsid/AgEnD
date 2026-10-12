@@ -1,7 +1,8 @@
 /**
  * #1665: the web preferences that follow the person from device to device (theme, language, the sidebar's arrangement,
- * the HTML-preview opt-in, what was already seen), kept on the host — design: the comment on #1665.
+ * the HTML-preview opt-in), kept on the host — design: the comment on #1665.
  *
+ * - The tour and the first-run card stay per device (the user's call on #1665): they are not keys here.
  * - One bucket per web identity. There is one today: every web session is the operator's (SessionRecord has no
  *   owner), so the file is keyed by identity and holds "operator" only; a per-owner key can come later unmigrated.
  * - A fixed registry of keys, each with its own validator. Anything else is refused — "__proto__" and "constructor"
@@ -68,8 +69,6 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   }],
   // HTML previews allowed. Who may write it at all is the route's business (a signed-in session, never the public link).
   ["preview.optIn", (v) => (typeof v === "boolean" ? v : bad("preview.optIn: true or false"))],
-  ["seen.tour", (v) => (typeof v === "boolean" ? v : bad("seen.tour: true or false"))],
-  ["seen.firstRun", (v) => (typeof v === "boolean" ? v : bad("seen.firstRun: true or false"))],
 ]);
 export const WEB_PREF_KEYS: readonly string[] = [...REGISTRY.keys()];
 export function isWebPrefKey(key: string): boolean { return REGISTRY.has(key); }

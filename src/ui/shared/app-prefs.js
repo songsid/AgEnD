@@ -1,6 +1,8 @@
 // #1665: the web preferences that follow the person between devices — kept on the host (/ui/prefs), with this browser's
 // localStorage, under the keys every panel already reads, as the cache. Design: the comment on #1665.
 //
+// - Synced: theme, language, the sidebar (order, folds, filter) and the HTML-preview opt-in. The tour and the first-run
+//   card stay on each device, as every layout choice does.
 // - The signed-in page is served with the host's values (<html data-prefs>). This module, imported before any panel
 //   reads its key, copies them into the cache: the host wins once it has a value. theme.js and the dictionary already
 //   took the theme and language from the same attribute, before paint.
@@ -13,7 +15,6 @@ import { lang, setLang } from "./app-i18n.js";
 import { appStore } from "./app-store.js";
 
 const SYNCED_FLAG = "agend_prefs_synced";
-const yes = (v) => (v ? "1" : null), isOne = (s) => (s === "1" ? true : undefined);
 const json = { toLocal: (v) => JSON.stringify(v), fromLocal: (s) => { try { return s == null ? undefined : JSON.parse(s); } catch { return undefined; } } };
 /** Each synced preference: its cache key, and how a host value is cached (null: no entry) and read back. */
 export const SYNCED = {
@@ -23,8 +24,6 @@ export const SYNCED = {
   "nav.collapsed": { ls: "agend_instance_collapsed", ...json },
   "nav.filter": { ls: "agend_instance_filter", ...json },
   "preview.optIn": { ls: "agend_html_preview", toLocal: (v) => (v ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
-  "seen.tour": { ls: "agend_tour_done", toLocal: yes, fromLocal: isOne },
-  "seen.firstRun": { ls: "agend_firstrun_dismissed", toLocal: yes, fromLocal: isOne },
 };
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
