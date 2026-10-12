@@ -171,4 +171,25 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     scr.set(true); await settle(8);
     expect([hasDialog(pg), rail(pg)]).toEqual([false, true]);
   });
+
+  // #1679 review (P2): widening closes the dialog for good — hiding the rail and narrowing again never brings it back.
+  it.each([["the rail's ✕", "close"], ["◔", "button"]])("dialog → wide → hidden with %s → narrow again: nothing reopens, no third read", async (_n, how) => {
+    const { pg, scr } = await app("/ui/chat/web-dev", { wide: false });
+    usageBtn(pg).click(); await settle(8);
+    scr.set(true); await settle(8);
+    if (how === "close") pg.root.querySelector("aside.u-rail .u-rail-head button").click(); else usageBtn(pg).click();
+    await settle(4);
+    expect([hasDialog(pg), rail(pg)]).toEqual([false, false]);
+    scr.set(false); await settle(8);
+    expect([hasDialog(pg), rail(pg), usageReads]).toEqual([false, false, 2]);
+  });
+
+  it("this device's hidden choice is kept: dialog → wide shows neither, and the choice stays \"0\"", async () => {
+    const { pg, scr } = await app("/ui/chat/web-dev", { wide: false, storage: { agend_usage_rail: "0" } });
+    usageBtn(pg).click(); await settle(8);
+    scr.set(true); await settle(8);
+    expect([hasDialog(pg), rail(pg), pg.storage.get("agend_usage_rail")]).toEqual([false, false, "0"]);
+    scr.set(false); await settle(8);
+    expect([hasDialog(pg), rail(pg)]).toEqual([false, false]);
+  });
 });

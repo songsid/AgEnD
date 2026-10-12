@@ -125,6 +125,9 @@ export function UsageButton({ navKey }) {
   const [openFor, setOpenFor] = useState(null);
   const wide = useRailWidth();
   const rail = useStore(usageRailStore);
+  // Widening ends a dialog opened on the narrower screen — closed for good, not hidden while wide: narrowing again
+  // (after the rail was hidden, or with this device's rail hidden) never brings it back (#1679 review).
+  useEffect(() => { if (wide) setOpenFor(null); }, [wide]);
   if (!usageOffered()) return null;
   const open = !wide && openFor !== null && openFor === navKey;
   const click = () => (wide ? setUsageRail(!rail.open) : setOpenFor(navKey));
