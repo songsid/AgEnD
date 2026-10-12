@@ -71,6 +71,7 @@ import {
 } from "./turn-resume.js";
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
+import { claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 
@@ -664,6 +665,16 @@ const DIALOG_PROBE_UNKNOWN_MAX = 40;
 /** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
 const STARTUP_DIALOG_POLL_MS = 500;
 const STARTUP_DIALOG_BUDGET_MS = 30_000;
+/** #1690: after AgEnD's own `/model`, how long the pane is read for claude's "Switch model?" or its result. */
+export const OWN_SWITCH_WAIT_MS = 6_000;
+/** #1690: after an answer to that dialog, how long it gets to go away. */
+const OWN_SWITCH_SETTLE_MS = 3_000;
+/** #1690: what AgEnD's own runtime switch came to — sent back to the fleet (IPC runtime_switch_result). */
+export type OwnSwitchOutcome =
+  | { outcome: "switched"; confirmed: boolean; shown?: string }
+  | { outcome: "mismatch"; shown: string; answered: boolean }
+  | { outcome: "not_confirmed"; shown?: string }
+  | { outcome: "not_sent" };
 /** A blocking dialog still on screen this long after first being seen is reported for a human. */
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** After a runtime dialog's keys, how long the pane gets to repaint before it is read again to see whether they took. */
@@ -1384,6 +1395,11 @@ export class Daemon extends EventEmitter {
   private dialogParkedKey: string | null = null;
   private dialogParkedInteractionEpisode: number | null = null;
   private dialogParkedReported = false;
+  /**
+   * #1690: AgEnD's own runtime `/model` in flight — from the moment its paste went in until its "Switch model?" dialog
+   * (if any) is answered. Every delivery is held meanwhile: the dialog's default cursor is Yes, a stray Enter confirms it.
+   */
+  private ownSwitch: { id: string; kind: "model"; requested: string } | null = null;
   /**
    * The runtime dialog the monitor is answering, and how many of its answers in a row did nothing (the dialog was
    * still on screen right after the keys). Not the on-screen duration: a burst of FRESH prompts, each answered, has a
@@ -3965,13 +3981,20 @@ export class Daemon extends EventEmitter {
     deliveryEpoch = this.deliveryEpoch,
     confirmClear = false,
     durableAttempt?: DurableDeliveryAttempt,
+    ownSwitch?: { id: string; kind: "model"; requested: string },
   ): void {
+    const reportSwitch = (result: OwnSwitchOutcome) => {
+      if (!ownSwitch) return;
+      this.ipcServer?.broadcast({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
+    };
     if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) {
       if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste target unavailable before pane queue");
+      reportSwitch({ outcome: "not_sent" });
       return;
     }
     this.pasteLock = this.pasteLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        reportSwitch({ outcome: "not_sent" });
         this.logger.info("Pending raw delivery dropped by user cancel");
         if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while queued");
         return;
@@ -3988,6 +4011,9 @@ export class Daemon extends EventEmitter {
           verdict,
           durableAttempt,
           preserveExactBytes: true,
+          // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
+          // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
+          ...(ownSwitch ? { onPaneWritten: () => { this.ownSwitch = ownSwitch; } } : {}),
         });
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
         else if (durableAttempt && verdict.paneWriteStarted) {
@@ -4013,9 +4039,18 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
+        if (ownSwitch) { if (this.ownSwitch === ownSwitch) this.ownSwitch = null; reportSwitch({ outcome: "not_confirmed" }); }
         return;
       }
       if (confirmClear) await this.confirmBackendClearDialog();
+      if (ownSwitch) {
+        if (this.ownSwitch !== ownSwitch) reportSwitch({ outcome: "not_sent" });   // its write never began
+        else {
+          try { reportSwitch(await this.answerOwnSwitchDialog(ownSwitch)); }
+          catch (err) { this.logger.warn({ err: (err as Error).message }, "Answering our own model switch failed"); reportSwitch({ outcome: "not_confirmed" }); }
+          finally { this.ownSwitch = null; }
+        }
+      }
       this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
     });
     this.pasteLock = this.pasteLock.catch(err => {
@@ -4035,12 +4070,86 @@ export class Daemon extends EventEmitter {
       this.deferDurableDelivery(deliveryMeta, "invalid raw_paste delivery attempt metadata");
       return;
     }
+    const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown } | undefined;
+    const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string"
+      ? { id: sw.id, kind: "model" as const, requested: sw.requested } : undefined;
     this.queueRawPaste(
       msg.content as string,
       this.captureDeliveryEpoch(msg.delivery_epoch),
       msg.confirm_clear === true,
       durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste" } : undefined,
+      ownSwitch,
     );
+  }
+
+  /**
+   * #1690 (the user's choice A): after AgEnD's own `/model <name>`, claude may ask "Switch model?" (a warm cache for
+   * another model). When the model it names is the one asked for, answer Yes; otherwise No (Escape — `Kept model as …`),
+   * and say so. Every key goes on a freshly read, verified dialog under the pane write lock: the same target, and for
+   * Enter the cursor on "1. Yes"; the cursor is walked there with Up, one verified step at a time, never a blind key.
+   * Without the dialog, claude's own "Set model to …" line after the command is the result.
+   */
+  private async answerOwnSwitchDialog(spec: { requested: string }): Promise<OwnSwitchOutcome> {
+    const tmux = this.tmux;
+    if (!tmux) return { outcome: "not_confirmed" };
+    const read = () => tmux.capturePane().catch(() => "");
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    /** One key on a dialog re-read under the lock: still the same target, and (when given) the cursor where expected. */
+    const press = (target: string, cursor: 1 | 2 | null, key: "Enter" | "Escape" | "Up") => this.paneWriteLock.run(async () => {
+      if (this.tmux !== tmux) return false;
+      const now = claudeSwitchDialog(await read());
+      if (!now || now.kind !== "model" || now.target !== target || (cursor !== null && now.cursor !== cursor)) return false;
+      return tmux.sendSpecialKey(key);
+    });
+    const gone = async () => {
+      const until = performance.now() + OWN_SWITCH_SETTLE_MS;
+      while (performance.now() < until) { if (!claudeSwitchDialog(await read())) return true; await sleep(150); }
+      return false;
+    };
+    const deadline = performance.now() + OWN_SWITCH_WAIT_MS;
+    while (performance.now() < deadline && this.tmux === tmux) {
+      const pane = await read();
+      const dialog = claudeSwitchDialog(pane);
+      if (dialog && dialog.kind === "model") {
+        const shown = dialog.target;
+        if (!claudeSwitchTargetMatches(spec.requested, shown)) {
+          const answered = await press(shown, null, "Escape") && await gone();
+          this.logger.warn({ requested: spec.requested, shown, answered }, "claude would switch to another model than asked — answered No");
+          return { outcome: "mismatch", shown, answered };
+        }
+        // Walk the cursor to "1. Yes" (it starts there; a human may have moved it): Up from row 2, re-read each time.
+        let current = dialog;
+        for (let step = 0; step < 2 && current.cursor === 2; step++) {
+          if (!await press(shown, 2, "Up")) break;
+          await sleep(120);
+          const next = claudeSwitchDialog(await read());
+          if (!next || next.target !== shown) break;
+          current = next;
+        }
+        if (current.cursor !== 1 || !await press(shown, 1, "Enter") || !await gone()) {
+          this.logger.warn({ requested: spec.requested, shown, cursor: current.cursor }, "Our own model switch dialog could not be confirmed on a verified cursor — left for a human");
+          return { outcome: "not_confirmed", shown };
+        }
+        this.logger.info({ requested: spec.requested, shown }, "Confirmed our own model switch (claude: the next reply re-reads the history)");
+        return { outcome: "switched", confirmed: true, shown };
+      }
+      if (Daemon.switchResultAfterCommand(pane, spec.requested)) return { outcome: "switched", confirmed: false };
+      await sleep(200);
+    }
+    return { outcome: "not_confirmed" };
+  }
+
+  /**
+   * #1690: claude's "Set model to …" line under our `/model <requested>` (no dialog was needed). Only the newest command
+   * on the pane counts: an older identical `/model` with its result further up (switched away and back) must not pass
+   * for this one before it has even painted — that left its dialog unanswered (live, 2.1.296).
+   */
+  static switchResultAfterCommand(pane: string, requested: string): boolean {
+    const rows = pane.replace(/\r/g, "").split("\n");
+    let last = -1;
+    for (let i = rows.length - 1; i >= 0; i--) if (/^❯[ \t\u00a0]+\S/.test(rows[i]!)) { last = i; break; }
+    if (last < 0 || rows[last]!.replace(/^❯[ \t\u00a0]+/, "").trimEnd() !== `/model ${requested}`) return false;
+    return rows.slice(last + 1).some(row => /^\s*⎿?\s*Set model to /.test(row));
   }
 
   /**
@@ -4490,7 +4599,9 @@ export class Daemon extends EventEmitter {
       // Bare backend regexes are not proof of a live modal. The canonical
       // isActive predicate replaces pattern.test(), preserving table order.
       const dialog = dialogs.find(d => d.isActive && (d.inputBlocked || d.blocksDelivery || d.holdOnly)
-        && Daemon.dialogMatches(d, pane));
+        && Daemon.dialogMatches(d, pane)
+        // #1690: AgEnD's own switch dialog, being answered right now, is nobody's to answer.
+        && !(this.ownSwitch && claudeSwitchDialog(pane) !== null));
       if (dialog) {
         const identity = dialog.requestIdentity?.(pane) ?? pane.replace(/\r/g, "")
           .split("\n").map(row => row.replace(/^([ \t]*)[❯›]([ \t]+)(?=\d\.|Yes\b|No\b|Resume\b)/, "$1$2").trimEnd())
@@ -6743,6 +6854,8 @@ export class Daemon extends EventEmitter {
       spawnRetry?: number;
       durableAttempt?: DurableDeliveryAttempt;
       preserveExactBytes?: boolean;
+      /** Called under the pane write lock the moment this delivery's write has begun (#1690: our switch's hold). */
+      onPaneWritten?: () => void;
     },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -6930,6 +7043,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
         );
+        // #1690: still under the lock — whatever waits on it next must already see what this write started.
+        if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
         // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
         if (written === "handoff-box-unread") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
@@ -7228,6 +7343,8 @@ export class Daemon extends EventEmitter {
   private async probeBlockingDialog(): Promise<{ state: "dialog"; dialog: RuntimeDialog } | { state: "clear" } | { state: "unknown" }> {
     if (!this.tmux || !this.backend) return { state: "clear" };
     const dialogs = this.deliveryBlockingDialogs();
+    // #1690: our own switch is being answered — nothing else types into the pane until it has settled.
+    if (this.ownSwitch && dialogs.length > 0) return { state: "dialog", dialog: dialogs[0]! };
     if (dialogs.length === 0) return { state: "clear" };
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch (err) {

@@ -1608,20 +1608,43 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
 
 // ── Teams ────────────────────────────────────────────────────────────────
 
+/**
+ * #1692: the one creation of a team — create_team (agents) and POST /ui/teams (the web) both come here. Members must be
+ * instances fleet.yaml defines (own keys; repeats dropped); an existing team is never overwritten (409); a name every
+ * object already has (`__proto__`, `constructor`, `toString`…) is not a team name. The team and its save are one: a
+ * save that throws removes it again (500).
+ */
+export function commitTeamCreate(
+  fleetConfig: { instances: Record<string, unknown>; teams?: Record<string, { members: string[]; description?: string }> } | null,
+  args: { name: string; members: string[]; description?: string },
+  save: () => void,
+): { ok: true; result: { created: string; members: string[] } } | { ok: false; status: 400 | 409 | 500; error: string } {
+  if (!fleetConfig) return { ok: false, status: 500, error: "Fleet config not available" };
+  if (args.name in Object.prototype) return { ok: false, status: 400, error: `Invalid team name: ${args.name}` };
+  const invalid = args.members.filter(m => !Object.hasOwn(fleetConfig.instances, m));
+  if (invalid.length) return { ok: false, status: 400, error: `Invalid instance names: ${invalid.join(", ")}` };
+  if (fleetConfig.teams && Object.hasOwn(fleetConfig.teams, args.name)) return { ok: false, status: 409, error: `Team already exists: ${args.name}` };
+  const createdMap = !fleetConfig.teams;
+  const teams = (fleetConfig.teams ??= {});
+  const members = [...new Set(args.members)];
+  const description = args.description?.trim();
+  teams[args.name] = { members, ...(description ? { description } : {}) };
+  try {
+    save();
+  } catch (err) {
+    delete teams[args.name];
+    if (createdMap) delete fleetConfig.teams;
+    return { ok: false, status: 500, error: `Saving fleet.yaml failed; no team was created: ${(err as Error)?.message ?? String(err)}` };
+  }
+  return { ok: true, result: { created: args.name, members } };
+}
+
 const createTeam: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(CreateTeamArgs, rawArgs, "create_team");
   if (!v.ok) { respond(null, v.error); return; }
-  const { name, members, description } = v.data;
-  if (!ctx.fleetConfig) { respond(null, "Fleet config not available"); return; }
-  // Own keys (#1689): "constructor" is not an instance, and an existing team is one fleet.yaml defines.
-  const invalid = members.filter(m => !Object.hasOwn(ctx.fleetConfig!.instances, m));
-  if (invalid.length) { respond(null, `Invalid instance names: ${invalid.join(", ")}`); return; }
-  ctx.fleetConfig.teams ??= {};
-  if (Object.hasOwn(ctx.fleetConfig.teams, name)) { respond(null, `Team already exists: ${name}`); return; }
-  if (name === "__proto__") { respond(null, `Invalid team name: ${name}`); return; }
-  ctx.fleetConfig.teams[name] = { members, ...(description ? { description } : {}) };
-  ctx.saveFleetConfig();
-  respond({ created: name, members });
+  const r = commitTeamCreate(ctx.fleetConfig, v.data, () => ctx.saveFleetConfig());
+  if (!r.ok) { respond(null, r.error); return; }
+  respond(r.result);
 };
 
 const deleteTeam: Handler = (ctx, rawArgs, respond) => {
