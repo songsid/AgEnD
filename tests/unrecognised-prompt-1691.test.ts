@@ -8,6 +8,9 @@
  * launch against a local mock API (scripts/manual/claude-version-audit, NUMLIST for the numbered output). The real
  * Daemon runtime scan and the real ClaudeCodeBackend (its dialog tables and composer reading) run against a stub tmux
  * serving those panes and recording keys. Nothing starts a CLI, a fleet or a tmux server.
+ *
+ * Since #1690 claude's table knows "Switch model?". These tests use that capture as what it was before — a real dialog
+ * no table knows — so the rig's claude backend leaves that one entry out (`knownSwitch` keeps the real table).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
@@ -38,7 +41,7 @@ const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), c
 beforeEach(() => { vi.useFakeTimers(); dir = mkdtempSync(join(tmpdir(), "agend-1691-")); mkdirSync(join(dir, "inst")); logger.warn.mockClear(); });
 afterEach(() => { vi.useRealTimers(); rmSync(dir, { recursive: true, force: true }); setLocale("en"); });
 
-function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" | "opencode"; start?: string; ready?: RegExp } = {}) {
+function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" | "opencode"; start?: string; ready?: RegExp; knownSwitch?: boolean } = {}) {
   const screen = { text: opts.start ?? SWITCH };
   const keys: string[] = [];
   const pasted: string[] = [];
@@ -47,7 +50,10 @@ function rig(opts: { extraDialogs?: object[]; backend?: "claude-code" | "muse" |
     : kind === "opencode" ? new OpenCodeBackend(join(dir, "inst")) as any
       : new ClaudeCodeBackend(join(dir, "inst"));
   const backend = Object.create(real) as ClaudeCodeBackend;
-  if (opts.extraDialogs) (backend as any).getRuntimeDialogs = () => [...real.getRuntimeDialogs(), ...opts.extraDialogs!];
+  const table = () => kind === "claude-code" && !opts.knownSwitch
+    ? real.getRuntimeDialogs().filter((d: { pattern: RegExp }) => !/Switch model/.test(d.pattern.source))
+    : real.getRuntimeDialogs();
+  (backend as any).getRuntimeDialogs = () => [...table(), ...(opts.extraDialogs ?? [])];
   if (opts.ready) (backend as any).getReadyPattern = () => opts.ready;
   const d: any = new Daemon("w", {
     working_directory: dir, backend: kind, log_level: "silent",
@@ -332,6 +338,16 @@ describe("#1695 P2-4: a fresh read without the prompt ends the evidence", () => 
 });
 
 describe("#1691: a known dialog keeps its own path", () => {
+  it("with the real table (#1690 knows 'Switch model?'), the capture is that known dialog — never the catch-all", async () => {
+    const r = rig({ knownSwitch: true });
+    try {
+      await r.poll(3 * 60_000);
+      expect(unrecognised(r.parked)).toEqual([]);
+      expect(r.parked.map(e => e.description)).toEqual([expect.stringMatching(/model\/effort switch confirmation/)]);
+      expect([await r.held(), r.keys]).toEqual(["dialog", []]);
+    } finally { r.stop(); }
+  });
+
   it("a backend dialog that knows the screen is the one reported — never the catch-all", async () => {
     const known = { pattern: /Switch model\?/, isActive: (pane: string) => /Switch model\?/.test(pane), keys: [], description: "Claude model switch (known)", holdOnly: true };
     const r = rig({ extraDialogs: [known] });

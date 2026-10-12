@@ -32,7 +32,7 @@ import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
-import { commitTeamUpdate } from "./outbound-handlers.js";
+import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
@@ -1046,16 +1046,15 @@ export function handleWebRequest(
       try {
         const body = await parseBody(req);
         if (!permitWebContinuation(req, res, ctx)) return;
+        // #1692: who may write, asked again once the body is in (as the edit does).
+        const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+        if (verdict.kind !== "allow" || (verdict.via === "session" && verdict.session?.tier !== "admin")) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
         const parsed = parseOrReject(TeamCreateSchema, body, res);
         if (!parsed) return;
-        if (!ctx.fleetConfig) { json(res, 500, { error: "No fleet config" }); return; }
-        if (!ctx.fleetConfig.teams) (ctx.fleetConfig as { teams: Record<string, unknown> }).teams = {};
-        (ctx.fleetConfig.teams as Record<string, unknown>)[parsed.name] = {
-          members: parsed.members,
-          description: parsed.description,
-        };
-        ctx.saveFleetConfig();
-        json(res, 200, { created: parsed.name });
+        // #1692: the create_team path — members checked, an existing team never overwritten, a failed save undone.
+        const r = commitTeamCreate(ctx.fleetConfig as Parameters<typeof commitTeamCreate>[0], parsed, () => ctx.saveFleetConfig());
+        if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+        json(res, 200, r.result);
       } catch (err) { json(res, 400, { error: (err as Error).message }); }
     })();
     return true;

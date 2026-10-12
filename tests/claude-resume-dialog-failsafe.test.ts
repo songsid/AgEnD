@@ -271,6 +271,23 @@ describe("startup scan: the resume prompt painted AFTER the first quiet moment",
 describe("delivery gate: a blocking dialog on screen is never a deliverable pane", () => {
   beforeEach(() => vi.useFakeTimers());
 
+  it("#1690: onPaneWritten fires once the write began (before deliverMessage resolves) — never for a held write", async () => {
+    const { daemon, state, paste } = makeDaemon();
+    const written: string[] = [];
+    state.pane = RESUME_DIALOG;
+    const held = daemon.deliverMessage("/model opus", undefined, { preserveExactBytes: true, onPaneWritten: () => written.push("held") });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect([paste.mock.calls.length, written]).toEqual([0, []]);
+    state.pane = READY;
+    await settle(held);
+    expect(written).toEqual(["held"]);
+    let resolvedFirst = false;
+    const next = daemon.deliverMessage("/model sonnet", undefined, { preserveExactBytes: true, onPaneWritten: () => written.push(resolvedFirst ? "late" : "on-write") });
+    void next.then(() => { resolvedFirst = true; });
+    await settle(next);
+    expect(written).toEqual(["held", "on-write"]);
+  });
+
   it("does not paste while the resume prompt is up, then delivers once it is gone", async () => {
     const { daemon, state, paste, events } = makeDaemon();
     state.pane = RESUME_DIALOG;                         // quiet pane, ready pattern `❯` visible — the old gate said "ready"

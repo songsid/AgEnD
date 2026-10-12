@@ -176,7 +176,11 @@ instances:
     );
     expect(described).toMatchObject({ backend: "claude-code", model: "sonnet" });
 
-    (fm.instanceIpcClients as Map<string, any>).set("worker", { send: vi.fn() });
+    // #1690: claude-code's runtime /model waits for the daemon's word — answered here as switched.
+    (fm.instanceIpcClients as Map<string, any>).set("worker", { send: vi.fn((msg: any) => {
+      if (msg.runtime_switch) queueMicrotask(() => (fm as any).runtimeSwitchWaiters.get(msg.runtime_switch.id)?.({ outcome: "switched", confirmed: false }));
+      return true;
+    }) });
     expect(await fm.applyEffort("worker", "high")).toContain("runtime");
     expect(await fm.applyModel("worker", "opus")).toContain("runtime");
     const saved = yaml.load(readFileSync(path, "utf8")) as any;

@@ -307,6 +307,64 @@ const CLAUDE_COLLAPSED_PASTE = /\[Pasted text #\d+(?: \+\d+ lines?)?\]/g;
  * is why the box is found by its frame and never by the glyph. Anything else — no frame near the bottom, a first row
  * that is not the prompt, a row that is not indented — is not a box this reader can vouch for: null.
  */
+/**
+ * #1690: claude 2.1.296's cache-warning confirmation for a runtime `/model` (and, by its binary strings, `/effort`):
+ *
+ *      Switch model?                                   (or: Change effort level?)
+ *      Your next response will be slower and use more tokens
+ *      This conversation is cached for the current model. Switching to Opus 5.5 means …
+ *      ❯ 1. Yes, switch to Opus 5.5
+ *        2. No, go back
+ *
+ * Shown only with a warm cache for another model than the last turn's. The default cursor is Yes; Escape is a clean
+ * "No" (`Kept model as …`); a digit selects and confirms. `target` is what claude will switch to: a display name for a
+ * name it knows (`opus` → "Opus 5.5"), the raw input for one it does not (it validates nothing). Bottom-anchored: the
+ * options are the last rows apart from a short footer, so a transcript quoting the dialog is not it.
+ */
+export interface ClaudeSwitchDialog { kind: "model" | "effort"; target: string; cursor: 1 | 2 | null }
+const SWITCH_TITLE = /^[ \t]*(Switch model\?|Change effort level\?)[ \t]*$/;
+const SWITCH_YES = /^[ \t]*(❯)?[ \t]*1\.[ \t]+Yes, switch to (.+?)[ \t]*$/;
+const SWITCH_NO = /^[ \t]*(❯)?[ \t]*2\.[ \t]+No, go back[ \t]*$/;
+export function claudeSwitchDialog(pane: string): ClaudeSwitchDialog | null {
+  const rows = pane.replace(/\r/g, "").split("\n").map(r => r.trimEnd());
+  let title = -1;
+  for (let i = rows.length - 1; i >= 0; i--) if (SWITCH_TITLE.test(rows[i]!)) { title = i; break; }
+  if (title < 0) return null;
+  let yes = -1, no = -1;
+  for (let i = title + 1; i < rows.length && i <= title + 12; i++) {
+    if (yes < 0 && SWITCH_YES.test(rows[i]!)) yes = i;
+    else if (yes >= 0 && SWITCH_NO.test(rows[i]!)) { no = i; break; }
+  }
+  if (yes < 0 || no !== yes + 1) return null;
+  if (rows.slice(no + 1).filter(r => r.trim() !== "").length > 3) return null;
+  const y = SWITCH_YES.exec(rows[yes]!)!, n = SWITCH_NO.exec(rows[no]!)!;
+  const cursor = y[1] && !n[1] ? 1 : n[1] && !y[1] ? 2 : null;
+  return { kind: SWITCH_TITLE.exec(rows[title]!)![1]!.startsWith("Switch") ? "model" : "effort", target: y[2]!, cursor };
+}
+
+/**
+ * #1690: does the model claude is about to switch to name the one AgEnD asked for? Display-name equality: case, a
+ * `claude-` prefix, separators and the 1M marker do not count (`claude-sonnet-5-5` ≡ "Sonnet 5.5"). A bare family alias
+ * matches its family's version (`opus` ≡ "Opus 5.5"); a dated id matches without its date. `default` / `opusplan` resolve to names AgEnD cannot predict:
+ * any name claude resolved (not the raw input echoed back) is theirs. Anything else is a mismatch.
+ */
+export function claudeSwitchTargetMatches(requested: string, shown: string): boolean {
+  // A dated catalog id names the same model as its display name: claude-sonnet-4-5-20250929 ≡ "Sonnet 4.5" (live, 2.1.296).
+  const norm = (s: string) => s.toLowerCase().replace(/\(1m context\)|1m context|\[1m\]/g, " 1m").replace(/^claude[\s-]+/, "")
+    .replace(/[-_]\d{8}(?=$|\s)/g, "").replace(/[\s._-]+/g, "");
+  const want = norm(requested), got = norm(shown);
+  if (!want || !got) return false;
+  if (want === "default" || want === "opusplan") return shown.trim().toLowerCase() !== requested.trim().toLowerCase();
+  if (want === got) return true;
+  const family = /^(opus|sonnet|haiku|fable)(1m)?$/.exec(want);
+  if (family) {
+    const m = /^(opus|sonnet|haiku|fable)(\d+)(1m)?$/.exec(got);
+    return !!m && m[1] === family[1] && (m[3] ?? "") === (family[2] ?? "");
+  }
+  return false;
+}
+const switchDialogActive = (pane: string) => claudeSwitchDialog(pane) !== null;
+
 export function readClaudeInputBox(pane: string): InputBox | null {
   const rows = claudeRows(pane).map(row => row.trimEnd());
   let bottom = -1;
@@ -1262,6 +1320,17 @@ export class ClaudeCodeBackend implements CliBackend {
       { pattern: /Choose the text style that looks best with your terminal/, isActive: claudeThemePickerActive, keys: ["Enter"], description: "Claude onboarding theme picker — accept the highlighted theme", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-theme" },
       { pattern: /Press Enter to continue/, isActive: claudeSecurityNotesActive, keys: ["Enter"], description: "Claude onboarding security notes — continue", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-security" },
       { pattern: /Use Claude Code's terminal setup\?/, isActive: claudeTerminalSetupActive, keys: ["Escape"], description: "Claude onboarding terminal-setup offer — skip", blocksDelivery: true, verifyAfterKeys: true, autoResolutionKey: "claude-onboarding-terminal-setup" },
+      // #1690: the model/effort switch confirmation. Held for every delivery while it is up (its default cursor is Yes:
+      // a stray Enter would confirm it) and never answered by the scanner — AgEnD's own /model answers it on a verified
+      // cursor (Daemon.answerOwnSwitchDialog); one AgEnD did not ask for is parked for a human.
+      {
+        pattern: /Switch model\?|Change effort level\?/,
+        isActive: switchDialogActive,
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        description: "Claude model/effort switch confirmation (\u201cSwitch model?\u201d) — not asked for by AgEnD, or its answer did not take",
+      },
     ];
   }
 

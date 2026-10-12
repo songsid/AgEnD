@@ -209,7 +209,7 @@ import { validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
-import { readLastInboundAt } from "./daemon.js";
+import { readLastInboundAt, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
 import { TargetQueueWorker } from "./target-queue-worker.js";
@@ -794,6 +794,9 @@ const CLI_ENV_FRESH_MS = 60 * 60 * 1000;
  * and hides exactly the newly released model the user opened `/model` to find.
  * The wait is announced before it starts, so it reads as progress, not a stall.
  */
+/** #1690: how long `/model` waits for the daemon's word on our own runtime switch (its dialog wait plus settling). */
+export const RUNTIME_SWITCH_RESULT_MS = 12_000;
+
 export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
 
 /**
@@ -6956,6 +6959,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                 "Could not deliver cross-instance failure status back to sender");
             });
           }
+        } else if (msg.type === "runtime_switch_result") {
+          // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
+          const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;
+          if (waiter) { this.runtimeSwitchWaiters.delete(msg.id as string); waiter(msg as unknown as OwnSwitchOutcome); }
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
           if (msg.type === "instance_state_response") {
@@ -15080,6 +15087,46 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Paste raw text directly to a classic instance's CLI (no [user:] wrapping) */
+  /** #1690: our own runtime switches awaiting the daemon's outcome, by id. */
+  private readonly runtimeSwitchWaiters = new Map<string, (result: OwnSwitchOutcome) => void>();
+
+  /**
+   * #1690: type `/model <model>` and wait for what it came to: the daemon answers claude's "Switch model?" for us (Yes
+   * when it names this model, No otherwise) or sees claude's own result. Null when it could not be sent; a timeout is
+   * "not confirmed".
+   */
+  private runRuntimeModelSwitch(instanceName: string, model: string): Promise<OwnSwitchOutcome> {
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc) return Promise.resolve({ outcome: "not_sent" });
+    const id = `switch-${randomUUID()}`;
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_confirmed" }); }, RUNTIME_SWITCH_RESULT_MS);
+      timer.unref?.();
+      this.runtimeSwitchWaiters.set(id, result => { clearTimeout(timer); resolve(result); });
+      const sent = ipc.send({ type: "raw_paste", content: `/model ${model}`, runtime_switch: { id, kind: "model", requested: model } });
+      if (!sent) { clearTimeout(timer); this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_sent" }); return; }
+      this.logger.info({ instanceName, model }, "Runtime model switch sent");
+    });
+  }
+
+  /**
+   * #1690: the names claude-code is known to accept, for checking `/model <name>` BEFORE it is typed — claude itself
+   * accepts any string ("Set model to opsu"), and its "Switch model?" then names the typo. Static aliases (with [1m]),
+   * the cached account catalog, the configured model; without a cached catalog, any `claude-…` id too (cannot check).
+   */
+  private claudeModelKnown(instanceName: string, model: string): { known: boolean; names: string[] } {
+    const aliases = ["default", "sonnet", "opus", "haiku", "opusplan", "Fable"];
+    const api = (this.readCliEnv("claude-code")?.apiModels ?? []).map(m => m.id);
+    const configured = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model;
+    const lower = model.trim().toLowerCase();
+    const bare = lower.replace(/\[1m\]$/, "");
+    const known = aliases.some(a => a.toLowerCase() === bare)
+      || api.some(id => id.toLowerCase() === lower || `${id.toLowerCase()}[1m]` === lower)
+      || (typeof configured === "string" && configured.toLowerCase() === lower)
+      || (api.length === 0 && /^claude-[a-z0-9][a-z0-9.-]*(\[1m\])?$/.test(lower));
+    return { known, names: [...aliases, ...api.filter(id => !id.endsWith("[1m]")).slice(0, 12)] };
+  }
+
   private pasteRawToClassicInstance(instanceName: string, text: string): void {
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc) {
@@ -16178,21 +16225,33 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     } catch { /* default restart */ }
     const warn = isModelCompatible(backendName, model) ? "" : t("model.pattern_warning", model, backendName);
 
+    // #1690: claude takes any name; a mistyped one would be "switched" to and fail the next turn. Checked first —
+    // nothing is typed or saved for an unknown one.
+    if (backendName === "claude-code") {
+      const check = this.claudeModelKnown(instanceName, model);
+      if (!check.known) return t("model.unknown_name", model, check.names.join(", "));
+    }
+
     if (strategy === "runtime" && !this.instanceIpcClients.get(instanceName)) {
       return `${warn}${t("effort.not_running", instanceName)}`;
     }
 
+    // #1690: claude-code's runtime switch reports what it came to; the model is saved unless claude was told No.
+    if (strategy === "runtime" && backendName === "claude-code") {
+      const result = await this.runRuntimeModelSwitch(instanceName, model);
+      if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
+      if (result.outcome === "not_sent") return `${warn}${t("effort.not_running", instanceName)}`;
+      const persistedNow = this.persistInstanceModel(instanceName, model);
+      if (!persistedNow) return `${warn}${t("model.persist_failed", instanceName)}`;
+      const head = result.outcome === "switched"
+        ? (result.confirmed ? t("model.switch_confirmed", instanceName, model) : t("model.runtime_success", instanceName, model))
+        : t("model.switch_unconfirmed", instanceName, model, Math.round(RUNTIME_SWITCH_RESULT_MS / 1000));
+      return `${warn}${head}${this.effortSuffix(instanceName)}`;
+    }
+
     // Persist either way: a runtime switch must survive the next respawn too,
     // or the instance silently reverts to the CLI default after a fleet restart.
-    let persisted = false;
-    if (this.fleetConfig?.instances[instanceName]) {
-      this.fleetConfig.instances[instanceName].model = model;
-      this.saveFleetConfig();
-      persisted = true;
-    } else if (this.classicChannels?.setModelByInstance(instanceName, model)) {
-      persisted = true;
-    }
-    if (!persisted) return `${warn}${t("model.persist_failed", instanceName)}`;
+    if (!this.persistInstanceModel(instanceName, model)) return `${warn}${t("model.persist_failed", instanceName)}`;
 
     if (strategy === "runtime") {
       this.pasteRawToClassicInstance(instanceName, `/model ${model}`);
@@ -16201,6 +16260,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     await this.restartSingleInstance(instanceName);
     return `${warn}${t("model.restart_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
+  }
+
+  /** Save an instance's model (fleet.yaml, or its ClassicBot channel). False when neither holds it. */
+  private persistInstanceModel(instanceName: string, model: string): boolean {
+    if (this.fleetConfig?.instances[instanceName]) {
+      this.fleetConfig.instances[instanceName].model = model;
+      this.saveFleetConfig();
+      return true;
+    }
+    return this.classicChannels?.setModelByInstance(instanceName, model) === true;
   }
 
   /**
