@@ -169,6 +169,23 @@ export interface LoginStartOptions {
   profile?: string;
 }
 
+/**
+ * #1699 part 2: may this `/login <backend> <profile>` go ahead? The profile normalised, or the refusal to answer with —
+ * a name that is not one, or a backend whose profiles are signed in on the host (its exact command). Shared by the
+ * controller and FleetManager's install-first routing, so nothing is installed for a request that will be refused.
+ */
+export function admitProfileLogin(backendArg: string, rawProfile: string): { profile: string } | { refusal: string } {
+  const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+  let profile: string | null;
+  try { profile = resolveCredentialProfile({ credential_profile: rawProfile }); } catch { profile = null; }
+  if (!profile) return { refusal: t("login.profile_invalid", rawProfile) };
+  if (!CHAT_PROFILE_LOGIN_BACKENDS.has(backend)) {
+    const onHost = credentialProfileLoginCommand(getAgendHome(), backend, profile);
+    return { refusal: onHost ? t("login.profile_host_only", backend, profile, onHost) : t("login.profile_unsupported", backend) };
+  }
+  return { profile };
+}
+
 /** What the controller needs from a tunnel — a fake in tests, ManagedTunnel + cloudflared for real. */
 export interface LoginTunnelPort {
   start(ctx: TunnelStartContext): Promise<ManagedStartResult>;
@@ -317,14 +334,9 @@ export class LoginController {
     }
     // #1699 part 2: a named profile — valid, on a backend whose login can run with its variable from chat.
     if (opts.profile !== undefined) {
-      let profile: string | null;
-      try { profile = resolveCredentialProfile({ credential_profile: opts.profile }); } catch { profile = null; }
-      if (!profile) return t("login.profile_invalid", opts.profile);
-      if (!CHAT_PROFILE_LOGIN_BACKENDS.has(backend)) {
-        const onHost = credentialProfileLoginCommand(getAgendHome(), backend, profile);
-        return onHost ? t("login.profile_host_only", backend, profile, onHost) : t("login.profile_unsupported", backend);
-      }
-      opts = { ...opts, profile };
+      const admitted = admitProfileLogin(backend, opts.profile);
+      if ("refusal" in admitted) return admitted.refusal;
+      opts = { ...opts, profile: admitted.profile };
     }
     if (!this.admitRate(chat.userId)) {
       this.audit("rate_limited", { backend, requester: chat.userId });

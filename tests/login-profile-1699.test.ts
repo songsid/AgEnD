@@ -197,6 +197,48 @@ describe("#1699 part 2: the chat surfaces carry the profile", () => {
     expect(f.postNonceButtonPrompt.mock.calls[1][0].extra).toBeUndefined();
   });
 
+  /** The real startLoginSession with the installer and the sign-in as seams (#1711 r1). */
+  const routed = (installed: boolean) => {
+    const f: any = Object.create(FleetManager.prototype);
+    f.isCliInstalled = () => installed;
+    f.startInstallSession = vi.fn(async () => "installing");
+    f.launchSignIn = vi.fn(async () => "signing in");
+    f.recordLoginFlow = () => {};
+    return f;
+  };
+
+  it("#1711 P2-1: a profile is admitted BEFORE the install-first routing: nothing is installed for a refused one", async () => {
+    for (const [backend, profile, says] of [
+      ["claude-code", "../escape", "is not a credential profile name"],
+      ["kiro-cli", "work", "kiro-cli login"],
+      ["codex", "work", "codex login"],
+    ] as const) {
+      const f = routed(false);
+      const text = await f.startLoginSession(backend, chat(), { profile });
+      expect(f.startInstallSession, `${backend} ${profile}`).not.toHaveBeenCalled();
+      expect(f.launchSignIn).not.toHaveBeenCalled();
+      expect(text).toContain(says);
+    }
+    const ok = routed(false);
+    await ok.startLoginSession("claude", chat(), { profile: "work" });
+    expect(ok.startInstallSession, "control: a valid claude profile still installs first").toHaveBeenCalledWith("claude-code", expect.anything(), { profile: "work" });
+  });
+
+  it("#1711 P2-2: a supplied Discord profile is never dropped — without a backend, or blank", async () => {
+    const respond = vi.fn(async (_t: string) => {});
+    const f = routed(true);
+    f.isFleetAdmin = () => true;
+    f.promptLoginBackends = vi.fn(async () => undefined);
+    await f.handleLoginSlash({ userId: "u", channelId: "c", options: { profile: "work" }, respond }, "discord", adapter());
+    expect(f.promptLoginBackends, "not the default login's picker").not.toHaveBeenCalled();
+    expect(String(respond.mock.calls.at(-1)![0])).toContain("needs its backend");
+    await f.handleLoginSlash({ userId: "u", channelId: "c", options: { backend: "claude-code", profile: "   " }, respond }, "discord", adapter());
+    expect(f.launchSignIn, "a blank profile is not the default login").not.toHaveBeenCalled();
+    expect(String(respond.mock.calls.at(-1)![0])).toContain("is not a credential profile name");
+    await f.handleLoginSlash({ userId: "u", channelId: "c", options: {}, respond }, "discord", adapter());
+    expect(f.promptLoginBackends, "control: bare /login opens the picker").toHaveBeenCalledTimes(1);
+  });
+
   it("the fleet's wiring of the controller: buttons carry the profile into their nonce entry; recovery gets it", async () => {
     const f: any = Object.create(FleetManager.prototype);
     f.logger = { debug() {}, info() {}, warn() {}, error() {} };

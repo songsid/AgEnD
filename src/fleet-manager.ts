@@ -195,7 +195,7 @@ import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
 import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
-import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
+import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
@@ -13814,6 +13814,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     // A removed backend (#1280) is neither installed nor signed into: say what replaces it.
     if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
+    // #1699 part 2: a profile is admitted before anything is installed for it — a name that is not one, or a backend
+    // whose profiles sign in on the host, is refused here, not after an install it did not need.
+    if (opts.profile !== undefined) {
+      const admitted = admitProfileLogin(wanted, opts.profile);
+      if ("refusal" in admitted) return admitted.refusal;
+      opts = { ...opts, profile: admitted.profile };
+    }
     if (BACKEND_INSTALLATION_INFO[wanted] && !this.isCliInstalled(wanted)) {
       const flow = LOGIN_FLOWS[wanted];
       this.recordLoginFlow(wanted, flow && flow.remoteLogin !== "unsupported" ? "install_then_login" : "install_only", chat.userId);
@@ -14249,9 +14256,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const chat = { adapter, adapterId, chatId: data.channelId, userId: data.userId };
     if (data.options?.cancel === true) { await data.respond(await this.cancelLoginSession()); return; }
     const backend = String(data.options?.backend ?? "").trim();
-    const profile = String(data.options?.profile ?? "").trim();
+    // #1699 part 2: a supplied profile is never dropped — a blank one is refused by the admission like any bad name,
+    // and one without a backend is refused rather than becoming the default login's picker.
+    const profileSupplied = data.options?.profile !== undefined && data.options?.profile !== null;
+    const profile = profileSupplied ? String(data.options?.profile).trim() : undefined;
+    if (profileSupplied && !backend) { await data.respond(t("login.profile_needs_backend")); return; }
     if (backend) {
-      const text = profile ? await this.startLoginSession(backend, chat, { profile }) : await this.startLoginSession(backend, chat);
+      const text = profile !== undefined ? await this.startLoginSession(backend, chat, { profile }) : await this.startLoginSession(backend, chat);
       await data.respond(text ?? t("login.confirm_posted"));
       return;
     }
