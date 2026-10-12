@@ -311,4 +311,18 @@ describe("#1668: the echo lane's rules for an entry that is not a copy (the bubb
     await clock.advance(2_000);                       // echo-2 reserved 6 s ago: still its turn
     expect(ran).toEqual(["bubble-1", "echo-2"]);
   });
+
+  it("a copy further back (behind a copy behind the bubble) also starts its budget when the bubble finishes (#1668 r3)", async () => {
+    const h = await harness("telegram"), clock = laneClock(), ran: string[] = [];
+    const e1 = entry(h, "echo-1", ran, true);
+    const b = entry(h, "bubble-1", ran, false);
+    entry(h, "echo-2", ran, true).resolve();          // right behind the bubble
+    entry(h, "echo-3", ran, true).resolve();          // behind a copy behind the bubble
+    await flush(10);
+    await clock.advance(1_000); e1.resolve(); await flush(10);   // the bubble starts at ~1 s; its budget ends ~6 s
+    await clock.advance(4_200);                                  // ~5.2 s: the bubble is slow but within its budget
+    b.resolve(); await flush(20);
+    expect(ran).toEqual(["echo-1", "bubble-1", "echo-2", "echo-3"]);
+  });
+
 });

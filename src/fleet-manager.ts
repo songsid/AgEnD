@@ -981,9 +981,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private ipcWaitTails = new Map<string, Promise<void>>();
   private webChannelEchoTails = new Map<string, {
     tail: Promise<void>;
-    pending: Set<{ started: boolean; copy: boolean; drop: () => void }>;
-    /** Whether the newest entry (the tail) is a copy; a copy reserved behind a non-copy starts its budget later. */
-    tailIsCopy?: boolean;
+    pending: Set<{ seq: number; started: boolean; copy: boolean; drop: () => void }>;
+    /** Reservation order: a timeout drops only the copies reserved after the one that timed out. */
+    nextSeq?: number;
+    /** Non-copies reserved and not finished yet, and when the last of them finishes (#1668 r3). */
+    nonCopiesOpen?: number;
+    lastNonCopyDone?: Promise<void>;
   }>();
   /**
    * instanceName → the reservation whose echo callback is currently running.
@@ -3410,19 +3413,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `copy: false` (#1666/#1668): an entry that is not a copy of a message — the web send's Cancel/progress bubble. It
    * keeps its place in the order, but the lane's copy rules do not apply to it: its 5 s budget starts when its turn
    * starts (waiting behind a slow echo is not its delay), its own timeout only releases the lane (the copies queued
-   * behind it are not "behind an ambiguous copy"), and another entry's timeout never drops it. A copy reserved right
-   * behind a non-copy starts its own budget when that non-copy finishes: a slow bubble is not the next echo's delay.
+   * behind it are not "behind an ambiguous copy"), and another entry's timeout never drops it. A copy reserved while
+   * any non-copy is still open starts its own budget when the last of them finishes: a slow bubble is no copy's delay,
+   * however far back the copy is. And a timeout only ever drops copies reserved AFTER the entry that timed out — with
+   * deferred budgets, deadlines no longer grow with the order, so that rule is stated, not implied (#1668 r3).
    */
   reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>, opts: { copy?: boolean } = {}): (accepted: boolean) => void {
     const copy = opts.copy !== false;
     const epoch = this.getDeliveryEpoch(instanceName);
     const queued = this.webChannelEchoTails.get(instanceName);
-    const behindNonCopy = queued?.tailIsCopy === false;
-    let deadlineAt = copy && !behindNonCopy ? performance.now() + 5_000 : Number.POSITIVE_INFINITY;
+    // The last open non-copy ahead of this copy: its budget starts when that one finishes.
+    const nonCopyAhead = copy && (queued?.nonCopiesOpen ?? 0) > 0 ? queued?.lastNonCopyDone : undefined;
+    let deadlineAt = copy && !nonCopyAhead ? performance.now() + 5_000 : Number.POSITIVE_INFINITY;
     let decide!: (accepted: boolean) => void;
     const admission = new Promise<boolean>(resolve => { decide = resolve; });
     const queue = queued
-      ?? { tail: Promise.resolve(), pending: new Set<{ started: boolean; copy: boolean; drop: () => void }>() };
+      ?? { tail: Promise.resolve(), pending: new Set<{ seq: number; started: boolean; copy: boolean; drop: () => void }>() };
+    const seq = queue.nextSeq ?? 0;
+    queue.nextSeq = seq + 1;
     const previous = queue.tail;
     let resolveDone!: () => void;
     const tail = new Promise<void>(resolve => { resolveDone = resolve; });
@@ -3432,6 +3440,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const finish = () => {
       if (done) return;
       done = true;
+      if (!copy) queue.nonCopiesOpen = Math.max(0, (queue.nonCopiesOpen ?? 0) - 1);
       clearTimeout(timer);
       queue.pending.delete(entry);
       if (guard && this.webChannelEchoGuards.get(instanceName) === guard) {
@@ -3439,7 +3448,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       resolveDone();
     };
-    const entry = { started: false, copy, drop: () => {
+    const entry = { seq, started: false, copy, drop: () => {
       this.logger.warn({ instanceName }, "Queued web channel echo dropped after ordering timeout");
       finish();
     } };
@@ -3450,7 +3459,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       finish();
       // Do not post copies that were queued behind an ambiguous platform send. A non-copy that timed out was no copy
       // at all (nothing behind it is ambiguous), and a non-copy is never dropped as one.
-      if (copy) for (const pending of queue.pending) if (!pending.started && pending.copy) pending.drop();
+      if (copy) for (const pending of queue.pending) if (pending.seq > seq && !pending.started && pending.copy) pending.drop();
     };
     const checkDeadline = () => {
       if (done || deadlineAt === Number.POSITIVE_INFINITY) return;   // a non-copy's budget has not started yet
@@ -3460,11 +3469,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     queue.pending.add(entry);
     queue.tail = tail;
-    queue.tailIsCopy = copy;
+    if (!copy) {
+      queue.nonCopiesOpen = (queue.nonCopiesOpen ?? 0) + 1;
+      queue.lastNonCopyDone = tail;
+    }
     this.webChannelEchoTails.set(instanceName, queue);
     checkDeadline();
-    // Registered before the admission below, so the budget is set when that runs.
-    if (copy && behindNonCopy) void previous.then(() => { if (!done) { deadlineAt = performance.now() + 5_000; checkDeadline(); } });
+    // Registered before the admission below (which waits on `previous`, itself after the non-copy ahead), so the budget
+    // is set by the time that runs.
+    if (nonCopyAhead) void nonCopyAhead.then(() => { if (!done) { deadlineAt = performance.now() + 5_000; checkDeadline(); } });
     void Promise.all([previous, admission]).then(([, accepted]) => {
       if (done) return;
       if (!accepted || !this.isDeliveryEpochCurrent(instanceName, epoch)) { finish(); return; }
