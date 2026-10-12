@@ -14,25 +14,34 @@ const THEME_JS = readFileSync(join(__dirname, "..", "src", "ui", "shared", "them
 const prefsAttr = (values: Record<string, unknown>, rev = 1) => JSON.stringify({ rev, values });
 
 describe("theme.js: the host's theme before the first paint", () => {
-  function load(attr: string | null, cached: string | null) {
+  function load(attr: string | null, cached: string | null, opts: { inStep?: boolean; full?: boolean } = {}) {
     const attrs = new Map<string, string>(attr === null ? [] : [["data-prefs", attr]]);
-    const ls = new Map<string, string>(cached === null ? [] : [["agend_theme", cached]]);
+    const ls = new Map<string, string>([...(cached === null ? [] : [["agend_theme", cached]]), ...(opts.inStep ? [["agend_prefs_synced", "1"]] : [])] as Array<[string, string]>);
     const documentElement = { getAttribute: (k: string) => attrs.get(k) ?? null, setAttribute: (k: string, v: string) => { attrs.set(k, v); }, removeAttribute: (k: string) => { attrs.delete(k); } };
-    const localStorage = { getItem: (k: string) => ls.get(k) ?? null, setItem: (k: string, v: string) => { ls.set(k, v); }, removeItem: (k: string) => { ls.delete(k); } };
-    const window: Record<string, unknown> = {};
+    // `full`: a storage that refuses every write (QuotaExceededError) — the copy is best effort, the paint is not.
+    const quota = () => { throw Object.assign(new Error("full"), { name: "QuotaExceededError" }); };
+    const localStorage = { getItem: (k: string) => ls.get(k) ?? null, setItem: opts.full ? quota : (k: string, v: string) => { ls.set(k, v); }, removeItem: opts.full ? quota : (k: string) => { ls.delete(k); } };
+    const window: Record<string, any> = {};
     vm.runInNewContext(THEME_JS, { document: { documentElement }, localStorage, window });
-    return { theme: attrs.get("data-theme") ?? null, cached: ls.get("agend_theme") ?? null };
+    return { theme: attrs.get("data-theme") ?? null, cached: ls.get("agend_theme") ?? null, current: window.AgendTheme.get() };
   }
   it("the host's value wins over this browser's copy, which it refreshes — applied while the script runs, before paint", () => {
     expect([
       load(prefsAttr({ theme: "dark" }), "light"),
       load(prefsAttr({ theme: "light" }), null),          // a new device: nothing cached, still no flash
       load(prefsAttr({ theme: "system" }), "dark"),
-    ]).toEqual([{ theme: "dark", cached: "dark" }, { theme: "light", cached: "light" }, { theme: null, cached: null }]);
+    ]).toEqual([{ theme: "dark", cached: "dark", current: "dark" }, { theme: "light", cached: "light", current: "light" }, { theme: null, cached: null, current: "system" }]);
+  });
+  it("#1669 r1 P2-7: storage that refuses the copy still paints the host's theme (and holds it as the choice)", () => {
+    expect(load(prefsAttr({ theme: "dark" }), "light", { full: true })).toEqual({ theme: "dark", cached: "light", current: "dark" });
+  });
+  it("#1669 r1 P2-4: in step with the host and none chosen there: the default, the stale copy cleared; not in step: its own", () => {
+    expect([load(prefsAttr({}), "dark", { inStep: true }), load(prefsAttr({}), "dark")])
+      .toEqual([{ theme: null, cached: null, current: "system" }, { theme: "dark", cached: "dark", current: "dark" }]);
   });
   it("no host value (sign-in page, anonymous reader, nothing chosen yet) or an unreadable one: the browser's copy, as before", () => {
     expect([load(null, "light"), load(prefsAttr({}), "dark"), load("{not json", "light"), load(prefsAttr({ theme: "blue" }), "dark")])
-      .toEqual([{ theme: "light", cached: "light" }, { theme: "dark", cached: "dark" }, { theme: "light", cached: "light" }, { theme: "dark", cached: "dark" }]);
+      .toEqual([{ theme: "light", cached: "light", current: "light" }, { theme: "dark", cached: "dark", current: "dark" }, { theme: "light", cached: "light", current: "light" }, { theme: "dark", cached: "dark", current: "dark" }]);
   });
 });
 
@@ -40,8 +49,13 @@ describe("the app's modules", () => {
   let pg: MiniPage;
   let requests: Array<{ method: string; url: string; body: any }>;
   let hostValues: Record<string, unknown>, hostRev: number, failPost: boolean, offline: boolean;
+  /** A test's own answer for a request (a held one, a server error); undefined: the fake host answers. */
+  let intercept: ((method: string, body: any) => Promise<any> | undefined) | null = null;
+  const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+  /** A request held until the test lets it answer. */
+  const held = () => { let release!: (r: unknown) => void; const p = new Promise((r) => { release = r; }); return { p, release }; };
   const realFetch = globalThis.fetch;
-  beforeEach(() => { vi.resetModules(); requests = []; hostValues = {}; hostRev = 0; failPost = false; offline = false; });
+  beforeEach(() => { vi.resetModules(); requests = []; hostValues = {}; hostRev = 0; failPost = false; offline = false; intercept = null; });
   afterEach(() => { pg?.restore(); globalThis.fetch = realFetch; delete (globalThis as any).AgendTheme; delete (globalThis as any).AgendPreview; });
 
   /** A page at load: this browser's storage, and the host's values as the server put them on <html>. */
@@ -57,6 +71,8 @@ describe("the app's modules", () => {
       const body = init.body ? JSON.parse(init.body) : null;
       requests.push({ method, url, body });
       if (offline) throw new TypeError("network");
+      const own = intercept?.(method, body);
+      if (own) return own;
       if (method === "POST") {
         if (failPost) return { ok: false, status: 400, json: async () => ({ error: "nope" }) };
         const changed: string[] = [];
@@ -74,6 +90,123 @@ describe("the app's modules", () => {
   }
   const ls = (k: string) => pg.storage.get(k) ?? null;
   const posts = () => requests.filter((r) => r.method === "POST").map((r) => r.body);
+
+  // ── #1669 review r1 ──
+  const ticks = async (n = 30) => { for (let i = 0; i < n; i++) await Promise.resolve(); };
+  it("P2-2 ①: a read answered while this page's write is still out does not undo it, nor does the write's own answer", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
+    const write = held();
+    intercept = (method) => (method === "POST" ? write.p as Promise<any> : undefined);
+    m.savePref("theme", "dark");
+    await new Promise((r) => setTimeout(r, 450));          // the write is out, unanswered
+    hostRev = 2;                                           // the host as it was before it: light, a newer revision
+    expect(await m.refresh()).toBe(true);
+    expect([ls("agend_theme"), m.hostPref("theme")]).toEqual(["dark", "light"]);
+    write.release(reply(200, { values: { theme: "dark" }, rev: 3 }));
+    await ticks();
+    expect([ls("agend_theme"), m.hostPref("theme")]).toEqual(["dark", "dark"]);
+  });
+  it("P2-2 ②: an older read answering last does not replace a newer one", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
+    const older = held();
+    let n = 0;
+    intercept = (method) => (method === "GET" && n++ === 0 ? older.p as Promise<any> : undefined);
+    const first = m.refresh();                              // A: held
+    hostValues = { theme: "dark" }; hostRev = 3;
+    await m.refresh();                                      // B: rev 3, dark — taken
+    older.release(reply(200, { values: { theme: "light" }, rev: 2 }));
+    await first;
+    expect([ls("agend_theme"), m.hostPref("theme")]).toEqual(["dark", "dark"]);
+  });
+  it("P2-2 ③: an older write's answer arriving last does not replace a newer view", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { lang: "en" }, rev: 1 });
+    const write = held();
+    intercept = (method) => (method === "POST" ? write.p as Promise<any> : undefined);
+    m.savePref("lang", "zh-TW");
+    await new Promise((r) => setTimeout(r, 450));
+    intercept = (method) => (method === "POST" ? write.p as Promise<any> : undefined);
+    hostValues = { lang: "zh-TW", theme: "dark" }; hostRev = 3;
+    await m.refresh();                                      // B: rev 3 (the lang key is still this page's own)
+    write.release(reply(200, { values: { lang: "zh-TW" }, rev: 2 }));
+    await ticks();
+    expect([m.hostPref("theme"), ls("agend_theme")]).toEqual(["dark", "dark"]);
+  });
+  it("P2-3: migration is marked only after real answers — a server error, an unreadable store or a failed read leaves it to the next load", async () => {
+    const outcomes: unknown[] = [];
+    for (const failure of ["post500", "post503", "post401", "get500", "getUnreadable", "none-400"] as const) {
+      vi.resetModules(); requests = []; hostValues = {}; hostRev = 0;
+      const m = await boot({ storage: { agend_lang: "zh-TW", agend_theme: "dark" }, host: {} });
+      intercept = (method) => {
+        if (method === "POST" && failure.startsWith("post")) return Promise.resolve(reply(Number(failure.slice(4)), { error: "x" }));
+        if (method === "POST" && failure === "none-400") return Promise.resolve(reply(400, { error: "bad value" }));
+        if (method === "GET" && failure === "get500") return Promise.resolve(reply(500, { error: "x" }));
+        if (method === "GET" && failure === "getUnreadable") return Promise.resolve(reply(200, { values: {}, rev: 0, unreadable: true }));
+        return undefined;
+      };
+      outcomes.push([failure, await m.migratePrefs(), ls("agend_prefs_synced")]);
+      pg.restore();
+    }
+    expect(outcomes).toEqual([["post500", false, null], ["post503", false, null], ["post401", false, null], ["get500", false, null], ["getUnreadable", false, null], ["none-400", true, "1"]]);
+    // Nothing to upload and the read fails: not marked either.
+    vi.resetModules();
+    const m = await boot({ storage: {}, host: {} });
+    intercept = (method) => (method === "GET" ? Promise.resolve(reply(503, {})) : undefined);
+    expect([await m.migratePrefs(), ls("agend_prefs_synced")]).toEqual([false, null]);
+  });
+  it("P2-3: a revision whose read failed is read again at a later frame (at most every 5 s), then taken", async () => {
+    let clock = 1000;
+    const spy = vi.spyOn(performance, "now").mockImplementation(() => clock);
+    try {
+      const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
+      const store = await import("/assets/app-store.js");
+      m.bootPrefs();
+      hostValues = { theme: "dark" }; hostRev = 2;
+      intercept = (method) => (method === "GET" ? Promise.resolve(reply(503, {})) : undefined);
+      store.applyStatus({ instances: [], prefs_rev: 2 }); await ticks();
+      intercept = null;
+      clock += 1000; store.applyStatus({ instances: [], prefs_rev: 2 }); await ticks();   // too soon: not again yet
+      const early = [requests.filter((r) => r.method === "GET").length, ls("agend_theme")];
+      clock += 5000; store.applyStatus({ instances: [], prefs_rev: 2 }); await ticks();
+      expect([early, requests.filter((r) => r.method === "GET").length, ls("agend_theme")]).toEqual([[1, "light"], 2, "dark"]);
+    } finally { spy.mockRestore(); }
+  });
+  it("P2-4: on a device in step with the host, a key the host does not have is the default — the stale copy goes", async () => {
+    await boot({ storage: { agend_prefs_synced: "1", agend_instance_collapsed: '["Old"]', agend_html_preview: "on", agend_lang: "zh-TW" }, host: { theme: "dark" } });
+    expect([ls("agend_instance_collapsed"), ls("agend_html_preview"), ls("agend_lang"), ls("agend_theme")]).toEqual([null, null, null, "dark"]);
+  });
+  it("P2-4: not in step yet, this device's own values stay (to be uploaded)", async () => {
+    await boot({ storage: { agend_instance_collapsed: '["Mine"]', agend_lang: "zh-TW" }, host: {} });
+    expect([ls("agend_instance_collapsed"), ls("agend_lang")]).toEqual(['["Mine"]', "zh-TW"]);
+  });
+  it("P2-4: the host's language cleared elsewhere: this page goes back to the device's own, live, with no copy kept", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { lang: "zh-TW" } });
+    const i18n = await import("/assets/app-i18n.js");
+    expect(i18n.lang()).toBe("zh-TW");
+    hostValues = {}; hostRev = 2;
+    await m.refresh();
+    expect([i18n.lang(), ls("agend_lang")]).toEqual(["en", null]);
+  });
+  it("P2-4: the dictionary on a device in step, with no language on the host: the device's own (its stale copy cleared)", async () => {
+    pg = installDom({ storage: { agend_prefs_synced: "1", agend_lang: "zh-TW" }, lang: "en" });
+    pg.document.documentElement.setAttribute("data-prefs", prefsAttr({}));
+    const i18n = await import("/assets/app-i18n.js");
+    expect([i18n.lang(), ls("agend_lang")]).toEqual(["en", null]);
+  });
+  it("P3: an open Preferences shows the theme and language in force as they change", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light", lang: "en" } });
+    new Function(THEME_JS).call(pg.window);
+    (globalThis as any).AgendTheme = pg.window.AgendTheme;
+    const { h, render } = await import("/assets/app-html.js");
+    const { DevicePrefs } = await import("/assets/app-shell.js");
+    const root = pg.document.createElement("div"); pg.document.body.appendChild(root);
+    render(h(DevicePrefs, { labels: true }), root); await settle();
+    const sel = (l: string) => (root.querySelector(`select[aria-label="${l}"]`) as any);
+    const before = [sel("Theme").value, sel("Language").value];
+    hostValues = { theme: "dark", lang: "zh-TW" }; hostRev = 2;
+    await m.refresh(); await settle();
+    expect([before, sel("主題")?.value ?? sel("Theme")?.value, (root.querySelectorAll("select")[1] as any).value]).toEqual([["light", "en"], "dark", "zh-TW"]);
+    render(null, root);
+  });
 
   it("the dictionary takes the host's language the same way", async () => {
     pg = installDom({ storage: { agend_lang: "en" }, lang: "en" });

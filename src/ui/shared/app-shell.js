@@ -159,6 +159,9 @@ function ViewOnlyNav({ route }) {
 export function DevicePrefs({ labels = false } = {}) {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
   const [l, setL] = useState(lang());
+  // #1665: what is in force, as it changes — another device's choice arriving while this is open is shown at once.
+  useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
+  useEffect(() => onLang(setL), []);
   return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
     <label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
       <select value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>

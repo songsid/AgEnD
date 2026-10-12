@@ -600,9 +600,16 @@ export function handleWebRequest(
     const prefs = ctx.webPrefs;
     if (!prefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
     if (gatewayRequestContext(req)) { json(res, 403, { error: "prefs_not_over_public_link" }); return true; }
-    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-    if (verdict.kind !== "allow") { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
-    if (verdict.via === "session" && verdict.session?.tier !== "admin") { json(res, 403, { error: "prefs_read_only" }); return true; }
+    // Who may write, asked now and again once the body is in: a session revoked or expired, or a token rotated, while
+    // the body was on its way writes nothing and announces nothing.
+    const writer = (): number => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") return 401;
+      return verdict.via === "session" && verdict.session?.tier !== "admin" ? 403 : 200;
+    };
+    const refuse = (code: number) => json(res, code, code === 401 ? { error: WEB_TOKEN_INVALID_MESSAGE } : { error: "prefs_read_only" });
+    const first = writer();
+    if (first !== 200) { refuse(first); return true; }
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
@@ -610,6 +617,8 @@ export function handleWebRequest(
       if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "set required" }); return; }
       const parsed = parseWebPrefsPatch(body.set);
       if (!parsed.ok) { json(res, 400, { error: parsed.error }); return; }
+      const now = writer();
+      if (now !== 200) { refuse(now); return; }
       const onlyIfUnset = body.onlyIfUnset === true;
       const written = prefs.write(OPERATOR, parsed.patch, { onlyIfUnset });
       if (!written.ok) { json(res, written.status, { error: written.error }); return; }

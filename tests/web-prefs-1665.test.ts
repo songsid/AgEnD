@@ -5,7 +5,7 @@
  * flash, and the public link's sort-order write taken away. Real handlers and store, fake request/response, no fleet.
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleWebRequest, serveAppShell } from "../src/web-api.js";
 import { handleViewRequest } from "../src/view-api.js";
+import { isPassiveWebRead } from "../src/web-auth.js";
 import { OPERATOR, WebPrefsStore, WEB_PREF_KEYS, parseWebPrefsPatch } from "../src/web-prefs.js";
 
 const token = "c".repeat(48), local = "http://127.0.0.1:19280", pub = "https://sample.trycloudflare.com", exposureId = "a".repeat(32);
@@ -146,6 +147,23 @@ describe("the store: one operator bucket on disk", () => {
     const s = new WebPrefsStore(undefined as unknown as string);
     expect([s.read(), s.rev(), s.write(OPERATOR, new Map([["theme", "dark"]]))]).toEqual([{ values: {}, rev: 0, unreadable: true }, 0, { ok: false, status: 503, error: "prefs_unreadable" }]);
   });
+  it("only a file that is not there (ENOENT) is a new store: one this process may not read is never replaced (#1669 r1)", () => {
+    const dir = tmp();
+    const file = join(dir, "web-prefs.json");
+    const original = JSON.stringify({ version: 1, rev: 7, identities: { operator: { values: { theme: "light", lang: "en" }, updated: {} } } });
+    writeFileSync(file, original);
+    chmodSync(file, 0o000);
+    const s = new WebPrefsStore(dir);
+    let refused: unknown;
+    try { refused = [s.read(), s.write(OPERATOR, new Map([["theme", "dark"]]))]; } finally { chmodSync(file, 0o600); }
+    expect([refused, readFileSync(file, "utf8")]).toEqual([[{ values: {}, rev: 0, unreadable: true }, { ok: false, status: 503, error: "prefs_unreadable" }], original]);
+    // Readable again: the same store reads it now — and a write keeps what was there.
+    s.write(OPERATOR, new Map([["lang", "zh-TW"]]));
+    expect(new WebPrefsStore(dir).read()).toEqual({ values: { theme: "light", lang: "zh-TW" }, rev: 8 });
+    // The control: no file at all is a new store.
+    const fresh = new WebPrefsStore(tmp());
+    expect([fresh.read(), fresh.write(OPERATOR, new Map([["theme", "dark"]])).ok]).toEqual([{ values: {}, rev: 0 }, true]);
+  });
   it("a failed write leaves memory as the file is", () => {
     const s = new WebPrefsStore(tmp(), { write: () => { throw new Error("disk full"); } });
     expect(() => s.write(OPERATOR, new Map([["theme", "dark"]]))).toThrow("disk full");
@@ -162,6 +180,25 @@ describe("/ui/prefs", () => {
     expect(t.emitSseEvent.mock.calls).toEqual([["status", { instances: [], prefs_rev: 1 }]]);
     const r = t.read();
     expect([r.status(), r.json()]).toEqual([200, { values: { theme: "dark", "nav.collapsed": ["Ops"] }, rev: 1 }]);
+  });
+  it("a session revoked, or the token rotated, while the body was on its way: nothing written, nothing announced (#1669 r1)", async () => {
+    const outcomes: unknown[] = [];
+    for (const change of ["none", "revoke", "rotate"] as const) {
+      const t = setup();
+      const sessions = t.ctx.webSessions as WebSessionStore;
+      const s = sessions.create({ tier: "admin", surface: "local", label: "t", tokenEpoch: tokenEpoch(token) });
+      const h = request("/ui/prefs", "POST", { cookie: `agend_session=${s.sessionId}`, origin: local, "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(s.sessionId) });
+      handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, local), t.ctx);
+      if (change === "revoke") sessions.revokeById(s.sessionId);
+      if (change === "rotate") t.ctx.webToken = "d".repeat(48);
+      h.feed({ set: { "preview.optIn": true } });
+      await flush();
+      outcomes.push([change, h.status(), t.prefs.read().values, t.emitSseEvent.mock.calls.length]);
+    }
+    expect(outcomes).toEqual([["none", 200, { "preview.optIn": true }, 1], ["revoke", 401, {}, 0], ["rotate", 401, {}, 0]]);
+  });
+  it("reading /ui/prefs is the page's doing (passive: no session time); writing is the person's", () => {
+    expect([isPassiveWebRead("GET", "/ui/prefs"), isPassiveWebRead("POST", "/ui/prefs")]).toEqual([true, false]);
   });
   it("no change: no status frame", async () => {
     const t = setup();

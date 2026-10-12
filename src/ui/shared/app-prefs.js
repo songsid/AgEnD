@@ -4,17 +4,24 @@
 // - Synced: theme, language, the sidebar (order, folds, filter) and the HTML-preview opt-in. The tour and the first-run
 //   card stay on each device, as every layout choice does.
 // - The signed-in page is served with the host's values (<html data-prefs>). This module, imported before any panel
-//   reads its key, copies them into the cache: the host wins once it has a value. theme.js and the dictionary already
-//   took the theme and language from the same attribute, before paint.
-// - A change made here is written to the cache at once and sent to the host (a short debounce gathers a burst, such as
-//   typing in the filter). The public link, and the anonymous View reader, have no host write: theirs stays local.
+//   reads its key, copies them into the cache: the host wins once it has a value — and, on a device already in step
+//   with it, a key the host does not have is the default (its stale copy here is cleared). theme.js and the
+//   dictionary did the same for the theme and language, before paint.
+// - A change made here is cached at once and sent to the host (a short debounce gathers a burst, such as typing in the
+//   filter). Writes go one at a time; a key stays this page's own from the change until its write has ended, so no
+//   answer — a read or another write — that started before can put an older value back. Every answer carries the
+//   host's revision, and one older than what this page already has is ignored.
+// - The public link, and the anonymous View reader, have no host write: theirs stays local.
 // - The first load on a device (no agend_prefs_synced yet) uploads what it had locally for the keys the host does not
-//   have yet, each with onlyIfUnset — the first device to arrive wins — and adopts the host's values; never again.
-// - The status frame's prefs_rev: another device changed something; the host's values are read again and applied.
-import { lang, setLang } from "./app-i18n.js";
+//   have yet, each with onlyIfUnset — the first device to arrive wins — then reads the host's values back. Only once
+//   every upload got an answer and that read succeeded is the device marked: anything else tries again next load.
+// - The status frame's prefs_rev: another device changed something; the host's values are read again and applied. A
+//   revision counts as seen only once its read succeeded (a failed one is tried again, at most every few seconds).
+import { deviceLanguage, lang, setLang } from "./app-i18n.js";
 import { appStore } from "./app-store.js";
 
 const SYNCED_FLAG = "agend_prefs_synced";
+const RETRY_MS = 5000;
 const json = { toLocal: (v) => JSON.stringify(v), fromLocal: (s) => { try { return s == null ? undefined : JSON.parse(s); } catch { return undefined; } } };
 /** Each synced preference: its cache key, and how a host value is cached (null: no entry) and read back. */
 export const SYNCED = {
@@ -26,10 +33,12 @@ export const SYNCED = {
   "preview.optIn": { ls: "agend_html_preview", toLocal: (v) => (v ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
 };
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 function readLocal(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function writeLocal(key, s) { try { if (s == null) localStorage.removeItem(key); else localStorage.setItem(key, s); } catch { /* this page only */ } }
 function cache(key, value) { const k = SYNCED[key]; writeLocal(k.ls, value == null ? null : k.toLocal(value)); }
+const inStep = () => readLocal(SYNCED_FLAG) === "1";
 
 function pageHost() {
   try {
@@ -41,12 +50,21 @@ function pageHost() {
 const initial = typeof document !== "undefined" ? pageHost() : null;
 let rev = initial ? initial.rev : null;
 let host = initial ? initial.values : null;
-const pending = new Map();     // key → value not sent yet (adopting the host's values never overwrites these)
+const pending = new Map();     // key → value chosen here, not sent yet
+const inflight = new Map();    // key → writes sent and not answered yet
 let flushTimer = null;
+let writes = Promise.resolve();   // one write at a time, in the order they were made
 const listeners = new Set();
 
-// The host's values into the cache, now — before the sidebar, the tour or the first-run card read their keys.
-if (host) for (const key of Object.keys(SYNCED)) if (own(host, key)) cache(key, host[key]);
+// The host's values into the cache, now — before the sidebar, the tour or the first-run card read their keys. A key
+// the host does not have: the default, on a device in step with the host; this device's own (to upload) otherwise.
+if (host) {
+  const step = inStep();
+  for (const key of Object.keys(SYNCED)) {
+    if (own(host, key)) cache(key, host[key]);
+    else if (step) cache(key, null);
+  }
+}
 
 /** This page may change the host's preferences: the signed-in app, not over the public link. */
 export function prefsWritable() {
@@ -56,6 +74,16 @@ export function prefsWritable() {
 export function hostPref(key) { return host && own(host, key) ? host[key] : undefined; }
 /** Called with the keys another device changed, after they are cached and applied here. Returns the unsubscribe. */
 export function onPrefsChanged(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+
+/** A host answer ({ values, rev }): a real view of the host (not an unreadable store's defaults)? */
+const isView = (body) => !!body && typeof body.rev === "number" && !!body.values && typeof body.values === "object" && !body.unreadable;
+/** Take a view as this page's — unless it is older than the one it has. True: taken. */
+function take(body) {
+  if (!isView(body) || (rev !== null && body.rev < rev)) return false;
+  rev = body.rev;
+  host = body.values;
+  return true;
+}
 
 /**
  * A preference chosen on this page: cached now, and kept on the host (a burst within 400 ms is one write). Not writable
@@ -70,40 +98,51 @@ export function savePref(key, value) {
   flushTimer = setTimeout(flush, 400);
 }
 
+/** One write. ok: the host took it (its answer is a view; an older one than this page has is not taken). */
 async function post(set, onlyIfUnset) {
   const res = await fetch("/ui/prefs", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(onlyIfUnset ? { set, onlyIfUnset: true } : { set }) });
   const body = await res.json().catch(() => null);
-  if (res.ok && body && typeof body.rev === "number") { rev = body.rev; host = body.values || {}; }
-  return { ok: res.ok, status: res.status };
+  const ok = res.ok && isView(body);
+  if (ok) take(body);
+  return { ok, status: res.status };
 }
 
-async function flush() {
+function flush() {
   flushTimer = null;
-  if (!pending.size) return;
+  if (!pending.size) return writes;
   const set = Object.fromEntries(pending);
+  const keys = [...pending.keys()];
   pending.clear();
-  let ok = false;
-  try { ok = (await post(set, false)).ok; } catch { ok = false; }
-  // Refused or not sent: what the host has is what holds — read it back, so this page does not show a choice no other
-  // device will see.
-  if (!ok) await refresh();
+  for (const k of keys) inflight.set(k, (inflight.get(k) || 0) + 1);
+  writes = writes.then(async () => {
+    let ok = false;
+    try { ok = (await post(set, false)).ok; } catch { ok = false; }
+    for (const k of keys) { const n = (inflight.get(k) || 1) - 1; if (n) inflight.set(k, n); else inflight.delete(k); }
+    // Refused or not sent: what the host has is what holds — read it back, so this page does not show a choice no
+    // other device will see (a key changed again meanwhile is still this page's own, and stays).
+    if (!ok) await refresh();
+  });
+  return writes;
 }
 
-/** Read the host's values again and apply the ones that differ from this page's (keys still being sent excepted). */
+/**
+ * Read the host's values again and apply the ones that differ from this page's — not a key still being changed here
+ * (unsent, or its write not answered yet), and nothing from an answer older than the view this page has. True: the read
+ * succeeded (taken, or older than what this page already has — nothing to do).
+ */
 export async function refresh() {
-  if (!initial) return;
+  if (!initial) return false;
   let body = null;
   try {
     const res = await fetch("/ui/prefs", { credentials: "same-origin" });
     body = res.ok ? await res.json() : null;
   } catch { body = null; }
-  if (!body || typeof body.rev !== "number" || !body.values) return;
-  rev = body.rev;
-  host = body.values;
+  if (!isView(body)) return false;
+  if (!take(body)) return true;
   const changed = new Set();
   for (const key of Object.keys(SYNCED)) {
-    if (pending.has(key)) continue;
+    if (pending.has(key) || inflight.has(key)) continue;
     const k = SYNCED[key];
     const want = own(host, key) ? k.toLocal(host[key]) : null;
     if (readLocal(k.ls) === want) continue;
@@ -111,11 +150,16 @@ export async function refresh() {
     changed.add(key);
   }
   if (changed.size) apply(changed);
+  return true;
 }
 
 function apply(changed) {
   if (changed.has("theme") && typeof globalThis.AgendTheme !== "undefined") globalThis.AgendTheme.set(hostPref("theme") || "system");
-  if (changed.has("lang")) { const l = hostPref("lang"); if (l && l !== lang()) setLang(l); }
+  if (changed.has("lang")) {
+    const l = hostPref("lang");
+    // None chosen any more: the device's own language, on this page only (no copy is kept for it).
+    if (l) { if (l !== lang()) setLang(l); } else if (deviceLanguage() !== lang()) setLang(deviceLanguage(), { store: false });
+  }
   const P = globalThis.AgendPreview;
   if (changed.has("preview.optIn") && P && typeof P.setOptIn === "function") P.setOptIn(hostPref("preview.optIn") === true);
   for (const fn of [...listeners]) { try { fn(changed); } catch { /* one listener's error stops no other */ } }
@@ -123,18 +167,21 @@ function apply(changed) {
 
 /**
  * Once per device: upload what this browser had for the keys the host has not got yet (each on its own, onlyIfUnset — a
- * value the host refuses is simply not taken), then adopt the host's values. A request that never got an answer leaves
- * the device unmarked, so the next load tries again.
+ * value the host refuses as invalid is simply not taken), then adopt the host's values. Marked only when every upload
+ * was answered (taken, or refused as invalid) and the read back succeeded; a request with no answer, a server error, a
+ * refused session or an unreadable store leaves the device unmarked, so the next load tries again.
  */
 export async function migratePrefs() {
-  if (!prefsWritable() || readLocal(SYNCED_FLAG) === "1") return false;
+  if (!prefsWritable() || inStep()) return false;
   for (const key of Object.keys(SYNCED)) {
     if (own(host, key)) continue;
     const local = SYNCED[key].fromLocal(readLocal(SYNCED[key].ls));
     if (local === undefined) continue;
-    try { await post({ [key]: local }, true); } catch { return false; }
+    let r;
+    try { r = await post({ [key]: local }, true); } catch { return false; }
+    if (!r.ok && r.status !== 400) return false;
   }
-  await refresh();
+  if (!(await refresh())) return false;
   writeLocal(SYNCED_FLAG, "1");
   return true;
 }
@@ -142,13 +189,17 @@ export async function migratePrefs() {
 /** The app's boot ("full" mode): the first-load migration, then another device's changes at each status frame. */
 export function bootPrefs() {
   if (!initial) return;
-  // Each new revision the frames announce, once (the store changes many times a second); none newer than ours: nothing.
-  let seen = rev;
+  // Each new revision the frames announce, read once (the store changes many times a second). Seen only once its read
+  // succeeded: a failed one is read again at a later frame, at most every RETRY_MS.
+  let seen = rev, busy = false, lastTry = -Infinity;
   appStore.subscribe((s) => {
     const r = s.prefsRev;
-    if (typeof r !== "number" || r === seen) return;
-    seen = r;
-    if (r !== rev) refresh();
+    if (typeof r !== "number" || r === seen || busy) return;
+    if (r === rev) { seen = r; return; }
+    if (now() - lastTry < RETRY_MS) return;
+    lastTry = now();
+    busy = true;
+    refresh().then((ok) => { if (ok) seen = r; }, () => {}).finally(() => { busy = false; });
   });
   migratePrefs();
 }

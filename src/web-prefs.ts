@@ -11,7 +11,7 @@
  *   overwritten: reads give the defaults, writes are refused, until a person looks at it.
  * - `rev` rises with every change; the status frame carries it, so another device re-reads at its next poll.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
@@ -112,13 +112,20 @@ export class WebPrefsStore {
   get path(): string { return join(this.dir, WEB_PREFS_FILE); }
 
   private load(): State | "unreadable" {
-    if (this.state) return this.state;
+    // A store that could not read its file tries again next time (a permission put back, a disk that recovered); one
+    // that did keeps what it read.
+    if (this.state && this.state !== "unreadable") return this.state;
     const empty: State = { buckets: new Map(), rev: 0 };
-    // Anything that goes wrong here — the file, or no place for it at all — is "unreadable": the defaults are served
-    // and nothing is written, so a page or a status frame never fails because of a preference.
+    // Only a file that is definitely not there (ENOENT) is a new, empty store. Anything else — a read refused (EACCES),
+    // an I/O error, no place for the file at all, content of another shape — is "unreadable": the defaults are served
+    // and nothing is written, so the file is never replaced and a page or status frame never fails because of it.
     try {
-      if (!existsSync(this.path)) return (this.state = empty);
-      const doc = JSON.parse(readFileSync(this.path, "utf8")) as unknown;
+      let raw: string;
+      try { raw = readFileSync(this.path, "utf8"); } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return (this.state = empty);
+        return (this.state = "unreadable");
+      }
+      const doc = JSON.parse(raw) as unknown;
       if (!plain(doc) || doc.version !== 1 || !plain(doc.identities) || !Number.isSafeInteger(doc.rev)) return (this.state = "unreadable");
       const buckets = new Map<string, Bucket>();
       for (const id of Object.keys(doc.identities)) {

@@ -6,15 +6,28 @@
 const tables = { en: {}, "zh-TW": {} };
 const listeners = new Set();
 
-function stored() {
-  // #1665: the host's language, when the signed-in page was served with it (<html data-prefs>), wins over this
-  // browser's copy and refreshes it — the same as theme.js does for the theme.
-  let host = null;
-  try { host = JSON.parse(document.documentElement.getAttribute("data-prefs") || "null").values.lang; } catch { /* none */ }
-  if (host === "en" || host === "zh-TW") { try { localStorage.setItem("agend_lang", host); } catch { /* this page only */ } return host; }
-  try { const v = localStorage.getItem("agend_lang"); return v === "en" || v === "zh-TW" ? v : null; } catch { return null; }
+/** The device's own language: what applies when none is chosen. */
+export function deviceLanguage() { return typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "zh-TW" : "en"; }
+function cacheLang(v) { try { if (v) localStorage.setItem("agend_lang", v); else localStorage.removeItem("agend_lang"); } catch { /* this page only */ } }
+/**
+ * #1665: the signed-in page carries the host's values (<html data-prefs>) — the same rule as theme.js: the host's
+ * language is this page's (the browser's copy is refreshed, best effort); none chosen on the host and this device in
+ * step with it: the device's language; not in step yet, or no data-prefs: this browser's copy, else the device's.
+ */
+function initialLang() {
+  let d = null;
+  try { d = JSON.parse(document.documentElement.getAttribute("data-prefs") || "null"); } catch { d = null; }
+  if (d && typeof d === "object" && d.values && typeof d.values === "object") {
+    const host = d.values.lang;
+    if (host === "en" || host === "zh-TW") { cacheLang(host); return host; }
+    let inStep = false;
+    try { inStep = localStorage.getItem("agend_prefs_synced") === "1"; } catch { inStep = false; }
+    if (inStep) { cacheLang(null); return deviceLanguage(); }
+  }
+  try { const v = localStorage.getItem("agend_lang"); if (v === "en" || v === "zh-TW") return v; } catch { /* none */ }
+  return deviceLanguage();
 }
-let current = stored() || (typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "") ? "zh-TW" : "en");
+let current = initialLang();
 
 /** Add a namespace: `register("chat", { en: {...}, "zh-TW": {...} })`. */
 export function register(ns, byLang) {
@@ -25,11 +38,14 @@ export function register(ns, byLang) {
 
 export function lang() { return current; }
 
-/** Choose a language for this browser; every subscriber re-renders (a new navigation lease, §4). */
-export function setLang(next) {
+/**
+ * Choose a language; every subscriber re-renders (a new navigation lease, §4). `{ store: false }`: this page only —
+ * the host's "none chosen" arriving from another device (app-prefs.js), which leaves no copy in this browser.
+ */
+export function setLang(next, opts = {}) {
   if (next !== "en" && next !== "zh-TW") return;
   current = next;
-  try { localStorage.setItem("agend_lang", next); } catch { /* this page only */ }
+  if (opts.store !== false) cacheLang(next);
   if (typeof document !== "undefined" && document.documentElement) document.documentElement.lang = next === "zh-TW" ? "zh-Hant" : "en";
   for (const fn of listeners) fn(next);
 }
