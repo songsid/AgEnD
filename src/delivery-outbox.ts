@@ -10,6 +10,18 @@ import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
 export const DURABLE_DELIVERY_MAX_AGE_MS = 24 * 60 * 60_000;
 export const DURABLE_DELIVERY_ABORT_BACKOFF_MS = 5_000;
+export const DEFAULT_REPLY_OBLIGATION_TTL_MS = 24 * 60 * 60_000;
+const RESTART_REPLY_DISPLAY_LIMIT = 10;
+
+/** Keep each preview on one physical line and bound even an arbitrary correlation ID. */
+function replyPreview(value: string): string {
+  const escaped = value.replace(/[\u0000-\u001f\u007f]/g, c => JSON.stringify(c).slice(1, -1));
+  const bytes = Buffer.from(escaped);
+  if (bytes.length <= 256) return escaped;
+  let end = 253;
+  while ((bytes[end] & 0xc0) === 0x80) end--;
+  return bytes.subarray(0, end).toString("utf8") + "…";
+}
 
 export interface DaemonDeliveryPort {
   begin(deliveryId: string, targetBootId: string, attemptNo: number, evidence?: DeliveryAttemptEvidence): "begun" | "duplicate" | "stale";
@@ -184,7 +196,7 @@ export interface DeliveryStatusItem {
   /** #1201: `turn` (taken as its own turn) or `mid_turn` (absorbed into a running turn at a tool boundary). */
   consumed_via: ConsumedVia | null;
   /** #926: the reply this request is owed, when it asked for one. */
-  reply_obligation?: { state: "open" | "answered"; opened_at: string; last_asked_at: string; nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null } | null;
+  reply_obligation?: { state: "open" | "answered" | "expired"; opened_at: string; last_asked_at: string; nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null; expired_at?: string | null } | null;
   /**
    * #1641: while `queued` / `retry_wait`, why the target is not taking it, in words (`The CLI appears stuck.`, paused, a
    * dialog, a login failure); null when nothing known holds it (it is simply next in line). Added by the fleet, which
@@ -196,7 +208,8 @@ export interface DeliveryStatusItem {
 /**
  * #926: a peer asked with `requires_reply` and the owner has not answered it
  * through the fleet yet. Terminal text is not an answer: only a message the
- * owner sends back to the requester with the same correlation_id closes it.
+ * owner sends back to the requester with the same correlation_id answers it.
+ * #1694 can separately expire its automatic tracking without recording an answer.
  */
 export interface ReplyObligation {
   correlationId: string;
@@ -205,11 +218,12 @@ export interface ReplyObligation {
   requestDeliveryId: string;
   openedAt: string;
   lastAskedAt: string;
-  state: "open" | "answered";
+  state: "open" | "answered" | "expired";
   nudgedAt: string | null;
   overdueNotifiedAt: string | null;
   answeredAt: string | null;
   answeredDeliveryId: string | null;
+  expiredAt: string | null;
 }
 
 export interface DeliveryStatusPage {
@@ -364,8 +378,9 @@ function hasTable(db: Database.Database, table: string): boolean {
 /** The obligation a request row opened, if any; absent on databases from before #926. */
 function obligationFor(db: Database.Database, correlationId: string | null, requester: string, owner: string): DeliveryStatusItem["reply_obligation"] {
   if (!correlationId || !hasTable(db, "reply_obligations")) return null;
+  const expiredAt = hasColumn(db, "reply_obligations", "expired_at") ? "expired_at" : "NULL AS expired_at";
   const row = db.prepare(`
-    SELECT state, opened_at, last_asked_at, nudged_at, overdue_notified_at, answered_at FROM reply_obligations
+    SELECT state, opened_at, last_asked_at, nudged_at, overdue_notified_at, answered_at, ${expiredAt} FROM reply_obligations
     WHERE correlation_id=? AND requester_instance=? AND owner_instance=?
   `).get(correlationId, requester, owner) as NonNullable<DeliveryStatusItem["reply_obligation"]> | undefined;
   return row ?? null;
@@ -487,8 +502,9 @@ function queryStatusPage(
 
 interface ReplyObligationRow {
   correlation_id: string; requester_instance: string; owner_instance: string; request_delivery_id: string;
-  opened_at: string; last_asked_at: string; state: "open" | "answered";
+  opened_at: string; last_asked_at: string; state: "open" | "answered" | "expired";
   nudged_at: string | null; overdue_notified_at: string | null; answered_at: string | null; answered_delivery_id: string | null;
+  expired_at: string | null;
 }
 
 function mapObligation(row: ReplyObligationRow): ReplyObligation {
@@ -497,6 +513,7 @@ function mapObligation(row: ReplyObligationRow): ReplyObligation {
     requestDeliveryId: row.request_delivery_id, openedAt: row.opened_at, lastAskedAt: row.last_asked_at, state: row.state,
     nudgedAt: row.nudged_at, overdueNotifiedAt: row.overdue_notified_at, answeredAt: row.answered_at,
     answeredDeliveryId: row.answered_delivery_id,
+    expiredAt: row.expired_at,
   };
 }
 
@@ -601,20 +618,30 @@ export class DeliveryOutbox extends EventEmitter {
         request_delivery_id TEXT NOT NULL,
         opened_at TEXT NOT NULL,
         last_asked_at TEXT NOT NULL,
-        state TEXT NOT NULL CHECK (state IN ('open','answered')),
+        state TEXT NOT NULL CHECK (state IN ('open','answered','expired')),
         nudged_at TEXT,
         overdue_notified_at TEXT,
         answered_at TEXT,
         answered_delivery_id TEXT,
+        expired_at TEXT,
         PRIMARY KEY (correlation_id, requester_instance, owner_instance)
       );
       CREATE INDEX IF NOT EXISTS idx_reply_obligation_owner_state ON reply_obligations(owner_instance, state);
+      -- A notice can be pruned while its boot is still alive. Keep the claim
+      -- independently: no notice FK/cascade and no request or message content.
+      CREATE TABLE IF NOT EXISTS reply_restart_markers (
+        owner_instance TEXT NOT NULL,
+        restart_id TEXT NOT NULL,
+        reminded_at TEXT NOT NULL,
+        PRIMARY KEY (owner_instance, restart_id)
+      );
       CREATE TABLE IF NOT EXISTS failure_notices (
         parent_delivery_id TEXT PRIMARY KEY,
         notice_delivery_id TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL
       );
     `);
+    this.migrateReplyObligationExpiry();
     // Additive migration: existing Phase 1 databases keep their row identities,
     // foreign keys, and WAL while gaining reconciliation evidence columns.
     this.ensureColumn("deliveries", "reconciliation_pending", "INTEGER NOT NULL DEFAULT 0");
@@ -667,6 +694,31 @@ export class DeliveryOutbox extends EventEmitter {
     this.db.pragma("user_version = 5");
   }
 
+  /** SQLite cannot widen a CHECK with ADD COLUMN; preserve all old rows in one transaction. */
+  private migrateReplyObligationExpiry(): void {
+    const schema = this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='reply_obligations'")
+      .get() as { sql: string };
+    if (!schema.sql.includes("'expired'")) {
+      this.db.transaction(() => {
+        this.db.exec(`CREATE TABLE reply_obligations_v1694 (
+          correlation_id TEXT NOT NULL, requester_instance TEXT NOT NULL, owner_instance TEXT NOT NULL,
+          request_delivery_id TEXT NOT NULL, opened_at TEXT NOT NULL, last_asked_at TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('open','answered','expired')),
+          nudged_at TEXT, overdue_notified_at TEXT, answered_at TEXT, answered_delivery_id TEXT, expired_at TEXT,
+          PRIMARY KEY (correlation_id, requester_instance, owner_instance)
+        );
+        INSERT INTO reply_obligations_v1694 SELECT correlation_id,requester_instance,owner_instance,
+          request_delivery_id,opened_at,last_asked_at,state,nudged_at,overdue_notified_at,
+          answered_at,answered_delivery_id,NULL FROM reply_obligations;`);
+        this.db.exec("DROP TABLE reply_obligations");
+        this.db.exec("ALTER TABLE reply_obligations_v1694 RENAME TO reply_obligations");
+        this.db.exec("CREATE INDEX idx_reply_obligation_owner_state ON reply_obligations(owner_instance,state)");
+      })();
+    }
+    this.ensureColumn("reply_obligations", "expired_at", "TEXT");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_reply_obligation_state_asked ON reply_obligations(state,last_asked_at)");
+  }
+
   /**
    * #926: a delivered `requires_reply` request opens (or, asked again,
    * re-opens) the owner's obligation. Runs inside the delivered transition.
@@ -691,7 +743,7 @@ export class DeliveryOutbox extends EventEmitter {
       ON CONFLICT(correlation_id, requester_instance, owner_instance) DO UPDATE SET
         request_delivery_id=excluded.request_delivery_id, last_asked_at=excluded.last_asked_at,
         state=excluded.state, nudged_at=NULL, overdue_notified_at=NULL,
-        answered_at=excluded.answered_at, answered_delivery_id=excluded.answered_delivery_id
+        answered_at=excluded.answered_at, answered_delivery_id=excluded.answered_delivery_id, expired_at=NULL
     `).run({
       cid: request.correlation_id, requester: request.source_instance, owner: request.target_instance,
       request: request.delivery_id, now,
@@ -712,25 +764,44 @@ export class DeliveryOutbox extends EventEmitter {
   /**
    * #926 safety net 1: remind an owner that has not answered. `turn-ended`
    * reminds once per ask, after the grace (a reply seconds after the ask is
-   * normal); `restart` reminds once per restart, because the interrupted turn
-   * does not resume on its own. Marked in the same transaction as the notice.
+   * normal); `restart` batches once per daemon boot, because the interrupted
+   * turn does not resume on its own. Marked in the same transaction as the notice.
    */
-  remindReplyObligations(ownerInstance: string, opts: { now?: Date; graceMs: number; reason: "turn-ended" | "restart"; since?: Date }): number {
+  remindReplyObligations(ownerInstance: string, opts: { now?: Date; graceMs: number; reason: "turn-ended" | "restart"; since?: Date; restartId?: string }): number {
     const now = opts.now ?? new Date();
     const nowIso = now.toISOString();
     const graceCutoff = new Date(now.getTime() - opts.graceMs).toISOString();
     const sinceIso = (opts.since ?? now).toISOString();
     const inserted = this.db.transaction(() => {
-      const due = this.db.prepare(opts.reason === "turn-ended"
-        ? "SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' AND nudged_at IS NULL AND last_asked_at <= ?"
-        : "SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' AND (nudged_at IS NULL OR nudged_at < ?)",
-      ).all(ownerInstance, opts.reason === "turn-ended" ? graceCutoff : sinceIso) as ReplyObligationRow[];
+      if (opts.reason === "restart") {
+        const restartId = opts.restartId ?? sinceIso;
+        const key = `reply-pending:restart:${JSON.stringify([ownerInstance, restartId])}`;
+        if (this.db.prepare("SELECT 1 FROM reply_restart_markers WHERE owner_instance=? AND restart_id=?")
+          .get(ownerInstance, restartId)) return 0;
+        // Adopt an existing notice from the earlier implementation/rollback
+        // without stamping a new ask or producing another notice.
+        const prior = this.db.prepare("SELECT created_at FROM deliveries WHERE source_key=?").get(key) as { created_at: string } | undefined;
+        if (prior) { this.recordReplyRestart(ownerInstance, restartId, prior.created_at); return 0; }
+        const total = (this.db.prepare("SELECT count(*) n FROM reply_obligations WHERE owner_instance=? AND state='open'")
+          .get(ownerInstance) as { n: number }).n;
+        if (!total) return 0;
+        const preview = this.db.prepare(`SELECT requester_instance,correlation_id,last_asked_at FROM reply_obligations
+          WHERE owner_instance=? AND state='open' ORDER BY last_asked_at,correlation_id,requester_instance LIMIT ?`)
+          .all(ownerInstance, RESTART_REPLY_DISPLAY_LIMIT) as ReplyObligationRow[];
+        const lines = preview.map(row => `${replyPreview(row.requester_instance)}; correlation_id=${replyPreview(row.correlation_id)}; asked=${replyPreview(row.last_asked_at)}`);
+        if (total > preview.length) lines.push(t("delivery.reply_restart_more", total - preview.length));
+        const content = t("delivery.reply_restart") + "\n" + lines.join("\n");
+        if (!this.insertReplyObligationNotice(ownerInstance, null, key, content, nowIso)) return 0;
+        this.recordReplyRestart(ownerInstance, restartId, nowIso);
+        this.db.prepare("UPDATE reply_obligations SET nudged_at=? WHERE owner_instance=? AND state='open'").run(nowIso, ownerInstance);
+        return 1;
+      }
+      const due = this.db.prepare("SELECT * FROM reply_obligations WHERE owner_instance=? AND state='open' AND nudged_at IS NULL AND last_asked_at <= ?")
+        .all(ownerInstance, graceCutoff) as ReplyObligationRow[];
       let count = 0;
       for (const row of due) {
-        const content = opts.reason === "turn-ended"
-          ? t("delivery.reply_turn_ended", row.requester_instance, row.correlation_id, row.last_asked_at)
-          : t("delivery.reply_restart", row.requester_instance, row.correlation_id, row.last_asked_at);
-        const key = `reply-pending:${opts.reason}:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${opts.reason === "turn-ended" ? row.last_asked_at : sinceIso}`;
+        const content = t("delivery.reply_turn_ended", row.requester_instance, row.correlation_id, row.last_asked_at);
+        const key = `reply-pending:turn-ended:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${row.last_asked_at}`;
         if (this.insertReplyObligationNotice(row.owner_instance, row.correlation_id, key, content, nowIso)) count++;
         this.db.prepare(`
           UPDATE reply_obligations SET nudged_at=? WHERE correlation_id=? AND requester_instance=? AND owner_instance=? AND state='open'
@@ -740,6 +811,37 @@ export class DeliveryOutbox extends EventEmitter {
     })();
     if (inserted > 0) this.emit("admitted");
     return inserted;
+  }
+
+  private recordReplyRestart(owner: string, restartId: string, now: string): void {
+    this.db.prepare("INSERT INTO reply_restart_markers(owner_instance,restart_id,reminded_at) VALUES (?,?,?)")
+      .run(owner, restartId, now);
+  }
+
+  /** Expiry is terminal for this ask; a later delivered re-ask can reopen the same tuple. */
+  expireReplyObligations(opts: { now?: Date; ttlMs?: number } = {}): ReplyObligation[] {
+    const now = opts.now ?? new Date();
+    const ttl = opts.ttlMs !== undefined && Number.isFinite(opts.ttlMs) && opts.ttlMs > 0 ? opts.ttlMs : DEFAULT_REPLY_OBLIGATION_TTL_MS;
+    const cutoff = new Date(Math.max(-8.64e15, now.getTime() - ttl)).toISOString();
+    const nowIso = now.toISOString();
+    const expired = this.db.transaction(() => {
+      const due = this.db.prepare("SELECT * FROM reply_obligations WHERE state='open' AND last_asked_at<=? ORDER BY last_asked_at")
+        .all(cutoff) as ReplyObligationRow[];
+      for (const row of due) {
+        if (!row.overdue_notified_at) {
+          const key = `reply-overdue:${row.correlation_id}:${row.requester_instance}:${row.owner_instance}:${row.last_asked_at}`;
+          this.insertReplyObligationNotice(row.requester_instance, row.correlation_id, key,
+            t("delivery.reply_expired", row.owner_instance, row.correlation_id, row.last_asked_at), nowIso);
+        }
+        this.db.prepare(`UPDATE reply_obligations SET state='expired',expired_at=?,overdue_notified_at=COALESCE(overdue_notified_at,?)
+          WHERE correlation_id=? AND requester_instance=? AND owner_instance=? AND state='open'`)
+          .run(nowIso, nowIso, row.correlation_id, row.requester_instance, row.owner_instance);
+        row.state = "expired"; row.expired_at = nowIso; row.overdue_notified_at ??= nowIso;
+      }
+      return due.map(mapObligation);
+    })();
+    if (expired.length) this.emit("admitted");
+    return expired;
   }
 
   /**
@@ -773,7 +875,7 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** A system notice as a durable row, like #929's outcome notices; the key makes it idempotent. */
-  private insertReplyObligationNotice(target: string, correlationId: string, sourceKey: string, content: string, now: string): boolean {
+  private insertReplyObligationNotice(target: string, correlationId: string | null, sourceKey: string, content: string, now: string): boolean {
     const noticeId = randomUUID();
     const payload = {
       type: "fleet_inbound",
@@ -1656,11 +1758,11 @@ export class DeliveryOutbox extends EventEmitter {
 
         // Delete child rows first.
         this.db.prepare(`DELETE FROM delivery_attempts WHERE delivery_id IN (${placeholders})`).run(...ids);
-        // Only closed reply_obligations (answered): open ones were excluded above.
+        // Only closed reply_obligations (answered/expired): open ones were excluded above.
         if (hasTable(this.db, "reply_obligations")) {
           this.db.prepare(`
             DELETE FROM reply_obligations
-            WHERE request_delivery_id IN (${placeholders}) AND state = 'answered'
+            WHERE request_delivery_id IN (${placeholders}) AND state IN ('answered','expired')
           `).run(...ids);
         }
         this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);

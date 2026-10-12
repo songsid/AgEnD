@@ -99,7 +99,7 @@ describe("safety net 1: remind the owner (#926)", () => {
     const restart = at(958);  // the 21:25:51 fleet restart, relative to the 21:09:53 ask
     expect(outbox.remindReplyObligations("reviewer", { now: restart, graceMs: 0, reason: "restart", since: restart })).toBe(1);
     expect(outbox.remindReplyObligations("reviewer", { now: at(960), graceMs: 0, reason: "restart", since: restart })).toBe(0);
-    expect(notices(outbox).at(-1)!.text).toMatch(/^\[system:reply-pending\] A restart interrupted your work for leader.*report_result.*\ncorrelation_id=cid-925/);
+    expect(notices(outbox).at(-1)!.text).toMatch(/^\[system:reply-pending\] A restart left.*report_result.*\nleader; correlation_id=cid-925/);
     outbox.close();
   });
 
@@ -179,7 +179,7 @@ describe("the fleet runs both nets (#926)", () => {
   it("reminds the owner when its daemon comes back after a restart", () => {
     const { fm, outbox } = fleet({ reviewer: "idle" });
     fm.onDaemonReady("reviewer", "reviewer-boot-2");
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", text: expect.stringMatching(/A restart interrupted/) })]);
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", text: expect.stringMatching(/A restart left/) })]);
     outbox.close();
   });
 
@@ -223,7 +223,7 @@ describe("the #925 shape: the whole process dies mid-review (#926)", () => {
     const { fm, outbox } = quietFleet(root);
     expect(outbox.getReplyObligation("cid-925", "leader", "reviewer")).toMatchObject({ state: "open" });
     fm.onDaemonReady("reviewer", "reviewer-boot-after-restart");
-    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: "cid-925", text: expect.stringMatching(/A restart interrupted your work for leader.*\ncorrelation_id=cid-925/) })]);
+    expect(notices(outbox)).toEqual([expect.objectContaining({ target: "reviewer", cid: null, text: expect.stringMatching(/A restart left.*\nleader; correlation_id=cid-925/) })]);
     outbox.close();
   }, 30_000);
 });
