@@ -1,9 +1,14 @@
 /**
  * muse 1.4.6 audit (upstream CLI watch 2026-10-12, precheck MAJOR hard=1; ffb8104e): the screens AgEnD reads,
  * captured live from the 1.4.6 binary (tests/fixtures/muse-1.4.6/SOURCES.md), judged by the production MuseBackend.
- * The verdicts are the same as 1.4.4 on every surface AgEnD relies on. The approval prompt (with approval left on),
- * the "Local work is still active" quit menu and a running background task are pinned as they are today. Those three
- * are known gaps that 1.4.4 had too (the compare-* pairs); each has its own issue.
+ * The verdicts are the same as 1.4.4 on every surface AgEnD relies on. Three known gaps are pinned as they are today,
+ * each with its own issue:
+ *  - the escalated approval prompt with approval left on (#1715);
+ *  - the "Local work is still active" quit menu (#1716);
+ *  - a running background task (#1717).
+ * Each was captured on 1.4.4 with the same sequence (the compare-* pairs) and reads the same there. 1.4.6's new staged
+ * prompt (--approval-mode untrusted) is a new surface that falls into the same gap as #1715. It has no 1.4.4
+ * counterpart to compare.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -75,8 +80,15 @@ describe("muse 1.4.6: known gaps (as in 1.4.4), pinned as they are today", () =>
     for (const name of ["approval-escalated-after-esc", "approval-untrusted-after-1"]) expect(b.isPeriodicRedrawIdlePane(pane(name)), name).toBe(true);
   });
 
-  it.each([["background-work"], ["quit-with-local-work"], ["quit-dialog-ctrl-c-2"]])("%s: 1.4.6 reads exactly as 1.4.4 did", name => {
+  it.each([["approval-escalated"], ["background-work"], ["quit-with-local-work"], ["quit-dialog-ctrl-c-2"]])("%s: 1.4.6 reads exactly as 1.4.4 did", name => {
     expect(verdict(pane(`compare-${name}`))).toEqual(verdict(pane(`compare-1.4.4-${name}`)));
+  });
+
+  it("the escalated approval prompt: the same numbered shape on 1.4.4 (1.4.6 only adds the 'Change approval defaults' hint row)", () => {
+    const shape = (p: string) => { const s = unrecognisedPromptShape(p); return s && { kind: s.kind, options: s.options, question: s.question }; };
+    expect(shape(pane("compare-approval-escalated"))).toEqual(shape(pane("compare-1.4.4-approval-escalated")));
+    expect(shape(pane("compare-1.4.4-approval-escalated"))).toEqual({ kind: "numbered", options: 2, question: "Would you like to run the following command?" });
+    expect(verdict(pane("compare-1.4.4-approval-escalated"))).toMatchObject({ busy: true, idle: false, runtime: [] });
   });
 
   it("a running background task keeps the idle proof from passing; /quit stops at 'Local work is still active'", () => {

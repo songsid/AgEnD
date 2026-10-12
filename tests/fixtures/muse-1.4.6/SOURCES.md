@@ -30,4 +30,4 @@ spaces are trimmed. Nothing else is edited.
 | `approval-escalated` (+`-after-esc`) | approval on: the escalated `bash` call's prompt, then Escape |
 | `approval-untrusted-staged` (+`-after-1`) | `--approval-mode untrusted`: the new staged prompt (allow this stage once / always allow in this workspace / abort the entire command), then `1` |
 | `prod-background-work`, `prod-quit-with-local-work` | prod flags plus `--disable-sandbox` (only so the command can run in the container): a backgrounded `sleep`, then `/quit` |
-| `compare-*`, `compare-1.4.4-*` | the same background, `/quit` and Ctrl-C ×2 sequence on 1.4.6 and on 1.4.4 |
+| `compare-*`, `compare-1.4.4-*` | the same sequences on 1.4.6 and on 1.4.4: the escalated approval prompt with approval on (`--trust-workspace`, no `--disable-approval`, the same `bash` + `require_escalated` call), and the background, `/quit` and Ctrl-C ×2 sequence |
