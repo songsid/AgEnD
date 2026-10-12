@@ -52,6 +52,12 @@ import { homedir } from "node:os";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { FleetConfig } from "./types.js";
 import { LOGIN_BACKEND_ALIASES, LOGIN_FLOWS, checkAuthStatus, type AuthCheck, type AuthCheckResult, type LoginFlow } from "./login-flows.js";
+import {
+  CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileEnv, credentialProfileHome, credentialProfileLoginCommand,
+  prepareCredentialProfileHome, resolveCredentialProfile,
+} from "./backend/credential-profile.js";
+import { shellQuote } from "./backend/types.js";
+import { getAgendHome } from "./paths.js";
 import { t } from "./locale.js";
 import type { LoginWindowClaim } from "./login-window-lock.js";
 import {
@@ -156,6 +162,28 @@ export interface LoginStartOptions {
    * a config change in between gets a refusal, not a tunnel.
    */
   tunnel?: boolean;
+  /**
+   * #1699 part 2: sign this credential profile in (`/login claude-code <profile>`) instead of the backend's default
+   * login — the same command with the profile's variable, the same canonical path the launch uses.
+   */
+  profile?: string;
+}
+
+/**
+ * #1699 part 2: may this `/login <backend> <profile>` go ahead? The profile normalised, or the refusal to answer with —
+ * a name that is not one, or a backend whose profiles are signed in on the host (its exact command). Shared by the
+ * controller and FleetManager's install-first routing, so nothing is installed for a request that will be refused.
+ */
+export function admitProfileLogin(backendArg: string, rawProfile: string): { profile: string } | { refusal: string } {
+  const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+  let profile: string | null;
+  try { profile = resolveCredentialProfile({ credential_profile: rawProfile }); } catch { profile = null; }
+  if (!profile) return { refusal: t("login.profile_invalid", rawProfile) };
+  if (!CHAT_PROFILE_LOGIN_BACKENDS.has(backend)) {
+    const onHost = credentialProfileLoginCommand(getAgendHome(), backend, profile);
+    return { refusal: onHost ? t("login.profile_host_only", backend, profile, onHost) : t("login.profile_unsupported", backend) };
+  }
+  return { profile };
 }
 
 /** What the controller needs from a tunnel — a fake in tests, ManagedTunnel + cloudflared for real. */
@@ -170,12 +198,14 @@ export interface LoginControllerDeps {
   isFleetAdmin(userId: string, adapterId?: string): boolean;
   /** Event log sink; instance column is "login". */
   eventLog: () => { insert(instance: string, type: string, payload?: Record<string, unknown>): void } | null;
-  /** Wake/restart the backend's instances after a successful login. */
-  recoverBackendInstances(backend: string): Promise<PostLoginRecovery>;
+  /** Wake/restart the instances on the login just signed in (the backend's default one, or `profile`). */
+  recoverBackendInstances(backend: string, profile?: string): Promise<PostLoginRecovery>;
   /** Post nonce buttons (FleetManager.postNonceButtonPrompt). Rejects when the platform refused. */
   postButtons(opts: {
     prefix: string; instanceName: string; chat: LoginChat; message: string;
     choices: Array<{ action: string; label: string }>; expiredText: string;
+    /** The credential profile the buttons sign in (#1699): a click must never fall back to the default login. */
+    profile?: string;
   }): Promise<void>;
   /** Fleet-wide window reservation (shared with install). */
   claimWindow(backend: string): LoginWindowClaim | null;
@@ -184,7 +214,7 @@ export interface LoginControllerDeps {
   isClaimCurrent(claim: LoginWindowClaim): boolean;
   windowBusyMessage(): string;
   // Injection seams (tests): default to the real engine.
-  checkAuth?: (check: AuthCheck) => Promise<AuthCheckResult>;
+  checkAuth?: (check: AuthCheck, env?: Record<string, string>) => Promise<AuthCheckResult>;
   createSession?: (spec: WebTerminalSpec, events: WebTerminalEvents, logger: TerminalLogger) => WebTerminalSession;
   createHttp?: (session: WebTerminalSession, logger: TerminalLogger, opts: WebTerminalHttpOptions) => WebTerminalHttpServer;
   now?: () => number;
@@ -211,6 +241,10 @@ interface ActiveLogin {
   session: WebTerminalSession;
   http: WebTerminalHttpServer | null;
   backend: string;
+  /** #1699 part 2: the credential profile being signed in; absent for the backend's default login. */
+  profile?: string;
+  /** What the user reads for this login: the backend, or "<backend> profile `<name>`". */
+  shown: string;
   chat: LoginChat;
   requesterUserId: string;
   url: string;
@@ -298,6 +332,12 @@ export class LoginController {
       this.audit("flow_not_allowed", { backend, requester: chat.userId });
       return t("login.web_flow_not_allowed", backend);
     }
+    // #1699 part 2: a named profile — valid, on a backend whose login can run with its variable from chat.
+    if (opts.profile !== undefined) {
+      const admitted = admitProfileLogin(backend, opts.profile);
+      if ("refusal" in admitted) return admitted.refusal;
+      opts = { ...opts, profile: admitted.profile };
+    }
     if (!this.admitRate(chat.userId)) {
       this.audit("rate_limited", { backend, requester: chat.userId });
       return t("login.web_rate_limited", String(START_RATE_LIMIT), String(START_RATE_WINDOW_MS / 60_000));
@@ -330,6 +370,18 @@ export class LoginController {
     flow: LoginFlow, backend: string, chat: LoginChat, opts: LoginStartOptions, cfg: FleetConfig | null,
     claim: LoginWindowClaim, generation: number, markTransferred: () => void, tunnelReservation?: TunnelReservation,
   ): Promise<string | null> {
+    // #1699 part 2: the profile's own home, prepared as a launch prepares it (links, seeded settings, a symlinked home
+    // refused); the probe and the command both carry its variable. `shown` names it wherever the user reads `backend`.
+    const profile = opts.profile;
+    const env = profile ? credentialProfileEnv(getAgendHome(), backend, profile) ?? undefined : undefined;
+    const shown = profile ? t("login.profile_label", backend, profile) : backend;
+    if (profile) {
+      try {
+        prepareCredentialProfileHome(credentialHomeSpec(backend)!, credentialProfileHome(getAgendHome(), backend, profile));
+      } catch (err) {
+        return t("login.failed", shown, (err as Error).message);
+      }
+    }
     if (!opts.skipAuthCheck) {
       // First pass: find out whether the CLI still holds a token, then ask for
       // the explicit go-ahead (design §3.2). The button re-enters with the
@@ -338,7 +390,8 @@ export class LoginController {
       // A probe that throws is an unknown answer, never a dead end (#1133).
       if (flow.authCheck) {
         try {
-          tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
+          const check = this.deps.checkAuth ?? checkAuthStatus;
+          tokenPresent = (await (env ? check(flow.authCheck, env) : check(flow.authCheck))) === "valid";
         } catch (err) {
           this.deps.logger.warn({ ...safeErr(err), backend }, "Auth pre-check failed; treating the token as absent");
         }
@@ -347,7 +400,7 @@ export class LoginController {
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
       const publicLink = this.tunnelAllowed(cfg, flow);
-      const confirmation = t(flow.deviceAuth ? "login.device_confirm" : "login.web_confirm", backend)
+      const confirmation = t(flow.deviceAuth ? "login.device_confirm" : "login.web_confirm", shown)
         + (publicLink ? t("login.tunnel_confirm_extra") : "");
       try {
         await this.deps.postButtons({
@@ -367,10 +420,11 @@ export class LoginController {
             { action: "cancel", label: t("login.relogin_cancel") },
           ],
           expiredText: t("buttons.stale"),
+          ...(profile ? { profile } : {}),
         });
       } catch (err) {
         this.deps.logger.warn({ ...safeErr(err), backend }, "Failed to post login confirmation");
-        return t("login.failed", backend, t("login.web_confirm_failed"));
+        return t("login.failed", shown, t("login.web_confirm_failed"));
       }
       if (this.stale(generation, null)) {
         // The prompt went out while (or after) we stopped. It cannot be
@@ -413,7 +467,7 @@ export class LoginController {
       }
       cloudflaredPath = got.path;
     }
-    const command = this.buildCommand(flow, opts.tokenPresent === true);
+    const command = this.buildCommand(flow, opts.tokenPresent === true, env);
     const ttlMs = this.ttlMs(cfg);
     const spec: WebTerminalSpec = {
       kind: "login",
@@ -433,7 +487,7 @@ export class LoginController {
 
     const logger = this.deps.logger;
     const entry: ActiveLogin = {
-      claim, tunnelReservation, session: null as unknown as WebTerminalSession, http: null, backend, chat,
+      claim, tunnelReservation, session: null as unknown as WebTerminalSession, http: null, backend, profile, shown, chat,
       requesterUserId: userId, url: "", tokenDelivered: false, silent: false, tunnel: null, cloudflaredPath,
     };
     const events: WebTerminalEvents = {
@@ -446,14 +500,14 @@ export class LoginController {
           this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null });
           return Promise.resolve();
         }
-        return this.sendHint(chat, backend, url, code);
+        return this.sendHint(chat, shown, url, code);
       },
       onDone: async result => {
         // The tunnel goes first and the window is held until it is confirmed gone: a login that
         // is over must not leave its listener reachable while the fleet believes it is free.
         await this.closeTunnel(entry);
         this.releaseEntry(entry);
-        if (!entry.silent) await this.reportDone(chat, backend, result);
+        if (!entry.silent) await this.reportDone(chat, entry, result);
       },
       onAudit: (event, fields) => this.audit(event.replace(/^web_terminal_/, ""), fields),
     };
@@ -470,7 +524,7 @@ export class LoginController {
       // Device auth needs only the provider link/code emitted by onHint.
       // Keep the engine's TTL, cancellation and recovery, without exposing a
       // second browser terminal URL or sending an unused access token.
-      if (flow.deviceAuth) return t("login.started", backend);
+      if (flow.deviceAuth) return t("login.started", shown);
       const http = (this.deps.createHttp ?? ((s, l, o) => new WebTerminalHttpServer(s, l, o)))(entry.session, logger, {
         bind: cfg?.web_terminal?.bind,
         hostname: cfg?.hostname || "localhost",
@@ -489,7 +543,7 @@ export class LoginController {
       // In public mode the text is fixed: nothing a provider or the network said goes to the chat.
       return this.abort(entry, wantTunnel
         ? t("login.tunnel_failed", t("login.tunnel_reason.other"))
-        : t("login.failed", backend, (err as Error).message), "startup failed");
+        : t("login.failed", shown, (err as Error).message), "startup failed");
     }
 
     // Delivery is part of starting: a link nobody received, or a token that
@@ -506,17 +560,17 @@ export class LoginController {
       }
       if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       this.audit("tunnel_delivered", { backend, requester: userId });
-      return t("login.tunnel_started", backend, String(minutes));
+      return t("login.tunnel_started", shown, String(minutes));
     }
     if (!(await this.sendLink(entry, Math.round(ttlMs / 60_000), command))) {
-      return this.abort(entry, t("login.failed", backend, t("login.web_link_failed")), "link delivery failed");
+      return this.abort(entry, t("login.failed", shown, t("login.web_link_failed")), "link delivery failed");
     }
     if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     if (!(await this.sendToken(entry, { offerResend: true }))) {
-      return this.abort(entry, t("login.failed", backend, t("login.web_token_failed")), "token delivery failed");
+      return this.abort(entry, t("login.failed", shown, t("login.web_token_failed")), "token delivery failed");
     }
     if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
-    return t("login.web_started", backend);
+    return t("login.web_started", shown);
   }
 
   /** `/login cancel` in web mode. */
@@ -528,7 +582,7 @@ export class LoginController {
       return t("login.cancelled", backend);
     }
     if (!this.active) return t("login.no_session");
-    const backend = this.active.backend;
+    const backend = this.active.shown;
     await this.active.session.cancel("cancelled");
     return t("login.cancelled", backend);
   }
@@ -771,10 +825,12 @@ export class LoginController {
     }
   }
 
-  private buildCommand(flow: LoginFlow, tokenPresent: boolean): string {
+  private buildCommand(flow: LoginFlow, tokenPresent: boolean, env?: Record<string, string>): string {
     const pre = flow.preCommand;
     const runPre = pre && (pre.when === "always" || (pre.when === "token-present" && tokenPresent));
-    return runPre ? `${pre.command}; ${flow.command}` : flow.command;
+    // A profile's variable on every command of the line — the exact form credentialProfileLoginCommand gives (#1699).
+    const withEnv = (cmd: string) => env ? `${Object.entries(env).map(([k, v]) => `${k}=${shellQuote(v)}`).join(" ")} ${cmd}` : cmd;
+    return runPre ? `${withEnv(pre.command)}; ${withEnv(flow.command)}` : withEnv(flow.command);
   }
 
   private ttlMs(cfg: FleetConfig | null): number {
@@ -786,7 +842,7 @@ export class LoginController {
   /** The link carries no secret: it may go to the requesting chat. Returns delivery success. */
   private async sendLink(entry: ActiveLogin, ttlMinutes: number, command: string): Promise<boolean> {
     const { chat } = entry;
-    const text = t("login.web_link", entry.backend, String(ttlMinutes), command, entry.url);
+    const text = t("login.web_link", entry.shown, String(ttlMinutes), command, entry.url);
     try {
       await chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId, disablePreview: true });
       this.audit("link_sent", { backend: entry.backend, requester: entry.requesterUserId, host: hostOf(entry.url) });
@@ -859,7 +915,8 @@ export class LoginController {
     }
   }
 
-  private async reportDone(chat: LoginChat, backend: string, result: WebTerminalResult): Promise<void> {
+  private async reportDone(chat: LoginChat, entry: Pick<ActiveLogin, "backend" | "profile" | "shown">, result: WebTerminalResult): Promise<void> {
+    const backend = entry.shown;
     const send = (text: string) =>
       chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId }).catch(() => { /* chat gone */ });
 
@@ -869,7 +926,9 @@ export class LoginController {
       // wait for the whole recovery first, so a slow restart meant the user was
       // told nothing at all — and concluded the login itself had hung.
       await send(t("login.completed", backend));
-      await announcePostLoginRecovery(backend, () => this.deps.recoverBackendInstances(backend), send);
+      await announcePostLoginRecovery(backend, () => (entry.profile
+        ? this.deps.recoverBackendInstances(entry.backend, entry.profile)
+        : this.deps.recoverBackendInstances(entry.backend)), send);
       if (result.cleanupFailed) await send(t("login.web_cleanup_failed", backend));
       return;
     }

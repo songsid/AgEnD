@@ -20,7 +20,7 @@ import { truncatePreview } from "./channel/markdown-chunk.js";
 import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
-import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
   formatCrossInstanceInboundMessage, type AgentMode,
@@ -1221,7 +1221,9 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     const login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter);
     if (login.state === "signed-out") {
       rollback();
-      respond(null, `Rejected: credential profile "${profileAfter}" has no ${backendAfter} login yet, and switching to it would leave the agent waiting at a sign-in prompt. Log it in first:\n  ${login.loginCommand}`);
+      // #1699 part 2: a claude-code profile can also be signed in from chat, in the browser terminal.
+      const fromChat = CHAT_PROFILE_LOGIN_BACKENDS.has(backendAfter) ? `\n  or from chat: /login ${backendAfter} ${profileAfter}` : "";
+      respond(null, `Rejected: credential profile "${profileAfter}" has no ${backendAfter} login yet, and switching to it would leave the agent waiting at a sign-in prompt. Log it in first:\n  ${login.loginCommand}${fromChat}`);
       return;
     }
   }

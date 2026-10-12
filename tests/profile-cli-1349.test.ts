@@ -46,7 +46,9 @@ it("registers the native locked Discord command with the shared integer ceiling"
   let object: ts.ObjectLiteralExpression | undefined;
   function visit(node: ts.Node): void {
     if (ts.isObjectLiteralExpression(node) && node.properties.some(prop => ts.isPropertyAssignment(prop)
-      && prop.name.getText(ast) === "name" && ts.isStringLiteral(prop.initializer) && prop.initializer.text === "profile")) object = node;
+      && prop.name.getText(ast) === "name" && ts.isStringLiteral(prop.initializer) && prop.initializer.text === "profile")
+      // The /profile COMMAND (it has options), not another command's `profile` option such as /login's (#1699).
+      && node.properties.some(prop => ts.isPropertyAssignment(prop) && prop.name.getText(ast) === "options")) object = node;
     ts.forEachChild(node, visit);
   }
   visit(ast); expect(object).toBeDefined();

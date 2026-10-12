@@ -542,9 +542,24 @@ guarantee that cross-account resume will succeed.
 
 ### Claude Code
 
+Sign a profile in from chat (fleet admin):
+
+```
+/login claude-code work
+```
+
+This runs `claude auth login` for that profile in the same browser terminal
+`/login claude-code` uses, so it works from a phone. On Discord, use `/login`
+with `backend: claude-code` and `profile: work`. Or sign it in on the host:
+
 ```bash
 CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login
 ```
+
+After a successful sign-in, AgEnD wakes or restarts only the instances on that
+login. A profile login leaves default-login instances alone, and the reverse.
+Kiro and Codex profiles are still signed in on the host: `/login kiro-cli work`
+answers with the exact command to run there.
 
 A Claude Code profile is its own `CLAUDE_CONFIG_DIR`. The login, the account,
 per-project trust, `settings.json` and every conversation (`projects/`, `sessions/`,
@@ -559,8 +574,8 @@ On macOS, claude keeps the login in the Keychain, under an item named after the
 profile directory. Two profiles never share or overwrite each other's item, and
 the default login is left alone.
 
-If `update_instance_config` refused a switch, run the command from its reply as
-it is: it carries the exact absolute path AgEnD launches with, and on macOS the
+If `update_instance_config` refused a switch, use `/login claude-code <profile>`
+or run the command from its reply as it is: it carries the exact absolute path AgEnD launches with, and on macOS the
 Keychain item is named after that path string.
 
 An instance with no profile launches exactly as before: AgEnD sets no

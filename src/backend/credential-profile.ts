@@ -260,6 +260,13 @@ export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
   "claude-code": CLAUDE_HOME,
 };
 
+/**
+ * Backends whose credential profile can be signed in from chat — `/login <backend> <profile>` runs the backend's own
+ * login in the browser terminal with the profile's variable (#1699 part 2). Only those whose login TUI was checked
+ * under a relocated home; the others' profiles are signed in on the host with credentialProfileLoginCommand.
+ */
+export const CHAT_PROFILE_LOGIN_BACKENDS: ReadonlySet<string> = new Set(["claude-code"]);
+
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
   return CREDENTIAL_HOMES[backendName] ?? null;
 }

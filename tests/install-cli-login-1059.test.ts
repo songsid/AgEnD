@@ -98,6 +98,15 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
     expect(await grokLabel()).toMatch(/Installed.*Auth/);
   });
 
+  it("#1699 part 2: an install that a `/login <backend> <profile>` started signs that profile in, not the default login", async () => {
+    const { fm, chat } = fleet();
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
+    // The routing that sends a valid profile here first is pinned in login-profile-1699 (admission runs before it).
+    await fm.startInstallSession("grok", chat, { profile: "work" });
+    await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
+    expect(signIn).toHaveBeenCalledWith("grok", expect.anything(), { profile: "work" });
+  });
+
   it("does not add a directory twice", async () => {
     const { fm, chat } = fleet();
     process.env.PATH = `${profileBin}:/usr/bin:/bin`;
