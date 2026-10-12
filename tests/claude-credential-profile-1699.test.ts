@@ -8,7 +8,7 @@
  */
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCodeBackend, claudeProfileConfigDir, claudeProjectKey } from "../src/backend/claude-code.js";
@@ -66,6 +66,20 @@ describe("#1699 invariant 1: no profile is byte-identical to today", () => {
     b.preTrust(work, cfg());
     expect(b.buildCommand(cfg())).toBe(TODAY(inst));
     expect(existsSync(join(own, ".claude.json"))).toBe(true);
+    // --continue still judges the fleet's own dir's conversations, as before.
+    writeFileSync(join(inst, "session-id"), "x");
+    const p = join(own, "projects", claudeProjectKey(work));
+    mkdirSync(p, { recursive: true });
+    writeFileSync(join(p, "s.jsonl"), `${JSON.stringify({ type: "user", timestamp: new Date().toISOString(), message: { role: "user", content: "hi" } })}\n`);
+    expect(b.buildCommand(cfg())).toBe(`${TODAY(inst)} --continue`);
+  });
+
+  it("with the fleet's own CLAUDE_CONFIG_DIR, a profile links back to THAT dir's instructions and skills", () => {
+    const own = join(root, "own-claude");
+    process.env.CLAUDE_CONFIG_DIR = own;
+    mkdirSync(join(own, "skills"), { recursive: true });
+    backend().buildCommand(cfg({ credential_profile: "team" }));
+    expect(readlinkSync(join(profileDir("team"), "skills"))).toBe(join(own, "skills"));
   });
 });
 
@@ -84,8 +98,8 @@ describe("#1699: a named profile is its own config dir", () => {
   });
 
   it("invariant 4: the path is canonical — absolute, normalised — whatever AGEND_HOME looks like", () => {
-    const rel = join(root, "agend", "..", "agend") + "/";
-    process.env.AGEND_HOME = rel;
+    // join() would already fold "..", so the case that matters is a relative AGEND_HOME (and a trailing slash).
+    process.env.AGEND_HOME = `${relative(process.cwd(), agendHome)}/`;
     const dir = claudeProfileConfigDir({ credential_profile: "team" })!;
     expect(dir).toBe(resolve(agendHome, "credential-profiles", "claude-code", "team"));
     expect(dir.endsWith("/")).toBe(false);
@@ -157,6 +171,8 @@ describe("#1699 invariant 3: every reader of the config dir follows the profile"
     const plain: any = new Daemon("w", { working_directory: work, backend: "claude-code" } as any, inst, false, backend(), undefined,
       { debug() {}, info() {}, warn() {}, error() {}, child() { return this; } } as any);
     expect(plain.resumeRoots(work).claudeConfigDir).toBe(join(home, ".claude"));
+    process.env.CLAUDE_CONFIG_DIR = join(root, "own-claude");
+    expect(plain.resumeRoots(work).claudeConfigDir, "the fleet's own dir, as before").toBe(join(root, "own-claude"));
   });
 
   it("the launch hands preTrust the same config writeConfig got — the profile's .claude.json is the one trusted", async () => {
