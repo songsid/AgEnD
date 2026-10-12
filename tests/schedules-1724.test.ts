@@ -48,6 +48,13 @@ describe("scheduleView: what the row reads, worked out on the server", () => {
     expect([off.next_run_ms, [pastRetrying.retrying, pastRetrying.next_run_ms], [pastDone.retrying, pastDone.next_run_ms], bad.next_run_ms])
       .toEqual([null, [true, now + 60_000], [false, null], null]);
   });
+  it("\"retrying\" is a one-shot's only: a cron with a pending retry (#1426 defers a cron occurrence too) shows its next occurrence, and a one-shot still ahead with a stale retry shows its own time", () => {
+    const retry = { schedule_id: "s1", run_id: "r", deferred_at_ms: 0, deferred_pct: 95, resets_at_ms: null, due_at_ms: now + 60_000, deadline_ms: now + 3_600_000, deadline_kind: "cap" as const };
+    const cron = scheduleView(base({ cron: "0 18 * * 1-5" }), retry, now, TZ);
+    const ahead = scheduleView(base({ at: "2026-10-13T14:00:00+08:00" }), retry, now, TZ);
+    expect([[cron.retrying, cron.next_run_text], [ahead.retrying, ahead.next_run_text]])
+      .toEqual([[false, "2026-10-13 18:00 (UTC+8)"], [false, "2026-10-13 14:00 (UTC+8)"]]);
+  });
 });
 
 // ── The routes, on a real scheduler ──
