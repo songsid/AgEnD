@@ -431,6 +431,52 @@ describe("#1695 r4 P2-4: a scan is ordered against every newer read too", () => 
     } finally { r.stop(); }
   });
 
+  // r5: nothing tracked yet — a newer read without the prompt still orders the older scan out.
+  async function noTrackerThenOldScan(newerRead: ((r: ReturnType<typeof rig>) => Promise<void>) | null) {
+    const r = rig({ start: AT_PROMPT });
+    stateMonitor(r);
+    await r.poll(70_000);
+    expect(r.d.unrecognisedPrompt).toBeNull();
+    const scan = await heldScan(r);                       // ~70 s: the scan's capture starts …
+    await vi.advanceTimersByTimeAsync(1_000);
+    if (newerRead) await newerRead(r);                    // … a newer read sees no prompt …
+    await scan(SWITCH);                                   // … the scan answers last, with the prompt
+    return r;
+  }
+
+  it("(a) no tracker: a newer accepted state re-capture without the prompt keeps an older scan from starting evidence", async () => {
+    const r = await noTrackerThenOldScan(async r => {
+      await r.d.captureAndEvaluateInstanceState("interaction_confirmation");
+      expect(r.d.getInteractionSnapshot().phase).toBe("clear");
+    });
+    try {
+      expect(r.d.unrecognisedPrompt).toBeNull();
+      r.screen.text = SWITCH;                             // the prompt really shows up later …
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS - 10_000);
+      expect([r.awaiting(), await r.held()], "… and gets its own full minute, from its own first scan").toEqual([false, "clear"]);
+    } finally { r.stop(); }
+  });
+
+  it("(b) no tracker: a newer probe that captured no prompt keeps an older scan from starting evidence", async () => {
+    const r = await noTrackerThenOldScan(async r => { expect(await r.held()).toBe("clear"); });
+    try {
+      expect(r.d.unrecognisedPrompt).toBeNull();
+      r.screen.text = SWITCH;
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS - 10_000);
+      expect([r.awaiting(), await r.held()]).toEqual([false, "clear"]);
+    } finally { r.stop(); }
+  });
+
+  it("control: no newer read — the older scan starts the minute, and a minute on it holds", async () => {
+    const r = await noTrackerThenOldScan(null);
+    try {
+      expect(r.d.unrecognisedPrompt?.active).toBe(false);
+      r.screen.text = SWITCH;
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS);
+      expect(await r.held()).toBe("dialog");
+    } finally { r.stop(); }
+  });
+
   it("controls: a NEWER scan still clears, keeps or restarts", async () => {
     const r = rig();
     try {

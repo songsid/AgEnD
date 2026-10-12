@@ -7241,9 +7241,12 @@ export class Daemon extends EventEmitter {
    * decided the evidence counts: an older one, finishing late, says nothing about now (#1695 r3, r4).
    */
   private noteFreshPaneRead(pane: string, mono: number): void {
-    const current = this.unrecognisedPromptCurrent();
-    if (!current || mono < this.unrecognisedPromptReadAt) return;
+    if (mono < this.unrecognisedPromptReadAt) return;
+    // Advanced even with nothing tracked: a scan whose capture is older must not start evidence this read contradicts
+    // (#1695 r5).
     this.unrecognisedPromptReadAt = mono;
+    const current = this.unrecognisedPromptCurrent();
+    if (!current) return;
     if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return;
     this.unrecognisedPrompt = null;
   }
@@ -7513,7 +7516,7 @@ export class Daemon extends EventEmitter {
       this.logger.debug({ err }, "capture-pane failed during the dialog probe — pane state unknown");
       return { state: "unknown" };
     }
-    if (tracking) this.noteFreshPaneRead(pane, probeMono);
+    this.noteFreshPaneRead(pane, probeMono);
     for (const dialog of dialogs) {
       if (!Daemon.dialogMatches(dialog, pane)) continue;
       // Same one-shot fence as the scanners: a safety choice already sent in
