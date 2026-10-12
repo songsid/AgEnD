@@ -323,9 +323,15 @@ export function createThread(list, scroller, opts) {
     // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
     // starts there), an idle one starts there. Whether it can run is the panel's to say: a device that has not allowed
     // previews is offered Allow first (and allowing runs it); where previews are off, nothing runs.
+    // An attachment's HTML is read first: if the panel changed (another block, closed) or any preview started while it
+    // was read, a newer click has spoken and this one is dropped — a late read never undoes it.
     if (toPanel) toPanel.onclick = () => {
       if (P().running(key)) P().stop(key, "stopped", "");
-      withCode((c) => panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: true }));
+      const at = panel.version(), started = P().startCount();
+      withCode((c) => {
+        if (panel.version() !== at || P().startCount() !== started) { refresh(); return; }
+        panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: true });
+      });
     };
     if (dl) dl.onclick = () => opts.download(code);
     ack.onclick = () => P().ackBanner();      // every card and the panel hear it (onChange)

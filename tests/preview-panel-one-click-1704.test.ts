@@ -73,6 +73,23 @@ const panelState = (doc: any, key = "b-1:f0") => ({
 });
 /** The app's confirm answered `yes` (as confirm() would). */
 const answering = (yes: boolean) => { (globalThis as any).confirm = () => yes; };
+/** Click the panel's Allow and leave its confirm open; returns the answer to give later. */
+async function allowHeld(doc: any) {
+  (globalThis as any).confirm = undefined;
+  doc.querySelector(".pv-panel-allow").click(); await settle();
+  const q = confirm.confirmStore.get().queue[0];
+  expect(q, "the confirm is asking").toBeTruthy();
+  return async (yes: boolean) => { confirm.answerConfirm(q.id, yes); await settle(); await settle(); };
+}
+// An agent reply attaching an .html file (#1306 Q4): its HTML is read from /ui/file/<id> on the first click.
+const ID1 = "1".repeat(32);
+const withFile = (id: number, fileId: string, name: string) => ({ ...agent(id, "Here it is."), attachments: [{ id: fileId, kind: "document", name, size: 8400, mime: "application/octet-stream" }] });
+/** /ui/file answers `body`, held until release(). */
+function heldFile(body: string) {
+  const held: Array<() => void> = [];
+  globalThis.fetch = vi.fn(() => new Promise(r => held.push(() => r({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(body).buffer })))) as any;
+  return { release: async () => { for (const r of held.splice(0)) r(); await settle(); await settle(); } };
+}
 
 describe("one click: Open in panel runs it", () => {
   it("an idle card: the panel opens running — no Preview to click; the card's own frame never starts", async () => {
@@ -196,6 +213,101 @@ describe("Allow runs only the click it was offered for", () => {
     answering(true);
     await click(doc.querySelector(".pv-panel-allow")); await settle();
     expect([pp.panelStore.get().open.key, panelState(doc)]).toEqual(["b-1:f0", { running: false, live: 0, allow: false, preview: "enabled" }]);
+  });
+});
+
+describe("review r1: a waiting click is used once, by its own Allow, for what it opened", () => {
+  it("control: Allow answered later — the same click runs", async () => {
+    const { doc } = await chat([agent(1, FENCE(PAGE(1)))], {});
+    await openIn(doc);
+    const answer = await allowHeld(doc);
+    await answer(true);
+    expect(panelState(doc)).toEqual({ running: true, live: 1, allow: false, preview: "none" });
+  });
+
+  for (const [how, away] of [["closed", () => pp.closePanel()], ["shown without a run", () => pp.openPanel({ ...pp.panelStore.get().open }, { run: false })]] as const) {
+    it(`A's Allow is waiting; the panel ${how}, then B opened: the answer runs neither (no run token is ever reused)`, async () => {
+      const { doc } = await chat([agent(1, FENCE(PAGE(1))), agent(2, FENCE(PAGE(2, "Other")))], {});
+      await openIn(doc, 0);
+      const answer = await allowHeld(doc);
+      away(); await settle();
+      await openIn(doc, 1);
+      await answer(true);
+      expect([pp.panelStore.get().open.key, PV.running(pp.frameKey("b-1:f0")), panelState(doc, "b-2:f0")])
+        .toEqual(["b-2:f0", false, { running: false, live: 0, allow: false, preview: "enabled" }]);
+    });
+  }
+
+  it("A's Allow is waiting; the panel moves on to a newer version (no click to run it): the answer runs nothing", async () => {
+    const { doc } = await chat([agent(1, FENCE(PAGE(1))), agent(2, "v2:\n" + FENCE(PAGE(2)))], {});
+    await openIn(doc, 0);
+    const answer = await allowHeld(doc);
+    await click(doc.querySelector(".pv-newer-show"));
+    await answer(true);
+    expect([pp.panelStore.get().open.key, PV.running(pp.frameKey("b-1:f0")), panelState(doc, "b-2:f0")])
+      .toEqual(["b-2:f0", false, { running: false, live: 0, allow: false, preview: "enabled" }]);
+  });
+
+  it("A's Allow is waiting; another tab allows, Preview here runs it, Stop — the late answer does not run it again", async () => {
+    const { doc, pg } = await chat([agent(1, FENCE(PAGE(1)))], {});
+    await openIn(doc);
+    const answer = await allowHeld(doc);
+    pg.storage.set("agend_html_preview", "on"); PV.onStorage({ key: "agend_html_preview" }); await settle();
+    await click(doc.querySelector(".pv-panel-run"));
+    expect(panelState(doc).running).toBe(true);
+    await click(doc.querySelector(".pv-panel-stop"));
+    await answer(true);
+    expect(panelState(doc)).toEqual({ running: false, live: 0, allow: false, preview: "enabled" });
+  });
+
+  it("the card's Never cancels the waiting click: undone, then Allow — nothing runs; Preview needs a new click", async () => {
+    const { doc } = await chat([agent(1, FENCE(PAGE(1)))], {});
+    await openIn(doc);
+    const never = cards(doc)[0].querySelector(".pv-never");
+    await click(never);                                          // Never preview (this session)
+    await click(never);                                          // undone
+    answering(true);
+    await click(doc.querySelector(".pv-panel-allow")); await settle();
+    expect(panelState(doc)).toEqual({ running: false, live: 0, allow: false, preview: "enabled" });
+  });
+});
+
+describe("review r1: a late attachment read never undoes a newer click", () => {
+  it("control: Open in panel on an attached file — read, opened, running", async () => {
+    const f = heldFile(PAGE(1));
+    const { doc } = await chat([withFile(1, ID1, "a.html")]);
+    await openIn(doc);
+    expect(PV.liveCount(), "still reading").toBe(0);
+    await f.release();
+    expect([pp.panelStore.get().open?.key, PV.running(pp.frameKey(`b-1:a${ID1}`))]).toEqual([`b-1:a${ID1}`, true]);
+  });
+
+  it("A's file is still being read when B is opened in the panel (running): A's answer comes — B keeps running, A is not shown", async () => {
+    const f = heldFile(PAGE(1));
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);
+    await openIn(doc, 0);
+    await openIn(doc, 1);
+    expect(PV.running(pp.frameKey("b-2:f0"))).toBe(true);
+    await f.release();
+    expect([pp.panelStore.get().open.key, PV.running(pp.frameKey("b-2:f0")), PV.running(pp.frameKey(`b-1:a${ID1}`)), PV.liveCount()]).toEqual(["b-2:f0", true, false, 1]);
+  });
+
+  it("not allowed: A's file is still being read when B is opened in the panel (its Allow offered, nothing runs): A's answer comes — the panel keeps B", async () => {
+    const f = heldFile(PAGE(1));
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))], {});
+    await openIn(doc, 0);
+    await openIn(doc, 1);
+    await f.release();
+    expect([pp.panelStore.get().open.key, PV.liveCount(), panelState(doc, "b-2:f0").allow]).toEqual(["b-2:f0", 0, true]);
+  });
+
+  it("A's file is still being read when B's own Preview runs in its card: A's answer comes — B keeps running, no panel", async () => {
+    const f = heldFile(PAGE(1));
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);
+    await openIn(doc, 0);
+    await click(cards(doc)[1].querySelector(".pv-run"));
+    await f.release();
+    expect([PV.running("b-2:f0"), pp.panelStore.get().open, PV.liveCount()]).toEqual([true, null, 1]);
   });
 });
 

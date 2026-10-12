@@ -197,11 +197,15 @@
    * opts.fill (#1481, the side panel): the frame fills its holder — the same frame from mountPreview, only sized by the
    * panel instead of by the frame's height messages, which it then ignores.
    */
+  /** How many previews this page has started: a click whose HTML arrives late asks whether another started meanwhile. */
+  var starts = 0;
+  function startCount() { return starts; }
   function start(key, holder, html, ui, opts) {
     var a = availability();
     if (!a.ok) { ui.state("unavailable", a.reason); return false; }
     if (typeof html !== "string" || utf8Bytes(html) > LIMITS.maxBytes) { ui.state("unavailable", say("pvHtmlOver", "This HTML is over 1 MiB; it is not previewed.")); return false; }
     stopAll("another");
+    starts++;
     var doc = holder.ownerDocument;
     var iframe = mountPreview(doc);
     var card = {
@@ -330,7 +334,7 @@
 
   return {
     init: init, availability: availability, optedIn: optedIn, setOptIn: setOptIn, never: never, setNever: setNever, onChange: onChange, listeners: listeners, onStorage: onStorage,
-    start: start, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveCount: liveCount, liveFrame: liveFrame,
+    start: start, startCount: startCount, stop: stop, stopAll: stopAll, stopIn: stopIn, running: running, liveCount: liveCount, liveFrame: liveFrame,
     mountPreview: mountPreview, onMessage: onMessage, BANNER: BANNER, LIMITS: LIMITS,
     /** The banner every running preview carries, in the page's language (#1554); BANNER is its English. */
     banner: function () { return say("pvBanner", BANNER); },
