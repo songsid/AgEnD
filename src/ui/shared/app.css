@@ -315,17 +315,21 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .msg { font-size: var(--fs-md); line-height: var(--lh-md); overflow-wrap: anywhere; min-width: 0; }
 .msg .meta { display: flex; align-items: baseline; gap: var(--s-2); font-size: var(--fs-xs); color: var(--text-3); margin-bottom: var(--s-1); }
 .msg .sender { font-weight: var(--fw-semibold); color: var(--text-2); }
-.msg .time { font-family: var(--font-mono); }
+/* The time never wraps or gives up its width to a long neighbour: a flex child shrinks to its min-content, and with
+   the message's overflow-wrap: anywhere that is one character wide (the #1672 status line's time, one glyph per line). */
+.msg .time { font-family: var(--font-mono); white-space: nowrap; flex: none; }
 .msg.user { align-self: flex-end; max-width: min(80%, 620px); }
 .msg.user .meta { justify-content: flex-end; }
 .msg.user .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); }
 .msg.agent { align-self: stretch; }
-/* #1672: a status line (another instance's message, a daemon notice): muted plain text, no bubble; a long one folds. */
-.msg.status { align-self: stretch; font-size: var(--fs-sm); color: var(--text-3); }
-.msg.status .st-text { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: var(--s-3); }
-.msg.status.folded .st-text { max-height: 9em; overflow: hidden; mask-image: linear-gradient(to bottom, #000 60%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); }
-.msg.status .st-more { border: 0; background: none; color: var(--text-2); cursor: pointer; font-size: var(--fs-xs); padding: var(--s-1) 0 0 var(--s-3); }
-.msg.status .st-more:hover { color: var(--text); }
+/* #1672: a status line (another instance's message, a daemon notice): muted plain text, no bubble; a long one folds.
+   Its class is `status-line`, never `status`: that is the header's inline-flex badge class, and on a message it turned
+   the meta, body and tools into one flex row. */
+.msg.status-line { align-self: stretch; font-size: var(--fs-sm); color: var(--text-3); }
+.msg.status-line .st-text { white-space: pre-wrap; border-left: 2px solid var(--border); padding-left: var(--s-3); }
+.msg.status-line.folded .st-text { max-height: 9em; overflow: hidden; mask-image: linear-gradient(to bottom, #000 60%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); }
+.msg.status-line .st-more { border: 0; background: none; color: var(--text-2); cursor: pointer; font-size: var(--fs-xs); padding: var(--s-1) 0 0 var(--s-3); }
+.msg.status-line .st-more:hover { color: var(--text); }
 .msg-tools { display: flex; gap: var(--s-1); margin-top: var(--s-1); opacity: 0; transition: opacity var(--t-fast); }
 .msg:hover .msg-tools, .msg:focus-within .msg-tools { opacity: 1; }
 @media (hover: none) { .msg-tools { opacity: 1; } }
