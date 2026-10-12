@@ -5633,6 +5633,56 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The old fleet edits CLI install stages; the new fleet adopts the same message below. */
+  /**
+   * #1660: arm the post-completion cleanup watch and make sure its monitor
+   * actually runs. The new fleet adopts the receipt at boot but nothing else
+   * starts this timer on that path (Prism a) — without this, the owed
+   * outcome would sit in the marker unwatched. READY never waits for it.
+   */
+  private armCleanupWatch(receipt: UpdateReceipt, summary: RestartProgressSummary): void {
+    this.updateCleanupWatch = { receipt, summary };
+    if (!this.updateProgressTimer) this.startUpdateProgressMonitor();
+  }
+
+  /**
+   * #1660: append a recorded cleanup outcome to the adopted update message,
+   * then release the receipt — but only if this receipt still owns the
+   * marker. The await yields, so a newer receipt (e.g. a full-restart that
+   * landed mid-edit) must not be cleared or disturbed (Prism b).
+   */
+  private async appendCleanupWarning(
+    target: { adapterId: string; chatId: string; messageId: string; threadId?: string },
+    watch: { receipt: UpdateReceipt; summary: RestartProgressSummary },
+    warning: string,
+    cleanupCommand?: string,
+  ): Promise<void> {
+    const text = formatRestartProgressCompletion("update", {
+      ...watch.summary,
+      warningText: warning,
+      warningCommand: cleanupCommand,
+    }, watch.receipt.startedAt);
+    const stopWatching = () => {
+      this.updateCleanupWatch = null;
+      if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
+      this.updateProgressTimer = null;
+    };
+    if (text !== this.lastUpdateProgressText) {
+      const adapter = this.adapters.get(target.adapterId);
+      if (!adapter) return; // retry on a later tick
+      await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
+      this.lastUpdateProgressText = text;
+    }
+    const verdict = cleanupWatchVerdict(readUpdateProgress(this.dataDir), watch.receipt);
+    if (verdict.action === "drop") {
+      // Someone else owns the marker now — leave it entirely alone.
+      this.updateCleanupWatch = null;
+      return;
+    }
+    if (verdict.action === "wait") return; // not terminal; keep watching
+    clearUpdateMarker(this.dataDir);
+    stopWatching();
+  }
+
   private startUpdateProgressMonitor(initialAdapter?: ChannelAdapter): void {
     if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
     const tick = async () => {
@@ -5668,25 +5718,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         } else if (verdict.action === "wait") {
           return;
         } else {
-          const text = formatRestartProgressCompletion("update", {
-            ...watch.summary,
-            warningText: verdict.warning,
-            warningCommand: verdict.cleanupCommand,
-          }, watch.receipt.startedAt);
-          if (text === this.lastUpdateProgressText) {
-            clearUpdateMarker(this.dataDir);
-            stopWatching();
-            return;
-          }
-          const watchTarget = marker.progress.target;
-          const adapter = this.adapters.get(watchTarget.adapterId);
-          if (!adapter) return;
           this.updateProgressEditRunning = true;
           try {
-            await adapter.editMessage(watchTarget.chatId, watchTarget.messageId, text, watchTarget.threadId);
-            this.lastUpdateProgressText = text;
-            clearUpdateMarker(this.dataDir);
-            stopWatching();
+            await this.appendCleanupWarning(marker.progress.target, watch, verdict.warning, verdict.cleanupCommand);
           } catch (err) {
             this.logger.warn({ err }, "[update] cleanup watch: failed to append warning, will retry");
           } finally {
@@ -6258,7 +6292,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (pendingUpdateProgress && pendingProgressOperation === "update"
         && pendingUpdateProgress.progress.cleanup === "pending") {
         const receipt = updateReceiptOf(pendingUpdateProgress);
-        if (receipt) this.updateCleanupWatch = { receipt, summary: completionSummary };
+        if (receipt) this.armCleanupWatch(receipt, completionSummary);
       }
       if (!progressCompleted && fleet.channel?.group_id) {
         let text: string;

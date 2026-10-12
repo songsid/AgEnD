@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
 import { activateService } from "../src/service-activation.js";
+import { FleetManager } from "../src/fleet-manager.js";
 import { reportUpdateRestart } from "../src/update-check.js";
 import { activationSettled, newAgendInvocation, retireSystemCopy, runUpdateInstall } from "../src/update-install.js";
 import {
@@ -301,6 +302,71 @@ describe("cleanupWatchVerdict: the post-completion watch state machine", () => {
     expect(cleanupWatchVerdict(markerWith({ cleanup: "pending" }), { ...receipt }, 1_000_001))
       .toEqual({ action: "wait" });
     expect(cleanupWatchVerdict(markerWith({}), { ...receipt }, 1_000_001)).toEqual({ action: "wait" });
+  });
+
+  it("age boundary: exactly at the max age still appends, one millisecond later releases", () => {
+    const done = markerWith({ cleanup: "done", warning: "w", cleanupCommand: "sudo x" });
+    expect(cleanupWatchVerdict(done, { ...receipt }, 1_000_000 + 15 * 60_000))
+      .toEqual({ action: "append", warning: "w", cleanupCommand: "sudo x" });
+    expect(cleanupWatchVerdict(done, { ...receipt }, 1_000_000 + 15 * 60_000 + 1))
+      .toEqual({ action: "release" });
+  });
+});
+
+describe("cleanup watch wiring on the fleet (Prism a/b)", () => {
+  const target = { adapterId: "a", chatId: "c", messageId: "m-1" };
+  const summary = { running: 2, total: 2, version: "2.2.1", pausedNames: [] as string[] };
+
+  function fleetWithMarker() {
+    const dir = fs.mkdtempSync(join(tmpdir(), "agend-1660-fleet-")); roots.push(dir);
+    beginUpdateProgress(dir, target);
+    const receipt = markCleanupPending(dir);
+    if (!receipt) throw Error("pending not marked");
+    writeCleanupOutcome(dir, receipt, { warning: "Old system install was not removed (sudo refused); remove it by hand.", cleanupCommand: "sudo x" });
+    const fm = new FleetManager(dir) as any;
+    const edits: string[] = [];
+    fm.adapters = new Map([["a", { editMessage: async (_c: string, _m: string, text: string) => { edits.push(text); } }]]);
+    fm.updateCleanupWatch = { receipt, summary };
+    return { fm, dir, receipt, edits };
+  }
+
+  it("arming the watch starts the monitor (Prism a)", () => {
+    const dir = fs.mkdtempSync(join(tmpdir(), "agend-1660-arm-")); roots.push(dir);
+    const fm = new FleetManager(dir) as any;
+    expect(fm.updateProgressTimer).toBeNull();
+    fm.armCleanupWatch({ startedAt: 1, messageId: "m", operation: "update" }, summary);
+    expect(fm.updateCleanupWatch).not.toBeNull();
+    expect(fm.updateProgressTimer, "monitor runs so the owed outcome is actually watched").not.toBeNull();
+    clearInterval(fm.updateProgressTimer);
+    fm.updateProgressTimer = null;
+    fm.updateCleanupWatch = null;
+  });
+
+  it("append delivers to the adapter and releases our receipt", async () => {
+    const { fm, dir, receipt, edits } = fleetWithMarker();
+    await fm.appendCleanupWarning(target, { receipt, summary }, "Old system install was not removed (sudo refused); remove it by hand.", "sudo x");
+    expect(edits.length).toBe(1);
+    expect(edits[0]).toContain("✅ Fleet restarted");
+    expect(edits[0]).toContain("⚠️ Old system install was not removed");
+    expect(edits[0]).toContain("`$ sudo x`");
+    expect(readUpdateProgress(dir)).toBeNull();
+    expect(fm.updateCleanupWatch).toBeNull();
+  });
+
+  it("a newer receipt landing mid-edit is left entirely alone (Prism b)", async () => {
+    const { fm, dir, receipt, edits } = fleetWithMarker();
+    fm.adapters.get("a").editMessage = async () => {
+      edits.push("edit");
+      // B's full-restart receipt lands while A's edit is in flight.
+      clearUpdateMarker(dir);
+      beginFullRestartProgress(dir, { adapterId: "a", chatId: "c", messageId: "m-B" });
+    };
+    await fm.appendCleanupWarning(target, { receipt, summary }, "w", "sudo x");
+    expect(edits.length).toBe(1);
+    const current = readUpdateProgress(dir);
+    expect(current?.progress.operation).toBe("full-restart");
+    expect(current?.progress.target.messageId).toBe("m-B");
+    expect(fm.updateCleanupWatch).toBeNull();
   });
 });
 

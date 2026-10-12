@@ -126,13 +126,15 @@ export function cleanupWatchVerdict(
     || current.messageId !== receipt.messageId || current.operation !== receipt.operation) {
     return { action: "drop" };
   }
+  // Age first: a recorded-but-undelivered warning still obeys the watch
+  // limit (Prism c) — otherwise a permanently refusing adapter pins the tick.
+  if (now - receipt.startedAt > UPDATE_MARKER_MAX_AGE_MS) return { action: "release" };
   const progress = (marker as UpdateMarker & { progress: UpdateProgressState }).progress;
   if (progress.cleanup === "done") {
     return progress.warning
       ? { action: "append", warning: progress.warning, cleanupCommand: progress.cleanupCommand }
       : { action: "release" };
   }
-  if (now - receipt.startedAt > UPDATE_MARKER_MAX_AGE_MS) return { action: "release" };
   return { action: "wait" };
 }
 
