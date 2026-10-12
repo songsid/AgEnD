@@ -55,10 +55,12 @@ describe("scheduleView: what the row reads, worked out on the server", () => {
 const token = "t".repeat(48);
 let dir = "", scheduler: Scheduler;
 beforeEach(() => {
+  // The fleet's zone is the host's (formatFleetTime, #1586): pinned, so the list reads the same on any machine (CI is UTC).
+  vi.stubEnv("TZ", TZ);
   dir = mkdtempSync(join(tmpdir(), "agend-1724-"));
   scheduler = new Scheduler(join(dir, "scheduler.db"), () => {}, { ...DEFAULT_SCHEDULER_CONFIG }, (n) => n === "alpha" || n === "beta");
 });
-afterEach(() => { scheduler.shutdown(); rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { scheduler.shutdown(); rmSync(dir, { recursive: true, force: true }); vi.unstubAllEnvs(); });
 
 function call(method: string, path: string, body?: unknown, opts: { publicLink?: boolean; revoke?: boolean } = {}) {
   const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com";
