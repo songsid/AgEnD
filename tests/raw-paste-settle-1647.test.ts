@@ -24,6 +24,8 @@ import { FleetManager } from "../src/fleet-manager.js";
 const roots: string[] = [];
 const daemons: any[] = [];
 const realSetImmediate = setImmediate;
+/** Real timers, captured before any test fakes them: the transcript wait reads a real file through libuv. */
+const realSetTimeout = setTimeout;
 afterEach(() => {
   for (const daemon of daemons.splice(0)) daemon.fenceDeliveryWritesForStop?.();
   vi.useRealTimers();
@@ -153,10 +155,15 @@ function rawPasteHarness(opts: { backend: Record<string, unknown> | ((dir: strin
   const evidence = (): string | null => ((outbox as any).db.prepare("SELECT evidence FROM delivery_attempts WHERE delivery_id=?").get(row.deliveryId) as any)?.evidence ?? null;
   const settled = () => !["delivering", "submission_started"].includes(state() ?? "");
   const run = () => daemon.queueRawPaste(PATROL, daemon.deliveryEpoch, false, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo, submissionMode: "raw_paste" });
+  /**
+   * 250 ms of fake time per step, then real time for the file reads that step started (a loaded CI runner needs more
+   * than a few event-loop turns for libuv to finish them). Stops as soon as the row settles.
+   */
   const pump = async (steps: number) => {
     for (let i = 0; i < steps && !settled(); i++) {
       await vi.advanceTimersByTimeAsync(250);
       for (let turn = 0; turn < 20; turn++) await new Promise<void>(r => realSetImmediate(r));
+      await new Promise<void>(r => realSetTimeout(r, 5));
     }
   };
   return { daemon, outbox, row, tmux, transcript, state, evidence, settled, run, pump };
@@ -180,7 +187,7 @@ describe("kiro (no transcript): the pane's own turn start settles a raw paste", 
       return true;
     });
     h.run();
-    await h.pump(40);
+    await h.pump(100);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("raw-paste-pane-turn-start");
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
@@ -190,7 +197,7 @@ describe("kiro (no transcript): the pane's own turn start settles a raw paste", 
   it("no turn start and the text still in the box for the whole window: uncertain with the pane's reason — no second Enter", async () => {
     const h = kiro();
     h.run();
-    await h.pump(40);
+    await h.pump(100);
     expect(h.state()).toBe("uncertain");
     expect(h.outbox.get(h.row.deliveryId)?.lastError).toBe("raw-paste-submit-proof:no-positive-acceptance-proof");
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
@@ -201,7 +208,7 @@ describe("kiro (no transcript): the pane's own turn start settles a raw paste", 
     const h = kiro();
     h.daemon.applyInstanceStateSnapshot({ state: "working", unchangedForMs: 0 }, "⠋ Thinking...");
     h.run();
-    await h.pump(40);
+    await h.pump(100);
     expect(h.state()).toBe("uncertain");
   });
 
@@ -209,7 +216,7 @@ describe("kiro (no transcript): the pane's own turn start settles a raw paste", 
     const h = kiro({ hasOutputSince: vi.fn(() => true) });
     h.residue.mockResolvedValueOnce("present").mockResolvedValue("absent");
     h.run();
-    await h.pump(40);
+    await h.pump(100);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("raw-paste-left-input-after-output");
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
@@ -219,7 +226,7 @@ describe("kiro (no transcript): the pane's own turn start settles a raw paste", 
     const h = kiro({ hasOutputSince: vi.fn(() => false) });
     h.residue.mockResolvedValue("absent");
     h.run();
-    await h.pump(40);
+    await h.pump(100);
     expect(h.state()).toBe("uncertain");
   });
 });
@@ -239,7 +246,7 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     const h = cli(backendName);
     h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => appendFileSync(h.transcript, entry(backendName)), 6_000); return true; });
     h.run();
-    await h.pump(80);
+    await h.pump(200);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("transcript-turn-user-entry-raw-paste-text");
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
@@ -249,7 +256,7 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
   it.each(["claude-code", "codex"] as const)("%s: no entry for the whole wait (only the previous run's, before the checkpoint): uncertain with the pane's reason", async backendName => {
     const h = cli(backendName);
     h.run();
-    await h.pump(80);
+    await h.pump(200);
     expect(h.state()).toBe("uncertain");
     expect(h.outbox.get(h.row.deliveryId)?.lastError).toMatch(/^post-submit-proof:unproven; no-transcript-turn \(no-match\)$/);
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
@@ -260,7 +267,7 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     const h = cli("claude-code");
     h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => appendFileSync(h.transcript, claudeUser("someone else's words")), 2_000); return true; });
     h.run();
-    await h.pump(80);
+    await h.pump(200);
     expect(h.state()).toBe("uncertain");
   });
 
@@ -268,7 +275,7 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     const h = cli("claude-code");
     h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => writeFileSync(h.transcript, ""), 500); return true; });   // truncated below the checkpoint
     h.run();
-    await h.pump(80);
+    await h.pump(200);
     expect(h.state()).toBe("uncertain");
     expect(h.outbox.get(h.row.deliveryId)?.lastError).toMatch(/no-transcript-turn \(unavailable\)$/);
   });
@@ -279,7 +286,7 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     const prove = vi.spyOn(h.daemon, "proveDeliveryFromTranscript");
     h.tmux.pasteBuffer.mockImplementation(async () => { appendFileSync(h.transcript, claudeUser(PATROL)); return true; });
     h.run();
-    await h.pump(80);
+    await h.pump(200);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("positive submission proof; transcript-turn-user-entry-raw-paste-text");
     expect(prove).not.toHaveBeenCalled();
