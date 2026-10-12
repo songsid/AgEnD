@@ -32,7 +32,7 @@ const Stub = (name: string) => ({ Component: () => h("div", { class: `stub-${nam
 const PANELS = new Map([["chat", Stub("chat")], ["view", Stub("view")], ["fleet", Stub("fleet")], ["settings", Stub("settings")], ["needs", Stub("needs")]]);
 
 async function app(path: string, storage: Record<string, string> = {}, instances = INSTANCES) {
-  const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1", ...storage } });
+  const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1", agend_nav_facets: '{"status":true,"cli":true}', ...storage } });   // both filter groups open (#1700: folded by default)
   mounted.push(pg);
   (globalThis as { fetch?: unknown }).fetch = async (url: string) => { reads.push(url); return { ok: false, status: 404, json: async () => ({}) }; };
   const { startRouter } = await import("/assets/app-nav.js");
@@ -57,7 +57,7 @@ const hrefOf = (pg: AppPage, name: string) => pg.root.querySelectorAll("#instanc
 const activeName = (pg: AppPage) => pg.root.querySelector('#instanceList a.inst[aria-current="page"] .inst-name')?.textContent ?? null;
 const groups = (pg: AppPage) => pg.root.querySelectorAll("#instanceList .v-group-head .grow").map((g: any) => g.textContent);
 const typeFilter = async (pg: AppPage, value: string) => { const i = pg.root.querySelector("#filterInput") as any; i.value = value; fire(i, "input"); await settle(); };
-const chip = (pg: AppPage, facet: string, label: string) => pg.root.querySelectorAll(".nav-facet").find((d: any) => d.querySelector("summary").textContent.startsWith(facet))!
+const chip = (pg: AppPage, facet: string, label: string) => pg.root.querySelectorAll(".nav-facet").find((d: any) => d.querySelector(".nav-facet-label").textContent === facet)!
   .querySelectorAll(".nav-chip").find((c: any) => c.textContent === label).querySelector("input");
 
 describe("one list on every page", () => {
@@ -127,7 +127,7 @@ describe("the filter: text, status and CLI, the same on every page and kept by t
 
   it("CLI chips list the backends present; text and chips combine", async () => {
     const pg = await app("/ui/chat/web-dev");
-    const labels = pg.root.querySelectorAll(".nav-facet").find((d: any) => d.querySelector("summary").textContent.startsWith("CLI"))!
+    const labels = pg.root.querySelectorAll(".nav-facet").find((d: any) => d.querySelector(".nav-facet-label").textContent === "CLI")!
       .querySelectorAll(".nav-chip").map((c: any) => c.textContent);
     expect(labels).toEqual(["Claude Code", "Codex", "Grok Build", "Kiro CLI"]);
     fire(chip(pg, "CLI", "Claude Code"), "change"); await settle();
@@ -208,6 +208,6 @@ describe("the anonymous View reader", () => {
     await pg.mount(h(Shell, { panels: PANELS, onNewInstance() {}, viewOnly: true }));
     await settle(3);
     expect([groups(pg), rowNames(pg), hrefOf(pg, "beta"), activeName(pg)]).toEqual([["G", "Other"], ["alpha", "beta"], "/view/beta", "alpha"]);
-    expect(pg.root.querySelectorAll(".nav-facet").map((d: any) => d.querySelector("summary").textContent)).toEqual(["CLI"]);
+    expect(pg.root.querySelectorAll(".nav-facet").map((d: any) => d.querySelector(".nav-facet-label").textContent)).toEqual(["CLI"]);
   });
 });
