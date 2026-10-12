@@ -50,9 +50,10 @@ const INSTANCES = [
 ];
 const Stub = (name: string) => ({ Component: () => h("div", { class: `stub-${name}` }, name) });
 /** The app at `path`: the real Shell, the real chat and Needs panels; `storage` is this device's. */
-async function app(path: string, opts: { storage?: Record<string, string>; narrow?: boolean; width?: number } = {}) {
+async function app(path: string, opts: { storage?: Record<string, string>; narrow?: boolean; width?: number; media?: (q: string) => boolean } = {}) {
   const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1", ...(opts.storage ?? {}) }, matchNarrow: opts.narrow });
   if (opts.width) pg.window.innerWidth = opts.width;
+  if (opts.media) { const m = opts.media; (globalThis as any).matchMedia = (q: string) => ({ matches: m(q), addEventListener() {}, removeEventListener() {} }); }
   mounted.push(pg);
   (globalThis as any).fetch = fetchFake;
   pg.document.documentElement.style.removeProperty?.("--sidebar-w");
@@ -124,6 +125,87 @@ describe("resizing the sidebar", () => {
     const pg = await app("/ui", { storage: { agend_sidebar_w: "400" }, narrow: true });
     expect(width(pg) || null).toBe(null);
     expect(appCss).toMatch(/@media \(max-width: 899px\) \{ \.side-resize \{ display: none; \} \}/);
+  });
+});
+
+describe("review r1: the room beside the usage rail; a drag's own lifecycle", () => {
+  /** The media a wide window answers: the rail's ≥ 1200 px, never the phone's ≤ 899 px (unless `phone()` says so). */
+  let phone = false;
+  const wide = (q: string) => (/max-width:\s*899px/.test(q) ? phone : /min-width:\s*1200px/.test(q) ? !phone : false);
+  afterEach(() => { phone = false; });
+  const resize = async (pg: AppPage) => { pg.window._fire(new (globalThis as any).Event("resize"), false); await settle(); };
+  const ptr = (s: any, type: string, x: number, id = 1) => { const e = new (globalThis as any).Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { button: 0, pointerId: id, clientX: x }); s.dispatchEvent(e); };
+
+  it("at 1200 px with the rail open: End is 400 (main keeps 480); the rail closed, the kept choice (480) comes back; the separator's maximum follows", async () => {
+    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide });
+    expect(pg.root.querySelector(".u-rail"), "the rail is on screen").not.toBeNull();
+    await key(sep(pg), "End");
+    const squeezed = [width(pg), sep(pg).getAttribute("aria-valuemax"), pg.storage.get("agend_sidebar_w")];
+    const { setUsageRail } = await import("/assets/header-tools.js");
+    setUsageRail(false); await settle(4); await new Promise((r) => setTimeout(r, 30)); await settle();
+    const roomy = [width(pg), sep(pg).getAttribute("aria-valuemax")];
+    setUsageRail(true); await settle(4); await new Promise((r) => setTimeout(r, 30)); await settle();
+    expect([squeezed, roomy, width(pg)]).toEqual([["400px", "400", "480"], ["480px", "480"], "400px"]);
+  });
+
+  it("control: 1366 px with the rail, End is 480", async () => {
+    const pg = await app("/ui/chat/web-dev", { width: 1366, media: wide });
+    await key(sep(pg), "End");
+    expect(width(pg)).toBe("480px");
+  });
+
+  it("a cancelled drag (pointercancel, a lost capture) keeps nothing and puts back what was shown; only a release keeps", async () => {
+    const pg = await app("/ui", { storage: { agend_sidebar_w: "300" } });
+    const out = [];
+    for (const end of ["pointercancel", "lostpointercapture"]) {
+      ptr(sep(pg), "pointerdown", 300); ptr(sep(pg), "pointermove", 350); await settle();
+      const during = width(pg);
+      ptr(sep(pg), end, 350); await settle();
+      out.push([end, during, width(pg), pg.storage.get("agend_sidebar_w"), pg.document.body.classList.contains("side-resizing"), sep(pg).listenerCount("pointermove")]);
+    }
+    ptr(sep(pg), "pointerdown", 300); ptr(sep(pg), "pointermove", 350); ptr(sep(pg), "pointerup", 350); await settle();
+    out.push(["pointerup", null, width(pg), pg.storage.get("agend_sidebar_w"), pg.document.body.classList.contains("side-resizing"), sep(pg).listenerCount("pointermove")]);
+    expect(out).toEqual([
+      ["pointercancel", "350px", "300px", "300", false, 0], ["lostpointercapture", "350px", "300px", "300", false, 0], ["pointerup", null, "350px", "350", false, 0]]);
+  });
+
+  it("the window turns into a phone mid-drag: the drag is cancelled — the desktop choice is kept, and later events of it write nothing", async () => {
+    const pg = await app("/ui", { storage: { agend_sidebar_w: "300" }, media: wide });
+    const s = sep(pg);
+    ptr(s, "pointerdown", 300); ptr(s, "pointermove", 350); await settle();
+    phone = true; await resize(pg);
+    ptr(s, "pointermove", 210); ptr(s, "pointerup", 210); await settle();
+    expect([width(pg) || null, pg.storage.get("agend_sidebar_w"), pg.document.body.classList.contains("side-resizing")]).toEqual([null, "300", false]);
+  });
+
+  it("unmounted mid-drag: the page is left clean (no resizing class), nothing kept, its old handle writes nothing", async () => {
+    const pg = await app("/ui", { storage: { agend_sidebar_w: "300" } });
+    const s = sep(pg);
+    ptr(s, "pointerdown", 300); ptr(s, "pointermove", 360); await settle();
+    await pg.unmount();
+    ptr(s, "pointermove", 420); ptr(s, "pointerup", 420); await settle();
+    const left = ["pointermove", "pointerup", "pointercancel", "lostpointercapture"].map((t) => s.listenerCount(t));
+    expect([pg.document.body.classList.contains("side-resizing"), pg.storage.get("agend_sidebar_w"), left]).toEqual([false, "300", [0, 0, 0, 0]]);
+  });
+});
+
+describe("review r1: the avatar's initial follows the leading name", () => {
+  it("no picture (and the server's own initial): R for Riley, A for agend-reviewer-t1 when the real name leads; an emoji stays", async () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui", storage: { agend_tour_done: "1" } });
+    mounted.push(pg);
+    const items = [
+      { name: "agend-reviewer-t1", display_name: "Riley" },
+      { name: "agend-reviewer-t2", display_name: "Riley", avatar: { kind: "initial", text: "R" } },
+      { name: "agend-reviewer-t3", display_name: "Riley", avatar: { kind: "emoji", text: "🦊" } },
+    ];
+    const initials = async () => {
+      await pg.mount(h("div", null, items.map((it) => h(nav.InstanceAvatar, { key: it.name, it, state: "idle" })))); await settle();
+      return pg.root.querySelectorAll(".av").map((a: any) => a.querySelector(".av-text")?.textContent ?? null);
+    };
+    const nick = await initials();
+    nav.namesStore.set({ primary: "instance" });
+    const real = await initials();
+    expect([nick, real]).toEqual([["R", "R", "🦊"], ["A", "A", "🦊"]]);
   });
 });
 

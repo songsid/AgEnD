@@ -287,7 +287,8 @@ export function avatarOf(it) {
   if (a && a.kind === "image" && sameOrigin(a.src)) return { kind: "image", src: a.src };
   if (a && a.kind === "emoji" && sameOrigin(a.src)) return { kind: "emoji", src: a.src, alt: typeof a.alt === "string" ? a.alt : "" };
   if (a && a.kind === "emoji" && typeof a.text === "string" && a.text.trim()) return { kind: "emoji", text: a.text.trim() };
-  return { kind: "initial", text: a && a.kind === "initial" && typeof a.text === "string" && a.text ? a.text : firstCharacter(labelOf(it)) };
+  // #1722: the initial is the leading name's ("Names"), not the server's (which is always the nickname's).
+  return { kind: "initial", text: firstCharacter(namesOf(it).primary) || (a && a.kind === "initial" && typeof a.text === "string" ? a.text : "") };
 }
 const ACCENT = /^#[0-9a-f]{6}$/i;
 /** The status dot on the avatar: needs you, crashed, paused, stopped, looks stuck, working, idle — colour AND a label. */

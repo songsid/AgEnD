@@ -13,7 +13,7 @@ import { SessionMenu } from "./app-session.js";
 import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
-import { UsageRail } from "./header-tools.js";
+import { UsageRail, usageRailStore } from "./header-tools.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
@@ -57,35 +57,75 @@ function storedSidebarWidth() { try { const v = Number(localStorage.getItem(SIDE
 /** { width: px | null } — null: the default width (tokens.css). */
 export const sidebarWidthStore = createStore({ width: null });
 /** Set the width (clamped to this viewport); `save`: this device keeps it. null: back to the default, nothing kept. */
-export function setSidebarWidth(w, save = false) {
+/**
+ * The room the main pane has beside the sidebar: the window, less the usage rail when it is on screen (#1673 — shown
+ * open, ≥ 1200 px; its CSS width when the layout gives none). #1722 review: the sidebar never leaves main under 480.
+ */
+function mainBudget() {
+  const vw = viewportWidth();
+  if (vw < 1200 || typeof document === "undefined") return vw;
+  const rail = document.querySelector(".u-rail");
+  if (!rail) return vw;
+  const w = Math.round(rail.getBoundingClientRect ? rail.getBoundingClientRect().width : 0) || RAIL_W;
+  return vw - w;
+}
+const RAIL_W = 320;
+/** Show a width (clamped to the room there is now) — this page only; null: the default width. Nothing is kept. */
+function showSidebarWidth(w) {
   const root = document.documentElement;
-  if (w == null) {
-    root.style.removeProperty("--sidebar-w");
-    try { localStorage.removeItem(SIDEBAR_W_KEY); } catch { /* this page only */ }
-    sidebarWidthStore.set({ width: null });
-    return null;
-  }
-  const v = clampSidebarWidth(w, viewportWidth());
+  if (w == null) { root.style.removeProperty("--sidebar-w"); sidebarWidthStore.set({ width: null }); return null; }
+  const v = clampSidebarWidth(w, mainBudget());
   root.style.setProperty("--sidebar-w", `${v}px`);   // CSSOM: the page's CSP allows no style attribute
-  if (save) { try { localStorage.setItem(SIDEBAR_W_KEY, String(v)); } catch { /* this page only */ } }
   sidebarWidthStore.set({ width: v });
   return v;
 }
-/** This device's kept width, re-clamped to the window now — on a phone (the drawer) none applies. */
-function applyKeptSidebarWidth() {
-  const w = storedSidebarWidth();
-  if (narrow()) { document.documentElement.style.removeProperty("--sidebar-w"); sidebarWidthStore.set({ width: null }); }
-  else if (w != null) setSidebarWidth(w, false);
+/** Set the width (clamped to the room there is now); `save`: this device keeps it. null: back to the default, nothing kept. */
+export function setSidebarWidth(w, save = false) {
+  if (w == null) {
+    try { localStorage.removeItem(SIDEBAR_W_KEY); } catch { /* this page only */ }
+    return showSidebarWidth(null);
+  }
+  const v = showSidebarWidth(w);
+  // Kept: the choice within the window, not the squeeze beside the rail — it comes back when the rail goes.
+  if (save) { try { localStorage.setItem(SIDEBAR_W_KEY, String(clampSidebarWidth(w, viewportWidth()))); } catch { /* this page only */ } }
+  return v;
 }
+/** A drag in progress (one at a time): its end(commit). Only it may set the width until it ends. */
+let activeDrag = null;
+/**
+ * This device's kept width, shown within the room there is now — again whenever that changes (the window, the usage
+ * rail, the page). A squeeze is shown, never kept: the device's choice comes back when there is room. On a phone (the
+ * drawer) none applies, and a drag in progress is cancelled.
+ */
+function applyKeptSidebarWidth() {
+  if (narrow()) {
+    if (activeDrag) activeDrag.end(false);
+    showSidebarWidth(null);
+    return;
+  }
+  if (activeDrag) return;
+  const w = storedSidebarWidth();
+  if (w != null) showSidebarWidth(w);
+}
+const afterPaint = (fn) => (typeof requestAnimationFrame === "function" ? requestAnimationFrame(() => fn()) : setTimeout(fn, 0));
 /** The separator on the sidebar's right edge: drag, ← → (16 px), Home / End, Enter or a double-click resets. */
 function SidebarResize() {
   const { width } = useStore(sidebarWidthStore);
+  useStore(usageRailStore);   // the rail's room is the separator's limit too
   useLayoutEffect(() => {
     applyKeptSidebarWidth();
+    // The room changes with the window, the rail (opened, closed) and the page (a page with no rail): shown again,
+    // once the page has drawn its change.
+    const again = () => afterPaint(applyKeptSidebarWidth);
+    const offRail = usageRailStore.subscribe(again);
+    const offNav = navStore.subscribe(again);
     const w = win();
-    if (!w || typeof w.addEventListener !== "function") return undefined;
-    w.addEventListener("resize", applyKeptSidebarWidth);
-    return () => w.removeEventListener("resize", applyKeptSidebarWidth);
+    if (w && typeof w.addEventListener === "function") w.addEventListener("resize", applyKeptSidebarWidth);
+    return () => {
+      offRail(); offNav();
+      if (w && typeof w.removeEventListener === "function") w.removeEventListener("resize", applyKeptSidebarWidth);
+      if (activeDrag) activeDrag.end(false);   // unmounted mid-drag: nothing kept, nothing left behind
+    };
   }, []);
   const now = width ?? SIDEBAR_W.def;
   const onKey = (e) => {
@@ -98,29 +138,44 @@ function SidebarResize() {
     else return;
     e.preventDefault();
   };
+  // One pointer owns a drag. Only its release keeps the width; a cancel, a lost capture, the drawer or an unmount
+  // puts back the width shown before it and keeps nothing — and no event of it can write after it ended.
   const onDown = (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || activeDrag || narrow()) return;
     e.preventDefault();
-    const handle = e.currentTarget;
+    const handle = e.currentTarget, pointerId = e.pointerId;
+    const before = sidebarWidthStore.get().width;
     const left = handle.parentElement ? handle.parentElement.getBoundingClientRect().left : 0;
-    try { handle.setPointerCapture(e.pointerId); } catch { /* the move still works while over the handle */ }
-    handle.classList.add("dragging");
-    document.body.classList.add("side-resizing");
-    const move = (ev) => setSidebarWidth(ev.clientX - left);
-    const up = () => {
+    const mine = {};
+    const own = (ev) => activeDrag === mine && (ev.pointerId === undefined || ev.pointerId === pointerId);
+    const move = (ev) => { if (own(ev)) showSidebarWidth(ev.clientX - left); };
+    const up = (ev) => { if (own(ev)) mine.end(true); };
+    const cancel = (ev) => { if (own(ev)) mine.end(false); };
+    mine.end = (commit) => {
+      if (activeDrag !== mine) return;
+      activeDrag = null;
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", cancel);
+      handle.removeEventListener("lostpointercapture", cancel);
       handle.classList.remove("dragging");
       document.body.classList.remove("side-resizing");
-      const w = sidebarWidthStore.get().width;
-      if (w != null) setSidebarWidth(w, true);
-      handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", up); handle.removeEventListener("pointercancel", up);
+      try { handle.releasePointerCapture(pointerId); } catch { /* not held */ }
+      if (commit) { const w = sidebarWidthStore.get().width; if (w != null) setSidebarWidth(w, true); }
+      else showSidebarWidth(before);
     };
+    activeDrag = mine;
+    try { handle.setPointerCapture(pointerId); } catch { /* the move still works while over the handle */ }
+    handle.classList.add("dragging");
+    document.body.classList.add("side-resizing");
     handle.addEventListener("pointermove", move);
     handle.addEventListener("pointerup", up);
-    handle.addEventListener("pointercancel", up);
+    handle.addEventListener("pointercancel", cancel);
+    handle.addEventListener("lostpointercapture", cancel);
   };
   return html`<div class="side-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sidebar"
     aria-label=${t("app.resizeSidebar")} title=${t("app.resizeSidebarHint")} aria-valuemin=${String(SIDEBAR_W.min)}
-    aria-valuemax=${String(clampSidebarWidth(Infinity, viewportWidth()))} aria-valuenow=${String(now)}
+    aria-valuemax=${String(clampSidebarWidth(Infinity, mainBudget()))} aria-valuenow=${String(now)}
     onKeyDown=${onKey} onPointerDown=${onDown} ondblclick=${() => setSidebarWidth(null)}></div>`;
 }
 
