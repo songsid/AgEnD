@@ -26,6 +26,7 @@ import { getAgendHome } from "../paths.js";
 import { loadFleetConfig } from "../config.js";
 import { classicProfile, profileName, readClassicBindings, type ClassicBinding } from "../classic-bindings.js";
 import {
+  CHAT_PROFILE_LOGIN_BACKENDS,
   credentialHomeSpec,
   credentialProfileLoginCommand,
   credentialProfileStoreHome,
@@ -391,10 +392,15 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     // limits down. This is the case the whole statusline source exists for.
     if (statusline) return statuslineUsage(statusline, null);
     if (profileHome !== null) {
-      // On screen (`ok`, as kiro's signed-out row), with what signs this profile in — never a fallback.
-      const command = (scope.profile && credentialProfileLoginCommand(getAgendHome(), "claude-code", scope.profile))
+      // On screen (`ok`, as kiro's signed-out row), with what signs this profile in — never a fallback: from chat
+      // (`/login claude-code <profile>`, #1699 part 2), or the exact line on the host — the same words as the auth alert.
+      const host = (scope.profile && credentialProfileLoginCommand(getAgendHome(), "claude-code", scope.profile))
         || `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome)} claude auth login`;
-      return { status: "ok", hint: `Not logged in — sign in with: ${command}`, hintI18n: i18n("usage.hint.claude_profile_signed_out", command), metrics: [] };
+      if (scope.profile && CHAT_PROFILE_LOGIN_BACKENDS.has("claude-code")) {
+        const chat = `/login claude-code ${scope.profile}`;
+        return { status: "ok", hint: `Not logged in — sign in with \`${chat}\` (or run \`${host}\` on the host).`, hintI18n: i18n("usage.hint.claude_profile_signed_out_chat", chat, host), metrics: [] };
+      }
+      return { status: "ok", hint: `Not logged in — sign in with: ${host}`, hintI18n: i18n("usage.hint.claude_profile_signed_out", host), metrics: [] };
     }
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."

@@ -20,7 +20,7 @@ export const USAGE_I18N_KEYS = [
   "usage.hint.statusline_now", "usage.hint.statusline_minutes", "usage.hint.claude_api_key",
   "usage.hint.login_claude", "usage.hint.login_agy", "usage.hint.no_quota",
   "usage.hint.login_codex", "usage.hint.codex_no_oauth", "usage.hint.login_grok",
-  "usage.hint.grok_no_login", "usage.hint.login_kiro", "usage.hint.kiro_signed_out", "usage.hint.claude_profile_signed_out",
+  "usage.hint.grok_no_login", "usage.hint.login_kiro", "usage.hint.kiro_signed_out", "usage.hint.claude_profile_signed_out", "usage.hint.claude_profile_signed_out_chat",
   "usage.hint.token_refreshing", "usage.hint.subscription_no_credit", "usage.hint.no_quota_account",
   "usage.error.unreachable", "usage.error.token_rejected", "usage.error.rate_limited", "usage.error.rate_limited_transient", "usage.stale_rate_limited",
   "usage.error.http", "usage.error.billing_http", "usage.error.invalid_response",

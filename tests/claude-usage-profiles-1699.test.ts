@@ -119,10 +119,17 @@ describe("a profile with no login", () => {
     statusline("shared-one", 70, join(root, ".claude", "projects", "-w", "s.jsonl"), 1000);   // the shared account's limits
     const [row] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
     const u = await row.fetch();
-    const command = `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("work"))} claude auth login`;
+    const host = `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("work"))} claude auth login`;
     expect([row.id, bearers, u.status, u.metrics, u.hint, u.hintI18n]).toEqual([
-      "claude:work", [], "ok", [], `Not logged in — sign in with: ${command}`, { key: "usage.hint.claude_profile_signed_out", args: [command] },
+      "claude:work", [], "ok", [], `Not logged in — sign in with \`/login claude-code work\` (or run \`${host}\` on the host).`,
+      { key: "usage.hint.claude_profile_signed_out_chat", args: ["/login claude-code work", host] },
     ]);
+  });
+
+  it("asked for a config dir alone (no profile name to log in from chat): the host line", async () => {
+    const u = await fetchClaudeUsage(profileHome("work"));
+    const host = `CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("work"))} claude auth login`;
+    expect([bearers, u.status, u.hint, u.hintI18n]).toEqual([[], "ok", `Not logged in — sign in with: ${host}`, { key: "usage.hint.claude_profile_signed_out", args: [host] }]);
   });
 
   it("its token reader gives nothing either (no shared or env fallback)", async () => {
@@ -146,7 +153,7 @@ describe("what /usage and get_usage carry", () => {
     expect(text).toMatch(/· Claude \(Team Standard \(1\.25x\)\): [^\n]*11%/);
     expect(text).toMatch(/· Claude \(work\) \(Team Standard \(1\.25x\)\): [^\n]*22%/);
     expect(text).toContain(`· Claude (team): `);
-    expect(text).toContain(`Not logged in — sign in with: CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("team"))} claude auth login`);
+    expect(text).toContain(`Not logged in — sign in with \`/login claude-code team\` (or run \`CLAUDE_CONFIG_DIR=${JSON.stringify(profileHome("team"))} claude auth login\` on the host).`);
   });
 });
 
@@ -177,7 +184,7 @@ describe("macOS: the profile's own Keychain item", () => {
     const [work] = providersForConfig({ defaults: {}, instances: { a: onProfile("work") } } as never, BASE as never);
     const [team] = providersForConfig({ defaults: {}, instances: { a: onProfile("team") } } as never, BASE as never);
     const w = await work.fetch(), t = await team.fetch();
-    expect([session(w), bearers, t.hintI18n?.key]).toEqual([22, ["dummy-work"], "usage.hint.claude_profile_signed_out"]);
+    expect([session(w), bearers, t.hintI18n?.key]).toEqual([22, ["dummy-work"], "usage.hint.claude_profile_signed_out_chat"]);
   });
 });
 
