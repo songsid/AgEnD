@@ -28,6 +28,8 @@ const SWITCH_TYPO = fixture("switch-model-typo");
 const NUMBERED_AFTER = fixture("numbered-output-after-turn");
 const NUMBERED_MIDTURN = fixture("numbered-output-midturn");
 const AT_PROMPT = fixture("after-turn");
+/** The ordinary prompt with a two-line draft in claude's own composer box shaped like options: the CLI's input, not a prompt. */
+const DRAFT_IN_COMPOSER = AT_PROMPT.replace(/^❯[ \t\u00a0]*$/m, "❯ 1. first draft line\n  2. second draft line");
 
 let dir: string;
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger } as any;
@@ -106,6 +108,16 @@ describe("#1691: an agent's numbered output is not a prompt", () => {
     } finally { r.stop(); }
   });
 
+  it("option-shaped text in the CLI's own composer box (a draft) is the CLI's input, not a prompt", async () => {
+    expect(unrecognisedPromptShape(DRAFT_IN_COMPOSER)?.kind, "shaped like one at the bottom").toBe("numbered");
+    const r = rig();
+    try {
+      r.screen.text = DRAFT_IN_COMPOSER;
+      await r.poll(5 * 60_000);
+      expect([r.parked.length, r.awaiting(), await r.held()]).toEqual([0, false, "clear"]);
+    } finally { r.stop(); }
+  });
+
   it("a pane that keeps changing (a turn streaming the prompt-shaped text) never completes the minute", async () => {
     const r = rig();
     try {
@@ -130,7 +142,44 @@ describe("#1691: a known dialog keeps its own path", () => {
   });
 });
 
+describe("#1691: a known dialog AgEnD answers stays its own even when the answer does not take", () => {
+  it("answered every scan and still on screen: never the catch-all (no hold, no unrecognised report)", async () => {
+    const known = { pattern: /Switch model\?/, isActive: (pane: string) => /Switch model\?/.test(pane), keys: ["Escape"], description: "Claude model switch (answered)" };
+    const r = rig({ extraDialogs: [known] });
+    try {
+      await r.poll(3 * 60_000);
+      expect(unrecognised(r.parked)).toEqual([]);
+      expect(r.keys.length, "its own path answered it").toBeGreaterThan(0);
+      expect(r.keys.every(k => k === "Escape")).toBe(true);
+    } finally { r.stop(); }
+  });
+});
+
 describe("#1691: the episode", () => {
+  it("a delivery probe right after the pane changed sees it free — no waiting for the next scan", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(await r.held()).toBe("dialog");
+      r.screen.text = AT_PROMPT;
+      expect(await r.held()).toBe("clear");
+    } finally { r.stop(); }
+  });
+
+  it("the same prompt back after a pane change waits a fresh minute", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      r.screen.text = AT_PROMPT;
+      await r.poll(10_000);
+      r.screen.text = SWITCH;
+      await r.poll(30_000);
+      expect([r.awaiting(), await r.held()], "not again until it has sat a minute").toEqual([false, "clear"]);
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS);
+      expect(await r.held()).toBe("dialog");
+    } finally { r.stop(); }
+  });
+
   it("a pane change ends it (deliveries free, not awaiting); the prompt again is a new episode with its own single report", async () => {
     const r = rig();
     try {
