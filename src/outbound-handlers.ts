@@ -133,6 +133,8 @@ export interface OutboundContext {
   /** Post a notice into an instance's own topic (used to report failed deliveries). */
   notifyInstanceTopic?(instanceName: string, text: string): void;
   sendCancelButton?(instanceName: string, correlationId?: string): Promise<void>;
+  /** Push a web UI event; a "message" is recorded in the instance's web chat history (#1565). */
+  emitSseEvent?(event: string, data: unknown): void;
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
   getInstanceInteraction?(name: string): InteractionSnapshot | null;
@@ -530,35 +532,42 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   })));
   const displayLabel = (name: string) =>
     fleetLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
+  const instances = ctx.fleetConfig?.instances ?? {};
+  const notice = { label: `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`, message, requestKind, taskSummary: ipcMeta.task_summary };
+  const targetInstance = instances[targetInstanceName];
+  const targetIsGeneral = targetInstance?.general_topic === true;
+  const targetText = targetTopicNotice(crossInstanceVisibility(ctx.fleetConfig, targetInstanceName), notice);
+  const targetShown = targetText !== null && !targetIsGeneral && !ctx.sessionRegistry.has(targetName);
+  const senderInstance = instances[meta.instanceName];
+  const senderIsGeneral = senderInstance?.general_topic === true;
+  const senderText = senderTopicNotice(crossInstanceVisibility(ctx.fleetConfig, meta.instanceName), notice);
+  const senderShown = senderText !== null && !senderIsGeneral;
   if (groupId && ctx.adapter) {
-    const instances = ctx.fleetConfig?.instances ?? {};
-    const notificationLabel = `${displayLabel(senderLabel)} → ${displayLabel(targetName)}`;
-    const notice = { label: notificationLabel, message, requestKind, taskSummary: ipcMeta.task_summary };
-
     // ── Target topic notification ──
-    const targetInstance = instances[targetInstanceName];
     const targetTopicId = targetInstance?.topic_id;
-    const targetIsGeneral = targetInstance?.general_topic === true;
-    const targetText = targetTopicNotice(crossInstanceVisibility(ctx.fleetConfig, targetInstanceName), notice);
-    if (targetText !== null && targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
+    if (targetShown && targetTopicId) {
       const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
       const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
-      targetAdapter!.sendText(String(targetGroupId), targetText, { threadId: String(targetTopicId) })
+      targetAdapter!.sendText(String(targetGroupId), targetText!, { threadId: String(targetTopicId) })
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
     }
 
     // ── Sender topic notification ──
-    const senderInstance = instances[meta.instanceName];
     const senderTopicId = senderInstance?.topic_id;
-    const senderIsGeneral = senderInstance?.general_topic === true;
-    const senderText = senderTopicNotice(crossInstanceVisibility(ctx.fleetConfig, meta.instanceName), notice);
-    if (senderText !== null && senderTopicId && !senderIsGeneral) {
+    if (senderShown && senderTopicId) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
       const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
-      senderAdapter!.sendText(senderGroupId, senderText, { threadId: String(senderTopicId) })
+      senderAdapter!.sendText(senderGroupId, senderText!, { threadId: String(senderTopicId) })
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post sender topic notification"));
     }
   }
+  // #1672: the same notices in each instance's web chat — a muted status line, never an agent's or a person's message.
+  // Not gated on a topic or a chat platform (a web-only fleet, a topic-less instance); recorded in its history (#1565).
+  const webNotice = (instance: string, text: string) => ctx.emitSseEvent?.("message", {
+    instance, sender: displayLabel(senderLabel), role: "status", text, ts: new Date().toISOString(),
+  });
+  if (targetShown) webNotice(targetInstanceName, targetText!);
+  if (senderShown) webNotice(meta.instanceName, senderText!);
 
   // #856: the same line, now carrying the envelope's message_id and a short
   // content digest, so a disputed message can be matched to its outbox row

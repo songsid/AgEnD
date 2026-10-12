@@ -22,6 +22,9 @@ export const TEXT_PREVIEW_NODES = 4000;
 /** A csv/tsv wider than this is shown as text, as Markdown tables are capped at 20 columns. */
 export const TEXT_PREVIEW_COLUMNS = 50;
 const P = () => globalThis.AgendPreview;
+/** #1672: a status line longer than this (lines, or characters) is folded until it is opened. */
+export const STATUS_FOLD_LINES = 6;
+export const STATUS_FOLD_CHARS = 600;
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
@@ -50,13 +53,29 @@ export function createThread(list, scroller, opts) {
   const TICKS = () => ({ queued: tr("chat.tick_queued"), processing: tr("chat.tick_processing"), delivered: tr("chat.tick_delivered"), failed: tr("chat.tick_failed"), cancelled: tr("chat.tick_cancelled") });
 
   function msgHtml(x) {
-    const u = opts.isUser(x);
     const time = x.ts ? new Date(x.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    if (x.role === "status") return statusHtml(x, time);
+    const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+  }
+  /**
+   * #1672: a status line (another instance's message, a daemon notice) is muted, read-only plain text — never Markdown,
+   * a preview card, a button or a person's bubble. Checked before isUser, which reads the sender: a fleet name need not
+   * start with "agend". A long one is folded until it is opened.
+   */
+  function statusHtml(x, time) {
+    const text = String(x.text == null ? "" : x.text);
+    const lines = R().lineCount(text);
+    const manyLines = lines > STATUS_FOLD_LINES;
+    const more = manyLines || text.length > STATUS_FOLD_CHARS
+      ? `<button type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
+      : "";
+    const tools = `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
+    return `<div class="msg status${more ? " folded" : ""}"><div class="meta"><span class="time">${time}</span></div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -426,9 +445,9 @@ export function createThread(list, scroller, opts) {
     if (act === "copyMsg") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) copyFrom(el, x.text); }
     else if (act === "copyCode") { const pre = el.closest(".codeblock")?.querySelector("pre"); if (pre) copyFrom(el, pre.textContent); }
     else if (act === "toggleFold") {
-      const box = el.closest(".codeblock"); if (!box) return;
+      const box = el.closest(".codeblock, .msg.status"); if (!box) return;
       const folded = box.classList.toggle("folded");
-      el.textContent = folded ? trf("chat.showAll", el.dataset.lines) : tr("chat.showLess");
+      el.textContent = !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAll", el.dataset.lines) : tr("chat.showMore");
     } else if (act === "toggleWrap") opts.toggleWrap();
     else if (act === "replyButton") {
       const m = /^([0-9a-f]{32}):(\d{1,2})$/.exec(el.dataset.arg || "");
