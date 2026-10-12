@@ -32,6 +32,7 @@ import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
+import { credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
@@ -219,6 +220,11 @@ export interface LifecycleContext {
    * it (tests, lightweight fleets) still get the alert's written remedy.
    */
   offerBackendLogin?(targetInstance: string, backend: string): Promise<void>;
+  /**
+   * The credential profile an instance's CLI signs in with on `backend` (#1699 follow-up), or null for that backend's
+   * default login. Absent: every instance is on the default login (as before profiles).
+   */
+  credentialProfileOf?(name: string, backend: string): string | null;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
@@ -489,10 +495,10 @@ export class InstanceLifecycle {
   private activitySeedNow = new Set<string>();
   /** When each instance was last woken or started for work — the pre-claim lease clock. */
   private wokeAt = new Map<string, number>();
-  /** backend → last auth-error alert time, so one expiry sends one alert. */
+  /** login (backend, or backend:profile) → last auth-error alert time, so one expiry sends one alert. */
   private lastAuthAlertAt = new Map<string, number>();
   /**
-   * backend → cached token-free auth verification (see AUTH_VERIFY_CACHE_MS).
+   * login (backend, or backend:profile) → cached token-free auth verification (see AUTH_VERIFY_CACHE_MS).
    * The PROMISE is cached, not the result: a shared credential expiring makes
    * every instance of the backend fire in the same tick, and they must join
    * one in-flight check instead of each spawning their own.
@@ -600,7 +606,21 @@ export class InstanceLifecycle {
    * CLI is not. Cached per backend so simultaneous alerts run one check.
    */
   private verifyAuthError(name: string): Promise<"valid" | "invalid" | "unknown"> {
-    return this.verifyBackendAuth(this.backendOf(name));
+    const backend = this.backendOf(name);
+    return this.verifyBackendAuth(backend, this.profileOf(name, backend));
+  }
+
+  /**
+   * The credential profile a running instance signs in with (#1699 follow-up): its login is that profile's, so its
+   * auth error is judged, cached and reported against that login — never the backend's default one, which can be fine
+   * while the profile's has expired.
+   */
+  private profileOf(name: string, backend: string): string | null {
+    return this.ctx.credentialProfileOf?.(name, backend) ?? null;
+  }
+
+  private static loginKey(backend: string, profile: string | null): string {
+    return profile ? `${backend}:${profile}` : backend;
   }
 
   private verifyCodexQuota(): Promise<CodexQuotaVerdict> {
@@ -625,13 +645,18 @@ export class InstanceLifecycle {
     return promise;
   }
 
-  /** Same verification keyed by backend (used by startup pre-flight priming). */
-  verifyBackendAuth(backend: string): Promise<"valid" | "invalid" | "unknown"> {
-    const cached = this.authVerifyCache.get(backend);
+  /**
+   * Same verification keyed by login — a backend's default one, or one of its credential profiles, probed with that
+   * profile's environment (used by startup pre-flight priming).
+   */
+  verifyBackendAuth(backend: string, profile: string | null = null): Promise<"valid" | "invalid" | "unknown"> {
+    const key = InstanceLifecycle.loginKey(backend, profile);
+    const cached = this.authVerifyCache.get(key);
     if (cached && Date.now() - cached.at < AUTH_VERIFY_CACHE_MS) return cached.promise;
     const check = LOGIN_FLOWS[backend]?.authCheck ?? BACKEND_AUTH_CHECKS[backend];
-    const promise = check ? checkAuthStatus(check) : Promise.resolve("unknown" as const);
-    this.authVerifyCache.set(backend, { at: Date.now(), promise });
+    const env = profile ? credentialProfileEnv(getAgendHome(), backend, profile) : null;
+    const promise = check ? (env ? checkAuthStatus(check, env) : checkAuthStatus(check)) : Promise.resolve("unknown" as const);
+    this.authVerifyCache.set(key, { at: Date.now(), promise });
     return promise;
   }
 
@@ -642,11 +667,15 @@ export class InstanceLifecycle {
    * anything, because e.g. codex on a custom provider runs fine while
    * `codex login status` reports logged out (live-verified on this fleet).
    */
-  primeAuthVerification(backends: Iterable<string>): void {
-    for (const backend of new Set(backends)) {
-      void this.verifyBackendAuth(backend).then(result => {
+  primeAuthVerification(logins: Iterable<{ backend: string; profile: string | null }>): void {
+    const seen = new Set<string>();
+    for (const { backend, profile } of logins) {
+      const key = InstanceLifecycle.loginKey(backend, profile);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      void this.verifyBackendAuth(backend, profile).then(result => {
         if (result === "invalid") {
-          this.ctx.logger.warn({ backend }, "Pre-flight auth check failed — marking backend as auth-suspect");
+          this.ctx.logger.warn({ backend, profile }, "Pre-flight auth check failed — marking backend as auth-suspect");
         }
       }).catch(() => { /* verification is advisory */ });
     }
@@ -660,27 +689,39 @@ export class InstanceLifecycle {
    */
   private notifyAuthErrorOnce(name: string, message: string, notificationTarget = name): void {
     const backend = this.backendOf(name);
+    // #1699 follow-up: a credential profile is a login of its own — its own alert, its own instances, its own fix.
+    const profile = this.profileOf(name, backend);
+    const key = InstanceLifecycle.loginKey(backend, profile);
     const now = Date.now();
-    const last = this.lastAuthAlertAt.get(backend) ?? 0;
+    const last = this.lastAuthAlertAt.get(key) ?? 0;
     if (now - last < AUTH_ALERT_COOLDOWN_MS) {
-      this.ctx.logger.info({ name, backend }, "auth error suppressed (backend already alerted)");
+      this.ctx.logger.info({ name, backend, profile }, "auth error suppressed (this login already alerted)");
       return;
     }
-    this.lastAuthAlertAt.set(backend, now);
+    this.lastAuthAlertAt.set(key, now);
 
-    const affected = [...this.daemons.keys()].filter(n => this.backendOf(n) === backend);
+    const affected = [...this.daemons.keys()].filter(n => this.backendOf(n) === backend && this.profileOf(n, backend) === profile);
     const others = affected.filter(n => n !== name);
+    const on = profile ? `\`${backend}\` profile \`${profile}\`` : `\`${backend}\``;
     const scope = others.length
-      ? `${affected.length} instances on \`${backend}\`: ${affected.join(", ")}`
-      : `\`${name}\` (${backend})`;
-    const remedy = backend === "opencode"
-      ? "Run `opencode auth login` in a terminal, then wake the affected instance(s)."
-      : `Use \`/login ${backend}\` to re-login remotely.`;
+      ? `${affected.length} instances on ${on}: ${affected.join(", ")}`
+      : profile ? `\`${name}\` (${backend}, profile \`${profile}\`)` : `\`${name}\` (${backend})`;
+    // A profile is signed in on the host with its own variable: `/login <backend>` would sign the DEFAULT login in.
+    const profileLogin = profile ? credentialProfileLoginCommand(getAgendHome(), backend, profile) : null;
+    const remedy = profileLogin
+      ? `Run \`${profileLogin}\` on the host, then wake the affected instance(s).`
+      : backend === "opencode"
+        ? "Run `opencode auth login` in a terminal, then wake the affected instance(s)."
+        : `Use \`/login ${backend}\` to re-login remotely.`;
+    const shared = profile
+      ? "Credentials are shared per profile — one sign-in restores all of them; affected instances pause until then."
+      : "Credentials are shared per backend — one re-login restores all of them; affected instances pause until then.";
     const dispatched = this.notifyIncident(notificationTarget, "auth_error",
-      `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then. ${remedy}`);
+      `🔑 ${message}\n\nAffects ${scope}. ${shared} ${remedy}`);
     // Only alongside an alert somebody actually saw: a button on its own, or one
-    // trailing a suppressed alert, is a control with no explanation next to it.
-    if (dispatched) {
+    // trailing a suppressed alert, is a control with no explanation next to it. Never for a profile: the button signs
+    // the backend's default login in.
+    if (dispatched && !profileLogin) {
       void this.ctx.offerBackendLogin?.(notificationTarget, backend)
         .catch(err => this.ctx.logger.warn({ err, backend }, "Could not offer the re-login button"));
     }

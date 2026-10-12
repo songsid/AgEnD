@@ -327,6 +327,8 @@ export type AuthCheckResult = "valid" | "invalid" | "unknown";
 export type AuthCheckRunner = (
   argv: string[],
   timeoutMs: number,
+  /** Added to the fleet's environment: a credential profile's variable (#1699 follow-up). */
+  env?: Record<string, string>,
 ) => Promise<{ code: number | null; output: string }>;
 
 const AUTH_CHECK_TIMEOUT_MS = 5_000;
@@ -337,10 +339,10 @@ export function setAuthCheckRunnerForTests(run: AuthCheckRunner | null): void {
   authCheckRunnerOverride = run;
 }
 
-async function runAuthCheckProcess(argv: string[], timeoutMs: number): Promise<{ code: number | null; output: string }> {
+async function runAuthCheckProcess(argv: string[], timeoutMs: number, env?: Record<string, string>): Promise<{ code: number | null; output: string }> {
   const { execFile } = await import("node:child_process");
   return new Promise(resolve => {
-    execFile(argv[0], argv.slice(1), { timeout: timeoutMs, encoding: "utf8" }, (err, stdout, stderr) => {
+    execFile(argv[0], argv.slice(1), { timeout: timeoutMs, encoding: "utf8", ...(env ? { env: { ...process.env, ...env } } : {}) }, (err, stdout, stderr) => {
       const anyErr = err as (Error & { code?: number | string; killed?: boolean }) | null;
       // A timeout kill or a spawn failure (CLI missing) has no meaningful exit
       // code — that is "unknown", not "logged out".
@@ -358,11 +360,12 @@ async function runAuthCheckProcess(argv: string[], timeoutMs: number): Promise<{
  * tokens. "valid" gates the /login confirmation prompt; "invalid" and
  * "unknown" (timeout, missing binary) both proceed straight to login — an
  * uncertain check must never block a re-login the admin asked for.
+ * `env`: a credential profile's variable, so the probe reads that profile's login rather than the default one.
  */
-export async function checkAuthStatus(check: AuthCheck): Promise<AuthCheckResult> {
+export async function checkAuthStatus(check: AuthCheck, env?: Record<string, string>): Promise<AuthCheckResult> {
   const run = authCheckRunnerOverride ?? runAuthCheckProcess;
   try {
-    const { code, output } = await run(check.argv, AUTH_CHECK_TIMEOUT_MS);
+    const { code, output } = await (env ? run(check.argv, AUTH_CHECK_TIMEOUT_MS, env) : run(check.argv, AUTH_CHECK_TIMEOUT_MS));
     if (code === null) return "unknown";
     if (code !== 0) return "invalid";
     if (check.validPattern && !check.validPattern.test(output)) return "invalid";

@@ -477,7 +477,8 @@ instances:
 ```
 
 Instances naming the same effective profile share a login; different names
-isolate their stores. With no effective profile after defaults inheritance, the
+isolate their stores. When a profile's sign-in expires, the alert names that
+profile and its instances only, and gives the command that signs it in. With no effective profile after defaults inheritance, the
 ordinary shared login is unchanged and no profile directory is created. Profiles
 live in `~/.agend/credential-profiles/<backend>/<profile>`, shared across instances
 that name the same profile.
