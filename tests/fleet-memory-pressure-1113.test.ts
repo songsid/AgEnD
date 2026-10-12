@@ -170,6 +170,64 @@ describe("fleet host memory wiring", () => {
     expect(notices(sendText).filter(x => x.includes("Host memory pressure"))).toHaveLength(2);
   });
 
+  // #1687 review (Prism P2-1, P2-2): a spell handles a level once — told, or held back by the damping hour — and keeps
+  // it held back however long it lasts; normal ends the spell, and a recovered line still owed never hides the next one.
+  const platforms = [
+    { name: "Linux elevated", setup: (fm: FleetManager) => fm, up: () => memory(4_000, 0), down: () => memory(), crit: () => memory(100, 0) },
+    { name: "macOS critical", setup: (fm: FleetManager) => darwin(fm), up: () => kernel(4), down: () => kernel(1), crit: () => kernel(4) },
+  ];
+  const pressure = (sendText: ReturnType<typeof vi.fn>) => notices(sendText).filter(x => !x.includes("back to normal"));
+
+  it.each(platforms)("#1687 P2-1 ($name): a re-entry held back by the damping hour stays quiet past the hour", async p => {
+    const { fm, attach, sendText, set } = make(p.up());
+    p.setup(fm); attach(); fm.memoryPressure.start();
+    await holdFor(60_000, p.down, set);                      // recovered (told)
+    await holdFor(75 * 60_000, p.up, set);                   // back within the hour, then held well past it
+    expect(pressure(sendText)).toHaveLength(1);
+    expect(recovered(sendText)).toHaveLength(1);
+  });
+
+  it.each(platforms)("#1687 P2-2 ($name): a recovered line that failed to dispatch does not hide the next spell's critical", async p => {
+    const { fm, attach, sendText, set } = make(p.crit());
+    p.setup(fm); attach();
+    const real = fm.notifyFleetError.bind(fm);
+    let refuseRecovered = true;
+    vi.spyOn(fm, "notifyFleetError").mockImplementation((text: string, o?: { throttle?: boolean }) =>
+      refuseRecovered && text.includes("back to normal") ? false : real(text, o));
+    fm.memoryPressure.start();
+    await holdFor(61 * 60_000, p.down, set);                 // normal past the hour; every recovered dispatch fails
+    expect(recovered(sendText)).toEqual([]);
+    set(p.crit()); await vi.advanceTimersByTimeAsync(30_000);
+    expect(pressure(sendText)).toHaveLength(2);
+    // Control: the line owed by the first spell was dropped by the new notice (pressure is back); this spell's own
+    // recovery is told once when dispatch works again.
+    refuseRecovered = false;
+    await holdFor(5 * 60_000, p.down, set);
+    expect(recovered(sendText)).toHaveLength(1);
+  });
+
+  it.each(platforms)("#1687 control ($name): a failed recovered line is retried while normal holds, and sent once", async p => {
+    const { fm, attach, sendText, set } = make(p.crit());
+    p.setup(fm); attach();
+    const real = fm.notifyFleetError.bind(fm);
+    let refuseRecovered = true;
+    vi.spyOn(fm, "notifyFleetError").mockImplementation((text: string, o?: { throttle?: boolean }) =>
+      refuseRecovered && text.includes("back to normal") ? false : real(text, o));
+    fm.memoryPressure.start();
+    await holdFor(3 * 60_000, p.down, set);
+    refuseRecovered = false;
+    await holdFor(10 * 60_000, p.down, set);
+    expect([pressure(sendText).length, recovered(sendText).length]).toEqual([1, 1]);
+  });
+
+  it.each(platforms)("#1687 control ($name): after a told recovery and the hour, critical is told again", async p => {
+    const { fm, attach, sendText, set } = make(p.crit());
+    p.setup(fm); attach(); fm.memoryPressure.start();
+    await holdFor(61 * 60_000, p.down, set);
+    set(p.crit()); await vi.advanceTimersByTimeAsync(30_000);
+    expect([pressure(sendText).length, recovered(sendText).length]).toEqual([2, 1]);
+  });
+
   it("#1685: the dashboard's status frame is re-sent when host_memory changes — not on every sample", async () => {
     const { fm, attach, set } = make(kernel(1));
     darwin(fm); attach();
@@ -270,11 +328,11 @@ describe("fleet host memory wiring", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(sendText).not.toHaveBeenCalled();
-    expect([internal.memoryNoticeAt, internal.memoryNoticeLevel]).toEqual([{}, null]);
+    expect([internal.memoryNoticeAt, internal.memorySpell.level]).toEqual([{}, null]);
     attach();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(sendText).toHaveBeenCalledOnce();
-    expect(internal.memoryNoticeLevel).toBe("critical");
+    expect(internal.memorySpell).toEqual({ level: "critical", posted: true });
   });
 
   it("a failed dispatch with an adapter leaves the notice retryable", async () => {
@@ -282,11 +340,11 @@ describe("fleet host memory wiring", () => {
     attach();
     const dispatch = vi.spyOn(fm, "notifyFleetError").mockReturnValue(false);
     fm.memoryPressure.start();
-    expect([internal.memoryNoticeAt, internal.memoryNoticeLevel]).toEqual([{}, null]);
+    expect([internal.memoryNoticeAt, internal.memorySpell.level]).toEqual([{}, null]);
     dispatch.mockReturnValue(true);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(dispatch).toHaveBeenCalledTimes(2);
-    expect(internal.memoryNoticeLevel).toBe("critical");
+    expect(internal.memorySpell).toEqual({ level: "critical", posted: true });
   });
 
   it("starts monitoring before any CLI startup even if startup is subsequently held", async () => {

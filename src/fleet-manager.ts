@@ -1144,8 +1144,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private memoryLogLevel: MemoryPressureSnapshot["level"] | null = null;
   /** #1685: when each chat level was last notified (performance.now), for the 1 h damping across recoveries. */
   private memoryNoticeAt: Partial<Record<"elevated" | "critical", number>> = {};
-  /** #1685: the highest level notified since memory was last normal (null: nothing posted this episode). */
-  private memoryNoticeLevel: "elevated" | "critical" | null = null;
+  /** #1685: the spell (memory away from normal): the highest chat level it has handled — told, or held back by the
+   *  damping hour — and whether it told anything (only then does its end get a recovered line). Normal ends it. */
+  private memorySpell: { level: "elevated" | "critical" | null; posted: boolean } = { level: null, posted: false };
+  /** #1685: a recovered line owed by a spell that ended, kept apart from the spells (a failed dispatch is retried). */
+  private memoryRecoveredOwed = false;
   /** #1685: the host_memory value the last status frame carried, so a change re-sends the frame. */
   private memoryIndicatorShown: "elevated" | "critical" | null = null;
 
@@ -1989,8 +1992,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ hostMemory: snapshot }, "Host memory recovered");
       }
       this.memoryLogLevel = snapshot.level;
-      // #1685: one recovered line, only for an episode that posted a notice (a damped or silent spell recovers quietly).
-      if (this.memoryNoticeLevel !== null && this.notifyFleetError(t("memory.recovered"), { throttle: false })) this.memoryNoticeLevel = null;
+      // #1685: normal ends the spell; one recovered line, only if it told something (a damped or silent spell recovers
+      // quietly). The line is owed until it dispatches, without holding the next spell back.
+      if (this.memorySpell.posted) this.memoryRecoveredOwed = true;
+      this.memorySpell = { level: null, posted: false };
+      if (this.memoryRecoveredOwed && this.notifyFleetError(t("memory.recovered"), { throttle: false })) this.memoryRecoveredOwed = false;
       return;
     }
     if (changed || this.memoryLogAt === null || now - this.memoryLogAt >= 10 * 60_000) {
@@ -2007,10 +2013,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const level = snapshot.level;
     if (level !== "elevated" && level !== "critical") return;
     if (level === "elevated" && this.memoryPressure.platform === "darwin") return;
-    if (this.memoryNoticeLevel === "critical" || this.memoryNoticeLevel === level) return;
+    const spell = this.memorySpell;
+    if (spell.level === "critical" || spell.level === level) return;            // this spell has handled it already
     const mono = performance.now();
     const last = this.memoryNoticeAt[level];
-    if (last !== undefined && mono - last < MEMORY_NOTICE_DAMPING_MS) return;   // flapping: this level was told within the hour
+    // Flapping: this level was told within the hour — held back for the whole spell, not re-checked until the hour ends.
+    if (last !== undefined && mono - last < MEMORY_NOTICE_DAMPING_MS) { spell.level = level; return; }
     const size = (bytes: number | null) => bytes === null ? t("memory.unknown") : `${Math.round(bytes / 1024 / 1024)} MiB`;
     const action = t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing");
     const text = this.memoryPressure.platform === "darwin"
@@ -2018,7 +2026,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : t("memory.pressure", t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes)), size(snapshot.memory.swapFreeBytes), action);
     if (this.notifyFleetError(text, { throttle: false })) {
       this.memoryNoticeAt[level] = mono;
-      this.memoryNoticeLevel = level;
+      this.memorySpell = { level, posted: true };
+      this.memoryRecoveredOwed = false;   // pressure is back: an older "back to normal" is no longer true
     }
   }
 
