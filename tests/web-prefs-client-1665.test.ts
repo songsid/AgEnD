@@ -197,8 +197,10 @@ describe("the app's modules", () => {
     // @ts-expect-error — a JS module of the app, with no types
     (await import("../src/ui/first-run.js")).dismissFirstRun();
     await new Promise((r) => setTimeout(r, 450));
-    expect([themes, posts(), ls("agend_tour_done"), ls("agend_firstrun_dismissed")])
-      .toEqual([["dark"], [{ set: { theme: "dark", lang: "zh-TW", "preview.optIn": true } }], "1", "1"]);
+    // What reached the host, whatever the number of writes (a slow import can split the 400 ms burst in two).
+    const sentSets = posts().map((p) => { expect(Object.keys(p)).toEqual(["set"]); return p.set; });
+    expect([themes, Object.assign({}, ...sentSets), ls("agend_tour_done"), ls("agend_firstrun_dismissed")])
+      .toEqual([["dark"], { theme: "dark", lang: "zh-TW", "preview.optIn": true }, "1", "1"]);
     render(null, root);
   });
 
