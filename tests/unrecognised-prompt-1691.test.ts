@@ -205,6 +205,22 @@ describe("#1695 P2-2: motion anywhere on the screen restarts the minute", () => 
     } finally { r.stop(); }
   });
 
+  it("a footer that alternates between two states (a blink) never lets the minute complete", async () => {
+    const r = rig();
+    try {
+      const awaitingSeen: boolean[] = [];
+      const heldOnFirstState: string[] = [];
+      for (let i = 0; i < 30; i++) {   // 150 s, the footer flipping every scan
+        r.screen.text = `${SWITCH.trimEnd()}\n  ${i % 2 ? "● connected" : "○ connected"}\n`;
+        await r.poll(5_000);
+        awaitingSeen.push(r.awaiting());
+        // A delivery arriving whenever the first state is back (a probe on the other state would itself reset it).
+        if (i % 2 === 0) heldOnFirstState.push(await r.held());
+      }
+      expect([unrecognised(r.parked).length, awaitingSeen.some(Boolean), heldOnFirstState.includes("dialog")]).toEqual([0, false, false]);
+    } finally { r.stop(); }
+  });
+
   it("the CLI's busy indicator on screen, even standing still, keeps it from counting", async () => {
     const r = rig();
     try {
