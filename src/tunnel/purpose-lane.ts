@@ -3,7 +3,11 @@ import type { TunnelProvider, TunnelStartContext, TunnelStopResult } from "./typ
 
 export interface TunnelReservation {
   start(provider: TunnelProvider, context: TunnelStartContext): Promise<ManagedStartResult>;
-  stop(reason: string): Promise<TunnelStopResult>;
+  /**
+   * Stop this reservation's tunnel. `alsoProven` (#1723): another tunnel the holder ran beside it (the public link's
+   * preview) — the lane is released only once BOTH are proven stopped, and the first unproven one is the result.
+   */
+  stop(reason: string, alsoProven?: Promise<TunnelStopResult>): Promise<TunnelStopResult>;
   releaseUnused(): void;
 }
 /** One actual manager, claimed before installer/listener awaits. Different origins never join. */
@@ -27,9 +31,12 @@ export class TunnelPurposeLane {
         });
         return starting;
       },
-      stop: reason => stopping ??= (async () => {
+      stop: (reason, alsoProven) => stopping ??= (async () => {
         await starting?.catch(() => {});
-        const result = await this.manager.stop(reason).catch(() => ({ confirmed: false as const, reason: "stop failed", pid: null, identity: null }));
+        const unproven = (): TunnelStopResult => ({ confirmed: false, reason: "stop failed", pid: null, identity: null });
+        const own = await this.manager.stop(reason).catch(unproven);
+        const other = alsoProven ? await alsoProven.catch(unproven) : own;
+        const result = !own.confirmed ? own : other;
         stopped = result.confirmed;
         release();
         return result;

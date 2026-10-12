@@ -253,10 +253,9 @@ export class PublicWebLink {
     e.closing = (async () => {
       await e.starting.catch(() => {});
       e.gateway?.close(); // listen may have finished after the first close.
-      const own = await e.reservation.stop(reason);
-      const preview = await (previewStopped ?? Promise.resolve<TunnelStopResult>({ confirmed: true }));
-      // Either tunnel unproven → the whole exposure's cleanup is unconfirmed, and the next start waits for it.
-      const result = !own.confirmed ? own : !preview.confirmed ? preview : own;
+      // The reservation holds the one tunnel lane until BOTH tunnels are proven stopped: an unproven preview keeps it
+      // from the next /dashboard or /login as an unproven link tunnel does.
+      const result = await e.reservation.stop(reason, previewStopped);
       if (this.entry === e) {
         if (result.confirmed) this.entry = null;
         else { e.phase = "cleanup_unconfirmed"; this.deps.onCleanupUnconfirmed?.(result, e.owner); }

@@ -19,6 +19,7 @@ import { createPublicPreviewGateway, PublicPreview, publicPreviewWanted, PUBLIC_
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import { isPassiveWebRead } from "../src/web-auth.js";
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { createPreviewListener } from "../src/web-preview.js";
@@ -60,8 +61,10 @@ function rig(opts: { web?: Record<string, unknown>; previewStart?: () => Promise
   };
   const previewGateway: PublicPreviewGateway = { server: {} as never, readinessMarker: "pm", bootId: "f".repeat(32), listen: vi.fn(async () => new URL("http://127.0.0.1:9998")), setHost: vi.fn(), close: vi.fn() };
   const created: PublicPreview[] = [];
+  // The fleet's ONE tunnel lane, as FleetManager has it: /dashboard and /login reserve the same one.
+  const lane = new TunnelPurposeLane(manager);
   const link = new PublicWebLink({
-    dataDir: "/fixture", web: () => web, permitted: () => permitted, reserve: id => new TunnelPurposeLane(manager).reserve("dashboard", id),
+    dataDir: "/fixture", web: () => web, permitted: () => permitted, reserve: id => lane.reserve("dashboard", id),
     createGateway: () => gateway as never, ensure: vi.fn(async () => ({ path: "/pinned", source: "agend" as const })), provider: () => ({ name: "fake" }) as never,
     revoke: vi.fn(), log: vi.fn(), now: () => now, wallNow: () => 100_000,
     createPreview: ({ id, expiresAt, dashboardOrigin, isCurrent }) => {
@@ -72,7 +75,7 @@ function rig(opts: { web?: Record<string, unknown>; previewStart?: () => Promise
       return p;
     },
   });
-  return { link, manager, previewManager, previewGateway, created, order, dashLose: dash.lose, previewLose: prev.lose,
+  return { link, lane, manager, previewManager, previewGateway, created, order, dashLose: dash.lose, previewLose: prev.lose,
     advance: (n: number) => { now += n; }, allow: (v: boolean) => { permitted = v; }, settings: (v: any) => { web = v; } };
 }
 
@@ -430,5 +433,71 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
     const init = src.indexOf("P().init(bootData"), poll = src.indexOf("pollPublicPreview(P())");
     expect(init).toBeGreaterThan(0);
     expect(poll).toBeGreaterThan(init);
+  });
+});
+
+// #1729 review (Prism): the exposure holds the one tunnel lane until BOTH of its tunnels are proven stopped.
+describe("#1723: the tunnel lane is held until the link's AND the preview's stops are proven", () => {
+  it("while the preview's stop is still running, /login cannot take the lane (the link's own stop already proven)", async () => {
+    const h = rig(); await h.link.deliver(owner, async () => true); await tick();
+    const stop = deferred<{ confirmed: true }>(); h.previewManager.stop.mockImplementationOnce(() => stop.promise);
+    const closing = h.link.close("admin"); await tick();
+    expect(h.manager.stop).toHaveBeenCalledTimes(1);
+    const login = h.lane.reserve("login", "new-login");
+    try { expect(login).toBeNull(); }
+    finally { login?.releaseUnused(); stop.resolve({ confirmed: true }); await closing; }
+    expect(h.lane.reserve("login", "new-login"), "proven: free again").not.toBeNull();
+  });
+  it("an unproven preview stop: cleanup_unconfirmed, and /login cannot take the lane", async () => {
+    const h = rig(); await h.link.deliver(owner, async () => true); await tick();
+    h.previewManager.stop.mockResolvedValueOnce({ confirmed: false, reason: "still running", pid: 7, identity: null } as never);
+    expect(await h.link.close("end")).toMatchObject({ confirmed: false, pid: 7 });
+    expect(h.link.status().state).toBe("cleanup_unconfirmed");
+    expect(h.lane.reserve("login", "new-login")).toBeNull();
+  });
+  it("a rejected preview stop counts as unproven", async () => {
+    const h = rig(); await h.link.deliver(owner, async () => true); await tick();
+    h.previewManager.stop.mockRejectedValueOnce(new Error("boom"));
+    expect((await h.link.close("end")).confirmed).toBe(false);
+    expect(h.lane.reserve("login", "new-login")).toBeNull();
+  });
+  it("control: both proven → /login can take the lane", async () => {
+    const h = rig(); await h.link.deliver(owner, async () => true); await tick();
+    expect((await h.link.close("end")).confirmed).toBe(true);
+    expect(h.lane.reserve("login", "new-login")).not.toBeNull();
+  });
+  it("control: an unproven link stop holds the lane, whatever the preview's", async () => {
+    const h = rig(); await h.link.deliver(owner, async () => true); await tick();
+    h.manager.stop.mockResolvedValueOnce({ confirmed: false, reason: "still running", pid: 8, identity: null } as never);
+    expect(await h.link.close("end")).toMatchObject({ confirmed: false, pid: 8 });
+    expect(h.lane.reserve("login", "new-login")).toBeNull();
+  });
+  it("without a preview (web.preview: false) the lane works as before", async () => {
+    const h = rig({ web: { preview: false } }); await h.link.deliver(owner, async () => true); await tick();
+    expect((await h.link.close("end")).confirmed).toBe(true);
+    expect(h.lane.reserve("login", "new-login")).not.toBeNull();
+  });
+});
+
+// #1729 review (Prism): the page's automatic status GET is not the person's activity.
+describe("#1723: /ui/preview-status never slides the session", () => {
+  it("the GET is passive; nothing else on that path is", () => {
+    expect(isPassiveWebRead("GET", "/ui/preview-status")).toBe(true);
+    expect(isPassiveWebRead("POST", "/ui/preview-status")).toBe(false);
+  });
+  it.each([["/ui/preview-status", true], ["/ui/poll", true], ["/ui/chat/one", false]])("a real public session: %s (passive %s)", (path, passive) => {
+    let now = 1000; const token = "c".repeat(48), exposureId = "a".repeat(32), pub = `https://${DASH}`;
+    const sessions = new WebSessionStore({ now: () => now });
+    const s = sessions.create({ tier: "admin", surface: "gateway", exposureId, label: "phone", tokenEpoch: tokenEpoch(token) });
+    const before = { ...s.record }; now += 120_000;
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: { host: DASH, cookie: `__Host-agend_session=${s.sessionId}` }, socket: { destroy() {} } });
+    bindGatewayRequest(req as never, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
+    let status = 0; const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead(c: number) { status = c; }, end() {}, write() { return true; } });
+    handleWebRequest(req as never, res as never, new URL(path, pub), { webToken: token, webSessions: sessions,
+      getUiStatus: () => ({ instances: [] }), publicPreviewForUi: () => ({ dashboardOrigin: pub, previewOrigin: null, reason: "starting", code: "publicLinkStarting", boot: null, frameSrc: PUBLIC_PREVIEW_FRAME_SRC }),
+      logger: { info() {}, debug() {}, error() {}, warn() {} } } as never);
+    expect(status).toBe(200);
+    const after = sessions.list()[0]!;
+    expect([after.lastSeen, after.idleExpiry]).toEqual(passive ? [before.lastSeen, before.idleExpiry] : [now, before.idleExpiry + 120_000]);
   });
 });
