@@ -238,6 +238,9 @@ describe("#1666: a delivered web chat message starts the topic's Cancel/progress
     bubble.resolve();
     await clock.advance(2_000);
     expect(h.echoes().map(c => c.text)).toEqual([expect.stringContaining("first"), expect.stringContaining("second")]);
+    // …and the second message's own bubble, which waited behind the slow one and the second echo for more than 5 s,
+    // is still posted: a non-copy's budget starts with its turn.
+    expect(h.bubbles()).toHaveLength(2);
   });
 
   it("an echo slower than the budget never drops this message's bubble (a slow echo may leave it above the echo, #1668 P3)", async () => {
@@ -253,5 +256,59 @@ describe("#1666: a delivered web chat message starts the topic's Cancel/progress
     // whether the late echo shows is not this test's question) — and the bubble was posted anyway.
     expect(h.s.logger.warn.mock.calls.some((c: any[]) => c[1] === "Web channel echo ordering timed out")).toBe(true);
     expect(h.bubbles()).toHaveLength(1);
+  });
+});
+
+describe("#1668: the echo lane's rules for an entry that is not a copy (the bubble)", () => {
+  /** A lane entry whose send is held until released; records when it ran. */
+  function entry(h: Awaited<ReturnType<typeof harness>>, label: string, ran: string[], copy: boolean) {
+    const gate = deferred();
+    const settle = h.s.reserveWebChannelEcho("worker", async () => { ran.push(label); await gate.promise; }, copy ? {} : { copy: false });
+    settle(true);
+    return gate;
+  }
+
+  it("a non-copy that waits in the queue longer than 5 s still runs when its turn comes (its budget starts with its turn)", async () => {
+    const h = await harness("telegram"), clock = laneClock(), ran: string[] = [];
+    const c = entry(h, "bubble-1", ran, false);       // runs first, held
+    const a = entry(h, "echo-2", ran, true);          // a copy behind it
+    entry(h, "bubble-2", ran, false);                 // behind both: waits ~10 s
+    await flush(10);
+    await clock.advance(5_100);                       // bubble-1's own budget ends → echo-2 starts (its budget starts now)
+    expect(ran).toEqual(["bubble-1", "echo-2"]);
+    await clock.advance(4_000);                       // echo-2 still held, within its budget; bubble-2 has waited 9 s
+    a.resolve(); c.resolve();
+    await flush(20);
+    expect(ran).toEqual(["bubble-1", "echo-2", "bubble-2"]);
+  });
+
+  it("a non-copy's timeout releases the lane without dropping the copies queued behind it", async () => {
+    const h = await harness("telegram"), clock = laneClock(), ran: string[] = [];
+    entry(h, "bubble-1", ran, false);
+    entry(h, "echo-2", ran, true).resolve();
+    await flush(10);
+    await clock.advance(5_100);
+    expect(ran).toEqual(["bubble-1", "echo-2"]);
+    expect(h.s.logger.warn.mock.calls.some((c: any[]) => c[1] === "Queued web channel echo dropped after ordering timeout")).toBe(false);
+  });
+
+  it("a copy's timeout never drops a non-copy queued behind it (it still runs)", async () => {
+    const h = await harness("telegram"), clock = laneClock(), ran: string[] = [];
+    entry(h, "echo-1", ran, true);                    // held past its budget
+    entry(h, "bubble-1", ran, false).resolve();
+    await flush(10);
+    await clock.advance(5_100);
+    expect(ran).toEqual(["echo-1", "bubble-1"]);
+  });
+
+  it("a copy queued behind a non-copy starts its budget when the non-copy finishes, not at its reservation", async () => {
+    const h = await harness("telegram"), clock = laneClock(), ran: string[] = [];
+    const b = entry(h, "bubble-1", ran, false);
+    entry(h, "echo-2", ran, true).resolve();
+    await flush(10);
+    await clock.advance(4_000);                       // the bubble is slow, but inside its budget
+    b.resolve();
+    await clock.advance(2_000);                       // echo-2 reserved 6 s ago: still its turn
+    expect(ran).toEqual(["bubble-1", "echo-2"]);
   });
 });
