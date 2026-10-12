@@ -4004,6 +4004,7 @@ export class Daemon extends EventEmitter {
         await this.wake();
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while waking");
+          reportSwitch({ outcome: "not_sent" });   // #1690: cancelled before anything was typed — said at once, nothing saved
           return;
         }
         const delivered = await this.deliverMessage(rawText, undefined, {

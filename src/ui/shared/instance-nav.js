@@ -207,6 +207,16 @@ export function moveFavorite(name, delta, known) {
   cur.splice(to, 0, cur.splice(from, 1)[0]);
   setFavorites(cur);
 }
+// ── #1700: the filter's facet groups, open or folded — per device (localStorage; blocked or full storage: this page only) ──
+const FACETS_KEY = "agend_nav_facets";
+function readFacetsOpen() {
+  try {
+    const v = JSON.parse(stored(FACETS_KEY) || "{}");
+    return { status: !!(v && v.status === true), cli: !!(v && v.cli === true) };
+  } catch { return { status: false, cli: false }; }
+}
+function writeFacetsOpen(open) { try { localStorage.setItem(FACETS_KEY, JSON.stringify({ status: !!open.status, cli: !!open.cli })); } catch { /* this page only */ } }
+
 /** The Favorites group's key among the tag groups: no tag can be it (a group name is never a control character). */
 const FAV_GROUP = "\u0000favorites";
 function persistOrder(groupNames, instByGroup) {
@@ -299,6 +309,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
+  // #1700: which facet groups are open — this device's (screen layout, not a synced preference), read when the list mounts.
+  const [facetOpen, setFacetOpen] = useState(readFacetsOpen);
+  const toggleFacet = (key) => setFacetOpen((cur) => { const next = { ...cur, [key]: !cur[key] }; writeFacetsOpen(next); return next; });
   // #1664: "☆ Edit" — the stars on every row (on a phone the only way to them) and ↑ ↓ on the favorites — only on the
   // full list, as drag: in a filtered one the row above may not be the one above in the list (#1677 review).
   const [editing, setEditing] = useState(false);
@@ -360,11 +373,23 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       persistOrder(names, insts);
     },
   };
-  const chips = (key, values, label, text) => html`<details class="nav-facet">
-    <summary>${label}${f[key].length ? html` <span class="nav-facet-n">${f[key].length}</span>` : null}</summary>
-    <div class="nav-facet-list" role="group" aria-label=${label}>${values.map((value) => html`<label key=${value} class="nav-chip">
-      <input type="checkbox" checked=${f[key].includes(value)} onChange=${() => flip(key, value)} /><span>${text(value)}</span></label>`)}</div>
-  </details>`;
+  // #1700: a facet group (Status, CLI) folds under a real header button. Folded with a filter set, the header says so:
+  // one or two choices by name, more as "N selected" — a filter is never out of sight.
+  const chips = (key, values, label, text) => {
+    const open = !!facetOpen[key];
+    const sel = f[key];
+    const summary = !open && sel.length ? (sel.length <= 2 ? sel.map(text).join(", ") : tn("facetSelected", { n: sel.length })) : "";
+    const hint = tn(open ? "facetHide" : "facetShow", { group: label });
+    return html`<div class=${`nav-facet${open ? " open" : ""}`}>
+      <button type="button" class="nav-facet-head" aria-expanded=${open ? "true" : "false"} aria-controls=${`nav-facet-${key}`}
+        title=${summary ? `${hint} (${label} · ${summary})` : hint} onClick=${() => toggleFacet(key)}>
+        <${Icon} name="chevron" size=${12} cls=${open ? "caret" : "caret folded"} /><span class="nav-facet-label">${label}</span>
+        ${summary ? html`<span class="nav-facet-sum">· ${summary}</span>` : sel.length ? html`<span class="nav-facet-n">${sel.length}</span>` : null}
+      </button>
+      ${open ? html`<div id=${`nav-facet-${key}`} class="nav-facet-list" role="group" aria-label=${label}>${values.map((value) => html`<label key=${value} class="nav-chip">
+        <input type="checkbox" checked=${sel.includes(value)} onChange=${() => flip(key, value)} /><span>${text(value)}</span></label>`)}</div>` : null}
+    </div>`;
+  };
   const row = (name, g, i, count) => {
     const it = byName.get(name);
     const label = labelOf(it);
