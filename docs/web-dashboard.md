@@ -178,7 +178,7 @@ The fleet's shared work and its overview, one tab each. Every tab has its own ad
 - On an instance page, the header switches between its **Chat**, **View** and **Details** (tabs under the header on a phone); the instance stays the same. Someone reading View without signing in sees no switch.
 - With an instance open, the sidebar's **Fleet** (and the phone's Fleet tab) goes to that instance's Details; with none open, to Tasks. On Details or a Fleet tab, an instance in the sidebar opens its Details.
 - **Tasks**, **Schedules** and **Teams**: the task board, cron schedules and teams. Create, claim and delete them here.
-- **Org chart** (`/ui/fleet/org`): General at the top, then the teams from `fleet.yaml`, then the instances in no team.
+- **Org chart** (`/ui/fleet/org`; **Fleet overview** at the top of the sidebar, or of the drawer on a phone, opens it from any page): General at the top, then the teams from `fleet.yaml`, then the instances in no team.
   - Each instance shows its display name, what it does, its backend and model, and its live state (working, idle, needs you, looks stuck, paused, stopped or crashed).
   - Each instance also links to its Discord thread or Telegram topic and to its chat.
   - The chart is read-only: you act in Discord, or from the chat.

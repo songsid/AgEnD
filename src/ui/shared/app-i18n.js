@@ -60,7 +60,7 @@ export function t(key, ...values) {
 
 register("app", {
   en: {
-    brand: "AgEnD", fleet: "Fleet", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet overview", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance",
     collapse: "Hide the sidebar", expand: "Show the sidebar", openMenu: "Open the sidebar", closeMenu: "Close the sidebar",
     theme: "Theme", themeSystem: "System", themeLight: "Light", themeDark: "Dark", language: "Language",
     previews: "Allow HTML previews", tour: "Tour", tourTitle: "Show the web chat tour again",
@@ -89,7 +89,7 @@ register("app", {
     needs_reason_hang: "Not responding", needs_reason_exited: "Exited", needs_reason_assist: "Waiting at its terminal", needs_reason_permission: "Permission needed", needs_reason_dangerous_command: "Dangerous command waiting", needs_reason_login: "Sign-in needed", needs_reason_dialog: "Waiting at a dialog", needs_reason_terminal_input: "May be waiting for input", needs_reason_auth_paused: "Paused: sign-in needed", needs_reason_crashed: "Crashed", needs_reason_delivery_uncertain: "Could not confirm delivery", needs_reason_delivery_failed: "Delivery failed",
   },
   "zh-TW": {
-    brand: "AgEnD", fleet: "Fleet", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance",
+    brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance",
     collapse: "隱藏側邊欄", expand: "顯示側邊欄", openMenu: "打開側邊欄", closeMenu: "關閉側邊欄",
     theme: "主題", themeSystem: "跟隨系統", themeLight: "淺色", themeDark: "深色", language: "語言",
     previews: "允許預覽 HTML", tour: "導覽", tourTitle: "再看一次網頁聊天導覽",
