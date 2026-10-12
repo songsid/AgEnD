@@ -38,7 +38,9 @@ export function applyStatus(d) {
   appStore.set({ ready: true, instances: d.instances, uptime: d.uptime ?? 0, exec, awaiting,
     connections: typeof d.connections === "number" ? d.connections : null,
     // #1665: the host preferences' revision (app-prefs.js re-reads them when it moves).
-    prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null });
+    prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null,
+    // #1685: host memory pressure slowing or holding new agents ("elevated" | "critical"), else null.
+    hostMemory: d.host_memory === "elevated" || d.host_memory === "critical" ? d.host_memory : null });
 }
 
 /** One "activity" event: an instance started or stopped working. */

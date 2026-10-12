@@ -1110,7 +1110,14 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 - RAM below that second threshold, or swap at most 5% free → **elevated**: one start at a time, at least 5 seconds apart (an unreadable sample is treated the same way, never as zero RAM);
 - after a critical hold clears, starts ramp back up slowly for 30 seconds.
 
-`/health` always carries a `hostMemory` block (level, RAM and swap, trend); on Linux, pressure also marks it degraded, and a fleet notice is sent with a 10-minute cooldown (an escalation to critical is sent at once). On **macOS** the sample is written to the log only since #1257: nothing is slowed or held, no notice is sent, and `/health` does not report pressure, because macOS's free-memory and swap numbers alerted on machines with plenty of memory. Details: [memory-pressure.md](memory-pressure.md).
+`/health` always carries a `hostMemory` block (level, RAM and swap, trend), and pressure marks it degraded. On **macOS** the level is the kernel's own alarm (`kern.memorystatus_vm_pressure_level`: 2 slows, 4 holds), never the free-memory or swap numbers.
+
+**Fleet notices follow the level, not a timer (#1685):**
+- one notice when pressure rises, and one "back to normal" line when it ends;
+- nothing in between, and no repeat if the same level comes back within an hour;
+- macOS's routine warning level (2) sends no chat notice: it still slows new starts, and the Fleet page shows it. Only critical (4) is announced.
+
+Details: [memory-pressure.md](memory-pressure.md).
 
 ## "Needs you" inbox (#1386 / #1398)
 

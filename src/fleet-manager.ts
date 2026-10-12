@@ -833,6 +833,9 @@ function emojiListFilter(opts: Record<string, unknown>): {
 }
 
 
+/** #1685: a memory level re-entered within this long of its last notice is not announced again (flapping). */
+const MEMORY_NOTICE_DAMPING_MS = 60 * 60_000;
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -1139,8 +1142,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private memoryLogAt: number | null = null;
   private memoryDebugAt: number | null = null;
   private memoryLogLevel: MemoryPressureSnapshot["level"] | null = null;
-  private memoryNoticeAt: number | null = null;
-  private memoryNoticeLevel: MemoryPressureSnapshot["level"] | null = null;
+  /** #1685: when each chat level was last notified (performance.now), for the 1 h damping across recoveries. */
+  private memoryNoticeAt: Partial<Record<"elevated" | "critical", number>> = {};
+  /** #1685: the spell (memory away from normal): the highest chat level it has handled — told, or held back by the
+   *  damping hour — and whether it told anything (only then does its end get a recovered line). Normal ends it. */
+  private memorySpell: { level: "elevated" | "critical" | null; posted: boolean } = { level: null, posted: false };
+  /** #1685: a recovered line owed by a spell that ended, kept apart from the spells (a failed dispatch is retried). */
+  private memoryRecoveredOwed = false;
+  /** #1685: the host_memory value the last status frame carried, so a change re-sends the frame. */
+  private memoryIndicatorShown: "elevated" | "critical" | null = null;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
   private mirrorBuffer: string[] = [];
@@ -1952,6 +1962,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), cpus().length);
   }
 
+  /** #1685: "elevated" or "critical" while host memory pressure slows or holds new agents; otherwise null (an
+   *  unknown macOS reading — the advisory case — is unknown, so null too). */
+  private hostMemoryIndicator(): "elevated" | "critical" | null {
+    if (!this.memoryPressure) return null;
+    const level = this.memoryPressure.snapshot().level;
+    return level === "elevated" || level === "critical" ? level : null;
+  }
+
   /** Separate cooldown: changing measurements must not create new text-throttle keys. */
   private reportMemoryPressure(snapshot: MemoryPressureSnapshot): void {
     if (this.shuttingDown) return;
@@ -1961,6 +1979,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.debug({ hostMemory: snapshot }, "Host memory sample");
     }
     const changed = snapshot.level !== this.memoryLogLevel;
+    // #1685: the dashboard's indicator (the status frame's host_memory) is re-sent when it changes.
+    const indicator = this.hostMemoryIndicator();
+    if (indicator !== this.memoryIndicatorShown) { this.memoryIndicatorShown = indicator; this.emitSseEvent("status", this.getUiStatus()); }
     if (this.memoryPressure.advisoryOnly()) {
       // The sampler logs the unknown kernel value once per lifecycle; no warning/cooldown here.
       this.memoryLogLevel = snapshot.level;
@@ -1971,6 +1992,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ hostMemory: snapshot }, "Host memory recovered");
       }
       this.memoryLogLevel = snapshot.level;
+      // #1685: normal ends the spell; one recovered line, only if it told something (a damped or silent spell recovers
+      // quietly). The line is owed until it dispatches, without holding the next spell back.
+      if (this.memorySpell.posted) this.memoryRecoveredOwed = true;
+      this.memorySpell = { level: null, posted: false };
+      if (this.memoryRecoveredOwed && this.notifyFleetError(t("memory.recovered"), { throttle: false })) this.memoryRecoveredOwed = false;
       return;
     }
     if (changed || this.memoryLogAt === null || now - this.memoryLogAt >= 10 * 60_000) {
@@ -1982,16 +2008,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     this.memoryLogLevel = snapshot.level;
     if (!snapshot.memory || snapshot.level === "unknown" || (!this.adapter && this.adapters.size === 0)) return;
-    const escalation = snapshot.level === "critical" && this.memoryNoticeLevel !== "critical";
-    if (!escalation && this.memoryNoticeAt !== null && now - this.memoryNoticeAt < 10 * 60_000) return;
+    // #1685: chat hears a level once, when it rises — never on a timer while it holds. macOS elevated (kernel 2) is
+    // routine there and nothing a user can act on: logged, admission slowed, on the dashboard, but not in chat.
+    const level = snapshot.level;
+    if (level !== "elevated" && level !== "critical") return;
+    if (level === "elevated" && this.memoryPressure.platform === "darwin") return;
+    const spell = this.memorySpell;
+    if (spell.level === "critical" || spell.level === level) return;            // this spell has handled it already
+    const mono = performance.now();
+    const last = this.memoryNoticeAt[level];
+    // Flapping: this level was told within the hour — held back for the whole spell, not re-checked until the hour ends.
+    if (last !== undefined && mono - last < MEMORY_NOTICE_DAMPING_MS) { spell.level = level; return; }
     const size = (bytes: number | null) => bytes === null ? t("memory.unknown") : `${Math.round(bytes / 1024 / 1024)} MiB`;
     const action = t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing");
     const text = this.memoryPressure.platform === "darwin"
       ? t("memory.kernel_pressure", snapshot.memory.darwinPressureLevel ?? t("memory.unknown"), size(snapshot.memory.availableBytes), size(snapshot.memory.swapFreeBytes), action)
       : t("memory.pressure", t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes)), size(snapshot.memory.swapFreeBytes), action);
     if (this.notifyFleetError(text, { throttle: false })) {
-      this.memoryNoticeAt = now;
-      this.memoryNoticeLevel = snapshot.level;
+      this.memoryNoticeAt[level] = mono;
+      this.memorySpell = { level, posted: true };
     }
   }
 
@@ -19095,6 +19130,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       connections: (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).length,
       // #1665: the host preferences' revision — a page that has another re-reads /ui/prefs (no values in this frame).
       prefs_rev: this.webPrefs.rev(),
+      // #1685: host memory pressure while it slows or holds new agents (the dashboard's indicator; macOS elevated is
+      // shown here rather than in chat). null when normal, unknown or advisory.
+      host_memory: this.hostMemoryIndicator(),
     };
   }
 }

@@ -6,6 +6,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { getLocale, setLocale } from "../src/locale.js";
 import type { HostMemory } from "../src/host-memory.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import { performance as perfHooks } from "node:perf_hooks";
 
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
 // Keep the constructor on the injected reader path on every test host; Darwin policy is selected below.
@@ -30,6 +31,9 @@ describe("fleet host memory wiring", () => {
   });
   function make(initial = memory()) {
     const dir = mkdtempSync(join(tmpdir(), "agend-memory-1113-"));
+    // fleet-manager imports perf_hooks' performance, which the fake timers do not replace: give it the faked clock
+    // (the global one), so the #1685 damping hour can pass in a test. (Under fake timers they are different objects.)
+    vi.spyOn(perfHooks, "now").mockImplementation(() => (globalThis as any).performance.now());
     const fm = new FleetManager(dir);
     fleets.push({ fm, dir });
     const internal = fm as any;
@@ -62,20 +66,191 @@ describe("fleet host memory wiring", () => {
     set(memory(100, 0)); fm.memoryPressure.sample();
     expect(fm.memoryPressure.snapshot().level).toBe("unknown");
     expect(sendText).not.toHaveBeenCalled(); expect(logger.warn).not.toHaveBeenCalled();
-    expect(internal.memoryNoticeAt).toBeNull(); expect(internal.memoryLogAt).toBeNull();
+    expect(internal.memoryNoticeAt).toEqual({}); expect(internal.memoryLogAt).toBeNull();
     expect(logger.info).toHaveBeenCalledOnce();
     expect(logger.info).toHaveBeenCalledWith({ pressureRaw: null }, expect.stringContaining("kernel memory pressure unknown"));
     expect(fm.getFleetHealth().problems ?? []).not.toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
   });
 
-  it.each([2, 4] as const)("macOS kernel %s warns, sends a diagnostic-labelled notice and degrades health", kernel => {
-    const { fm, attach, sendText, logger } = make({ ...memory(), darwinPressureLevel: kernel });
+  it("macOS kernel 4 warns, sends a diagnostic-labelled notice and degrades health", () => {
+    const { fm, attach, sendText, logger } = make({ ...memory(), darwinPressureLevel: 4 });
     Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
     attach(); fm.memoryPressure.start();
     expect(logger.warn).toHaveBeenCalledOnce(); expect(sendText).toHaveBeenCalledOnce();
-    expect(String(sendText.mock.calls[0]![1])).toContain(`kernel memory pressure level: ${kernel}`);
+    expect(String(sendText.mock.calls[0]![1])).toContain("kernel memory pressure level: 4");
     expect(String(sendText.mock.calls[0]![1])).toContain("diagnostic only");
     expect(fm.getFleetHealth().problems).toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
+  });
+
+  it("#1685: macOS kernel 2 warns and degrades health, but posts nothing in chat", () => {
+    const { fm, attach, sendText, logger } = make({ ...memory(), darwinPressureLevel: 2 });
+    Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
+    attach(); fm.memoryPressure.start();
+    expect(logger.warn).toHaveBeenCalledOnce(); expect(sendText).not.toHaveBeenCalled();
+    expect(fm.getFleetHealth().problems).toEqual(expect.arrayContaining([expect.stringContaining("host memory")]));
+  });
+
+  // ── #1685: chat hears a level once, when it rises; never on a timer; macOS elevated stays out of chat. ──
+  const notices = (sendText: ReturnType<typeof vi.fn>) => sendText.mock.calls.map(c => String(c[1]));
+  const recovered = (sendText: ReturnType<typeof vi.fn>) => notices(sendText).filter(x => x.includes("back to normal"));
+  const darwin = (fm: FleetManager) => Object.defineProperty(fm.memoryPressure, "platform", { value: "darwin" });
+  const kernel = (level: 1 | 2 | 4, available = 2_900): HostMemory => ({ ...memory(available, 355), darwinPressureLevel: level });
+  /** One hour of 30-second samples while the measurements keep moving (the level stays the same). */
+  async function holdFor(ms: number, next: (i: number) => HostMemory, set: (m: HostMemory) => void) {
+    for (let t = 0, i = 0; t < ms; t += 30_000, i++) { set(next(i)); await vi.advanceTimersByTimeAsync(30_000); }
+  }
+
+  it("#1685: Linux elevated held for an hour, measurements moving: one notice", async () => {
+    const { fm, attach, sendText, set } = make(memory(4_000, 0));
+    attach(); fm.memoryPressure.start();
+    await holdFor(60 * 60_000, i => memory(4_000 - (i % 7) * 10, i % 3), set);
+    expect(fm.memoryPressure.snapshot().level).toBe("elevated");
+    expect(notices(sendText)).toHaveLength(1);
+    expect(notices(sendText)[0]).toContain("Host memory pressure");
+  });
+
+  it("#1685: macOS kernel 2 held for an hour: no notice — still logged, slowing, degraded and on the dashboard", async () => {
+    const { fm, internal, attach, sendText, logger, set } = make(kernel(2));
+    darwin(fm); attach(); fm.memoryPressure.start();
+    await holdFor(60 * 60_000, i => kernel(2, 2_900 - (i % 5) * 20), set);
+    expect(fm.memoryPressure.snapshot().level).toBe("elevated");
+    expect(notices(sendText)).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), "Host memory pressure — slowing new CLI spawns");
+    expect(fm.getFleetHealth().problems).toContain("host memory pressure is elevated");
+    expect(internal.getUiStatusSync().host_memory).toBe("elevated");
+  });
+
+  it("#1685: macOS kernel 4 notifies once, held for an hour", async () => {
+    const { fm, internal, attach, sendText, set } = make(kernel(4));
+    darwin(fm); attach(); fm.memoryPressure.start();
+    await holdFor(60 * 60_000, i => kernel(4, 900 - i), set);
+    expect(notices(sendText)).toHaveLength(1);
+    expect(notices(sendText)[0]).toContain("kernel memory pressure level: 4");
+    expect(internal.getUiStatusSync().host_memory).toBe("critical");
+  });
+
+  it("#1685: an escalation inside the damping window still notifies (Linux elevated → critical; macOS 2 → 4)", async () => {
+    const linux = make(memory(4_000, 0));
+    linux.attach(); linux.fm.memoryPressure.start();
+    await holdFor(5 * 60_000, () => memory(4_000, 0), linux.set);
+    linux.set(memory(100, 0)); await vi.advanceTimersByTimeAsync(30_000);
+    expect(notices(linux.sendText)).toHaveLength(2);
+    expect(notices(linux.sendText)[1]).toContain("wait for memory");
+    const mac = make(kernel(2));
+    darwin(mac.fm); mac.attach(); mac.fm.memoryPressure.start();
+    await holdFor(5 * 60_000, () => kernel(2), mac.set);
+    mac.set(kernel(4)); await vi.advanceTimersByTimeAsync(30_000);
+    expect(notices(mac.sendText)).toHaveLength(1);
+    expect(notices(mac.sendText)[0]).toContain("level: 4");
+  });
+
+  it("#1685: recovery posts one line — and none after a spell that posted nothing", async () => {
+    const linux = make(memory(4_000, 0));
+    linux.attach(); linux.fm.memoryPressure.start();
+    linux.set(memory()); await holdFor(10 * 60_000, () => memory(), linux.set);
+    expect(notices(linux.sendText)).toHaveLength(2);
+    expect(recovered(linux.sendText)).toHaveLength(1);
+    expect(linux.internal.getUiStatusSync().host_memory).toBeNull();
+    const mac = make(kernel(2));
+    darwin(mac.fm); mac.attach(); mac.fm.memoryPressure.start();
+    await holdFor(5 * 60_000, () => kernel(1), mac.set);
+    expect(notices(mac.sendText)).toEqual([]);
+  });
+
+  it("#1685: flapping inside the hour notifies once and recovers once; after the hour, a new rise is told again", async () => {
+    const { fm, attach, sendText, set } = make(memory(4_000, 0));
+    attach(); fm.memoryPressure.start();
+    // 50 minutes of elevated ↔ normal every 2 minutes.
+    await holdFor(50 * 60_000, i => (Math.floor(i / 4) % 2 === 0 ? memory(4_000, 0) : memory()), set);
+    expect(notices(sendText).filter(x => x.includes("Host memory pressure"))).toHaveLength(1);
+    expect(recovered(sendText)).toHaveLength(1);
+    // Normal past the hour, then elevated again: a new notice (the damping is an hour, not forever).
+    await holdFor(15 * 60_000, () => memory(), set);
+    set(memory(4_000, 0)); await vi.advanceTimersByTimeAsync(30_000);
+    expect(notices(sendText).filter(x => x.includes("Host memory pressure"))).toHaveLength(2);
+  });
+
+  // #1687 review (Prism P2-1, P2-2): a spell handles a level once — told, or held back by the damping hour — and keeps
+  // it held back however long it lasts; normal ends the spell, and a recovered line still owed never hides the next one.
+  const platforms = [
+    { name: "Linux elevated", setup: (fm: FleetManager) => fm, up: () => memory(4_000, 0), down: () => memory(), crit: () => memory(100, 0) },
+    { name: "macOS critical", setup: (fm: FleetManager) => darwin(fm), up: () => kernel(4), down: () => kernel(1), crit: () => kernel(4) },
+  ];
+  const pressure = (sendText: ReturnType<typeof vi.fn>) => notices(sendText).filter(x => !x.includes("back to normal"));
+
+  it.each(platforms)("#1687 P2-1 ($name): a re-entry held back by the damping hour stays quiet past the hour", async p => {
+    const { fm, attach, sendText, set } = make(p.up());
+    p.setup(fm); attach(); fm.memoryPressure.start();
+    await holdFor(60_000, p.down, set);                      // recovered (told)
+    await holdFor(75 * 60_000, p.up, set);                   // back within the hour, then held well past it
+    expect(pressure(sendText)).toHaveLength(1);
+    expect(recovered(sendText)).toHaveLength(1);
+  });
+
+  it.each(platforms)("#1687 P2-2 ($name): a recovered line that failed to dispatch does not hide the next spell's critical", async p => {
+    const { fm, attach, sendText, set } = make(p.crit());
+    p.setup(fm); attach();
+    const real = fm.notifyFleetError.bind(fm);
+    let refuseRecovered = true;
+    vi.spyOn(fm, "notifyFleetError").mockImplementation((text: string, o?: { throttle?: boolean }) =>
+      refuseRecovered && text.includes("back to normal") ? false : real(text, o));
+    fm.memoryPressure.start();
+    await holdFor(61 * 60_000, p.down, set);                 // normal past the hour; every recovered dispatch fails
+    expect(recovered(sendText)).toEqual([]);
+    set(p.crit()); await vi.advanceTimersByTimeAsync(30_000);
+    expect(pressure(sendText)).toHaveLength(2);
+    // Control: once dispatch works again, the next return to normal is told once (one line for both spells).
+    refuseRecovered = false;
+    await holdFor(5 * 60_000, p.down, set);
+    expect(recovered(sendText)).toHaveLength(1);
+  });
+
+  it.each(platforms)("#1687 control ($name): a failed recovered line is retried while normal holds, and sent once", async p => {
+    const { fm, attach, sendText, set } = make(p.crit());
+    p.setup(fm); attach();
+    const real = fm.notifyFleetError.bind(fm);
+    let refuseRecovered = true;
+    vi.spyOn(fm, "notifyFleetError").mockImplementation((text: string, o?: { throttle?: boolean }) =>
+      refuseRecovered && text.includes("back to normal") ? false : real(text, o));
+    fm.memoryPressure.start();
+    await holdFor(3 * 60_000, p.down, set);
+    refuseRecovered = false;
+    await holdFor(10 * 60_000, p.down, set);
+    expect([pressure(sendText).length, recovered(sendText).length]).toEqual([1, 1]);
+  });
+
+  it.each(platforms)("#1687 control ($name): after a told recovery and the hour, critical is told again", async p => {
+    const { fm, attach, sendText, set } = make(p.crit());
+    p.setup(fm); attach(); fm.memoryPressure.start();
+    await holdFor(61 * 60_000, p.down, set);
+    set(p.crit()); await vi.advanceTimersByTimeAsync(30_000);
+    expect([pressure(sendText).length, recovered(sendText).length]).toEqual([2, 1]);
+  });
+
+  it("#1685: the dashboard's status frame is re-sent when host_memory changes — not on every sample", async () => {
+    const { fm, attach, set } = make(kernel(1));
+    darwin(fm); attach();
+    const frames: unknown[] = [];
+    vi.spyOn(fm, "emitSseEvent").mockImplementation((event: string, data: unknown) => { if (event === "status") frames.push((data as any).host_memory); });
+    fm.memoryPressure.start();
+    await holdFor(2 * 60_000, () => kernel(1), set);
+    expect(frames).toEqual([]);
+    await holdFor(5 * 60_000, i => kernel(2, 2_900 - i), set);
+    set(kernel(4)); await vi.advanceTimersByTimeAsync(30_000);
+    await holdFor(2 * 60_000, () => kernel(1), set);
+    // After critical, the 30-second recovery ramp is elevated (#1438), then normal.
+    expect(frames).toEqual(["elevated", "critical", "elevated", null]);
+  });
+
+  it("#1685: macOS kernel 2 still slows the fleet's admission to one start at a time, 5 seconds apart", async () => {
+    const { fm, attach } = make(kernel(2));
+    darwin(fm); attach(); fm.memoryPressure.start();
+    const work = vi.fn(async () => 1);
+    const a = fm.spawnGate.run({ instanceName: "a", workingDirectory: "/a", reason: "startup" }, work);
+    const b = fm.spawnGate.run({ instanceName: "b", workingDirectory: "/b", reason: "startup" }, work); void b.catch(() => {});
+    await vi.advanceTimersByTimeAsync(0); expect(work).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(4_999); expect(work).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1); expect(work).toHaveBeenCalledTimes(2); await Promise.all([a, b]);
   });
 
   it("the reported Mac's kernel normal does not warn despite nearly full swap", () => {
@@ -127,7 +302,7 @@ describe("fleet host memory wiring", () => {
     expect(sendText.mock.calls[0][1]).toContain("100 MiB");
   });
 
-  it("cooldown cannot be bypassed by changing measurements, and critical escalation is immediate", async () => {
+  it("changing measurements never re-notify (#1685: no timed repeat), and critical escalation is immediate", async () => {
     const { fm, attach, sendText, logger, set } = make(memory(4_000, 0));
     attach(); fm.memoryPressure.start();
     expect(sendText).toHaveBeenCalledTimes(1);
@@ -141,7 +316,8 @@ describe("fleet host memory wiring", () => {
     expect(logger.warn).toHaveBeenCalledTimes(2);
     expect(logger.debug.mock.calls.at(-1)![0].hostMemory.trend).not.toBeNull();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(sendText).toHaveBeenCalledTimes(3);
+    // The log keeps its 10-minute reminder; chat does not.
+    expect(sendText).toHaveBeenCalledTimes(2);
     expect(logger.warn).toHaveBeenCalledTimes(3);
   });
 
@@ -151,11 +327,11 @@ describe("fleet host memory wiring", () => {
     await vi.advanceTimersByTimeAsync(30_000);
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(sendText).not.toHaveBeenCalled();
-    expect(internal.memoryNoticeAt).toBeNull();
+    expect([internal.memoryNoticeAt, internal.memorySpell.level]).toEqual([{}, null]);
     attach();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(sendText).toHaveBeenCalledOnce();
-    expect(internal.memoryNoticeAt).not.toBeNull();
+    expect(internal.memorySpell).toEqual({ level: "critical", posted: true });
   });
 
   it("a failed dispatch with an adapter leaves the notice retryable", async () => {
@@ -163,11 +339,11 @@ describe("fleet host memory wiring", () => {
     attach();
     const dispatch = vi.spyOn(fm, "notifyFleetError").mockReturnValue(false);
     fm.memoryPressure.start();
-    expect(internal.memoryNoticeAt).toBeNull();
+    expect([internal.memoryNoticeAt, internal.memorySpell.level]).toEqual([{}, null]);
     dispatch.mockReturnValue(true);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(dispatch).toHaveBeenCalledTimes(2);
-    expect(internal.memoryNoticeAt).not.toBeNull();
+    expect(internal.memorySpell).toEqual({ level: "critical", posted: true });
   });
 
   it("starts monitoring before any CLI startup even if startup is subsequently held", async () => {
