@@ -188,6 +188,8 @@ describe("the sidebar's Favorites", () => {
   it("Edit: ↑ ↓ reorder the favorites (the ends disabled) and send the order", async () => {
     const pg = await sidebar([I("alpha"), I("beta"), I("gamma")], { favorites: ["alpha", "beta", "gamma"] });
     expect(pg.root.querySelector("button.inst-move")).toBeNull();
+    // Its own header class: the sidebar's brand row (.side-head) keeps its layout.
+    expect([!!pg.root.querySelector("#instanceList .inst-head > button.fav-edit"), pg.root.querySelectorAll("#instanceList .side-head").length]).toEqual([true, 0]);
     const edit = pg.root.querySelector("button.fav-edit") as any;
     fire(edit, "click"); await settle();
     const move = (label: string) => byLabel(pg, "button.inst-move", label);

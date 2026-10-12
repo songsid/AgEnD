@@ -383,7 +383,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // The list scrolls; the filter under it stays in view (#999), so it sits outside the scrolling section.
   return html`<div class=${`view-roster inst-nav${editing && canStar ? " fav-editing" : ""}`}>
     <div class="side-section" id="instanceList" ref=${list}>
-    <div class="side-head"><h2 class="side-label">${tn("instancesLabel")}</h2>
+    <div class="inst-head"><h2 class="side-label">${tn("instancesLabel")}</h2>
       ${canStar && items.length ? html`<button type="button" class="chip-btn fav-edit" aria-pressed=${editing ? "true" : "false"} onClick=${() => setEditing(!editing)}>
         ${editing ? tn("favDone") : html`<${Icon} name="star" size=${12} />${tn("favEdit")}`}</button>` : null}</div>
     ${!loaded ? html`<${Skeleton} lines=${4} />` : !items.length ? html`<p class="side-empty">${t("app.noInstances")}</p>` : null}

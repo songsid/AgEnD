@@ -590,8 +590,8 @@ html.lb-open .scroller { overflow: hidden; }
 .caret.flipped { transform: rotate(180deg); }   /* the card's toggle: up when closed (it opens upwards) */
 .v-inst { align-items: center; }
 /* #1664: favorites — the star after a row (on hover or focus on a desktop, always when starred; on a phone in Edit) */
-.side-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
-.side-head .side-label { flex: 1; min-width: 0; }
+.inst-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.inst-head .side-label { flex: 1; min-width: 0; }
 .fav-edit { margin-right: var(--s-2); display: inline-flex; align-items: center; gap: var(--s-1); }
 .v-li { display: flex; align-items: center; gap: 2px; }
 .v-li > .inst { flex: 1; min-width: 0; }
