@@ -1,6 +1,6 @@
 ---
 name: credential-profiles
-description: Run agents on more than one subscription of the same backend. Use when someone asks for a worker on a different account, wants an agent moved to another subscription, or asks which subscription an agent is using. Currently kiro-cli and codex.
+description: Run agents on more than one subscription of the same backend. Use when someone asks for a worker on a different account, wants an agent moved to another subscription, or asks which subscription an agent is using. Currently kiro-cli, codex and claude-code.
 roles: [general]
 ---
 
@@ -10,15 +10,17 @@ One AgEnD fleet normally shares one login per backend. A **credential profile**
 is a named, separate login for the same backend, so two agents can run on two
 subscriptions at once.
 
-`kiro-cli` and `codex` have profiles today. For any other backend, say so rather
-than setting an option that will be ignored.
+`kiro-cli`, `codex` and `claude-code` have profiles today. For any other backend,
+say so rather than setting an option that will be ignored.
 
 **The two behave differently when you switch, and it is not a setting.** Kiro
 keeps its conversations inside the same database as its login, so a different
 subscription is a different set of them: switching is a new conversation. Codex
 keeps its login in one file beside conversation stores that carry no account, so
-switching leaves the history where it is and both subscriptions see it. Say
-which one you are talking about.
+switching leaves the history where it is and both subscriptions see it. Claude
+Code behaves like Kiro: the profile is its whole config directory, conversations
+included, so switching is a new conversation. Say which one you are talking
+about.
 
 ## Is a profile already set up?
 
@@ -34,14 +36,32 @@ the command, do not try to work around the refusal.
 Ask the operator to run this on the host once per subscription:
 
 ```
-XDG_DATA_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/kiro-cli/<profile>" kiro-cli login
+XDG_DATA_HOME="${AGEND_HOME:-$HOME/.agend}/credential-profiles/kiro-cli/<profile>" kiro-cli login
 ```
 
 For codex the variable and the path are different:
 
 ```
-CODEX_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/codex/<profile>" codex login
+CODEX_HOME="${AGEND_HOME:-$HOME/.agend}/credential-profiles/codex/<profile>" codex login
 ```
+
+For claude-code:
+
+```
+CLAUDE_CONFIG_DIR="${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>" claude auth login
+```
+
+A Claude Code profile keeps its own login, trust and conversations, and a
+`settings.json` that starts as a copy of the user's; the user's `CLAUDE.md`,
+agents, commands, skills, output styles and plugins are shared with it.
+
+**When a switch was refused, relay the command from the refusal, character for
+character** — never one you assembled from the templates above. It carries the
+exact absolute path AgEnD launches with. For claude-code this matters more than
+anywhere: on macOS the login is stored under a Keychain item named after that
+path string, so a login under a differently spelled path (a relative
+`AGEND_HOME`, a trailing slash, a `~` that was never expanded) lands in another
+item, and the agent still finds no login.
 
 ## Create a worker on another subscription
 
@@ -71,7 +91,7 @@ restarted for you** and the reply says `restarted: true`. A paused or stopped on
 is not started: the reply says `restarted: false`, and the switch applies at its
 next start.
 
-**For kiro**, a switch is always a **new conversation**, and the reply says so
+**For kiro and claude-code**, a switch is always a **new conversation**, and the reply says so
 (`conversation_carried_over: false`). kiro keeps its conversations in the same
 database as its login, so a different subscription has a different set of them
 and there is nothing to resume — AgEnD does not even try. What it does instead
@@ -132,6 +152,8 @@ and log it in, so report it as such rather than as a missing subscription.
 - Quotas only add up if the profiles are genuinely different billing accounts.
   Two profiles logged into the same account do not double anything, and it is
   worth saying so before someone sets this up expecting more headroom.
+- Claude Code profiles do not have usage rows of their own yet: the plain
+  `Claude` row reads the default login. Do not report it as a profile's quota.
 - Switching a profile does not carry the conversation across; the agent gets a
   summary of the work, not the transcript. Say anything that must survive
   verbatim in the channel before switching.
@@ -140,8 +162,8 @@ and log it in, so report it as such rather than as a missing subscription.
 
 - Do not invent a profile that has never been logged in and report success —
   the switch is refused, and the refusal tells you what to relay.
-- Do not set `credential_profile` for a backend other than `kiro-cli` or
-  `codex`; it is ignored, and the config validator warns about it.
+- Do not set `credential_profile` for a backend other than `kiro-cli`, `codex`
+  or `claude-code`; it is ignored, and the config validator warns about it.
 - Do not tell a codex user their conversation will definitely continue across a
   switch. Say the history is shared; that part is verified.
 - Do not use a profile name with slashes or spaces — it becomes a directory

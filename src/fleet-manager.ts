@@ -223,9 +223,9 @@ import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
-import { CacheService, WINDOWS, type CacheReport, type CacheWindow } from "./cache-service.js";
+import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
-import { claudeProjectKey } from "./backend/claude-code.js";
+import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
   mayUseTool,
@@ -301,7 +301,7 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
-import { credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { credentialHomeSpec, credentialProfileHome, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
   classifyInstanceChange,
@@ -5749,8 +5749,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // before instances spawn, so a CLI that comes up on its sign-in screen gets
     // an instant 🔑 verdict instead of decaying into crash/MCP-died noise.
     this.lifecycle.primeAuthVerification(
-      Object.values(fleet.instances).map(config =>
-        config.backend ?? fleet.defaults?.backend ?? "claude-code"),
+      Object.values(fleet.instances).map(config => {
+        const backend = config.backend ?? fleet.defaults?.backend ?? "claude-code";
+        // #1699 follow-up: each instance's own login — a profile is probed with its own environment.
+        return { backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, fleet.defaults, backend) : null };
+      }),
     );
 
     // Start tmux control mode client for idle detection
@@ -11652,6 +11655,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private cacheService: CacheService | null = null;
+
+  /**
+   * #1699: the credential profile an instance's CLI signs in with on `backend` — fleet.yaml's (with its defaults), or a
+   * ClassicBot room's launched or would-be login when the room runs that backend. Null: the backend's default login
+   * (also for a backend that has no profiles, where the option is ignored).
+   */
+  credentialProfileOf(name: string, backend: string): string | null {
+    if (!credentialHomeSpec(backend)) return null;
+    const cfg = this.fleetConfig?.instances?.[name];
+    if (cfg) return instanceCredentialProfile(cfg, this.fleetConfig?.defaults, backend);
+    const launched = this.daemons.get(name)?.getConfigSnapshot?.();
+    if (launched) return (launched.backend ?? "claude-code") === backend ? profileName(profileOf(launched.backend_options, backend)) : null;
+    if (!this.classicChannels || this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend) !== backend) return null;
+    return profileName(this.classicChannels.getCredentialProfileByInstance(name, this.fleetConfig?.defaults));
+  }
+
+  /**
+   * #1699: the claude config dir an instance's CLI uses — its credential profile's, else exactly as before
+   * (CLAUDE_CONFIG_DIR or ~/.claude).
+   */
+  claudeConfigDirOf(name: string): string {
+    const profile = this.credentialProfileOf(name, "claude-code");
+    return claudeConfigDirFor(profile ? credentialProfileHome(getAgendHome(), "claude-code", profile) : null);
+  }
+  /** The instances the cache analysis reads: fleet.yaml's, then the ClassicBot rooms (their workspace under the AgEnD home, their own backend). */
+  private cacheInstances(): CacheInstance[] {
+    const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
+      name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
+      claudeConfigDir: this.claudeConfigDirOf(name),
+    }));
+    const taken = new Set(fleet.map(i => i.name));
+    const classic = (this.classicChannels?.getAll() ?? []).filter(ch => !taken.has(ch.instanceName)).map(ch => ({
+      name: ch.instanceName,
+      backend: this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
+      workingDirectory: join(getAgendHome(), "workspaces", ch.instanceName),
+      ledgerPath: join(this.getInstanceDir(ch.instanceName), "cache-ledger.json"),
+      claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
+    }));
+    return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
+  }
+
   /**
    * #1468: the prompt-cache expiry analysis for the web, per instance, over `window`. Read from each instance's
    * ledger as it is now; the first request starts the bounded, persisted catch-up over the transcripts
@@ -11660,20 +11704,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   cacheReport(window: string): Promise<CacheReport> {
     const w: CacheWindow = Object.prototype.hasOwnProperty.call(WINDOWS, window) ? window as CacheWindow : "7d";
     this.cacheService ??= new CacheService({
-      // fleet.yaml's instances, then the ClassicBot rooms (their workspace under the AgEnD home, their own backend).
-      instances: () => {
-        const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
-          name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
-        }));
-        const taken = new Set(fleet.map(i => i.name));
-        const classic = (this.classicChannels?.getAll() ?? []).filter(ch => !taken.has(ch.instanceName)).map(ch => ({
-          name: ch.instanceName,
-          backend: this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
-          workingDirectory: join(getAgendHome(), "workspaces", ch.instanceName),
-          ledgerPath: join(this.getInstanceDir(ch.instanceName), "cache-ledger.json"),
-        }));
-        return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
-      },
+      instances: () => this.cacheInstances(),
       claudeProjectsDir: () => join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude"), "projects"),
       claudeKey: claudeProjectKey,
       codexSessionsDir: () => join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),

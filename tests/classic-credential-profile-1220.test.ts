@@ -95,12 +95,12 @@ describe("classicBot.yaml keeps a channel's backend_options", () => {
 describe("classicBot.yaml warns like the fleet.yaml validator", () => {
   const warnings = (log: ReturnType<typeof logger>) => JSON.stringify(log.warn.mock.calls);
 
-  it("a profile on a backend with no credential home (only codex and kiro-cli have one) will be ignored", () => {
-    writeClassic({ backend: "claude-code", backend_options: { "claude-code": { credential_profile: "personal" } } });
+  it("a profile on a backend with no credential home (only codex, kiro-cli and claude-code have one) will be ignored", () => {
+    writeClassic({ backend: "opencode", backend_options: { opencode: { credential_profile: "personal" } } });
     const log = logger();
     manager(log);
-    expect(warnings(log)).toContain("claude-code has no credential home yet");
-    for (const supported of ["codex", "kiro-cli"]) {
+    expect(warnings(log)).toContain("opencode has no credential home yet");
+    for (const supported of ["codex", "kiro-cli", "claude-code"]) {
       writeClassic({ backend: supported, backend_options: { [supported]: { credential_profile: "personal" } } });
       const quiet = logger();
       manager(quiet);

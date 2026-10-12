@@ -86,6 +86,8 @@ export function normalizeResumeBackend(backend: string | undefined | null): Resu
 export interface ResumeRoots {
   instanceDir: string;
   workingDirectory: string;
+  /** #1699: the claude config dir this instance's CLI uses (its credential profile's); absent = as before. */
+  claudeConfigDir?: string;
 }
 
 /**
@@ -100,7 +102,7 @@ export function readResumeFingerprint(
   if (!backend || !roots.workingDirectory) return null;
   try {
     if (backend === "claude") {
-      const configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+      const configDir = roots.claudeConfigDir || process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
       return claudeFingerprint({ configDir, cwd: roots.workingDirectory });
     }
     if (backend === "codex") {

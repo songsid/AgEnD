@@ -22,7 +22,11 @@ import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
-export interface CacheInstance { name: string; backend: string; workingDirectory: string; ledgerPath: string }
+export interface CacheInstance {
+  name: string; backend: string; workingDirectory: string; ledgerPath: string;
+  /** #1699: this instance's claude config dir (its credential profile's); absent = claudeProjectsDir()'s parent. */
+  claudeConfigDir?: string;
+}
 
 export interface CacheServiceOptions {
   instances(): CacheInstance[];
@@ -261,7 +265,8 @@ export class CacheService {
   }
 
   private async claudeFiles(inst: CacheInstance, cutoff: number): Promise<Array<{ path: string; ino: number; size: number }>> {
-    const dir = join(this.o.claudeProjectsDir(), this.o.claudeKey(inst.workingDirectory));
+    const projects = inst.claudeConfigDir ? join(inst.claudeConfigDir, "projects") : this.o.claudeProjectsDir();
+    const dir = join(projects, this.o.claudeKey(inst.workingDirectory));
     let names: string[];
     try { names = await readdir(dir); } catch { return []; }
     const out: Array<{ path: string; ino: number; size: number }> = [];
