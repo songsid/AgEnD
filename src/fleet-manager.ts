@@ -109,7 +109,7 @@ import {
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
-import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
+import { DeliveryOutbox, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -1548,8 +1548,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (event.deliveryId && (event.state === "failed" || event.state === "uncertain")) {
         const row = outbox.get(event.deliveryId);
         if (row && row.kind !== "delivery_outcome_notice" && row.kind !== "post_restart_outcome_notice") {
-          const notice = t(`delivery.fleet_${row.state}`, row.targetInstance, row.operationId, row.deliveryId);
-          this.logger.error({ deliveryId: row.deliveryId, operationId: row.operationId, target: row.targetInstance, state: row.state }, notice);
+          // #1647: the cause goes in the log (the notice points there), and a silent schedule's paste says what it is.
+          const silent = isSilentScheduleDelivery(row);
+          const notice = silent
+            ? t(`delivery.fleet_${row.state}_silent_schedule`, row.targetInstance, row.operationId, row.deliveryId, row.lastError ?? "unknown")
+            : t(`delivery.fleet_${row.state}`, row.targetInstance, row.operationId, row.deliveryId);
+          this.logger.error({ deliveryId: row.deliveryId, operationId: row.operationId, target: row.targetInstance, state: row.state,
+            cause: row.lastError, ...(silent ? { silentSchedule: true } : {}) }, notice);
           this.notifyFleetError(notice);
         }
       }

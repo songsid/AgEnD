@@ -1,7 +1,7 @@
 /**
- * #1379: read a CLI transcript forward from a delivery's checkpoint, looking for that delivery's own marker, in looks
- * that are bounded in bytes and in time — because the submission proof that uses it polls every 250 ms while holding
- * the pane lock and the delivery lane:
+ * #1379: read a CLI transcript forward from a delivery's checkpoint, looking for that delivery's own marker (or a raw
+ * paste's exact text, #1647), in looks that are bounded in bytes and in time — because the submission proof that uses it
+ * polls every 250 ms while holding the pane lock and the delivery lane:
  * - one look reads at most TRANSCRIPT_PROOF_READ.chunkBytes past where the previous completed look stopped, and only
  *   complete lines are decoded, each held to maxLineBytes first (a longer one is skipped whole and proves nothing);
  * - one look settles within lookBudgetMs. A read that has not finished by then is abandoned: its result, when it does
@@ -10,7 +10,7 @@
  * Positive only: the verdict is this delivery's exact marker in a consumed or queued shape, or nothing.
  */
 import { open, stat } from "node:fs/promises";
-import { transcriptDeltaDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
+import { transcriptDeltaNeedle, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 
 export const TRANSCRIPT_PROOF_READ = {
@@ -30,7 +30,7 @@ export class TranscriptDeltaReader {
   private skippingLine = false;
   private inFlight = false;
 
-  constructor(private readonly path: string, offset: number, private readonly backend: string, private readonly deliveryId: string) {
+  constructor(private readonly path: string, offset: number, private readonly backend: string, private readonly needle: TranscriptNeedle) {
     this.position = offset;
   }
 
@@ -111,7 +111,7 @@ export class TranscriptDeltaReader {
         if (nl - start <= TRANSCRIPT_PROOF_READ.maxLineBytes) kept.push(buffer.subarray(start, nl + 1));
         start = nl + 1;
       }
-      if (kept.length) found = transcriptDeltaDeliveryMarker(Buffer.concat(kept).toString("utf8"), this.backend, this.deliveryId) ?? null;
+      if (kept.length) found = transcriptDeltaNeedle(Buffer.concat(kept).toString("utf8"), this.backend, this.needle) ?? null;
     }
     if (this.carry.length > TRANSCRIPT_PROOF_READ.maxLineBytes) {
       this.carry = Buffer.alloc(0);

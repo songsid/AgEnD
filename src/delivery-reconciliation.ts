@@ -9,6 +9,7 @@ import {
 } from "./delivery-outbox.js";
 import { transcriptAbsenceCanProveNotSubmitted } from "./delivery-queue-evidence.js";
 import { TmuxManager } from "./tmux-manager.js";
+import { normalizeTurnText } from "./transcript-turns.js";
 
 export const RECONCILIATION_PANE_CAPTURE_TIMEOUT_MS = 2_000;
 export const RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS = 15_000;
@@ -258,6 +259,47 @@ export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string,
   return absorbed ? "absorbed" : queued ? "queued" : null;
 }
 
+/** Claude Code's closing tag after a persisted paste: `</pasted_content id="<hex>">` (seen on 2.1.29x transcripts). */
+const CLAUDE_PASTE_WRAPPER_END = /\r?\n?<\/pasted_content id="[0-9a-f]+">\s*$/;
+
+/** A persisted user body without the CLI's own paste wrapper (claude-code wraps a long paste in both tags). */
+function withoutPasteWrapper(text: string, backend: string): string {
+  if (backend !== "claude-code") return text;
+  const open = CLAUDE_PASTE_WRAPPER.exec(text);
+  return open ? text.slice(open[0].length).replace(CLAUDE_PASTE_WRAPPER_END, "") : text;
+}
+
+/**
+ * What a transcript proof looks for: an enveloped delivery's id marker (a delivery id string), or — for a raw paste,
+ * which carries no envelope (a silent schedule, a system command) — its exact text (#1647).
+ */
+export type TranscriptNeedle = string | { readonly rawText: string };
+
+/**
+ * #1647: a raw paste's exact text as a user entry of the CLI's own — a body that, whitespace aside and without Claude
+ * Code's paste wrapper, IS the pasted text — is the record of the turn that took the paste. The delta starts at the
+ * checkpoint taken before the write, so an earlier copy of the same words (a schedule repeats them every run) is never
+ * in it. A quote of the text inside a longer message, a tool result or a queued entry is not.
+ */
+export function transcriptDeltaHasRawText(rawDelta: string, backend: string, rawText: string): boolean {
+  const wanted = normalizeTurnText(rawText);
+  if (!wanted) return false;
+  for (const line of rawDelta.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const body = userTextsFromEntry(JSON.parse(line) as unknown, backend)[0];
+      if (body !== undefined && normalizeTurnText(withoutPasteWrapper(body, backend)) === wanted) return true;
+    } catch { /* incomplete/malformed JSONL is not proof */ }
+  }
+  return false;
+}
+
+/** One needle against one delta: the marker's kind, `user` for a raw paste's own entry, or null. */
+export function transcriptDeltaNeedle(rawDelta: string, backend: string, needle: TranscriptNeedle): TranscriptMarkerKind | null {
+  if (typeof needle === "string") return transcriptDeltaDeliveryMarker(rawDelta, backend, needle);
+  return transcriptDeltaHasRawText(rawDelta, backend, needle.rawText) ? "user" : null;
+}
+
 /**
  * Whether the CLI consumed the delivery: its unique marker at the start of a persisted user-message body, or of the
  * message Claude Code absorbed into a running turn (#1201).
@@ -275,7 +317,7 @@ export async function scanTranscriptForDeliveryMarker(
   path: string,
   offset: number,
   backend: string,
-  deliveryId: string,
+  needle: TranscriptNeedle,
 ): Promise<TranscriptMarkerKind | "no-match" | "unavailable"> {
   if (!["claude-code", "codex"].includes(backend)) return "unavailable";
   let size: number;
@@ -289,7 +331,7 @@ export async function scanTranscriptForDeliveryMarker(
   try {
     const buffer = await readFully(fh, offset, size - offset);
     if (!buffer) return "unavailable";
-    return transcriptDeltaDeliveryMarker(buffer.toString("utf8"), backend, deliveryId) ?? "no-match";
+    return transcriptDeltaNeedle(buffer.toString("utf8"), backend, needle) ?? "no-match";
   } catch {
     return "unavailable";
   } finally {

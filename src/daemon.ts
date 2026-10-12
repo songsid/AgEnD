@@ -54,7 +54,7 @@ import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
-import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind } from "./delivery-reconciliation.js";
+import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
 import {
@@ -116,8 +116,9 @@ export const TRANSCRIPT_OPEN_TURN_QUIET_MS = 15 * 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. If you already replied to this message, do nothing. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
-/** The outbox evidence for a delivery the CLI's transcript shows taken (#758; #1201 absorbed). */
-function transcriptMarkerEvidence(kind: TranscriptMarkerKind): string {
+/** The outbox evidence for a delivery the CLI's transcript shows taken (#758; #1201 absorbed; #1647 a raw paste's text). */
+function transcriptMarkerEvidence(kind: TranscriptMarkerKind, rawPaste = false): string {
+  if (rawPaste) return "transcript-turn-user-entry-raw-paste-text";
   return kind === "user" ? "transcript-marker" : kind === "absorbed" ? "transcript-marker-absorbed" : "transcript-marker-queued";
 }
 
@@ -546,6 +547,9 @@ const POST_ENTER_PROOF_WINDOW_MS = 3_000;
 /** A final bounded observation before an ambiguous Codex submit can be classified. */
 const CODEX_LATE_PROOF_MS = 5_000;
 const POST_ENTER_PROOF_POLL_MS = 250;
+/** #1647: a raw paste a pane with no transcript showed taken — its turn started, or its text left the input row. */
+const RAW_PASTE_PANE_TURN_START = "raw-paste-pane-turn-start";
+const RAW_PASTE_LEFT_INPUT = "raw-paste-left-input-after-output";
 /**
  * A readerless CLI's delivery is proven by its own transcript, which lags the pane by a flush. Only a delta that was
  * read and carried no marker for this long is held against the delivery — a late flush must not raise a false ⚠️.
@@ -1426,6 +1430,8 @@ export class Daemon extends EventEmitter {
   private preRotationContextPct = 0;
   private hangDetector: HangDetector | null = null;
   private instanceState: InstanceState = "idle";
+  /** performance.now() of the last edge into `working` — a raw paste's turn start on a pane with no transcript (#1647). */
+  private workingEdgeAt = Number.NEGATIVE_INFINITY;
   private instanceStateMachine: PaneStateMachine | null = null;
   private pendingWork = new PendingWorkTracker();
   /** Fallback safety sweep used only when no shared tmux control client exists. */
@@ -2115,8 +2121,14 @@ export class Daemon extends EventEmitter {
       this.finishDurableDelivery(delivery, "delivered", OUTPUT_EDGE_ONLY_EVIDENCE);
       return;
     }
+    // #1647: a raw paste on a pane with no transcript (kiro), taken by the CLI as shown by its own pane.
+    if (verdict.proof === RAW_PASTE_PANE_TURN_START || verdict.proof === RAW_PASTE_LEFT_INPUT) {
+      this.finishDurableDelivery(delivery, "delivered", verdict.proof, verdict);
+      return;
+    }
     this.finishDurableDelivery(delivery, "delivered", verdict.transcriptProof
-      ? `positive submission proof; ${transcriptMarkerEvidence(verdict.transcriptProof)}` : "positive submission proof", verdict);
+      ? `positive submission proof; ${transcriptMarkerEvidence(verdict.transcriptProof, verdict.submissionMode === "raw_paste")}`
+      : "positive submission proof", verdict);
   }
 
   /**
@@ -2136,22 +2148,28 @@ export class Daemon extends EventEmitter {
   private async proveDeliveryFromTranscript(
     delivery: { deliveryId: string; attemptNo: number },
     checkpoint: { backend: string; path: string; offset: number },
+    rawPaste?: { text: string; unproven: string },
   ): Promise<void> {
     const spawn = this.spawnGeneration;
     const fence = this.launchFenceEpoch;
     let last: "no-match" | "unavailable" = "unavailable";
     let outcome: "delivered" | "uncertain" = "delivered";
     let evidence = OUTPUT_EDGE_ONLY_EVIDENCE;
+    // #1647: a raw paste has no marker; its text is the needle, and its pane proof already failed — so without the turn
+    // in the transcript it stays uncertain (with the pane's reason), never the output-edge outcome.
+    const needle: TranscriptNeedle = rawPaste ? { rawText: rawPaste.text } : delivery.deliveryId;
+    let found = false;
     try {
       for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
         if (this.deliveryWritesStopping) return; // reconciliation owns the row now
-        const found = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, delivery.deliveryId);
-        if (found === "user" || found === "absorbed" || found === "queued") {
+        const look = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, needle);
+        if (look === "user" || look === "absorbed" || look === "queued") {
+          found = true;
           outcome = "delivered";
-          evidence = transcriptMarkerEvidence(found);
+          evidence = transcriptMarkerEvidence(look, !!rawPaste);
           break;
         }
-        last = found;
+        last = look;
         if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         await new Promise(r => setTimeout(r, TRANSCRIPT_PROOF_POLL_MS));
       }
@@ -2165,6 +2183,11 @@ export class Daemon extends EventEmitter {
       }
     } catch (err) {
       this.logger.debug({ err }, "Transcript proof of a delivery failed — keeping the output-edge outcome");
+    }
+    if (rawPaste && !found) {
+      outcome = "uncertain";
+      evidence = `${rawPaste.unproven}; no-transcript-turn (${last})`;
+      this.logger.warn({ deliveryId: delivery.deliveryId, cause: evidence }, "Raw paste outcome uncertain — not re-pasting");
     }
     // The settlement itself can throw (e.g. the outbox store is unhealthy), and this runs on a detached `void`
     // promise: an uncaught throw is an unhandled rejection, which the fleet restart path turns into a global fault.
@@ -3963,7 +3986,18 @@ export class Daemon extends EventEmitter {
         });
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
         else if (durableAttempt && verdict.paneWriteStarted) {
-          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`);
+          const unproven = `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`;
+          const checkpoint = verdict.transcriptCheckpoint;
+          if (checkpoint && ["claude-code", "codex"].includes(checkpoint.backend)) {
+            // #1647: the pane could not show it, but the CLI's transcript records the turn the paste started — later
+            // than the pane window sometimes. Wait for it there (bounded), off the paste lock.
+            this.logger.info({ deliveryId: durableAttempt.deliveryId, unproven },
+              "Raw paste not proven on the pane — asking the CLI's transcript for the turn it started");
+            void this.proveDeliveryFromTranscript(durableAttempt, checkpoint, { text: rawText, unproven });
+          } else {
+            this.logger.warn({ deliveryId: durableAttempt.deliveryId, cause: unproven }, "Raw paste outcome uncertain — not re-pasting");
+            this.finishDurableDelivery(durableAttempt, "uncertain", unproven);
+          }
         } else if (durableAttempt && verdict.durableBeginCommitted) {
           this.abortDurableDelivery(durableAttempt, `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "no-pane-write"}`);
         } else if (durableAttempt) {
@@ -4789,6 +4823,7 @@ export class Daemon extends EventEmitter {
       if (unblockedTurn && unblockedTurn.phase === "awaiting") this.maybeProxyReplyOnTurnEnd(pane);
     }
     this.instanceState = snapshot.state;
+    if (previous !== "working" && snapshot.state === "working") this.workingEdgeAt = performance.now();
     this.acceptedInstanceSnapshot = { ...snapshot };
 
     // OpenCode creates its session lazily on the first submitted message.
@@ -7904,6 +7939,27 @@ export class Daemon extends EventEmitter {
     return sawOutput && residue === "absent";
   }
 
+  /**
+   * #1647: whether a raw paste on a pane with no transcript (kiro) was taken, by what its own pane shows within
+   * POST_ENTER_PROOF_WINDOW_MS of the Enter: the execution state's edge into `working` after it (the turn the paste
+   * started — the target was idle when it was pasted into, and this paste holds the pane lock), or the pasted text gone
+   * from the input row with output after the Enter. Null: neither — the caller settles uncertain, never a second Enter.
+   */
+  private async rawPasteTakenOnPane(
+    windowId: string, enterAt: number, enterMono: number, formatted: string,
+  ): Promise<typeof RAW_PASTE_PANE_TURN_START | typeof RAW_PASTE_LEFT_INPUT | null> {
+    const generation = this.spawnGeneration, tmux = this.tmux;
+    const deadline = performance.now() + POST_ENTER_PROOF_WINDOW_MS;
+    for (;;) {
+      if (this.spawnGeneration !== generation || this.tmux !== tmux) return null;
+      if (this.workingEdgeAt >= enterMono) return RAW_PASTE_PANE_TURN_START;
+      if (this.controlClient?.hasOutputSince?.(windowId, enterAt) && await this.pasteResidue(formatted) === "absent"
+        && this.spawnGeneration === generation && this.tmux === tmux) return RAW_PASTE_LEFT_INPUT;
+      if (performance.now() >= deadline) return null;
+      await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+    }
+  }
+
   /** Once Kiro returns to its prompt, its unique envelope id in history proves submission. */
   private async kiroSubmissionEvidence(
     windowId: string,
@@ -8211,9 +8267,10 @@ export class Daemon extends EventEmitter {
             offset: attemptEvidence.transcriptOffset,
           };
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
-          // reply, or still be painting the paste) — this delivery's exact marker only.
+          // reply, or still be painting the paste) — this delivery's exact marker only, or a raw paste's exact text (#1647).
           if (["claude-code", "codex"].includes(attemptEvidence.backend)) {
-            signature.transcript = this.transcriptProofFor(verdict.transcriptCheckpoint, durableAttempt.deliveryId, spawnAtWrite,
+            signature.transcript = this.transcriptProofFor(verdict.transcriptCheckpoint,
+              rawPaste ? { rawText: formatted } : durableAttempt.deliveryId, spawnAtWrite,
               stillCurrent, kind => { verdict.transcriptProof = kind; });
           }
         }
@@ -8301,6 +8358,7 @@ export class Daemon extends EventEmitter {
         steerEnterDeadline = deadline;
       }
       let enterAt = Date.now();
+      const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
       if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt))) {
         if (steerComposerProof && !steerCurrent()) {
@@ -8544,12 +8602,19 @@ export class Daemon extends EventEmitter {
             return { kind: "kiro-pending", windowId, spawnGeneration: this.spawnGeneration, signature };
           }
         }
-        if (!submitted) {
-          if (rawPaste) {
+        if (!submitted && rawPaste) {
+          // #1647: kiro paints output at once but its composer late, so one residue look right after Enter misreads a
+          // paste it took. Its own pane says when a turn starts; never a second Enter (a raw command must not run twice).
+          const taken = await this.rawPasteTakenOnPane(windowId, enterAt, enterMono, formatted);
+          if (!taken) {
             verdict.phase = "raw-paste-submit-proof";
             verdict.proof = "no-positive-acceptance-proof";
             return false;
           }
+          verdict.proof = taken;
+          submitted = true;
+        }
+        if (!submitted) {
           // Legacy system pastes have no unique envelope id. Preserve their
           // existing bounded retry until they can be tied to a specific turn.
           this.logger.warn("Message not submitted after Enter — waiting for the prompt, then re-sending Enter once");
@@ -8846,14 +8911,14 @@ export class Daemon extends EventEmitter {
    */
   private transcriptProofFor(
     checkpoint: { backend: string; path: string; offset: number },
-    deliveryId: string,
+    needle: TranscriptNeedle,
     spawnAtWrite: number,
     stillCurrent: (() => boolean) | undefined,
     onProof: (kind: TranscriptMarkerKind) => void,
   ): NonNullable<SubmissionSignature["transcript"]> {
     const launchAtWrite = this.launchFenceEpoch;
     return {
-      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, deliveryId),
+      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle),
       current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
         && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true),
       onProof,
