@@ -1,9 +1,10 @@
 /**
  * #1682: the names the web chat shows for Discord mentions (`<@id>`, `<@&id>`, `<#id>`) — design: the comment on #1682.
  *
- * Asked by id, a few at a time (GET /ui/mentions?u=…&r=…&c=…: the ids a page found in what it rendered), answered from
- * memory only — never a fetch: the fleet's own bots, the people seen on inbound messages (a bounded LRU), and what the
- * Discord adapters already hold in their caches. A page never gets a directory: only the names of the ids it asked for.
+ * Asked by id, a few at a time (GET /ui/mentions?u=…&r=…&c=…: the ids a page found in what it rendered), answered
+ * without any Discord request: the fleet's own bots (their instance's label — fleet.yaml and the View profiles in
+ * profiles.db), the people seen on inbound messages (a bounded LRU), and what the Discord adapters already hold in
+ * their caches. A page never gets a directory: only the names of the ids it asked for.
  */
 export type MentionKind = "u" | "r" | "c";
 export interface MentionQuery { u: string[]; r: string[]; c: string[] }

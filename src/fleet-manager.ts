@@ -10098,9 +10098,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return null; }
   }
   /**
-   * #1682 GET /ui/mentions: names for the mention ids a page found in what it rendered — from memory only, in order: the
-   * fleet's bots (an instance's own bot is that instance's label), the people seen on inbound messages, and the Discord
-   * adapters' caches (members, users, roles, channels). Never a request.
+   * #1682 GET /ui/mentions: names for the mention ids a page found in what it rendered — never a Discord request; in order:
+   * the fleet's bots (an instance's own bot is that instance's label: fleet.yaml, and the View profiles read from
+   * profiles.db, as the status frame does), the people seen on inbound messages, and the Discord adapters' caches
+   * (members, users, roles, channels).
    */
   webMentionNames(query: MentionQuery): MentionNames {
     const bots: MentionSource = (q) => {

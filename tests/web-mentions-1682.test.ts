@@ -42,6 +42,17 @@ describe("the renderer draws mentions as pills", () => {
     const html = render("ping @telegram_user, mail han@example.com, see https://x.com/@someone and @abc");
     expect([pills(html), html.includes("<a "), (html.match(/class="mention/g) || []).length]).toEqual([[["tg", "@telegram_user"]], true, 1]);
   });
+  it("#1684 r1: an @ inside a link is never touched — every URL stays a link, as on main", () => {
+    const linked = ["see https://example.com/?q=@someone ok", "[x](https://example.com/?u=@someone)", "https://example.com/?a=1&b=@someone",
+      "https://example.com/#@someone", "https://example.com/?x=1,@someone"].map((t) => {
+      const html = render(t);
+      return [(html.match(/<a href="[^"]*@someone"/g) || []).length, html.includes("mention")];
+    });
+    expect(linked).toEqual(Array(5).fill([1, false]));
+  });
+  it("#1684 r1: a package or a path is not a handle — @scope/pkg, @anthropic-ai/sdk stay text", () => {
+    expect(pills(render("npm i @anthropic-ai/sdk and @scopex/pkg, then ask @telegram_user"))).toEqual([["tg", "@telegram_user"]]);
+  });
   it("nothing inside code is converted — a code span or a fence keeps the token as text", () => {
     const html = render("`<@" + USER + ">` and `@telegram_user`\n\n```\n<@" + USER + "> @telegram_user\n```");
     expect([pills(html), (html.match(/&lt;@368442276000694273&gt;/g) || []).length]).toEqual([[], 2]);
