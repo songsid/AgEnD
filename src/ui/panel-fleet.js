@@ -204,10 +204,8 @@ function Schedules({ lease }) {
         return html`<li key=${x.id} class=${`row-item sched${x.enabled ? "" : " is-off"}`} title=${tip}>
         <span class=${`pill ${x.enabled ? "open" : "off"}`}>${x.enabled ? t("fleet.on") : t("fleet.schedDisabled")}</span>
         <span class="grow sched-text"><span class="sched-title">${x.label || clip(x.message)}</span>
-          <span class="sched-sub muted"><span class="sched-when">${scheduleWhen(x)}</span>${next ? html` · <span class="sched-next">${next}</span>` : null}
-            · <a class="link" href=${chatPath(x.target)} title=${x.target}>${targetName(x.target)}</a></span></span>
-        ${writable ? html`<button type="button" class="btn btn-ghost btn-sm sched-edit" onClick=${() => setEditing({ ...x, default_timezone: d.default_timezone })}>${t("fleet.edit")}</button>
-        <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(x.id)}>${t("fleet.delete")}</button>` : null}</li>`;
+          <span class="sched-sub muted"><span class="sched-when">${scheduleWhen(x)}</span>${next ? html`${" · "}<span class="sched-next">${next}</span>` : null}${" · "}<a class="link" href=${chatPath(x.target)} title=${x.target}>${targetName(x.target)}</a></span></span>
+        ${writable ? html`<span class="sched-actions"><button type="button" class="btn btn-ghost btn-sm sched-edit" onClick=${() => setEditing({ ...x, default_timezone: d.default_timezone })}>${t("fleet.edit")}</button><button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(x.id)}>${t("fleet.delete")}</button></span>` : null}</li>`;
       })}</ul>`
         : html`<${Empty} icon="clock" title=${t("fleet.noSchedules")} hint=${t("fleet.noSchedulesHint")} />`}
       ${creating ? html`<${ScheduleForm} defaultTz=${d.default_timezone} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}
