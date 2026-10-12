@@ -127,6 +127,7 @@ When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.ht
 - **On the temporary public link (#1723)** previews work too, from a phone as well.
   - The link opens a second quick tunnel of its own for them, in the background. The link never waits for it: it is ready as soon as its own tunnel is.
   - Until the preview tunnel is up, a card says *Preview is starting…*, then runs as usual. If it cannot open, the link keeps working and the card says why.
+  - A preview tunnel that comes up unreachable (the edge has not learned its name in time) is opened once more, with a new address, while the card still says *starting* (#1732).
   - It closes with the link.
   - Its address is another `trycloudflare.com` name. `trycloudflare.com` is on the Public Suffix List, so the frame is a different site from the dashboard: more isolated than the local default (a second port on the same name).
   - Your device's choice (**Allow HTML previews**) applies, and it cannot be changed over the link.

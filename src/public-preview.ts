@@ -32,6 +32,13 @@ const QUICK_TUNNEL_HOST = /^[a-z0-9-]+\.trycloudflare\.com$/;
  */
 export const PUBLIC_PREVIEW_FRAME_SRC = "https://*.trycloudflare.com/frame";
 
+/**
+ * #1732: a preview tunnel that came up unreachable is started once more, with a fresh quick tunnel — only if the first
+ * attempt ended within this long of the preview's start, so that the second (one 60 s startup budget) still ends
+ * inside the page's 5-minute wait for it (preview-status.js).
+ */
+export const PREVIEW_RETRY_WITHIN_MS = 180_000;
+
 /** Where the public link's preview tunnel keeps its own lease (never the fleet's one `tunnel.lease`). */
 export const PUBLIC_PREVIEW_TUNNEL_DIR = "preview-tunnel";
 
@@ -159,6 +166,8 @@ export class PublicPreview {
     manager: Pick<ManagedTunnel, "start" | "stop">;
     provider(): TunnelProvider;
     createGateway?: (opts: Parameters<typeof createPublicPreviewGateway>[0]) => PublicPreviewGateway;
+    /** Monotonic clock (ms) for the retry's bound; performance.now by default. */
+    now?(): number;
     /** Told once when the preview settles (ready or failed), for the link's progress message. */
     onSettled?(status: PublicPreviewStatus): void;
     log?(event: string): void;
@@ -185,6 +194,8 @@ export class PublicPreview {
   }
 
   private async run(): Promise<void> {
+    const now = this.deps.now ?? (() => performance.now());
+    const startedAt = now();
     const gateway = (this.deps.createGateway ?? createPublicPreviewGateway)({
       exposureId: this.deps.exposureId, dashboardOrigin: () => this.deps.dashboardOrigin(),
       isCurrent: () => this.live() && this.current.state !== "failed",
@@ -192,10 +203,19 @@ export class PublicPreview {
     this.gateway = gateway;
     const origin = await gateway.listen().catch(() => { throw new PreviewStartFailure("gateway-failed"); });
     if (!this.live()) throw new PreviewStartFailure("closed");
-    const result = await this.deps.manager.start(this.deps.provider(), {
+    const attempt = () => this.deps.manager.start(this.deps.provider(), {
       sid: newTunnelSid(), origin, pagePath: "/ready", readinessMarker: gateway.readinessMarker, expiresAt: this.deps.expiresAt,
       signal: this.abort.signal, onCandidateHost: host => { if (this.live()) gateway.setHost(host); },
     });
+    let result = await attempt();
+    // #1732: unreachable is often the edge's jitter, and a fresh quick tunnel comes up: once, while this exposure is
+    // live, its child proven gone (no lease held), and early enough to end inside the page's wait. Still "starting".
+    if (!result.ok && failureOf(result.errorKind) === "unreachable" && !result.leaseHeld && this.live()
+      && this.current.state === "starting" && now() - startedAt <= PREVIEW_RETRY_WITHIN_MS) {
+      gateway.setHost(null);   // the first tunnel's host is never answered again
+      this.deps.log?.("preview unreachable; retrying once");
+      result = await attempt();
+    }
     if (!result.ok) throw new PreviewStartFailure(failureOf(result.errorKind));
     if (!this.live()) throw new PreviewStartFailure("closed");
     const published = new URL(result.handle.pageUrl);
