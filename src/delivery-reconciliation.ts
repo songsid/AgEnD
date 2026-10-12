@@ -262,6 +262,30 @@ export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string,
 /** Claude Code's closing tag after a persisted paste: `</pasted_content id="<hex>">` (seen on 2.1.29x transcripts). */
 const CLAUDE_PASTE_WRAPPER_END = /\r?\n?<\/pasted_content id="[0-9a-f]+">\s*$/;
 
+/**
+ * #1663 P1-1: the user message's ORIGINAL body when it is one piece of text and nothing else — Claude Code's string
+ * content, or a content list of exactly one text block; Codex's content of exactly one input_text. Anything else (a
+ * second block of any kind: more text, an image, a file) is not a plain text message, so it is no raw paste's own
+ * entry: null. (userTextsFromEntry, which the marker match shares, keeps only the text blocks — not this question.)
+ */
+function soleUserText(entry: unknown, backend: string): string | null {
+  if (!entry || typeof entry !== "object") return null;
+  const value = entry as Record<string, any>;
+  const sole = (content: unknown, type: string): string | null =>
+    Array.isArray(content) && content.length === 1 && content[0]?.type === type && typeof content[0].text === "string" ? content[0].text : null;
+  if (backend === "claude-code") {
+    const message = value.message;
+    if (value.type !== "user" || message?.role !== "user") return null;
+    return typeof message.content === "string" ? message.content : sole(message.content, "text");
+  }
+  if (backend === "codex") {
+    const payload = value.payload;
+    if (value.type !== "response_item" || payload?.type !== "message" || payload?.role !== "user") return null;
+    return sole(payload.content, "input_text");
+  }
+  return null;
+}
+
 /** A persisted user body without the CLI's own paste wrapper (claude-code wraps a long paste in both tags). */
 function withoutPasteWrapper(text: string, backend: string): string {
   if (backend !== "claude-code") return text;
@@ -288,10 +312,9 @@ export function transcriptDeltaHasRawText(rawDelta: string, backend: string, raw
   for (const line of rawDelta.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
-      // The WHOLE user message must be the paste: one text body (Claude's string or single text block, Codex's single
-      // input_text). A message of several blocks is not judged — its first block alone is not the message (#1663 P1-1).
-      const texts = userTextsFromEntry(JSON.parse(line) as unknown, backend);
-      if (texts.length === 1 && normalizeTurnText(withoutPasteWrapper(texts[0]!, backend)) === wanted) return true;
+      // The WHOLE user message must be the paste: its original body is one text and nothing else (#1663 P1-1).
+      const body = soleUserText(JSON.parse(line) as unknown, backend);
+      if (body !== null && normalizeTurnText(withoutPasteWrapper(body, backend)) === wanted) return true;
     } catch { /* incomplete/malformed JSONL is not proof */ }
   }
   return false;

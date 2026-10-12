@@ -42,6 +42,8 @@ const PATROL = "[巡邏] 檢查 Task Board：卡住超過 30 分鐘的卡片要�
 /** Claude Code's persisted shapes (2.1.29x): a short paste as the plain body, a long one inside both wrapper tags. */
 const claudeUser = (body: string) => JSON.stringify({ type: "user", message: { role: "user", content: body } }) + "\n";
 const claudeWrapped = (body: string) => claudeUser(`\n\n<pasted_content id="9ac7">\n${body}\n</pasted_content id="9ac7">\n`);
+/** A user message of the paste's text AND an image: not the plain-text raw paste, though its text is the same. */
+const claudeTextAndImage = (text: string) => JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text }, { type: "image", source: { type: "base64", media_type: "image/png", data: "AA==" } }] } }) + "\n";
 const codexUser = (text: string) => JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text }] } }) + "\n";
 
 describe("transcriptDeltaHasRawText: the raw paste's own user entry", () => {
@@ -70,6 +72,15 @@ describe("transcriptDeltaHasRawText: the raw paste's own user entry", () => {
     expect(transcriptDeltaHasRawText(codexTwo, "codex", PATROL)).toBe(false);
     const single = JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: PATROL }] } }) + "\n";
     expect(transcriptDeltaHasRawText(single, "claude-code", PATROL)).toBe(true);   // one block: the message
+    const codexSingle = JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: PATROL }] } }) + "\n";
+    expect(transcriptDeltaHasRawText(codexSingle, "codex", PATROL)).toBe(true);
+  });
+  it("text plus an image (or any other block) is not a plain text paste, whatever its text says (#1663 r2 P1-1)", () => {
+    expect(transcriptDeltaHasRawText(claudeTextAndImage(PATROL), "claude-code", PATROL)).toBe(false);
+    const codexImage = JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: PATROL }, { type: "input_image", image_url: "data:image/png;base64,AA==" }] } }) + "\n";
+    expect(transcriptDeltaHasRawText(codexImage, "codex", PATROL)).toBe(false);
+    const claudeImageFirst = JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: "AA==" } }, { type: "text", text: PATROL }] } }) + "\n";
+    expect(transcriptDeltaHasRawText(claudeImageFirst, "claude-code", PATROL)).toBe(false);
   });
   it("only past the checkpoint: the same words from the previous run are before it", async () => {
     const dir = tmp(), path = join(dir, "session.jsonl");
@@ -340,6 +351,15 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     expect(h.outbox.get(h.row.deliveryId)?.lastError).toBe("post-submit-proof:unproven");
     expect(prove).not.toHaveBeenCalled();
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("claude-code: a text+image message with the paste's text, at Enter+6 s, is not the paste: uncertain (#1663 r2 P1-1)", async () => {
+    const h = cli("claude-code");
+    h.tmux.sendSpecialKey.mockImplementation(async () => { setTimeout(() => appendFileSync(h.transcript, claudeTextAndImage(PATROL)), 6_000); return true; });
+    h.run();
+    await h.pump(200);
+    expect(h.state()).toBe("uncertain");
+    expect(h.outbox.get(h.row.deliveryId)?.lastError).toMatch(/^post-submit-proof:unproven; no-transcript-turn \(no-match\)$/);
   });
 
   it("another message in the transcript is not the paste: uncertain", async () => {
