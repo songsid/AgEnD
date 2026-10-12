@@ -66,7 +66,7 @@ export function createChatStore(deps) {
     if (!m || typeof m.instance !== "string") return;
     const before = s.msgs[m.instance];
     s.msgs[m.instance] = R().mergeMessages(before, [m], 500);
-    if (m.instance === s.current && s.msgs[m.instance] !== before && !isUser(m, m.instance) && (s.msgs[m.instance] || []).length > (before || []).length) deps.announce(tf("chat.a11yReplied", m.sender));
+    if (m.instance === s.current && s.msgs[m.instance] !== before && m.role !== "status" && !isUser(m, m.instance) && (s.msgs[m.instance] || []).length > (before || []).length) deps.announce(tf("chat.a11yReplied", m.sender));
     if (s.msgs[m.instance] !== before) changed(m.instance, "msgs");
   }
   function applyDeliveries(list) {

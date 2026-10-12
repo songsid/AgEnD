@@ -31,17 +31,25 @@ function world(local: SessionPolicy, dataDir?: string) {
 const errorsOf = (web: unknown) => validateFleetConfig({ instances: {}, web }).errors.map(e => `${e.path}: ${e.message}`);
 
 describe("the setting: web.session.local", () => {
-  it("defaults stay 12 / 2: nothing set, nothing changes", () => {
+  it("the default is 48 h absolute / 48 h idle (#1670): nothing set gives exactly that, the public link stays 4 h / 30 min", () => {
     expect(localSessionPolicy(undefined)).toEqual(DEFAULT_SESSION_POLICY.local);
-    expect(DEFAULT_SESSION_POLICY.local).toEqual({ absoluteMs: 12 * H, idleMs: 2 * H });
+    expect(localSessionPolicy({})).toEqual({ absoluteMs: 48 * H, idleMs: 48 * H });
+    expect(DEFAULT_SESSION_POLICY.local).toEqual({ absoluteMs: 48 * H, idleMs: 48 * H });
+    expect(DEFAULT_SESSION_POLICY.gateway).toEqual({ absoluteMs: 4 * H, idleMs: 30 * M });
     expect(errorsOf({})).toEqual([]);
   });
   it("the validator: 1 ≤ idle ≤ absolute ≤ 720 hours, decimals allowed; one left out compares against its default", () => {
     expect(errorsOf({ session: { local: { absolute_hours: 720, idle_hours: 720 } } })).toEqual([]);
     expect(errorsOf({ session: { local: { absolute_hours: 24, idle_hours: 1.5 } } })).toEqual([]);
     expect(errorsOf({ session: { local: { idle_hours: 8 } } })).toEqual([]);
-    expect(errorsOf({ session: { local: { idle_hours: 24 } } })).toEqual(["web.session.local.idle_hours: must not exceed absolute_hours (24 > 12, the default)"]);
-    expect(errorsOf({ session: { local: { absolute_hours: 1 } } })).toEqual(["web.session.local.idle_hours: must not exceed absolute_hours (2 > 1; idle_hours is the default)"]);
+    expect(errorsOf({ session: { local: { idle_hours: 48 } } })).toEqual([]);
+    // #1670: against the 48 h default, idle_hours above 48 with no absolute_hours is refused.
+    expect(errorsOf({ session: { local: { idle_hours: 60 } } })).toEqual(["web.session.local.idle_hours: must not exceed absolute_hours (60 > 48, the default)"]);
+    // #1670: an idle_hours left out follows a shorter absolute_hours (the store cuts it), so a config that sets only a
+    // short session stays valid with the 48 h idle default — `absolute_hours: 24` was valid before and still is.
+    expect(errorsOf({ session: { local: { absolute_hours: 24 } } })).toEqual([]);
+    expect(errorsOf({ session: { local: { absolute_hours: 1 } } })).toEqual([]);
+    expect(localSessionPolicy({ absolute_hours: 24 })).toEqual({ absoluteMs: 24 * H, idleMs: 24 * H });
     expect(errorsOf({ session: { local: { absolute_hours: 721 } } })).toEqual(["web.session.local.absolute_hours: must be a number of hours from 1 to 720"]);
     expect(errorsOf({ session: { local: { idle_hours: 0.5 } } })).toEqual(["web.session.local.idle_hours: must be a number of hours from 1 to 720"]);
     expect(errorsOf({ session: { local: { idle_hours: "24" } } })).toEqual(["web.session.local.idle_hours: must be a number of hours from 1 to 720"]);
@@ -56,7 +64,7 @@ describe("the setting: web.session.local", () => {
     expect(localSessionPolicy({ absolute_hours: 9999, idle_hours: 9999 })).toEqual(DEFAULT_SESSION_POLICY.local);
     expect(localSessionPolicy({ absolute_hours: "48", idle_hours: null })).toEqual(DEFAULT_SESSION_POLICY.local);
     expect(localSessionPolicy({ absolute_hours: 10, idle_hours: 20 }), "idle cut to absolute").toEqual({ absoluteMs: 10 * H, idleMs: 10 * H });
-    expect(localSessionPolicy({ absolute_hours: 1, idle_hours: 2 }), "not the default 12 h").toEqual({ absoluteMs: 1 * H, idleMs: 1 * H });
+    expect(localSessionPolicy({ absolute_hours: 1, idle_hours: 2 }), "not the default 48 h").toEqual({ absoluteMs: 1 * H, idleMs: 1 * H });
     expect(localSessionPolicy({ absolute_hours: 0.5 }), "below the minimum: the minimum").toEqual({ absoluteMs: 1 * H, idleMs: 1 * H });
     expect(localSessionPolicy({ absolute_hours: 6, idle_hours: 0 })).toEqual({ absoluteMs: 6 * H, idleMs: 1 * H });
     expect(localSessionPolicy({ absolute_hours: 720, idle_hours: 720 })).toEqual({ absoluteMs: 720 * H, idleMs: 720 * H });
@@ -151,6 +159,6 @@ describe("the fleet reads fleet.yaml's setting at every check", () => {
     fm.fleetConfig.web.session.local.idle_hours = 3;                  // a Settings save or a reload
     expect(fm.webSessions.idleWindowMs("local")).toBe(3 * H);
     delete fm.fleetConfig.web;
-    expect(fm.webSessions.idleWindowMs("local")).toBe(2 * H);
+    expect(fm.webSessions.idleWindowMs("local")).toBe(48 * H);
   });
 });

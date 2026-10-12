@@ -74,7 +74,7 @@ describe("Settings → Web, as rendered", () => {
     const w = await open();
     expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked]).toEqual(["", "", "", true]);
     expect([w.$("webSessionAbsolute").getAttribute("placeholder"), w.$("webSessionIdle").getAttribute("placeholder"), w.$("webTerminalTtl").getAttribute("placeholder")])
-      .toEqual(["12 (default)", "2 (default)", "10 (default)"]);
+      .toEqual(["48 (default)", "48 (default)", "10 (default)"]);   // #1670: 48 h / 48 h
     await w.review(); await w.apply();
     expect(w.webWrites()).toEqual([]);
   });
@@ -111,7 +111,7 @@ describe("Settings → Web, as rendered", () => {
   it.each([
     ["webSessionAbsolute", "721", "Must be a number of hours from 1 to 720"],
     ["webSessionAbsolute", "0.5", "Must be a number of hours from 1 to 720"],
-    ["webSessionIdle", "24", "Must not exceed the session length"],       // absolute left at its default, 12
+    ["webSessionIdle", "60", "Must not exceed the session length"],       // absolute left at its default, 48 (#1670)
     ["webTerminalTtl", "21", "Must be a whole number from 1 to 20"],
     ["webTerminalTtl", "2.5", "Must be a whole number from 1 to 20"],
   ])("%s = %s is refused in the form: marked, explained, nothing staged", async (id, value, message) => {
@@ -120,6 +120,14 @@ describe("Settings → Web, as rendered", () => {
     expect([w.$(id).getAttribute("class"), w.text().includes(message), w.button("Review changes").disabled]).toEqual(["invalid", true, true]);
     await w.review(); await w.apply();
     expect([p.root.querySelector("[role=region]"), w.webWrites()]).toEqual([null, []]);
+  });
+
+  it("a shorter session typed with the idle time left blank is fine: the idle time follows it (#1670)", async () => {
+    const w = await open();
+    await w.type(w.$("webSessionAbsolute"), "24");
+    expect([w.$("webSessionIdle").getAttribute("class"), w.button("Review changes").disabled]).toEqual(["", false]);
+    await w.review(); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ session: { local: { absolute_hours: 24 } } }]);
   });
 
   it("idle is checked against the absolute limit being typed, not only the stored one", async () => {

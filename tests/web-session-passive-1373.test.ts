@@ -73,7 +73,9 @@ async function fleet() {
     instances: { alpha: { working_directory: "/tmp" } }, defaults: {}, web: { view_access: "session", usage_panel: false, notify_login: false },
   };
   let clock = 1_000_000;
-  (fm as unknown as { webSessions: WebSessionStore }).webSessions = new WebSessionStore({ now: () => clock });
+  // #1670: these cases reason about a 2-hour idle window inside a 12-hour session (the mechanism); the shipped default
+  // is 48/48 now, so the store is given the policy they test.
+  (fm as unknown as { webSessions: WebSessionStore }).webSessions = new WebSessionStore({ now: () => clock, policy: { local: { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR } } });
   (fm as unknown as { initializeWebAuthTokens(): void }).initializeWebAuthTokens();
   (fm as unknown as { startHealthServer(port: number): void }).startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));

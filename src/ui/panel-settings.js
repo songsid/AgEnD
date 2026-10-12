@@ -731,7 +731,9 @@ function WebSection({ ctx, staged }) {
   // Empty = the default (null in the write: the key is removed from fleet.yaml).
   const value = (v) => (v.trim() === "" ? null : Number(v));
   const hours = (v) => { const n = value(v); return n !== null && (!Number.isFinite(n) || n < 1 || n > 720) ? "sessionRange" : ""; };
-  const abs = value(f.abs) ?? 12, idle = value(f.idle) ?? 2;
+  // The defaults (#1670: 48 h / 48 h, DEFAULT_SESSION_POLICY); an idle time left blank follows a shorter session, as
+  // the store and the validator apply it — so only an idle time that is typed can exceed the session length.
+  const abs = value(f.abs) ?? 48, idle = value(f.idle) ?? Math.min(48, abs);
   const errors = {
     ttl: !Number.isInteger(Number(f.ttl)) || Number(f.ttl) < 1 || Number(f.ttl) > 480 ? "publicTtl" : "",
     abs: hours(f.abs),
@@ -776,9 +778,9 @@ function WebSection({ ctx, staged }) {
     <section class="card"><h3>${tn("webSessionTitle")}</h3>
       <p class="note">${tn("webSessionHint")}</p>
       <div class="grid2">
-        <div class="field"><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 12)}
+        <div class="field"><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 48)}
           class=${errors.abs ? "invalid" : ""} value=${f.abs} onInput=${(e) => set("abs")(e.target.value)} /><${Feedback} error=${errors.abs} /></div>
-        <div class="field"><label for="webSessionIdle">${tn("sessionIdle")}</label><input id="webSessionIdle" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 2)}
+        <div class="field"><label for="webSessionIdle">${tn("sessionIdle")}</label><input id="webSessionIdle" type="number" min="1" max="720" step="any" placeholder=${tn("defaultHours", 48)}
           class=${errors.idle ? "invalid" : ""} value=${f.idle} onInput=${(e) => set("idle")(e.target.value)} /><${Feedback} error=${errors.idle} /></div>
       </div>
     </section>

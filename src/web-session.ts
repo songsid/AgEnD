@@ -42,7 +42,7 @@ const MINUTE = 60 * 1000;
 
 /** Design D4. The gateway numbers are shorter because a session there is reachable from the internet. */
 export const DEFAULT_SESSION_POLICY: Readonly<Record<SessionSurface, SessionPolicy>> = {
-  local: { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR },
+  local: { absoluteMs: 48 * HOUR, idleMs: 48 * HOUR },   // #1670: two days without signing in again (user, 2026-10-12)
   gateway: { absoluteMs: 4 * HOUR, idleMs: 30 * MINUTE },
 };
 

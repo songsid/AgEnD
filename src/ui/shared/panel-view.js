@@ -201,7 +201,13 @@ function Terminal({ name, lease, density }) {
   const term = useRef(null), pre = useRef(null);
   const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "" });
   const [problem, setProblem] = useState(null);
+  // #1674: the text size as of this render. The pane refresh and the resize handlers below are set up once per mount
+  // and keep the fit() of that render; reading the size here, not from that render's props, keeps them on the current
+  // choice (they used to put the mount-time size back within one 800 ms refresh).
+  const dens = useRef(density);
+  dens.current = density;
   const fit = () => {
+    const density = dens.current;
     const g = grid.current, box = term.current, p = pre.current;
     if (!box || !p || g.cols < 1 || g.rows < 1) return;
     const cs = getComputedStyle(box);

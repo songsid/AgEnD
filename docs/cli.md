@@ -258,8 +258,8 @@ records request URLs.
   code (ask for another); enough wrong tries across codes pause sign-in for a few
   minutes. While no code has been issued there is nothing to guess.
 - **A session is an opaque server-side record**, not a value derived from
-  `web.token`. It ends after 12 hours from sign-in at the latest, or after 2
-  hours without use, whichever comes first — the server decides, not the
+  `web.token`. By default it ends 48 hours after sign-in at the latest, or after
+  48 hours without use, whichever comes first — the server decides, not the
   browser. It survives a fleet restart (Settings can restart the fleet).
 - **`/web revoke`** in the chat (on Discord, the `/web` slash command with `action: revoke`) signs every browser out and withdraws any
   unused code. `agend web-token rotate` does the same and also rotates the token

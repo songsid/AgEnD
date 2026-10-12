@@ -73,7 +73,7 @@ npm install -g @songsid/agend@2.2.0
 - **General 會收到一則 web chat 介紹**（#1366），每個平台只送一次，記錄在 `AGEND_HOME/upgrade-notices.json`。
 
 **從此以後的政策：**
-- **網頁登入的 session**：在本機自己的 dashboard 上可維持 12 小時（閒置 2 小時失效）；透過公開連結則是 4 小時（閒置 30 分鐘失效）。
+- **網頁登入的 session**：在本機自己的 dashboard 上預設可維持 48 小時（閒置 48 小時失效；2.2.1 之前為 12 小時／2 小時）；透過公開連結則是 4 小時（閒置 30 分鐘失效）。
 - **ClassicBot：** 不在允許清單上的人 `/start` 時，會請 General 核准（#1418）。`allowed_users`、`allowed_groups`、`allowed_guilds` 是空的或沒寫，不再等於「開放」。請用 General 的按鈕核准，或寫上明確的名單。已註冊的房間不受影響。
 - **網頁 Settings 的敏感變更會變成提案**（#1423）：由 General 裡的 fleet 管理員在聊天中確認，或在主機上執行 `agend settings confirm <id>`。待確認的提案在重啟後會消失，需要重新送出。
 - **停止 fleet 最多可能要 5 分鐘**（#1071），讓忙碌中的 Kiro instance 把手上的事做完；之後重新啟動另外還要花時間。如果服務已載入的停止期限少於 300 秒，`agend restart` 會拒絕執行；AgEnD 自己的 unit 會自動更新，你自訂的期限會保留並附上警告。

@@ -163,7 +163,7 @@ describe("POST /auth/login", () => {
     expect(setCookie).toContain("SameSite=Strict");
     expect(setCookie).toContain("Path=/");
     expect(setCookie).not.toContain("Secure");
-    expect(setCookie).toMatch(/Max-Age=43200/);
+    expect(setCookie).toMatch(/Max-Age=172800/);   // the session's own absolute window: 48 h by default (#1670)
     const body = JSON.parse(res.body);
     expect(body).toMatchObject({ ok: true, tier: "admin" });
     expect(body.csrf).toBe(csrfTokenFor(sessionId));
