@@ -73,7 +73,11 @@ describe("#1690: the dialog, read from the real 2.1.296 panes", () => {
     for (const [r, s] of [["opus", "Opus 5.5"], ["Opus", "Opus 5.5"], ["claude-sonnet-5-5", "Sonnet 5.5"], ["opus[1m]", "Opus 5.5 (1M context)"], ["default", "Opus 5.5"]] as const) {
       expect(claudeSwitchTargetMatches(r, s), `${r} ~ ${s}`).toBe(true);
     }
-    for (const [r, s] of [["sonnet", "Opus 5.5"], ["opus", "Opus 5.5 (1M context)"], ["default", "default"], ["claude-sonnet-5-5", "Haiku 5.5"]] as const) {
+    // A dated catalog id is shown by its name (live, 2.1.296: claude-sonnet-4-5-20250929 → "Sonnet 4.5").
+    for (const [r, s] of [["claude-sonnet-4-5-20250929", "Sonnet 4.5"], ["claude-haiku-4-5-20251001", "Haiku 4.5"], ["claude-sonnet-4-5-20250929[1m]", "Sonnet 4.5 (1M context)"]] as const) {
+      expect(claudeSwitchTargetMatches(r, s), `${r} ~ ${s}`).toBe(true);
+    }
+    for (const [r, s] of [["sonnet", "Opus 5.5"], ["opus", "Opus 5.5 (1M context)"], ["default", "default"], ["claude-sonnet-5-5", "Haiku 5.5"], ["claude-sonnet-4-5-20250929", "Sonnet 5.5"]] as const) {
       expect(claudeSwitchTargetMatches(r, s), `${r} ≁ ${s}`).toBe(false);
     }
   });
@@ -157,14 +161,27 @@ describe("#1690: the raw_paste route carries our switch and reports it back", ()
     const broadcast: any[] = [];
     r.d.ipcServer = { broadcast: (m: unknown) => broadcast.push(m), send: () => {} };
     r.d.wake = async () => {};
-    r.d.deliverMessage = async (_text: string, _x: unknown, opts: any) => { opts.verdict.reached = reached; opts.verdict.paneWriteStarted = reached; return reached; };
     const during: unknown[] = [];
+    /** What another writer would see right after our write, still before deliverMessage returns (the post-submit wait). */
+    const atWrite: string[] = [];
+    r.d.deliverMessage = async (_text: string, _x: unknown, opts: any) => {
+      opts.verdict.reached = reached; opts.verdict.paneWriteStarted = reached;
+      if (reached) { opts.onPaneWritten?.(); atWrite.push((await r.d.probeBlockingDialog()).state); }
+      return reached;
+    };
     r.d.answerOwnSwitchDialog = async (spec: unknown) => {
       during.push([spec, r.d.ownSwitch?.requested ?? null, (await r.d.probeBlockingDialog()).state]);
       return { outcome: "switched", confirmed: true, shown: "Opus 5.5" };
     };
-    return { r, broadcast, during };
+    return { r, broadcast, during, atWrite };
   }
+
+  it("held from its own write on — before the lock is released, so a steer or /btw cannot slip in before the dialog paints", async () => {
+    const { r, atWrite } = routed(true);
+    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/model opus", runtime_switch: { id: "sw-0", kind: "model", requested: "opus" } });
+    await r.d.pasteLock;
+    expect(atWrite).toEqual(["dialog"]);
+  });
 
   it("held while it is answered; the outcome goes back with its id; released after", async () => {
     const { r, broadcast, during } = routed(true);
@@ -300,7 +317,7 @@ describe("#1690: applyModel checks the name, then reports what the switch came t
     try {
       const pending = f.fm.applyModel("alpha", "opus");
       await vi.advanceTimersByTimeAsync(RUNTIME_SWITCH_RESULT_MS + 100);
-      expect(await pending).toMatch(/sent `\/model opus`, but its result was not seen/);
+      expect(await pending).toMatch(/asked for `\/model opus`, but no result came back within 12 s/);
       expect(f.savedModel()).toBe("opus");
     } finally { vi.useRealTimers(); f.cleanup(); }
   });

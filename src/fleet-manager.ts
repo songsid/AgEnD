@@ -209,7 +209,7 @@ import { validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
-import { readLastInboundAt, OWN_SWITCH_WAIT_MS, type OwnSwitchOutcome } from "./daemon.js";
+import { readLastInboundAt, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
 import { TargetQueueWorker } from "./target-queue-worker.js";
@@ -15104,7 +15104,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       timer.unref?.();
       this.runtimeSwitchWaiters.set(id, result => { clearTimeout(timer); resolve(result); });
       const sent = ipc.send({ type: "raw_paste", content: `/model ${model}`, runtime_switch: { id, kind: "model", requested: model } });
-      if (!sent) { clearTimeout(timer); this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_sent" }); }
+      if (!sent) { clearTimeout(timer); this.runtimeSwitchWaiters.delete(id); resolve({ outcome: "not_sent" }); return; }
       this.logger.info({ instanceName, model }, "Runtime model switch sent");
     });
   }
@@ -16245,7 +16245,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!persistedNow) return `${warn}${t("model.persist_failed", instanceName)}`;
       const head = result.outcome === "switched"
         ? (result.confirmed ? t("model.switch_confirmed", instanceName, model) : t("model.runtime_success", instanceName, model))
-        : t("model.switch_unconfirmed", instanceName, model, Math.round(OWN_SWITCH_WAIT_MS / 1000));
+        : t("model.switch_unconfirmed", instanceName, model, Math.round(RUNTIME_SWITCH_RESULT_MS / 1000));
       return `${warn}${head}${this.effortSuffix(instanceName)}`;
     }
 

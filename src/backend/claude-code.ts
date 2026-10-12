@@ -345,11 +345,13 @@ export function claudeSwitchDialog(pane: string): ClaudeSwitchDialog | null {
 /**
  * #1690: does the model claude is about to switch to name the one AgEnD asked for? Display-name equality: case, a
  * `claude-` prefix, separators and the 1M marker do not count (`claude-sonnet-5-5` ≡ "Sonnet 5.5"). A bare family alias
- * matches its family's version (`opus` ≡ "Opus 5.5"). `default` / `opusplan` resolve to names AgEnD cannot predict:
+ * matches its family's version (`opus` ≡ "Opus 5.5"); a dated id matches without its date. `default` / `opusplan` resolve to names AgEnD cannot predict:
  * any name claude resolved (not the raw input echoed back) is theirs. Anything else is a mismatch.
  */
 export function claudeSwitchTargetMatches(requested: string, shown: string): boolean {
-  const norm = (s: string) => s.toLowerCase().replace(/\(1m context\)|1m context|\[1m\]/g, " 1m").replace(/^claude[\s-]+/, "").replace(/[\s._-]+/g, "");
+  // A dated catalog id names the same model as its display name: claude-sonnet-4-5-20250929 ≡ "Sonnet 4.5" (live, 2.1.296).
+  const norm = (s: string) => s.toLowerCase().replace(/\(1m context\)|1m context|\[1m\]/g, " 1m").replace(/^claude[\s-]+/, "")
+    .replace(/[-_]\d{8}(?=$|\s)/g, "").replace(/[\s._-]+/g, "");
   const want = norm(requested), got = norm(shown);
   if (!want || !got) return false;
   if (want === "default" || want === "opusplan") return shown.trim().toLowerCase() !== requested.trim().toLowerCase();

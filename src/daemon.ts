@@ -4011,6 +4011,9 @@ export class Daemon extends EventEmitter {
           verdict,
           durableAttempt,
           preserveExactBytes: true,
+          // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
+          // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
+          ...(ownSwitch ? { onPaneWritten: () => { this.ownSwitch = ownSwitch; } } : {}),
         });
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
         else if (durableAttempt && verdict.paneWriteStarted) {
@@ -4036,13 +4039,13 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
+        if (ownSwitch) { if (this.ownSwitch === ownSwitch) this.ownSwitch = null; reportSwitch({ outcome: "not_confirmed" }); }
         return;
       }
       if (confirmClear) await this.confirmBackendClearDialog();
       if (ownSwitch) {
-        if (!verdict.reached && !verdict.paneWriteStarted) reportSwitch({ outcome: "not_sent" });
+        if (this.ownSwitch !== ownSwitch) reportSwitch({ outcome: "not_sent" });   // its write never began
         else {
-          this.ownSwitch = ownSwitch;
           try { reportSwitch(await this.answerOwnSwitchDialog(ownSwitch)); }
           catch (err) { this.logger.warn({ err: (err as Error).message }, "Answering our own model switch failed"); reportSwitch({ outcome: "not_confirmed" }); }
           finally { this.ownSwitch = null; }
@@ -6851,6 +6854,8 @@ export class Daemon extends EventEmitter {
       spawnRetry?: number;
       durableAttempt?: DurableDeliveryAttempt;
       preserveExactBytes?: boolean;
+      /** Called under the pane write lock the moment this delivery's write has begun (#1690: our switch's hold). */
+      onPaneWritten?: () => void;
     },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -7038,6 +7043,8 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
         );
+        // #1690: still under the lock — whatever waits on it next must already see what this write started.
+        if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
         // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
         if (written === "handoff-box-unread") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
