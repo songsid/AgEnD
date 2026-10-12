@@ -546,13 +546,18 @@ A Claude Code profile is its own `CLAUDE_CONFIG_DIR`. The login, the account,
 per-project trust, `settings.json` and every conversation (`projects/`, `sessions/`,
 `history.jsonl`) belong to the profile. Your `CLAUDE.md`, `agents`, `commands`,
 `skills`, `output-styles` and `plugins` are linked back to `~/.claude` (or your own
-`CLAUDE_CONFIG_DIR`), so they stay the same everywhere. Settings you made in
-`~/.claude/settings.json` are not carried over; set them again in the profile if
-you need them.
+`CLAUDE_CONFIG_DIR`), so they stay the same everywhere. A new profile's
+`settings.json` starts as a copy of yours (permissions, hooks, env, which plugins
+are enabled); after that it is the profile's own, so a later change on either
+side, such as `/model`, stays on that side.
 
 On macOS, claude keeps the login in the Keychain, under an item named after the
 profile directory. Two profiles never share or overwrite each other's item, and
 the default login is left alone.
+
+If `update_instance_config` refused a switch, run the command from its reply as
+it is: it carries the exact absolute path AgEnD launches with, and on macOS the
+Keychain item is named after that path string.
 
 An instance with no profile launches exactly as before: AgEnD sets no
 `CLAUDE_CONFIG_DIR` (your own, if you set one, is still honoured) and creates

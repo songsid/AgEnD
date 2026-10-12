@@ -24,7 +24,7 @@
  *   the login, a refresh lock, and a runtime socket directory. An entry nobody
  *   has classified stays private, which costs disk and never leaks a session.
  */
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { constants as fsConstants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { kiroStoreHasLogin } from "./kiro-auth-store.js";
@@ -73,6 +73,12 @@ export interface CredentialHomeSpec {
    * expensive to duplicate and carry no identity.
    */
   share: readonly string[];
+  /**
+   * Private entries a new profile starts as a copy of, when the shared home has them and the profile does not yet
+   * (#1699: claude's settings.json — the user's permissions, hooks, env and which plugins are enabled). Copied once;
+   * from then on the profile's own, so `/model` in one profile never reaches another. Each must also be in `isolate`.
+   */
+  seed?: readonly string[];
   /**
    * `redirect-files` only: the files the profile owns, relative to the home the
    * backend is already using.
@@ -200,7 +206,8 @@ function codexStoreHasLogin(storeHome: string): boolean {
  * setting the variable at all — even to `~/.claude` — would look up a different item and the login would seem gone.
  *
  * The user's own instructions, agents, commands, skills, output styles and plugins are linked back; everything that is
- * an account, a conversation or a setting `/model` writes stays private. A different profile is a different
+ * an account, a conversation or a setting `/model` writes stays private. `settings.json` starts as a copy of the
+ * user's (permissions, hooks, env, which plugins are enabled) and is the profile's own from then on. A different profile is a different
  * `projects/`, so a switch starts a fresh conversation (verified: `--resume <id>` and `--continue` find nothing).
  */
 const CLAUDE_HOME: CredentialHomeSpec = {
@@ -213,6 +220,7 @@ const CLAUDE_HOME: CredentialHomeSpec = {
     "projects", "sessions", "history.jsonl", "backups", "todos", "shell-snapshots", "statsig", "ide", "session-env", "file-history",
   ],
   share: ["CLAUDE.md", "agents", "commands", "skills", "output-styles", "plugins"],
+  seed: ["settings.json"],
   files: [],
   hasLogin: claudeStoreHasLogin,
   loginSubcommand: "auth login",
@@ -354,6 +362,18 @@ export function prepareCredentialProfileHome(spec: CredentialHomeSpec, profileHo
       console.warn(`[agend] removed a shared link where ${name} must be private: ${target}`);
     } catch {
       // Absent, or removed by a concurrent start. Either way there is no link.
+    }
+  }
+
+  for (const name of spec.seed ?? []) {
+    if (!spec.isolate.includes(name)) continue;
+    const source = join(sharedStore, name);
+    try {
+      if (!statSync(source).isFile()) continue;
+      // EXCL: a profile that already has its own (a later start, or a concurrent one) is never overwritten.
+      copyFileSync(source, join(profileStore, name), fsConstants.COPYFILE_EXCL);
+    } catch {
+      // Absent in the shared home, or already in the profile: nothing to start from, or nothing to do.
     }
   }
 

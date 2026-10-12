@@ -36,24 +36,32 @@ the command, do not try to work around the refusal.
 Ask the operator to run this on the host once per subscription:
 
 ```
-XDG_DATA_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/kiro-cli/<profile>" kiro-cli login
+XDG_DATA_HOME="${AGEND_HOME:-$HOME/.agend}/credential-profiles/kiro-cli/<profile>" kiro-cli login
 ```
 
 For codex the variable and the path are different:
 
 ```
-CODEX_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/codex/<profile>" codex login
+CODEX_HOME="${AGEND_HOME:-$HOME/.agend}/credential-profiles/codex/<profile>" codex login
 ```
 
 For claude-code:
 
 ```
-CLAUDE_CONFIG_DIR="${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>" claude auth login
+CLAUDE_CONFIG_DIR="${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>" claude auth login
 ```
 
-A Claude Code profile keeps its own login, trust, `settings.json` and
-conversations; the user's `CLAUDE.md`, agents, commands, skills, output styles
-and plugins are shared with it.
+A Claude Code profile keeps its own login, trust and conversations, and a
+`settings.json` that starts as a copy of the user's; the user's `CLAUDE.md`,
+agents, commands, skills, output styles and plugins are shared with it.
+
+**When a switch was refused, relay the command from the refusal, character for
+character** — never one you assembled from the templates above. It carries the
+exact absolute path AgEnD launches with. For claude-code this matters more than
+anywhere: on macOS the login is stored under a Keychain item named after that
+path string, so a login under a differently spelled path (a relative
+`AGEND_HOME`, a trailing slash, a `~` that was never expanded) lands in another
+item, and the agent still finds no login.
 
 ## Create a worker on another subscription
 

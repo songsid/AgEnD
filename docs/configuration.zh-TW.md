@@ -553,11 +553,15 @@ CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth logi
 Claude Code profile 是一個獨立的 `CLAUDE_CONFIG_DIR`。登入、帳號、各專案的信任設定、
 `settings.json` 與所有對話（`projects/`、`sessions/`、`history.jsonl`）都屬於該 profile。
 你的 `CLAUDE.md`、`agents`、`commands`、`skills`、`output-styles` 與 `plugins` 連回
-`~/.claude`（或你自己設定的 `CLAUDE_CONFIG_DIR`），各處相同。`~/.claude/settings.json`
-裡的設定不會帶過去，需要時請在 profile 內重設。
+`~/.claude`（或你自己設定的 `CLAUDE_CONFIG_DIR`），各處相同。新 profile 的 `settings.json`
+一開始複製你的設定（permissions、hooks、env、啟用哪些 plugins）；之後就屬於該 profile，
+任一邊後來的變更（例如 `/model`）只留在那一邊。
 
 macOS 上 claude 把登入存在鑰匙圈（Keychain），項目名稱依 profile 目錄而定；
 兩個 profile 不會共用或覆寫彼此的項目，預設登入也不受影響。
+
+`update_instance_config` 拒絕切換時，請照回覆中的指令原樣執行：它帶著 AgEnD 啟動時用的完整絕對路徑，
+而 macOS 的鑰匙圈項目正是依這個路徑字串命名。
 
 沒有 profile 的 instance 啟動方式與以前完全相同：AgEnD 不設定 `CLAUDE_CONFIG_DIR`
 （你自己設的照舊生效），也不建立任何目錄。Fleet 的 `ANTHROPIC_API_KEY` 只傳給「自己的

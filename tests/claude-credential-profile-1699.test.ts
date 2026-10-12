@@ -97,6 +97,24 @@ describe("#1699: a named profile is its own config dir", () => {
     }
   });
 
+  it("settings.json starts as a copy of the user's (permissions, hooks, enabled plugins) and is the profile's own after", () => {
+    writeJson(join(home, ".claude", "settings.json"), { enabledPlugins: { "demo@market": true }, model: "opus" });
+    backend().buildCommand(cfg({ credential_profile: "team" }));
+    const own = join(profileDir("team"), "settings.json");
+    expect(lstatSync(own).isSymbolicLink(), "a real file, not a link").toBe(false);
+    expect(JSON.parse(readFileSync(own, "utf8"))).toEqual({ enabledPlugins: { "demo@market": true }, model: "opus" });
+    writeFileSync(own, JSON.stringify({ model: "sonnet" }));                       // /model in the profile …
+    writeJson(join(home, ".claude", "settings.json"), { model: "haiku" });          // … and in the shared one
+    backend().buildCommand(cfg({ credential_profile: "team" }));                   // a later start
+    expect(JSON.parse(readFileSync(own, "utf8")), "never overwritten").toEqual({ model: "sonnet" });
+    expect(JSON.parse(readFileSync(join(home, ".claude", "settings.json"), "utf8")), "nor leaked back").toEqual({ model: "haiku" });
+    backend().buildCommand(cfg({ credential_profile: "fresh" }));
+    expect(JSON.parse(readFileSync(join(profileDir("fresh"), "settings.json"), "utf8")), "a new profile copies what is there now").toEqual({ model: "haiku" });
+    rmSync(join(home, ".claude", "settings.json"));
+    backend().buildCommand(cfg({ credential_profile: "bare" }));
+    expect(existsSync(join(profileDir("bare"), "settings.json")), "nothing to start from: nothing made up").toBe(false);
+  });
+
   it("invariant 4: the path is canonical — absolute, normalised — whatever AGEND_HOME looks like", () => {
     // join() would already fold "..", so the case that matters is a relative AGEND_HOME (and a trailing slash).
     process.env.AGEND_HOME = `${relative(process.cwd(), agendHome)}/`;
