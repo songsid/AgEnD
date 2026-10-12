@@ -281,9 +281,10 @@ describe("#1695 r2 P2-4: a fresh read before the minute is up resets it too", ()
     try {
       await r.poll(30_000);
       const tracked = r.d.unrecognisedPrompt;
-      r.d.noteFreshPaneRead(AT_PROMPT, tracked.seenAt - 1);   // an older read, finishing late
+      const lastRead = r.d.unrecognisedPromptReadAt;
+      r.d.noteFreshPaneRead(AT_PROMPT, lastRead - 1);   // an older read, finishing late
       expect(r.d.unrecognisedPrompt).toBe(tracked);
-      r.d.noteFreshPaneRead(AT_PROMPT, tracked.seenAt + 1);   // a newer one
+      r.d.noteFreshPaneRead(AT_PROMPT, lastRead + 1);   // a newer one
       expect(r.d.unrecognisedPrompt).toBeNull();
     } finally { r.stop(); }
   });
@@ -353,6 +354,97 @@ describe("#1695 r3 P2-4: every accepted fresh read counts, in order", () => {
       probe.release(AT_PROMPT);
       await probe.result;
       expect(await r.held()).toBe("clear");
+    } finally { r.stop(); }
+  });
+});
+
+describe("#1695 r4 P2-4: a scan is ordered against every newer read too", () => {
+  const stateMonitor = (r: ReturnType<typeof rig>) => {
+    r.d.instanceStateMachine = new PaneStateMachine(r.d.backend.getReadyPattern(), 600_000, Date.now(), r.d.backend.getBusyPattern());
+    r.d.instanceStateMonitorActive = true;
+  };
+  /** The interval scan's next capture, held until released with a given screen. */
+  async function heldScan(r: ReturnType<typeof rig>) {
+    let release: ((pane: string) => void) | null = null;
+    const capture = r.d.tmux.capturePane;
+    r.d.tmux.capturePane = () => new Promise<string>(resolve => { release = resolve; });
+    while (!release) await vi.advanceTimersByTimeAsync(500);
+    r.d.tmux.capturePane = capture;
+    return async (pane: string) => { release!(pane); await vi.advanceTimersByTimeAsync(0); };
+  }
+
+  it("an older scan without the prompt, finishing after a newer state re-capture confirmed it, does not clear it", async () => {
+    const r = rig();
+    stateMonitor(r);
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      const tracked = r.d.unrecognisedPrompt;
+      expect(tracked.active).toBe(true);
+      const scan = await heldScan(r);                    // the scan's capture starts …
+      await vi.advanceTimersByTimeAsync(1_000);
+      await r.d.captureAndEvaluateInstanceState("interaction_confirmation");   // … a newer read confirms it …
+      expect(r.d.getInteractionSnapshot().phase).toBe("waiting");
+      await scan(AT_PROMPT);                             // … and the scan answers last, with a stale screen
+      expect([r.d.unrecognisedPrompt === tracked, await r.held()]).toEqual([true, "dialog"]);
+    } finally { r.stop(); }
+  });
+
+  it("an older scan showing motion, finishing after a newer probe confirmed it, does not restart the minute", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      const tracked = r.d.unrecognisedPrompt;
+      const scan = await heldScan(r);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await r.held(), "a newer probe confirms it").toBe("dialog");
+      await scan(`${SWITCH}\n  ⠋ something moved`);
+      expect([r.d.unrecognisedPrompt === tracked, tracked.active, await r.held()]).toEqual([true, true, "dialog"]);
+    } finally { r.stop(); }
+  });
+
+  it("an older scan showing the prompt, finishing after a newer probe ended it, does not bring it back", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      const scan = await heldScan(r);
+      await vi.advanceTimersByTimeAsync(1_000);
+      r.screen.text = AT_PROMPT;
+      expect(await r.held(), "a newer probe sees it gone").toBe("clear");
+      await scan(SWITCH);
+      expect(r.d.unrecognisedPrompt).toBeNull();
+    } finally { r.stop(); }
+  });
+
+  it("an older probe without the prompt, finishing after a newer SCAN confirmed it, does not void it", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      let release!: (pane: string) => void;
+      const capture = r.d.tmux.capturePane;
+      r.d.tmux.capturePane = () => new Promise<string>(resolve => { release = resolve; });
+      const probe = r.d.probeBlockingDialog();           // the probe's capture starts …
+      r.d.tmux.capturePane = capture;
+      await r.poll(5_000);                               // … a scan after it confirms the prompt …
+      release(AT_PROMPT);                                // … and the probe answers last, with a stale screen
+      await probe;
+      expect(await r.held()).toBe("dialog");
+    } finally { r.stop(); }
+  });
+
+  it("controls: a NEWER scan still clears, keeps or restarts", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      const tracked = r.d.unrecognisedPrompt;
+      expect(await r.held()).toBe("dialog");
+      await r.poll(5_000);                               // the same screen: kept
+      expect([r.d.unrecognisedPrompt === tracked, await r.held()]).toEqual([true, "dialog"]);
+      r.screen.text = `${SWITCH}\n  ⠋ something moved`;
+      await r.poll(5_000);                               // motion: a fresh minute
+      expect([r.d.unrecognisedPrompt === tracked, r.d.unrecognisedPrompt?.active]).toEqual([false, false]);
+      r.screen.text = AT_PROMPT;
+      await r.poll(5_000);                               // gone: cleared
+      expect(r.d.unrecognisedPrompt).toBeNull();
     } finally { r.stop(); }
   });
 });

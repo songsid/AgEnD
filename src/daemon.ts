@@ -1410,9 +1410,13 @@ export class Daemon extends EventEmitter {
     screen: string;
     /** The launch the evidence belongs to: a respawn, a new launch fence or frozen monitors void it (#1695 review). */
     owner: InteractionOwner;
-    /** When (performance.now) the capture that last confirmed it was taken: an older read cannot void it (#1695 r2). */
-    seenAt: number;
   } | null = null;
+  /**
+   * #1691: when (performance.now) the newest pane read that decided the evidence above was taken — a scan or a fresh
+   * read, confirming, restarting or ending it. A read taken before it finishes late and says nothing about now: it may
+   * neither clear, restart nor confirm (#1695 r4).
+   */
+  private unrecognisedPromptReadAt = -Infinity;
   /**
    * #1691: the catch-all for that prompt, as a hold-only runtime dialog — so the delivery hold, awaiting_input, the
    * Needs-you item and the single parked report are the existing ones. Never answered (hold-only, no keys).
@@ -7187,6 +7191,8 @@ export class Daemon extends EventEmitter {
    * changing the pane (spinner, timer, streamed text), so its clock never completes mid-turn.
    */
   private trackUnrecognisedPrompt(pane: string, mono: number, outputMoved: boolean): void {
+    if (mono < this.unrecognisedPromptReadAt) return;
+    this.unrecognisedPromptReadAt = mono;
     const shape = this.unrecognisedPromptCandidate(pane);
     if (!shape) { this.unrecognisedPrompt = null; return; }
     const screen = Daemon.stableScreen(pane);
@@ -7195,10 +7201,9 @@ export class Daemon extends EventEmitter {
     // Restart the minute on any change: another prompt, motion anywhere on the screen, output that arrived while this
     // capture was taken, or evidence from another launch (#1695 review).
     if (!current || current.block !== shape.block || current.screen !== screen || outputMoved) {
-      this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false, screen, owner, seenAt: mono };
+      this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false, screen, owner };
       return;
     }
-    current.seenAt = Math.max(current.seenAt, mono);
     if (!current.active && mono - current.since >= UNRECOGNISED_PROMPT_STABLE_MS) {
       current.active = true;
       // A [y/n] the interactive-prompt detector knows was already told (interactive_prompt, after 10 s): held and
@@ -7231,16 +7236,14 @@ export class Daemon extends EventEmitter {
   /**
    * #1691: a fresh pane read outside the scan (a delivery probe, an accepted state re-capture), taken at `mono`. When it
    * no longer shows exactly the tracked prompt, the evidence ends — counting or active, so a return needs a fresh minute
-   * (#1695 r2). When it does, it is the newest confirmation. Either way only a read newer than the newest confirming read
-   * counts: an older one, finishing late, says nothing about now (#1695 r3).
+   * (#1695 r2). When it does, it is the newest confirmation. Either way only a read newer than the newest read that
+   * decided the evidence counts: an older one, finishing late, says nothing about now (#1695 r3, r4).
    */
   private noteFreshPaneRead(pane: string, mono: number): void {
     const current = this.unrecognisedPromptCurrent();
-    if (!current || mono < current.seenAt) return;
-    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) {
-      current.seenAt = mono;
-      return;
-    }
+    if (!current || mono < this.unrecognisedPromptReadAt) return;
+    this.unrecognisedPromptReadAt = mono;
+    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return;
     this.unrecognisedPrompt = null;
   }
 
