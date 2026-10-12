@@ -1,3 +1,4 @@
+import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
 import type { SettingsExecution } from "./settings-transaction.js";
@@ -750,12 +751,15 @@ export function handleWebRequest(
     }
     const topicMode = ctx.fleetConfig?.channel?.mode === "topic";
     (async () => {
+      let held = false;
       try {
-        await ctx.startInstance(name, config, topicMode ?? false);
+        await withSpawnHoldReply(async message => { held = true; json(res, 202, { held: true, message, instance: name }); },
+          () => ctx.startInstance(name, config, topicMode ?? false));
         ctx.emitSseEvent("status", ctx.getUiStatus());
-        json(res, 200, { started: name });
+        if (!held) json(res, 200, { started: name });
       } catch (err) {
-        json(res, 500, { error: (err as Error).message });
+        if (!held) json(res, 500, { error: (err as Error).message });
+        else ctx.logger.error({ err, name }, "Held instance action failed");
       }
     })();
     return true;
@@ -871,13 +875,16 @@ export function handleWebRequest(
   if (method === "POST" && restartMatch) {
     const name = decodeURIComponent(restartMatch[1]);
     (async () => {
+      let held = false;
       try {
-        await ctx.restartSingleInstance(name, { explicit: true });
+        await withSpawnHoldReply(async message => { held = true; json(res, 202, { held: true, message, instance: name }); },
+          () => ctx.restartSingleInstance(name, { explicit: true }));
         ctx.emitSseEvent("status", ctx.getUiStatus());
-        json(res, 200, { restarted: name });
+        if (!held) json(res, 200, { restarted: name });
       } catch (err) {
         const status = (err as Error).message.includes("not found") ? 404 : 500;
-        json(res, status, { error: (err as Error).message });
+        if (!held) json(res, status, { error: (err as Error).message });
+        else ctx.logger.error({ err, name }, "Held instance action failed");
       }
     })();
     return true;

@@ -73,11 +73,13 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     try { const res = await fetch(`/ui/${verb}/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/json" } }); r = await res.json(); }
     catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.error) toast(r.error, false);
+    else if (r && r.held) toast(r.message);
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   });
   const pauseWake = (verb) => act(verb, async () => {
     const res = await api(`/api/settings/instances/${encodeURIComponent(name)}/${verb}`, { method: "POST" }).catch(() => ({ ok: false, body: {} }));
     if (!res.ok) toast((res.body && res.body.error) || t("chat.dActionFailed"), false);
+    else if (res.body && res.body.held) toast(res.body.message);
     else toast(t(verb === "pause" ? "chat.dPaused" : "chat.dWoken", name));
   });
   // A ClassicBot room (classicBot.yaml) keeps Classic's split: its own Settings dialog, and only the actions Settings'

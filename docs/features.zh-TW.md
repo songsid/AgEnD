@@ -1080,12 +1080,10 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 `/health` 一定會帶 `hostMemory` 區塊（等級、RAM 和 swap、趨勢；Linux 另帶 PSI 與觸發訊號），有記憶體壓力時會標成 degraded。在 **macOS** 上，等級取自核心自己的警示（`kern.memorystatus_vm_pressure_level`：2 放慢、4 暫停），絕不看可用記憶體或 swap 數字。
 
-**Fleet 通知跟著等級走，不是定時重發（#1685）：**
-- 壓力升高時通知一次，恢復正常時一行「已恢復」；
-- 中間不再重發；同一等級在一小時內再出現也不重發；
-- macOS 例行的警告等級（2）不發聊天通知：仍會放慢新的啟動，並顯示在 Fleet 頁面；只有 critical（4）會通知。
-
-Linux 通知會指出 PSI 的停滯百分比／時間窗，或 RAM 偏低等實際訊號。RAM 充足時，冷頁佔滿 swap 不再單獨觸發警告；PSI 讀不到或格式不對會退回 RAM 判定，不會因此卡住啟動。
+主機記憶體壓力不再發聊天廣播，恢復時也不發。儀表板的 Fleet 頁面顯示
+`host_memory`；log 與 `/health` 保留測量值與觸發訊號。使用者的操作因 critical
+暫停時，原因會放在該次操作的回覆，或網頁的 HTTP 202 回應；記憶體恢復後
+會繼續。RAM 充足時，冷頁佔滿 swap 仍不單獨觸發 Linux 壓力。
 
 詳見英文版 [memory-pressure.md](memory-pressure.md)。
 
