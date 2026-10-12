@@ -249,7 +249,8 @@ export class PublicWebLink {
     this.deps.revoke(e.id);
     e.gateway?.setHost(null); e.gateway?.close();
     // #1723: the preview is fenced now too (its own stop fences synchronously), and its tunnel ends with this one.
-    const previewStopped = e.preview?.stop(reason);
+    // Its failure is observed at once (an unproven stop, not an unhandled rejection while the link's own start ends).
+    const previewStopped = e.preview?.stop(reason).catch((): TunnelStopResult => ({ confirmed: false, reason: "preview stop failed", pid: null, identity: null }));
     e.closing = (async () => {
       await e.starting.catch(() => {});
       e.gateway?.close(); // listen may have finished after the first close.
