@@ -181,7 +181,8 @@ describe("fleet host memory wiring", () => {
     await holdFor(5 * 60_000, i => kernel(2, 2_900 - i), set);
     set(kernel(4)); await vi.advanceTimersByTimeAsync(30_000);
     await holdFor(2 * 60_000, () => kernel(1), set);
-    expect(frames).toEqual(["elevated", "critical", null]);
+    // After critical, the 30-second recovery ramp is elevated (#1438), then normal.
+    expect(frames).toEqual(["elevated", "critical", "elevated", null]);
   });
 
   it("#1685: macOS kernel 2 still slows the fleet's admission to one start at a time, 5 seconds apart", async () => {
