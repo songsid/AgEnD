@@ -119,9 +119,11 @@ function flush() {
     let ok = false;
     try { ok = (await post(set, false)).ok; } catch { ok = false; }
     for (const k of keys) { const n = (inflight.get(k) || 1) - 1; if (n) inflight.set(k, n); else inflight.delete(k); }
-    // Refused or not sent: what the host has is what holds — read it back, so this page does not show a choice no
-    // other device will see (a key changed again meanwhile is still this page's own, and stays).
-    if (!ok) await refresh();
+    // Taken: each key whose last write this was, and not changed here again since, now shows the newest host view this
+    // page has — usually its own value; another device's newer one if that arrived while the write was out (held back
+    // then, and an older answer to this write cannot overrule it). Refused or not sent: what the host has is what holds
+    // — read it back, so this page does not show a choice no other device will see.
+    if (ok) align(keys); else await refresh();
   });
   return writes;
 }
@@ -139,9 +141,14 @@ export async function refresh() {
     body = res.ok ? await res.json() : null;
   } catch { body = null; }
   if (!isView(body)) return false;
-  if (!take(body)) return true;
+  if (take(body)) align(Object.keys(SYNCED));
+  return true;
+}
+
+/** Show the host view this page has for these keys — except a key still being changed here (unsent, or out). */
+function align(keys) {
   const changed = new Set();
-  for (const key of Object.keys(SYNCED)) {
+  for (const key of keys) {
     if (pending.has(key) || inflight.has(key)) continue;
     const k = SYNCED[key];
     const want = own(host, key) ? k.toLocal(host[key]) : null;
@@ -150,7 +157,6 @@ export async function refresh() {
     changed.add(key);
   }
   if (changed.size) apply(changed);
-  return true;
 }
 
 function apply(changed) {

@@ -106,6 +106,41 @@ describe("the app's modules", () => {
     await ticks();
     expect([ls("agend_theme"), m.hostPref("theme")]).toEqual(["dark", "dark"]);
   });
+  it("r2: another device's newer value, held back while this page's write was out, is shown once that write ends — even if its answer is older", async () => {
+    const theme = vi.fn();
+    (globalThis as any).AgendTheme = { set: theme, get: () => "light" };
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
+    const write = held();
+    intercept = (method) => (method === "POST" ? write.p as Promise<any> : undefined);
+    m.savePref("theme", "dark");
+    await new Promise((r) => setTimeout(r, 450));           // dark is out (committed on the host as rev 2; its answer held)
+    hostValues = { theme: "light" }; hostRev = 3;           // another device put light back: rev 3
+    await m.refresh();
+    const during = [ls("agend_theme"), m.hostPref("theme")];
+    write.release(reply(200, { values: { theme: "dark" }, rev: 2 }));
+    await ticks();
+    expect([during, ls("agend_theme"), m.hostPref("theme"), theme.mock.calls]).toEqual([["dark", "light"], "light", "light", [["light"]]]);
+  });
+  it("r2 controls: a write answered normally keeps this page's value; a key changed again while its write was out stays this page's", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
+    m.savePref("theme", "dark");
+    await new Promise((r) => setTimeout(r, 450)); await ticks();
+    const normal = [ls("agend_theme"), m.hostPref("theme")];
+    const write = held();
+    intercept = (method) => (method === "POST" ? write.p as Promise<any> : undefined);
+    m.savePref("lang", "zh-TW");
+    await new Promise((r) => setTimeout(r, 450));           // lang zh-TW is out
+    hostValues = { ...hostValues, lang: "en" }; hostRev = 9;
+    await m.refresh();
+    m.savePref("lang", "en");                               // changed here again (pending) …
+    m.savePref("lang", "zh-TW");                            // … to zh-TW: this page's choice
+    write.release(reply(200, { values: { theme: "dark", lang: "zh-TW" }, rev: 3 }));
+    await ticks();
+    expect([normal, ls("agend_lang")]).toEqual([["dark", "dark"], "zh-TW"]);
+    intercept = null;
+    await new Promise((r) => setTimeout(r, 450)); await ticks();
+    expect([posts().at(-1), ls("agend_lang")]).toEqual([{ set: { lang: "zh-TW" } }, "zh-TW"]);
+  });
   it("P2-2 ②: an older read answering last does not replace a newer one", async () => {
     const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
     const older = held();
