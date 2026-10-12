@@ -69,6 +69,8 @@ function makeLifecycle() {
     webhookEmit: () => {},
     clearCancelButton: () => {},
     instanceIpcClients: new Map(),
+    // A plain fleet instance: the backend's default login (a value, never the no-op's Promise) (#1699 follow-up).
+    credentialProfileOf: () => null,
   };
   // Every other context member is a no-op: this test is about the incident path.
   const ctx = new Proxy(base, { get: (t, k) => (k in t ? t[k as string] : () => Promise.resolve(undefined)) }) as unknown as LifecycleContext;
