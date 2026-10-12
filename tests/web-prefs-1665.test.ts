@@ -140,6 +140,10 @@ describe("the store: one operator bucket on disk", () => {
     writeFileSync(join(dir, "web-prefs.json"), JSON.stringify({ version: 1, rev: 4, identities: { operator: { values: { theme: "blue", lang: "en", "__proto__": "x", gone: 1 }, updated: {} } } }));
     expect(new WebPrefsStore(dir).read()).toEqual({ values: { lang: "en" }, rev: 4 });
   });
+  it("no place for the file (a fleet with no data directory): defaults, nothing written, nothing thrown", () => {
+    const s = new WebPrefsStore(undefined as unknown as string);
+    expect([s.read(), s.rev(), s.write(OPERATOR, new Map([["theme", "dark"]]))]).toEqual([{ values: {}, rev: 0, unreadable: true }, 0, { ok: false, status: 503, error: "prefs_unreadable" }]);
+  });
   it("a failed write leaves memory as the file is", () => {
     const s = new WebPrefsStore(tmp(), { write: () => { throw new Error("disk full"); } });
     expect(() => s.write(OPERATOR, new Map([["theme", "dark"]]))).toThrow("disk full");

@@ -115,8 +115,10 @@ export class WebPrefsStore {
   private load(): State | "unreadable" {
     if (this.state) return this.state;
     const empty: State = { buckets: new Map(), rev: 0 };
-    if (!existsSync(this.path)) return (this.state = empty);
+    // Anything that goes wrong here — the file, or no place for it at all — is "unreadable": the defaults are served
+    // and nothing is written, so a page or a status frame never fails because of a preference.
     try {
+      if (!existsSync(this.path)) return (this.state = empty);
       const doc = JSON.parse(readFileSync(this.path, "utf8")) as unknown;
       if (!plain(doc) || doc.version !== 1 || !plain(doc.identities) || !Number.isSafeInteger(doc.rev)) return (this.state = "unreadable");
       const buckets = new Map<string, Bucket>();
