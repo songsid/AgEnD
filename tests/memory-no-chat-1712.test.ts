@@ -142,6 +142,49 @@ describe("#1712 memory protection without chat broadcasts", () => {
     expect(reply).not.toHaveBeenCalled(); expect(operation).toHaveBeenCalledOnce();
   });
 
+  it.each([false, true])("queued operation keeps its own nested reply scope (background=%s)", async background => {
+    const { fm, f, set, notify } = make("linux");
+    f.fleetConfig.defaults.startup = { concurrency: 1, stagger_delay_ms: 0 };
+    const first = vi.fn().mockResolvedValue(undefined), second = vi.fn().mockResolvedValue(undefined);
+    let release!: () => void, finish!: () => void;
+    const blocking = new Promise<void>(resolve => { release = resolve; });
+    const stillActive = new Promise<void>(resolve => { finish = resolve; });
+    const a = withSpawnHoldReply(first, async () => {
+      await fm.spawnGate.run({ instanceName: "a", workingDirectory: "/fixture/a", reason: "startup", stage: "lifecycle" }, () => blocking);
+      await stillActive;
+    });
+    const physical = vi.fn(async () => 42);
+    const enqueue = () => fm.spawnGate.run({ instanceName: "b", workingDirectory: "/fixture/b", reason: "startup", stage: "lifecycle" }, async () => {
+      set("critical");
+      return fm.spawnGate.run({ instanceName: "b", workingDirectory: "/fixture/b", reason: "startup" }, physical);
+    });
+    const b = background ? enqueue() : withSpawnHoldReply(second, enqueue);
+    release(); await vi.advanceTimersByTimeAsync(0);
+    expect(first).not.toHaveBeenCalled();
+    if (background) expect(second).not.toHaveBeenCalled();
+    else expect(second).toHaveBeenCalledExactlyOnceWith(t("memory.action_held"));
+    expect(notify).not.toHaveBeenCalled(); expect(physical).not.toHaveBeenCalled();
+    set("normal"); await vi.advanceTimersByTimeAsync(120_000); finish(); await Promise.all([a, b]);
+    expect(physical).toHaveBeenCalledOnce();
+  });
+
+  it("an unsent transient hold remains eligible when the same action later holds again", async () => {
+    const { fm, set } = make("darwin", "critical"); const reply = vi.fn().mockResolvedValue(undefined);
+    let release!: () => void;
+    const later = new Promise<void>(resolve => { release = resolve; });
+    const operation = vi.fn(async () => 42);
+    const result = withSpawnHoldReply(reply, () => fm.spawnGate.run({ instanceName: "a", workingDirectory: "/fixture/a", reason: "startup", stage: "lifecycle" }, async () => {
+      await later;
+      return fm.spawnGate.run({ instanceName: "a", workingDirectory: "/fixture/a", reason: "startup" }, operation);
+    }));
+    set("unknown"); fm.memoryPressure.sample(); await vi.advanceTimersByTimeAsync(0);
+    expect(reply).not.toHaveBeenCalled();
+    set("critical"); fm.memoryPressure.sample(); release(); await vi.advanceTimersByTimeAsync(0);
+    expect(reply).toHaveBeenCalledExactlyOnceWith(t("memory.action_held")); expect(operation).not.toHaveBeenCalled();
+    set("normal"); await vi.advanceTimersByTimeAsync(120_000); await result;
+    expect(operation).toHaveBeenCalledOnce(); expect(reply).toHaveBeenCalledOnce();
+  });
+
   it.each(["start", "restart", "wake"] as const)("web %s returns the hold reason once and completes the queued operation after recovery", async action => {
     const { fm, f, set, notify } = make("linux", "critical");
     vi.spyOn(f, "webToken", "get").mockReturnValue("fixture".repeat(8));

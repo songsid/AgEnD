@@ -1,6 +1,6 @@
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import type { StormWindow } from "./storm-window.js";
-import { captureSpawnHoldReply } from "./spawn-hold-reply.js";
+import { bindSpawnHoldReply, captureSpawnHoldReply } from "./spawn-hold-reply.js";
 
 export interface SpawnTask {
   instanceName: string;
@@ -76,7 +76,7 @@ export class SpawnGate {
     // before the nested physical spawn. Reacquiring its own slot would deadlock.
     return new Promise<T>((resolve, reject) => {
       const queue = this.activeInstances.has(task.instanceName) ? this.nestedQueue : this.queue;
-      queue.push({ task, run: operation, resolve, reject,
+      queue.push({ task, run: bindSpawnHoldReply(operation), resolve, reject,
         heldReply: captureSpawnHoldReply(() => !this.stopped && this.memoryPressure.snapshot().level === "critical") } as QueuedTask);
       this.pump();
     });
