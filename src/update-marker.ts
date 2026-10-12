@@ -52,6 +52,74 @@ export interface UpdateProgressState {
   version?: string;
   error?: string;
   failedStage?: UpdateProgressStage;
+  /** Non-fatal cleanup note (e.g. old system copy left behind, #1660). */
+  warning?: string;
+  /**
+   * Verbatim copy-paste cleanup command. Unlike prose it is never whitespace-
+   * normalized or sliced: a path with double spaces or a long absolute npm
+   * path must survive byte-exact (#1660 review). Bounded by the platform
+   * (it names one absolute path), not by a prose length cap.
+   */
+  cleanupCommand?: string;
+  /** #1660: the retire outcome is still owed (set before restart) or recorded. */
+  cleanup?: "pending" | "done";
+}
+
+/** Which update receipt a cleanup outcome belongs to (owner fence, #1660). */
+export interface UpdateReceipt {
+  startedAt: number;
+  messageId: string;
+  operation: UpdateProgressOperation;
+}
+
+export function updateReceiptOf(marker: (UpdateMarker & { progress: UpdateProgressState }) | null): UpdateReceipt | null {
+  if (!marker?.progress?.target?.messageId) return null;
+  return { startedAt: marker.startedAt, messageId: marker.progress.target.messageId, operation: updateProgressOperation(marker.progress) };
+}
+
+function sameReceipt(a: UpdateReceipt | null, b: UpdateReceipt | null): boolean {
+  return !!a && !!b && a.startedAt === b.startedAt && a.messageId === b.messageId && a.operation === b.operation;
+}
+
+/**
+ * Mark the current update as owing its retire outcome, before the restart
+ * that may let a new fleet consume this receipt. Returns the receipt the
+ * later write must still match.
+ */
+export function markCleanupPending(dataDir: string): UpdateReceipt | null {
+  const marker = readUpdateProgress(dataDir);
+  const receipt = updateReceiptOf(marker);
+  if (!receipt || !marker) return null;
+  marker.pid = process.pid;
+  marker.progress = { ...marker.progress, cleanup: "pending" };
+  return writeMarker(dataDir, marker) ? receipt : null;
+}
+
+/**
+ * Record a retire outcome against the receipt captured before the restart.
+ * Refuses when the marker is gone (the new fleet already consumed it) or
+ * belongs to another operation (e.g. a later full-restart adopted it) — the
+ * warning was already printed to the updater's own output, so refusing here
+ * loses nothing the operator saw.
+ */
+export function writeCleanupOutcome(
+  dataDir: string,
+  receipt: UpdateReceipt | null,
+  outcome: { warning?: string; cleanupCommand?: string } | null,
+): boolean {
+  if (!receipt) return false;
+  const marker = readUpdateProgress(dataDir);
+  if (!marker || !sameReceipt(updateReceiptOf(marker), receipt)) return false;
+  marker.pid = process.pid;
+  marker.progress = {
+    ...marker.progress,
+    // Prose follows the same rule as setUpdateProgressStage; the command is
+    // verbatim so quoted paths survive byte-exact.
+    ...(outcome?.warning !== undefined ? { warning: outcome.warning.replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
+    ...(outcome?.cleanupCommand !== undefined ? { cleanupCommand: outcome.cleanupCommand } : {}),
+    cleanup: "done",
+  };
+  return writeMarker(dataDir, marker);
 }
 
 export interface UpdateMarker {
@@ -126,7 +194,7 @@ export function readUpdateProgress(dataDir: string): (UpdateMarker & { progress:
 export function setUpdateProgressStage(
   dataDir: string,
   stage: UpdateProgressStage,
-  details: { version?: string; error?: string } = {},
+  details: { version?: string; error?: string; warning?: string; cleanupCommand?: string; cleanup?: "pending" | "done" } = {},
 ): boolean {
   const marker = readMarker(dataDir);
   if (!marker?.progress) return false;
@@ -137,6 +205,9 @@ export function setUpdateProgressStage(
     stage,
     ...(details.version !== undefined ? { version: details.version } : {}),
     ...(details.error !== undefined ? { error: details.error.replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
+    ...(details.warning !== undefined ? { warning: details.warning.replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
+    ...(details.cleanupCommand !== undefined ? { cleanupCommand: details.cleanupCommand } : {}),
+    ...(details.cleanup !== undefined ? { cleanup: details.cleanup } : {}),
     ...(stage === "failed" ? { failedStage: previousStage } : {}),
   };
   return writeMarker(dataDir, marker);

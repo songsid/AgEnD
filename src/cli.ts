@@ -48,7 +48,7 @@ import {
   runningFleetPredatesInstall,
   processStartMs,
 } from "./update-check.js";
-import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
+import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
 import { describeSignalSource, forceAllowed, gateFleetControl, recordInstanceControl, withOrigin } from "./fleet-control-audit.js";
 import { FLEET_STOP_TIMEOUT_MS, stopDetachedOwner, systemdStopTimeoutMs, detachedProcessStart, detachedProcessExited, type DetachedOwnerState } from "./fleet-stop-budget.js";
 import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
@@ -1482,6 +1482,17 @@ program
         const result = spawnSync(command, args, { encoding: "utf-8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"] });
         return { status: result.status, signal: result.signal, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
       };
+      // #1660: the retire outcome lands after this process's restart returns —
+      // after the new fleet may have consumed this receipt. Capture it now so
+      // the cleanup write later can prove it still owns the marker (checklist
+      // 3/5). A missed capture only skips the marker write; retire still runs.
+      let cleanupReceipt: UpdateReceipt | null = null;
+      if (verified.retireSystemCopy) {
+        try {
+          const { markCleanupPending } = await import("./update-marker.js");
+          cleanupReceipt = markCleanupPending(DATA_DIR);
+        } catch { /* no receipt: retire still runs, the marker write is skipped */ }
+      }
       const outcome = activateService(manager, verified, {
         run: capture,
         readFile: path => { try { return readFileSync(path, "utf-8"); } catch { return null; } },
@@ -1514,9 +1525,28 @@ program
       if (verified.retireSystemCopy) {
         if (activationSettled(outcome, restartResult)) {
           const retireResult = retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) }, verified.npmPath);
+          // The marker write proves the pre-restart receipt still owns the
+          // marker: refused when it is gone or belongs to another operation.
+          const recordCleanup = async (result: { warning?: string; cleanupCommand?: string } | null): Promise<void> => {
+            if (!cleanupReceipt) return;
+            try {
+              const { writeCleanupOutcome } = await import("./update-marker.js");
+              writeCleanupOutcome(DATA_DIR, cleanupReceipt, result);
+            } catch { /* receipt unverifiable: retire already ran; stdout stands */ }
+          };
           if (!retireResult.ok) {
             console.error(`  ✗ Old system install was not removed: ${retireResult.reason}`);
             process.exitCode = 1;
+            // Resolve the pending flag so no watch waits out the max age.
+            await recordCleanup(null);
+          } else if (retireResult.warning) {
+            // #1660: cleanup only — the new version runs. Exit 0; the single
+            // print lives here (retireSystemCopy stays silent, P3-1).
+            console.log(`  ⚠️  ${retireResult.warning}`
+              + (retireResult.cleanupCommand ? `\n  $ ${retireResult.cleanupCommand}` : ""));
+            await recordCleanup({ warning: retireResult.warning, cleanupCommand: retireResult.cleanupCommand });
+          } else {
+            await recordCleanup(null);
           }
         } else {
           console.log("  Note: the old system install was kept, since the new one is not running yet.");
