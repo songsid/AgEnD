@@ -73,13 +73,15 @@ describe("opting in", () => {
   });
 
   it("knows the backends whose credential layout has been checked", () => {
-    // One entry per backend somebody actually looked at. The two are different
+    // One entry per backend somebody actually looked at. They are different
     // shapes because their files are: kiro's login is a store entangled with
-    // everything else, codex's is one file beside stores that carry no account.
+    // everything else, codex's is one file beside stores that carry no account,
+    // claude's whole state moves with one variable (#1699).
     expect(credentialHomeSpec("kiro-cli")).toMatchObject({ kind: "relocate-home", env: "XDG_DATA_HOME" });
     expect(credentialHomeSpec("codex")).toMatchObject({ kind: "redirect-files", files: ["auth.json"] });
-    expect(credentialHomeSpec("claude-code")).toBeNull();
-    expect(Object.keys(CREDENTIAL_HOMES)).toEqual(["kiro-cli", "codex"]);
+    expect(credentialHomeSpec("claude-code")).toMatchObject({ kind: "relocate-home", env: "CLAUDE_CONFIG_DIR", storeSubdir: "" });
+    expect(credentialHomeSpec("opencode")).toBeNull();
+    expect(Object.keys(CREDENTIAL_HOMES)).toEqual(["kiro-cli", "codex", "claude-code"]);
   });
 
   it("says which switches cost the conversation and which do not", () => {

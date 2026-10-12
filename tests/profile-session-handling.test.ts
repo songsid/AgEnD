@@ -74,9 +74,9 @@ describe("switching to a subscription nobody has logged into", () => {
   });
 
   it("says nothing about a backend it cannot check", () => {
-    // claude-code has no credential home yet, so there is no login to probe.
+    // opencode has no credential home, so there is no login to probe.
     // An unknown answer must not read as "signed out" and block an edit.
-    expect(credentialProfileLogin(tempDir(), "claude-code", "work")).toEqual({ state: "unknown" });
+    expect(credentialProfileLogin(tempDir(), "opencode", "work")).toEqual({ state: "unknown" });
   });
 });
 
@@ -191,9 +191,9 @@ describe("a profile switch is refused before it can strand the agent", () => {
   });
 
   it("does not block a backend whose login it cannot see", async () => {
-    const h = harness({ working_directory: "/tmp/w", backend: "claude-code" });
+    const h = harness({ working_directory: "/tmp/w", backend: "opencode" });
 
-    const { error } = await update(h, { backend_options: { "claude-code": { credential_profile: "work" } } });
+    const { error } = await update(h, { backend_options: { opencode: { credential_profile: "work" } } });
 
     expect(error).toBeUndefined();
     expect(h.saveFleetConfig).toHaveBeenCalled();
