@@ -29,7 +29,7 @@ import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { createMentionIndex } from "./chat-mentions.js";
-import { PreviewPanel, claimPanel, openPanel, panelStore, panelVersion, shownKey } from "./preview-panel.js";
+import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { FirstRunCard } from "./first-run.js";
@@ -244,7 +244,7 @@ function Thread({ name, th }) {
       setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
       replyButtonBusy: (id) => store.state.rbBusy.has(id),
-      panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel },   // #1481, #1704
+      panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
       openImage: openLightbox,                                               // an image, full size, in the page
       emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
       mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names

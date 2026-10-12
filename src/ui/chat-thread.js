@@ -34,7 +34,7 @@ export const msgKey = (x) => `${x.boot}-${x.id}`;
 /**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
  * setPreviewOptIn(on), copyText(text) → Promise<boolean>, download(code), panel? }. panel (#1481): { shown() → the card
- * key the side panel shows, or null; open(spec, { run }); version(); claim() } — without it a card has no "Open in panel".
+ * key the side panel shows, or null; open(spec, { run }); version(); claim(); claims() } — without it a card has no "Open in panel".
  */
 export function createThread(list, scroller, opts) {
   const nodes = new Map();          // key → { html, node }
@@ -318,8 +318,13 @@ export function createThread(list, scroller, opts) {
     };
     const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
     // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
-    // A Preview click is newer than any Open in panel still reading (#1704): it claims the panel's turn too.
-    run.onclick = () => { if (!P().availability().ok) return; if (panel) panel.claim(); withCode((c) => P().start(key, holder, c, ui)); };
+    // A Preview click is newer than any Open in panel still reading (#1704): it claims the panel's turn too — and, its
+    // own HTML read, starts only if no newer click claimed meanwhile (a late read never undoes a newer choice).
+    run.onclick = () => {
+      if (!P().availability().ok || reading) return;     // this card already reading: that click stays the one
+      const mine = panel ? (panel.claim(), panel.claims()) : 0;
+      withCode((c) => { if (panel && panel.claims() !== mine) { refresh(); return; } P().start(key, holder, c, ui); });
+    };
     stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
     // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
     // starts there), an idle one starts there. Whether it can run is the panel's to say: a device that has not allowed
@@ -328,6 +333,7 @@ export function createThread(list, scroller, opts) {
     // wins: if the panel changed (another click, block, close) or any preview started meanwhile, this one is dropped —
     // a late read never undoes a newer click.
     if (toPanel) toPanel.onclick = () => {
+      if (reading) return;                               // this card already reading: that click stays the one
       if (P().running(key)) P().stop(key, "stopped", "");
       const at = panel.claim(), started = P().startCount();
       withCode((c) => {

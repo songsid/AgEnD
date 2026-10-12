@@ -27,7 +27,7 @@ const P = () => globalThis.AgendPreview;
  * run: start it on mount — the card's click, as a token no later open ever reuses (0: nothing to run).
  */
 let state = { open: null, run: 0 };
-let runs = 0, version = 0;
+let runs = 0, version = 0, claims = 0;
 const subs = new Set();
 function set(next) { state = next; version++; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
 export const panelStore = { get: () => state, subscribe(fn) { subs.add(fn); return () => { subs.delete(fn); }; } };
@@ -35,7 +35,9 @@ export const panelStore = { get: () => state, subscribe(fn) { subs.add(fn); retu
 export const panelVersion = () => version;
 /** A click that will show something in the panel (an attachment's HTML still to read): from now on it is the newest —
  *  any earlier click still reading is dropped when its answer comes. Returns the version the click owns. */
-export function claimPanel() { return ++version; }
+export function claimPanel() { claims++; return ++version; }
+/** How many clicks have claimed: an inline Preview still reading asks only whether a newer click came (not a close). */
+export const panelClaims = () => claims;
 
 /** The frame's key in preview.js: its own, so the card that opened it keeps its own state. */
 export const frameKey = (key) => `panel:${key}`;
