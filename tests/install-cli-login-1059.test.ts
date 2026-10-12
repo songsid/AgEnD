@@ -101,8 +101,8 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
   it("#1699 part 2: an install that a `/login <backend> <profile>` started signs that profile in, not the default login", async () => {
     const { fm, chat } = fleet();
     const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
-    vi.spyOn(fm as any, "isCliInstalled").mockReturnValue(false);
-    await fm.startLoginSession("grok", chat, { profile: "work" });
+    // The routing that sends a valid profile here first is pinned in login-profile-1699 (admission runs before it).
+    await fm.startInstallSession("grok", chat, { profile: "work" });
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
     expect(signIn).toHaveBeenCalledWith("grok", expect.anything(), { profile: "work" });
   });
