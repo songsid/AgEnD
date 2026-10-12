@@ -71,7 +71,7 @@ import {
 } from "./turn-resume.js";
 import type { TurnFingerprint } from "./backend/session-signals.js";
 import { codexLiveRowMatches } from "./backend/codex.js";
-import { claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
+import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 
@@ -5093,6 +5093,7 @@ export class Daemon extends EventEmitter {
         before: readResumeFingerprint(normalizeResumeBackend(resumeBackend), {
           instanceDir: this.instanceDir,
           workingDirectory: resumeCwd,
+          claudeConfigDir: this.claudeConfigDir(),
         }),
       });
     }
@@ -5142,7 +5143,7 @@ export class Daemon extends EventEmitter {
       && this.spawnGeneration === gateSpawn
       && this.launchFenceEpoch === gateFence;
     const backend = this.resolveResumeBackend() ?? normalizeResumeBackend(marker.backend);
-    const roots = { instanceDir: this.instanceDir, workingDirectory: this.config.working_directory ?? "" };
+    const roots = { instanceDir: this.instanceDir, workingDirectory: this.config.working_directory ?? "", claudeConfigDir: this.claudeConfigDir() };
     // This boot's CLI spawn is what the daemon itself caused: pre-restart
     // writes (including pre-crash progress) are excluded, and the flush
     // grace holds the decision until post-spawn writes are observable.
@@ -10822,7 +10823,7 @@ export class Daemon extends EventEmitter {
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
-    this.backend!.preTrust?.(this.config.working_directory);
+    this.backend!.preTrust?.(this.config.working_directory, backendConfig);
 
     // Resolve working directory (e.g. symlink for hidden paths)
     const resolvedCwd = this.backend!.resolveWorkingDirectory?.(this.config.working_directory, this.name) ?? this.config.working_directory;
@@ -11455,6 +11456,11 @@ export class Daemon extends EventEmitter {
    * Built with the same `getAgendHome()` the launch prefix uses, or the two
    * would disagree about where the profile is.
    */
+  /** #1699: the claude config dir this instance's CLI uses — its credential profile's, else exactly as before. */
+  private claudeConfigDir(): string {
+    return claudeConfigDirFor(claudeProfileConfigDir(this.config.backend_options?.["claude-code"]));
+  }
+
   private credentialProfileStore(): string | undefined {
     const backendName = this.config.backend ?? "claude-code";
     let profile: string | null;

@@ -93,6 +93,8 @@ export interface CredentialHomeSpec {
   hasLogin?: (storeHome: string) => boolean;
   /** The subcommand that logs a store in, for telling the user what to run. */
   loginSubcommand: string;
+  /** The CLI binary that subcommand belongs to, when it is not the backend's name (claude-code → `claude`). */
+  binary?: string;
   /**
    * Whether changing profile means the conversation is gone.
    *
@@ -185,10 +187,60 @@ function codexStoreHasLogin(storeHome: string): boolean {
   }
 }
 
-/** Backends that can hold more than one login. Codex and Claude come later. */
+/**
+ * Claude Code keeps its whole state under one directory that `CLAUDE_CONFIG_DIR` moves (#1699, claude 2.1.296, binary
+ * plus a live TUI on Linux and macOS against a mock API): the login (`.credentials.json`, or on macOS the Keychain item
+ * `Claude Code-credentials-<sha256(dir)[0..8]>` — keyed by the directory, so two profiles never overwrite each other),
+ * the global config `.claude.json` (account, onboarding, per-project trust), and every conversation under `projects/`.
+ * Nothing goes to `~/.claude` or `~/.claude.json` while it is set.
+ *
+ * Only a NAMED profile sets it. Unset is the user's existing login: on macOS the Keychain item has no suffix then, and
+ * setting the variable at all — even to `~/.claude` — would look up a different item and the login would seem gone.
+ *
+ * The user's own instructions, agents, commands, skills, output styles and plugins are linked back; everything that is
+ * an account, a conversation or a setting `/model` writes stays private. A different profile is a different
+ * `projects/`, so a switch starts a fresh conversation (verified: `--resume <id>` and `--continue` find nothing).
+ */
+const CLAUDE_HOME: CredentialHomeSpec = {
+  kind: "relocate-home",
+  env: "CLAUDE_CONFIG_DIR",
+  sharedRoot: () => resolve(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude")),
+  storeSubdir: "",
+  isolate: [
+    ".credentials.json", ".claude.json", "settings.json", "settings.local.json",
+    "projects", "sessions", "history.jsonl", "backups", "todos", "shell-snapshots", "statsig", "ide", "session-env", "file-history",
+  ],
+  share: ["CLAUDE.md", "agents", "commands", "skills", "output-styles", "plugins"],
+  files: [],
+  hasLogin: claudeStoreHasLogin,
+  loginSubcommand: "auth login",
+  binary: "claude",
+  switchStartsFreshSession: true,
+};
+
+/**
+ * A Claude Code login in a config dir: an OAuth token in `.credentials.json` (Linux), or the account claude records in
+ * `.claude.json` when it signs in (every platform — on macOS the token itself is in the Keychain, which this never
+ * reads). Shape only, never a value.
+ */
+export function claudeStoreHasLogin(storeHome: string): boolean {
+  try {
+    const creds = JSON.parse(readFileSync(join(storeHome, ".credentials.json"), "utf8")) as { claudeAiOauth?: { accessToken?: unknown } };
+    if (typeof creds.claudeAiOauth?.accessToken === "string" && creds.claudeAiOauth.accessToken.length > 0) return true;
+  } catch { /* none here: the account record is the other proof */ }
+  try {
+    const cfg = JSON.parse(readFileSync(join(storeHome, ".claude.json"), "utf8")) as { oauthAccount?: { accountUuid?: unknown } };
+    return typeof cfg.oauthAccount?.accountUuid === "string" && cfg.oauthAccount.accountUuid.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Backends that can hold more than one login. */
 export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
   "kiro-cli": KIRO_HOME,
   "codex": CODEX_HOME,
+  "claude-code": CLAUDE_HOME,
 };
 
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
@@ -220,7 +272,9 @@ export function resolveCredentialProfile(backendOptions: Record<string, unknown>
  * "these three agents use the work account" impossible to express.
  */
 export function credentialProfileHome(dataDir: string, backendName: string, profile: string): string {
-  return join(dataDir, "credential-profiles", backendName, profile);
+  // Absolute and normalised (#1699): claude names its macOS Keychain item after this exact string, so every writer and
+  // reader of a profile must spell it the same way — no relative AGEND_HOME, no trailing slash.
+  return resolve(dataDir, "credential-profiles", backendName, profile);
 }
 
 /**
@@ -418,7 +472,7 @@ export function credentialProfileLogin(
     // The whole command, not a description of one: this is read by an agent
     // relaying it to a person who has to run it, and a paraphrase of a shell
     // line is how a person ends up logging the wrong profile in.
-    loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${backendName} ${spec.loginSubcommand}`,
+    loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${spec.binary ?? backendName} ${spec.loginSubcommand}`,
   };
 }
 
