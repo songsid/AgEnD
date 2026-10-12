@@ -461,6 +461,18 @@ describe("#1723: the tunnel lane is held until the link's AND the preview's stop
     expect((await h.link.close("end")).confirmed).toBe(false);
     expect(h.lane.reserve("login", "new-login")).toBeNull();
   });
+  it("the lane itself: a companion stop that rejects is unproven (the lane stays held), and its own result comes first", async () => {
+    const manager = { start: vi.fn(async () => ({ ok: true as const, handle: {} as never })), stop: vi.fn(async () => ({ confirmed: true as const })) };
+    const lane = new TunnelPurposeLane(manager);
+    const r = lane.reserve("dashboard", "A")!;
+    await r.start({} as never, {} as never);
+    expect(await r.stop("close", Promise.reject(new Error("preview stop failed")))).toMatchObject({ confirmed: false });
+    expect(lane.reserve("login", "B")).toBeNull();
+    const lane2 = new TunnelPurposeLane({ ...manager, stop: vi.fn(async () => ({ confirmed: false as const, reason: "own", pid: 3, identity: null })) });
+    const r2 = lane2.reserve("dashboard", "A")!;
+    await r2.start({} as never, {} as never);
+    expect(await r2.stop("close", Promise.resolve({ confirmed: false as const, reason: "other", pid: 4, identity: null }))).toMatchObject({ pid: 3 });
+  });
   it("control: both proven → /login can take the lane", async () => {
     const h = rig(); await h.link.deliver(owner, async () => true); await tick();
     expect((await h.link.close("end")).confirmed).toBe(true);
