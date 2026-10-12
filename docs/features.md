@@ -68,6 +68,10 @@ When an instance spawns, the daemon compares the fleet instructions it just buil
 
 No configuration is needed.
 
+## Per-version what's-new notice (#1633)
+
+After an upgrade, each existing instance gets one short notice delivered just before the next message it receives — never in the middle of a turn, never to an instance nobody writes to. The notice lists agent-facing changes with their exact parameter names and tells the agent to reload any tool description that looks older than the current version. Each item is sent at most once per instance; the record survives daemon restarts. New instances start with the current tools and receive nothing. A version with no agent-facing changes sends nothing.
+
 ## Instance status indicators
 
 `agend ls` (columns Name, Backend, Status, Team, Src, Ctx, Mem, Activity) and the `/status` chat command show one state per instance. The state comes from the daemon's execution state (idle / working / stuck / paused) combined with the lifecycle (running / paused / stopped / crashed):
@@ -1120,3 +1124,11 @@ Since then:
 - **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
 
 See [web-dashboard.md](web-dashboard.md).
+
+## Instance identity in the web dashboard (#1630)
+
+The sidebar, chat header and Needs-you list each show who an instance is. What stands for each instance is decided in this order: a picture uploaded for it in **View** → its own bot's avatar (when it has a dedicated bot; instances on the shared bot skip this step) → its persona emoji → the first letter of its display name. A bot with a colour in its Discord server gets that colour as a ring around its picture. The status dot sits on the picture and labels the state (idle, working, looks stuck, paused, stopped, crashed, needs you) for screen readers as well as in colour. The chat header and the Needs-you list use the display name too. In the sidebar, when two instances share a display name, the instance name is shown under it.
+
+Bot avatars and the custom emoji of the fleet's Discord servers are fetched on the host with the bot's own token, kept in `~/.agend/cache/` (refreshed at most once a day; a failed refresh keeps the last copy), and served by the dashboard to signed-in sessions, including the temporary public link, read-only. The page never loads images from Discord or Telegram. Discord server emoji in web chat are served the same way. The status-emoji editor in Settings uses the same cached route too, and the panels' content policy no longer allows any remote image source. In the Settings editor, an emoji from a server the fleet's bots are not in shows as its `:name:`.
+
+Clearing the display name in View's **Edit profile** now removes the override — the name the agent set with `set_display_name` (or the instance name) shows again. Display names cleared before this release recover too.
