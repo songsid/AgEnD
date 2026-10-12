@@ -32,6 +32,7 @@ export const SYNCED = {
   "nav.filter": { ls: "agend_instance_filter", ...json },
   "nav.favorites": { ls: "agend_favorites", ...json },   // #1664
   "preview.optIn": { ls: "agend_html_preview", toLocal: (v) => (v ? "on" : null), fromLocal: (s) => (s === "on" ? true : undefined) },
+  "names.primary": { ls: "agend_names_primary", toLocal: (v) => (v === "instance" ? v : null), fromLocal: (s) => (s === "instance" ? s : undefined) },   // #1722
 };
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());

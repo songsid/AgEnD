@@ -71,23 +71,23 @@ const rowOf = (name: string) => rows().find((a: any) => rowName(a) === name)!;
 const card = () => p.root.querySelector(".v-card")!;
 const usageButton = () => p.root.querySelectorAll(".panel-actions .btn").find((b: any) => b.textContent.includes("Usage"))!;
 
-describe("the roster row: the backend icon, the context figure", () => {
-  it("each backend has its icon class, in the stylesheet and on the row", async () => {
+describe("the roster row: the CLI on the avatar (#1722), the context figure", () => {
+  it("each backend is a letter on the avatar's corner (no colour needed), named in full on hover and in the row's text", async () => {
     roster = BACKENDS.map((b, i) => base({ instance_name: `i${i}`, backend: b, context_pct: null }));
     await mountView("i0");
-    for (const backend of BACKENDS) expect(appCss, backend).toContain(`.cli-${backend}`);
-    const icons = rows().map((a: any) => a.querySelector(".cli-icon").className.split(" ").find((c: string) => c !== "cli-icon"));
-    expect(icons).toEqual(BACKENDS.map(b => `cli-${b}`));
+    const badges = rows().map((a: any) => [a.querySelector(".av .av-cli").textContent, a.querySelector(".av .av-cli").getAttribute("title"), a.querySelector(".inst-text .sr-only").textContent]);
+    expect(badges).toEqual(BACKENDS.map(b => [{ "claude-code": "C", "kiro-cli": "K", codex: "X", grok: "G", antigravity: "A", opencode: "O" }[b], view.backendLabel(b), `Backend: ${view.backendLabel(b)}`]));
+    expect(appCss, "the old colour-only dot is gone").not.toMatch(/\.cli-icon|\.cli-claude-code/);
   });
 
-  it("the icon comes after the context figure, and an unknown backend gets the 'other' colour", async () => {
+  it("nothing after the context figure takes the row's width; an unknown backend gets a '·'", async () => {
     roster = [base({ instance_name: "alpha", backend: "codex", context_pct: 40 }), base({ instance_name: "beta", backend: "mystery", context_pct: null })];
     await mountView();
     const alpha = rowOf("alpha");
     const kids = alpha.children.map((c: any) => c.className.split(" ")[0]);
-    expect(kids.indexOf("v-meta")).toBeLessThan(kids.indexOf("cli-icon"));
+    expect(kids[kids.length - 1]).toBe("v-meta");
     expect(alpha.querySelector(".v-meta").textContent).toBe("40%");
-    expect(rowOf("beta").querySelector(".cli-icon").className).toContain("cli-other");
+    expect([rowOf("beta").querySelector(".av-cli").textContent, rowOf("beta").querySelector(".av-cli").getAttribute("title")]).toEqual(["·", "mystery"]);
   });
 
   it("0% context shows as 0% (null means unavailable and shows nothing)", async () => {
@@ -109,11 +109,11 @@ describe("the roster row: the backend icon, the context figure", () => {
 });
 
 describe("tooltips and labels", () => {
-  it("the row's tooltip is the instance's tooltip, and the backend label names the icon", async () => {
+  it("the row's tooltip is the instance's tooltip, and the backend label names the CLI badge", async () => {
     roster = [base({ instance_name: "alpha", display_name: "Sentinel", backend: "claude-code", context_pct: 12, status: "running" })];
     await mountView();
     expect(rowOf("alpha").getAttribute("title")).toBe(view.instanceTooltip(roster[0] as any));
-    expect(rowOf("alpha").querySelector(".cli-icon").getAttribute("title")).toBe("Claude Code");
+    expect(rowOf("alpha").querySelector(".av-cli").getAttribute("title")).toBe("Claude Code");
   });
 
   it("labels: the backend names in the icons (Claude Code, Kiro CLI, Grok Build), the tooltip's lines, in English", () => {

@@ -174,7 +174,10 @@ function moveIn(arr, moving, target, before) {
 /** The list's state for the page's life: this browser's order, folded groups and filter (each also kept in storage). */
 export const navStore = createStore({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() });
 /** Read them again from this browser's storage — what a page load does (the store above is made that way). */
-export function loadNavPrefs() { navStore.set({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() }); }
+export function loadNavPrefs() {
+  navStore.set({ order: readOrder(), collapsed: readCollapsed(), filter: readFilter(), favorites: readFavorites() });
+  namesStore.set({ primary: readNamesPrimary() });
+}
 /** Change the filter ({ q?, status?, cli? }): the same on every page, and kept by this browser. */
 export function setNavFilter(patch) {
   const filter = { ...navStore.get().filter, ...patch };
@@ -245,6 +248,35 @@ export function labelOf(it) {
   const d = it && typeof it.display_name === "string" ? it.display_name.trim() : "";
   return d || nameOf(it);
 }
+
+// ── #1722: both names — which one leads is a synced preference (#1665 "names.primary", default the nickname) ──
+const NAMES_KEY = "agend_names_primary";
+function readNamesPrimary() {
+  const p = prefInForce("names.primary");
+  const v = p ? p.value : stored(NAMES_KEY);
+  return v === "instance" ? "instance" : "nickname";
+}
+/** { primary: "nickname" | "instance" } — every surface that names an instance (sidebar, chat header, Needs you) reads it. */
+export const namesStore = createStore({ primary: readNamesPrimary() });
+export function setNamesPrimary(value) {
+  const primary = value === "instance" ? "instance" : "nickname";
+  namesStore.set({ primary });
+  savePref("names.primary", primary);
+}
+onPrefsChanged((keys) => { if (keys.has("names.primary")) namesStore.set({ primary: readNamesPrimary() }); });
+/**
+ * An instance's two names as the web shows them: the one leading (`primary`) and the other (`secondary`), or "" when
+ * there is no other — no nickname, or a nickname that is the instance name itself (one line).
+ */
+export function namesOf(it, primary = namesStore.get().primary) {
+  const real = nameOf(it);
+  const nick = it && typeof it.display_name === "string" ? it.display_name.trim() : "";
+  if (!nick || nick === real) return { primary: real, secondary: "" };
+  return primary === "instance" ? { primary: real, secondary: nick } : { primary: nick, secondary: real };
+}
+
+/** #1722: the CLI on the avatar's corner — a letter, so it reads without colour (its name is in the row's text too). */
+const CLI_MONOGRAM = { "claude-code": "C", codex: "X", "kiro-cli": "K", grok: "G", antigravity: "A", opencode: "O", muse: "M" };
 // One path segment under /ui/img/<kind>/ — no further slash or backslash, and not a dot segment ("." / ".." or their
 // %2e spellings, which a browser resolves too): the picture can only ever be one of those routes (#1642 review).
 const sameOrigin = (src) => typeof src === "string"
@@ -255,7 +287,8 @@ export function avatarOf(it) {
   if (a && a.kind === "image" && sameOrigin(a.src)) return { kind: "image", src: a.src };
   if (a && a.kind === "emoji" && sameOrigin(a.src)) return { kind: "emoji", src: a.src, alt: typeof a.alt === "string" ? a.alt : "" };
   if (a && a.kind === "emoji" && typeof a.text === "string" && a.text.trim()) return { kind: "emoji", text: a.text.trim() };
-  return { kind: "initial", text: a && a.kind === "initial" && typeof a.text === "string" && a.text ? a.text : firstCharacter(labelOf(it)) };
+  // #1722: the initial is the leading name's ("Names"), not the server's (which is always the nickname's).
+  return { kind: "initial", text: firstCharacter(namesOf(it).primary) || (a && a.kind === "initial" && typeof a.text === "string" ? a.text : "") };
 }
 const ACCENT = /^#[0-9a-f]{6}$/i;
 /** The status dot on the avatar: needs you, crashed, paused, stopped, looks stuck, working, idle — colour AND a label. */
@@ -274,7 +307,7 @@ const DOT = {
 export function dotLabel(state) { return (DOT[state] || DOT.stopped)[1](); }
 
 /** An instance's avatar with its status dot. The ring (its bot's colour) is a CSS custom property set through the CSSOM. */
-export function InstanceAvatar({ it, state }) {
+export function InstanceAvatar({ it, state, cli = false }) {
   const a = avatarOf(it);
   const [broken, setBroken] = useState("");
   const el = useRef(null);
@@ -285,12 +318,13 @@ export function InstanceAvatar({ it, state }) {
     if (accent) node.style.setProperty("--ring", accent); else node.style.removeProperty("--ring");
   }, [accent]);
   const src = a.kind !== "initial" && a.src && broken !== a.src ? a.src : "";
-  const text = a.kind === "emoji" && a.text ? a.text : a.kind === "initial" ? a.text : firstCharacter(labelOf(it));
+  const text = a.kind === "emoji" && a.text ? a.text : a.kind === "initial" ? a.text : firstCharacter(namesOf(it).primary);
   const [cls] = DOT[state] || DOT.stopped;
   const label = dotLabel(state);
   return html`<span ref=${el} class=${`av${accent ? " ring" : ""}${a.kind === "emoji" ? " av-emoji" : ""}`}>
     ${src ? html`<img src=${src} alt="" decoding="async" onError=${() => setBroken(src)} />` : html`<span class="av-text" aria-hidden="true">${text}</span>`}
-    <span class=${`av-dot dot ${cls}`} role="img" aria-label=${label} title=${label}></span></span>`;
+    <span class=${`av-dot dot ${cls}`} role="img" aria-label=${label} title=${label}></span>${cli
+      ? html`<span class="av-cli" aria-hidden="true" title=${backendLabel(it.backend)}>${CLI_MONOGRAM[it.backend] || "·"}</span>` : null}</span>`;
 }
 
 // ── The list ──
@@ -306,6 +340,7 @@ const statusText = (facet) => (facet === "needs" ? t("app.needsYou") : facet ===
  */
 export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick }) {
   const nav = useStore(navStore);
+  const names = useStore(namesStore);   // #1722: which name leads
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
@@ -338,9 +373,6 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const f = nav.filter;
   const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   const backends = [...new Set(items.map((it) => it.backend).filter((b) => typeof b === "string" && b))].sort((a, b) => backendLabel(a).localeCompare(backendLabel(b)));
-  // #1630: a display name two rows share would tell them apart from nothing — only then does the row keep its name too.
-  const labelCount = new Map();
-  for (const it of items) { const l = labelOf(it); labelCount.set(l, (labelCount.get(l) || 0) + 1); }
   const toggle = (g) => { const c = new Set(navStore.get().collapsed); if (c.has(g)) c.delete(g); else c.add(g); setCollapsed(c); };
   // From the store, not this render's copy: two clicks before the next render must both count.
   const flip = (key, value) => { const cur = new Set(navStore.get().filter[key]); if (cur.has(value)) cur.delete(value); else cur.add(value); setNavFilter({ [key]: [...cur] }); };
@@ -392,9 +424,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   };
   const row = (name, g, i, count) => {
     const it = byName.get(name);
-    const label = labelOf(it);
-    // The instance name under a display name only when another row has the same display name.
-    const twin = label !== name && (labelCount.get(label) || 0) > 1 ? name : "";
+    // #1722: both names, the preferred one first; one line when there is no other.
+    const { primary: label, secondary } = namesOf(it, names.primary);
     const facet = facetOf(name);
     const waiting = own(awaiting, name) ? awaiting[name] : null;
     const on = name === active;
@@ -402,12 +433,12 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     const full = !starred && favs.length >= MAX_FAVORITES;
     return html`<li key=${name} class="v-li"><a class=${`inst v-inst${on ? " active" : ""}`} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${fav ? {} : dragProps({ type: "instance", name, group: g })}>
-      <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} />
-      <span class="inst-text"><span class="inst-name">${label}</span>
-        ${twin || facet === "needs" ? html`<span class="inst-sub">${twin ? html`<span class="inst-alias inst-id">${twin}</span>` : null}
-          ${facet === "needs" ? html`<span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}</span>
+      <${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />
+      <span class="inst-text"><span class="inst-name" title=${label}>${label}</span>
+        ${secondary ? html`<span class="inst-alt" title=${secondary}>${secondary}</span>` : null}
+        ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
+        <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
       <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
-      <span class=${`cli-icon cli-${KNOWN_BACKENDS.has(it.backend) ? it.backend : "other"}`} title=${backendLabel(it.backend)} aria-label=${tn("tooltipBackend", { value: backendLabel(it.backend) })}></span>
     </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })}
         title=${shown.active ? tn("favFiltered") : tn("favUp", { name: label })} disabled=${shown.active || i === 0} onClick=${() => { if (!shown.active) moveFavorite(name, -1, known); }}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
         aria-label=${tn("favDown", { name: label })} title=${shown.active ? tn("favFiltered") : tn("favDown", { name: label })} disabled=${shown.active || i === count - 1}

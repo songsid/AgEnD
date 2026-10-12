@@ -197,6 +197,6 @@ describe("sidebar instance identity", () => {
   // The View roster reuses the sidebar's identity classes, so one rule per line covers both sidebars.
   it("keeps both identity lines ellipsized on both sidebars", () => {
     expect(appCss).toMatch(/\.inst-name \{[^}]*text-overflow: ellipsis/);
-    expect(appCss).toMatch(/\.inst-alias \{[^}]*text-overflow: ellipsis/);
+    expect(appCss).toMatch(/\.inst-alt \{[^}]*text-overflow: ellipsis/);   // #1722: the second name line
   });
 });
