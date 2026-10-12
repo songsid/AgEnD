@@ -19,6 +19,7 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { OrgChart } from "./fleet-org.js";
+import { labelOf } from "/assets/instance-nav.js";
 import { CacheReport } from "./fleet-cache.js";
 
 register("fleet", {
@@ -33,6 +34,13 @@ register("fleet", {
     taskTitle: "Title", taskDesc: "Description", priority: "Priority", assignee: "Assignee", unassigned: "Unassigned",
     pNormal: "Normal", pLow: "Low", pHigh: "High", pUrgent: "Urgent",
     cron: "Cron expression", message: "Message", target: "Target instance", label: "Label", teamName: "Team name", members: "Members",
+    // #1724: schedules in words; Edit; once or repeating
+    schedOnce: "Once · {0}", schedNext: "next {0}", schedRetrying: "retrying", schedDisabled: "disabled", schedSilent: "silent", schedTz: "Timezone: {0}",
+    editSchedule: "Edit schedule", edit: "Edit", scheduleSaved: "Schedule saved", schedRepeat: "Repeat", schedOnceMode: "Once",
+    schedWhen: "Date and time", schedTimezone: "Timezone", schedEnabled: "Enabled", schedWhenIn: "In {0}", schedWhenRequired: "Pick a date and time",
+    schedTzBad: "Unknown timezone: {0}",
+    cronEveryMinute: "Every minute", cronEveryMinutes: "Every {0} minutes", cronEveryHours: "Every {0} hours", cronDaily: "Daily {0}",
+    cronWeekdays: "Weekdays {0}", cronDays: "{0} {1}", cronMonthly: "Day {0} of each month {1}", dayNames: "Sun,Mon,Tue,Wed,Thu,Fri,Sat", dayJoin: ", ",
     titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
     deleteSchedule: "Delete this schedule?", deleteTeam: "Delete team “{0}”?", taskCreated: "Task created", scheduleCreated: "Schedule created", scheduleDeleted: "Schedule deleted",
     teamCreated: "Team created", teamDeleted: "Team deleted", teamUpdated: "Team updated", edit: "Edit", editTeam: "Edit team",
@@ -56,6 +64,12 @@ register("fleet", {
     taskTitle: "標題", taskDesc: "說明", priority: "優先順序", assignee: "負責人", unassigned: "未指派",
     pNormal: "一般", pLow: "低", pHigh: "高", pUrgent: "緊急",
     cron: "Cron 表示式", message: "訊息", target: "目標 instance", label: "標籤", teamName: "Team 名稱", members: "成員",
+    schedOnce: "一次 · {0}", schedNext: "下次 {0}", schedRetrying: "重試中", schedDisabled: "已停用", schedSilent: "靜默", schedTz: "時區：{0}",
+    editSchedule: "編輯排程", edit: "編輯", scheduleSaved: "已儲存排程", schedRepeat: "重複", schedOnceMode: "一次",
+    schedWhen: "日期與時間", schedTimezone: "時區", schedEnabled: "啟用", schedWhenIn: "以 {0} 時間", schedWhenRequired: "請選擇日期與時間",
+    schedTzBad: "不認得的時區：{0}",
+    cronEveryMinute: "每分鐘", cronEveryMinutes: "每 {0} 分鐘", cronEveryHours: "每 {0} 小時", cronDaily: "每天 {0}",
+    cronWeekdays: "每週一到五 {0}", cronDays: "每週{0} {1}", cronMonthly: "每月 {0} 日 {1}", dayNames: "日,一,二,三,四,五,六", dayJoin: "、",
     titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
     deleteSchedule: "確定刪除此排程嗎？", deleteTeam: "確定刪除 team「{0}」嗎？", taskCreated: "Task 已建立", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
     teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", teamUpdated: "Team 已更新", edit: "編輯", editTeam: "編輯 team",
@@ -152,10 +166,27 @@ function Tasks({ lease }) {
   ${creating ? html`<${CreateTask} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
 }
 
+/** #1724: what a row says about when it runs — words for a cron, "Once · <time>" for a one-shot; never empty or "null". */
+export function scheduleWhen(x) {
+  if (x && x.cron) return cronDesc(x.cron);
+  if (x && x.at) return t("fleet.schedOnce", x.at_text || x.at);
+  return "—";
+}
+/** #1724: its next run as the server worked it out (fleet zone), or "retrying"; nothing when there is none (disabled). */
+export function scheduleNext(x) {
+  if (!x || !x.enabled) return "";
+  if (x.retrying) return t("fleet.schedRetrying");
+  return x.next_run_text ? t("fleet.schedNext", x.next_run_text) : "";
+}
+const clip = (s, n = 60) => { const a = Array.from(String(s || "").replace(/\s+/g, " ").trim()); return a.length > n ? `${a.slice(0, n).join("")}…` : a.join(""); };
+
 function Schedules({ lease }) {
   const [version, setVersion] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(null);   // #1724: the schedule being edited
+  const { instances } = useStore(appStore);
   const state = useLoad(lease, "/ui/schedules", version);
+  const targetName = (name) => { const it = (instances || []).find((i) => i && i.name === name); return it ? labelOf(it) : name; };
   async function del(id) {
     if (!(await confirmDialog({ message: t("fleet.deleteSchedule"), confirmLabel: t("fleet.delete"), danger: true }))) return;
     if (!lease.current()) return;                   // answered after this tab went: the question no longer stands
@@ -164,16 +195,22 @@ function Schedules({ lease }) {
   }
   return html`<${Loaded} state=${state}>${(d) => {
     const list = d.schedules || [];
-    return html`<${ListHead} count=${list.length === 1 ? t("fleet.countSchedule") : t("fleet.countSchedules", list.length)} label=${t("fleet.newSchedule")} action=${{ onClick: () => setCreating(true) }} />
-      ${list.length ? html`<ul class="rows">${list.map(x => html`<li key=${x.id} class="row-item">
-        <span class=${`pill ${x.enabled ? "open" : "done"}`}>${x.enabled ? t("fleet.on") : t("fleet.off")}</span>
-        <span class="grow">${x.label || cronDesc(x.cron)}</span><span class="mono muted" title=${cronDesc(x.cron)}>${x.cron}</span>
-        <a class="link" href=${chatPath(x.target)}>${x.target}</a>
-        <button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(x.id)}>${t("fleet.delete")}</button></li>`)}</ul>`
+    // #1724: the public link lists schedules and changes none (the server refuses it too).
+    const writable = !publicLink();
+    return html`<${ListHead} count=${list.length === 1 ? t("fleet.countSchedule") : t("fleet.countSchedules", list.length)} label=${t("fleet.newSchedule")} action=${writable ? { onClick: () => setCreating(true) } : null} />
+      ${list.length ? html`<ul class="rows">${list.map(x => {
+        const next = scheduleNext(x);
+        const tip = [x.cron || x.at, t("fleet.schedTz", x.timezone), x.silent ? t("fleet.schedSilent") : ""].filter(Boolean).join(" · ");
+        return html`<li key=${x.id} class=${`row-item sched${x.enabled ? "" : " is-off"}`} title=${tip}>
+        <span class=${`pill ${x.enabled ? "open" : "off"}`}>${x.enabled ? t("fleet.on") : t("fleet.schedDisabled")}</span>
+        <span class="grow sched-text"><span class="sched-title">${x.label || clip(x.message)}</span>
+          <span class="sched-sub muted"><span class="sched-when">${scheduleWhen(x)}</span>${next ? html`${" · "}<span class="sched-next">${next}</span>` : null}${" · "}<a class="link" href=${chatPath(x.target)} title=${x.target}>${targetName(x.target)}</a></span></span>
+        ${writable ? html`<span class="sched-actions"><button type="button" class="btn btn-ghost btn-sm sched-edit" onClick=${() => setEditing({ ...x, default_timezone: d.default_timezone })}>${t("fleet.edit")}</button><button type="button" class="btn btn-ghost btn-sm danger" onClick=${() => del(x.id)}>${t("fleet.delete")}</button></span>` : null}</li>`;
+      })}</ul>`
         : html`<${Empty} icon="clock" title=${t("fleet.noSchedules")} hint=${t("fleet.noSchedulesHint")} />`}
-`;
-  }}</${Loaded}>
-  ${creating ? html`<${CreateSchedule} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
+      ${creating ? html`<${ScheduleForm} defaultTz=${d.default_timezone} onClose=${() => setCreating(false)} onDone=${() => setVersion(v => v + 1)} />` : null}
+      ${editing ? html`<${ScheduleForm} schedule=${editing} defaultTz=${d.default_timezone} onClose=${() => setEditing(null)} onDone=${() => setVersion(v => v + 1)} />` : null}`;
+  }}</${Loaded}>`;
 }
 
 /** #1689: the public link changes no team (the server refuses it): it lists them only. */
@@ -339,22 +376,89 @@ function CreateTask({ onClose, onDone }) {
   </${FormDialog}>`;
 }
 
-function CreateSchedule({ onClose, onDone }) {
+/**
+ * #1724: a wall-clock date and time ("YYYY-MM-DDTHH:MM", a datetime-local value) read in `tz`, as the ISO time with
+ * offset the scheduler takes (`at`); null when either cannot be read. DST-safe: the offset is sampled at that instant.
+ */
+export function wallToIso(wall, tz) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(String(wall || ""));
+  if (!m) return null;
+  const asUtc = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  let offsetAt;
+  try {
+    const fmt = new Intl.DateTimeFormat("sv-SE", { timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    offsetAt = (ms) => Date.parse(fmt.format(new Date(ms)).replace(" ", "T") + "Z") - ms;
+  } catch { return null; }
+  let off = offsetAt(asUtc);
+  off = offsetAt(asUtc - off);
+  if (!Number.isFinite(off)) return null;
+  const mins = Math.round(off / 60000), a = Math.abs(mins);
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00${mins < 0 ? "-" : "+"}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")}`;
+}
+/** #1724: an ISO time as the wall clock in `tz` ("YYYY-MM-DDTHH:MM"), to fill the form; "" when it cannot be read. */
+export function isoToWall(iso, tz) {
+  const ms = Date.parse(String(iso || ""));
+  if (!Number.isFinite(ms)) return "";
+  try {
+    return new Intl.DateTimeFormat("sv-SE", { timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ms)).replace(" ", "T");
+  } catch { return ""; }
+}
+
+/**
+ * New schedule, or (#1724) `schedule` given: edit it — the same form, filled in from it: Repeat (cron) or Once (a date
+ * and time in its timezone), message, target, label, timezone, enabled. An edit is PATCH /ui/schedules/<id>, which the
+ * host validates and applies as the update_schedule tool does (cron and at clear each other there).
+ */
+function ScheduleForm({ schedule = null, defaultTz, onClose, onDone }) {
   const { instances } = useStore(appStore);
-  const [f, setF] = useState({ cron: "", msg: "", target: instances[0] ? instances[0].name : "", label: "" });
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const submit = { path: "/ui/schedules", done: t("fleet.scheduleCreated"), after: onDone, collect: () => {
-    if (!f.cron.trim() || !f.msg.trim() || !f.target) { toast(t("fleet.scheduleFieldsRequired"), false); return null; }
-    const body = { cron: f.cron.trim(), message: f.msg.trim(), target: f.target, source: "web-user", reply_chat_id: "", reply_thread_id: "" };
-    if (f.label.trim()) body.label = f.label.trim();
-    return body;
-  } };
-  return html`<${FormDialog} title=${t("fleet.newSchedule")} onClose=${onClose} submit=${submit}>
-    ${field(`${t("fleet.cron")} *`, html`<input value=${f.cron} onInput=${set("cron")} placeholder="0 9 * * 1-5" class="mono" />`)}
-    ${f.cron.trim() ? html`<p class="note">${cronDesc(f.cron)}</p>` : null}
+  const tz0 = (schedule && schedule.timezone) || defaultTz || "";
+  const [f, setF] = useState(() => ({
+    mode: schedule && schedule.at ? "once" : "repeat",
+    cron: (schedule && schedule.cron) || "",
+    at: schedule && schedule.at ? isoToWall(schedule.at, tz0) : "",
+    msg: (schedule && schedule.message) || "",
+    target: schedule ? schedule.target : instances[0] ? instances[0].name : "",
+    label: (schedule && schedule.label) || "",
+    tz: tz0,
+    enabled: schedule ? !!schedule.enabled : true,
+  }));
+  const set = (k) => (e) => { const v = e.target.type === "checkbox" ? e.target.checked : e.target.value; setF((cur) => ({ ...cur, [k]: v })); };
+  const submit = {
+    path: schedule ? `/ui/schedules/${encodeURIComponent(schedule.id)}` : "/ui/schedules",
+    method: schedule ? "PATCH" : "POST",
+    label: schedule ? t("fleet.save") : undefined,
+    done: schedule ? t("fleet.scheduleSaved") : t("fleet.scheduleCreated"),
+    after: onDone,
+    collect: () => {
+      if (!f.msg.trim() || !f.target || (f.mode === "repeat" && !f.cron.trim())) { toast(t("fleet.scheduleFieldsRequired"), false); return null; }
+      const tz = f.tz.trim();
+      const body = { message: f.msg.trim(), target: f.target };
+      if (f.mode === "repeat") body.cron = f.cron.trim();
+      else {
+        if (!f.at) { toast(t("fleet.schedWhenRequired"), false); return null; }
+        const at = wallToIso(f.at, tz || defaultTz);
+        if (!at) { toast(t("fleet.schedTzBad", tz || defaultTz || ""), false); return null; }
+        body.at = at;
+      }
+      if (schedule) { body.label = f.label.trim(); body.enabled = !!f.enabled; if (tz) body.timezone = tz; }
+      else { if (f.label.trim()) body.label = f.label.trim(); if (tz) body.timezone = tz; }
+      return body;
+    },
+  };
+  const modeBtn = (mode, label) => html`<button type="button" class=${`btn btn-sm${f.mode === mode ? " on" : ""}`} aria-pressed=${f.mode === mode ? "true" : "false"}
+    onClick=${() => setF((cur) => ({ ...cur, mode }))}>${label}</button>`;
+  return html`<${FormDialog} title=${schedule ? t("fleet.editSchedule") : t("fleet.newSchedule")} onClose=${onClose} submit=${submit}>
+    <div class="seg-inline sched-mode" role="group" aria-label=${t("fleet.schedWhen")}>${modeBtn("repeat", t("fleet.schedRepeat"))}${modeBtn("once", t("fleet.schedOnceMode"))}</div>
+    ${f.mode === "repeat"
+      ? html`${field(`${t("fleet.cron")} *`, html`<input value=${f.cron} onInput=${set("cron")} placeholder="0 9 * * 1-5" class="mono" />`)}
+        ${f.cron.trim() ? html`<p class="note sched-preview">${cronDesc(f.cron)}</p>` : null}`
+      : html`${field(`${t("fleet.schedWhen")} *`, html`<input type="datetime-local" value=${f.at} onInput=${set("at")} />`)}
+        <p class="note">${t("fleet.schedWhenIn", f.tz.trim() || defaultTz || "")}</p>`}
     ${field(`${t("fleet.message")} *`, html`<input value=${f.msg} onInput=${set("msg")} />`)}
-    ${field(`${t("fleet.target")} *`, html`<select value=${f.target} onChange=${set("target")}>${instances.map(i => html`<option key=${i.name} value=${i.name}>${i.name}</option>`)}</select>`)}
+    ${field(`${t("fleet.target")} *`, html`<select value=${f.target} onChange=${set("target")}>${instances.map(i => html`<option key=${i.name} value=${i.name}>${labelOf(i)}</option>`)}</select>`)}
     ${field(t("fleet.label"), html`<input value=${f.label} onInput=${set("label")} />`)}
+    ${field(t("fleet.schedTimezone"), html`<input value=${f.tz} onInput=${set("tz")} placeholder=${defaultTz || "Asia/Taipei"} />`)}
+    ${schedule ? html`<label class="check"><input type="checkbox" checked=${f.enabled} onChange=${set("enabled")} /><span>${t("fleet.schedEnabled")}</span></label>` : null}
   </${FormDialog}>`;
 }
 
@@ -438,20 +542,29 @@ export function CreateInstanceDialog({ onClose }) {
   </${FormDialog}>`;
 }
 
-// ── Cron in words ──
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// ── Cron in words (#1724: in the page's language) ──
+/**
+ * A cron expression as a person says it — "Weekdays 18:00", 「每週一到五 18:00」, "Every 15 minutes" — or the expression
+ * itself when it is not one of these shapes. Never "" for an expression; "" only for none.
+ */
 export function cronDesc(expr) {
-  if (!expr) return "";
+  if (!expr || typeof expr !== "string") return "";
   const p = expr.trim().split(/\s+/);
-  if (p.length < 5) return expr;
+  if (p.length !== 5) return expr.trim();
   const [min, hr, dom, mon, dow] = p;
-  const time = hr !== "*" && min !== "*" ? `at ${hr.padStart(2, "0")}:${min.padStart(2, "0")}` : "";
-  if (min === "*" && hr === "*") return "Every minute";
-  if (min.startsWith("*/")) return `Every ${min.slice(2)} minutes`;
-  if (hr.startsWith("*/")) return `Every ${hr.slice(2)} hours`;
-  if (dom === "*" && mon === "*" && dow === "*") return `Daily ${time}`;
-  if (dom === "*" && mon === "*" && dow === "1-5") return `Weekdays ${time}`;
-  if (dom === "*" && mon === "*" && dow !== "*") return `${dow.split(",").map(d => { const n = parseInt(d, 10); return Number.isNaN(n) ? d : (DAYS[n] || d); }).join(", ")} ${time}`;
-  if (dom !== "*" && mon === "*") return `${dom}${dom === "1" ? "st" : dom === "2" ? "nd" : dom === "3" ? "rd" : "th"} of month ${time}`;
-  return expr;
+  const num = (s) => /^\d{1,2}$/.test(s);
+  const time = num(hr) && num(min) ? `${hr.padStart(2, "0")}:${min.padStart(2, "0")}` : null;
+  if (mon !== "*") return expr.trim();
+  if (min === "*" && hr === "*" && dom === "*" && dow === "*") return t("fleet.cronEveryMinute");
+  if (/^\*\/\d+$/.test(min) && hr === "*" && dom === "*" && dow === "*") return t("fleet.cronEveryMinutes", min.slice(2));
+  if (num(min) && /^\*\/\d+$/.test(hr) && dom === "*" && dow === "*") return t("fleet.cronEveryHours", hr.slice(2));
+  if (!time) return expr.trim();
+  if (dom === "*" && dow === "*") return t("fleet.cronDaily", time);
+  if (dom === "*" && dow === "1-5") return t("fleet.cronWeekdays", time);
+  if (dom === "*" && /^[0-7](,[0-7])*$/.test(dow)) {
+    const names = t("fleet.dayNames").split(",");
+    return t("fleet.cronDays", dow.split(",").map((d) => names[Number(d) % 7]).join(t("fleet.dayJoin")), time);
+  }
+  if (num(dom) && dow === "*") return t("fleet.cronMonthly", String(Number(dom)), time);
+  return expr.trim();
 }

@@ -68,7 +68,8 @@ describe("the app's dictionary: English and zh-TW", () => {
     // #1408 step 5: asked in the app's own dialog, with the same strings.
     expect(fleet).toContain('confirmDialog({ message: t("fleet.deleteSchedule")');
     expect(fleet).toContain('confirmDialog({ message: t("fleet.deleteTeam", name)');
-    expect(fleet).toContain('done: t("fleet.scheduleCreated")');
+    // #1724: one schedule form for New and Edit — created or saved.
+    expect(fleet).toContain('done: schedule ? t("fleet.scheduleSaved") : t("fleet.scheduleCreated")');
     expect(fleet).toContain('toast(t("fleet.teamFieldsRequired"), false)');
     expect(fleet).toContain('toast(t("fleet.topicRequired"), false)');
   });

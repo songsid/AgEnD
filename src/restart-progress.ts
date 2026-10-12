@@ -2,6 +2,13 @@ import type { ChannelAdapter } from "./channel/types.js";
 import { t } from "./locale.js";
 import { updateElapsedSeconds } from "./update-progress.js";
 import { runBeforeDeadline, type DeadlineResult } from "./deadline.js";
+import {
+  UPDATE_MARKER_MAX_AGE_MS,
+  updateReceiptOf,
+  type UpdateMarker,
+  type UpdateProgressState,
+  type UpdateReceipt,
+} from "./update-marker.js";
 
 export interface RestartProgressTarget {
   /** Initial adapter generation, when one already exists. Update recovery may
@@ -25,6 +32,10 @@ export interface RestartProgressSummary {
   failedNames?: string[];
   /** Optional update-completion tip; ignored for ordinary restarts. */
   tipText?: string;
+  /** Optional non-fatal cleanup note (e.g. old system copy left behind); update mode only. */
+  warningText?: string;
+  /** Verbatim manual cleanup command; rendered as its own code line, update mode only. */
+  warningCommand?: string;
 }
 
 type ProgressLogger = {
@@ -83,8 +94,48 @@ export function formatRestartProgressCompletion(
   if (summary.failedNames?.length) {
     lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
   }
+  if (mode === "update" && summary.warningText) lines.push("", `⚠️ ${summary.warningText}`);
+  if (mode === "update" && summary.warningCommand) lines.push(`\`$ ${summary.warningCommand}\``);
   if (mode === "update" && summary.tipText) lines.push("", summary.tipText);
   return lines.join("\n");
+}
+
+/**
+ * #1660: pure cleanup-watch decision for the post-completion marker watch.
+ * The caller owns the side effects; this only classifies:
+ * - append: the owed outcome landed on the same receipt — render it.
+ * - release: done silent, or the updater died past the max age — clear it.
+ * - drop: the receipt is gone or belongs to another operation — leave the
+ *   marker to its own lifecycle, stop watching.
+ * - wait: outcome still owed and fresh — touch nothing (never stage-edit; the
+ *   completion summary is already posted).
+ */
+export type CleanupWatchVerdict =
+  | { action: "append"; warning: string; cleanupCommand?: string }
+  | { action: "release" }
+  | { action: "drop" }
+  | { action: "wait" };
+
+export function cleanupWatchVerdict(
+  marker: (UpdateMarker & { progress: UpdateProgressState }) | null,
+  receipt: UpdateReceipt,
+  now = Date.now(),
+): CleanupWatchVerdict {
+  const current = marker ? updateReceiptOf(marker) : null;
+  if (!current || current.startedAt !== receipt.startedAt
+    || current.messageId !== receipt.messageId || current.operation !== receipt.operation) {
+    return { action: "drop" };
+  }
+  // Age first: a recorded-but-undelivered warning still obeys the watch
+  // limit (Prism c) — otherwise a permanently refusing adapter pins the tick.
+  if (now - receipt.startedAt > UPDATE_MARKER_MAX_AGE_MS) return { action: "release" };
+  const progress = (marker as UpdateMarker & { progress: UpdateProgressState }).progress;
+  if (progress.cleanup === "done") {
+    return progress.warning
+      ? { action: "append", warning: progress.warning, cleanupCommand: progress.cleanupCommand }
+      : { action: "release" };
+  }
+  return { action: "wait" };
 }
 
 /** One General-topic message that is edited throughout a fleet startup. */
