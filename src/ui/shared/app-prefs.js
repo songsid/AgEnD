@@ -134,16 +134,19 @@ function flush() {
   writes = writes.then(async () => {
     let ok = false;
     try { ok = (await post(set, false)).ok; } catch { ok = false; }
+    const released = new Set();
     for (const k of keys) {
       const n = (inflight.get(k) || 1) - 1;
       if (n) inflight.set(k, n); else inflight.delete(k);
-      if (!n && !pending.has(k)) mine.delete(k);
+      if (!n && !pending.has(k)) { mine.delete(k); released.add(k); }
     }
-    // Taken: each key whose last write this was, and not changed here again since, now shows the newest host view this
-    // page has — usually its own value; another device's newer one if that arrived while the write was out (held back
-    // then, and an older answer to this write cannot overrule it). Refused or not sent: what the host has is what holds
-    // — read it back, so this page does not show a choice no other device will see.
-    if (ok) align(keys); else await refresh();
+    // Each key whose last write this was, and not changed here again since, now shows the newest host view this page
+    // has — usually its own value; another device's newer one if that arrived while the write was out (held back then,
+    // and an older answer to this write cannot overrule it); refused or not sent, what the host has (read back first).
+    // Always applied: what the page shows came from this page's own choice, not from the cache, so the cache matching
+    // the host (a storage that refused the choice) says nothing about the screen.
+    if (!ok) await refresh();
+    align(released, { force: true });
   });
   return writes;
 }
@@ -161,33 +164,46 @@ export async function refresh() {
     body = res.ok ? await res.json() : null;
   } catch { body = null; }
   if (!isView(body)) return false;
-  if (take(body)) align(Object.keys(SYNCED));
+  const before = new Map(Object.keys(SYNCED).map((key) => [key, own(host, key) ? SYNCED[key].toLocal(host[key]) : null]));
+  if (take(body)) align(Object.keys(SYNCED), { before });
   return true;
 }
 
-/** Show the host view this page has for these keys — except a key still being changed here (unsent, or out). */
-function align(keys) {
+/**
+ * Show the host view this page has for these keys — except a key still being changed here (unsent, or out). A key is
+ * applied when its host value moved in memory (`before`: the host view before this read), when this browser's copy
+ * differs, or always (`force`: this page's own write just ended). The copy alone never decides: a storage that refused
+ * a write keeps an old copy that may equal the host while the screen shows something else.
+ */
+function align(keys, opts = {}) {
   const changed = new Set();
   for (const key of keys) {
     if (pending.has(key) || inflight.has(key)) continue;
     const k = SYNCED[key];
     const want = own(host, key) ? k.toLocal(host[key]) : null;
-    if (readLocal(k.ls) === want) continue;
-    writeLocal(k.ls, want);
+    const copyDiffers = readLocal(k.ls) !== want;
+    const moved = !!opts.before && opts.before.get(key) !== want;
+    if (!copyDiffers && !moved && !opts.force) continue;
+    if (copyDiffers) writeLocal(k.ls, want);
     changed.add(key);
   }
   if (changed.size) apply(changed);
 }
 
 function apply(changed) {
-  if (changed.has("theme") && typeof globalThis.AgendTheme !== "undefined") globalThis.AgendTheme.set(hostPref("theme") || "system");
+  // Only what differs from what the page shows (a key re-applied after its own write may already be in force).
+  const T = globalThis.AgendTheme;
+  if (changed.has("theme") && typeof T !== "undefined") { const v = hostPref("theme") || "system"; if (typeof T.get !== "function" || T.get() !== v) T.set(v); }
   if (changed.has("lang")) {
     const l = hostPref("lang");
     // None chosen any more: the device's own language, on this page only (no copy is kept for it).
     if (l) { if (l !== lang()) setLang(l); } else if (deviceLanguage() !== lang()) setLang(deviceLanguage(), { store: false });
   }
   const P = globalThis.AgendPreview;
-  if (changed.has("preview.optIn") && P && typeof P.setOptIn === "function") P.setOptIn(hostPref("preview.optIn") === true);
+  if (changed.has("preview.optIn") && P && typeof P.setOptIn === "function") {
+    const on = hostPref("preview.optIn") === true;
+    if (typeof P.optedIn !== "function" || P.optedIn() !== on) P.setOptIn(on);
+  }
   for (const fn of [...listeners]) { try { fn(changed); } catch { /* one listener's error stops no other */ } }
 }
 

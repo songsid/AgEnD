@@ -12,6 +12,8 @@ import { fire, installDom, settle, type MiniPage } from "./helpers/mini-dom.js";
 
 const THEME_JS = readFileSync(join(__dirname, "..", "src", "ui", "shared", "theme.js"), "utf8");
 const prefsAttr = (values: Record<string, unknown>, rev = 1) => JSON.stringify({ rev, values });
+/** AgendTheme as theme.js has it: `get` is what the page shows (the last set). */
+const themeStub = (shown: string, record: (v: string) => void) => { let cur = shown; return { get: () => cur, set: (v: string) => { cur = v; record(v); } }; };
 
 describe("theme.js: the host's theme before the first paint", () => {
   function load(attr: string | null, cached: string | null, opts: { inStep?: boolean; full?: boolean } = {}) {
@@ -108,7 +110,7 @@ describe("the app's modules", () => {
   });
   it("r2: another device's newer value, held back while this page's write was out, is shown once that write ends — even if its answer is older", async () => {
     const theme = vi.fn();
-    (globalThis as any).AgendTheme = { set: theme, get: () => "light" };
+    (globalThis as any).AgendTheme = themeStub("dark", theme);   // the page shows this page's own choice
     const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 1 });
     const write = held();
     intercept = (method) => (method === "POST" ? write.p as Promise<any> : undefined);
@@ -391,7 +393,7 @@ describe("the app's modules", () => {
 
   it("every place a synced choice is made sends it: theme and language (Preferences), previews — the tour and the first-run card stay on the device", async () => {
     const themes: string[] = [];
-    (globalThis as any).AgendTheme = { get: () => "system", set: (v: string) => themes.push(v) };
+    (globalThis as any).AgendTheme = themeStub("system", (v) => themes.push(v));
     await boot({ storage: { agend_prefs_synced: "1" }, host: {} });
     const { h, render } = await import("/assets/app-html.js");
     const { DevicePrefs } = await import("/assets/app-shell.js");
@@ -420,7 +422,7 @@ describe("the app's modules", () => {
 
   it("another device's change: the next status frame's prefs_rev re-reads the host and applies it here", async () => {
     const theme = vi.fn();
-    (globalThis as any).AgendTheme = { set: theme, get: () => "system" };
+    (globalThis as any).AgendTheme = themeStub("light", theme);
     const m = await boot({ storage: { agend_prefs_synced: "1" }, host: { theme: "light" }, rev: 4 });
     const store = await import("/assets/app-store.js");
     const seen: string[][] = [];

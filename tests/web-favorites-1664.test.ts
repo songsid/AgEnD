@@ -172,6 +172,8 @@ describe("the sidebar's Favorites", () => {
   let posts: any[] = [];
   let host: Record<string, unknown> = {}, rev = 1;
   let era = 0;   // each test's host view is newer than the last test's (the page module lives for the whole file)
+  /** A test's own answer for a write (held, refused); null: the fake host takes it. */
+  let postGate: ((body: any) => Promise<any>) | null = null;
   afterEach(async () => {
     for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
     (globalThis as { fetch?: unknown }).fetch = realFetch;
@@ -180,7 +182,7 @@ describe("the sidebar's Favorites", () => {
   });
   const I = (name: string, tags: string[] = ["AgEnD"]) => ({ name, status: "running", backend: "claude-code", tags });
   async function sidebar(instances: Array<Record<string, unknown>>, opts: { favorites?: string[]; publicLink?: boolean } = {}) {
-    posts = []; host = opts.favorites ? { "nav.favorites": opts.favorites } : {}; rev = ++era * 1000;
+    posts = []; host = opts.favorites ? { "nav.favorites": opts.favorites } : {}; rev = ++era * 1000; postGate = null;
     // Not yet in step with the host (no agend_prefs_synced): the favorites this browser has are the list shown — on a
     // device in step, a key the host does not have would be cleared at load (#1665 r1 P2-4).
     const pg = page({ url: "http://127.0.0.1:19280/ui", storage: { agend_tour_done: "1", ...(opts.favorites ? { agend_favorites: JSON.stringify(opts.favorites) } : {}) } });
@@ -189,7 +191,11 @@ describe("the sidebar's Favorites", () => {
     pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {} }));
     if (opts.publicLink) pg.document.body.setAttribute("data-public-link", "1");
     (globalThis as { fetch?: unknown }).fetch = async (_url: string, init: any = {}) => {
-      if (init.method === "POST") { const b = JSON.parse(init.body); posts.push(b); Object.assign(host, b.set); rev++; }
+      if (init.method === "POST") {
+        const b = JSON.parse(init.body); posts.push(b);
+        if (postGate) return postGate(b);
+        Object.assign(host, b.set); rev++;
+      }
       return { ok: true, status: 200, json: async () => ({ values: { ...host }, rev }) };
     };
     const { startRouter } = await import("/assets/app-nav.js");
@@ -280,6 +286,62 @@ describe("the sidebar's Favorites", () => {
       expect(await prefs.refresh()).toBe(true);
       await settle();
       expect([groups(pg)[0], pg.storage.get("agend_favorites")]).toEqual([["Favorites", ["charlie"]], '["alpha"]']);
+    } finally { ls.setItem = saved.set; ls.removeItem = saved.remove; }
+  });
+  it("#1677 r2: when this page's write ends, the sidebar shows the host's newest list — even when storage refused the change and its old copy equals the host", async () => {
+    const outcomes: unknown[] = [];
+    for (const [ending, blocked] of [["held", true], ["held", false], ["refused", true], ["refused", false]] as const) {
+      const pg = await sidebar([I("alpha"), I("charlie")], { favorites: ["alpha"] });
+      const ls = (globalThis as any).localStorage;
+      const saved = { set: ls.setItem, remove: ls.removeItem };
+      const quota = () => { throw Object.assign(new Error("full"), { name: "QuotaExceededError" }); };
+      if (blocked) { ls.setItem = quota; ls.removeItem = quota; }
+      try {
+        let release!: (r: unknown) => void;
+        const committedRev = rev + 1;
+        postGate = ending === "held"
+          ? () => new Promise((r) => { release = r; })     // committed on the host (rev+1), its answer held
+          : () => Promise.resolve({ ok: false, status: 403, json: async () => ({ error: "prefs_read_only" }) });
+        fire(star(pg, "Remove alpha from favorites"), "click"); await settle();
+        await new Promise((r) => setTimeout(r, 450));       // the write is out
+        const during = groups(pg)[0]?.[0] === "Favorites" ? groups(pg)[0][1] : [];
+        if (ending === "held") {
+          host = { "nav.favorites": ["alpha"] }; rev = committedRev + 5;   // another device put alpha back, newer
+          const prefs = await import("/assets/app-prefs.js");
+          await prefs.refresh(); await settle();
+          const whileOut = groups(pg)[0]?.[0] === "Favorites" ? groups(pg)[0][1] : [];
+          release({ ok: true, status: 200, json: async () => ({ values: { "nav.favorites": [] }, rev: committedRev }) });
+          for (let i = 0; i < 30; i++) await Promise.resolve();
+          await settle();
+          outcomes.push([ending, blocked, during, whileOut, groups(pg)[0]]);
+        } else {
+          for (let i = 0; i < 30; i++) await Promise.resolve();
+          await settle();
+          outcomes.push([ending, blocked, during, groups(pg)[0]]);
+        }
+      } finally { ls.setItem = saved.set; ls.removeItem = saved.remove; postGate = null; }
+      const p = mounted.pop()!; await p.unmount(); p.restore();
+    }
+    expect(outcomes).toEqual([
+      ["held", true, [], [], ["Favorites", ["alpha"]]], ["held", false, [], [], ["Favorites", ["alpha"]]],
+      // Refused: by the end of the burst the refusal and the read back are done — alpha is shown again.
+      ["refused", true, ["alpha"], ["Favorites", ["alpha"]]], ["refused", false, ["alpha"], ["Favorites", ["alpha"]]],
+    ]);
+  });
+  it("#1677 r2: with storage refusing, another device's change back to what the old copy holds is still shown", async () => {
+    const pg = await sidebar([I("alpha"), I("charlie")], { favorites: ["alpha"] });
+    const ls = (globalThis as any).localStorage;
+    const saved = { set: ls.setItem, remove: ls.removeItem };
+    const quota = () => { throw Object.assign(new Error("full"), { name: "QuotaExceededError" }); };
+    ls.setItem = quota; ls.removeItem = quota;
+    try {
+      const prefs = await import("/assets/app-prefs.js");
+      host = { "nav.favorites": ["charlie"] }; rev += 1;
+      await prefs.refresh(); await settle();
+      const first = groups(pg)[0];
+      host = { "nav.favorites": ["alpha"] }; rev += 1;       // back to what this browser's (stuck) copy still holds
+      await prefs.refresh(); await settle();
+      expect([first, groups(pg)[0], pg.storage.get("agend_favorites")]).toEqual([["Favorites", ["charlie"]], ["Favorites", ["alpha"]], '["alpha"]']);
     } finally { ls.setItem = saved.set; ls.removeItem = saved.remove; }
   });
   it("the public link sees the favorites but has no star and no Edit", async () => {
