@@ -33,9 +33,9 @@ describe("names", () => {
     expect(row(pg, "web-dev").getAttribute("title").split("\n").slice(0, 2)).toEqual(["Sentinel", "(web-dev)"]);
     expect([row(pg, "web-dev").querySelector(".inst-id"), row(pg, "api-server").querySelector(".inst-id")]).toEqual([null, null]);
   });
-  it("two rows with the same display name each keep their instance name under it", async () => {
-    const pg = await sidebar([base("rev-a", { display_name: "Reviewer" }), base("rev-b", { display_name: "Reviewer" }), base("solo", { display_name: "Solo" })]);
-    expect(["rev-a", "rev-b", "solo"].map(n => row(pg, n).querySelector(".inst-id")?.textContent ?? null)).toEqual(["rev-a", "rev-b", null]);
+  it("#1722: every row with a nickname has its instance name under it (two rows sharing one included); one without, one line", async () => {
+    const pg = await sidebar([base("rev-a", { display_name: "Reviewer" }), base("rev-b", { display_name: "Reviewer" }), base("solo", { display_name: "Solo" }), base("plain")]);
+    expect(["rev-a", "rev-b", "solo", "plain"].map(n => row(pg, n).querySelector(".inst-alt")?.textContent ?? null)).toEqual(["rev-a", "rev-b", "solo", null]);
   });
   it("the filter finds a row by either name", async () => {
     const { instanceMatchesFilter } = await import("/assets/instance-nav.js");

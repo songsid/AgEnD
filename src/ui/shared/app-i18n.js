@@ -62,6 +62,8 @@ register("app", {
   en: {
     brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet overview", view: "View", settings: "Settings", instances: "Instances", newInstance: "New instance",
     collapse: "Hide the sidebar", expand: "Show the sidebar", openMenu: "Open the sidebar", closeMenu: "Close the sidebar",
+    resizeSidebar: "Sidebar width", resizeSidebarHint: "Drag to resize · double-click to reset",
+    names: "Names", namesNickname: "Nickname first", namesInstance: "Real name first",
     theme: "Theme", themeSystem: "System", themeLight: "Light", themeDark: "Dark", language: "Language",
     previews: "Allow HTML previews", tour: "Tour", tourTitle: "Show the web chat tour again",
     needsYou: "needs you", approxNote: "Read from the terminal, so approximate", chat: "Chat", details: "Details", instanceViews: "Views of {0}",
@@ -91,6 +93,8 @@ register("app", {
   "zh-TW": {
     brand: "AgEnD", fleet: "Fleet", fleetOverview: "Fleet 概覽", view: "檢視", settings: "設定", instances: "Instances", newInstance: "新增 instance",
     collapse: "隱藏側邊欄", expand: "顯示側邊欄", openMenu: "打開側邊欄", closeMenu: "關閉側邊欄",
+    resizeSidebar: "側邊欄寬度", resizeSidebarHint: "拖曳調整寬度 · 按兩下恢復預設",
+    names: "名稱", namesNickname: "暱稱優先", namesInstance: "實際名稱優先",
     theme: "主題", themeSystem: "跟隨系統", themeLight: "淺色", themeDark: "深色", language: "語言",
     previews: "允許預覽 HTML", tour: "導覽", tourTitle: "再看一次網頁聊天導覽",
     needsYou: "等你回應", approxNote: "從終端畫面判讀，僅供參考", chat: "聊天", details: "詳細資訊", instanceViews: "{0} 的檢視",
