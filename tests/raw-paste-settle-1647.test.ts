@@ -19,6 +19,7 @@ import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox, isSilentScheduleDelivery } from "../src/delivery-outbox.js";
 import { scanTranscriptForDeliveryMarker, transcriptDeltaHasRawText } from "../src/delivery-reconciliation.js";
 import { t, setLocale } from "../src/locale.js";
+import { FleetManager } from "../src/fleet-manager.js";
 
 const roots: string[] = [];
 const daemons: any[] = [];
@@ -297,5 +298,48 @@ describe("delivery_status: a submission proof that failed reads as 'could not co
     expect(status).toContain(t("delivery.error_unconfirmed"));
     expect(status).not.toContain(t("delivery.error_recorded"));
     box.close?.();
+  });
+});
+
+describe("the fleet's notice for an unconfirmed delivery: the cause in the log; a silent schedule says what it is", () => {
+  it("a silent schedule: the silent-schedule notice with its cause; a human message: today's notice — both log the cause", () => {
+    setLocale("en");
+    const fm: any = new FleetManager(tmp());
+    fm.ensureDeliveryOutbox();
+    try {
+      const outbox = fm.deliveryOutbox as DeliveryOutbox;
+      const notice = vi.spyOn(fm, "notifyFleetError").mockReturnValue(true);
+      const logged = vi.spyOn(fm.logger, "error");
+      vi.spyOn(fm, "scheduleDeliveryOutboxPump").mockImplementation(() => {});   // this test settles the rows itself
+      const settle = (kind: string, sourceKey: string, reason: string) => {
+        const row = outbox.admit({ operationId: `op-${kind}`, sourceKey, sourceInstance: "fleet", sourceDaemonBootId: "b",
+          targetInstance: "worker", kind: kind as any, payload: { type: kind, content: "x", meta: {} } }).delivery;
+        // The first uncertain row queues an outcome notice back to its source ("fleet"): leave that lane out.
+        const claimed = outbox.claimNext(fm.managerBootId, () => "worker-boot", new Set(["fleet"]))!;
+        expect(claimed.deliveryId).toBe(row.deliveryId);
+        expect(outbox.begin(row.deliveryId, "worker-boot", claimed.attemptNo, {
+          backend: "kiro-cli", backendVersion: null, windowId: "@w", transcriptPath: null, transcriptOffset: null,
+          transcriptSessionId: null, submissionMode: kind === "raw_paste" ? "raw_paste" : "idle_submit", queueResumePolicy: "unknown",
+        } as any)).toBe("begun");
+        expect(outbox.complete(row.deliveryId, "worker-boot", claimed.attemptNo, "uncertain", reason)).toBe(true);
+        return row.deliveryId;
+      };
+      const silent = settle("raw_paste", "schedule:98b718d7:run:worker:raw_paste", "raw-paste-submit-proof:no-positive-acceptance-proof");
+      expect(notice).toHaveBeenCalledTimes(1);
+      expect(notice.mock.calls[0]![0]).toContain("A silent schedule's paste into worker could not be confirmed (raw-paste-submit-proof:no-positive-acceptance-proof)");
+      expect(logged.mock.calls.find(c => (c[0] as any)?.deliveryId === silent)?.[0]).toMatchObject({
+        cause: "raw-paste-submit-proof:no-positive-acceptance-proof", silentSchedule: true });
+      const human = settle("fleet_inbound", "mcp:source:op:worker:fleet_inbound", "post-submit-proof:unproven");
+      expect(notice).toHaveBeenCalledTimes(2);
+      expect(notice.mock.calls[1]![0]).toContain("Delivery to worker could not be confirmed");
+      const humanLog = logged.mock.calls.find(c => (c[0] as any)?.deliveryId === human)?.[0] as any;
+      expect(humanLog).toMatchObject({ cause: "post-submit-proof:unproven" });
+      expect(humanLog.silentSchedule).toBeUndefined();
+      expect(outbox.needsAttention("2000-01-01T00:00:00.000Z").map(d => d.deliveryId)).toEqual([human]);
+    } finally {
+      clearInterval(fm.replyObligationTimer);
+      fm.wakeCoordinator?.stop?.();
+      fm.deliveryOutbox?.close?.();
+    }
   });
 });
