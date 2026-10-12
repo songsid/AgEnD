@@ -178,7 +178,7 @@ fleet 共用的工作與總覽，每項一個分頁，各有自己的網址。
 - 在 instance 的頁面上，標題列可以在它的 **聊天**、**View** 和 **詳細資訊** 之間切換（手機上是標題列下方的分頁），instance 不變。沒有登入、只讀 View 的人看不到這個切換。
 - 開著某個 instance 時，側欄的 **Fleet**（以及手機的 Fleet 分頁）會進到那個 instance 的詳細資訊；沒有開著 instance 時則是 Tasks。在詳細資訊或 Fleet 分頁上，點側欄的 instance 會開它的詳細資訊。
 - **Tasks**、**排程**、**Teams**：任務看板、cron 排程和 team。可以在這裡建立、認領和刪除。
-- **組織圖**（`/ui/fleet/org`）：最上方是 General，下面是 `fleet.yaml` 的各個 team，最後是未加入 team 的 instance。
+- **組織圖**（`/ui/fleet/org`；從任何頁面點側欄最上方（手機上是抽屜最上方）的 **Fleet 概覽** 就能打開）：最上方是 General，下面是 `fleet.yaml` 的各個 team，最後是未加入 team 的 instance。
   - 每個 instance 顯示名稱、它負責的工作、backend 與模型，以及即時狀態（工作中、閒置、等你回應、似乎卡住、已暫停、已停止、已當掉）。
   - 也附上它的 Discord 討論串或 Telegram topic 連結，以及聊天連結。
   - 組織圖唯讀：操作請在 Discord 或聊天裡進行。
