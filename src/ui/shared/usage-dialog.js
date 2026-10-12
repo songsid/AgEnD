@@ -1,5 +1,6 @@
 // #1523 N3 (§3.4): the AI usage dialog, opened from every page's header (◔). Moved from panel-view.js. Public
 // (/assets/): View's anonymous reader opens it too. It reads /api/ai-usage every 60 s while open (passive, #1374).
+// #1673: its body (UsageBody) is also the wide screen's right rail (header-tools.js UsageRail) — one read, one view.
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { useLease } from "./app-ctx.js";
@@ -73,9 +74,12 @@ export function updatedAgo(fetchedAt, now = Date.now()) {
   return tn("usageUpdatedAgo", { age: min < 60 ? tn("usageMinutes", { n: min }) : tn("usageHours", { n: Math.floor(min / 60) }) });
 }
 
-/** `owner`: the navigation that opened it — its reads and the minute's timer live and end with it. */
-export function UsageDialog({ onClose, owner = "" }) {
-  const lease = useLease(`usage-dialog:${owner}`);
+/**
+ * The usage read and its rows: the dialog's body and the rail's (#1673). `owner`: its lease's key — the reads and the
+ * minute's timer live and end with it.
+ */
+export function UsageBody({ owner }) {
+  const lease = useLease(owner);
   const [data, setData] = useState(undefined);       // undefined: loading; null: failed
   const [order, setOrder] = useState(() => { try { const a = JSON.parse(stored(USAGE_ORDER_KEY) || "[]"); return Array.isArray(a) ? a.filter((x) => typeof x === "string") : []; } catch { return []; } });
   const reads = useMemo(() => readStream(lease), [lease]);
@@ -136,5 +140,10 @@ export function UsageDialog({ onClose, owner = "" }) {
       <div class="u-foot"><span class="note" title=${new Date(data.fetchedAt).toLocaleString()}>${updatedAgo(data.fetchedAt)}${data.refreshing ? html` · <span class="u-refreshing">${tn("usageRefreshing")}</span>` : null}</span>
         <button type="button" class="btn btn-sm" onClick=${() => load(true)}>${tn("usageRefresh")}</button></div>`;
   }
-  return html`<${Dialog} title=${tn("usage.title")} onClose=${onClose} wide=${true}>${content}</${Dialog}>`;
+  return content;
+}
+
+/** `owner`: the navigation that opened it — its reads and the minute's timer live and end with it. */
+export function UsageDialog({ onClose, owner = "" }) {
+  return html`<${Dialog} title=${tn("usage.title")} onClose=${onClose} wide=${true}><${UsageBody} owner=${`usage-dialog:${owner}`} /></${Dialog}>`;
 }
