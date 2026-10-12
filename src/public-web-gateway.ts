@@ -25,8 +25,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|cache|prefs)$/.test(path)) return true;
   // #1630: avatars and server emoji, read-only — nothing a signed-in public user cannot already see in the page.
   if (method === "GET" && /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/.test(path)) return true;
-  if (method === "POST" && /^\/ui\/(send|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|teams|config)$/.test(path)) return true;
-  if (((method === "POST" && /^\/ui\/tasks\/[^/]+$/.test(path))) || (method === "DELETE" && /^\/ui\/(schedules|teams)\/[^/]+$/.test(path))) return true;
+  if (method === "POST" && /^\/ui\/(send|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|schedules|config)$/.test(path)) return true;
+  if (((method === "POST" && /^\/ui\/tasks\/[^/]+$/.test(path))) || (method === "DELETE" && /^\/ui\/schedules\/[^/]+$/.test(path))) return true;
+  // #1689: teams are not created, edited or deleted over the public link (the handlers refuse it too).
   // Settings has an explicit method/subroute manifest (not an arbitrary /api prefix).
   return isPublicSettingsRoute(method, path);
 }
