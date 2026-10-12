@@ -9785,7 +9785,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
     else await this.lifecycle.remove(name, authorization);
     // A later same-name registration owns its files and caches.
-    if (this.fleetConfig?.instances[name] || this.daemons.has(name)) return;
+    // Own keys only: an instance named "constructor" is removed as any other (its inherited namesake is not a
+    // re-registration) — #1677 review.
+    if (Object.hasOwn(this.fleetConfig?.instances ?? {}, name) || this.daemons.has(name)) return;
 
     execution?.assert();
     // Clean up per-instance tracking maps so they don't grow unbounded
@@ -16431,6 +16433,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!this.classicChannels) return t("classic.manager_unavailable");
     const ch = this.classicChannels.unregister(channelId, adapterId);
     if (!ch) return t("classic.no_agent");
+    // #1664: the room is gone (not paused or stopped): nobody's favorite any more — unless the name is still an
+    // instance (fleet.yaml's, or another room's), so a later room of the same name does not inherit an old star.
+    if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, ch.instanceName)
+        && !this.classicChannels.getAll().some((c) => c.instanceName === ch.instanceName)) {
+      try { this.webPrefs.forgetInstance(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room from web favorites failed"); }
+    }
 
     this.instanceWorldBinding.delete(ch.instanceName);
     await this.stopInstance(ch.instanceName).catch(err =>

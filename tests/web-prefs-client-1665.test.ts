@@ -230,6 +230,31 @@ describe("the app's modules", () => {
     await boot({ storage: { agend_prefs_synced: "1", agend_instance_collapsed: '["Old"]', agend_html_preview: "on", agend_lang: "zh-TW" }, host: { theme: "dark" } });
     expect([ls("agend_instance_collapsed"), ls("agend_html_preview"), ls("agend_lang"), ls("agend_theme")]).toEqual([null, null, null, "dark"]);
   });
+  it("#1677 r1: the sidebar starts from the host's values even when this browser's storage refuses to keep them", async () => {
+    pg = installDom({ storage: { agend_prefs_synced: "1", agend_instance_collapsed: '["Old"]', agend_favorites: '["old"]' } });
+    pg.document.documentElement.setAttribute("data-prefs", prefsAttr({ "nav.collapsed": ["Ops"], "nav.favorites": ["alpha"] }));
+    const quota = () => { throw Object.assign(new Error("full"), { name: "QuotaExceededError" }); };
+    Object.assign((globalThis as any).localStorage, { setItem: quota, removeItem: quota });
+    const nav = await import("/assets/instance-nav.js");
+    expect([[...nav.navStore.get().collapsed], nav.navStore.get().favorites, ls("agend_instance_collapsed")]).toEqual([["Ops"], ["alpha"], '["Old"]']);
+  });
+  it("#1677 r1: in step, a key the host does not have is the default in memory even when the stale copy cannot be removed", async () => {
+    pg = installDom({ storage: { agend_prefs_synced: "1", agend_instance_collapsed: '["Old"]' } });
+    pg.document.documentElement.setAttribute("data-prefs", prefsAttr({}));
+    const quota = () => { throw Object.assign(new Error("full"), { name: "QuotaExceededError" }); };
+    Object.assign((globalThis as any).localStorage, { setItem: quota, removeItem: quota });
+    const nav = await import("/assets/instance-nav.js");
+    expect([[...nav.navStore.get().collapsed], ls("agend_instance_collapsed")]).toEqual([[], '["Old"]']);
+  });
+  it("#1677 r1: this page's own change, still being sent, stays when another device's change to another key is taken", async () => {
+    const m = await boot({ storage: { agend_prefs_synced: "1" }, host: {}, rev: 1 });
+    const nav = await import("/assets/instance-nav.js");
+    nav.setNavFilter({ q: "mine" });                         // pending (the 400 ms burst)
+    hostValues = { "nav.collapsed": ["Ops"] }; hostRev = 2;
+    await m.refresh();                                       // another device folded a group: the sidebar re-reads its prefs
+    expect([nav.navStore.get().filter.q, [...nav.navStore.get().collapsed]]).toEqual(["mine", ["Ops"]]);
+    await new Promise((r) => setTimeout(r, 450));           // its write goes out here, not into the next test's fetch
+  });
   it("P2-4: not in step yet, this device's own values stay (to be uploaded)", async () => {
     await boot({ storage: { agend_instance_collapsed: '["Mine"]', agend_lang: "zh-TW" }, host: {} });
     expect([ls("agend_instance_collapsed"), ls("agend_lang")]).toEqual(['["Mine"]', "zh-TW"]);

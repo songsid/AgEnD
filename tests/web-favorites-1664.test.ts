@@ -87,6 +87,43 @@ describe("the host: nav.favorites", () => {
     expect([kept, new WebPrefsStore(dir, { exists: () => true }).read().values["nav.favorites"]]).toEqual([["w", "x"], ["x"]]);
   });
 
+  it("#1677 r1: an instance named \"constructor\" is removed like any other — its favorite goes (own key, not the inherited one)", async () => {
+    const dir = tmp();
+    vi.stubEnv("AGEND_HOME", dir);
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { authorizeExplicitInstanceRemoval } = await import("../src/instance-removal.js");
+    const fm = new FleetManager(dir);
+    const any = fm as unknown as Record<string, any>;
+    const instances: Record<string, unknown> = Object.create(null);
+    Object.defineProperty(instances, "constructor", { value: { working_directory: dir }, enumerable: true, writable: true, configurable: true });
+    instances.x = { working_directory: dir };
+    fm.fleetConfig = { instances } as never;
+    const w = fm.webPrefs.write(OPERATOR, fm.webPrefs.parsePatch({ "nav.favorites": ["constructor", "x"] }).ok ? new Map([["nav.favorites", ["constructor", "x"]]]) : new Map());
+    any.lifecycle = { daemons: new Map(), remove: async () => { fm.fleetConfig = { instances: { x: { working_directory: dir } } } as never; } };
+    any.statuslineWatcher = { unwatch() {} };
+    await fm.removeInstance("constructor", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
+    expect([w.ok, new WebPrefsStore(dir, { exists: () => true }).read().values["nav.favorites"]]).toEqual([true, ["x"]]);
+  });
+  it("#1677 r1: a ClassicBot room stopped (unregistered) is nobody's favorite any more; one whose name is still an instance keeps it", async () => {
+    const outcomes: unknown[] = [];
+    for (const stillThere of [false, true]) {
+      const dir = tmp();
+      vi.stubEnv("AGEND_HOME", dir);
+      const { FleetManager } = await import("../src/fleet-manager.js");
+      const fm = new FleetManager(dir);
+      const any = fm as unknown as Record<string, any>;
+      let rooms = [{ instanceName: "classic-ops", channelId: "c1" }, ...(stillThere ? [{ instanceName: "classic-ops", channelId: "c2" }] : [])];
+      fm.fleetConfig = { instances: {} } as never;
+      any.classicChannels = { getAll: () => rooms, unregister: (id: string) => { const ch = rooms.find((r) => r.channelId === id) ?? null; rooms = rooms.filter((r) => r.channelId !== id); return ch; } };
+      any.stopInstance = async () => {}; any.reregisterClassicChannels = () => {};
+      fm.webPrefs.write(OPERATOR, new Map([["nav.favorites", ["classic-ops"]]]));
+      await fm.handleClassicStop("c1");
+      const file = new WebPrefsStore(dir, { exists: () => true }).read();
+      outcomes.push([stillThere, file.values["nav.favorites"], file.rev]);
+    }
+    expect(outcomes).toEqual([[false, [], 2], [true, ["classic-ops"], 1]]);
+  });
+
   function route(prefs: WebPrefsStore) {
     const sessions = new WebSessionStore();
     const ctx = { webToken: token, webSessions: sessions, webPrefs: prefs, logger: { info() {}, debug() {}, error() {}, warn() {} },
@@ -134,6 +171,7 @@ describe("the sidebar's Favorites", () => {
   const realFetch = (globalThis as { fetch?: unknown }).fetch;
   let posts: any[] = [];
   let host: Record<string, unknown> = {}, rev = 1;
+  let era = 0;   // each test's host view is newer than the last test's (the page module lives for the whole file)
   afterEach(async () => {
     for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
     (globalThis as { fetch?: unknown }).fetch = realFetch;
@@ -142,7 +180,7 @@ describe("the sidebar's Favorites", () => {
   });
   const I = (name: string, tags: string[] = ["AgEnD"]) => ({ name, status: "running", backend: "claude-code", tags });
   async function sidebar(instances: Array<Record<string, unknown>>, opts: { favorites?: string[]; publicLink?: boolean } = {}) {
-    posts = []; host = {}; rev = 1;
+    posts = []; host = opts.favorites ? { "nav.favorites": opts.favorites } : {}; rev = ++era * 1000;
     // Not yet in step with the host (no agend_prefs_synced): the favorites this browser has are the list shown — on a
     // device in step, a key the host does not have would be cleared at load (#1665 r1 P2-4).
     const pg = page({ url: "http://127.0.0.1:19280/ui", storage: { agend_tour_done: "1", ...(opts.favorites ? { agend_favorites: JSON.stringify(opts.favorites) } : {}) } });
@@ -158,6 +196,9 @@ describe("the sidebar's Favorites", () => {
     const { applyStatus } = await import("/assets/app-store.js");
     const { Shell } = await import("/assets/app-shell.js");
     const nav = await import("/assets/instance-nav.js");
+    // The favorites as the host has them (the real read: the page module takes this test's newer view).
+    const prefs = await import("/assets/app-prefs.js");
+    await prefs.refresh();
     nav.loadNavPrefs();
     startRouter(pg.window);
     applyStatus({ instances });
@@ -212,6 +253,35 @@ describe("the sidebar's Favorites", () => {
     const pg = await sidebar([I("alpha")], { favorites: gone });
     expect([groups(pg), star(pg, "Add alpha to favorites").disabled]).toEqual([[["AgEnD", ["alpha"]]], false]);
   });
+  it("#1677 r1: in a filtered list Edit's ↑ ↓ are off (as drag is) and say why — the row above may not be the one above", async () => {
+    const pg = await sidebar([{ ...I("alpha"), display_name: "Visible A" }, { ...I("hidden"), display_name: "Other" }, { ...I("charlie"), display_name: "Visible C" }],
+      { favorites: ["alpha", "hidden", "charlie"] });
+    const nav = await import("/assets/instance-nav.js");
+    fire(pg.root.querySelector("button.fav-edit") as any, "click");
+    nav.setNavFilter({ q: "visible" }); await settle();
+    const move = (label: string) => byLabel(pg, "button.inst-move", label);
+    const filtered = [groups(pg)[0], move("Move Visible C up").disabled, move("Move Visible C up").getAttribute("title"), move("Move Visible A down").disabled];
+    fire(move("Move Visible C up"), "click"); await settle();
+    const unchanged = nav.navStore.get().favorites;
+    nav.setNavFilter({ q: "" }); await settle();
+    expect([filtered, unchanged, move("Move Visible C up").disabled]).toEqual([
+      [["Favorites", ["Visible A", "Visible C"]], true, "Clear the filter to reorder favorites", true], ["alpha", "hidden", "charlie"], false]);
+    await sent();
+  });
+  it("#1677 r1: another device's favorites are shown even when this browser's storage refuses to keep them", async () => {
+    const pg = await sidebar([I("alpha"), I("charlie")], { favorites: ["alpha"] });
+    const ls = (globalThis as any).localStorage;
+    const quota = () => { throw Object.assign(new Error("full"), { name: "QuotaExceededError" }); };
+    const saved = { set: ls.setItem, remove: ls.removeItem };
+    ls.setItem = quota; ls.removeItem = quota;
+    try {
+      host = { "nav.favorites": ["charlie"] }; rev += 1;
+      const prefs = await import("/assets/app-prefs.js");
+      expect(await prefs.refresh()).toBe(true);
+      await settle();
+      expect([groups(pg)[0], pg.storage.get("agend_favorites")]).toEqual([["Favorites", ["charlie"]], '["alpha"]']);
+    } finally { ls.setItem = saved.set; ls.removeItem = saved.remove; }
+  });
   it("the public link sees the favorites but has no star and no Edit", async () => {
     const pg = await sidebar([I("alpha"), I("beta")], { favorites: ["beta"], publicLink: true });
     expect([groups(pg), pg.root.querySelectorAll("button.inst-star").length, pg.root.querySelector("button.fav-edit")]).toEqual([[["Favorites", ["beta"]], ["AgEnD", ["alpha"]]], 0, null]);
@@ -224,7 +294,7 @@ describe("the sidebar's Favorites", () => {
   });
   it("another device's star shows up here at its next status frame", async () => {
     const pg = await sidebar([I("alpha"), I("beta")], { favorites: [] });
-    host = { "nav.favorites": ["alpha"] }; rev = 5;
+    host = { "nav.favorites": ["alpha"] }; rev += 1;
     const prefs = await import("/assets/app-prefs.js");
     await prefs.refresh(); await settle();
     expect(groups(pg)).toEqual([["Favorites", ["alpha"]], ["AgEnD", ["beta"]]]);

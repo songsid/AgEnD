@@ -14,7 +14,7 @@ import { chatPath, detailsPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
 import { viewStore } from "./view-roster-store.js";
-import { onPrefsChanged, prefsWritable, savePref } from "./app-prefs.js";
+import { onPrefsChanged, prefInForce, prefsWritable, savePref } from "./app-prefs.js";
 import "./view-strings.js";
 
 /** view.* text with named values. */
@@ -106,10 +106,19 @@ const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";   // View's key since #999
 const COLLAPSED_KEY = "agend_instance_collapsed";
 const FILTER_KEY = "agend_instance_filter";
 const FAVORITES_KEY = "agend_favorites";   // #1664
+/**
+ * A synced sidebar preference, as the JSON its reader parses: the value in force in memory (app-prefs.js — this
+ * page's own change, else the host's; a full or blocked storage never brings an old one back), else this browser's copy.
+ */
+function inForce(prefKey, lsKey) {
+  const p = prefInForce(prefKey);
+  if (!p) return stored(lsKey);
+  return p.value === undefined ? null : JSON.stringify(p.value);
+}
 function readOrder() {
   const groups = new Map(), insts = new Map();
   try {
-    const rows = JSON.parse(stored(SIDEBAR_ORDER_KEY) || "[]");
+    const rows = JSON.parse(inForce("nav.order", SIDEBAR_ORDER_KEY) || "[]");
     if (Array.isArray(rows)) for (const row of rows) {
       if (row && row.item_type === "group" && typeof row.item_name === "string") groups.set(row.item_name, Number(row.sort_index) || 0);
       else if (row && row.item_type === "instance" && typeof row.item_name === "string") insts.set(row.item_name, Number(row.sort_index) || 0);
@@ -118,17 +127,17 @@ function readOrder() {
   return { groups, insts };
 }
 function readCollapsed() {
-  try { const a = JSON.parse(stored(COLLAPSED_KEY) || "[]"); return new Set(Array.isArray(a) ? a.filter((x) => typeof x === "string") : []); } catch { return new Set(); }
+  try { const a = JSON.parse(inForce("nav.collapsed", COLLAPSED_KEY) || "[]"); return new Set(Array.isArray(a) ? a.filter((x) => typeof x === "string") : []); } catch { return new Set(); }
 }
 const strings = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === "string") : []);
 function readFilter() {
   try {
-    const f = JSON.parse(stored(FILTER_KEY) || "{}");
+    const f = JSON.parse(inForce("nav.filter", FILTER_KEY) || "{}");
     return { q: f && typeof f.q === "string" ? f.q : "", status: strings(f && f.status).filter((s) => STATUS_FACETS.includes(s)), cli: strings(f && f.cli) };
   } catch { return { q: "", status: [], cli: [] }; }
 }
 function readFavorites() {
-  try { const a = JSON.parse(stored(FAVORITES_KEY) || "[]"); return Array.isArray(a) ? [...new Set(a.filter((x) => typeof x === "string"))] : []; } catch { return []; }
+  try { const a = JSON.parse(inForce("nav.favorites", FAVORITES_KEY) || "[]"); return Array.isArray(a) ? [...new Set(a.filter((x) => typeof x === "string"))] : []; } catch { return []; }
 }
 /** Display order: this browser's saved order first, then new groups/instances by tag and name. */
 export function computeOrder(roster, order) {
@@ -290,7 +299,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const filterRef = useRef(null);
   const list = useRef(null);
   const drag = useRef(null);
-  // #1664: "☆ Edit" — the stars on every row (on a phone the only way to them) and ↑ ↓ on the favorites.
+  // #1664: "☆ Edit" — the stars on every row (on a phone the only way to them) and ↑ ↓ on the favorites — only on the
+  // full list, as drag: in a filtered one the row above may not be the one above in the list (#1677 review).
   const [editing, setEditing] = useState(false);
   // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details, or a Fleet tab (Q4 = A), → Details;
   // everywhere else → Chat. The anonymous reader only ever has View.
@@ -373,9 +383,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           ${facet === "needs" ? html`<span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span>` : null}</span>` : null}</span>
       <span class="v-meta">${it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span>
       <span class=${`cli-icon cli-${KNOWN_BACKENDS.has(it.backend) ? it.backend : "other"}`} title=${backendLabel(it.backend)} aria-label=${tn("tooltipBackend", { value: backendLabel(it.backend) })}></span>
-    </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })} title=${tn("favUp", { name: label })}
-        disabled=${i === 0} onClick=${() => moveFavorite(name, -1, known)}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
-        aria-label=${tn("favDown", { name: label })} title=${tn("favDown", { name: label })} disabled=${i === count - 1} onClick=${() => moveFavorite(name, 1, known)}><${Icon} name="down" size=${14} /></button>` : null}${canStar
+    </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })}
+        title=${shown.active ? tn("favFiltered") : tn("favUp", { name: label })} disabled=${shown.active || i === 0} onClick=${() => { if (!shown.active) moveFavorite(name, -1, known); }}><${Icon} name="up" size=${14} /></button><button type="button" class="icon-btn inst-move"
+        aria-label=${tn("favDown", { name: label })} title=${shown.active ? tn("favFiltered") : tn("favDown", { name: label })} disabled=${shown.active || i === count - 1}
+        onClick=${() => { if (!shown.active) moveFavorite(name, 1, known); }}><${Icon} name="down" size=${14} /></button>` : null}${canStar
       ? html`<button type="button" class=${`icon-btn inst-star${starred ? " on" : ""}`} aria-pressed=${starred ? "true" : "false"} disabled=${full}
           aria-label=${tn(starred ? "favRemove" : "favAdd", { name: label })} title=${full ? tn("favFull", { max: MAX_FAVORITES }) : tn(starred ? "favRemove" : "favAdd", { name: label })}
           onClick=${() => toggleFavorite(name, known)}><${Icon} name="star" size=${14} /></button>` : null}</li>`;

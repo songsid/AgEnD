@@ -172,7 +172,8 @@ register("view", {
   "favDone": "Done",
   "favUp": "Move {name} up",
   "favDown": "Move {name} down",
-  "favFull": "Favorites are full ({max})"
+  "favFull": "Favorites are full ({max})",
+  "favFiltered": "Clear the filter to reorder favorites"
  },
  "zh-TW": {
   "editProfile": "編輯個人資料",
@@ -342,6 +343,7 @@ register("view", {
   "favDone": "完成",
   "favUp": "把 {name} 上移",
   "favDown": "把 {name} 下移",
-  "favFull": "最愛已滿（{max} 個）"
+  "favFull": "最愛已滿（{max} 個）",
+  "favFiltered": "清除篩選後才能調整最愛順序"
  }
 });

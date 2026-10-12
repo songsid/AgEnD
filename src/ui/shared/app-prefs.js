@@ -52,6 +52,7 @@ const initial = typeof document !== "undefined" ? pageHost() : null;
 let rev = initial ? initial.rev : null;
 let host = initial ? initial.values : null;
 const pending = new Map();     // key → value chosen here, not sent yet
+const mine = new Map();        // key → value chosen here whose write is not over (pending or out)
 const inflight = new Map();    // key → writes sent and not answered yet
 let flushTimer = null;
 let writes = Promise.resolve();   // one write at a time, in the order they were made
@@ -70,6 +71,19 @@ if (host) {
 /** This page may change the host's preferences: the signed-in app, not over the public link. */
 export function prefsWritable() {
   return !!initial && !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+}
+/**
+ * The value in force for a key, in memory — never only in this browser's storage (a full storage must not bring back
+ * an old value): this page's own choice while its write is not over; else the host's; else, on a device in step with
+ * the host, the default ({ value: undefined }). null: not known here (no host values on this page, or a device not yet
+ * in step) — the caller reads this browser's copy.
+ */
+export function prefInForce(key) {
+  if (!own(SYNCED, key)) return null;
+  if (mine.has(key)) return { value: mine.get(key) };
+  if (host && own(host, key)) return { value: host[key] };
+  if (initial && inStep()) return { value: undefined };
+  return null;
 }
 /** The host's value for a key as this page last saw it (undefined: not set there, or not known). */
 export function hostPref(key) { return host && own(host, key) ? host[key] : undefined; }
@@ -95,6 +109,7 @@ export function savePref(key, value) {
   cache(key, value);
   if (!prefsWritable()) return;
   pending.set(key, value);
+  mine.set(key, value);
   clearTimeout(flushTimer);
   flushTimer = setTimeout(flush, 400);
 }
@@ -119,7 +134,11 @@ function flush() {
   writes = writes.then(async () => {
     let ok = false;
     try { ok = (await post(set, false)).ok; } catch { ok = false; }
-    for (const k of keys) { const n = (inflight.get(k) || 1) - 1; if (n) inflight.set(k, n); else inflight.delete(k); }
+    for (const k of keys) {
+      const n = (inflight.get(k) || 1) - 1;
+      if (n) inflight.set(k, n); else inflight.delete(k);
+      if (!n && !pending.has(k)) mine.delete(k);
+    }
     // Taken: each key whose last write this was, and not changed here again since, now shows the newest host view this
     // page has — usually its own value; another device's newer one if that arrived while the write was out (held back
     // then, and an older answer to this write cannot overrule it). Refused or not sent: what the host has is what holds
