@@ -1675,12 +1675,37 @@ export function applyTeamUpdate(
   return { ok: true, result: { name: args.name, members: team.members, description: team.description ?? null } };
 }
 
+/**
+ * #1689 review: the update and its save as one — a save that fails (an I/O error) puts the team back as it was, so the
+ * live fleet never differs from fleet.yaml; that is a 500 (the input was fine), not a 400.
+ */
+export function commitTeamUpdate(
+  fleetConfig: Parameters<typeof applyTeamUpdate>[0],
+  args: Parameters<typeof applyTeamUpdate>[1],
+  save: () => void,
+): ReturnType<typeof applyTeamUpdate> {
+  const teams = fleetConfig?.teams;
+  const team = teams && Object.hasOwn(teams, args.name) ? teams[args.name] : null;
+  const before = team ? { members: [...team.members], hadDescription: Object.hasOwn(team, "description"), description: team.description } : null;
+  const r = applyTeamUpdate(fleetConfig, args);
+  if (!r.ok) return r;
+  try {
+    save();
+  } catch (err) {
+    if (team && before) {
+      team.members = before.members;
+      if (before.hadDescription) team.description = before.description; else delete team.description;
+    }
+    return { ok: false, status: 500, error: `Saving fleet.yaml failed; the team is unchanged: ${(err as Error)?.message ?? String(err)}` };
+  }
+  return r;
+}
+
 const updateTeam: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(UpdateTeamArgs, rawArgs, "update_team");
   if (!v.ok) { respond(null, v.error); return; }
-  const r = applyTeamUpdate(ctx.fleetConfig, v.data);
+  const r = commitTeamUpdate(ctx.fleetConfig, v.data, () => ctx.saveFleetConfig());
   if (!r.ok) { respond(null, r.error); return; }
-  ctx.saveFleetConfig();
   respond(r.result);
 };
 

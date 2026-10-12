@@ -5,6 +5,11 @@
  * deletes teams. The real shared function, MCP handlers, route handler, gateway manifest and Fleet panel.
  */
 import { EventEmitter } from "node:events";
+import { execFile } from "node:child_process";
+import { createServer } from "node:http";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyTeamUpdate, outboundHandlers } from "../src/outbound-handlers.js";
 import { handleWebRequest } from "../src/web-api.js";
@@ -62,6 +67,13 @@ describe("the update_team tool (agents)", () => {
     const b = run("update_team", { name: "core", add: ["constructor"] });
     expect([a.out.error, a.saved, b.out.error, b.saved]).toEqual(["Team not found: __proto__", 0, "Invalid instance names: constructor", 0]);
   });
+  it("#1693 r1: a save that fails leaves the team as it was (the tool's answer says so)", () => {
+    const f = fleet();
+    let out: { result: unknown; error?: string } = { result: null };
+    void outboundHandlers.get("update_team")!({ fleetConfig: f, saveFleetConfig: () => { throw new Error("EIO"); } } as never,
+      { name: "core", add: ["gamma"], description: "New" }, (result: unknown, error?: string) => { out = { result, error }; }, {} as never);
+    expect([out.error?.startsWith("Saving fleet.yaml failed; the team is unchanged"), f.teams.core]).toEqual([true, { members: ["alpha", "beta"], description: "The core" }]);
+  });
   it("create_team: own keys too — a constructor member and a __proto__ name are refused", () => {
     const a = run("create_team", { name: "ops", members: ["constructor"] });
     const b = run("create_team", { name: "__proto__", members: ["alpha"] });
@@ -69,6 +81,17 @@ describe("the update_team tool (agents)", () => {
     expect([a.out.error, b.out.error, a.saved + b.saved, c.out.error, Object.hasOwn(c.f.teams, "ops")]).toEqual(["Invalid instance names: constructor", "Invalid team name: __proto__", 0, undefined, true]);
   });
 });
+
+/** The route with a given fleet and saver (local, header token). */
+function callWith(method: string, path: string, body: unknown, f: ReturnType<typeof fleet>, saveFleetConfig: () => void) {
+  return new Promise<{ status: number; body: any }>((resolve) => {
+    const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "127.0.0.1:19280", "x-agend-token": token, "content-type": "application/json" }, destroy: vi.fn() });
+    let status = 0;
+    const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { status = c; }, end: (t = "") => resolve({ status, body: t ? JSON.parse(String(t)) : null }) });
+    handleWebRequest(req as never, res as never, new URL(path, "http://127.0.0.1:19280"), { webToken: token, fleetConfig: f, saveFleetConfig, logger: { debug() {}, info() {}, error() {} } } as never);
+    req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end");
+  });
+}
 
 describe("PATCH /ui/teams/<name>", () => {
   function call(method: string, path: string, body: unknown, opts: { publicLink?: boolean; f?: ReturnType<typeof fleet> } = {}) {
@@ -127,10 +150,69 @@ describe("PATCH /ui/teams/<name>", () => {
       isPublicWebRoute("POST", "/ui/teams"), isPublicWebRoute("DELETE", "/ui/teams/core"), isPublicWebRoute("GET", "/ui/teams")])
       .toEqual([403, 403, 0, true, false, false, true]);
   });
+  it("#1693 r1: a session revoked, or the token rotated, while the body was on its way — nothing written, nothing saved", async () => {
+    const outcomes: unknown[] = [];
+    for (const change of ["none", "revoke", "rotate"] as const) {
+      const f = fleet();
+      const sessions = new WebSessionStore();
+      const s = sessions.create({ tier: "admin", surface: "local", label: "t", tokenEpoch: tokenEpoch(token) });
+      const saveFleetConfig = vi.fn();
+      const ctx = { webToken: token, webSessions: sessions, fleetConfig: f, saveFleetConfig, logger: { debug() {}, info() {}, error() {} } } as any;
+      const req = Object.assign(new EventEmitter(), { method: "PATCH", url: "/ui/teams/core", destroy: vi.fn(),
+        headers: { host: "127.0.0.1:19280", cookie: `agend_session=${s.sessionId}`, origin: "http://127.0.0.1:19280", "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" } });
+      const status = await new Promise<number>((resolve) => {
+        let code = 0;
+        const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { code = c; }, end: () => resolve(code) });
+        handleWebRequest(req as never, res as never, new URL("/ui/teams/core", "http://127.0.0.1:19280"), ctx);
+        if (change === "revoke") sessions.revokeById(s.sessionId);
+        if (change === "rotate") ctx.webToken = "u".repeat(48);
+        req.emit("data", Buffer.from(JSON.stringify({ members: ["gamma"], description: "New" }))); req.emit("end");
+      });
+      outcomes.push([change, status, saveFleetConfig.mock.calls.length, f.teams.core]);
+    }
+    expect(outcomes).toEqual([["none", 200, 1, { members: ["gamma"], description: "New" }],
+      ["revoke", 401, 0, { members: ["alpha", "beta"], description: "The core" }], ["rotate", 401, 0, { members: ["alpha", "beta"], description: "The core" }]]);
+  });
+  it("#1693 r1: a save that fails leaves the team as it was (500, not 400) — PATCH and PUT; a team with no description gets none back", async () => {
+    const failing = () => { throw Object.assign(new Error("EIO: i/o error, fsync"), { code: "EIO" }); };
+    const outcomes: unknown[] = [];
+    for (const method of ["PATCH", "PUT"]) {
+      const f = fleet();
+      f.teams.bare = { members: ["alpha"] };
+      const r1 = await callWith(method, "/ui/teams/core", { members: ["gamma"], description: "New" }, f, failing);
+      const r2 = await callWith(method, "/ui/teams/bare", { members: ["beta"], description: "Added" }, f, failing);
+      outcomes.push([method, r1.status, r2.status, f.teams.core, f.teams.bare, Object.hasOwn(f.teams.bare, "description")]);
+    }
+    expect(outcomes).toEqual(Array.from(["PATCH", "PUT"], (m) => [m, 500, 500, { members: ["alpha", "beta"], description: "The core" }, { members: ["alpha"] }, false]));
+  });
   it("delete: own keys — a __proto__ team is not found", async () => {
     const r = await call("DELETE", "/ui/teams/__proto__", undefined);
     expect([r.status, r.saved]).toEqual([404, 0]);
   });
+});
+
+describe("#1693 r1: agend-agent team-update", () => {
+  it("sends lists (comma-separated, \"\" for none) and a description when given — what update_team takes", async () => {
+    const posts: unknown[] = [];
+    const server = createServer((req, res) => { let b = ""; req.on("data", (c) => { b += c; }); req.on("end", () => { posts.push(JSON.parse(b)); res.end(JSON.stringify({ ok: true })); }); });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const home = mkdtempSync(join(tmpdir(), "team-cli-1693-"));
+    const run = (...argv: string[]) => new Promise<number>((resolve) => {
+      execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src/agent-cli.ts"), ...argv], {
+        env: { ...process.env, AGEND_PORT: String((server.address() as any).port), AGEND_INSTANCE_NAME: "worker", AGEND_HOME: home }, timeout: 30_000,
+      }, (err) => resolve(err ? 1 : 0));
+    });
+    try {
+      await run("team-update", "core", "gamma, beta", "alpha", "Front line");
+      await run("team-update", "core", "", "beta");
+      await run("team-update", "core", "", "", "");
+      expect(posts).toEqual([
+        { instance: "worker", op: "team-update", args: { name: "core", add: ["gamma", "beta"], remove: ["alpha"], description: "Front line" } },
+        { instance: "worker", op: "team-update", args: { name: "core", remove: ["beta"] } },
+        { instance: "worker", op: "team-update", args: { name: "core", description: "" } },
+      ]);
+    } finally { server.close(); rmSync(home, { recursive: true, force: true }); }
+  }, 60_000);
 });
 
 describe("the Teams tab: Edit opens the form filled in", () => {

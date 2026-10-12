@@ -32,7 +32,7 @@ import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
-import { applyTeamUpdate } from "./outbound-handlers.js";
+import { commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
@@ -1067,21 +1067,28 @@ export function handleWebRequest(
   if ((method === "PATCH" || method === "PUT") && teamEditMatch) {
     if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
     const name = decodeURIComponent(teamEditMatch[1]);
+    // Who may write, asked again once the body is in (#1693 review): a session revoked or a token rotated meanwhile
+    // writes nothing.
+    const writerNow = (): boolean => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return verdict.kind === "allow" && !(verdict.via === "session" && verdict.session?.tier !== "admin");
+    };
     (async () => {
       try {
         const body = await parseBody(req);
         if (!permitWebContinuation(req, res, ctx)) return;
+        if (!writerNow()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
         const parsed = parseOrReject(TeamEditSchema, body, res);
         if (!parsed) return;
         const teams = ctx.fleetConfig?.teams;
         const current = teams && Object.hasOwn(teams, name) ? teams[name].members : null;
         if (!current) { json(res, 404, { error: `Team not found: ${name}` }); return; }
         const want = [...new Set(parsed.members)];
-        const r = applyTeamUpdate(ctx.fleetConfig as Parameters<typeof applyTeamUpdate>[0], {
+        // The update and its save as one: a failed save leaves the team as it was (500).
+        const r = commitTeamUpdate(ctx.fleetConfig as Parameters<typeof commitTeamUpdate>[0], {
           name, add: want.filter(m => !current.includes(m)), remove: current.filter(m => !want.includes(m)), description: parsed.description,
-        });
+        }, () => ctx.saveFleetConfig());
         if (!r.ok) { json(res, r.status, { error: r.error }); return; }
-        ctx.saveFleetConfig();
         json(res, 200, { updated: r.result });
       } catch (err) { json(res, 400, { error: (err as Error).message }); }
     })();
