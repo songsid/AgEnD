@@ -79,6 +79,8 @@ export interface ChannelAdapter extends EventEmitter {
   readonly id: string;
   /** Authenticated platform identity, cache-only; absent until login/init. */
   getBotUserId?(): string | undefined;
+  /** #1682: names for Discord mention ids from this adapter's own caches (never a request). */
+  mentionNames?(query: { u: string[]; r: string[]; c: string[] }): { u?: Record<string, string>; r?: Record<string, string>; c?: Record<string, string> };
 
   start(): Promise<void>;
   stop(): Promise<void>;

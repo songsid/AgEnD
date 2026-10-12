@@ -59,6 +59,21 @@
     return '<img class="emoji" src="/ui/img/emoji/' + id + '" alt=":' + name + ':" title=":' + name + ':" decoding="async">';
   }
 
+  // #1682: Discord mentions — `<@id>` / `<@!id>` (a user), `<@&id>` (a role), `<#id>` (a channel) — escaped by now (the
+  // role's & too), drawn as a pill: the name the page knows (store.mentions(kind, id), inserted escaped), else @user /
+  // @role / #channel; never the raw token. The id is the token's own digits (title, data-mention: the page fills a
+  // name in later). And a Telegram @username (a letter, then 4–31 word characters; not part of a word, an e-mail
+  // or a path) gets the same look — no lookup, no link. It runs after the links (see inline()).
+  var MENTION_RE = /&lt;(@!?|@&amp;|#)(\d{15,25})&gt;/g;
+  // Not a package or a path either: `@scope/pkg`, `@anthropic-ai/sdk` (followed by - or /) stay text.
+  var TG_MENTION_RE = /(^|[^\w@\/.&;])@([A-Za-z][A-Za-z0-9_]{4,31})(?![\w@\/-])/g;
+  var MENTION_KIND = { "@": "u", "@!": "u", "@&amp;": "r", "#": "c" };
+  var MENTION_UNKNOWN = { u: "@user", r: "@role", c: "#channel" };
+  function mentionPill(kind, id, name) {
+    var label = name ? (kind === "c" ? "#" : "@") + escapeHtml(name) : MENTION_UNKNOWN[kind];
+    return '<span class="mention" data-mention="' + kind + ":" + id + '" title="' + id + '">' + label + "</span>";
+  }
+
   /** Inline Markdown over ALREADY-ESCAPED text. */
   function inline(escaped, store) {
     var s = escaped;
@@ -66,6 +81,12 @@
     s = s.replace(/`([^`\n]+)`/g, function (_m, code) { return stash(store, "<code>" + code + "</code>"); });
     var known = store.emojis;
     if (known) s = s.replace(EMOJI_RE, function (m, _a, name, id) { return known(id) ? stash(store, emojiImg(id, name)) : m; });
+    var names = store.mentions;
+    s = s.replace(MENTION_RE, function (_m, sigil, id) {
+      var kind = MENTION_KIND[sigil];
+      var name = names ? names(kind, id) : null;
+      return stash(store, mentionPill(kind, id, typeof name === "string" && name ? name : null));
+    });
     // [label](url)
     s = s.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, function (m, label, url) {
       var href = safeHref(url);
@@ -76,6 +97,8 @@
       var href = safeHref(url);
       return href ? pre + stash(store, link(href, url)) : m;
     });
+    // #1682: a Telegram @username — after the links (a link is stashed by now, so an @ inside a URL is never touched).
+    s = s.replace(TG_MENTION_RE, function (_m, pre, user) { return pre + stash(store, '<span class="mention tg">@' + user + "</span>"); });
     return emphasis(s);
   }
 
@@ -285,6 +308,8 @@
     var store = [];
     // #1630: which server emoji ids the page knows (a function id → boolean); without it every `<:name:id>` stays text.
     store.emojis = opts && typeof opts.emojis === "function" ? opts.emojis : null;
+    // #1682: the names the page knows for mentions (a function (kind "u" | "r" | "c", id) → name or null).
+    store.mentions = opts && typeof opts.mentions === "function" ? opts.mentions : null;
     var html = "";
     var re = new RegExp(FENCE_RE.source, "g");
     var last = 0;

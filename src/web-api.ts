@@ -32,6 +32,7 @@ import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
+import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
@@ -203,6 +204,8 @@ export interface WebApiContext {
   webImage?(kind: "bot" | "avatar", key: string): CachedImage | null;
   /** #1630: one Discord server emoji of the fleet's bots, from the host cache (fetched once); null for any other id. */
   webEmoji?(id: string): Promise<CachedImage | null>;
+  /** #1682: names for mention ids (only those asked; from memory, never a request); absent: no names. */
+  webMentionNames?(query: MentionQuery): MentionNames;
   /** #1630: the custom emoji of the servers the fleet's Discord bots are in. */
   webEmojiList?(): Promise<Array<{ id: string; name: string; animated: boolean }>>;
   /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
@@ -531,6 +534,17 @@ export function handleWebRequest(
   if (method === "GET" && path === "/ui/emojis") {
     const answer = (emojis: Array<{ id: string; name: string; animated: boolean }>) => { if (!res.headersSent && !res.destroyed && stillAuthorized(req, res, url, ctx)) json(res, 200, { emojis }); };
     (ctx.webEmojiList ? ctx.webEmojiList() : Promise.resolve([])).then(answer, () => answer([]));
+    return true;
+  }
+
+  // #1682: the names of the mention ids a page found in what it rendered (at most MAX_MENTION_IDS, digits only) — only
+  // those, so no page (the public link included) ever gets a directory; from memory, never a request.
+  if (method === "GET" && path === "/ui/mentions") {
+    const parsed = parseMentionQuery(url.searchParams);
+    if (!parsed.ok) { json(res, 400, { error: parsed.error }); return true; }
+    let names: MentionNames = { u: {}, r: {}, c: {} };
+    try { names = ctx.webMentionNames?.(parsed.query) ?? names; } catch (err) { ctx.logger.debug({ err: (err as Error).message }, "mention names unavailable"); }
+    json(res, 200, names);
     return true;
   }
 
