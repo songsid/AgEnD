@@ -163,4 +163,12 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     scr.set(true); await settle(8);
     expect([rail(pg), hasDialog(pg), pg.storage.get("agend_usage_rail") ?? null]).toEqual([true, false, null]);
   });
+
+  it("a dialog opened on a narrower screen gives way to the rail when the screen widens (never both)", async () => {
+    const { pg, scr } = await app("/ui/chat/web-dev", { wide: false });
+    usageBtn(pg).click(); await settle(8);
+    expect([hasDialog(pg), rail(pg)]).toEqual([true, false]);
+    scr.set(true); await settle(8);
+    expect([hasDialog(pg), rail(pg)]).toEqual([false, true]);
+  });
 });
