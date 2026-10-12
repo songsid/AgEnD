@@ -176,6 +176,15 @@ describe("#1695 P2-2: motion anywhere on the screen restarts the minute", () => 
     } finally { r.stop(); }
   });
 
+  it("the CLI's busy indicator on screen, even standing still, keeps it from counting", async () => {
+    const r = rig();
+    try {
+      r.screen.text = `${SWITCH.trimEnd()}\n✢ Accomplishing… (12s · ↓ 38.0k tokens)\n`;
+      await r.poll(3 * 60_000);
+      expect([r.parked.length, r.awaiting(), await r.held()]).toEqual([0, false, "clear"]);
+    } finally { r.stop(); }
+  });
+
   it("output that arrived while the pane was captured restarts it", async () => {
     const r = rig();
     try {
@@ -287,6 +296,20 @@ describe("#1691: the episode", () => {
       expect(await r.held()).toBe("dialog");
       r.screen.text = AT_PROMPT;
       expect(await r.held()).toBe("clear");
+    } finally { r.stop(); }
+  });
+
+  it("before the minute is up, a pane change resets it: the prompt back counts from zero", async () => {
+    const r = rig();
+    try {
+      await r.poll(30_000);
+      r.screen.text = AT_PROMPT;
+      await r.poll(20_000);
+      r.screen.text = SWITCH;
+      await r.poll(40_000);   // 90 s since it first appeared, 40 s since it came back
+      expect([r.awaiting(), await r.held()]).toEqual([false, "clear"]);
+      await r.poll(30_000);
+      expect(await r.held(), "control: a minute after it came back").toBe("dialog");
     } finally { r.stop(); }
   });
 

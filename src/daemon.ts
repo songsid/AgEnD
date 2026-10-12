@@ -6139,7 +6139,6 @@ export class Daemon extends EventEmitter {
   /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
   private freezeRuntimeMonitors(): void {
     this.runtimeMonitorsFrozen = true;
-    this.unrecognisedPrompt = null;
     this.launchFenceEpoch++;
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
@@ -7028,12 +7027,10 @@ export class Daemon extends EventEmitter {
     const backend = this.backend;
     if (!backend) return false;
     if (backend.readInputRow) return backend.readInputRow(pane) !== null;
-    // muse: its live input box, null when the bottom of the screen is not its layout (#829).
-    if (backend.inputDraft) return backend.inputDraft(pane) !== null;
     if (backend.isDeliveryInputReadyPane) return backend.isDeliveryInputReadyPane(pane);
     const bottom = backend.getBottomReadyPattern?.();
     if (bottom) { bottom.lastIndex = 0; return bottom.test(pane); }
-    // No reader of its own (opencode, grok, …): its ready chrome in the last rows of the screen — a status bar or prompt
+    // No reader of its own (muse, opencode, grok, …): its ready chrome in the last rows of the screen — a status bar or prompt
     // hint drawn under the input box, never transcript text (nothing is drawn below it). Not the whole pane: a reply
     // quoting "ctrl+p commands" higher up is not the CLI at its prompt.
     const ready = backend.getReadyPattern();
@@ -10032,7 +10029,6 @@ export class Daemon extends EventEmitter {
    */
   private beginSpawn(): void {
     this.dialogAnswers = null;
-    this.unrecognisedPrompt = null;   // #1691: a new launch builds its own minute
     this.capacityNudge = null;
     this.lastErrorEpisode = null;
     this.nudgeBaselines = null;
