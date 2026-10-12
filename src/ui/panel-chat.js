@@ -28,6 +28,7 @@ import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
 import { createThread, msgKey } from "./chat-thread.js";
 import { createEmojiIndex } from "./chat-emojis.js";
+import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
@@ -82,6 +83,8 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   // belong to the app, once (they are never per mount).
   // #1554: its words in the page's language (chat.pv*); a key the dictionary does not have keeps preview.js's English.
   if (P() && bootData) P().init(bootData, { text: (key, ...v) => { const k = `chat.${key}`, s = t(k, ...v); return s === k ? null : s; } });
+  // #1723: the public link's preview was still starting when this page loaded: ask until it is up (or failed).
+  if (P() && bootData) pollPublicPreview(P());
   // #1568: the banner's "I understand" lasts until the next sign-in — preview.js is told which sign-in this page is
   // (the session handle, from the one /auth/session read); none (no session, or no AgendAuth): this tab only.
   if (P() && typeof P().setBannerScope === "function") {

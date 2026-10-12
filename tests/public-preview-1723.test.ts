@@ -22,6 +22,8 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { createPreviewListener } from "../src/web-preview.js";
+// @ts-expect-error — a browser module without types
+import { pollPublicPreview, POLL_MS, POLL_MAX } from "../src/ui/preview-status.js";
 
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(), spawn: () => { throw Error("no processes"); }, execFileSync: () => { throw Error("no CLI"); }, execSync: () => { throw Error("no CLI"); } }));
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -326,7 +328,10 @@ describe("#1723: FleetManager.publicPreviewForUi", () => {
 });
 
 describe("#1723: the page while the preview starts, and the device's opt-in", () => {
-  /** preview.js in a realm of its own: its fetch, timers, storage and address are the test's. */
+  /**
+   * preview.js in a realm of its own (no fetch there at all: it reaches no network, #1306), and the page's poller
+   * (preview-status.js) asking with the test's fetch and timers.
+   */
   function client(opts: { optedIn: boolean; status: () => unknown }) {
     const timers: Array<() => void> = [];
     const store = new Map<string, string>(opts.optedIn ? [["agend_html_preview", "on"]] : []);
@@ -334,13 +339,17 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
     const fetchCalls: string[] = [];
     const sandbox: any = {
       location: { origin: `https://${DASH}` }, localStorage: storage, sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-      setTimeout: (fn: () => void) => { timers.push(fn); return timers.length; }, performance: { now: () => 0 }, addEventListener() {},
-      fetch: async (url: string) => { fetchCalls.push(url); return { ok: true, json: async () => opts.status() }; },
+      setTimeout: () => { throw new Error("preview.js set a timer"); }, performance: { now: () => 0 }, addEventListener() {},
       module: { exports: {} as any },
     };
     vm.runInNewContext(readFileSync(join(process.cwd(), "src", "ui", "preview.js"), "utf8"), sandbox);
     const PV = sandbox.module.exports;
-    return { PV, fetchCalls, runTimers: async () => { const t = timers.splice(0); for (const fn of t) fn(); for (let i = 0; i < 5; i++) await tick(); } };
+    const poll = () => pollPublicPreview(PV, {
+      fetch: async (url: string) => { fetchCalls.push(url); return { ok: true, json: async () => opts.status() }; },
+      setTimeout: (fn: () => void, ms: number) => { expect(ms).toBe(POLL_MS); timers.push(fn); },
+    });
+    return { PV, poll, fetchCalls, pending: () => timers.length,
+      runTimers: async () => { const t = timers.splice(0); for (const fn of t) fn(); for (let i = 0; i < 5; i++) await tick(); } };
   }
   const startingBody = { dashboardOrigin: `https://${DASH}`, previewOrigin: "", previewBoot: "", previewReason: "Preview is starting…", previewReasonCode: "publicLinkStarting" };
 
@@ -348,6 +357,7 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
     let answer: unknown = { code: "publicLinkStarting", previewOrigin: null, boot: null, detail: null };
     const c = client({ optedIn: true, status: () => answer });
     c.PV.init(startingBody);
+    c.poll();
     expect(c.PV.availability()).toMatchObject({ ok: false, why: "server" });
     await c.runTimers();
     expect(c.fetchCalls).toEqual(["/ui/preview-status"]);
@@ -360,6 +370,7 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
   it("no opt-in → no run, even once the preview is up", async () => {
     const c = client({ optedIn: false, status: () => ({ code: null, previewOrigin: `https://${PREV}`, boot: "f".repeat(32), detail: null }) });
     c.PV.init(startingBody);
+    c.poll();
     await c.runTimers();
     expect(c.PV.availability()).toMatchObject({ ok: false, why: "optin" });
   });
@@ -368,6 +379,7 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
     for (const bad of ["https://evil.example.net", `https://${DASH}`, `http://${PREV}`, "javascript:alert(1)"]) {
       const c = client({ optedIn: true, status: () => ({ code: null, previewOrigin: bad, boot: "f".repeat(32), detail: null }) });
       c.PV.init(startingBody);
+    c.poll();
       await c.runTimers();
       expect(c.PV.availability().ok, bad).toBe(false);
     }
@@ -376,11 +388,47 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
   it("failed → it stops asking and the page says why", async () => {
     const c = client({ optedIn: true, status: () => ({ code: "publicLinkPreviewFailed", previewOrigin: null, boot: null, detail: "exited" }) });
     c.PV.init(startingBody);
+    c.poll();
     await c.runTimers();
     const a = c.PV.availability();
     expect(a).toMatchObject({ ok: false, why: "server" });
     expect(a.reason).toContain("its address closed unexpectedly");
     await c.runTimers();
     expect(c.fetchCalls).toHaveLength(1);
+    expect(c.pending()).toBe(0);
+  });
+
+  it("not starting → nothing is asked; still starting → it asks at most POLL_MAX times", async () => {
+    const idle = client({ optedIn: true, status: () => null });
+    idle.PV.init({ ...startingBody, previewReasonCode: "publicLink" });
+    idle.poll();
+    expect(idle.pending()).toBe(0);
+    const c = client({ optedIn: true, status: () => ({ code: "publicLinkStarting", previewOrigin: null, boot: null, detail: null }) });
+    c.PV.init(startingBody);
+    c.poll();
+    for (let i = 0; i < POLL_MAX + 5 && c.pending(); i++) await c.runTimers();
+    expect(c.fetchCalls).toHaveLength(POLL_MAX);
+    expect(c.pending()).toBe(0);
+  });
+
+  it("an error answer keeps asking; stop() ends it", async () => {
+    let fail = true;
+    const c = client({ optedIn: true, status: () => { if (fail) throw new Error("offline"); return { code: "publicLinkStarting" }; } });
+    c.PV.init(startingBody);
+    const stop = c.poll();
+    await c.runTimers();
+    expect(c.pending()).toBe(1);
+    fail = false; stop();
+    await c.runTimers();
+    expect(c.pending()).toBe(0);
+    expect(c.fetchCalls).toHaveLength(1);
+  });
+
+  it("the page starts the poller once preview.js has the load's data (panel-chat boot)", () => {
+    const src = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
+    expect(src).toMatch(/import \{ pollPublicPreview \} from "\.\/preview-status\.js";/);
+    const init = src.indexOf("P().init(bootData"), poll = src.indexOf("pollPublicPreview(P())");
+    expect(init).toBeGreaterThan(0);
+    expect(poll).toBeGreaterThan(init);
   });
 });

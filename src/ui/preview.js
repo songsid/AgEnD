@@ -29,12 +29,9 @@
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "", detail: "" };
-  // #1723: the public link's preview tunnel, asked while it starts (every 2 s, for at most 5 minutes).
-  var POLL_MS = 2000, POLL_MAX = 150;
   // Why it failed, in English when the app's dictionary has no word for it (chat-strings.js pvFail_*).
   var FAIL_EN = { exited: "its address closed unexpectedly", "spawn-failed": "cloudflared could not start for it", "no-address": "no address was given for it",
     unreachable: "its address could not be reached", "lease-held": "an earlier preview tunnel is still being cleaned up", "gateway-failed": "its local listener could not start" };
-  var polling = null;
   // #1554: the page's words. `say(key, english, …values)` asks the app's dictionary (init's opts.text) and keeps the
   // English here when it has none — so this file still works, and reads the same, without the app.
   var text = null;
@@ -74,7 +71,6 @@
       reasonCode: String((data && data.previewReasonCode) || ""),
       detail: String((data && data.previewDetail) || ""),
     };
-    if (cfg.reasonCode === "publicLinkStarting") startPolling();
     if (opts && typeof opts.text === "function") text = opts.text;
     if (!listening && typeof root.addEventListener === "function") {
       root.addEventListener("message", onMessage);
@@ -85,33 +81,27 @@
     }
   }
   /**
-   * #1723: the public link's own preview tunnel is still starting: ask the page's server (/ui/preview-status, this
-   * page's origin) until it is up — then previews run here, at the origin it names — or failed, then say why. Only an
-   * https quick-tunnel origin other than this page's is ever taken: the page's frame-src allows no other.
+   * #1723: the public link's own preview tunnel was still starting when this page loaded; preview-status.js asks the
+   * page's server and hands each answer here (this file reaches no network). Ready → previews run at the origin it
+   * names — only an https quick-tunnel origin other than this page's is ever taken: the page's frame-src allows no
+   * other; failed or off → the page says why. Returns true once there is nothing more to wait for.
    */
-  function startPolling() {
-    if (polling || typeof root.fetch !== "function") return;
-    var attempts = 0;
-    var tick = function () {
-      attempts++;
-      root.fetch("/ui/preview-status", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-        if (cfg.reasonCode !== "publicLinkStarting") { polling = null; return; }
-        var at = root.location && root.location.origin;
-        if (j && typeof j.previewOrigin === "string" && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(j.previewOrigin) && j.previewOrigin !== at
-          && typeof j.boot === "string" && /^[0-9a-f]{32}$/.test(j.boot)) {
-          cfg.previewOrigin = j.previewOrigin; cfg.boot = j.boot; cfg.reasonCode = ""; cfg.reason = ""; polling = null;
-          notify();
-          return;
-        }
-        if (j && (j.code === "publicLinkPreviewFailed" || j.code === "publicLink" || j.code === "fleetOff")) {
-          cfg.reasonCode = j.code; cfg.reason = ""; cfg.detail = typeof j.detail === "string" ? j.detail : ""; polling = null;
-          notify();
-          return;
-        }
-        polling = attempts < POLL_MAX ? root.setTimeout(tick, POLL_MS) : null;
-      }, function () { polling = attempts < POLL_MAX ? root.setTimeout(tick, POLL_MS) : null; });
-    };
-    polling = root.setTimeout(tick, POLL_MS);
+  function waitingForPublicPreview() { return cfg.reasonCode === "publicLinkStarting"; }
+  function applyPublicPreviewStatus(j) {
+    if (cfg.reasonCode !== "publicLinkStarting") return true;
+    var at = root.location && root.location.origin;
+    if (j && typeof j.previewOrigin === "string" && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(j.previewOrigin) && j.previewOrigin !== at
+      && typeof j.boot === "string" && /^[0-9a-f]{32}$/.test(j.boot)) {
+      cfg.previewOrigin = j.previewOrigin; cfg.boot = j.boot; cfg.reasonCode = ""; cfg.reason = "";
+      notify();
+      return true;
+    }
+    if (j && (j.code === "publicLinkPreviewFailed" || j.code === "publicLink" || j.code === "fleetOff")) {
+      cfg.reasonCode = j.code; cfg.reason = ""; cfg.detail = typeof j.detail === "string" ? j.detail : "";
+      notify();
+      return true;
+    }
+    return false;
   }
   function onStorage(event) {
     // #1568: the banner acknowledged in another tab of this sign-in: hide it here too (nothing starts or stops).
@@ -383,5 +373,7 @@
     bannerAckLabel: function () { return say("pvBannerAck", "I understand"); },
     bannerAckTitle: function () { return say("pvBannerAckTitle", "Hide this notice until you sign in again"); },
     bannerAcked: bannerAcked, ackBanner: ackBanner, setBannerScope: setBannerScope,
+    /** #1723: the public link's preview, while it starts (preview-status.js asks; this only takes the answer). */
+    waitingForPublicPreview: waitingForPublicPreview, applyPublicPreviewStatus: applyPublicPreviewStatus,
   };
 });
