@@ -139,16 +139,18 @@ function SidebarResize() {
     e.preventDefault();
   };
   // One pointer owns a drag. Only its release keeps the width; a cancel, a lost capture, the drawer or an unmount
-  // puts back the width shown before it and keeps nothing — and no event of it can write after it ended.
+  // puts back the width shown before it and keeps nothing — and no event of it can write after it ended. What is kept
+  // is where the pointer went (within the window), not what the room beside the rail let it show.
   const onDown = (e) => {
     if (e.button !== 0 || activeDrag || narrow()) return;
     e.preventDefault();
     const handle = e.currentTarget, pointerId = e.pointerId;
     const before = sidebarWidthStore.get().width;
+    let chosen = null;   // the pointer's own width this drag; null: it never moved
     const left = handle.parentElement ? handle.parentElement.getBoundingClientRect().left : 0;
     const mine = {};
     const own = (ev) => activeDrag === mine && (ev.pointerId === undefined || ev.pointerId === pointerId);
-    const move = (ev) => { if (own(ev)) showSidebarWidth(ev.clientX - left); };
+    const move = (ev) => { if (own(ev)) { chosen = ev.clientX - left; showSidebarWidth(chosen); } };
     const up = (ev) => { if (own(ev)) mine.end(true); };
     const cancel = (ev) => { if (own(ev)) mine.end(false); };
     mine.end = (commit) => {
@@ -161,7 +163,7 @@ function SidebarResize() {
       handle.classList.remove("dragging");
       document.body.classList.remove("side-resizing");
       try { handle.releasePointerCapture(pointerId); } catch { /* not held */ }
-      if (commit) { const w = sidebarWidthStore.get().width; if (w != null) setSidebarWidth(w, true); }
+      if (commit && chosen != null) setSidebarWidth(chosen, true);
       else showSidebarWidth(before);
     };
     activeDrag = mine;

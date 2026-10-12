@@ -38,6 +38,10 @@ beforeAll(async () => {
   pg.restore();
 });
 afterEach(async () => {
+  // The host's prefs as a fresh fleet has them, and the page's copy of them (app-prefs is module-wide): nothing a test
+  // chose leaks into the next.
+  host = {}; rev += 10;
+  if (mounted.length) { (globalThis as any).fetch = fetchFake; await prefs.refresh(); }
   for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
   nav.namesStore.set({ primary: "nickname" });
   i18n.setLang("en");
@@ -55,6 +59,9 @@ async function app(path: string, opts: { storage?: Record<string, string>; narro
   if (opts.width) pg.window.innerWidth = opts.width;
   if (opts.media) { const m = opts.media; (globalThis as any).matchMedia = (q: string) => ({ matches: m(q), addEventListener() {}, removeEventListener() {} }); }
   mounted.push(pg);
+  // Module-wide stores start as a fresh page load would: the rail as this device chose, no width shown yet.
+  (await import("/assets/header-tools.js")).initUsageRail();
+  shell.sidebarWidthStore.set({ width: null });
   (globalThis as any).fetch = fetchFake;
   pg.document.documentElement.style.removeProperty?.("--sidebar-w");
   delete (pg.document.documentElement.style as any)["--sidebar-w"];
@@ -146,6 +153,27 @@ describe("review r1: the room beside the usage rail; a drag's own lifecycle", ()
     const roomy = [width(pg), sep(pg).getAttribute("aria-valuemax")];
     setUsageRail(true); await settle(4); await new Promise((r) => setTimeout(r, 30)); await settle();
     expect([squeezed, roomy, width(pg)]).toEqual([["400px", "400", "480"], ["480px", "480"], "400px"]);
+  });
+
+  it("r2: a drag past the room beside the rail shows the squeeze (400) but keeps where it went (480) — it comes back when the rail closes", async () => {
+    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide });
+    expect(pg.root.querySelector(".u-rail"), "the rail is on screen").not.toBeNull();
+    ptr(sep(pg), "pointerdown", 260); ptr(sep(pg), "pointermove", 480); await settle();
+    const during = width(pg);
+    ptr(sep(pg), "pointerup", 480); await settle();
+    const kept = [width(pg), pg.storage.get("agend_sidebar_w")];
+    const { setUsageRail } = await import("/assets/header-tools.js");
+    setUsageRail(false); await settle(4); await new Promise((r) => setTimeout(r, 30)); await settle();
+    expect([during, kept, width(pg)]).toEqual(["400px", ["400px", "480"], "480px"]);
+  });
+
+  it("control: the same drag with the rail closed keeps 480; a press with no move keeps nothing", async () => {
+    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide, storage: { agend_usage_rail: "0" } });
+    expect(pg.root.querySelector(".u-rail"), "no rail").toBeNull();
+    ptr(sep(pg), "pointerdown", 260); ptr(sep(pg), "pointerup", 260); await settle();
+    const still = pg.storage.get("agend_sidebar_w") ?? null;
+    ptr(sep(pg), "pointerdown", 260); ptr(sep(pg), "pointermove", 480); ptr(sep(pg), "pointerup", 480); await settle();
+    expect([still, width(pg), pg.storage.get("agend_sidebar_w")]).toEqual([null, "480px", "480"]);
   });
 
   it("control: 1366 px with the rail, End is 480", async () => {
@@ -286,6 +314,7 @@ describe("both names, and which one leads", () => {
     const sel = pg.root.querySelectorAll("select").find((s: any) => s.getAttribute("aria-label") === "Names");
     expect(sel.querySelectorAll("option").map((o: any) => [o.value, o.textContent])).toEqual([["nickname", "Nickname first"], ["instance", "Real name first"]]);
     sel.value = "instance"; fire(sel, "change"); await settle();
-    expect(nav.namesStore.get().primary).toBe("instance");
+    await new Promise((r) => setTimeout(r, 600));   // the prefs burst (400 ms) posts before the next test's page
+    expect([nav.namesStore.get().primary, host["names.primary"]]).toEqual(["instance", "instance"]);
   });
 });
