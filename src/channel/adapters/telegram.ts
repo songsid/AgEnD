@@ -839,6 +839,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     if (opts?.replyButtons?.length) return this.sendTextWithReplyButtons(chatId, text, opts, opts.replyButtons);
+    if (opts?.urlButtons?.length) return this.sendTextWithUrlButtons(chatId, text, opts, opts.urlButtons);
     // Try rich message for content with tables, code blocks, headings, etc.
     if (this.needsRichMessage(text)) {
       const sendRichMessage = (this.bot.api as any).raw?.sendRichMessage;
@@ -930,6 +931,28 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    * that really is last, and the caller learns which message carries it. Plain messages, not a rich message: a
    * keyboard is a sendMessage parameter.
    */
+  /** #1686: send text with URL (link) buttons on the last chunk. */
+  private async sendTextWithUrlButtons(chatId: string, text: string, opts: SendOpts, urlButtons: NonNullable<SendOpts["urlButtons"]>): Promise<SentMessage> {
+    const keyboard = urlButtons.map(b => [{ text: b.label, url: b.url }]);
+    const chunkLimit = opts.chunkLimit ?? 4096;
+    const chunks: string[] = [];
+    for (let offset = 0; offset < text.length; offset += chunkLimit) chunks.push(text.slice(offset, offset + chunkLimit));
+    if (!chunks.length) throw new Error("Empty text");
+    for (let i = 0; i < chunks.length - 1; i++) {
+      await this.sendFormattedChunk(chatId, chunks[i], opts.format, {
+        ...threadOptions(opts.threadId),
+        ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+      });
+    }
+    const last = chunks[chunks.length - 1]!;
+    const msg = await this.bot.api.sendMessage(Number(chatId), last, {
+      ...threadOptions(opts.threadId),
+      ...(opts.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+      reply_markup: { inline_keyboard: keyboard },
+    });
+    return { messageId: String(msg.message_id), chatId, threadId: opts.threadId };
+  }
+
   private async sendTextWithReplyButtons(chatId: string, text: string, opts: SendOpts, buttons: NonNullable<SendOpts["replyButtons"]>): Promise<SentMessage> {
     const keyboard = telegramReplyKeyboard(buttons);
     const chunkLimit = opts.chunkLimit ?? 4096;
@@ -1002,9 +1025,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   /** Edit text and drop the inline keyboard (omitting reply_markup clears it). */
-  async editMessageRemoveButtons(chatId: string, messageId: string, text: string): Promise<void> {
+  async editMessageRemoveButtons(chatId: string, messageId: string, text: string, _threadId?: string, urlButtons?: Array<{ label: string; url: string }>): Promise<void> {
     await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, {
-      reply_markup: { inline_keyboard: [] },
+      reply_markup: { inline_keyboard: urlButtons?.map(b => [{ text: b.label, url: b.url }]) ?? [] },
     });
   }
 

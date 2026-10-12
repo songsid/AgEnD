@@ -32,6 +32,7 @@ import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
+import { commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
@@ -70,6 +71,13 @@ const ScheduleCreateSchema = z.object({
 
 const TeamCreateSchema = z.object({
   name: z.string().min(1).max(128).regex(/^[A-Za-z0-9._-]+$/),
+  members: z.array(z.string().min(1).max(256)).min(1).max(256),
+  description: z.string().max(MAX_TEXT).optional(),
+}).strict();
+
+// #1689: an edit of a team — its members as they should be, and its description ("" clears it). No name: a team is
+// not renamed.
+const TeamEditSchema = z.object({
   members: z.array(z.string().min(1).max(256)).min(1).max(256),
   description: z.string().max(MAX_TEXT).optional(),
 }).strict();
@@ -1032,6 +1040,8 @@ export function handleWebRequest(
   }
 
   if (method === "POST" && path === "/ui/teams") {
+    // #1689: not over the public link (absent from its manifest too), like editing and deleting a team.
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
     (async () => {
       try {
         const body = await parseBody(req);
@@ -1051,10 +1061,46 @@ export function handleWebRequest(
     return true;
   }
 
+  // #1689: edit a team — the same update as the update_team tool (applyTeamUpdate), from the members the page sends:
+  // what to add and remove is worked out against the team as it is now. Never over the public link.
+  const teamEditMatch = path.match(/^\/ui\/teams\/(.+)$/);
+  if ((method === "PATCH" || method === "PUT") && teamEditMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
+    const name = decodeURIComponent(teamEditMatch[1]);
+    // Who may write, asked again once the body is in (#1693 review): a session revoked or a token rotated meanwhile
+    // writes nothing.
+    const writerNow = (): boolean => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return verdict.kind === "allow" && !(verdict.via === "session" && verdict.session?.tier !== "admin");
+    };
+    (async () => {
+      try {
+        const body = await parseBody(req);
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (!writerNow()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+        const parsed = parseOrReject(TeamEditSchema, body, res);
+        if (!parsed) return;
+        const teams = ctx.fleetConfig?.teams;
+        const current = teams && Object.hasOwn(teams, name) ? teams[name].members : null;
+        if (!current) { json(res, 404, { error: `Team not found: ${name}` }); return; }
+        const want = [...new Set(parsed.members)];
+        // The update and its save as one: a failed save leaves the team as it was (500).
+        const r = commitTeamUpdate(ctx.fleetConfig as Parameters<typeof commitTeamUpdate>[0], {
+          name, add: want.filter(m => !current.includes(m)), remove: current.filter(m => !want.includes(m)), description: parsed.description,
+        }, () => ctx.saveFleetConfig());
+        if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+        json(res, 200, { updated: r.result });
+      } catch (err) { json(res, 400, { error: (err as Error).message }); }
+    })();
+    return true;
+  }
+
   const teamDelMatch = path.match(/^\/ui\/teams\/(.+)$/);
   if (method === "DELETE" && teamDelMatch) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
     const name = decodeURIComponent(teamDelMatch[1]);
-    if (!ctx.fleetConfig?.teams?.[name]) { json(res, 404, { error: `Team not found: ${name}` }); return true; }
+    // Own keys (#1689): a team is one fleet.yaml defines — "__proto__" or "constructor" is not found.
+    if (!ctx.fleetConfig?.teams || !Object.hasOwn(ctx.fleetConfig.teams, name)) { json(res, 404, { error: `Team not found: ${name}` }); return true; }
     delete (ctx.fleetConfig.teams as Record<string, unknown>)[name];
     ctx.saveFleetConfig();
     json(res, 200, { deleted: name });

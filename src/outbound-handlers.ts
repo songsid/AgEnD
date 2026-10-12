@@ -1613,10 +1613,12 @@ const createTeam: Handler = (ctx, rawArgs, respond) => {
   if (!v.ok) { respond(null, v.error); return; }
   const { name, members, description } = v.data;
   if (!ctx.fleetConfig) { respond(null, "Fleet config not available"); return; }
-  const invalid = members.filter(m => !ctx.fleetConfig!.instances[m]);
+  // Own keys (#1689): "constructor" is not an instance, and an existing team is one fleet.yaml defines.
+  const invalid = members.filter(m => !Object.hasOwn(ctx.fleetConfig!.instances, m));
   if (invalid.length) { respond(null, `Invalid instance names: ${invalid.join(", ")}`); return; }
   ctx.fleetConfig.teams ??= {};
-  if (ctx.fleetConfig.teams[name]) { respond(null, `Team already exists: ${name}`); return; }
+  if (Object.hasOwn(ctx.fleetConfig.teams, name)) { respond(null, `Team already exists: ${name}`); return; }
+  if (name === "__proto__") { respond(null, `Invalid team name: ${name}`); return; }
   ctx.fleetConfig.teams[name] = { members, ...(description ? { description } : {}) };
   ctx.saveFleetConfig();
   respond({ created: name, members });
@@ -1647,22 +1649,64 @@ const listTeams: Handler = (ctx, rawArgs, respond) => {
   respond(result);
 };
 
+/**
+ * #1689: the one update of a team — update_team (agents) and PATCH /ui/teams/<name> (the web) both come here. Own keys
+ * only: a team or an instance is one fleet.yaml defines (`__proto__` and `constructor` are not); nothing changes unless
+ * everything is valid. `description`: "" clears it. Renaming is not an update (the org chart and agents name teams).
+ * The caller saves fleet.yaml after an ok.
+ */
+export function applyTeamUpdate(
+  fleetConfig: { instances: Record<string, unknown>; teams?: Record<string, { members: string[]; description?: string }> } | null,
+  args: { name: string; add?: string[]; remove?: string[]; description?: string },
+): { ok: true; result: { name: string; members: string[]; description: string | null } } | { ok: false; status: 400 | 404 | 500; error: string } {
+  if (!fleetConfig) return { ok: false, status: 500, error: "Fleet config not available" };
+  const teams = fleetConfig.teams;
+  if (!teams || !Object.hasOwn(teams, args.name)) return { ok: false, status: 404, error: `Team not found: ${args.name}` };
+  const team = teams[args.name];
+  const invalid = (args.add ?? []).filter(m => !Object.hasOwn(fleetConfig.instances, m));
+  if (invalid.length) return { ok: false, status: 400, error: `Invalid instance names: ${invalid.join(", ")}` };
+  let members = [...team.members];
+  if (args.add?.length) members = [...new Set([...members, ...args.add])];
+  if (args.remove?.length) members = members.filter(m => !args.remove!.includes(m));
+  team.members = members;
+  if (args.description !== undefined) {
+    if (args.description.trim()) team.description = args.description.trim(); else delete team.description;
+  }
+  return { ok: true, result: { name: args.name, members: team.members, description: team.description ?? null } };
+}
+
+/**
+ * #1689 review: the update and its save as one — a save that fails (an I/O error) puts the team back as it was, so the
+ * live fleet never differs from fleet.yaml; that is a 500 (the input was fine), not a 400.
+ */
+export function commitTeamUpdate(
+  fleetConfig: Parameters<typeof applyTeamUpdate>[0],
+  args: Parameters<typeof applyTeamUpdate>[1],
+  save: () => void,
+): ReturnType<typeof applyTeamUpdate> {
+  const teams = fleetConfig?.teams;
+  const team = teams && Object.hasOwn(teams, args.name) ? teams[args.name] : null;
+  const before = team ? { members: [...team.members], hadDescription: Object.hasOwn(team, "description"), description: team.description } : null;
+  const r = applyTeamUpdate(fleetConfig, args);
+  if (!r.ok) return r;
+  try {
+    save();
+  } catch (err) {
+    if (team && before) {
+      team.members = before.members;
+      if (before.hadDescription) team.description = before.description; else delete team.description;
+    }
+    return { ok: false, status: 500, error: `Saving fleet.yaml failed; the team is unchanged: ${(err as Error)?.message ?? String(err)}` };
+  }
+  return r;
+}
+
 const updateTeam: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(UpdateTeamArgs, rawArgs, "update_team");
   if (!v.ok) { respond(null, v.error); return; }
-  const { name, add, remove } = v.data;
-  if (!ctx.fleetConfig?.teams?.[name]) { respond(null, `Team not found: ${name}`); return; }
-  const team = ctx.fleetConfig.teams[name];
-  if (add?.length) {
-    const invalid = add.filter(m => !ctx.fleetConfig!.instances[m]);
-    if (invalid.length) { respond(null, `Invalid instance names: ${invalid.join(", ")}`); return; }
-    team.members = [...new Set([...team.members, ...add])];
-  }
-  if (remove?.length) {
-    team.members = team.members.filter(m => !remove.includes(m));
-  }
-  ctx.saveFleetConfig();
-  respond({ name, members: team.members });
+  const r = commitTeamUpdate(ctx.fleetConfig, v.data, () => ctx.saveFleetConfig());
+  if (!r.ok) { respond(null, r.error); return; }
+  respond(r.result);
 };
 
 // ── Fleet Templates ────────────────────────────────────────────────────
