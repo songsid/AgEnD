@@ -164,6 +164,8 @@ describe("/login auth pre-check", () => {
         adapterId: "discord",
       })),
       getBackendByInstance: (name: string, fallback?: string) => classicBackends[name] ?? fallback ?? "claude-code",
+      // #1699 part 2: recovery is per login — these rooms are all on their backend's default login.
+      getCredentialProfileByInstance: () => ({ state: "shared" }),
     } as any;
     const statuses: Record<string, string> = {
       "fleet-kiro": "running",
