@@ -31,6 +31,7 @@ import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-ch
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
+import { OPERATOR, parseWebPrefsPatch, type WebPrefsStore } from "./web-prefs.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
@@ -204,6 +205,8 @@ export interface WebApiContext {
   webEmojiList?(): Promise<Array<{ id: string; name: string; animated: boolean }>>;
   /** Absent means SSE_HEARTBEAT_MS; a test shortens it. */
   readonly sseHeartbeatMs?: number;
+  /** #1665: the web preferences kept on the host (one bucket: the operator's); absent: /ui/prefs is not offered. */
+  readonly webPrefs?: WebPrefsStore;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
@@ -579,6 +582,41 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
       try { json(res, 500, { error: "Click failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // #1665: the web preferences that follow the person between devices. Read by any page of the panel, the public link
+  // included (it reads what is in force); written only by a signed-in admin session or the CLI's header token — never
+  // over the public link (absent from its route manifest, and refused here too), never by a read-only session.
+  if (path === "/ui/prefs" && method === "GET") {
+    if (!ctx.webPrefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
+    json(res, 200, ctx.webPrefs.read(OPERATOR));
+    return true;
+  }
+  if (path === "/ui/prefs" && method === "POST") {
+    const prefs = ctx.webPrefs;
+    if (!prefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "prefs_not_over_public_link" }); return true; }
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
+    if (verdict.via === "session" && verdict.session?.tier !== "admin") { json(res, 403, { error: "prefs_read_only" }); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "set required" }); return; }
+      const parsed = parseWebPrefsPatch(body.set);
+      if (!parsed.ok) { json(res, 400, { error: parsed.error }); return; }
+      const onlyIfUnset = body.onlyIfUnset === true;
+      const written = prefs.write(OPERATOR, parsed.patch, { onlyIfUnset });
+      if (!written.ok) { json(res, written.status, { error: written.error }); return; }
+      // Another device sees the new rev in the next status frame — at once on the live stream.
+      if (written.changed.length) ctx.emitSseEvent("status", ctx.getUiStatus());
+      json(res, 200, { ...written.view, changed: written.changed });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Saving web preferences failed");
+      try { json(res, 500, { error: "Saving preferences failed" }); } catch { /* already answered */ }
     });
     return true;
   }
@@ -1262,6 +1300,8 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
   readonly fleetConfig?: { web?: { usage_panel?: boolean } } | null;
+  /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
+  readonly webPrefs?: WebPrefsStore;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -1305,6 +1345,21 @@ function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFi
   res.end(got.bytes);
 }
 
+/**
+ * #1665: `<html>` carrying the host's preferences (data-prefs: `{"rev":n,"values":{…}}`, attribute-escaped). theme.js (a
+ * blocking script in <head>) and the app's dictionary take the theme and language from it over the browser's cache,
+ * and app-prefs.js copies every value into that cache before any panel reads it — so no device paints a stale theme
+ * or replays a tour already seen, a new device included. Only for the signed-in app (the public link reads what is in
+ * force too); the anonymous View reader and the sign-in page keep the browser's own.
+ */
+function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode): string {
+  if (mode !== "full" || !ctx.webPrefs) return '<html lang="en">';
+  const view = ctx.webPrefs.read(OPERATOR);
+  const lang = view.values.lang === "zh-TW" ? "zh-Hant" : "en";
+  const attr = (v: string) => v.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  return `<html lang="${lang}" data-prefs="${attr(JSON.stringify({ rev: view.rev, values: view.values }))}">`;
+}
+
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string {
   const p = shellPreview(req, ctx, mode);
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -1328,7 +1383,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const own = mode === "full" && !gatewayRequestContext(req)
       ? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) : null;
     const mediaSrc = own ? `${own}/ui/file/` : "'none'";
-    sendPanelHtml(res, html.replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, { ...(p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {}), mediaSrc });
+    sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode)).replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, { ...(p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

@@ -4,6 +4,7 @@
 import { html } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
+import { savePref } from "/assets/app-prefs.js";
 import { navigate } from "/assets/app-nav.js";
 import { settingsPath } from "/assets/app-route.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -27,7 +28,7 @@ function readDismissed() { try { return localStorage.getItem(DISMISS_KEY) === "1
 const local = createStore({ dismissed: false, wizard: false });
 
 export function dismissFirstRun() {
-  try { localStorage.setItem(DISMISS_KEY, "1"); } catch { /* this page only */ }
+  savePref("seen.firstRun", true);   // #1665: dismissed once, on every device (cached here as DISMISS_KEY)
   local.set({ dismissed: true });
 }
 

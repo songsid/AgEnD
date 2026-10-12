@@ -14,6 +14,7 @@ import { chatPath, detailsPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
 import { viewStore } from "./view-roster-store.js";
+import { onPrefsChanged, savePref } from "./app-prefs.js";
 import "./view-strings.js";
 
 /** view.* text with named values. */
@@ -23,7 +24,6 @@ function tn(key, values = {}) {
   return s;
 }
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
-const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this page only */ } };
 /** A row's instance name: `name` (status frames) or `instance_name` (View's roster). */
 const nameOf = (it) => (it && (it.name != null ? it.name : it.instance_name)) || "";
 
@@ -101,7 +101,7 @@ export function instanceTooltip(it) {
   return lines.join("\n");
 }
 
-// ── This browser's order (drag), folded groups and filter ──
+// ── The order (drag), folded groups and filter: host preferences since #1665 (nav.*), cached in this browser ──
 const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";   // View's key since #999: everyone's arrangement carries over
 const COLLAPSED_KEY = "agend_instance_collapsed";
 const FILTER_KEY = "agend_instance_filter";
@@ -166,14 +166,16 @@ export function loadNavPrefs() { navStore.set({ order: readOrder(), collapsed: r
 export function setNavFilter(patch) {
   const filter = { ...navStore.get().filter, ...patch };
   navStore.set({ filter });
-  store(FILTER_KEY, JSON.stringify(filter));
+  savePref("nav.filter", { q: filter.q, status: filter.status, cli: filter.cli });
 }
-function setCollapsed(collapsed) { navStore.set({ collapsed }); store(COLLAPSED_KEY, JSON.stringify([...collapsed])); }
+function setCollapsed(collapsed) { navStore.set({ collapsed }); savePref("nav.collapsed", [...collapsed]); }
+// Another device rearranged, folded or filtered: this page's list follows (its cache is already updated).
+onPrefsChanged((keys) => { if (keys.has("nav.order") || keys.has("nav.collapsed") || keys.has("nav.filter")) loadNavPrefs(); });
 function persistOrder(groupNames, instByGroup) {
   const rows = [];
   groupNames.forEach((g, i) => rows.push({ item_type: "group", item_name: g, sort_index: i, group_name: null }));
   for (const g of groupNames) (instByGroup.get(g) || []).forEach((n, j) => rows.push({ item_type: "instance", item_name: n, sort_index: j, group_name: g }));
-  store(SIDEBAR_ORDER_KEY, JSON.stringify(rows));
+  savePref("nav.order", rows);
   navStore.set({ order: { groups: new Map(groupNames.map((g, i) => [g, i])), insts: new Map(rows.filter((r) => r.item_type === "instance").map((r) => [r.item_name, r.sort_index])) } });
 }
 
