@@ -253,6 +253,8 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
    * 0 turns the notice off. The owner reminder is not affected.
    */
   reply_overdue_minutes?: number;
+  /** #1694: hours since the last ask before an open reply obligation expires (default 24; positive finite duration). */
+  reply_obligation_ttl_hours?: number;
   scheduler?: {
     max_schedules?: number;
     default_timezone?: string;

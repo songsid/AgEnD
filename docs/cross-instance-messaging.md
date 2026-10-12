@@ -57,6 +57,8 @@ Instance 之間、以及外部 CLI session 與 daemon instance 之間的通訊�
 
 回覆義務：`request_kind: "task"` 或 `"query"` 且 `requires_reply` 的訊息，對方應該用 `report_result`（或實質回覆）結案；`report`/`update` 只是告知，不需回覆。
 
+結案的回覆必須帶原請求的 `correlation_id`；不帶的普通訊息可能只是進度或另一項工作，不會自動關閉舊請求。重啟提醒會合併成一則，最多列十筆未回答的請求。回覆義務預設在上次詢問的 24 小時後到期；到期不取消工作、不重送原訊息，寄件者最多收到一次逾期通知。需要更長期限時可設定 `defaults.reply_obligation_ttl_hours`（見 [設定說明](configuration.zh-TW.md)）。
+
 ## Durable outbox
 
 跨 instance 訊息先寫進本機 outbox 再投遞，所以 daemon 重啟不會弄丟已受理的訊息：
