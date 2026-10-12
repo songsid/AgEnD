@@ -11,6 +11,7 @@
  */
 import { dirname, join } from "node:path";
 import { rmSync } from "node:fs";
+import { shellQuote } from "./backend/types.js";
 import { restorePackagePreimage, takePackagePreimage, type PackagePreimage } from "./package-preimage.js";
 
 export interface CommandResult {
@@ -332,7 +333,17 @@ export function activationSettled(
  * effort, and never waits for a password. Before that point the old copy is the rollback for the old service.
  */
 export type RetireSystemCopyResult =
-  | { ok: true; /** The old copy is still there: cleanup, not failure. */ warning?: string }
+  | {
+      ok: true;
+      /** The old copy is still there: cleanup, not failure. Prose (no paths). */
+      warning?: string;
+      /**
+       * The manual removal, shell-quoted and byte-exact — never normalized or
+       * sliced, so unusual npm paths survive copy-paste (#1660 review). The
+       * caller prints it; nothing here logs it (single print, #1660 review).
+       */
+      cleanupCommand?: string;
+    }
   | { ok: false; reason: string };
 
 /**
@@ -353,17 +364,12 @@ export function retireSystemCopy(runner: CommandRunner, npmPath?: string): Retir
   if (result.status !== 0) {
     // #1660: retiring the old copy is cleanup. The new version is installed,
     // verified and running at this point, so a refused removal must not fail
-    // the update — it becomes a warning that names the manual removal.
-    // `-n` is non-interactive: sudo fails fast here, it never prompts.
-    let where = "";
-    try {
-      const root = runner.run("sudo", ["-n", npmPath, "root", "-g"], { timeoutMs: 10_000 });
-      const dir = root.stdout.trim().split("\n").pop()?.trim() ?? "";
-      if (root.status === 0 && dir) where = ` (still at ${dir}/@songsid/agend)`;
-    } catch { /* best effort only; the warning below stands without it */ }
-    const warning = `Old system install was not removed (sudo refused)${where}; remove it by hand: sudo ${npmPath} uninstall -g @songsid/agend`;
-    runner.log(`  ⚠️  ${warning}.`);
-    return { ok: true, warning };
+    // the update — it becomes a warning plus a verbatim manual command.
+    // `-n` is non-interactive: sudo fails fast here, it never prompts. No
+    // further sudo calls on this path. The caller prints once (P3-1).
+    const cleanupCommand = `sudo ${shellQuote(npmPath)} uninstall -g @songsid/agend`;
+    const warning = `Old system install was not removed (sudo refused); remove it by hand.`;
+    return { ok: true, warning, cleanupCommand };
   }
   return { ok: true };
 }

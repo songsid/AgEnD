@@ -1,8 +1,10 @@
 /**
  * #1660: on the nvm update route, a refused sudo removal of the old
  * root-owned copy is cleanup — not failure. The new version is installed,
- * verified and running, so the updater exits 0 with a warning that names the
- * manual removal, and chat /update reports success plus that cleanup line.
+ * verified and running, so the updater exits 0 with a warning plus a
+ * verbatim manual command, and chat /update appends both to the same update
+ * receipt once the retire outcome lands (separate lifecycles: the updater
+ * retires only after the restart returns, so READY never waits for cleanup).
  * Every spawn and sudo below is stubbed; nothing touches npm, sudo or tmux.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,8 +16,16 @@ import ts from "typescript";
 import { activateService } from "../src/service-activation.js";
 import { reportUpdateRestart } from "../src/update-check.js";
 import { activationSettled, newAgendInvocation, retireSystemCopy, runUpdateInstall } from "../src/update-install.js";
-import { beginUpdateProgress, readUpdateProgress, setUpdateProgressStage as realSetStage } from "../src/update-marker.js";
-import { formatRestartProgressCompletion } from "../src/restart-progress.js";
+import {
+  beginFullRestartProgress,
+  beginUpdateProgress,
+  clearUpdateMarker,
+  markCleanupPending,
+  readUpdateProgress,
+  updateReceiptOf,
+  writeCleanupOutcome,
+} from "../src/update-marker.js";
+import { cleanupWatchVerdict, formatRestartProgressCompletion } from "../src/restart-progress.js";
 import { setLocale } from "../src/locale.js";
 import * as preimage from "../src/package-preimage.js";
 import { activationWorld } from "./support/activation-world-1490.js";
@@ -31,43 +41,55 @@ afterEach(() => {
 const NPM = "/home/u/.nvm/versions/node/v22.0.0/bin/npm";
 const result = (status: number | null, stdout = ""): CommandResult => ({ status, signal: null, stdout, stderr: "" });
 
-/** Stub runner: sudo uninstall fails (not passwordless), sudo root -g answers. */
-function sudoRefusedRunner(seen: string[][], rootStdout: string | null) {
+/** Split a shell line on single-quote-aware word boundaries (no execution). */
+function shellWords(line: string): string[] {
+  const words: string[] = [];
+  let cur = "", quote = false;
+  for (const ch of line) {
+    if (ch === "'") { quote = !quote; continue; }
+    if (!quote && (ch === " " || ch === "\t")) { if (cur) { words.push(cur); cur = ""; } continue; }
+    cur += ch;
+  }
+  if (cur) words.push(cur);
+  return words;
+}
+
+/** Stub runner: sudo uninstall fails (not passwordless). No other sudo calls exist. */
+function sudoRefusedRunner(seen: string[][]) {
   return {
     run: (command: string, args: string[]) => {
       seen.push([command, ...args]);
       if (command !== "sudo") throw Error(`unexpected program ${command}`);
       if (args[0] !== "-n") throw Error(`sudo without -n would prompt: ${args.join(" ")}`);
       if (args.includes("uninstall")) return result(1, "sudo: a password is required");
-      if (args.includes("root")) return rootStdout === null ? result(1, "sudo: a password is required") : result(0, rootStdout);
       throw Error(`unexpected sudo args ${args.join(" ")}`);
     },
     log: () => {},
   };
 }
 
-describe("retireSystemCopy: refused removal is a warning, not a failure", () => {
-  it("sudo-refused removal succeeds with a warning naming the path and the manual command", () => {
+describe("retireSystemCopy: refused removal is a warning plus a verbatim command", () => {
+  it("sudo-refused removal succeeds; the command is shell-quoted and single-word-safe", () => {
     const seen: string[][] = [];
-    const logs: string[] = [];
-    const out = retireSystemCopy({ ...sudoRefusedRunner(seen, "/usr/local/lib/node_modules\n"), log: (m) => logs.push(m) }, NPM);
+    const logged: string[] = [];
+    const out = retireSystemCopy({ ...sudoRefusedRunner(seen), log: (m) => logged.push(m) }, NPM);
     expect(out.ok).toBe(true);
-    if (!out.ok || !out.warning) throw Error("expected ok:true with warning");
-    expect(out.warning).toContain("/usr/local/lib/node_modules/@songsid/agend");
-    expect(out.warning).toContain(`sudo ${NPM} uninstall -g @songsid/agend`);
-    expect(seen).toEqual([
-      ["sudo", "-n", NPM, "uninstall", "-g", "@songsid/agend"],
-      ["sudo", "-n", NPM, "root", "-g"],
-    ]);
+    if (!out.ok) throw Error("expected ok:true");
+    expect(out.warning).toContain("Old system install was not removed (sudo refused)");
+    expect(out.warning).not.toContain(NPM);
+    expect(out.cleanupCommand).toBe(`sudo '${NPM}' uninstall -g @songsid/agend`);
+    expect(logged.filter(m => m.includes("⚠️") || m.includes("was not removed")),
+      "the warning itself is printed once, by the caller (P3-1)").toEqual([]);
+    expect(seen).toEqual([["sudo", "-n", NPM, "uninstall", "-g", "@songsid/agend"]]);
   });
 
-  it("warning stands without the path when root lookup also fails", () => {
+  it("a spaced npm path stays one shell word in the manual command", () => {
+    const spaced = "/home/u/with space/.nvm/versions/node/v22.0.0/bin/npm";
     const seen: string[][] = [];
-    const out = retireSystemCopy({ ...sudoRefusedRunner(seen, null), log: () => {} }, NPM);
+    const out = retireSystemCopy({ ...sudoRefusedRunner(seen), log: () => {} }, spaced);
     expect(out.ok).toBe(true);
-    if (!out.ok || !out.warning) throw Error("expected ok:true with warning");
-    expect(out.warning).toContain(`sudo ${NPM} uninstall -g @songsid/agend`);
-    expect(out.warning).not.toContain("still at");
+    if (!out.ok || !out.cleanupCommand) throw Error("expected ok:true with command");
+    expect(shellWords(out.cleanupCommand)).toEqual(["sudo", spaced, "uninstall", "-g", "@songsid/agend"]);
   });
 
   it("successful removal has no warning and runs one sudo", () => {
@@ -90,7 +112,7 @@ describe("a real install failure still fails exactly as today", () => {
   it("failed npm install → {ok:false, stage:install}, no retire flag", () => {
     const runner: CommandRunner = {
       run: (command: string, args: string[]) => {
-        if (command === "npm" && args[0] === "install") return result(1, "", );
+        if (command === "npm" && args[0] === "install") return result(1);
         return result(0);
       },
       log: () => {},
@@ -101,6 +123,66 @@ describe("a real install failure still fails exactly as today", () => {
     if (outcome.ok) throw Error("expected failure");
     expect(outcome.stage).toBe("install");
     expect(outcome).not.toHaveProperty("retireSystemCopy");
+  });
+});
+
+describe("cleanup receipt owner fence (update-marker helpers)", () => {
+  function seed(target: { adapterId: string; chatId: string; messageId: string }, operation: "update" | "full-restart" = "update") {
+    const dir = fs.mkdtempSync(join(tmpdir(), "agend-1660-receipt-")); roots.push(dir);
+    if (operation === "update") beginUpdateProgress(dir, target);
+    else beginFullRestartProgress(dir, target);
+    return dir;
+  }
+
+  it("markCleanupPending returns the receipt and flags it", () => {
+    const dir = seed({ adapterId: "a", chatId: "c", messageId: "m-1" });
+    const receipt = markCleanupPending(dir);
+    expect(receipt).not.toBeNull();
+    expect(receipt).toMatchObject({ messageId: "m-1", operation: "update" });
+    expect(readUpdateProgress(dir)?.progress.cleanup).toBe("pending");
+  });
+
+  it("write refuses a consumed marker (Prism a: fleet already cleared it)", () => {
+    const dir = seed({ adapterId: "a", chatId: "c", messageId: "m-2" });
+    const receipt = markCleanupPending(dir);
+    clearUpdateMarker(dir);
+    expect(writeCleanupOutcome(dir, receipt, { warning: "w", cleanupCommand: "c" })).toBe(false);
+  });
+
+  it("write refuses a replaced receipt (Prism b: full-restart adopted it)", () => {
+    const dir = seed({ adapterId: "a", chatId: "c", messageId: "m-3" });
+    const receipt = markCleanupPending(dir);
+    clearUpdateMarker(dir);
+    beginUpdateProgress(dir, { adapterId: "a", chatId: "c", messageId: "m-4" });
+    expect(writeCleanupOutcome(dir, receipt, { warning: "w", cleanupCommand: "c" })).toBe(false);
+    // The new receipt is untouched: no warning, no done flag.
+    expect(readUpdateProgress(dir)?.progress.warning).toBeUndefined();
+    expect(readUpdateProgress(dir)?.progress.cleanup).toBeUndefined();
+  });
+
+  it("write refuses a null receipt and lands on a match", () => {
+    const dir = seed({ adapterId: "a", chatId: "c", messageId: "m-5" });
+    expect(writeCleanupOutcome(dir, null, { warning: "w" })).toBe(false);
+    const receipt = markCleanupPending(dir);
+    expect(writeCleanupOutcome(dir, receipt, { warning: "w", cleanupCommand: "sudo x" })).toBe(true);
+    const progress = readUpdateProgress(dir)?.progress;
+    expect(progress?.warning).toBe("w");
+    expect(progress?.cleanupCommand).toBe("sudo x");
+    expect(progress?.cleanup).toBe("done");
+  });
+
+  it("cleanupCommand survives byte-exact (double spaces, long paths)", () => {
+    const dir = seed({ adapterId: "a", chatId: "c", messageId: "m-6" });
+    const receipt = markCleanupPending(dir);
+    const cmd = `sudo '/home/u/with  two/.nvm/versions/node/v22.0.0/bin/npm' uninstall -g @songsid/agend`;
+    const long = `sudo '/home/u/${"x".repeat(150)}/.nvm/versions/node/v22.23.3/bin/npm' uninstall -g @songsid/agend`;
+    expect(writeCleanupOutcome(dir, receipt, { warning: "w", cleanupCommand: cmd })).toBe(true);
+    expect(readUpdateProgress(dir)?.progress.cleanupCommand).toBe(cmd);
+    const dir2 = seed({ adapterId: "a", chatId: "c", messageId: "m-7" });
+    const receipt2 = markCleanupPending(dir2);
+    expect(writeCleanupOutcome(dir2, receipt2, { warning: "w", cleanupCommand: long })).toBe(true);
+    expect(readUpdateProgress(dir2)?.progress.cleanupCommand).toBe(long);
+    expect(updateReceiptOf(null)).toBeNull();
   });
 });
 
@@ -123,7 +205,6 @@ function cliRig(sudoUninstallStatus: number) {
     if (command === "systemctl" || command === "busctl") return w.run(command, args);
     if (command === "sudo") {
       if (args.includes("uninstall")) return { ...w.result(), status: sudoUninstallStatus };
-      if (args.includes("root")) return { ...w.result(), stdout: "/usr/local/lib/node_modules\n" };
     }
     // viaNvm runs the verified binary through bash -c NVM_RUN_SCRIPT.
     if (command === "bash") {
@@ -149,6 +230,9 @@ function cliRig(sudoUninstallStatus: number) {
     "./update-marker.js": {
       readUpdateProgress: () => readUpdateProgress(dataDir),
       setUpdateProgressStage: (dir: string, stage: string, details?: unknown) => { stages.push({ stage, details }); return true; },
+      markCleanupPending: () => markCleanupPending(dataDir),
+      writeCleanupOutcome: (dir: string, receipt: unknown, outcome: unknown) =>
+        writeCleanupOutcome(dir, receipt as never, outcome as never),
     },
     "node:fs": fs, "./package-preimage.js": { restorePackagePreimage: vi.fn(preimage.restorePackagePreimage), prunePreimages: vi.fn(preimage.prunePreimages) },
   };
@@ -166,41 +250,74 @@ function cliRig(sudoUninstallStatus: number) {
   return { w, process, console, stages, commands, activate, verified, dataDir };
 }
 
-describe("CLI: refused removal exits 0 with the warning recorded", () => {
-  it("sudo-refused → exit 0, ⚠️ line, warning staged, sudo argv non-interactive", async () => {
+describe("CLI: refused removal exits 0, prints once, records against its receipt", () => {
+  it("sudo-refused → exit 0, one ⚠️ print, fenced marker write, sudo argv non-interactive", async () => {
     const h = cliRig(1);
     beginUpdateProgress(h.dataDir, { adapterId: "a", chatId: "c", messageId: "m" });
     await h.activate(h.verified, true);
     expect(h.process.exitCode).toBe(0);
     const logged = h.console.log.mock.calls.flat().join("\n");
-    expect(logged).toContain("⚠️");
-    expect(logged).toContain(`sudo ${NPM} uninstall -g @songsid/agend`);
+    expect(logged.match(/⚠️/g)?.length, "exactly one warning print (P3-1)").toBe(1);
+    expect(logged).toContain(`$ sudo '${NPM}' uninstall -g @songsid/agend`);
     expect(h.console.error.mock.calls.flat().join("\n")).not.toContain("✗");
     const sudoCalls = h.commands.filter(c => c[0] === "sudo");
     expect(sudoCalls.length).toBeGreaterThan(0);
     for (const call of sudoCalls) expect(call[1]).toBe("-n");
-    const warned = h.stages.filter(s => (s.details as { warning?: string } | undefined)?.warning);
-    expect(warned.length).toBe(1);
-    expect((warned[0].details as { warning: string }).warning).toContain("sudo");
+    const stored = readUpdateProgress(h.dataDir)?.progress;
+    expect(stored?.cleanup).toBe("done");
+    expect(stored?.warning).toContain("Old system install was not removed");
+    expect(stored?.cleanupCommand).toBe(`sudo '${NPM}' uninstall -g @songsid/agend`);
   });
 });
 
-describe("chat /update shows success plus the cleanup line", () => {
-  it("warning survives a marker stage round-trip", () => {
-    const dir = fs.mkdtempSync(join(tmpdir(), "agend-1660-marker-")); roots.push(dir);
-    beginUpdateProgress(dir, { adapterId: "a", chatId: "c", messageId: "m" });
-    expect(realSetStage(dir, "starting", { warning: "remove it by hand: sudo x" })).toBe(true);
-    expect(readUpdateProgress(dir)?.progress.warning).toBe("remove it by hand: sudo x");
+describe("cleanupWatchVerdict: the post-completion watch state machine", () => {
+  const target = { adapterId: "a", chatId: "c", messageId: "m-1" };
+  function markerWith(progress: Record<string, unknown>, startedAt = 1_000_000) {
+    return { startedAt, pid: 1, progress: { operation: "update", stage: "starting", target, ...progress } } as never;
+  }
+  const receipt = { startedAt: 1_000_000, messageId: "m-1", operation: "update" } as const;
+
+  it("append when the owed outcome lands on the same receipt", () => {
+    expect(cleanupWatchVerdict(
+      markerWith({ cleanup: "done", warning: "w", cleanupCommand: "sudo x" }), { ...receipt }, 1_000_001))
+      .toEqual({ action: "append", warning: "w", cleanupCommand: "sudo x" });
   });
 
-  it("complete summary carries the warning; absent without it; ignored off update mode", () => {
+  it("release on done-silent and on updater death past the max age", () => {
+    expect(cleanupWatchVerdict(markerWith({ cleanup: "done" }), { ...receipt }, 1_000_001))
+      .toEqual({ action: "release" });
+    expect(cleanupWatchVerdict(
+      markerWith({ cleanup: "pending" }), { ...receipt }, 1_000_000 + 15 * 60_000 + 1))
+      .toEqual({ action: "release" });
+  });
+
+  it("drop on gone or replaced receipts; wait while fresh and pending", () => {
+    expect(cleanupWatchVerdict(null, { ...receipt }, 1_000_001)).toEqual({ action: "drop" });
+    expect(cleanupWatchVerdict(
+      markerWith({ cleanup: "pending" }, 2_000_000), { ...receipt }, 2_000_001)).toEqual({ action: "drop" });
+    expect(cleanupWatchVerdict(
+      { startedAt: 1_000_000, pid: 1, progress: { operation: "full-restart", stage: "stopping", target } } as never,
+      { ...receipt }, 1_000_001)).toEqual({ action: "drop" });
+    expect(cleanupWatchVerdict(markerWith({ cleanup: "pending" }), { ...receipt }, 1_000_001))
+      .toEqual({ action: "wait" });
+    expect(cleanupWatchVerdict(markerWith({}), { ...receipt }, 1_000_001)).toEqual({ action: "wait" });
+  });
+});
+
+describe("chat /update shows success plus the cleanup lines", () => {
+  it("complete summary carries warning and command; absent without them; ignored off update mode", () => {
     const base = { running: 2, total: 2, version: "2.2.1", pausedNames: [] as string[] };
-    const withWarning = formatRestartProgressCompletion("update", { ...base, warningText: "remove it by hand: sudo x" }, 0, 25_000);
+    const cmd = `sudo '/home/u/${"x".repeat(150)}/.nvm/versions/node/v22.23.3/bin/npm' uninstall -g @songsid/agend`;
+    const withWarning = formatRestartProgressCompletion(
+      "update", { ...base, warningText: "Old system install was not removed (sudo refused); remove it by hand.", warningCommand: cmd }, 0, 25_000);
     expect(withWarning).toContain("✅ Fleet restarted — v2.2.1, 2/2 instances running");
-    expect(withWarning).toContain("⚠️ remove it by hand: sudo x");
+    expect(withWarning).toContain("⚠️ Old system install was not removed");
+    expect(withWarning).toContain(`\`$ ${cmd}\``);
     const plain = formatRestartProgressCompletion("update", base, 0, 25_000);
     expect(plain).not.toContain("⚠️");
-    const restart = formatRestartProgressCompletion("restart", { ...base, warningText: "remove it by hand: sudo x" }, 0, 25_000);
+    expect(plain).not.toContain("$ sudo");
+    const restart = formatRestartProgressCompletion(
+      "restart", { ...base, warningText: "w", warningCommand: "c" }, 0, 25_000);
     expect(restart).not.toContain("⚠️");
   });
 });

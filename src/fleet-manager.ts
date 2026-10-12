@@ -41,6 +41,8 @@ import {
   readUpdateProgress,
   setUpdateProgressStage,
   updateProgressOperation,
+  updateReceiptOf,
+  type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
@@ -312,9 +314,11 @@ import {
   splitHotColdConfig,
 } from "./instance-config-impact.js";
 import {
+  cleanupWatchVerdict,
   formatRestartProgressCompletion,
   RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
   RestartProgress,
+  type RestartProgressSummary,
   type RestartProgressTarget,
 } from "./restart-progress.js";
 import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
@@ -1126,6 +1130,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
   private updateCompletionTipText: string | null = null;
+  /**
+   * #1660: an adopted update whose retire outcome is still owed. The
+   * completion summary was (or will be) posted; this watch appends the
+   * cleanup outcome to the same receipt instead of letting stage edits
+   * clobber it — and refuses a receipt that no longer matches (checklist 3/5).
+   */
+  private updateCleanupWatch: { receipt: UpdateReceipt; summary: RestartProgressSummary } | null = null;
   /** Injectable only to keep the chat→CLI reload hand-off deterministic in tests. */
   private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
@@ -2192,7 +2203,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // We are the post-update fleet: the update is over by definition. Clearing
     // it here (rather than in the update command, which exits before the new
     // fleet is up) is what keeps the quiet window from outliving the restart.
-    clearUpdateMarker(this.dataDir);
+    // #1660 exception: an update still owing its retire outcome keeps its
+    // receipt until the cleanup watch resolves it — deleting it here is what
+    // lost the warning. Terminal stages are still cleared unconditionally.
+    const leftover = readUpdateProgress(this.dataDir)?.progress;
+    if (!(leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete")) {
+      clearUpdateMarker(this.dataDir);
+    }
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
   }
@@ -5626,6 +5643,58 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.updateProgressTimer = null;
         return;
       }
+      // #1660: the completion summary was already posted; only watch for
+      // the retire outcome owed to this exact receipt. Never stage-edit
+      // here (that would clobber the posted completion), and never touch a
+      // receipt that no longer matches (checklist 3/5).
+      const watch = this.updateCleanupWatch;
+      if (watch) {
+        const stopWatching = () => {
+          this.updateCleanupWatch = null;
+          if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
+          this.updateProgressTimer = null;
+        };
+        const verdict = cleanupWatchVerdict(marker, watch.receipt);
+        if (verdict.action === "drop") {
+          // Receipt gone or replaced (e.g. a later full-restart adopted the
+          // marker): not ours — leave it to its own lifecycle, drop the watch.
+          this.logger.info("[update] cleanup watch: marker receipt changed, dropping watch");
+          this.updateCleanupWatch = null;
+        } else if (verdict.action === "release") {
+          // Done silent, or the updater died past the max age: release it.
+          clearUpdateMarker(this.dataDir);
+          stopWatching();
+          return;
+        } else if (verdict.action === "wait") {
+          return;
+        } else {
+          const text = formatRestartProgressCompletion("update", {
+            ...watch.summary,
+            warningText: verdict.warning,
+            warningCommand: verdict.cleanupCommand,
+          }, watch.receipt.startedAt);
+          if (text === this.lastUpdateProgressText) {
+            clearUpdateMarker(this.dataDir);
+            stopWatching();
+            return;
+          }
+          const watchTarget = marker.progress.target;
+          const adapter = this.adapters.get(watchTarget.adapterId);
+          if (!adapter) return;
+          this.updateProgressEditRunning = true;
+          try {
+            await adapter.editMessage(watchTarget.chatId, watchTarget.messageId, text, watchTarget.threadId);
+            this.lastUpdateProgressText = text;
+            clearUpdateMarker(this.dataDir);
+            stopWatching();
+          } catch (err) {
+            this.logger.warn({ err }, "[update] cleanup watch: failed to append warning, will retry");
+          } finally {
+            this.updateProgressEditRunning = false;
+          }
+          return;
+        }
+      }
       const target = marker.progress.target;
       const adapter = this.adapters.get(target.adapterId) ?? (initialAdapter?.id === target.adapterId ? initialAdapter : undefined);
       if (!adapter) return;
@@ -6166,22 +6235,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const _require = createRequire(import.meta.url);
       const agendVersion = _require("../package.json").version ?? "unknown";
       await progressStart;
-      const progressCompleted = await startupProgress.finish({
+      // #1660: when the adopted update still owes its retire outcome, the
+      // completion posts without the warning and this same summary object is
+      // kept for the watch to append it to the same receipt later. Waiting
+      // for cleanup before READY would deadlock with the updater (it retires
+      // only after the restart returns), so READY and cleanup notification
+      // have separate lifecycles (review checklist 3/5).
+      const completionSummary: RestartProgressSummary = {
         running: started,
         total,
         version: agendVersion,
         pausedNames,
         failedNames,
-        // #1660: non-fatal cleanup note recorded by the updater (e.g. old
-        // system copy left behind) rides the marker across the restart.
-        warningText: pendingUpdateProgress?.progress.warning,
         tipText: pendingProgressOperation === "update" && this.tipsEnabled()
           ? (() => {
               const tip = this.pickAvailableTip();
               return tip ? this.formatTip(tip) : undefined;
             })()
           : undefined,
-      });
+      };
+      const progressCompleted = await startupProgress.finish(completionSummary);
+      if (pendingUpdateProgress && pendingProgressOperation === "update"
+        && pendingUpdateProgress.progress.cleanup === "pending") {
+        const receipt = updateReceiptOf(pendingUpdateProgress);
+        if (receipt) this.updateCleanupWatch = { receipt, summary: completionSummary };
+      }
       if (!progressCompleted && fleet.channel?.group_id) {
         let text: string;
         if (pendingProgressOperation === "full-restart") {
@@ -6200,8 +6278,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text = t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "))
             + (pausedNames.length > 0 ? `\n⏸ Paused: ${pausedNames.join(", ")}` : "");
         }
-        // #1660: same cleanup note as the in-place summary above.
-        if (pendingUpdateProgress?.progress.warning) text += `\n\n⚠️ ${pendingUpdateProgress.progress.warning}`;
+        // #1660: a pending cleanup warning cannot be present yet (the updater
+        // retires only after the restart returns); the watch appends it to
+        // the adopted message when the outcome lands. Nothing to add here.
         await this.sendFleetStartCompletionFallback(
           String(fleet.channel.group_id),
           text,
