@@ -163,6 +163,8 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | `retention_days` | number | `30` | `delivery-outbox.db` 保留已完成投遞（`delivered`/`failed`）及 Task Board 已完成/已取消任務的天數。`uncertain` 與非終態的 row 永遠不會被清除。fleet 啟動時執行一次，之後每天執行，每次最多刪除 500 筆以免卡住 event loop。被清除的 delivery_id 在 `delivery_status` 工具中會回傳「早於保留期限，已清除」而非「找不到」 |
 | `tips` | boolean | `true` | General 每日提示與更新完成後的提示；不受 `daily_summary.enabled` 控制 |
 
+重啟去重另外保存 owner／boot 檢查點（只有識別碼與時間），不跟著通知的保留政策清理。刪除舊的已送達通知，不會讓同一個 boot 重新提醒或重新標記請求。
+
 ### defaults.cost_guard
 
 | 欄位 | 型別 | 預設 | 說明 |

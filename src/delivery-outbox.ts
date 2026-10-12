@@ -17,7 +17,10 @@ const RESTART_REPLY_DISPLAY_LIMIT = 10;
 function replyPreview(value: string): string {
   const escaped = value.replace(/[\u0000-\u001f\u007f]/g, c => JSON.stringify(c).slice(1, -1));
   const bytes = Buffer.from(escaped);
-  return bytes.length <= 256 ? escaped : bytes.subarray(0, 253).toString("utf8") + "…";
+  if (bytes.length <= 256) return escaped;
+  let end = 253;
+  while ((bytes[end] & 0xc0) === 0x80) end--;
+  return bytes.subarray(0, end).toString("utf8") + "…";
 }
 
 export interface DaemonDeliveryPort {
@@ -624,6 +627,14 @@ export class DeliveryOutbox extends EventEmitter {
         PRIMARY KEY (correlation_id, requester_instance, owner_instance)
       );
       CREATE INDEX IF NOT EXISTS idx_reply_obligation_owner_state ON reply_obligations(owner_instance, state);
+      -- A notice can be pruned while its boot is still alive. Keep the claim
+      -- independently: no notice FK/cascade and no request or message content.
+      CREATE TABLE IF NOT EXISTS reply_restart_markers (
+        owner_instance TEXT NOT NULL,
+        restart_id TEXT NOT NULL,
+        reminded_at TEXT NOT NULL,
+        PRIMARY KEY (owner_instance, restart_id)
+      );
       CREATE TABLE IF NOT EXISTS failure_notices (
         parent_delivery_id TEXT PRIMARY KEY,
         notice_delivery_id TEXT NOT NULL UNIQUE,
@@ -763,8 +774,14 @@ export class DeliveryOutbox extends EventEmitter {
     const sinceIso = (opts.since ?? now).toISOString();
     const inserted = this.db.transaction(() => {
       if (opts.reason === "restart") {
-        const key = `reply-pending:restart:${JSON.stringify([ownerInstance, opts.restartId ?? sinceIso])}`;
-        if (this.db.prepare("SELECT 1 FROM deliveries WHERE source_key=?").get(key)) return 0;
+        const restartId = opts.restartId ?? sinceIso;
+        const key = `reply-pending:restart:${JSON.stringify([ownerInstance, restartId])}`;
+        if (this.db.prepare("SELECT 1 FROM reply_restart_markers WHERE owner_instance=? AND restart_id=?")
+          .get(ownerInstance, restartId)) return 0;
+        // Adopt an existing notice from the earlier implementation/rollback
+        // without stamping a new ask or producing another notice.
+        const prior = this.db.prepare("SELECT created_at FROM deliveries WHERE source_key=?").get(key) as { created_at: string } | undefined;
+        if (prior) { this.recordReplyRestart(ownerInstance, restartId, prior.created_at); return 0; }
         const total = (this.db.prepare("SELECT count(*) n FROM reply_obligations WHERE owner_instance=? AND state='open'")
           .get(ownerInstance) as { n: number }).n;
         if (!total) return 0;
@@ -775,6 +792,7 @@ export class DeliveryOutbox extends EventEmitter {
         if (total > preview.length) lines.push(t("delivery.reply_restart_more", total - preview.length));
         const content = t("delivery.reply_restart") + "\n" + lines.join("\n");
         if (!this.insertReplyObligationNotice(ownerInstance, null, key, content, nowIso)) return 0;
+        this.recordReplyRestart(ownerInstance, restartId, nowIso);
         this.db.prepare("UPDATE reply_obligations SET nudged_at=? WHERE owner_instance=? AND state='open'").run(nowIso, ownerInstance);
         return 1;
       }
@@ -793,6 +811,11 @@ export class DeliveryOutbox extends EventEmitter {
     })();
     if (inserted > 0) this.emit("admitted");
     return inserted;
+  }
+
+  private recordReplyRestart(owner: string, restartId: string, now: string): void {
+    this.db.prepare("INSERT INTO reply_restart_markers(owner_instance,restart_id,reminded_at) VALUES (?,?,?)")
+      .run(owner, restartId, now);
   }
 
   /** Expiry is terminal for this ask; a later delivered re-ask can reopen the same tuple. */

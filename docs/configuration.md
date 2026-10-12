@@ -212,6 +212,8 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `tips` | boolean | `true` | Daily General-topic tips and update-completion tips. Independent of `daily_summary.enabled`. |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
 
+Restart deduplication keeps a separate owner/boot checkpoint (IDs and timestamp only), independent of notification retention. Cleaning old delivered notices does not allow the same boot to remind or stamp the requests again.
+
 ---
 
 ### instances.\<name\>

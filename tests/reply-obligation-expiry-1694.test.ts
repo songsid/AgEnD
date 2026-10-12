@@ -53,6 +53,14 @@ function notices(outbox: DeliveryOutbox) {
 }
 const obligation = (outbox: DeliveryOutbox, cid: string, requester = "requester") => outbox.getReplyObligation(cid, requester, "owner");
 
+function deliverNotice(outbox: DeliveryOutbox) {
+  const c = outbox.claimNext(outbox.managerBootId, () => "owner-boot", new Set())!;
+  expect(c.kind).toBe(REPLY_OBLIGATION_NOTICE_KIND);
+  expect(outbox.begin(c.deliveryId, "owner-boot", c.attemptNo)).toBe("begun");
+  expect(outbox.complete(c.deliveryId, "owner-boot", c.attemptNo, "delivered", "inert notice delivery")).toBe(true);
+  return c.deliveryId;
+}
+
 describe("#1694 restart batches", () => {
   it.each(["en", "zh-TW"] as const)("12 open requests get one bounded restart notice and no original re-delivery (%s)", locale => {
     const { fm, outbox } = fleet();
@@ -108,6 +116,75 @@ describe("#1694 restart batches", () => {
     fm.sweepReplyObligations(new Date(T0 + 180_000));
     expect(notices(outbox)).toHaveLength(2);
     expect(notices(outbox)[1].text).toContain("Your turn ended");
+  });
+
+  it("same-boot proof survives notice retention and DB reopen without re-stamping a re-ask", async () => {
+    const first = fleet({ reply_obligation_ttl_hours: 72 });
+    const request = ask(first.outbox, "cid-retained");
+    vi.setSystemTime(T0 + 60_000); first.fm.onDaemonReady("owner", "same-boot");
+    const notice = deliverNotice(first.outbox);
+    const nudge = obligation(first.outbox, "cid-retained")?.nudgedAt;
+    vi.setSystemTime(T0 + 48 * HOUR);
+    expect((await first.outbox.prune(1)).pruned).toBe(1);
+    expect(first.outbox.get(notice)).toBeUndefined();
+    expect(first.outbox.get(request)?.state).toBe("delivered");
+    expect(obligation(first.outbox, "cid-retained")?.state).toBe("open");
+    first.outbox.close();
+    const next = fleet({ reply_obligation_ttl_hours: 72 }, first.dataDir);
+    next.fm.onDaemonReady("owner", "same-boot");
+    expect(notices(next.outbox)).toHaveLength(0);
+    expect(obligation(next.outbox, "cid-retained")?.nudgedAt).toBe(nudge);
+    ask(next.outbox, "cid-retained", T0 + 48 * HOUR + 1);
+    next.fm.onDaemonReady("owner", "same-boot");
+    expect(notices(next.outbox)).toHaveLength(0);
+    expect(obligation(next.outbox, "cid-retained")?.nudgedAt).toBeNull();
+    next.fm.onDaemonReady("owner", "new-boot");
+    expect(notices(next.outbox)).toHaveLength(1);
+    next.fm.onDaemonReady("owner", "same-boot");
+    expect(notices(next.outbox)).toHaveLength(1);
+  });
+
+  it.each([
+    ["ASCII", "a".repeat(300), "a".repeat(253) + "…"],
+    ["CJK", "界".repeat(300), "界".repeat(84) + "…"],
+    ["emoji", "😀".repeat(100), "😀".repeat(63) + "…"],
+  ])("preview cuts complete %s code points within 256 UTF-8 bytes", (_name, cid, expected) => {
+    const { fm, outbox } = fleet(); ask(outbox, cid);
+    fm.onDaemonReady("owner", "utf8-boot");
+    const shown = notices(outbox)[0].text.split("correlation_id=")[1].split("; asked=")[0];
+    expect(shown).toBe(expected);
+    expect(shown).not.toContain("�");
+    expect(Buffer.byteLength(shown)).toBeLessThanOrEqual(256);
+  });
+
+  it("checkpoint failure rolls back the notice and stamp; the same boot can retry once", () => {
+    const { fm, outbox } = fleet(); ask(outbox, "cid-marker-fault");
+    const fault = vi.spyOn(outbox as any, "recordReplyRestart").mockImplementation(() => { throw new Error("inert marker fault"); });
+    fm.onDaemonReady("owner", "atomic-boot");
+    expect(notices(outbox)).toEqual([]);
+    expect(obligation(outbox, "cid-marker-fault")?.nudgedAt).toBeNull();
+    expect((outbox as any).db.prepare("SELECT count(*) n FROM reply_restart_markers").get()).toEqual({ n: 0 });
+    fault.mockRestore(); fm.onDaemonReady("owner", "atomic-boot");
+    expect(notices(outbox)).toHaveLength(1);
+    expect((outbox as any).db.prepare("SELECT count(*) n FROM reply_restart_markers").get()).toEqual({ n: 1 });
+  });
+
+  it("adopts an existing earlier batch into the checkpoint without re-stamping a re-ask", async () => {
+    const { fm, outbox } = fleet({ reply_obligation_ttl_hours: 72 }); ask(outbox, "cid-earlier");
+    fm.onDaemonReady("owner", "earlier-boot"); const notice = deliverNotice(outbox);
+    // Model the earlier implementation: its notice survives, its checkpoint does not exist yet.
+    (outbox as any).db.prepare("DELETE FROM reply_restart_markers").run();
+    ask(outbox, "cid-earlier", T0 + 48 * HOUR);
+    fm.onDaemonReady("owner", "earlier-boot");
+    expect(notices(outbox)).toHaveLength(1);
+    expect(obligation(outbox, "cid-earlier")?.nudgedAt).toBeNull();
+    expect((outbox as any).db.prepare("SELECT reminded_at FROM reply_restart_markers").get())
+      .toEqual({ reminded_at: new Date(T0).toISOString() });
+    await outbox.prune(1);
+    expect(outbox.get(notice)).toBeUndefined();
+    fm.onDaemonReady("owner", "earlier-boot");
+    expect(notices(outbox)).toEqual([]);
+    expect(obligation(outbox, "cid-earlier")?.nudgedAt).toBeNull();
   });
 });
 
