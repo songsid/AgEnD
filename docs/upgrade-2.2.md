@@ -73,7 +73,7 @@ npm install -g @songsid/agend@2.2.0
 - **General gets one message about web chat** (#1366), once per platform, recorded in `AGEND_HOME/upgrade-notices.json`.
 
 **From now on (policies):**
-- **Web sessions** last 12 h (2 h idle) on this computer's dashboard, and 4 h (30 min idle) through the public link.
+- **Web sessions** last 48 h (48 h idle) on this computer's dashboard by default (12 h / 2 h before 2.2.1), and 4 h (30 min idle) through the public link.
 - **ClassicBot:** a `/start` from someone not on an allow list asks General for approval (#1418). An empty or omitted `allowed_users` / `allowed_groups` / `allowed_guilds` no longer means "open". Approve with General's buttons, or add explicit entries. Already-registered rooms keep working.
 - **Sensitive changes in web Settings are proposals** (#1423). A General fleet admin confirms them in chat, or you run `agend settings confirm <id>` on the host. Pending proposals are lost on restart; submit again.
 - **Stopping the fleet may take up to 5 minutes** (#1071), so busy Kiro instances can finish; starting it again takes its own time on top. `agend restart` refuses a service whose loaded stop timeout is shorter than 300 s; AgEnD's own unit is migrated, and a custom timeout you set is kept with a warning.

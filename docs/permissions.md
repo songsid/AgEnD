@@ -95,7 +95,7 @@ All listener requests first pass the Host allowlist; that header check is not cl
 | POST `/agent` | `X-Agend-Instance-Token: <encodedInstance>:<token>` where `<encodedInstance>` is `encodeURIComponent(instanceName)` and `<token>` is the per-instance bearer; verified before body is read (401 if absent/wrong, 413 if body > 512 KiB), plus that instance's AgEnD tool profile |
 | Temporary `/login` terminal | Separate per-login credential, not a dashboard credential |
 
-`web.token` persists and can be rotated without a fleet restart; rotating it also ends every browser session. Instance agent tokens are replaced on CLI spawn. A browser session is an opaque random id that the server expires itself (12 hours after sign-in, or 2 hours without use) and can revoke per device. See [Security Considerations](SECURITY.md#dashboard-sign-in-and-browser-sessions) for the sign-in codes, revocation, connection lifetime and secret handling.
+`web.token` persists and can be rotated without a fleet restart; rotating it also ends every browser session. Instance agent tokens are replaced on CLI spawn. A browser session is an opaque random id that the server expires itself (by default 48 hours after sign-in, or 48 hours without use) and can revoke per device. See [Security Considerations](SECURITY.md#dashboard-sign-in-and-browser-sessions) for the sign-in codes, revocation, connection lifetime and secret handling.
 
 ## Configuration example
 

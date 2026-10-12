@@ -36,8 +36,8 @@ dashboard 用**一次性登入碼**登入，絕不使用帶有憑證的連結。
 
 ## Session
 
-- session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。登入後最多 **12 小時**、或閒置 **2 小時**就會結束（以先到者為準；直接連到 dashboard 時，這兩個值可用 `web.session.local.absolute_hours`／`idle_hours` 設定，最多 720 小時，見[設定](configuration.zh-TW.md)）；本機 session 在 fleet 重啟後仍有效。公開 session 綁定單次入口，四小時／閒置 30 分鐘及入口關閉都會使其失效；不能用於本機或下一個入口，本機 cookie 與 header token 也不能用於公開入口。
-- 只有你的操作才算使用：打開頁面或聊天、送出訊息、變更任何東西。頁面自己定時做的事一律不算：即時串流（重新連線也一樣）、備援輪詢，以及 `/view` 的終端、名單與用量更新。所以開著不管的分頁——包括 `web.view_access: session` 時的 `/view`——仍會在閒置期限後結束（本機預設 2 小時、公開 session 30 分鐘）。
+- session 是伺服器上的一筆紀錄，不是存在瀏覽器裡的值。預設在登入後最多 **48 小時**、或閒置 **48 小時**就會結束（以先到者為準；直接連到 dashboard 時，這兩個值可用 `web.session.local.absolute_hours`／`idle_hours` 設定，最多 720 小時，見[設定](configuration.zh-TW.md)）；本機 session 在 fleet 重啟後仍有效。公開 session 綁定單次入口，四小時／閒置 30 分鐘及入口關閉都會使其失效；不能用於本機或下一個入口，本機 cookie 與 header token 也不能用於公開入口。
+- 只有你的操作才算使用：打開頁面或聊天、送出訊息、變更任何東西。頁面自己定時做的事一律不算：即時串流（重新連線也一樣）、備援輪詢，以及 `/view` 的終端、名單與用量更新。所以開著不管的分頁——包括 `web.view_access: session` 時的 `/view`——仍會在閒置期限後結束（本機預設 48 小時、公開 session 30 分鐘）。
 - session 結束時，頁面會提示一次（「登入已結束。重新登入」），而且保留你畫面上正在做的事。
 - **Session 選單**（在側欄最下方）會顯示：
   - 你目前用哪個瀏覽器登入、這個 session 什麼時候到期；
@@ -287,8 +287,8 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `web.public_link.ttl_minutes` | `120` | 從同意起固定期限，1–480 分鐘，不延長現有入口 |
 | `web.public_link.protocol` | `http2` | cloudflared 的 `http2`、`quic` 或 `auto` |
 | `web.echo_to_channel` | `true` | 將 web chat 訊息複製到 instance 自己的 Telegram 或 Discord 主題 |
-| `web.session.local.absolute_hours` | `12` | 從 dashboard 本身網址登入後可維持多久，1–720 小時 |
-| `web.session.local.idle_hours` | `2` | 閒置多久後登出，1–720 小時，且不超過 `absolute_hours` |
+| `web.session.local.absolute_hours` | `48` | 從 dashboard 本身網址登入後可維持多久，1–720 小時 |
+| `web.session.local.idle_hours` | `48` | 閒置多久後登出，1–720 小時，且不超過 `absolute_hours` |
 | `web_terminal.enabled` | `true` | `false`：`/login` 會拒絕（沒有瀏覽器終端機） |
 | `web_terminal.ttl_minutes` | `10` | `/login` 的瀏覽器終端機開啟多久，1–20 分鐘 |
 
@@ -310,7 +310,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 |---|---|
 | 經由 proxy 或 tunnel 打開 dashboard 時出現 **403** | 這個 `Host` 沒有被允許：把它加進 `web.allowed_hosts`。 |
 | 登入頁說登入碼錯誤 | 登入碼只能用一次、5 分鐘後到期，而且只有最新的那組有效：請重新取得。 |
-| 「登入已結束」 | 閒置 2 小時、登入已滿 12 小時，或有人執行了 revoke：重新登入即可。 |
+| 「登入已結束」 | 閒置 48 小時或登入已滿 48 小時（預設值），或有人執行了 revoke：重新登入即可。 |
 | 更新會晚幾秒才出現，沒有即時串流 | 你這條連線傳不了即時串流（或這是公開連結），頁面改成每 5 秒輪詢：不需要處理，也不會當成問題顯示。 |
 | `/web` 回覆「disabled」 | 這個 bot 沒有設定任何 fleet admin：把你的使用者加進它的 `allowed_users`。 |
 | 在登入頁，瀏覽器的開發者工具顯示 `/auth/session` 有紅色的 **401** | 這是預期行為：頁面會先檢查你是否已經登入，「沒有」就會回 401。不需要處理。 |

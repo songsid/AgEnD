@@ -36,8 +36,8 @@ An old `?token=` link or bookmark (`/ui?token=…`, as older versions printed) i
 
 ## Sessions
 
-- A session is a record on the server, not a value in your browser. It ends **12 hours** after sign-in, or after **2 hours** without use, whichever comes first — on the dashboard reached directly these two can be set with `web.session.local.absolute_hours` / `idle_hours` (up to 720 hours; see [configuration](configuration.md)). Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
-- Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (2 hours locally unless configured, 30 minutes for a public session).
+- A session is a record on the server, not a value in your browser. By default it ends **48 hours** after sign-in, or after **48 hours** without use, whichever comes first — on the dashboard reached directly these two can be set with `web.session.local.absolute_hours` / `idle_hours` (up to 720 hours; see [configuration](configuration.md)). Local sessions survive a fleet restart. Public sessions are scoped to one exposure: four-hour absolute / 30-minute idle limits, and link closure also ends them. They cannot be used locally or on a later exposure; local cookies and header tokens cannot be used on the public host.
+- Only what you do counts as use: opening a page or a chat, sending, changing something. What a page does on its own timer never does: the live stream (also when it reconnects), the polling fallback, and `/view`'s terminal, roster and usage refresh. So a tab left open, including `/view` with `web.view_access: session`, still ends after its idle limit (48 hours locally unless configured, 30 minutes for a public session).
 - When a session ends, the page says so once ("Your session has ended. Sign in again") and keeps what you were doing on screen.
 - **The Session menu** (at the bottom of the sidebar) shows:
   - which browser you are signed in as, and when the session ends;
@@ -287,8 +287,8 @@ Whoever reaches the address still has to sign in with a code from you, and each 
 | `web.public_link.ttl_minutes` | `120` | Fixed lifetime from consent, 1–480 minutes; no renewal of an existing link |
 | `web.public_link.protocol` | `http2` | cloudflared `http2`, `quic` or `auto` |
 | `web.echo_to_channel` | `true` | Copy web chat messages to the instance's own Telegram or Discord topic |
-| `web.session.local.absolute_hours` | `12` | How long a sign-in at the dashboard's own address lasts, 1–720 hours |
-| `web.session.local.idle_hours` | `2` | How long it may sit unused, 1–720 hours and at most `absolute_hours` |
+| `web.session.local.absolute_hours` | `48` | How long a sign-in at the dashboard's own address lasts, 1–720 hours |
+| `web.session.local.idle_hours` | `48` | How long it may sit unused, 1–720 hours and at most `absolute_hours` |
 | `web_terminal.enabled` | `true` | `false`: `/login` refuses (no browser terminal) |
 | `web_terminal.ttl_minutes` | `10` | How long a `/login` browser terminal stays open, 1–20 minutes |
 
@@ -310,7 +310,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 |---|---|
 | **403** when opening the dashboard through a proxy or tunnel | Its `Host` is not allowed: add it to `web.allowed_hosts`. |
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
-| "Your session has ended" | 2 hours without use, 12 hours since sign-in, or someone revoked. Sign in again. |
+| "Your session has ended" | 48 hours without use or since sign-in (the defaults), or someone revoked. Sign in again. |
 | Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds. Nothing to do — it is not shown as a problem. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |

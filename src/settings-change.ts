@@ -65,8 +65,8 @@ const SESSION_LOCAL = ["fleet", "web", "session", "local"] as const;
 const SESSION_KEYS: readonly string[] = ["absolute_hours", "idle_hours"];
 /**
  * #1620 (#1627 review): the local session limits are judged as the policy they GIVE — what the store enforces
- * (localSessionPolicy), not the stored numbers: a hand-written `absolute_hours: 1000` is enforced as the 12 h default,
- * so 1000 → 24 lengthens sessions and is confirmed. Returns the changed keys to name (empty: it only tightens), or
+ * (localSessionPolicy), not the stored numbers: a hand-written `absolute_hours: 1000` is enforced as the 48 h default,
+ * so 1000 → 72 lengthens sessions and is confirmed (and 1000 → 24 only shortens them). Returns the changed keys to name (empty: it only tightens), or
  * null when the change is not just these two limits (it is then walked key by key, as before).
  */
 function sessionChange(old: unknown, next: unknown): Array<[string, unknown, unknown]> | null {

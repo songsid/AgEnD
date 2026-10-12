@@ -56,8 +56,9 @@ describe("the classifier judges these by direction", () => {
   });
   it("loosening waits for a General admin: each one is named, old → new, in the access section", () => {
     const cases: Array<[unknown, Record<string, unknown>, string]> = [
-      [{ session: { local: { absolute_hours: 24 } } }, {}, "fleet.web.session.local.absolute\\_hours: default → 24"],
-      [{ session: { local: { idle_hours: 6 } } }, {}, "fleet.web.session.local.idle\\_hours: default → 6"],
+      // #1670: the default is 48 h / 48 h, so a longer limit is above it.
+      [{ session: { local: { absolute_hours: 72 } } }, {}, "fleet.web.session.local.absolute\\_hours: default → 72"],
+      [{ session: { local: { idle_hours: 60 } } }, { web: { session: { local: { absolute_hours: 72 } } } }, "fleet.web.session.local.idle\\_hours: default → 60"],
       [{ web_terminal: { enabled: true } }, { web_terminal: { enabled: false } }, "fleet.web\\_terminal.enabled: false → true"],
       [{ web_terminal: { ttl_minutes: 15 } }, {}, "fleet.web\\_terminal.ttl\\_minutes: default → 15"],
       [{ web_terminal: { ttl_minutes: 15 } }, { web_terminal: { ttl_minutes: 12 } }, "fleet.web\\_terminal.ttl\\_minutes: 12 → 15"],
@@ -70,28 +71,32 @@ describe("the classifier judges these by direction", () => {
   it("back to the default (null) is judged against the default: from below it loosens, from above it tightens", () => {
     expect(judge({ session: { local: { absolute_hours: null } } }, { web: { session: { local: { absolute_hours: 6 } } } })?.summary.slice(1))
       .toEqual(["fleet.web.session.local.absolute\\_hours: 6 → default"]);
-    expect(judge({ session: { local: { absolute_hours: null } } }, { web: { session: { local: { absolute_hours: 24, idle_hours: 2 } } } })).toBeNull();
+    expect(judge({ session: { local: { absolute_hours: null } } }, { web: { session: { local: { absolute_hours: 72, idle_hours: 2 } } } })).toBeNull();
+    // …and a value below the 48 h default goes back up to it: that lengthens (#1670).
+    expect(judge({ session: { local: { absolute_hours: null } } }, { web: { session: { local: { absolute_hours: 24 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.absolute\\_hours: 24 → default"]);
     expect(judge({ web_terminal: { enabled: null } }, { web_terminal: { enabled: false } })?.summary.slice(1)).toEqual(["fleet.web\\_terminal.enabled: false → default"]);
     expect(judge({ web_terminal: { ttl_minutes: null } }, { web_terminal: { ttl_minutes: 20 } })).toBeNull();
   });
   it("judged as the policy the store enforces, not the stored numbers: a stored value it falls back from (#1627 review)", () => {
-    // absolute 1000 is enforced as the 12 h default: 24 lengthens sessions.
-    expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 1000 } } } })?.summary.slice(1))
-      .toEqual(["fleet.web.session.local.absolute\\_hours: 1000 → 24"]);
-    // idle 1000 is enforced as the 2 h default: 4 lengthens the idle window.
-    expect(judge({ session: { local: { idle_hours: 4 } } }, { web: { session: { local: { absolute_hours: 48, idle_hours: 1000 } } } })?.summary.slice(1))
-      .toEqual(["fleet.web.session.local.idle\\_hours: 1000 → 4"]);
+    // absolute 1000 is enforced as the 48 h default: 72 lengthens sessions.
+    expect(judge({ session: { local: { absolute_hours: 72 } } }, { web: { session: { local: { absolute_hours: 1000 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.absolute\\_hours: 1000 → 72"]);
+    // idle 1000 is enforced as the 48 h default: 60 lengthens the idle window (in a 96 h session).
+    expect(judge({ session: { local: { idle_hours: 60 } } }, { web: { session: { local: { absolute_hours: 96, idle_hours: 1000 } } } })?.summary.slice(1))
+      .toEqual(["fleet.web.session.local.idle\\_hours: 1000 → 60"]);
     // An idle window cut by the absolute limit is lifted by a longer absolute limit: confirmed, naming what changed.
     expect(judge({ session: { local: { absolute_hours: 4 } } }, { web: { session: { local: { absolute_hours: 1, idle_hours: 3 } } } })?.summary.slice(1))
       .toEqual(["fleet.web.session.local.absolute\\_hours: 1 → 4"]);
-    // Controls: an effective 6 → 24 is still confirmed, 48 → 24 still applies; 1000 → 6 (effective 12 → 6) applies.
+    // Controls: an effective 6 → 24 is still confirmed, 48 → 24 still applies; 1000 → 6 (effective 48 → 6) applies.
     expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 6 } } } })).not.toBeNull();
     expect(judge({ session: { local: { absolute_hours: 24 } } }, { web: { session: { local: { absolute_hours: 48 } } } })).toBeNull();
     expect(judge({ session: { local: { absolute_hours: 6 } } }, { web: { session: { local: { absolute_hours: 1000 } } } })).toBeNull();
   });
   it("one loosening in a batch of tightenings is confirmed — and only it is named", () => {
-    const diff = judge({ session: { local: { absolute_hours: 6, idle_hours: 4 } }, web_terminal: { enabled: false } });
-    expect(diff?.summary.slice(1)).toEqual(["fleet.web.session.local.idle\\_hours: default → 4"]);
+    const diff = judge({ session: { local: { absolute_hours: 3, idle_hours: 2 } }, web_terminal: { enabled: false } },
+      { web: { session: { local: { absolute_hours: 6, idle_hours: 1 } } } });
+    expect(diff?.summary.slice(1)).toEqual(["fleet.web.session.local.idle\\_hours: 1 → 2"]);
   });
   it("the classifier itself: a value of the wrong kind is never judged a tightening (whatever reaches it)", () => {
     const diff = settingsChangeDiff({ fleet: { web_terminal: { enabled: true } } }, { fleet: { web_terminal: { enabled: "false" } } }, { operation: "PUT x" });
@@ -99,7 +104,7 @@ describe("the classifier judges these by direction", () => {
     expect(settingsChangeDiff({ fleet: { web: { session: { local: { idle_hours: 2 } } } } }, { fleet: { web: { session: { local: { idle_hours: "1" } } } } }, { operation: "PUT x" })).not.toBeNull();
   });
   it("what the handler or the validator would refuse is refused here, before anything is proposed", () => {
-    expect(() => judge({ session: { local: { idle_hours: 24 } } })).toThrow("invalid_settings_effect");
+    expect(() => judge({ session: { local: { idle_hours: 60 } } })).toThrow("invalid_settings_effect");   // #1670: > the 48 h default
     for (const body of [{ web_terminal: { ttl_minutes: 21 } }, { web_terminal: { ttl_minutes: 0 } }, { web_terminal: { enabled: "false" } },
       { web_terminal: { bind: "0.0.0.0" } }, { session: { local: { absolute_hours: "48" } } }, { session: { gateway: {} } },
       { allowed_hosts: ["other.invalid"] }, { view_access: "open" }, { echo_to_channel: "false" }, { public_link: { ttl_minutes: 481 } }])
@@ -172,7 +177,8 @@ describe("through the gate and the real handler", () => {
     expect([h.raw().web.session.local, h.raw().web_terminal]).toEqual([{ absolute_hours: 72, idle_hours: 8 }, { enabled: true }]);
   });
   it("null puts a value back to its default: the key leaves fleet.yaml, the others stay", async () => {
-    const h = harness({ web: { usage_panel: false, session: { local: { absolute_hours: 24, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15, bind: "127.0.0.1" } });
+    // #1670: from above the 48 h default, so going back to it is a tightening (written at once).
+    const h = harness({ web: { usage_panel: false, session: { local: { absolute_hours: 72, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15, bind: "127.0.0.1" } });
     expect((await h.request({ session: { local: { absolute_hours: null } }, web_terminal: { ttl_minutes: null } })).status).toBe(200);
     expect(h.raw().web).toEqual({ usage_panel: false, session: { local: { idle_hours: 6 } } });
     expect(h.raw().web_terminal).toEqual({ enabled: false, bind: "127.0.0.1" });
@@ -257,13 +263,14 @@ function realFleet(yamlText: string) {
 
 describe("the real loader and saver (#1627 review)", () => {
   it("a hand-written limit the store falls back from: 'tightening' it is a real lengthening — proposed, not written", async () => {
+    // 1000 is enforced as the 48 h default (#1670), so 1000 → 72 reads as shorter but is longer.
     const a = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 1000\n");
     const before = a.file();
-    const r = await a.request({ session: { local: { absolute_hours: 24 } } });
+    const r = await a.request({ session: { local: { absolute_hours: 72 } } });
     expect([r.status, r.body.result, a.file()]).toEqual([202, "pending_confirmation", before]);
-    const b = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 48\n      idle_hours: 1000\n");
+    const b = realFleet("instances: {}\nweb:\n  session:\n    local:\n      absolute_hours: 96\n      idle_hours: 1000\n");
     const before2 = b.file();
-    const r2 = await b.request({ session: { local: { idle_hours: 4 } } });
+    const r2 = await b.request({ session: { local: { idle_hours: 60 } } });
     expect([r2.status, r2.body.result, b.file()]).toEqual([202, "pending_confirmation", before2]);
   });
   it("controls: an effective 6 → 24 is proposed; 48 → 24 is written at once", async () => {

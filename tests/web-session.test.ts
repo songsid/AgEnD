@@ -16,6 +16,11 @@ import {
 const TOKEN = "a".repeat(48);
 const EPOCH = tokenEpoch(TOKEN);
 const HOUR = 3_600_000;
+/**
+ * #1670: these cases test the idle/absolute MECHANISM, which needs an idle window shorter than the absolute one; the
+ * shipped default is 48/48 (tested in web-session-policy-1620), so they pin the policy they reason about.
+ */
+const MECHANISM = { local: { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR } };
 const MIN = 60_000;
 
 const tempDirs: string[] = [];
@@ -89,9 +94,9 @@ describe("expiry is decided on the server", () => {
 
   it("ends when idle, and activity slides the idle window", () => {
     const { clock, opts } = clocked();
-    const store = new WebSessionStore(opts);
+    const store = new WebSessionStore({ ...opts, policy: MECHANISM });
     const { sessionId } = store.create(input);
-    const { idleMs } = DEFAULT_SESSION_POLICY.local;
+    const { idleMs } = MECHANISM.local;
 
     clock.now += idleMs - MIN;
     expect(store.authenticate(sessionId, EPOCH)).not.toBeNull(); // slides
@@ -295,7 +300,7 @@ describe("persistence", () => {
   it("does not honour an idle expiry on disk that outlasts the absolute cap", () => {
     const dir = tempDir();
     const { clock, opts } = clocked();
-    const first = new WebSessionStore({ dataDir: dir, ...opts });
+    const first = new WebSessionStore({ dataDir: dir, ...opts, policy: MECHANISM });
     const { sessionId } = first.create(input);
 
     // A hand-edited (or corrupted) file that pushes the idle window far past the hard cap.
@@ -304,14 +309,14 @@ describe("persistence", () => {
     edited.sessions[0].idleExpiry = clock.now + 1000 * HOUR;
     writeFileSync(file, JSON.stringify(edited));
 
-    clock.now += DEFAULT_SESSION_POLICY.local.absoluteMs + 1;
-    const second = new WebSessionStore({ dataDir: dir, ...opts });
+    clock.now += MECHANISM.local.absoluteMs + 1;
+    const second = new WebSessionStore({ dataDir: dir, ...opts, policy: MECHANISM });
     expect(second.authenticate(sessionId, EPOCH)).toBeNull();
     // ...and it does not survive by being loaded just inside the cap either: #1620 evaluates the policy at every
     // check, so an idle expiry on disk later than the last use + the idle window is not honoured at all (the file
     // never holds one: a use writes both together) — unused since sign-in, this session is long idle.
-    clock.now = 1_000_000 + DEFAULT_SESSION_POLICY.local.absoluteMs - 1000;
-    const third = new WebSessionStore({ dataDir: dir, ...opts });
+    clock.now = 1_000_000 + MECHANISM.local.absoluteMs - 1000;
+    const third = new WebSessionStore({ dataDir: dir, ...opts, policy: MECHANISM });
     expect(third.authenticate(sessionId, EPOCH, { touch: false })).toBeNull();
     // A check that never touches the record cannot lean on the clamp a touch would have applied.
     clock.now += 2000;

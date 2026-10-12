@@ -554,8 +554,10 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
 
 /**
  * #1620: `web.session` — only `local` (the dashboard reached directly); a public-link session's limits are fixed.
- * Hours, decimals allowed (1.5 = 90 minutes), 1 ≤ idle_hours ≤ absolute_hours ≤ 720; one left out is its default
- * (12 absolute, 2 idle) for the comparison.
+ * Hours, decimals allowed (1.5 = 90 minutes), 1 ≤ idle_hours ≤ absolute_hours ≤ 720. An absolute_hours left out is
+ * its default (DEFAULT_SESSION_POLICY, 48) for the comparison; an idle_hours left out follows a shorter absolute_hours,
+ * as the store applies it (localSessionPolicy cuts it) — so only an idle_hours that is SET can exceed the limit (#1670:
+ * with a 48 h idle default, `absolute_hours: 24` alone must stay valid).
  */
 function validateWebSession(session: unknown, err: (path: string, message: string) => void): void {
   if (!isObj(session)) { err("web.session", "must be a mapping"); return; }
@@ -577,8 +579,7 @@ function validateWebSession(session: unknown, err: (path: string, message: strin
   const abs = ok("absolute_hours"), idle = ok("idle_hours");
   if (Number.isNaN(abs) || Number.isNaN(idle)) return;
   const absolute = abs ?? DEFAULT_SESSION_POLICY.local.absoluteMs / 3_600_000;
-  const idleH = idle ?? DEFAULT_SESSION_POLICY.local.idleMs / 3_600_000;
-  if (idleH > absolute) {
-    err("web.session.local.idle_hours", `must not exceed absolute_hours (${idleH} > ${absolute}${abs === null ? ", the default" : ""}${idle === null ? "; idle_hours is the default" : ""})`);
+  if (idle !== null && idle > absolute) {
+    err("web.session.local.idle_hours", `must not exceed absolute_hours (${idle} > ${absolute}${abs === null ? ", the default" : ""})`);
   }
 }
