@@ -111,17 +111,17 @@ describe("#1707 Linux PSI policy", () => {
   });
 });
 
-describe("#1707 real FleetManager notices with inert adapters",()=>{
+describe("#1707 real FleetManager logs with inert adapters",()=>{
   const original=getLocale();const roots:Array<{fm:FleetManager;dir:string}>=[];
   afterEach(()=>{for(const {fm,dir} of roots.splice(0)){fm.memoryPressure.stop();fm.spawnGate.shutdown();fm.stormWindow.shutdown();rmSync(dir,{recursive:true,force:true});}vi.restoreAllMocks();setLocale(original);});
-  it.each(["en","zh-TW"] as const)("%s notice names PSI and stays once-per-rise",locale=>{
+  it.each(["en","zh-TW"] as const)("%s logs retain the PSI signal without a chat notice",locale=>{
     setLocale(locale);const dir=mkdtempSync(join(tmpdir(),"agend-psi-1707-"));const fm=new FleetManager(dir);roots.push({fm,dir});const f=fm as any;
     let value=read();vi.spyOn(fm.memoryPressure as unknown as {read():HostMemory},"read").mockImplementation(()=>value);
     f.logger={debug:vi.fn(),info:vi.fn(),warn:vi.fn(),error:vi.fn()};f.fleetConfig={defaults:{},channel:{group_id:"g"},instances:{general:{general_topic:true,topic_id:"t"}}};
     vi.spyOn(fm,"getInstanceStatus").mockReturnValue("running");const sendText=vi.fn().mockResolvedValue(undefined);f.adapter={id:"telegram",type:"telegram",sendText};f.adapters.set("telegram",f.adapter);
     fm.memoryPressure.start();expect(sendText).not.toHaveBeenCalled();value=read(()=>text());fm.memoryPressure.sample();
-    expect(sendText).toHaveBeenCalledOnce();expect(String(sendText.mock.calls[0][1])).toContain("PSI some");expect(String(sendText.mock.calls[0][1])).toContain("15%");expect(String(sendText.mock.calls[0][1])).toContain("60");
-    for(let i=0;i<10;i++)fm.memoryPressure.sample();expect(sendText).toHaveBeenCalledOnce();
-    value=read();fm.memoryPressure.sample();expect(sendText).toHaveBeenCalledTimes(2);
+    expect(sendText).not.toHaveBeenCalled();expect(f.logger.warn).toHaveBeenCalledWith(expect.objectContaining({hostMemory:expect.objectContaining({signal:"psi-some",memory:expect.objectContaining({linuxPsi:{someAvg60:15,fullAvg10:0}})})}),expect.any(String));
+    for(let i=0;i<10;i++)fm.memoryPressure.sample();expect(sendText).not.toHaveBeenCalled();
+    value=read();fm.memoryPressure.sample();expect(sendText).not.toHaveBeenCalled();
   });
 });

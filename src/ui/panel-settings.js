@@ -372,11 +372,13 @@ function makeCtx(data, setData, stage, unstage, reload, reloadLive, alive) {
     async pauseWake(name, action) {
       const res = await api(`/api/settings/instances/${encodeURIComponent(name)}/${action}`, { method: "POST" }).catch(() => ({ ok: false, body: {} }));
       if (!res.ok) toast((res.body && res.body.error) || tn("actionFailed", action), false);
+      else if (res.body && res.body.held) toast(res.body.message);
       await reloadLive();
     },
     async startStop(name, running) {
       const res = await api(running ? `/stop/${encodeURIComponent(name)}` : `/api/instance/${encodeURIComponent(name)}/start`, { method: "POST" }).catch(() => ({ ok: false, body: {} }));
       if (!res.ok) toast(`${tn("actionFailed", running ? tn("stop") : tn("start"))}: ${(res.body && res.body.error) || res.status || ""}`, false);
+      else if (res.body && res.body.held) toast(res.body.message);
       await new Promise((r) => setTimeout(r, 800));
       await reloadLive();
     },

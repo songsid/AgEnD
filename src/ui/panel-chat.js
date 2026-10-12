@@ -201,6 +201,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     try { const res = await fetch(`/ui/${verb}/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/json" } }); r = await res.json(); }
     catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.error) toast(r.error, false);
+    else if (r && r.held) toast(r.message);
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   };
   const items = [

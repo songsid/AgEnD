@@ -1113,10 +1113,11 @@ One fleet-wide sampler reads host memory every 30 seconds and before every spawn
 
 `/health` always carries a `hostMemory` block (level, RAM and swap, trend; on Linux, PSI and the trigger), and pressure marks it degraded. On **macOS** the level is the kernel's own alarm (`kern.memorystatus_vm_pressure_level`: 2 slows, 4 holds), never the free-memory or swap numbers.
 
-**Fleet notices follow the level, not a timer (#1685):**
-- one notice naming the trigger when pressure rises, and one "back to normal" line when it ends; cold swap alone is no longer pressure with ample RAM;
-- nothing in between, and no repeat if the same level comes back within an hour;
-- macOS's routine warning level (2) sends no chat notice: it still slows new starts, and the Fleet page shows it. Only critical (4) is announced.
+Host memory pressure sends no chat broadcast, including recovery. The Fleet
+dashboard shows `host_memory`; logs and `/health` retain the measurements and
+trigger. A user action held by critical pressure gets the reason in its own
+reply, or the web's HTTP 202 response, and continues when memory recovers.
+Healthy RAM with cold swap remains normal under the Linux policy.
 
 Details: [memory-pressure.md](memory-pressure.md).
 

@@ -4,6 +4,7 @@ import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
+import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
 import { handleWebIconRequest } from "./web-icons.js";
@@ -838,9 +839,6 @@ function emojiListFilter(opts: Record<string, unknown>): {
 }
 
 
-/** #1685: a memory level re-entered within this long of its last notice is not announced again (flapping). */
-const MEMORY_NOTICE_DAMPING_MS = 60 * 60_000;
-
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -1147,13 +1145,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private memoryLogAt: number | null = null;
   private memoryDebugAt: number | null = null;
   private memoryLogLevel: MemoryPressureSnapshot["level"] | null = null;
-  /** #1685: when each chat level was last notified (performance.now), for the 1 h damping across recoveries. */
-  private memoryNoticeAt: Partial<Record<"elevated" | "critical", number>> = {};
-  /** #1685: the spell (memory away from normal): the highest chat level it has handled — told, or held back by the
-   *  damping hour — and whether it told anything (only then does its end get a recovered line). Normal ends it. */
-  private memorySpell: { level: "elevated" | "critical" | null; posted: boolean } = { level: null, posted: false };
-  /** #1685: a recovered line owed by a spell that ended, kept apart from the spells (a failed dispatch is retried). */
-  private memoryRecoveredOwed = false;
   /** #1685: the host_memory value the last status frame carried, so a change re-sends the frame. */
   private memoryIndicatorShown: "elevated" | "critical" | null = null;
 
@@ -2010,11 +2001,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ hostMemory: snapshot }, "Host memory recovered");
       }
       this.memoryLogLevel = snapshot.level;
-      // #1685: normal ends the spell; one recovered line, only if it told something (a damped or silent spell recovers
-      // quietly). The line is owed until it dispatches, without holding the next spell back.
-      if (this.memorySpell.posted) this.memoryRecoveredOwed = true;
-      this.memorySpell = { level: null, posted: false };
-      if (this.memoryRecoveredOwed && this.notifyFleetError(t("memory.recovered"), { throttle: false })) this.memoryRecoveredOwed = false;
       return;
     }
     if (changed || this.memoryLogAt === null || now - this.memoryLogAt >= 10 * 60_000) {
@@ -2025,34 +2011,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           : "Host memory sample unavailable — slowing new CLI spawns");
     }
     this.memoryLogLevel = snapshot.level;
-    if (!snapshot.memory || snapshot.level === "unknown" || (!this.adapter && this.adapters.size === 0)) return;
-    // #1685: chat hears a level once, when it rises — never on a timer while it holds. macOS elevated (kernel 2) is
-    // routine there and nothing a user can act on: logged, admission slowed, on the dashboard, but not in chat.
-    const level = snapshot.level;
-    if (level !== "elevated" && level !== "critical") return;
-    if (level === "elevated" && this.memoryPressure.platform === "darwin") return;
-    const spell = this.memorySpell;
-    if (spell.level === "critical" || spell.level === level) return;            // this spell has handled it already
-    const mono = performance.now();
-    const last = this.memoryNoticeAt[level];
-    // Flapping: this level was told within the hour — held back for the whole spell, not re-checked until the hour ends.
-    if (last !== undefined && mono - last < MEMORY_NOTICE_DAMPING_MS) { spell.level = level; return; }
-    const size = (bytes: number | null) => bytes === null ? t("memory.unknown") : `${Math.round(bytes / 1024 / 1024)} MiB`;
-    const action = t(snapshot.level === "critical" ? "memory.holding" : "memory.slowing");
-    const ram = t(snapshot.memory.availableKind === "available" ? "memory.available" : "memory.free", size(snapshot.memory.availableBytes));
-    const psi = snapshot.memory.linuxPsi;
-    const signal = this.memoryPressure.platform !== "linux" ? ram
-      : snapshot.signal === "psi-some" && psi ? t("memory.psi_some", psi.someAvg60, ram)
-      : snapshot.signal === "psi-full" && psi ? t("memory.psi_full", psi.fullAvg10, ram)
-      : snapshot.signal === "available-swap" ? t("memory.low_ram_swap", ram)
-      : snapshot.signal === "recovery" ? t("memory.recovering_signal", ram) : ram;
-    const text = this.memoryPressure.platform === "darwin"
-      ? t("memory.kernel_pressure", snapshot.memory.darwinPressureLevel ?? t("memory.unknown"), size(snapshot.memory.availableBytes), size(snapshot.memory.swapFreeBytes), action)
-      : t("memory.pressure", signal, size(snapshot.memory.swapFreeBytes), action);
-    if (this.notifyFleetError(text, { throttle: false })) {
-      this.memoryNoticeAt[level] = mono;
-      this.memorySpell = { level, posted: true };
-    }
   }
 
   /** Wire the one fleet-wide storm into notification and recovery surfaces. */
@@ -3734,6 +3692,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the check and the act, so the channel's instance cannot be rebound to another bot in between.
    */
   private async dispatchSlash(slash: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+    return withSpawnHoldReply(text => slash.respond(text), () => this.dispatchSlashCore(slash, adapterId, adapter));
+  }
+
+  private async dispatchSlashCore(slash: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
     // #1569: an alias (/web) is its command (/dashboard) from here on — the door, the table and the handler see one name.
     const data: ClassicStartSlashData = { ...slash, command: canonicalCommand(slash.command) };
     const door = this.slashDoor(data, adapterId);
@@ -7475,6 +7437,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    if (msg.isBotMessage) return withSpawnHoldReply(undefined, () => this.handleInboundMessageCore(msg));
+    const adapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapters.get(msg.adapterId ?? "") ?? this.adapter;
+    return withSpawnHoldReply(text => adapter?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
+      () => this.handleInboundMessageCore(msg));
+  }
+
+  private async handleInboundMessageCore(msg: InboundMessage): Promise<void> {
     // #1682: who wrote, for the web chat's mention pills (a person, never one of the fleet's bots: those are named by
     // the instance they belong to).
     if (!msg.isBotMessage && msg.userId && msg.username) this.seenUsers.record(msg.userId, msg.username);
@@ -15825,7 +15794,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
         result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
-          ? await this.applyEffort(pending.instanceName, level) : t("menu.click_stale");
+          ? await withSpawnHoldReply(async text => {
+              if (pending.adapter && pending.adapterChatId) {
+                if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
+                else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
+              } else await pending.respond(text);
+            }, () => this.applyEffort(pending.instanceName, level)) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
         result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
@@ -16177,7 +16151,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
         result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
-          ? await this.applyModel(pending.instanceName, model) : t("menu.click_stale");
+          ? await withSpawnHoldReply(async text => {
+              if (pending.adapter && pending.adapterChatId) {
+                if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
+                else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
+              } else await pending.respond(text);
+            }, () => this.applyModel(pending.instanceName, model)) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
         result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
@@ -16455,6 +16434,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Handle Discord's required static slash choice, warning before a likely startup failure. */
   private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    return withSpawnHoldReply(text => data.respond(text), () => this.handleClassicStartSlashCore(data, adapterId));
+  }
+
+  private async handleClassicStartSlashCore(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
     if (!requestedBackend) {
       // beta.31 made this option required. Discord can briefly retain the old
@@ -16574,14 +16557,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // Show the warning before starting so it survives a missing-binary startup
     // failure. The selected backend is still attempted as requested.
     if (warning) await pending.complete(warning, pending.messageId);
-    const reply = await this.handleClassicStart(
+    const reply = await withSpawnHoldReply(text => pending.complete(text, pending.messageId), () => this.handleClassicStart(
       pending.channelId,
       pending.channelName,
       pending.userId,
       pending.guildId,
       pending.adapterId,
       selectedBackend,
-    );
+    ));
     await pending.complete(warning ? `${warning}\n\n${reply}` : reply, pending.messageId);
   }
 
@@ -18957,13 +18940,19 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           return;
         }
         (async () => {
+          let held = false;
           try {
             const topicMode = this.fleetConfig?.channel?.mode === "topic";
-            await this.startInstance(name, config, topicMode ?? false, "fleet-topic", true);
+            await withSpawnHoldReply(async message => {
+              held = true; res.writeHead(202, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ held: true, message, instance: name }));
+            }, () => this.startInstance(name, config, topicMode ?? false, "fleet-topic", true));
             this.emitSseEvent("status", this.getUiStatus());
+            if (held) return;
             res.writeHead(200);
             res.end(JSON.stringify({ ok: true }));
           } catch (err) {
+            if (held) { this.logger.error({ err, name }, "Held start failed"); return; }
             res.writeHead(500);
             res.end(JSON.stringify({ error: `Start failed: ${(err as Error).message}` }));
           }
@@ -18979,14 +18968,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const name = decodeURIComponent(req.url.slice("/restart/".length));
         this.logger.info({ name }, "Instance restart requested via HTTP");
         (async () => {
+          let held = false;
           try {
-            await this.restartSingleInstance(name, { explicit: true });
+            await withSpawnHoldReply(async message => {
+              held = true; res.writeHead(202, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ held: true, message, instance: name }));
+            }, () => this.restartSingleInstance(name, { explicit: true }));
             this.logger.info({ name }, "Instance restarted");
             this.emitSseEvent("status", this.getUiStatus());
+            if (held) return;
             res.writeHead(200);
             res.end(JSON.stringify({ restarted: name }));
           } catch (err) {
             this.logger.error({ err, name }, "Instance restart failed");
+            if (held) return;
             const status = (err as Error).message.includes("not found") ? 404 : 500;
             res.writeHead(status);
             res.end(JSON.stringify({ error: `Restart failed: ${(err as Error).message}` }));

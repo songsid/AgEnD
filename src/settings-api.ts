@@ -1,3 +1,4 @@
+import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
 import { settingsRequestExecution, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
@@ -636,11 +637,13 @@ export function handleSettingsRequest(
     if (!name || !/^[^\\/\x00]+$/.test(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
     if (!cfg?.instances[name] && !ctx.isClassicInstance?.(name)) { json(res, 404, { error: "instance not found" }); return true; }
     const action = actionMatch[2];
-    const operation = action === "pause"
-      ? ctx.lifecycle.pause(name)
-      : ctx.explicitWake ? ctx.explicitWake(name, 30_000) : ctx.lifecycle.wake(name, 30_000);
-    operation.then(() => json(res, 200, { ok: true, name, status: action === "pause" ? "paused" : "running" }))
-      .catch(err => json(res, 409, { error: (err as Error).message }));
+    let held = false;
+    const operation = withSpawnHoldReply(async message => { held = true; json(res, 202, { ok: true, held: true, message, name }); },
+      () => action === "pause"
+        ? ctx.lifecycle.pause(name)
+        : ctx.explicitWake ? ctx.explicitWake(name, 30_000) : ctx.lifecycle.wake(name, 30_000));
+    operation.then(() => { if (!held) json(res, 200, { ok: true, name, status: action === "pause" ? "paused" : "running" }); })
+      .catch(err => { if (!held) json(res, 409, { error: (err as Error).message }); else ctx.logger.error({ err, name }, "Held wake failed"); });
     return true;
   }
 

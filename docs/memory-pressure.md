@@ -50,7 +50,7 @@ swap hold that was not triggered; missing PSI cannot inherit such a hold either.
 On Linux, swap release hysteresis applies only when PSI is unavailable and RAM
 is below 2×the low threshold; above that RAM boundary, cold swap cannot pin
 elevated. Inside it, swap must exceed 10% free to clear that clause. PSI has no
-additional release threshold; the existing ramp and notice damping still apply.
+additional release threshold; the existing ramp still applies.
 Configured stagger and storm limits remain additional restrictions. Active
 CLIs are never killed or cancelled by this policy.
 
@@ -58,8 +58,8 @@ CLIs are never killed or cancelled by this policy.
 level, RAM/swap values, sample timestamp, recovery flag, bounded sample count,
 and change per minute in RAM available/swap free over at most 12 samples.
 Linux snapshots also identify the trigger and include the measured PSI
-averages. Notices name PSI some/full with its window, low RAM, low RAM plus
-swap, or the recovery ramp; swap-free remains diagnostic.
+averages. Logs identify PSI some/full, low RAM, low RAM plus swap, or the
+recovery ramp; swap-free remains diagnostic.
 Trend needs at least one minute; missing swap stays null. Health reads use the
 cached snapshot and cannot create trend samples. Elevated or critical pressure
 marks health degraded, including a verified macOS kernel alarm. Unknown macOS
@@ -69,19 +69,22 @@ independent of health.
 On hosts with actionable pressure, structured warnings include the snapshot/trend on transitions
 and at most every 10 minutes in an unchanged state. Full samples are debug logs.
 
-Localized General notices follow the level, not a timer (#1685):
-- **A rise posts once.** A notice is sent once when the level rises to one that goes to chat, above anything already notified since memory was last normal. It is never repeated while the level holds, however the measurements move.
-- **Recovery.** One "back to normal" line is sent when the level returns to normal, but only if that spell posted a notice.
-- **Flapping is damped.** A level notified less than an hour ago, measured on a monotonic clock, is not announced again, even after a recovery. A first rise to critical within that hour still is.
-- **Which levels go to chat.** On Linux and other non-macOS hosts, elevated and critical do. On macOS only critical (kernel `4`) does. Kernel `2` is routine there, so it is logged, slows admission, degrades health and appears on the dashboard's Fleet page (the status frame's `host_memory`), but sends no chat notice.
-- **No adapter yet, or a failed dispatch.** Nothing counts as notified, so the notice goes out on a later sample.
+Host memory pressure never posts a chat broadcast on any platform or level,
+including recovery. The Fleet dashboard indicator (`host_memory` in the status
+frame), `/health` and logs show the pressure. It does not change admission.
 
-The existing notifier counts dispatch, rather than platform delivery.
+When a user action actually reaches a critical admission hold, its original
+chat reply says that host memory is low and it will continue after recovery.
+This is once per pending action, not a General notice or a repeated retry alert.
+Typed commands, slash commands and model/effort or backend selections use their
+own reply/progress message. Background starts and recoveries have no chat reply.
+The web's start/restart/wake request returns HTTP 202 with `held: true` and a
+`message`; the queued operation continues and the usual status updates report
+its eventual state. The UI displays that reason instead of claiming completion.
 
 Sampling starts before the first CLI and stops before asynchronous fleet shutdown.
 On non-macOS hosts at cold boot, a memory hold can precede adapter/health-listener
-startup: the warning is visible in logs first; channel notices become available once adapters
-start. Startup can remain waiting until the host recovers. This is host pressure
+startup: the warning is visible in logs, without a channel broadcast. Startup can remain waiting until the host recovers. This is host pressure
 protection, not a per-cgroup memory limit or an OOM predictor. It does not change
 delivery, auth, systemd restart policy, or core dump handling. Rollback is a code
 revert; there is no persisted-state or configuration migration.
@@ -101,15 +104,14 @@ A verified warning slows new starts; critical holds them with the existing
 30-second slow ramp applies (including a full ramp from the actual resumed
 admission); its duration uses a monotonic clock. The ramp is temporal, with no
 RAM/swap hysteresis on macOS. Configured, storm and workspace limits still apply.
-Already running agents are unaffected. A critical notice identifies the kernel alarm and
-labels the byte figures as diagnostics. A warning (`2`) sends no chat notice (#1685).
+Already running agents are unaffected. Logs identify the kernel alarm and keep
+byte figures diagnostic. No kernel alarm sends a chat broadcast.
 
 An unreadable, missing or noncanonical alarm is unknown: admission returns to
 configured limits, any previous pressure hold/ramp clears, and no pressure
 notice or warning is sent. Once per fleet sampler start/stop lifecycle, an info
 log records the unknown raw pressure output (bounded to 1024 UTF-16 units, or
-null when unreadable). Repeated unknown samples do not spend the notice
-cooldown. There is no free-% fallback; that would need separate calibration
+null when unreadable). Repeated unknown samples do not repeat that diagnostic. There is no free-% fallback; that would need separate calibration
 from a real Mac. Linux's separate PSI/RAM policy is documented above; it cannot affect the
 Darwin kernel-only policy.
 
