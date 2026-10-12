@@ -199,6 +199,14 @@ describe("#1690: the raw_paste route carries our switch and reports it back", ()
     expect([during, broadcast]).toEqual([[], [{ type: "runtime_switch_result", id: "sw-2", outcome: "not_sent" }]]);
   });
 
+  it("cancelled while the CLI was being woken: reported 'not sent' at once, nothing answered", async () => {
+    const { r, broadcast, during } = routed(true);
+    r.d.wake = async () => { r.d.deliveryEpoch++; };   // a user cancel lands during the wake
+    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/model opus", runtime_switch: { id: "sw-3", kind: "model", requested: "opus" } });
+    await r.d.pasteLock;
+    expect([during, broadcast]).toEqual([[], [{ type: "runtime_switch_result", id: "sw-3", outcome: "not_sent" }]]);
+  });
+
   it("an ordinary raw paste (no switch spec) answers nothing and reports nothing", async () => {
     const { r, broadcast, during } = routed(true);
     r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact" });
@@ -307,6 +315,14 @@ describe("#1690: applyModel checks the name, then reports what the switch came t
     try {
       const reply = await f.fm.applyModel("alpha", "opus");
       expect(reply).toMatch(/not switched — Claude would switch to “Haiku 5\.5”, not `opus`, so AgEnD answered No/);
+      expect(f.savedModel()).toBe("sonnet");
+    } finally { f.cleanup(); }
+  });
+
+  it("the daemon could not send it (a cancel, a lost pane) → 'not sent, nothing changed'; not saved", async () => {
+    const f = fleet({ outcome: "not_sent" });
+    try {
+      expect(await f.fm.applyModel("alpha", "opus")).toMatch(/`\/model opus` was not sent .* Nothing changed/);
       expect(f.savedModel()).toBe("sonnet");
     } finally { f.cleanup(); }
   });
