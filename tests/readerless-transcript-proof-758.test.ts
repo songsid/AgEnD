@@ -26,7 +26,7 @@ import { GrokBackend } from "../src/backend/grok.js";
 /** Every transcript look goes through the scan; the hook sees each one and may act while it is in flight. */
 // `byDelivery` counts looks per delivery id: a wait an earlier test left running (its look still in flight when the test
 // ended) can outlive it, so what a test asserts about its own delivery's looks is never the global count.
-const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<string, number>(), slowRead: false }));
+const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<unknown, number>(), slowRead: false }));
 vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/delivery-reconciliation.js")>();
   return {

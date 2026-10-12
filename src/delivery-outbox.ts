@@ -251,12 +251,22 @@ export interface DeliveryReconciliationCandidate extends OutboxDelivery {
   };
 }
 
-/** The exact statement `needsAttention` runs; exported so the plan test checks this text and no copy of it. */
+/**
+ * The exact statement `needsAttention` runs; exported so the plan test checks this text and no copy of it. A silent
+ * schedule's raw paste is never an item (#1647): nobody can act on it, the next run goes ahead anyway, and the fleet's
+ * notice to the leader (with the cause) is its whole report. Every human-originated row stays.
+ */
 export const NEEDS_ATTENTION_SQL = `
   SELECT delivery_id, state, source_instance, target_instance, kind, finished_at, last_error
   FROM deliveries INDEXED BY idx_delivery_attention
   WHERE state IN ('uncertain','failed') AND acknowledged_at IS NULL AND finished_at >= ?
+    AND NOT (kind = 'raw_paste' AND source_key LIKE 'schedule:%')
   ORDER BY finished_at DESC LIMIT ?`;
+
+/** A silent schedule's raw paste (fleet-manager admits it as `raw_paste` under a `schedule:` source key). */
+export function isSilentScheduleDelivery(row: { kind: string; sourceKey: string | null }): boolean {
+  return row.kind === "raw_paste" && (row.sourceKey ?? "").startsWith("schedule:");
+}
 
 export interface NeedsAttentionDelivery {
   deliveryId: string;
@@ -329,7 +339,9 @@ function safeErrorSummary(error: string | null, state?: OutboxState): string | n
   const normalized = error.toLowerCase();
   if (normalized.includes("ttl expired")) return t("delivery.error_expired");
   if (normalized.includes("attempt limit")) return t("delivery.error_attempts");
-  if (normalized.includes("reconcil") || normalized.includes("uncertain") || normalized.includes("restart") || normalized.includes("unverified") || normalized.includes("unverifiable")) {
+  // `<phase>-proof:<proof>` is what a pane or transcript submission proof could not establish (#1647).
+  if (normalized.includes("reconcil") || normalized.includes("uncertain") || normalized.includes("restart") || normalized.includes("unverified") || normalized.includes("unverifiable")
+    || /-proof:/.test(normalized)) {
     // Retry guidance comes from the recorded outcome, not a historical diagnostic.
     if (state && safeToRetry(state)) return t("delivery.error_recorded");
     return t("delivery.error_unconfirmed");

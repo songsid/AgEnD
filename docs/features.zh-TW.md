@@ -68,6 +68,10 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 不需要任何設定。
 
+## 版本更新後的「新功能」通知（#1633）
+
+升級後，每個既有的 instance 會在收到下一則訊息前收到一則簡短通知——不會在 turn 進行中插入，也不會發給沒人傳訊息的 instance。通知列出與 agent 相關的變更與確切參數名稱，並提醒重新載入看起來比目前版本還舊的工具說明。每一項每個 instance 只會收到一次；紀錄在 daemon 重啟後仍保留。新 instance 一開始就是最新的工具，不會收到通知。沒有 agent 相關變更的版本不會發送任何通知。
+
 ## Instance 狀態圖示 (Instance status indicators)
 
 `agend ls`（欄位為 Name、Backend、Status、Team、Src、Ctx、Mem、Activity）和聊天裡的 `/status` 指令，每個 instance 都只顯示一種狀態。這個狀態由 daemon 的執行狀態（idle / working / stuck / paused）和生命週期（running / paused / stopped / crashed）合併而成：
@@ -1087,3 +1091,11 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 - **聊天的指令與快速動作**（#1269）：打 `/` 即可透過相同的處理程式與指令表，執行 instance 自己 topic 的指令。超過 4,000 字元的貼上會改成文字檔附加，內容變長時聊天會停在最新訊息。
 
 詳見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
+
+## 網頁儀表板的 instance 身份識別（#1630）
+
+側欄、聊天標題和「需要你處理」清單都會顯示每個 instance 是誰。代表每個 instance 的圖示依序為：在 **View** 上傳的圖片 → 它自己的 bot 頭像（只有擁有專屬 bot 時才用；共用 bot 的 instance 略過這一步）→ persona emoji → 顯示名稱的第一個字。在 Discord 伺服器裡有顏色的 bot，會以該顏色作為圖片外框。狀態圓點在圖片上，除了顏色，也會把狀態（閒置、工作中、似乎卡住、已暫停、已停止、已當掉、等你處理）讀給螢幕閱讀器。聊天標題和「需要你處理」清單同樣使用顯示名稱。在側欄，兩個 instance 顯示名稱相同時，instance 名稱會顯示在名稱下方。
+
+bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用 bot 自己的 token 取得，存在 `~/.agend/cache/`（每天最多更新一次；更新失敗時保留上一份），只提供給已登入的 session（包括臨時公開連結，僅限讀取）。頁面不會從 Discord 或 Telegram 載入圖片。網頁聊天中的 Discord 伺服器表情也透過同一條路徑以圖片呈現。Settings 的狀態表情編輯器同樣使用這條快取路徑；面板的內容安全政策不再允許任何遠端圖片來源。在 Settings 的編輯器中，不在 fleet bot 所在伺服器的表情會以 `:名稱:` 顯示。
+
+在 View 的**編輯個人資料**清除顯示名稱，現在會移除覆寫，再次顯示 agent 用 `set_display_name` 設定的名稱（若兩者都沒有則顯示 instance 名稱）。這次更新前清除過的顯示名稱也會恢復。
