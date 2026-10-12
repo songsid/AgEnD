@@ -200,7 +200,8 @@ describe("phones and assistive tech (segment 3)", () => {
   it("the sidebar's rows are real links, so the keyboard reaches and chooses them (no role=button on a div)", () => {
     // alpha.2 (N1): the rows are instance-nav.js's, on every page; a row links to the view the page is in.
     const NAV = readFileSync(join(process.cwd(), "src", "ui", "shared", "instance-nav.js"), "utf8");
-    expect(NAV).toMatch(/<li key=\$\{name\}><a class=\$\{`inst v-inst\$\{on \? " active" : ""\}`\} href=\$\{rowPath\(name\)\}/);
+    // (#1664: the row's <li> carries a class for the star beside the link.)
+    expect(NAV).toMatch(/<li key=\$\{name\}(?: class="v-li")?><a class=\$\{`inst v-inst\$\{on \? " active" : ""\}`\} href=\$\{rowPath\(name\)\}/);
     for (const src of [APP_SHELL, NAV]) expect(src).not.toMatch(/role="button"|data-act=/);
   });
 });
