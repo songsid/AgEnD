@@ -84,6 +84,16 @@ async function allowHeld(doc: any) {
 // An agent reply attaching an .html file (#1306 Q4): its HTML is read from /ui/file/<id> on the first click.
 const ID1 = "1".repeat(32);
 const withFile = (id: number, fileId: string, name: string) => ({ ...agent(id, "Here it is."), attachments: [{ id: fileId, kind: "document", name, size: 8400, mime: "application/octet-stream" }] });
+const ID2 = "2".repeat(32);
+/** /ui/file/<id> answers files[id], each held until release(id). */
+function heldFiles(files: Record<string, string>) {
+  const held = new Map<string, () => void>();
+  globalThis.fetch = vi.fn((url: string) => {
+    const id = /\/ui\/file\/([0-9a-f]{32})$/.exec(url)![1];
+    return new Promise(r => held.set(id, () => r({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(files[id]).buffer })));
+  }) as any;
+  return { release: async (id: string) => { held.get(id)!(); held.delete(id); await settle(); await settle(); } };
+}
 /** /ui/file answers `body`, held until release(). */
 function heldFile(body: string) {
   const held: Array<() => void> = [];
@@ -269,6 +279,72 @@ describe("review r1: a waiting click is used once, by its own Allow, for what it
     answering(true);
     await click(doc.querySelector(".pv-panel-allow")); await settle();
     expect(panelState(doc)).toEqual({ running: false, live: 0, allow: false, preview: "enabled" });
+  });
+});
+
+describe("review r2", () => {
+  it("A's Allow is waiting; another tab allows and then disallows: the click is cancelled — the answer allows, nothing runs", async () => {
+    const { doc, pg } = await chat([agent(1, FENCE(PAGE(1)))], {});
+    await openIn(doc);
+    const answer = await allowHeld(doc);
+    pg.storage.set("agend_html_preview", "on"); PV.onStorage({ key: "agend_html_preview" }); await settle();
+    pg.storage.delete("agend_html_preview"); PV.onStorage({ key: "agend_html_preview" }); await settle();
+    await answer(true);
+    expect([pg.storage.get("agend_html_preview"), panelState(doc)]).toEqual(["on", { running: false, live: 0, allow: false, preview: "enabled" }]);
+  });
+
+  it("two files clicked in turn, both still reading: A answers first — dropped; B answers — shown and running", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1), [ID2]: PAGE(2, "Other") });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), withFile(2, ID2, "b.html")]);
+    await openIn(doc, 0);
+    await openIn(doc, 1);
+    await f.release(ID1);
+    expect([pp.panelStore.get().open, PV.liveCount()], "A's late answer opens nothing").toEqual([null, 0]);
+    await f.release(ID2);
+    expect([pp.panelStore.get().open?.key, PV.running(pp.frameKey(`b-2:a${ID2}`)), PV.liveCount()]).toEqual([`b-2:a${ID2}`, true, 1]);
+  });
+
+  it("control: the same two, B answers first — B shown and running; A's later answer leaves it", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1), [ID2]: PAGE(2, "Other") });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), withFile(2, ID2, "b.html")]);
+    await openIn(doc, 0);
+    await openIn(doc, 1);
+    await f.release(ID2);
+    await f.release(ID1);
+    expect([pp.panelStore.get().open?.key, PV.running(pp.frameKey(`b-2:a${ID2}`)), PV.liveCount()]).toEqual([`b-2:a${ID2}`, true, 1]);
+  });
+
+  it("A's file is reading when B's Preview in a card is clicked (its file reading too): A answers first — no panel; B runs in its card", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1), [ID2]: PAGE(2, "Other") });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), withFile(2, ID2, "b.html")]);
+    await openIn(doc, 0);
+    await click(cards(doc)[1].querySelector(".pv-run"));
+    await f.release(ID1);
+    expect([pp.panelStore.get().open, PV.liveCount()]).toEqual([null, 0]);
+    await f.release(ID2);
+    expect([PV.running(`b-2:a${ID2}`), pp.panelStore.get().open, PV.liveCount()]).toEqual([true, null, 1]);
+  });
+
+  it("A's file is reading when the panel (showing B) is closed: A's answer opens nothing — closing is newer than the click", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1) });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);
+    await openIn(doc, 1);
+    await openIn(doc, 0);
+    await click(doc.querySelectorAll(".pv-panel-close")[1]);
+    await f.release(ID1);
+    expect([pp.panelStore.get().open, PV.liveCount()]).toEqual([null, 0]);
+  });
+
+  it("A's file is reading when the panel's own Preview runs what it shows (B): A answers — B keeps running", async () => {
+    const f = heldFiles({ [ID1]: PAGE(1) });
+    const { doc } = await chat([withFile(1, ID1, "a.html"), agent(2, FENCE(PAGE(2, "Other")))]);
+    await openIn(doc, 1);
+    await click(doc.querySelector(".pv-panel-stop"));
+    await openIn(doc, 0);
+    await click(doc.querySelector(".pv-panel-run"));
+    expect(PV.running(pp.frameKey("b-2:f0"))).toBe(true);
+    await f.release(ID1);
+    expect([pp.panelStore.get().open.key, PV.running(pp.frameKey("b-2:f0")), PV.liveCount()]).toEqual(["b-2:f0", true, 1]);
   });
 });
 

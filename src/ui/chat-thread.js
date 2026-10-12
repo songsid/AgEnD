@@ -34,7 +34,7 @@ export const msgKey = (x) => `${x.boot}-${x.id}`;
 /**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
  * setPreviewOptIn(on), copyText(text) → Promise<boolean>, download(code), panel? }. panel (#1481): { shown() → the card
- * key the side panel shows, or null; open(spec, { run }) } — without it a card has no "Open in panel".
+ * key the side panel shows, or null; open(spec, { run }); version(); claim() } — without it a card has no "Open in panel".
  */
 export function createThread(list, scroller, opts) {
   const nodes = new Map();          // key → { html, node }
@@ -318,16 +318,18 @@ export function createThread(list, scroller, opts) {
     };
     const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
     // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
-    run.onclick = () => { if (P().availability().ok) withCode((c) => P().start(key, holder, c, ui)); };
+    // A Preview click is newer than any Open in panel still reading (#1704): it claims the panel's turn too.
+    run.onclick = () => { if (!P().availability().ok) return; if (panel) panel.claim(); withCode((c) => P().start(key, holder, c, ui)); };
     stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
     // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
     // starts there), an idle one starts there. Whether it can run is the panel's to say: a device that has not allowed
     // previews is offered Allow first (and allowing runs it); where previews are off, nothing runs.
-    // An attachment's HTML is read first: if the panel changed (another block, closed) or any preview started while it
-    // was read, a newer click has spoken and this one is dropped — a late read never undoes it.
+    // An attachment's HTML is read first. The click claims the panel at once, so a newer click (even one still reading)
+    // wins: if the panel changed (another click, block, close) or any preview started meanwhile, this one is dropped —
+    // a late read never undoes a newer click.
     if (toPanel) toPanel.onclick = () => {
       if (P().running(key)) P().stop(key, "stopped", "");
-      const at = panel.version(), started = P().startCount();
+      const at = panel.claim(), started = P().startCount();
       withCode((c) => {
         if (panel.version() !== at || P().startCount() !== started) { refresh(); return; }
         panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: true });

@@ -31,8 +31,11 @@ let runs = 0, version = 0;
 const subs = new Set();
 function set(next) { state = next; version++; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
 export const panelStore = { get: () => state, subscribe(fn) { subs.add(fn); return () => { subs.delete(fn); }; } };
-/** Moves on every open and close: what a card's click compares when its HTML arrives late (an attachment read). */
+/** Moves on every open and close, and on every claim: what a card's click compares when its HTML arrives late. */
 export const panelVersion = () => version;
+/** A click that will show something in the panel (an attachment's HTML still to read): from now on it is the newest —
+ *  any earlier click still reading is dropped when its answer comes. Returns the version the click owns. */
+export function claimPanel() { return ++version; }
 
 /** The frame's key in preview.js: its own, so the card that opened it keeps its own state. */
 export const frameKey = (key) => `panel:${key}`;
@@ -114,7 +117,7 @@ const timeOf = (ts) => (ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digi
  * props: name (the instance), msgs() → its messages, subscribe(fn) → unsubscribe (the chat store's), keyOf(x),
  * reveal(msgKey) (the thread shows that message), download(code).
  */
-/** allow(): this device's opt-in through the chat's one path (setPreviewOptIn: the confirm, then setOptIn) → the choice. */
+/** allow(commit): this device's opt-in through the chat's one path (setPreviewOptIn: the confirm, then commit(setOptIn)) → the choice. */
 export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, download, allow }) {
   const [st, setSt] = useState(state);
   const [view, setView] = useState("preview");
@@ -123,7 +126,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [newerNote, setNewerNote] = useState("");
   const reading = useRef(null);   // the newer version whose file is being read (one at a time)
   const pending = useRef(0);      // #1704: the card's click, waiting for this device's Allow (the st.run it came with)
-  const ownAllow = useRef(0);     // the click this panel's own Allow is answering (its change of choice cancels nothing)
+  const ownAllow = useRef(0);     // while this panel's own Allow commits its choice: the click it answers (not cancelled by it)
   const holder = useRef(null), divider = useRef(null), panel = useRef(null);
   const open = st.open && st.open.instance === name ? st.open : null;
 
@@ -139,7 +142,6 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" ? s : "idle", reason: reason || "" }) };
   const start = () => {
     if (!open || !holder.current) return;
-    pending.current = 0;
     setView("preview");
     P().start(frameKey(open.key), holder.current, open.code, ui, { fill: true });
   };
@@ -229,13 +231,12 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   // (e.g. switched off in another tab) is still said first.
   const askOptIn = !going && !a.ok && a.why === "optin" && typeof allow === "function";
   const note = run.reason || (going ? (run.state === "starting" ? t("chat.pvStarting") : "") : a.ok ? t("chat.pvPanelIdle") : askOptIn ? t("chat.pvWhyOptinPanel") : a.reason);
-  // Allowed here: the click that opened the panel runs now — if it is still waiting (not run, not cancelled) and the
-  // panel still shows what it opened (the confirm is a wait: the panel may have moved on meanwhile).
+  // Allowed here: the click that opened the panel runs now — if it is still waiting (no other change of the choice
+  // cancelled it, even while the confirm was open: only the change this Allow commits is its own) and the panel still
+  // shows what it opened (the confirm is a wait: the panel may have moved on meanwhile).
   const allowHere = async () => {
     const want = pending.current;
-    ownAllow.current = want;
-    let yes = false;
-    try { yes = await allow(); } finally { ownAllow.current = 0; }
+    const yes = await allow((apply) => { ownAllow.current = want; try { apply(); } finally { ownAllow.current = 0; } });
     if (!yes) return;
     setRun({ state: "idle", reason: "" });
     if (want && pending.current === want && panelStore.get().run === want) start();
