@@ -215,7 +215,7 @@ describe("the chat's dictionary adapter (panel-chat boot), for real", () => {
   it("a known one: in the page's language", () => {
     i18n.setLang("zh-TW");
     PV.init({ dashboardOrigin: ORIGIN, previewOrigin: "", previewBoot: "", previewReason: "Previews are not available on this fleet.", previewReasonCode: "publicLink" });
-    expect(PV.availability().reason).toBe("公開連結不提供預覽。要預覽，請在執行 AgEnD 的那台機器上開啟儀表板。");
+    expect(PV.availability().reason).toBe("公開連結的預覽已關閉（web.preview_on_public_link: false）。要預覽，請在執行 AgEnD 的那台機器上開啟儀表板。");
   });
 });
 

@@ -31,6 +31,9 @@
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "", detail: "" };
   // #1723: the public link's preview tunnel, asked while it starts (every 2 s, for at most 5 minutes).
   var POLL_MS = 2000, POLL_MAX = 150;
+  // Why it failed, in English when the app's dictionary has no word for it (chat-strings.js pvFail_*).
+  var FAIL_EN = { exited: "its address closed unexpectedly", "spawn-failed": "cloudflared could not start for it", "no-address": "no address was given for it",
+    unreachable: "its address could not be reached", "lease-held": "an earlier preview tunnel is still being cleaned up", "gateway-failed": "its local listener could not start" };
   var polling = null;
   // #1554: the page's words. `say(key, english, …values)` asks the app's dictionary (init's opts.text) and keeps the
   // English here when it has none — so this file still works, and reads the same, without the app.
@@ -101,7 +104,7 @@
           return;
         }
         if (j && (j.code === "publicLinkPreviewFailed" || j.code === "publicLink" || j.code === "fleetOff")) {
-          cfg.reasonCode = j.code; cfg.detail = typeof j.detail === "string" ? j.detail : ""; polling = null;
+          cfg.reasonCode = j.code; cfg.reason = ""; cfg.detail = typeof j.detail === "string" ? j.detail : ""; polling = null;
           notify();
           return;
         }
@@ -194,8 +197,10 @@
     if (!cfg.previewOrigin || !cfg.boot) {
       // The server's reason, in the page's language when the server named it (a code), else as the server wrote it.
       // #1723: a failed public-link preview names why ({0} is the reason, in the page's words).
-      var arg = cfg.reasonCode === "publicLinkPreviewFailed" ? say("pvFail_" + (cfg.detail || "unknown"), "an unexpected error") : cfg.dashboardOrigin;
-      var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, cfg.reason || "Previews are not available here.", arg) : "";
+      var arg = cfg.reasonCode === "publicLinkPreviewFailed" ? say("pvFail_" + (cfg.detail || "unknown"), Object.prototype.hasOwnProperty.call(FAIL_EN, cfg.detail) ? FAIL_EN[cfg.detail] : "an unexpected error") : cfg.dashboardOrigin;
+      var english = cfg.reasonCode === "publicLinkPreviewFailed" ? "Previews are unavailable on this public link: {0}. The link itself keeps working."
+        : cfg.reason || "Previews are not available here.";
+      var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, english, arg) : "";
       return { ok: false, why: "server", reason: server || cfg.reason || say("pvWhyServer", "Previews are not available here.") };
     }
     var at = root.location && root.location.origin;
