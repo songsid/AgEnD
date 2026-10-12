@@ -22,6 +22,7 @@ import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { savePref } from "/assets/app-prefs.js";
 import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
@@ -60,6 +61,8 @@ function announce(text) {
 export async function setPreviewOptIn(on) {
   if (on && !P().optedIn() && !(await confirmDialog({ message: t("chat.pvConfirm"), confirmLabel: t("chat.pvAllowButton") }))) on = false;
   P().setOptIn(on);
+  // #1665: kept on the host for every device (only a signed-in page writes it; never the public link).
+  savePref("preview.optIn", P().optedIn());
   return P().optedIn();
 }
 

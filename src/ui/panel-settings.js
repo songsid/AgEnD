@@ -258,9 +258,10 @@ export function SettingsPanel({ route, navKey }) {
 }
 
 /**
- * #1604: what this browser chooses for itself — moved here from the sidebar footer, each with the storage it always had:
- * theme (theme.js), language (app-i18n.js), HTML previews on this device (preview.js, through the app's confirm), and
- * the chat tour (replayed on the chat it points at).
+ * #1604, #1665: Preferences. Synced across the person's devices (kept on the host, app-prefs.js): theme (theme.js),
+ * language (app-i18n.js) and HTML previews (preview.js, through the app's confirm). On the public link they are
+ * read-only: a change there stays in that browser, and it says so. This device only: the chat tour (replayed on the
+ * chat it points at), and the layout choices named there (their controls are where they always were).
  */
 export function DeviceSection() {
   const P = () => globalThis.AgendPreview;
@@ -291,11 +292,15 @@ export function DeviceSection() {
     };
     setTimeout(go, 0);
   };
-  return html`<section class="card s-device"><h3>${tn("sec_device")}</h3>
-    <p class="sub">${tn("deviceLead")}</p>
+  const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
+  return html`<section class="card s-device s-synced"><h3>${tn("syncedTitle")}</h3>
+    <p class="sub">${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}</p>
     <${DevicePrefs} labels=${true} />
     ${P() ? html`<label class="check"><input type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
       <span>${t("chat.previews")}</span></label>` : null}
+  </section>
+  <section class="card s-device s-local"><h3>${tn("deviceTitle")}</h3>
+    <p class="sub">${tn("deviceLead")}</p>
     <div class="s-device-row"><button type="button" id="tourBtn" class="btn" title=${t("chat.tourBtnTitle")} onClick=${replay}><${Icon} name="info" size=${16} />${t("chat.tour")}</button></div>
   </section>`;
 }

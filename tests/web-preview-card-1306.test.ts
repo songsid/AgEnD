@@ -675,7 +675,7 @@ describe("the chat's renderer and a live preview (§6.2, #1408 §4)", () => {
 
     expect([PV.running(keyOf(1)), frame.parentNode]).toEqual([false, null]);
     expect(node.querySelector(".pv-run").hidden, "Preview is not offered while the device is opted out").toBe(true);
-    expect(node.querySelector(".pv-note").textContent).toMatch(/off on this device/);
+    expect(node.querySelector(".pv-note").textContent).toMatch(/HTML previews are off\./);
   });
 
   it("a card that left the page is not kept alive by the card registry (#1332 review)", async () => {

@@ -64,7 +64,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
-- **First time here?** The first time `/ui` opens on a device, a short tour points out the instance list, files, Stop and the *needs you* badge. **Settings → This device → Tour** shows it again.
+- **First time here?** The first time `/ui` opens on a device, a short tour points out the instance list, files, Stop and the *needs you* badge. **Settings → Preferences → Tour** shows it again.
 
 ### The layout
 - The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
@@ -73,10 +73,11 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 - The view follows new messages only while you are at the bottom. Scrolled up to read, it stays where you are, and **↓ N new** takes you down.
 - The sidebar button at its top hides it (☰ brings it back); the choice is remembered. On a phone the sidebar is a drawer: ☰ opens it — or swipe right across the conversation — and choosing something, tapping outside it, swiping it left or Esc closes it. (A swipe that starts at the very left edge stays the browser's back gesture, and swipes on code, tables, the terminal or the message box are left to them.) A phone also has tabs along the bottom (Chat, Fleet, View, Settings); they make room while the keyboard is open.
 - The header shows the instance's name and state, the **Chat / View / Details** switch, **Text size** and **Usage** (the same two, in the same order, on Chat, View, Details and Fleet). **Text size** goes S → M → L and is one setting for this browser: chosen on any page, it is the size on every page and after a reload. Its **⋯** menu holds **Instance details** (the Details page) and the instance's own actions, and only the ones that fit: **Start** for a stopped instance; **Restart** and **Stop instance** for a running one; **Delete** last, behind typing its name.
-- **Theme** and **Language** (**Settings → This device**; on `/view` without signing in, the ☀ button beside **Sign in**): *System* follows your device's light or dark setting; *Light* or *Dark* fixes it for this browser. The language applies to every panel.
+- **Theme** and **Language** (**Settings → Preferences**; on `/view` without signing in, the ☀ button beside **Sign in**, for that browser only): *System* follows each device's light or dark setting; *Light* or *Dark* fixes it. The language applies to every panel.
 - **Each instance in the sidebar** is called by its display name, with its instance name on hover (and under the display name when two instances share one). Its picture is, in this order: the one uploaded in View (**Edit profile**), its own bot's avatar when it has a bot of its own (instances on the fleet's shared bot skip this), its persona emoji, or its first letter. A bot with a colour in its Discord server gets that colour as a ring. The dot on the picture is its state — idle, working, looks stuck, paused (hollow), stopped, crashed or needs you — and says so to a screen reader too. Pictures and server emoji are fetched by AgEnD on this computer and served by the dashboard itself; the page never loads Discord or Telegram. The filter finds an instance by either name.
   - A display name set in View (**Edit profile**) wins over one the agent sets itself (`set_display_name`). Clearing it in View shows the agent's own name again (or the instance name).
-- The bottom of the sidebar is one row: **Settings** and **Session**. **Settings → This device** holds what this browser chooses for itself: theme, language, HTML previews and the tour.
+- The bottom of the sidebar is one row: **Settings** and **Session**. **Settings → Preferences** holds theme, language, HTML previews and the tour.
+- **Preferences follow you across devices (#1665).** Theme, language, the sidebar's order, folded groups and filter, and HTML previews are saved on the AgEnD host, so your phone and your desktop match. A change shows up on your other devices at once, or the next time they load. Each browser keeps a copy and the page arrives with your theme already applied, so nothing flashes. The first time a device loads after the update, it uploads its own choices for anything not saved yet; after that, what is saved on the host wins. The tour, text size, view fit, the sidebar shown or hidden, panel widths, code wrap and desktop notifications stay on each device. A public link can read your preferences but cannot change them.
 - **On a phone** the on-screen keyboard resizes the page, so the composer stays above it, and the layout keeps clear of the notch and the home bar.
 
 ### Keyboard and screen readers
@@ -108,7 +109,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.htm` file, a card under it can run that HTML for you.
 - **Files and blocks work the same.** A file's card sits under the reply's files. Its HTML is read from the fleet only when you click **Preview** or **Open in panel**, and it runs in the same sandboxed frame as a block. The file is never opened on the dashboard's own address. **Download** is the file's own link above the card. A file the fleet no longer has (the agent rewrote it, or the fleet restarted) says so; ask the agent to send it again.
 - **Up to 1 MiB.** A block or a file over 1 MiB (as UTF-8) gets no preview. A file's listed size is checked before anything is read, and its bytes are checked again after. Files are read as UTF-8.
-- **Off on every device until you turn it on.** Use **Allow HTML previews on this device** in **Settings → This device**, or the card's **⋯** menu. It asks once and says what it means. Turning it off stops every running preview.
+- **Off until you turn it on.** Use **Allow HTML previews** in **Settings → Preferences**, or the card's **⋯** menu. It asks once and says what it means. The choice applies on every device where you are signed in (never on the public link). Turning it off stops every running preview.
 - **Click to run, every time.** **Preview** runs it in a frame under the card, with this banner: *"Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab."* **I understand** on the banner hides it until you next sign in. The amber border around the preview always stays. **Stop** closes it. One preview runs at a time.
 - **Download** saves a block's HTML as `reply.html` (a file keeps its own name). It is never opened in the dashboard.
 - **Open in panel** shows the block beside the conversation, with room to use it. On a phone it is a full-screen sheet; **←** goes back to the chat.
@@ -210,7 +211,7 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
     view_access: session   # reading /view needs a signed-in session too
   ```
 - **Signed out, `/view` is View alone:** the sidebar has View and **Sign in**, nothing that needs a session is shown or read, and **Sign in to edit** takes you to the sign-in page and back.
-- **Editing an agent's profile or avatar always needs a session.** The order of the roster is kept in this browser only.
+- **Editing an agent's profile or avatar always needs a session.** The order of the roster is one of your synced preferences (above); an anonymous reader's stays in that browser.
 - Scripts can still write with the `X-Agend-Token` header.
 
 ## `/settings`

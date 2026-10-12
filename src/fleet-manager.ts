@@ -172,6 +172,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
+import { WebPrefsStore } from "./web-prefs.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
@@ -1152,6 +1153,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webChatStore: WebChatDiskStore | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
   readonly webFiles = new WebFileLedger();
+  private webPrefsStore?: WebPrefsStore;
+  /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
+  get webPrefs(): WebPrefsStore { return (this.webPrefsStore ??= new WebPrefsStore(this.dataDir)); }
   /**
    * Read from disk on every access rather than cached at startup: `agend
    * web-token rotate` runs in a separate process, and a cached copy would keep
@@ -19010,6 +19014,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
       // #1519 P7: how many chat connections are configured — 0 is a web-only fleet, which gets the first-run card.
       connections: (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).length,
+      // #1665: the host preferences' revision — a page that has another re-reads /ui/prefs (no values in this frame).
+      prefs_rev: this.webPrefs.rev(),
     };
   }
 }
