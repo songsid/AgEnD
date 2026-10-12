@@ -457,7 +457,7 @@ bot being online alone does not establish which layer lost the command.
 
 ## Credential profiles (multiple subscriptions of one backend)
 
-For Kiro CLI and Codex, `backend_options.<backend>.credential_profile` selects a
+For Kiro CLI, Codex and Claude Code, `backend_options.<backend>.credential_profile` selects a
 named login isolated from the default shared login. Other backends warn that the
 option is ignored. Names must match `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`. Set it under
 an instance or shared defaults:
@@ -539,6 +539,39 @@ Reopening a conversation recorded under another account and separate metering
 have not been verified with a second billing account. Shared history is not a
 guarantee that cross-account resume will succeed.
 
+### Claude Code
+
+```bash
+CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login
+```
+
+A Claude Code profile is its own `CLAUDE_CONFIG_DIR`. The login, the account,
+per-project trust, `settings.json` and every conversation (`projects/`, `sessions/`,
+`history.jsonl`) belong to the profile. Your `CLAUDE.md`, `agents`, `commands`,
+`skills`, `output-styles` and `plugins` are linked back to `~/.claude` (or your own
+`CLAUDE_CONFIG_DIR`), so they stay the same everywhere. A new profile's
+`settings.json` starts as a copy of yours (permissions, hooks, env, which plugins
+are enabled); after that it is the profile's own, so a later change on either
+side, such as `/model`, stays on that side.
+
+On macOS, claude keeps the login in the Keychain, under an item named after the
+profile directory. Two profiles never share or overwrite each other's item, and
+the default login is left alone.
+
+If `update_instance_config` refused a switch, run the command from its reply as
+it is: it carries the exact absolute path AgEnD launches with, and on macOS the
+Keychain item is named after that path string.
+
+An instance with no profile launches exactly as before: AgEnD sets no
+`CLAUDE_CONFIG_DIR` (your own, if you set one, is still honoured) and creates
+nothing. A fleet `ANTHROPIC_API_KEY` is passed only to an instance whose own
+config directory has no claude.ai login, the same rule as before, applied to the
+profile's directory.
+
+**Switching a running Claude Code instance starts a fresh conversation**, with the
+same handover as Kiro: the new profile's `projects/` does not have the old one's
+transcripts.
+
 ### Seeing both quotas
 
 `/usage`, `get_usage` and the dashboard show separate rows for effective
@@ -546,6 +579,9 @@ backend/profile bindings of running or paused instances. Active Kiro `work` and
 `personal` profiles appear as `Kiro (work)` and `Kiro (personal)`; a shared-login
 binding uses the default row. Sources used only by stopped or crashed instances
 are filtered out.
+
+Claude Code profiles do not have rows of their own yet; the Claude row still reads
+the default login.
 
 An active Kiro profile without a readable login retains a signed-out hint.
 Visibility also depends on the provider: Codex rows without OAuth usage

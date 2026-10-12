@@ -2,6 +2,8 @@ import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
+import { getAgendHome } from "../paths.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
@@ -24,9 +26,27 @@ export function claudeProjectKey(cwd: string): string {
   return `${sanitized.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
 }
 
-/** Claude Code's top-level config file, honoring CLAUDE_CONFIG_DIR. */
-function claudeJsonPath(): string {
-  const configDir = process.env.CLAUDE_CONFIG_DIR?.trim();
+/**
+ * #1699: the config dir of a NAMED credential profile — the one string every writer and reader of that profile uses
+ * (claude names its macOS Keychain item after it). Null for no profile.
+ */
+export function claudeProfileConfigDir(backendOptions: Record<string, unknown> | undefined): string | null {
+  let profile: string | null;
+  try { profile = resolveCredentialProfile(backendOptions); } catch { return null; }
+  return profile ? credentialProfileHome(getAgendHome(), "claude-code", profile) : null;
+}
+
+/**
+ * Claude Code's config dir as an instance's CLI sees it: its profile's (#1699), else exactly as before —
+ * `CLAUDE_CONFIG_DIR` from the fleet's own environment, or `~/.claude`.
+ */
+export function claudeConfigDirFor(profileDir: string | null | undefined): string {
+  return profileDir || process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+}
+
+/** Claude Code's top-level config file: `<profile dir>/.claude.json` for a profile, else honoring CLAUDE_CONFIG_DIR. */
+function claudeJsonPath(profileDir?: string | null): string {
+  const configDir = profileDir || process.env.CLAUDE_CONFIG_DIR?.trim();
   return configDir ? join(configDir, ".claude.json") : join(homedir(), ".claude.json");
 }
 
@@ -96,8 +116,8 @@ export function releaseClaudeJsonLock(lockPath: string, token: string): void {
  * unparseable file is likewise left untouched — never clobber the user's whole
  * config over a parse error. Both give up to the getStartupDialogs() fallback.
  */
-function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean): void {
-  const path = claudeJsonPath();
+function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean, profileDir?: string | null): void {
+  const path = claudeJsonPath(profileDir);
   // The parent must exist before both the lock create and the rename — on a
   // fresh machine (no ~/.claude.json yet) an ENOENT here previously made every
   // lock attempt fail, silently degrading to unlocked last-write-wins.
@@ -840,8 +860,17 @@ export class ClaudeCodeBackend implements CliBackend {
     const settingsPath = join(this.instanceDir, "claude-settings.json");
     const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
     const envPrefix = ["CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
+    // #1699: a named credential profile is its own config dir — its login, account, trust and conversations. No profile:
+    // nothing added, nothing created (the command is exactly what it was).
+    const profileDir = claudeProfileConfigDir(config.backendOptions);
+    if (profileDir) {
+      prepareCredentialProfileHome(credentialHomeSpec("claude-code")!, profileDir);
+      envPrefix.push(`CLAUDE_CONFIG_DIR=${shellQuote(profileDir)}`);
+    }
     if (process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
-    if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession()) {
+    // The fleet's API key only where this instance's own config dir has no OAuth login: a key in the environment wins
+    // over the login, so reading another dir here bills the wrong account (#1699).
+    if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {
       envPrefix.push(`ANTHROPIC_API_KEY=${shellQuote(process.env.ANTHROPIC_API_KEY)}`);
     }
     let cmd = `${envPrefix.join(" ")} ${this.binaryPath} --settings ${settingsPath} --mcp-config ${mcpConfigPath}`;
@@ -855,7 +884,7 @@ export class ClaudeCodeBackend implements CliBackend {
     // own project transcript as the source of truth instead of the generic
     // marker alone. This also makes an empty/missing Classic workspace start
     // fresh rather than entering a resume crash loop.
-    if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory)) {
+    if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
       cmd += " --continue";
     }
 
@@ -874,10 +903,10 @@ export class ClaudeCodeBackend implements CliBackend {
     return cmd;
   }
 
-  private hasProjectSession(workingDirectory: string): boolean {
+  private hasProjectSession(workingDirectory: string, profileDir: string | null): boolean {
     const cwd = workingDirectory.trim();
     if (!cwd) return false;
-    const configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+    const configDir = claudeConfigDirFor(profileDir);
     const encodedCwd = claudeProjectKey(cwd);
     try {
       return readdirSync(join(configDir, "projects", encodedCwd), { withFileTypes: true })
@@ -1432,9 +1461,11 @@ export class ClaudeCodeBackend implements CliBackend {
    * signal is projects[<cwd>].hasTrustDialogAccepted in claude.json. Also marks
    * onboarding complete for an already-authenticated account (see below).
    */
-  preTrust(workingDirectory: string): void {
+  preTrust(workingDirectory: string, config?: CliBackendConfig): void {
     const cwd = workingDirectory?.trim();
     if (!cwd) return;
+    // #1699: trust and onboarding are per config dir — a profile's own `.claude.json`, never the shared one.
+    const profileDir = claudeProfileConfigDir(config?.backendOptions);
     const literal = resolve(cwd);
     let canonical = literal;
     try { canonical = realpathSync(literal); } catch { /* not created yet — trust the literal path */ }
@@ -1474,14 +1505,15 @@ export class ClaudeCodeBackend implements CliBackend {
           changed = true;
         }
         return changed;
-      });
+      }, profileDir);
     } catch { /* best effort — startup dialog auto-dismiss remains the fallback */ }
   }
 
   /** Pre-approve ANTHROPIC_API_KEY in claude.json to skip the interactive prompt */
-  private preApproveApiKey(_config: CliBackendConfig): void {
+  private preApproveApiKey(config: CliBackendConfig): void {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return;
+    const profileDir = claudeProfileConfigDir(config.backendOptions);
 
     const fingerprint = apiKey.length > 20 ? apiKey.slice(-20) : apiKey;
     try {
@@ -1494,14 +1526,14 @@ export class ClaudeCodeBackend implements CliBackend {
           rejected: existing?.rejected ?? [],
         };
         return true;
-      });
+      }, profileDir);
     } catch { /* best effort — the startup prompt remains the fallback */ }
   }
 
-  /** Check if user has an active OAuth session in claude.json */
-  private hasOAuthSession(): boolean {
+  /** Check if user has an active OAuth session in claude.json (#1699: the instance's own config dir). */
+  private hasOAuthSession(profileDir: string | null): boolean {
     try {
-      const cfg = JSON.parse(readFileSync(claudeJsonPath(), "utf-8"));
+      const cfg = JSON.parse(readFileSync(claudeJsonPath(profileDir), "utf-8"));
       return !!cfg.oauthAccount?.accountUuid;
     } catch {
       return false;

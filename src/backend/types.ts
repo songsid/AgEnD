@@ -692,7 +692,7 @@ export interface CliBackend {
   forget?(instanceName: string): void;
 
   /** Pre-approve a working directory to skip trust dialogs on startup. */
-  preTrust?(workingDirectory: string): void;
+  preTrust?(workingDirectory: string, config?: CliBackendConfig): void;
 
   /** Resolve working directory (e.g. create symlink to avoid hidden paths). Returns resolved path. */
   resolveWorkingDirectory?(workingDirectory: string, instanceName?: string): string;

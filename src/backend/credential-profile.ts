@@ -24,7 +24,7 @@
  *   the login, a refresh lock, and a runtime socket directory. An entry nobody
  *   has classified stays private, which costs disk and never leaks a session.
  */
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { constants as fsConstants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, statSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { kiroStoreHasLogin } from "./kiro-auth-store.js";
@@ -74,6 +74,12 @@ export interface CredentialHomeSpec {
    */
   share: readonly string[];
   /**
+   * Private entries a new profile starts as a copy of, when the shared home has them and the profile does not yet
+   * (#1699: claude's settings.json — the user's permissions, hooks, env and which plugins are enabled). Copied once;
+   * from then on the profile's own, so `/model` in one profile never reaches another. Each must also be in `isolate`.
+   */
+  seed?: readonly string[];
+  /**
    * `redirect-files` only: the files the profile owns, relative to the home the
    * backend is already using.
    *
@@ -88,11 +94,15 @@ export interface CredentialHomeSpec {
    * A profile nobody has logged into is not an empty session — the CLI stops at
    * an interactive sign-in prompt and waits there, so an agent pointed at one
    * never starts. A backend that cannot answer this omits it, and the switch is
-   * allowed rather than blocked on a check that does not exist.
+   * allowed rather than blocked on a check that does not exist. `null`: the store
+   * is there but cannot be read, so it can say neither (#1699) — the same as no
+   * check, never "signed out".
    */
-  hasLogin?: (storeHome: string) => boolean;
+  hasLogin?: (storeHome: string) => boolean | null;
   /** The subcommand that logs a store in, for telling the user what to run. */
   loginSubcommand: string;
+  /** The CLI binary that subcommand belongs to, when it is not the backend's name (claude-code → `claude`). */
+  binary?: string;
   /**
    * Whether changing profile means the conversation is gone.
    *
@@ -185,10 +195,69 @@ function codexStoreHasLogin(storeHome: string): boolean {
   }
 }
 
-/** Backends that can hold more than one login. Codex and Claude come later. */
+/**
+ * Claude Code keeps its whole state under one directory that `CLAUDE_CONFIG_DIR` moves (#1699, claude 2.1.296, binary
+ * plus a live TUI on Linux and macOS against a mock API): the login (`.credentials.json`, or on macOS the Keychain item
+ * `Claude Code-credentials-<sha256(dir)[0..8]>` — keyed by the directory, so two profiles never overwrite each other),
+ * the global config `.claude.json` (account, onboarding, per-project trust), and every conversation under `projects/`.
+ * Nothing goes to `~/.claude` or `~/.claude.json` while it is set.
+ *
+ * Only a NAMED profile sets it. Unset is the user's existing login: on macOS the Keychain item has no suffix then, and
+ * setting the variable at all — even to `~/.claude` — would look up a different item and the login would seem gone.
+ *
+ * The user's own instructions, agents, commands, skills, output styles and plugins are linked back; everything that is
+ * an account, a conversation or a setting `/model` writes stays private. `settings.json` starts as a copy of the
+ * user's (permissions, hooks, env, which plugins are enabled) and is the profile's own from then on. A different profile is a different
+ * `projects/`, so a switch starts a fresh conversation (verified: `--resume <id>` and `--continue` find nothing).
+ */
+const CLAUDE_HOME: CredentialHomeSpec = {
+  kind: "relocate-home",
+  env: "CLAUDE_CONFIG_DIR",
+  sharedRoot: () => resolve(process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude")),
+  storeSubdir: "",
+  isolate: [
+    ".credentials.json", ".claude.json", "settings.json", "settings.local.json",
+    "projects", "sessions", "history.jsonl", "backups", "todos", "shell-snapshots", "statsig", "ide", "session-env", "file-history",
+  ],
+  share: ["CLAUDE.md", "agents", "commands", "skills", "output-styles", "plugins"],
+  seed: ["settings.json"],
+  files: [],
+  hasLogin: claudeStoreHasLogin,
+  loginSubcommand: "auth login",
+  binary: "claude",
+  switchStartsFreshSession: true,
+};
+
+/**
+ * A Claude Code login in a config dir: an OAuth token in `.credentials.json` (Linux), or the account claude records in
+ * `.claude.json` when it signs in (every platform — on macOS the token itself is in the Keychain, which this never
+ * reads). Shape only, never a value. Neither file there: signed out. A file there that cannot be read or parsed, and
+ * no proof in the other: null — unknown, never "signed out" (#1699).
+ */
+export function claudeStoreHasLogin(storeHome: string): boolean | null {
+  let unreadable = false;
+  const read = (name: string): Record<string, any> | null => {
+    try {
+      const value: unknown = JSON.parse(readFileSync(join(storeHome, name), "utf8"));
+      if (value && typeof value === "object") return value as Record<string, any>;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    }
+    unreadable = true;
+    return null;
+  };
+  const token = read(".credentials.json")?.claudeAiOauth?.accessToken;
+  if (typeof token === "string" && token.length > 0) return true;
+  const account = read(".claude.json")?.oauthAccount?.accountUuid;
+  if (typeof account === "string" && account.length > 0) return true;
+  return unreadable ? null : false;
+}
+
+/** Backends that can hold more than one login. */
 export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
   "kiro-cli": KIRO_HOME,
   "codex": CODEX_HOME,
+  "claude-code": CLAUDE_HOME,
 };
 
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
@@ -220,7 +289,9 @@ export function resolveCredentialProfile(backendOptions: Record<string, unknown>
  * "these three agents use the work account" impossible to express.
  */
 export function credentialProfileHome(dataDir: string, backendName: string, profile: string): string {
-  return join(dataDir, "credential-profiles", backendName, profile);
+  // Absolute and normalised (#1699): claude names its macOS Keychain item after this exact string, so every writer and
+  // reader of a profile must spell it the same way — no relative AGEND_HOME, no trailing slash.
+  return resolve(dataDir, "credential-profiles", backendName, profile);
 }
 
 /**
@@ -291,6 +362,18 @@ export function prepareCredentialProfileHome(spec: CredentialHomeSpec, profileHo
       console.warn(`[agend] removed a shared link where ${name} must be private: ${target}`);
     } catch {
       // Absent, or removed by a concurrent start. Either way there is no link.
+    }
+  }
+
+  for (const name of spec.seed ?? []) {
+    if (!spec.isolate.includes(name)) continue;
+    const source = join(sharedStore, name);
+    try {
+      if (!statSync(source).isFile()) continue;
+      // EXCL: a profile that already has its own (a later start, or a concurrent one) is never overwritten.
+      copyFileSync(source, join(profileStore, name), fsConstants.COPYFILE_EXCL);
+    } catch {
+      // Absent in the shared home, or already in the profile: nothing to start from, or nothing to do.
     }
   }
 
@@ -412,13 +495,15 @@ export function credentialProfileLogin(
   const spec = credentialHomeSpec(backendName);
   if (!spec?.hasLogin) return { state: "unknown" };
   const storeHome = credentialProfileStoreHome(dataDir, backendName, profile);
-  if (spec.hasLogin(storeHome)) return { state: "logged-in" };
+  const login = spec.hasLogin(storeHome);
+  if (login === null) return { state: "unknown" };
+  if (login) return { state: "logged-in" };
   return {
     state: "signed-out",
     // The whole command, not a description of one: this is read by an agent
     // relaying it to a person who has to run it, and a paraphrase of a shell
     // line is how a person ends up logging the wrong profile in.
-    loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${backendName} ${spec.loginSubcommand}`,
+    loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${spec.binary ?? backendName} ${spec.loginSubcommand}`,
   };
 }
 

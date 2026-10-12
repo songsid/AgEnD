@@ -478,7 +478,7 @@ bot，見[官方 FAQ](https://core.telegram.org/bots/faq#what-messages-will-my-b
 
 ## Credential profiles（同一 backend 的多個帳號）
 
-Kiro CLI 與 Codex 支援 `backend_options.<backend>.credential_profile`，選擇與預設
+Kiro CLI、Codex 與 Claude Code 支援 `backend_options.<backend>.credential_profile`，選擇與預設
 共用登入分開的帳號。其他 backend 尚未實作，設定後會警告此選項被忽略。
 名稱必須符合 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`；可放在 instance 或 defaults：
 
@@ -547,12 +547,40 @@ Codex profile **只換 `auth.json` 的來源**。Instance 仍使用自己的 COD
 尚未用第二個付費帳號驗證跨帳號對話能否重新開啟，以及兩個帳號是否確實分開計費；
 不要把共用歷史等同於保證跨帳號 resume 成功。
 
+### Claude Code
+
+```bash
+CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login
+```
+
+Claude Code profile 是一個獨立的 `CLAUDE_CONFIG_DIR`。登入、帳號、各專案的信任設定、
+`settings.json` 與所有對話（`projects/`、`sessions/`、`history.jsonl`）都屬於該 profile。
+你的 `CLAUDE.md`、`agents`、`commands`、`skills`、`output-styles` 與 `plugins` 連回
+`~/.claude`（或你自己設定的 `CLAUDE_CONFIG_DIR`），各處相同。新 profile 的 `settings.json`
+一開始複製你的設定（permissions、hooks、env、啟用哪些 plugins）；之後就屬於該 profile，
+任一邊後來的變更（例如 `/model`）只留在那一邊。
+
+macOS 上 claude 把登入存在鑰匙圈（Keychain），項目名稱依 profile 目錄而定；
+兩個 profile 不會共用或覆寫彼此的項目，預設登入也不受影響。
+
+`update_instance_config` 拒絕切換時，請照回覆中的指令原樣執行：它帶著 AgEnD 啟動時用的完整絕對路徑，
+而 macOS 的鑰匙圈項目正是依這個路徑字串命名。
+
+沒有 profile 的 instance 啟動方式與以前完全相同：AgEnD 不設定 `CLAUDE_CONFIG_DIR`
+（你自己設的照舊生效），也不建立任何目錄。Fleet 的 `ANTHROPIC_API_KEY` 只傳給「自己的
+設定目錄沒有 claude.ai 登入」的 instance——規則與以前相同，只是看的是 profile 的目錄。
+
+**切換 running Claude Code instance 會開新對話**，交接方式與 Kiro 相同：新 profile 的
+`projects/` 沒有舊 profile 的對話紀錄。
+
 ### 各自的額度
 
 `/usage`、`get_usage` 與 dashboard 依 running／paused instance 的有效 backend／profile
 分別顯示。例如有效的 Kiro `work`／`personal` profile 顯示為 `Kiro (work)`、
 `Kiro (personal)`；使用共用登入時顯示預設列。僅供 stopped／crashed instance 使用的
 來源會被過濾。
+
+Claude Code profile 目前還沒有自己的額度列；Claude 那一列仍讀取預設登入。
 
 有效的 Kiro profile 沒有可讀登入資料時仍顯示 signed-out 提示。是否顯示也依 provider
 而異：Codex 缺少 OAuth 額度查詢憑證時會省略，包括只有 API key 的 profile。各列不相加；
