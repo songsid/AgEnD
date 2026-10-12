@@ -130,7 +130,7 @@ describe("#1699 part 2: the controller signs a profile in", () => {
 describe("#1699 part 2: the chat surfaces carry the profile", () => {
   async function typed(text: string) {
     const { TopicCommands } = await import("../src/topic-commands.js");
-    const startLoginSession = vi.fn(async () => "started");
+    const startLoginSession = vi.fn(async (..._args: unknown[]) => "started");
     const a = adapter();
     const ctx: any = { isFleetAdmin: () => true, startLoginSession, promptLoginBackends: vi.fn(async () => undefined), cancelLoginSession: vi.fn(async () => "x"),
       fleetConfig: { instances: {}, defaults: {} } };
