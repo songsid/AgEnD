@@ -88,7 +88,7 @@ export interface PreviewAvailability {
  * previewAvailability; `publicLink` and `notOffered` from the app shell, which asks it for neither the public link nor
  * a page that is not the full app. One list: the page's dictionary is checked against it.
  */
-export const PREVIEW_OFF_CODES = ["fleetOff", "unchecked", "noPort", "notListed", "needOrigin", "needHttps", "sameOrigin", "publicLink", "notOffered"] as const;
+export const PREVIEW_OFF_CODES = ["fleetOff", "unchecked", "noPort", "notListed", "needOrigin", "needHttps", "sameOrigin", "publicLink", "publicLinkStarting", "publicLinkPreviewFailed", "notOffered"] as const;
 export type PreviewOffCode = typeof PREVIEW_OFF_CODES[number];
 
 const DEFAULT_PORT: Record<string, string> = { "http:": "80", "https:": "443" };
@@ -221,19 +221,46 @@ export interface PreviewListener {
  * it does not answer to → empty 403. No X-Frame-Options (it must be framable by the dashboard), no cookie or
  * header parsing beyond Host, nothing logged per request. Built once: the shim and its headers never change.
  */
-export function createPreviewListener(opts: { settings: PreviewSettings; healthPort: number; config: HostGuardConfig | null | undefined; bootId?: string }): PreviewListener {
+/**
+ * The /frame response for one set of dashboard origins (design §5.1): the shim and its exact headers. Shared by the
+ * local preview listener and the public link's own preview gateway (#1723), so both serve the very same frame.
+ */
+export function previewFrameResponse(bootId: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
+  const body = Buffer.from(buildShim(bootId, origins), "utf8");
+  return {
+    body,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": previewFrameCsp(origins),
+      "Permissions-Policy": PERMISSIONS_POLICY,
+      "Referrer-Policy": "no-referrer",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "no-store",
+      "Content-Length": String(body.length),
+    },
+  };
+}
+
+export function createPreviewListener(opts: {
+  settings: PreviewSettings; healthPort: number; config: HostGuardConfig | null | undefined; bootId?: string;
+  /**
+   * #1723: dashboard origins that may frame the preview for now — the open public link's, when a web.preview_origin is
+   * configured (it is used instead of a preview tunnel). Asked per request; never cached past the answer.
+   */
+  extraOrigins?(): readonly string[];
+}): PreviewListener {
   const bootId = opts.bootId ?? randomBytes(16).toString("hex");
   const origins = dashboardOrigins(opts.settings, opts.healthPort, opts.config);
-  const body = Buffer.from(buildShim(bootId, origins), "utf8");
-  const headers: Record<string, string> = {
-    "Content-Type": "text/html; charset=utf-8",
-    "Content-Security-Policy": previewFrameCsp(origins),
-    "Permissions-Policy": PERMISSIONS_POLICY,
-    "Referrer-Policy": "no-referrer",
-    "Cross-Origin-Resource-Policy": "same-origin",
-    "X-Content-Type-Options": "nosniff",
-    "Cache-Control": "no-store",
-    "Content-Length": String(body.length),
+  const { body, headers } = previewFrameResponse(bootId, origins);
+  let widened: { key: string; body: Buffer; headers: Record<string, string> } | null = null;
+  const frameFor = (): { body: Buffer; headers: Record<string, string> } => {
+    const extra = (opts.extraOrigins?.() ?? []).filter(o => !origins.includes(o));
+    if (extra.length === 0) return { body, headers };
+    const all = [...origins, ...extra];
+    const key = all.join(" ");
+    if (widened?.key !== key) widened = { key, ...previewFrameResponse(bootId, all) };
+    return widened;
   };
   const hosts = new Set<string>(LOOPBACK_HOST_NAMES);
   if (opts.settings.origin) { const h = hostnameOf(new URL(opts.settings.origin).host); if (h) hosts.add(h); }
@@ -246,8 +273,9 @@ export function createPreviewListener(opts: { settings: PreviewSettings; healthP
     const host = typeof req.headers.host === "string" ? hostnameOf(req.headers.host) : null;
     if (!host || !hosts.has(host)) return empty(res, 403);
     if (req.method !== "GET" || req.url !== "/frame") return empty(res, 404);
-    res.writeHead(200, headers);
-    res.end(body);
+    const frame = frameFor();
+    res.writeHead(200, frame.headers);
+    res.end(frame.body);
   });
   const settings: PreviewSettings = { ...opts.settings };
   // A listener on port 0 learns its real port when it binds: that is the one a /ui load must be offered.

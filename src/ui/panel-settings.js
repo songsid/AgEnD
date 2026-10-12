@@ -709,7 +709,7 @@ function General({ ctx }) {
  * the temporary public link none of it can be changed — the form says so and stays disabled (the server refuses too).
  */
 export const WEB_READ_ONLY = [
-  "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin",
+  "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
   "web.usage_panel", "web.provider_secrets", "web_terminal.bind", "web_terminal.tunnel",
 ];
 function WebSection({ ctx, staged }) {

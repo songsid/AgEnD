@@ -386,6 +386,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
     // #1306 HTML previews
     if (config.web.preview !== undefined && typeof config.web.preview !== "boolean") err("web.preview", "must be a boolean");
+    // #1723: previews over the temporary public link (a second quick tunnel of the link's own).
+    if (config.web.preview_on_public_link !== undefined && typeof config.web.preview_on_public_link !== "boolean") err("web.preview_on_public_link", "must be a boolean");
     if (config.web.preview_port !== undefined) {
       const p = config.web.preview_port;
       if (typeof p !== "number" || !Number.isInteger(p) || p < 1 || p > 65535) err("web.preview_port", "must be a port number (1-65535)");

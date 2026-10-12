@@ -8,6 +8,7 @@ import type { TunnelStopResult } from "./tunnel/types.js";
 import type { PublicGateway } from "./public-web-gateway.js";
 import type { LoginCodeOwner } from "./web-login.js";
 import type { WebConfig } from "./types.js";
+import type { PublicPreview, PublicPreviewStatus } from "./public-preview.js";
 
 export const PUBLIC_LINK_DEFAULT_MINUTES = 120;
 export const PUBLIC_LINK_MAX_MINUTES = 480;
@@ -48,6 +49,8 @@ interface Exposure {
   /** The shared start's steps (①–⑤); each request adds its own ⑥. */
   progress: PublicLinkProgressTracker;
   watchers: Set<() => void>;
+  /** #1723: this exposure's preview origin (a second quick tunnel), started beside it and never waited for. */
+  preview?: PublicPreview | null;
 }
 export interface PublicLinkDelivery {
   readonly exposureId: string;
@@ -83,9 +86,29 @@ export class PublicWebLink {
     wallNow?: () => number;
     ensure?: typeof ensureCloudflared;
     provider?: (binary: string, protocol: "http2" | "quic" | "auto") => CloudflaredProvider;
+    /**
+     * #1723: this exposure's preview, or null when it gets none (web.preview off, web.preview_on_public_link off, or a
+     * configured web.preview_origin used instead). Called once the binary is verified; its start is never awaited.
+     */
+    createPreview?(exposure: { id: string; expiresAt: number; binary: string; protocol: "http2" | "quic" | "auto";
+      dashboardOrigin(): string | null; isCurrent(): boolean }): PublicPreview | null;
   }) { this.now = deps.now ?? (() => performance.now()); }
 
   get exposureId(): string | undefined { return this.entry?.id; }
+  /**
+   * #1723: the preview of exposure `exposureId`, as a page of it may use it — null when that exposure is not the open
+   * one, or has no preview.
+   */
+  /** #1723: the open exposure's dashboard origin (`https://<host>`), for a configured preview origin to accept; else null. */
+  openDashboardOrigin(): string | null {
+    const e = this.entry;
+    return e && e.phase === "open" && e.url && this.current(e) ? new URL(e.url).origin : null;
+  }
+  previewStatus(exposureId: string): PublicPreviewStatus | null {
+    const e = this.entry;
+    if (!e || e.id !== exposureId || e.phase !== "open" || !this.current(e) || !e.preview) return null;
+    return e.preview.status();
+  }
   status(): { state: string; expiresAt?: number; remainingSeconds?: number } {
     const e = this.entry;
     if (e && this.now() >= e.deadline && !e.closing) void this.close("expired");
@@ -179,6 +202,11 @@ export class PublicWebLink {
       const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
         onProgress: p => applyInstallProgress(e.progress, p) });
       if (!this.current(e)) throw new Error("closed");
+      // #1723: the preview tunnel starts now, beside the link's, and is never awaited: no step below waits on it or
+      // reads it, so a slow or failing preview cannot delay or fail the link.
+      e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt, binary: binary.path, protocol,
+        dashboardOrigin: () => (e.url ? new URL(e.url).origin : null), isCurrent: () => this.current(e) }) ?? null;
+      e.preview?.start();
       e.progress.begin("tunnel");
       const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); });
       e.gateway = gateway;
@@ -220,10 +248,15 @@ export class PublicWebLink {
     e.unsubscribe?.();
     this.deps.revoke(e.id);
     e.gateway?.setHost(null); e.gateway?.close();
+    // #1723: the preview is fenced now too (its own stop fences synchronously), and its tunnel ends with this one.
+    const previewStopped = e.preview?.stop(reason);
     e.closing = (async () => {
       await e.starting.catch(() => {});
       e.gateway?.close(); // listen may have finished after the first close.
-      const result = await e.reservation.stop(reason);
+      const own = await e.reservation.stop(reason);
+      const preview = await (previewStopped ?? Promise.resolve<TunnelStopResult>({ confirmed: true }));
+      // Either tunnel unproven → the whole exposure's cleanup is unconfirmed, and the next start waits for it.
+      const result = !own.confirmed ? own : !preview.confirmed ? preview : own;
       if (this.entry === e) {
         if (result.confirmed) this.entry = null;
         else { e.phase = "cleanup_unconfirmed"; this.deps.onCleanupUnconfirmed?.(result, e.owner); }

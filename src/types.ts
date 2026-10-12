@@ -378,6 +378,12 @@ export interface WebConfig {
    * previews through a tunnel or proxy need one. It must not be a name the dashboard answers to.
    */
   preview_origin?: string;
+  /**
+   * #1723: previews over the temporary public link (default true): the link opens a second quick tunnel of its own
+   * for them, in the background, closed with the link. false: none on the public link. A web.preview_origin is used
+   * instead of it; web.preview: false turns previews off everywhere.
+   */
+  preview_on_public_link?: boolean;
 }
 
 /** `login:` section — remote /login behaviour. */

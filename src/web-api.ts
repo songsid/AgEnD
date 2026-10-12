@@ -204,6 +204,8 @@ export interface WebApiContext {
   getPaneContextSource?(name: string): PaneContextSource | null;
   /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
   previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
+  /** #1723: the same for a page of the public link (exposure `exposureId`, at `dashboardOrigin`); absent: none there. */
+  publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   emitSseEvent(event: string, data: unknown): void;
   /** The web chat's recent messages (history + SSE replay); absent in contexts that have no chat. */
   readonly webChatHistory?: WebChatHistory;
@@ -608,6 +610,16 @@ export function handleWebRequest(
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
       try { json(res, 500, { error: "Click failed" }); } catch { /* already answered */ }
     });
+    return true;
+  }
+
+  // #1723: the public link page's preview, asked while it says "Preview is starting…" — its state and, once up, its
+  // origin and boot. Public link only: a local page's preview is decided by its own load.
+  if (path === "/ui/preview-status" && method === "GET") {
+    const gateway = gatewayRequestContext(req);
+    if (!gateway || !ctx.publicPreviewForUi) { json(res, 404, { error: "not offered here" }); return true; }
+    const p = ctx.publicPreviewForUi(gateway.exposureId, gateway.expectedOrigin);
+    json(res, 200, { code: p.code, previewOrigin: p.previewOrigin, boot: p.previewOrigin ? p.boot : null, detail: p.detail ?? null });
     return true;
   }
 
@@ -1380,8 +1392,16 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
 //   has no previews.
 // - "view-only": an anonymous reader of /view under `web.view_access: open`. No stream, no previews, no session-only
 //   panel: the page shows View and a way to sign in, nothing else.
+/**
+ * #1723: a public-link page's preview: where it may frame from (`frameSrc` — the quick-tunnel wildcard while its own
+ * preview tunnel is starting or up, the exact origin for a configured web.preview_origin, null for none) and, once
+ * the preview tunnel failed, why (`detail`, a fixed reason the page words).
+ */
+export type PublicPreviewForUi = PreviewAvailability & { boot: string | null; frameSrc: string | null; detail?: string };
+
 export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
+  publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
   readonly fleetConfig?: { web?: { usage_panel?: boolean } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
@@ -1389,8 +1409,11 @@ export interface AppShellContext {
 }
 export type AppShellMode = "full" | "view-only";
 
-function shellPreview(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode) {
-  if (mode !== "full" || gatewayRequestContext(req)) return null;
+function shellPreview(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): ((PreviewAvailability & { boot: string | null }) & { frameSrc?: string | null; detail?: string }) | null {
+  if (mode !== "full") return null;
+  // #1723: a page of the public link asks its own exposure's preview — never the local listener's Host-based choice.
+  const gateway = gatewayRequestContext(req);
+  if (gateway) return ctx.publicPreviewForUi?.(gateway.exposureId, gateway.expectedOrigin) ?? null;
   return ctx.previewForUi?.(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) ?? null;
 }
 /**
@@ -1451,6 +1474,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
+    // #1723: why the public link's preview tunnel failed (a fixed reason the page words), when it did.
+    + `${p?.detail ? ` data-preview-detail="${attr(p.detail)}"` : ""}`
     // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔.
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
@@ -1467,7 +1492,10 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const own = mode === "full" && !gatewayRequestContext(req)
       ? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) : null;
     const mediaSrc = own ? `${own}/ui/file/` : "'none'";
-    sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode)).replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, { ...(p?.previewOrigin ? { frameSrc: `${p.previewOrigin}/frame` } : {}), mediaSrc });
+    // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
+    // the page may load); every other page frames exactly the origin this load chose (#1723).
+    const frameSrc = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
+    sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode)).replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

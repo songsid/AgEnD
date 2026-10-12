@@ -10,6 +10,8 @@ import { createPublicWebGateway } from "./public-web-gateway.js";
 import { handleWebIconRequest } from "./web-icons.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
+import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
+import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
 import { withinBudget } from "./monotonic-budget.js";
@@ -170,7 +172,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   }
   return tasks;
 }
-import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS } from "./web-api.js";
+import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
@@ -244,7 +246,7 @@ import { localSessionPolicy, tokenEpoch, WebSessionStore } from "./web-session.j
 import { WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
 import { CodeRequestLimiter, ReturningDevices, type ReturningDevice } from "./web-returning-device.js";
 import { allowedHostNames, applyWebSecurityHeaders, hostnameOf, isHostAllowed, WEB_HOST_REJECTED_MESSAGE } from "./web-host-guard.js";
-import { createPreviewListener, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener } from "./web-preview.js";
+import { createPreviewListener, normalizeOrigin, previewAvailability, previewSettings, type PreviewAvailability, type PreviewListener, type PreviewOffCode } from "./web-preview.js";
 import { fleetLevelDifferences, fleetLevelSignature, appendedConnections } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
 import { SecretStore } from "./secret-store.js";
@@ -2164,12 +2166,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.tightenInstanceDirectories();
 
-    void reapStaleTunnel(this.dataDir)
-      .then(outcome => {
-        if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
-        else if (outcome.kind === "reaped") this.logger.info({ how: outcome.how, pid: outcome.pid }, "Reaped a leftover tunnel");
-      })
-      .catch(err => this.logger.warn({ err }, "Tunnel reaper failed"));
+    // #1723: the public link's preview tunnel keeps its own lease beside it; a leftover one is reaped the same way.
+    for (const leaseDir of [this.dataDir, join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR)]) {
+      void reapStaleTunnel(leaseDir)
+        .then(outcome => {
+          if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
+          else if (outcome.kind === "reaped") this.logger.info({ how: outcome.how, pid: outcome.pid }, "Reaped a leftover tunnel");
+        })
+        .catch(err => this.logger.warn({ err }, "Tunnel reaper failed"));
+    }
     // An existing installation has never written the setup marker — it predates
     // it — so `agend setup` would open a pre-fleet form for a fleet that plainly
     // exists. A fleet that just came up on a config with agents in it is proof
@@ -5050,7 +5055,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private tunnelPurposeLane: TunnelPurposeLane | null = null;
+  private previewTunnel: ManagedTunnel | null = null;
   private publicWebLink: PublicWebLink | null = null;
+  /** #1723: the public link's preview tunnel — a manager and lease of its own, never the fleet's one tunnel lane. */
+  private getPreviewTunnel(): ManagedTunnel {
+    return this.previewTunnel ??= new ManagedTunnel({ dataDir: join(this.dataDir, PUBLIC_PREVIEW_TUNNEL_DIR),
+      log: () => this.logger.warn("Public preview tunnel cleanup requires attention") });
+  }
   private getTunnelLane(): TunnelPurposeLane {
     return this.tunnelPurposeLane ??= new TunnelPurposeLane(new ManagedTunnel({ dataDir: this.dataDir,
       log: () => this.logger.warn("Managed tunnel cleanup requires attention") }));
@@ -5095,6 +5106,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
       },
       log: (event, exposureId) => this.logger.info({ event, exposureId }, "Public web link"),
+      createPreview: ({ id, expiresAt, binary, protocol, dashboardOrigin, isCurrent }) => {
+        if (!publicPreviewWanted(this.fleetConfig?.web)) return null;
+        return new PublicPreview({ exposureId: id, expiresAt, dashboardOrigin, isCurrent, manager: this.getPreviewTunnel(),
+          provider: () => new CloudflaredProvider({ binaryName: binary, protocol }),
+          log: event => this.logger.info({ event, exposureId: id }, "Public web link") });
+      },
       onCleanupUnconfirmed: (result, owner) => {
         this.logger.warn({ pid: result.confirmed ? null : result.pid }, "Public web access closed; tunnel cleanup unconfirmed");
         const world = this.worlds.get(owner.adapterId);
@@ -19138,7 +19155,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.logger.warn({ health_port: requestedPort }, "No port for the HTML preview listener (health_port is the highest port) — set web.preview_port; previews are off");
       return;
     }
-    const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig });
+    const listener = createPreviewListener({ settings, healthPort: boundPort, config: this.fleetConfig,
+      // #1723: with a web.preview_origin, the open public link's dashboard frames this listener's preview too.
+      extraOrigins: () => { const o = settings.origin ? this.publicWebLink?.openDashboardOrigin() : null; return o ? [o] : []; } });
     this.previewListener = listener;
     listener.server.on("error", (err: NodeJS.ErrnoException) => {
       if (this.previewListener !== listener) return;
@@ -19185,6 +19204,32 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const decided = previewAvailability(listener ? listener.settings : null, hostHeader, secure, listener ? listener.origins : undefined);
     if (!listener && this.fleetConfig?.web?.preview !== false) decided.reason = "Previews are not available on this fleet right now.";
     return { ...decided, boot: listener ? listener.bootId : null };
+  }
+
+  /**
+   * #1723: for one page of the public link (exposure `exposureId`, at `dashboardOrigin`): its own preview tunnel's
+   * origin once up, "starting" until then, why it failed if it did — or a configured web.preview_origin, used instead.
+   */
+  publicPreviewForUi(exposureId: string, dashboardOrigin: string): PublicPreviewForUi {
+    const web = this.fleetConfig?.web;
+    const off = (code: PreviewOffCode, reason: string, extra: { detail?: string; frameSrc?: string | null } = {}): PublicPreviewForUi =>
+      ({ dashboardOrigin, previewOrigin: null, reason, code, boot: null, frameSrc: null, ...extra });
+    if (web?.preview === false) return off("fleetOff", "Previews are turned off for this fleet (web.preview: false).");
+    if (web?.preview_on_public_link === false) return off("publicLink", "Previews are off on the public link (web.preview_on_public_link: false).");
+    const configured = typeof web?.preview_origin === "string" ? normalizeOrigin(web.preview_origin) : null;
+    if (configured) {
+      const listener = this.previewListening ? this.previewListener : null;
+      if (!listener) return off("publicLink", "Previews are not available on this fleet right now.");
+      if (!configured.startsWith("https:")) return off("needHttps", "Previews need an https web.preview_origin when the dashboard is reached over https.");
+      return { dashboardOrigin, previewOrigin: configured, reason: null, code: null, boot: listener.bootId, frameSrc: `${configured}/frame` };
+    }
+    const status = this.publicWebLink?.previewStatus(exposureId) ?? null;
+    if (!status) return off("publicLink", "Previews are not offered on this public link.");
+    // The page may load before the preview tunnel has a host: it frames the quick-tunnel wildcard, and only ever the
+    // origin /ui/preview-status names (the preview side's exact frame-ancestors is the boundary).
+    if (status.state === "starting") return off("publicLinkStarting", "Preview is starting…", { frameSrc: PUBLIC_PREVIEW_FRAME_SRC });
+    if (status.state === "failed") return off("publicLinkPreviewFailed", `Previews are unavailable on this public link (${status.reason}).`, { detail: status.reason });
+    return { dashboardOrigin, previewOrigin: status.origin, reason: null, code: null, boot: status.boot, frameSrc: PUBLIC_PREVIEW_FRAME_SRC };
   }
 
   getUiStatus(): unknown {

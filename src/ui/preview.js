@@ -28,7 +28,10 @@
   var BANNER_ACK_KEY = "agend_html_preview_banner_ack";
   var BANNER = "Previews run the agent's HTML in an isolated frame. It cannot use your login, but it may be able to send data out. Only preview content you trust. A preview can slow or freeze this tab.";
 
-  var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "" };
+  var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "", detail: "" };
+  // #1723: the public link's preview tunnel, asked while it starts (every 2 s, for at most 5 minutes).
+  var POLL_MS = 2000, POLL_MAX = 150;
+  var polling = null;
   // #1554: the page's words. `say(key, english, …values)` asks the app's dictionary (init's opts.text) and keeps the
   // English here when it has none — so this file still works, and reads the same, without the app.
   var text = null;
@@ -66,7 +69,9 @@
       boot: String((data && data.previewBoot) || ""),
       reason: String((data && data.previewReason) || ""),
       reasonCode: String((data && data.previewReasonCode) || ""),
+      detail: String((data && data.previewDetail) || ""),
     };
+    if (cfg.reasonCode === "publicLinkStarting") startPolling();
     if (opts && typeof opts.text === "function") text = opts.text;
     if (!listening && typeof root.addEventListener === "function") {
       root.addEventListener("message", onMessage);
@@ -75,6 +80,35 @@
       root.addEventListener("storage", onStorage);
       listening = true;
     }
+  }
+  /**
+   * #1723: the public link's own preview tunnel is still starting: ask the page's server (/ui/preview-status, this
+   * page's origin) until it is up — then previews run here, at the origin it names — or failed, then say why. Only an
+   * https quick-tunnel origin other than this page's is ever taken: the page's frame-src allows no other.
+   */
+  function startPolling() {
+    if (polling || typeof root.fetch !== "function") return;
+    var attempts = 0;
+    var tick = function () {
+      attempts++;
+      root.fetch("/ui/preview-status", { credentials: "same-origin", cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+        if (cfg.reasonCode !== "publicLinkStarting") { polling = null; return; }
+        var at = root.location && root.location.origin;
+        if (j && typeof j.previewOrigin === "string" && /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(j.previewOrigin) && j.previewOrigin !== at
+          && typeof j.boot === "string" && /^[0-9a-f]{32}$/.test(j.boot)) {
+          cfg.previewOrigin = j.previewOrigin; cfg.boot = j.boot; cfg.reasonCode = ""; cfg.reason = ""; polling = null;
+          notify();
+          return;
+        }
+        if (j && (j.code === "publicLinkPreviewFailed" || j.code === "publicLink" || j.code === "fleetOff")) {
+          cfg.reasonCode = j.code; cfg.detail = typeof j.detail === "string" ? j.detail : ""; polling = null;
+          notify();
+          return;
+        }
+        polling = attempts < POLL_MAX ? root.setTimeout(tick, POLL_MS) : null;
+      }, function () { polling = attempts < POLL_MAX ? root.setTimeout(tick, POLL_MS) : null; });
+    };
+    polling = root.setTimeout(tick, POLL_MS);
   }
   function onStorage(event) {
     // #1568: the banner acknowledged in another tab of this sign-in: hide it here too (nothing starts or stops).
@@ -159,7 +193,9 @@
   function availability() {
     if (!cfg.previewOrigin || !cfg.boot) {
       // The server's reason, in the page's language when the server named it (a code), else as the server wrote it.
-      var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, cfg.reason || "Previews are not available here.", cfg.dashboardOrigin) : "";
+      // #1723: a failed public-link preview names why ({0} is the reason, in the page's words).
+      var arg = cfg.reasonCode === "publicLinkPreviewFailed" ? say("pvFail_" + (cfg.detail || "unknown"), "an unexpected error") : cfg.dashboardOrigin;
+      var server = cfg.reasonCode ? say("pvServer_" + cfg.reasonCode, cfg.reason || "Previews are not available here.", arg) : "";
       return { ok: false, why: "server", reason: server || cfg.reason || say("pvWhyServer", "Previews are not available here.") };
     }
     var at = root.location && root.location.origin;
