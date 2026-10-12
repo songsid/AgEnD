@@ -320,12 +320,12 @@ export function createThread(list, scroller, opts) {
     // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
     run.onclick = () => { if (P().availability().ok) withCode((c) => P().start(key, holder, c, ui)); };
     stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
-    // A running preview moves: it stops here and starts in the panel (the click that ran it). An idle one opens the
-    // panel with its own Preview to click.
+    // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
+    // starts there), an idle one starts there. Whether it can run is the panel's to say: a device that has not allowed
+    // previews is offered Allow first (and allowing runs it); where previews are off, nothing runs.
     if (toPanel) toPanel.onclick = () => {
-      const moving = P().running(key);
-      if (moving) P().stop(key, "stopped", "");
-      withCode((c) => panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: moving }));
+      if (P().running(key)) P().stop(key, "stopped", "");
+      withCode((c) => panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: true }));
     };
     if (dl) dl.onclick = () => opts.download(code);
     ack.onclick = () => P().ackBanner();      // every card and the panel hear it (onChange)

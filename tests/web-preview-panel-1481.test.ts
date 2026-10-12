@@ -113,17 +113,15 @@ describe("the panel's frame is the card's frame (#1306 §5.3)", () => {
 });
 
 describe("open, move, close", () => {
-  it("an idle card opens the panel without running anything; the card says where it is; Preview there runs it", async () => {
+  it("an idle card: Open in panel opens the panel and runs it there — that click is the Preview click (#1704); the card says where it is", async () => {
     const { doc } = await chat([agent(1, FENCE(PAGE(1)))]);
     const card = agentCards(doc)[0];
+    expect(PV.liveCount(), "nothing runs before the click").toBe(0);
     await click(card.querySelector(".pv-open"));
     expect(!!doc.querySelector(".pv-panel"), "panel open").toBe(true);
-    expect(PV.liveCount(), "nothing runs without a Preview click").toBe(0);
+    expect([PV.running(pp.frameKey("b-1:f0")), PV.running("b-1:f0"), PV.liveCount()], "in the panel, not in the card").toEqual([true, false, 1]);
     expect(card.querySelector(".pv-note").textContent).toBe("Shown in the panel.");
     expect([card.querySelector(".pv-run").hidden, card.querySelector(".pv-open").hidden]).toEqual([true, true]);
-    await click(doc.querySelector(".pv-panel-run"));
-    expect(PV.running(pp.frameKey("b-1:f0"))).toBe(true);
-    expect(PV.running("b-1:f0"), "not in the card").toBe(false);
   });
 
   it("a running inline preview moves: the card's frame stops, the panel's starts — one frame on the page", async () => {
@@ -142,7 +140,6 @@ describe("open, move, close", () => {
     const { doc } = await chat([agent(1, FENCE(PAGE(1)))]);
     const card = agentCards(doc)[0];
     await click(card.querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     const f = PV.liveFrame(pp.frameKey("b-1:f0"));
     await click(doc.querySelectorAll(".pv-panel-close")[1]);
     expect([PV.liveCount(), f.parentNode === null, !!doc.querySelector(".pv-panel"), pp.panelStore.get().open]).toEqual([0, true, false, null]);
@@ -152,7 +149,6 @@ describe("open, move, close", () => {
   it("Stop removes the frame and keeps the panel; Reload runs it afresh (a new frame)", async () => {
     const { doc } = await chat([agent(1, FENCE(PAGE(1)))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     const f1 = ready(PV.liveFrame(pp.frameKey("b-1:f0")));
     await settle();
     await click(doc.querySelector(".pv-panel-reload"));
@@ -165,7 +161,6 @@ describe("open, move, close", () => {
   it("Esc inside the panel closes it (and is not the chat's Stop reply)", async () => {
     const { doc, pg } = await chat([agent(1, FENCE(PAGE(1)))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     const ev = new (globalThis as any).KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     doc.querySelector(".pv-panel-run, .pv-panel-stop").dispatchEvent(ev);
     await settle();
@@ -175,7 +170,6 @@ describe("open, move, close", () => {
   it("another instance opened: the panel and its frame are gone before the new chat shows", async () => {
     const { doc, pg } = await chat([agent(1, FENCE(PAGE(1)))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     const f = PV.liveFrame(pp.frameKey("b-1:f0"));
     await pg.mount(h(panel.ChatPanel, { route: { instance: "x" }, navKey: "two" }));
     expect([PV.liveCount(), f.parentNode === null, !!doc.querySelector(".pv-panel"), pp.panelStore.get().open]).toEqual([0, true, false, null]);
@@ -184,7 +178,6 @@ describe("open, move, close", () => {
   it("the chat unmounts: the same", async () => {
     const { doc, pg } = await chat([agent(1, FENCE(PAGE(1)))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     await pg.unmount();
     expect([PV.liveCount(), pp.panelStore.get().open]).toEqual([0, null]);
   });
@@ -192,7 +185,6 @@ describe("open, move, close", () => {
   it("the device's opt-out (another tab) stops the panel's frame, and the panel says why", async () => {
     const { doc, pg } = await chat([agent(1, FENCE(PAGE(1)))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     pg.storage.delete("agend_html_preview");
     PV.onStorage({ key: "agend_html_preview" });
     await settle();
@@ -208,7 +200,6 @@ describe("open, move, close", () => {
   it("starting a preview in a card stops the panel's (one preview per page)", async () => {
     const { doc } = await chat([agent(1, FENCE(PAGE(1))), agent(2, FENCE(PAGE(2, "Other")))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     await click(agentCards(doc)[1].querySelector(".pv-run"));
     expect([PV.running(pp.frameKey("b-1:f0")), PV.running("b-2:f0"), PV.liveCount()]).toEqual([false, true, 1]);
   });
@@ -218,7 +209,6 @@ describe("a newer version is offered, never swapped in", () => {
   it("a later reply with the same <title>: offered; the panel keeps running v1; Show it puts v2 there, not running", async () => {
     const { doc } = await chat([agent(1, FENCE(PAGE(1)))]);
     await click(agentCards(doc)[0].querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     const f = PV.liveFrame(pp.frameKey("b-1:f0"));
     stream.message(agent(2, "Updated:\n" + FENCE(PAGE(2))));
     await settle();

@@ -2,7 +2,7 @@
  * #1554 (baseline PV): the preview notices in the page's language, and the panel offering the same "Allow previews".
  * The #1306 model is unchanged and pinned by its own tests; here: the opt-in from the panel goes through the one path
  * (setPreviewOptIn: the app's confirm with chat.pvConfirm, then setOptIn), a refusal changes nothing, and allowing
- * starts nothing — Preview is enabled and still needs its click. The real modules run in the mini DOM.
+ * runs only what the "Open in panel" click asked for (#1704) — nothing else starts. The real modules run in the mini DOM.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -92,15 +92,14 @@ describe("the panel offers the same Allow previews", () => {
       .toEqual(["HTML previews are off. Allow previews", "Allow previews", true]);
   });
 
-  it("Allow asks with the same confirm (chat.pvConfirm); confirmed: stored, Preview enabled — and nothing runs until it is clicked", async () => {
+  it("Allow asks with the same confirm (chat.pvConfirm); confirmed: stored — and the Open in panel click it waited for runs now (#1704)", async () => {
     const { doc, pg } = await panelNotAllowed();
+    expect(PV.liveCount(), "nothing ran before the Allow").toBe(0);
     const off = answering(true);
     try { allowBtn(doc).click(); await settle(); await settle(); } finally { off(); }
     expect(questions).toEqual([[i18n.t("chat.pvConfirm"), "Allow previews"]]);
-    expect([pg.storage.get("agend_html_preview"), runDisabled(doc), allowBtn(doc)?.textContent ?? null, PV.liveCount()]).toEqual(["on", false, null, 0]);
-    expect(note(doc)).toBe("Click Preview to run it here.");
-    doc.querySelector(".pv-panel-run").click(); await settle();
-    expect(PV.liveCount(), "Preview, clicked, runs it").toBe(1);
+    expect([pg.storage.get("agend_html_preview"), allowBtn(doc)?.textContent ?? null, PV.liveCount(), PV.running(pp.frameKey("b-1:f0"))]).toEqual(["on", null, 1, true]);
+    expect([!!doc.querySelector(".pv-panel-run"), !!doc.querySelector(".pv-panel-stop")], "running: Stop offered, not Preview").toEqual([false, true]);
   });
 
   it("Allow refused: nothing stored, still off, still offered", async () => {

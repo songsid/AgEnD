@@ -1,11 +1,14 @@
 // #1481: an agent's HTML preview (#1306) in a panel beside the conversation — a split with a draggable divider on a
 // wide screen, a full-screen sheet on a narrow one. Nothing about the preview itself changes here: the frame is the one
 // preview.js makes (mountPreview: the preview origin, sandbox allow-scripts only), started by AgendPreview.start like a
-// card's, only told to fill the panel. It runs on a click, as a card's does:
-// - "Open in panel" on an idle card opens the panel with its Preview button — the panel runs nothing by itself;
+// card's, only told to fill the panel. It runs on a person's click, as a card's does — and "Open in panel" is that click:
+// - on an idle card it opens the panel and starts the preview there, as if Preview were clicked in the panel (#1704);
+//   a device that has not allowed previews gets the "Allow previews" offer instead, and allowing it starts the run;
+//   where previews cannot run (web.preview: false, a public link), the panel opens with nothing running;
 // - on a card whose preview is running, the same button moves that run to the panel (stopped in the card, started in
 //   the panel: a moved frame reloads anyway);
-// - a newer version of the block in a later reply is offered, never swapped in, and offered with Preview to click.
+// - nothing runs by itself: not when the page loads, not when the panel is shown again, and a newer version of the
+//   block in a later reply is offered, never swapped in, and shown with Preview to click.
 // Closing the panel or leaving the chat stops its frame; one preview per page still holds (start() stops any other).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
@@ -19,7 +22,7 @@ const P = () => globalThis.AgendPreview;
 
 // ── The panel's state, one per page (the chat shows one instance at a time) ──
 
-/** open: { key, instance, msgKey, n | att, code, sender, ts } | null (`att`: an attached .html file, #1306 Q4); run: start it on mount (a moved run). */
+/** open: { key, instance, msgKey, n | att, code, sender, ts } | null (`att`: an attached .html file, #1306 Q4); run: start it on mount (the card's click). */
 let state = { open: null, run: 0 };
 const subs = new Set();
 function set(next) { state = next; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
@@ -27,7 +30,7 @@ export const panelStore = { get: () => state, subscribe(fn) { subs.add(fn); retu
 
 /** The frame's key in preview.js: its own, so the card that opened it keeps its own state. */
 export const frameKey = (key) => `panel:${key}`;
-/** Show `spec` in the panel; `run`: start it there (a click that moves a running preview). The block shown before stops. */
+/** Show `spec` in the panel; `run`: start it there (the card's "Open in panel" click). The block shown before stops. */
 export function openPanel(spec, { run = false } = {}) {
   if (state.open && P()) P().stop(frameKey(state.open.key), "stopped", "");
   set({ open: { ...spec }, run: run ? state.run + 1 : 0 });
@@ -113,6 +116,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [newer, setNewer] = useState(null);
   const [newerNote, setNewerNote] = useState("");
   const reading = useRef(null);   // the newer version whose file is being read (one at a time)
+  const pending = useRef(0);      // #1704: the card's click, waiting for this device's Allow (the st.run it came with)
   const holder = useRef(null), divider = useRef(null), panel = useRef(null);
   const open = st.open && st.open.instance === name ? st.open : null;
 
@@ -126,15 +130,22 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" ? s : "idle", reason: reason || "" }) };
   const start = () => {
     if (!open || !holder.current) return;
+    pending.current = 0;
     setView("preview");
     P().start(frameKey(open.key), holder.current, open.code, ui, { fill: true });
   };
   const stop = () => { if (open) P().stop(frameKey(open.key), "stopped", ""); };
-  // A new block in the panel: what ran before is gone (openPanel stopped it); a moved run starts here.
+  // A new block in the panel: what ran before is gone (openPanel stopped it); the card's click starts it here — or,
+  // on a device that has not allowed previews, waits for the Allow offered below (anything else unavailable: nothing).
   useEffect(() => {
+    pending.current = 0;
     setRun({ state: "idle", reason: "" });
     setView("preview");
-    if (open && st.run) start();
+    if (open && st.run) {
+      const a = P().availability();
+      if (a.ok) start();
+      else if (a.why === "optin") pending.current = st.run;
+    }
     // Focus goes to the panel's close control that is on screen (Back on a phone, × beside the thread).
     if (panel.current) { const f = [...panel.current.querySelectorAll(".pv-panel-close")].find(b => b.offsetParent !== null); if (f) f.focus(); }
   }, [open && open.key, st.run]);
@@ -204,11 +215,19 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   if (!open) return null;
   const going = run.state === "starting" || run.state === "running";
   const a = P().availability();
-  // #1554: a device that has not allowed previews is offered the same "Allow previews" here (the same confirm); Preview
-  // is then enabled — still a click. Why a run stopped (e.g. switched off in another tab) is still said first.
+  // #1554: a device that has not allowed previews is offered the same "Allow previews" here (the same confirm). Allowing
+  // runs the block the card's click opened (#1704); otherwise Preview is then enabled — still a click. Why a run stopped
+  // (e.g. switched off in another tab) is still said first.
   const askOptIn = !going && !a.ok && a.why === "optin" && typeof allow === "function";
   const note = run.reason || (going ? (run.state === "starting" ? t("chat.pvStarting") : "") : a.ok ? t("chat.pvPanelIdle") : askOptIn ? t("chat.pvWhyOptinPanel") : a.reason);
-  const allowHere = async () => { if (await allow()) setRun({ state: "idle", reason: "" }); };
+  // Allowed here: the click that opened the panel runs now — if the panel still shows what that click opened (the
+  // confirm is a wait: the panel may have moved on meanwhile).
+  const allowHere = async () => {
+    const want = pending.current;
+    if (!(await allow())) return;
+    setRun({ state: "idle", reason: "" });
+    if (want && panelStore.get().run === want) start();
+  };
   const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
   return html`<div class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
       aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
