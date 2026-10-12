@@ -5930,6 +5930,8 @@ export class Daemon extends EventEmitter {
       if (!currentDeliveryCapture() || !sameInteractionOwner(interactionOwner, this.interactionOwner())) return;
       if (!this.observeInteractionPane(pane, captureStartedAt, interactionCaptureAt, undefined, interactionCaptureOrder,
         reason !== "interaction_confirmation")) return;
+      // #1691: an accepted capture of this launch is a fresh read for the unrecognised-prompt evidence too (#1695 r3).
+      this.noteFreshPaneRead(pane, interactionCaptureAt);
       this.updateInputBlockedState(pane);
 
       // Advance the shared 10s timer only for a fresh capture of this launch.
@@ -7196,7 +7198,7 @@ export class Daemon extends EventEmitter {
       this.unrecognisedPrompt = { block: shape.block, shape, since: mono, active: false, reportedElsewhere: false, screen, owner, seenAt: mono };
       return;
     }
-    current.seenAt = mono;
+    current.seenAt = Math.max(current.seenAt, mono);
     if (!current.active && mono - current.since >= UNRECOGNISED_PROMPT_STABLE_MS) {
       current.active = true;
       // A [y/n] the interactive-prompt detector knows was already told (interactive_prompt, after 10 s): held and
@@ -7227,14 +7229,18 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #1691: a fresh pane read outside the scan (a delivery probe), taken at `mono`: when it no longer shows exactly the
-   * tracked prompt, the evidence ends — counting or active, so a return needs a fresh minute (#1695 r2). Only a read
-   * taken after the capture that last confirmed the evidence can void it: an older one says nothing about now.
+   * #1691: a fresh pane read outside the scan (a delivery probe, an accepted state re-capture), taken at `mono`. When it
+   * no longer shows exactly the tracked prompt, the evidence ends — counting or active, so a return needs a fresh minute
+   * (#1695 r2). When it does, it is the newest confirmation. Either way only a read newer than the newest confirming read
+   * counts: an older one, finishing late, says nothing about now (#1695 r3).
    */
   private noteFreshPaneRead(pane: string, mono: number): void {
     const current = this.unrecognisedPromptCurrent();
     if (!current || mono < current.seenAt) return;
-    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) return;
+    if (this.unrecognisedPromptCandidate(pane)?.block === current.block && Daemon.stableScreen(pane) === current.screen) {
+      current.seenAt = mono;
+      return;
+    }
     this.unrecognisedPrompt = null;
   }
 

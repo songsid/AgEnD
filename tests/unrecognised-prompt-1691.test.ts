@@ -17,7 +17,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Daemon, UNRECOGNISED_PROMPT_STABLE_MS } from "../src/daemon.js";
+import { Daemon, PaneStateMachine, UNRECOGNISED_PROMPT_STABLE_MS } from "../src/daemon.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { MuseBackend } from "../src/backend/muse.js";
 import { OpenCodeBackend } from "../src/backend/opencode.js";
@@ -285,6 +285,74 @@ describe("#1695 r2 P2-4: a fresh read before the minute is up resets it too", ()
       expect(r.d.unrecognisedPrompt).toBe(tracked);
       r.d.noteFreshPaneRead(AT_PROMPT, tracked.seenAt + 1);   // a newer one
       expect(r.d.unrecognisedPrompt).toBeNull();
+    } finally { r.stop(); }
+  });
+});
+
+describe("#1695 r3 P2-4: every accepted fresh read counts, in order", () => {
+  /** The real instance-state monitor's re-capture, as the daemon's own does (a real PaneStateMachine). */
+  const stateMonitor = (r: ReturnType<typeof rig>) => {
+    r.d.instanceStateMachine = new PaneStateMachine(r.d.backend.getReadyPattern(), 600_000, Date.now(), r.d.backend.getBusyPattern());
+    r.d.instanceStateMonitorActive = true;
+  };
+
+  it("(a) an accepted state re-capture without the prompt ends it: the prompt back before any scan is not held", async () => {
+    const r = rig();
+    stateMonitor(r);
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      expect(await r.held()).toBe("dialog");
+      r.screen.text = AT_PROMPT;
+      await r.d.captureAndEvaluateInstanceState("interaction_confirmation");
+      expect(r.d.getInteractionSnapshot().phase, "the re-capture was accepted").toBe("clear");
+      r.screen.text = SWITCH;
+      expect(await r.held(), "no scan in between").toBe("clear");
+    } finally { r.stop(); }
+  });
+
+  it("(a) control: an accepted state re-capture that still shows it keeps the hold", async () => {
+    const r = rig();
+    stateMonitor(r);
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      await r.d.captureAndEvaluateInstanceState("interaction_confirmation");
+      expect(await r.held()).toBe("dialog");
+    } finally { r.stop(); }
+  });
+
+  /** A probe whose capture is held until released with a given screen. */
+  function heldProbe(r: ReturnType<typeof rig>) {
+    let release!: (pane: string) => void;
+    const capture = r.d.tmux.capturePane;
+    r.d.tmux.capturePane = () => new Promise<string>(resolve => { release = resolve; });
+    const result = r.d.probeBlockingDialog();
+    r.d.tmux.capturePane = capture;
+    return { result, release: (pane: string) => release(pane) };
+  }
+
+  it("(b) an older probe finishing after a newer one confirmed the prompt cannot void it", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const older = heldProbe(r);                        // started first …
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await r.held(), "a newer probe confirms it").toBe("dialog");
+      older.release(AT_PROMPT);                          // … answers last, with a stale screen
+      await older.result;
+      expect(await r.held()).toBe("dialog");
+    } finally { r.stop(); }
+  });
+
+  it("(b) control: an older probe after only the scan's confirmation still voids it (it is newer than the scan)", async () => {
+    const r = rig();
+    try {
+      await r.poll(UNRECOGNISED_PROMPT_STABLE_MS + 10_000);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const probe = heldProbe(r);
+      probe.release(AT_PROMPT);
+      await probe.result;
+      expect(await r.held()).toBe("clear");
     } finally { r.stop(); }
   });
 });
