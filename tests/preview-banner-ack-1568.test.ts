@@ -243,7 +243,6 @@ describe("the panel's banner", () => {
     const doc = await chat(1);
     const card = cards(doc)[0];
     await click(card.querySelector(".pv-open"));
-    await click(doc.querySelector(".pv-panel-run"));
     const f = PV.liveFrame(pp.frameKey("b-1:f0"));
     expect([!!doc.querySelector(".pv-panel .pv-banner"), doc.querySelector(".pv-panel .pv-banner .pv-ack")?.textContent ?? null, f.className])
       .toEqual([true, "I understand", "preview-frame fill"]);
