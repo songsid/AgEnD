@@ -359,6 +359,16 @@ describe("claude-code / codex: the transcript's turn for the pasted text settles
     expect(h.outbox.get(h.row.deliveryId)?.lastError).toMatch(/no-transcript-turn \(unavailable\)$/);
   });
 
+  it("codex inside the pane window: a matching rollout entry is not read as this paste's proof either (#1663 P1-2)", async () => {
+    const backend = { binaryName: "codex", getBottomReadyPattern: () => /^❯ ?$/m, readInputRow: () => "" };
+    const h = rawPasteHarness({ backend, backendName: "codex" });
+    h.tmux.pasteBuffer.mockImplementation(async () => { appendFileSync(h.transcript, codexUser(PATROL)); return true; });
+    h.run();
+    await h.pump(200);
+    expect(h.state()).not.toBe("delivered");
+    expect(h.evidence() ?? "").not.toContain("transcript");
+  });
+
   it("inside the pane window, the proofs read the transcript for the pasted TEXT (not a marker it never carries)", async () => {
     const backend = { binaryName: "claude", getBottomReadyPattern: () => /^❯ ?$/m, readInputRow: () => "" };
     const h = rawPasteHarness({ backend, backendName: "claude-code" });
