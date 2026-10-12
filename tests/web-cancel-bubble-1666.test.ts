@@ -55,7 +55,7 @@ async function harness(type: "telegram" | "discord", opts: { webOnly?: boolean }
   vi.stubEnv("AGEND_HOME", dir);
   const fm = new FleetManager(dir); managers.push(fm); const s = fm as any;
   const calls: Call[] = [];
-  let holdEcho: Promise<void> | undefined;
+  let holdEcho: Promise<void> | undefined, holdBubble: Promise<void> | undefined;
   let nextId = 100;
   const chatId = type === "telegram" ? "-100222" : "guild", topic = type === "telegram" ? "27" : "topic";
   let adapter: TelegramAdapter | DiscordAdapter | undefined;
@@ -65,6 +65,7 @@ async function harness(type: "telegram" | "discord", opts: { webOnly?: boolean }
     (bot as any).botInfo = { id: 777, is_bot: true, first_name: "Bot", username: "bot", can_join_groups: true, can_read_all_group_messages: true, supports_inline_queries: false };
     (bot as any).api.config.use(async (_prev: unknown, method: string, payload: any) => {
       if (method === "sendMessage" && String(payload.text).startsWith(WEB_ECHO_PREFIX) && holdEcho) await holdEcho;
+      if (method === "sendMessage" && payload.reply_markup && holdBubble) await holdBubble;
       const id = String(++nextId);
       calls.push({ method, chatId: String(payload.chat_id), thread: payload.message_thread_id != null ? String(payload.message_thread_id) : undefined,
         text: payload.text, button: !!payload.reply_markup, messageId: method === "sendMessage" ? id : String(payload.message_id ?? "") });
@@ -114,8 +115,17 @@ async function harness(type: "telegram" | "discord", opts: { webOnly?: boolean }
     fm, s, calls, bubbles, echoes, received, chatId, topic,
     setIdle: (v: boolean) => { idle = v; },
     hold: (p?: Promise<void>) => { holdEcho = p; },
+    holdBubble: (p?: Promise<void>) => { holdBubble = p; },
     reply: (text = "done") => s.handleOutboundFromInstance("worker", { requestId: 9, tool: "reply", args: { text, chat_id: chatId } }),
   };
+}
+
+/** The lane's 5 s budget runs on performance.now() and setTimeout: move both together (as #1320's orderingClock). */
+function laneClock() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let now = 100;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  return { advance: async (ms: number) => { now += ms; await vi.advanceTimersByTimeAsync(ms); await flush(20); } };
 }
 
 function send(fm: FleetManager, message = "hello from the web") {
@@ -212,5 +222,36 @@ describe("#1666: a delivered web chat message starts the topic's Cancel/progress
     await flush(20);
     expect(h.bubbles()).toHaveLength(2);
     expect(h.s.hasCancelButton("worker")).toBe(true);
+  });
+
+  it("a bubble slower than the lane's 5 s budget never drops the NEXT message's echo (it is not a copy, #1668 P2)", async () => {
+    const h = await harness("telegram");
+    const clock = laneClock();
+    const bubble = deferred();
+    h.holdBubble(bubble.promise);
+    expect((await send(h.fm, "first")).status).toBe(200);
+    await flush(20);
+    expect(h.echoes().map(c => c.text)).toEqual([expect.stringContaining("first")]);
+    expect((await send(h.fm, "second")).status).toBe(200);
+    await clock.advance(5_300);
+    h.holdBubble(undefined);
+    bubble.resolve();
+    await clock.advance(2_000);
+    expect(h.echoes().map(c => c.text)).toEqual([expect.stringContaining("first"), expect.stringContaining("second")]);
+  });
+
+  it("an echo slower than the budget never drops this message's bubble (a slow echo may leave it above the echo, #1668 P3)", async () => {
+    const h = await harness("telegram");
+    const clock = laneClock();
+    const echo = deferred();
+    h.hold(echo.promise);
+    expect((await send(h.fm)).status).toBe(200);
+    await clock.advance(5_300);
+    echo.resolve();
+    await clock.advance(2_000);
+    // The echo did time out on the lane (in this fake clock grammy's own request timeout also ends the held call, so
+    // whether the late echo shows is not this test's question) — and the bubble was posted anyway.
+    expect(h.s.logger.warn.mock.calls.some((c: any[]) => c[1] === "Web channel echo ordering timed out")).toBe(true);
+    expect(h.bubbles()).toHaveLength(1);
   });
 });

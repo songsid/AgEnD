@@ -981,7 +981,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private ipcWaitTails = new Map<string, Promise<void>>();
   private webChannelEchoTails = new Map<string, {
     tail: Promise<void>;
-    pending: Set<{ started: boolean; drop: () => void }>;
+    pending: Set<{ started: boolean; copy: boolean; drop: () => void }>;
+    /** Whether the newest entry (the tail) is a copy; a copy reserved behind a non-copy starts its budget later. */
+    tailIsCopy?: boolean;
   }>();
   /**
    * instanceName → the reservation whose echo callback is currently running.
@@ -3404,13 +3406,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.sendCancelButton(instanceName);
   }
 
-  reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>): (accepted: boolean) => void {
+  /**
+   * `copy: false` (#1666/#1668): an entry that is not a copy of a message — the web send's Cancel/progress bubble. It
+   * keeps its place in the order, but the lane's copy rules do not apply to it: its 5 s budget starts when its turn
+   * starts (waiting behind a slow echo is not its delay), its own timeout only releases the lane (the copies queued
+   * behind it are not "behind an ambiguous copy"), and another entry's timeout never drops it. A copy reserved right
+   * behind a non-copy starts its own budget when that non-copy finishes: a slow bubble is not the next echo's delay.
+   */
+  reserveWebChannelEcho(instanceName: string, sendEcho: () => Promise<unknown>, opts: { copy?: boolean } = {}): (accepted: boolean) => void {
+    const copy = opts.copy !== false;
     const epoch = this.getDeliveryEpoch(instanceName);
-    const deadlineAt = performance.now() + 5_000;
+    const queued = this.webChannelEchoTails.get(instanceName);
+    const behindNonCopy = queued?.tailIsCopy === false;
+    let deadlineAt = copy && !behindNonCopy ? performance.now() + 5_000 : Number.POSITIVE_INFINITY;
     let decide!: (accepted: boolean) => void;
     const admission = new Promise<boolean>(resolve => { decide = resolve; });
-    const queue = this.webChannelEchoTails.get(instanceName)
-      ?? { tail: Promise.resolve(), pending: new Set<{ started: boolean; drop: () => void }>() };
+    const queue = queued
+      ?? { tail: Promise.resolve(), pending: new Set<{ started: boolean; copy: boolean; drop: () => void }>() };
     const previous = queue.tail;
     let resolveDone!: () => void;
     const tail = new Promise<void>(resolve => { resolveDone = resolve; });
@@ -3427,7 +3439,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       resolveDone();
     };
-    const entry = { started: false, drop: () => {
+    const entry = { started: false, copy, drop: () => {
       this.logger.warn({ instanceName }, "Queued web channel echo dropped after ordering timeout");
       finish();
     } };
@@ -3436,25 +3448,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       expired = true;
       this.logger.warn({ instanceName, inFlight: entry.started }, "Web channel echo ordering timed out");
       finish();
-      // Do not post copies that were queued behind an ambiguous platform send.
-      for (const pending of queue.pending) if (!pending.started) pending.drop();
+      // Do not post copies that were queued behind an ambiguous platform send. A non-copy that timed out was no copy
+      // at all (nothing behind it is ambiguous), and a non-copy is never dropped as one.
+      if (copy) for (const pending of queue.pending) if (!pending.started && pending.copy) pending.drop();
     };
     const checkDeadline = () => {
-      if (done) return;
+      if (done || deadlineAt === Number.POSITIVE_INFINITY) return;   // a non-copy's budget has not started yet
       const remaining = deadlineAt - performance.now();
       if (remaining <= 0) expire();
       else timer = setTimeout(checkDeadline, Math.ceil(remaining));
     };
     queue.pending.add(entry);
     queue.tail = tail;
+    queue.tailIsCopy = copy;
     this.webChannelEchoTails.set(instanceName, queue);
     checkDeadline();
+    // Registered before the admission below, so the budget is set when that runs.
+    if (copy && behindNonCopy) void previous.then(() => { if (!done) { deadlineAt = performance.now() + 5_000; checkDeadline(); } });
     void Promise.all([previous, admission]).then(([, accepted]) => {
       if (done) return;
       if (!accepted || !this.isDeliveryEpochCurrent(instanceName, epoch)) { finish(); return; }
       // A delayed timer callback must not admit an already expired copy.
-      if (performance.now() >= deadlineAt) { expire(); return; }
+      if (copy && performance.now() >= deadlineAt) { expire(); return; }
       entry.started = true;
+      if (!copy) { deadlineAt = performance.now() + 5_000; checkDeadline(); }
       guard = { epoch, deadlineAt };
       this.webChannelEchoGuards.set(instanceName, guard);
       let request: Promise<unknown>;
