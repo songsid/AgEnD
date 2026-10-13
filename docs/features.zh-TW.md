@@ -786,7 +786,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。每個後端都用它原生的機制：
 
 - Claude Code：`--append-system-prompt-file`（檔案是 instance 目錄裡的 `fleet-instructions.md`）
-- Kiro CLI：instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`（見[同一個工作目錄裡的 kiro instance](#同一個工作目錄裡的-kiro-instance)）。kiro-cli 2.21 以前，以及恢復的對話（切換成 instance 自己 agent 的步驟已暫停，#1800），改用 steering 檔 `.kiro/steering/agend-<instance>.md`。
+- Kiro CLI：instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`（見[同一個工作目錄裡的 kiro instance](#同一個工作目錄裡的-kiro-instance)）。kiro-cli 2.21 以前，以及恢復的對話（切換成 instance 自己 agent 的步驟已暫停，#1800），改用 steering 檔 `.kiro/steering/agend-<instance>.md`。恢復時 AgEnD 兩個檔都會寫；本來就以 instance 自己 agent 存檔的對話，讀的是 agent 的 `prompt`。
 - Codex、Grok Build、Meta Muse Code：工作目錄裡 `AGENTS.md` 中一段有標記的區塊
 - Antigravity CLI：工作目錄裡 `.agents/agents.md` 中一段有標記的區塊
 - OpenCode：instance 目錄裡的 `fleet-instructions.md`，加進工作目錄中 `opencode.json` 的 `instructions` 清單
@@ -845,7 +845,7 @@ defaults:
 
 ## 同一個工作目錄裡的 kiro instance
 
-每個 kiro instance 都以自己的 kiro agent 執行（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示，所以共用工作目錄的 kiro instance 不再啟動彼此的 AgEnD server、讀到彼此的指示，或恢復到彼此的對話。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
+每個 kiro instance 都有自己的 kiro agent（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話，所以共用工作目錄的 kiro instance 不會恢復到彼此的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示：**新的**對話以這個 agent 執行，不會啟動其他 instance 的 AgEnD server、也不會讀到它們的指示；切換暫停期間（#1800，見下方），**恢復的**對話維持存檔時的 agent 並使用共用項目，這部分隔離不適用。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
 
 - **你自己的 MCP server 都還在。** agent 會納入全域的 `~/.kiro/settings/mcp.json` 和工作目錄的 `.kiro/settings/mcp.json`；只有在恢復的對話需要時（見下一點），AgEnD 才會把自己的項目寫進去。
 - **恢復的對話維持原本的 agent（#1800）。** kiro 恢復對話時，會回到它當初存檔時的 agent。AgEnD 以前會在 pane 裡輸入 `/agent swap <agent>`，把它切換成 instance 自己的 agent；這個切換已**暫停**，因為有 instance 切換後失去了 AgEnD 的工具、無法 `reply`。現在恢復的對話，會和 #906 之前一樣，從共用的 `.kiro/settings/mcp.json` 項目和 steering 檔取得本 instance 的 AgEnD server 與指示；已記錄過切換的 instance 也一樣。
