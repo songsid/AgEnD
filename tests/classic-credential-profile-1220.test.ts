@@ -203,7 +203,7 @@ describe("a profile edited in classicBot.yaml takes effect through a restart (th
     fm.fleetConfig = { defaults, instances: {} } as any;
     fm.classicChannels = manager();
     runningDaemon(fm, from, defaults);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     const start = vi.spyOn(fm as any, "startClassicInstanceUnattended").mockResolvedValue(true);
     // #1753: claude-code's copy itself is claude-carry-1753's; here, whether the switch asks for it, and when.
     const carry = vi.spyOn(fm as any, "switchConversation");
@@ -308,7 +308,7 @@ describe("SIGHUP / reconcile applies a profile change too (r1 review)", () => {
     fm.loadConfig(configPath);
     fm.classicChannels = manager();
     runningDaemon(fm, opts.classicFrom, fm.fleetConfig!.defaults as any);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     const start = vi.spyOn(fm as any, "startClassicInstanceUnattended").mockResolvedValue(true);
     const carry = vi.spyOn(fm as any, "switchConversation");
     if (opts.classicFrom.backend === "claude-code") carry.mockResolvedValue({ carried: true, sessionId: "s", bytes: 1, ms: 1, replacedOlderCopy: false });

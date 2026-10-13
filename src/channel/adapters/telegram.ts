@@ -13,6 +13,7 @@ import { isTelegramParseRefusal, markdownToTelegramHtml } from "../telegram-mark
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { t } from "../../locale.js";
+import { isTelegramEditNotModified } from "../message-edit-errors.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 const TELEGRAM_NETWORK_RETRY_MS = 250;
@@ -321,7 +322,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         return { messageId: String(msg.message_id) };
       },
       edit: async (chatId, messageId, text) => {
-        await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
+        await this.editText(Number(chatId), Number(messageId), text);
       },
       sendFile: async (chatId, threadId, filePath) => {
         const ext = extname(filePath).toLowerCase();
@@ -975,7 +976,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   /** #1266: the keyboard becomes one inert button saying how it ended (Telegram cannot disable a button). */
   async settleReplyButtons(chatId: string, messageId: string, _threadId: string | undefined, labels: readonly string[], outcome: ReplyButtonsOutcome): Promise<void> {
     const label = "expired" in outcome ? t("reply_buttons.expired") : t("reply_buttons.chosen", labels[outcome.chosenIndex] ?? "?", outcome.by);
-    await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
+    await this.editButtons(Number(chatId), Number(messageId), {
       reply_markup: { inline_keyboard: [[{ text: label.length > 64 ? `${label.slice(0, 63)}…` : label, callback_data: REPLY_BUTTONS_CLOSED }]] },
     });
   }
@@ -1005,28 +1006,35 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return { messageId, chatId, threadId };
   }
 
-  /**
-   * #1651: an edit renders like the reply it edits — format "html" is parse_mode HTML, as on sendMessage. "markdown"
-   * (an agent's edit_message) is converted escape-first to Telegram HTML; if Telegram still refuses the markup, the
-   * same text is retried once as plain text, so an edit that went through before #1651 still goes through.
-   */
+  /** All Telegram text/keyboard edits share the typed unchanged-content no-op (#1751). */
+  private async editText(...args: Parameters<Bot["api"]["editMessageText"]>): Promise<void> {
+    try { await this.bot.api.editMessageText(...args); }
+    catch (err) { if (!isTelegramEditNotModified(err)) throw err; }
+  }
+
+  private async editButtons(...args: Parameters<Bot["api"]["editMessageReplyMarkup"]>): Promise<void> {
+    try { await this.bot.api.editMessageReplyMarkup(...args); }
+    catch (err) { if (!isTelegramEditNotModified(err)) throw err; }
+  }
+
+  /** #1651: render HTML/markdown like sendMessage, retaining the parse-refusal-only plain-text fallback. */
   async editMessage(chatId: string, messageId: string, text: string, _threadId?: string, opts?: { format?: "html" | "markdown" }): Promise<void> {
     if (opts?.format === "markdown") {
       try {
-        await this.bot.api.editMessageText(Number(chatId), Number(messageId), markdownToTelegramHtml(text), { parse_mode: "HTML" });
+        await this.editText(Number(chatId), Number(messageId), markdownToTelegramHtml(text), { parse_mode: "HTML" });
       } catch (err) {
         if (!isTelegramParseRefusal(err)) throw err;
         console.warn(`[telegram] edit markup refused; retrying as plain text: ${errorMessage(err)}`);
-        await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
+        await this.editText(Number(chatId), Number(messageId), text);
       }
       return;
     }
-    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, ...(opts?.format === "html" ? [{ parse_mode: "HTML" as const }] : []));
+    await this.editText(Number(chatId), Number(messageId), text, ...(opts?.format === "html" ? [{ parse_mode: "HTML" as const }] : []));
   }
 
   /** Edit text and drop the inline keyboard (omitting reply_markup clears it). */
   async editMessageRemoveButtons(chatId: string, messageId: string, text: string, _threadId?: string, urlButtons?: Array<{ label: string; url: string }>): Promise<void> {
-    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, {
+    await this.editText(Number(chatId), Number(messageId), text, {
       reply_markup: { inline_keyboard: urlButtons?.map(b => [{ text: b.label, url: b.url }]) ?? [] },
     });
   }
@@ -1038,13 +1046,13 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
    */
   /** #1610: keyboard-only replacement — the message text stays as posted (the 48 h edit limit applies). */
   async replaceMessageButtons(chatId: string, messageId: string, choices: Choice[]): Promise<void> {
-    await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
+    await this.editButtons(Number(chatId), Number(messageId), {
       reply_markup: { inline_keyboard: choices.map(c => [{ text: c.label, callback_data: c.id }]) },
     });
   }
 
   async removeMessageButtons(chatId: string, messageId: string): Promise<void> {
-    await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
+    await this.editButtons(Number(chatId), Number(messageId), {
       reply_markup: { inline_keyboard: [] },
     });
   }
@@ -1218,7 +1226,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const editMsgId = query.messageId ? Number(query.messageId) : sentMessageId;
       if (editChatId && editMsgId) {
         const label = isDeny ? "❌ Denied" : isAlways ? "✅ Always Allowed" : "✅ Allowed";
-        this.bot.api.editMessageText(editChatId, editMsgId,
+        this.editText(editChatId, editMsgId,
           `${label}\nTool: \`${prompt.tool_name}\``,
           { parse_mode: "Markdown" },
         ).catch(() => { /* UI update only */ });
@@ -1233,7 +1241,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         // On timeout/abort, update message to show expiry
         stopCountdown();
         if (sentChatId && sentMessageId) {
-          this.bot.api.editMessageText(sentChatId, sentMessageId,
+          this.editText(sentChatId, sentMessageId,
             `⏱ Timed out\nTool: \`${prompt.tool_name}\``,
             { parse_mode: "Markdown" },
           ).catch(() => { /* UI update only */ });
@@ -1285,7 +1293,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         const remaining = Math.max(0, TIMEOUT_SECS - elapsed);
         if (remaining <= 0) { stopCountdown(); return; }
         const updatedKeyboard = makeKeyboard(remaining);
-        this.bot.api.editMessageReplyMarkup(chatIdForEdit, msgIdForEdit, {
+        this.editButtons(chatIdForEdit, msgIdForEdit, {
           reply_markup: updatedKeyboard,
         }).catch(() => { /* rate limit or already edited */ });
       }, COUNTDOWN_INTERVAL_MS);
@@ -1489,7 +1497,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async editAlert(chatId: string, messageId: string, alert: AlertData): Promise<void> {
     const keyboard = new InlineKeyboard();
     for (const choice of alert.choices ?? []) keyboard.text(choice.label, choice.id);
-    await this.bot.api.editMessageText(Number(chatId), Number(messageId), alert.message, {
+    await this.editText(Number(chatId), Number(messageId), alert.message, {
       reply_markup: keyboard,
     });
   }

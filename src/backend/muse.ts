@@ -85,6 +85,27 @@ const MUSE_STATUS_BAR = /^\s{1,4}[^\s·]+(?:\s+·\s+[^·\s][^·]*)+$/;
 const MUSE_DIALOG_CHROME = /Allow this (?:tool|command)|Approve this (?:tool|command)|^\s*[>❯]?\s*1\s+(?:Allow|Approve|Trust)\b|Use Up\/Down|Esc (?:quits|to cancel)|↓↑ to select|·\s*Enter to choose\b/i;
 /** The status bar is one row; a long cwd in a narrow pane wraps it onto a few more. */
 const MUSE_MAX_STATUS_ROWS = 4;
+/**
+ * #1717: extended bottom-region depth, but ONLY for a terminals-panel-headed
+ * block (header + running tasks + bar). A long wrapped bar still fails closed
+ * past MUSE_MAX_STATUS_ROWS (#958): the extension below accepts a deeper
+ * separator only when the row right after it is the panel header.
+ */
+const MUSE_MAX_PANEL_DEPTH = 8;
+/**
+ * #1717: while a background task runs, muse draws a terminals panel between
+ * the input box's bottom separator and the status bar (live 1.4.6,
+ * tests/fixtures/muse-1.4.6/prod-background-work.pane.txt):
+ *   main · ↓ to select
+ *   └ ◆ Wait in the background  running   11s
+ * The header ends in `↓ to select` — note the single arrow, which is NOT the
+ * dialog chrome's `↓↑ to select`. The timer redraws every second, which is
+ * exactly the periodic-redraw case. The composer above stays free, so the
+ * panel must not fail the idle proof — but only this shape passes: anything
+ * else under the separator still fails closed.
+ */
+const MUSE_TERMINALS_HEADER = /^.+· ↓ to select\s*$/;
+const MUSE_TERMINAL_TASK_ROW = /^[└├]\s+.*\brunning\b\s+(?:\d+(?:\.\d+)?[hms]\s*)+\s*$/;
 /** The working line's timer: `◇ Thinking (2s · esc to interrupt)`. */
 const MUSE_BUSY = /\(\s*(?:\d+(?:\.\d+)?[hms]\s*)+·\s*esc to interrupt\s*\)/;
 const MUSE_MAX_INPUT_ROWS = 200;
@@ -94,14 +115,100 @@ const MUSE_MAX_INPUT_ROWS = 200;
  * first row in the bar's grammar, the rest a wrapped continuation of it. A
  * picker, a dialog, a busy line or a second separator there means the box above
  * is not the live input (#829 review: a chooser under an old box).
+ *
+ * #1717: a terminals panel may sit between the separator and the bar (a
+ * `· ↓ to select` header plus `running` task rows). It is stripped first and
+ * each of its rows must match the panel grammar — a header with no task row,
+ * or any other shape, still fails closed.
  */
 function museStatusFooter(rows: readonly string[], bottomSeparator: number, busy: RegExp): boolean {
-  const status = rows.slice(bottomSeparator + 1);
-  if (status.length === 0 || !MUSE_STATUS_BAR.test(status[0])) return false;
+  let status = rows.slice(bottomSeparator + 1);
+  if (status.length === 0) return false;
+  if (MUSE_TERMINALS_HEADER.test(status[0])) {
+    let end = 1;
+    while (end < status.length && MUSE_TERMINAL_TASK_ROW.test(status[end])) end++;
+    if (end === 1) return false;
+    const panel = status.slice(0, end);
+    if (!panel.every(row => !MUSE_SEPARATOR.test(row.trim()) && !busy.test(row) && !MUSE_DIALOG_CHROME.test(row))) return false;
+    status = status.slice(end);
+    if (status.length === 0) return false;
+  }
+  if (!MUSE_STATUS_BAR.test(status[0])) return false;
   if (!status.every(row => /^\s+\S/.test(row) && !MUSE_SEPARATOR.test(row.trim()) && !busy.test(row) && !MUSE_DIALOG_CHROME.test(row))) return false;
   // A wrapped cwd continues as path text; a numbered option list or a
   // selection cursor under the bar is a picker, not the bar.
   return !status.slice(1).some(row => /^\s*[>❯›]?\s*\d+[.)]?\s+\S/.test(row) || /^\s*[>›]/.test(row));
+}
+
+/**
+ * The structural core of the idle proof, shared with the quit-menu matcher
+ * (#1730 P2-1): true when the CURRENT screen — anchored to the bottom
+ * separator — shows the live, empty input box. A transcript quoting an older
+ * screen above never satisfies it.
+ */
+function museFreeComposerLayout(rows: readonly string[], busyPattern: RegExp): boolean {
+  // The approval prompt is auto-answered rather than input-blocking, so the
+  // idle proof itself must refuse a frame that shows dialog chrome.
+  const dialogChrome = MUSE_DIALOG_CHROME;
+  // Everything after the bottom separator must be the status bar (#1717:
+  // optionally a terminals panel first).
+  const bottomSeparator = museBottomSeparator(rows);
+  if (bottomSeparator < 2) return false;
+  if (!museStatusFooter(rows, bottomSeparator, busyPattern)) return false;
+  // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
+  // (or, higher up, a transcript echo) and never proves idle.
+  if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
+  const topSeparator = bottomSeparator - 2;
+  if (!MUSE_SEPARATOR.test(rows[topSeparator])) return false;
+  // No busy indicator and no dialog just above the input box. The working
+  // line (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the
+  // top separator; check 8 rows up to be safe.
+  const above = rows.slice(Math.max(0, topSeparator - 8), topSeparator);
+  if (above.some(r => busyPattern.test(r) || dialogChrome.test(r))) return false;
+  // Arrow-key pickers (`/model`) are refused by their component chrome
+  // above, not by guessing from answer text that happens to list model ids.
+  // A `›` selection cursor is refused too; `❯` is not a cursor here — muse
+  // echoes submitted messages with it.
+  return !above.some(r => /^\s*›\s+\S/.test(r));
+}
+
+/**
+ * Nearest bottom separator, with the #1717 panel extension: the plain search
+ * stays capped at MUSE_MAX_STATUS_ROWS (a 5-row wrapped bar still fails
+ * closed, #958); a deeper separator is accepted only when the row right
+ * after it is the terminals-panel header. Nearest-first, so a stale
+ * separator in scrollback can never win over the live one.
+ */
+function museBottomSeparator(rows: readonly string[]): number {
+  for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MUSE_MAX_STATUS_ROWS); i--) {
+    if (MUSE_SEPARATOR.test(rows[i])) return i;
+  }
+  for (let i = Math.max(0, rows.length - 1 - MUSE_MAX_STATUS_ROWS) - 1; i >= Math.max(0, rows.length - 1 - MUSE_MAX_PANEL_DEPTH); i--) {
+    if (MUSE_SEPARATOR.test(rows[i])) {
+      return MUSE_TERMINALS_HEADER.test(rows[i + 1] ?? "") ? i : -1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * #1717: true when the pane shows muse's terminals panel with at least one
+ * running task — the "local work still active" state. Anchored to the last
+ * separator, where the live panel sits under the input box: a transcript
+ * quoting an old panel above a separator never counts. The idle proof checks
+ * the same shape positionally via museStatusFooter; this boolean feeds the
+ * pause gate below.
+ */
+export function museBackgroundWorkActive(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+  let sep = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (MUSE_SEPARATOR.test(rows[i])) { sep = i; break; }
+  }
+  if (sep < 0) return false;
+  const after = rows.slice(sep + 1);
+  return after.length > 1 && MUSE_TERMINALS_HEADER.test(after[0]) && MUSE_TERMINAL_TASK_ROW.test(after[1]);
 }
 
 /**
@@ -121,10 +228,7 @@ function museStatusFooter(rows: readonly string[], bottomSeparator: number, busy
 export function museInputBox(pane: string, busy: RegExp = MUSE_BUSY): InputDraft | null {
   const rows = pane.replace(/\r/g, "").split("\n");
   while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
-  let bottom = -1;
-  for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MUSE_MAX_STATUS_ROWS); i--) {
-    if (MUSE_SEPARATOR.test(rows[i])) { bottom = i; break; }
-  }
+  const bottom = museBottomSeparator(rows);
   if (bottom < 2 || !museStatusFooter(rows, bottom, busy)) return null;
   for (let top = bottom - 1, n = 0; top >= 1 && n < MUSE_MAX_INPUT_ROWS; top--, n++) {
     const row = rows[top];
@@ -216,6 +320,84 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
   inputBlocked: true,
   description: "Muse login menu — waiting for a human to log in (never answered)",
 };
+
+/**
+ * #1716: `/quit` while a background task runs is answered with a confirmation
+ * instead of an exit (live 1.4.6,
+ * tests/fixtures/muse-1.4.6/prod-quit-with-local-work.pane.txt):
+ *   ❯
+ *     Local work is still active
+ *     The following will stop when you exit:
+ *     background task · tool.bash
+ *     ❯ 1. Exit anyway
+ *       2. Stay
+ *     Enter to confirm · Esc to cancel
+ *   ──────────
+ *   main · ↓ to select
+ *   └ ◇ Wait in the background  running   15s
+ *     mock-model · high · ~/work · Launch overrides
+ * Unlike Claude's prompt this menu is NOT bottom-anchored — the terminals
+ * panel sits under it — so the match is anchored to the hint row instead:
+ * the header must be within 12 rows above it with both options in between.
+ * Enter would take the selected option ("Exit anyway"), so like #1217 this is
+ * recognised whole and never answered here: the stop flow cancels it.
+ */
+export const MUSE_LOCAL_WORK_QUIT = /^[ \t]*Local work is still active[ \t]*$/m;
+const MUSE_QUIT_HINT = /^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/;
+const MUSE_QUIT_OPT_1 = /^[ \t]*[❯›]?[ \t]*1\.[ \t]+Exit anyway[ \t]*$/m;
+const MUSE_QUIT_OPT_2 = /^[ \t]*[❯›]?[ \t]*2\.[ \t]+Stay[ \t]*$/m;
+export function museLocalWorkQuitActive(pane: string): boolean {
+  const screen = pane.replace(/\r/g, "").split("\n");
+  while (screen.length && !screen[screen.length - 1].trim()) screen.pop();
+  const bottom = museBottomSeparator(screen);
+  if (bottom < 0) return false;
+  // #1730 P2-1 (refined): the menu must belong to the CURRENT input block —
+  // between the bottom separator and the nearest separator above it. Menu
+  // text quoted in an older screen is history even when the current composer
+  // is busy with a draft, not just when it is free.
+  let top = -1;
+  for (let i = bottom - 1; i >= 0; i--) {
+    if (MUSE_SEPARATOR.test(screen[i])) { top = i; break; }
+  }
+  // A free composer on the current screen means any menu text is history.
+  if (museFreeComposerLayout(screen, MUSE_BUSY)) return false;
+  // #1730 P2-1 r3: a populated ❯ line means any menu text is a quote, not the
+  // live chrome. The menu only ever answers a submitted /quit, which clears
+  // the box — the live capture's ❯ row is empty with the menu as chrome under
+  // it — while every quoting draft (r2's "cancel me", r3a's hint-carrying
+  // draft, r3b's menu-quoting draft) holds text on the ❯ line itself. A null
+  // draft (no readable box) carries nothing to judge, so it still proceeds.
+  // Residual: an empty ❯ followed by a verbatim menu paste is byte-identical
+  // to the live chrome and cannot be separated here.
+  const draft = museInputBox(pane, MUSE_BUSY);
+  if (draft !== null && draft.rows.length > 0 && draft.rows[0].trim() !== "") return false;
+  // Candidates newest-first, so a stale quote above never shadows the live
+  // block below (or passes as live itself).
+  for (let h = screen.length - 1; h >= 0; h--) {
+    if (!MUSE_QUIT_HINT.test(screen[h])) continue;
+    if (!(h > top && h < bottom)) continue;
+    // The block above, skipping padding blanks (the same 12-non-blank
+    // window as before — the live menu fits in 9), with screen indices so the
+    // WHOLE block is fenced to the live input box, not just the hint: the
+    // backward scan must not borrow the header or options from above top.
+    const window: Array<{ row: string; index: number }> = [];
+    for (let i = h - 1; i >= 0 && window.length < 12; i--) {
+      if (screen[i].trim()) window.unshift({ row: screen[i], index: i });
+    }
+    if (window.length < 4) continue;
+    // #1730 P2-1 r4: headers newest-first, eligible only — a scrollback header
+    // above top must not shadow the live header inside the box. The first
+    // (oldest) match can sit above top while the current menu is intact below.
+    for (let head = window.length - 1; head >= 0; head--) {
+      if (!MUSE_LOCAL_WORK_QUIT.test(window[head].row)) continue;
+      if (window[head].index <= top) continue;
+      const block = window.slice(head).map(entry => entry.row).join("\n");
+      if (!MUSE_QUIT_OPT_1.test(block) || !MUSE_QUIT_OPT_2.test(block)) continue;
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Meta Muse Code — the `muse` CLI (v1.3.0 verified).
@@ -544,33 +726,7 @@ export class MuseBackend implements CliBackend {
   isPeriodicRedrawIdlePane(pane: string): boolean {
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
-    const separator = MUSE_SEPARATOR;
-    const busyPattern = this.getBusyPattern();
-    // The approval prompt is auto-answered rather than input-blocking, so the
-    // idle proof itself must refuse a frame that shows dialog chrome.
-    const dialogChrome = MUSE_DIALOG_CHROME;
-    // Everything after the bottom separator must be the status bar.
-    let bottomSeparator = -1;
-    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MUSE_MAX_STATUS_ROWS); i--) {
-      if (separator.test(rows[i])) { bottomSeparator = i; break; }
-    }
-    if (bottomSeparator < 2) return false;
-    if (!museStatusFooter(rows, bottomSeparator, busyPattern)) return false;
-    // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
-    // (or, higher up, a transcript echo) and never proves idle.
-    if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
-    const topSeparator = bottomSeparator - 2;
-    if (!separator.test(rows[topSeparator])) return false;
-    // No busy indicator and no dialog just above the input box. The working
-    // line (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the
-    // top separator; check 8 rows up to be safe.
-    const above = rows.slice(Math.max(0, topSeparator - 8), topSeparator);
-    if (above.some(r => busyPattern.test(r) || dialogChrome.test(r))) return false;
-    // Arrow-key pickers (`/model`) are refused by their component chrome
-    // above, not by guessing from answer text that happens to list model ids.
-    // A `›` selection cursor is refused too; `❯` is not a cursor here — muse
-    // echoes submitted messages with it.
-    return !above.some(r => /^\s*›\s+\S/.test(r));
+    return museFreeComposerLayout(rows, this.getBusyPattern());
   }
 
   getErrorPatterns(): ErrorPattern[] {
@@ -639,6 +795,17 @@ export class MuseBackend implements CliBackend {
         keys: ["1", "Enter"],
         description: "Muse tool approval — allow",
       },
+      {
+        // #1716: never answered here. A delivery's Enter would pick
+        // "Exit anyway"; the stop flow cancels it (Escape, then SIGTERM).
+        pattern: MUSE_LOCAL_WORK_QUIT,
+        isActive: museLocalWorkQuitActive,
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        description: "Muse \"Local work is still active\" quit menu — holding, never answering with Enter",
+      },
     ];
   }
 
@@ -694,6 +861,21 @@ export class MuseBackend implements CliBackend {
   getQuitCommand(): string | null { return "/quit"; }
   getQuitKey(): string { return "C-c"; }
   getQuitKeyPresses(): number { return 2; }
+
+  /** #1716: `/quit` with a background task running stops at the "Local work is still active" menu. */
+  quitBlockedByDialog(pane: string): boolean {
+    return museLocalWorkQuitActive(pane);
+  }
+
+  /**
+   * #1717: the terminals panel with a `running` task — the pause flow defers
+   * an idle pause while this holds, so an AgEnD-initiated silent pause never
+   * kills the user's running background work. Explicit stop/restart still
+   * proceed via quitBlockedByDialog above.
+   */
+  backgroundWorkRunning(pane: string): boolean {
+    return museBackgroundWorkActive(pane);
+  }
 
   getCompactCommand(): string { return "/compact"; }
   getClearCommand(): string | null { return "/clear"; }

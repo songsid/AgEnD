@@ -219,7 +219,7 @@ export interface WebApiContext {
   /** #1665: the web preferences kept on the host (one bucket: the operator's); absent: /ui/prefs is not offered. */
   readonly webPrefs?: WebPrefsStore;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
-  stopInstance(name: string): Promise<void>;
+  stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
   listWebPrompts?(): unknown[];
   /** #1386: everything waiting on the person, every world (the web is global). */

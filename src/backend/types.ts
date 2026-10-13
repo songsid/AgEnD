@@ -530,6 +530,14 @@ export interface CliBackend {
   quitBlockedByDialog?(pane: string): boolean;
 
   /**
+   * #1717: true while the CLI has background work running that an
+   * AgEnD-initiated silent pause must not kill. The pause flow defers that
+   * cycle while this holds; explicit stop/restart still proceed (via
+   * quitBlockedByDialog when the CLI confirms its exit).
+   */
+  backgroundWorkRunning?(pane: string): boolean;
+
+  /**
    * Whether the TUI can emit terminal output while its visible pane is
    * unchanged (for example, rerunning and repainting a status-line hook).
    *

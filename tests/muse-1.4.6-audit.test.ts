@@ -1,11 +1,10 @@
 /**
  * muse 1.4.6 audit (upstream CLI watch 2026-10-12, precheck MAJOR hard=1; ffb8104e): the screens AgEnD reads,
  * captured live from the 1.4.6 binary (tests/fixtures/muse-1.4.6/SOURCES.md), judged by the production MuseBackend.
- * The verdicts are the same as 1.4.4 on every surface AgEnD relies on. Three known gaps are pinned as they are today,
- * each with its own issue:
- *  - the escalated approval prompt with approval left on (#1715);
- *  - the "Local work is still active" quit menu (#1716);
- *  - a running background task (#1717).
+ * The verdicts are the same as 1.4.4 on every surface AgEnD relies on. One known gap is pinned as it is today
+ * (#1715, the escalated approval prompt with approval left on); two more are pinned as fixed:
+ *  - the "Local work is still active" quit menu is recognised and cancelled deliberately (#1716);
+ *  - a running background task reads as idle-for-delivery while the composer is free (#1717).
  * Each was captured on 1.4.4 with the same sequence (the compare-* pairs) and reads the same there. 1.4.6's new staged
  * prompt (--approval-mode untrusted) is a new surface that falls into the same gap as #1715. It has no 1.4.4
  * counterpart to compare.
@@ -68,7 +67,7 @@ describe("muse 1.4.6: the screens AgEnD reads, as the production backend judges 
   });
 });
 
-describe("muse 1.4.6: known gaps (as in 1.4.4), pinned as they are today", () => {
+describe("muse 1.4.6: known gap (as in 1.4.4, #1715) and gaps fixed since (#1716, #1717)", () => {
   it.each(["approval-escalated", "approval-untrusted-staged"])("%s: with approval left on, the prompt reads as busy and no dialog claims it", name => {
     const p = pane(name);
     expect(verdict(p)).toMatchObject({ busy: true, idle: false, startup: [], runtime: [], errors: [] });
@@ -91,11 +90,12 @@ describe("muse 1.4.6: known gaps (as in 1.4.4), pinned as they are today", () =>
     expect(verdict(pane("compare-1.4.4-approval-escalated"))).toMatchObject({ busy: true, idle: false, runtime: [] });
   });
 
-  it("a running background task keeps the idle proof from passing; /quit stops at 'Local work is still active'", () => {
-    expect(verdict(pane("prod-background-work"))).toMatchObject({ busy: false, idle: false, runtime: [] });
+  it("a running background task is idle-for-delivery (composer free, #1717); /quit stops at 'Local work is still active' (#1716)", () => {
+    expect(verdict(pane("prod-background-work"))).toMatchObject({ busy: false, idle: true, draft: [] });
     const quit = pane("prod-quit-with-local-work");
     expect(quit).toMatch(/Local work is still active/);
-    expect(verdict(quit)).toMatchObject({ idle: false, startup: [], runtime: [] });
+    expect(verdict(quit)).toMatchObject({ idle: false, startup: [] });
+    expect(verdict(quit).runtime).toEqual([expect.stringContaining("Local work is still active")]);
     expect(unrecognisedPromptShape(quit), "the terminals panel under it keeps it from being bottom-anchored").toBeNull();
   });
 });

@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./backend/kiro-engine-ledger.js";
 import type { ChannelAdapter } from "./channel/types.js";
+import { isMessageEditLoss } from "./channel/message-edit-errors.js";
 import {
   deriveNeedsYou, itemsForWorld, renderLiveMessage, renderSignature, messageLink, instanceLink,
   type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type WorldPlace,
@@ -256,6 +257,7 @@ export class NeedsYouHub {
         await world.adapter.editAlert(pointer.chatId, pointer.messageId, { type: "needs_you", instanceName: "", message: text, choices },
           pointer.threadId ? { threadId: pointer.threadId } : undefined);
       },
+      isEditLoss: isMessageEditLoss,
       remove: async pointer => { await world.adapter.deleteMessage?.(pointer.chatId, pointer.messageId, pointer.threadId); },
       loadPointer: () => this.readPointers()[world.id] ?? null,
       savePointer: pointer => this.writePointer(world.id, pointer),

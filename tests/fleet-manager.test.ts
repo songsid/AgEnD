@@ -974,7 +974,7 @@ describe("FleetManager", () => {
     const send = vi.fn(() => true);
     fm.lifecycle.daemons.set("one", daemon);
     (fm as any).instanceIpcClients.set("one", { connected: true, send });
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     const start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
 
     // Settings PATCH mutates FleetManager.fleetConfig before it persists and
@@ -1060,7 +1060,7 @@ describe("FleetManager", () => {
     fm.lifecycle.daemons.set("classic-one", daemon);
     const send = vi.fn(() => true);
     (fm as any).instanceIpcClients.set("classic-one", { connected: true, send });
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
 
     // Settings mutates the manager's config before it persists and sends
     // SIGHUP; the live daemon must still be recognized as stale.
@@ -1111,7 +1111,7 @@ describe("FleetManager", () => {
     fm.lifecycle.daemons.set("classic-one", daemon);
     const send = vi.fn(() => true);
     (fm as any).instanceIpcClients.set("classic-one", { connected: true, send });
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
 
     writeFileSync(classicPath, channel("verbose", false));
@@ -1149,7 +1149,7 @@ describe("FleetManager", () => {
     fm.lifecycle.daemons.set("classic-one", { applyConfigUpdate: vi.fn() } as any);
     const send = vi.fn(() => true);
     (fm as any).instanceIpcClients.set("classic-one", { connected: true, send });
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
 
     writeFileSync(classicPath, channel("verbose", false));
     const future = new Date(Date.now() + 2_000);
@@ -1219,7 +1219,7 @@ describe("FleetManager", () => {
     fm.loadConfig(configPath);
     const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one);
     fm.lifecycle.daemons.set("one", { getConfigSnapshot: () => runtimeConfig } as any);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     const start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
 
     // Mirror Settings PATCH's pre-SIGHUP in-memory mutation.
@@ -1244,7 +1244,7 @@ describe("FleetManager", () => {
     fm.loadConfig(configPath);
     fm.lifecycle.daemons.set("one", {} as any);
     fm.lifecycle.daemons.set("two", {} as any);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
 
     writeFileSync(configPath, "");
     await (fm as any).reconcileInstances();
@@ -1267,7 +1267,7 @@ describe("FleetManager", () => {
     ].join("\n"));
     const fm = new FleetManager(tmpDir);
     fm.loadConfig(configPath);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
 
     writeFileSync(configPath, "instances: []\n");
     await (fm as any).reconcileInstances();
@@ -1287,7 +1287,7 @@ describe("FleetManager", () => {
     fm.loadConfig(configPath);
     fm.lifecycle.daemons.set("one", {} as any);
     fm.lifecycle.daemons.set("two", {} as any);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
 
     writeFileSync(configPath, "instances:\n  one:\n    working_directory: /tmp/one\n");
     await (fm as any).reconcileInstances();
