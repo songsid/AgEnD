@@ -358,7 +358,8 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
  * `›` marker and no footer line. Enter would take the preselected allow
  * option, so like #1716 this is recognised whole and never answered here.
  * 1.4.7 draws the selection cursor as `⟩` on this prompt and on the #1716
- * quit menu (tests/fixtures/muse-1.4.7); the rows are otherwise unchanged.
+ * quit menu (tests/fixtures/muse-1.4.7); the other rows of those blocks are
+ * unchanged.
  */
 export const MUSE_APPROVAL_PROMPT = /^[ \t]*Would you like to run the following command\?[ \t]*$/m;
 const MUSE_APPROVAL_STAGE = /^[ \t]*Stage \d+\/\d+[ \t]*$/;

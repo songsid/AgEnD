@@ -5,8 +5,10 @@
  * and of the "Local work is still active" quit menu (#1716) as `⟩` instead of `›` / `❯`. Neither was recognised any
  * more — the approval prompt read as plain busy work, and the quit menu was neither held against a delivery's Enter
  * (which picks "Exit anyway") nor seen by the stop flow. Fixed here; each is pinned against its 1.4.6 capture.
- * The precheck's two hard items are covered too: the "usage limited" goal label (already on 1.4.6, the same
- * quota notice) and the session-wide approval option (never shown on the escalated or staged prompt).
+ * The precheck's two hard items: the "usage limited" goal label (already on 1.4.6, the same quota notice), and the
+ * session-wide approval option, which the two captured approval shapes (escalated, staged) do not carry. Its label and
+ * `allow_local_prefix` occur the same number of times in the 1.4.6 and 1.4.7 binaries; the prompt that offers it was
+ * not reached offline, so it is a scope limit of this audit, not a verdict on every approval surface.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -71,7 +73,13 @@ describe("muse 1.4.7: the screens AgEnD reads, as the production backend judges 
   });
 
   it("an HTTP 429 from the model: muse's retry line is the rate_limit failover it always was", () => {
-    expect(verdict(pane("prod-rate-limited"))).toMatchObject({ busy: true, idle: false, errors: ["rate_limit"] });
+    const p = pane("prod-rate-limited");
+    expect(verdict(p)).toMatchObject({ busy: true, idle: false, errors: ["rate_limit"] });
+    // The submitted text ("hit the rate limit") matches too; muse's own retry row must carry the verdict on its own.
+    const retry = p.split("\n").filter(r => /^└ Meta Model API rate limited \(HTTP 429\) · retrying in \d+s · attempt \d+\/10$/.test(r));
+    expect(retry).toHaveLength(1);
+    expect(errors(retry[0]!)).toEqual(["rate_limit"]);
+    expect(errors(p.replace(/^❯ hit the rate limit$/m, "❯ say something"))).toEqual(["rate_limit"]);
   });
 
   it("the /model picker is never the idle prompt (its `⟩` cursor is the same on 1.4.6)", () => {
@@ -130,7 +138,7 @@ describe("muse 1.4.7: the `⟩` selection cursor on the approval prompt and the 
     expect(glyphless(pane(name))).toEqual(glyphless(pane(`compare-1.4.6-${name}`)));
   });
 
-  it("the cursor glyph is the only change in those dialogs: 1.4.6 drew `›` on the approval prompt and `❯` on the quit menu", () => {
+  it("inside those prompt blocks the cursor glyph is the only change: 1.4.6 drew `›` on the approval prompt and `❯` on the quit menu", () => {
     expect(pane("compare-1.4.6-approval-escalated")).toMatch(/^› 1\. Yes, proceed \(y\)$/m);
     expect(pane("compare-1.4.6-approval-untrusted-staged")).toMatch(/^› 1\. Allow this stage once \(y\)$/m);
     expect(pane("compare-1.4.6-prod-quit-with-local-work")).toMatch(/^ {2}❯ 1\. Exit anyway$/m);
@@ -151,7 +159,7 @@ describe("muse 1.4.7: the precheck's hard items", () => {
     }
   });
 
-  it("the session-wide approval option is not on the prompts AgEnD can meet: two options escalated, three staged", () => {
+  it("the session-wide approval option is not on the two captured approval shapes: two options escalated, three staged", () => {
     for (const name of ["approval-escalated", "approval-untrusted-staged"]) expect(pane(name), name).not.toMatch(/don't ask again/);
   });
 });
