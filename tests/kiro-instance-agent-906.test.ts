@@ -35,7 +35,9 @@ beforeEach(() => {
   mkdirSync(join(root, "agend", "instances"), { recursive: true });
   mkdirSync(join(root, "work"), { recursive: true });
 });
-afterEach(() => { kiroResumeAgentSwitch.enabled = false; vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
+/** The production setting, as imported: suspended (#1800). Tests that switch it on get it back after. */
+const SWITCH_DEFAULT = kiroResumeAgentSwitch.enabled;
+afterEach(() => { kiroResumeAgentSwitch.enabled = SWITCH_DEFAULT; vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
 const FLEET = "f1eet000";
 function spec(over: Partial<KiroAgentSpec> = {}): KiroAgentSpec {
@@ -540,6 +542,10 @@ describe("#1794: which of confirm()'s warnings are quiet", () => {
 
 describe("#1800: the in-session switch is suspended", () => {
   beforeEach(() => mkdirSync(join(root, "agend", "instances", "worker"), { recursive: true }));
+
+  it("is suspended in production", () => {
+    expect(SWITCH_DEFAULT).toBe(false);
+  });
   const instancesRoot = () => join(root, "agend", "instances");
 
   function adopt() {
@@ -572,6 +578,7 @@ describe("#1800: the in-session switch is suspended", () => {
     const after = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
     expect(launch(after)).toContain(" --resume-id 'conv-1'");
     expect(after.agentSwitch()).toBeNull();
+    expect(after.instructionsSource()).toBeNull(); // recorded or not, a resumed conversation reads the steering file
     expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
     expect(readFileSync(steering(), "utf-8")).toContain(`agend-agent:${agentName()}`);
   });
