@@ -254,6 +254,7 @@ describe("long turn records are read whole (bounded): a turn's end and a pasted 
     appendFileSync(file, [...lines.slice(0, -1), ...pad, lines.at(-1)!].map(l => l + "\n").join(""));
     clock += 30_000;
     const first = (await source.poll()).turns ?? [];
+    expect([...(source as any).skipping.values()].some(Boolean), "the first poll stopped inside a long record and keeps skipping it").toBe(true);
     const second = (await source.poll()).turns ?? [];
     const kinds = [...first, ...second].map(t => t.kind);
     expect(kinds).toEqual(["start", "user", "user", "end", "start", "end"]);
@@ -262,23 +263,28 @@ describe("long turn records are read whole (bounded): a turn's end and a pasted 
     expect(longUser.text.length).toBeGreaterThan(300 * 1024);
   });
 
-  it("codex: a switch to a newer rollout while skipping a long line reads the new rollout from its first record", async () => {
+  it("codex: a switch to another rollout while skipping a long line reads that rollout from its first record after the baseline", async () => {
     resetSharedRolloutIndexesForTests(0);   // the test edits its own tree between polls
     const root = temp(), cwd = temp();
     const day = join(root, "2026", "10", "13"); mkdirSync(day, { recursive: true });
     const rec = (type: string, payload: Record<string, unknown>) => line({ timestamp: "2026-10-13T02:00:00.000Z", type, payload });
+    // B exists before the source starts (its history is skipped: it is adopted at its baseline); A is the active one.
+    const b = join(day, "rollout-2026-10-13T09-00-00-0002.jsonl");
+    writeFileSync(b, rec("session_meta", { id: "b", cwd, timestamp: "2026-10-13T01:00:00.000Z" }) + rec("event_msg", { type: "task_complete", turn_id: "old", last_agent_message: "x" }));
     const a = join(day, "rollout-2026-10-13T10-00-00-0001.jsonl");
     writeFileSync(a, rec("session_meta", { id: "a", cwd, timestamp: "2026-10-13T02:00:00.000Z" }));
+    const { utimesSync } = await import("node:fs");
+    utimesSync(b, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
     const source = new CodexRolloutSource(cwd, root);
     await source.poll();
     appendFileSync(a, JSON.stringify({ type: "response_item", payload: { type: "function_call_output", output: "o".repeat(6 * READ_MAX_BYTES) } }).slice(0, 5 * READ_MAX_BYTES));
     await source.poll();
-    expect((source as any).skipping).toBe(true);
-    const b = join(day, "rollout-2026-10-13T10-05-00-0002.jsonl");
-    writeFileSync(b, rec("session_meta", { id: "b", cwd, timestamp: "2026-10-13T02:05:00.000Z" })
-      + rec("event_msg", { type: "task_started", turn_id: "t9" }));
+    expect([(source as any).currentFile, (source as any).skipping]).toEqual([a, true]);
+    // B is written to again (a resumed session): it is now the newest, and its first new record is a turn start.
+    appendFileSync(b, rec("event_msg", { type: "task_started", turn_id: "t9" }));
     const turns: string[] = [];
     for (let i = 0; i < 3; i++) turns.push(...((await source.poll()).turns ?? []).map(t => `${t.kind}:${t.turnId}`));
+    expect((source as any).currentFile).toBe(b);
     expect(turns).toContain("start:t9");
     resetSharedRolloutIndexesForTests();
   });
