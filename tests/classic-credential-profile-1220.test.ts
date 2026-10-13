@@ -190,6 +190,7 @@ function runningDaemon(fm: FleetManager, channel: Record<string, unknown>, defau
   const launched = {
     backend: channel.backend as string,
     backend_options: mergeBackendOptions(defaults.backend_options, channel.backend_options as any),
+    working_directory: join(dir, "workspaces", "classic-codex-bot"),
   };
   fm.lifecycle.daemons.set("classic-codex-bot", { applyConfigUpdate: vi.fn(), getConfigSnapshot: () => launched } as any);
   mkdirSync(fm.getInstanceDir("classic-codex-bot"), { recursive: true });   // a running instance has one
@@ -204,14 +205,41 @@ describe("a profile edited in classicBot.yaml takes effect through a restart (th
     runningDaemon(fm, from, defaults);
     const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
     const start = vi.spyOn(fm as any, "startClassicInstanceUnattended").mockResolvedValue(true);
+    // #1753: claude-code's copy itself is claude-carry-1753's; here, whether the switch asks for it, and when.
+    const carry = vi.spyOn(fm as any, "switchConversation");
+    if ((to.backend ?? from.backend) === "claude-code") carry.mockResolvedValue({ carried: true, sessionId: "s", bytes: 1, ms: 1, replacedOlderCopy: false });
     vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void) => { fn(); return 0 as any; }) as any);
     writeClassic(to);
     const future = new Date(Date.now() + 5_000);
     utimesSync(path, future, future);
     await (fm as any).reloadClassicConfigFromDisk();
     const fresh = existsSync(join(fm.getInstanceDir("classic-codex-bot"), "crash-state.json"));
-    return { stop, start, fresh };
+    return { stop, start, fresh, carry };
   }
+
+  it("claude-code (#1753): the conversation is carried between the stop and the start — no fresh marker", async () => {
+    const { stop, start, fresh, carry } = await reload(
+      { backend: "claude-code" },
+      { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "second" } } },
+    );
+    expect([carry.mock.calls, fresh]).toEqual([[["classic-codex-bot",
+      { backend: "claude-code", from: null, to: "second", workingDirectory: join(dir, "workspaces", "classic-codex-bot") }]], false]);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(carry.mock.invocationCallOrder[0]);
+    expect(carry.mock.invocationCallOrder[0]).toBeLessThan(start.mock.invocationCallOrder[0]);
+  });
+
+  it("claude-code → codex with a new login: the backend change's restart, nothing carried", async () => {
+    const { carry, fresh } = await reload(
+      { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "second" } } },
+      { backend: "codex", backend_options: PERSONAL },
+    );
+    expect([carry.mock.calls.length, fresh]).toEqual([0, false]);
+  });
+
+  it("claude-code → an invalid profile: stopped, nothing carried into a login that cannot run", async () => {
+    const { stop, carry } = await reload({ backend: "claude-code" }, { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "../escape" } } });
+    expect([stop.mock.calls.length, carry.mock.calls.length]).toEqual([1, 0]);
+  });
 
   it("codex: restarted, and its conversation resumes (codex keeps history outside the login)", async () => {
     const { stop, start, fresh } = await reload({ backend: "codex" }, { backend: "codex", backend_options: PERSONAL });
@@ -282,6 +310,8 @@ describe("SIGHUP / reconcile applies a profile change too (r1 review)", () => {
     runningDaemon(fm, opts.classicFrom, fm.fleetConfig!.defaults as any);
     const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
     const start = vi.spyOn(fm as any, "startClassicInstanceUnattended").mockResolvedValue(true);
+    const carry = vi.spyOn(fm as any, "switchConversation");
+    if (opts.classicFrom.backend === "claude-code") carry.mockResolvedValue({ carried: true, sessionId: "s", bytes: 1, ms: 1, replacedOlderCopy: false });
     if (opts.classicTo) {
       writeClassic(opts.classicTo);
       const future = new Date(Date.now() + 5_000);
@@ -292,8 +322,19 @@ describe("SIGHUP / reconcile applies a profile change too (r1 review)", () => {
     // The SIGHUP consumed the classicBot.yaml change; the poller must not find another one.
     await (fm as any).reloadClassicConfigFromDisk();
     const fresh = existsSync(join(fm.getInstanceDir("classic-codex-bot"), "crash-state.json"));
-    return { stop, start, fresh };
+    return { stop, start, fresh, carry };
   }
+
+  it("claude-code (#1753): a classicBot.yaml profile-only edit carries the conversation between the stop and the start", async () => {
+    const { stop, start, fresh, carry } = await sighup({
+      classicFrom: { backend: "claude-code" },
+      classicTo: { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "second" } } },
+    });
+    expect([stop.mock.calls.length, start.mock.calls.length, fresh, carry.mock.calls]).toEqual([1, 1, false, [["classic-codex-bot",
+      { backend: "claude-code", from: null, to: "second", workingDirectory: join(dir, "workspaces", "classic-codex-bot") }]]]);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(carry.mock.invocationCallOrder[0]);
+    expect(carry.mock.invocationCallOrder[0]).toBeLessThan(start.mock.invocationCallOrder[0]);
+  });
 
   it("a classicBot.yaml profile-only edit (codex): restarted once, resumes", async () => {
     const { stop, start, fresh } = await sighup({ classicFrom: { backend: "codex" }, classicTo: { backend: "codex", backend_options: PERSONAL } });
