@@ -22,7 +22,7 @@ import {
   confirmKiroAgentSwitch, forgetKiroIdentity, kiroAgentConfirmed, listKiroV1Sessions, listKiroV2Sessions,
   resolveKiroIdentity, KiroIdentityError, type KiroStoreRead,
 } from "../src/backend/kiro-identity.js";
-import { KiroBackend, probeKiroCliCompatibility, readActiveKiroAgent, type KiroCliCompatibility } from "../src/backend/kiro.js";
+import { KiroBackend, kiroResumeAgentSwitch, probeKiroCliCompatibility, readActiveKiroAgent, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { recordKiroLaunch } from "../src/backend/kiro-engine-ledger.js";
 import { t } from "../src/locale.js";
 
@@ -35,7 +35,7 @@ beforeEach(() => {
   mkdirSync(join(root, "agend", "instances"), { recursive: true });
   mkdirSync(join(root, "work"), { recursive: true });
 });
-afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { kiroResumeAgentSwitch.enabled = false; vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
 const FLEET = "f1eet000";
 function spec(over: Partial<KiroAgentSpec> = {}): KiroAgentSpec {
@@ -414,6 +414,7 @@ describe("the backend: command and files per plan", () => {
   });
 
   it("an existing instance: adopted by id, the transition keeps the shared entry and tagged steering until confirmed", () => {
+    kiroResumeAgentSwitch.enabled = true; // the #906 switch itself (suspended in production, #1800)
     recordKiroLaunch({ instance: "worker", workingDirectory: join(root, "work"), credentialProfile: null, kiroVersion: "2.27.0", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
     v1Store([[join(root, "work"), "conv-1", 100]]);
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), COMPAT);
@@ -510,7 +511,10 @@ describe("§5 the capability gate, from real `chat --help` captures", () => {
 });
 
 describe("#1794: which of confirm()'s warnings are quiet", () => {
-  beforeEach(() => mkdirSync(join(root, "agend", "instances", "worker"), { recursive: true }));
+  beforeEach(() => {
+    mkdirSync(join(root, "agend", "instances", "worker"), { recursive: true });
+    kiroResumeAgentSwitch.enabled = true; // the #906 switch itself (suspended in production, #1800)
+  });
 
   function resumed() {
     recordKiroLaunch({ instance: "worker", workingDirectory: join(root, "work"), credentialProfile: null, kiroVersion: "2.27.0", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
@@ -531,5 +535,66 @@ describe("#1794: which of confirm()'s warnings are quiet", () => {
     const sw = resumed();
     writeFileSync(mcpPath(), "{ not json");
     expect(sw.confirm()).toEqual([{ message: t("kiro.shared_unreadable", "mcp.json") }]);
+  });
+});
+
+describe("#1800: the in-session switch is suspended", () => {
+  beforeEach(() => mkdirSync(join(root, "agend", "instances", "worker"), { recursive: true }));
+  const instancesRoot = () => join(root, "agend", "instances");
+
+  function adopt() {
+    recordKiroLaunch({ instance: "worker", workingDirectory: join(root, "work"), credentialProfile: null, kiroVersion: "2.27.0", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
+    v1Store([[join(root, "work"), "conv-1", 100]]);
+  }
+  const steering = () => join(root, "work", ".kiro", "steering", "agend-worker.md");
+
+  it("a resumed conversation: no switch is offered, and the shared entry and steering are written", () => {
+    adopt();
+    const backend = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
+    expect(launch(backend)).toContain(" --resume-id 'conv-1'");
+    expect(backend.agentSwitch()).toBeNull();
+    expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
+    expect(readFileSync(steering(), "utf-8")).toContain(`agend-agent:${agentName()}`);
+    expect(backend.instructionsSource()).toBeNull(); // its saved agent reads the steering file
+  });
+
+  it("an instance whose switch was already recorded gets its shared entry and steering back", () => {
+    adopt();
+    // An earlier launch (switch on) confirmed the switch and removed the shared files.
+    kiroResumeAgentSwitch.enabled = true;
+    const before = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
+    launch(before);
+    expect(before.agentSwitch()!.confirm()).toEqual([]);
+    expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeUndefined();
+    expect(existsSync(steering())).toBe(false);
+    // The suspended launch: the record still says confirmed, the shared files come back anyway.
+    kiroResumeAgentSwitch.enabled = false;
+    const after = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
+    expect(launch(after)).toContain(" --resume-id 'conv-1'");
+    expect(after.agentSwitch()).toBeNull();
+    expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
+    expect(readFileSync(steering(), "utf-8")).toContain(`agend-agent:${agentName()}`);
+  });
+
+  it("control: with the switch on, the recorded instance keeps the shared files clean", () => {
+    adopt();
+    kiroResumeAgentSwitch.enabled = true;
+    const before = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
+    launch(before);
+    before.agentSwitch()!.confirm();
+    const again = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
+    launch(again);
+    expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeUndefined();
+    expect(again.agentSwitch()).not.toBeNull();
+  });
+
+  it("a brand-new instance still starts as its own agent, with nothing in the shared files", () => {
+    const backend = new KiroBackend(join(instancesRoot(), "worker"), COMPAT);
+    const cmd = launch(backend);
+    expect(cmd).toContain(` --agent '${agentName()}'`);
+    expect(cmd).not.toMatch(/--resume/);
+    expect(existsSync(mcpPath())).toBe(false);
+    expect(backend.agentSwitch()).toBeNull();
+    expect(backend.instructionsSource()).toBe(`.kiro/agents/${agentName()}.json (its "prompt" field)`);
   });
 });

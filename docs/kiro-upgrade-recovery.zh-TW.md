@@ -32,7 +32,7 @@
    `id` 設為該 ID、`agentConfirmed` 設為 `false`，保留其他 key 與歷史欄位，目錄維持 0700。若要替換已認領的
    新 ID，保留其 claim 並標記 abandoned（`<instance>\nabandoned\n`），也加入該 record 的 `abandoned`，
    不要釋放讓其他 instance 接手。任何寫入失敗，都先還原備份再啟動。
-5. 啟動 fleet，確認命令帶 `--resume-id '<原ID>'`。正常的 `/agent swap` 會在投遞前經過畫面驗證；確認 instance
-   在原本的對話回答。
+5. 啟動 fleet，確認命令帶 `--resume-id '<原ID>'`。對話維持存檔時的 agent（`/agent swap` 已暫停，#1800）；確認
+   instance 在原本的對話回答。
 
 這是已知 ID 的離線手動歸屬修復，不是自動遷移，也不保證執行中降版安全。

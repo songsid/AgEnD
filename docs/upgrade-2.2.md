@@ -67,7 +67,7 @@ npm install -g @songsid/agend@2.2.0
 ## 3. What changes on the first start of 2.2
 
 **Once, on the first start:**
-- **Kiro:** each instance, on its first resume, gets `/agent swap <agent>` typed into its pane before anything is delivered (#906). If the switch cannot be confirmed within 15 s, the old setup stays, a notice says so, and the next start tries again. Delete old `.kiro/steering/agend-<instance>.md` files by hand once every fleet using that directory has upgraded.
+- **Kiro:** a resumed conversation keeps the agent it was saved under and gets AgEnD's server and instructions from the shared `.kiro` files. The in-session `/agent swap` from #906 is suspended (#1800), because an instance lost its AgEnD tools after it. An instance that was already switched gets the shared entries back at its next start. Delete old `.kiro/steering/agend-<instance>.md` files by hand once every fleet using that directory has upgraded.
   - Upgrading from before 2.1.11 also supports one-time Kiro conversation adoption (#1624), with shared-cwd and claim safeguards; see [adoption and beta.1 recovery](kiro-upgrade-recovery.md).
 - **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/web` to your bot, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
 - **General gets one message about web chat** (#1366), once per platform, recorded in `AGEND_HOME/upgrade-notices.json`.
@@ -89,7 +89,7 @@ Then:
 - Sign in to the web dashboard (`/web` in chat, or `agend web --code`) and open an instance's chat.
 - Send a message to one instance from your chat app and from the web; both should reach it.
 - Open **Needs you** in the web sidebar: anything waiting for you (a sign-in, a confirmation) is listed there.
-- Kiro users: check each Kiro instance answered once after its `/agent swap`.
+- Kiro users: check that each Kiro instance answers (calls `reply`) once after its start. One that was switched before #1800 should be restarted once.
 
 ## 5. Going back to 2.1.12
 

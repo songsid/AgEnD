@@ -642,6 +642,16 @@ const warnedNoInstanceAgentKeys = new Set<string>();
 /** Instances already told about an untagged steering file (once each). */
 const warnedUntaggedSteering = new Set<string>();
 
+/**
+ * #1800: the in-session `/agent swap` after a resume (#906 §3) is SUSPENDED. A user's kiro instance lost AgEnD's
+ * tools after the swap and could not `reply`. Until that is understood, a resumed conversation keeps the agent it was
+ * saved under and gets AgEnD's server and instructions from the shared files — the setup kiro instances ran on before
+ * #906 — whether or not an earlier switch was recorded. Fresh conversations still start as the instance's own agent
+ * (`--agent`). Re-enabling waits for the cause (#1800) and belongs to the kiro v2/v3 plan (#849). Tests that
+ * exercise the switch itself turn it back on.
+ */
+export const kiroResumeAgentSwitch = { enabled: false };
+
 /** The classic (v1) conversation store an instance launches with: its credential profile's, else the shared one. */
 export function kiroV1DbPath(credentialProfile: string | null): string {
   const home = credentialProfile
@@ -1213,9 +1223,10 @@ export class KiroBackend implements CliBackend {
     }
     // Throws when a file that is not this instance's agent is in the way: never overwritten, launch refused.
     writeKiroAgent(spec, config.instructions);
-    if (plan.mode === "resume" && !plan.agentConfirmed) {
+    if (plan.mode === "resume" && (!plan.agentConfirmed || !kiroResumeAgentSwitch.enabled)) {
       // The resumed conversation comes back as its saved agent (`--agent` is ignored on resume), so until the switch
-      // is confirmed on screen it gets its AgEnD server and instructions from the shared files (design §3).
+      // is confirmed on screen it gets its AgEnD server and instructions from the shared files (design §3). With the
+      // switch suspended, always — an earlier recorded switch included.
       this.noteShared("mcp.json", writeSharedKiroMcpEntries(spec));
       if (config.instructions) this.noteShared("steering", writeTaggedKiroSteering(spec, config.instructions));
       this.noteShared("mcp.json", removeSharedKiroMcpEntries(spec, root, false));
@@ -1322,6 +1333,7 @@ export class KiroBackend implements CliBackend {
    */
   agentSwitch(): BackendAgentSwitch | null {
     const plan = this.activePlan;
+    if (!kiroResumeAgentSwitch.enabled) return null;
     if (!plan || plan.mode !== "resume" || !plan.agent || !plan.id || !plan.engine) return null;
     const { agent, id, engine, cwd, credentialProfile } = plan;
     const ui = this.activeUi;
@@ -1359,6 +1371,7 @@ export class KiroBackend implements CliBackend {
    */
   instructionsSource(): string | null {
     const plan = this.activePlan;
+    if (plan?.mode === "resume" && !kiroResumeAgentSwitch.enabled) return null; // its saved agent: the steering file
     return plan && plan.mode !== "legacy" && plan.agent && plan.agentConfirmed ? `.kiro/agents/${plan.agent}.json (its "prompt" field)` : null;
   }
 

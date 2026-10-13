@@ -2,6 +2,8 @@
 
 Status: design, revision 3. It folds in the real-account probe, the leader's decisions of 2026-10-08, and Prism's reviews of revisions 1 and 2. Taken over from dev1; every fact below was re-verified as described in "Evidence".
 
+> **2026-10-13: §3 (the in-session `/agent swap` after a resume) is suspended (#1800).** A user's instance lost AgEnD's tools after the swap. Until the cause recorded in #1800 is confirmed, a resumed conversation keeps its saved agent and the shared entries are written on every resume. Fresh conversations still start with `--agent`. Re-enabling belongs to the kiro v2/v3 plan (#849).
+
 ## Problem
 
 Two kiro instances that share a working directory see each other in two ways.

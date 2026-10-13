@@ -37,7 +37,7 @@ For an operator who has positively identified the original conversation:
    history fields. Keep the directory mode 0700. If replacing an already owned newer ID, retain its claim as
    abandoned (`<instance>\nabandoned\n`) and add it to that record's `abandoned` list; never release it for siblings.
    If a write fails, restore the backup before starting anything.
-5. Start the fleet. The command should contain `--resume-id '<original-id>'`. The normal verified `/agent swap`
-   runs before delivery; check that the instance answers in the intended conversation.
+5. Start the fleet. The command should contain `--resume-id '<original-id>'`. The conversation keeps its saved agent
+   (the `/agent swap` is suspended, #1800); check that the instance answers in the intended conversation.
 
 These are manual, offline ownership edits for a known ID, not a migration or a live-downgrade promise.
