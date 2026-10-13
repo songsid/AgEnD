@@ -10607,7 +10607,7 @@ export class Daemon extends EventEmitter {
    * the same tmux window, not aborted, writes not stopping — re-checked after every await, and between the paste and
    * its Enter. The whole step, every await included, ends at one monotonic deadline: a late capture never confirms
    * and a late admission never writes; a paste whose Enter would land past it is taken back. Not confirmed in time:
-   * the old setup stays, a launch warning says so, the next launch tries again. A stop, pause or respawn ends it
+   * the old setup stays, the next launch tries again, and a quiet launch warning (#1794: logged and on the Log tab, not posted) says so. A stop, pause or respawn ends it
    * silently, confirming and removing nothing. Never throws into the spawn.
    */
   private async ensureBackendAgent(): Promise<void> {
@@ -10641,7 +10641,10 @@ export class Daemon extends EventEmitter {
         const active = pane === null ? null : sw.readActive(pane);
         if (active === sw.agent && (wroteAt === null || capturedAt > wroteAt)) {
           if (sw.alreadyConfirmed && wroteAt === null) return; // already ours, already on record
-          for (const warning of sw.confirm()) this.emit("backend_launch_warning", { name: this.name, message: warning });
+          for (const { message, quiet } of sw.confirm()) {
+            this.logger.warn({ agent: sw.agent, warning: message }, "The agent switch was confirmed with a warning");
+            this.emit("backend_launch_warning", { name: this.name, message, quiet: quiet === true });
+          }
           this.logger.info({ agent: sw.agent, switched: wroteAt !== null }, "The resumed conversation runs as this instance's agent");
           return;
         }
@@ -10680,7 +10683,9 @@ export class Daemon extends EventEmitter {
       }
       if (!fenced()) return; // a stop, pause or respawn: nothing to say, nothing to do
       this.logger.warn({ agent: sw.agent, typed: wroteAt !== null }, "The resumed conversation did not switch to this instance's agent in time");
-      this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000) });
+      // #1794: quiet — the conversation keeps running as its saved agent with the shared entries, and the next launch
+      // tries again; the user loses nothing and has nothing to do. Logged above and kept on the Log tab only.
+      this.emit("backend_launch_warning", { name: this.name, message: t("kiro.switch_timeout", Daemon.AGENT_SWITCH_BUDGET_MS / 1000), quiet: true });
     } catch (err) {
       this.startupAdmission?.();
       this.logger.warn({ err }, "The agent switch after resume failed — the shared entries stay; the next launch tries again");

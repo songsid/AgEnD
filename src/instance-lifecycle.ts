@@ -779,9 +779,10 @@ export class InstanceLifecycle {
    * up, and the operator needs to know which conversation each instance is in.
    */
   attachLaunchWarningHandler(name: string, daemon: IncidentEventSource): void {
-    daemon.on("backend_launch_warning", safeHandler((data: { name: string; message: string }) => {
+    daemon.on("backend_launch_warning", safeHandler((data: { name: string; message: string; quiet?: boolean }) => {
       this.ctx.eventLog?.insert(name, "backend_launch_warning", { message: data.message });
-      this.ctx.notifyInstanceTopic(name, t("inst.backend_launch_warning", name, data.message));
+      // #1794: a quiet warning changes nothing for the user — the Log tab keeps it, the topic does not get it.
+      if (data.quiet !== true) this.ctx.notifyInstanceTopic(name, t("inst.backend_launch_warning", name, data.message));
     }, this.ctx.logger, `daemon.backend_launch_warning[${name}]`));
   }
 

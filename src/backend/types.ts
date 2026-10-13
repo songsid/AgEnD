@@ -71,8 +71,15 @@ export interface BackendAgentSwitch {
   /** The agent the live layout shows, or null when it cannot be read. */
   readActive(pane: string): string | null;
   command: string;
-  confirm(): string[];
+  /**
+   * Records the confirmed switch; returns what the instance's operator should know. `quiet` (#1794): changes nothing
+   * for the user and needs nothing from them — logged and kept on the instance's Log tab, not posted to its topic.
+   */
+  confirm(): BackendLaunchWarning[];
 }
+
+/** A launch-time warning; see BackendAgentSwitch.confirm for `quiet`. */
+export interface BackendLaunchWarning { message: string; quiet?: boolean }
 
 export interface CliBackendConfig {
   workingDirectory: string;

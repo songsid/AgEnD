@@ -24,6 +24,7 @@ import {
 } from "../src/backend/kiro-identity.js";
 import { KiroBackend, probeKiroCliCompatibility, readActiveKiroAgent, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { recordKiroLaunch } from "../src/backend/kiro-engine-ledger.js";
+import { t } from "../src/locale.js";
 
 let root: string;
 beforeEach(() => {
@@ -505,5 +506,30 @@ describe("§5 the capability gate, from real `chat --help` captures", () => {
   it("the version table: 2.21.0 and later on, 2.20.x off", () => {
     expect(probeKiroCliCompatibility("/fake", () => "kiro-cli 2.21.0\n").supportsInstanceAgent).toBe(true);
     expect(probeKiroCliCompatibility("/fake", () => "kiro-cli 2.20.9\n").supportsInstanceAgent).toBe(false);
+  });
+});
+
+describe("#1794: which of confirm()'s warnings are quiet", () => {
+  beforeEach(() => mkdirSync(join(root, "agend", "instances", "worker"), { recursive: true }));
+
+  function resumed() {
+    recordKiroLaunch({ instance: "worker", workingDirectory: join(root, "work"), credentialProfile: null, kiroVersion: "2.27.0", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
+    v1Store([[join(root, "work"), "conv-1", 100]]);
+    const backend = new KiroBackend(join(root, "agend", "instances", "worker"), COMPAT);
+    expect(launch(backend)).toContain(" --resume-id 'conv-1'");
+    return backend.agentSwitch()!;
+  }
+
+  it("an unrecorded switch is quiet, and keeps the shared entries for the next launch", () => {
+    const sw = resumed();
+    writeFileSync(join(root, "agend", "kiro-identity", "instances", stateName("worker")), "{ not json");
+    expect(sw.confirm()).toEqual([{ message: t("kiro.switch_unrecorded"), quiet: true }]);
+    expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
+  });
+
+  it("a shared mcp.json the user's directory cannot give up is posted, not quiet", () => {
+    const sw = resumed();
+    writeFileSync(mcpPath(), "{ not json");
+    expect(sw.confirm()).toEqual([{ message: t("kiro.shared_unreadable", "mcp.json") }]);
   });
 });

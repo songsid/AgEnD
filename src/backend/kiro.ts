@@ -21,7 +21,7 @@ import {
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type BackendLaunchWarning, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type SteerComposerMode, UnsupportedCliError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
@@ -1331,18 +1331,22 @@ export class KiroBackend implements CliBackend {
       readActive: (pane: string) => readActiveKiroAgent(pane, ui),
       command: `/agent swap ${agent}`,
       confirm: () => {
-        const warnings: string[] = [];
+        const warnings: BackendLaunchWarning[] = [];
         if (!this.activeInstance || !confirmKiroAgentSwitch(getAgendHome(), this.activeInstance, engine, cwd, credentialProfile, id)) {
-          warnings.push(t("kiro.switch_unrecorded"));
+          // #1794: quiet. The conversation already runs as its own agent; only AgEnD's record is missing, so the shared
+          // entries stay (as after a timeout) and the next launch confirms again. Nothing for the user to do.
+          warnings.push({ message: t("kiro.switch_unrecorded"), quiet: true });
           return warnings;
         }
         plan.agentConfirmed = true;
         const spec = this.activeSpec;
         if (spec) {
           const mcp = removeSharedKiroMcpEntries(spec, dirname(this.instanceDir), true);
-          if (mcp === "unreadable" || mcp === "failed") warnings.push(t("kiro.shared_unreadable", "mcp.json"));
+          // Posted: the user's own shared file could not be read or rewritten, so this instance's entries stay in a file
+          // every kiro session in the directory loads — until the user fixes it (#1794).
+          if (mcp === "unreadable" || mcp === "failed") warnings.push({ message: t("kiro.shared_unreadable", "mcp.json") });
           const steering = removeTaggedKiroSteering(spec);
-          if (steering === "failed" || steering === "unreadable") warnings.push(t("kiro.shared_unreadable", "steering"));
+          if (steering === "failed" || steering === "unreadable") warnings.push({ message: t("kiro.shared_unreadable", "steering") });
         }
         return warnings;
       },

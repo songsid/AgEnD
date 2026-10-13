@@ -22,8 +22,8 @@ const theirs = "2% >";
 
 function rig(opts: { panes: Array<string | null | Error>; alreadyConfirmed?: boolean; readiness?: () => string }) {
   const dir = mkdtempSync(join(tmpdir(), "agend-906-daemon-")); dirs.push(dir);
-  const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
-  const confirm = vi.fn(() => [] as string[]);
+  const logger = { info() {}, warn: vi.fn(), error() {}, debug() {}, child() { return this; } } as any;
+  const confirm = vi.fn(() => [] as Array<{ message: string; quiet?: boolean }>);
   const sw = {
     agent: AGENT, alreadyConfirmed: !!opts.alreadyConfirmed, command: `/agent swap ${AGENT}`, confirm,
     readActive: (pane: string) => { const m = /^\[([^\]]+)\] \d+% >/.exec(pane); return m ? m[1]! : /^\d+% >/.test(pane) ? "kiro_default" : null; },
@@ -48,8 +48,9 @@ function rig(opts: { panes: Array<string | null | Error>; alreadyConfirmed?: boo
   daemon.tmux = { getWindowId: () => "@1", capturePane, pasteBuffer, sendSpecialKey, deleteBackward };
   daemon.paneReadinessForDelivery = vi.fn(async () => opts.readiness?.() ?? "ready");
   const warnings: string[] = [];
-  daemon.on("backend_launch_warning", (w: { message: string }) => warnings.push(w.message));
-  return { daemon, sw, confirm, capturePane, pasteBuffer, sendSpecialKey, deleteBackward, warnings, pasteText: pasteBuffer };
+  const events: Array<{ name: string; message: string; quiet?: boolean }> = [];
+  daemon.on("backend_launch_warning", (w: { name: string; message: string; quiet?: boolean }) => { warnings.push(w.message); events.push(w); });
+  return { daemon, sw, confirm, capturePane, pasteBuffer, sendSpecialKey, deleteBackward, warnings, events, logger, pasteText: pasteBuffer };
 }
 
 async function run(daemon: any): Promise<void> {
@@ -140,11 +141,24 @@ describe("the agent switch after a resume", () => {
     expect(r.confirm).not.toHaveBeenCalled();
   });
 
-  it("the confirm's warnings are surfaced", async () => {
+  it("the confirm's warnings are surfaced, each logged and carrying its own quiet flag (#1794)", async () => {
     const r = rig({ panes: [ours] });
-    r.confirm.mockReturnValue(["could not record"]);
+    r.confirm.mockReturnValue([{ message: "could not record", quiet: true }, { message: "shared file unreadable" }]);
     await run(r.daemon);
-    expect(r.warnings).toEqual(["could not record"]);
+    expect(r.events).toEqual([
+      { name: "worker", message: "could not record", quiet: true },
+      { name: "worker", message: "shared file unreadable", quiet: false },
+    ]);
+    expect(r.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ warning: "could not record" }), "The agent switch was confirmed with a warning");
+    expect(r.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ warning: "shared file unreadable" }), "The agent switch was confirmed with a warning");
+  });
+
+  it("#1794: the timeout is logged and emitted quiet — once", async () => {
+    const r = rig({ panes: [theirs] });
+    await run(r.daemon);
+    expect(r.events).toEqual([{ name: "worker", message: t("kiro.switch_timeout", 15), quiet: true }]);
+    expect(r.logger.warn).toHaveBeenCalledWith(expect.objectContaining({ agent: AGENT, typed: true }),
+      "The resumed conversation did not switch to this instance's agent in time");
   });
 });
 
