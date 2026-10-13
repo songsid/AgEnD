@@ -146,7 +146,11 @@ export function mergeSteps(list, incoming, older = false) {
     if (i !== undefined) {
       // An older page never overwrites what a newer read already said about the same step — except to name a call the
       // newer page knew only by its result (the call's record was older than that page): its tool, subject and input.
-      if (!older) next[i] = { ...next[i], ...s };
+      // A newer read that saw only a call's result (the call was before where it read) never unnames the call: its tool,
+      // category and start time stay; the outcome is the newer read's.
+      if (!older) next[i] = s.kind === "tool" && !s.tool && next[i].tool
+        ? { ...next[i], ...s, tool: next[i].tool, cat: next[i].cat, ts: next[i].ts }
+        : { ...next[i], ...s };
       else if (next[i].kind === "tool" && !next[i].tool && s.tool) {
         const { tool, cat, subject, input, ts } = s;
         next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}) };

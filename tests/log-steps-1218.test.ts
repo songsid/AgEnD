@@ -58,7 +58,7 @@ describe("masking: only actual secret values, everything else stays readable", (
     expect(out).toContain("[REDACTED]");
   });
   it("linear on long input: a 200 KB run of word characters (a long output) is masked in well under a second", () => {
-    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), 'a_password="x '.repeat(14_000), "db_password: 'x ".repeat(12_000), "token ".repeat(30_000), "token a1".repeat(25_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
+    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), 'a_password="x '.repeat(14_000), "db_password: 'x ".repeat(12_000), "token ".repeat(30_000), "token a1".repeat(25_000), 'a_password=\\"x '.repeat(12_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
       const t0 = performance.now();
       const out = maskSecrets(t);
       expect(performance.now() - t0, t.slice(0, 12)).toBeLessThan(500);
@@ -107,6 +107,33 @@ describe("masking: only actual secret values, everything else stays readable", (
     const c = new CodexStepParser();
     c.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "c", name: "x", arguments: J('{not json DB_PASSWORD="', hunter, '"') } }));
     expect(c.steps[0]!.input).not.toContain(hunter);
+  });
+  // #1788 review P3s: a long value is still masked in what is shown; JSON text and object results are masked too.
+  it("a Write longer than can be shown: a secret in its shown start is masked", () => {
+    const p = new ClaudeStepParser();
+    const content = J('db:\n  DB_PASSWORD="', yaml, '"\n') + "x".repeat(4000);
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "Write", input: { file_path: "a.yml", content } }] } }));
+    expect(p.steps[0]!.inputCut).toBeGreaterThan(0);
+    expect(p.steps[0]!.input).toContain("[REDACTED]");
+    expect(JSON.stringify(p.steps)).not.toContain("two words");
+  });
+  it("a result that is JSON text (escaped quotes) and a result that is an object are masked", () => {
+    const p = new ClaudeStepParser();
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "mcp__db__run", input: {} }] } }));
+    p.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: JSON.stringify({ env: J('DB_PASSWORD="', hunter, '" TOKEN="', pass, '"') }) }] } }));
+    expect(p.steps[0]!.body).toContain('DB_PASSWORD=\\"[REDACTED]\\"');
+    for (const g of [hunter, "battery"]) expect(JSON.stringify(p.steps), g).not.toContain(g);
+    const c = new CodexStepParser();
+    c.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "c", name: "x", arguments: "{}" } }));
+    c.push(JSON.stringify({ type: "response_item", payload: { type: "function_call_output", call_id: "c", output: { api_key: J("abc ", "def"), log: J('export DB_PASSWORD="', hunter, '"'), count: 3 } } }));
+    expect(c.steps[0]!.body).toContain('"api_key":"[REDACTED]"');
+    expect(c.steps[0]!.body).toContain('"count":3');
+    // A long secret-named key (past what a text rule's name reaches) is masked by its key in an object result.
+    const k = new CodexStepParser();
+    k.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "k", name: "x", arguments: "{}" } }));
+    k.push(JSON.stringify({ type: "response_item", payload: { type: "function_call_output", call_id: "k", output: { storage_account_primary_connection_string_access_key: J("Default ", "Endpoints") } } }));
+    expect(k.steps[0]!.body).not.toContain("Endpoints");
+    expect(JSON.stringify(c.steps)).not.toContain(hunter);
   });
   it("arguments given as a JSON string (an MCP call's) and a subject made from an array are masked the same way", () => {
     const c = new CodexStepParser();

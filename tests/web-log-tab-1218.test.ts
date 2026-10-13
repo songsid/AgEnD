@@ -209,6 +209,10 @@ describe("the page's helpers", () => {
     const orphan = { id: "c", kind: "tool", tool: "", cat: "other", status: "done", body: "ok", ts: 20 };
     const call = { id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "running", ts: 10 };
     expect(logp.mergeSteps([orphan], [call], true)).toEqual([{ id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "done", body: "ok", ts: 10 }]);
+    // …and the other way round: a live read that saw only the result completes the named call without unnaming it.
+    const running = { ...call, status: "running" };
+    expect(logp.mergeSteps([running], [orphan])).toEqual([{ id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "done", body: "ok", ts: 10 }]);
+    expect(logp.mergeSteps([running], [{ ...orphan, tool: "Bash2", cat: "edit" }])[0]).toMatchObject({ tool: "Bash2", cat: "edit", ts: 20 });
     const named = { ...orphan, tool: "Read", cat: "read", subject: "a.ts" };
     expect(logp.mergeSteps([named], [call], true)).toEqual([named]);
   });
