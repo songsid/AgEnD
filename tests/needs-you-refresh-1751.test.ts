@@ -120,6 +120,13 @@ describe("#1751 real hub → renderer → Telegram edits", () => {
     expect(r.edits).toHaveLength(1);
   });
 
+  it("a boxed no-change description preserves the original API error as unknown", async () => {
+    const r = fakeTelegram();
+    const err = new GrammyError("malformed", { ok: false, error_code: 400, description: new String(NO_CHANGE.description) } as never, "editMessageText", {});
+    r.reply(err);
+    expect(await r.adapter.editMessage("-100123", "1", "same").catch(e => e)).toBe(err);
+  });
+
   it("a confirmed deleted message produces exactly one replacement", async () => {
     const r = hubRig();
     r.reply({ ok: false, error_code: 400, description: "Bad Request: message to edit not found" });
