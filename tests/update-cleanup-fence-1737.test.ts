@@ -14,7 +14,7 @@ import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { RestartProgress, formatRestartProgressCompletion } from "../src/restart-progress.js";
-import { beginUpdateProgress, beginFullRestartProgress, markCleanupPending, markUpdateInProgress, writeCleanupOutcome, readUpdateProgress, updateReceiptOf, updateMarkerIdentity, isUpdateInProgress, UPDATE_MARKER_MAX_AGE_MS } from "../src/update-marker.js";
+import { beginUpdateProgress, beginFullRestartProgress, clearUpdateMarker, markCleanupPending, markUpdateInProgress, writeCleanupOutcome, readUpdateProgress, sameUpdateMarker, updateReceiptOf, updateMarkerIdentity, isUpdateInProgress, UPDATE_MARKER_MAX_AGE_MS } from "../src/update-marker.js";
 import { retireSystemCopy } from "../src/update-install.js";
 import { setLocale } from "../src/locale.js";
 
@@ -37,7 +37,6 @@ function inertManager(dataDir:string, editMessage:any){
  return {fm,adapter};
 }
 async function completion(fm:any, adapter:any, pending:any, resume=true){
- const bootUpdateMarker=updateMarkerIdentity(fm.dataDir); // taken at boot, before the completion runs
  const source=fs.readFileSync(join(process.cwd(),"src/fleet-manager.ts"),"utf8");
  const ast=ts.createSourceFile("fleet-manager.ts",source,ts.ScriptTarget.ES2022,true);
  let method:ts.MethodDeclaration|undefined, block:ts.Block|undefined;
@@ -49,11 +48,14 @@ async function completion(fm:any, adapter:any, pending:any, resume=true){
  if(first<0)throw Error("completion beginning moved");
  const tail=method.body.statements.find(st=>ts.isExpressionStatement(st)&&ts.isCallExpression(st.expression)&&ts.isPropertyAccessExpression(st.expression.expression)&&st.expression.expression.name.text==="finishStartup");
  if(!tail)throw Error("startup finish handoff moved");
- const script=statements.slice(first).map(st=>st.getText(ast)).join("\n")+"\n"+tail.getText(ast);
+ // The boot's own snapshot statement (#1737 review fence), run first — as startAll runs it before the completion.
+ const snapshot=method.body.statements.find(st=>ts.isVariableStatement(st)&&st.declarationList.declarations.some(d=>d.name.getText(ast)==="bootUpdateMarker"));
+ if(!snapshot)throw Error("boot marker snapshot moved");
+ const script=snapshot.getText(ast)+"\n"+statements.slice(first).map(st=>st.getText(ast)).join("\n")+"\n"+tail.getText(ast);
  const progress=new RestartProgress(2,pending.startedAt,fm.logger,{mode:"update"});
  if(resume)await progress.resume({adapter,chatId:"c"},pending.progress.target.messageId);
  const context=createContext({fm,fleet:fm.fleetConfig,topicMode:true,pendingUpdateProgress:pending,pendingProgressOperation:"update",
- startupProgress:progress,progressStart:Promise.resolve(true),bootUpdateMarker,updateReceiptOf,formatRestartProgressCompletion,t:()=>"fleet ready",Date,
+ startupProgress:progress,progressStart:Promise.resolve(true),updateMarkerIdentity,updateReceiptOf,formatRestartProgressCompletion,t:()=>"fleet ready",Date,
  load:async(name:string)=>{if(name!=="node:module")throw Error("unexpected inert import");return {createRequire:()=>()=>({version:"2.2.1"})};}});
  const js=ts.transpileModule(`(async function(){ ${script} }).call(fm)`,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText
  .replaceAll("import.meta.url","'file:///inert/compiled.js'").replaceAll("import(","load(").replaceAll("export {};","");
@@ -142,5 +144,21 @@ describe("#1737: the startup clear, by what the boot adopted", () => {
   const dir = scratch(); fs.writeFileSync(join(dir, "update-in-progress.json"), "{not json");
   inertManager(dir, vi.fn()).fm.clearSettledUpdateMarker(null);
   expect(fs.existsSync(join(dir, "update-in-progress.json"))).toBe(false);
+ });
+ it("same start time, another receipt (a chat /update whose clock matched) → kept", () => {
+  const dir = scratch(); const t = Date.now();
+  beginUpdateProgress(dir, { adapterId: "a", chatId: "c", messageId: "A" }, t);
+  const boot = updateMarkerIdentity(dir);
+  beginUpdateProgress(dir, { adapterId: "a", chatId: "c", messageId: "B" }, t);
+  expect(sameUpdateMarker(updateMarkerIdentity(dir), boot)).toBe(false);
+  inertManager(dir, vi.fn()).fm.clearSettledUpdateMarker(boot);
+  expect(readUpdateProgress(dir)?.progress.target.messageId).toBe("B");
+ });
+ it("a plain CLI marker adopted, replaced by a newer plain one (another start time) → the newer one is kept", () => {
+  const dir = scratch(); markUpdateInProgress(dir, 1_000);
+  const boot = updateMarkerIdentity(dir);
+  clearUpdateMarker(dir); markUpdateInProgress(dir, 2_000);
+  inertManager(dir, vi.fn()).fm.clearSettledUpdateMarker(boot);
+  expect(updateMarkerIdentity(dir)?.startedAt).toBe(2_000);
  });
 });
