@@ -300,8 +300,10 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
     try {
       const j = await read(q({ before: String(c.before), ...(c.key ? { key: c.key } : {}) }));
       if (j && j.enabled) {
+        // A trim or a new conversation meanwhile: this answer is stale — even one that says a new conversation began,
+        // which would replace what is shown now with an older snapshot and its cursor.
+        if (c.epoch !== epoch) return;
         if (j.reset) { take(j, { replace: true }); return; }
-        if (c.epoch !== epoch) return;                    // a trim or a new conversation meanwhile: this page is stale
         c.before = j.before ?? null;
         const el = scroller.current, from = el ? el.scrollHeight - el.scrollTop : 0;
         setSteps((list) => capPage(mergeSteps(list, j.steps || [], true)));

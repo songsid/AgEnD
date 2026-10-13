@@ -216,6 +216,27 @@ describe("on: the newest steps, live, older on demand", () => {
     await settle(8);
     expect(state(pg)).toEqual([3, false]);
   });
+  it("an older read that comes back saying a new conversation began is dropped if a newer one was shown meanwhile", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    const C = ON({ steps: page(2, 7, "user"), reset: true, before: null, after: 60, key: "5-6" });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), held, C];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(4);                                  // conversation A's older read is out
+    await tick();                                                           // the live read sees conversation C
+    expect(state(pg)).toEqual([2, false]);
+    release(ON({ steps: page(1, 3, "user"), reset: true, before: 40, after: 20, key: "3-4" }));   // B, from before C
+    await settle(8);
+    expect(state(pg)).toEqual([2, false]);
+    expect(rows(pg).every(x => !x.includes("p3"))).toBe(true);
+  });
+  it("control: an older read that comes back saying a new conversation began, with nothing newer meanwhile, is taken", async () => {
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), ON({ steps: page(1, 3, "user"), reset: true, before: 40, after: 20, key: "3-4" })];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(8);
+    expect(state(pg)).toEqual([1, true]);
+    expect(pg.root.querySelector(".p-log .log-notice")?.textContent).toBe("A new conversation began: showing it from its latest steps.");
+  });
   it("control: an older page held while nothing is trimmed applies when it lands", async () => {
     let release!: (v: unknown) => void;
     const held = new Promise((r) => { release = r; });
