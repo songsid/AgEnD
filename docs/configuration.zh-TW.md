@@ -585,8 +585,16 @@ macOS 上 claude 把登入存在鑰匙圈（Keychain），項目名稱依 profil
 （你自己設的照舊生效），也不建立任何目錄。Fleet 的 `ANTHROPIC_API_KEY` 只傳給「自己的
 設定目錄沒有 claude.ai 登入」的 instance——規則與以前相同，只是看的是 profile 的目錄。
 
-**切換 running Claude Code instance 會開新對話**，交接方式與 Kiro 相同：新 profile 的
-`projects/` 沒有舊 profile 的對話紀錄。
+**切換 running Claude Code instance 會保留原本的對話**（#1753）。舊 CLI 停下、新 CLI 啟動之間，AgEnD 會把這個
+session 的對話紀錄（`projects/<目錄>/<session>.jsonl`）、它的資料夾與檔案歷史複製到新 profile，並把副本設成最新的一份，
+讓重啟時的 `--continue` 接上它。
+- 舊 profile 保留自己那份，所以切回去會回到同一段對話（含期間新增的部分）。
+- 下一次回覆會在快取為空的狀態下重讀整段對話：這一輪會比較慢，並以完整價格計費。
+- 回覆會帶 `conversation_carried_over: true`。
+- 其他東西都不會搬動：記憶、設定與登入仍各屬各的 profile，兩邊其他的對話紀錄也維持原狀。
+
+無法複製時，切換會開新對話，交接方式與 Kiro 相同，回覆的 `carry_failed` 會說明原因。可能的原因有：還沒有 session、
+新 profile 已有這段對話的另一個版本、空間不足，或複製失敗。
 
 ### 各自的額度
 
