@@ -208,7 +208,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 :root { --text-scale: 1; }
 :root[data-text-size="s"] { --text-scale: 0.9; }
 :root[data-text-size="l"] { --text-scale: 1.15; }
-.thread, .p-details .panel-body, .p-fleet .panel-body {
+.thread, .p-details .panel-body, .p-fleet .panel-body, .p-log .panel-body {
   --fs-xs: calc(12px * var(--text-scale)); --lh-xs: calc(16px * var(--text-scale));
   --fs-sm: calc(13px * var(--text-scale)); --lh-sm: calc(18px * var(--text-scale));
   --fs-md: calc(15px * var(--text-scale)); --lh-md: calc(24px * var(--text-scale));
@@ -217,10 +217,40 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 /* #1523 N2: Details. */
 .p-details .d-tags { display: inline-flex; flex-wrap: wrap; gap: var(--s-1); }
+/* #1218: an instance's Log — one column of steps, newest at the bottom; the filter bar above it. Classes only (#1300). */
+.p-log .log-bar { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-2) var(--s-4); border-bottom: 1px solid var(--border); flex: none; }
+.p-log .log-bar .chip-btn.on { color: var(--text); background: var(--surface-2); font-weight: var(--fw-semibold); }
+.p-log .log-live { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-3); }
+.p-log .log-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.p-log .log-item { padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
+.p-log .log-item.turn-start { margin-top: var(--s-4); }
+.p-log .log-item.k-user { background: var(--user-bubble); }
+.p-log .log-item.k-turn_end, .p-log .log-item.k-state, .p-log .log-item.k-event { background: transparent; color: var(--text-3); padding-block: 2px; font-size: var(--fs-sm); }
+.p-log .log-item.k-error, .p-log .log-item.s-failed { border-left: 3px solid var(--danger); }
+.p-log .log-head { display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
+.p-log .log-icon { flex: none; }
+.p-log .log-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-log .log-cat { font-weight: var(--fw-semibold); }
+.p-log .log-subject { font-size: var(--fs-sm); }
+.p-log .log-time { flex: none; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.p-log .log-status { flex: none; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.p-log .log-status.done { color: var(--ok); }
+.p-log .log-status.failed { color: var(--danger); }
+.p-log .log-status.interrupted { color: var(--warn, var(--text-3)); }
+.p-log .log-status .spinner { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.p-log .log-repeat { flex: none; font-size: var(--fs-xs); padding: 0 6px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); }
+.p-log .log-text { white-space: pre-wrap; margin-top: var(--s-1); font-size: var(--fs-sm); }
+.p-log .log-text.mono { font-family: var(--font-mono); font-size: var(--fs-xs); }
+.p-log .log-text.folded { max-height: 10.5em; overflow: hidden; mask-image: linear-gradient(to bottom, #000 70%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+.p-log .link-btn { border: 0; background: none; padding: 2px 0; color: var(--accent); cursor: pointer; font-size: var(--fs-xs); }
+.p-log .log-detail { margin-top: var(--s-1); display: flex; flex-direction: column; gap: var(--s-2); }
+.p-log .log-sec-h { font-size: var(--fs-xs); color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.p-log .log-older, .p-log .log-start { text-align: center; margin: var(--s-2) 0; }
+.p-log .log-off { padding: var(--s-6) var(--s-4); }
 .p-details .d-edit { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-2); }
 @media (max-width: 899px) {
   .panel-head:has(.inst-switch) { flex-wrap: wrap; }
-  .inst-switch.seg { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 0 var(--s-1); }
+  .inst-switch.seg { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0 0 var(--s-1); }
   .inst-switch .seg-item { justify-content: center; border-radius: var(--r-sm); }
 }
 .panel-body { flex: 1; min-height: 0; overflow-y: auto; }

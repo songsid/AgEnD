@@ -130,7 +130,8 @@ describe("Fleet goes to the open instance's Details (the user's complaint)", () 
 describe("the switch keeps the instance", () => {
   it("Chat and Details of web-dev: Chat | View | Details of web-dev, the current one marked; a reload of the URL keeps the view", async () => {
     const pg = await app("/ui/chat/web-dev");
-    const want = (cur: string) => [["Chat", "/ui/chat/web-dev", cur === "chat" ? "page" : null], ["View", "/view/web-dev", cur === "view" ? "page" : null], ["Details", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];
+    const want = (cur: string) => [["Chat", "/ui/chat/web-dev", cur === "chat" ? "page" : null], ["View", "/view/web-dev", cur === "view" ? "page" : null],
+      ["Log", "/ui/log/web-dev", cur === "log" ? "page" : null], ["Details", "/ui/fleet/agent/web-dev", cur === "details" ? "page" : null]];   // #1218: Log
     expect(sw(pg)).toEqual(want("chat"));
     const d = pg.root.querySelectorAll(".inst-switch a.seg-item").find((a: any) => a.textContent === "Details");
     fire(d, "click", { button: 0 }); await settle(6);
@@ -193,7 +194,7 @@ describe("View: the switch for a signed-in person, none for the anonymous reader
       viewStore.set({ loaded: true, error: null, roster: [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }] });
       await pg.mount(h(ViewPanel, { route: { panel: "view", instance: "web-dev" }, navKey: `view:web-dev|${viewOnly}` }));
       await settle(3);
-      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Details", "/ui/fleet/agent/web-dev", null]]]);
+      expect([viewOnly, sw(pg)]).toEqual(viewOnly ? [true, []] : [false, [["Chat", "/ui/chat/web-dev", null], ["View", "/view/web-dev", "page"], ["Log", "/ui/log/web-dev", null], ["Details", "/ui/fleet/agent/web-dev", null]]]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
   });

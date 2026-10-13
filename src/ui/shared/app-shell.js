@@ -348,11 +348,11 @@ export function PanelHeader({ title, sub, children, headingRef, nav }) {
 }
 
 /**
- * #1523 N2: the instance a page is about — Chat, View or Details of it — or null. With one open, Fleet goes to its
+ * #1523 N2: the instance a page is about — Chat, View, Log (#1218) or Details of it — or null. With one open, Fleet goes to its
  * Details (the user's complaint: Fleet always landed on Tasks), and Chat and View keep it; with none, as before.
  */
 export function openInstanceOf(route) {
-  return route && (route.panel === "chat" || route.panel === "view" || route.panel === "details") && route.instance ? route.instance : null;
+  return route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") && route.instance ? route.instance : null;
 }
 
 function BottomTabs({ route, viewOnly }) {
@@ -366,7 +366,7 @@ function BottomTabs({ route, viewOnly }) {
     <${Icon} name=${icon} size=${20} /><span>${label}</span>${badge ? html`<span class="tab-badge" aria-label=${badgeLabel || t("app.needsYou")}>${badge}</span>` : null}</a>`;
   let lastView = null;
   try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
-  const viewHref = route && (route.panel === "view" || route.panel === "details") && route.instance ? viewPath(route.instance) : viewPath(lastView);
+  const viewHref = route && (route.panel === "view" || route.panel === "log" || route.panel === "details") && route.instance ? viewPath(route.instance) : viewPath(lastView);
   if (viewOnly) {
     return html`<nav class="tabs" aria-label=${t("app.menu")}>
       ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}

@@ -718,13 +718,14 @@ function WebSection({ ctx, staged }) {
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const original = useMemo(() => ({
     echo: web.echo_to_channel ?? true,
+    log: web.log_tab === true,                                                  // #1218: off by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2" },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   const [f, setF] = useState(() => ({
-    echo: original.echo, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol,
+    echo: original.echo, log: original.log, pub: original.pub.allow_public, ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol,
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours),
     termOn: original.terminal.enabled !== false, termTtl: text(original.terminal.ttl_minutes),
   }));
@@ -752,12 +753,14 @@ function WebSection({ ctx, staged }) {
       ttl_minutes: value(f.termTtl) }, original.terminal);
     const body = {
       ...(f.echo !== original.echo ? { echo_to_channel: f.echo } : {}),
+      ...(f.log !== original.log ? { log_tab: f.log } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
       ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
     };
     const fields = [
       ...(body.echo_to_channel !== undefined ? ["web.echo_to_channel"] : []),
+      ...(body.log_tab !== undefined ? ["web.log_tab"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
@@ -797,6 +800,8 @@ function WebSection({ ctx, staged }) {
     <section class="card"><h3>${tn("webChat")}</h3>
       <label class="check"><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
       <p class="note">${tn("webEchoHint")}</p>
+      <label class="check"><input id="webLogTab" type="checkbox" checked=${f.log} onChange=${(e) => set("log")(e.target.checked)} /><span>${tn("webLogTab")}</span><${Impact} schema=${schema} field="web.log_tab" /></label>
+      <p class="note">${tn("webLogTabHint")}</p>
       <label class="check"><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
       <div class="grid2">

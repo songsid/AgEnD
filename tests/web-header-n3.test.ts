@@ -169,7 +169,7 @@ describe("no style attribute (#1300): one attribute on the root, one custom prop
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
     expect(css).toMatch(/:root\[data-text-size="s"\] \{ --text-scale: 0\.9; \}/);
     expect(css).toMatch(/:root\[data-text-size="l"\] \{ --text-scale: 1\.15; \}/);
-    expect(css).toMatch(/\.thread, \.p-details \.panel-body, \.p-fleet \.panel-body \{[^}]*--fs-md: calc\(15px \* var\(--text-scale\)\)/);
+    expect(css).toMatch(/\.thread, \.p-details \.panel-body, \.p-fleet \.panel-body, \.p-log \.panel-body \{[^}]*--fs-md: calc\(15px \* var\(--text-scale\)\)/);   // #1218: and the Log
   });
 });
 

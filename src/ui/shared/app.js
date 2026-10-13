@@ -51,6 +51,8 @@ if (mode === "full") {
   stream.on("hydration", (hydration) => appStore.set({ hydration }));
   appStore.set({ retryHydration: () => stream.catchUp() });
   stream.on("needs", (d) => appStore.set({ needs: Array.isArray(d && d.items) ? d.items : [] }));
+  // #1218: a panel's way to hear one stream event (the Log's steps_tick), unsubscribed by its lease.
+  appStore.set({ streamOn: (name, fn) => stream.on(name, fn) });
   appStore.set({ connection: stream.connection() });
 
   // The chat's store must hear every message from the first frame, whatever panel is open: its module boots once,
@@ -67,6 +69,7 @@ if (mode === "full") {
   const loadSettings = retryable((a) => import(retryUrl("/ui/js/panel-settings.js", a)));
   const loadNeeds = retryable((a) => import(retryUrl("/ui/js/panel-needs.js", a)));
   const loadDetails = retryable((a) => import(retryUrl("/ui/js/panel-details.js", a)));
+  const loadLog = retryable((a) => import(retryUrl("/ui/js/panel-log.js", a)));
   // The stream opens once the chat listens, so the frames sent on connect (status, open prompts, ticks) reach it too.
   // If the chat cannot load (a session that just ended), the stream still opens for the sidebar.
   const chatBoot = loadChat();
@@ -80,6 +83,8 @@ if (mode === "full") {
   panels.set("needs", { load: () => loadNeeds().then((m) => m.NeedsPanel) });
   // #1523 N2: one instance's Details (/ui/fleet/agent/<name>).
   panels.set("details", { load: () => loadDetails().then((m) => m.DetailsPanel) });
+  // #1218: one instance's Log (/ui/log/<name>).
+  panels.set("log", { load: () => loadLog().then((m) => m.LogPanel) });
   // #1386 §6.3: desktop notifications for new "Needs you" items, in any panel, while this signed-in page is open.
   startNeedsNotifier({ open: (instance) => navigate(chatPath(instance)) });
   // #1665: this device's first upload of its own choices (once), then another device's changes at each status frame.

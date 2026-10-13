@@ -10,7 +10,7 @@
 import { html, useLayoutEffect, useRef, useState } from "./app-html.js";
 import { t } from "./app-i18n.js";
 import { appStore, createStore, useStore } from "./app-store.js";
-import { chatPath, detailsPath, viewPath } from "./app-route.js";
+import { chatPath, detailsPath, logPath, viewPath } from "./app-route.js";
 import { Icon } from "./ui-icons.js";
 import { Skeleton } from "./ui-states.js";
 import { viewStore } from "./view-roster-store.js";
@@ -353,8 +353,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // Where a row goes: the view the page is in (#1523 §3.1). View → View; Details, or a Fleet tab (Q4 = A), → Details;
   // everywhere else → Chat. The anonymous reader only ever has View.
   const rowPath = viewOnly || (route && route.panel === "view") ? viewPath
+    : route && route.panel === "log" ? logPath                                  // #1218: Log → Log
     : route && (route.panel === "details" || route.panel === "fleet") ? detailsPath : chatPath;
-  const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "details") ? route.instance : null;
+  const active = route && (route.panel === "chat" || route.panel === "view" || route.panel === "log" || route.panel === "details") ? route.instance : null;
   useLayoutEffect(() => { keepActiveInView(list.current); }, [active, items.length, loaded]);
   const own = (map, name) => Object.prototype.hasOwnProperty.call(map, name);
   const byName = new Map(items.map((it) => [nameOf(it), it]));

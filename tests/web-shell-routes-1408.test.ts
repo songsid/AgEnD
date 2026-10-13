@@ -15,7 +15,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
-import { shellRoute, isWebPageNavigation, isSafeInstanceName, chatPath as serverChatPath } from "../src/web-shell-routes.js";
+import { shellRoute, isWebPageNavigation, isSafeInstanceName, chatPath as serverChatPath, logPath as serverLogPath } from "../src/web-shell-routes.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { handleWebRequest } from "../src/web-api.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
@@ -23,7 +23,7 @@ import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
 import { EventEmitter } from "node:events";
 
 const client = await import("/assets/app-route.js") as {
-  parseRoute(p: string): unknown; legacyHashTarget(p: string, h: string): string | null; chatPath(n: string): string; isSafeInstanceName(n: string): boolean;
+  parseRoute(p: string): unknown; legacyHashTarget(p: string, h: string): string | null; chatPath(n: string): string; logPath(n: string): string; isSafeInstanceName(n: string): boolean;
 };
 
 // [path, what it is]: "chat:<name>" / "chat:" / "fleet:<tab>" / "settings:<section>" / "malformed" / "none"
@@ -57,6 +57,13 @@ const CASES: Array<[string, string]> = [
   ["/ui/fleet/agent/%E0%A4", "malformed"],
   ["/ui/fleet/agent", "none"],
   ["/ui/fleet/agent/a/b", "none"],
+  // #1218: one instance's Log.
+  ["/ui/log/web-dev", "log:web-dev"],
+  ["/ui/log/%E4%B8%AD%E6%96%87", "log:中文"],
+  ["/ui/log/a%2Fb", "malformed"],
+  ["/ui/log/%2E%2E", "malformed"],
+  ["/ui/log", "none"],
+  ["/ui/log/a/b", "none"],
   ["/ui/", "none"],
   ["/uix", "none"],
   ["/view", "view:"],
@@ -80,7 +87,7 @@ const CASES: Array<[string, string]> = [
   ["/settingsx", "none"],
 ];
 // Every data route under /ui the server answers (web-api.ts), by shape.
-const DATA_ROUTES = ["/ui/poll", "/ui/events", "/ui/history", "/ui/file/abc", "/ui/prompts", "/ui/instance/web-dev", "/ui/instances",
+const DATA_ROUTES = ["/ui/poll", "/ui/events", "/ui/history", "/ui/steps", "/ui/file/abc", "/ui/prompts", "/ui/instance/web-dev", "/ui/instances",
   "/ui/tasks", "/ui/tasks/t1", "/ui/schedules", "/ui/schedules/s1", "/ui/teams", "/ui/teams/x", "/ui/config", "/ui/org", "/ui/cache", "/ui/backends", "/ui/js/app.js",
   "/ui/needs/ack", "/ui/send", "/ui/upload", "/ui/prompt", "/ui/command", "/ui/cancel/x", "/ui/stop/x", "/ui/start/x", "/ui/restart/x", "/ui/instances/x/delete"];
 
@@ -120,6 +127,8 @@ describe("one classifier, the same on both sides", () => {
   it("names: the client builds the same paths, and both sides hold names to the same rule", () => {
     for (const n of ["web-dev", "中文", "a b", "a?b#c", "100%"]) {
       expect(client.chatPath(n)).toBe(serverChatPath(n));
+      expect(client.logPath(n)).toBe(serverLogPath(n));
+      expect(describeServer(serverLogPath(n))).toBe(`log:${n}`);
       expect(describeServer(serverChatPath(n))).toBe(`chat:${n}`);
     }
     for (const n of ["", ".", "..", "a/b", "a\\b", "a..b", "a\u0000b", "a\u007fb", "x".repeat(129)]) {

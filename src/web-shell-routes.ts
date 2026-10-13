@@ -24,7 +24,9 @@ export type ShellRoute =
   | { panel: "settings"; section: SettingsSection }
   | { panel: "needs" }
   // #1523 N2: Details, "the Fleet side of one instance" (/ui/fleet/agent/<name>).
-  | { panel: "details"; instance: string };
+  | { panel: "details"; instance: string }
+  // #1218: the instance's Log (/ui/log/<name>).
+  | { panel: "log"; instance: string };
 
 /** What a path is: the app shell (with its route), a malformed shell path (400), or not the shell at all (null). */
 export type ShellMatch = { kind: "shell"; route: ShellRoute } | { kind: "malformed" } | null;
@@ -63,6 +65,12 @@ export function shellRoute(method: string, path: string): ShellMatch {
   }
   const fleet = /^\/ui\/fleet\/([^/]+)$/.exec(path);
   if (fleet) return (FLEET_TABS as readonly string[]).includes(fleet[1]!) ? { kind: "shell", route: { panel: "fleet", tab: fleet[1] as FleetTab } } : null;
+  // #1218: one instance's Log.
+  const log = /^\/ui\/log\/([^/]+)$/.exec(path);
+  if (log) {
+    const name = decodeSegment(log[1]!);
+    return name !== null && isSafeInstanceName(name) ? { kind: "shell", route: { panel: "log", instance: name } } : { kind: "malformed" };
+  }
   const chat = /^\/ui\/chat\/([^/]+)$/.exec(path);
   if (chat) {
     const name = decodeSegment(chat[1]!);
@@ -110,6 +118,9 @@ export function chatPath(instance: string): string {
 }
 export function viewPath(instance: string): string {
   return `/view/${encodeURIComponent(instance)}`;
+}
+export function logPath(instance: string): string {
+  return `/ui/log/${encodeURIComponent(instance)}`;
 }
 export function detailsPath(instance: string): string {
   return `/ui/fleet/agent/${encodeURIComponent(instance)}`;

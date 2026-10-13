@@ -13,7 +13,7 @@ export function isSafeInstanceName(name) {
 }
 
 /**
- * A path → the route it names: { panel: "chat" | "view" | "details", instance } | { panel: "fleet", tab } |
+ * A path → the route it names: { panel: "chat" | "view" | "details" | "log", instance } | { panel: "fleet", tab } |
  * { panel: "settings", section } | null (not a page of the app: a full load). A malformed name is null too; the
  * server answers it 400.
  */
@@ -28,6 +28,9 @@ export function parseRoute(pathname) {
   if (m) return FLEET_TABS.includes(m[1]) ? { panel: "fleet", tab: m[1] } : null;
   m = /^\/ui\/chat\/([^/]+)$/.exec(pathname);
   if (m) return named("chat", m[1]);
+  // #1218: one instance's Log.
+  m = /^\/ui\/log\/([^/]+)$/.exec(pathname);
+  if (m) return named("log", m[1]);
   if (pathname === "/view") return { panel: "view", instance: null };
   m = /^\/view\/([^/]+)$/.exec(pathname);
   if (m) return named("view", m[1]);
@@ -45,6 +48,7 @@ function named(panel, segment) {
 export function chatPath(instance) { return `/ui/chat/${encodeURIComponent(instance)}`; }
 export function viewPath(instance) { return instance ? `/view/${encodeURIComponent(instance)}` : "/view"; }
 export function detailsPath(instance) { return `/ui/fleet/agent/${encodeURIComponent(instance)}`; }
+export function logPath(instance) { return `/ui/log/${encodeURIComponent(instance)}`; }
 export function fleetPath(tab) { return tab && tab !== "tasks" ? `/ui/fleet/${tab}` : "/ui/fleet"; }
 export const NEEDS_PATH = "/ui/needs";
 export function settingsPath(section) { return section && section !== "agents" ? `/settings/${section}` : "/settings"; }
@@ -55,6 +59,7 @@ export function routePath(route) {
   if (route.panel === "needs") return NEEDS_PATH;
   if (route.panel === "view") return viewPath(route.instance);
   if (route.panel === "details") return detailsPath(route.instance);
+  if (route.panel === "log") return logPath(route.instance);
   return route.instance ? chatPath(route.instance) : "/ui";
 }
 /** One string per route: a change of it is a new navigation (a new lease for the panel, §4). */
