@@ -191,6 +191,12 @@ describe("the page's helpers", () => {
     const a = [{ id: "1", v: 1 }, { id: "2", v: 1 }];
     expect(logp.mergeSteps(a, [{ id: "2", v: 2 }, { id: "3", v: 1 }])).toEqual([{ id: "1", v: 1 }, { id: "2", v: 2 }, { id: "3", v: 1 }]);
     expect(logp.mergeSteps(a, [{ id: "0", v: 1 }, { id: "1", v: 9 }], true)).toEqual([{ id: "0", v: 1 }, { id: "1", v: 1 }, { id: "2", v: 1 }]);
+    // A result whose call was on the older page: the call names it (tool, subject, input, start time); its outcome stays.
+    const orphan = { id: "c", kind: "tool", tool: "", cat: "other", status: "done", body: "ok", ts: 20 };
+    const call = { id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "running", ts: 10 };
+    expect(logp.mergeSteps([orphan], [call], true)).toEqual([{ id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "done", body: "ok", ts: 10 }]);
+    const named = { ...orphan, tool: "Read", cat: "read", subject: "a.ts" };
+    expect(logp.mergeSteps([named], [call], true)).toEqual([named]);
   });
   it("timeline: events placed by time among the steps; collapse: repeated identical finished tool steps as one, with a count", () => {
     const steps = [{ id: "a", ts: 10, kind: "user" }, { id: "b", ts: 30, kind: "user" }];
