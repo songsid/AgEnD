@@ -111,21 +111,33 @@ is hand the new session a summary of what the old one was doing
 transcript. Tell the user plainly: the agent restarted on the other
 subscription, it knows what it was doing, it cannot quote what was said.
 
-**For claude-code**, AgEnD copies the transcript into the new profile's
-directory and resumes it there. The reply's `conversation_carried_over` tells
-you whether the copy succeeded:
-- `true`: the conversation was copied and resumed. The reply also carries
-  `conversation_note` — relay it. It says the old copy is still there and warns
-  that the next turn re-reads the full history from a cold cache (one slower,
-  full-price turn).
-- `false`: the copy failed. The reply carries `carry_failed` with the reason
-  and falls back to a fresh session with a handover summary
-  (`handover_chars`). Relay the reason and say the agent knows what it was
-  doing from the summary.
+**For claude-code**, AgEnD copies the transcript and its folder into the new
+profile's directory and resumes it there with `--continue`. The originals are
+left untouched; the switch copies, never moves.
 
-**Always relay `conversation_carried_over`, `conversation_note`, and
-`carry_failed` from the actual tool response.** Do not predict which one you
-will receive; read what the tool returned.
+**Reply fields to relay:**
+
+- `conversation_carried_over: true` — the copy succeeded and the agent resumed
+  the same conversation on the new account. The reply also carries
+  `conversation_note`: relay it. It says the old copy is still there and
+  warns that the next turn re-reads the full history from a cold cache — one
+  slower, full-price turn on the new subscription.
+
+- `conversation_carried_over: false` + `carry_failed: "<reason>"` — the copy
+  could not be made. Common reasons: no session id recorded, not enough free
+  space, or the new profile already holds a *different* version of this
+  conversation (an existing older copy of the same conversation is replaced
+  safely; a different conversation is refused). The instance starts fresh and
+  `handover_chars` says how much context the new session received. Relay
+  `carry_failed` plainly to the user.
+
+- `conversation_carried_over: true` with no `carry_failed` and no
+  `conversation_note` — the backend shares its history across profiles (codex)
+  or some other case where no copy was needed; relay the `conversation_note`
+  regardless.
+
+**Always read and relay `conversation_carried_over`, `conversation_note` and
+`carry_failed` from the actual response.** Do not predict the outcome.
 
 **For codex** the reply says `conversation_carried_over: true` and carries a
 `conversation_note`. Relay it as what it is — a statement about where the
@@ -177,6 +189,77 @@ A kiro profile that is configured but has never been logged in still gets a row,
 reading **Signed out — run `kiro-cli` to log in**. That is the reminder to go
 and log it in, so report it as such rather than as a missing subscription.
 
+## Shared Claude memory across profiles (#1754, in progress)
+
+Claude Code writes auto-memory under each profile's own config directory, so a
+new profile starts with no memories. #1754 will link memory automatically when
+it lands. Until then, the operator can create the link by hand:
+
+```sh
+# Only when the destination is empty:
+rmdir "${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
+ln -s ~/.claude/projects/<slug>/memory \
+      "${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
+```
+
+**Never replace a non-empty directory** — that discards memories the profile has
+already written.
+
+## Manual conversation carry (fallback for carry_failed or older hosts)
+
+Use this only when the automatic carry reported `carry_failed` and the user
+still wants to recover the conversation, or when running a host version that
+predates #1753.
+
+1. **Record first.** Write down:
+   - the instance's current `${AGEND_HOME:-$HOME/.agend}/instances/<name>/session-id`;
+   - the path and mtime of the newest `.jsonl` in the old profile's `projects/<slug>/`;
+   - the path and mtime of any `.jsonl` already in the new profile's
+     `projects/<slug>/` (there may not be one yet).
+
+2. **Stop the instance.**
+   ```
+   stop_instance("<name>")
+   ```
+
+3. **Switch the profile while stopped** (a stopped instance is not restarted):
+   ```
+   update_instance_config("<name>", { backend_options: { "claude-code": { "credential_profile": "<new>" } } })
+   ```
+   To return to the default login, send `null` for `credential_profile`.
+
+4. **Locate the directories.**
+   - *Old config dir:* `~/.claude` for the default login, or `CLAUDE_CONFIG_DIR`
+     if that variable is set.
+   - *Profile dir:* `${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>`.
+   - *Slug:* **every character that is not A–Z, a–z, or 0–9 is replaced by `-`**
+     (a dot, a space, and a slash all become `-`). Do not compute this by hand:
+     list the old profile's `projects/` directory and confirm the folder name.
+
+5. **Copy (never move)** the conversation:
+   `<old>/projects/<slug>/<session-id>.jsonl` and `<session-id>/` (if present)
+   go to `<new>/projects/<slug>/`. Create the destination folder first if it
+   does not exist.
+
+   **⚠ Never overwrite a transcript that already exists unless you are certain
+   it is an older copy of the same conversation** (same content, just shorter).
+   If a different transcript is already there — the instance already ran on the
+   new profile — keep the newer one. If in doubt, stop and ask.
+
+6. **Touch the copied `.jsonl`** so it is the newest file in that folder:
+   ```
+   touch <new-dir>/projects/<slug>/<session-id>.jsonl
+   ```
+
+7. **Start the instance** and verify:
+   - `${AGEND_HOME:-$HOME/.agend}/instances/<name>/session-id` equals the
+     copied session id;
+   - the copied `.jsonl` grows;
+   - the original file's mtime is unchanged.
+
+The original files remain in the old profile's directory, so switching back
+works the same way.
+
 ## What to tell the user
 
 - Two agents with the same profile name share one login and one quota.
@@ -192,7 +275,6 @@ and log it in, so report it as such rather than as a missing subscription.
   conversation automatically; relay `conversation_carried_over` and, if it is
   false, the `carry_failed` reason and the cold-cache note from
   `conversation_note` when carry succeeds.
-
 ## Do not
 
 - Do not invent a profile that has never been logged in and report success —
