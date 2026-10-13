@@ -160,7 +160,8 @@ describe("the restart carries between the stop and the start, or starts fresh", 
     mkdirSync(team, { recursive: true });
     const prevEnv = process.env.CLAUDE_CONFIG_DIR; process.env.CLAUDE_CONFIG_DIR = w.from;
     const carryOpts = { carry: { backend: "claude-code", from: null, to: "team", result: null as any } };
-    try { await fm.doRestartWithSlot("worker", carryOpts, {}, { working_directory: w.work }, false); }
+    // The configuration the restart launches: the switch is saved before its restart (update_instance_config).
+    try { await fm.doRestartWithSlot("worker", carryOpts, {}, { working_directory: w.work, backend_options: { "claude-code": { credential_profile: "team" } } }, false); }
     finally {
       if (prevEnv === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prevEnv;
       fm.lifecycle.daemons.delete("worker"); fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
@@ -193,7 +194,9 @@ describe("a switch whose restart joins one already in flight (Fable P3, #1758)",
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "session-id"), SID);
     fm.getInstanceDir = () => instanceDir;
-    fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: w.work } } };
+    // What the restart in flight launches (it reads the configuration when it begins): by default the switch's "team".
+    const launches = (profile: string | null) => { fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: w.work, ...(profile ? { backend_options: { "claude-code": { credential_profile: profile } } } : {}) } } }; };
+    launches("team");
     fm.lifecycle.daemons.set("worker", { getConfigSnapshot: () => ({ working_directory: w.work }) });
     const gate = (label: string) => { let open!: () => void; const p = new Promise<void>((r) => { open = r; }); return { label, p, open }; };
     const stop = gate("stop"), start = gate("start");
@@ -210,7 +213,17 @@ describe("a switch whose restart joins one already in flight (Fable P3, #1758)",
     };
     const copied = () => existsSync(join(team, "projects", w.key, `${SID}.jsonl`));
     const flush = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
-    return { fm, stop, start, order, done, copied, flush, gaps: () => fm.restartGaps.size };
+    /** A ClassicBot room instead (not in fleet.yaml): its login is the room's, as the classic start reads it. */
+    const classic = (profile: string | null) => {
+      fm.fleetConfig = { defaults: {}, instances: {} };
+      fm.classicChannels = {
+        getChannelIdByInstance: () => "room", getAdapterIdByInstance: () => "owner", getBackendByInstance: () => "claude-code",
+        getCredentialProfileByInstance: () => (profile ? { state: "profile", name: profile } : { state: "shared" }),
+        getPreTaskCommand: () => undefined, getModel: () => undefined, getAutoPauseAfter: () => undefined,
+      };
+      vi.useFakeTimers({ toFake: ["setTimeout"] }); // the classic branch waits 1 s for tmux between stop and start
+    };
+    return { fm, stop, start, order, done, copied, flush, launches, classic, gaps: () => fm.restartGaps.size };
   }
   const switchOpts = (to = "team") => ({ carry: { backend: "claude-code", from: null, to, result: null as any } });
 
@@ -238,6 +251,51 @@ describe("a switch whose restart joins one already in flight (Fable P3, #1758)",
       await Promise.all([first, joined]);
       expect([sw.carry.result, r.copied()]).toEqual([{ carried: false, reason: "joined a restart in flight past its stop" }, false]);
     } finally { r.done(); }
+  });
+
+  it("joined a restart that launches the OLD login (it read the configuration before the switch was saved): not carried, said so — no false \"carried\"; the old conversation resumes", async () => {
+    const r = await rig();
+    try {
+      r.launches(null);
+      const first = r.fm.restartSingleInstance("worker");
+      await r.flush();
+      const sw = switchOpts();
+      const joined = r.fm.restartSingleInstance("worker", sw);
+      r.stop.open(); r.start.open();
+      await Promise.all([first, joined]);
+      expect([sw.carry.result, r.copied(), r.order]).toEqual([{ carried: false, reason: 'the restart launches the default login, not profile "team"' }, false, ["stop", "start-resume"]]);
+    } finally { r.done(); }
+  });
+
+  it("a restart that launches a third login: not carried, said so, and a fresh start (no older copy is resumed)", async () => {
+    const r = await rig();
+    try {
+      r.launches("other");
+      const first = r.fm.restartSingleInstance("worker");
+      await r.flush();
+      const sw = switchOpts();
+      const joined = r.fm.restartSingleInstance("worker", sw);
+      r.stop.open(); r.start.open();
+      await Promise.all([first, joined]);
+      expect([sw.carry.result, r.copied(), r.order]).toEqual([{ carried: false, reason: 'the restart launches profile "other", not profile "team"' }, false, ["stop", "start-fresh"]]);
+    } finally { r.done(); }
+  });
+
+  it("a ClassicBot room's restart: carried when the room launches the switch's login, refused when it launches another", async () => {
+    const out: unknown[] = [];
+    for (const room of ["team", null]) {
+      const r = await rig();
+      try {
+        r.classic(room);
+        const sw = switchOpts();
+        const run = r.fm.restartSingleInstance("worker", sw);
+        r.stop.open(); r.start.open();
+        await r.flush(); await vi.advanceTimersByTimeAsync(1_000); await r.flush();
+        await run;
+        out.push([sw.carry.result?.carried, sw.carry.result?.carried ? null : sw.carry.result?.reason, r.copied()]);
+      } finally { vi.useRealTimers(); r.done(); }
+    }
+    expect(out).toEqual([[true, null, true], [false, 'the restart launches the default login, not profile "team"', false]]);
   });
 
   it("joined while the restart carries another switch: not carried, and said so; the first switch's carry runs", async () => {
