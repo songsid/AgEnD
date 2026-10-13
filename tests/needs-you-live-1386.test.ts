@@ -33,7 +33,8 @@ function rig(over: { pointer?: LivePointer | null; target?: LiveTarget | null; c
     target: () => target, enabled: () => enabled, stopping: () => stopping, worldExists: () => exists,
     content: () => content,
     post: async (t, text, choices) => { const id = `m${nextMsg++}`; log.push(`post ${id} @${t.chatId}/${t.threadId ?? "-"} [${choices.length}] ${text}`); if (failPost) throw new Error("403"); return ack("post", { ...canonicalTarget(t), messageId: id }); },
-    edit: async (p, text, choices) => { log.push(`edit ${p.messageId} [${choices.length}] ${text}`); if (failEdit) throw new Error("too old"); return ack("edit", undefined); },
+    edit: async (p, text, choices) => { log.push(`edit ${p.messageId} [${choices.length}] ${text}`); if (failEdit) throw new Error("message missing"); return ack("edit", undefined); },
+    isEditLoss: err => err instanceof Error && err.message === "message missing", // This fixture's confirmed unavailable message.
     remove: async p => { log.push(`remove ${p.messageId}`); },
     loadPointer: () => saved,
     savePointer: p => { saved = p; log.push(`save ${p?.messageId ?? "null"}`); },
@@ -112,7 +113,7 @@ describe("first message, edits and new posts (§5.3)", () => {
     expect(r.log.filter(l => /^(post|remove)/.test(l))).toEqual(["post m2 @g/general [1] list", "remove m1"]);   // then posted
   });
 
-  it("an edit that fails (too old, gone) becomes a new post — no sooner than posts are allowed", async () => {
+  it("a confirmed missing message becomes a new post — no sooner than posts are allowed", async () => {
     const r = rig();
     await r.advance(0);                                         // post m1 at t=0: the next post may come at t=60 s
     r.set.failEdit(true);
@@ -122,6 +123,16 @@ describe("first message, edits and new posts (§5.3)", () => {
     expect(r.log.filter(l => /^(edit|post|remove|save)/.test(l))).toEqual(["edit m1 [1] list"]);
     await r.advance(POST_MIN_MS);                               // the window opens: the fallback post
     expect(r.log.filter(l => /^(post|remove|save)/.test(l))).toEqual(["post m2 @g/general [1] list", "save m2", "remove m1"]);
+  });
+
+  it("an accepted post caches the submitted text, not a changed content object during its await", async () => {
+    const content: LiveContent = { empty: false, text: "before", ackable: [] };
+    const r = rig({ content }); r.set.hold(true);
+    await r.advance(0);
+    content.text = "after";
+    r.set.hold(false); r.pending.shift()!.resolve(); await r.settle();
+    r.m.changed(false); await r.advance(EDIT_MIN_MS);
+    expect(r.log.filter(l => l.startsWith("edit"))).toEqual(["edit m1 [0] after"]);
   });
 
   it("a post that keeps failing backs off — never a tight loop (#1398 review)", async () => {

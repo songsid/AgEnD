@@ -160,7 +160,7 @@ describe("Telegram: a markdown edit", () => {
   });
 
   it("any other failure is the caller's error — no second edit", async () => {
-    for (const err of [refusal("Bad Request: message is not modified"), refusal(PARSE, 429), new HttpError("network down", new Error("ECONNRESET"))]) {
+    for (const err of [refusal("Bad Request: chat not found"), refusal(PARSE, 429), new HttpError("network down", new Error("ECONNRESET"))]) {
       const t = make(async () => { throw err; });
       const outcome = await t.adapter.editMessage("100", "7", "a<b", undefined, { format: "markdown" }).then(() => "resolved", (e) => e);
       expect([outcome, t.editMessageText.mock.calls.length], String(err)).toEqual([err, 1]);
