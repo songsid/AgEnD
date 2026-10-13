@@ -115,7 +115,7 @@ describe("the host: nav.favorites", () => {
       let rooms = [{ instanceName: "classic-ops", channelId: "c1" }, ...(stillThere ? [{ instanceName: "classic-ops", channelId: "c2" }] : [])];
       fm.fleetConfig = { instances: {} } as never;
       any.classicChannels = { getAll: () => rooms, unregister: (id: string) => { const ch = rooms.find((r) => r.channelId === id) ?? null; rooms = rooms.filter((r) => r.channelId !== id); return ch; } };
-      any.stopInstance = async () => {}; any.reregisterClassicChannels = () => {};
+      any.stopInstance = async () => ({ backgroundWorkEnded: false }); any.reregisterClassicChannels = () => {};
       fm.webPrefs.write(OPERATOR, new Map([["nav.favorites", ["classic-ops"]]]));
       await fm.handleClassicStop("c1");
       const file = new WebPrefsStore(dir, { exists: () => true }).read();

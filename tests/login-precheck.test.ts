@@ -287,7 +287,7 @@ describe("/login auth pre-check", () => {
         getModel: () => "classic-model",
         getAutoPauseAfter: () => 42,
       } as any;
-      const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+      const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
       const startClassic = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
 
       const restart = (fm as any).doRestartSingleInstance("classic-kiro");
