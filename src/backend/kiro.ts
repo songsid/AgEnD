@@ -27,6 +27,7 @@ import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 import { t } from "../locale.js";
 import { recordKiroLaunch } from "./kiro-engine-ledger.js";
 import { forgetKiroV3Identity, resolveKiroV3Resume } from "./kiro-v3-identity.js";
+import type { KiroLogLaunch } from "../kiro-log-gate.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
@@ -885,6 +886,8 @@ export class KiroBackend implements CliBackend {
   private launchPlan: KiroInstanceLaunch | null = null;
   /** The plan of the command last built: what agentSwitch() works from. */
   private activePlan: KiroInstanceLaunch | null = null;
+  /** #1218: the last launch built in full (cleared when a build starts, set only when it returns). */
+  private builtLaunch: KiroLogLaunch | null = null;
   private preparedV2Store: { key: string; store: KiroStoreRead } | null = null;
   private storePreparation = 0;
   private storeKey(config: CliBackendConfig): string {
@@ -1020,6 +1023,7 @@ export class KiroBackend implements CliBackend {
     // Fail closed before a launch, including refused/failed command builds.
     // V3 has a different engine and no verified completion signal yet (#1144).
     this.replyGuardOptedIn = false;
+    this.builtLaunch = null;
     const ui = config.kiroUi ?? "legacy";
     // Every launch re-reads the binary generation: a crash-respawn reuses this
     // backend, and kiro-cli may have replaced itself in place since the last
@@ -1109,6 +1113,7 @@ export class KiroBackend implements CliBackend {
     // knows which server is which.
     const command = this.withCredentialProfile(config, cmd);
     this.replyGuardOptedIn = plan.ui === "legacy" || plan.ui === "tui";
+    this.builtLaunch = { engine: lp.engine, mode: lp.mode, credentialProfile };
     return command;
   }
 
@@ -1630,6 +1635,8 @@ export class KiroBackend implements CliBackend {
   getContextUsage(): number | null {
     return null;
   }
+
+  logLaunch(): KiroLogLaunch | null { return this.builtLaunch ? { ...this.builtLaunch } : null; }
 
   getSessionId(): string | null {
     // Kiro manages sessions internally via SQLite keyed by working directory.

@@ -32,7 +32,15 @@ register("log", {
     enable: "Turn on the Log", enabling: "Waiting for a fleet admin to confirm it in General…", enabled: "The Log is on.",
     enableFailed: "The Log was not turned on: {0}", offPublic: "A fleet admin can turn it on in Settings → Web.",
     unsupported: "{0} has no transcript AgEnD can read, so this Log shows fleet events only. View shows its screen.",
-    coming: "Steps for {0} come in a later update. Fleet events are shown meanwhile.",
+    kiroWhy: "kiro's own steps are shown only when AgEnD can prove which conversation it is in now. {0} Fleet events are shown meanwhile.",
+    kiro_not_running: "It is not running.",
+    kiro_v3: "Its engine (V3) keeps a history AgEnD does not read.",
+    kiro_engine_unknown: "Its engine is not known.",
+    kiro_legacy: "It launched without its own agent (legacy mode), so it continues the folder's newest conversation, not one of its own.",
+    kiro_fresh: "This launch began a new conversation, which kiro names only later.",
+    kiro_v2_root: "Where its engine (TUI) keeps conversations is inherited from tmux, not set by its launch, so it is not proven.",
+    kiro_no_profile: "Where its engine (classic) keeps conversations is proven only when it runs with its own credential profile.",
+    kiro_session_unobservable: "A /clear or /chat load typed in its terminal can switch conversations without AgEnD seeing it.",
     notRunning: "Its transcript is found while it runs. Start it to see its steps; fleet events are shown meanwhile.",
     noTranscript: "No transcript yet: steps appear once it has worked.",
     empty: "Nothing here yet.", olderLoad: "Load older steps", olderStart: "The start of what can be read.", loading: "Loading…",
@@ -61,7 +69,15 @@ register("log", {
     enable: "開啟紀錄", enabling: "等待 fleet admin 在 General 確認…", enabled: "紀錄已開啟。",
     enableFailed: "紀錄沒有開啟：{0}", offPublic: "fleet admin 可以在「設定 → 網頁」開啟。",
     unsupported: "{0} 沒有 AgEnD 讀得到的對話紀錄，所以這裡只顯示 fleet 事件。「檢視」可以看它的畫面。",
-    coming: "{0} 的步驟會在之後的更新加入，目前先顯示 fleet 事件。",
+    kiroWhy: "只有在 AgEnD 能證明 kiro 目前所在的對話時，才會顯示它自己的步驟。{0}目前先顯示 fleet 事件。",
+    kiro_not_running: "它沒有在執行。",
+    kiro_v3: "它的引擎（V3）的紀錄 AgEnD 不讀取。",
+    kiro_engine_unknown: "不知道它用哪個引擎。",
+    kiro_legacy: "它啟動時沒有自己的 agent（舊模式），接續的是資料夾裡最新的對話，不是它自己的。",
+    kiro_fresh: "這次啟動開了新的對話，kiro 之後才會替它命名。",
+    kiro_v2_root: "它的引擎（TUI）存放對話的位置沿用 tmux 的設定，不是由啟動指定，因此無法證明。",
+    kiro_no_profile: "它的引擎（classic）存放對話的位置，只有使用自己的憑證設定檔時才能證明。",
+    kiro_session_unobservable: "在它的終端機輸入 /clear 或 /chat load 可能切換對話，而 AgEnD 看不到。",
     notRunning: "它執行時才找得到對話紀錄。啟動它就能看到步驟；目前先顯示 fleet 事件。",
     noTranscript: "還沒有對話紀錄：它開始工作後就會出現步驟。",
     empty: "目前還沒有內容。", olderLoad: "載入更早的步驟", olderStart: "已經是能讀到的最早內容。", loading: "載入中…",
@@ -86,6 +102,8 @@ register("log", {
   },
 });
 const tl = (key, ...a) => t(`log.${key}`, ...a);
+/** Why a kiro Log shows fleet events only (kiro-log-gate.ts): each is worded above. */
+export const KIRO_REASONS = new Set(["kiro_not_running", "kiro_v3", "kiro_engine_unknown", "kiro_legacy", "kiro_fresh", "kiro_v2_root", "kiro_no_profile", "kiro_session_unobservable"]);
 
 /** The public link has no stream: the page asks this often while it is shown. */
 export const POLL_MS = 4000;
@@ -317,7 +335,8 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       action=${overPublicLink ? html`<p class="note">${tl("offPublic")}</p>`
         : html`<button type="button" class="btn btn-primary log-enable" disabled=${enabling} onClick=${enable}>${enabling ? tl("enabling") : tl("enable")}</button>`} /></div>`;
   } else {
-    const why = info && info.reason ? (info.reason === "unsupported" ? tl("unsupported", info.backend) : info.reason === "coming" ? tl("coming", info.backend)
+    const why = info && info.reason ? (info.reason === "unsupported" ? tl("unsupported", info.backend)
+      : KIRO_REASONS.has(info.reason) ? tl("kiroWhy", tl(info.reason))
       : info.reason === "not_running" ? tl("notRunning") : info.reason === "no_transcript" ? tl("noTranscript") : "") : "";
     content = html`
       ${why ? html`<p class="note log-why" role="status">${why}</p>` : null}

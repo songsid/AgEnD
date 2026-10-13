@@ -79,6 +79,7 @@ import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeS
 import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
+import type { KiroLogLaunch } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1323,6 +1324,8 @@ export class Daemon extends EventEmitter {
   private transcriptMonitor: TranscriptMonitor | null = null;
   /** #1218: the transcript this instance's monitor follows now (the Log tab reads it on demand; nothing runs for it here). */
   logTranscriptPath(): string | null { return this.transcriptMonitor?.currentPath() ?? null; }
+  /** #1218 (kiro): the launch this daemon's backend last built, for the Log's reason only (kiro-log-gate.ts). */
+  logLaunch(): KiroLogLaunch | null { return this.backend?.logLaunch?.() ?? null; }
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();

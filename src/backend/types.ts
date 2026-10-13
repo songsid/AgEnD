@@ -1,4 +1,5 @@
 import { measureSyncWork } from "../sync-work-attribution.js";
+import type { KiroLogLaunch } from "../kiro-log-gate.js";
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -580,6 +581,11 @@ export interface CliBackend {
    * session DB was unreadable and the launch fell back, #984). Cleared on read.
    */
   consumeLaunchWarning?(): string | null;
+  /**
+   * #1218 (kiro): the last launch this backend built in full — its engine, how it chose its conversation, its credential
+   * profile — or null (none, or the last build threw). For the Log's reason only: it never selects what is read.
+   */
+  logLaunch?(): KiroLogLaunch | null;
 
   /**
    * Whether the launch the last buildCommand produced can paint an

@@ -4,6 +4,7 @@
  * steps_tick (a read after the page's cursor, merged by id), older steps on demand, a filter, outputs on demand.
  * The real Shell, router, store and panel in the mini DOM; fetch is a fake that records what is asked.
  */
+import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { installDom } from "./helpers/mini-dom.js";
@@ -183,6 +184,19 @@ describe("on: the newest steps, live, older on demand", () => {
     answers = [ON({ instance: "api-server", backend: "grok", supported: false, reason: "unsupported", after: null, key: undefined })];
     const pg2 = await app("/ui/log/api-server");
     expect(pg2.root.querySelector(".p-log .log-why")?.textContent).toContain("grok has no transcript AgEnD can read");
+  });
+  it("kiro: the tab says which proof is missing, in each locale; every reason the gate gives has words", async () => {
+    answers = [ON({ instance: "api-server", backend: "kiro-cli", supported: false, reason: "kiro_v2_root", after: null, key: undefined })];
+    const pg = await app("/ui/log/api-server");
+    const why = pg.root.querySelector(".p-log .log-why")?.textContent ?? "";
+    expect(why).toContain("only when AgEnD can prove which conversation it is in now");
+    expect(why).toContain("inherited from tmux");
+    const src = readFileSync(new URL("../src/kiro-log-gate.ts", import.meta.url), "utf8");
+    const reasons = [...src.matchAll(/"(kiro_[a-z0-9_]+)"/g)].map(m => m[1]);
+    expect(new Set(reasons)).toEqual(logp.KIRO_REASONS);
+    // Worded in both locales (en, then zh-TW): each key once per table.
+    const panel = readFileSync(new URL("../src/ui/panel-log.js", import.meta.url), "utf8");
+    for (const r of [...reasons, "kiroWhy"]) expect(panel.split(`\n    ${r}: "`).length - 1, r).toBe(2);
   });
 });
 
