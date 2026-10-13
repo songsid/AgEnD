@@ -75,10 +75,26 @@ const NAME = `[A-Za-z0-9_.-]{0,40}${SECRET_WORD}[A-Za-z0-9_.-]{0,40}`;
 const PEM = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)/g;
 /** JSON: "…secret name…": "value" (as a tool's arguments are shown). */
 const JSON_SECRET = new RegExp(`("${NAME}"\\s*:\\s*")((?:[^"\\\\]|\\\\.)+)(")`, "gi");
+/**
+ * A secret's value: in double or single quotes up to the same quote (spaces included — a passphrase,
+ * DB_PASSWORD="correct horse battery staple"), else up to whitespace, a quote or one of `stop`.
+ */
+const VALUE = (stop: string) => `(?:"([^"\\n]*)"|'([^'\\n]*)'|([^\\s${stop}]+))`;
+/** `head` and the value masked, quotes kept — unless the value is plain (a number, a boolean, null) or empty. */
+function masked(m: string, head: string, d?: string, sq?: string, bare?: string): string {
+  const v = d ?? sq ?? bare ?? "";
+  if (!v.trim() || PLAIN.test(v.trim())) return m;
+  return d !== undefined ? `${head}"[REDACTED]"` : sq !== undefined ? `${head}'[REDACTED]'` : `${head}[REDACTED]`;
+}
 /** A flag: --password value, --api-key=value. */
-const FLAG_SECRET = new RegExp(`(--?${NAME})(\\s+|=)(["']?)([^\\s"']+)\\3`, "gi");
+const FLAG_SECRET = new RegExp(`(--?${NAME})(\\s+|=)${VALUE("\"'")}`, "gi");
 /** An assignment: DB_PASSWORD=value, export TOKEN="value", password: value — the value may hold "/" (AWS keys do). */
-const ASSIGN_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})(\\s*[=:]\\s*)(["']?)([^\\s"'\`,;]+)\\4`, "gim");
+const ASSIGN_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})(\\s*[=:]\\s*)${VALUE("\"'\`,;")}`, "gim");
+/**
+ * A key given as an argument after its name, with no = or -- (aws configure set aws_secret_access_key …): masked only
+ * when it looks like a key — 16+ key characters with a letter and a digit — so prose after the word stays.
+ */
+const POSITIONAL_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})([ \\t]+)([A-Za-z0-9/+=_.-]{16,})(?![A-Za-z0-9/+=_.-])`, "gim");
 /** A value that is not a secret whatever its name says: a number (max_tokens: 100), a boolean, null. */
 const PLAIN = /^(?:-?\d+(?:\.\d+)?|true|false|null|none|\[REDACTED\])$/i;
 
@@ -92,8 +108,9 @@ export function maskSecrets(text: string): string {
   return redactSecrets(text
     .replace(PEM, (_m, kind: string) => `-----BEGIN ${kind}PRIVATE KEY----- [REDACTED] -----END ${kind}PRIVATE KEY-----`)
     .replace(JSON_SECRET, (m, a: string, v: string, b: string) => (PLAIN.test(v) ? m : `${a}[REDACTED]${b}`))
-    .replace(FLAG_SECRET, (m, k: string, sep: string, q: string, v: string) => (PLAIN.test(v) ? m : `${k}${sep}${q}[REDACTED]${q}`))
-    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, q: string, v: string) => (PLAIN.test(v) ? m : `${pre}${k}${sep}${q}[REDACTED]${q}`)))
+    .replace(FLAG_SECRET, (m, k: string, sep: string, d?: string, sq?: string, bare?: string) => masked(m, `${k}${sep}`, d, sq, bare))
+    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, d?: string, sq?: string, bare?: string) => masked(m, `${pre}${k}${sep}`, d, sq, bare))
+    .replace(POSITIONAL_SECRET, (m, pre: string, k: string, sep: string, v: string) => (/[A-Za-z]/.test(v) && /\d/.test(v) ? `${pre}${k}${sep}[REDACTED]` : m)))
     .replace(OPAQUE, (m) => (looksOpaque(m) ? "[REDACTED]" : m));
 }
 

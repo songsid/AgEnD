@@ -46,13 +46,19 @@ describe("masking: only actual secret values, everything else stays readable", (
     ["a private key block cut off", J("-----BEGIN RSA ", "PRIVATE KEY-----\nMIIEowIBAAKCAQEAx"), ["MIIEowIBAAKCAQEAx"]],
     ["a flag", J("mysql --password ", "hunter2hunter2", " -u root"), [J("hunter2", "hunter2")]],
     ["a YAML value in quotes", J("client_secret: '", "abc/def+ghi", "'"), [J("abc/def", "+ghi")]],
+    // #1788 review r2 P2: a quoted value runs to the same quote, spaces included (a passphrase).
+    ["a quoted passphrase in an export", J('export DB_PASSWORD="correct ', 'horse battery staple"'), ["correct", "horse", "battery", "staple"]],
+    ["a single-quoted YAML value with spaces", J("db_password: 'two ", "words here'"), ["two", "words", "here"]],
+    ["a quoted flag value with spaces", J('mysql --password "open ', 'sesame please" -u root'), ["open", "sesame", "please"]],
+    // r2 P3: a key given after its name as an argument.
+    ["a key as an argument", J("aws configure set aws_secret_access_key ", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"), [J("wJalrXUtnFEMI/", "K7MDENG")]],
   ])("masked: %s", (_name, text, gone) => {
     const out = maskSecrets(text as string);
     for (const g of gone as string[]) expect(out, g).not.toContain(g);
     expect(out).toContain("[REDACTED]");
   });
   it("linear on long input: a 200 KB run of word characters (a long output) is masked in well under a second", () => {
-    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
+    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), 'a_password="x '.repeat(14_000), "db_password: 'x ".repeat(12_000), "token ".repeat(30_000), "token a1".repeat(25_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
       const t0 = performance.now();
       const out = maskSecrets(t);
       expect(performance.now() - t0, t.slice(0, 12)).toBeLessThan(500);
@@ -64,6 +70,14 @@ describe("masking: only actual secret values, everything else stays readable", (
     expect(maskSecrets(keep)).toBe(keep);
   });
 
+  it("prose after a secret word stays; only a key-shaped argument is masked; quotes are kept around the mask", () => {
+    const keep = "the access_token expired yesterday; reset the password through the account settings page";
+    expect(maskSecrets(keep)).toBe(keep);
+    expect(maskSecrets(J('export DB_PASSWORD="a b"'))).toBe('export DB_PASSWORD="[REDACTED]"');
+    expect(maskSecrets(J("db_password: 'x y'"))).toBe("db_password: '[REDACTED]'");
+    expect(maskSecrets(J("password: 'x y'"))).toBe("password: [REDACTED]"); // the bubble's redactor then takes the quotes too
+    expect(maskSecrets('max_tokens="4096" token_limit: \'100\' password=""')).toBe('max_tokens="4096" token_limit: \'100\' password=""');
+  });
   it("a git SHA, a UUID, a long instance name and a long path are not secrets", () => {
     const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1554485732591276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
     expect(maskSecrets(keep)).toBe(keep);
