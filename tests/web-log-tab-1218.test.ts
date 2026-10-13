@@ -130,8 +130,10 @@ describe("on: the newest steps, live, older on demand", () => {
     const pg = await app("/ui/log/web-dev");
     expect(stepsCalls()).toEqual(["instance=web-dev&watch=1"]);
     expect(rows(pg)).toEqual([
-      "⚡ Crashed and restarted", "👤 Asked", "🤖 Replied", "⚙️ Run npm test failed · exit 1 · 4.2 s", "📄 Read src/a.ts running",
+      "Crashed and restarted", "Asked", "Replied", "Run npm test failed · exit 1 · 4.2 s", "Read src/a.ts running",
     ]);
+    // Each row's icon is the app's SVG (never an emoji: a device without an emoji font draws boxes).
+    expect(pg.root.querySelectorAll(".p-log .log-icon").map((i: any) => !!i.querySelector("svg"))).toEqual([true, true, true, true, true]);
     expect(pg.root.querySelector(".p-log .log-detail")).toBeNull();
     (pg.root.querySelector(".p-log .log-item.s-failed .log-toggle") as any).click(); await settle(4);
     expect(pg.root.querySelector(".p-log .log-detail")?.textContent).toContain("1 failed");
@@ -146,8 +148,8 @@ describe("on: the newest steps, live, older on demand", () => {
     await tick("web-dev");
     expect(stepsCalls()[1]).toBe("instance=web-dev&watch=1&ev=0&after=100&key=1-2");
     const r = rows(pg);
-    expect(r.slice(-2)).toEqual(["📄 Read src/a.ts done · 30 ms", "🤖 Replied"]);
-    expect(r.filter(x => x.startsWith("📄 Read"))).toHaveLength(1);
+    expect(r.slice(-2)).toEqual(["Read src/a.ts done · 30 ms", "Replied"]);
+    expect(r.filter(x => x.startsWith("Read"))).toHaveLength(1);
   });
 
   it("Load older: before the oldest offset, put above what is shown", async () => {
@@ -165,9 +167,9 @@ describe("on: the newest steps, live, older on demand", () => {
     const pg = await app("/ui/log/web-dev");
     const choose = async (label: string) => { (pg.root.querySelectorAll(".p-log .log-bar .chip-btn").find((b: any) => b.textContent === label) as any).click(); await settle(4); };
     await choose("Tools");
-    expect(rows(pg).map(x => x.split(" ").slice(0, 2).join(" "))).toEqual(["⚙️ Run", "📄 Read"]);
+    expect(rows(pg).map(x => x.split(" ")[0])).toEqual(["Run", "Read"]);
     await choose("Errors");
-    expect(rows(pg).map(x => x.split(" ").slice(0, 2).join(" "))).toEqual(["⚡ Crashed", "⚙️ Run"]);
+    expect(rows(pg).map(x => x.split(" ")[0])).toEqual(["Crashed", "Run"]);
   });
 
   it("a new conversation (reset) is said; a backend with no transcript says what it shows instead", async () => {

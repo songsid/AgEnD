@@ -19,6 +19,7 @@ import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/as
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
+import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
 import { chatTime, chatTimeFull } from "./chat-time.js";
@@ -95,8 +96,9 @@ export const PAGE_MAX = 1000;
 /** A text longer than this many lines is folded until opened. */
 const FOLD_LINES = 8;
 
-const CAT_ICON = { read: "📄", edit: "✏️", search: "🔍", run: "⚙️", web: "🌐", mcp: "🔌", agent: "🤝", plan: "📋", message: "✉️", other: "🔧" };
-const KIND_ICON = { user: "👤", assistant: "🤖", error: "⚠️", turn_end: "⏹", state: "ℹ️", event: "⚡" };
+// The app's own SVG icons (never emoji: a device without an emoji font shows boxes).
+const CAT_ICON = { read: "file", edit: "edit", search: "search", run: "code", web: "globe", mcp: "plug", agent: "team", plan: "tasks", message: "send", other: "sliders" };
+const KIND_ICON = { user: "user", assistant: "bot", error: "alert", turn_end: "stop", state: "info", event: "bell" };
 
 function size(bytes) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -338,7 +340,7 @@ function Row({ x, prev }) {
   const time = x.ts ? chatTime(x.ts, { yesterday: (hm) => t("chat.yesterdayAt", hm) }) : "";
   const title = x.ts ? chatTimeFull(x.ts) : "";
   const newTurn = x.kind === "user" && prev && prev.turn !== x.turn;
-  const head = (icon, label, extra) => html`<div class="log-head"><span class="log-icon" aria-hidden="true">${icon}</span>
+  const head = (icon, label, extra) => html`<div class="log-head"><span class="log-icon" aria-hidden="true"><${Icon} name=${icon} size=${14} /></span>
     <span class="log-label">${label}</span>${extra || null}<span class="grow"></span><span class="log-time" title=${title}>${time}</span></div>`;
   const text = (body, cut, bytes) => {
     if (!body) return null;
