@@ -584,9 +584,19 @@ nothing. A fleet `ANTHROPIC_API_KEY` is passed only to an instance whose own
 config directory has no claude.ai login, the same rule as before, applied to the
 profile's directory.
 
-**Switching a running Claude Code instance starts a fresh conversation**, with the
-same handover as Kiro: the new profile's `projects/` does not have the old one's
-transcripts.
+**Switching a running Claude Code instance keeps its conversation** (#1753). Between the old CLI's stop and
+the new one's start, AgEnD copies the session's transcript (`projects/<dir>/<session>.jsonl`), its folder and its
+file history into the new profile, then dates the copy as the newest so the relaunch's `--continue` picks it.
+- The old profile keeps its own copy, so switching back returns to the same conversation (with the turns added
+  meanwhile).
+- The next reply re-reads the conversation from a cold cache: one slower, full-price turn.
+- The reply says `conversation_carried_over: true`.
+- Nothing else moves: memory, settings and the login stay per profile, and other transcripts in either profile are
+  left as they are.
+
+When the copy can't be made, the switch starts fresh with the same handover as Kiro, and the reply gives the reason in
+`carry_failed`. That happens when there is no session yet, when the new profile already holds a different version of
+that conversation, when there isn't enough free space, or when the copy fails.
 
 ### Seeing both quotas
 
