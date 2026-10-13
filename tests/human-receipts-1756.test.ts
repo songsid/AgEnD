@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,9 +10,12 @@ import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { humanBodyHash, nativeHumanOrigin, webHumanOrigin, type HumanOrigin } from "../src/human-delivery-receipts.js";
 
 const log: any = { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn(), child() { return this; } };
+let savedEnv: Record<string, string | undefined>;
+beforeEach(() => { savedEnv = Object.fromEntries(["HOME", "AGEND_HOME", "KIRO_HOME", "CODEX_HOME"].map(k => [k, process.env[k]])); });
 const roots: Array<{ root: string; outbox: DeliveryOutbox; daemon: any }> = [];
 afterEach(() => {
   for (const h of roots.splice(0)) { h.daemon.fenceDeliveryWritesForStop(); h.outbox.close(); rmSync(h.root, { recursive: true, force: true }); }
+  for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   vi.useRealTimers(); vi.restoreAllMocks();
 });
 const BUSY = readFileSync(join(import.meta.dirname, "fixtures/kiro-reply-guard/tui-busy.pane.txt"), "utf8");
@@ -25,6 +28,7 @@ const person = nativeHumanOrigin("telegram", "bot-one", "42", "person", false, "
 function harness(mode: "idle" | "native" | "steer" = "idle", behavior = "accepted") {
   vi.useFakeTimers();
   const root = mkdtempSync(join(tmpdir(), "agend-human-1756-"));
+  process.env.HOME = root; process.env.AGEND_HOME = root; process.env.KIRO_HOME = join(root, "kiro"); process.env.CODEX_HOME = join(root, "codex");
   const dir = join(root, "instances/leader"); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, "window-id"), "@private");
   const backend = mode === "steer" ? new KiroBackend(dir, { version: "2.27.1", supportsLegacyUi: true, supportsTui: true,
     supportsV3: true, agentEngines: ["v1", "v2", "v3"], supportsEffortFlag: true, supportsInstanceAgent: false, source: "version" }) : new CodexBackend(dir);
