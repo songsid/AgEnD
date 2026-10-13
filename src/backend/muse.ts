@@ -359,7 +359,6 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
  * option, so like #1716 this is recognised whole and never answered here.
  */
 export const MUSE_APPROVAL_PROMPT = /^[ \t]*Would you like to run the following command\?[ \t]*$/m;
-const MUSE_APPROVAL_COMMAND = /^[ \t]*\$ .+$/;
 const MUSE_APPROVAL_STAGE = /^[ \t]*Stage \d+\/\d+[ \t]*$/;
 const MUSE_APPROVAL_ARGV = /^[ \t]*Current argv: \[.*\][ \t]*$/;
 const MUSE_APPROVAL_OPT = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]+/;
@@ -367,56 +366,79 @@ const MUSE_APPROVAL_FOOTER = /^[ \t]*Change approval defaults in \/permissions[ 
 /**
  * #1715: which request the approval prompt is showing — its `$ command` row.
  * Stable across the `Calling tools (Ns)` timer redraws, so the episode can
- * confirm; a whole-pane hash never would.
+ * confirm; a whole-pane hash never would. Derived from the SAME selected
+ * block as the predicate (#1715 r2): a scrollback quote's command must never
+ * become the current request's identity.
  */
 export function museApprovalRequestIdentity(pane: string): string | null {
-  const rows = pane.replace(/\r/g, "").split("\n");
-  const head = rows.findIndex(row => MUSE_APPROVAL_PROMPT.test(row));
-  if (head < 0) return null;
-  const m = /^[ \t]*\$ (.+?)[ \t]*$/m.exec(rows.slice(head, head + 6).join("\n"));
-  return m?.[1].trim() ? m[1].trim() : null;
+  const s = museApprovalScreen(pane);
+  if (s === null) return null;
+  return museApprovalBlock(s.screen, s.top, s.bottom)?.command ?? null;
 }
-export function museApprovalPromptActive(pane: string): boolean {
+/**
+ * #1715 r2: the selected live approval block — its header row index and `$`
+ * command text. Headers are tried newest-first inside the live input block so
+ * a scrollback quote never shadows the current prompt, and the identity comes
+ * from the SAME block the predicate accepts (never a separate global search).
+ */
+function museApprovalBlock(screen: string[], top: number, bottom: number): { head: number; command: string } | null {
+  const window: Array<{ row: string; index: number }> = [];
+  for (let i = bottom - 1; i > top; i--) {
+    if (screen[i].trim()) window.unshift({ row: screen[i], index: i });
+  }
+  for (let h = window.length - 1; h >= 0; h--) {
+    if (!MUSE_APPROVAL_PROMPT.test(window[h].row)) continue;
+    let k = h + 1;
+    const commandRow = k < window.length ? window[k].row : "";
+    const command = /^[ \t]*\$ (.+?)[ \t]*$/.exec(commandRow)?.[1]?.trim();
+    if (!command) continue;
+    k++;
+    if (k < window.length && MUSE_APPROVAL_STAGE.test(window[k].row)) k++;
+    if (k < window.length && MUSE_APPROVAL_ARGV.test(window[k].row)) k++;
+    const last = window[window.length - 1]?.row;
+    const options = (last !== undefined && MUSE_APPROVAL_FOOTER.test(last) ? window.slice(k, -1) : window.slice(k))
+      .map(entry => entry.row);
+    if (options.length !== 2 && options.length !== 3) continue;
+    if (!options.every(row => MUSE_APPROVAL_OPT.test(row))) continue;
+    const first = (options[0] ?? "").replace(/^[ \t]*[❯›]?[ \t]*/, "");
+    const second = options[1] ?? "";
+    if (options.length === 2) {
+      if (!/^1\. Yes, proceed \(y\)[ \t]*$/.test(first)) continue;
+      if (!/^[ \t]*[❯›]?[ \t]*2\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(second)) continue;
+    } else {
+      if (!/^1\. Allow this stage once \(y\)[ \t]*$/.test(first)) continue;
+      if (!/^[ \t]*[❯›]?[ \t]*2\. Always allow in this workspace: .+ \(p\)[ \t]*$/.test(second)) continue;
+      if (!/^[ \t]*[❯›]?[ \t]*3\. Abort the entire command \(esc\)[ \t]*$/.test(options[2] ?? "")) continue;
+    }
+    return { head: window[h].index, command };
+  }
+  return null;
+}
+
+function museApprovalScreen(pane: string): { screen: string[]; top: number; bottom: number } | null {
   const screen = pane.replace(/\r/g, "").split("\n");
   while (screen.length && !screen[screen.length - 1].trim()) screen.pop();
   const bottom = museBottomSeparator(screen);
-  if (bottom < 0) return false;
+  if (bottom < 0) return null;
   // Same ownership as the quit menu (#1730 P2-1): the prompt must live in the
   // current input block, and a free composer means any prompt text is history.
   let top = -1;
   for (let i = bottom - 1; i >= 0; i--) {
     if (MUSE_SEPARATOR.test(screen[i])) { top = i; break; }
   }
-  if (museFreeComposerLayout(screen, MUSE_BUSY)) return false;
-  // Non-blank rows of the live block, bottom-anchored: options (then the
-  // optional footer) must reach the bottom separator, so transcript output
-  // below the prompt vetoes.
-  const window: string[] = [];
-  for (let i = bottom - 1; i > top; i--) {
-    if (screen[i].trim()) window.unshift(screen[i]);
-  }
-  const head = window.findIndex(row => MUSE_APPROVAL_PROMPT.test(row));
-  if (head < 0) return false;
-  let k = head + 1;
-  if (k >= window.length || !MUSE_APPROVAL_COMMAND.test(window[k])) return false;
-  k++;
-  if (k < window.length && MUSE_APPROVAL_STAGE.test(window[k])) k++;
-  if (k < window.length && MUSE_APPROVAL_ARGV.test(window[k])) k++;
-  const last = window[window.length - 1];
-  const options = last !== undefined && MUSE_APPROVAL_FOOTER.test(last) ? window.slice(k, -1) : window.slice(k);
-  if (options.length !== 2 && options.length !== 3) return false;
-  if (!options.every(row => MUSE_APPROVAL_OPT.test(row))) return false;
-  const first = (options[0] ?? "").replace(/^[ \t]*[❯›]?[ \t]*/, "");
-  const second = options[1] ?? "";
-  if (options.length === 2) {
-    if (!/^1\. Yes, proceed \(y\)[ \t]*$/.test(first)) return false;
-    if (!/^[ \t]*[❯›]?[ \t]*2\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(second)) return false;
-  } else {
-    if (!/^1\. Allow this stage once \(y\)[ \t]*$/.test(first)) return false;
-    if (!/^[ \t]*[❯›]?[ \t]*2\. Always allow in this workspace: .+ \(p\)[ \t]*$/.test(second)) return false;
-    if (!/^[ \t]*[❯›]?[ \t]*3\. Abort the entire command \(esc\)[ \t]*$/.test(options[2] ?? "")) return false;
-  }
-  return true;
+  if (museFreeComposerLayout(screen, MUSE_BUSY)) return null;
+  // #1715 r2, like #1730 P2-1 r3: a populated ❯ line means any prompt text is
+  // a quote in the composer's draft, not the live block — the live approval
+  // panes carry no ❯ composer row at all. A null draft (no readable box)
+  // carries nothing to judge, so it still proceeds.
+  const draft = museInputBox(pane, MUSE_BUSY);
+  if (draft !== null && draft.rows.length > 0 && draft.rows[0].trim() !== "") return null;
+  return { screen, top, bottom };
+}
+
+export function museApprovalPromptActive(pane: string): boolean {
+  const s = museApprovalScreen(pane);
+  return s !== null && museApprovalBlock(s.screen, s.top, s.bottom) !== null;
 }
 
 export const MUSE_LOCAL_WORK_QUIT = /^[ \t]*Local work is still active[ \t]*$/m;

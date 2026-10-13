@@ -1949,7 +1949,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 364,
+     "line": 363,
      "symbol": "MUSE_APPROVAL_ARGV"
     },
     {
@@ -1957,7 +1957,7 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 366,
+     "line": 365,
      "symbol": "MUSE_APPROVAL_FOOTER"
     },
     {
@@ -1965,47 +1965,47 @@
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 412,
-     "symbol": "museApprovalPromptActive"
+     "line": 406,
+     "symbol": "museApprovalBlock"
     },
     {
      "text": "2. No, and tell Muse Code what to do differently (esc",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 413,
-     "symbol": "museApprovalPromptActive"
+     "line": 407,
+     "symbol": "museApprovalBlock"
     },
     {
      "text": "1. Allow this stage once (y",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 415,
-     "symbol": "museApprovalPromptActive"
+     "line": 409,
+     "symbol": "museApprovalBlock"
     },
     {
      "text": "2. Always allow in this workspace",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 416,
-     "symbol": "museApprovalPromptActive"
+     "line": 410,
+     "symbol": "museApprovalBlock"
     },
     {
      "text": "3. Abort the entire command (esc",
      "kind": "regex",
      "surface": "approval",
      "file": "src/backend/muse.ts",
-     "line": 417,
-     "symbol": "museApprovalPromptActive"
+     "line": 411,
+     "symbol": "museApprovalBlock"
     },
     {
      "text": "Local work is still active",
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/muse.ts",
-     "line": 422,
+     "line": 444,
      "symbol": "MUSE_LOCAL_WORK_QUIT"
     },
     {
@@ -2013,7 +2013,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/muse.ts",
-     "line": 423,
+     "line": 445,
      "symbol": "MUSE_QUIT_HINT"
     },
     {
@@ -2021,7 +2021,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/muse.ts",
-     "line": 424,
+     "line": 446,
      "symbol": "MUSE_QUIT_OPT_1"
     },
     {
@@ -2029,7 +2029,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/backend/muse.ts",
-     "line": 425,
+     "line": 447,
      "symbol": "MUSE_QUIT_OPT_2"
     },
     {
@@ -2037,7 +2037,7 @@
      "kind": "string",
      "surface": "other",
      "file": "src/backend/muse.ts",
-     "line": 607,
+     "line": 629,
      "symbol": "MuseBackend.mirrorSharedConfigEntries"
     },
     {
@@ -2045,7 +2045,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/muse.ts",
-     "line": 734,
+     "line": 756,
      "symbol": "MuseBackend.getReadyPattern"
     },
     {
@@ -2053,7 +2053,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 814,
+     "line": 836,
      "symbol": "MuseBackend.getErrorPatterns.type"
     },
     {
@@ -2061,7 +2061,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 814,
+     "line": 836,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2069,7 +2069,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 827,
+     "line": 849,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2077,7 +2077,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 828,
+     "line": 850,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2085,7 +2085,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 829,
+     "line": 851,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2093,7 +2093,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 830,
+     "line": 852,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2101,7 +2101,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 830,
+     "line": 852,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2109,7 +2109,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 831,
+     "line": 853,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2117,7 +2117,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 831,
+     "line": 853,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2125,7 +2125,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 833,
+     "line": 855,
      "symbol": "MuseBackend.getErrorPatterns.type"
     },
     {
@@ -2133,7 +2133,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 835,
+     "line": 857,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2141,7 +2141,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/muse.ts",
-     "line": 835,
+     "line": 857,
      "symbol": "MuseBackend.getErrorPatterns.pattern"
     },
     {
@@ -2149,7 +2149,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/muse.ts",
-     "line": 847,
+     "line": 869,
      "symbol": "MuseBackend.getStartupDialogs.pattern"
     },
     {
@@ -2157,7 +2157,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/muse.ts",
-     "line": 856,
+     "line": 878,
      "symbol": "MuseBackend.getStartupDialogs.pattern"
     },
     {
@@ -2165,7 +2165,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/muse.ts",
-     "line": 856,
+     "line": 878,
      "symbol": "MuseBackend.getStartupDialogs.pattern"
     },
     {
@@ -2173,7 +2173,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/muse.ts",
-     "line": 856,
+     "line": 878,
      "symbol": "MuseBackend.getStartupDialogs.pattern"
     },
     {
@@ -2181,7 +2181,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/muse.ts",
-     "line": 991,
+     "line": 1013,
      "symbol": "MuseBackend.resumeMissingPattern"
     },
     {
@@ -2189,7 +2189,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/backend/muse.ts",
-     "line": 991,
+     "line": 1013,
      "symbol": "MuseBackend.resumeMissingPattern"
     }
    ]

@@ -44,6 +44,18 @@ const DIR = join(process.cwd(), "tests", "fixtures", "muse-1.4.6");
 const pane = (name: string) => readFileSync(join(DIR, `${name}.pane.txt`), "utf8");
 const ESCALATED = pane("approval-escalated");
 const STAGED = pane("approval-untrusted-staged");
+// A quoting draft, built from its paste text the way the CLI renders it
+// (`❯ first` + two-space continuations), so inputDraftShows binds it.
+const QUOTE_PASTE = [
+  "Please review this capture:",
+  "Would you like to run the following command?",
+  "$ echo quoted",
+  "› 1. Yes, proceed (y)",
+  "2. No, and tell Muse Code what to do differently (esc)",
+  "Change approval defaults in /permissions",
+];
+const quotePane = () => pane("echo-after-escape").trimEnd().replace(
+  "❯ cancel me", [`❯ ${QUOTE_PASTE[0]}`, ...QUOTE_PASTE.slice(1).map(r => `  ${r}`)].join("\n")) + "\n";
 
 const dirs: string[] = [];
 const cleanups: Array<() => void> = [];
@@ -84,6 +96,35 @@ describe("#1715: the 1.4.6 approval prompt is recognised whole", () => {
   ])("rejects %s", (_label, nameOrPane) => {
     const p = nameOrPane.includes("\n") ? nameOrPane : pane(nameOrPane);
     expect(museApprovalPromptActive(p)).toBe(false);
+  });
+
+  it("a populated composer quoting the prompt is draft content, not the live block (#1715 r2-1)", () => {
+    // Prism r2 group 1: echo-after-escape whose draft quotes the complete
+    // approval menu. The ❯ line holds text, so no prompt text is live chrome —
+    // this must not block #829 clearing its own restored paste.
+    const p = quotePane();
+    const backend = new MuseBackend("/tmp/agend-muse-1715");
+    const draft = backend.inputDraft(p)!;
+    expect(draft.rows[0]).toBe("Please review this capture:");
+    expect(backend.inputDraftShows(draft, QUOTE_PASTE.join("\n"))).toBe(true);
+    expect(museApprovalPromptActive(p)).toBe(false);
+  });
+
+  it("the identity comes from the live block, never scrollback (#1715 r2-2)", () => {
+    // Prism r2 group 2: a complete quoted menu in scrollback before the
+    // untouched live pane. Active via the live block, identity is the live
+    // command — the stale quote must not lend its command to this request.
+    const stale = [
+      "Would you like to run the following command?",
+      "  $ echo old-quoted",
+      "› 1. Yes, proceed (y)",
+      "  2. No, and tell Muse Code what to do differently (esc)",
+      "Change approval defaults in /permissions",
+      "",
+    ].join("\n");
+    const p = `${stale}\n${ESCALATED}`;
+    expect(museApprovalPromptActive(p)).toBe(true);
+    expect(museApprovalRequestIdentity(p)).toBe("echo perm-check");
   });
 
   it("the dialog entry holds without keys and names permission", () => {
@@ -170,6 +211,20 @@ describe("#1715: the approval prompt waits for a human, never answered", () => {
     expect(h.d.getInteractionSnapshot()).toMatchObject({ phase: "waiting", kind: "permission" });
     expect(h.d.unrecognisedPrompt).toBeNull();
     expect(hooks.forbidden).not.toHaveBeenCalled();
+  });
+
+  it("a quoted prompt in an owned draft probes clear on a real Daemon (#1715 r2-1)", async () => {
+    // Prism r2 group 1 probe: recentPastes bind this spawn's text so
+    // ownsInputDraft is true — yet the probe must return clear, so the
+    // holdOnly dialog never blocks #829 clearing its own restored paste.
+    const h = harness(quotePane());
+    h.d.backend = {
+      ...h.d.backend,
+      inputDraft: (p: string) => new MuseBackend("/tmp/agend-muse-1715").inputDraft(p),
+      inputDraftShows: (draft: never, text: string) => new MuseBackend("/tmp/agend-muse-1715").inputDraftShows(draft, text),
+    };
+    h.d.rememberPaste(QUOTE_PASTE.join("\n"), h.d.spawnGeneration);
+    expect(await h.d.probeBlockingDialog()).toEqual({ state: "clear" });
   });
 
   it("a quoted prompt above a free composer never becomes permission evidence", async () => {
