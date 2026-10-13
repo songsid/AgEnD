@@ -53,15 +53,21 @@ At 120 columns only:
 - A double Ctrl+Q with a background subagent running quits directly on both versions, with no "Stop them?".
 - "usage limit upsell" is a new question kind, next to the existing "credit-limit upsell". It was not reachable with an API key.
 
-## Found (every version): two gaps, both fixed here
+## Found (every version)
 
-### Grok's own 401 text was not an auth error
+### Not fixed here: grok's 401 text, and an auth second opinion that always says "valid"
 
-Grok paints a rejected or expired credential as "Authentication required: your session has expired or your credentials were rejected. Run /login to re-authenticate, then resend your message." It includes no status code, and the same string is in the 1.0.46, 1.0.50 and 1.0.52 binaries.
+Grok paints a rejected or expired credential as "Authentication required: your session has expired or your credentials were rejected. Run /login to re-authenticate, then resend your message." The text has no status code. The same string is in the 1.0.46, 1.0.50 and 1.0.52 binaries. No `GrokBackend` auth pattern matches it (`*/07-err-401`).
 
-`GrokBackend`'s auth pattern (`unauthorized|authentication (failed|error)|\b401\b`) did not match it (`*/07-err-401`). It now also matches `Authentication required: your session`, so the instance pauses with "Grok authentication error" as it does for the other auth shapes.
+A pattern alone would not help. Every grok auth hit first gets a second opinion from `grok models` (`LOGIN_FLOWS.grok.authCheck`), and a zero exit drops the hit as conversation text. `models/grok-models-<ver>.txt` records `grok models` against the mock, and it exits 0 every time:
+- with a valid key;
+- with a key the API rejects (401 on `/v1/models`): an empty list;
+- with an unreachable API: the same empty list;
+- with no credential at all: "You are not authenticated." plus a built-in list.
 
-### AgEnD's single Ctrl+Q never quit grok
+So no grok auth pattern can pause an instance today. That includes the existing `unauthorized|authentication (failed|error)|\b401\b`. Fixing it needs a grok auth check that tells these cases apart, which is left for a follow-up on #1792.
+
+### Fixed: AgEnD's single Ctrl+Q never quit grok
 
 Grok's Quit is a double press within 1000 ms. Its keyboard docs say so in 1.0.46, 1.0.50 and 1.0.52.
 

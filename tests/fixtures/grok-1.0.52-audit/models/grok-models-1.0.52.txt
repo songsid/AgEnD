@@ -1,0 +1,27 @@
+=== 1.0.52 valid-key rc=0
+You are using XAI_API_KEY.
+
+Default model: grok-mock
+
+Available models:
+  * grok-mock (default)
+=== 1.0.52 rejected-key rc=0
+You are using XAI_API_KEY.
+
+Default model: grok-4.6 (not in the list below)
+
+Available models:
+=== 1.0.52 unreachable rc=0
+You are using XAI_API_KEY.
+
+Default model: grok-4.6 (not in the list below)
+
+Available models:
+=== 1.0.52 no-credentials rc=0
+You are not authenticated.
+
+Default model: grok-4.6
+
+Available models:
+  * grok-4.6 (default)
+  - grok-4.5
