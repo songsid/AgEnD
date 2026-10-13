@@ -75,10 +75,26 @@ const NAME = `[A-Za-z0-9_.-]{0,40}${SECRET_WORD}[A-Za-z0-9_.-]{0,40}`;
 const PEM = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)/g;
 /** JSON: "…secret name…": "value" (as a tool's arguments are shown). */
 const JSON_SECRET = new RegExp(`("${NAME}"\\s*:\\s*")((?:[^"\\\\]|\\\\.)+)(")`, "gi");
+/**
+ * A secret's value: in double or single quotes up to the same quote (spaces included — a passphrase,
+ * DB_PASSWORD="correct horse battery staple"), else up to whitespace, a quote or one of `stop`.
+ */
+const VALUE = (stop: string) => `(?:"([^"\\n]*)"|'([^'\\n]*)'|([^\\s${stop}]+))`;
+/** `head` and the value masked, quotes kept — unless the value is plain (a number, a boolean, null) or empty. */
+function masked(m: string, head: string, d?: string, sq?: string, bare?: string): string {
+  const v = d ?? sq ?? bare ?? "";
+  if (!v.trim() || PLAIN.test(v.trim())) return m;
+  return d !== undefined ? `${head}"[REDACTED]"` : sq !== undefined ? `${head}'[REDACTED]'` : `${head}[REDACTED]`;
+}
 /** A flag: --password value, --api-key=value. */
-const FLAG_SECRET = new RegExp(`(--?${NAME})(\\s+|=)(["']?)([^\\s"']+)\\3`, "gi");
+const FLAG_SECRET = new RegExp(`(--?${NAME})(\\s+|=)${VALUE("\"'")}`, "gi");
 /** An assignment: DB_PASSWORD=value, export TOKEN="value", password: value — the value may hold "/" (AWS keys do). */
-const ASSIGN_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})(\\s*[=:]\\s*)(["']?)([^\\s"'\`,;]+)\\4`, "gim");
+const ASSIGN_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})(\\s*[=:]\\s*)${VALUE("\"'\`,;")}`, "gim");
+/**
+ * A key given as an argument after its name, with no = or -- (aws configure set aws_secret_access_key …): masked only
+ * when it looks like a key — 16+ key characters with a letter and a digit — so prose after the word stays.
+ */
+const POSITIONAL_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})([ \\t]+)([A-Za-z0-9/+=_.-]{16,})(?![A-Za-z0-9/+=_.-])`, "gim");
 /** A value that is not a secret whatever its name says: a number (max_tokens: 100), a boolean, null. */
 const PLAIN = /^(?:-?\d+(?:\.\d+)?|true|false|null|none|\[REDACTED\])$/i;
 
@@ -92,8 +108,9 @@ export function maskSecrets(text: string): string {
   return redactSecrets(text
     .replace(PEM, (_m, kind: string) => `-----BEGIN ${kind}PRIVATE KEY----- [REDACTED] -----END ${kind}PRIVATE KEY-----`)
     .replace(JSON_SECRET, (m, a: string, v: string, b: string) => (PLAIN.test(v) ? m : `${a}[REDACTED]${b}`))
-    .replace(FLAG_SECRET, (m, k: string, sep: string, q: string, v: string) => (PLAIN.test(v) ? m : `${k}${sep}${q}[REDACTED]${q}`))
-    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, q: string, v: string) => (PLAIN.test(v) ? m : `${pre}${k}${sep}${q}[REDACTED]${q}`)))
+    .replace(FLAG_SECRET, (m, k: string, sep: string, d?: string, sq?: string, bare?: string) => masked(m, `${k}${sep}`, d, sq, bare))
+    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, d?: string, sq?: string, bare?: string) => masked(m, `${pre}${k}${sep}`, d, sq, bare))
+    .replace(POSITIONAL_SECRET, (m, pre: string, k: string, sep: string, v: string) => (/[A-Za-z]/.test(v) && /\d/.test(v) ? `${pre}${k}${sep}[REDACTED]` : m)))
     .replace(OPAQUE, (m) => (looksOpaque(m) ? "[REDACTED]" : m));
 }
 
@@ -105,24 +122,58 @@ const MASK_MARGIN = 512;
  */
 export function bounded(text: string, max: number): { text: string; cut: number } {
   const head = text.length > max + MASK_MARGIN ? text.slice(0, max + MASK_MARGIN) : text;
-  const masked = maskSecrets(head);
-  const total = masked.length + (text.length - head.length);
-  if (total <= max) return { text: masked, cut: 0 };
-  let end = Math.min(max, masked.length);
-  if (/[\uD800-\uDBFF]/.test(masked[end - 1] ?? "")) end--;
-  return { text: masked.slice(0, end), cut: total - end };
+  return cutTo(maskSecrets(head), max, text.length - head.length);
+}
+/** `text` (already masked) cut to `max` characters, never inside a surrogate pair; `more` characters were dropped before. */
+function cutTo(text: string, max: number, more = 0): { text: string; cut: number } {
+  if (text.length + more <= max) return { text, cut: 0 };
+  let end = Math.min(max, text.length);
+  if (/[\uD800-\uDBFF]/.test(text[end - 1] ?? "")) end--;
+  return { text: text.slice(0, end), cut: text.length + more - end };
+}
+
+const SECRET_KEY = new RegExp(SECRET_WORD, "i");
+/**
+ * A tool's arguments masked BEFORE they become JSON text (#1788 review r3): each string is masked as written — in JSON
+ * a command's quotes would be escaped (\"…\"), which no text rule should have to undo — and a string under a
+ * secret-named key ("password", "api_key") is masked whole unless it is plain. A string longer than can be shown is
+ * cut first (`dropped` counts what was cut), so a megabyte file body is not masked in full.
+ */
+function maskArgs(v: unknown, max: number, dropped: { n: number }, depth = 0): unknown {
+  if (typeof v === "string") {
+    if (v.length <= max + MASK_MARGIN) return maskSecrets(v);
+    dropped.n += v.length - (max + MASK_MARGIN);
+    return maskSecrets(v.slice(0, max + MASK_MARGIN));
+  }
+  if (v === null || typeof v !== "object") return v;
+  if (depth >= 32) return "[…]";
+  if (Array.isArray(v)) return v.map(x => maskArgs(x, max, dropped, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    out[k] = typeof x === "string" && k.length <= 200 && SECRET_KEY.test(k) && x.trim() && !PLAIN.test(x.trim())
+      ? "[REDACTED]" : maskArgs(x, max, dropped, depth + 1);
+  }
+  return out;
+}
+/** Arguments as JSON text: a string that is JSON (codex's `arguments`) is parsed first, so it is masked the same way. */
+function argsText(input: unknown, max: number): { text: string; cut: number } {
+  let value = input;
+  if (typeof value === "string" && /^\s*[[{]/.test(value)) { try { value = JSON.parse(value); } catch { /* text */ } }
+  if (typeof value === "string") return bounded(value, max);
+  const dropped = { n: 0 };
+  return cutTo(JSON.stringify(maskArgs(value, max, dropped), null, 1) ?? "", max, dropped.n);
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 function subjectOf(s: unknown): string | undefined {
   if (s == null || s === "") return undefined;
-  const t = oneLine(typeof s === "string" ? s : JSON.stringify(s));
+  if (typeof s !== "string") { const t = oneLine(argsText(s, SUBJECT_MAX).text); return t || undefined; }
+  const t = oneLine(s);
   return t ? bounded(t, SUBJECT_MAX).text : undefined;
 }
 function inputOf(step: LogStep, input: unknown): void {
   if (input == null || input === "") return;
-  const raw = typeof input === "string" ? input : JSON.stringify(input, null, 1);
-  const b = bounded(raw, INPUT_MAX);
+  const b = argsText(input, INPUT_MAX);
   step.input = b.text;
   if (b.cut) step.inputCut = b.cut;
 }
