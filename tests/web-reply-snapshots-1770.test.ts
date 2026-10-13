@@ -22,7 +22,7 @@ import { WebChatHistory } from "../src/web-chat-history.js";
 // as the regular file it was a moment before.
 vi.mock("node:fs/promises", async (original) => {
   const real = await original<typeof import("node:fs/promises")>();
-  return { ...real, lstat: vi.fn(real.lstat) };
+  return { ...real, lstat: vi.fn(real.lstat), realpath: vi.fn(real.realpath), open: vi.fn(real.open) };
 });
 vi.mock("../src/logger.js", async original => {
   const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
@@ -81,6 +81,30 @@ describe("#1770: snapshotReplyFile copies the agent's file into the instance's w
     const r = await snap(join(outside, "swapped.png"));
     expect(r).toEqual({ ok: false, refused: true, reason: "cannot be read" });
     expect(existsSync(dirOf()) ? readdirSync(dirOf()) : []).toEqual([]);
+  });
+
+  it("the path naming another file by the time its real path is read is refused (device + inode of the open file)", async () => {
+    const { realpath } = await import("node:fs/promises");
+    const src = put(join(outside, "a.png"), PNG);
+    const other = put(join(outside, "b.png"), PNG);
+    vi.mocked(realpath).mockResolvedValueOnce(other);
+    expect(await snap(src)).toEqual({ ok: false, refused: true, reason: "replaced while it was opened" });
+  });
+
+  it("a file rewritten while it is copied is not kept (a torn copy): no snapshot, no temp file — the caller falls back", async () => {
+    const fsp = await import("node:fs/promises");
+    const real = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const src = put(join(outside, "a.png"), PNG);
+    vi.mocked(fsp.open).mockImplementationOnce((async (...a: Parameters<typeof real.open>) => {
+      const fh = await real.open(...a);
+      const stat = fh.stat.bind(fh);
+      let n = 0;
+      // The second look (after the copy) sees the file changed since the first.
+      (fh as any).stat = async (...x: any[]) => { const st: any = await stat(...x); if (++n === 2) st.mtimeMs += 1000; return st; };
+      return fh;
+    }) as typeof real.open);
+    expect(await snap(src)).toEqual({ ok: false, refused: false, reason: "changed while it was copied", evicted: [] });
+    expect(readdirSync(dirOf())).toEqual([]);
   });
 
   it("a state file is refused — directly, or through a parent directory that leads into the state dir; the inbox is not", async () => {
