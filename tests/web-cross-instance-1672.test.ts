@@ -15,6 +15,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { setLocale } from "../src/locale.js";
 import { installDom } from "./helpers/mini-dom.js";
+// The restart test's second fleet logs "Web chat history restored from disk": FleetManager's logger is a pino transport
+// whose worker thread then opens `<AGEND_HOME>/daemon.log` asynchronously, 48–83 ms later, while afterEach's rmSync of
+// the scratch home may be walking it — CI: ENOTEMPTY (beta.7 tag run, shard 3). The 50 ms wait only narrowed that
+// window. This file has no use for the log (as #1599): the logger is silent, so nothing writes into a scratch home
+// once a test's own work is done.
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
+});
 
 const homes: string[] = [];
 beforeEach(() => setLocale("en"));
@@ -163,7 +172,6 @@ describe("#1672: it is in the web chat history, and there again after a restart"
     expect(fm2.webChatHistory.list("bob").map((m: any) => [m.role, m.sender, m.text])).toEqual([["status", "alice", `${LABEL}:\nship it`]]);
     expect(fm2.webChatHistory.list("alice").map((m: any) => m.role)).toEqual(["status"]);
     await fm2.webChatStore?.flush();
-    await new Promise(r => setTimeout(r, 50));
   });
 });
 
