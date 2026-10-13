@@ -73,3 +73,10 @@ describe("complete JSONL byte boundaries", () => {
     expect(io.close).toHaveBeenCalledOnce();
   });
 });
+
+describe("#1218: each line's offset", () => {
+  it("is where the line starts in the file, after the read's start; blank lines have none", async () => {
+    scriptedRead('{"a":1}\n\n{"b":2}\n', 100);
+    expect(await readNewLines("fixture", 100)).toMatchObject({ lines: ['{"a":1}', '{"b":2}'], offsets: [100, 109] });
+  });
+});

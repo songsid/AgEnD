@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
-import { LOOKS_PER_POLL, lastLineBoundary, readNewLines, recordsInOrder } from "./transcript-jsonl.js";
+import { LOOKS_PER_POLL, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
 
 /**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
@@ -20,6 +20,8 @@ export class TranscriptMonitor extends EventEmitter {
   private byteOffset: number = 0;
   /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
   private skipping = false;
+  /** #1218 P0: a long assistant line being skipped, to be read whole once its end is found. */
+  private pendingLong: { offset: number } | null = null;
   private transcriptPath: string | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private offsetFile: string;
@@ -45,6 +47,7 @@ export class TranscriptMonitor extends EventEmitter {
         const data = JSON.parse(readFileSync(this.offsetFile, "utf-8"));
         this.byteOffset = data.offset ?? 0;
         this.skipping = false;
+        this.pendingLong = null;
         this.transcriptPath = data.path ?? null;
       }
     } catch {
@@ -144,6 +147,7 @@ export class TranscriptMonitor extends EventEmitter {
         // replacement from the top.
         this.byteOffset = 0;
         this.skipping = false;
+        this.pendingLong = null;
         this.saveOffset();
       } else {
         // First-ever attach: baseline to EOF so history does not replay — to its last line boundary, so a
@@ -153,6 +157,7 @@ export class TranscriptMonitor extends EventEmitter {
         try {
           this.byteOffset = await lastLineBoundary(current);
           this.skipping = false;
+          this.pendingLong = null;
         } catch {
           this.transcriptPath = null;
           return;
@@ -172,7 +177,12 @@ export class TranscriptMonitor extends EventEmitter {
         this.skipping = read.skipping;
         if (read.newOffset === this.byteOffset) break;
         this.byteOffset = read.newOffset;
-        for (const record of recordsInOrder(read)) {
+        // An assistant line over the line limit (a long reply, a Write of a big file) is read whole (bounded):
+        // its text and tool calls matter. A long tool result is known by its head.
+        const resolved = await resolveLongLines(this.transcriptPath, read, this.pendingLong, (head) => head.includes('"type":"assistant"'));
+        if (generation !== this.generation) return;
+        this.pendingLong = resolved.pending;
+        for (const record of resolved.records) {
           if ("long" in record) { this.processLongHead(record.long.head); continue; }
           try {
             const entry = JSON.parse(record.line);
@@ -265,6 +275,7 @@ export class TranscriptMonitor extends EventEmitter {
     this.generation++;
     this.byteOffset = 0;
     this.skipping = false;
+    this.pendingLong = null;
     this.transcriptPath = null;
     this.source?.reset();
     this.saveOffset();

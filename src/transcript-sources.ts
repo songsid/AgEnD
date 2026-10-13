@@ -37,7 +37,7 @@ import { sharedKiroTranscriptLane, type KiroDbLane, type KiroDbLease } from "./k
 import type { KiroDbCursor } from "./kiro-db-reader.js";
 export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
-import { LINE_MAX_BYTES, LOOKS_PER_POLL, READ_MAX_BYTES, lastLineBoundary, readNewLines, recordsInOrder, type ReadNewLinesResult } from "./transcript-jsonl.js";
+import { LINE_MAX_BYTES, LONG_HEAD_BYTES, LOOKS_PER_POLL, READ_MAX_BYTES, lastLineBoundary, readNewLines, readWholeLine, resolveLongLines, type ReadNewLinesResult } from "./transcript-jsonl.js";
 import { museSessionCwd, readFileHeadSync } from "./backend/muse.js";
 import { performance } from "node:perf_hooks";
 
@@ -85,14 +85,21 @@ export interface TranscriptSource {
 
 /**
  * #1641 R3: the complete records in [from, to) that `keep` accepts — `to` is a line boundary (a checkpoint's), so
- * nothing is cut. #1218 P0: read in READ_MAX_BYTES chunks (the range a checkpoint skips can be many MB), a line over
- * LINE_MAX_BYTES is skipped without being decoded, and only kept lines are held.
+ * nothing is cut. #1218 P0: read in READ_MAX_BYTES chunks (the range a checkpoint skips can be many MB), and only kept
+ * lines are held. A line over LINE_MAX_BYTES is judged by its head: kept, it is read whole (≤ WHOLE_LINE_MAX_BYTES —
+ * a turn's record must not be lost to the limit, #1786 review); otherwise it is skipped without being decoded.
  */
 export async function readLineRange(path: string, from: number, to: number, keep: (line: string) => boolean = () => true): Promise<string[]> {
   const fh = await openFile(path, "r");
   const out: string[] = [];
+  const whole = async (offset: number, bytes: number, head: string) => {
+    if (!keep(head)) return;
+    const line = await readWholeLine(path, offset, bytes);
+    if (line !== null && line.trim() && keep(line)) out.push(line);
+  };
   try {
-    let pos = from, skipping = false;
+    let pos = from;
+    let long: { start: number; head: string } | null = null;   // a long line that started in an earlier chunk
     while (pos < to) {
       const buffer = Buffer.alloc(Math.min(READ_MAX_BYTES, to - pos));
       for (let filled = 0; filled < buffer.length;) {
@@ -102,15 +109,23 @@ export async function readLineRange(path: string, from: number, to: number, keep
       }
       // Up to the last line end in this chunk (the range's end is one); a chunk with none is inside one long line.
       const complete = buffer.lastIndexOf(0x0a) + 1;
-      if (complete === 0) { pos += buffer.length; skipping = true; continue; }
+      if (complete === 0) {
+        long ??= { start: pos, head: buffer.toString("utf8", 0, Math.min(LONG_HEAD_BYTES, buffer.length)) };
+        pos += buffer.length;
+        continue;
+      }
       let start = 0;
       while (start < complete) {
         const end = buffer.indexOf(0x0a, start);
-        if (!skipping && end - start <= LINE_MAX_BYTES) {
+        if (long) {
+          await whole(long.start, pos + end - long.start, long.head);
+          long = null;
+        } else if (end - start > LINE_MAX_BYTES) {
+          await whole(pos + start, end - start, buffer.toString("utf8", start, start + LONG_HEAD_BYTES));
+        } else {
           const line = buffer.toString("utf8", start, end);
           if (line.trim() && keep(line)) out.push(line);
         }
-        skipping = false;
         start = end + 1;
       }
       pos += complete;
@@ -181,6 +196,8 @@ export class CodexRolloutSource implements TranscriptSource {
   private byteOffset = 0;
   /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
   private skipping = false;
+  /** #1218 P0: a long line being skipped that is to be read whole once its end is found. */
+  private pendingLong: { offset: number } | null = null;
   /** EOF snapshots taken when the monitor attaches; existing history is skipped. */
   private initialOffsets = new Map<string, number>();
   /** Files whose session_meta was read and did NOT match our cwd. */
@@ -234,6 +251,7 @@ export class CodexRolloutSource implements TranscriptSource {
     this.currentFile = null;
     this.byteOffset = 0;
     this.skipping = false;
+    this.pendingLong = null;
     this.openTurnId = "";
     this.rejected.clear();
     this.accepted.clear();
@@ -259,6 +277,7 @@ export class CodexRolloutSource implements TranscriptSource {
       this.currentFile = active.path;
       this.byteOffset = offset;
       this.skipping = false;
+      this.pendingLong = null;
       return { path: active.path, offset, sessionId: active.path };
     } catch {
       return null;
@@ -288,6 +307,7 @@ export class CodexRolloutSource implements TranscriptSource {
     this.currentFile = path;
     this.byteOffset = offset;
     this.skipping = false;
+    this.pendingLong = null;
     this.openTurnId = this.openTurn ?? "";                 // a steer after the baseline belongs to the carried-in turn
   }
 
@@ -412,7 +432,11 @@ export class CodexRolloutSource implements TranscriptSource {
       this.skipping = read.skipping;
       const moved = read.newOffset !== this.byteOffset;
       this.byteOffset = read.newOffset;
-      records.push(...recordsInOrder(read));
+      // #1786 review: a long turn record (task_complete with a long final reply, a pasted prompt) is read whole — a
+      // turn's end must never be lost to the line limit. Long outputs stay head-only.
+      const resolved = await resolveLongLines(active.path, read, this.pendingLong, codexWholeLine);
+      this.pendingLong = resolved.pending;
+      records.push(...resolved.records);
       if (!moved || !read.more) break;
     }
     this.lastPollFollowed = true;
@@ -452,9 +476,14 @@ export class CodexRolloutSource implements TranscriptSource {
   }
 }
 
+/** #1786 review: the long rollout lines read whole — turn records (event_msg) and messages (a pasted prompt, a long reply). */
+function codexWholeLine(head: string): boolean {
+  return head.includes('"type":"event_msg"') || (head.includes('"type":"response_item"') && /"payload":\{"type":"message"/.test(head));
+}
+
 /**
  * #1218 P0: a rollout line too long to parse (an output of MBs, a huge call input) — what its head still says, so the
- * bubble keeps the step: a call by its name, or an output. Turn records are small and never reach here.
+ * bubble keeps the step: a call by its name, or an output. Turn records and messages are read whole (codexWholeLine).
  */
 function codexLongHead(head: string, events: TranscriptEvents): void {
   if (!head.includes('"type":"response_item"')) return;
@@ -495,6 +524,9 @@ export class MuseSessionSource implements TranscriptSource {
   private baselineComplete = false;
   private rejected = new Set<string>();
   private sizes = new Map<string, number>();
+  /** #1218 P0: per log, whether its offset is inside a long line being skipped, and a long turn record held for its end. */
+  private skipping = new Map<string, boolean>();
+  private pendingLong = new Map<string, { offset: number }>();
   private listedAt = Number.NEGATIVE_INFINITY;
   private baselined = false;
   /** intent_id → its text and time, until it materializes (bounded). */
@@ -509,6 +541,7 @@ export class MuseSessionSource implements TranscriptSource {
 
   reset(): void {
     this.files.clear(); this.preexisting.clear(); this.rejected.clear(); this.sizes.clear(); this.intents.clear();
+    this.skipping.clear(); this.pendingLong.clear();
     this.listedAt = Number.NEGATIVE_INFINITY; this.baselined = false; this.baselineComplete = false;
   }
 
@@ -554,14 +587,28 @@ export class MuseSessionSource implements TranscriptSource {
       else {
         try { from = await lastLineBoundary(path, next.anchor ?? size); } catch { continue; }
       }
-      let read: { lines: string[]; newOffset: number };
-      try { read = await readNewLines(path, from); } catch { continue; }
-      this.files.set(path, read.newOffset);
-      this.sizes.set(path, size);
-      // One record at a time: a record of an unexpected shape is skipped, never the batch it came in.
-      for (const line of read.lines) {
-        try { this.parse(line, turns); } catch { /* skipped */ }
+      // #1218 P0 (#1786 review): bounded looks, as the other sources; the size is remembered only once the log has been
+      // read to it, so the rest of a delta over the look budget is read next poll, not when the log grows again.
+      let caughtUp = false;
+      for (let look = 0; look < LOOKS_PER_POLL; look++) {
+        let read: ReadNewLinesResult;
+        try { read = await readNewLines(path, from, { skipping: this.skipping.get(path) ?? false }); } catch { break; }
+        this.skipping.set(path, read.skipping);
+        const moved = read.newOffset !== from;
+        from = read.newOffset;
+        this.files.set(path, from);
+        // A long turn record (a pasted prompt in user_intent.accepted) is read whole, bounded.
+        const resolved = await resolveLongLines(path, read, this.pendingLong.get(path) ?? null, (head) => head.includes('"payload_type":"runtime.'));
+        if (resolved.pending) this.pendingLong.set(path, resolved.pending); else this.pendingLong.delete(path);
+        // One record at a time: a record of an unexpected shape is skipped, never the batch it came in.
+        for (const record of resolved.records) {
+          if (!("line" in record)) continue;
+          try { this.parse(record.line, turns); } catch { /* skipped */ }
+        }
+        if (!read.more) { caughtUp = !read.skipping; break; }
+        if (!moved) break;
       }
+      if (caughtUp) this.sizes.set(path, size);
     }
     const events = emptyEvents();
     if (turns.length) events.turns = turns;
@@ -759,6 +806,8 @@ export class KiroSessionSource implements TranscriptSource {
   private byteOffset = 0;
   /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
   private skipping = false;
+  /** #1218 P0: a long line being skipped that is to be read whole once its end is found. */
+  private pendingLong: { offset: number } | null = null;
   private readonly createdAt: number;
   private generation = 0;
   private cursor: KiroDbCursor | undefined;
@@ -793,6 +842,7 @@ export class KiroSessionSource implements TranscriptSource {
     this.currentFile = null;
     this.byteOffset = 0;
     this.skipping = false;
+    this.pendingLong = null;
     this.cursor = undefined;
     this.needsBaseline = true;
     void this.initialize();
@@ -909,6 +959,7 @@ export class KiroSessionSource implements TranscriptSource {
         this.currentFile = active.jsonlPath;
         this.byteOffset = 0; // our own fresh session — observable from the start
         this.skipping = false;
+        this.pendingLong = null;
       } else {
         // An older session is attached at its last line boundary. If that cannot be read now, nothing is adopted
         // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
@@ -918,11 +969,13 @@ export class KiroSessionSource implements TranscriptSource {
         this.currentFile = active.jsonlPath;
         this.byteOffset = offset;
         this.skipping = false;
+        this.pendingLong = null;
         return EMPTY;
       }
     }
 
-    // #1218 P0: bounded looks, as the other JSONL sources. A long line is skipped (kiro's nesting needs the whole record).
+    // #1218 P0: bounded looks, as the other JSONL sources. Kiro's nesting needs the whole record: a long line is read
+    // whole up to WHOLE_LINE_MAX_BYTES (as every line was before), and skipped beyond it.
     const events = emptyEvents();
     for (let look = 0; look < LOOKS_PER_POLL; look++) {
       const read = await readNewLines(this.currentFile, this.byteOffset, { skipping: this.skipping });
@@ -930,9 +983,13 @@ export class KiroSessionSource implements TranscriptSource {
       this.skipping = read.skipping;
       const moved = read.newOffset !== this.byteOffset;
       this.byteOffset = read.newOffset;
-      for (const line of read.lines) {
+      const resolved = await resolveLongLines(this.currentFile, read, this.pendingLong, () => true);
+      if (generation !== this.generation) return EMPTY;
+      this.pendingLong = resolved.pending;
+      for (const record of resolved.records) {
+        if (!("line" in record)) continue;
         let entry: unknown;
-        try { entry = JSON.parse(line); } catch { continue; }
+        try { entry = JSON.parse(record.line); } catch { continue; }
         collectKiroEvents(entry, events);
       }
       if (!moved || !read.more) break;
