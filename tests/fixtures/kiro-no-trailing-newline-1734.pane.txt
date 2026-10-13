@@ -1,0 +1,4 @@
+I will run the following command: printf '%s' hello (using tool: shell)
+hello - Completed in 0.234s
+
+18% λ !>

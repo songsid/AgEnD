@@ -35,7 +35,7 @@ import {
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync, execSync, execFileSync } from "node:child_process";
-import { getAgendHome, getTmuxSocketName } from "./paths.js";
+import { getAgendHome, getTmuxSocketName, isDefaultAgendHome } from "./paths.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
@@ -1780,7 +1780,7 @@ program
   .option("--activate", "Deprecated; service activation is now the default")
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
-    const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath, getServicePath, getSystemServicePath } = await import(
+    const { installService, activateService, detectPlatform, renderLaunchdPlist, launchdPlistPath, getServicePath, getSystemServicePath, serviceHomeFor } = await import(
       "./service-installer.js"
     );
     // #1631 B: an older updater (2.2.0-beta.1 and before) refreshes a hand-started fleet's service too, through this
@@ -1796,13 +1796,15 @@ program
       }
     }
     const execPath = canonicalCliEntry();
-    const serviceVars = {
-      label: "com.agend.fleet",
-      execPath,
-      path: process.env.PATH!,
-      workingDirectory: DATA_DIR,
-      logPath: join(DATA_DIR, "fleet.log"),
-    };
+    // A fleet on a custom AGEND_HOME must come back on it after a service restart or an update: the definition names
+    // it (the default home adds nothing). A refresh from the default home keeps an existing definition's home.
+    const existingPath = getServicePath();
+    const service = serviceHomeFor(DATA_DIR, {
+      refresh: opts.activate === false,
+      existingDefinition: existingPath ? (() => { try { return readFileSync(existingPath, "utf-8"); } catch { return null; } })() : null,
+      isDefault: isDefaultAgendHome,
+    });
+    const serviceVars = { label: "com.agend.fleet", execPath, path: process.env.PATH!, ...service };
     // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
     // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
     if (opts.activate === false && detectPlatform() === "macos") {

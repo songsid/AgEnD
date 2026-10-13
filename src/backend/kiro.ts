@@ -1389,7 +1389,10 @@ export class KiroBackend implements CliBackend {
     if (last?.index === undefined) return null; // index 0 is a valid position
 
     const after = pane.slice(last.index);
-    if (/^\s*-\s*Completed in\b/m.test(after)) return null; // that tool has finished
+    // #1734: match completion on its own line (normal case) OR at end of a line after output
+    // with no trailing newline. Anchor to the duration format and end-of-line so that tool
+    // output merely containing "- Completed in" mid-line does not trigger a false idle.
+    if (/(?:^|[ \t])- Completed in \d+(?:\.\d+)?s[ \t]*$/m.test(after)) return null;
 
     const purpose = after.match(/^\s*Purpose:\s*(.+)$/m);
     return purpose ? `${last[1]}: ${purpose[1].trim()}` : last[1];

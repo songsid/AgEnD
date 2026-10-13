@@ -223,6 +223,32 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
       "Failed to register bot commands (non-fatal)",
     );
   });
+
+  it("#1736: a custom telegram_api_root is used instead of api.telegram.org", async () => {
+    const { sent } = stubTelegram();
+    const { tc } = commands([tg({ telegram_api_root: "https://custom.tg.example.com" })]);
+    await tc.registerBotCommands();
+    for (const p of sent()) {
+      expect(p.url).toBe("https://custom.tg.example.com/bottest-only/setMyCommands");
+    }
+  });
+
+  it("#1736: a trailing slash in telegram_api_root is stripped", async () => {
+    const { sent } = stubTelegram();
+    const { tc } = commands([tg({ telegram_api_root: "https://custom.tg.example.com/" })]);
+    await tc.registerBotCommands();
+    expect(sent().every((p: { url: string }) => !p.url.includes("//bottest-only"))).toBe(true);
+    expect(sent()[0]!.url).toBe("https://custom.tg.example.com/bottest-only/setMyCommands");
+  });
+
+  it("#1736: without telegram_api_root falls back to api.telegram.org (unchanged)", async () => {
+    const { sent } = stubTelegram();
+    const { tc } = commands([tg()]);
+    await tc.registerBotCommands();
+    for (const p of sent()) {
+      expect(p.url).toBe("https://api.telegram.org/bottest-only/setMyCommands");
+    }
+  });
 });
 
 // ── the fleet: every Telegram adapter registers its own menus when it starts ───────────────────────────────
