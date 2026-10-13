@@ -570,6 +570,14 @@ per-project trust, `settings.json` and every conversation (`projects/`, `session
 are enabled); after that it is the profile's own, so a later change on either
 side, such as `/model`, stays on that side.
 
+Claude Code's auto-memory for a project (`projects/<repo>/memory/`) is shared the
+same way: at each launch on a profile, the profile's memory folder for the
+instance's repository (a git worktree counts as its main checkout) is linked to
+the one under `~/.claude`, so every instance of that repository keeps one memory
+whatever login it uses. Only the memory is shared; the conversations beside it
+stay the profile's own. A profile memory folder that already holds notes is
+never replaced: AgEnD leaves it as it is and logs a warning.
+
 On macOS, claude keeps the login in the Keychain, under an item named after the
 profile directory. Two profiles never share or overwrite each other's item, and
 the default login is left alone.
