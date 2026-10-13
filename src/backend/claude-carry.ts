@@ -8,8 +8,10 @@
  * a real account with claude 2.1.296 (#1753).
  *
  * Copy, never move: the old profile keeps its original untouched, so switching back still has it. Everything is written
- * under a temporary name and renamed into place, so claude never sees a half-copied transcript. Any failure leaves the
- * target as it was and says why; the caller then starts fresh with a handover, as before.
+ * under a temporary name and renamed into place, so claude never sees a half-copied transcript. A failure says why, and
+ * the caller then starts fresh with a handover, as before. Up to the rename into place the target is left as it was;
+ * the one step after it (dating the copy as the newest) can fail with the copy already there — or, switching back,
+ * already in place of the older one — which the fresh start leaves unused.
  */
 import { constants as fsConstants } from "node:fs";
 import { copyFile, cp, mkdir, open, readdir, rename, rm, stat, statfs, utimes } from "node:fs/promises";

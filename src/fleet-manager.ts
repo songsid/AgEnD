@@ -1030,6 +1030,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
   /**
+   * #1753: each in-flight restart's stop → start gap — the conversation carry it will run there (its own, or one a later
+   * caller joined with before the gap), and whether the gap has been reached.
+   */
+  private readonly restartGaps = new Map<string, { carry?: RestartOpts["carry"]; reached: boolean }>();
+  /**
    * Delayed automatic retries for instances whose startup failed. Before this a
    * failed start was logged once and the instance stayed `stopped` until an
    * operator noticed (2026-09-03: 4 kiro instances, all victims of the same
@@ -4917,6 +4922,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const inFlight = this.restartsInFlight.get(name);
     if (inFlight) {
       this.logger.info({ name }, "restartSingleInstance: joining the restart already in flight");
+      // #1753: a credential-profile switch joining it still needs its conversation carried in that restart's stop →
+      // start gap: handed to the restart while it has not reached the gap (and carries nothing else); otherwise not
+      // carried, and said so — the restart has already started, or will start, the CLI without it.
+      if (opts?.carry) {
+        const gap = this.restartGaps.get(name);
+        if (gap && !gap.reached && !gap.carry) gap.carry = opts.carry;
+        else opts.carry.result = { carried: false, reason: gap?.carry ? "a restart in flight carries another switch" : "joined a restart in flight past its stop" };
+      }
       return inFlight;
     }
     const workingDirectory = this.fleetConfig?.instances[name]?.working_directory || this.getInstanceDir(name);
@@ -4925,6 +4938,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // spawn gate is taken inside the transition, never the other way round, so
     // the start being waited for can still get its own gate slot.
     this.lifecycle.invalidate(name);
+    const gap = { carry: opts?.carry, reached: false };
+    this.restartGaps.set(name, gap);
     const run = this.lifecycle.runTransition(name, transition => this.spawnGate.run({
       instanceName: name,
       workingDirectory,
@@ -4933,6 +4948,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, () => this.doRestartSingleInstance(name, opts, transition)))
       .finally(() => {
         this.restartsInFlight.delete(name);
+        if (this.restartGaps.get(name) === gap) this.restartGaps.delete(name);
         this.scheduleDeliveryOutboxPump();
       });
     this.restartsInFlight.set(name, run);
@@ -5011,7 +5027,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const launchedIn = this.daemons.get(name)?.getConfigSnapshot?.()?.working_directory;
     // Between the stop and the start: the old CLI's transcript is complete, the new one has not looked yet.
     const betweenStopAndStart = async () => {
-      if (opts?.carry) opts.carry.result = await this.switchConversation(name, { ...opts.carry, workingDirectory: launchedIn });
+      // #1753: this restart's own carry, or one a caller joined it with before this point (restartSingleInstance).
+      const gap = this.restartGaps.get(name);
+      const carry = gap?.carry ?? opts?.carry;
+      if (gap) gap.reached = true;
+      if (carry) carry.result = await this.switchConversation(name, { ...carry, workingDirectory: launchedIn });
       else if (opts?.freshStart) this.writeFreshStartMarker(name);
     };
     if (config) {
