@@ -6560,11 +6560,12 @@ export class Daemon extends EventEmitter {
 
   /** The same formatter/sanitizer used by the actual write; snapshot only. */
   humanReceiptWire(content: string, meta: Record<string, string>, kind: string): string {
-    let wire = !meta.from_instance && content.startsWith("/raw ") && kind === "fleet_inbound"
-      ? content.slice(5) : this.formatInboundMessage(content, meta);
+    let wire = kind === "raw_paste" ? content
+      : !meta.from_instance && content.startsWith("/raw ") && kind === "fleet_inbound"
+        ? content.slice(5) : this.formatInboundMessage(content, meta);
     if (kind === "steer") wire = Daemon.steerEnvelope(wire);
     else if (kind === "btw") wire = BTW_INBOUND_PREFIX + wire;
-    return prepareDeliveryWire(wire);
+    return prepareDeliveryWire(wire, kind === "raw_paste");
   }
 
   private humanReceiptAttempt(meta: Record<string, string>, wire: string): HumanReceiptAttempt | undefined {

@@ -1315,7 +1315,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       }) : undefined;
       let delivered: boolean | void;
       try {
-        delivered = await (ctx.deliverHumanToInstance?.bind(ctx) ?? ctx.deliverToInstance.bind(ctx))(instance, {
+        const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(), typed)
+          : ctx.deliverToInstance(name, payload);
+        delivered = await deliver(instance, {
           type: "fleet_inbound",
           content: delivery.text,
           targetSession: instance,
@@ -1329,7 +1332,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             adapter_id: syncAdapter?.id,
             ...delivery.meta,
           },
-        }, webHumanOrigin(), typed);
+        });
       } catch (err) {
         settleEcho?.(false);
         // A throw must release the Classic ordering lane too: otherwise the

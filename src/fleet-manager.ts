@@ -3680,11 +3680,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async deliverHumanToInstance(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined,
-    originalBody: string, options: DeliveryOptions = {}): Promise<boolean | void> {
+    originalBody: string, options?: DeliveryOptions): Promise<boolean | void> {
     const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
     const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
     let sent = false;
-    try { const result = await this.deliverToInstance(instanceName, admitted, options); sent = result !== false; return result; }
+    try {
+      const result = options ? await this.deliverToInstance(instanceName, admitted, options) : await this.deliverToInstance(instanceName, admitted);
+      sent = result !== false; return result;
+    }
     finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 

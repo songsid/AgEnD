@@ -119,6 +119,11 @@ describe("owned human receipt production (#1756)", () => {
     const h = harness(); const r = await deliver(h, person, "fleet_inbound", "/raw exact command");
     expect(h.state.wire).toBe("exact command"); expect(r.row?.state).toBe("uncertain"); expect(r.row?.proof_tag).toBeNull();
   });
+  it("a direct raw_paste snapshot preserves its exact bytes without an envelope", () => {
+    const h = harness();
+    const raw = "command with " + String.fromCharCode(96).repeat(3) + " literal bytes";
+    expect(h.daemon.humanReceiptWire(raw, { user: "person", verification_id: "not-in-raw-bytes" }, "raw_paste")).toBe(raw);
+  });
   it("a same-Daemon freeze during Enter cannot settle a positive receipt", async () => {
     const h = harness(); h.state.freeze = true; const r = await deliver(h);
     expect(r.row?.state).not.toBe("delivered"); expect(r.row?.proof_tag).toBeNull();
