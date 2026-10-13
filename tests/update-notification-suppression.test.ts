@@ -16,6 +16,7 @@ import {
   markUpdateInProgress,
   readUpdateProgress,
   setUpdateProgressStage,
+  updateMarkerIdentity,
   UPDATE_MARKER_MAX_AGE_MS,
 } from "../src/update-marker.js";
 import { InstanceLifecycle, type LifecycleContext, type IncidentEventSource } from "../src/instance-lifecycle.js";
@@ -244,7 +245,8 @@ describe("FleetManager.isPlannedRestart", () => {
     const { FleetManager } = await import("../src/fleet-manager.js");
     const fm = new FleetManager(dir);
     markUpdateInProgress(dir);
-    (fm as unknown as { finishStartup(): void }).finishStartup();
+    // startAll hands finishStartup the marker it adopted at boot (#1737 review fence): this one.
+    (fm as unknown as { finishStartup(boot: unknown): void }).finishStartup(updateMarkerIdentity(dir));
     expect(isUpdateInProgress(dir)).toBe(false);
     expect(fm.isPlannedRestart()).toBe(false);
   });
