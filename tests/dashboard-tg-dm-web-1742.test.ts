@@ -182,6 +182,24 @@ describe("Telegram failure texts: the DM, step by step — never a bare /start",
     expect(texts.filter((x) => x.includes("/start web")).length, "the no-link text names the exact command").toBe(2);
   });
 
+  it("a link that fails before any DM is tried (the public link never starts): no DM steps, no button, no /start window — it says the link did not start", async () => {
+    const h = rig();
+    vi.spyOn(h.s, "getPublicWebLink").mockReturnValue({ deliver: async () => false, status: () => ({ state: "closed" }) });
+    await h.typed(); await h.click("G", "public");
+    const edit = lastEdit(h);
+    expect([edit?.[2], edit?.[4], h.adapter.sendDirect.mock.calls.length, h.s.tgWebStartWindows.size]).toEqual([t("dashboard.link_failed"), undefined, 0, 0]);
+    const texts = (["en", "zh-TW"] as const).map((lang) => { setLocale(lang); return t("dashboard.link_failed"); });
+    expect(texts.filter((x) => BARE_START.test(x) || CODE.test(x) || /私訊|private/i.test(x))).toEqual([]);
+  });
+
+  it("control: the same public link reaching the DM step and refused there gets the DM steps, the button and the window", async () => {
+    const h = rig();
+    vi.spyOn(h.s, "getPublicWebLink").mockReturnValue({ deliver: async (_o: unknown, send: (l: any) => Promise<boolean>) => send({ url: "https://x.trycloudflare.com", exposureId: "e".repeat(32), expiresAt: Date.now() + 60_000, isCurrent: () => true }), status: () => ({ state: "open" }) });
+    await h.typed(); await h.click("G", "public");
+    const edit = lastEdit(h);
+    expect([edit?.[2], edit?.[4]?.[0]?.url, h.adapter.sendDirect.mock.calls.length > 0, h.s.tgWebStartWindows.size]).toEqual([t("dashboard.private_failed_tg"), LINK, true, 1]);
+  });
+
   it("the outcome's edit fails: the outcome is posted with its button", async () => {
     const h = rig();
     await h.typed();
