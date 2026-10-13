@@ -550,10 +550,6 @@ class KiroClassicParser extends StepParser {
       this.newTurn(`h${i}`);
       const s = this.add({ id: `h${i}.u`, kind: "user", ts }); bodyOf(s, prompt, TEXT_MAX);
     }
-    if (cancelled) {
-      const cp = (content.CancelledToolUses as Record<string, unknown>).prompt;
-      if (typeof cp === "string" && cp.trim()) { this.newTurn(`h${i}`); const s = this.add({ id: `h${i}.u`, kind: "user", ts }); bodyOf(s, cp, TEXT_MAX); }
-    }
     for (const r of Array.isArray(results) ? results as Array<Record<string, unknown>> : []) {
       const id = String(r.tool_use_id ?? "");
       if (this.skipped.has(id)) continue;
@@ -562,6 +558,12 @@ class KiroClassicParser extends StepParser {
       s.status = cancelled ? "interrupted" : r.status === "Error" || r.status === "error" || (exit !== undefined && exit !== 0) ? "failed" : "done";
       if (exit !== undefined) s.exitCode = exit;
       if (text) bodyOf(s, text, RESULT_MAX);
+    }
+    // A cancel's prompt starts the next turn only after its results close the calls it cancelled (a new turn would
+    // interrupt them first, and their results would find no call).
+    if (cancelled) {
+      const cp = (content.CancelledToolUses as Record<string, unknown>).prompt;
+      if (typeof cp === "string" && cp.trim()) { this.newTurn(`h${i}`); const s = this.add({ id: `h${i}.u`, kind: "user", ts }); bodyOf(s, cp, TEXT_MAX); }
     }
     const a = (e.assistant ?? {}) as Record<string, unknown>;
     const tu = a.ToolUse as Record<string, unknown> | undefined, resp = a.Response as Record<string, unknown> | undefined;

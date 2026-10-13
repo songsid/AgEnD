@@ -300,7 +300,7 @@ describe("kiro: the TUI (v2) message log and a classic (v1) conversation row as 
       "h0|user||||||fix it",
       "h0|assistant||||||Checking.",
       "h0|tool|execute_bash|run|ls|done||a.ts",
-      "h0|tool|fs_write|edit|b.ts|interrupted||Tool use was cancelled by the user",
+      "h0|tool|fs_write|edit|b.ts|interrupted||Tool use was cancelled by the ",
       "h2|user||||||stop that",
       "h2|assistant||||||Stopped.",
     ]);
