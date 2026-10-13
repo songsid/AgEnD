@@ -8,6 +8,7 @@ import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
 import { handleWebIconRequest } from "./web-icons.js";
+import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
@@ -1123,6 +1124,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  private healthServerDrain: WebServerDrain | null = null;
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
   private previewListening = false;
@@ -17011,8 +17013,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     if (this.healthServer) {
       this.healthServerListening = false;
-      this.healthServer.close();
-      this.healthServer = null;
+      const server = this.healthServer;
+      const drain = this.healthServerDrain ?? trackWebServer(server);
+      await drain.close(this.sseClients);
+      if (this.healthServer === server) {
+        this.healthServer = null;
+        this.healthServerDrain = null;
+      }
     }
     this.stopPreviewListener();
 
@@ -18900,7 +18907,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
-  private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number): void {
+  private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number, closing = false): void {
     try {
       res.setHeader("Content-Type", "application/json");
       // No Referer to a tunnel host, an upstream proxy, or any page linked from
@@ -18921,6 +18928,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
 
+      if (closing) {
+        res.writeHead(503, { Connection: "close", "Retry-After": "10" });
+        res.end(JSON.stringify({ error: "fleet stopping" }));
+        return;
+      }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
 
       // Branding is public, after Host admission: automatic favicon requests
@@ -19220,7 +19232,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // Defensive for direct/unit callers; normal startup initializes these before adapters.
     if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
-    this.healthServer = createServer((req, res) => this.dispatchWebHttp(req, res, port));
+    const server = createServer((req, res) => this.dispatchWebHttp(req, res, port, drain.closing));
+    const drain = trackWebServer(server);
+    this.healthServer = server;
+    this.healthServerDrain = drain;
 
     const markListening = (afterTakeover = false): void => {
       this.healthServerListening = true;

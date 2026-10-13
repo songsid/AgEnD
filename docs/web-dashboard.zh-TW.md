@@ -327,6 +327,36 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | `/web` 回覆「disabled」 | 這個 bot 沒有設定任何 fleet admin：把你的使用者加進它的 `allowed_users`。 |
 | 在登入頁，瀏覽器的開發者工具顯示 `/auth/session` 有紅色的 **401** | 這是預期行為：頁面會先檢查你是否已經登入，「沒有」就會回 401。不需要處理。 |
 
+### Windows／WSL：Linux 有回應，Windows 卻連不到 dashboard
+
+如果更新後從 Windows 打不開 dashboard，先關閉 dashboard 分頁，停止重連流量。用明確的 timeout 比較同一個設定中的 port（下例為 19280）：
+
+```sh
+# WSL 內
+curl --noproxy '*' --max-time 5 -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:19280/health
+```
+
+```powershell
+# Windows
+curl.exe --noproxy "*" --max-time 5 -sS -o NUL -w "%{http_code}\n" http://127.0.0.1:19280/health
+```
+
+Linux 回 **200**、Windows 回 **000**，表示可能是轉送或連線層的問題；只有空白頁還不能下這個結論。保留結果與 Windows／WSL 版本。反覆重啟 fleet 不一定能修復轉送層。
+
+AgEnD 在停機時結束 SSE response，最多等一秒讓一般 HTTP 工作完成，再關閉其餘自己持有的 socket。新版頁面收到停機提示後等 10–15 秒才重連，之後沿用原本有上限的 backoff。更新前已載入的頁面，重新整理前仍用舊的重連規則。這能減少未結束的 stream 和重連流量，不能保證修復卡住的 Windows relay。Listener 仍在停機尾端才關閉，但 replacement 會先啟動 instances 才綁 HTTP，所以整次中斷可能超過一秒。突然退出時無法送出提示。
+
+若要在不中斷 fleet 的情況下恢復連線，可使用**已經可用、可信任的 WSL SSH 路徑**，繞過 Windows localhost 轉送。例如在 Windows 執行，把 `WSL_SSH_HOST` 換成那個既有的 SSH 目的地：
+
+```powershell
+ssh -N -L 127.0.0.1:19281:127.0.0.1:19280 WSL_SSH_HOST
+```
+
+打開 `http://127.0.0.1:19281/signin`，用 `/web` 或 `agend web` 取得新的登入碼。替代 port 只綁 Windows loopback，原本的登入、Host 與 same-origin 檢查仍有效。用完關閉 tunnel。已明確核准、仍有效的公開連結也是一個選項。不要為了這個 workaround 把本機 listener 開放到 LAN，或關閉認證。沒有替代路徑時，可繼續使用 chat，請操作者安排維護；這裡沒有保證不中斷工作就能重設 relay 的方法。
+
+預防方面，WSL 內有 `wslinfo --networking-mode` 時，可用它確認目前模式；沒有輸出就視為 **unknown**。Microsoft 的文件說明 NAT 透過 wslrelay 轉送 localhost，而 mirrored 使用不同架構。在支援的 Windows 11 22H2+ 主機，操作者可自行選擇在 `%USERPROFILE%\.wslconfig` 既有的 `[wsl2]` 段落設定 `networkingMode=mirrored`。這會影響所有 WSL2 distributions 與 firewall 行為，要在**預先安排的 WSL 重啟**後才生效，重啟會中斷其中的工作。AgEnD 不改 Windows 設定，也不重啟 WSL。Mirrored 是選項，不是保證修復。
+
+來源：[Microsoft networking](https://learn.microsoft.com/en-us/windows/wsl/networking#mirrored-mode-networking)、[WSL 設定](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)、[WSL 轉送架構](https://github.com/microsoft/WSL/blob/master/doc/docs/technical-documentation/localhost.md)。調查與限制：[#1738](https://github.com/songsid/AgEnD/issues/1738)。
+
 ### 確認敏感變更
 
 變更存取／F／C 名單、secret、connection 目的地／順序、公開曝光、控制類 instance 設定，或放寬網頁設定（延長本機 session 或閒置時間、開啟瀏覽器終端機或增加分鐘數）會回傳 `202 pending_confirmation`。請求人可用 `GET /api/settings/pending[/:id]` 列出或輪詢，並用 `DELETE /api/settings/pending/:id` 撤回尚未被認領的請求；其他 session 會得到 404。輪詢屬被動讀取，不延長登入有效期；`remaining_ms` 用來倒數，顯示的時間戳不是授權期限。

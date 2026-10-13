@@ -36,7 +36,7 @@ const POLL_LIMIT_MS = 10000;              // a poll that has not answered by the
 const MAX_OVERFLOW_READS = 3;            // reads again after dropped live events, within one catch-up
 // #1580: the reconnect backoff — step n waits min(cap, base·2ⁿ), drawn from 50–100 % of that (jitter: tabs that lost
 // the fleet together do not come back together).
-export const RECONNECT = { baseMs: 1000, capMs: 30000 };
+export const RECONNECT = { baseMs: 1000, capMs: 30000, shutdownMs: 10000 };
 export function reconnectDelay(step, random = Math.random) {
   const full = Math.min(RECONNECT.capMs, RECONNECT.baseMs * 2 ** Math.min(step, 20));
   return Math.round(full * (0.5 + random() * 0.5));
@@ -49,6 +49,7 @@ export function createStream(opts) {
   let sse = null, pollTimer = null, silentTimer = null, closed = false, started = false;
   // #1580: the reconnect step waiting, how many failed in a row, a step waiting for the tab to be shown, a page that left.
   let reconnectTimer = null, attempts = 0, waitingVisible = false, suspended = false, ended = false, retryAt = 0;
+  let shutdownUntil = 0;               // monotonic; retained through pagehide/pageshow
   const random = typeof env.random === "function" ? env.random : Math.random;
   const doc = env.document || null;
   const hidden = () => !!(doc && doc.hidden);
@@ -188,6 +189,18 @@ export function createStream(opts) {
     const es = sse = new env.EventSource("/ui/events");
     let spoke = false;
     silentTimer = env.setTimeout(startPolling, 15000);   // the server sends a status frame the moment a stream opens
+    es.addEventListener("shutdown", (e) => {
+      if (es !== sse || closed || suspended || ended) return;
+      let data;
+      try { data = JSON.parse(e.data); } catch { return; }
+      if (data?.retry_ms !== RECONNECT.shutdownMs) return;
+      shutdownUntil = now() + RECONNECT.shutdownMs + Math.round(random() * 5000);
+      cancelWork(); closeStream(); stopPolling();
+      env.clearTimeout(reconnectTimer); reconnectTimer = null; waitingVisible = false;
+      attempts = Math.max(attempts, 4);
+      setConnection("reconnecting");
+      scheduleStep(shutdownUntil - now());
+    });
     for (const name of EVENTS) {
       es.addEventListener(name, (e) => {
         if (es !== sse) return;                          // a stream this page already let go of
@@ -216,15 +229,16 @@ export function createStream(opts) {
     else setConnection("reconnecting");
     scheduleStep();
   }
-  function scheduleStep() {
+  function scheduleStep(delay) {
     if (reconnectTimer || closed || suspended || ended) return;
-    const ms = reconnectDelay(attempts++, random);
+    const ms = Math.max(delay ?? reconnectDelay(attempts++, random), shutdownUntil - now());
     retryAt = now() + ms;
     emit("retry", { inMs: ms });
     reconnectTimer = env.setTimeout(() => { reconnectTimer = null; step(); }, ms);
   }
   function step() {
     if (closed || suspended || ended) return;
+    if (shutdownUntil > now()) { scheduleStep(shutdownUntil - now()); return; }
     if (hidden()) { waitingVisible = true; return; }    // not while nobody looks: the next step waits to be shown
     if (opts.transport === "poll") { pollProbe(); return; }
     openStream(true);
@@ -255,7 +269,7 @@ export function createStream(opts) {
    * It opens no transport: still the one EventSource, and no polling loop.
    */
   function catchUp() {
-    if (closed || ended) return Promise.resolve(false);
+    if (closed || ended || shutdownUntil > now()) return Promise.resolve(false);
     if (catching) return catching;
     env.clearTimeout(retryTimer); retryTimer = null;
     setHydration("catching");
@@ -327,6 +341,9 @@ export function createStream(opts) {
       if (closed || !suspended || ended) return;
       suspended = false;
       epoch++;
+      if (shutdownUntil > now()) {
+        setConnection("reconnecting"); scheduleStep(shutdownUntil - now()); return;
+      }
       attempts = 0;
       if (opts.transport === "poll") { startPolling(); return; }
       openStream(true);
