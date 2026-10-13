@@ -2,12 +2,12 @@
   master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
 
 
-     ❯ run a tool                                                    1:22 PM
+     ❯ run a tool                                                    1:47 PM
 
 
-     ◆ Ran print a check marker
+     ◆ Ran long wait task
 
-     mock reply 185                                                  1:22 PM
+     mock reply r94                                                  1:47 PM
 
      Worked for 0.1s
 
@@ -33,7 +33,7 @@
                                                                                █
 
   ╭──────────────────────────────────────────────────────────────────────────╮
-  │ ❯ mock reply 187                                                         │
+  │ ❯ mock reply r96                                                         │
   ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
 
   Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts

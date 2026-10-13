@@ -1,9 +1,9 @@
 one turn
 > one turn
-  mock reply 359
+  mock reply r163
 
 Resume this session with:
-  grok --resume 01a13575-fd47-7353-98c2-2c361331c2c5
+  grok --resume 01a13588-45fb-70f0-a3c8-0aa75ea645a1
 
 
 
@@ -37,4 +37,4 @@ Resume this session with:
 
 
 
-Pane is dead (status 0, Tue Oct 13 13:31:38 2026)
+Pane is dead (status 0, Tue Oct 13 13:51:36 2026)

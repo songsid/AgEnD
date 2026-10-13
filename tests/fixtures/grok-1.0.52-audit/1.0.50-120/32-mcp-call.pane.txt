@@ -1,20 +1,20 @@
 
-  master /r/proj/s1050c120                                                                   1.2K / 256K │ [Dashboard]
+  master /r/proj/c1050                                                                       1.2K / 256K │ [Dashboard]
 
 
-     ❯ call reply                                                                                            1:28 PM
+     ❯ call reply                                                                                            1:51 PM
 
 
      ◆ Agend-audit Reply
 
-     mock reply 261                                                                                          1:28 PM
-
-     Worked for 0.1s
-
-
-
-
-
+     mock reply r158                                                                                         1:51 PM
+                                                                                                                       █
+     Worked for 0.1s                                                                                                   █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
                                                                                                                        █
                                                                                                                        █
                                                                                                                        █
@@ -33,7 +33,7 @@
                                                                                                                        █
 
   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-  │ ❯ mock reply 263                                                                                                 │
+  │ ❯ mock reply r161                                                                                                │
   ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
 
   Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts

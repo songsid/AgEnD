@@ -2,7 +2,7 @@
   master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
 
 
-     ❯ error turn 429                                                1:21 PM
+     ❯ error turn a                                                  1:46 PM
 
 
   ┃  Retry failed: Some resource has been exhausted: Your team has exceeded

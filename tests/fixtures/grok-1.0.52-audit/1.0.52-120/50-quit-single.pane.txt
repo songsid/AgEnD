@@ -2,10 +2,10 @@
   master /r/proj/q1052                                                                       1.2K / 256K │ [Dashboard]
 
 
-     ❯ one turn                                                                                              1:31 PM
+     ❯ one turn                                                                                              1:50 PM
 
 
-     mock reply 355                                                                                          1:31 PM
+     mock reply r149                                                                                         1:50 PM
 
      Worked for 0.1s
 
@@ -33,7 +33,7 @@
 
 
   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-  │ ❯ mock reply 357                                                                                                 │
+  │ ❯ mock reply r151                                                                                                │
   ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
 
   Ctrl+q:press again to quit

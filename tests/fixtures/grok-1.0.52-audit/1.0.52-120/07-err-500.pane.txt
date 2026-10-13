@@ -2,7 +2,7 @@
   master /r/proj/s1052c120                                                                   1.2K / 256K │ [Dashboard]
 
 
-     ❯ error turn 500                                                                                        1:18 PM
+     ❯ error turn f                                                                                          1:44 PM
 
 
 
@@ -30,7 +30,7 @@
                                                                                                                        █
                                                                                                                        █
 
-    ⠴ Server error (500) | Retrying (attempt 3)... 0.0s                                             6.0s ⇣1.20k [stop]
+    ⠼ Server error (500) | Retrying (attempt 2)... 4.3s                                             5.9s ⇣1.20k [stop]
 
   ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
   │ ❯                                                                                                                │

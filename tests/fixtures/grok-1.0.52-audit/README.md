@@ -27,6 +27,7 @@ The count changes ("Grok Build" 70→74, "rate_limit" 62→66, "Do you trust the
 - Auth: `XAI_API_KEY` is a dummy, and `GROK_CLI_BASE_URL` points at a local chat-completions SSE mock that can stall, call a tool, or fail with a chosen status and body.
 - Folder trust: `GROK_FOLDER_TRUST=1` makes the prompt appear, as it does for real accounts.
 - Delivery: text goes in with `tmux paste-buffer -p` and then Enter, as AgEnD sends it.
+- Labels: the error turns' prompts are letters (`error turn a` … `f`), and the mock replies `mock reply r<n>`. A status code on screen is therefore grok's, never an echo of the rig's own text. (A first pass used `error turn 401`, and `\b401\b` matched the prompt.)
 
 **Steps** (the same script on both versions, at 120 and 80 columns):
 - 01: trust;
@@ -52,7 +53,15 @@ At 120 columns only:
 - A double Ctrl+Q with a background subagent running quits directly on both versions, with no "Stop them?".
 - "usage limit upsell" is a new question kind, next to the existing "credit-limit upsell". It was not reachable with an API key.
 
-## Found: AgEnD's single Ctrl+Q never quit grok (every version)
+## Found (every version): two gaps, both fixed here
+
+### Grok's own 401 text was not an auth error
+
+Grok paints a rejected or expired credential as "Authentication required: your session has expired or your credentials were rejected. Run /login to re-authenticate, then resend your message." It includes no status code, and the same string is in the 1.0.46, 1.0.50 and 1.0.52 binaries.
+
+`GrokBackend`'s auth pattern (`unauthorized|authentication (failed|error)|\b401\b`) did not match it (`*/07-err-401`). It now also matches `Authentication required: your session`, so the instance pauses with "Grok authentication error" as it does for the other auth shapes.
+
+### AgEnD's single Ctrl+Q never quit grok
 
 Grok's Quit is a double press within 1000 ms. Its keyboard docs say so in 1.0.46, 1.0.50 and 1.0.52.
 

@@ -2,7 +2,7 @@
   master /r/proj/s1052c120                                                                   1.2K / 256K │ [Dashboard]
 
 
-     ❯ error turn 426                                                                                        1:18 PM
+     ❯ error turn e                                                                                          1:44 PM
 
 
   ┃  Request failed (426): Upgrade Required: Your Grok CLI version (1.0.5) is outdated. Please update to version

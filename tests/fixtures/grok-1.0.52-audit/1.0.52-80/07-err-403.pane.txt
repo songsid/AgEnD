@@ -2,7 +2,7 @@
   master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
 
 
-     ❯ error turn 403                                                1:21 PM
+     ❯ error turn d                                                  1:47 PM
 
 
   ┃  Request denied (403): Forbidden: usage limit reached

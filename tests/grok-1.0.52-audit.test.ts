@@ -1,8 +1,9 @@
 /**
  * #1792: grok 1.0.52 against the 1.0.50 baseline (tests/fixtures/grok-1.0.52-audit/README.md). Every pane here was
  * captured live from AgEnD's own launch line in an isolated rig, from both binaries, at 120 and 80 columns: each
- * detector gives the same verdict on both. The one fix the audit found is older than either version — grok quits on
- * a *double* Ctrl+Q, and AgEnD sent one.
+ * detector gives the same verdict on both. The two fixes the audit found are older than either version: grok quits on
+ * a *double* Ctrl+Q, and AgEnD sent one; and grok's own 401 text named no status code, so no auth pattern saw it.
+ * The error turns' prompts are letters and the mock replies "r<n>", so no status code on screen is AgEnD's own echo.
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,7 +42,7 @@ const STEPS: Record<string, ReturnType<typeof verdict>> = {
   "04-done": idle,
   "05-busy-before-cancel": { ...idle, busy: true },
   "06-after-cancel": idle,
-  "07-err-401": { ...idle, errors: ["auth_error"] },
+  "07-err-401": { ...idle, errors: ["auth_error"] }, // #1792: matched by grok's own wording, not a status code
   "07-err-402": { ...idle, startup: [WEEKLY], runtime: [WEEKLY] },
   "07-err-402-esc": idle,
   "07-err-403": idle,
@@ -79,6 +80,19 @@ describe("grok 1.0.52: what the precheck flagged", () => {
     expect(pane(version, "120", "07-err-402")).toContain("3 (○) Try Again");
     expect(pane(version, "120", "07-err-402")).toContain("Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss");
     expect(pane(version, "120", "07-err-402-esc")).toContain("3 (○) Try Again");
+  });
+});
+
+describe("grok 401: its own wording (#1792)", () => {
+  it.each(["1.0.50", "1.0.52"].flatMap(version => ["120", "80"].map(width => [version, width])))("%s at %s columns: no status code on screen, still auth_error", (version, width) => {
+    const screen = pane(version, width, "07-err-401");
+    expect(screen).toMatch(/Authentication required: your session has expired or your credentials/);
+    expect(screen).not.toMatch(/\b401\b|unauthorized|authentication (failed|error)/i);
+    expect(verdict(screen).errors).toEqual(["auth_error"]);
+  });
+
+  it("a mention in a prompt is not the message", () => {
+    expect(verdict("❯ why does it say authentication required?").errors).toEqual([]);
   });
 });
 

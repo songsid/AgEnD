@@ -254,7 +254,10 @@ export class GrokBackend implements CliBackend {
     // Error strings below are best-effort generic API shapes; tune once observed live.
     return [
       { pattern: /rate.?limit|too many requests|\b429\b/i, type: "rate_limit", action: "failover", message: "Grok rate limit reached" },
-      { pattern: /unauthorized|authentication (failed|error)|\b401\b/i, type: "auth_error", action: "pause", message: "Grok authentication error" },
+      // #1792: grok paints a rejected or expired credential (HTTP 401) as its own
+      // "Authentication required: your session has expired or your credentials
+      // were rejected. Run /login …" (1.0.46 to 1.0.52), with no status code.
+      { pattern: /unauthorized|authentication (failed|error)|Authentication\s+required:\s+your\s+session|\b401\b/i, type: "auth_error", action: "pause", message: "Grok authentication error" },
       { pattern: /quota|insufficient credits|out of credits/i, type: "quota", action: "notify", message: "Grok quota/credits exhausted" },
       // #1066: the server refuses an outdated CLI (HTTP 426, Upgrade Required):
       //   Request failed (426) — Your Grok CLI version (1.0.5) is outdated.
