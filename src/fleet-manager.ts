@@ -5486,6 +5486,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }) : null;
     let lastSteps: PublicLinkProgress | undefined;
     let deliveredByDm = false;
+    // #1742: a DM was tried and did not go — only then is "open the private chat" the way out.
+    let dmRefused = false;
     const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
       const token = this.webToken;
       if (!token || !current()) return false;
@@ -5508,6 +5510,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return sent;
           } catch (err) {
             this.logDashboardDmFailure(err);
+            dmRefused = true;
             if (direct.type !== "discord" || !data.respondPrivate || !current()) throw new Error("private delivery unavailable");
             const sent = await withinBudget(data.respondPrivate(text, c), deadline);
             codeAlone = body => data.respondPrivate!(body);
@@ -5548,11 +5551,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Only safe, static words enter General; never link, code or platform error text.
     // #1742: Telegram's failure walks through opening the DM (never a bare /start, which starts a ClassicBot agent),
     // with the "先開私訊 →" button when the bot's username is known; and for a while a bare /start there counts as
-    // /start web. A menu shown in the DM itself says the details are right below it.
+    // /start web. A menu shown in the DM itself says the details are right below it. Only when a DM was tried and did
+    // not go: a link that never got that far (the tunnel lane held, the owner gone) says so instead.
     const telegram = (owner.binding as ChannelAdapter).type === "telegram";
-    const tgLink = !ok && telegram ? this.tgStartWebUrl(adapterId) : null;
-    if (!ok && telegram) this.openTgWebStartWindow(adapterId, owner.userId);
-    const outcome = t(!ok ? (!telegram ? "dashboard.private_failed" : tgLink ? "dashboard.private_failed_tg" : "dashboard.private_failed_tg_nolink")
+    const dmSteps = !ok && telegram && dmRefused;
+    const tgLink = dmSteps ? this.tgStartWebUrl(adapterId) : null;
+    if (dmSteps) this.openTgWebStartWindow(adapterId, owner.userId);
+    const outcome = t(!ok ? (!telegram ? "dashboard.private_failed" : !dmSteps ? "dashboard.link_failed" : tgLink ? "dashboard.private_failed_tg" : "dashboard.private_failed_tg_nolink")
       : telegram && entry.chatId === owner.userId ? "dashboard.private_sent_below"
       : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here");
     await progress;
