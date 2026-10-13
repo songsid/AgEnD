@@ -8,6 +8,8 @@ Agent 的摘要可能省略或改變使用者授權的內容。過去 `delivery_
 
 `send_to_instance`、`delegate_task` 接受最多 16 個不重複的 `forwards` ID。寄件者必須能讀到每一列，且該列必須已送達。新訊息與讀取授權一起提交。只在文字提到 ID 不會授權；再轉交一次也必須明列 `forwards`。收件者不會取得其他列、相同 correlation 的其他訊息或隱藏分頁游標。重試已受理的操作不能增加／替換引用，或改變內容、收件者、session 與要求的模式。轉交操作以經驗證的寄件者和 operation ID 綁定，不受實際投遞模式影響；前一則排隊訊息出現或消失時，相同重試仍沿用第一次受理的模式。最小操作記錄不隨通知清理而消失；原受理列已清除時，重試會拒絕，不建立新授權。
 
+**ID 必須放在 `forwards`，不是寫在文字裡。** agent 若把 verification ID 寫進訊息內文，收件者的 `delivery_status` 會回「Delivery not found」。升級到 beta.7 後實際發生過一次（#1780）。跨 AgEnD 升級續用的 Claude Code session 會沿用先前載入的工具 schema，重新載入（`ToolSearch`）或伺服器的新工具清單都不會換掉它，所以它的 `send_to_instance` 可能沒有 `forwards`。照樣傳這個參數即可：client 以當下的 schema 檢查呼叫，AgEnD 伺服器也會接受。每次升級，AgEnD 會用 what's-new 通知告訴執行中的 instance 有哪些新參數，每個通知只發一次。Codex、Kiro 和 Muse 續用 session 時都會重新取得工具清單。
+
 ## 原始使用者收據
 
 新的 Discord、Telegram 事件會由可信任的 SDK 入口記錄實際 adapter、使用者 ID、username 與平台訊息 ID。引用文字、bot／系統訊息、agent 文字和歷史轉交不會補上 human origin。Discord 收據只接受非 system 的 Default (0) 或 Reply (19) 事件；建立主題的標題及不支援／未知的 type 不具有使用者授權。Discord 原生轉寄的原始內容只記外層使用者自己輸入的文字；引用者的文字不等於這位使用者的授權。

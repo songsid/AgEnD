@@ -16,7 +16,9 @@ import type { TmuxManager } from "../src/tmux-manager.js";
 const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-1633-")); dirs.push(d); return d; };
-const ALL = AGENT_WHATS_NEW.map(e => e.id);
+/** The entries current at 2.2.0-beta.2, the version these tests run as (later entries, e.g. #1780's, are not told yet). */
+const ALL = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0-beta.2")! <= 0).map(e => e.id);
+const EVERY = AGENT_WHATS_NEW.map(e => e.id);
 const announcedIn = (dir: string) => { const r = readWhatsNewRecord(dir); return r && r !== "unreadable" ? r.announced : r; };
 
 describe("versions", () => {
@@ -45,9 +47,9 @@ describe("what an instance is told", () => {
     expect(planWhatsNew({ record: null, fresh: true, version: "2.2.0-beta.2" })).toEqual({ silent: ALL, version: "2.2.0-beta.2" });
   });
   it("only what it has not been told; nothing left → no notice", () => {
-    const plan = planWhatsNew({ record: { announced: ALL.slice(1) }, fresh: false, version: "2.2.0" });
-    expect(plan && "ids" in plan ? plan.ids : plan).toEqual([ALL[0]]);
-    expect(planWhatsNew({ record: { announced: ALL }, fresh: false, version: "2.2.0" })).toBeNull();
+    const plan = planWhatsNew({ record: { announced: EVERY.slice(1) }, fresh: false, version: "2.2.0" });
+    expect(plan && "ids" in plan ? plan.ids : plan).toEqual([EVERY[0]]);
+    expect(planWhatsNew({ record: { announced: EVERY }, fresh: false, version: "2.2.0" })).toBeNull();
   });
   it("a version without agent-facing entries sends nothing (an entry is never told before its version)", () => {
     expect(planWhatsNew({ record: null, fresh: false, version: "2.1.12" })).toBeNull();
@@ -56,14 +58,28 @@ describe("what an instance is told", () => {
     const plan = planWhatsNew({ record: { announced: [] }, fresh: false, version: "2.3.0-beta.1", entries: [{ id: "x", since: "2.3.0-beta.1", text: "now" }] });
     expect(plan && "ids" in plan ? plan.ids : plan).toEqual(["x"]);
   });
+  it("#1780: an instance told everything up to beta.6 is told `forwards` once on reaching beta.7 or later — and not before", () => {
+    const told = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0-beta.6")! <= 0).map(e => e.id);
+    expect(planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.6" })).toBeNull();
+    for (const version of ["2.2.0-beta.7", "2.2.0-beta.8", "2.2.0"]) {
+      const plan = planWhatsNew({ record: { announced: told }, fresh: false, version });
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.2-forwards"]);
+    }
+    const plan = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.8" });
+    const notice = plan && "notice" in plan ? plan.notice : "";
+    for (const s of ["`send_to_instance` and `delegate_task` take `forwards: [id, …]`", "`verification_id`", "`delivery_status`",
+      "An id written in the message text grants nothing", "\"Delivery not found\"", "on every hop",
+      "a resumed session keeps the copy it first loaded, and reloading it does not refresh it", "Use them anyway — AgEnD's server accepts them."]) expect(notice, s).toContain(s);
+    expect(notice).not.toContain("ToolSearch");                 // reloading does not refresh a Claude Code copy (#1780)
+  });
   it("an unreadable record, or an unknown running version: nothing (never a repeat flood)", () => {
     expect([planWhatsNew({ record: "unreadable", fresh: false, version: "2.2.0" }), planWhatsNew({ record: null, fresh: false, version: null })]).toEqual([null, null]);
   });
-  it("the notice names the exact parameters and tells the agent to reload an older tool copy, not to reply", () => {
+  it("the notice names the exact parameters and tells the agent to use them even when its older tool copy lacks them (reloading does not refresh it, #1780), not to reply", () => {
     const text = whatsNewNotice("2.2.0-beta.2", AGENT_WHATS_NEW);
     for (const s of ["[system:whats-new] AgEnD is now 2.2.0-beta.2.", "`buttons: [{label, value?}]` (1–10)", "`[button] <label>`", "`[button] <label> (value: <value>)` when the value differs", "`stickers` (up to 3 ids from `list_stickers`",
       "`preview_stickers`", "`[user:… via web, …]`", "`message_id`", "`consumed_at` / `consumed_via`", "`filter_status`", "`verbose: true`", "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions`",
-      "`ToolSearch` with `select:<tool>`", "Do not reply to this message."]) expect(text, s).toContain(s);
+      "a resumed session keeps the copy it first loaded, and reloading it does not refresh it", "Use them anyway — AgEnD's server accepts them.", "Do not reply to this message."]) expect(text, s).toContain(s);
     expect(text.split("\n").length).toBe(AGENT_WHATS_NEW.length + 2);
   });
 });
