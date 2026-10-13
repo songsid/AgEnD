@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
-import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
+import { LOOKS_PER_POLL, lastLineBoundary, readNewLines, recordsInOrder } from "./transcript-jsonl.js";
 
 /**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
@@ -18,6 +18,8 @@ import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
  */
 export class TranscriptMonitor extends EventEmitter {
   private byteOffset: number = 0;
+  /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
+  private skipping = false;
   private transcriptPath: string | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private offsetFile: string;
@@ -42,6 +44,7 @@ export class TranscriptMonitor extends EventEmitter {
       if (existsSync(this.offsetFile)) {
         const data = JSON.parse(readFileSync(this.offsetFile, "utf-8"));
         this.byteOffset = data.offset ?? 0;
+        this.skipping = false;
         this.transcriptPath = data.path ?? null;
       }
     } catch {
@@ -140,6 +143,7 @@ export class TranscriptMonitor extends EventEmitter {
         // Work resumed during our own startup must be observable → read the
         // replacement from the top.
         this.byteOffset = 0;
+        this.skipping = false;
         this.saveOffset();
       } else {
         // First-ever attach: baseline to EOF so history does not replay — to its last line boundary, so a
@@ -148,6 +152,7 @@ export class TranscriptMonitor extends EventEmitter {
         // replay the whole history.
         try {
           this.byteOffset = await lastLineBoundary(current);
+          this.skipping = false;
         } catch {
           this.transcriptPath = null;
           return;
@@ -159,20 +164,42 @@ export class TranscriptMonitor extends EventEmitter {
     if (!this.transcriptPath || !existsSync(this.transcriptPath)) return;
 
     try {
-      const { lines, newOffset } = await readNewLines(this.transcriptPath, this.byteOffset);
-      if (newOffset === this.byteOffset) return;
-      this.byteOffset = newOffset;
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line);
-          this.processEntry(entry);
-        } catch {
-          // Malformed complete JSONL line in transcript — skip
+      // #1218 P0: bounded looks (READ_MAX_BYTES each), a few per poll, each awaited; the rest waits for the next poll.
+      const generation = this.generation;
+      for (let look = 0; look < LOOKS_PER_POLL; look++) {
+        const read = await readNewLines(this.transcriptPath, this.byteOffset, { skipping: this.skipping });
+        if (generation !== this.generation) return;
+        this.skipping = read.skipping;
+        if (read.newOffset === this.byteOffset) break;
+        this.byteOffset = read.newOffset;
+        for (const record of recordsInOrder(read)) {
+          if ("long" in record) { this.processLongHead(record.long.head); continue; }
+          try {
+            const entry = JSON.parse(record.line);
+            this.processEntry(entry);
+          } catch {
+            // Malformed complete JSONL line in transcript — skip
+          }
         }
+        this.saveOffset();
+        if (!read.more) break;
       }
-      this.saveOffset();
     } catch (err) {
       this.logger.debug({ err }, "TranscriptMonitor poll error");
+    }
+  }
+
+  /**
+   * #1218 P0: a line too long to parse (a tool result of MBs, a Write with a huge input) — what its head still says:
+   * the results it carries (by tool_use_id) and the tools it calls (by name), so the bubble does not lose the step.
+   */
+  private processLongHead(head: string): void {
+    if (head.includes('"type":"tool_result"')) {
+      for (const m of head.matchAll(/"tool_use_id":"([^"]{1,200})"/g)) this.emit("tool_result", m[1], undefined);
+    }
+    for (const m of head.matchAll(/"type":"tool_use"/g)) {
+      const name = /"name":"([^"]{1,200})"/.exec(head.slice(m.index, m.index + 400));
+      if (name) this.emit("tool_use", name[1], {});
     }
   }
 
@@ -237,6 +264,7 @@ export class TranscriptMonitor extends EventEmitter {
   resetOffset(): void {
     this.generation++;
     this.byteOffset = 0;
+    this.skipping = false;
     this.transcriptPath = null;
     this.source?.reset();
     this.saveOffset();

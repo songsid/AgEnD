@@ -27,7 +27,7 @@ import { measureSyncWork } from "./sync-work-attribution.js";
  *     one found silently goes blind when the CLI starts a new session.
  */
 
-import { closeSync, existsSync, openSync, readSync, realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { open as openFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -37,7 +37,7 @@ import { sharedKiroTranscriptLane, type KiroDbLane, type KiroDbLease } from "./k
 import type { KiroDbCursor } from "./kiro-db-reader.js";
 export { extractKiroAssistantStrings } from "./kiro-db-reader.js";
 import type { TranscriptTurnEvent } from "./transcript-turns.js";
-import { lastLineBoundary, readNewLines } from "./transcript-jsonl.js";
+import { LINE_MAX_BYTES, LOOKS_PER_POLL, READ_MAX_BYTES, lastLineBoundary, readNewLines, recordsInOrder, type ReadNewLinesResult } from "./transcript-jsonl.js";
 import { museSessionCwd, readFileHeadSync } from "./backend/muse.js";
 import { performance } from "node:perf_hooks";
 
@@ -83,17 +83,39 @@ export interface TranscriptSource {
   takeTurns?(): TranscriptTurnEvent[];
 }
 
-/** #1641 R3: the complete records in [from, to) — `to` is a line boundary (a checkpoint's), so nothing is cut. */
-async function readLineRange(path: string, from: number, to: number): Promise<string[]> {
+/**
+ * #1641 R3: the complete records in [from, to) that `keep` accepts — `to` is a line boundary (a checkpoint's), so
+ * nothing is cut. #1218 P0: read in READ_MAX_BYTES chunks (the range a checkpoint skips can be many MB), a line over
+ * LINE_MAX_BYTES is skipped without being decoded, and only kept lines are held.
+ */
+export async function readLineRange(path: string, from: number, to: number, keep: (line: string) => boolean = () => true): Promise<string[]> {
   const fh = await openFile(path, "r");
+  const out: string[] = [];
   try {
-    const buffer = Buffer.alloc(to - from);
-    for (let filled = 0; filled < buffer.length;) {
-      const { bytesRead } = await fh.read(buffer, filled, buffer.length - filled, from + filled);
-      if (bytesRead <= 0) throw new Error(`readLineRange: no progress reading ${path} at ${from + filled}`);
-      filled += bytesRead;
+    let pos = from, skipping = false;
+    while (pos < to) {
+      const buffer = Buffer.alloc(Math.min(READ_MAX_BYTES, to - pos));
+      for (let filled = 0; filled < buffer.length;) {
+        const { bytesRead } = await fh.read(buffer, filled, buffer.length - filled, pos + filled);
+        if (bytesRead <= 0) throw new Error(`readLineRange: no progress reading ${path} at ${pos + filled}`);
+        filled += bytesRead;
+      }
+      // Up to the last line end in this chunk (the range's end is one); a chunk with none is inside one long line.
+      const complete = buffer.lastIndexOf(0x0a) + 1;
+      if (complete === 0) { pos += buffer.length; skipping = true; continue; }
+      let start = 0;
+      while (start < complete) {
+        const end = buffer.indexOf(0x0a, start);
+        if (!skipping && end - start <= LINE_MAX_BYTES) {
+          const line = buffer.toString("utf8", start, end);
+          if (line.trim() && keep(line)) out.push(line);
+        }
+        skipping = false;
+        start = end + 1;
+      }
+      pos += complete;
     }
-    return buffer.toString("utf8").split("\n").filter(line => line.trim());
+    return out;
   } finally {
     await fh.close();
   }
@@ -157,6 +179,8 @@ function emptyEvents(): TranscriptEvents {
 export class CodexRolloutSource implements TranscriptSource {
   private currentFile: string | null = null;
   private byteOffset = 0;
+  /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
+  private skipping = false;
   /** EOF snapshots taken when the monitor attaches; existing history is skipped. */
   private initialOffsets = new Map<string, number>();
   /** Files whose session_meta was read and did NOT match our cwd. */
@@ -209,6 +233,7 @@ export class CodexRolloutSource implements TranscriptSource {
     this.pendingTurns = [];
     this.currentFile = null;
     this.byteOffset = 0;
+    this.skipping = false;
     this.openTurnId = "";
     this.rejected.clear();
     this.accepted.clear();
@@ -216,7 +241,7 @@ export class CodexRolloutSource implements TranscriptSource {
   }
 
   async checkpoint(): Promise<TranscriptCheckpoint | null> {
-    const active = this.candidateFiles(true).find(file => this.fileBelongsToUs(file.path));
+    const active = await this.firstOwned(this.candidateFiles(true));
     if (!active) return null;
     try {
       // A line boundary, not the size: a record being written now is read once complete (#1250).
@@ -225,7 +250,7 @@ export class CodexRolloutSource implements TranscriptSource {
       else if (offset > this.byteOffset) {
         // #1641 R3: the range this checkpoint skips is never polled — its turn boundaries (and user records) are taken
         // now, so the turn state stays the file's. Tool and text records stay skipped, as before.
-        for (const line of await readLineRange(active.path, this.byteOffset, offset)) {
+        for (const line of await readLineRange(active.path, this.byteOffset, offset, (l) => l.includes('"event_msg"') || l.includes('"role":"user"'))) {
           let entry: Record<string, unknown>;
           try { entry = JSON.parse(line); } catch { continue; }
           this.turnRecord(entry, this.pendingTurns);
@@ -233,6 +258,7 @@ export class CodexRolloutSource implements TranscriptSource {
       }
       this.currentFile = active.path;
       this.byteOffset = offset;
+      this.skipping = false;
       return { path: active.path, offset, sessionId: active.path };
     } catch {
       return null;
@@ -261,6 +287,7 @@ export class CodexRolloutSource implements TranscriptSource {
     this.turnKnown = known;
     this.currentFile = path;
     this.byteOffset = offset;
+    this.skipping = false;
     this.openTurnId = this.openTurn ?? "";                 // a steer after the baseline belongs to the carried-in turn
   }
 
@@ -316,20 +343,27 @@ export class CodexRolloutSource implements TranscriptSource {
     return this.index.list(fresh);
   }
 
-  private fileBelongsToUs(path: string): boolean {
+  /** The first of `files` that is ours (in order), or undefined. Verdicts are cached, so a known file costs no read. */
+  private async firstOwned<T extends { path: string }>(files: readonly T[]): Promise<T | undefined> {
+    for (const file of files) if (await this.fileBelongsToUs(file.path)) return file;
+    return undefined;
+  }
+
+  private async fileBelongsToUs(path: string): Promise<boolean> {
     if (this.rejected.has(path)) return false;
     if (this.accepted.has(path)) return true;
     try {
       // session_meta is the first line. It can carry long instructions, so
-      // give it headroom — but never read the whole rollout.
-      const fd = openSync(path, "r");
+      // give it headroom — but never read the whole rollout. #1218 P0: read asynchronously, off the fleet loop's
+      // critical path (it was a synchronous 64 KiB read per new rollout).
+      const fh = await openFile(path, "r");
       let head: string;
       try {
         const buf = Buffer.alloc(65536);
-        const bytes = readSync(fd, buf, 0, buf.length, 0);
-        head = buf.toString("utf-8", 0, bytes);
+        const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+        head = buf.toString("utf-8", 0, bytesRead);
       } finally {
-        closeSync(fd);
+        await fh.close();
       }
       const firstLine = head.split("\n")[0];
       const meta = JSON.parse(firstLine);
@@ -350,7 +384,7 @@ export class CodexRolloutSource implements TranscriptSource {
     // Re-resolve every poll: a restarted codex writes a NEW rollout, and
     // staying pinned to the old one goes silently blind (#528 trap 1).
     const candidates = this.candidateFiles();
-    const active = candidates.find(c => this.fileBelongsToUs(c.path));
+    const active = await this.firstOwned(candidates);
     // Cleared only by a real loss (none found, an adoption or read that failed) — never for the length of a poll's
     // await, when a capture reading following() would drop the veto mid-turn.
     if (!active) { this.lastPollFollowed = false; return EMPTY; }
@@ -370,15 +404,24 @@ export class CodexRolloutSource implements TranscriptSource {
       await this.adopt(active.path, offset);
     }
 
-    let read: Awaited<ReturnType<typeof readNewLines>>;
-    try { read = await readNewLines(active.path, this.byteOffset); } catch (err) { this.lastPollFollowed = false; throw err; }
-    const { lines, newOffset } = read;
-    this.byteOffset = newOffset;
+    // #1218 P0: bounded looks (READ_MAX_BYTES each), a few per poll, each awaited (a sampled rollout was 322 MB).
+    const records: Array<{ line: string } | { long: { head: string } }> = [];
+    for (let look = 0; look < LOOKS_PER_POLL; look++) {
+      let read: ReadNewLinesResult;
+      try { read = await readNewLines(active.path, this.byteOffset, { skipping: this.skipping }); } catch (err) { this.lastPollFollowed = false; throw err; }
+      this.skipping = read.skipping;
+      const moved = read.newOffset !== this.byteOffset;
+      this.byteOffset = read.newOffset;
+      records.push(...recordsInOrder(read));
+      if (!moved || !read.more) break;
+    }
     this.lastPollFollowed = true;
 
     const events = emptyEvents();
     const turns: TranscriptTurnEvent[] = this.pendingTurns.splice(0);
-    for (const line of lines) {
+    for (const record of records) {
+      if ("long" in record) { codexLongHead(record.long.head, events); continue; }
+      const line = record.line;
       let entry: Record<string, unknown>;
       try { entry = JSON.parse(line); } catch { continue; }
       const p = entry.payload as Record<string, unknown> | undefined;
@@ -407,6 +450,19 @@ export class CodexRolloutSource implements TranscriptSource {
     if (turns.length) events.turns = turns;
     return events;
   }
+}
+
+/**
+ * #1218 P0: a rollout line too long to parse (an output of MBs, a huge call input) — what its head still says, so the
+ * bubble keeps the step: a call by its name, or an output. Turn records are small and never reach here.
+ */
+function codexLongHead(head: string, events: TranscriptEvents): void {
+  if (!head.includes('"type":"response_item"')) return;
+  const type = /"payload":\{[^{}]{0,400}?"type":"(function_call|custom_tool_call|function_call_output|custom_tool_call_output)"/.exec(head)?.[1];
+  if (type === "function_call" || type === "custom_tool_call") {
+    const name = /"name":"([^"]{1,200})"/.exec(head)?.[1];
+    events.toolUses.push({ name: name ?? "unknown", input: undefined });
+  } else if (type) events.toolResults.push({ name: "unknown" });
 }
 
 /* -------------------------------------------------------------------- muse */
@@ -701,6 +757,8 @@ async function forEachLimited(count: number, limit: number, task: (index: number
 export class KiroSessionSource implements TranscriptSource {
   private currentFile: string | null = null;
   private byteOffset = 0;
+  /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
+  private skipping = false;
   private readonly createdAt: number;
   private generation = 0;
   private cursor: KiroDbCursor | undefined;
@@ -734,6 +792,7 @@ export class KiroSessionSource implements TranscriptSource {
     this.close();
     this.currentFile = null;
     this.byteOffset = 0;
+    this.skipping = false;
     this.cursor = undefined;
     this.needsBaseline = true;
     void this.initialize();
@@ -849,6 +908,7 @@ export class KiroSessionSource implements TranscriptSource {
       if (active.createdAtMs >= this.createdAt) {
         this.currentFile = active.jsonlPath;
         this.byteOffset = 0; // our own fresh session — observable from the start
+        this.skipping = false;
       } else {
         // An older session is attached at its last line boundary. If that cannot be read now, nothing is adopted
         // and the next poll tries again (#1283 review) — never offset 0, which would replay the whole session.
@@ -857,19 +917,25 @@ export class KiroSessionSource implements TranscriptSource {
         if (generation !== this.generation) return EMPTY;
         this.currentFile = active.jsonlPath;
         this.byteOffset = offset;
+        this.skipping = false;
         return EMPTY;
       }
     }
 
-    const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
-    if (generation !== this.generation) return EMPTY;
-    this.byteOffset = newOffset;
-
+    // #1218 P0: bounded looks, as the other JSONL sources. A long line is skipped (kiro's nesting needs the whole record).
     const events = emptyEvents();
-    for (const line of lines) {
-      let entry: unknown;
-      try { entry = JSON.parse(line); } catch { continue; }
-      collectKiroEvents(entry, events);
+    for (let look = 0; look < LOOKS_PER_POLL; look++) {
+      const read = await readNewLines(this.currentFile, this.byteOffset, { skipping: this.skipping });
+      if (generation !== this.generation) return EMPTY;
+      this.skipping = read.skipping;
+      const moved = read.newOffset !== this.byteOffset;
+      this.byteOffset = read.newOffset;
+      for (const line of read.lines) {
+        let entry: unknown;
+        try { entry = JSON.parse(line); } catch { continue; }
+        collectKiroEvents(entry, events);
+      }
+      if (!moved || !read.more) break;
     }
     return events;
   }

@@ -1,24 +1,109 @@
 import { open, stat } from "node:fs/promises";
 
+/** #1218 P0: the most one look reads. A busy session's delta is read over several looks, never in one buffer. */
+export const READ_MAX_BYTES = 1024 * 1024;
+/** #1218 P0: a line longer than this is not parsed: only its head is kept (LongLine). A tool result can be MBs. */
+export const LINE_MAX_BYTES = 256 * 1024;
+/** #1218 P0: how much of a long line's start is kept, enough for its type, ids and tool name. */
+export const LONG_HEAD_BYTES = 8 * 1024;
+
+/**
+ * A line too long to parse: where it sits among `lines` (`at`: how many complete lines come before it), the start
+ * of it as text (a JSON fragment), and how many bytes it has (`complete`: its end was seen in this look; otherwise
+ * `bytes` is what was seen so far and the rest is skipped by the next looks).
+ */
+export interface LongLine { at: number; head: string; bytes: number; complete: boolean }
+
+export interface ReadNewLinesResult {
+  lines: string[];
+  newOffset: number;
+  /** #1218 P0: lines over LINE_MAX_BYTES, by position (empty when none). */
+  long: LongLine[];
+  /** #1218 P0: more complete bytes may be waiting past `newOffset` (the look stopped at READ_MAX_BYTES). */
+  more: boolean;
+  /** #1218 P0: `newOffset` is inside a long line: pass `skipping: true` to the next look, which drops up to its end. */
+  skipping: boolean;
+}
+
+/** A look's records in file order: each complete line, and each long line where it sits among them. */
+export function* recordsInOrder(read: Pick<ReadNewLinesResult, "lines" | "long">): Generator<{ line: string } | { long: LongLine }> {
+  let next = 0;
+  for (let i = 0; i <= read.lines.length; i++) {
+    while (next < read.long.length && read.long[next]!.at === i) yield { long: read.long[next++]! };
+    if (i < read.lines.length) yield { line: read.lines[i]! };
+  }
+}
+
+/** #1218 P0: looks per poll — a busy session is followed at up to this many READ_MAX_BYTES per poll, each awaited. */
+export const LOOKS_PER_POLL = 4;
+
+/** The first `max` bytes of `buf` as text, never ending inside a UTF-8 character. */
+function headText(buf: Buffer, max: number): string {
+  let end = Math.min(max, buf.length);
+  if (end < buf.length) while (end > 0 && (buf[end]! & 0xc0) === 0x80) end--;
+  return buf.toString("utf-8", 0, end);
+}
+
 /**
  * Tail only newline-terminated JSONL records. A CLI can flush one record in
  * several writes; the unfinished suffix must remain before the next offset.
+ *
+ * #1218 P0: bounded. One look reads at most `maxBytes` (READ_MAX_BYTES); what is beyond waits for the next look
+ * (`more`). A line over `maxLine` (LINE_MAX_BYTES) is never decoded or parsed whole: it is reported in `long` with
+ * its head, and the offset moves past it — across several looks if it is longer than one (`skipping`). Transcripts
+ * reach hundreds of MB and one tool result can be tens of MB; the fleet loop must not hold either in one buffer.
  */
-export async function readNewLines(path: string, fromOffset: number): Promise<{ lines: string[]; newOffset: number }> {
+export async function readNewLines(path: string, fromOffset: number, opts: { maxBytes?: number; maxLine?: number; skipping?: boolean } = {}): Promise<ReadNewLinesResult> {
+  const maxBytes = Math.max(1, opts.maxBytes ?? READ_MAX_BYTES);
+  const maxLine = Math.max(1, opts.maxLine ?? LINE_MAX_BYTES);
   const stats = await stat(path);
-  if (stats.size <= fromOffset) return { lines: [], newOffset: fromOffset };
+  const empty = (offset: number, skipping: boolean, more: boolean): ReadNewLinesResult => ({ lines: [], newOffset: offset, long: [], more, skipping });
+  if (stats.size <= fromOffset) return empty(fromOffset, !!opts.skipping, false);
   const fh = await open(path, "r");
   try {
-    const length = stats.size - fromOffset;
-    const buffer = Buffer.alloc(length);
-    const { bytesRead } = await fh.read(buffer, 0, length, fromOffset);
+    const read = async (at: number, length: number): Promise<Buffer> => {
+      const buffer = Buffer.alloc(length);
+      const { bytesRead } = await fh.read(buffer, 0, length, at);
+      return buffer.subarray(0, bytesRead);
+    };
+    let pos = fromOffset;
+    let budget = maxBytes;
+    // Inside a long line already reported: drop through its end (its LF), within this look's budget.
+    if (opts.skipping) {
+      const chunk = await read(pos, Math.min(budget, stats.size - pos));
+      const lf = chunk.indexOf(0x0a);
+      if (lf < 0) return empty(pos + chunk.length, true, pos + chunk.length < stats.size);
+      pos += lf + 1;
+      budget -= lf + 1;
+      if (budget <= 0 || pos >= stats.size) return empty(pos, false, pos < stats.size);
+    }
     // Find LF in the bytes actually read, before decoding (UTF-8 characters
     // may themselves span writes). stat.size is not a consumed-byte boundary.
-    const completeLength = buffer.subarray(0, bytesRead).lastIndexOf(0x0a) + 1;
-    return {
-      lines: buffer.toString("utf-8", 0, completeLength).split("\n").filter(line => line.trim()),
-      newOffset: fromOffset + completeLength,
-    };
+    const window = await read(pos, Math.min(budget, stats.size - pos));
+    const complete = window.lastIndexOf(0x0a) + 1;
+    const lines: string[] = [];
+    const long: LongLine[] = [];
+    let start = 0;
+    while (start < complete) {
+      const end = window.indexOf(0x0a, start);
+      const length = end - start;
+      if (length > maxLine) long.push({ at: lines.length, head: headText(window.subarray(start, end), LONG_HEAD_BYTES), bytes: length, complete: true });
+      else {
+        const line = window.toString("utf-8", start, end);
+        if (line.trim()) lines.push(line);
+      }
+      start = end + 1;
+    }
+    // No line end after `complete`: a record still being written — unless it is already too long to be one we parse.
+    const tail = window.length - complete;
+    if (tail >= maxLine) {
+      long.push({ at: lines.length, head: headText(window.subarray(complete), LONG_HEAD_BYTES), bytes: tail, complete: false });
+      const newOffset = pos + window.length;
+      return { lines, newOffset, long, more: newOffset < stats.size, skipping: true };
+    }
+    const newOffset = pos + complete;
+    // More: this look was cut short by its budget, so complete records may wait past the offset.
+    return { lines, newOffset, long, more: window.length === budget && newOffset < stats.size, skipping: false };
   } finally {
     await fh.close();
   }
