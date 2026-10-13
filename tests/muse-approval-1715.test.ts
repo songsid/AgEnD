@@ -110,6 +110,20 @@ describe("#1715: the 1.4.6 approval prompt is recognised whole", () => {
     expect(museApprovalPromptActive(p)).toBe(false);
   });
 
+  it("a quote starting with a blank first row is still draft content (#1715 r3)", () => {
+    // Prism r3: the restored paste begins with a newline, so the ❯ row is
+    // empty — but it is still a readable, owned composer, not the live block
+    // (which carries no ❯ row at all).
+    const paste = `\n${QUOTE_PASTE.join("\n")}`;
+    const p = pane("echo-after-escape").trimEnd().replace(
+      "❯ cancel me", [`❯${paste.split("\n")[0]}`, ...paste.split("\n").slice(1).map(r => `  ${r}`)].join("\n")) + "\n";
+    const backend = new MuseBackend("/tmp/agend-muse-1715");
+    const draft = backend.inputDraft(p)!;
+    expect(draft.rows[0]).toBe("");
+    expect(backend.inputDraftShows(draft, paste)).toBe(true);
+    expect(museApprovalPromptActive(p)).toBe(false);
+  });
+
   it("the identity comes from the live block, never scrollback (#1715 r2-2)", () => {
     // Prism r2 group 2: a complete quoted menu in scrollback before the
     // untouched live pane. Active via the live block, identity is the live
@@ -224,6 +238,20 @@ describe("#1715: the approval prompt waits for a human, never answered", () => {
       inputDraftShows: (draft: never, text: string) => new MuseBackend("/tmp/agend-muse-1715").inputDraftShows(draft, text),
     };
     h.d.rememberPaste(QUOTE_PASTE.join("\n"), h.d.spawnGeneration);
+    expect(await h.d.probeBlockingDialog()).toEqual({ state: "clear" });
+  });
+
+  it("a blank-first-row quote in an owned draft probes clear (#1715 r3)", async () => {
+    const paste = `\n${QUOTE_PASTE.join("\n")}`;
+    const stale = pane("echo-after-escape").trimEnd().replace(
+      "❯ cancel me", [`❯${paste.split("\n")[0]}`, ...paste.split("\n").slice(1).map(r => `  ${r}`)].join("\n")) + "\n";
+    const h = harness(stale);
+    h.d.backend = {
+      ...h.d.backend,
+      inputDraft: (p: string) => new MuseBackend("/tmp/agend-muse-1715").inputDraft(p),
+      inputDraftShows: (draft: never, text: string) => new MuseBackend("/tmp/agend-muse-1715").inputDraftShows(draft, text),
+    };
+    h.d.rememberPaste(paste, h.d.spawnGeneration);
     expect(await h.d.probeBlockingDialog()).toEqual({ state: "clear" });
   });
 

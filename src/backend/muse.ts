@@ -427,12 +427,12 @@ function museApprovalScreen(pane: string): { screen: string[]; top: number; bott
     if (MUSE_SEPARATOR.test(screen[i])) { top = i; break; }
   }
   if (museFreeComposerLayout(screen, MUSE_BUSY)) return null;
-  // #1715 r2, like #1730 P2-1 r3: a populated ❯ line means any prompt text is
-  // a quote in the composer's draft, not the live block — the live approval
-  // panes carry no ❯ composer row at all. A null draft (no readable box)
-  // carries nothing to judge, so it still proceeds.
-  const draft = museInputBox(pane, MUSE_BUSY);
-  if (draft !== null && draft.rows.length > 0 && draft.rows[0].trim() !== "") return null;
+  // #1715 r3: any readable composer means prompt text is a quote, not the
+  // live block — the live approval panes carry no ❯ composer row at all
+  // (inputDraft null), while a quoting draft does, even one starting with a
+  // blank first row. A null draft (no readable box) carries nothing to judge,
+  // so it still proceeds.
+  if (museInputBox(pane, MUSE_BUSY) !== null) return null;
   return { screen, top, bottom };
 }
 
