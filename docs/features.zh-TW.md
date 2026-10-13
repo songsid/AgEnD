@@ -635,7 +635,7 @@ instances:
         credential_profile: work
 ```
 
-profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profile>`，所以好幾個 agent 可以指向同一份訂閱。沒有指定 profile 的 instance 不受影響。只有登入資訊會分開：kiro 龐大的執行期快取會連回共用的那一份，Codex 則只有 `auth.json` 不同。切換 profile 就是改設定再重啟（`update_instance_config` 會兩件事一起做）；切換到從未登入過的 profile 會被拒絕，並附上登入它的指令。在 kiro 上切換會開始新的對話，因為 kiro 把對話和登入資訊存在同一個地方（AgEnD 會把最近的 context 交接過去）；在 Codex 上，對話會保留。
+profile 存放在 fleet 底下的 `~/.agend/credential-profiles/<backend>/<profile>`，所以好幾個 agent 可以指向同一份訂閱。沒有指定 profile 的 instance 不受影響。只有登入資訊會分開：kiro 龐大的執行期快取會連回共用的那一份，Codex 則只有 `auth.json` 不同。切換 profile 就是改設定再重啟（`update_instance_config` 會兩件事一起做）；切換到從未登入過的 profile 會被拒絕，並附上登入它的指令。在 kiro 上切換會開始新的對話，因為 kiro 把對話和登入資訊存在同一個地方（AgEnD 會把最近的 context 交接過去）。在 Codex 上，對話會保留。在 Claude Code 上，AgEnD 會把對話複製到新 profile 並在那裡接續（#1753），舊 profile 保留自己的那一份。
 
 **ClassicBot 頻道（#1220）。** `classicBot.yaml` 裡的頻道也接受同樣的 `backend_options.<backend>.credential_profile`，而且優先於從 fleet defaults 繼承來的 profile（值為空或 `null` 代表用共用的登入）。頻道的 agent 會以這個 profile 啟動，`/usage` 會把它算在那份訂閱的那一列（例如 `Codex (personal)`），`kiro_engine_status` 也會回報它。profile 名稱無法使用時，這個頻道的 agent 會直接不啟動，而不是改用別的登入執行。更改 profile 會重啟該頻道的 agent。
 
