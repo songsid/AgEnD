@@ -130,7 +130,7 @@ export class LogService {
     for (const r of tail.records) {
       let record: string | LongLine = r.record;
       // #1788 review P3: a long reply or turn record is read whole here too, as the live read does.
-      if (typeof record !== "string" && record.complete && whole(record.head)) {
+      if (typeof record !== "string" && whole(record.head)) {
         const text = await readWholeLine(path, r.at, record.bytes).catch(() => null);
         if (text !== null) record = text;
       }

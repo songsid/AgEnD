@@ -60,13 +60,17 @@ describe("masking: only actual secret values, everything else stays readable", (
     }
   });
   it("numbers, booleans and null are kept whatever the name: token counts stay readable", () => {
-    const keep = 'tokens used: 1234; max_tokens=4096; password_length: 12; "input_token_count": 12, "secret_set": true';
+    const keep = 'tokens used: 1234; max_tokens=4096; password_length: 12; "input_token_count": 12, "secret_set": true, "token_limit": "4096", "use_token": "false"';
     expect(maskSecrets(keep)).toBe(keep);
   });
 
   it("a git SHA, a UUID, a long instance name and a long path are not secrets", () => {
     const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1554485732591276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
     expect(maskSecrets(keep)).toBe(keep);
+  });
+  it("bounded: only the part that can be shown (and a margin) is masked — what is cut far past it is counted as written", () => {
+    const text = "x".repeat(10) + " ".repeat(2000) + J("password=", "hunter2hunter2");
+    expect(bounded(text, 10)).toEqual({ text: "x".repeat(10), cut: text.length - 10 });
   });
   it("bounded: masked first, then cut, with the count of what was cut; never inside a surrogate pair", () => {
     expect(bounded("x".repeat(10), 4)).toEqual({ text: "xxxx", cut: 6 });
