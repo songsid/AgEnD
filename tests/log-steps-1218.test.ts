@@ -186,6 +186,13 @@ describe("codex: the rollout as steps", () => {
     expect(p.steps[7]).toMatchObject({ durationMs: 20000 });
   });
 
+  it("codex's own context records (environment, instructions, permissions) are not a person's prompt", () => {
+    const p = new CodexStepParser();
+    const user = (text: string) => JSON.stringify({ type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text }] } });
+    for (const t of ["<environment_context>\n<cwd>/w</cwd>", "<user_instructions>be brief</user_instructions>", "<permissions>x</permissions>", "the real question"]) p.push(user(t));
+    expect(p.steps.map(s => s.body)).toEqual(["the real question"]);
+  });
+
   it("an aborted turn interrupts what still runs; a turn ending with no reply is marked failed", () => {
     const p = new CodexStepParser();
     const ev = (payload: unknown) => JSON.stringify({ type: "event_msg", payload });
