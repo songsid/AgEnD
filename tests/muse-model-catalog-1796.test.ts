@@ -3,11 +3,13 @@
  * frozen list, so new models (muse-wonder-1.0) show up. Fixture catalog dirs
  * only — except one explicitly conditional host check.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MuseBackend, readMuseModelCatalog } from "../src/backend/muse.js";
+import { FleetManager } from "../src/fleet-manager.js";
+import { setLocale, t } from "../src/locale.js";
 
 const row = (model_id: string, extra: Record<string, unknown> = {}) => ({
   model_id, display_label: model_id, provider_id: "meta", profile_id: "tbh",
@@ -90,5 +92,87 @@ describe("#1796: /model reads the on-disk catalog", () => {
     const host = join(process.env.HOME ?? "/nonexistent", ".local", "share", "muse");
     if (!existsSync(join(host, "model-catalog"))) return;
     expect(readMuseModelCatalog().map(o => o.id)).toContain("muse-wonder-1.0");
+  });
+});
+
+describe("#1796 follow-up: a pinned id missing from the fresh list warns and stays", () => {
+  const savedXdg = process.env.XDG_DATA_HOME;
+  const scratch: string[] = [];
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (savedXdg === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = savedXdg;
+    setLocale("en");
+    for (const d of scratch.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  const scratchDir = (tag: string) => {
+    const d = mkdtempSync(join(tmpdir(), `agend-1796-${tag}-`));
+    scratch.push(d);
+    return d;
+  };
+  // A fresh catalog the vendor trimmed: wonder + spark-1.3 only.
+  const fixtureXdg = () => {
+    const xdg = scratchDir("xdg");
+    mkdirSync(join(xdg, "muse", "model-catalog"), { recursive: true });
+    writeFileSync(join(xdg, "muse", "model-catalog", "m.json"),
+      JSON.stringify({ rows: [row("muse-wonder-1.0"), row("muse-spark-1.3")] }));
+    process.env.XDG_DATA_HOME = xdg;
+  };
+  const fleet = () => {
+    const fm = new FleetManager(scratchDir("fm")) as any;
+    fm.fleetConfig = {
+      defaults: { backend: "muse" },
+      instances: { alpha: { backend: "muse", working_directory: tmpdir() } },
+    };
+    vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
+    return fm;
+  };
+
+  it("an id the vendor hid or renamed warns but is kept verbatim (never reset)", async () => {
+    fixtureXdg();
+    const fm = fleet();
+    const result = await fm.applyModel("alpha", "muse-retired-9.9");
+    expect(result).toContain(t("model.not_in_catalog", "muse-retired-9.9"));
+    expect(result).toContain(t("model.restart_success", "alpha", "muse-retired-9.9"));
+    expect(fm.fleetConfig.instances.alpha.model).toBe("muse-retired-9.9");
+  });
+
+  it("a -contributor pin additionally names the separate /settings row; the mode is untouched", async () => {
+    fixtureXdg();
+    const fm = fleet();
+    const result = await fm.applyModel("alpha", "muse-spark-1.3-contributor");
+    expect(result).toContain(t("model.not_in_catalog", "muse-spark-1.3-contributor"));
+    expect(result).toContain(t("model.contributor_separate_setting"));
+    expect(fm.fleetConfig.instances.alpha.model).toBe("muse-spark-1.3-contributor");
+    // Spawn keeps the suffix verbatim and passes no contributor flag of its own.
+    const cmd = new MuseBackend(scratchDir("be")).buildCommand({
+      workingDirectory: "/tmp/w", instanceDir: scratch[scratch.length - 1],
+      instanceName: "alpha", mcpServers: {}, model: "muse-spark-1.3-contributor",
+    });
+    expect(cmd).toContain("--model 'muse-spark-1.3-contributor'");
+    expect(cmd).not.toContain("--contributor-mode");
+  });
+
+  it("an id on the fresh list applies with no warning (control)", async () => {
+    fixtureXdg();
+    const fm = fleet();
+    const result = await fm.applyModel("alpha", "muse-wonder-1.0");
+    expect(result).not.toContain(t("model.not_in_catalog", "muse-wonder-1.0"));
+    expect(result).toContain(t("model.restart_success", "alpha", "muse-wonder-1.0"));
+    expect(fm.fleetConfig.instances.alpha.model).toBe("muse-wonder-1.0");
+  });
+
+  it("a renamed id still reaches the CLI verbatim at spawn (stay, no reset)", () => {
+    const cmd = new MuseBackend(scratchDir("be")).buildCommand({
+      workingDirectory: "/tmp/w", instanceDir: scratch[scratch.length - 1],
+      instanceName: "alpha", mcpServers: {}, model: "muse-retired-9.9",
+    });
+    expect(cmd).toContain("--model 'muse-retired-9.9'");
+  });
+
+  it("the zh-TW warning reads as a stay-on warning", () => {
+    setLocale("zh-TW");
+    expect(t("model.not_in_catalog", "muse-retired-9.9")).toContain("維持使用");
+    expect(t("model.contributor_separate_setting")).toContain("不會去動它");
   });
 });
