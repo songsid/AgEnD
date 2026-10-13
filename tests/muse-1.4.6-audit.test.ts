@@ -1,13 +1,12 @@
 /**
  * muse 1.4.6 audit (upstream CLI watch 2026-10-12, precheck MAJOR hard=1; ffb8104e): the screens AgEnD reads,
  * captured live from the 1.4.6 binary (tests/fixtures/muse-1.4.6/SOURCES.md), judged by the production MuseBackend.
- * The verdicts are the same as 1.4.4 on every surface AgEnD relies on. One known gap is pinned as it is today
- * (#1715, the escalated approval prompt with approval left on); two more are pinned as fixed:
+ * The verdicts are the same as 1.4.4 on every surface AgEnD relies on. Three gaps are pinned as fixed:
+ *  - the escalated approval prompt with approval left on is a permission dialog awaiting a human (#1715);
  *  - the "Local work is still active" quit menu is recognised and cancelled deliberately (#1716);
  *  - a running background task reads as idle-for-delivery while the composer is free (#1717).
  * Each was captured on 1.4.4 with the same sequence (the compare-* pairs) and reads the same there. 1.4.6's new staged
- * prompt (--approval-mode untrusted) is a new surface that falls into the same gap as #1715. It has no 1.4.4
- * counterpart to compare.
+ * prompt (--approval-mode untrusted) is covered by the same #1715 dialog. It has no 1.4.4 counterpart to compare.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -67,11 +66,13 @@ describe("muse 1.4.6: the screens AgEnD reads, as the production backend judges 
   });
 });
 
-describe("muse 1.4.6: known gap (as in 1.4.4, #1715) and gaps fixed since (#1716, #1717)", () => {
-  it.each(["approval-escalated", "approval-untrusted-staged"])("%s: with approval left on, the prompt reads as busy and no dialog claims it", name => {
+describe("muse 1.4.6: gaps fixed since 1.4.4 (#1715, #1716, #1717)", () => {
+  it.each(["approval-escalated", "approval-untrusted-staged"])("%s: with approval left on, the prompt is a permission dialog awaiting a human (#1715)", name => {
     const p = pane(name);
-    expect(verdict(p)).toMatchObject({ busy: true, idle: false, startup: [], runtime: [], errors: [] });
-    // The catch-all sees the numbered prompt, but the busy line is on the same screen, so it never counts.
+    expect(verdict(p)).toMatchObject({ busy: true, idle: false, startup: [], errors: [] });
+    expect(verdict(p).runtime).toEqual([expect.stringContaining("approval prompt")]);
+    // The catch-all still sees the numbered shape; the daemon's known-dialog
+    // match wins, so it is never double-reported (#1691).
     expect(unrecognisedPromptShape(p)?.question).toBe("Would you like to run the following command?");
   });
 
@@ -87,7 +88,8 @@ describe("muse 1.4.6: known gap (as in 1.4.4, #1715) and gaps fixed since (#1716
     const shape = (p: string) => { const s = unrecognisedPromptShape(p); return s && { kind: s.kind, options: s.options, question: s.question }; };
     expect(shape(pane("compare-approval-escalated"))).toEqual(shape(pane("compare-1.4.4-approval-escalated")));
     expect(shape(pane("compare-1.4.4-approval-escalated"))).toEqual({ kind: "numbered", options: 2, question: "Would you like to run the following command?" });
-    expect(verdict(pane("compare-1.4.4-approval-escalated"))).toMatchObject({ busy: true, idle: false, runtime: [] });
+    expect(verdict(pane("compare-1.4.4-approval-escalated"))).toMatchObject({ busy: true, idle: false });
+    expect(verdict(pane("compare-1.4.4-approval-escalated")).runtime).toEqual([expect.stringContaining("approval prompt")]);
   });
 
   it("a running background task is idle-for-delivery (composer free, #1717); /quit stops at 'Local work is still active' (#1716)", () => {

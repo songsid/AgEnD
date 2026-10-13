@@ -342,6 +342,83 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
  * Enter would take the selected option ("Exit anyway"), so like #1217 this is
  * recognised whole and never answered here: the stop flow cancels it.
  */
+/**
+ * #1715: with `skip_permissions: false` muse asks before running a command
+ * needing approval (live 1.4.6,
+ * tests/fixtures/muse-1.4.6/approval-escalated.pane.txt and
+ * approval-untrusted-staged.pane.txt):
+ *   Would you like to run the following command?
+ *     $ echo perm-check
+ *   › 1. Yes, proceed (y)
+ *     2. No, and tell Muse Code what to do differently (esc)
+ *   Change approval defaults in /permissions
+ * `--approval-mode untrusted` (new in 1.4.6) stages the command first
+ * (`Stage 1/1`, `Current argv: [...]`) and offers three options (allow once /
+ * always allow in this workspace / abort). 1.4.4 shows the same prompt with a
+ * `›` marker and no footer line. Enter would take the preselected allow
+ * option, so like #1716 this is recognised whole and never answered here.
+ */
+export const MUSE_APPROVAL_PROMPT = /^[ \t]*Would you like to run the following command\?[ \t]*$/m;
+const MUSE_APPROVAL_COMMAND = /^[ \t]*\$ .+$/;
+const MUSE_APPROVAL_STAGE = /^[ \t]*Stage \d+\/\d+[ \t]*$/;
+const MUSE_APPROVAL_ARGV = /^[ \t]*Current argv: \[.*\][ \t]*$/;
+const MUSE_APPROVAL_OPT = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]+/;
+const MUSE_APPROVAL_FOOTER = /^[ \t]*Change approval defaults in \/permissions[ \t]*$/;
+/**
+ * #1715: which request the approval prompt is showing — its `$ command` row.
+ * Stable across the `Calling tools (Ns)` timer redraws, so the episode can
+ * confirm; a whole-pane hash never would.
+ */
+export function museApprovalRequestIdentity(pane: string): string | null {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  const head = rows.findIndex(row => MUSE_APPROVAL_PROMPT.test(row));
+  if (head < 0) return null;
+  const m = /^[ \t]*\$ (.+?)[ \t]*$/m.exec(rows.slice(head, head + 6).join("\n"));
+  return m?.[1].trim() ? m[1].trim() : null;
+}
+export function museApprovalPromptActive(pane: string): boolean {
+  const screen = pane.replace(/\r/g, "").split("\n");
+  while (screen.length && !screen[screen.length - 1].trim()) screen.pop();
+  const bottom = museBottomSeparator(screen);
+  if (bottom < 0) return false;
+  // Same ownership as the quit menu (#1730 P2-1): the prompt must live in the
+  // current input block, and a free composer means any prompt text is history.
+  let top = -1;
+  for (let i = bottom - 1; i >= 0; i--) {
+    if (MUSE_SEPARATOR.test(screen[i])) { top = i; break; }
+  }
+  if (museFreeComposerLayout(screen, MUSE_BUSY)) return false;
+  // Non-blank rows of the live block, bottom-anchored: options (then the
+  // optional footer) must reach the bottom separator, so transcript output
+  // below the prompt vetoes.
+  const window: string[] = [];
+  for (let i = bottom - 1; i > top; i--) {
+    if (screen[i].trim()) window.unshift(screen[i]);
+  }
+  const head = window.findIndex(row => MUSE_APPROVAL_PROMPT.test(row));
+  if (head < 0) return false;
+  let k = head + 1;
+  if (k >= window.length || !MUSE_APPROVAL_COMMAND.test(window[k])) return false;
+  k++;
+  if (k < window.length && MUSE_APPROVAL_STAGE.test(window[k])) k++;
+  if (k < window.length && MUSE_APPROVAL_ARGV.test(window[k])) k++;
+  const last = window[window.length - 1];
+  const options = last !== undefined && MUSE_APPROVAL_FOOTER.test(last) ? window.slice(k, -1) : window.slice(k);
+  if (options.length !== 2 && options.length !== 3) return false;
+  if (!options.every(row => MUSE_APPROVAL_OPT.test(row))) return false;
+  const first = (options[0] ?? "").replace(/^[ \t]*[❯›]?[ \t]*/, "");
+  const second = options[1] ?? "";
+  if (options.length === 2) {
+    if (!/^1\. Yes, proceed \(y\)[ \t]*$/.test(first)) return false;
+    if (!/^[ \t]*[❯›]?[ \t]*2\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(second)) return false;
+  } else {
+    if (!/^1\. Allow this stage once \(y\)[ \t]*$/.test(first)) return false;
+    if (!/^[ \t]*[❯›]?[ \t]*2\. Always allow in this workspace: .+ \(p\)[ \t]*$/.test(second)) return false;
+    if (!/^[ \t]*[❯›]?[ \t]*3\. Abort the entire command \(esc\)[ \t]*$/.test(options[2] ?? "")) return false;
+  }
+  return true;
+}
+
 export const MUSE_LOCAL_WORK_QUIT = /^[ \t]*Local work is still active[ \t]*$/m;
 const MUSE_QUIT_HINT = /^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/;
 const MUSE_QUIT_OPT_1 = /^[ \t]*[❯›]?[ \t]*1\.[ \t]+Exit anyway[ \t]*$/m;
@@ -794,6 +871,20 @@ export class MuseBackend implements CliBackend {
         pattern: /Allow this (tool|command)|Approve this (tool|command)|1\s+(Allow|Approve)/i,
         keys: ["1", "Enter"],
         description: "Muse tool approval — allow",
+      },
+      {
+        // #1715: never answered here. Enter would take the preselected allow
+        // option, so the human must choose. The prompt replaces the input
+        // box (no draft to clear, unlike #829); deliveries simply hold.
+        pattern: MUSE_APPROVAL_PROMPT,
+        isActive: museApprovalPromptActive,
+        requestIdentity: museApprovalRequestIdentity,
+        interactionKind: "permission",
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        description: "Muse approval prompt — waiting for a human choice, never auto-approving",
       },
       {
         // #1716: never answered here. A delivery's Enter would pick
