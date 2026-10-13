@@ -336,7 +336,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .msg .time { font-family: var(--font-mono); white-space: nowrap; flex: none; }
 .msg.user { align-self: flex-end; max-width: min(80%, 620px); }
 .msg.user .meta { justify-content: flex-end; }
-.msg.user .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); }
+/* #1773: the bubble hugs its text. The message is as wide as its widest child — usually the meta row (sender, a time
+   such as 「昨天 下午03:58」, ticks) — and a block body would stretch to it; fit-content keeps a short message short, on
+   the right under its meta, and a long one still wraps at the message's max-width. */
+.msg.user .body { background: var(--user-bubble); border-radius: var(--r-xl); padding: 10px var(--s-4); width: fit-content; max-width: 100%; margin-left: auto; }
 .msg.agent { align-self: stretch; }
 /* #1672: a status line (another instance's message, a daemon notice): muted plain text, no bubble; a long one folds.
    Its class is `status-line`, never `status`: that is the header's inline-flex badge class, and on a message it turned
