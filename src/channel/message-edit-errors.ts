@@ -4,6 +4,7 @@ import { DiscordAPIError } from "discord.js";
 /** Telegram's explicit unchanged-content refusal confirms the requested edit is already present. */
 export function isTelegramEditNotModified(err: unknown): boolean {
   return err instanceof GrammyError && err.error_code === 400
+    && typeof err.description === "string"
     && /^Bad Request: message is not modified(?::|$)/.test(err.description);
 }
 
@@ -11,6 +12,7 @@ export function isTelegramEditNotModified(err: unknown): boolean {
  * Network uncertainty, invalid content, rate limits and server errors never authorize a replacement post. */
 export function isMessageEditLoss(err: unknown): boolean {
   if (err instanceof GrammyError) {
+    if (typeof err.description !== "string") return false;
     if (err.error_code === 403 && err.description.startsWith("Forbidden:")) return true;
     return err.error_code === 400 && /^Bad Request: (?:message to edit not found|chat not found|message thread not found|TOPIC_ID_INVALID|not enough rights to (?:edit|send) (?:text )?messages)(?:$|[.:])/.test(err.description);
   }

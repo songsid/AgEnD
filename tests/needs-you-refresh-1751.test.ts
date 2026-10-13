@@ -202,6 +202,11 @@ describe("#1751 real hub → renderer → Telegram edits", () => {
 });
 
 describe("#1751 loss evidence", () => {
+  it.each([undefined, null, 7, {}])("malformed provider descriptions (%s) are unknown, without throwing", description => {
+    const err = new GrammyError("malformed", { ok: false, error_code: 403, description } as never, "editMessageText", {});
+    expect(() => isMessageEditLoss(err)).not.toThrow();
+    expect(isMessageEditLoss(err)).toBe(false);
+  });
   it("transport and generic strings cannot prove a lost message", () => {
     expect(isMessageEditLoss(new HttpError("network", new Error("message to edit not found")))).toBe(false);
     expect(isMessageEditLoss(new Error("Bad Request: message to edit not found"))).toBe(false);
