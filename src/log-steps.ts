@@ -552,6 +552,26 @@ export class KiroV2StepParser extends StepParser {
     }
     return out;
   }
+
+  /**
+   * A tool result too long to parse (a command's whole output): its first call completes with the start of its output
+   * and the exit code the head shows. A long reply or prompt is read whole by the Log instead (log-service.ts).
+   */
+  protected override long(head: string, bytes: number): Emission {
+    if (!/^\{"version":"[^"]{1,20}","kind":"ToolResults"/.test(head)) return [];
+    const id = /"toolUseId":"([^"]{1,200})"/.exec(head)?.[1];
+    if (!id || this.skipped.has(id)) return [];
+    const s = this.close(id) ?? this.add({ id, kind: "tool", ts: 0, tool: "", cat: "other", status: "running" });
+    // The result's own status comes after its content (past the head): the exit code, near the start, decides. A long
+    // result without one is an output, not an error message (those are short).
+    const exit = /"exit_status":(?:"[^"\d-]{0,20})?(-?\d+)/.exec(head)?.[1];
+    s.status = exit !== undefined && Number(exit) !== 0 ? "failed" : "done";
+    if (exit !== undefined) s.exitCode = Number(exit);
+    s.bodyBytes = bytes;
+    const text = headString(head, "stdout") ?? headString(head, "data");
+    if (text) bodyOf(s, text, RESULT_MAX);
+    return [{ ...s }];
+  }
 }
 
 /**

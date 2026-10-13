@@ -327,6 +327,25 @@ describe("kiro: the TUI (v2) message log and a classic (v1) conversation row as 
     expect(p.steps[0]!.ts).toBe(1791878400 * 1000);
     expect(JSON.stringify(p.steps)).not.toContain("private reasoning");
   });
+  it("v2: a tool result too long to parse completes its call by its head (exit code, start of output); others are left to a whole read", () => {
+    const p = new KiroV2StepParser();
+    const call = (id: string, name: string, input: unknown) => JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { message_id: "m" + id, content: [{ kind: "toolUse", data: { toolUseId: id, name, input } }] } });
+    p.push(JSON.stringify({ version: "v1", kind: "Prompt", data: { message_id: "m0", content: [{ kind: "text", data: "go" }], meta: { timestamp: 1791878400 } } }));
+    p.push(call("tooluse_X", "shell", { command: "make" }));
+    p.push(call("tooluse_T", "thinking", { thought: "private" }));
+    const head = (id: string, exit: string) => '{"version":"v1","kind":"ToolResults","data":{"message_id":"m9","content":[{"kind":"toolResult","data":{"toolUseId":"'
+      + id + '","content":[{"kind":"json","data":{"exit_status":' + exit + ',"stdout":"line1\\nline2';
+    const long = (h: string) => ({ at: 0, head: h, bytes: 5_000_000, complete: true, offset: 0 });
+    expect(p.push(long(head("tooluse_T", '"0"')))).toEqual([]);                       // thinking: never a step
+    const [s] = p.push(long(head("tooluse_X", '"exit status: 2"')));
+    expect(s).toMatchObject({ id: "tooluse_X", tool: "shell", subject: "make", status: "failed", exitCode: 2, bodyBytes: 5_000_000 });
+    expect(s!.body).toBe("line1\nline2");
+    p.push(call("tooluse_Y", "shell", { command: "ls" }));
+    expect(p.push(long(head("tooluse_Y", "0")))[0]).toMatchObject({ status: "done", exitCode: 0 });
+    // A long reply or prompt is not a result: the Log reads those whole.
+    expect(p.push(long('{"version":"v1","kind":"AssistantMessage","data":{"content":[{"kind":"text","data":"x'))).toEqual([]);
+    expect(p.steps.filter(x => x.kind === "tool").map(x => x.id)).toEqual(["tooluse_X", "tooluse_Y"]);
+  });
   it("classic: the history's prompts, replies and calls; results by id; a cancel interrupts; thinking never; ids by entry", () => {
     const { steps, entries } = kiroClassicSteps(JSON.parse(readFileSync(KV1, "utf8")));
     expect(entries).toBe(3);
