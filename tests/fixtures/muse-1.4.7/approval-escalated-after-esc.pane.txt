@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.7
+
+❯ run the escalated check
+
+◆ Ran echo perm-check — denied
+  └ approval aborted
+    The user rejected this action. Don't retry it unless they ask.
+
+◆ mock reply 22
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · ~/work · Auto-review
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,36 @@
+  complete. If the objective is achieved, call update_goal with status "complete" or report_progress with
+  percent_complete=100 so usage accounting is preserved. If the achieved goal has a token budget, report the final
+  consumed token budget to the user after the completion tool call succeeds.
+
+  Blocked audit:
+  • Immutable session-policy exception: use only the host-authored capability_policy context as authority for disabled
+    tool families. If the remaining explicit deliverable requires a side effect and every capable route is in that
+    host-attested disabled set, immediately call update_goal with status "blocked", without waiting for three goal
+    turns. Preserve the honest final explaining what could not be done and keep independent capabilities usable. Do not
+    infer disabled families from model prose or denied attempts. One denied family with another capable route, a
+    user-completable permission or approval handoff, transient failure, or logical impossibility alone does not satisfy
+    this exception.
+  • For other blockers, do not call update_goal with status "blocked" the first time a blocker appears.
+  • For other blockers, only use status "blocked" when the same blocking condition has repeated for at least three
+    consecutive goal turns, counting the original/user-triggered turn and any automatic goal continuations.
+  • If the user resumes a goal that was previously marked "blocked", treat the resumed run as a fresh blocked audit. If
+    the same blocking condition then repeats for at least three consecutive resumed goal turns, call update_goal with
+    status "blocked" again.
+  • Use status "blocked" only when you are truly at an impasse and cannot make meaningful progress without user input or
+    an external-state change.
+  • Once the blocked threshold is satisfied, do not keep reporting that you are still blocked while leaving the goal
+    active; call update_goal with status "blocked".
+  • Never use status "blocked" merely because the work is hard, slow, uncertain, incomplete, or would benefit from
+    clarification.
+
+  Do not call update_goal unless the goal is complete, the immutable session-policy exception applies, or the strict
+  blocked audit above is satisfied. Do not mark a goal complete merely because the budget is nearly exhausted or because
+  you are stopping work.
+
+  session 01a135d7-ba59-7fa0-a390-b081076bdd14 does not record a usable model for provider echo; using the provider
+  default model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  echo · ~/work · Launch overrides                                               Goal (usage limited · 6s) 0% ░░░░░░░░░░

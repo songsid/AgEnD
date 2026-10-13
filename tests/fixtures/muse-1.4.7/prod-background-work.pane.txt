@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.7
+
+❯ start background work
+
+◆ Backgrounded · long sleep · 1s · ctrl+o
+
+◆ mock reply 40
+
+  (↓ to view terminals)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+main · ↓ to select
+└ ◈ long sleep  running                                                                                               8s
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

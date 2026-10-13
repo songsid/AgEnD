@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.7
+
+❯ run the staged check
+
+◇ Calling tools (8s · esc to interrupt)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Would you like to run the following command?
+
+  $ echo staged-check
+  Stage 1/1
+  Current argv: ["echo","staged-check"]
+
+  1. Allow this stage once (y)
+⟩ 2. Always allow in this workspace: echo ... (p)
+  3. Abort the entire command (esc)
+Change approval defaults in /permissions
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
