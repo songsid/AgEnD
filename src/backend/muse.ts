@@ -520,12 +520,15 @@ const MUSE_MODEL_FALLBACK: readonly ModelOption[] = [
  * is kept and ids deduped.
  *
  * `stateDir` is injectable for tests; production passes nothing and reads the
- * host state dir (the fleet never isolates XDG_STATE_HOME, mirroring the
+ * host state dir (the fleet never isolates XDG_DATA_HOME, mirroring the
  * session lookup).
  */
 export function readMuseModelCatalog(stateDir?: string): ModelOption[] {
-  const base = process.env.XDG_STATE_HOME
-    ? join(process.env.XDG_STATE_HOME, "muse")
+  // Root resolution mirrors the binary, not XDG_STATE_HOME: 1.4.7 builds its
+  // state dir as `$XDG_DATA_HOME/muse` or `$HOME/.local/share/muse`
+  // (MUSE_SESSIONS uses the same root).
+  const base = process.env.XDG_DATA_HOME
+    ? join(process.env.XDG_DATA_HOME, "muse")
     : join(homedir(), ".local", "share", "muse");
   const dir = join(stateDir ?? base, "model-catalog");
   try {
@@ -543,6 +546,9 @@ export function readMuseModelCatalog(stateDir?: string): ModelOption[] {
         for (const row of rows.slice(0, 256)) {
           const r = row as { model_id?: unknown; display_label?: unknown; context_limit?: unknown; visibility?: unknown };
           if (typeof r.model_id !== "string" || r.model_id === "" || r.visibility !== "visible") continue;
+          // A `-contributor` suffix is a legacy spelling of contributor mode,
+          // not a model — excluded even if some profile ever marks it visible.
+          if (r.model_id.endsWith("-contributor")) continue;
           if (r.context_limit == null) continue;
           if (seen.has(r.model_id)) continue;
           seen.add(r.model_id);

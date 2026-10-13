@@ -38,9 +38,11 @@ describe("#1796: /model reads the on-disk catalog", () => {
         row("muse-spark-1.3-contributor", { visibility: "hidden" }),
         row("muse-image-1.0", { display_label: "Muse Image", visibility: "hidden", context_limit: null, output_limit: null, reasoning_effort_variants: null, supports_image_generation: true }),
         row("muse-future-9.9", { context_limit: null }),
+        row("muse-oddball-1.0-contributor", {}),
       ]);
       // The 1.4.7 picker follows visibility: hidden -contributor siblings and
-      // the image model are not listed.
+      // the image model are not listed — and a -contributor suffix is never a
+      // model, even if some profile marks it visible.
       expect(ids(dir)).toEqual(["muse-wonder-1.0", "muse-spark-1.3"]);
       const labels = Object.fromEntries(readMuseModelCatalog(dir).map(o => [o.id, o.label]));
       expect(labels["muse-wonder-1.0"]).toBe("muse-wonder-1.0");
@@ -67,19 +69,19 @@ describe("#1796: /model reads the on-disk catalog", () => {
   });
 
   it("listModels delegates to the catalog reader", async () => {
-    // Hermetic via XDG_STATE_HOME: a frozen fallback cannot produce the
-    // fixture-only id.
-    const prev = process.env.XDG_STATE_HOME;
+    // Hermetic via XDG_DATA_HOME (the binary's own root): a frozen fallback
+    // cannot produce the fixture-only id.
+    const prev = process.env.XDG_DATA_HOME;
     const dir = mkdtempSync(join(tmpdir(), "agend-1796-xdg-"));
     try {
-      process.env.XDG_STATE_HOME = dir;
+      process.env.XDG_DATA_HOME = dir;
       mkdirSync(join(dir, "muse", "model-catalog"), { recursive: true });
       writeFileSync(join(dir, "muse", "model-catalog", "m.json"),
         JSON.stringify({ rows: [row("muse-wonder-1.0"), row("muse-custom-9.9")] }));
       const backend = new MuseBackend("/tmp/agend-muse-1796");
       expect((await backend.listModels()).map(o => o.id)).toEqual(["muse-wonder-1.0", "muse-custom-9.9"]);
     } finally {
-      if (prev === undefined) delete process.env.XDG_STATE_HOME; else process.env.XDG_STATE_HOME = prev;
+      if (prev === undefined) delete process.env.XDG_DATA_HOME; else process.env.XDG_DATA_HOME = prev;
       rmSync(dir, { recursive: true, force: true });
     }
   });
