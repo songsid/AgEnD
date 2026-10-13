@@ -93,8 +93,13 @@ describe("Inter, bundled", () => {
 
   it("names the CJK fallbacks in the agreed order, before the generic system stack", () => {
     const stack = DARK["font-ui"]!.split(",").map(s => s.trim().replace(/"/g, ""));
-    expect(stack.slice(0, 4)).toEqual(["Inter", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei"]);
-    expect(stack.indexOf("system-ui")).toBeGreaterThan(3);
+    expect(stack.slice(0, 9)).toEqual([
+      "Inter",
+      "PingFang TC", "PingFang SC",
+      "Noto Sans TC", "Noto Sans SC", "Noto Sans CJK TC", "Noto Sans CJK SC",
+      "Microsoft JhengHei", "Microsoft YaHei",
+    ]);
+    expect(stack.indexOf("system-ui")).toBeGreaterThan(8);
     expect(stack.at(-1)).toBe("sans-serif");
   });
 

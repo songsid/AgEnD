@@ -22,7 +22,7 @@
 
 :root {
   /* ── Type ── */
-  --font-ui: Inter, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-ui: Inter, "PingFang TC", "PingFang SC", "Noto Sans TC", "Noto Sans SC", "Noto Sans CJK TC", "Noto Sans CJK SC", "Microsoft JhengHei", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --fs-xs: 12px;  --lh-xs: 16px;
   --fs-sm: 13px;  --lh-sm: 18px;
