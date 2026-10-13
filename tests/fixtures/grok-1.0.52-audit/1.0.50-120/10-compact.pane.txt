@@ -1,0 +1,40 @@
+
+  master /r/proj/s1050c120                                                                   1.2K / 256K │ [Dashboard]
+
+
+     ❯ run a tool                                                                                            1:20 PM
+
+
+     ◆ Ran print a check marker
+
+     mock reply 151                                                                                          1:20 PM
+
+     Worked for 1.0s
+
+     Compacting conversation…
+
+
+
+
+
+
+
+
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+    ⠙ Compacting…                                                                                   5.0s ⇣1.20k [stop]
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

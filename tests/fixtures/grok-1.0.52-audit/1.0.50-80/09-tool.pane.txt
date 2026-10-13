@@ -1,0 +1,40 @@
+
+  master /r/proj/s1050c80                            1.2K / 256K │ [Dashboard]
+
+
+     ❯ run a tool                                                    1:23 PM
+
+
+     ◆ Ran print a check marker
+
+     mock reply 220                                                  1:23 PM
+
+     Worked for 0.1s
+
+
+
+
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯ mock reply 222                                                         │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

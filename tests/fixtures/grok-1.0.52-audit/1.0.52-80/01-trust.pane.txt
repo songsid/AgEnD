@@ -1,0 +1,40 @@
+
+  /r/proj/s1052c80
+
+
+
+
+                                 ⠀⠀⠀⠀⠀⠀⣀⣀⡀⠀⠀⠀⢀⠄
+                                 ⠀⠀⠀⣠⣾⠿⠛⠛⠛⠛⢀⡴⠁⠀
+                                 ⠀⠀⣼⡟⠁⠀⠀⠀⢀⡴⠻⣿⡀⠀
+                                 ⠀⠀⣿⡇⠀⠀⠀⠔⠁⠀⠀⣿⡇⠀
+                                 ⠀⠀⢹⣷⠀⠀⠀⠀⠀⢀⣴⡿⠀⠀
+                                 ⠀⢀⠞⠁⠠⢶⣶⣶⣶⠿⠋⠀⠀⠀
+                                 ⠐⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+
+
+                  Do you trust the contents of this directory?
+                               /rig/proj/s1052c80
+
+            Grok Build may run or modify contents in this directory,
+                             posing security risks.
+
+                         Yes, proceed                 y
+                         No, quit                     n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                            Grok Build  1.0.52
+

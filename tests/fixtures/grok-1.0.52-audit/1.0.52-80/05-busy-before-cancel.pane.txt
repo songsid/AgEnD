@@ -1,0 +1,40 @@
+
+  master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
+
+
+     ❯ turn to cancel                                                1:20 PM
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+    ⠸ Waiting for response… 1.9s                            1.9s ⇣1.20k [stop]
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+x:shortcuts
+

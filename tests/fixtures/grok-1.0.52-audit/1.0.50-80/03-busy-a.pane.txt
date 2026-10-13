@@ -1,0 +1,40 @@
+
+  master /r/proj/s1050c80                            1.3K / 256K │ [Dashboard]
+
+
+     ❯ slow turn please                                              1:22 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ⠸ Waiting for response… 1.5s                            1.5s ⇣1.32k [stop]
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+x:shortcuts
+

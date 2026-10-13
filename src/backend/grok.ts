@@ -374,6 +374,11 @@ export class GrokBackend implements CliBackend {
   // grok has no slash quit command — it quits via the Ctrl+Q key chord (getQuitKey).
   getQuitCommand(): string | null { return null; }
   getQuitKey(): string { return "C-q"; }
+  // #1792: Quit is a double press within 1000 ms (grok's own keyboard docs since
+  // at least 1.0.46; live on 1.0.50 and 1.0.52). One Ctrl+Q only paints
+  // "Ctrl+q:press again to quit", so every stop and pause fell through to the
+  // SIGTERM fallback. The daemon spaces the presses 250 ms apart.
+  getQuitKeyPresses(): number { return 2; }
 
   // Trailing space commits the exact slash command before Grok's autocomplete
   // can expand the partial token to `/compact-mode`.

@@ -1,0 +1,40 @@
+
+  master /r/proj/s1050c80                            1.3K / 256K │ [Dashboard]
+
+     Session 01a1356f-14a5-7282-abfe-714daab15c61, use /dashboard to switch
+     between sessions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

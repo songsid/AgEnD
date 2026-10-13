@@ -1,0 +1,40 @@
+
+  master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
+
+
+     ❯ error turn 429                                                1:21 PM
+
+
+  ┃  Retry failed: Some resource has been exhausted: Your team has exceeded
+  ┃  its rate limit. Please try again later.
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

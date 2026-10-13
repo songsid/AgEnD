@@ -1,0 +1,40 @@
+
+  master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
+
+
+     ❯ slow turn please                                              1:20 PM
+
+
+     mock reply 162                                                  1:20 PM
+
+     Worked for 6.1s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯ turn to cancel                                                         │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

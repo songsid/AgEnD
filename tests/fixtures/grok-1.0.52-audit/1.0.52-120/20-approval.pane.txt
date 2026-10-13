@@ -1,0 +1,40 @@
+
+  /r/proj/a1052c120                                                                          1.2K / 256K │ [Dashboard]
+
+
+     ❯ run a tool                                                                                            1:26 PM
+
+
+     ◆ Running write a marker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ◆ Write a marker… 3.9s                                                                       4.0s ⇣1.20k [↓][stop]
+
+  ┃
+  ┃  ›  Write a marker
+  ┃  │ echo perm-check > marker.txt
+  ┃  ← → narrow scope
+  ┃
+  ┃  1 (●) Yes, and don't ask again for anything (always-approve mode)
+  ┃  2 (○) Yes, proceed
+  ┃  3 (○) No, reject (type to add feedback)
+  ┃  4 (○) Never allow: echo
+  ┃
+
+  1/4:select  │  Tab:next option  │  ←/→:scope  │  Ctrl+o:always-approve  │  Ctrl+c:cancel  │  Esc:scrollback
+

@@ -1,0 +1,53 @@
+precheck grok (manifest scripts/manual/cli-upstream-precheck/sources.json, 27 literals)
+  old: <download>/1.0.50 — 1 file(s), 183.5 MB
+  new: <download>/1.0.52 — 1 file(s), 188.3 MB
+
+literals in the old artifact: 15 of 27 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 3
+  [idle-busy] 70 -> 74  "Grok Build"   (src/backend/grok.ts:222 GrokBackend.getReadyPattern)
+  [error] 62 -> 66  "rate_limit"   (src/backend/grok.ts:256 GrokBackend.getErrorPatterns.type)
+  [onboarding] 2 -> 3  "Do you trust the contents"   (src/backend/grok.ts:299 GrokBackend.getStartupDialogs.pattern)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 2
+  [idle-busy,onboarding] "Yes, proceedn No, cancelworkingChoose []+ New Agent+ New Agent in Worktr"   near "Grok Build"; "Do you trust the contents"
+  [error] "usage limit reachedstatus 401unauthorizedinvalid_request_errordetailCompaction failed: Compa"   near "out of credits"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 13
+  "Approve ModeEdit Prompt in External EditorSubagents are still running. Stop them?"
+  "Continue the current sessionFinish answering the current question first; default model not sa"   hint: the old release has "Continue the current session"… (only a neighbouring string changed?)
+  "Press Esc to closefwdclear searchkeep filter[Open][Copy]"
+  "Press h to show all.No tasks or agents.▲▼PausedPaused (back-off)Pau"   hint: the old release has "Press h to show all."… (only a neighbouring string changed?)
+  "Resume the paused goal<objective> | status | pause | resume (active)groknightgrokdaytokyoni"
+  "Trust this folder?"
+  "continue from the previous execution transcript.If true, the subagent will run in readonly mod"   hint: the old release has "continue from the previous execution tra"… (only a neighbouring string changed?)
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.c"   hint: the old release has "press Enter to retry."… (only a neighbouring string changed?)
+  "press a to approve.Type revision notes, or press a to see the plan.No c"   hint: the old release has "press a to approve."… (only a neighbouring string changed?)
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called first }"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstDeadlineExp"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstworker_dirm"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  "usage limit upsellmodel switch/doctor fix/deleteOpened question view from ext_methodask_user"
+
+PROMPT-LIKE STRINGS gone in the new artifact: 11
+  "Approve ModeEdit Prompt in External EditorWorkflowsOtherSubagents are still running. Stop them?"
+  "Continue the current sessionRemove history and return homeRemove history and return to the da"
+  "Press Esc to closefwdsclear searchkeep filter[Open][Copy]"
+  "Press h to show all.No tasks or agents.▲▼httpsURL embeds credential"
+  "continue from the previous execution transcript.resumeIf true, the subagent will run in readon"
+  "press Enter to retry.The turn was stopped; send the prompt again to retry.N"
+  "press a to approve.buildabandonNo comments to send.Plan feedback sent."
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called first"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstMissingEndp"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstresulting v"
+  "usage limit reachedstatus 401unauthorizedinvalid_request_errorCompaction failed: Compaction"
+
+REASON: 2 new prompt-like string(s) on a known surface: [idle-busy,onboarding] "Yes, proceedn No, cancelworkingChoose []+ New Agent+ New Age"; [error] "usage limit reachedstatus 401unauthorizedinvalid_request_err"
+REASON: 3 literal count(s) changed
+REASON: 13 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 2, hinted new prompts 0
+BASIS: hard=2; hinted=0
+PRECHECK: MAJOR

@@ -1,0 +1,40 @@
+one turn
+> one turn
+  mock reply 359
+
+Resume this session with:
+  grok --resume 01a13575-fd47-7353-98c2-2c361331c2c5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Tue Oct 13 13:31:38 2026)

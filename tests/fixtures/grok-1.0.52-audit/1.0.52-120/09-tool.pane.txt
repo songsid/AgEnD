@@ -1,0 +1,40 @@
+
+  master /r/proj/s1052c120                                                                   1.2K / 256K │ [Dashboard]
+
+
+     ❯ run a tool                                                                                            1:18 PM
+
+
+     ◆ Ran print a check marker
+
+     mock reply 116                                                                                          1:18 PM
+
+     Worked for 0.1s
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ mock reply 118                                                                                                 │
+  ╰───────────────────────────────────────────────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
+

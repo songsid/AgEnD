@@ -1,0 +1,40 @@
+
+  master /r/proj/s1052c80                            1.2K / 256K │ [Dashboard]
+
+
+     ❯ error turn 426                                                1:21 PM
+
+
+  ┃  Request failed (426): Upgrade Required: Your Grok CLI version (1.0.5)
+  ┃  is outdated. Please update to version 1.0.13 or later via `grok
+  ┃  update`.
+
+
+
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+
