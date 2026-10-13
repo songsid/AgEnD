@@ -121,6 +121,11 @@ export interface ServedFile {
   /** The instance whose chat shows it. */
   instance: string;
   kind: UploadKind;
+  /**
+   * #1770: a reply file's snapshot (workspaces/<instance>/web-files): the fleet's own copy, kept as long as its message
+   * — outside the served-id cap, and removed from disk when the message leaves the history (dropServed).
+   */
+  snapshot?: true;
 }
 
 const ID_PATTERN = /^[0-9a-f]{32}$/;
@@ -284,7 +289,7 @@ export class WebFileLedger {
    * Make a file fetchable by id (an upload, or a file an agent attached to its reply). The path is
    * resolved now and must be a regular file within the size limit; null when it is not.
    */
-  registerServed(input: { id?: string; path: string; name?: string; mime?: string; instance: string; kind?: UploadKind }): ServedFile | null {
+  registerServed(input: { id?: string; path: string; name?: string; mime?: string; instance: string; kind?: UploadKind; snapshot?: boolean }): ServedFile | null {
     let realPath: string;
     let size: number;
     let dev: number;
@@ -304,9 +309,18 @@ export class WebFileLedger {
       realPath, size, dev, ino, mime, instance: input.instance,
       name: displayName(input.name ?? basename(realPath), "file"),
       kind: input.kind ?? (INLINE_MIME.has(mime) ? "photo" : "document"),
+      ...(input.snapshot ? { snapshot: true as const } : {}),
     };
     this.served.set(file.id, file);
-    while (this.served.size > this.maxServed) this.served.delete(this.served.keys().next().value!);
+    // The cap bounds what this process registered by path. A snapshot is bounded by the history it belongs to (#1770):
+    // it leaves with its message, never here — dropping it here would lose a file its message still shows.
+    let over = 0;
+    for (const f of this.served.values()) if (!f.snapshot) over++;
+    over -= this.maxServed;
+    for (const [id, f] of this.served) {
+      if (over <= 0) break;
+      if (!f.snapshot) { this.served.delete(id); over--; }
+    }
     return file;
   }
 
@@ -366,33 +380,63 @@ export class WebFileLedger {
     return file && !basename(file.realPath).startsWith(PENDING_PREFIX) ? file.realPath : null;
   }
 
-  /** #1565: these ids are no longer shown (their message left the history's window): nothing is served under them. */
-  dropServed(ids: Iterable<string>): void { for (const id of ids) this.served.delete(id); }
+  /**
+   * #1565: these ids are no longer shown (their message left the history's window): nothing is served under them.
+   * #1770: a snapshot goes from disk with them — the file registered, still that file (device + inode), never a link.
+   */
+  dropServed(ids: Iterable<string>): void {
+    for (const id of ids) {
+      const f = this.served.get(id);
+      this.served.delete(id);
+      if (!f?.snapshot) continue;
+      try {
+        const st = lstatSync(f.realPath);
+        if (st.isFile() && st.dev === f.dev && st.ino === f.ino) unlinkSync(f.realPath);
+      } catch { /* already gone */ }
+    }
+  }
+
+  /** #1770: the ids of an instance's snapshots served now — what a fleet start's sweep keeps. */
+  heldSnapshots(instance: string): Set<string> {
+    const out = new Set<string>();
+    for (const f of this.served.values()) if (f.snapshot && f.instance === instance) out.add(f.id);
+    return out;
+  }
 
   /**
    * #1565: serve again, under the id it had, a file a message showed before the fleet restarted — only if it still
    * passes every check: an id of ours in shape; never an upload no message took (web-pending-…); the path itself not a
    * symlink, and a regular file within MAX_SERVED_BYTES; its real path inside this instance's inbox
-   * (`workspaces/<instance>/inbox`, itself not a link elsewhere). Null when any check fails (the message then shows the
-   * name as unavailable). Fetched by id only, as ever: the stored path is the fleet's own file, never a request's.
+   * (`workspaces/<instance>/inbox`, itself not a link elsewhere) — or (#1770) inside its reply snapshots
+   * (`webFilesDir`, `workspaces/<instance>/web-files`, the same checks), then served as a snapshot again. Null when any
+   * check fails (the message then shows the name as unavailable). Fetched by id only, as ever: the stored path is the
+   * fleet's own file, never a request's.
    */
-  restoreServed(entry: { id: unknown; path: unknown; name?: unknown; mime?: unknown; kind?: unknown }, instance: string, inboxDir: string): ServedFile | null {
+  restoreServed(entry: { id: unknown; path: unknown; name?: unknown; mime?: unknown; kind?: unknown }, instance: string, inboxDir: string, webFilesDir?: string): ServedFile | null {
     if (typeof entry.id !== "string" || !isFileId(entry.id) || typeof entry.path !== "string" || !entry.path) return null;
     if (basename(entry.path).startsWith(PENDING_PREFIX)) return null;
     let real: string;
     let own: ReturnType<typeof lstatSync>;
+    let snapshot = false;
     try {
       own = lstatSync(entry.path);
       if (own.isSymbolicLink() || !own.isFile() || own.size > MAX_SERVED_BYTES) return null;
-      const inbox = realpathSync(inboxDir);
-      if (inbox !== join(realpathSync(dirname(inboxDir)), basename(inboxDir))) return null;
       real = realpathSync(entry.path);
-      if (!real.startsWith(inbox + sep)) return null;
+      // The directory, resolved, must be itself (not a link elsewhere); the file's real path directly under one of them.
+      const within = (dir: string | undefined): boolean => {
+        if (!dir) return false;
+        try {
+          const d = realpathSync(dir);
+          return d === join(realpathSync(dirname(dir)), basename(dir)) && real.startsWith(d + sep);
+        } catch { return false; }
+      };
+      if (within(webFilesDir)) snapshot = true;
+      else if (!within(inboxDir)) return null;
     } catch {
       return null;
     }
     const kind = entry.kind === "photo" || entry.kind === "document" ? entry.kind : undefined;
-    const file = this.registerServed({ id: entry.id, path: real, instance,
+    const file = this.registerServed({ id: entry.id, path: real, instance, ...(snapshot ? { snapshot } : {}),
       ...(typeof entry.name === "string" ? { name: entry.name } : {}), ...(typeof entry.mime === "string" ? { mime: entry.mime } : {}), ...(kind ? { kind } : {}) });
     // The file checked is the file registered (nothing swapped in between).
     if (file && (file.realPath !== real || file.dev !== own.dev || file.ino !== own.ino)) { this.served.delete(file.id); return null; }

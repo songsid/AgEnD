@@ -189,6 +189,7 @@ import { WebPrefsStore } from "./web-prefs.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
+import { snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
@@ -1198,6 +1199,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webChatStore: WebChatDiskStore | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
   readonly webFiles = new WebFileLedger();
+  /** #1770: per instance, its last web reply still copying its files — the next one is shown after it, in order. */
+  private readonly webReplyOrder = new Map<string, Promise<void>>();
   /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
   readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
@@ -8710,7 +8713,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // an agent cannot invent it to suppress the normal completion marker.
         if (!error && result != null && msg.statusOnly !== true) {
           try {
-            this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView);
+            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView);
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -8765,7 +8768,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.worlds.size === 0 && this.isWebOnlyFleet() ? { adapter: WEB_ONLY_PROMPT_SINK, adapterId: "web", chatId: "web" } : null;
   }
 
-  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null): void {
+  /** Resolves when the reply is in the web chat (#1770: after its files are copied); the caller need not wait. */
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null): Promise<void> {
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -8781,27 +8785,61 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.reactDone(instanceName);
     const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
     this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
-    // Files the agent attached are shown in the web chat too: registered for fetching by id (the path
-    // already passed the reply tool's sendability check, and is resolved once more here), never by path.
-    const replyFiles = Array.isArray(args.files) ? (args.files as unknown[]).filter((f): f is string => typeof f === "string") : [];
-    const attachments = replyFiles
-      .map(path => this.webFiles.registerServed({ path, instance: instanceName }))
-      .filter((f): f is NonNullable<typeof f> => f !== null)
-      .map(publicAttachment);
-    // The one place a delivered agent reply reaches the web chat: the server marks it `agent` (#1306) — the only
-    // role that may get HTML preview cards. Never inferred from the sender name or the text.
-    this.emitSseEvent("message", {
-      instance: instanceName, sender: senderSessionName ?? instanceName, role: "agent",
-      text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
-      ts: new Date().toISOString(),
-      ...(attachments.length ? { attachments } : {}),
-      ...(buttons ? { buttons } : {}),                 // #1266
-    });
     // Log bot reply to classic instance chat-log
     const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
     if (isClassic) {
       ClassicChannelManager.logMessage(instanceName, "bot", args.text as string ?? "", new Date());
     }
+    // Files the agent attached are shown in the web chat too, fetched by id, never by path. #1770: each is copied
+    // first (web-reply-files.ts), and the copy is what the chat serves and keeps — so the message is shown once the
+    // copies are done, and an instance's replies wait for the one before them: they reach the chat in order.
+    const replyFiles = Array.isArray(args.files) ? (args.files as unknown[]).filter((f): f is string => typeof f === "string") : [];
+    const ts = new Date().toISOString();
+    const show = (attachments: WebChatAttachment[]) => {
+      // The one place a delivered agent reply reaches the web chat: the server marks it `agent` (#1306) — the only
+      // role that may get HTML preview cards. Never inferred from the sender name or the text.
+      this.emitSseEvent("message", {
+        instance: instanceName, sender: senderSessionName ?? instanceName, role: "agent",
+        text: (args.text as string ?? "").slice(0, WEB_CHAT_TEXT_MAX),
+        ts,
+        ...(attachments.length ? { attachments } : {}),
+        ...(buttons ? { buttons } : {}),                 // #1266
+      });
+    };
+    const before = this.webReplyOrder.get(instanceName);
+    if (!replyFiles.length && !before) { show([]); return Promise.resolve(); }
+    const done: Promise<void> = (before ?? Promise.resolve())
+      .then(() => this.webReplyAttachments(instanceName, replyFiles))
+      .catch((err: unknown) => { this.logger.warn({ err, instanceName }, "Reply files could not be prepared for the web chat"); return []; })
+      .then((attachments) => { try { show(attachments); } catch (err) { this.logger.warn({ err, instanceName }, "Reply could not be shown in the web chat"); } })
+      .finally(() => { if (this.webReplyOrder.get(instanceName) === done) this.webReplyOrder.delete(instanceName); });
+    this.webReplyOrder.set(instanceName, done);
+    return done;
+  }
+
+  /**
+   * #1770: a reply's files as the web chat shows them. Each is copied into the instance's web-files/ and served from
+   * the copy. One the copy refuses (a symlink, not a regular file, over 50 MB, a state file, missing) is not shown;
+   * one that could not be copied (I/O) is served from the agent's own path, as before — until the fleet restarts.
+   */
+  private async webReplyAttachments(instanceName: string, paths: readonly string[]): Promise<WebChatAttachment[]> {
+    const home = getAgendHome();
+    const dir = webFilesDir(home, instanceName);
+    const out: WebChatAttachment[] = [];
+    for (const path of paths) {
+      const id = randomBytes(16).toString("hex");
+      const got = dir ? await snapshotReplyFile(path, dir, id, { stateDir: home }) : null;
+      if (got && "evicted" in got && got.evicted.length) this.webFiles.dropServed(got.evicted);
+      let file: ReturnType<WebFileLedger["registerServed"]> = null;
+      if (got?.ok) file = this.webFiles.registerServed({ id, path: got.path, name: basename(path), instance: instanceName, snapshot: true });
+      else if (got?.refused) this.logger.info({ instanceName, file: basename(path), reason: got.reason }, "Reply file not shown in the web chat");
+      else {
+        if (got) this.logger.warn({ instanceName, file: basename(path), reason: got.reason }, "Reply file could not be copied for the web chat; served from its own path until a restart");
+        file = this.webFiles.registerServed({ path, instance: instanceName });
+      }
+      if (file) out.push(publicAttachment(file));
+    }
+    return out;
   }
 
   // ===================== Scheduler =====================
@@ -14670,15 +14708,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const store = new WebChatDiskStore({ home: getAgendHome(), logger: this.logger, ownerOf: (name) => this.webChatOwner(name) });
       const names = new Set<string>([...Object.keys(fleet.instances ?? {}), ...(this.classicChannels?.getAll().map(c => c.instanceName) ?? [])]);
-      // A kept message's files are served again under their ids only from the instance's own inbox, by the ledger's
-      // checks (web-upload.ts restoreServed); they leave the ledger with their message.
+      // A kept message's files are served again under their ids only from the instance's own inbox or (#1770) its reply
+      // snapshots, by the ledger's checks (web-upload.ts restoreServed); they leave the ledger with their message.
       this.webChatHistory.setFiles({
         storablePath: (id) => this.webFiles.storablePath(id),
-        restore: (entry, instance) => this.webFiles.restoreServed(entry, instance, join(getAgendHome(), "workspaces", instance, "inbox")),
+        restore: (entry, instance) => this.webFiles.restoreServed(entry, instance, join(getAgendHome(), "workspaces", instance, "inbox"), webFilesDir(getAgendHome(), instance) ?? undefined),
         drop: (ids) => this.webFiles.dropServed(ids),
       });
       let restored = 0;
       for (const name of names) restored += this.webChatHistory.restore(name, store.load(name));
+      // #1770: before any instance replies, the snapshots no restored message holds (it left the history while the
+      // fleet was down, or a copy stopped midway) are removed.
+      let swept = 0;
+      for (const name of names) {
+        const dir = webFilesDir(getAgendHome(), name);
+        if (dir) swept += sweepReplySnapshots(dir, this.webFiles.heldSnapshots(name));
+      }
+      if (swept) this.logger.info({ swept }, "Removed web reply snapshots no message holds");
       this.webChatStore = store;
       this.webChatHistory.setStore(store);
       if (restored) this.logger.info({ restored, instances: names.size }, "Web chat history restored from disk");

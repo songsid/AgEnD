@@ -546,6 +546,8 @@ describe("deleting an instance stops serving its files", () => {
 
 describe("files an agent attaches to its reply are shown in the web chat", () => {
   it("registered by id when they exist; a missing one is left out; the path never reaches the chat", async () => {
+    // #1770: the reply's files are copied into <AGEND_HOME>/workspaces/<instance>/web-files — a scratch home, never the real one.
+    vi.stubEnv("AGEND_HOME", join(dir, "home"));
     const { FleetManager } = await import("../src/fleet-manager.js");
     const fm = new FleetManager(dir);
     const any = fm as unknown as Record<string, any>;
@@ -554,7 +556,7 @@ describe("files an agent attaches to its reply are shown in the web chat", () =>
     any.getInstanceIdle = () => true; any.clearCancelButton = () => {}; any.reactDone = () => {};
     mkdirSync(join(dir, "out"));
     const chart = join(dir, "out", "chart.png"); writeFileSync(chart, PNG);
-    any.afterReplyRouted("w", { text: "here", files: [chart, join(dir, "out", "missing.pdf")] });
+    await any.afterReplyRouted("w", { text: "here", files: [chart, join(dir, "out", "missing.pdf")] });
     const msg = events.find(e => e.event === "message").data;
     expect(msg.attachments).toEqual([{ id: expect.stringMatching(/^[0-9a-f]{32}$/), kind: "photo", name: "chart.png", size: PNG.length, mime: "image/png" }]);
     expect(JSON.stringify(msg)).not.toContain(join(dir, "out"));
