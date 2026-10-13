@@ -113,6 +113,11 @@ export interface CredentialHomeSpec {
    * backend's files force.
    */
   switchStartsFreshSession: boolean;
+  /**
+   * #1753: a switch can take the conversation along — the backend's transcript copied into the new profile's store
+   * and resumed there (claude-code). When the copy cannot be made, `switchStartsFreshSession` is what happens instead.
+   */
+  switchCarriesConversation?: boolean;
 }
 
 /**
@@ -208,7 +213,8 @@ function codexStoreHasLogin(storeHome: string): boolean {
  * The user's own instructions, agents, commands, skills, output styles and plugins are linked back; everything that is
  * an account, a conversation or a setting `/model` writes stays private. `settings.json` starts as a copy of the
  * user's (permissions, hooks, env, which plugins are enabled) and is the profile's own from then on. A different profile is a different
- * `projects/`, so a switch starts a fresh conversation (verified: `--resume <id>` and `--continue` find nothing).
+ * `projects/`, so a switch finds no conversation there (verified: `--resume <id>` and `--continue` find nothing) — unless
+ * it is copied over, which is what a switch does (#1753, claude-carry.ts): copied, it resumes; when it cannot be, fresh.
  */
 const CLAUDE_HOME: CredentialHomeSpec = {
   kind: "relocate-home",
@@ -226,6 +232,7 @@ const CLAUDE_HOME: CredentialHomeSpec = {
   loginSubcommand: "auth login",
   binary: "claude",
   switchStartsFreshSession: true,
+  switchCarriesConversation: true,
 };
 
 /**
@@ -539,6 +546,11 @@ export function credentialProfileLogin(
  */
 export function credentialSwitchStartsFresh(backendName: string): boolean {
   return credentialHomeSpec(backendName)?.switchStartsFreshSession ?? true;
+}
+
+/** #1753: does a profile switch on this backend copy the conversation into the new profile and resume it there? */
+export function credentialSwitchCarriesConversation(backendName: string): boolean {
+  return credentialHomeSpec(backendName)?.switchCarriesConversation === true;
 }
 
 /** The profile one instance runs under, or null for the shared login. */

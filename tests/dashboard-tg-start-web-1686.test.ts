@@ -268,13 +268,12 @@ describe("#1686: no code in a group on any path", () => {
 // ─── /start web DM ack ───────────────────────────────────────────────────
 
 describe("#1686: /start web in DM from fleet admin", () => {
-  it("fleet admin gets the ack message in their private DM", async () => {
+  it("fleet admin gets the /web menu in their private DM (#1742: it replaced the ack)", async () => {
     const h = rig("telegram");
     vi.spyOn(h.s, "isFleetAdmin").mockReturnValue(true);
     await h.inboundDm("/start web", "admin");
     await flush();
-    const ack = h.adapter.sendText.mock.calls.find((c: any[]) => String(c[1]).includes(t("dashboard.start_web_ack")));
-    expect(ack).toBeTruthy();
+    expect(h.adapter.notifyAlert.mock.calls.map((c: any[]) => c[0])).toEqual(["admin"]);
   });
 
   it("non-admin in private DM does not get the ack (treated as a regular /start)", async () => {
@@ -289,16 +288,16 @@ describe("#1686: /start web in DM from fleet admin", () => {
   });
 
   // Fable witness tests (P1 — must pass after fix, failed before)
-  it("(a) fleet admin NOT on ClassicBot allow list gets the ack, no access request", async () => {
+  it("(a) fleet admin NOT on ClassicBot allow list gets the DM menu, no access request", async () => {
     const h = rig("telegram");
     vi.spyOn(h.s, "isFleetAdmin").mockReturnValue(true);
     h.s.classicChannels.isUserAllowed = () => false;
     const prompt = vi.spyOn(h.s, "promptClassicApproval").mockResolvedValue(undefined);
     await h.inboundDm("/start web", "admin"); await flush();
     expect([
-      h.adapter.sendText.mock.calls.map((c: any[]) => String(c[1])),
+      h.adapter.notifyAlert.mock.calls.map((c: any[]) => c[0]),
       prompt.mock.calls.length,
-    ]).toEqual([[t("dashboard.start_web_ack")], 0]);
+    ]).toEqual([["admin"], 0]);
   });
 
   it("(b) non-admin tapping the deep link never starts a Classic agent", async () => {
@@ -323,6 +322,6 @@ describe("#1686: /start web in DM from fleet admin", () => {
     await h.inboundDm("/start web", "admin"); await flush();
     // If this assertion fails, the intercept ran AFTER validateClassicStart (wrong order).
     expect(prompt.mock.calls.length).toBe(0);
-    expect(h.adapter.sendText.mock.calls.some((c: any[]) => String(c[1]).includes(t("dashboard.start_web_ack")))).toBe(true);
+    expect(h.adapter.notifyAlert.mock.calls.some((c: any[]) => c[0] === "admin")).toBe(true);
   });
 });

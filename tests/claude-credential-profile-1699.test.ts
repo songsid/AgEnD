@@ -245,7 +245,7 @@ describe("#1699 invariant 3: every reader of the config dir follows the profile"
   });
 });
 
-describe("#1699: logins and invariant 5 (a switch starts fresh, with a handover)", () => {
+describe("#1699: logins and invariant 5 (a switch keeps the conversation — #1753 — or starts fresh with a handover)", () => {
   it("a claude login is seen in either form: a .credentials.json token (Linux) or the account in .claude.json (macOS)", () => {
     const dir = profileDir("a");
     expect(claudeStoreHasLogin(dir)).toBe(false);
@@ -316,11 +316,12 @@ describe("#1699: logins and invariant 5 (a switch starts fresh, with a handover)
     expect(h.restartSingleInstance).not.toHaveBeenCalled();
   });
 
-  it("switching to a signed-in profile restarts fresh and hands the work over", async () => {
+  it("switching to a signed-in profile asks the restart to carry the conversation (#1753); none carried, it hands the work over", async () => {
     writeJson(join(profileDir("team"), ".claude.json"), OAUTH);
     const h = harness({ working_directory: work, backend: "claude-code" }, "Recent user messages:\n- finish the release notes");
     const { result } = await update(h.ctx, { backend_options: { "claude-code": { credential_profile: "team" } } });
-    expect(h.restartSingleInstance).toHaveBeenCalledWith("worker", { freshStart: true });
+    // The restart here carries nothing (its result stays null), so the switch falls back to today's fresh start + handover.
+    expect(h.restartSingleInstance).toHaveBeenCalledWith("worker", { carry: { backend: "claude-code", from: null, to: "team", result: null } });
     expect(h.delivered).toHaveLength(1);
     expect(String(h.delivered[0]!.content)).toContain("[system:handover]");
     expect(String(h.delivered[0]!.content)).toContain("finish the release notes");

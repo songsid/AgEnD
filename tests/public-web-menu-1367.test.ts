@@ -92,8 +92,9 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false); expect(h.manager.stop).toHaveBeenCalledTimes(1);
     // The menu ends on the public link's steps (⑥ marked failed), then the safe guidance.
     expect(h.adapter.editMessageRemoveButtons).toHaveBeenLastCalledWith("G", "menu", expect.stringMatching(/❌ ⑥ [^\n]*\n\n/), "T0");
-    expect(String((h.adapter.editMessageRemoveButtons.mock.calls.at(-1) as unknown[])[2]).endsWith(t("dashboard.private_failed"))).toBe(true);
-    expect(t("dashboard.private_failed")).toContain("/start"); expect(JSON.stringify(h.adapter.editMessageRemoveButtons.mock.calls)).not.toContain("secret provider");
+    // #1742: Telegram's guidance walks through the DM (no bot name known here: send `/start web`), never a bare /start.
+    expect(String((h.adapter.editMessageRemoveButtons.mock.calls.at(-1) as unknown[])[2]).endsWith(t("dashboard.private_failed_tg_nolink"))).toBe(true);
+    expect(t("dashboard.private_failed_tg_nolink")).toContain("/start web"); expect(t("dashboard.private_failed_tg_nolink")).not.toMatch(/\/start(?! web)/); expect(JSON.stringify(h.adapter.editMessageRemoveButtons.mock.calls)).not.toContain("secret provider");
   });
   it("Discord DM refusal awaits ephemeral fallback; no ACK means no usable code/link", async () => {
     const h = rig("discord"); h.adapter.sendDirect.mockRejectedValue(Error("DM disabled")); await h.slash(); let finish!: (v: any) => void;
