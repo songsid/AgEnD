@@ -84,6 +84,15 @@ export async function resolveLongLines(path: string, read: ReadNewLinesResult, p
   return { records, pending };
 }
 
+/**
+ * #1786 review (Fable P3): a claude-code assistant line, known by its head. Claude often writes `message` before `type`
+ * (parentUuid, isSidechain, message, requestId, type): a long reply's `"type":"assistant"` can sit past the head, while
+ * its message's `"role":"assistant"` is near the start.
+ */
+export function isClaudeAssistantHead(head: string): boolean {
+  return head.includes('"type":"assistant"') || /"message":\{[^{}]{0,400}?"role":"assistant"/.test(head);
+}
+
 /** #1218 P0: looks per poll — a busy session is followed at up to this many READ_MAX_BYTES per poll, each awaited. */
 export const LOOKS_PER_POLL = 4;
 

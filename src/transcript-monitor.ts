@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
 import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
-import { LOOKS_PER_POLL, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
+import { LOOKS_PER_POLL, isClaudeAssistantHead, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
 
 /**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
@@ -66,6 +66,9 @@ export class TranscriptMonitor extends EventEmitter {
       // Non-critical — will re-read some entries on restart
     }
   }
+
+  /** #1218: the transcript followed now — the source's, or claude-code's own — for the Log tab's on-demand read. */
+  currentPath(): string | null { return this.source ? this.source.currentPath?.() ?? null : this.transcriptPath; }
 
   async resolveTranscriptPath(): Promise<string | null> {
     const statusFile = join(this.instanceDir, "statusline.json");
@@ -179,7 +182,7 @@ export class TranscriptMonitor extends EventEmitter {
         this.byteOffset = read.newOffset;
         // An assistant line over the line limit (a long reply, a Write of a big file) is read whole (bounded):
         // its text and tool calls matter. A long tool result is known by its head.
-        const resolved = await resolveLongLines(this.transcriptPath, read, this.pendingLong, (head) => head.includes('"type":"assistant"'));
+        const resolved = await resolveLongLines(this.transcriptPath, read, this.pendingLong, isClaudeAssistantHead);
         if (generation !== this.generation) return;
         this.pendingLong = resolved.pending;
         for (const record of resolved.records) {

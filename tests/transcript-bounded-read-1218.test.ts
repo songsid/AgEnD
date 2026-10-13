@@ -289,6 +289,19 @@ describe("long turn records are read whole (bounded): a turn's end and a pasted 
     resetSharedRolloutIndexesForTests();
   });
 
+  it("claude, in its real key order (message before type): a long reply whose type is past the head is still read whole (#1786 P3)", async () => {
+    const f = join(temp(), "s.jsonl");
+    // parentUuid, isSidechain, message, requestId, type — the order claude-code writes most assistant lines in.
+    writeFileSync(f, JSON.stringify({ parentUuid: "p", isSidechain: false, message: { id: "m", type: "message", role: "assistant", model: "x",
+      content: [{ type: "text", text: "real order " + "w".repeat(300 * 1024) }] }, requestId: "r", type: "assistant", uuid: "u" }) + "\n");
+    const m = new TranscriptMonitor(temp(), logger);
+    m.setTranscriptPath(f);
+    const texts: string[] = [];
+    m.on("assistant_text", (t: string) => texts.push(t.slice(0, 10)));
+    await m.pollIncrement();
+    expect(texts).toEqual(["real order"]);
+  });
+
   it("claude: a long assistant reply (over the line limit) still reaches the bubble as assistant text", async () => {
     const f = join(temp(), "s.jsonl");
     writeFileSync(f, line({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "long reply " + "w".repeat(300 * 1024) }] } }));
