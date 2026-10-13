@@ -327,6 +327,36 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 
+### Windows/WSL: Linux responds but the Windows dashboard does not
+
+If the dashboard stops opening from Windows after an update, first close the dashboard tabs to stop reconnect traffic. Compare the same configured port (19280 below) with explicit timeouts:
+
+```sh
+# Inside WSL
+curl --noproxy '*' --max-time 5 -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:19280/health
+```
+
+```powershell
+# Windows
+curl.exe --noproxy "*" --max-time 5 -sS -o NUL -w "%{http_code}\n" http://127.0.0.1:19280/health
+```
+
+Linux **200** with Windows **000** points to a forwarding/connectivity problem; a blank page alone does not establish that. Save the results and Windows/WSL versions. Repeated fleet restarts need not repair the forwarding layer.
+
+AgEnD finishes SSE responses at shutdown, waits at most one second for ordinary HTTP work to drain, then closes remaining owned sockets. Updated pages receiving the shutdown hint wait 10–15 seconds before reconnecting and then use the normal capped backoff. Existing pages loaded before the update keep their previous retry policy until refreshed. This reduces open streams and retry traffic; it cannot guarantee recovery of a stuck Windows relay. The listener closes late, but the replacement still starts its instances before binding HTTP, so the entire outage can exceed one second. Abrupt exits cannot send the hint.
+
+For recovery without interrupting the fleet, use an **already available, trusted SSH route to WSL**, bypassing Windows localhost forwarding. For example, in Windows, replace `WSL_SSH_HOST` with that existing SSH destination:
+
+```powershell
+ssh -N -L 127.0.0.1:19281:127.0.0.1:19280 WSL_SSH_HOST
+```
+
+Open `http://127.0.0.1:19281/signin` and obtain a fresh code with `/web` or `agend web`. The alternate port remains Windows-loopback-only; normal sign-in, Host and same-origin checks still apply. Close the tunnel when finished. An existing explicitly approved public link is another option. Do not expose the local listener to the LAN or disable authentication for this workaround. If no alternate route exists, keep using chat and ask the operator to plan maintenance; there is no guaranteed nondisruptive relay reset here.
+
+For prevention, `wslinfo --networking-mode` inside WSL can identify the active mode where that tool exists. Missing output is **unknown**. Microsoft documents NAT localhost forwarding through wslrelay and a different architecture for mirrored networking. On supported Windows 11 22H2+ hosts, an operator may choose `networkingMode=mirrored` under the existing `[wsl2]` section of `%USERPROFILE%\.wslconfig`. This affects all WSL2 distributions and firewall behavior, and takes effect after a **planned WSL restart**, which interrupts their workloads. AgEnD makes no Windows configuration changes or WSL restart. Mirrored mode is an option, not a guaranteed cure.
+
+Sources: [Microsoft networking](https://learn.microsoft.com/en-us/windows/wsl/networking#mirrored-mode-networking), [WSL configuration](https://learn.microsoft.com/en-us/windows/wsl/wsl-config), [WSL forwarding architecture](https://github.com/microsoft/WSL/blob/master/doc/docs/technical-documentation/localhost.md). Investigation and limits: [#1738](https://github.com/songsid/AgEnD/issues/1738).
+
 ### Confirming sensitive changes
 
 Changing access/F/C lists, secrets, connection destinations/order, public exposure, control-bearing instance settings, or loosening a web setting (a longer local session or idle time, the browser terminal turned on or given more minutes) returns `202 pending_confirmation`. The requester can list/poll `GET /api/settings/pending[/:id]` and withdraw an unclaimed request with `DELETE /api/settings/pending/:id`. Other sessions receive 404. Polling is passive and does not extend sign-in lifetime; `remaining_ms` is the countdown, and the display timestamp is not an authorization deadline.

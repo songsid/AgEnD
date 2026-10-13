@@ -68,6 +68,64 @@ async function load() {
 afterEach(() => { vi.useRealTimers(); });
 const status = { instances: [] };
 
+describe("an intentional server shutdown (#1738)", () => {
+  it.each([0, 1])("waits 10–15 s with jitter, cancels reads and resumes catch-up (random=%s)", async random => {
+    vi.useFakeTimers();
+    const { createStream } = await load();
+    const w = world({ random }); const s = createStream({ mode: "full", env: w.env });
+    s.start(); w.sources[0].frame("status", status);
+    w.fleet = "hang"; const oldRead = s.catchUp();
+    w.sources[0].frame("shutdown", { retry_ms: 10000 });
+    expect([w.open().length, s.connection()]).toEqual([0, "reconnecting"]);
+    expect(s.retryIn()).toBe(10000 + random * 5000);
+    w.release({ status: { stale: true }, messages: [] });
+    expect(await oldRead).toBe(false);
+    let quietResult: boolean | undefined;
+    void s.catchUp().then((ok: boolean) => { quietResult = ok; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.fetched).toHaveLength(1); expect(quietResult).toBe(false);
+    await vi.advanceTimersByTimeAsync(9999 + random * 5000);
+    expect(w.sources).toHaveLength(1); expect(w.fetched).toHaveLength(1);
+    w.fleet = "up";
+    await vi.advanceTimersByTimeAsync(1);
+    expect(w.open()).toHaveLength(1);
+    w.sources[1].frame("status", status);
+    await vi.advanceTimersByTimeAsync(0);
+    expect([s.connection(), w.fetched.length]).toEqual(["live", 2]);
+    s.close();
+  });
+
+  it("retains its quiet deadline through BF-cache and defers a hidden tab", async () => {
+    vi.useFakeTimers(); const { createStream } = await load();
+    const w = world({ random: 0 }); const s = createStream({ mode: "full", env: w.env });
+    s.start(); w.sources[0].frame("status", status);
+    w.sources[0].frame("shutdown", { retry_ms: 10000 });
+    await vi.advanceTimersByTimeAsync(2000); s.suspend();
+    await vi.advanceTimersByTimeAsync(2000); s.resume();
+    expect(s.retryIn()).toBe(6000); expect(w.sources).toHaveLength(1);
+    w.document.hidden = true;
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(w.sources).toHaveLength(1); expect(w.fetched).toHaveLength(0);
+    w.document.show(); expect(w.sources).toHaveLength(2);
+    // A detached old stream cannot postpone or close its replacement.
+    w.sources[0].frame("shutdown", { retry_ms: 10000 });
+    expect(w.open()).toHaveLength(1);
+    s.close();
+  });
+
+  it("ignores malformed or unrecognized hints and retains ordinary outage timing", async () => {
+    vi.useFakeTimers(); const { createStream } = await load();
+    const w = world(); const s = createStream({ mode: "full", env: w.env });
+    s.start(); w.sources[0].frame("status", status);
+    w.sources[0].listeners.shutdown({ data: "{" });
+    for (const data of [null, {}, { retry_ms: "10000" }, { retry_ms: 0 }, { retry_ms: 1e9 }]) w.sources[0].frame("shutdown", data);
+    expect(s.connection()).toBe("live"); expect(w.sources[0].closed).toBe(false);
+    w.sources[0].onerror(); expect(s.retryIn()).toBe(1000);
+    s.close(); await vi.advanceTimersByTimeAsync(30000);
+    expect(w.sources).toHaveLength(1); expect(w.fetched).toHaveLength(0);
+  });
+});
+
 describe("the backoff", () => {
   it("about 1, 2, 4, 8, 16, then 30 s — never more; jitter draws each from 50–100 % of its step", async () => {
     const { reconnectDelay } = await load();

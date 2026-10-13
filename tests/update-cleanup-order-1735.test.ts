@@ -22,6 +22,7 @@ import {
   markCleanupPending,
   readUpdateProgress,
   setUpdateProgressStage,
+  updateMarkerIdentity,
   writeCleanupOutcome,
 } from "../src/update-marker.js";
 import { formatRestartProgressCompletion } from "../src/restart-progress.js";
@@ -45,10 +46,11 @@ function boot(setup: (dir: string) => void) {
   const dir = fs.mkdtempSync(join(tmpdir(), "agend-1735-")); roots.push(dir);
   setup(dir);
   const pending = readUpdateProgress(dir);
+  const bootMarker = updateMarkerIdentity(dir);           // what the boot adopts (#1737 review fence)
   const fm = new FleetManager(dir) as any;
   const edits: string[] = [];
   fm.adapters = new Map([["a", { editMessage: async (_c: string, _m: string, text: string) => { edits.push(text); } }]]);
-  return { dir, fm, edits, pending };
+  return { dir, fm, edits, pending, bootMarker };
 }
 /** The updater's side: the receipt marked pending before the restart, the outcome written after the retire. */
 const updaterPending = (dir: string) => { beginUpdateProgress(dir, target); setUpdateProgressStage(dir, "stopping", { version: "2.2.0-beta.6" }); return markCleanupPending(dir); };
@@ -101,16 +103,16 @@ describe("#1735: what the completion does about the retire outcome, read when it
 describe("#1735: the post-update marker clear never takes an owed or watched outcome", () => {
   it("an ordinary update's marker, and one whose outcome was rendered: cleared", () => {
     const plain = boot(dir => { beginUpdateProgress(dir, target); });
-    plain.fm.clearSettledUpdateMarker();
+    plain.fm.clearSettledUpdateMarker(plain.bootMarker);
     expect(readUpdateProgress(plain.dir)).toBeNull();
     const rendered = boot(dir => { const r = updaterPending(dir); writeCleanupOutcome(dir, r, { warning: WARNING }); });
-    rendered.fm.clearSettledUpdateMarker();
+    rendered.fm.clearSettledUpdateMarker(rendered.bootMarker);
     expect(readUpdateProgress(rendered.dir)).toBeNull();
   });
 
   it("still owed and unwatched: kept (as #1660)", () => {
     const b = boot(dir => { updaterPending(dir); });
-    b.fm.clearSettledUpdateMarker();
+    b.fm.clearSettledUpdateMarker(b.bootMarker);
     expect(readUpdateProgress(b.dir)?.progress.cleanup).toBe("pending");
   });
 
@@ -118,14 +120,14 @@ describe("#1735: the post-update marker clear never takes an owed or watched out
     const b = boot(dir => { updaterPending(dir); });
     b.fm.updateCleanupWatch = { receipt: markCleanupPendingReceipt(b.dir), summary };
     updaterRetired(b.dir);
-    b.fm.clearSettledUpdateMarker();
+    b.fm.clearSettledUpdateMarker(b.bootMarker);
     expect(readUpdateProgress(b.dir)?.progress).toMatchObject({ cleanup: "done", warning: WARNING });
     b.fm.updateCleanupWatch = null;
   });
 
   it("a failed update is cleared even if it was marked pending", () => {
     const b = boot(dir => { updaterPending(dir); setUpdateProgressStage(dir, "failed", { error: "x" }); });
-    b.fm.clearSettledUpdateMarker();
+    b.fm.clearSettledUpdateMarker(b.bootMarker);
     expect(readUpdateProgress(b.dir)).toBeNull();
   });
 });
@@ -138,7 +140,7 @@ describe("#1735: the /update message ends with the cleanup lines in both orders"
     expect(text).toContain("✅ Fleet restarted");
     expect(text).toContain(`⚠️ ${WARNING}`);
     expect(text).toContain(`\`$ ${COMMAND}\``);
-    b.fm.clearSettledUpdateMarker();
+    b.fm.clearSettledUpdateMarker(b.bootMarker);
     expect(readUpdateProgress(b.dir)).toBeNull();
     expect(b.fm.updateCleanupWatch).toBeNull();
   });
@@ -152,7 +154,7 @@ describe("#1735: the /update message ends with the cleanup lines in both orders"
     const outcome = b.fm.updateCleanupAtCompletion(b.pending, "update");
     b.fm.armCleanupWatch(outcome.watch, summary);
     if (beforeClear) updaterRetired(b.dir);
-    b.fm.clearSettledUpdateMarker();
+    b.fm.clearSettledUpdateMarker(b.bootMarker);
     expect(readUpdateProgress(b.dir), "the watch's marker survives the startup clear").not.toBeNull();
     if (!beforeClear) updaterRetired(b.dir);
     await vi.advanceTimersByTimeAsync(1_000);
@@ -177,7 +179,8 @@ describe("#1735: the boot wires it — the completion renders a landed outcome, 
     const fallback = body.indexOf("text += `\\n\\n⚠️ ${cleanupOutcome.render.warning}`");
     const send = body.indexOf("await this.sendFleetStartCompletionFallback(");
     expect([spread > 0, finish > spread, arm > finish, fallback > arm, send > fallback]).toEqual([true, true, true, true, true]);
-    expect(src).toContain("    this.clearSettledUpdateMarker();\n    if (this.reloadPending)");
+    expect(src).toContain("    this.clearSettledUpdateMarker(bootUpdateMarker);\n    if (this.reloadPending)");
+    expect(src).toContain("    this.finishStartup(bootUpdateMarker);");
   });
 });
 

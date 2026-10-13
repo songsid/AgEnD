@@ -8,6 +8,7 @@ import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { createPublicWebGateway } from "./public-web-gateway.js";
 import { handleWebIconRequest } from "./web-icons.js";
+import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
 import { PublicWebLink, publicLinkSettings } from "./public-web-link.js";
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
@@ -41,10 +42,13 @@ import {
   clearUpdateMarker,
   isUpdateInProgress,
   readUpdateProgress,
+  sameUpdateMarker,
   setUpdateProgressStage,
+  updateMarkerIdentity,
   updateProgressOperation,
   updateReceiptOf,
   type UpdateMarker,
+  type UpdateMarkerIdentity,
   type UpdateProgressOperation,
   type UpdateProgressState,
   type UpdateReceipt,
@@ -1123,6 +1127,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  private healthServerDrain: WebServerDrain | null = null;
   /** #1306: the preview listener (health_port + 1 by default), and whether it is listening. */
   private previewListener: PreviewListener | null = null;
   private previewListening = false;
@@ -2168,7 +2173,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.shuttingDown || isUpdateInProgress(this.dataDir);
   }
 
-  private finishStartup(): void {
+  private finishStartup(bootUpdateMarker: UpdateMarkerIdentity | null = null): void {
     this.startupComplete = true;
     this.startNeedsYou();
     // Resolve whatever a previous run — or a setup host that crashed — left
@@ -2208,7 +2213,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const settled of this.applyJobs.settleAfterRestart()) {
       this.logger.info({ jobId: settled.id }, "Settings apply job settled by fleet restart");
     }
-    this.clearSettledUpdateMarker();
+    this.clearSettledUpdateMarker(bootUpdateMarker);
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
   }
@@ -2221,9 +2226,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1735: and while the watch is armed it owns the marker — even if the outcome landed after the completion posted
    * (a launchd kickstart or a detached restart returns at once, so it can land at any point of the boot): the watch
    * appends it, then clears.
+   * #1737 review: and only the marker this boot adopted. One written since — a `/restart full` or a new `/update`
+   * landing while this boot's completion was still being edited — belongs to its writer and is left alone.
    */
-  private clearSettledUpdateMarker(): void {
+  private clearSettledUpdateMarker(bootUpdateMarker: UpdateMarkerIdentity | null): void {
     if (this.updateCleanupWatch) return;
+    const current = updateMarkerIdentity(this.dataDir);
+    if (current && !sameUpdateMarker(current, bootUpdateMarker)) return;
     const leftover = readUpdateProgress(this.dataDir)?.progress;
     if (leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete") return;
     clearUpdateMarker(this.dataDir);
@@ -5836,6 +5845,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = this.loadConfig(configPath);
     this.slimFleetConfigAtStartup();
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
+    // #1737 review: the marker this boot adopts — the startup clear may only ever clear this one.
+    const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
     const pendingUpdateProgress = savedUpdateProgress
       && savedUpdateProgress.progress.stage !== "failed"
@@ -6395,7 +6406,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A SIGHUP may arrive after the PID/general is available but before the
     // rest of startup finishes. Replay one coalesced reload only after all
     // startup-owned lifecycle work and signal handlers are in place.
-    this.finishStartup();
+    this.finishStartup(bootUpdateMarker);
 
     // Tell systemd we are ready only now. This used to fire right after the
     // generals started — before adapters, classic instances, topic creation and the
@@ -17011,8 +17022,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     if (this.healthServer) {
       this.healthServerListening = false;
-      this.healthServer.close();
-      this.healthServer = null;
+      const server = this.healthServer;
+      const drain = this.healthServerDrain ?? trackWebServer(server);
+      await drain.close(this.sseClients);
+      if (this.healthServer === server) {
+        this.healthServer = null;
+        this.healthServerDrain = null;
+      }
     }
     this.stopPreviewListener();
 
@@ -18900,7 +18916,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
-  private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number): void {
+  private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number, closing = false): void {
     try {
       res.setHeader("Content-Type", "application/json");
       // No Referer to a tunnel host, an upstream proxy, or any page linked from
@@ -18921,6 +18937,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
 
+      if (closing) {
+        res.writeHead(503, { Connection: "close", "Retry-After": "10" });
+        res.end(JSON.stringify({ error: "fleet stopping" }));
+        return;
+      }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
 
       // Branding is public, after Host admission: automatic favicon requests
@@ -19220,7 +19241,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // Defensive for direct/unit callers; normal startup initializes these before adapters.
     if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
-    this.healthServer = createServer((req, res) => this.dispatchWebHttp(req, res, port));
+    const server = createServer((req, res) => this.dispatchWebHttp(req, res, port, drain.closing));
+    const drain = trackWebServer(server);
+    this.healthServer = server;
+    this.healthServerDrain = drain;
 
     const markListening = (afterTakeover = false): void => {
       this.healthServerListening = true;
