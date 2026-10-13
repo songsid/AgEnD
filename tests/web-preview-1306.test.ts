@@ -149,6 +149,8 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
         // data-mode: the app's entry reads it (#1408 step 1); the signed-in local page is "full".
         "data-mode": "full", "data-dashboard-origin": `http://127.0.0.1:${h.port}`, "data-preview-origin": `http://127.0.0.1:${h.pport.port}`,
         "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1",
+        // #1770: the fleet's zone, which the chat reads its times and days in.
+        "data-fleet-tz": process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       const lh = await raw(h.port, "GET", "/ui", { host: `localhost:${h.port}`, cookie: h.cookie });
       expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame`);

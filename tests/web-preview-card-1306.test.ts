@@ -620,13 +620,14 @@ describe("the chat's renderer and a live preview (§6.2, #1408 §4)", () => {
       const pg = fresh();
       panel.store.state.msgs.w = [agent(1, FENCE("<p>a</p>"))];
       await pg.mount(h(panel.ChatPanel, { route: { instance: "w" }, navKey: "one" }));
-      const timers = tracker.count();
+      // #1770: the open chat holds one timer of its own (its labels' next midnight), which unmounting clears too.
+      const timers = tracker.count() - 1;
       const frame = runPreview((pg.document.querySelector(".thread") as any).children[0], 1);
       const ch = frame.contentWindow.posted[0].ch;
       PV.onMessage({ source: frame.contentWindow, origin: "null", data: { v: 1, type: "resize", ch, height: 300 } });
       await settle();                          // the height is applied on the next frame
       expect(frame.style.height).toBe("300px");
-      expect(tracker.count(), "the watchdog is armed while the chat is open").toBeGreaterThan(timers);
+      expect(tracker.count(), "the watchdog is armed while the chat is open").toBeGreaterThan(timers + 1);
 
       await pg.unmount();
       const posted = frame.contentWindow.posted.length;

@@ -41,6 +41,7 @@ import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-m
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { resolveTz } from "./tz-utils.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -1521,6 +1522,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + `${p?.detail ? ` data-preview-detail="${attr(p.detail)}"` : ""}`
     // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔.
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`
+    // #1770: the fleet's zone (chat-logs' and fleet.log's), in which the chat reads its message times and days.
+    + ` data-fleet-tz="${attr(resolveTz())}"`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}>`;
 }

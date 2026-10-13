@@ -16,6 +16,7 @@ import { Icon } from "/assets/ui-icons.js";
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
+import { chatTime } from "./chat-time.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -112,7 +113,8 @@ export function clampWidth(w, total) {
   return Math.round(Math.min(max, Math.max(MIN_PANEL, w)));
 }
 
-const timeOf = (ts) => (ts ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+/** #1770: as the thread shows it — the fleet's zone, with the day when it is not today. */
+const timeOf = (ts) => (ts ? chatTime(ts, { yesterday: (hm) => t("chat.yesterdayAt", hm) }) : "");
 
 /**
  * The panel, inside the chat's split (`split`: that element — the divider sets its width there, through CSSOM).

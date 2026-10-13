@@ -9,6 +9,7 @@
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
+import { chatTime, chatTimeFull, msToNextDay } from "./chat-time.js";
 
 const R = () => globalThis.AgendChatRender;
 /** #1589: the public link shows attachments as downloads only (its page says so: <body data-public-link="1">). */
@@ -49,18 +50,33 @@ export function createThread(list, scroller, opts) {
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
+  /** #1770: write a message node's time label for now; unchanged text is not touched. */
+  function timeLabel(node) {
+    const el = node.querySelector(".meta .time[data-ts]");
+    if (!el) return;
+    const v = chatTime(el.dataset.ts, { yesterday: (hm) => trf("chat.yesterdayAt", hm) });
+    if (el.textContent !== v) el.textContent = v;
+  }
+  // #1770: "today" ends at the fleet's midnight; the labels are rewritten then (and on every render), while there are any.
+  let dayTimer = null;
+  function armDay() {
+    if (dayTimer !== null) clearTimeout(dayTimer);
+    dayTimer = nodes.size ? setTimeout(() => { dayTimer = null; for (const v of nodes.values()) timeLabel(v.node); armDay(); }, msToNextDay()) : null;
+  }
 
   const TICKS = () => ({ queued: tr("chat.tick_queued"), processing: tr("chat.tick_processing"), delivered: tr("chat.tick_delivered"), failed: tr("chat.tick_failed"), cancelled: tr("chat.tick_cancelled") });
 
   function msgHtml(x) {
-    const time = x.ts ? new Date(x.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    // #1770: the label ("17:38", "Yesterday 17:38", "10/11 17:38") depends on today, so it is not part of the html a node
+    // is kept by: it is written into the node (timeLabels) — crossing midnight relabels in place and reloads no preview.
+    const time = x.ts ? `<span class="time" data-ts="${escAttr(x.ts)}" title="${escAttr(chatTimeFull(x.ts))}"></span>` : `<span class="time"></span>`;
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span><span class="time">${time}</span>${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
   /**
    * #1672: a status line (another instance's message, a daemon notice) is muted, read-only plain text — never Markdown,
@@ -75,7 +91,7 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
       : "";
     const tools = `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
-    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta"><span class="time">${time}</span></div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
+    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -97,6 +113,7 @@ export function createThread(list, scroller, opts) {
     tpl.innerHTML = html;
     const node = tpl.content.firstElementChild;
     decorateCode(node);
+    timeLabel(node);
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
     if (x) decorateTextCards(node, x);
     return node;
@@ -378,6 +395,7 @@ export function createThread(list, scroller, opts) {
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
       nodes.clear();
+      armDay();
       list.textContent = "";
       opts.onEmpty(true);
       return;
@@ -394,12 +412,13 @@ export function createThread(list, scroller, opts) {
         const node = msgNode(html, x, stopped);
         if (have) have.node.replaceWith(node); else added++;
         have = { html, node }; nodes.set(key, have);
-      }
+      } else timeLabel(have.node);
       const want = prev ? prev.nextSibling : list.firstChild;
       // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
       if (have.node !== want) { if (have.node.parentNode === list) stopIn(have.node); list.insertBefore(have.node, want); }
       prev = have.node;
     }
+    armDay();
     if ("restore" in renderOpts) {
       unseen = 0;
       if (renderOpts.restore == null) toBottom();
@@ -478,6 +497,7 @@ export function createThread(list, scroller, opts) {
     if (ro) ro.disconnect();
     if (P()) P().stopAll("leave");
     nodes.clear();
+    armDay();
   }
 
   return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, dispose, nodes, get unseen() { return unseen; } };
