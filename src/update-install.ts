@@ -335,7 +335,7 @@ export function activationSettled(
 export type RetireSystemCopyResult =
   | {
       ok: true;
-      /** The old copy is still there: cleanup, not failure. Prose (no paths). */
+      /** The old copy is still there: cleanup, not failure. Prose; names the old copy's directory only when it is plain (#1735). */
       warning?: string;
       /**
        * The manual removal, shell-quoted and byte-exact — never normalized or
@@ -350,8 +350,11 @@ export type RetireSystemCopyResult =
  * Remove the old system npm global after an nvm transition.
  * @param npmPath - The absolute npm path used during this install (from UpdateInstallOutcome.npmPath).
  *   Passing undefined or a non-absolute path is a caller error and results in a failure.
+ * @param oldCopyDir - #1735: where the old copy is (the package the updater runs from), named in the warning when it
+ *   is a plain `…/node_modules/@songsid/agend` path — absolute, no whitespace or control characters, ≤ 200 chars — so
+ *   the prose (whitespace-collapsed and sliced in the marker) can never mangle it. Anything else is left unnamed.
  */
-export function retireSystemCopy(runner: CommandRunner, npmPath?: string): RetireSystemCopyResult {
+export function retireSystemCopy(runner: CommandRunner, npmPath?: string, oldCopyDir?: string): RetireSystemCopyResult {
   runner.log("  Note: removing old system install (may require sudo)...");
   // Use the exact npm binary that performed this install, so retirement uses the
   // same identity rather than re-querying a potentially-different sudo secure_path.
@@ -368,7 +371,9 @@ export function retireSystemCopy(runner: CommandRunner, npmPath?: string): Retir
     // `-n` is non-interactive: sudo fails fast here, it never prompts. No
     // further sudo calls on this path. The caller prints once (P3-1).
     const cleanupCommand = `sudo ${shellQuote(npmPath)} uninstall -g @songsid/agend`;
-    const warning = `Old system install was not removed (sudo refused); remove it by hand.`;
+    const where = oldCopyDir && oldCopyDir.length <= 200 && /^\/[^\s\u0000-\u001f\u007f]*\/node_modules\/@songsid\/agend$/.test(oldCopyDir)
+      ? ` at ${oldCopyDir}` : "";
+    const warning = `Old system install${where} was not removed (sudo refused); remove it by hand.`;
     return { ok: true, warning, cleanupCommand };
   }
   return { ok: true };

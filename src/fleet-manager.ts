@@ -44,6 +44,9 @@ import {
   setUpdateProgressStage,
   updateProgressOperation,
   updateReceiptOf,
+  type UpdateMarker,
+  type UpdateProgressOperation,
+  type UpdateProgressState,
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
@@ -2205,18 +2208,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const settled of this.applyJobs.settleAfterRestart()) {
       this.logger.info({ jobId: settled.id }, "Settings apply job settled by fleet restart");
     }
-    // We are the post-update fleet: the update is over by definition. Clearing
-    // it here (rather than in the update command, which exits before the new
-    // fleet is up) is what keeps the quiet window from outliving the restart.
-    // #1660 exception: an update still owing its retire outcome keeps its
-    // receipt until the cleanup watch resolves it — deleting it here is what
-    // lost the warning. Terminal stages are still cleared unconditionally.
-    const leftover = readUpdateProgress(this.dataDir)?.progress;
-    if (!(leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete")) {
-      clearUpdateMarker(this.dataDir);
-    }
+    this.clearSettledUpdateMarker();
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
+  }
+
+  /**
+   * We are the post-update fleet: the update is over by definition. Clearing it here (rather than in the update
+   * command, which exits before the new fleet is up) is what keeps the quiet window from outliving the restart.
+   * #1660 exception: an update still owing its retire outcome keeps its receipt until the cleanup watch resolves it —
+   * deleting it here is what lost the warning. Terminal stages are still cleared unconditionally.
+   * #1735: and while the watch is armed it owns the marker — even if the outcome landed after the completion posted
+   * (a launchd kickstart or a detached restart returns at once, so it can land at any point of the boot): the watch
+   * appends it, then clears.
+   */
+  private clearSettledUpdateMarker(): void {
+    if (this.updateCleanupWatch) return;
+    const leftover = readUpdateProgress(this.dataDir)?.progress;
+    if (leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete") return;
+    clearUpdateMarker(this.dataDir);
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
@@ -5656,6 +5666,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * starts this timer on that path (Prism a) — without this, the owed
    * outcome would sit in the marker unwatched. READY never waits for it.
    */
+  /**
+   * #1735: what the completion of an adopted update does about its retire outcome, read from the marker as it is now.
+   * Already landed with a warning (a detached restart returns before this fleet boots, so the updater retires first)
+   * → render it in the completion. Still owed (`cleanup: "pending"` — a service restart waits for READY, which comes
+   * after the completion) → watch for it. Anything else (no retire on this update, done silently, another receipt)
+   * → nothing.
+   */
+  private updateCleanupAtCompletion(
+    pending: (UpdateMarker & { progress: UpdateProgressState }) | null,
+    operation: UpdateProgressOperation | null,
+  ): { render: { warning: string; cleanupCommand?: string } } | { watch: UpdateReceipt } | null {
+    if (!pending || operation !== "update") return null;
+    const receipt = updateReceiptOf(pending);
+    if (!receipt) return null;
+    const current = readUpdateProgress(this.dataDir);
+    const verdict = cleanupWatchVerdict(current, receipt);
+    if (verdict.action === "append") return { render: { warning: verdict.warning, cleanupCommand: verdict.cleanupCommand } };
+    if (verdict.action === "wait" && current?.progress.cleanup === "pending") return { watch: receipt };
+    return null;
+  }
+
   private armCleanupWatch(receipt: UpdateReceipt, summary: RestartProgressSummary): void {
     this.updateCleanupWatch = { receipt, summary };
     if (!this.updateProgressTimer) this.startUpdateProgressMonitor();
@@ -6286,12 +6317,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const _require = createRequire(import.meta.url);
       const agendVersion = _require("../package.json").version ?? "unknown";
       await progressStart;
-      // #1660: when the adopted update still owes its retire outcome, the
-      // completion posts without the warning and this same summary object is
-      // kept for the watch to append it to the same receipt later. Waiting
-      // for cleanup before READY would deadlock with the updater (it retires
-      // only after the restart returns), so READY and cleanup notification
-      // have separate lifecycles (review checklist 3/5).
+      // #1660/#1735: the nvm route's retire outcome, read NOW (not from the boot snapshot). Either order happens:
+      // a detached fleet's `agend restart` returns before this fleet boots, so the outcome may already be here —
+      // render it in the completion itself; a service restart waits for READY (after this), so it may still be owed
+      // — post without it and arm the watch, which appends it to the same receipt once it lands. READY never waits
+      // for cleanup (that would deadlock with an updater that retires after its restart returns).
+      const cleanupOutcome = this.updateCleanupAtCompletion(pendingUpdateProgress, pendingProgressOperation);
       const completionSummary: RestartProgressSummary = {
         running: started,
         total,
@@ -6304,13 +6335,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               return tip ? this.formatTip(tip) : undefined;
             })()
           : undefined,
+        ...(cleanupOutcome && "render" in cleanupOutcome
+          ? { warningText: cleanupOutcome.render.warning, warningCommand: cleanupOutcome.render.cleanupCommand }
+          : {}),
       };
       const progressCompleted = await startupProgress.finish(completionSummary);
-      if (pendingUpdateProgress && pendingProgressOperation === "update"
-        && pendingUpdateProgress.progress.cleanup === "pending") {
-        const receipt = updateReceiptOf(pendingUpdateProgress);
-        if (receipt) this.armCleanupWatch(receipt, completionSummary);
-      }
+      // Armed only after the completion posted: an append racing ahead of it would be overwritten by it.
+      if (cleanupOutcome && "watch" in cleanupOutcome) this.armCleanupWatch(cleanupOutcome.watch, completionSummary);
       if (!progressCompleted && fleet.channel?.group_id) {
         let text: string;
         if (pendingProgressOperation === "full-restart") {
@@ -6329,9 +6360,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text = t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "))
             + (pausedNames.length > 0 ? `\n⏸ Paused: ${pausedNames.join(", ")}` : "");
         }
-        // #1660: a pending cleanup warning cannot be present yet (the updater
-        // retires only after the restart returns); the watch appends it to
-        // the adopted message when the outcome lands. Nothing to add here.
+        // #1735: an outcome that already landed goes in this message too; one still owed is the watch's.
+        if (cleanupOutcome && "render" in cleanupOutcome) {
+          text += `\n\n⚠️ ${cleanupOutcome.render.warning}`
+            + (cleanupOutcome.render.cleanupCommand ? `\n\`$ ${cleanupOutcome.render.cleanupCommand}\`` : "");
+        }
         await this.sendFleetStartCompletionFallback(
           String(fleet.channel.group_id),
           text,

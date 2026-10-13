@@ -1524,7 +1524,10 @@ program
       // new install (activationSettled) is it removed; pending, failed or refused, it stays, so the old unit still starts.
       if (verified.retireSystemCopy) {
         if (activationSettled(outcome, restartResult)) {
-          const retireResult = retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) }, verified.npmPath);
+          // #1735: the old copy is the package this updater runs from (the nvm route is taken because its prefix is not
+          // writable); the warning names it.
+          const oldCopyDir = (() => { try { return realpathSync(dirname(__dirname)); } catch { return undefined; } })();
+          const retireResult = retireSystemCopy({ run: (command, args) => capture(command, args), log: message => console.log(message) }, verified.npmPath, oldCopyDir);
           // The marker write proves the pre-restart receipt still owns the
           // marker: refused when it is gone or belongs to another operation.
           const recordCleanup = async (result: { warning?: string; cleanupCommand?: string } | null): Promise<void> => {
