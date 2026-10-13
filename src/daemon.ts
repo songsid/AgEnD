@@ -12,6 +12,7 @@ import { rotateLogIfNeededAsync, type Logger } from "./logger.js";
 import { coredumpFilterLaunchPrefix } from "./coredump-filter.js";
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
+import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
@@ -4442,6 +4443,10 @@ export class Daemon extends EventEmitter {
     if (!backend.quitBlockedByDialog(pane)) return false;
     this.logger.warn({ reason },
       "The CLI asked to confirm its exit (background work is running) — cancelling that prompt and stopping the process, not answering it");
+    // #1716: the background work is about to be ended — record it where the
+    // stop/restart reply and the instance topic notice can report it, so the
+    // kill is never silent.
+    try { writeBackgroundWorkEndedMarker(this.instanceDir, reason); } catch { /* reporting only */ }
     await this.tmux.sendSpecialKey("Escape").catch(() => false);
     return true;
   }
@@ -4766,6 +4771,38 @@ export class Daemon extends EventEmitter {
     if (!pausableState || this.pasteQueueDepth > 0) {
       this.pauseRequested = false;
       return;
+    }
+    // #1717: an idle pause is AgEnD-initiated and silent — it must not kill
+    // the user's running background work the way an explicit stop may. Defer
+    // this cycle while the backend reports background work; the next idle
+    // tick retries once the task ends. A pane-capture failure proceeds (the
+    // quit-menu handler below stays the backstop), never wedges unpaused.
+    if (this.backend?.backgroundWorkRunning && this.tmux) {
+      const tmux = this.tmux;
+      const windowId = tmux.getWindowId?.();
+      const generation = this.spawnGeneration;
+      let pane: string | null = null;
+      try {
+        pane = await tmux.capturePane();
+      } catch { /* capture failed — pause as before, after revalidation */ }
+      // #1730 P2-2: the await yields — the pane read is only valid for the
+      // world it was taken from. Revalidate owner, phase, state and queue
+      // before acting on it; anything that moved defers this cycle.
+      if (this.tmux !== tmux
+        || this.tmux?.getWindowId?.() !== windowId
+        || this.spawnGeneration !== generation
+        || this.getPauseWakeState() !== "active"
+        || !(this.instanceState === "idle" || (allowStuck && this.instanceState === "stuck"))
+        || this.pasteQueueDepth > 0) {
+        this.logger.info("Deferring auto-pause: pause preconditions changed during the pane read");
+        this.pauseRequested = false;
+        return;
+      }
+      if (pane !== null && this.backend?.backgroundWorkRunning?.(pane)) {
+        this.logger.info("Deferring auto-pause: background work is still running");
+        this.pauseRequested = false;
+        return;
+      }
     }
 
     this.pauseWakeState = "pausing";

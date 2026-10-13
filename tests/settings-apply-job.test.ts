@@ -457,7 +457,7 @@ describe("a Settings apply drives the real reconcile", () => {
       getConfigSnapshot: () => runtimeConfig,
       applyConfigUpdate: vi.fn(),
     } as never);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     // Settings persists before it applies; the plan reads what will be loaded.
     writeFileSync(configPath, [
       "instances:", "  one:", "    working_directory: /tmp/one", "    tool_progress: verbose", "",
@@ -480,7 +480,7 @@ describe("a Settings apply drives the real reconcile", () => {
     ]);
     const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one!);
     fm.lifecycle.daemons.set("one", { getConfigSnapshot: () => runtimeConfig } as never);
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     vi.spyOn(fm as unknown as {
       startInstanceUnattended(...args: unknown[]): Promise<void>;
     }, "startInstanceUnattended").mockResolvedValue(undefined);
@@ -674,7 +674,7 @@ describe("a Settings apply drives the real reconcile", () => {
         applyConfigUpdate: vi.fn(),
       } as never);
     }
-    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
     vi.spyOn(fm as unknown as {
       startInstanceUnattended(...args: unknown[]): Promise<void>;
     }, "startInstanceUnattended").mockResolvedValue(undefined);

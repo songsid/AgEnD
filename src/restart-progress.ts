@@ -32,6 +32,8 @@ export interface RestartProgressSummary {
   failedNames?: string[];
   /** Optional update-completion tip; ignored for ordinary restarts. */
   tipText?: string;
+  /** Instances whose background work this restart/update ended (#1716); all modes. */
+  backgroundWorkEndedNames?: string[];
   /** Optional non-fatal cleanup note (e.g. old system copy left behind); update mode only. */
   warningText?: string;
   /** Verbatim manual cleanup command; rendered as its own code line, update mode only. */
@@ -75,6 +77,11 @@ function retryAfterMs(err: unknown): number {
   return 0;
 }
 
+/** #1716: the shared background-work line for the completion and every fallback path. */
+export function formatBackgroundWorkEndedLine(names: readonly string[]): string {
+  return `⚠️ Background work was running and was ended: ${names.join(", ")}`;
+}
+
 /** One terminal text shared by the in-place edit and FleetManager fallback. */
 export function formatRestartProgressCompletion(
   mode: RestartProgressMode,
@@ -93,6 +100,9 @@ export function formatRestartProgressCompletion(
   }
   if (summary.failedNames?.length) {
     lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
+  }
+  if (summary.backgroundWorkEndedNames?.length) {
+    lines.push(formatBackgroundWorkEndedLine(summary.backgroundWorkEndedNames));
   }
   if (mode === "update" && summary.warningText) lines.push("", `⚠️ ${summary.warningText}`);
   if (mode === "update" && summary.warningCommand) lines.push(`\`$ ${summary.warningCommand}\``);

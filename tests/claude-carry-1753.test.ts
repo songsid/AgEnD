@@ -180,6 +180,81 @@ describe("the restart carries between the stop and the start, or starts fresh", 
   });
 });
 
+describe("a switch whose restart joins one already in flight (Fable P3, #1758)", () => {
+  /** A real restartSingleInstance whose restart is held at the stop or at the start until the test lets it go on. */
+  async function rig() {
+    vi.resetModules();
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const w = world();
+    const dataDir = tempDir();
+    const fm: any = new FleetManager(dataDir);
+    fm.logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const instanceDir = join(dataDir, "instances", "worker");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "session-id"), SID);
+    fm.getInstanceDir = () => instanceDir;
+    fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: w.work } } };
+    fm.lifecycle.daemons.set("worker", { getConfigSnapshot: () => ({ working_directory: w.work }) });
+    const gate = (label: string) => { let open!: () => void; const p = new Promise<void>((r) => { open = r; }); return { label, p, open }; };
+    const stop = gate("stop"), start = gate("start");
+    const order: string[] = [];
+    fm.stopInstance = vi.fn(async () => { order.push("stop"); await stop.p; });
+    fm.startAfterRestart = vi.fn(async () => { order.push(existsSync(join(instanceDir, "crash-state.json")) ? "start-fresh" : "start-resume"); await start.p; });
+    fm.doRestartSingleInstance = (name: string, opts: any, transition: any) => fm.doRestartWithSlot(name, opts, transition, fm.fleetConfig.instances[name], false);
+    const team = (await import("../src/backend/credential-profile.js")).credentialProfileHome(dataDir, "claude-code", "team");
+    mkdirSync(team, { recursive: true });
+    const prevEnv = process.env.CLAUDE_CONFIG_DIR; process.env.CLAUDE_CONFIG_DIR = w.from;
+    const done = () => {
+      if (prevEnv === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prevEnv;
+      fm.lifecycle.daemons.delete("worker"); fm.stormWindow.shutdown(); fm.spawnGate.shutdown();
+    };
+    const copied = () => existsSync(join(team, "projects", w.key, `${SID}.jsonl`));
+    const flush = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
+    return { fm, stop, start, order, done, copied, flush, gaps: () => fm.restartGaps.size };
+  }
+  const switchOpts = (to = "team") => ({ carry: { backend: "claude-code", from: null, to, result: null as any } });
+
+  it("joined before the restart's stop is done: carried in that restart's gap — the new CLI resumes it", async () => {
+    const r = await rig();
+    try {
+      const first = r.fm.restartSingleInstance("worker");               // e.g. an MCP revival, no switch
+      await r.flush();
+      const sw = switchOpts();
+      const joined = r.fm.restartSingleInstance("worker", sw);
+      r.stop.open(); r.start.open();
+      await Promise.all([first, joined]);
+      expect([r.order, sw.carry.result?.carried, r.copied(), r.gaps()]).toEqual([["stop", "start-resume"], true, true, 0]);
+    } finally { r.done(); }
+  });
+
+  it("joined after the restart's stop → start gap: not carried, and said so (the CLI is already starting without it)", async () => {
+    const r = await rig();
+    try {
+      const first = r.fm.restartSingleInstance("worker");
+      r.stop.open(); await r.flush();                                     // past the gap: the start is under way
+      const sw = switchOpts();
+      const joined = r.fm.restartSingleInstance("worker", sw);
+      r.start.open();
+      await Promise.all([first, joined]);
+      expect([sw.carry.result, r.copied()]).toEqual([{ carried: false, reason: "joined a restart in flight past its stop" }, false]);
+    } finally { r.done(); }
+  });
+
+  it("joined while the restart carries another switch: not carried, and said so; the first switch's carry runs", async () => {
+    const r = await rig();
+    try {
+      const firstSw = switchOpts("team");
+      const first = r.fm.restartSingleInstance("worker", firstSw);
+      await r.flush();
+      const second = switchOpts("other");
+      const joined = r.fm.restartSingleInstance("worker", second);
+      r.stop.open(); r.start.open();
+      await Promise.all([first, joined]);
+      expect([firstSw.carry.result?.carried, second.carry.result]).toEqual([true, { carried: false, reason: "a restart in flight carries another switch" }]);
+    } finally { r.done(); }
+  });
+});
+
 // ── The handler: what the switch asks for, and what it says ─────────────────
 
 function harness(instance: Record<string, unknown>, restartResult: (opts: any) => void) {

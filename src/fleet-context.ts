@@ -90,7 +90,8 @@ export interface FleetContext {
   getInstanceAdapterId?(instanceName: string): string | undefined;
   changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle">;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
-  stopInstance(name: string): Promise<void>;
+  /** #1716: resolves whether the stop ended background work that was running. */
+  stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   connectIpcToInstance(name: string): Promise<void>;
   saveFleetConfig(): void;
   getInstanceDir(name: string): string;

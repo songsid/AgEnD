@@ -52,6 +52,8 @@ export interface LiveDeps {
   content(): LiveContent;
   post(target: LiveTarget, text: string, choices: LiveChoice[]): Promise<LivePointer>;
   edit(pointer: LivePointer, text: string, choices: LiveChoice[]): Promise<void>;
+  /** True only for a provider-confirmed missing message/destination or denied permission. */
+  isEditLoss(err: unknown): boolean;
   remove(pointer: LivePointer): Promise<void>;
   loadPointer(): LivePointer | null;
   savePointer(pointer: LivePointer | null): void;
@@ -94,6 +96,8 @@ export class NeedsYouLiveMessage {
   private postFailures = 0;
   private postWanted = false;
   private retired = false;
+  /** Exact successful render, bound to its message. Fresh nonce IDs deliberately make renewals different. */
+  private lastRender: string | null = null;
 
   constructor(private readonly deps: LiveDeps) {
     this.pointer = deps.loadPointer();
@@ -151,6 +155,14 @@ export class NeedsYouLiveMessage {
       && this.deps.worldExists() && now !== null && samePlace(now, target);
   }
 
+  private contentKey(text: string, choices: LiveChoice[]): string {
+    return JSON.stringify([text, choices.map(c => [c.id, c.label])]);
+  }
+
+  private renderKey(pointer: LivePointer, contentKey: string): string {
+    return JSON.stringify([canonicalTarget(pointer), pointer.messageId, contentKey]);
+  }
+
   private async renderOnce(): Promise<void> {
     const target = this.deps.target();
     if (!this.deps.enabled() || this.deps.stopping() || !this.deps.worldExists() || target === null) return;
@@ -177,15 +189,23 @@ export class NeedsYouLiveMessage {
 
     const pointer = this.pointer;
     const acks = this.deps.mintAcks(generation, pointer, content.ackable);
+    const key = this.renderKey(pointer, this.contentKey(content.text, acks.choices));
+    if (key === this.lastRender) return;
     try {
       await this.deps.edit(pointer, content.text, acks.choices);
     } catch (err) {
+      // An ambiguous failure may have applied remotely; no cached preimage can prove the current content.
+      this.lastRender = null;
       if (!this.fenced(generation, target)) { this.deps.revokeAcks(); return; }
       this.deps.revokeAcks();
+      if (!this.deps.isEditLoss(err)) {
+        this.deps.log("live message edit failed; keeping the existing message", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
+        return;
+      }
       if (this.deps.now() < this.nextPostAt) {
-        // The fallback post is rate-limited like any other: try again when it may.
-        this.deps.log("live message edit failed; will post when allowed", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
-        this.postWanted = true;
+        // Recheck the edit when the existing post limit opens; recovery may have made a replacement unnecessary.
+        this.deps.log("live message unavailable; replacement rate-limited", { world: this.deps.world, err: String((err as Error)?.message ?? err), retryInMs: this.nextPostAt - this.deps.now() });
+        this.requestAt(this.nextPostAt);
         return;
       }
       this.deps.log("live message edit failed; posting a new one", { world: this.deps.world, err: String((err as Error)?.message ?? err) });
@@ -194,12 +214,14 @@ export class NeedsYouLiveMessage {
       return;
     }
     if (!this.fenced(generation, target)) { this.deps.revokeAcks(); return; }
+    this.lastRender = key;
     this.lastEditAt = this.deps.now();
   }
 
   private async postNew(generation: number, target: LiveTarget, content: LiveContent, moved: boolean): Promise<void> {
     const old = this.pointer;
     const acks = this.deps.mintAcks(generation, canonicalTarget(target), content.ackable);
+    const contentKey = this.contentKey(content.text, acks.choices); // Snapshot the submitted frame before its await.
     let sent: LivePointer;
     try {
       sent = await this.deps.post(target, content.text, acks.choices);
@@ -221,6 +243,7 @@ export class NeedsYouLiveMessage {
     acks.bind(sent);
     this.pointer = sent;
     this.deps.savePointer(sent);
+    this.lastRender = this.renderKey(sent, contentKey);
     const at = this.deps.now();
     this.nextPostAt = at + POST_MIN_MS;
     this.postFailures = 0;
