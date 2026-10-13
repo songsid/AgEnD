@@ -82,6 +82,29 @@ describe("a profile launch links the project's memory to the shared one", () => 
     expect([first, again, linkOf(profileMemory(key))]).toEqual(["linked", "already-linked", sharedMemory(key)]);
   });
 
+  it("review r1: our link pointing at a shared folder that is not there (linked early, or the folder removed): the folder is made — by the helper and by a launch — and a note lands", () => {
+    const key = claudeProjectKey(repo);
+    mkdirSync(join(profile(), "projects", key), { recursive: true });
+    symlinkSync(sharedMemory(key), profileMemory(key), "dir");
+    const direct = linkSharedClaudeMemory(profile(), repo, join(home, ".claude"));
+    const madeByHelper = existsSync(sharedMemory(key));
+    rmSync(join(home, ".claude"), { recursive: true, force: true });                       // the shared side removed again
+    backend().buildCommand(cfg(repo, { credential_profile: "team" }));
+    writeFileSync(join(profileMemory(key), "MEMORY.md"), "- lands\n");
+    expect([direct, madeByHelper, linkOf(profileMemory(key)), readFileSync(join(sharedMemory(key), "MEMORY.md"), "utf8")])
+      .toEqual(["already-linked", true, sharedMemory(key), "- lands\n"]);
+  });
+
+  it("review r1: our link, but a file where the shared folder should be: reported as failed (and said so), the link kept", () => {
+    const key = claudeProjectKey(repo);
+    mkdirSync(join(home, ".claude", "projects", key), { recursive: true });
+    writeFileSync(sharedMemory(key), "a file, not a folder");
+    mkdirSync(join(profile(), "projects", key), { recursive: true });
+    symlinkSync(sharedMemory(key), profileMemory(key), "dir");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect([linkSharedClaudeMemory(profile(), repo, join(home, ".claude")), linkOf(profileMemory(key)), warn.mock.calls.length > 0]).toEqual(["failed", sharedMemory(key), true]);
+  });
+
   it("the profile's own non-empty memory is never replaced — left as it is, and said so", () => {
     const key = claudeProjectKey(repo);
     mkdirSync(profileMemory(key), { recursive: true });
@@ -102,7 +125,8 @@ describe("a profile launch links the project's memory to the shared one", () => 
     mkdirSync(join(profile(), "projects", key2), { recursive: true }); writeFileSync(profileMemory(key2), "a file");
     const file = linkSharedClaudeMemory(profile(), join(root, "plain2"), join(home, ".claude"));
     const cmd = backend().buildCommand(cfg(repo, { credential_profile: "team" }));
-    expect([other, linkOf(profileMemory(key)), file, readFileSync(profileMemory(key2), "utf8"), cmd.includes("CLAUDE_CONFIG_DIR=")]).toEqual(["kept-other-link", elsewhere, "kept-own", "a file", true]);
+    expect([other, linkOf(profileMemory(key)), existsSync(sharedMemory(key)), file, readFileSync(profileMemory(key2), "utf8"), cmd.includes("CLAUDE_CONFIG_DIR=")])
+      .toEqual(["kept-other-link", elsewhere, false, "kept-own", "a file", true]);
   });
 
   it("a link that cannot be made is reported, and the launch goes on", () => {

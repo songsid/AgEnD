@@ -73,7 +73,11 @@ export function linkSharedClaudeMemory(profileDir: string, workingDirectory: str
     let existing;
     try { existing = lstatSync(target); } catch { existing = null; }
     if (existing?.isSymbolicLink()) {
-      return resolve(dirname(target), readlinkSync(target)) === resolve(shared) ? "already-linked" : "kept-other-link";
+      if (resolve(dirname(target), readlinkSync(target)) !== resolve(shared)) return "kept-other-link";
+      // Ours — but it may point at nothing yet (linked before the shared side was made, or that side since removed):
+      // the shared folder must be there for a note to land. A file in its place throws (EEXIST): the failure path below.
+      mkdirSync(shared, { recursive: true });
+      return "already-linked";
     }
     if (existing?.isDirectory()) {
       if (readdirSync(target).length > 0) {
