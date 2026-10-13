@@ -575,6 +575,12 @@ Claude Code profile 是一個獨立的 `CLAUDE_CONFIG_DIR`。登入、帳號、�
 一開始複製你的設定（permissions、hooks、env、啟用哪些 plugins）；之後就屬於該 profile，
 任一邊後來的變更（例如 `/model`）只留在那一邊。
 
+Claude Code 對專案的自動記憶（`projects/<repo>/memory/`）也以同樣方式共用：每次以 profile
+啟動時，該 instance 所在 repository（git worktree 以主 checkout 為準）在 profile 裡的記憶
+資料夾會連到 `~/.claude` 底下的那一份，所以同一個 repository 的每個 instance 不論用哪個登入，
+都共用同一份記憶。只有記憶共用，旁邊的對話仍屬於該 profile。profile 裡已經有筆記的記憶資料夾
+絕不會被取代：AgEnD 會保持原樣並記錄警告。
+
 macOS 上 claude 把登入存在鑰匙圈（Keychain），項目名稱依 profile 目錄而定；
 兩個 profile 不會共用或覆寫彼此的項目，預設登入也不受影響。
 

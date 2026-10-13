@@ -5033,17 +5033,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1753: the directory the CLI being stopped was launched in — its conversation is under that directory's key.
     const launchedIn = this.daemons.get(name)?.getConfigSnapshot?.()?.working_directory;
     // Between the stop and the start: the old CLI's transcript is complete, the new one has not looked yet.
-    const betweenStopAndStart = async () => {
+    /** `launching`: the login the start will use — read only when a switch is to be carried. */
+    const betweenStopAndStart = async (launching: () => { backend: string; profile: string | null }) => {
       // #1753: this restart's own carry, or one a caller joined it with before this point (restartSingleInstance).
       const gap = this.restartGaps.get(name);
       const carry = gap?.carry ?? opts?.carry;
       if (gap) gap.reached = true;
-      if (carry) carry.result = await this.switchConversation(name, { ...carry, workingDirectory: launchedIn });
-      else if (opts?.freshStart) this.writeFreshStartMarker(name);
+      if (!carry) { if (opts?.freshStart) this.writeFreshStartMarker(name); return; }
+      // Only into the login this start really launches: a restart that read its configuration before the switch was
+      // saved (one a switch joined) launches the old one — a copy into the new would be reported as carried, falsely.
+      const launch = launching();
+      if (launch.backend !== carry.backend || launch.profile !== carry.to) {
+        const login = (p: string | null) => (p ? `profile "${p}"` : "the default login");
+        carry.result = { carried: false, reason: `the restart launches ${launch.backend !== carry.backend ? launch.backend : login(launch.profile)}, not ${login(carry.to)}` };
+        this.logger.info({ name, launches: launch, carry: { backend: carry.backend, from: carry.from, to: carry.to } }, "Conversation not carried: the restart launches another login");
+        // The old login resumes its own conversation; any other starts fresh, as an uncarried switch does.
+        if (launch.backend !== carry.backend || launch.profile !== carry.from) this.writeFreshStartMarker(name);
+        return;
+      }
+      carry.result = await this.switchConversation(name, { ...carry, workingDirectory: launchedIn });
     };
     if (config) {
       await this.stopInstance(name, transition);
-      await betweenStopAndStart();
+      await betweenStopAndStart(() => {
+        const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+        return { backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, this.fleetConfig?.defaults, backend) : null };
+      });
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
         () => this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
@@ -5057,7 +5072,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.classicChannels!.getAdapterIdByInstance(name);
       await this.stopInstance(name, transition);
       await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
-      await betweenStopAndStart();
+      await betweenStopAndStart(() => {
+        const backend = this.classicChannels!.getBackendByInstance(name, fleetBackend);
+        return { backend, profile: credentialHomeSpec(backend) ? profileName(this.classicChannels!.getCredentialProfileByInstance(name, this.fleetConfig?.defaults)) : null };
+      });
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason, () => this.startClassicInstance(
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
