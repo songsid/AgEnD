@@ -46,13 +46,19 @@ describe("masking: only actual secret values, everything else stays readable", (
     ["a private key block cut off", J("-----BEGIN RSA ", "PRIVATE KEY-----\nMIIEowIBAAKCAQEAx"), ["MIIEowIBAAKCAQEAx"]],
     ["a flag", J("mysql --password ", "hunter2hunter2", " -u root"), [J("hunter2", "hunter2")]],
     ["a YAML value in quotes", J("client_secret: '", "abc/def+ghi", "'"), [J("abc/def", "+ghi")]],
+    // #1788 review r2 P2: a quoted value runs to the same quote, spaces included (a passphrase).
+    ["a quoted passphrase in an export", J('export DB_PASSWORD="correct ', 'horse battery staple"'), ["correct", "horse", "battery", "staple"]],
+    ["a single-quoted YAML value with spaces", J("db_password: 'two ", "words here'"), ["two", "words", "here"]],
+    ["a quoted flag value with spaces", J('mysql --password "open ', 'sesame please" -u root'), ["open", "sesame", "please"]],
+    // r2 P3: a key given after its name as an argument.
+    ["a key as an argument", J("aws configure set aws_secret_access_key ", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"), [J("wJalrXUtnFEMI/", "K7MDENG")]],
   ])("masked: %s", (_name, text, gone) => {
     const out = maskSecrets(text as string);
     for (const g of gone as string[]) expect(out, g).not.toContain(g);
     expect(out).toContain("[REDACTED]");
   });
   it("linear on long input: a 200 KB run of word characters (a long output) is masked in well under a second", () => {
-    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
+    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), 'a_password="x '.repeat(14_000), "db_password: 'x ".repeat(12_000), "token ".repeat(30_000), "token a1".repeat(25_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
       const t0 = performance.now();
       const out = maskSecrets(t);
       expect(performance.now() - t0, t.slice(0, 12)).toBeLessThan(500);
@@ -64,6 +70,63 @@ describe("masking: only actual secret values, everything else stays readable", (
     expect(maskSecrets(keep)).toBe(keep);
   });
 
+  // #1788 review r3 (Fable): arguments are shown as JSON, where a command's quotes are escaped (\") — they are masked
+  // before they become JSON, through the real paths: a claude tool_use input and a codex function_call's arguments.
+  const pass = J("correct horse ", "battery staple"), hunter = J("hunter2", "hunter2"), yaml = J("two words ", "here");
+  const samples: Array<[string, Record<string, unknown>, string[]]> = [
+    ["a quoted passphrase in a command", { command: J('export DB_PASSWORD="', pass, '" && run') }, ["correct", "battery", "staple"]],
+    ["a quoted secret without spaces", { command: J('export DB_PASSWORD="', hunter, '"') }, [hunter]],
+    ["a YAML file's quoted password", { file_path: "config.yml", content: J('db:\n  password: "', yaml, '"\n') }, ["two words", "here"]],
+  ];
+  it.each(samples)("claude tool_use input: %s", (_n, input, gone) => {
+    const p = new ClaudeStepParser();
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "Bash", input }] } }));
+    const shown = JSON.stringify(p.steps);
+    for (const g of gone) expect(shown, g).not.toContain(g);
+    expect(p.steps[0]!.input).toContain("[REDACTED]");
+  });
+  it.each(samples)("codex function_call arguments: %s", (_n, input, gone) => {
+    const p = new CodexStepParser();
+    p.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "c", name: "exec_command", arguments: JSON.stringify(input) } }));
+    const shown = JSON.stringify(p.steps);
+    for (const g of gone) expect(shown, g).not.toContain(g);
+    expect(p.steps[0]!.input).toContain("[REDACTED]");
+  });
+  it("arguments: a secret-named key is masked whole unless plain; a string that is not JSON is masked as text; long values count as cut", () => {
+    const p = new ClaudeStepParser();
+    const input = { api_key: J("abc ", "def"), max_tokens: "4096", password: "", nested: [{ client_secret: J("x y ", "z") }], note: "fine", body: "b".repeat(5000) };
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "Custom", input }] } }));
+    const s = p.steps[0]!;
+    expect(s.input).toContain('"api_key": "[REDACTED]"');
+    expect(s.input).toContain('"max_tokens": "4096"');
+    expect(s.input).toContain('"password": ""');
+    expect(s.input).toContain('"client_secret": "[REDACTED]"');
+    expect(s.input).toContain('"note": "fine"');
+    expect(s.input!.length).toBe(2000);
+    expect(s.inputCut).toBe(JSON.stringify({ ...input, api_key: "[REDACTED]", nested: [{ client_secret: "[REDACTED]" }] }, null, 1).length - 2000);
+    const c = new CodexStepParser();
+    c.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "c", name: "x", arguments: J('{not json DB_PASSWORD="', hunter, '"') } }));
+    expect(c.steps[0]!.input).not.toContain(hunter);
+  });
+  it("arguments given as a JSON string (an MCP call's) and a subject made from an array are masked the same way", () => {
+    const c = new CodexStepParser();
+    c.push(JSON.stringify({ type: "event_msg", payload: { type: "item_completed", item: { type: "McpToolCall", id: "m", server: "db", tool: "run", arguments: JSON.stringify({ sql: J("SET password = '", pass, "'"), dsn: J('postgres DB_PASSWORD="', hunter, '"') }), status: "completed" } } }));
+    expect(c.steps[0]!.input).toContain('"dsn"');
+    expect(JSON.stringify(c.steps)).not.toContain(hunter);
+    const p = new ClaudeStepParser();
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "shell", input: { command: ["bash", "-lc", J('export DB_PASSWORD="', hunter, '"')] } }] } }));
+    expect(p.steps[0]!.subject).toContain("[REDACTED]");
+    expect(JSON.stringify(p.steps)).not.toContain(hunter);
+  });
+  it("prose after a secret word stays; only a key-shaped argument is masked; quotes are kept around the mask", () => {
+    const keep = "the access_token expired yesterday; reset the password through the account settings page; the api_key v2beta1 "
+      + "header; see secret_rotation documentation_for_operators";
+    expect(maskSecrets(keep)).toBe(keep);
+    expect(maskSecrets(J('export DB_PASSWORD="a b"'))).toBe('export DB_PASSWORD="[REDACTED]"');
+    expect(maskSecrets(J("db_password: 'x y'"))).toBe("db_password: '[REDACTED]'");
+    expect(maskSecrets(J("password: 'x y'"))).toBe("password: [REDACTED]"); // the bubble's redactor then takes the quotes too
+    expect(maskSecrets('max_tokens="4096" token_limit: \'100\' password=""')).toBe('max_tokens="4096" token_limit: \'100\' password=""');
+  });
   it("a git SHA, a UUID, a long instance name and a long path are not secrets", () => {
     const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1554485732591276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
     expect(maskSecrets(keep)).toBe(keep);
