@@ -122,4 +122,39 @@ describe("KiroBackend.getPaneActivity", () => {
     ].join("\n");
     expect(backend.getPaneActivity(midLineOutput)).toBe("shell: Run tests");
   });
+
+  // Fable witness cases: three output lines that must NOT trigger a false idle.
+  it.each([
+    ["Step 3/5 - Completed in 3 steps", "no duration suffix"],
+    ["  * lint - Completed in parallel", "no duration at all"],
+    ["make: [build] - Completed in 2.3s, next: test", "text after duration"],
+  ])("#1734: Fable witness — busy with output '%s' (%s)", (outputLine) => {
+    const pane = [
+      "I will run the following command: make all (using tool: shell)",
+      "Purpose: build",
+      outputLine,
+      "still compiling...",
+    ].join("\n");
+    expect(backend.getPaneActivity(pane)).toBe("shell: build");
+  });
+
+  it("#1734: wide-regex mutation guard — reverting to /(?:^|\\s)-\\s*Completed in\\b/ makes the witness cases falsely match", () => {
+    // The three Fable witness lines each have "- Completed in" but NOT at end-of-line with a
+    // valid duration. The old wide regex (/\s*Completed in\b/) would match all of them and
+    // falsely report the tool finished. Our tight regex (duration + $ anchor) does not.
+    // This test goes red when the regex is reverted to the old form.
+    const witnesses = [
+      "Step 3/5 - Completed in 3 steps",
+      "  * lint - Completed in parallel",
+      "make: [build] - Completed in 2.3s, next: test",
+    ];
+    for (const line of witnesses) {
+      const pane = [
+        "I will run the following command: make all (using tool: shell)",
+        "Purpose: build",
+        line,
+      ].join("\n");
+      expect(backend.getPaneActivity(pane), `should stay busy for: ${line}`).toBe("shell: build");
+    }
+  });
 });
