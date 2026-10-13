@@ -64,6 +64,7 @@
         "surfaces": { "getReadyPattern": "idle-busy", "getBusyPattern": "idle-busy", "getBottomReadyPattern": "idle-busy",
           "KIRO_COMPOSER_ROW": "input-box", "KIRO_PROMPT_CURSOR": "onboarding", "KIRO_PROMPT_FOOTER": "onboarding",
           "KIRO_V3_EASE_IN": "onboarding", "KIRO_AGENT_UPGRADE": "onboarding", "KIRO_CLASSIC_NUDGE": "onboarding",
+          "KIRO_V3_EASE_IN_V2_USER": "onboarding", "KIRO_AGENT_UPGRADE_V2_FORMAT": "onboarding", "KIRO_CLASSIC_NUDGE_V3": "onboarding",
           "kiroLaunchPromptState": "onboarding", "kiroLaunchPromptDialogs": "onboarding", "KIRO_ENGINE_PROMPT_DIALOGS": "onboarding",
           "kiroModelPickerAtTail": "dialog", "getClearConfirmationDialog": "dialog", "kiroUnavailableModelPickerActive": "error",
           "LEGACY_PROMPT_ROW": "input-box", "TUI_STATUS_ROW": "input-box", "RULE_ROW": "input-box", "TUI_HINT_ROW": "input-box",

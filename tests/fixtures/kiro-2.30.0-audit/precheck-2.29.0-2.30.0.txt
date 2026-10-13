@@ -1,0 +1,32 @@
+precheck kiro-cli (manifest scripts/manual/cli-upstream-precheck/sources.json, 82 literals)
+  old: <2.29.0>/kirocli-x86_64-linux.tar.gz — 8 file(s), 293.6 MB
+  new: <2.30.0>/kirocli-x86_64-linux.tar.gz — 8 file(s), 293.9 MB
+
+literals in the old artifact: 57 of 82 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 4
+  [onboarding] 1 -> 0  "CLI 3.0 is becoming the default experience"   (src/backend/kiro.ts:398 KIRO_V3_EASE_IN.header)
+  [onboarding] 1 -> 0  "Switch to 3.0 and upgrade my configs"   (src/backend/kiro.ts:399 KIRO_V3_EASE_IN.options)
+  [onboarding] 1 -> 0  "Your agent configs are still in the 2.0 format"   (src/backend/kiro.ts:402 KIRO_AGENT_UPGRADE.header)
+  [onboarding] 1 -> 0  "Switch to 3.0 and upgrade my agent configs"   (src/backend/kiro.ts:415 KIRO_CLASSIC_NUDGE.options)
+
+COUNT CHANGED: 1
+  [error] 36 -> 35  "ExpiredTokenException"   (src/backend/kiro.ts:1446 KiroBackend.getErrorPatterns.pattern)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 1
+  [error,trust] "rate limit reached:The conversation history has overflowed."   near "to navigate"; "to select"; "Kiro rate limit reached"   hint: the old release has "rate limit reached:"… (only a neighbouring string changed?)
+
+NEW PROMPT-LIKE STRINGS elsewhere: 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 1
+  "rate limit reached:Please try a shorter message."
+
+REASON: 4 detector literal(s) missing: [onboarding] "CLI 3.0 is becoming the default experience"; [onboarding] "Switch to 3.0 and upgrade my configs"; [onboarding] "Your agent configs are still in the 2.0 format"; [onboarding] "Switch to 3.0 and upgrade my agent configs"
+REASON: 1 new prompt-like string(s) on a known surface: [error,trust] "rate limit reached:The conversation history has overflowed."
+REASON: 1 literal count(s) changed
+BASIS-DETAIL: missing 4, incomplete 0, coverage 0, unhinted new prompts 0, hinted new prompts 1
+BASIS: hard=4; hinted=1
+PRECHECK: MAJOR
+exit=0
