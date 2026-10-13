@@ -153,6 +153,31 @@ describe("on: the newest steps, live, older on demand", () => {
     expect(r.filter(x => x.startsWith("Read"))).toHaveLength(1);
   });
 
+  // #1790 review P3s: a page that outgrew PAGE_MAX no longer offers older pages (they would skip what was let go); an
+  // event seen twice shows once.
+  it("past PAGE_MAX the oldest steps are let go, and Load older is replaced by what to do instead", async () => {
+    const many = Array.from({ length: logp.PAGE_MAX }, (_, i) => step(`o${1000 + i}.0`, { kind: "assistant", body: `r${i}` }));
+    answers = [WINDOW, ON({ steps: many, after: 99_999 }), ON({ steps: [step("o5.0", { kind: "user", body: "new chat" })], reset: true, before: null, after: 10, key: "3-4" })];
+    const pg = await app("/ui/log/web-dev");
+    expect(pg.root.querySelector(".p-log .log-older button")).not.toBeNull();
+    await tick();
+    const r = rows(pg);
+    expect(r.filter(x => x.startsWith("Replied"))).toHaveLength(logp.PAGE_MAX);
+    expect(r.some(x => x.startsWith("Asked"))).toBe(false);               // the oldest (the prompt) was let go
+    expect(pg.root.querySelector(".p-log .log-older")).toBeNull();
+    expect(pg.root.querySelector(".p-log .log-start")?.textContent).toBe("Older steps were let go to keep this page light. Open the Log again to read further back.");
+    // A new conversation starts the page afresh: nothing was let go from it.
+    await tick();
+    expect(rows(pg)).toHaveLength(1);
+    expect(pg.root.querySelector(".p-log .log-start")?.textContent).toBe("The start of what can be read.");
+  });
+  it("a fleet event that comes again in a later answer is shown once", async () => {
+    answers = [WINDOW, ON({ events: [WINDOW.events[0], { id: 6, ts: Date.parse("2026-10-13T08:01:00Z"), type: "hang_detected" }], after: 180 })];
+    const pg = await app("/ui/log/web-dev");
+    await tick();
+    expect(pg.root.querySelectorAll(".p-log .log-item.k-event")).toHaveLength(2);
+  });
+
   it("Load older: before the oldest offset, put above what is shown", async () => {
     answers = [WINDOW, ON({ steps: [step("o0.0", { kind: "user", body: "earlier" })], before: null, after: null })];
     const pg = await app("/ui/log/web-dev");
@@ -213,6 +238,10 @@ describe("the page's helpers", () => {
     const running = { ...call, status: "running" };
     expect(logp.mergeSteps([running], [orphan])).toEqual([{ id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "done", body: "ok", ts: 10 }]);
     expect(logp.mergeSteps([running], [{ ...orphan, tool: "Bash2", cat: "edit" }])[0]).toMatchObject({ tool: "Bash2", cat: "edit", ts: 20 });
+    // The same id twice in one answer: one step, the later one's fields — never a property on the array.
+    const dup = logp.mergeSteps([{ id: "1", v: 1 }], [{ id: "x", v: 1 }, { id: "x", v: 2, w: 1 }]);
+    expect(dup).toEqual([{ id: "1", v: 1 }, { id: "x", v: 2, w: 1 }]);
+    expect(Object.keys(dup)).toEqual(["0", "1"]);
     const named = { ...orphan, tool: "Read", cat: "read", subject: "a.ts" };
     expect(logp.mergeSteps([named], [call], true)).toEqual([named]);
   });

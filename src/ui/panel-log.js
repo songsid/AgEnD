@@ -44,6 +44,7 @@ register("log", {
     notRunning: "Its transcript is found while it runs. Start it to see its steps; fleet events are shown meanwhile.",
     noTranscript: "No transcript yet: steps appear once it has worked.",
     empty: "Nothing here yet.", olderLoad: "Load older steps", olderStart: "The start of what can be read.", loading: "Loading…",
+    olderTrimmed: "Older steps were let go to keep this page light. Open the Log again to read further back.",
     all: "All", tools: "Tools", errors: "Errors", filter: "Show", live: "Live", reset: "A new conversation began: showing it from its latest steps.",
     user: "Asked", assistant: "Replied", error: "Error", errorCode: "Error {0}", turnEnd: "Turn ended", turnEndIn: "Turn ended · {0}",
     compacted: "Conversation compacted", turn: "Turn",
@@ -81,6 +82,7 @@ register("log", {
     notRunning: "它執行時才找得到對話紀錄。啟動它就能看到步驟；目前先顯示 fleet 事件。",
     noTranscript: "還沒有對話紀錄：它開始工作後就會出現步驟。",
     empty: "目前還沒有內容。", olderLoad: "載入更早的步驟", olderStart: "已經是能讀到的最早內容。", loading: "載入中…",
+    olderTrimmed: "為了讓頁面保持輕快，較早的步驟已移出。重新開啟「紀錄」就能往前讀。",
     all: "全部", tools: "工具", errors: "錯誤", filter: "顯示", live: "即時", reset: "開始了新的對話：從它最新的步驟顯示。",
     user: "收到要求", assistant: "回覆", error: "錯誤", errorCode: "錯誤 {0}", turnEnd: "回合結束", turnEndIn: "回合結束 · {0}",
     compacted: "對話已壓縮", turn: "回合",
@@ -139,6 +141,7 @@ const eventLabel = (type) => { const k = `log.ev_${type}`; const v = t(k); retur
  */
 export function mergeSteps(list, incoming, older = false) {
   const at = new Map(list.map((s, i) => [s.id, i]));
+  const fresh = new Map();
   const next = list.slice();
   const added = [];
   for (const s of incoming) {
@@ -155,7 +158,10 @@ export function mergeSteps(list, incoming, older = false) {
         const { tool, cat, subject, input, ts } = s;
         next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}) };
       }
-    } else { at.set(s.id, -1); added.push(s); }
+    } else if (fresh.has(s.id)) {
+      // The same step twice in one answer (never from the server's parser, whose ids are unique): the later one wins.
+      added[fresh.get(s.id)] = { ...added[fresh.get(s.id)], ...s };
+    } else { fresh.set(s.id, added.length); added.push(s); }
   }
   return older ? [...added, ...next] : [...next, ...added];
 }
@@ -214,7 +220,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   const [older, setOlder] = useState({ busy: false });
   const [notice, setNotice] = useState("");
   const [enabling, setEnabling] = useState(false);
-  const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0 });
+  const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0, trimmed: false });
   const reading = useRef(false), again = useRef(false);
   const scroller = useRef(null), pinned = useRef(true);
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
@@ -235,11 +241,15 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
     const c = cursor.current;
     if (j.key) c.key = j.key;
     if (j.after !== null && j.after !== undefined) { c.after = j.after; c.skip = !!j.skip; }
-    if (replace) c.before = j.before ?? null;
+    if (replace) { c.before = j.before ?? null; c.trimmed = false; }
     if (typeof j.ev === "number") c.ev = Math.max(c.ev, j.ev);
     setSteps((list) => {
       const merged = replace ? j.steps || [] : mergeSteps(list, j.steps || []);
-      return merged.length > PAGE_MAX ? merged.slice(merged.length - PAGE_MAX) : merged;
+      if (merged.length <= PAGE_MAX) return merged;
+      // #1790 review: the oldest steps are let go to keep the page light. Older pages would resume at the old cursor and
+      // leave out what was let go, so they are no longer offered: the page says so (reopening reads from the newest).
+      c.before = null; c.trimmed = true;
+      return merged.slice(merged.length - PAGE_MAX);
     });
     if (j.events && j.events.length) setEvents((list) => (replace ? j.events : [...list, ...j.events.filter((e) => !list.some((x) => x.id === e.id))]));
     else if (replace) setEvents([]);
@@ -347,6 +357,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       ${notice ? html`<p class="note log-notice" role="status">${notice}</p>` : null}
       ${cursor.current.before !== null
         ? html`<div class="log-older"><button type="button" class="btn btn-sm" disabled=${older.busy} onClick=${loadOlder}>${older.busy ? tl("loading") : tl("olderLoad")}</button></div>`
+        : cursor.current.trimmed ? html`<p class="note log-start">${tl("olderTrimmed")}</p>`
         : steps.length ? html`<p class="note log-start">${tl("olderStart")}</p>` : null}
       ${items.length ? html`<ol class="log-list" role="log" aria-label=${t("app.log")}>${items.map((x, i) => html`<${Row} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} />`)}</ol>`
         : html`<p class="note log-empty">${tl("empty")}</p>`}`;
