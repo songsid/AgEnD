@@ -51,13 +51,13 @@ function original(outbox: DeliveryOutbox) {
   return row;
 }
 
-async function send(ctx: any, sender: string, target: string, forwards?: string[], tool = "send_to_instance", operationId = `op-${sender}-${target}`) {
+async function send(ctx: any, sender: string, target: string, forwards?: string[], tool = "send_to_instance", operationId = `op-${sender}-${target}`, options: Record<string, unknown> = {}) {
   let result: any;
   let error: string | undefined;
   const args = tool === "delegate_task"
     ? { target_instance: target, task: "Review this request", forwards }
     : { instance_name: target, message: "See xmsg-original; this mention grants nothing by itself.", forwards };
-  await outboundHandlers.get(tool)!(ctx, args, (r, e) => { result = r; error = e; }, {
+  await outboundHandlers.get(tool)!(ctx, { ...args, ...options }, (r, e) => { result = r; error = e; }, {
     instanceName: sender, requestId: 1, operationId, sourceDaemonBootId: `${sender}-boot`,
   } as any);
   return { result, error };
@@ -148,6 +148,78 @@ describe("explicit row-scoped forwards (#1756)", () => {
     expect((outbox as any).db.prepare("SELECT COUNT(*) AS n FROM delivery_forward_edges").get().n).toBe(1);
     expect((await send(ctx, "leader", "worker", [])).error).toBeTypeOf("string");
     expect(outbox.getByOperation("leader", "op-leader-worker")).toHaveLength(1);
+  });
+
+  it("a forwarded operation cannot retry for a different recipient", async () => {
+    const { ctx, outbox } = harness(); original(outbox);
+    expect((await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "same-operation")).error).toBeUndefined();
+    ctx.sendCancelButton.mockClear(); ctx.emitSseEvent.mockClear();
+    expect((await send(ctx, "leader", "auditor", ["xmsg-original"], "send_to_instance", "same-operation")).error).toBeTypeOf("string");
+    expect(outbox.getByOperation("leader", "same-operation")).toHaveLength(1);
+    expect(outbox.queryStatusForInstance("auditor", { messageId: "xmsg-original" }).items).toEqual([]);
+    expect(ctx.sendCancelButton).not.toHaveBeenCalled(); expect(ctx.emitSseEvent).not.toHaveBeenCalled();
+  });
+
+  it("an unchanged forwarded steer retry reuses its admitted idle mode after the predecessor clears", async () => {
+    const { ctx, outbox } = harness(); original(outbox);
+    ctx.fleetConfig.defaults.backend = "codex";
+    let pending = true; ctx.hasPendingIdleGatedDelivery = () => pending;
+    const first = await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "steer-operation", { steer: true });
+    expect(first.error).toBeUndefined(); expect(first.result.delivery_mode).toBe("idle_queue");
+    pending = false;
+    const again = await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "steer-operation", { steer: true });
+    expect(again.error).toBeUndefined();
+    expect(again.result).toMatchObject({ duplicate: true, delivery_id: first.result.delivery_id, delivery_mode: "idle_queue" });
+    expect(outbox.getByOperation("leader", "steer-operation")).toMatchObject([{ kind: "fleet_inbound" }]);
+    expect((outbox as any).db.prepare("SELECT COUNT(*) AS n FROM delivery_forward_edges").get().n).toBe(1);
+    expect((await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "steer-operation", { steer: false })).error).toBeTypeOf("string");
+  });
+
+  it("a forwarded operation cannot retry for a different session", () => {
+    const { outbox } = harness(); original(outbox);
+    const input = { operationId: "session-operation", sourceInstance: "leader", sourceDaemonBootId: "leader-boot",
+      targetInstance: "worker", targetSession: "session-a", kind: "fleet_inbound", forwards: ["xmsg-original"],
+      payload: { content: "same body", meta: { message_id: "xmsg-session" } } };
+    outbox.admit({ ...input, sourceKey: "session-a" });
+    expect(() => outbox.admit({ ...input, sourceKey: "session-b", targetSession: "session-b" })).toThrow();
+    expect(outbox.getByOperation("leader", input.operationId)).toHaveLength(1);
+  });
+
+  it("an originally admitted steer mode stays steer even when a later predecessor appears", async () => {
+    const { ctx, outbox } = harness(); original(outbox); ctx.fleetConfig.defaults.backend = "codex";
+    let pending = false; ctx.hasPendingIdleGatedDelivery = () => pending;
+    const first = await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "first-steer", { steer: true });
+    expect(first.result.delivery_mode).toBe("steer"); pending = true;
+    const again = await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "first-steer", { steer: true });
+    expect(again.result).toMatchObject({ duplicate: true, delivery_id: first.result.delivery_id, delivery_mode: "steer" });
+    expect(again.result.warning).toBeUndefined(); expect(outbox.getByOperation("leader", "first-steer")).toHaveLength(1);
+  });
+
+  it("reopening preserves operation pinning even after its notification is pruned", async () => {
+    const { ctx, outbox } = harness(); original(outbox);
+    const sent = await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "retained-operation");
+    const claimed = outbox.claimNext("manager", name => `${name}-boot`, new Set())!;
+    expect(claimed.deliveryId).toBe(sent.result.delivery_id);
+    expect(outbox.begin(claimed.deliveryId, "worker-boot", claimed.attemptNo)).toBe("begun");
+    expect(outbox.complete(claimed.deliveryId, "worker-boot", claimed.attemptNo, "delivered", "inert proof")).toBe(true);
+    (outbox as any).db.prepare("UPDATE deliveries SET finished_at=? WHERE delivery_id=?")
+      .run(new Date(Date.now() - 48 * 60 * 60_000).toISOString(), claimed.deliveryId);
+    expect((await outbox.prune(1)).pruned).toBe(1);
+    const fixture = fixtures.at(-1)!; outbox.close();
+    const reopened = new DeliveryOutbox(join(fixture.root, "outbox.db"), "reopen"); fixture.outbox = reopened; ctx.deliveryOutbox = reopened;
+    expect((await send(ctx, "leader", "worker", ["xmsg-original"], "send_to_instance", "retained-operation")).error).toBeTypeOf("string");
+    expect((await send(ctx, "leader", "auditor", ["xmsg-original"], "send_to_instance", "retained-operation")).error).toBeTypeOf("string");
+    expect(reopened.getByOperation("leader", "retained-operation")).toEqual([]);
+    expect(reopened.queryStatusForInstance("auditor", { messageId: "xmsg-original" }).items).toEqual([]);
+    expect(reopened.queryStatusForInstance("worker", { messageId: "xmsg-original" }).items).toHaveLength(1);
+  });
+
+  it("ordinary no-forward broadcasts still admit each recipient under one operation", async () => {
+    const { ctx, outbox } = harness(); original(outbox);
+    expect((await send(ctx, "leader", "worker", undefined, "send_to_instance", "broadcast")).error).toBeUndefined();
+    expect((await send(ctx, "leader", "auditor", undefined, "send_to_instance", "broadcast")).error).toBeUndefined();
+    expect(outbox.getByOperation("leader", "broadcast")).toHaveLength(2);
+    expect(outbox.queryStatusForInstance("auditor", { messageId: "xmsg-original" }).items).toEqual([]);
   });
 
   it("database reopen retains the explicit ACL", async () => {

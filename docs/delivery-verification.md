@@ -6,11 +6,11 @@ A peer's summary can omit or change what a person authorized. `delivery_status` 
 {"instance_name":"worker","message":"Review the original consent before acting","forwards":["hmsg-<receipt UUID>"]}
 ```
 
-`send_to_instance` and `delegate_task` accept up to 16 unique `forwards` IDs. Every reference must be delivered and readable by the authenticated sender. The outgoing message and grants commit together. Merely mentioning an ID grants nothing. A second hop needs its own explicit forward; the receiver cannot see unrelated rows, correlation siblings or hidden cursors. Retrying an admitted operation cannot add or replace references or change its forwarded body/target.
+`send_to_instance` and `delegate_task` accept up to 16 unique `forwards` IDs. Every reference must be delivered and readable by the authenticated sender. The outgoing message and grants commit together. Merely mentioning an ID grants nothing. A second hop needs its own explicit forward; the receiver cannot see unrelated rows, correlation siblings or hidden cursors. Retrying an admitted operation cannot add or replace references or change its forwarded body, recipient, session or requested mode. Forwarded operations are pinned by authenticated sender and operation ID, independently of the effective delivery mode. An unchanged retry reuses its original effective mode even if a queued predecessor appears or clears. A minimal operation checkpoint survives notification pruning; if that admitted row is gone, the retry refuses instead of creating new grants.
 
 ## Original human receipt
 
-Fresh trusted Discord and Telegram ingress captures the actual adapter, actor ID, username and platform message ID. Quoted messages, bot/system messages, agent text and historical relays never acquire a human origin. Discord native forwards retain the outer person's own comment as original content; a quoted author's text is not that person's authorization.
+Fresh trusted Discord and Telegram ingress captures the actual adapter, actor ID, username and platform message ID. Quoted messages, bot/system messages, agent text and historical relays never acquire a human origin. Discord receipts require a non-system Default (0) or Reply (19) event; thread-created titles and unsupported/unknown types carry no human authority. Discord native forwards retain the outer person's own comment as original content; a quoted author's text is not that person's authorization.
 
 The target receives a separate `[agend-human-id:hmsg-…]` header and `verification_id`. Platform `message_id` stays intact for replies and reactions. Use the verification ID for an original human lookup:
 
@@ -18,7 +18,7 @@ The target receives a separate `[agend-human-id:hmsg-…]` header and `verificat
 {"message_id":"hmsg-<receipt UUID>"}
 ```
 
-The result contains original `content`, `origin`, `content_sha256`, `wire_content_sha256`, `proof_kind` and `delivered_at`. Original input is snapshotted before attachments and Classic chat context; the wire digest covers the actual formatted, sanitized bytes. A receiver with an explicit grant reads the same immutable original, not the relay's summary. Other status selectors keep content redacted.
+The result contains original `content`, `origin`, `content_sha256`, `wire_content_sha256`, `proof_kind` and `delivered_at`. Original input is snapshotted before attachments, Classic chat context and Web/slash action argument trimming; the wire digest covers the actual formatted, sanitized bytes. A receiver with an explicit grant reads the same immutable original, not the relay's summary. Other status selectors keep content redacted.
 
 - Native messages: `origin.platform`, `adapter_id` and `user_id` are separate authority facts. A display label is not an actor ID.
 - Button/slash actions: origin identifies the click/interaction and its anchor when available; `platform_message_id` is null because the bot reply is not a human-authored message. A button receipt's original content is its visible label; a hidden value is only in the wire body.

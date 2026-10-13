@@ -6,11 +6,11 @@ Agent 的摘要可能省略或改變使用者授權的內容。過去 `delivery_
 {"instance_name":"worker","message":"先核對原始授權再操作","forwards":["hmsg-<receipt UUID>"]}
 ```
 
-`send_to_instance`、`delegate_task` 接受最多 16 個不重複的 `forwards` ID。寄件者必須能讀到每一列，且該列必須已送達。新訊息與讀取授權一起提交。只在文字提到 ID 不會授權；再轉交一次也必須明列 `forwards`。收件者不會取得其他列、相同 correlation 的其他訊息或隱藏分頁游標。重試已受理的操作不能增加／替換引用，或改變其內容與目標。
+`send_to_instance`、`delegate_task` 接受最多 16 個不重複的 `forwards` ID。寄件者必須能讀到每一列，且該列必須已送達。新訊息與讀取授權一起提交。只在文字提到 ID 不會授權；再轉交一次也必須明列 `forwards`。收件者不會取得其他列、相同 correlation 的其他訊息或隱藏分頁游標。重試已受理的操作不能增加／替換引用，或改變內容、收件者、session 與要求的模式。轉交操作以經驗證的寄件者和 operation ID 綁定，不受實際投遞模式影響；前一則排隊訊息出現或消失時，相同重試仍沿用第一次受理的模式。最小操作記錄不隨通知清理而消失；原受理列已清除時，重試會拒絕，不建立新授權。
 
 ## 原始使用者收據
 
-新的 Discord、Telegram 事件會由可信任的 SDK 入口記錄實際 adapter、使用者 ID、username 與平台訊息 ID。引用文字、bot／系統訊息、agent 文字和歷史轉交不會補上 human origin。Discord 原生轉寄的原始內容只記外層使用者自己輸入的文字；引用者的文字不等於這位使用者的授權。
+新的 Discord、Telegram 事件會由可信任的 SDK 入口記錄實際 adapter、使用者 ID、username 與平台訊息 ID。引用文字、bot／系統訊息、agent 文字和歷史轉交不會補上 human origin。Discord 收據只接受非 system 的 Default (0) 或 Reply (19) 事件；建立主題的標題及不支援／未知的 type 不具有使用者授權。Discord 原生轉寄的原始內容只記外層使用者自己輸入的文字；引用者的文字不等於這位使用者的授權。
 
 目標收到另外的 `[agend-human-id:hmsg-…]` 與 `verification_id`。平台 `message_id` 仍供回覆和反應使用。查原始使用者收據時使用驗證 ID：
 
@@ -18,7 +18,7 @@ Agent 的摘要可能省略或改變使用者授權的內容。過去 `delivery_
 {"message_id":"hmsg-<receipt UUID>"}
 ```
 
-結果含原始 `content`、`origin`、`content_sha256`、`wire_content_sha256`、`proof_kind` 與 `delivered_at`。原文在附件處理、Classic 聊天脈絡加入前保存；wire hash 則涵蓋實際格式化、清理後的投遞位元組。明確授權的收件者讀到同一份原文，不是轉交摘要。其他查詢形式仍不顯示內容。
+結果含原始 `content`、`origin`、`content_sha256`、`wire_content_sha256`、`proof_kind` 與 `delivered_at`。原文在附件處理、Classic 聊天脈絡加入與 Web／slash 操作參數去除首尾空白前保存；wire hash 則涵蓋實際格式化、清理後的投遞位元組。明確授權的收件者讀到同一份原文，不是轉交摘要。其他查詢形式仍不顯示內容。
 
 - 平台訊息：`origin.platform`、`adapter_id`、`user_id` 分別代表平台、bot 連線與使用者。顯示名稱不是身份 ID。
 - 按鈕／slash 操作：記錄點擊或 interaction，已知時附其 anchor；`platform_message_id` 是 null，因為 bot 回覆不是人類撰寫的訊息。按鈕原文是使用者看見的 label，隱藏 value 只在 wire 內容中。

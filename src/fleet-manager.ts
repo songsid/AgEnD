@@ -1657,7 +1657,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     correlationId: string;
     payload: Record<string, unknown>;
     forwards?: readonly string[];
-  }): { deliveryId: string; state: string; duplicate: boolean } {
+    requestedKind?: string;
+  }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
     const outbox = this.deliveryOutbox;
     if (!outbox) throw new Error("Durable delivery store is unavailable");
     const source = this.daemons.get(input.sourceInstance);
@@ -1682,6 +1683,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       deliveryId: admitted.delivery.deliveryId,
       state: admitted.delivery.state,
       duplicate: !admitted.inserted,
+      kind: admitted.delivery.kind,
     };
   }
 
@@ -4002,24 +4004,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } else if (data.command === "steer") {
       const name = this.resolveSlashTarget(data.channelId, adapterId);
       if (!name) { await data.respond(t("classic.no_agent")); return; }
-      const steerText = String(data.options?.message ?? "").trim();
+      const originalSteerText = String(data.options?.message ?? "");
+      const steerText = originalSteerText.trim();
       if (!steerText) { await data.respond(t("steer.usage")); return; }
       // chat_id/message_id stay empty: a slash interaction has no channel
       // message to react to, and an empty chat_id keeps updateLastChat from
       // rerouting the instance's replies to the slash context.
       const result = this.topicCommands.sendSteer(name, steerText, {
         chatId: "", messageId: "", username: data.username ?? "user",
-        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord", humanOrigin: data.humanOrigin,
+        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord", humanOrigin: data.humanOrigin, humanOriginalBody: originalSteerText,
       });
       await data.respond(result);
     } else if (data.command === "btw") {
       const name = this.resolveSlashTarget(data.channelId, adapterId);
       if (!name) { await data.respond(t("classic.no_agent")); return; }
-      const btwText = String(data.options?.message ?? "").trim();
+      const originalBtwText = String(data.options?.message ?? "");
+      const btwText = originalBtwText.trim();
       if (!btwText) { await data.respond(t("btw.usage")); return; }
       const result = this.topicCommands.sendBtw(name, btwText, {
         chatId: "", messageId: "", username: data.username ?? "user",
-        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord", humanOrigin: data.humanOrigin,
+        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord", humanOrigin: data.humanOrigin, humanOriginalBody: originalBtwText,
       });
       await data.respond(result);
     } else if (data.command === "login") {
@@ -12762,8 +12766,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return { current, options: levels.map(l => ({ id: l, label: this.effortChoiceLabel(l, current) })) };
       },
       cancel: (instance) => this.cancelInstance(instance),
-      steer: (instance, text) => this.topicCommands.sendSteer(instance, text, webMeta(instance)),
-      btw: (instance, text) => this.topicCommands.sendBtw(instance, text, webMeta(instance)),
+      steer: (instance, text, originalBody) => this.topicCommands.sendSteer(instance, text, { ...webMeta(instance), humanOriginalBody: originalBody }),
+      btw: (instance, text, originalBody) => this.topicCommands.sendBtw(instance, text, { ...webMeta(instance), humanOriginalBody: originalBody }),
       pauseWake: (instance, action) => this.topicCommands.runPauseWake(instance, action),
       save: (instance, filename) => this.topicCommands.sendSave(instance, filename),
       clearAsk: (instance) => {

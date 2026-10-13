@@ -22,6 +22,7 @@ import {
   ChannelType,
   PermissionFlagsBits,
   MessageFlags,
+  MessageType,
   Events,
   Status,
   ActivityType,
@@ -476,7 +477,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const messageId = msg.id;
       const username = msg.author.username;
       const humanOriginalBody = msg.content;
-      const humanOrigin = nativeHumanOrigin("discord", this.id, userId, username, msg.author.bot, messageId);
+      // A human author on a system event (for example a thread title) is not
+      // proof of authored consent. Keep ordinary routing separate from receipts.
+      const humanOrigin = msg.system === false && (msg.type === MessageType.Default || msg.type === MessageType.Reply)
+        ? nativeHumanOrigin("discord", this.id, userId, username, msg.author.bot, messageId) : undefined;
       let text = msg.content;
 
       // Handle forwarded messages (messageSnapshots) and embeds.

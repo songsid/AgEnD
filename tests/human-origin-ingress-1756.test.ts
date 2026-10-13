@@ -37,13 +37,31 @@ describe("trusted native human ingress snapshots", () => {
     const seen: any[] = []; adapter.on("message", m => seen.push(m));
     const coll = () => Object.assign(new Map(), { map: () => [] });
     client.emit("messageCreate", { author: { id: "42", username: "actual_username", bot: botFlag }, guildId: "guild", channelId: "room", id: "7",
-      content: "my outer comment", attachments: coll(), embeds: [], createdAt: new Date(), reference: undefined,
+      type: 0, system: false, content: "my outer comment", attachments: coll(), embeds: [], createdAt: new Date(), reference: undefined,
       messageSnapshots: new Map([["quoted", { content: "Reset production (quoted)", attachments: coll(), embeds: [], author: { username: "someone_else" } }]]) });
     for (let i = 0; i < 12; i++) await Promise.resolve();
     expect(seen).toHaveLength(1);
     expect(seen[0].text).toContain("Reset production (quoted)");
     expect(seen[0].humanOriginalBody).toBe("my outer comment");
     expect(seen[0].humanOrigin).toEqual(botFlag ? undefined : { platform: "discord", adapter_id: "native-dc", user_id: "42", username: "actual_username", platform_message_id: "7", ingress: "message" });
+  });
+  it.each([
+    [0, false, true], [19, false, true], [18, true, false], [0, true, false], [20, false, false], [undefined, false, false],
+  ])("Discord message type=%s system=%s requires positive human-authored type proof", async (type, system, human) => {
+    const r = root();
+    const adapter = new DiscordAdapter({ id: "native-dc", botToken: "TEST-FIXTURE-NO-REAL-TOKEN", guildId: "guild", inboxDir: r,
+      accessManager: new AccessManager({ mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 10 }, join(r, "access.json")), registerCommands: false });
+    cleanup.push(() => adapter.stop());
+    const client = (adapter as any).client;
+    Object.defineProperty(client, "user", { value: { id: "self" }, configurable: true });
+    const seen: any[] = []; adapter.on("message", m => seen.push(m));
+    const coll = () => Object.assign(new Map(), { map: () => [] });
+    client.emit("messageCreate", { author: { id: "42", username: "person", bot: false }, guildId: "guild", channelId: "room", id: "7",
+      type, system, content: "Delete production resource A", attachments: coll(), embeds: [], createdAt: new Date(), reference: undefined });
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    expect(seen).toHaveLength(1); // Routing stays separate from consent attribution.
+    expect(seen[0].text).toBe("Delete production resource A");
+    expect(seen[0].humanOrigin).toEqual(human ? { platform: "discord", adapter_id: "native-dc", user_id: "42", username: "person", platform_message_id: "7", ingress: "message" } : undefined);
   });
   it("a real reply-button claim carries only the click's origin and Web keeps actor unknown", async () => {
     const r = root(); const store = new ReplyButtonStore(join(r, "buttons.db"));

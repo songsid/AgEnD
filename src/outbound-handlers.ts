@@ -113,7 +113,8 @@ export interface OutboundContext {
     correlationId: string;
     payload: Record<string, unknown>;
     forwards?: readonly string[];
-  }): { deliveryId: string; state: string; duplicate: boolean };
+    requestedKind?: string;
+  }): { deliveryId: string; state: string; duplicate: boolean; kind?: string };
   /** Read-only status query scoped to a server-authenticated source/target. */
   queryDurableDeliveryStatus?(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage;
   /** #1335: True when the delivery_id was pruned AND the caller is the source or target. */
@@ -421,7 +422,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const queuedPredecessor = steerCapable
     && ctx.hasPendingIdleGatedDelivery?.(targetInstanceName) === true;
   const useSteer = steerCapable && !queuedPredecessor;
-  const steerFallbackWarning = steer === true && !useSteer
+  let steerFallbackWarning = steer === true && !useSteer
     ? isExternalSession
       ? t("delivery.steer_external")
       : queuedPredecessor
@@ -470,7 +471,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     content: message,
     meta: ipcMeta,
   };
-  let durableReceipt: { deliveryId: string; state: string; duplicate: boolean } | undefined;
+  let durableReceipt: { deliveryId: string; state: string; duplicate: boolean; kind?: string } | undefined;
+  let effectiveUseSteer = useSteer;
   if (ctx.admitDurableDelivery) {
     try {
       durableReceipt = ctx.admitDurableDelivery({
@@ -485,7 +487,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
         correlationId,
         payload,
         forwards,
+        requestedKind: steer === true ? "steer" : "fleet_inbound",
       });
+      if (durableReceipt.kind) effectiveUseSteer = durableReceipt.kind === "steer";
+      if (durableReceipt.duplicate && durableReceipt.kind !== undefined && durableReceipt.kind !== payload.type) steerFallbackWarning = undefined;
     } catch (err) {
       ctx.logger.error({ err, source: meta.instanceName, target: targetInstanceName }, "Durable outbound admission failed closed");
       respond(null, t("delivery.admission_failed", sanitizeError(err, ctx, "durable delivery admission")));
@@ -605,8 +610,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       duplicate: durableReceipt.duplicate,
     } : {}),
     ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
-    ...(useSteer ? { delivery_mode: "steer" } : {}),
-    ...(steerFallbackWarning ? { delivery_mode: "idle_queue" } : {}),
+    ...(effectiveUseSteer ? { delivery_mode: "steer" } : {}),
+    ...(steer === true && !effectiveUseSteer ? { delivery_mode: "idle_queue" } : {}),
     ...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
   });
 };

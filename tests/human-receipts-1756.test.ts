@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import { KiroBackend } from "../src/backend/kiro.js";
+import { TopicCommands } from "../src/topic-commands.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { humanBodyHash, nativeHumanOrigin, webHumanOrigin, type HumanOrigin } from "../src/human-delivery-receipts.js";
@@ -118,6 +119,31 @@ describe("owned human receipt production (#1756)", () => {
     expect(r.row?.state).not.toBe("delivered"); expect(r.row?.proof_tag).toBeNull();
     expect(() => h.outbox.admit({ operationId: "relay", sourceKey: "relay", sourceInstance: "leader", sourceDaemonBootId: "boot",
       targetInstance: "worker", kind: "fleet_inbound", forwards: [r.row!.message_id], payload: { type: "fleet_inbound", content: "relay", meta: { forwards: JSON.stringify([r.row!.message_id]) } } })).toThrow();
+  });
+  it.each([
+    ["web", "steer"], ["web", "btw"], ["discord", "steer"], ["discord", "btw"],
+  ])("%s %s action preserves raw options separately from the trimmed wire", async (surface, command) => {
+    for (const raw of ["  Keep the indentation\n    exactly here  \n", "plain option"]) {
+      const h = harness();
+      h.fm.fleetConfig = { defaults: {}, instances: { leader: { backend: "claude-code", topic_id: "room" } } };
+      h.fm.getAdapterForInstance = () => ({ id: "dc" }); h.fm.getGroupIdForInstance = () => "guild";
+      h.fm.instanceIpcClients.get("leader").send.mockImplementation(() => true);
+      h.fm.topicCommands = new TopicCommands(h.fm);
+      if (surface === "web") {
+        expect((await h.fm.webCommand({ instance: "leader", command, args: raw }, { publicLink: false })).status).toBe(200);
+      } else {
+        h.fm.slashDoor = () => ({ scope: "fleet" }); h.fm.resolveSlashTarget = () => "leader";
+        h.fm.fleetAdminGate = () => "ok"; h.fm.isModelAdmin = () => true;
+        await h.fm.dispatchSlash({ command, channelId: "room", userId: "42", username: "person", options: { message: raw },
+          humanOrigin: { platform: "discord", adapter_id: "dc", user_id: "42", username: "person", platform_message_id: null, ingress: "action", event_id: "interaction" },
+          respond: vi.fn(async () => undefined) }, "dc", {});
+      }
+      const payload = h.fm.instanceIpcClients.get("leader").send.mock.calls[0][0];
+      expect(payload.type).toBe(command); expect(payload.content).toBe(raw.trim());
+      const row = h.outbox.getHumanReceipt(payload.meta.human_receipt_id)!;
+      expect(row.original_body).toBe(raw); expect(row.original_sha256).toBe(humanBodyHash(raw));
+      expect(row.wire_body).toContain(raw.trim());
+    }
   });
   it("/raw remains uncertain without changing the raw pasted bytes", async () => {
     const h = harness(); const r = await deliver(h, person, "fleet_inbound", "/raw exact command");

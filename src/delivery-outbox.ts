@@ -73,6 +73,8 @@ export interface NewOutboxDelivery {
   payload: Record<string, unknown>;
   /** Validated again at the atomic admission boundary using sourceInstance. */
   forwards?: readonly string[];
+  /** Requested mode before transient predecessor/capability fallback; pins forwarded retries. */
+  requestedKind?: string;
 }
 
 export interface OutboxDelivery {
@@ -692,6 +694,15 @@ export class DeliveryOutbox extends EventEmitter {
         created_at TEXT NOT NULL,
         PRIMARY KEY (reference_kind,reference_id,receiver_instance,forwarding_delivery_id)
       );
+      -- Independent of recipient/session/effective mode and notification retention.
+      -- A pruned admitted row cannot authorize a retry to create new grants.
+      CREATE TABLE IF NOT EXISTS delivery_forward_proposals (
+        source_instance TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        proposal_sha256 TEXT NOT NULL,
+        delivery_id TEXT NOT NULL,
+        PRIMARY KEY (source_instance,operation_id)
+      );
       CREATE INDEX IF NOT EXISTS idx_delivery_forward_admission ON delivery_forward_edges(forwarding_delivery_id);
       CREATE INDEX IF NOT EXISTS idx_delivery_forward_latest ON delivery_forward_edges
         (reference_kind,reference_id,receiver_instance,created_at DESC,forwarding_delivery_id DESC);
@@ -1048,6 +1059,26 @@ export class DeliveryOutbox extends EventEmitter {
         || forwards.some(id => typeof id !== "string" || id.length === 0 || id.length > 256 || /[\s\u0000-\u001f\u007f]/.test(id))) {
         throw new Error("Forwarded message verification is unavailable");
       }
+      const pinned = this.db.prepare("SELECT proposal_sha256,delivery_id FROM delivery_forward_proposals WHERE source_instance=? AND operation_id=?")
+        .get(input.sourceInstance, input.operationId) as { proposal_sha256: string; delivery_id: string } | undefined;
+      const meta = input.payload.meta as Record<string, unknown> | undefined;
+      const proposalHash = deliveryContentDigest(JSON.stringify({
+        target: input.targetInstance, session: input.targetSession ?? null,
+        requestedKind: input.requestedKind ?? input.kind, content: payloadContent(input.payload), forwards: [...forwards].sort(),
+        // Volatile envelope IDs/timestamps and generated correlations are not proposal input.
+        requestKind: meta?.request_kind ?? null, requiresReply: meta?.requires_reply ?? null,
+        taskSummary: meta?.task_summary ?? null, workingDirectory: meta?.working_directory ?? null, branch: meta?.branch ?? null,
+      }));
+      if (pinned) {
+        if (pinned.proposal_sha256 !== proposalHash) throw new Error("Duplicate operation cannot change its forwarded request");
+        const admitted = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(pinned.delivery_id) as OutboxRow | undefined;
+        if (!admitted) throw new Error("Previously admitted forwarded operation is unavailable");
+        return { delivery: mapRow(admitted), inserted: false }; // Reuse the original effective mode, never recompute it.
+      }
+      if (forwards.length && this.db.prepare("SELECT 1 FROM deliveries WHERE source_instance=? AND operation_id=? LIMIT 1")
+        .get(input.sourceInstance, input.operationId)) {
+        throw new Error("Duplicate operation cannot change its forwarded request");
+      }
       if (previous) {
         const previousPayload = JSON.parse(previous.payload_json);
         const oldForwards = (typeof previousPayload.meta?.forwards === "string"
@@ -1112,6 +1143,9 @@ export class DeliveryOutbox extends EventEmitter {
         VALUES (?,?,?,?,?,?,?)`);
       for (const reference of references) edge.run(reference.kind, reference.id, input.sourceInstance, input.targetInstance,
         row.delivery_id, forwardingMessageId, now);
+      if (references.length) this.db.prepare(`INSERT INTO delivery_forward_proposals
+        (source_instance,operation_id,proposal_sha256,delivery_id) VALUES (?,?,?,?)`)
+        .run(input.sourceInstance, input.operationId, proposalHash, row.delivery_id);
       if (result.changes === 1) this.answerReplyObligation(row, now);
       return { delivery: mapRow(row), inserted: result.changes === 1 };
     });
