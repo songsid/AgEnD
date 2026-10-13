@@ -210,7 +210,7 @@ describe("human receipt settlement and ACL", () => {
     expect(h.outbox.queryStatusForInstance("worker", { messageId: b.row.message_id }).items).toHaveLength(1);
     h.outbox.recoverForBoot("another-manager");
     expect(h.outbox.getHumanReceipt(pending.row.receipt_id)?.state).toBe("uncertain");
-    expect(h.outbox.claimNext("another-manager", () => "boot", new Set())).toBeNull();
+    expect(h.outbox.claimNext("another-manager", () => "boot", new Set())).toBeUndefined();
     db.prepare("UPDATE human_delivery_receipts SET updated_at=?").run("2000-01-01T00:00:00.000Z");
     await h.outbox.prune(1);
     expect(h.outbox.queryStatusForInstance("worker", { messageId: b.row.message_id }).items).toEqual([]);
