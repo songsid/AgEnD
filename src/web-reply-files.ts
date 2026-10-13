@@ -66,7 +66,6 @@ export async function snapshotReplyFile(src: string, dir: string, id: string, op
       const own = await lstat(src);
       if (own.isSymbolicLink()) return refused("a symlink");
       if (!own.isFile()) return refused("not a regular file");
-      if (own.size > maxFile) return refused("over the size limit");
       fh = await open(src, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
       const st = await fh.stat();
       if (!st.isFile()) return refused("not a regular file");

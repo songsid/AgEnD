@@ -189,7 +189,7 @@ import { WebPrefsStore } from "./web-prefs.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
-import { snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
+import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
@@ -1201,6 +1201,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webFiles = new WebFileLedger();
   /** #1770: per instance, its last web reply still copying its files — the next one is shown after it, in order. */
   private readonly webReplyOrder = new Map<string, Promise<void>>();
+  /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
+  private webReplyMaxBytes = REPLY_FILES_MAX_BYTES;
   /** #1682: the people seen on inbound messages (id → name), for the web chat's mention pills; bounded, in memory. */
   readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
@@ -8828,7 +8830,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const out: WebChatAttachment[] = [];
     for (const path of paths) {
       const id = randomBytes(16).toString("hex");
-      const got = dir ? await snapshotReplyFile(path, dir, id, { stateDir: home }) : null;
+      const got = dir ? await snapshotReplyFile(path, dir, id, { stateDir: home, maxDirBytes: this.webReplyMaxBytes }) : null;
       if (got && "evicted" in got && got.evicted.length) this.webFiles.dropServed(got.evicted);
       let file: ReturnType<WebFileLedger["registerServed"]> = null;
       if (got?.ok) file = this.webFiles.registerServed({ id, path: got.path, name: basename(path), instance: instanceName, snapshot: true });

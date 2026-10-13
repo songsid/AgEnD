@@ -18,6 +18,12 @@ import { makeRoom, REPLY_FILES_MAX_BYTES, snapshotExt, snapshotReplyFile, sweepR
 import { MAX_SERVED_BYTES, WebFileLedger } from "../src/web-upload.js";
 import { WebChatHistory } from "../src/web-chat-history.js";
 
+// The path checked by lstat can be swapped for a symlink before it is opened: the race is staged by answering one lstat
+// as the regular file it was a moment before.
+vi.mock("node:fs/promises", async (original) => {
+  const real = await original<typeof import("node:fs/promises")>();
+  return { ...real, lstat: vi.fn(real.lstat) };
+});
 vi.mock("../src/logger.js", async original => {
   const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
   return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
@@ -64,6 +70,17 @@ describe("#1770: snapshotReplyFile copies the agent's file into the instance's w
     expect(reasons).toEqual(["a symlink", "not a regular file", "cannot be read", "over the size limit"]);
     expect(existsSync(dirOf()) ? readdirSync(dirOf()) : [], "nothing copied").toEqual([]);
     expect((await snap(atLimit, ID("b"))).ok, "exactly 50 MB is within the limit").toBe(true);
+  });
+
+  it("a path swapped for a symlink between the check and the open is not followed (O_NOFOLLOW)", async () => {
+    const { lstat } = await import("node:fs/promises");
+    const target = put(join(outside, "elsewhere.png"), PNG);
+    const regular = await (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).lstat(target);
+    symlinkSync(target, join(outside, "swapped.png"));
+    vi.mocked(lstat).mockResolvedValueOnce(regular);                         // what the check saw: a regular file
+    const r = await snap(join(outside, "swapped.png"));
+    expect(r).toEqual({ ok: false, refused: true, reason: "cannot be read" });
+    expect(existsSync(dirOf()) ? readdirSync(dirOf()) : []).toEqual([]);
   });
 
   it("a state file is refused — directly, or through a parent directory that leads into the state dir; the inbox is not", async () => {
@@ -262,6 +279,18 @@ describe("#1770: the fleet — a reply's files are served from their snapshot, a
     fm.afterReplyRouted("w", { text: "third" });
     expect(messages().map((m: any) => m.text).at(-1)).toBe("third");
     expect(fm.webReplyOrder.size).toBe(0);
+    await fm.webChatStore?.flush();
+  });
+
+  it("the byte cap: the oldest reply's snapshot is evicted from disk and from the ledger; its message no longer holds it", async () => {
+    const { fm, messages } = await start();
+    fm.webReplyMaxBytes = PNG.length + 4;                                     // room for one
+    await fm.afterReplyRouted("w", { text: "one", files: [put(join(outside, "a.png"), PNG)] });
+    await fm.afterReplyRouted("w", { text: "two", files: [put(join(outside, "b.png"), PNG)] });
+    const [a, b] = messages().map((m: any) => m.attachments[0].id);
+    expect(readdirSync(dirOf())).toEqual([`${b}.png`]);
+    expect([...fm.webFiles.heldSnapshots("w")]).toEqual([b]);
+    expect([fm.webFiles.read(a), fm.webFiles.read(b).bytes]).toEqual([null, PNG]);
     await fm.webChatStore?.flush();
   });
 
