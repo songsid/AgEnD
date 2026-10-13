@@ -82,6 +82,27 @@ function sameReceipt(a: UpdateReceipt | null, b: UpdateReceipt | null): boolean 
 }
 
 /**
+ * #1737 review: a marker's identity — when it was started and, for a chat-tracked one, its receipt — so a reader can
+ * tell "still the marker I adopted" from a newer one written since (a `/restart full`, a new `/update`).
+ */
+export interface UpdateMarkerIdentity {
+  startedAt: number;
+  receipt: UpdateReceipt | null;
+}
+
+export function updateMarkerIdentity(dataDir: string): UpdateMarkerIdentity | null {
+  const marker = readMarker(dataDir);
+  if (!marker) return null;
+  return { startedAt: marker.startedAt, receipt: marker.progress ? updateReceiptOf(marker as UpdateMarker & { progress: UpdateProgressState }) : null };
+}
+
+/** The same marker: started at the same time, with the same receipt (or none on both). */
+export function sameUpdateMarker(a: UpdateMarkerIdentity | null, b: UpdateMarkerIdentity | null): boolean {
+  if (!a || !b || a.startedAt !== b.startedAt) return false;
+  return a.receipt === null ? b.receipt === null : sameReceipt(a.receipt, b.receipt);
+}
+
+/**
  * Mark the current update as owing its retire outcome, before the restart
  * that may let a new fleet consume this receipt. Returns the receipt the
  * later write must still match.

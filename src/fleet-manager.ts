@@ -41,10 +41,13 @@ import {
   clearUpdateMarker,
   isUpdateInProgress,
   readUpdateProgress,
+  sameUpdateMarker,
   setUpdateProgressStage,
+  updateMarkerIdentity,
   updateProgressOperation,
   updateReceiptOf,
   type UpdateMarker,
+  type UpdateMarkerIdentity,
   type UpdateProgressOperation,
   type UpdateProgressState,
   type UpdateReceipt,
@@ -2168,7 +2171,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.shuttingDown || isUpdateInProgress(this.dataDir);
   }
 
-  private finishStartup(): void {
+  private finishStartup(bootUpdateMarker: UpdateMarkerIdentity | null = null): void {
     this.startupComplete = true;
     this.startNeedsYou();
     // Resolve whatever a previous run — or a setup host that crashed — left
@@ -2208,7 +2211,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const settled of this.applyJobs.settleAfterRestart()) {
       this.logger.info({ jobId: settled.id }, "Settings apply job settled by fleet restart");
     }
-    this.clearSettledUpdateMarker();
+    this.clearSettledUpdateMarker(bootUpdateMarker);
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
   }
@@ -2221,9 +2224,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1735: and while the watch is armed it owns the marker — even if the outcome landed after the completion posted
    * (a launchd kickstart or a detached restart returns at once, so it can land at any point of the boot): the watch
    * appends it, then clears.
+   * #1737 review: and only the marker this boot adopted. One written since — a `/restart full` or a new `/update`
+   * landing while this boot's completion was still being edited — belongs to its writer and is left alone.
    */
-  private clearSettledUpdateMarker(): void {
+  private clearSettledUpdateMarker(bootUpdateMarker: UpdateMarkerIdentity | null): void {
     if (this.updateCleanupWatch) return;
+    const current = updateMarkerIdentity(this.dataDir);
+    if (current && !sameUpdateMarker(current, bootUpdateMarker)) return;
     const leftover = readUpdateProgress(this.dataDir)?.progress;
     if (leftover?.cleanup === "pending" && leftover.stage !== "failed" && leftover.stage !== "complete") return;
     clearUpdateMarker(this.dataDir);
@@ -5836,6 +5843,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = this.loadConfig(configPath);
     this.slimFleetConfigAtStartup();
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
+    // #1737 review: the marker this boot adopts — the startup clear may only ever clear this one.
+    const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
     const pendingUpdateProgress = savedUpdateProgress
       && savedUpdateProgress.progress.stage !== "failed"
@@ -6395,7 +6404,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A SIGHUP may arrive after the PID/general is available but before the
     // rest of startup finishes. Replay one coalesced reload only after all
     // startup-owned lifecycle work and signal handlers are in place.
-    this.finishStartup();
+    this.finishStartup(bootUpdateMarker);
 
     // Tell systemd we are ready only now. This used to fire right after the
     // generals started — before adapters, classic instances, topic creation and the

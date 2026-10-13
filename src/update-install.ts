@@ -351,7 +351,8 @@ export type RetireSystemCopyResult =
  * @param npmPath - The absolute npm path used during this install (from UpdateInstallOutcome.npmPath).
  *   Passing undefined or a non-absolute path is a caller error and results in a failure.
  * @param oldCopyDir - #1735: where the old copy is (the package the updater runs from), named in the warning when it
- *   is a plain `…/node_modules/@songsid/agend` path — absolute, no whitespace or control characters, ≤ 200 chars — so
+ *   is a plain `…/node_modules/@songsid/agend` path — absolute, no whitespace and no control/format/unassigned code point
+ *   (`\p{C}`: C0, DEL, C1 such as U+0085/U+009B, bidi overrides), ≤ 200 chars (#1737 review) — so
  *   the prose (whitespace-collapsed and sliced in the marker) can never mangle it. Anything else is left unnamed.
  */
 export function retireSystemCopy(runner: CommandRunner, npmPath?: string, oldCopyDir?: string): RetireSystemCopyResult {
@@ -371,7 +372,7 @@ export function retireSystemCopy(runner: CommandRunner, npmPath?: string, oldCop
     // `-n` is non-interactive: sudo fails fast here, it never prompts. No
     // further sudo calls on this path. The caller prints once (P3-1).
     const cleanupCommand = `sudo ${shellQuote(npmPath)} uninstall -g @songsid/agend`;
-    const where = oldCopyDir && oldCopyDir.length <= 200 && /^\/[^\s\u0000-\u001f\u007f]*\/node_modules\/@songsid\/agend$/.test(oldCopyDir)
+    const where = oldCopyDir && oldCopyDir.length <= 200 && /^\/[^\s\p{C}]*\/node_modules\/@songsid\/agend$/u.test(oldCopyDir)
       ? ` at ${oldCopyDir}` : "";
     const warning = `Old system install${where} was not removed (sudo refused); remove it by hand.`;
     return { ok: true, warning, cleanupCommand };
