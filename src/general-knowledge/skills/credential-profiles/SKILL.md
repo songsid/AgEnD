@@ -102,14 +102,30 @@ restarted for you** and the reply says `restarted: true`. A paused or stopped on
 is not started: the reply says `restarted: false`, and the switch applies at its
 next start.
 
-**For kiro and claude-code**, a switch is always a **new conversation**, and the reply says so
-(`conversation_carried_over: false`). kiro keeps its conversations in the same
+**For kiro**, a switch is always a **new conversation**
+(`conversation_carried_over: false`). Kiro keeps its conversations in the same
 database as its login, so a different subscription has a different set of them
 and there is nothing to resume — AgEnD does not even try. What it does instead
 is hand the new session a summary of what the old one was doing
 (`handover_chars` says how much), so the agent can pick the work up without the
 transcript. Tell the user plainly: the agent restarted on the other
 subscription, it knows what it was doing, it cannot quote what was said.
+
+**For claude-code**, AgEnD copies the transcript into the new profile's
+directory and resumes it there. The reply's `conversation_carried_over` tells
+you whether the copy succeeded:
+- `true`: the conversation was copied and resumed. The reply also carries
+  `conversation_note` — relay it. It says the old copy is still there and warns
+  that the next turn re-reads the full history from a cold cache (one slower,
+  full-price turn).
+- `false`: the copy failed. The reply carries `carry_failed` with the reason
+  and falls back to a fresh session with a handover summary
+  (`handover_chars`). Relay the reason and say the agent knows what it was
+  doing from the summary.
+
+**Always relay `conversation_carried_over`, `conversation_note`, and
+`carry_failed` from the actual tool response.** Do not predict which one you
+will receive; read what the tool returned.
 
 **For codex** the reply says `conversation_carried_over: true` and carries a
 `conversation_note`. Relay it as what it is — a statement about where the
@@ -170,9 +186,12 @@ and log it in, so report it as such rather than as a missing subscription.
   worth saying so before someone sets this up expecting more headroom.
 - Claude Code profiles now each have their own usage row (`Claude (<profile>)`),
   reading quota from that profile's own login.
-- Switching a profile for kiro or claude-code does not carry the conversation
-  across automatically; the agent gets a summary of the work, not the transcript.
-  Say anything that must survive verbatim in the channel before switching.
+- Switching a kiro profile does not carry the conversation across; the agent
+  gets a summary of the work, not the transcript. Say anything that must survive
+  verbatim in the channel before switching. For claude-code, AgEnD copies the
+  conversation automatically; relay `conversation_carried_over` and, if it is
+  false, the `carry_failed` reason and the cold-cache note from
+  `conversation_note` when carry succeeds.
 
 ## Do not
 
