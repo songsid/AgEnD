@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeCodeBackend, claudeMemoryRoot, claudeProjectKey, linkSharedClaudeMemory } from "../src/backend/claude-code.js";
 import { credentialProfileHome } from "../src/backend/credential-profile.js";
+import { carryClaudeConversation } from "../src/backend/claude-carry.js";
 
 const ENV = ["AGEND_HOME", "HOME", "CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"] as const;
 const saved: Record<string, string | undefined> = {};
@@ -124,5 +125,18 @@ describe("no profile: today's launch, nothing linked or created", () => {
     const TODAY = `CMUX_CLAUDE_HOOKS_DISABLED=1 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 /usr/bin/claude --settings ${inst}/claude-settings.json --mcp-config ${inst}/mcp-config.json --dangerously-skip-permissions`;
     const cmd = backend().buildCommand(cfg(repo));
     expect([cmd, existsSync(join(home, ".claude", "projects")), existsSync(join(agendHome, "credential-profiles"))]).toEqual([TODAY, false, false]);
+  });
+});
+
+describe("with #1753's conversation carry: transcripts move between profiles, the memory stays the one shared", () => {
+  it("at the repo root (transcripts and memory in one projects/ folder): the carry copies the conversation, both profiles' memory is the same shared link", async () => {
+    const key = claudeProjectKey(repo), SID = "0f8b0e1c-1a2b-4c3d-8e9f-0123456789ab";
+    backend().buildCommand(cfg(repo, { credential_profile: "a" }));
+    writeFileSync(join(profileMemory(key, "a"), "MEMORY.md"), "- one fact\n");
+    writeFileSync(join(profile("a"), "projects", key, `${SID}.jsonl`), '{"type":"user"}\n');
+    const carried = await carryClaudeConversation({ sessionId: SID, workingDirectory: repo, fromConfigDir: profile("a"), toConfigDir: profile("b"), freeBytes: async () => 1e12 });
+    backend().buildCommand(cfg(repo, { credential_profile: "b" }));
+    expect([carried.carried, readFileSync(join(profile("b"), "projects", key, `${SID}.jsonl`), "utf8"), linkOf(profileMemory(key, "a")), linkOf(profileMemory(key, "b")),
+      readFileSync(join(profileMemory(key, "b"), "MEMORY.md"), "utf8"), readdirSync(sharedMemory(key))]).toEqual([true, '{"type":"user"}\n', sharedMemory(key), sharedMemory(key), "- one fact\n", ["MEMORY.md"]]);
   });
 });
