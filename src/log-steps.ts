@@ -439,6 +439,7 @@ const BACKFILL_CHUNK = 256 * 1024;
  * their head and size — read backwards in BACKFILL_CHUNK chunks, at most `maxBytes`, stopping once `maxLines` records
  * are held. A record still being written (after the last line end) is not included. `truncated`: older records exist
  * that were not read. Async and bounded — for an on-demand backfill when a Log is opened, never a whole-file read.
+ * `end` (a record start from an earlier read) reads the records before it instead: the older page.
  *
  * Of the record that crosses a chunk's left edge only its first LINE_MAX_BYTES + LONG_HEAD_BYTES are kept (with its
  * exact length): enough for a short record whole, or for a long one's head.
@@ -446,10 +447,11 @@ const BACKFILL_CHUNK = 256 * 1024;
 /** A record and where it starts in the file (its byte offset). */
 export interface TailRecord { record: string | LongLine; at: number }
 
-export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number }> {
+export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number; end?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number }> {
   const maxBytes = Math.max(1, opts.maxBytes ?? BACKFILL_MAX_BYTES);
   const maxLines = Math.max(1, opts.maxLines ?? 2000);
-  const end = await lastLineBoundary(path);
+  // `end`: read the records before this offset (a record start, from an earlier read: a line boundary) — older ones.
+  const end = opts.end !== undefined ? Math.min(opts.end, await lastLineBoundary(path)) : await lastLineBoundary(path);
   const out: TailRecord[] = [];
   if (end === 0) return { records: out, truncated: false, end };
   const KEEP = LINE_MAX_BYTES + LONG_HEAD_BYTES;

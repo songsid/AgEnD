@@ -22,7 +22,7 @@ function scriptedRead(text: string, fromOffset = 0, size = fromOffset + Buffer.b
 }
 
 /** #1218 P0: the full answer of a look with no long line, within the budget. */
-const R = (lines: string[], newOffset: number) => ({ lines, newOffset, long: [], more: false, skipping: false });
+const R = (lines: string[], newOffset: number) => ({ lines, offsets: expect.any(Array), newOffset, long: [], more: false, skipping: false });
 
 describe("complete JSONL byte boundaries", () => {
   it("retains the entire range when there is no newline", async () => {

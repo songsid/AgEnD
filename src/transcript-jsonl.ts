@@ -12,10 +12,12 @@ export const LONG_HEAD_BYTES = 8 * 1024;
  * of it as text (a JSON fragment), and how many bytes it has (`complete`: its end was seen in this look; otherwise
  * `bytes` is what was seen so far and the rest is skipped by the next looks).
  */
-export interface LongLine { at: number; head: string; bytes: number; complete: boolean }
+export interface LongLine { at: number; head: string; bytes: number; complete: boolean; /** #1218: where it starts in the file. */ offset?: number }
 
 export interface ReadNewLinesResult {
   lines: string[];
+  /** #1218: where each of `lines` starts in the file (same order). */
+  offsets: number[];
   newOffset: number;
   /** #1218 P0: lines over LINE_MAX_BYTES, by position (empty when none). */
   long: LongLine[];
@@ -57,7 +59,7 @@ export async function readNewLines(path: string, fromOffset: number, opts: { max
   const maxBytes = Math.max(1, opts.maxBytes ?? READ_MAX_BYTES);
   const maxLine = Math.max(1, opts.maxLine ?? LINE_MAX_BYTES);
   const stats = await stat(path);
-  const empty = (offset: number, skipping: boolean, more: boolean): ReadNewLinesResult => ({ lines: [], newOffset: offset, long: [], more, skipping });
+  const empty = (offset: number, skipping: boolean, more: boolean): ReadNewLinesResult => ({ lines: [], offsets: [], newOffset: offset, long: [], more, skipping });
   if (stats.size <= fromOffset) return empty(fromOffset, !!opts.skipping, false);
   const fh = await open(path, "r");
   try {
@@ -82,28 +84,29 @@ export async function readNewLines(path: string, fromOffset: number, opts: { max
     const window = await read(pos, Math.min(budget, stats.size - pos));
     const complete = window.lastIndexOf(0x0a) + 1;
     const lines: string[] = [];
+    const offsets: number[] = [];
     const long: LongLine[] = [];
     let start = 0;
     while (start < complete) {
       const end = window.indexOf(0x0a, start);
       const length = end - start;
-      if (length > maxLine) long.push({ at: lines.length, head: headText(window.subarray(start, end), LONG_HEAD_BYTES), bytes: length, complete: true });
+      if (length > maxLine) long.push({ at: lines.length, head: headText(window.subarray(start, end), LONG_HEAD_BYTES), bytes: length, complete: true, offset: pos + start });
       else {
         const line = window.toString("utf-8", start, end);
-        if (line.trim()) lines.push(line);
+        if (line.trim()) { lines.push(line); offsets.push(pos + start); }
       }
       start = end + 1;
     }
     // No line end after `complete`: a record still being written — unless it is already too long to be one we parse.
     const tail = window.length - complete;
     if (tail >= maxLine) {
-      long.push({ at: lines.length, head: headText(window.subarray(complete), LONG_HEAD_BYTES), bytes: tail, complete: false });
+      long.push({ at: lines.length, head: headText(window.subarray(complete), LONG_HEAD_BYTES), bytes: tail, complete: false, offset: pos + complete });
       const newOffset = pos + window.length;
-      return { lines, newOffset, long, more: newOffset < stats.size, skipping: true };
+      return { lines, offsets, newOffset, long, more: newOffset < stats.size, skipping: true };
     }
     const newOffset = pos + complete;
     // More: this look was cut short by its budget, so complete records may wait past the offset.
-    return { lines, newOffset, long, more: window.length === budget && newOffset < stats.size, skipping: false };
+    return { lines, offsets, newOffset, long, more: window.length === budget && newOffset < stats.size, skipping: false };
   } finally {
     await fh.close();
   }
