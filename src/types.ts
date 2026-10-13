@@ -344,6 +344,12 @@ export interface WebConfig {
   echo_to_channel?: boolean;
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
   usage_panel?: boolean;
+  /**
+   * #1218: the instance Log tab (紀錄) — each agent's steps (prompts, replies, tool calls and results, errors) read on
+   * demand from its own transcript, secrets masked. Default false: off, it does no work at all. Turning it on is an
+   * admin's change, confirmed like any access change (Settings → Web).
+   */
+  log_tab?: boolean;
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**

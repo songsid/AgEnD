@@ -52,6 +52,8 @@ const scalar = (value: unknown): boolean => value === undefined || value === nul
 const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolean; looser(old: any, next: any): boolean }> = [
   { path: ["fleet", "web_terminal", "enabled"], def: true, looser: (a, b) => b === true && a !== true },
   { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
+  // #1218: the Log tab shows each agent's steps on the web (the public link included): turning it on is confirmed.
+  { path: ["fleet", "web", "log_tab"], def: false, looser: (a, b) => b === true && a !== true },
 ];
 /** null: not a directional key (judged as before); true/false: whether this change loosens it. */
 function loosens(path: readonly string[], old: unknown, next: unknown): boolean | null {

@@ -183,6 +183,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   return tasks;
 }
 import { handleWebRequest, broadcastSseEvent, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
+import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
@@ -3092,6 +3093,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #1523 N2: a ClassicBot room's own summary for its Details page (classicBot.yaml), or null. */
+  /** #1218: the Log tab's on-demand service — made on first use; with `web.log_tab` off it answers off and does nothing. */
+  private logService: LogService | null = null;
+  private get log(): LogService {
+    return this.logService ??= new LogService({
+      enabled: () => this.fleetConfig?.web?.log_tab === true,
+      known: (name) => Object.prototype.hasOwnProperty.call(this.fleetConfig?.instances ?? {}, name) || this.classicRoomFor(name) !== null,
+      source: (name) => this.logSource(name),
+      events: (name, limit) => (this.eventLog?.query({ instance: name, limit }) ?? []) as Array<{ id: number; event_type: string; payload: unknown; created_at: string }>,
+      emit: (event, data) => this.emitSseEvent(event, data),
+    });
+  }
+
+  /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
+  logSteps(name: string, q: LogQuery): Promise<LogAnswer | null> { return this.log.steps(name, q); }
+
+  /**
+   * #1218: where an instance's steps are read from, resolved only when its Log asks: the transcript its daemon follows
+   * now; for claude-code, also the path its statusline last named (so a stopped instance's Log still shows its last
+   * work). kiro comes with its own reader later in phase 1; other backends have no transcript AgEnD can read.
+   */
+  private logSource(name: string): LogSource {
+    const instances = this.fleetConfig?.instances ?? {};
+    const config = Object.prototype.hasOwnProperty.call(instances, name) ? instances[name] : undefined;
+    const backend = config?.backend ?? (config ? null : this.classicRoomFor(name)?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+    const live = this.lifecycle.daemons.get(name)?.logTranscriptPath() ?? null;
+    if (backend === "claude-code") {
+      let path = live;
+      if (!path) {
+        try { path = (JSON.parse(readFileSync(join(this.getInstanceDir(name), "statusline.json"), "utf-8")) as { transcript_path?: unknown }).transcript_path as string ?? null; } catch { path = null; }
+        if (typeof path !== "string" || !path) path = null;
+      }
+      return { backend, path, format: "claude", ...(path ? {} : { reason: "no_transcript" }) };
+    }
+    if (backend === "codex") return { backend, path: live, format: "codex", ...(live ? {} : { reason: "not_running" }) };
+    if (backend === "kiro-cli") return { backend, path: null, format: null, reason: "coming" };
+    return { backend, path: null, format: null, reason: "unsupported" };
+  }
+
   classicRoomFor(name: string): { name: string; channel_id: string; adapter_id: string | null; backend: string; display_name: string | null; description: string | null } | null {
     const ch = this.classicChannels?.getAll().find(channel => channel.instanceName === name);
     if (!ch) return null;
@@ -17297,6 +17336,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    this.logService?.unwatchAll();   // #1218: a Log's watch timers end with the fleet
     if (this.outboxPruneTimer) { clearInterval(this.outboxPruneTimer); this.outboxPruneTimer = null; }
     if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
     this.wakeCoordinator?.stop();

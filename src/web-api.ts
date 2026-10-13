@@ -229,6 +229,8 @@ export interface WebApiContext {
   needsYouItems?(): unknown[];
   /** #1389: the org chart's structure (fleet.yaml's teams, General, descriptions, thread links); absent: an empty chart. */
   orgChart?(): unknown;
+  /** #1218: an instance's Log steps, read on demand (null: no such instance; `{ enabled: false }`: the Log is off). */
+  logSteps?(name: string, q: import("./log-service.js").LogQuery): Promise<unknown>;
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
@@ -482,6 +484,41 @@ export function handleWebRequest(
       return true;
     }
     json(res, 200, { messages: ctx.webChatHistory?.list(instance, limit) ?? [], boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
+    return true;
+  }
+
+  // ── #1218: the Log tab ─────────────────────────────────
+  // An instance's steps, read on demand from its own transcript (log-service.ts). Read-only, and offered on the public
+  // link on purpose (the user's decision): the same masking applies to every viewer. Passive (web-auth.ts).
+
+  if (method === "GET" && path === "/ui/steps") {
+    const p = url.searchParams;
+    const instance = p.get("instance") ?? "";
+    const num = (k: string): number | undefined | null => {
+      const v = p.get(k);
+      if (v === null) return undefined;
+      const n = Number(v);
+      return /^\d{1,15}$/.test(v) && Number.isSafeInteger(n) ? n : null;
+    };
+    const after = num("after"), before = num("before"), ev = num("ev"), limit = num("limit");
+    const key = p.get("key");
+    if (!instance || instance.length > 128 || after === null || before === null || ev === null || limit === null
+      || (limit !== undefined && (limit < 1 || limit > 200)) || (key !== null && !/^\d{1,20}-\d{1,20}$/.test(key))) {
+      json(res, 400, { error: "instance (1-128 chars); after, before, ev: offsets; limit 1-200; key: <dev>-<ino>" });
+      return true;
+    }
+    if (!ctx.logSteps) { json(res, 404, { error: "not available" }); return true; }
+    ctx.logSteps(instance, {
+      ...(after !== undefined ? { after } : {}), ...(before !== undefined ? { before } : {}), ...(ev !== undefined ? { ev } : {}),
+      ...(limit !== undefined ? { limit } : {}), ...(key !== null ? { key } : {}),
+      skip: p.get("skip") === "1", watch: p.get("watch") === "1",
+    }).then(answer => {
+      if (answer === null) json(res, 404, { error: `Instance not found: ${instance}` });
+      else json(res, 200, answer);
+    }).catch(err => {
+      ctx.logger.error({ err: (err as Error).message, instance }, "Log steps read failed");
+      json(res, 500, { error: "could not read the steps" });
+    });
     return true;
   }
 
@@ -1452,7 +1489,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
 }
@@ -1527,6 +1564,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + `${p?.detail ? ` data-preview-detail="${attr(p.detail)}"` : ""}`
     // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔.
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`
+    // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
+    + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
     // #1770: the fleet's zone (chat-logs' and fleet.log's), in which the chat reads its message times and days.
     + ` data-fleet-tz="${attr(resolveTz())}"`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.

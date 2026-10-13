@@ -81,6 +81,8 @@ export interface TranscriptSource {
   turnStateKnown?(): boolean;
   /** #1641 R3: turn records a checkpoint decided (it moved the source past them), for the monitor to hand on at once. */
   takeTurns?(): TranscriptTurnEvent[];
+  /** #1218: the transcript file being followed now (for the Log tab's on-demand read), or null. */
+  currentPath?(): string | null;
 }
 
 /**
@@ -193,6 +195,8 @@ function emptyEvents(): TranscriptEvents {
  */
 export class CodexRolloutSource implements TranscriptSource {
   private currentFile: string | null = null;
+  /** #1218: the rollout followed now. */
+  currentPath(): string | null { return this.currentFile; }
   private byteOffset = 0;
   /** #1218 P0: the offset is inside a long line being skipped (readNewLines `skipping`). */
   private skipping = false;

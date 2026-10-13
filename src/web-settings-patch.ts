@@ -11,10 +11,12 @@ import type { WebConfig } from "./types.js";
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "public_link", "session", "web_terminal"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["echo_to_channel", "log_tab", "public_link", "session", "web_terminal"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
+  /** #1218: the Log tab on (true) or off (false). */
+  logTab?: boolean;
   publicLink?: NonNullable<WebConfig["public_link"]>;
   session: Record<string, number | null> | null;
   terminal: Record<string, boolean | number | null> | null;
@@ -25,6 +27,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     || Object.keys(body).some(key => !(WEB_SETTINGS_BODY_KEYS as readonly string[]).includes(key))) return { error: "unknown web field" };
   const patch = body as Record<string, unknown>;
   if (patch.echo_to_channel !== undefined && typeof patch.echo_to_channel !== "boolean") return { error: "echo_to_channel must be a boolean" };
+  if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
   if (patch.public_link !== undefined && !validPublicLinkPatch(patch.public_link)) return { error: "invalid public_link settings" };
   const session = webSessionPatch(patch.session);
   if (session === "invalid") return { error: "session must be { local: { absolute_hours?, idle_hours? } } with numbers or null" };
@@ -32,6 +35,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (terminal === "invalid") return { error: "web_terminal must be { enabled?: boolean|null, ttl_minutes?: 1..20|null }" };
   return {
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
+    ...(patch.log_tab !== undefined ? { logTab: patch.log_tab as boolean } : {}),
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     session, terminal,
   };

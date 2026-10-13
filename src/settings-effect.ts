@@ -76,6 +76,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const { session: sessionPatch, terminal: terminalPatch } = parsed;
     after.fleet.web = { ...cfg.web };
     if (parsed.echo !== undefined) after.fleet.web.echo_to_channel = parsed.echo;
+    if (parsed.logTab !== undefined) after.fleet.web.log_tab = parsed.logTab;
     if (parsed.publicLink && Object.keys(parsed.publicLink).length) after.fleet.web.public_link = { ...cfg.web?.public_link, ...parsed.publicLink };
     if (sessionPatch) {
       const local: Record<string, any> = { ...cfg.web?.session?.local, ...sessionPatch };

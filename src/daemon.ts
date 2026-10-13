@@ -1321,6 +1321,8 @@ export class Daemon extends EventEmitter {
   private ipcServer: IpcServer | null = null;
   private messageBus: MessageBus;
   private transcriptMonitor: TranscriptMonitor | null = null;
+  /** #1218: the transcript this instance's monitor follows now (the Log tab reads it on demand; nothing runs for it here). */
+  logTranscriptPath(): string | null { return this.transcriptMonitor?.currentPath() ?? null; }
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
