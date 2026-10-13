@@ -128,6 +128,15 @@ describe("owned human receipt production (#1756)", () => {
     const raw = "command with " + String.fromCharCode(96).repeat(3) + " literal bytes";
     expect(h.daemon.humanReceiptWire(raw, { user: "person", verification_id: "not-in-raw-bytes" }, "raw_paste")).toBe(raw);
   });
+  it("a missing cached window owner is unknown and cannot create receipt authority", async () => {
+    const h = harness(); vi.spyOn(h.tmux, "getWindowId").mockReturnValue(null as any);
+    expect(h.daemon.captureHumanReceiptOwner()).toBeNull();
+    const r = await deliver(h); expect(r.row?.state).toBe("uncertain"); expect(r.row?.owner_key).toBeNull();
+  });
+  it("invalid cached launch fields cannot be used as an owner", () => {
+    const h = harness(); h.daemon.launchAttempt = NaN;
+    expect(h.daemon.captureHumanReceiptOwner()).toBeNull();
+  });
   it("a same-Daemon freeze during Enter cannot settle a positive receipt", async () => {
     const h = harness(); h.state.freeze = true; const r = await deliver(h);
     expect(r.row?.state).not.toBe("delivered"); expect(r.row?.proof_tag).toBeNull();

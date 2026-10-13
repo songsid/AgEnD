@@ -6553,8 +6553,11 @@ export class Daemon extends EventEmitter {
     try {
       if (this.deliveryWritesStopping || this.spawning || !this.tmux) return null;
       const o = this.interactionOwner();
+      const window = this.tmux.getWindowId();
+      if (!window || !o.bootId || ![o.spawnGeneration, o.launchAttempt, o.launchFenceEpoch, this.deliveryEpoch]
+        .every(n => Number.isSafeInteger(n) && n >= 0)) return null;
       return JSON.stringify([o.bootId, o.spawnGeneration, o.launchAttempt, o.launchFenceEpoch,
-        this.deliveryEpoch, humanOwnerObjectId(this.tmux), this.tmux.getWindowId() ?? null]);
+        this.deliveryEpoch, humanOwnerObjectId(this.tmux), window]);
     } catch { return null; }
   }
 
