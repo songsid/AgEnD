@@ -59,6 +59,10 @@ Instance 之間、以及外部 CLI session 與 daemon instance 之間的通訊�
 
 結案的回覆必須帶原請求的 `correlation_id`；不帶的普通訊息可能只是進度或另一項工作，不會自動關閉舊請求。重啟提醒會合併成一則，最多列十筆未回答的請求。回覆義務預設在上次詢問的 24 小時後到期；到期不取消工作、不重送原訊息，寄件者最多收到一次逾期通知。需要更長期限時可設定 `defaults.reply_obligation_ttl_hours`（見 [設定說明](configuration.zh-TW.md)）。
 
+## 原始訊息與授權驗證
+
+使用 `forwards` 明確授權下一個收件者查原始列；每一跳都要授權。使用者授權查 `verification_id`，平台 `message_id` 留給回覆／反應。詳見 [使用者授權驗證](delivery-verification.zh-TW.md) 與 [English guide](delivery-verification.md)。
+
 ## Durable outbox
 
 跨 instance 訊息先寫進本機 outbox 再投遞，所以 daemon 重啟不會弄丟已受理的訊息：

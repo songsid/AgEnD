@@ -1,3 +1,4 @@
+import { nativeHumanOrigin } from "../../human-delivery-receipts.js";
 import { EventEmitter } from "node:events";
 import { CPU_PROFILE_MAX_SECONDS } from "../../cpu-profile.js";
 import { slashLock } from "../../command-table.js";
@@ -474,6 +475,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const threadId = msg.channelId;
       const messageId = msg.id;
       const username = msg.author.username;
+      const humanOriginalBody = msg.content;
+      const humanOrigin = nativeHumanOrigin("discord", this.id, userId, username, msg.author.bot, messageId);
       let text = msg.content;
 
       // Handle forwarded messages (messageSnapshots) and embeds.
@@ -640,6 +643,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         text,
         timestamp: msg.createdAt,
         isBotMessage,
+        humanOriginalBody,
+        humanOrigin,
         attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: msg.reference?.messageId ?? undefined,
         replyToText,
@@ -681,6 +686,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             return;
           }
           this.emitFromClient(client, generation, "callback_query", {
+            humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, interaction.user.username, interaction.user.bot, null,
+              { anchor: interaction.message.id, event: interaction.id }),
             callbackData: interaction.customId,
             chatId: interaction.guildId ? this.guildId : interaction.channelId,
             threadId: interaction.guildId ? interaction.channelId : undefined,
@@ -754,6 +761,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               guildId: interaction.guildId ?? undefined,
               userId: interaction.user.id,
               username,
+              humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }),
               text,
               respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
             });
@@ -770,6 +778,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               guildId: interaction.guildId ?? undefined,
               userId: interaction.user.id,
               username,
+              humanOrigin: nativeHumanOrigin("discord", this.id, interaction.user.id, username, interaction.user.bot, null, { anchor: "", event: interaction.id }),
               options,
               respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
               dismissResponse: async () => {

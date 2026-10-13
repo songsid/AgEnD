@@ -287,6 +287,9 @@ export interface OutboundMessage {
 }
 
 export interface InboundMessage {
+  /** Trusted adapter facts, absent for bots and unknown actor identity. */
+  humanOrigin?: import("../human-delivery-receipts.js").HumanOrigin;
+  humanOriginalBody?: string;
   source: string;
   adapterId: string;
   chatId: string;
