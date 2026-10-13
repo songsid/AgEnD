@@ -128,7 +128,7 @@ describe("claude-code: the transcript as steps", () => {
     const p = new ClaudeStepParser();
     p.push(JSON.stringify({ type: "assistant", timestamp: "2026-10-13T08:00:00.000Z", message: { role: "assistant", content: [{ type: "tool_use", id: "big", name: "Read", input: { file_path: "huge.log" } }] } }));
     const head = '{"parentUuid":"p","type":"user","message":{"role":"user","content":[{"tool_use_id":"big","type":"tool_result","content":"line one\\nline two with \\"quotes\\" and \\u4e2d';
-    const out = p.push({ at: 0, head, bytes: 900_000, complete: true });
+    const out = p.push({ at: 0, head, bytes: 900_000, complete: true, offset: 0 });
     expect(out).toMatchObject([{ id: "big", status: "done", bodyBytes: 900_000, body: 'line one\nline two with "quotes" and 中' }]);
   });
 });
@@ -201,7 +201,7 @@ describe("codex: the rollout as steps", () => {
     const p = new CodexStepParser();
     p.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "cx", name: "exec_command", arguments: '{"cmd":"cat big"}' } }));
     const head = '{"timestamp":"2026-10-13T08:00:00.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"cx","output":"Chunk ID: 1\\nOutput:\\nfirst lines of a big file';
-    expect(p.push({ at: 0, head, bytes: 5_000_000, complete: true })).toMatchObject([{ id: "cx", status: "done", bodyBytes: 5_000_000, body: "Chunk ID: 1\nOutput:\nfirst lines of a big file" }]);
+    expect(p.push({ at: 0, head, bytes: 5_000_000, complete: true, offset: 0 })).toMatchObject([{ id: "cx", status: "done", bodyBytes: 5_000_000, body: "Chunk ID: 1\nOutput:\nfirst lines of a big file" }]);
   });
 });
 

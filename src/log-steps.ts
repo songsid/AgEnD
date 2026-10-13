@@ -461,7 +461,7 @@ export async function readTailRecords(path: string, opts: { maxBytes?: number; m
     let recEnd = end - 1;              // where the record being assembled ends (its line end)
     let acc: Buffer = Buffer.alloc(0); // its bytes after the current chunk: its first KEEP bytes at most
     let read = 0;
-    const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total), at }); };
+    const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total, at), at }); };
     while (pos > 0 && read < maxBytes && out.length < maxLines) {
       const length = Math.min(BACKFILL_CHUNK, pos, maxBytes - read);
       const start = pos - length;
@@ -494,11 +494,11 @@ export async function readTailRecords(path: string, opts: { maxBytes?: number; m
   }
 }
 
-function toRecord(piece: Buffer, bytes: number): string | LongLine {
+function toRecord(piece: Buffer, bytes: number, offset: number): string | LongLine {
   if (bytes > LINE_MAX_BYTES) {
     let endAt = Math.min(LONG_HEAD_BYTES, piece.length);
     if (endAt < piece.length) while (endAt > 0 && (piece[endAt]! & 0xc0) === 0x80) endAt--;
-    return { at: 0, head: piece.toString("utf-8", 0, endAt), bytes, complete: true };
+    return { at: 0, head: piece.toString("utf-8", 0, endAt), bytes, complete: true, offset };
   }
   return piece.toString("utf-8");
 }
