@@ -285,3 +285,86 @@ describe("the source message", () => {
     expect(msgs.map(m => m.classList.contains("flash"))).toEqual([true, false]);
   });
 });
+
+// #1770 (Prism r1 P2): the panel's source and newer-version lines say the day as the thread does, and follow it when the
+// fleet's day changes while the panel is open — a render of the panel only: the same frame keeps running.
+describe("#1770: the panel's labels follow the fleet's day", () => {
+  const TZ = "Asia/Taipei";
+  const at = (iso: string) => ({ ...agent(0, ""), ts: iso });
+  const hm = (iso: string) => new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit", timeZone: TZ }).format(Date.parse(iso));
+  /** The page's day timers (onDayChange's: the thread's and the open panel's), as setTimeout saw them. */
+  function dayTimers() {
+    const set = vi.spyOn(globalThis, "setTimeout");
+    const clear = vi.spyOn(globalThis, "clearTimeout");
+    const armed = () => set.mock.calls.map((c, i) => ({ fn: c[0] as () => void, ms: c[1], id: set.mock.results[i]!.value }))
+      .filter(c => String(c.fn).includes("if (live) arm()"));
+    const fired = new Set<unknown>();
+    const cleared = () => new Set(clear.mock.calls.map(c => c[0]));
+    const live = () => armed().filter(c => !cleared().has(c.id) && !fired.has(c.id));
+    /** Run the live day timers now, as their time coming would (the real ones are then spent). */
+    const fire = () => { for (const t of live()) { fired.add(t.id); clearTimeout(t.id); t.fn(); } };
+    return { live, fire };
+  }
+  async function openWithNewer() {
+    vi.stubEnv("TZ", "America/Los_Angeles");
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.parse("2026-10-13T15:30:00Z") }); // 23:30 in Taipei
+    const timers = dayTimers();
+    const pg = fresh();
+    (pg.document as any).body.dataset.fleetTz = TZ;
+    const one = { ...at("2026-10-13T15:10:00Z"), id: 1, text: FENCE(PAGE(1)) };
+    const two = { ...at("2026-10-13T15:20:00Z"), id: 2, text: "Updated:\n" + FENCE(PAGE(2)) };
+    panel.store.state.msgs.w = [one];
+    await pg.mount(h(panel.ChatPanel, { route: { instance: "w" }, navKey: "one" }));
+    const doc = pg.document as any;
+    doc.querySelector(".chat-split").clientWidth = 1200;
+    await click(agentCards(doc)[0].querySelector(".pv-open"));
+    stream.message(two);
+    await settle();
+    const frame = PV.liveFrame(pp.frameKey("b-1:f0"));
+    return { pg, doc, frame, timers, one, two };
+  }
+  const labels = (doc: any) => ({
+    thread: [...doc.querySelectorAll(".thread .meta .time")].map((e: any) => e.textContent),
+    source: doc.querySelector(".pv-source")?.textContent,
+    newer: doc.querySelector(".pv-newer span")?.textContent,
+  });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+  it("at the fleet's midnight the open panel relabels (Yesterday) with the thread — same frame, same open block, still running", async () => {
+    const { doc, frame, timers, one, two } = await openWithNewer();
+    expect(labels(doc)).toEqual({ thread: [hm(one.ts), hm(two.ts)], source: `From w, ${hm(one.ts)} — show the message`, newer: `A newer version is in the reply from ${hm(two.ts)}.` });
+    expect(timers.live().map(t => t.ms), "the thread's and the panel's, for 00:00:01 in Taipei").toEqual([30 * 60_000 + 1000, 30 * 60_000 + 1000]);
+    vi.setSystemTime(Date.parse("2026-10-13T16:01:00Z"));                   // 00:01 on the 14th
+    timers.fire();
+    await settle();
+    expect(labels(doc)).toEqual({
+      thread: [`Yesterday ${hm(one.ts)}`, `Yesterday ${hm(two.ts)}`],
+      source: `From w, Yesterday ${hm(one.ts)} — show the message`,
+      newer: `A newer version is in the reply from Yesterday ${hm(two.ts)}.`,
+    });
+    expect([PV.liveFrame(pp.frameKey("b-1:f0")) === frame, PV.liveCount(), pp.panelStore.get().open.key]).toEqual([true, 1, "b-1:f0"]);
+    expect(timers.live().map(t => t.ms), "armed again (an hour at most)").toEqual([3_600_000, 3_600_000]);
+  });
+
+  it("control — a late clock with no timer: the panel's next render (Code) relabels it; the frame is the same", async () => {
+    const { doc, frame, one } = await openWithNewer();
+    vi.setSystemTime(Date.parse("2026-10-14T16:05:00Z"));                   // two days on, no timer has run
+    await click([...doc.querySelectorAll(".pv-panel-bar .btn")].find((b: any) => b.textContent.includes("Code")));
+    expect(labels(doc).source).toBe(`From w, 10/13 ${hm(one.ts)} — show the message`);
+    expect(PV.liveFrame(pp.frameKey("b-1:f0")) === frame).toBe(true);
+  });
+
+  it("closing the panel keeps the thread's timer; leaving the chat clears it — nothing is left armed", async () => {
+    const { pg, doc, timers } = await openWithNewer();
+    await click(doc.querySelector(".pv-panel-close"));
+    expect(!!doc.querySelector(".pv-panel")).toBe(false);
+    expect(timers.live(), "the panel's went with it; the thread still has lines").toHaveLength(1);
+    vi.setSystemTime(Date.parse("2026-10-13T16:01:00Z"));
+    expect(() => timers.fire(), "the closed panel's listener is gone").not.toThrow();
+    await settle();
+    expect(labels(doc).thread[0]).toMatch(/^Yesterday /);
+    await pg.unmount();
+    current = null; pg.restore();
+    expect(timers.live(), "no day timer after the chat left").toEqual([]);
+  });
+});

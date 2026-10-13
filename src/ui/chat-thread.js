@@ -9,7 +9,7 @@
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
-import { chatTime, chatTimeFull, msToNextDay } from "./chat-time.js";
+import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
 
 const R = () => globalThis.AgendChatRender;
 /** #1589: the public link shows attachments as downloads only (its page says so: <body data-public-link="1">). */
@@ -58,10 +58,10 @@ export function createThread(list, scroller, opts) {
     if (el.textContent !== v) el.textContent = v;
   }
   // #1770: "today" ends at the fleet's midnight; the labels are rewritten then (and on every render), while there are any.
-  let dayTimer = null;
+  let offDay = null;
   function armDay() {
-    if (dayTimer !== null) clearTimeout(dayTimer);
-    dayTimer = nodes.size ? setTimeout(() => { dayTimer = null; for (const v of nodes.values()) timeLabel(v.node); armDay(); }, msToNextDay()) : null;
+    if (nodes.size && !offDay) offDay = onDayChange(() => { for (const v of nodes.values()) timeLabel(v.node); });
+    else if (!nodes.size && offDay) { offDay(); offDay = null; }
   }
 
   const TICKS = () => ({ queued: tr("chat.tick_queued"), processing: tr("chat.tick_processing"), delivered: tr("chat.tick_delivered"), failed: tr("chat.tick_failed"), cancelled: tr("chat.tick_cancelled") });

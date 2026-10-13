@@ -12,9 +12,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { installDom } from "./helpers/mini-dom.js";
 
 type Served = any;
-let chatTime: any, chatTimeFull: any, msToNextDay: any, createThread: any, t: any, setLang: any;
+let chatTime: any, chatTimeFull: any, msToNextDay: any, onDayChange: any, createThread: any, t: any, setLang: any;
 beforeAll(async () => {
-  ({ chatTime, chatTimeFull, msToNextDay } = await (import("/ui/js/chat-time.js") as Promise<Served>));
+  ({ chatTime, chatTimeFull, msToNextDay, onDayChange } = await (import("/ui/js/chat-time.js") as Promise<Served>));
   // @ts-expect-error — a JS module of the app, with no types
   await import("../src/ui/chat-render.js");
   ({ createThread } = await (import("/ui/js/chat-thread.js") as Promise<Served>));
@@ -72,6 +72,28 @@ describe("#1770: chatTime — the day, when it is not today, in the fleet's zone
   it("the next relabel: the fleet's next midnight (plus a second), never more than an hour away", () => {
     expect(msToNextDay(Date.parse("2026-10-12T15:30:00Z"), TZ), "23:30 in Taipei").toBe(30 * 60_000 + 1000);
     expect(msToNextDay(NOW, TZ), "11:24: capped at an hour").toBe(3_600_000);
+  });
+
+  it("onDayChange: called at each midnight of the fleet's zone; its unsubscribe leaves no timer, even from inside the call", () => {
+    vi.useFakeTimers({ now: Date.parse("2026-10-13T15:30:00Z") });         // 23:30 in Taipei
+    const dom = installDom({});
+    try {
+      (globalThis as any).document.body.dataset.fleetTz = TZ;
+      const calls: number[] = [];
+      const off = onDayChange(() => calls.push(Date.now()));
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(30 * 60_000);
+      expect(calls, "not before midnight").toEqual([]);
+      vi.advanceTimersByTime(1000);
+      expect(calls).toEqual([Date.parse("2026-10-13T16:00:01Z")]);
+      expect(vi.getTimerCount(), "armed again").toBe(1);
+      off();
+      expect(vi.getTimerCount()).toBe(0);
+      let offSelf: () => void = () => {};
+      offSelf = onDayChange(() => offSelf());
+      vi.advanceTimersByTime(3_600_000);
+      expect(vi.getTimerCount(), "unsubscribed while called: not armed again").toBe(0);
+    } finally { dom.restore(); }
   });
 
   it("the words: Yesterday {0} / 昨天 {0}", () => {

@@ -16,7 +16,7 @@ import { Icon } from "/assets/ui-icons.js";
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
-import { chatTime } from "./chat-time.js";
+import { chatTime, onDayChange } from "./chat-time.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -142,6 +142,10 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => (P() ? P().onChange(() => { if (pending.current && ownAllow.current !== pending.current) pending.current = 0; choice(n => n + 1); }) : undefined), []);
   // Leaving the chat (another instance, another panel) closes the panel: its frame stops with the thread's.
   useEffect(() => () => closePanel(), []);
+  // #1770: the source and newer-version labels say the day as the thread does — drawn again when the fleet's day
+  // changes, while a block is open. A render: the frame and the run are left as they are.
+  const [, dayTick] = useState(0);
+  useEffect(() => (open ? onDayChange(() => dayTick(n => n + 1)) : undefined), [!!open]);
 
   const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" ? s : "idle", reason: reason || "" }) };
   const start = () => {

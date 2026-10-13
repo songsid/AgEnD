@@ -61,3 +61,20 @@ export function msToNextDay(now = Date.now(), tz = fleetTz()) {
   const into = ((w.hour * 60 + w.minute) * 60 + w.second) * 1000 + (now % 1000);
   return Math.max(1000, Math.min(3_600_000, 86_400_000 - into + 1000));
 }
+
+/**
+ * Call `fn` when the fleet's day may have changed — at its next midnight, then again for each one after (an hour at
+ * most between looks, so a DST day or a late timer corrects itself). Each subscriber holds its own timer, and no
+ * module-wide state: the unsubscribe it returns leaves nothing armed.
+ */
+export function onDayChange(fn) {
+  let timer = null, live = true;
+  const arm = () => {
+    timer = setTimeout(() => {
+      timer = null;
+      try { fn(); } finally { if (live) arm(); }
+    }, msToNextDay());
+  };
+  arm();
+  return () => { live = false; if (timer !== null) { clearTimeout(timer); timer = null; } };
+}
