@@ -415,6 +415,27 @@ export const KIRO_CLASSIC_NUDGE: KiroLaunchPromptSpec = {
   options: ["Switch to 3.0 and upgrade my agent configs", "Remind me later"],
 };
 
+/**
+ * #1784: kiro-cli 2.30.0 renamed "3.0" to "V3" (and "2.0" to "V2") in all three prompts above, so none of their specs matched
+ * any more: the Classic nudge's first option is now "Switch to V3 and upgrade my agent configs", the ease-in prompt
+ * opens "You're using Kiro CLI V2. Switch to V3 today.", and the agent-config prompt says "V2 format". Unrecognised, the
+ * nudge was neither answered nor held — a legacy instance sat at it taking no messages (its Enter gate held them), and
+ * a TUI instance has no such gate. Same choices, same safe answers; the 2.29 wording stays for hosts still on it.
+ * Captured live from 2.30.0 (tests/fixtures/kiro-2.30.0-audit/); the other two from the 2.30.0 binary's own text.
+ */
+export const KIRO_CLASSIC_NUDGE_V3: KiroLaunchPromptSpec = {
+  header: "Classic is being deprecated with the Kiro CLI 3.0",
+  options: ["Switch to V3 and upgrade my agent configs", "Remind me later"],
+};
+const KIRO_V3_EASE_IN_V2_USER: KiroLaunchPromptSpec = {
+  header: "You're using Kiro CLI V2",
+  options: ["Switch to V3 and upgrade my configs", "Remind me later", "Don't ask again"],
+};
+const KIRO_AGENT_UPGRADE_V2_FORMAT: KiroLaunchPromptSpec = {
+  header: "Your agent configs are still in the V2 format",
+  options: ["Enable auto-upgrade", "Not now"],
+};
+
 function kiroLaunchPromptDialogs(spec: KiroLaunchPromptSpec, name: string, key: string, keep: number): RuntimeDialog[] {
   const pattern = new RegExp(spec.header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const state = (pane: string) => kiroLaunchPromptState(pane, spec);
@@ -450,6 +471,9 @@ const KIRO_ENGINE_PROMPT_DIALOGS: RuntimeDialog[] = [
   ...kiroLaunchPromptDialogs(KIRO_V3_EASE_IN, "Kiro V3 ease-in prompt", "kiro-v3-ease-in", 1),
   ...kiroLaunchPromptDialogs(KIRO_AGENT_UPGRADE, "Kiro 3.0 agent-config upgrade prompt", "kiro-agent-upgrade", 1),
   ...kiroLaunchPromptDialogs(KIRO_CLASSIC_NUDGE, "Kiro Classic deprecation nudge", "kiro-classic-nudge", 1),
+  ...kiroLaunchPromptDialogs(KIRO_V3_EASE_IN_V2_USER, "Kiro V3 ease-in prompt", "kiro-v3-ease-in", 1),
+  ...kiroLaunchPromptDialogs(KIRO_AGENT_UPGRADE_V2_FORMAT, "Kiro V3 agent-config upgrade prompt", "kiro-agent-upgrade", 1),
+  ...kiroLaunchPromptDialogs(KIRO_CLASSIC_NUDGE_V3, "Kiro Classic deprecation nudge", "kiro-classic-nudge", 1),
 ];
 
 function parseSemver(value: string | undefined): [number, number, number] | undefined {

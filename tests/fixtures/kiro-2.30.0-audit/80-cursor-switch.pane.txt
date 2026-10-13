@@ -1,0 +1,40 @@
+Classic is being deprecated with the Kiro CLI 3.0 release in October. V3 runs in
+the terminal UI and also brings workflows, cloud sessions, specs, and more.
+
+❯ Switch to V3 and upgrade my agent configs
+  Remind me later
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
