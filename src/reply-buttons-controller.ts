@@ -4,6 +4,7 @@
  * this decides who may click and keeps every surface in step with it. FleetManager supplies the fleet's own pieces.
  */
 import type { ChannelAdapter } from "./channel/types.js";
+import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { t } from "./locale.js";
 import {
   REPLY_BUTTON_PREFIX, newReplyButtonsId, parseReplyButtonCallback, replyButtonCallback, replyButtonsClickPlace,
@@ -12,6 +13,7 @@ import {
 
 /** A click from a platform adapter (the fleet's callback shape). */
 export interface ReplyButtonClick {
+  humanOrigin?: HumanOrigin;
   callbackData: string;
   chatId: string;
   threadId?: string;
@@ -38,7 +40,7 @@ export interface ReplyButtonsDeps {
   /** May this platform user answer this set — someone who may message its instance there? */
   mayClick(set: ReplyButtonSet, userId: string): boolean;
   /** Deliver the choice to the instance as an inbound message; false when it could not be delivered. */
-  deliver(set: ReplyButtonSet, button: ReplyButton, by: { userId: string; username: string; source: "web" | string }): Promise<boolean>;
+  deliver(set: ReplyButtonSet, button: ReplyButton, by: { userId: string; username: string; source: "web" | string; humanOrigin?: HumanOrigin }): Promise<boolean>;
   /** Tell the web pages a set changed. */
   publish(instance: string, view: ReplyButtonsView): void;
   logger: { info(obj: object, msg?: string): void; warn(obj: object, msg?: string): void };
@@ -100,7 +102,7 @@ export class ReplyButtonsController {
       data.ack?.(t("buttons.not_allowed"));
       return true;
     }
-    await this.choose(set.id, parsed.index, { userId: data.userId, username: data.username || data.userId, source: "platform" }, data.ack);
+    await this.choose(set.id, parsed.index, { userId: data.userId, username: data.username || data.userId, source: "platform", humanOrigin: data.humanOrigin }, data.ack);
     return true;
   }
 
@@ -111,12 +113,12 @@ export class ReplyButtonsController {
     if (!set) return { status: 409, error: t("reply_buttons.closed") };
     if (set.instance !== instance) return { status: 403, error: "This button belongs to another instance" };
     let notice: string | undefined;
-    const ok = await this.choose(id, index, { userId: "web-user", username: "web-user", source: "web" }, n => { notice = n; });
+    const ok = await this.choose(id, index, { userId: "web-user", username: "web-user", source: "web", humanOrigin: webHumanOrigin(true) }, n => { notice = n; });
     return ok ? { status: 200 } : { status: 409, error: notice ?? t("reply_buttons.closed") };
   }
 
   /** Consume, deliver, then show it everywhere. A choice the agent could not be given is undone (the set reopens). */
-  private async choose(id: string, index: number, by: { userId: string; username: string; source: string }, ack?: (notice?: string) => void): Promise<boolean> {
+  private async choose(id: string, index: number, by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin }, ack?: (notice?: string) => void): Promise<boolean> {
     const now = this.deps.now();
     const result = this.deps.store.consume(id, index, by.username, now);
     if (!result.ok) {

@@ -1,3 +1,4 @@
+import { nativeHumanOrigin } from "../../human-delivery-receipts.js";
 import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
 import { Agent as HttpAgent } from "node:http";
@@ -460,6 +461,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           text,
           timestamp: new Date(msg.date * 1000),
           isBotMessage: msg.from?.is_bot ?? false,
+          humanOriginalBody: text,
+          humanOrigin: nativeHumanOrigin("telegram", this.id, String(userId), msg.from?.username, msg.from?.is_bot, messageId),
         });
         return; // Don't call next — we handled it
       }
@@ -522,6 +525,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         text,
         timestamp: new Date(msg.date * 1000),
         isBotMessage: msg.from?.is_bot ?? false,
+        humanOriginalBody: text,
+        humanOrigin: nativeHumanOrigin("telegram", this.id, String(userId), msg.from?.username, msg.from?.is_bot, messageId),
         attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: msg.reply_to_message?.message_id != null
           ? String(msg.reply_to_message.message_id)
@@ -557,6 +562,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         messageId: String(ctx.callbackQuery.message?.message_id ?? ""),
         userId: String(ctx.callbackQuery.from.id),
         username: ctx.callbackQuery.from.username ?? ctx.callbackQuery.from.first_name,
+        humanOrigin: nativeHumanOrigin("telegram", this.id, String(ctx.callbackQuery.from.id), ctx.callbackQuery.from.username, ctx.callbackQuery.from.is_bot, null,
+          { anchor: String(ctx.callbackQuery.message?.message_id ?? ""), event: ctx.callbackQuery.id }),
         ack: answer,
       });
     });

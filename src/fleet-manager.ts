@@ -1,3 +1,4 @@
+import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
 import { SettingsConfirmationStore, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation } from "./settings-http-confirmation.js";
@@ -221,7 +222,7 @@ import { validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
-import { readLastInboundAt, type OwnSwitchOutcome } from "./daemon.js";
+import { readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -647,6 +648,7 @@ interface NonceButtonEntry {
 
 
 interface AdapterCallbackData {
+  humanOrigin?: HumanOrigin;
   callbackData: string;
   chatId: string;
   threadId?: string;
@@ -680,6 +682,7 @@ function callbackPrefix(callbackData: string): string {
 }
 
 interface ClassicStartSlashData {
+  humanOrigin?: HumanOrigin;
   command: string;
   channelId: string;
   channelName: string;
@@ -1522,7 +1525,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async deliverReplyButtonChoice(
     set: { instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
     button: { label: string; value: string },
-    by: { userId: string; username: string; source: string },
+    by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin },
   ): Promise<boolean> {
     const content = replyButtonClickText(button);
     const web = by.source === "web";
@@ -1549,7 +1552,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const reactions = this.pendingReactionsMeta(set.instance);
     let accepted = false;
     try {
-      accepted = (await this.deliverToInstance(set.instance, {
+      accepted = (await this.deliverHumanToInstance(set.instance, {
         type: "fleet_inbound",
         content,
         targetSession: set.instance,
@@ -1558,7 +1561,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           thread_id: set.threadId, adapter_id: inbound.adapterId, source: inbound.source,
           ...reactions.meta,
         },
-      })) !== false;
+      }, by.humanOrigin, button.label)) !== false;
     } finally {
       // Both false and throw reopen the choice in the controller. Finish the
       // receipt through the same reconciler as typed input, rather than leaving
@@ -1653,7 +1656,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     kind: string;
     correlationId: string;
     payload: Record<string, unknown>;
-  }): { deliveryId: string; state: string; duplicate: boolean } {
+    forwards?: readonly string[];
+    requestedKind?: string;
+  }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
     const outbox = this.deliveryOutbox;
     if (!outbox) throw new Error("Durable delivery store is unavailable");
     const source = this.daemons.get(input.sourceInstance);
@@ -1678,6 +1683,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       deliveryId: admitted.delivery.deliveryId,
       state: admitted.delivery.state,
       duplicate: !admitted.inserted,
+      kind: admitted.delivery.kind,
     };
   }
 
@@ -3387,7 +3393,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
-      if (ipc?.connected && ipc.send(payload)) return true;
+      if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
     }
 
     const attempt = (queued ?? Promise.resolve())
@@ -3425,7 +3431,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
-      if (ipc?.connected && ipc.send(payload)) return true;
+      if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
       if (Date.now() >= deadline) {
         throw new Error(`Instance '${instanceName}' IPC is unavailable`);
       }
@@ -3615,6 +3621,87 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The running launch's own steer capability (#1405); undefined for a backend without one, or no running Daemon. */
   instanceLaunchSupportsSteer(instanceName: string): boolean | undefined {
     return this.daemons.get(instanceName)?.launchSupportsSteer();
+  }
+
+  private humanReceiptDaemons = new WeakSet<Daemon>();
+
+  /** Cached FM + lifecycle + Daemon + tmux owner; unknown ownership grants nothing. */
+  private humanReceiptOwner(instanceName: string, daemon = this.daemons.get(instanceName)): string | null {
+    try {
+      if (this.shuttingDown || !daemon || this.daemons.get(instanceName) !== daemon) return null;
+      const epoch = this.lifecycle.epochOf(instanceName);
+      const owner = daemon.captureHumanReceiptOwner();
+      if (!Number.isSafeInteger(epoch) || !owner) return null;
+      return JSON.stringify([this.managerBootId, epoch, this.getDeliveryEpoch(instanceName), humanOwnerObjectId(daemon), owner]);
+    } catch { return null; }
+  }
+
+  private listenForHumanReceipt(instanceName: string, daemon: Daemon): void {
+    // Lazy initialization also supports narrow prototype-based integration fixtures.
+    this.humanReceiptDaemons ??= new WeakSet<Daemon>();
+    if (this.humanReceiptDaemons.has(daemon)) return;
+    this.humanReceiptDaemons.add(daemon);
+    daemon.on("human_receipt_result", (result: { receipt_id: string; owner_key: string; proof: unknown }) => {
+      try {
+        this.deliveryOutbox?.settleHumanReceipt(result.receipt_id, instanceName, result.owner_key,
+          result.proof, this.humanReceiptOwner(instanceName, daemon));
+      } catch (err) { this.logger.error({ err, instanceName }, "Could not persist human delivery evidence"); }
+    });
+  }
+
+  /** Evidence-only admission. Bots/system/agent payloads have no trusted origin. */
+  private humanReceiptPayload(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): Record<string, unknown> {
+    if (!origin || !this.deliveryOutbox) return payload;
+    const row = this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
+      origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
+    return { ...payload, meta: { ...(payload.meta as Record<string, unknown> ?? {}),
+      human_receipt_id: row.receipt_id, verification_id: row.message_id } };
+  }
+
+  /** Bind at the actual IPC send, after all wake/reconnect waits. No human retry lane. */
+  private bindHumanReceiptPayload(instanceName: string, payload: Record<string, unknown>): Record<string, unknown> {
+    const meta = payload.meta as Record<string, string> | undefined;
+    if (!meta?.human_receipt_id || !this.deliveryOutbox) return payload;
+    const daemon = this.daemons.get(instanceName);
+    const owner = this.humanReceiptOwner(instanceName, daemon);
+    if (!daemon || !owner) {
+      this.deliveryOutbox.markHumanReceiptUncertain(meta.human_receipt_id, instanceName);
+      return payload;
+    }
+    this.listenForHumanReceipt(instanceName, daemon);
+    const daemonOwner = daemon.captureHumanReceiptOwner();
+    const wire = daemon.humanReceiptWire(String(payload.content ?? ""), meta, String(payload.type));
+    const row = this.deliveryOutbox.bindHumanReceipt(meta.human_receipt_id, instanceName, owner, wire, this.managerBootId);
+    if (!daemonOwner || this.humanReceiptOwner(instanceName, daemon) !== owner) throw new Error("Human delivery ownership changed");
+    // /raw retains exact bytes and never acquires a positive verification capability.
+    if (payload.type === "raw_paste" || String(payload.content ?? "").startsWith("/raw ")) {
+      this.deliveryOutbox.markHumanReceiptUncertain(row.receipt_id, instanceName);
+      return payload;
+    }
+    return { ...payload, meta: { ...meta, human_owner_key: owner, human_daemon_owner: daemonOwner, human_wire_sha256: row.wire_sha256! } };
+  }
+
+  async deliverHumanToInstance(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined,
+    originalBody: string, options?: DeliveryOptions): Promise<boolean | void> {
+    const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
+    const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
+    let sent = false;
+    try {
+      const result = options ? await this.deliverToInstance(instanceName, admitted, options) : await this.deliverToInstance(instanceName, admitted);
+      sent = result !== false; return result;
+    }
+    finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
+  }
+
+  /** Synchronous steer/btw handoff, using the same evidence and owner binding. */
+  sendHumanControl(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin | undefined, originalBody: string): boolean {
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (this.shuttingDown || !ipc?.connected) return false;
+    const admitted = this.humanReceiptPayload(instanceName, payload, origin, originalBody);
+    const id = (admitted.meta as Record<string, string> | undefined)?.human_receipt_id;
+    let sent = false;
+    try { sent = ipc.send(this.bindHumanReceiptPayload(instanceName, admitted)); return sent; }
+    finally { if (!sent && id) this.deliveryOutbox?.markHumanReceiptUncertain(id, instanceName); }
   }
 
   /** Single delivery facade: wake paused CLIs and serialize non-user work behind idle. */
@@ -3813,7 +3900,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         userId: data.userId,
         username,
         source: "discord",
-        timestamp: new Date(),
+        timestamp: new Date(), adapterId, humanOrigin: data.humanOrigin, humanOriginalBody: text,
       });
     } else if (data.command === "save") {
       await this.handleSlashSave(data, adapterId);
@@ -3917,24 +4004,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } else if (data.command === "steer") {
       const name = this.resolveSlashTarget(data.channelId, adapterId);
       if (!name) { await data.respond(t("classic.no_agent")); return; }
-      const steerText = String(data.options?.message ?? "").trim();
+      const originalSteerText = String(data.options?.message ?? "");
+      const steerText = originalSteerText.trim();
       if (!steerText) { await data.respond(t("steer.usage")); return; }
       // chat_id/message_id stay empty: a slash interaction has no channel
       // message to react to, and an empty chat_id keeps updateLastChat from
       // rerouting the instance's replies to the slash context.
       const result = this.topicCommands.sendSteer(name, steerText, {
         chatId: "", messageId: "", username: data.username ?? "user",
-        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord", humanOrigin: data.humanOrigin, humanOriginalBody: originalSteerText,
       });
       await data.respond(result);
     } else if (data.command === "btw") {
       const name = this.resolveSlashTarget(data.channelId, adapterId);
       if (!name) { await data.respond(t("classic.no_agent")); return; }
-      const btwText = String(data.options?.message ?? "").trim();
+      const originalBtwText = String(data.options?.message ?? "");
+      const btwText = originalBtwText.trim();
       if (!btwText) { await data.respond(t("btw.usage")); return; }
       const result = this.topicCommands.sendBtw(name, btwText, {
         chatId: "", messageId: "", username: data.username ?? "user",
-        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord", humanOrigin: data.humanOrigin, humanOriginalBody: originalBtwText,
       });
       await data.respond(result);
     } else if (data.command === "login") {
@@ -7804,6 +7893,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
+    msg = { ...msg, humanOriginalBody: msg.humanOriginalBody ?? msg.text, humanOrigin: msg.isBotMessage ? undefined : msg.humanOrigin && { ...msg.humanOrigin } };
     if (msg.isBotMessage) return withSpawnHoldReply(undefined, () => this.handleInboundMessageCore(msg));
     return withSpawnHoldReply(text => this.inboundNoticeAdapter(msg)?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
       () => this.handleInboundMessageCore(msg));
@@ -8280,7 +8370,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
         const generalReactions = this.pendingReactionsMeta(generalInstance);
         try {
-          await this.deliverToInstance(generalInstance, {
+          await this.deliverHumanToInstance(generalInstance, {
             type: "fleet_inbound",
             content: text,
             targetSession: generalInstance,
@@ -8301,7 +8391,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               ...generalReactions.meta,
               ...extraMeta,
             },
-          });
+          }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text);
           generalReactions.consume();
           this.afterUserInboundDelivered(generalInstance, msg);
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
@@ -8390,7 +8480,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const reactions = this.pendingReactionsMeta(instanceName);
 
     try {
-      await this.deliverToInstance(instanceName, {
+      await this.deliverHumanToInstance(instanceName, {
         type: "fleet_inbound",
         content: text,
         targetSession: instanceName, // Channel messages → instance's own session
@@ -8409,7 +8499,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ...reactions.meta,
           ...extraMeta,
         },
-      });
+      }, msg.humanOrigin, msg.humanOriginalBody ?? msg.text);
       // Only after the message actually went out. A failed delivery keeps the
       // reactions queued for the retry / the next message.
       reactions.consume();
@@ -12648,7 +12738,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
         chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(), username: "web-user", userId: "web-user",
-        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const,
+        threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true),
       };
     };
     const choicesFromCache = (instance: string): WebChoices | null => {
@@ -12676,8 +12766,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return { current, options: levels.map(l => ({ id: l, label: this.effortChoiceLabel(l, current) })) };
       },
       cancel: (instance) => this.cancelInstance(instance),
-      steer: (instance, text) => this.topicCommands.sendSteer(instance, text, webMeta(instance)),
-      btw: (instance, text) => this.topicCommands.sendBtw(instance, text, webMeta(instance)),
+      steer: (instance, text, originalBody) => this.topicCommands.sendSteer(instance, text, { ...webMeta(instance), humanOriginalBody: originalBody }),
+      btw: (instance, text, originalBody) => this.topicCommands.sendBtw(instance, text, { ...webMeta(instance), humanOriginalBody: originalBody }),
       pauseWake: (instance, action) => this.topicCommands.runPauseWake(instance, action),
       save: (instance, filename) => this.topicCommands.sendSave(instance, filename),
       clearAsk: (instance) => {
@@ -15463,7 +15553,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private async forwardToClassicInstance(
     instanceName: string,
     text: string,
-    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string },
+    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string; humanOrigin?: HumanOrigin; humanOriginalBody?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
     // #1085: a Telegram forum ClassicBot is keyed by chat id (threadId), but the
@@ -15511,12 +15601,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     Object.assign(meta, reactions.meta);
 
     try {
-      await this.deliverToInstance(instanceName, {
+      await this.deliverHumanToInstance(instanceName, {
         type: "fleet_inbound",
         content: fullText,
         targetSession: instanceName,
         meta,
-      });
+      }, msg.humanOrigin, msg.humanOriginalBody ?? text);
       reactions.consume();
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Classic wake/delivery failed");

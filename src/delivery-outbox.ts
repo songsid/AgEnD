@@ -6,6 +6,8 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
+import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt,
+  type HumanOrigin, type HumanReceiptRow, type HumanReceiptProof } from "./human-delivery-receipts.js";
 
 export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
 export const DURABLE_DELIVERY_MAX_AGE_MS = 24 * 60 * 60_000;
@@ -69,6 +71,10 @@ export interface NewOutboxDelivery {
   kind: string;
   correlationId?: string;
   payload: Record<string, unknown>;
+  /** Validated again at the atomic admission boundary using sourceInstance. */
+  forwards?: readonly string[];
+  /** Requested mode before transient predecessor/capability fallback; pins forwarded retries. */
+  requestedKind?: string;
 }
 
 export interface OutboxDelivery {
@@ -184,6 +190,13 @@ export interface DeliveryStatusItem {
    * other query, and operator reads, stay redacted as before (#982).
    */
   content?: string | null;
+  /** Recorded explicit disclosures; never inferred from the message text. */
+  forwarded_by?: Array<{ source_instance: string; message_id: string; forwarded_at: string }>;
+  /** Only trusted human evidence rows carry origin. Agent relays never inherit it. */
+  origin?: HumanOrigin;
+  wire_content_sha256?: string | null;
+  delivered_at?: string | null;
+  proof_kind?: HumanReceiptProof["tag"] | null;
   /**
    * How the message was routed, in send_to_instance's own words: `steer` (into the live turn) or `idle_queue` (as the
    * next message). The fleet decided this at admission; it is the row's kind.
@@ -390,6 +403,26 @@ function hasColumn(db: Database.Database, table: string, column: string): boolea
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(c => c.name === column);
 }
 
+/** The same row ACL protects results, cursor anchors and forward admission. */
+function deliveryVisibility(db: Database.Database, alias: string, caller: string): { sql: string; params: string[] } {
+  const grants = hasTable(db, "delivery_forward_edges");
+  return {
+    sql: `(${alias}.source_instance=? OR ${alias}.target_instance=?${grants
+      ? ` OR EXISTS (SELECT 1 FROM delivery_forward_edges g WHERE g.reference_kind='delivery' AND g.reference_id=${alias}.delivery_id AND g.receiver_instance=?)`
+      : ""})`,
+    params: grants ? [caller, caller, caller] : [caller, caller],
+  };
+}
+
+function forwardingEvidence(db: Database.Database, kind: string, id: string, caller: string): DeliveryStatusItem["forwarded_by"] {
+  if (!hasTable(db, "delivery_forward_edges")) return undefined;
+  const rows = db.prepare(`SELECT sender_instance AS source_instance, forwarding_message_id AS message_id,
+    created_at AS forwarded_at FROM delivery_forward_edges
+    WHERE reference_kind=? AND reference_id=? AND receiver_instance=? ORDER BY created_at DESC,forwarding_delivery_id DESC LIMIT 1`)
+    .all(kind, id, caller) as NonNullable<DeliveryStatusItem["forwarded_by"]>;
+  return rows.length ? rows : undefined;
+}
+
 /** Derived from the stored payload, so it is the same for pre-#856 rows. */
 function rowContentEvidence(payloadJson: string, withContent: boolean): Pick<DeliveryStatusItem, "message_id" | "content_sha256" | "content"> {
   let payload: unknown = null;
@@ -407,6 +440,8 @@ function queryStatusPage(
   selector: DeliveryStatusSelector,
   callerInstance: string | null,
 ): DeliveryStatusPage {
+  const human = queryHumanReceipt(db, callerInstance, selector);
+  if (human) return human;
   const where: string[] = [];
   const params: (string | number)[] = [];
   // An operator may read a database written before the column existed.
@@ -417,8 +452,9 @@ function queryStatusPage(
   else if (selector.messageId) { where.push(`${messageIdColumn} = ?`); params.push(selector.messageId); }
   else { where.push("d.correlation_id = ?"); params.push(selector.correlationId!); }
   if (callerInstance !== null) {
-    where.push("(d.source_instance = ? OR d.target_instance = ?)");
-    params.push(callerInstance, callerInstance);
+    const acl = deliveryVisibility(db, "d", callerInstance);
+    where.push(acl.sql);
+    params.push(...acl.params);
   }
   if (selector.cursor) {
     const cursorScope = ["c.delivery_id = ?"];
@@ -429,8 +465,9 @@ function queryStatusPage(
       cursorParams.push(selector.messageId);
     } else { cursorScope.push("c.correlation_id = ?"); cursorParams.push(selector.correlationId!); }
     if (callerInstance !== null) {
-      cursorScope.push("(c.source_instance = ? OR c.target_instance = ?)");
-      cursorParams.push(callerInstance, callerInstance);
+      const acl = deliveryVisibility(db, "c", callerInstance);
+      cursorScope.push(acl.sql);
+      cursorParams.push(...acl.params);
     }
     where.push(`d.created_seq > (SELECT c.created_seq FROM deliveries c WHERE ${cursorScope.join(" AND ")} LIMIT 1)`);
     params.push(...cursorParams);
@@ -448,7 +485,8 @@ function queryStatusPage(
       CASE WHEN d.state='submission_started' AND d.reconciliation_pending=1
         THEN 'reconciliation_pending' ELSE d.state END AS state,
       d.attempt_no,d.created_at,d.updated_at,d.last_error,d.payload_json,
-      ${consumedColumns}, ${submissionMode} AS submission_mode
+      ${consumedColumns}, ${submissionMode} AS submission_mode,
+      ${hasColumn(db, "deliveries", "finished_at") ? "d.finished_at" : "NULL"} AS delivered_at
     FROM deliveries d
     WHERE ${where.join(" AND ")}
     ORDER BY d.created_seq
@@ -469,6 +507,7 @@ function queryStatusPage(
     consumed_at: string | null;
     consumed_via: ConsumedVia | null;
     submission_mode: DurableSubmissionMode | null;
+    delivered_at: string | null;
   }>;
   const hasMore = rows.length > limit;
   const visible = rows.slice(0, limit);
@@ -489,11 +528,14 @@ function queryStatusPage(
       safe_to_retry: safeToRetry(row.state),
       delivery_mode: row.kind === "steer" ? "steer" as const : "idle_queue" as const,
       submission_mode: row.submission_mode ?? null,
+      delivered_at: row.state === "delivered" ? row.delivered_at : null,
       consumed_at: row.consumed_at ?? null,
       consumed_via: row.consumed_via ?? null,
       // Text only for the explicit verification query (#856), and only to the
       // row's own source/target; every other query keeps #982's redaction.
       ...rowContentEvidence(row.payload_json, callerInstance !== null && !!selector.messageId),
+      ...(callerInstance !== null && selector.messageId
+        ? { forwarded_by: forwardingEvidence(db, "delivery", row.delivery_id, callerInstance) } : {}),
       reply_obligation: obligationFor(db, row.correlation_id, row.source_instance, row.target_instance),
     })),
     next_cursor: hasMore ? visible.at(-1)?.delivery_id ?? null : null,
@@ -640,8 +682,33 @@ export class DeliveryOutbox extends EventEmitter {
         notice_delivery_id TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL
       );
+      -- Retain a grant while its reference exists, even if its forwarding
+      -- notification is pruned. No message body or inferred authority here.
+      CREATE TABLE IF NOT EXISTS delivery_forward_edges (
+        reference_kind TEXT NOT NULL CHECK (reference_kind IN ('delivery','human')),
+        reference_id TEXT NOT NULL,
+        sender_instance TEXT NOT NULL,
+        receiver_instance TEXT NOT NULL,
+        forwarding_delivery_id TEXT NOT NULL,
+        forwarding_message_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (reference_kind,reference_id,receiver_instance,forwarding_delivery_id)
+      );
+      -- Independent of recipient/session/effective mode and notification retention.
+      -- A pruned admitted row cannot authorize a retry to create new grants.
+      CREATE TABLE IF NOT EXISTS delivery_forward_proposals (
+        source_instance TEXT NOT NULL,
+        operation_id TEXT NOT NULL,
+        proposal_sha256 TEXT NOT NULL,
+        delivery_id TEXT NOT NULL,
+        PRIMARY KEY (source_instance,operation_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_delivery_forward_admission ON delivery_forward_edges(forwarding_delivery_id);
+      CREATE INDEX IF NOT EXISTS idx_delivery_forward_latest ON delivery_forward_edges
+        (reference_kind,reference_id,receiver_instance,created_at DESC,forwarding_delivery_id DESC);
     `);
     this.migrateReplyObligationExpiry();
+    initializeHumanReceipts(this.db);
     // Additive migration: existing Phase 1 databases keep their row identities,
     // foreign keys, and WAL while gaining reconciliation evidence columns.
     this.ensureColumn("deliveries", "reconciliation_pending", "INTEGER NOT NULL DEFAULT 0");
@@ -986,6 +1053,70 @@ export class DeliveryOutbox extends EventEmitter {
     `);
     const select = this.db.prepare("SELECT * FROM deliveries WHERE source_key = ?");
     const transaction = this.db.transaction(() => {
+      const previous = select.get(input.sourceKey) as OutboxRow | undefined;
+      const forwards = input.forwards ?? [];
+      if (forwards.length > 16 || new Set(forwards).size !== forwards.length
+        || forwards.some(id => typeof id !== "string" || id.length === 0 || id.length > 256 || /[\s\u0000-\u001f\u007f]/.test(id))) {
+        throw new Error("Forwarded message verification is unavailable");
+      }
+      const pinned = this.db.prepare("SELECT proposal_sha256,delivery_id FROM delivery_forward_proposals WHERE source_instance=? AND operation_id=?")
+        .get(input.sourceInstance, input.operationId) as { proposal_sha256: string; delivery_id: string } | undefined;
+      const meta = input.payload.meta as Record<string, unknown> | undefined;
+      const proposalHash = deliveryContentDigest(JSON.stringify({
+        target: input.targetInstance, session: input.targetSession ?? null,
+        requestedKind: input.requestedKind ?? input.kind, content: payloadContent(input.payload), forwards: [...forwards].sort(),
+        // Volatile envelope IDs/timestamps and generated correlations are not proposal input.
+        requestKind: meta?.request_kind ?? null, requiresReply: meta?.requires_reply ?? null,
+        taskSummary: meta?.task_summary ?? null, workingDirectory: meta?.working_directory ?? null, branch: meta?.branch ?? null,
+      }));
+      if (pinned) {
+        if (pinned.proposal_sha256 !== proposalHash) throw new Error("Duplicate operation cannot change its forwarded request");
+        const admitted = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(pinned.delivery_id) as OutboxRow | undefined;
+        if (!admitted) throw new Error("Previously admitted forwarded operation is unavailable");
+        return { delivery: mapRow(admitted), inserted: false }; // Reuse the original effective mode, never recompute it.
+      }
+      if (forwards.length && this.db.prepare("SELECT 1 FROM deliveries WHERE source_instance=? AND operation_id=? LIMIT 1")
+        .get(input.sourceInstance, input.operationId)) {
+        throw new Error("Duplicate operation cannot change its forwarded request");
+      }
+      if (previous) {
+        const previousPayload = JSON.parse(previous.payload_json);
+        const oldForwards = (typeof previousPayload.meta?.forwards === "string"
+          ? JSON.parse(previousPayload.meta.forwards) as string[] : []).sort();
+        if ((forwards.length || oldForwards.length)
+          && (JSON.stringify([...forwards].sort()) !== JSON.stringify(oldForwards)
+            || previous.source_instance !== input.sourceInstance || previous.target_instance !== input.targetInstance
+            || previous.target_session !== (input.targetSession ?? null) || previous.kind !== input.kind
+            || payloadContent(previousPayload) !== payloadContent(input.payload))) {
+          throw new Error("Duplicate operation cannot change its forwarded request");
+        }
+        return { delivery: mapRow(previous), inserted: false };
+      }
+      // Validate all references before inserting any delivery or edge. The
+      // authenticated sender can explicitly disclose a grant it already owns.
+      const acl = deliveryVisibility(this.db, "d", input.sourceInstance);
+      const references = forwards.map(messageId => {
+        if (messageId.startsWith("hmsg-")) {
+          const page = queryHumanReceipt(this.db, input.sourceInstance, { messageId });
+          if (!page || page.items.length !== 1 || page.items[0].state !== "delivered") {
+            throw new Error("Forwarded message verification is unavailable");
+          }
+          return { kind: "human", id: page.items[0].delivery_id, messageId };
+        }
+        const rows = this.db.prepare(`SELECT d.delivery_id,d.state FROM deliveries d
+          WHERE d.message_id=? AND ${acl.sql} LIMIT 2`).all(messageId, ...acl.params) as Array<{ delivery_id: string; state: string }>;
+        if (rows.length !== 1 || rows[0].state !== "delivered") throw new Error("Forwarded message verification is unavailable");
+        return { kind: "delivery", id: rows[0].delivery_id, messageId };
+      });
+      // The typed admission list is authoritative; callers need not mirror it
+      // in display metadata, and retries recover its canonical stored set.
+      const payload = { ...input.payload };
+      if (forwards.length || (payload.meta && typeof payload.meta === "object" && Object.hasOwn(payload.meta, "forwards"))) {
+        const meta = { ...(payload.meta as Record<string, unknown> ?? {}) };
+        delete meta.forwards;
+        if (forwards.length) meta.forwards = JSON.stringify(forwards);
+        payload.meta = meta;
+      }
       const result = insert.run({
         delivery_id: deliveryId,
         operation_id: input.operationId,
@@ -996,7 +1127,7 @@ export class DeliveryOutbox extends EventEmitter {
         target_session: input.targetSession ?? null,
         kind: input.kind,
         correlation_id: input.correlationId ?? null,
-        payload_json: JSON.stringify(input.payload),
+        payload_json: JSON.stringify(payload),
         message_id: payloadMessageId(input.payload),
         content_sha256: (content => content === null ? null : deliveryContentDigest(content))(payloadContent(input.payload)),
         created_at: now,
@@ -1005,6 +1136,16 @@ export class DeliveryOutbox extends EventEmitter {
       });
       const row = select.get(input.sourceKey) as OutboxRow | undefined;
       if (!row) throw new Error("outbox admission committed without a readable row");
+      const forwardingMessageId = row.message_id;
+      if (references.length && !forwardingMessageId) throw new Error("Forwarded message verification is unavailable");
+      const edge = this.db.prepare(`INSERT INTO delivery_forward_edges
+        (reference_kind,reference_id,sender_instance,receiver_instance,forwarding_delivery_id,forwarding_message_id,created_at)
+        VALUES (?,?,?,?,?,?,?)`);
+      for (const reference of references) edge.run(reference.kind, reference.id, input.sourceInstance, input.targetInstance,
+        row.delivery_id, forwardingMessageId, now);
+      if (references.length) this.db.prepare(`INSERT INTO delivery_forward_proposals
+        (source_instance,operation_id,proposal_sha256,delivery_id) VALUES (?,?,?,?)`)
+        .run(input.sourceInstance, input.operationId, proposalHash, row.delivery_id);
       if (result.changes === 1) this.answerReplyObligation(row, now);
       return { delivery: mapRow(row), inserted: result.changes === 1 };
     });
@@ -1014,6 +1155,21 @@ export class DeliveryOutbox extends EventEmitter {
   get(deliveryId: string): OutboxDelivery | undefined {
     const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id = ?").get(deliveryId) as OutboxRow | undefined;
     return row ? mapRow(row) : undefined;
+  }
+
+  createHumanReceipt(input: { targetInstance: string; originalBody: string; origin: HumanOrigin; inputKind: string; managerBootId: string }): HumanReceiptRow {
+    return createHumanReceipt(this.db, input);
+  }
+  markHumanReceiptUncertain(id: string, target: string): void {
+    this.db.prepare("UPDATE human_delivery_receipts SET state='uncertain',updated_at=? WHERE receipt_id=? AND target_instance=? AND state='queued'")
+      .run(new Date().toISOString(), id, target);
+  }
+  getHumanReceipt(id: string): HumanReceiptRow | undefined { return getHumanReceipt(this.db, id); }
+  bindHumanReceipt(id: string, target: string, ownerKey: string, wire: string, managerBootId: string): HumanReceiptRow {
+    return bindHumanReceipt(this.db, id, target, ownerKey, wire, managerBootId);
+  }
+  settleHumanReceipt(id: string, target: string, ownerKey: string, proof: unknown, currentOwnerKey: string | null): boolean {
+    return settleHumanReceipt(this.db, id, target, ownerKey, proof, currentOwnerKey);
   }
 
   getByOperation(sourceInstance: string, operationId: string): OutboxDelivery[] {
@@ -1492,6 +1648,8 @@ export class DeliveryOutbox extends EventEmitter {
   recoverForBoot(managerBootId: string): { queued: number; reconciliationPending: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
+      this.db.prepare("UPDATE human_delivery_receipts SET state='uncertain',updated_at=? WHERE state='queued' AND manager_boot_id<>?")
+        .run(now, managerBootId);
       const queued = this.db.prepare(`
         UPDATE deliveries SET state='queued',manager_boot_id=NULL,target_daemon_boot_id=NULL,next_attempt_at=NULL,updated_at=?
         WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state IN ('delivering','retry_wait')
@@ -1767,12 +1925,29 @@ export class DeliveryOutbox extends EventEmitter {
         }
         this.db.prepare(`DELETE FROM outcome_notices WHERE notice_delivery_id IN (${placeholders})`).run(...ids);
         this.db.prepare(`DELETE FROM failure_notices WHERE parent_delivery_id IN (${placeholders}) OR notice_delivery_id IN (${placeholders})`).run(...ids, ...ids);
+        this.db.prepare(`DELETE FROM delivery_forward_edges WHERE reference_kind='delivery' AND reference_id IN (${placeholders})`).run(...ids);
         this.db.prepare(`DELETE FROM deliveries WHERE delivery_id IN (${placeholders})`).run(...ids);
       })();
 
       total += rows.length;
       if (rows.length < CHUNK) break;
       // Yield between chunks so the event loop can turn.
+      await new Promise<void>(resolve => setImmediate(resolve));
+    }
+
+    // Human rows are evidence only: retention never schedules or retries them.
+    for (;;) {
+      if (!this.db.open) break;
+      const rows = this.db.prepare("SELECT receipt_id FROM human_delivery_receipts WHERE updated_at<? LIMIT 500").all(cutoff) as Array<{ receipt_id: string }>;
+      if (!rows.length) break;
+      this.db.transaction(() => {
+        for (const row of rows) {
+          this.db.prepare("DELETE FROM delivery_forward_edges WHERE reference_kind='human' AND reference_id=?").run(row.receipt_id);
+          this.db.prepare("DELETE FROM human_delivery_receipts WHERE receipt_id=?").run(row.receipt_id);
+        }
+      })();
+      total += rows.length;
+      if (rows.length < CHUNK) break;
       await new Promise<void>(resolve => setImmediate(resolve));
     }
 

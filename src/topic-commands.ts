@@ -44,6 +44,7 @@ export type { TokenContextRatio } from "./context-percent.js";
 const TELEGRAM_COMMANDS_TIMEOUT_MS = 10_000;
 
 type ExecutionFleetContext = FleetContext & {
+  sendHumanControl?(instanceName: string, payload: Record<string, unknown>, origin: import("./human-delivery-receipts.js").HumanOrigin | undefined, originalBody: string): boolean;
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
   /** The running launch's own steer capability (CliBackend.supportsSteer, #1405); undefined when it has none to give. */
   instanceLaunchSupportsSteer?(instanceName: string): boolean | undefined;
@@ -1105,7 +1106,7 @@ export class TopicCommands {
   sendSteer(
     instanceName: string,
     content: string,
-    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody">,
   ): string {
     const backend = this.effectiveBackend(instanceName);
     const launchSupportsSteer = this.ctx.instanceLaunchSupportsSteer?.(instanceName);
@@ -1115,7 +1116,7 @@ export class TopicCommands {
     }
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) return t("steer.not_connected");
-    ipc.send({
+    const payload = {
       type: "steer",
       content,
       delivery_epoch: this.ctx.getDeliveryEpoch?.(instanceName) ?? undefined,
@@ -1128,7 +1129,11 @@ export class TopicCommands {
         adapter_id: msg.adapterId ?? "",
         source: msg.source,
       },
-    });
+    };
+    const sent = this.ctx.sendHumanControl
+      ? this.ctx.sendHumanControl(instanceName, payload, msg.humanOrigin, msg.humanOriginalBody ?? content)
+      : ipc.send(payload) !== false;
+    if (!sent) return t("steer.not_connected");
     return t("steer.sent", instanceName);
   }
 
@@ -1136,13 +1141,13 @@ export class TopicCommands {
   sendBtw(
     instanceName: string,
     content: string,
-    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody">,
   ): string {
     const backend = this.effectiveBackend(instanceName);
     if (!BTW_SUPPORTED_BACKENDS.has(backend)) return t("btw.unsupported", backend);
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) return t("btw.not_connected");
-    ipc.send({
+    const payload = {
       type: "btw",
       content,
       delivery_epoch: this.ctx.getDeliveryEpoch?.(instanceName) ?? undefined,
@@ -1155,7 +1160,11 @@ export class TopicCommands {
         adapter_id: msg.adapterId ?? "",
         source: msg.source,
       },
-    });
+    };
+    const sent = this.ctx.sendHumanControl
+      ? this.ctx.sendHumanControl(instanceName, payload, msg.humanOrigin, msg.humanOriginalBody ?? content)
+      : ipc.send(payload) !== false;
+    if (!sent) return t("btw.not_connected");
     return t("btw.sent", instanceName);
   }
 
