@@ -185,7 +185,7 @@ with shell access.
 
    The config directories follow this pattern:
    - Default login: `~/.claude`
-   - Named profile: `${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>`
+   - Named profile: `${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>`
 
    The conversation lives at:
    ```
@@ -238,9 +238,9 @@ directory with a symlink:
 
 ```sh
 # Only if the target dir is empty:
-rmdir "${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
+rmdir "${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
 ln -s ~/.claude/projects/<slug>/memory \
-      "${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
+      "${AGEND_HOME:-$HOME/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
 ```
 
 **Never replace a non-empty directory** — that discards memories the profile has
