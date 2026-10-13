@@ -1804,14 +1804,7 @@ program
       existingDefinition: existingPath ? (() => { try { return readFileSync(existingPath, "utf-8"); } catch { return null; } })() : null,
       isDefault: isDefaultAgendHome,
     });
-    const serviceVars = {
-      label: "com.agend.fleet",
-      execPath,
-      path: process.env.PATH!,
-      workingDirectory: service.home,
-      logPath: join(service.home, "fleet.log"),
-      ...(service.agendHome ? { agendHome: service.agendHome } : {}),
-    };
+    const serviceVars = { label: "com.agend.fleet", execPath, path: process.env.PATH!, ...service };
     // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
     // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
     if (opts.activate === false && detectPlatform() === "macos") {

@@ -96,18 +96,18 @@ describe("which home the service names", () => {
   const isDefault = (home: string) => home === "/home/u/.agend";
   const customUnit = renderSystemdUnit({ ...base, agendHome: "/srv/fleet-a", workingDirectory: "/srv/fleet-a", logPath: "/srv/fleet-a/fleet.log" });
   it("a custom CLI home is named (install or refresh)", () => {
-    expect(serviceHomeFor("/srv/fleet-b", { refresh: false, existingDefinition: null, isDefault })).toEqual({ home: "/srv/fleet-b", agendHome: "/srv/fleet-b" });
-    expect(serviceHomeFor("/srv/fleet-b", { refresh: true, existingDefinition: customUnit, isDefault })).toEqual({ home: "/srv/fleet-b", agendHome: "/srv/fleet-b" });
+    expect(serviceHomeFor("/srv/fleet-b", { refresh: false, existingDefinition: null, isDefault })).toEqual({ workingDirectory: "/srv/fleet-b", logPath: "/srv/fleet-b/fleet.log", agendHome: "/srv/fleet-b" });
+    expect(serviceHomeFor("/srv/fleet-b", { refresh: true, existingDefinition: customUnit, isDefault })).toEqual({ workingDirectory: "/srv/fleet-b", logPath: "/srv/fleet-b/fleet.log", agendHome: "/srv/fleet-b" });
   });
   it("the default CLI home names nothing", () => {
-    expect(serviceHomeFor("/home/u/.agend", { refresh: false, existingDefinition: null, isDefault })).toEqual({ home: "/home/u/.agend" });
-    expect(serviceHomeFor("/home/u/.agend", { refresh: true, existingDefinition: renderSystemdUnit(base), isDefault })).toEqual({ home: "/home/u/.agend" });
+    expect(serviceHomeFor("/home/u/.agend", { refresh: false, existingDefinition: null, isDefault })).toEqual({ workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" });
+    expect(serviceHomeFor("/home/u/.agend", { refresh: true, existingDefinition: renderSystemdUnit(base), isDefault })).toEqual({ workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" });
   });
   it("a refresh from the default home keeps an existing custom home (an update typed without AGEND_HOME)", () => {
-    expect(serviceHomeFor("/home/u/.agend", { refresh: true, existingDefinition: customUnit, isDefault })).toEqual({ home: "/srv/fleet-a", agendHome: "/srv/fleet-a" });
+    expect(serviceHomeFor("/home/u/.agend", { refresh: true, existingDefinition: customUnit, isDefault })).toEqual({ workingDirectory: "/srv/fleet-a", logPath: "/srv/fleet-a/fleet.log", agendHome: "/srv/fleet-a" });
   });
   it("an explicit install from the default home does not keep it (the person chose this home)", () => {
-    expect(serviceHomeFor("/home/u/.agend", { refresh: false, existingDefinition: customUnit, isDefault })).toEqual({ home: "/home/u/.agend" });
+    expect(serviceHomeFor("/home/u/.agend", { refresh: false, existingDefinition: customUnit, isDefault })).toEqual({ workingDirectory: "/home/u/.agend", logPath: "/home/u/.agend/fleet.log" });
   });
 });
 

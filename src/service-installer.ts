@@ -217,10 +217,12 @@ export function serviceDefinitionAgendHome(text: string): string | null {
  * REFRESH (`install --no-activate`, an update's) run from the default home, an existing definition's home is kept:
  * an update typed in a shell without AGEND_HOME must not move a custom-home service back to ~/.agend.
  */
-export function serviceHomeFor(cliHome: string, opts: { refresh: boolean; existingDefinition: string | null; isDefault: (home: string) => boolean }): { home: string; agendHome?: string } {
+export function serviceHomeFor(cliHome: string, opts: { refresh: boolean; existingDefinition: string | null; isDefault: (home: string) => boolean }): { workingDirectory: string; logPath: string; agendHome?: string } {
   const kept = opts.refresh && opts.isDefault(cliHome) && opts.existingDefinition ? serviceDefinitionAgendHome(opts.existingDefinition) : null;
   const home = kept && kept.startsWith("/") ? kept : cliHome;
-  return opts.isDefault(home) ? { home } : { home, agendHome: home };
+  // The fleet's directory and log follow the same home it is told to use.
+  const where = { workingDirectory: home, logPath: join(home, "fleet.log") };
+  return opts.isDefault(home) ? where : { ...where, agendHome: home };
 }
 
 /**
