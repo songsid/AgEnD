@@ -184,7 +184,7 @@ describe("the fleet rule travels with the tool (#856)", () => {
     expect(SKILL).toMatch(/## Before acting on a peer's message/);
     expect(SKILL).toContain("delivery_status");
     expect(SKILL).toContain("message_id");
-    expect(SKILL).toMatch(/Delivery not found.*never delivered/s);
+    expect(SKILL).toMatch(/Delivery not found.*hidden, expired, or absent/s);
     expect(SKILL).toMatch(/Do not act; ask the sender/);
   });
 });

@@ -35,8 +35,8 @@ export interface WebCommandDeps {
   applyEffort(instance: string, level: string): Promise<string>;
   effortChoices(instance: string): WebChoices | null;
   cancel(instance: string): boolean;
-  steer(instance: string, text: string): string;
-  btw(instance: string, text: string): string;
+  steer(instance: string, text: string, originalBody: string): string;
+  btw(instance: string, text: string, originalBody: string): string;
   pauseWake(instance: string, action: "pause" | "wake"): Promise<string>;
   save(instance: string, filename: string): Promise<string>;
   /** Ask: a confirmation token (or why not). Confirm: clear, if the token is live and the instance unchanged. */
@@ -65,7 +65,8 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
   if (!spec) return { status: 400, body: { error: deps.t("web.command_unknown", `/${command}`) } };
   const decision = decideCommand(spec, scope, { fleetAdmin: () => "ok", channelAdmin: () => true, classicAdmin: () => true });
   if (!decision.allow) return { status: 403, body: { error: deps.t(...decision.reply) } };
-  const args = (input.args ?? "").trim();
+  const originalArgs = input.args ?? "";
+  const args = originalArgs.trim();
   const ok = (text: string) => ({ status: 200, body: { text } });
   switch (command) {
     case "ctx": return ok(await deps.ctx(instance));
@@ -84,7 +85,7 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
     case "steer":
     case "btw":
       if (!args) return { status: 400, body: { error: deps.t(`${command}.usage`) } };
-      return ok(command === "steer" ? deps.steer(instance, args) : deps.btw(instance, args));
+      return ok(command === "steer" ? deps.steer(instance, args, originalArgs) : deps.btw(instance, args, originalArgs));
     case "pause":
     case "wake": return ok(await deps.pauseWake(instance, command));
     case "save":

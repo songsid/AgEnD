@@ -112,7 +112,9 @@ export interface OutboundContext {
     kind: string;
     correlationId: string;
     payload: Record<string, unknown>;
-  }): { deliveryId: string; state: string; duplicate: boolean };
+    forwards?: readonly string[];
+    requestedKind?: string;
+  }): { deliveryId: string; state: string; duplicate: boolean; kind?: string };
   /** Read-only status query scoped to a server-authenticated source/target. */
   queryDurableDeliveryStatus?(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage;
   /** #1335: True when the delivery_id was pruned AND the caller is the source or target. */
@@ -360,7 +362,7 @@ function effectiveBackendForTarget(ctx: OutboundContext, instanceName: string): 
 const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(SendToInstanceArgs, rawArgs, "send_to_instance");
   if (!v.ok) { respond(null, v.error); return; }
-  const { instance_name: targetName, message, steer, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
+  const { instance_name: targetName, message, forwards, steer, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const isExternalSender = meta.senderSessionName != null && meta.senderSessionName !== meta.instanceName;
@@ -420,7 +422,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const queuedPredecessor = steerCapable
     && ctx.hasPendingIdleGatedDelivery?.(targetInstanceName) === true;
   const useSteer = steerCapable && !queuedPredecessor;
-  const steerFallbackWarning = steer === true && !useSteer
+  let steerFallbackWarning = steer === true && !useSteer
     ? isExternalSession
       ? t("delivery.steer_external")
       : queuedPredecessor
@@ -447,6 +449,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   if (task_summary) ipcMeta.task_summary = task_summary;
   if (working_directory) ipcMeta.working_directory = working_directory;
   if (branch) ipcMeta.branch = branch;
+  if (forwards?.length) ipcMeta.forwards = JSON.stringify(forwards);
   // #77: surface the sender's display name in the recipient's [from:…] header
   // (keeps from_instance as the machine name so the reply-back target stays valid).
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
@@ -468,7 +471,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     content: message,
     meta: ipcMeta,
   };
-  let durableReceipt: { deliveryId: string; state: string; duplicate: boolean } | undefined;
+  let durableReceipt: { deliveryId: string; state: string; duplicate: boolean; kind?: string } | undefined;
+  let effectiveUseSteer = useSteer;
   if (ctx.admitDurableDelivery) {
     try {
       durableReceipt = ctx.admitDurableDelivery({
@@ -482,13 +486,21 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
         kind: useSteer ? "steer" : "fleet_inbound",
         correlationId,
         payload,
+        forwards,
+        requestedKind: steer === true ? "steer" : "fleet_inbound",
       });
+      if (durableReceipt.kind) effectiveUseSteer = durableReceipt.kind === "steer";
+      if (durableReceipt.duplicate && durableReceipt.kind !== undefined && durableReceipt.kind !== payload.type) steerFallbackWarning = undefined;
     } catch (err) {
       ctx.logger.error({ err, source: meta.instanceName, target: targetInstanceName }, "Durable outbound admission failed closed");
       respond(null, t("delivery.admission_failed", sanitizeError(err, ctx, "durable delivery admission")));
       return;
     }
   } else {
+    if (forwards?.length) {
+      respond(null, "Forwarded message verification requires the durable delivery store");
+      return;
+    }
     // Standalone handler harnesses retain the legacy path; production FleetManager
     // always provides durable admission.
     void deliverCrossInstanceWithRetry(
@@ -589,6 +601,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     : undefined;
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
+    ...(forwards?.length ? { forwards } : {}),
     ...(durableReceipt ? {
       durable: true,
       delivery_id: durableReceipt.deliveryId,
@@ -597,8 +610,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       duplicate: durableReceipt.duplicate,
     } : {}),
     ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
-    ...(useSteer ? { delivery_mode: "steer" } : {}),
-    ...(steerFallbackWarning ? { delivery_mode: "idle_queue" } : {}),
+    ...(effectiveUseSteer ? { delivery_mode: "steer" } : {}),
+    ...(steer === true && !effectiveUseSteer ? { delivery_mode: "idle_queue" } : {}),
     ...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
   });
 };
@@ -1412,6 +1425,8 @@ function wrapAsSend<T>(
       request_kind: kind,
       requires_reply: reply,
       task_summary: summary,
+      ...((v.data as { forwards?: string[] }).forwards !== undefined
+        ? { forwards: (v.data as { forwards?: string[] }).forwards } : {}),
     };
     // Re-dispatch through the handler map
     return sendToInstance(ctx, newArgs, respond, meta);

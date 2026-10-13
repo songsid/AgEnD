@@ -8,6 +8,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { nativeHumanOrigin } from "../src/human-delivery-receipts.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { AdapterWorld } from "../src/adapter-world.js";
 import { AccessManager } from "../src/channel/access-manager.js";
@@ -30,6 +32,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const { fm, dir } of fixtures.splice(0)) {
+    fm.deliveryOutbox?.close();
     fm.replyButtonsCtl?.stop();
     fm.replyButtonsStore?.close();
     for (const entry of [...fm.cancelButtons.values()]) fm.discardButton(entry);
@@ -305,5 +308,26 @@ describe("claims and cleanup remain shared", () => {
     // this specifically exercises the reply-grace path, not the 2s timer.
     h.fm.refreshInstanceExecutionState = vi.fn(async () => { h.fm.instanceStateCache.get("w").state = "idle"; return true; });
     await vi.advanceTimersByTimeAsync(120_000); await flush(); expect(h.fm.cancelButtons.size).toBe(0);
+  });
+});
+
+// #1756: the controller's actual claim → FM handoff retains the visible human action.
+describe("reply-button human evidence", () => {
+  it.each(["discord", "telegram"] as const)("%s keeps the real click origin and visible label, not the hidden value", async type => {
+    const h = fixture(type);
+    const outbox = new DeliveryOutbox(join(h.fm.dataDir, "human-outbox.db"), h.fm.managerBootId);
+    h.fm.deliveryOutbox = outbox;
+    const origin = nativeHumanOrigin(type, type, "owner", "alice", false, null, { anchor: "reply-with-buttons", event: "click-event" })!;
+    await h.click({ humanOrigin: origin });
+    expect(h.payloads).toHaveLength(1);
+    const payload = h.payloads[0];
+    expect(payload.meta.message_id).toBe("reply-with-buttons");
+    const row = outbox.getHumanReceipt(payload.meta.human_receipt_id)!;
+    expect(row.message_id).toBe(payload.meta.verification_id);
+    expect(row.original_body).toBe("B：直接上 VM 改");
+    expect(JSON.parse(row.origin_json)).toEqual(origin);
+    expect(payload.content).toContain("value: deploy");
+    // This older fixture intentionally has no published native owner/proof; its events are not receipt authority.
+    expect(row.state).toBe("uncertain");
   });
 });

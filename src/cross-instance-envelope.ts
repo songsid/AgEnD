@@ -8,6 +8,8 @@ export function renderCrossInstanceHandoffMetadata(meta: Record<string, string>)
     if (value && value.trim()) rows.push(`${label}: ${value.trim()}`);
   };
   add("message_id", meta.message_id);
+  add("verification_id", meta.verification_id);
+  add("forwards", meta.forwards);
   add("correlation_id", meta.correlation_id);
   add("request_kind", meta.request_kind);
   add("task_summary", meta.task_summary);

@@ -39,6 +39,8 @@ import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
 import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
+import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
+  humanBodyHash, humanOwnerObjectId, type HumanReceiptAttempt, type HumanWriteMode, type HumanPositiveTag } from "./human-delivery-receipts.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import {
   formatCrossInstanceInboundMessage,
@@ -627,6 +629,7 @@ interface PaneEvidence {
 interface SubmissionSignature {
   value: string;
   unique: boolean;
+  humanPositive?: (tag: HumanPositiveTag) => void;
   /**
    * The CLI's own record of this delivery (set once the durable begin has a transcript checkpoint): the transcript from
    * the checkpoint, read for this delivery's exact `[agend-delivery-id:…]` marker. A marker there is the CLI having
@@ -809,6 +812,8 @@ type DeliveryVerdict = {
   submissionMode?: DurableSubmissionMode;
   /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
   transcriptProof?: TranscriptMarkerKind;
+  /** Strict human evidence; independent of weaker legacy transport outcomes. */
+  humanReceipt?: HumanReceiptAttempt;
 };
 
 /**
@@ -2259,6 +2264,7 @@ export class Daemon extends EventEmitter {
   }
 
   private deferDurableDelivery(meta: Record<string, string>, reason: string): void {
+    this.finishHumanReceipt(meta, { reached: false });
     const delivery = this.durableDeliveryAttempt(meta);
     if (delivery === null || delivery === false) return;
     this.retryDurableDeliveryBeforeBegin(delivery, reason);
@@ -6522,11 +6528,7 @@ export class Daemon extends EventEmitter {
    * is a durable delivery) must LEAD the persisted user message — restart reconciliation recognises a delivery only by a
    * marker at the start of the body (#1197) — so the banner goes right after it, not in front of it.
    */
-  private static steerEnvelope(inbound: string): string {
-    const banner = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n";
-    const marker = inbound.match(/^\[agend-delivery-id:[^\]\r\n]+\]\r?\n/);
-    return marker ? marker[0] + banner + inbound.slice(marker[0].length) : banner + inbound;
-  }
+  private static steerEnvelope(inbound: string): string { return steerInboundEnvelope(inbound); }
 
   /**
    * The one place an inbound message grows its metadata wrapper ([user:]/
@@ -6539,35 +6541,53 @@ export class Daemon extends EventEmitter {
   private agentMode(): AgentMode { return this.config.agent_mode === "cli" ? "cli" : "mcp"; }
 
   private formatInboundMessage(content: string, meta: Record<string, string>): string {
-    const user = meta.user || "unknown";
-    const fromInstance = meta.from_instance;
-
-    let formatted: string;
-    if (fromInstance) {
-      formatted = formatCrossInstanceInboundMessage(content, meta, this.agentMode());
-    } else {
-      const via = meta.source ? ` via ${meta.source}` : "";
-      const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
-      formatted = `[user:${user}${via}${idTag}] ${content}`;
-      // Reactions queued since the last real message (#432). One leading line of
-      // context, present only when something is pending — a reaction no longer
-      // costs a turn of its own.
-      if (meta.pending_reactions) {
-        formatted = `[Recent reactions: ${meta.pending_reactions}]\n${formatted}`;
-      }
-      formatted += renderHandoffMetadata(meta);
-      // #1650: a CLI-mode agent has no reply tool — it answers with the agend-agent command.
-      formatted += this.agentMode() === "cli"
-        ? '\n(Reply with agend-agent reply "…" — do NOT respond with direct text)'
-        : "\n(Reply using the reply tool — do NOT respond with direct text)";
-    }
-    if (meta.reply_to_text) {
-      formatted += `\n(reply_to: "${meta.reply_to_text}")`;
-    }
-    if (meta.delivery_id) {
-      formatted = `[agend-delivery-id:${meta.delivery_id}]\n${formatted}`;
-    }
+    if (!meta.from_instance) return formatHumanInboundMessage(content, meta, this.agentMode());
+    let formatted = formatCrossInstanceInboundMessage(content, meta, this.agentMode());
+    if (meta.reply_to_text) formatted += '\n(reply_to: "' + meta.reply_to_text + '")';
+    if (meta.delivery_id) formatted = "[agend-delivery-id:" + meta.delivery_id + "]\n" + formatted;
     return formatted;
+  }
+
+  /** Pure cached owner: no pane/process query on ingress. */
+  captureHumanReceiptOwner(): string | null {
+    try {
+      if (this.deliveryWritesStopping || this.spawning || !this.tmux) return null;
+      const o = this.interactionOwner();
+      const window = this.tmux.getWindowId();
+      if (!window || !o.bootId || ![o.spawnGeneration, o.launchAttempt, o.launchFenceEpoch, this.deliveryEpoch]
+        .every(n => Number.isSafeInteger(n) && n >= 0)) return null;
+      return JSON.stringify([o.bootId, o.spawnGeneration, o.launchAttempt, o.launchFenceEpoch,
+        this.deliveryEpoch, humanOwnerObjectId(this.tmux), window]);
+    } catch { return null; }
+  }
+
+  /** The same formatter/sanitizer used by the actual write; snapshot only. */
+  humanReceiptWire(content: string, meta: Record<string, string>, kind: string): string {
+    let wire = kind === "raw_paste" ? content
+      : !meta.from_instance && content.startsWith("/raw ") && kind === "fleet_inbound"
+        ? content.slice(5) : this.formatInboundMessage(content, meta);
+    if (kind === "steer") wire = Daemon.steerEnvelope(wire);
+    else if (kind === "btw") wire = BTW_INBOUND_PREFIX + wire;
+    return prepareDeliveryWire(wire, kind === "raw_paste");
+  }
+
+  private humanReceiptAttempt(meta: Record<string, string>, wire: string): HumanReceiptAttempt | undefined {
+    const id = meta.human_receipt_id;
+    const daemonOwner = meta.human_daemon_owner;
+    if (!id || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(id) || meta.verification_id !== "hmsg-" + id
+      || !daemonOwner || !meta.human_owner_key || !/^[a-f0-9]{64}$/.test(meta.human_wire_sha256 ?? "")
+      || humanBodyHash(prepareDeliveryWire(wire)) !== meta.human_wire_sha256) return undefined;
+    return { receiptId: id, verificationId: meta.verification_id, expectedWireHash: meta.human_wire_sha256,
+      ownerKey: meta.human_owner_key, current: () => this.captureHumanReceiptOwner() === daemonOwner };
+  }
+
+  private finishHumanReceipt(meta: Record<string, string>, verdict: DeliveryVerdict): void {
+    if (!meta.human_receipt_id || !meta.human_owner_key) return;
+    const attempt = verdict.humanReceipt;
+    const proof = attempt?.current() && !["unverified", "output-edge", "unverifiable"].includes(verdict.proof ?? "")
+      ? attempt.proof ?? null : null;
+    try { this.emit("human_receipt_result", { receipt_id: meta.human_receipt_id, owner_key: meta.human_owner_key, proof }); }
+    catch (err) { this.logger.error({ err }, "Could not publish human delivery evidence"); }
   }
 
   /**
@@ -6668,12 +6688,13 @@ export class Daemon extends EventEmitter {
         this.deferDurableDelivery(meta, "delivery epoch changed while waking for steer");
         return;
       }
-      const verdict: DeliveryVerdict = { reached: false };
+      const verdict: DeliveryVerdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
       try {
         if (await this.deliverMessage(formatted, status, {
           steer: true,
           deliveryEpoch,
           submissionId: meta.message_id,
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
           verdict,
           durableAttempt: durableAttempt || undefined,
         })) {
@@ -6695,6 +6716,8 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         throw err;
+      } finally {
+        this.finishHumanReceipt(meta, verdict);
       }
     }).catch(err => {
       this.deferDurableDelivery(meta, `target wake/steer failed before pane submission: ${(err as Error).message}`);
@@ -6712,23 +6735,29 @@ export class Daemon extends EventEmitter {
    * so channel delivery intentionally uses a normal wrapped inbound instead.
    */
   btwMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
-    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); return; }
     this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const formatted = "[BTW — side question from the user. Answer it separately without changing or interrupting the CURRENT work.]\n"
-      + this.formatInboundMessage(content, meta);
+    const formatted = BTW_INBOUND_PREFIX + this.formatInboundMessage(content, meta);
     const status = channelStatus(meta);
 
     this.steerLock = this.steerLock.then(async () => {
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); return; }
       await this.wake();
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id })) {
-        this.markTurnStarted(meta, formatted, deliveryEpoch);
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) { this.finishHumanReceipt(meta, { reached: false }); return; }
+      const verdict: DeliveryVerdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
+      try {
+        if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id,
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}), verdict })) {
+          this.markTurnStarted(meta, formatted, deliveryEpoch);
+        }
+      } finally {
+        this.finishHumanReceipt(meta, verdict);
       }
     }).catch(err => {
+      this.finishHumanReceipt(meta, { reached: false });
       this.logger.warn({ err: (err as Error).message }, "btw delivery error");
     });
   }
@@ -6846,7 +6875,7 @@ export class Daemon extends EventEmitter {
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
-        verdict = { reached: false };
+        verdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
         const durableAttempt = this.durableDeliveryAttempt(meta, content);
         if (durableAttempt === false) {
           this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
@@ -6856,6 +6885,7 @@ export class Daemon extends EventEmitter {
         if (await this.deliverMessage(formatted, status, {
           deliveryEpoch,
           submissionId: meta.message_id,
+          ...(meta.verification_id ? { humanVerificationId: meta.verification_id } : {}),
           verdict,
           durableAttempt: durableAttempt || undefined,
         })) {
@@ -6890,6 +6920,7 @@ export class Daemon extends EventEmitter {
         else throw err;
         this.logger.warn({ err: (err as Error).message }, "Durable pane delivery deferred after exception");
       } finally {
+        this.finishHumanReceipt(meta, verdict);
         this.pasteQueueDepth--;
       }
     }).catch(err => {
@@ -6924,6 +6955,7 @@ export class Daemon extends EventEmitter {
       steer?: boolean;
       deliveryEpoch?: number;
       submissionId?: string;
+      humanVerificationId?: string;
       verdict?: DeliveryVerdict;
       spawnRetry?: number;
       durableAttempt?: DurableDeliveryAttempt;
@@ -6939,12 +6971,7 @@ export class Daemon extends EventEmitter {
     const cancelled = () => opts?.deliveryEpoch !== undefined
       && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
     if (cancelled() || this.stormWindow?.isStopped()) return false;
-    // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
-    const fenceCount = (formatted.match(/```/g) || []).length;
-    if (!opts?.preserveExactBytes && fenceCount % 2 !== 0) {
-      // Odd number of fences = unclosed. Remove all code fences from the message.
-      formatted = formatted.replace(/```/g, "");
-    }
+    formatted = prepareDeliveryWire(formatted, opts?.preserveExactBytes);
 
     // Direct paths such as /steer, /btw, /raw and schedules do not pass the
     // FleetManager idle gate. Hold them at the final common pane-write path so
@@ -7116,6 +7143,7 @@ export class Daemon extends EventEmitter {
           opts?.durableAttempt,
           opts?.steer === true,
           writeCurrent,
+          opts?.humanVerificationId,
         );
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
@@ -7864,7 +7892,7 @@ export class Daemon extends EventEmitter {
     if (first === "") return false;
     const row = norm(shown);
     // The marker line holds nothing but the marker: the row is exactly it.
-    if (/^\[agend-delivery-id:[^\]\s]+\]$/.test(first)) return row === first;
+    if (/^\[agend-(?:delivery|human)-id:[^\]\s]+\]$/.test(first)) return row === first;
     return row === first || row.startsWith(`${first} `);
   }
 
@@ -8345,6 +8373,7 @@ export class Daemon extends EventEmitter {
       const evidence = await this.kiroSubmissionEvidence(pending.windowId, formatted, pending.signature);
       if (!current()) return false;
       if (evidence === "submitted") {
+        if (pending.signature.unique) pending.signature.humanPositive?.("unique-id-pane");
         if (status) this.emit("message_confirmed", status);
         return true;
       }
@@ -8369,6 +8398,7 @@ export class Daemon extends EventEmitter {
         if (!current()) return false;
         if (retry === "cancelled") return false;
         if (retry === "submitted") {
+          if (pending.signature.unique) pending.signature.humanPositive?.("unique-id-pane");
           if (status) this.emit("message_confirmed", status);
           return true;
         }
@@ -8521,10 +8551,25 @@ export class Daemon extends EventEmitter {
     // #829: the caller's fence, asked once more after the last await before the
     // first side effect. Stale means unwritten: false, with no failure verdict.
     stillCurrent?: () => boolean,
+    humanVerificationId?: string,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
   ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
-    const signature = this.submissionSignature(formatted, submissionId);
+    const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
+    const humanAttempt = verdict.humanReceipt;
+    const humanMode: HumanWriteMode = rawPaste ? "raw_paste" : steer ? "steer"
+      : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
+    if (humanAttempt && signature.unique && signature.value === "agend-human-id:" + humanAttempt.verificationId
+      && humanBodyHash(formatted) === humanAttempt.expectedWireHash) {
+      signature.humanPositive = tag => {
+        if (!humanAttempt.current() || (stillCurrent && !stillCurrent())) return;
+        humanAttempt.proof = {
+          receipt_id: humanAttempt.receiptId, verification_id: humanAttempt.verificationId,
+          wire_sha256: humanBodyHash(formatted), owner_key: humanAttempt.ownerKey,
+          mode: humanMode, tag,
+        };
+      };
+    }
     let windowId = initialWindowId;
     // The spawn this write belongs to: acceptance evidence is only read while it is still the current one (#1197).
     const spawnAtWrite = this.spawnGeneration;
@@ -8669,6 +8714,7 @@ export class Daemon extends EventEmitter {
       // positively hold typed text, and after it be the empty placeholder again. The empty placeholder here means the
       // paste never reached the box; an unreadable box (a failed or late capture, a dialog) proves nothing: no Enter.
       const steerComposerProof = handingOffToNativeQueue && steer && !!this.backend?.readSteerComposer && tmuxAtWrite !== null;
+      let humanComposerOwned = false;
       let steerEnterDeadline = Infinity;
       if (steerComposerProof) {
         const deadline = performance.now() + STEER_PASTE_VISIBLE_MS;
@@ -8688,6 +8734,8 @@ export class Daemon extends EventEmitter {
         if (performance.now() > deadline) return this.failDelivery(verdict, status, "steer-paste", "box-read-late");
         if (before?.mode !== "text") return this.failDelivery(verdict, status, "steer-paste", before === null ? "box-unread" : `box-still-${before.mode}`);
         if (!this.steerPasteIsOurs(before.pane, formatted)) return this.failDelivery(verdict, status, "steer-paste", "box-not-this-paste");
+        const shown = this.backend?.readSteerComposerText?.(before.pane)?.replace(/\s+/g, " ").trim();
+        humanComposerOwned = !!humanAttempt && shown === "[agend-human-id:" + humanAttempt.verificationId + "]";
         // …and so is the Enter: the key is sent only while the reading is still within it.
         steerEnterDeadline = deadline;
       }
@@ -8759,6 +8807,8 @@ export class Daemon extends EventEmitter {
             if (after === "steer" || after === "queue" || after === "idle") {
               const probe = await withinMs(this.probeBlockingDialog(), deadline - performance.now());
               if (probe?.state === "clear" && performance.now() <= deadline && steerCurrent() && this.getWindowId() === windowId) {
+                if (humanComposerOwned) signature.humanPositive?.(after === "steer" ? "composer-empty-steer"
+                  : after === "queue" ? "composer-empty-queue" : "composer-empty-idle");
                 verdict.phase = "steer-accepted";
                 verdict.proof = `steer-composer-${after}`;
                 if (status) this.emit("message_confirmed", status); // ✅ taken from the box
@@ -9334,7 +9384,10 @@ export class Daemon extends EventEmitter {
     //    the input row is proof in itself — which also means a momentary
     //    failure to read the pane BEFORE pasting cannot turn a delivered
     //    message into a re-paste.
-    if (signature.unique && after.payload > 0) return this.submittedProof();
+    if (signature.unique && after.payload > 0) {
+      if (after.inputReadable) signature.humanPositive?.("unique-id-pane");
+      return this.submittedProof();
+    }
     if (unattributedResidue) return "unverifiable";
 
     // 3. Otherwise the evidence must be NEW relative to the pane as it was
@@ -9468,7 +9521,7 @@ export class Daemon extends EventEmitter {
    * paste that never landed. System pastes carry no envelope and fall back to
    * the body signature, which the baseline comparison still ties to this paste.
    */
-  private submissionSignature(formatted: string, trustedId?: string): SubmissionSignature {
+  private submissionSignature(formatted: string, trustedId?: string, verification = false): SubmissionSignature {
     // The id must come from the message's own metadata, never from scanning the
     // rendered text: agents and users discuss message ids in the body all the
     // time ("check message_id: abc"), and a body-scanned value would match an
@@ -9476,7 +9529,7 @@ export class Daemon extends EventEmitter {
     // and confirm a paste that never landed. Only the value AgEnD itself put in
     // the handoff metadata identifies THIS delivery.
     const id = trustedId?.trim();
-    if (id) return { value: `message_id:${id}`, unique: true };
+    if (id) return { value: (verification ? "agend-human-id:" : "message_id:") + id, unique: true };
     return { value: pastedTextSignature(formatted), unique: false };
   }
 

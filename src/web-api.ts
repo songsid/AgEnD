@@ -1,3 +1,4 @@
+import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
@@ -194,6 +195,7 @@ export interface WebApiContext {
   sendClassicWebEcho?(instance: string, text: string): Promise<number>;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
+  deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string): Promise<boolean | void>;
   getUiStatus(): unknown;
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
@@ -1313,7 +1315,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       }) : undefined;
       let delivered: boolean | void;
       try {
-        delivered = await ctx.deliverToInstance(instance, {
+        const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
+          ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(), typed)
+          : ctx.deliverToInstance(name, payload);
+        delivered = await deliver(instance, {
           type: "fleet_inbound",
           content: delivery.text,
           targetSession: instance,

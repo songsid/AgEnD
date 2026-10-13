@@ -87,14 +87,21 @@ async function main(): Promise<void> {
     case "download": args = { file_id: rest[0] ?? "" }; break;
 
     // Communication
-    case "send": args = { instance_name: rest[0], message: rest[1] ?? "", request_kind: rest[2] }; break;
-    case "delegate": args = { target_instance: rest[0], task: rest[1] ?? "", success_criteria: rest[2], context: rest[3] }; break;
+    case "send":
+    case "delegate": {
+      const { flags, positional } = splitFlags(rest, ["--forward"]);
+      args = op === "send"
+        ? { instance_name: positional[0], message: positional[1] ?? "", request_kind: positional[2] }
+        : { target_instance: positional[0], task: positional[1] ?? "", success_criteria: positional[2], context: positional[3] };
+      if (flags["--forward"]) args.forwards = flags["--forward"];
+      break;
+    }
     case "report": args = { target_instance: rest[0], summary: rest[1] ?? "", correlation_id: rest[2], artifacts: rest[3] }; break;
     case "ask": args = { target_instance: rest[0], question: rest[1] ?? "", context: rest[2] }; break;
     case "delivery-status": {
       for (let i = 0; i < rest.length; i++) {
         const key = rest[i]!.replace(/^--/, "").replaceAll("-", "_");
-        if (!["delivery_id", "operation_id", "correlation_id", "limit", "cursor"].includes(key)) {
+        if (!["delivery_id", "operation_id", "correlation_id", "message_id", "limit", "cursor"].includes(key)) {
           die(`Unknown delivery-status option: ${rest[i]}`);
         }
         const value = rest[++i];

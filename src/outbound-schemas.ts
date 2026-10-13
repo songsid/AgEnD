@@ -355,11 +355,16 @@ export const CreateInstanceArgs = z.object({
 
 // ── Cross-instance communication ────────────────────────────────────────
 
+const ForwardMessageIds = z.array(z.string().min(1).max(256).regex(/^[^\s\u0000-\u001f\u007f]+$/))
+  .max(16).refine(ids => new Set(ids).size === ids.length, "Each forwarded message ID must appear only once")
+  .optional().describe("Explicit message IDs to share read-only verification access with the receiver. You must already be able to read each delivered row. Mentioning an ID in text grants no access; every relay hop must forward it explicitly.");
+
 export const SendToInstanceArgs = z.object({
   instance_name: NonEmptyString.describe(
     "Name of the target instance (e.g., 'ccplugin', 'blog-t1385'). Use list_instances to see available instances.",
   ),
   message: NonEmptyString.describe("The message to send to the target instance."),
+  forwards: ForwardMessageIds,
   steer: z.boolean().optional().describe(
     "Inject as a supplement into the target's CURRENT turn — for correcting or adding to work you just sent. Omit for a new task. Safe: an idle target receives it normally; an unsupported backend falls back to the idle queue.",
   ),
@@ -409,6 +414,7 @@ export const RequestInformationArgs = z.object({
 export const DelegateTaskArgs = z.object({
   target_instance: NonEmptyString.describe("Name of the instance to delegate to."),
   task: NonEmptyString.describe("Description of the task to perform."),
+  forwards: ForwardMessageIds,
   steer: z.boolean().optional().describe(
     "Inject as a supplement into the target's CURRENT turn — for correcting or adding to work you just sent. Omit for a new task. Safe: an idle target receives it normally; an unsupported backend falls back to the idle queue.",
   ),
