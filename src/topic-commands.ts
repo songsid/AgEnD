@@ -1829,6 +1829,8 @@ export class TopicCommands {
       this.ctx.logger.warn({ adapterId }, "Skipping Telegram bot-command registration — the bot token is not set");
       return;
     }
+    // #1736: honour telegram_api_root the same way the adapter does.
+    const apiRoot = (ch.telegram_api_root ?? "https://api.telegram.org").replace(/\/+$/, "");
     // Locks come from the command table's Telegram column (#1177), descriptions from the locale.
     const menu = (which: TelegramMenu) => telegramMenu(which).map(({ name, lock, argHint }) => ({
       command: name,
@@ -1842,7 +1844,7 @@ export class TopicCommands {
       scope: Record<string, string | number>,
     ): Promise<void> => {
       const response = await fetch(
-        `https://api.telegram.org/bot${botToken}/setMyCommands`,
+        `${apiRoot}/bot${botToken}/setMyCommands`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
