@@ -1,7 +1,11 @@
 /**
  * #1633 (design: the comment on #1633): what is new FOR AGENTS in this AgEnD version, told once to each instance that
- * was already running before it — a resumed session can keep tool descriptions it loaded under the old version (Claude
- * Code: a deferred tool's schema is a ToolSearch result in the transcript), so it would never learn the new parameters.
+ * was already running before it — a resumed session can keep tool descriptions it loaded under the old version, so it
+ * would never learn the new parameters. Claude Code (#1780, verified on 2.1.296): a deferred tool's schema, once loaded,
+ * is recorded in the transcript (`deferred_tools_record`) and sent as-is on every later request — a resume, another
+ * ToolSearch `select:`, the server's tools/list_changed and `--system-prompt-snapshot off` all leave it; only a
+ * compaction drops it. Its client checks a call against the LIVE schema, so a parameter missing from the old copy still
+ * reaches AgEnD: the notice says to pass it anyway. Codex, kiro and muse list the tools afresh on resume.
  *
  * - Curated entries, one line each with the exact parameter names (#1634's audit); not the changelog.
  * - `<instanceDir>/whats-new.json` records which entry ids the instance has been told. Only entries it has not been
@@ -35,6 +39,8 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "`task` `list` returns live tasks only by default: `filter_status` (one or a list) for done or cancelled, `verbose: true` for full records." },
   { id: "2.2-create-refusals", since: "2.2.0-beta.1",
     text: "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions` (both are set in Settings or fleet.yaml)." },
+  { id: "2.2-forwards", since: "2.2.0-beta.7",
+    text: "`send_to_instance` and `delegate_task` take `forwards: [id, …]` (up to 16 delivered message ids you can read, e.g. a human's `verification_id` / `[agend-human-id:…]`): the receiver may then read those rows with `delivery_status`. An id written in the message text grants nothing — the receiver gets \"Delivery not found\" — so put it in `forwards`, on every hop." },
 ];
 
 /**
@@ -107,7 +113,7 @@ export function whatsNewNotice(version: string, entries: readonly WhatsNewEntry[
   return [
     `[system:whats-new] AgEnD is now ${version}. New for you since your session began:`,
     ...entries.map(e => `- ${e.text}`),
-    "If a tool's description you loaded earlier doesn't show these, reload it before using them (Claude Code: `ToolSearch` with `select:<tool>`). Do not reply to this message.",
+    "A tool description you loaded earlier may not show these: a resumed session keeps the copy it first loaded, and reloading it does not refresh it. Use them anyway — AgEnD's server accepts them. Do not reply to this message.",
   ].join("\n");
 }
 

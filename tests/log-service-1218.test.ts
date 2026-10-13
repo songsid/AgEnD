@@ -138,6 +138,40 @@ describe("on demand: the newest steps, older ones before an offset, newer ones a
   });
 });
 
+describe("#1788 review: record boundaries, whole long records, and the watch ended by turning it off", () => {
+  it("a page is cut only at a record's boundary: a reply's text and its call come together, and none is lost across pages", async () => {
+    const f = join(temp(), "pairs.jsonl");
+    let body = "";
+    for (let i = 0; i < 5; i++) body += line({ type: "assistant", uuid: `a${i}`, message: { role: "assistant", content: [{ type: "text", text: `t${i}` }, { type: "tool_use", id: `toolu_${i}`, name: "Bash", input: { command: `c${i}` } }] } });
+    writeFileSync(f, body);
+    const s = service({ src: { backend: "claude-code", path: f, format: "claude" } });
+    const first: any = await s.svc.steps("w", { limit: 3 });
+    expect(first.steps.map((x: any) => x.body ?? x.subject)).toEqual(["t3", "c3", "t4", "c4"]);       // 3 asked, 4 given: record 3 whole
+    const ids = new Set(first.steps.map((x: any) => x.id));
+    let cursor = first.before;
+    while (cursor !== null) {
+      const older: any = await s.svc.steps("w", { before: cursor, key: first.key, limit: 3 });
+      for (const x of older.steps) ids.add(x.id);
+      cursor = older.before;
+    }
+    expect(ids.size).toBe(10);
+  });
+  it("the backfill reads a long reply whole, as the live read does (never only its head)", async () => {
+    const f = join(temp(), "long.jsonl");
+    writeFileSync(f, JSON.stringify({ parentUuid: "p", message: { role: "assistant", content: [{ type: "text", text: "LONG " + "w".repeat(300 * 1024) }] }, type: "assistant" }) + "\n");
+    const a: any = await service({ src: { backend: "claude-code", path: f, format: "claude" } }).svc.steps("w", {});
+    expect(a.steps.map((x: any) => [x.kind, x.body.slice(0, 5)])).toEqual([["assistant", "LONG "]]);
+  });
+  it("turned off in Settings: the next look ends the watch (nobody calls unwatchAll there)", async () => {
+    const f = claudeFile();
+    const s = service({ src: { backend: "claude-code", path: f, format: "claude" } });
+    await s.svc.steps("w", { watch: true });
+    s.on = false;
+    s.timers[0]!.fn(); await new Promise(r => setTimeout(r, 20));
+    expect([s.timers[0]!.cleared, s.svc.watched(), s.emitted]).toEqual([true, 0, []]);
+  });
+});
+
 describe("live only under a watch lease", () => {
   it("a watching request holds a lease: one timer looks at the transcript's size and ticks when it grows; the lease ends it", async () => {
     const f = claudeFile();

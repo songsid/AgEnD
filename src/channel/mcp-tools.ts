@@ -68,7 +68,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["broadcast", schemas.BroadcastArgs,
     "Send a message to multiple instances at once. Priority: team > targets > tags > all running."],
   ["send_to_instance", schemas.SendToInstanceArgs,
-    "Send a message to another instance. Use steer=true only for a mid-turn supplement to work you just sent. Returns {sent, queued, correlation_id} at once — acceptance, not delivery; a durable send also returns delivery_id and operation_id for delivery_status. forwards explicitly grants this receiver read-only delivery_status on up to 16 delivered rows you can read; each hop needs forwards."],
+    "Send a message to another instance. Use steer=true only for a mid-turn supplement to work you just sent. Returns {sent, queued, correlation_id} at once — acceptance, not delivery; a durable send also returns delivery_id and operation_id for delivery_status. forwards explicitly grants this receiver read-only delivery_status on up to 16 delivered rows you can read; each hop needs forwards, and an ID in the message text grants nothing."],
   ["request_information", schemas.RequestInformationArgs,
     "Ask another instance a question and expect a reply. Wrapper around send_to_instance with request_kind=query and requires_reply=true."],
   ["delegate_task", schemas.DelegateTaskArgs,

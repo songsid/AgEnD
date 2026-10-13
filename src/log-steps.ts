@@ -67,18 +67,50 @@ export const RESULT_MAX = 4000;
 const OPAQUE = /(?<![A-Za-z0-9_+=-])[A-Za-z0-9_+=-]{32,}(?![A-Za-z0-9_+=-])/g;
 function looksOpaque(s: string): boolean { return /[a-z]/.test(s) && /[A-Z]/.test(s) && /[0-9]/.test(s); }
 
-/** Mask secret values in `text`: the bubble's redactor (known key shapes, Bearer, key=value, URL userinfo) + opaque tokens. */
+/** A name that holds a secret: any identifier containing one of these words (DB_PASSWORD, apiKey, "client_secret"…). */
+const SECRET_WORD = "(?:password|passwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|credential)";
+// Bounded on both sides: an unbounded name would backtrack over a long run of word characters (quadratic).
+const NAME = `[A-Za-z0-9_.-]{0,40}${SECRET_WORD}[A-Za-z0-9_.-]{0,40}`;
+/** A whole private key block (also one cut off before its END line). */
+const PEM = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)/g;
+/** JSON: "…secret name…": "value" (as a tool's arguments are shown). */
+const JSON_SECRET = new RegExp(`("${NAME}"\\s*:\\s*")((?:[^"\\\\]|\\\\.)+)(")`, "gi");
+/** A flag: --password value, --api-key=value. */
+const FLAG_SECRET = new RegExp(`(--?${NAME})(\\s+|=)(["']?)([^\\s"']+)\\3`, "gi");
+/** An assignment: DB_PASSWORD=value, export TOKEN="value", password: value — the value may hold "/" (AWS keys do). */
+const ASSIGN_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})(\\s*[=:]\\s*)(["']?)([^\\s"'\`,;]+)\\4`, "gim");
+/** A value that is not a secret whatever its name says: a number (max_tokens: 100), a boolean, null. */
+const PLAIN = /^(?:-?\d+(?:\.\d+)?|true|false|null|none|\[REDACTED\])$/i;
+
+/**
+ * Mask secret values in `text` (#1788 review P1: every common way a secret is written, since arguments and results are
+ * shown): a private key block; a secret-named JSON field, flag or assignment (any identifier containing password,
+ * secret, token, api/access/private key, credential — DB_PASSWORD, "api_key", --password); then the bubble's redactor
+ * (known key shapes, Bearer, URL userinfo); then long mixed-case opaque tokens. Numbers, booleans and null are kept.
+ */
 export function maskSecrets(text: string): string {
-  return redactSecrets(text).replace(OPAQUE, (m) => (looksOpaque(m) ? "[REDACTED]" : m));
+  return redactSecrets(text
+    .replace(PEM, (_m, kind: string) => `-----BEGIN ${kind}PRIVATE KEY----- [REDACTED] -----END ${kind}PRIVATE KEY-----`)
+    .replace(JSON_SECRET, (m, a: string, v: string, b: string) => (PLAIN.test(v) ? m : `${a}[REDACTED]${b}`))
+    .replace(FLAG_SECRET, (m, k: string, sep: string, q: string, v: string) => (PLAIN.test(v) ? m : `${k}${sep}${q}[REDACTED]${q}`))
+    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, q: string, v: string) => (PLAIN.test(v) ? m : `${pre}${k}${sep}${q}[REDACTED]${q}`)))
+    .replace(OPAQUE, (m) => (looksOpaque(m) ? "[REDACTED]" : m));
 }
 
-/** `text` masked and cut to `max` characters (never inside a surrogate pair), with how many were cut. */
+/** Characters past the limit that are masked with the rest: a secret that crosses the limit is masked whole. */
+const MASK_MARGIN = 512;
+/**
+ * `text` masked and cut to `max` characters (never inside a surrogate pair), with how many were cut. Only the part that
+ * can be shown (plus MASK_MARGIN) is masked: a tool result can be megabytes.
+ */
 export function bounded(text: string, max: number): { text: string; cut: number } {
-  const masked = maskSecrets(text);
-  if (masked.length <= max) return { text: masked, cut: 0 };
-  let end = max;
+  const head = text.length > max + MASK_MARGIN ? text.slice(0, max + MASK_MARGIN) : text;
+  const masked = maskSecrets(head);
+  const total = masked.length + (text.length - head.length);
+  if (total <= max) return { text: masked, cut: 0 };
+  let end = Math.min(max, masked.length);
   if (/[\uD800-\uDBFF]/.test(masked[end - 1] ?? "")) end--;
-  return { text: masked.slice(0, end), cut: masked.length - end };
+  return { text: masked.slice(0, end), cut: total - end };
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
