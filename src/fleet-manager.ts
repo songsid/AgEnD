@@ -5033,7 +5033,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1753: the directory the CLI being stopped was launched in — its conversation is under that directory's key.
     const launchedIn = this.daemons.get(name)?.getConfigSnapshot?.()?.working_directory;
     // Between the stop and the start: the old CLI's transcript is complete, the new one has not looked yet.
-    const betweenStopAndStart = async (launch: { backend: string; profile: string | null }) => {
+    /** `launching`: the login the start will use — read only when a switch is to be carried. */
+    const betweenStopAndStart = async (launching: () => { backend: string; profile: string | null }) => {
       // #1753: this restart's own carry, or one a caller joined it with before this point (restartSingleInstance).
       const gap = this.restartGaps.get(name);
       const carry = gap?.carry ?? opts?.carry;
@@ -5041,6 +5042,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!carry) { if (opts?.freshStart) this.writeFreshStartMarker(name); return; }
       // Only into the login this start really launches: a restart that read its configuration before the switch was
       // saved (one a switch joined) launches the old one — a copy into the new would be reported as carried, falsely.
+      const launch = launching();
       if (launch.backend !== carry.backend || launch.profile !== carry.to) {
         const login = (p: string | null) => (p ? `profile "${p}"` : "the default login");
         carry.result = { carried: false, reason: `the restart launches ${launch.backend !== carry.backend ? launch.backend : login(launch.profile)}, not ${login(carry.to)}` };
@@ -5053,8 +5055,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     if (config) {
       await this.stopInstance(name, transition);
-      const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-      await betweenStopAndStart({ backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, this.fleetConfig?.defaults, backend) : null });
+      await betweenStopAndStart(() => {
+        const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+        return { backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, this.fleetConfig?.defaults, backend) : null };
+      });
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
         () => this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
@@ -5068,8 +5072,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.classicChannels!.getAdapterIdByInstance(name);
       await this.stopInstance(name, transition);
       await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
-      const backend = this.classicChannels!.getBackendByInstance(name, fleetBackend);
-      await betweenStopAndStart({ backend, profile: credentialHomeSpec(backend) ? profileName(this.classicChannels!.getCredentialProfileByInstance(name, this.fleetConfig?.defaults)) : null });
+      await betweenStopAndStart(() => {
+        const backend = this.classicChannels!.getBackendByInstance(name, fleetBackend);
+        return { backend, profile: credentialHomeSpec(backend) ? profileName(this.classicChannels!.getCredentialProfileByInstance(name, this.fleetConfig?.defaults)) : null };
+      });
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason, () => this.startClassicInstance(
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
