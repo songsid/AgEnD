@@ -157,6 +157,17 @@ describe("live only under a watch lease", () => {
     expect([s.timers[0]!.cleared, s.svc.watched()]).toEqual([true, 0]);
     expect(WATCH_POLL_MS).toBeLessThanOrEqual(2000);
   });
+  it("each watching request renews the lease: a page that keeps asking keeps its watch past the first lease", async () => {
+    const f = claudeFile();
+    const s = service({ src: { backend: "claude-code", path: f, format: "claude" } });
+    await s.svc.steps("w", { watch: true });
+    s.tick(WATCH_LEASE_MS - 1000);
+    await s.svc.steps("w", { watch: true });                                  // renewed here
+    s.tick(2000);                                                              // past the first lease, inside the second
+    s.timers[0]!.fn(); await new Promise(r => setTimeout(r, 20));
+    expect([s.timers[0]!.cleared, s.svc.watched()]).toEqual([false, 1]);
+  });
+
   it("turning the Log off ends every watch at once", async () => {
     const f = claudeFile();
     const s = service({ src: { backend: "claude-code", path: f, format: "claude" } });
