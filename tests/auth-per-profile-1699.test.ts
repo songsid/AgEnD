@@ -15,13 +15,21 @@ import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecy
 import { checkAuthStatus, setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { credentialProfileHome } from "../src/backend/credential-profile.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { claudeConfigDirFor } from "../src/backend/claude-code.js";
 
 let agendHome: string;
 const savedHome = process.env.AGEND_HOME;
-beforeEach(() => { agendHome = mkdtempSync(join(tmpdir(), "agend-auth-1699-")); process.env.AGEND_HOME = agendHome; });
+// The fleet's own claude config dir comes from this process's CLAUDE_CONFIG_DIR — set when the test run itself is a
+// profile instance. Every test starts without it; one sets it on purpose.
+const savedClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+beforeEach(() => {
+  agendHome = mkdtempSync(join(tmpdir(), "agend-auth-1699-")); process.env.AGEND_HOME = agendHome;
+  delete process.env.CLAUDE_CONFIG_DIR;
+});
 afterEach(() => {
   setAuthCheckRunnerForTests(null);
   if (savedHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = savedHome;
+  if (savedClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = savedClaudeConfigDir;
   rmSync(agendHome, { recursive: true, force: true });
 });
 
@@ -185,6 +193,12 @@ describe("#1699 follow-up: FleetManager.credentialProfileOf", () => {
     expect(f.credentialProfileOf("room-running", "claude-code"), "launched on another backend").toBeNull();
     expect(f.credentialProfileOf("room-codex", "codex")).toBe("room-codex-configured");
     expect(f.credentialProfileOf("room-codex", "claude-code"), "a codex room's profile is not claude's").toBeNull();
-    expect(f.claudeConfigDirOf("room-codex"), "nor its claude config dir").not.toContain("credential-profiles");
+    // Nor its claude config dir: a codex room's claude side is the fleet's own — exactly claudeConfigDirFor(null),
+    // whether the fleet runs on the shared login or (CLAUDE_CONFIG_DIR set) on a profile of its own.
+    expect(f.claudeConfigDirOf("room-codex"), "nor its claude config dir").toBe(claudeConfigDirFor(null));
+    expect(f.claudeConfigDirOf("room-codex")).not.toContain("room-codex-configured");
+    process.env.CLAUDE_CONFIG_DIR = join(agendHome, "credential-profiles", "claude-code", "fleet-own");
+    expect(f.claudeConfigDirOf("room-codex"), "the fleet's own profile, not the room's").toBe(process.env.CLAUDE_CONFIG_DIR);
+    expect(f.claudeConfigDirOf("room-claude"), "a claude room's configured profile").toBe(credentialProfileHome(agendHome, "claude-code", "room-claude-configured"));
   });
 });
