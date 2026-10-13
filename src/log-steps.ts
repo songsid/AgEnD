@@ -122,24 +122,58 @@ const MASK_MARGIN = 512;
  */
 export function bounded(text: string, max: number): { text: string; cut: number } {
   const head = text.length > max + MASK_MARGIN ? text.slice(0, max + MASK_MARGIN) : text;
-  const masked = maskSecrets(head);
-  const total = masked.length + (text.length - head.length);
-  if (total <= max) return { text: masked, cut: 0 };
-  let end = Math.min(max, masked.length);
-  if (/[\uD800-\uDBFF]/.test(masked[end - 1] ?? "")) end--;
-  return { text: masked.slice(0, end), cut: total - end };
+  return cutTo(maskSecrets(head), max, text.length - head.length);
+}
+/** `text` (already masked) cut to `max` characters, never inside a surrogate pair; `more` characters were dropped before. */
+function cutTo(text: string, max: number, more = 0): { text: string; cut: number } {
+  if (text.length + more <= max) return { text, cut: 0 };
+  let end = Math.min(max, text.length);
+  if (/[\uD800-\uDBFF]/.test(text[end - 1] ?? "")) end--;
+  return { text: text.slice(0, end), cut: text.length + more - end };
+}
+
+const SECRET_KEY = new RegExp(SECRET_WORD, "i");
+/**
+ * A tool's arguments masked BEFORE they become JSON text (#1788 review r3): each string is masked as written — in JSON
+ * a command's quotes would be escaped (\"…\"), which no text rule should have to undo — and a string under a
+ * secret-named key ("password", "api_key") is masked whole unless it is plain. A string longer than can be shown is
+ * cut first (`dropped` counts what was cut), so a megabyte file body is not masked in full.
+ */
+function maskArgs(v: unknown, max: number, dropped: { n: number }, depth = 0): unknown {
+  if (typeof v === "string") {
+    if (v.length <= max + MASK_MARGIN) return maskSecrets(v);
+    dropped.n += v.length - (max + MASK_MARGIN);
+    return maskSecrets(v.slice(0, max + MASK_MARGIN));
+  }
+  if (v === null || typeof v !== "object") return v;
+  if (depth >= 32) return "[…]";
+  if (Array.isArray(v)) return v.map(x => maskArgs(x, max, dropped, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    out[k] = typeof x === "string" && k.length <= 200 && SECRET_KEY.test(k) && x.trim() && !PLAIN.test(x.trim())
+      ? "[REDACTED]" : maskArgs(x, max, dropped, depth + 1);
+  }
+  return out;
+}
+/** Arguments as JSON text: a string that is JSON (codex's `arguments`) is parsed first, so it is masked the same way. */
+function argsText(input: unknown, max: number): { text: string; cut: number } {
+  let value = input;
+  if (typeof value === "string" && /^\s*[[{]/.test(value)) { try { value = JSON.parse(value); } catch { /* text */ } }
+  if (typeof value === "string") return bounded(value, max);
+  const dropped = { n: 0 };
+  return cutTo(JSON.stringify(maskArgs(value, max, dropped), null, 1) ?? "", max, dropped.n);
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 function subjectOf(s: unknown): string | undefined {
   if (s == null || s === "") return undefined;
-  const t = oneLine(typeof s === "string" ? s : JSON.stringify(s));
+  if (typeof s !== "string") { const t = oneLine(argsText(s, SUBJECT_MAX).text); return t || undefined; }
+  const t = oneLine(s);
   return t ? bounded(t, SUBJECT_MAX).text : undefined;
 }
 function inputOf(step: LogStep, input: unknown): void {
   if (input == null || input === "") return;
-  const raw = typeof input === "string" ? input : JSON.stringify(input, null, 1);
-  const b = bounded(raw, INPUT_MAX);
+  const b = argsText(input, INPUT_MAX);
   step.input = b.text;
   if (b.cut) step.inputCut = b.cut;
 }

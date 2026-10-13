@@ -70,6 +70,54 @@ describe("masking: only actual secret values, everything else stays readable", (
     expect(maskSecrets(keep)).toBe(keep);
   });
 
+  // #1788 review r3 (Fable): arguments are shown as JSON, where a command's quotes are escaped (\") — they are masked
+  // before they become JSON, through the real paths: a claude tool_use input and a codex function_call's arguments.
+  const pass = J("correct horse ", "battery staple"), hunter = J("hunter2", "hunter2"), yaml = J("two words ", "here");
+  const samples: Array<[string, Record<string, unknown>, string[]]> = [
+    ["a quoted passphrase in a command", { command: J('export DB_PASSWORD="', pass, '" && run') }, ["correct", "battery", "staple"]],
+    ["a quoted secret without spaces", { command: J('export DB_PASSWORD="', hunter, '"') }, [hunter]],
+    ["a YAML file's quoted password", { file_path: "config.yml", content: J('db:\n  password: "', yaml, '"\n') }, ["two words", "here"]],
+  ];
+  it.each(samples)("claude tool_use input: %s", (_n, input, gone) => {
+    const p = new ClaudeStepParser();
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "Bash", input }] } }));
+    const shown = JSON.stringify(p.steps);
+    for (const g of gone) expect(shown, g).not.toContain(g);
+    expect(p.steps[0]!.input).toContain("[REDACTED]");
+  });
+  it.each(samples)("codex function_call arguments: %s", (_n, input, gone) => {
+    const p = new CodexStepParser();
+    p.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "c", name: "exec_command", arguments: JSON.stringify(input) } }));
+    const shown = JSON.stringify(p.steps);
+    for (const g of gone) expect(shown, g).not.toContain(g);
+    expect(p.steps[0]!.input).toContain("[REDACTED]");
+  });
+  it("arguments: a secret-named key is masked whole unless plain; a string that is not JSON is masked as text; long values count as cut", () => {
+    const p = new ClaudeStepParser();
+    const input = { api_key: J("abc ", "def"), max_tokens: "4096", password: "", nested: [{ client_secret: J("x y ", "z") }], note: "fine", body: "b".repeat(5000) };
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "Custom", input }] } }));
+    const s = p.steps[0]!;
+    expect(s.input).toContain('"api_key": "[REDACTED]"');
+    expect(s.input).toContain('"max_tokens": "4096"');
+    expect(s.input).toContain('"password": ""');
+    expect(s.input).toContain('"client_secret": "[REDACTED]"');
+    expect(s.input).toContain('"note": "fine"');
+    expect(s.input!.length).toBe(2000);
+    expect(s.inputCut).toBe(JSON.stringify({ ...input, api_key: "[REDACTED]", nested: [{ client_secret: "[REDACTED]" }] }, null, 1).length - 2000);
+    const c = new CodexStepParser();
+    c.push(JSON.stringify({ type: "response_item", payload: { type: "function_call", call_id: "c", name: "x", arguments: J('{not json DB_PASSWORD="', hunter, '"') } }));
+    expect(c.steps[0]!.input).not.toContain(hunter);
+  });
+  it("arguments given as a JSON string (an MCP call's) and a subject made from an array are masked the same way", () => {
+    const c = new CodexStepParser();
+    c.push(JSON.stringify({ type: "event_msg", payload: { type: "item_completed", item: { type: "McpToolCall", id: "m", server: "db", tool: "run", arguments: JSON.stringify({ sql: J("SET password = '", pass, "'"), dsn: J('postgres DB_PASSWORD="', hunter, '"') }), status: "completed" } } }));
+    expect(c.steps[0]!.input).toContain('"dsn"');
+    expect(JSON.stringify(c.steps)).not.toContain(hunter);
+    const p = new ClaudeStepParser();
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "t", name: "shell", input: { command: ["bash", "-lc", J('export DB_PASSWORD="', hunter, '"')] } }] } }));
+    expect(p.steps[0]!.subject).toContain("[REDACTED]");
+    expect(JSON.stringify(p.steps)).not.toContain(hunter);
+  });
   it("prose after a secret word stays; only a key-shaped argument is masked; quotes are kept around the mask", () => {
     const keep = "the access_token expired yesterday; reset the password through the account settings page; the api_key v2beta1 "
       + "header; see secret_rotation documentation_for_operators";
