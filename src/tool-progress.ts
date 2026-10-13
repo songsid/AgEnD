@@ -38,8 +38,9 @@ export function redactSecrets(text: string): string {
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/._=-]{8,}/gi, "$1 [REDACTED]")
     // key=value / key: value assignments for sensitive names
     .replace(/\b((?:api[-_]?key|token|secret|passwd|password|authorization|credential)s?\s*[=:]\s*)(["']?)[^\s"']{6,}\2/gi, "$1[REDACTED]")
-    // URL userinfo credentials (https://user:pass@host)
-    .replace(/(\w+:\/\/[^/\s:@]+:)[^@\s]+@/g, "$1[REDACTED]@");
+    // URL userinfo credentials (https://user:pass@host). The scheme is bounded: `\w+` at every position of a long word
+    // run made this quadratic (#1788 review: a Log result can be long).
+    .replace(/(\b\w{1,32}:\/\/[^/\s:@]+:)[^@\s]+@/g, "$1[REDACTED]@");
 }
 
 /** Flatten whitespace and cap length for a single bubble line. */

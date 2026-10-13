@@ -125,11 +125,24 @@ export class LogService {
   private async backward(path: string, format: "claude" | "codex", end: number | undefined, limit: number): Promise<{ steps: LogStep[]; before: number | null; after: number }> {
     const tail = await readTailRecords(path, { maxLines: 4000, ...(end !== undefined ? { end } : {}) });
     const parser = parserFor(format);
+    const whole = wholeFor(format);
     const firstAt = new Map<string, number>();
     for (const r of tail.records) {
-      for (const s of parser.push(r.record, r.at)) if (!firstAt.has(s.id)) firstAt.set(s.id, r.at);
+      let record: string | LongLine = r.record;
+      // #1788 review P3: a long reply or turn record is read whole here too, as the live read does.
+      if (typeof record !== "string" && record.complete && whole(record.head)) {
+        const text = await readWholeLine(path, r.at, record.bytes).catch(() => null);
+        if (text !== null) record = text;
+      }
+      for (const s of parser.push(record, r.at)) if (!firstAt.has(s.id)) firstAt.set(s.id, r.at);
     }
-    const steps = fitBytes(parser.steps.slice(-limit));
+    let steps = fitBytes(parser.steps.slice(-limit));
+    // #1788 review P3: cut only at a record's boundary — one record can make several steps (a reply's text and its
+    // call): the oldest kept record comes whole, so `before` (its start) never leaves one of its steps out for good.
+    let from = parser.steps.length - steps.length;
+    const recordOf = (i: number) => firstAt.get(parser.steps[i]!.id);
+    while (from > 0 && steps.length && recordOf(from - 1) === recordOf(from)) from--;
+    steps = parser.steps.slice(from);
     // Older steps exist when the read stopped before the file's start, or when steps it parsed were left out (the limit,
     // the answer's size): they start at the record of the oldest step shown. Otherwise nothing is older.
     const all = !tail.truncated && steps.length === parser.steps.length;

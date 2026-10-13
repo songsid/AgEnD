@@ -34,6 +34,36 @@ describe("masking: only actual secret values, everything else stays readable", (
     expect(out).not.toContain("hunter2pass");
     expect(out).toContain("[REDACTED]");
   });
+  // #1788 review P1 (Fable): the ways secrets are actually written — built at run time (gitleaks).
+  const J = (...p: string[]) => p.join("");
+  it.each([
+    ["a JSON field (as arguments are shown)", JSON.stringify({ password: J("hunter2", "hunter2"), api_key: J("abc123", "def456ghi") }, null, 1), [J("hunter2", "hunter2"), J("abc123", "def456ghi")]],
+    ["an export", J("export DB_PASSWORD=", "hunter2hunter2"), [J("hunter2", "hunter2")]],
+    ["an env prefix", J("GITHUB_TOKEN=", "abcdef1234567890", " npm publish"), [J("abcdef", "1234567890")]],
+    ["a .env file's lines", J("STRIPE_SECRET_KEY=sk_live_", "abcdef123456\nDB_PASSWORD=", "p4ss/w0rd"), [J("sk_live_", "abcdef123456"), J("p4ss/", "w0rd")]],
+    ["an AWS secret with /", J("AWS_SECRET_ACCESS_KEY=", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"), [J("wJalrXUtnFEMI/", "K7MDENG")]],
+    ["a private key block", J("-----BEGIN OPENSSH ", "PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmU\nQyNTUxOQAAACDx/abc\n-----END OPENSSH ", "PRIVATE KEY-----"), ["QyNTUxOQAAACDx/", "b3BlbnNzaC1rZXkt"]],
+    ["a private key block cut off", J("-----BEGIN RSA ", "PRIVATE KEY-----\nMIIEowIBAAKCAQEAx"), ["MIIEowIBAAKCAQEAx"]],
+    ["a flag", J("mysql --password ", "hunter2hunter2", " -u root"), [J("hunter2", "hunter2")]],
+    ["a YAML value in quotes", J("client_secret: '", "abc/def+ghi", "'"), [J("abc/def", "+ghi")]],
+  ])("masked: %s", (_name, text, gone) => {
+    const out = maskSecrets(text as string);
+    for (const g of gone as string[]) expect(out, g).not.toContain(g);
+    expect(out).toContain("[REDACTED]");
+  });
+  it("linear on long input: a 200 KB run of word characters (a long output) is masked in well under a second", () => {
+    for (const t of ["w".repeat(200_000), "ab_".repeat(60_000), "password_".repeat(20_000), "x".repeat(100_000) + J(" https://u:", "pw@host")]) {
+      const t0 = performance.now();
+      const out = maskSecrets(t);
+      expect(performance.now() - t0, t.slice(0, 12)).toBeLessThan(500);
+      if (t.includes("https://")) expect(out.endsWith("https://u:[REDACTED]@host")).toBe(true);
+    }
+  });
+  it("numbers, booleans and null are kept whatever the name: token counts stay readable", () => {
+    const keep = 'tokens used: 1234; max_tokens=4096; password_length: 12; "input_token_count": 12, "secret_set": true';
+    expect(maskSecrets(keep)).toBe(keep);
+  });
+
   it("a git SHA, a UUID, a long instance name and a long path are not secrets", () => {
     const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1554485732591276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
     expect(maskSecrets(keep)).toBe(keep);
