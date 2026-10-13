@@ -144,7 +144,11 @@ export class PublicWebLink {
       const reservation = this.deps.reserve(id); // Before installer, listener, or any await.
       if (!reservation) {
         // The one tunnel is someone else's (a /login link, or one whose cleanup is unconfirmed): say so.
+        // #1525: drawn on ④, not ① — the refusal short-circuits before any
+        // install work, so ① renders ✅·0s while the lease-held sentence on ④
+        // carries the truth.
         const refused = new PublicLinkProgressTracker(this.now, () => {});
+        refused.begin("tunnel");
         refused.fail("lease-held");
         onProgress?.(refused.snapshot);
         return false;
@@ -171,18 +175,23 @@ export class PublicWebLink {
     const shared = e;
     let own: { startedAt: number; endedAt?: number } | undefined;
     let ownFailure: PublicLinkFailure | undefined;
+    // #1525: a request that fails before ⑥ begins still draws its failure on
+    // ⑥ (a 0 s entry stamped at finish time) — never on the last shared step,
+    // which may have succeeded.
+    let unbegunFailedAt: number | undefined;
     const view = (): PublicLinkProgress => {
       const base = shared.progress.snapshot;
       if (!own && !ownFailure) return base;
-      const steps = own ? [...base.steps, { step: "deliver" as const, ...own }] : base.steps;
-      const failedStep = own ? "deliver" as const : base.steps.at(-1)!.step;
+      const steps = own ? [...base.steps, { step: "deliver" as const, ...own }]
+        : unbegunFailedAt !== undefined ? [...base.steps, { step: "deliver" as const, startedAt: unbegunFailedAt, endedAt: unbegunFailedAt }] : base.steps;
+      const failedStep = own || unbegunFailedAt !== undefined ? "deliver" as const : base.steps.at(-1)!.step;
       return { ...base, steps, ...(ownFailure && !base.failed ? { failed: { step: failedStep, reason: ownFailure } } : {}) };
     };
     const watcher = onProgress ? () => onProgress(view()) : null;
     if (watcher) { e.watchers.add(watcher); watcher(); }
     const finish = (outcome: boolean, failure?: PublicLinkFailure): boolean => {
       if (own && own.endedAt === undefined) own.endedAt = this.now();
-      if (!outcome && !shared.progress.snapshot.failed) ownFailure = failure ?? "closed";
+      if (!outcome && !shared.progress.snapshot.failed) { ownFailure = failure ?? "closed"; if (!own) unbegunFailedAt = this.now(); }
       if (watcher) { shared.watchers.delete(watcher); watcher(); }
       return outcome;
     };
