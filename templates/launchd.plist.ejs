@@ -16,7 +16,9 @@
         <string><%= path %></string>
         <key>TERM</key>
         <string>xterm-256color</string>
-    </dict>
+<% if (agendHome) { %>        <key>AGEND_HOME</key>
+        <string><%= agendHome %></string>
+<% } %>    </dict>
     <key>WorkingDirectory</key>
     <string><%= workingDirectory %></string>
     <key>RunAtLoad</key>
