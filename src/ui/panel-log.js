@@ -220,7 +220,9 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   const [older, setOlder] = useState({ busy: false });
   const [notice, setNotice] = useState("");
   const [enabling, setEnabling] = useState(false);
-  const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0, trimmed: false });
+  // `epoch` moves whenever `before` stops being valid (a trim, a new conversation): an older page asked for before that
+  // is dropped when it comes back, so it never restores a cursor across steps that were let go.
+  const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0, trimmed: false, epoch: 0 });
   const reading = useRef(false), again = useRef(false);
   const scroller = useRef(null), pinned = useRef(true);
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
@@ -235,22 +237,26 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
     if (!r.ok || !j) throw new Error((j && j.error) || String(r.status));
     return j;
   };
+  /**
+   * At most PAGE_MAX steps, the newest kept (#1790 review; #1791 review: older pages too). The oldest are let go to keep
+   * the page light; older pages would resume at a cursor past them and leave them out, so older pages are no longer
+   * offered — the page says so (reopening reads from the newest).
+   */
+  const capPage = (merged) => {
+    if (merged.length <= PAGE_MAX) return merged;
+    const c = cursor.current;
+    c.before = null; c.trimmed = true; c.epoch++;
+    return merged.slice(merged.length - PAGE_MAX);
+  };
   const take = (j, { replace = false } = {}) => {
     if (!j.enabled) { setState({ phase: "off" }); return; }
     setInfo({ backend: j.backend, supported: j.supported, reason: j.reason || null });
     const c = cursor.current;
     if (j.key) c.key = j.key;
     if (j.after !== null && j.after !== undefined) { c.after = j.after; c.skip = !!j.skip; }
-    if (replace) { c.before = j.before ?? null; c.trimmed = false; }
+    if (replace) { c.before = j.before ?? null; c.trimmed = false; c.epoch++; }
     if (typeof j.ev === "number") c.ev = Math.max(c.ev, j.ev);
-    setSteps((list) => {
-      const merged = replace ? j.steps || [] : mergeSteps(list, j.steps || []);
-      if (merged.length <= PAGE_MAX) return merged;
-      // #1790 review: the oldest steps are let go to keep the page light. Older pages would resume at the old cursor and
-      // leave out what was let go, so they are no longer offered: the page says so (reopening reads from the newest).
-      c.before = null; c.trimmed = true;
-      return merged.slice(merged.length - PAGE_MAX);
-    });
+    setSteps((list) => capPage(replace ? j.steps || [] : mergeSteps(list, j.steps || [])));
     if (j.events && j.events.length) setEvents((list) => (replace ? j.events : [...list, ...j.events.filter((e) => !list.some((x) => x.id === e.id))]));
     else if (replace) setEvents([]);
     if (j.reset) setNotice(tl("reset"));
@@ -289,14 +295,16 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   const loadOlder = async () => {
     const c = cursor.current;
     if (c.before === null || older.busy) return;
+    const epoch = c.epoch;
     setOlder({ busy: true });
     try {
       const j = await read(q({ before: String(c.before), ...(c.key ? { key: c.key } : {}) }));
       if (j && j.enabled) {
         if (j.reset) { take(j, { replace: true }); return; }
+        if (c.epoch !== epoch) return;                    // a trim or a new conversation meanwhile: this page is stale
         c.before = j.before ?? null;
         const el = scroller.current, from = el ? el.scrollHeight - el.scrollTop : 0;
-        setSteps((list) => mergeSteps(list, j.steps || [], true));
+        setSteps((list) => capPage(mergeSteps(list, j.steps || [], true)));
         // Keep the reader where they were: what was at the top stays in view.
         requestAnimationFrame(() => { if (el && lease.current()) el.scrollTop = el.scrollHeight - from; });
       }

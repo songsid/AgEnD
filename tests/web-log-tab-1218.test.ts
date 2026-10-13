@@ -24,7 +24,8 @@ async function fakeFetch(url: string, init: { method?: string; body?: string } =
   calls.push(`${m} ${url}`);
   if (url.startsWith("/ui/steps")) {
     const a = answers.length > 1 ? answers.shift() : answers[0];
-    return { ok: true, status: 200, json: async () => structuredClone(a), text: async () => JSON.stringify(a) };
+    // An answer may be a promise: held until the test settles it (a read still out while others land).
+    return { ok: true, status: 200, json: async () => structuredClone(await a), text: async () => JSON.stringify(await a) };
   }
   if (m === "PUT" && url === "/api/settings/fleet/web") {
     puts.push({ url, body: JSON.parse(String(init.body)) });
@@ -171,6 +172,64 @@ describe("on: the newest steps, live, older on demand", () => {
     expect(rows(pg)).toHaveLength(1);
     expect(pg.root.querySelector(".p-log .log-start")?.textContent).toBe("The start of what can be read.");
   });
+  // #1791 review (Prism): older pages are bounded the same way, and an older answer still out when a trim lands never
+  // restores the cursor the trim invalidated.
+  const page = (n: number, at: number, kind = "assistant") => Array.from({ length: n }, (_, i) => step(`o${at + i}.0`, { kind, body: `p${at + i}` }));
+  const olderBtn = (pg: AppPage) => pg.root.querySelector(".p-log .log-older button") as any;
+  const state = (pg: AppPage) => [rows(pg).length, !!olderBtn(pg)];
+  it("older pages: up to PAGE_MAX they page normally; past it the oldest are let go and older pages stop", async () => {
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), ...Array.from({ length: 9 }, (_, k) => ON({ steps: page(100, 80_000 - k * 1000), before: 79_000 - k * 1000 }))];
+    const pg = await app("/ui/log/web-dev");
+    for (let k = 0; k < 8; k++) { olderBtn(pg).click(); await settle(8); }
+    expect(state(pg)).toEqual([1000, true]);                              // the control: exactly PAGE_MAX, a valid cursor
+    olderBtn(pg).click(); await settle(8);
+    expect(state(pg)).toEqual([1000, false]);
+    expect(pg.root.querySelector(".p-log .log-start")?.textContent).toContain("Older steps were let go");
+  });
+  it("an older page still out when a live trim lands is dropped; one with no trim meanwhile applies", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), ON({ steps: page(799, 200_000), after: 300 }), held, ON({ steps: page(1, 300_000), after: 400 })];
+    const pg = await app("/ui/log/web-dev");
+    await tick();
+    expect(state(pg)).toEqual([999, true]);
+    olderBtn(pg).click(); await settle(4);                                  // the older read is out (held)
+    await tick();                                                           // a live step: 1000 → no trim yet
+    expect(state(pg)[0]).toBe(1000);
+    answers = [ON({ steps: page(1, 400_000), after: 500 })];
+    await tick();                                                           // 1001 → trimmed, Load older gone
+    expect(state(pg)).toEqual([1000, false]);
+    // The stale page overlaps what is shown (nothing new to add, so no overflow to catch it): still dropped.
+    release(ON({ steps: page(100, 100_001), before: 79_000 }));
+    await settle(8);
+    expect(state(pg)).toEqual([1000, false]);                              // the stale page changed nothing
+  });
+  it("an older page still out when a new conversation begins is dropped", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), held, ON({ steps: page(3, 5, "user"), reset: true, before: null, after: 50, key: "3-4" })];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(4);
+    await tick();
+    expect(state(pg)).toEqual([3, false]);
+    release(ON({ steps: page(100, 80_000), before: 79_000 }));
+    await settle(8);
+    expect(state(pg)).toEqual([3, false]);
+  });
+  it("control: an older page held while nothing is trimmed applies when it lands", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), held, ON({ steps: page(1, 300_000), after: 400 })];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(4);
+    await tick();
+    release(ON({ steps: page(100, 80_000), before: 79_000 }));
+    await settle(8);
+    expect(state(pg)).toEqual([301, true]);
+    olderBtn(pg).click(); await settle(8);                                  // the next older page starts at its cursor
+    expect(stepsCalls().at(-1)).toBe("instance=web-dev&before=79000&key=1-2");
+  });
+
   it("a fleet event that comes again in a later answer is shown once", async () => {
     answers = [WINDOW, ON({ events: [WINDOW.events[0], { id: 6, ts: Date.parse("2026-10-13T08:01:00Z"), type: "hang_detected" }], after: 180 })];
     const pg = await app("/ui/log/web-dev");
