@@ -404,6 +404,8 @@ export function isOrphanInstanceWindowName(name: string): boolean {
 /** Retry cadence for retiring a cancel button whose delete failed (e.g. a DC
  * forum thread the bot momentarily can't reach). 3 retries × 5min = 15min. */
 const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
+/** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
+const TG_WEB_START_WINDOW_MS = 10 * 60_000;
 const CANCEL_BTN_MAX_RETRIES = 3;
 /** Backstop: every 5min, retire a button whose instance has gone idle. Catches
  * buttons no clear trigger reached (e.g. a scheduled/HTTP turn that never called
@@ -5126,6 +5128,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     return null;
   }
+  /**
+   * #1742: the General a fleet admin's DM speaks for (`/start web`): the same owner `/web` in that General would make
+   * — this bot's configured group and its one General topic. No address to match in a DM, so it must be unambiguous:
+   * no General, or more than one on this bot and group, and there is no owner (nothing is guessed).
+   */
+  private dmDashboardOwner(userId: string, adapterId: string): LoginCodeOwner | null {
+    const world = this.worlds.get(adapterId);
+    if (!world || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(userId, adapterId)) return null;
+    const configured = (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).find(ch => (ch.id ?? ch.type) === adapterId);
+    const group = String(configured?.group_id ?? "");
+    if (!group) return null;
+    const topics = Object.entries(this.fleetConfig?.instances ?? {})
+      .filter(([name, cfg]) => cfg.general_topic && cfg.topic_id != null && this.getInstanceAdapterId(name) === adapterId
+        && String(this.getGroupIdForInstance(name) ?? "") === group)
+      .map(([, cfg]) => cfg.topic_id!.toString());
+    if (topics.length !== 1) return null;
+    const owner = { userId, adapterId, chatId: group, threadId: topics[0], binding: world.adapter };
+    return this.publicOwnerCurrent(owner) ? owner : null;
+  }
+  /**
+   * #1742: a fleet admin whose Telegram `/web` could not reach them privately may next open the bot's DM and press
+   * Telegram's START, which sends a bare `/start` — read as `/start web` (the DM menu) for 10 minutes, once, for that
+   * admin on that bot. Monotonic: a wall-clock jump neither opens nor shuts it.
+   */
+  private readonly tgWebStartWindows = new Map<string, number>();
+  private openTgWebStartWindow(adapterId: string, userId: string): void {
+    const now = performance.now();
+    for (const [key, until] of this.tgWebStartWindows) if (until <= now) this.tgWebStartWindows.delete(key);
+    this.tgWebStartWindows.set(`${adapterId}\0${userId}`, now + TG_WEB_START_WINDOW_MS);
+  }
+  /** Uses the window up: true when it was open. */
+  private takeTgWebStartWindow(adapterId: string, userId: string): boolean {
+    const key = `${adapterId}\0${userId}`;
+    const until = this.tgWebStartWindows.get(key);
+    this.tgWebStartWindows.delete(key);
+    return until !== undefined && performance.now() < until;
+  }
+  /** #1742: `/start web` from a fleet admin: the /web menu right here in the DM, for the General this bot serves. */
+  private async startWebInDm(msg: InboundMessage, adapter: ChannelAdapter | undefined): Promise<void> {
+    if (!adapter) return;
+    const owner = msg.chatId === msg.userId ? this.dmDashboardOwner(msg.userId, msg.adapterId ?? "") : null;
+    if (!owner) { await adapter.sendText(msg.chatId, t("dashboard.start_web_ack")); return; }
+    if (!await this.showDashboardMenu(owner, undefined, undefined, msg.chatId)) {
+      await adapter.sendText(msg.chatId, t("dashboard.menu_failed")).catch(() => undefined);
+    }
+  }
   private getPublicWebLink(): PublicWebLink {
     this.initializeWebSessions();
     return this.publicWebLink ??= new PublicWebLink({
@@ -5279,13 +5327,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       "Dashboard DM not delivered; answering privately where the command was used");
   }
   /** False when the menu was not shown (the caller still owes the user an answer). */
+  /**
+   * `dmChatId` (#1742): show it in the owner's own private chat with the bot instead of the General — the owner, its
+   * gates and the code's route are the same; only where the menu sits (and its clicks are good) changes.
+   */
   private async showDashboardMenu(owner: LoginCodeOwner, respondButtons?: ClassicStartSlashData["respondButtons"],
-    retireButtons?: ClassicStartSlashData["retireButtons"]): Promise<boolean> {
+    retireButtons?: ClassicStartSlashData["retireButtons"], dmChatId?: string): Promise<boolean> {
     if (!this.publicOwnerCurrent(owner)) { this.logger.info("Dashboard menu not shown: the General owner changed"); return false; }
     const adapter = owner.binding as ChannelAdapter;
     const status = this.getPublicWebStatus();
     const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
-    const tgHint = adapter.type === "telegram" ? this.tgStartWebUrl(owner.adapterId) : null;
+    const tgHint = adapter.type === "telegram" && dmChatId === undefined ? this.tgStartWebUrl(owner.adapterId) : null;
     const menuText = this.topicCommands.getDashboardText(false, !publicAllowed)
       + (publicAllowed ? "\n\n" + t("dashboard.public_risk") : "")
       + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
@@ -5296,7 +5348,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
     const posted = await this.postNonceButtonPrompt({
       prefix: "dashboard:", alertType: "login", instanceName: "dashboard", adapter, adapterId: owner.adapterId,
-      chatId: owner.chatId, threadId: owner.threadId, timeoutMs: 5 * 60_000,
+      chatId: dmChatId ?? owner.chatId, threadId: dmChatId === undefined ? owner.threadId : undefined, timeoutMs: 5 * 60_000,
       message: menuText,
       choices, expiredText: t("buttons.stale"), extra: { requesterUserId: owner.userId, dashboardOwner: owner, publicExposureId: this.publicWebLink?.exposureId },
       ...(respondButtons ? { deliver: async (c: Choice[]) => {
@@ -5410,14 +5462,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ err }, "Dashboard sign-in delivery failed");
     }
     // Only safe, static words enter General; never link, code or platform error text.
-    const outcome = t(!ok ? "dashboard.private_failed"
+    // #1742: Telegram's failure walks through opening the DM (never a bare /start, which starts a ClassicBot agent),
+    // with the "先開私訊 →" button when the bot's username is known; and for a while a bare /start there counts as
+    // /start web. A menu shown in the DM itself says the details are right below it.
+    const telegram = (owner.binding as ChannelAdapter).type === "telegram";
+    const tgLink = !ok && telegram ? this.tgStartWebUrl(adapterId) : null;
+    if (!ok && telegram) this.openTgWebStartWindow(adapterId, owner.userId);
+    const outcome = t(!ok ? (!telegram ? "dashboard.private_failed" : tgLink ? "dashboard.private_failed_tg" : "dashboard.private_failed_tg_nolink")
+      : telegram && entry.chatId === owner.userId ? "dashboard.private_sent_below"
       : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here");
     await progress;
     await steps?.close(); // the last step edit has landed: the outcome cannot be overwritten by it
     // #1686: attach the deep-link button on the failure outcome (Telegram only; Discord and the editClicked path ignore urlButtons).
-    const failUrlButtons = (!ok && (owner.binding as ChannelAdapter).type === "telegram")
-      ? (() => { const u = this.tgStartWebUrl(adapterId); return u ? [{ label: t("dashboard.start_web_label"), url: u }] : undefined; })()
-      : undefined;
+    const failUrlButtons = tgLink ? [{ label: t("dashboard.start_web_label"), url: tgLink }] : undefined;
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
       lastSteps ? renderPublicLinkProgress(lastSteps, performance.now(), outcome) : outcome, data.editClicked, failUrlButtons);
     return true;
@@ -7793,10 +7850,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // #1686: intercept /start web before the ClassicBot admission flow runs.
           // /start alone already opens the DM for future bot-to-user messages — no further action needed.
           const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
-          if (requestedBackend === "web" && isPrivateChat) {
-            if (this.isFleetAdmin(msg.userId, msg.adapterId ?? "")) {
-              await msgAdapter?.sendText(chatId, t("dashboard.start_web_ack"));
-            }
+          // #1742: a bare /start from a fleet admin whose /web just failed to reach them privately is that /start web
+          // (Telegram's START button sends it bare) — once, within the window; any other bare /start is ClassicBot's.
+          const admin = isPrivateChat && this.isFleetAdmin(msg.userId, msg.adapterId ?? "");
+          const webStart = isPrivateChat && (requestedBackend === "web"
+            || (text === "/start" && admin && this.takeTgWebStartWindow(msg.adapterId ?? "", msg.userId)));
+          if (webStart) {
+            if (requestedBackend === "web") this.takeTgWebStartWindow(msg.adapterId ?? "", msg.userId);
+            // #1742: the /web menu right here; the code comes to this DM.
+            if (admin) await this.startWebInDm(msg, msgAdapter ?? undefined);
             // Non-fleet-admins: /start alone is enough to open the DM channel; no further action.
             return;
           }
@@ -12052,7 +12114,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // only place some outcomes are told (cancel, later, a resend's result),
       // so the text goes out as a message instead (#1133).
       this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire prompt buttons; posting the outcome instead");
-      await pending.adapter.sendText(pending.chatId, text, { threadId: pending.threadId })
+      // #1742: with its link button, if it had one — the outcome may be the only way to the DM.
+      await pending.adapter.sendText(pending.chatId, text, { threadId: pending.threadId, ...(urlButtons ? { urlButtons } : {}) })
         .catch(sendErr => this.logger.warn({ err: sendErr, instanceName: pending.instanceName }, "Could not post a prompt's outcome"));
     }
   }
