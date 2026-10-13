@@ -8,7 +8,7 @@
   - The optical-size axis is fixed at its text size (`opsz=14`).
   - The font is subset to Latin, with the same range as `unicode-range` in `tokens.css`.
   - It is saved as WOFF2. About 44 KB, against 352 KB for the full variable font.
-- Chinese and other scripts fall back to the system fonts named in `--font-ui` (PingFang TC → Noto Sans TC → Microsoft JhengHei → the system stack).
+- Chinese and other scripts fall back to the system fonts named in `--font-ui` (PingFang TC → PingFang SC → Noto Sans TC → Noto Sans SC → Noto Sans CJK TC → Noto Sans CJK SC → Microsoft JhengHei → Microsoft YaHei → the system stack).
 
 Rebuilt with fontTools 4.59 (and `brotli` for WOFF2):
 
