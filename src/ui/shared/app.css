@@ -655,11 +655,16 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .v-filter-clear { width: 28px; height: 28px; }
 .v-filter .note { padding: var(--s-1) var(--s-1) 0; font-variant-numeric: tabular-nums; }
 /* alpha.2 (N1): status and CLI chips under the filter box — each a group of checkboxes under its header (#1700). */
-.nav-facets { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); padding: var(--s-2) var(--s-1) 0; }
-.nav-facet { font-size: var(--fs-xs); color: var(--text-2); }
+/* #1776: the "N / M" count is on the headers' row, at its right end — not a row of its own. The headers (and an open
+   group's list, the reset) wrap in their own box beside it, so a filter's summary or a narrow sidebar moves a header
+   down, never the count; the count is as tall as a header, so the row does not grow. */
+.nav-facets { display: flex; align-items: flex-start; gap: var(--s-2); padding: var(--s-2) var(--s-1) 0; }
+.nav-facet-groups { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--s-1) var(--s-2); flex: 1 1 auto; min-width: 0; }
+.nav-facets .nav-shown { flex: none; margin: 0 0 0 auto; padding: 2px 0; white-space: nowrap; }
+.nav-facet { font-size: var(--fs-xs); color: var(--text-2); min-width: 0; max-width: 100%; }
 /* #1700: a facet group's header — the whole row toggles its list; folded with a filter set, a short summary. */
 .nav-facet-head { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; padding: 2px var(--s-2); border: 0; border-radius: var(--r-sm);
-  background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+  background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left; white-space: nowrap; }
 .nav-facet-head:hover { background: var(--hover); }
 .nav-facet-head:focus-visible { outline: 2px solid var(--accent); }
 .nav-facet-head .caret { color: var(--text-3); flex: none; }

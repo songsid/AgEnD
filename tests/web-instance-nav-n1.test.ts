@@ -211,3 +211,47 @@ describe("the anonymous View reader", () => {
     expect(pg.root.querySelectorAll(".nav-facet").map((d: any) => d.querySelector(".nav-facet-label").textContent)).toEqual(["CLI"]);
   });
 });
+
+// #1776: the "N / M" count sits on the facet headers' row, at its right end — not on a row of its own under them. The
+// headers, an open group's list and the reset wrap in their own box beside it, so nothing pushes the count down.
+describe("#1776: the count is on the facet headers' row", () => {
+  const facetsRow = (pg: AppPage) => pg.root.querySelector(".v-filter .nav-facets") as any;
+  const shape = (pg: AppPage) => {
+    const row = facetsRow(pg);
+    return {
+      children: [...row.children].map((c: any) => c.className),
+      groups: [...row.querySelector(".nav-facet-groups").children].map((c: any) => c.className.split(" ")[0]),
+      count: row.querySelector(".nav-shown")?.textContent ?? null,
+      live: row.querySelector(".nav-shown")?.getAttribute("aria-live") ?? null,
+      ownRow: [...(pg.root.querySelector(".v-filter") as any).children].some((c: any) => c.classList.contains("note")),
+    };
+  };
+
+  it("folded and open, filtered or not: the headers (and the reset) in their box, the count after it, in the same row", async () => {
+    const pg = await app("/ui/chat/web-dev", { agend_nav_facets: '{"status":false,"cli":false}' });
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet"], count: "5 / 5", live: "polite", ownRow: false });
+    (pg.root.querySelector(".nav-facet-head") as any).click(); await settle();
+    fire(chip(pg, "Status", "needs you"), "change"); await settle();
+    expect(shape(pg), "a group open, a filter set: its list stays in the box; the count is still the row's last").toEqual({
+      children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet", "nav-facet", "chip-btn"], count: "1 / 5 shown", live: "polite", ownRow: false });
+    expect(facetsRow(pg).querySelector(".nav-facet-groups .nav-facet-list"), "the open list is under its header, in the box").not.toBeNull();
+  });
+
+  it("one CLI (no CLI group): the count beside the Status header, still in that row", async () => {
+    const pg = await app("/ui/chat/web-dev", {}, [live("web-dev"), live("api-server")]);
+    expect(shape(pg)).toEqual({ children: ["nav-facet-groups", "note nav-shown"], groups: ["nav-facet"], count: "2 / 2", live: "polite", ownRow: false });
+  });
+
+  it("the rules: the row does not wrap; the headers' box does, and may shrink; the count keeps its width at the right end", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const decl = (sel: string) => [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(m => m[1]!.split(",").map(s => s.trim()).includes(sel)).map(m => m[2]!).join(";");
+    expect(decl(".nav-facets")).not.toMatch(/flex-wrap/);
+    expect(decl(".nav-facet-groups")).toMatch(/flex-wrap:\s*wrap/);
+    expect(decl(".nav-facet-groups")).toMatch(/min-width:\s*0/);
+    expect(decl(".nav-facets .nav-shown")).toMatch(/flex:\s*none/);
+    expect(decl(".nav-facets .nav-shown")).toMatch(/margin:\s*0 0 0 auto/);
+    expect(decl(".nav-facets .nav-shown")).toMatch(/white-space:\s*nowrap/);
+  });
+});

@@ -478,11 +478,13 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           onClick=${() => { setNavFilter({ q: "" }); filterRef.current && filterRef.current.focus(); }}><${Icon} name="close" size=${14} /></button>` : null}
       </label>
       <div class="nav-facets">
-        ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
-        ${backends.length > 1 || f.cli.length ? chips("cli", backends, tn("filterCli"), backendLabel) : null}
-        ${f.status.length || f.cli.length ? html`<button type="button" class="chip-btn nav-facet-reset" onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>` : null}
+        <div class="nav-facet-groups">
+          ${viewOnly ? null : chips("status", STATUS_FACETS, tn("filterStatus"), statusText)}
+          ${backends.length > 1 || f.cli.length ? chips("cli", backends, tn("filterCli"), backendLabel) : null}
+          ${f.status.length || f.cli.length ? html`<button type="button" class="chip-btn nav-facet-reset" onClick=${() => setNavFilter({ status: [], cli: [] })}>${tn("filterFacetsReset")}</button>` : null}
+        </div>
+        <p class="note nav-shown" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
       </div>
-      <p class="note" aria-live="polite">${shown.shown} / ${shown.total}${shown.active ? ` ${tn("filterShown")}` : ""}</p>
     </div>
   </div>`;
 }
