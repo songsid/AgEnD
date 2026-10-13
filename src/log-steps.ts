@@ -22,10 +22,14 @@ export type StepCat = "read" | "edit" | "search" | "run" | "web" | "mcp" | "agen
 export type StepStatus = "running" | "done" | "failed" | "interrupted";
 
 export interface LogStep {
-  /** Stable for the step's life: a later emission with the same id replaces it (a tool call, then its result). */
+  /**
+   * Stable for the step's life, and the same whichever range of the transcript is parsed: a tool call's own id, or
+   * `o<byte offset of its record>.<n>`. A later emission with the same id updates it (a call, then its result) — the
+   * page merges it into what it shows.
+   */
   id: string;
-  /** The turn it belongs to (1, 2, …, counted from the start of what was read). */
-  turn: number;
+  /** The turn it belongs to: the transcript's own id for it (claude: the prompt record's uuid; codex: turn_id); "" before the first. */
+  turn: string;
   /** When the record was written (ms), or 0 when the record has no time. */
   ts: number;
   kind: StepKind;
@@ -150,9 +154,12 @@ export function describeTool(name: string, input: unknown): { cat: StepCat; subj
 export type Emission = LogStep[];
 
 abstract class StepParser {
-  protected turn = 0;
+  protected turn = "";
   private open = new Map<string, LogStep>();
   private n = 0;
+  /** The byte offset of the record being parsed (-1: unknown), for ids that do not depend on where parsing began. */
+  protected at = -1;
+  private k = 0;
   /** Steps in the order they were first seen (updated in place). */
   readonly steps: LogStep[] = [];
   protected abstract record(entry: Record<string, unknown>): Emission;
@@ -160,7 +167,8 @@ abstract class StepParser {
   protected long(_head: string, _bytes: number): Emission { return []; }
 
   /** One transcript line (JSON text) or a long line's head: the steps it created or changed. Malformed: none. */
-  push(item: string | LongLine): Emission {
+  push(item: string | LongLine, at = -1): Emission {
+    this.at = at; this.k = 0;
     if (typeof item !== "string") return this.long(item.head, item.bytes);
     let entry: unknown;
     try { entry = JSON.parse(item); } catch { return []; }
@@ -168,17 +176,18 @@ abstract class StepParser {
   }
 
   protected add(step: Omit<LogStep, "id" | "turn"> & { id?: string }): LogStep {
-    const s = { ...step, id: step.id ?? `s${++this.n}`, turn: Math.max(1, this.turn) } as LogStep;
+    const id = step.id ?? (this.at >= 0 ? `o${this.at}.${this.k++}` : `s${++this.n}`);
+    const s = { ...step, id, turn: this.turn } as LogStep;
     this.steps.push(s);
     if (s.kind === "tool" && s.status === "running") this.open.set(s.id, s);
     return s;
   }
   protected openTool(id: string): LogStep | undefined { return this.open.get(id); }
   protected close(id: string): LogStep | undefined { const s = this.open.get(id); this.open.delete(id); return s; }
-  /** A new turn: every tool still running in the last one is interrupted (its result never came). */
-  protected newTurn(): Emission {
+  /** A new turn (`key`: the transcript's id for it): every tool still running in the last one is interrupted. */
+  protected newTurn(key: string): Emission {
     const out = this.endOpen("interrupted");
-    this.turn++;
+    this.turn = key;
     return out;
   }
   protected endOpen(status: StepStatus): Emission {
@@ -243,7 +252,7 @@ export class ClaudeStepParser extends StepParser {
       if (e.isMeta === true) return [];
       if (typeof content === "string") {
         if (!content.trim()) return [];
-        const out = this.newTurn();
+        const out = this.newTurn(String(e.promptId ?? e.uuid ?? (this.at >= 0 ? `o${this.at}` : "")));
         const cmd = /<command-name>([^<]{1,100})<\/command-name>/.exec(content);
         const s = this.add({ kind: "user", ts });
         bodyOf(s, cmd ? cmd[1]!.trim() : content, TEXT_MAX);
@@ -313,7 +322,7 @@ export class CodexStepParser extends StepParser {
     if (!p) return [];
     if (e.type === "compacted") return [this.add({ kind: "state", ts, note: "compacted" })];
     if (e.type === "event_msg") {
-      if (p.type === "task_started") return this.newTurn();
+      if (p.type === "task_started") return this.newTurn(String(p.turn_id ?? ""));
       if (p.type === "task_complete" || p.type === "turn_aborted") {
         const out = this.endOpen("interrupted");
         const s = this.add({ kind: "turn_end", ts, ...(typeof p.duration_ms === "number" ? { durationMs: p.duration_ms } : {}) });
@@ -333,7 +342,7 @@ export class CodexStepParser extends StepParser {
         if (role !== "user" && role !== "assistant") return [];
         const text = resultText(p.content);
         if (!text.trim() || (role === "user" && /^<(environment_context|user_instructions|permissions)/.test(text.trim()))) return [];
-        const out = role === "user" && this.turn === 0 ? this.newTurn() : [];
+        const out: LogStep[] = [];
         const s = this.add({ kind: role, ts }); bodyOf(s, text, TEXT_MAX); out.push(s);
         return out;
       }
@@ -426,7 +435,7 @@ export const BACKFILL_MAX_BYTES = 8 * 1024 * 1024;
 const BACKFILL_CHUNK = 256 * 1024;
 
 /**
- * The last records of a JSONL transcript, in file order — complete lines, and long lines (over LINE_MAX_BYTES) by
+ * The last records of a JSONL transcript, in file order, each with its byte offset — complete lines, and long lines (over LINE_MAX_BYTES) by
  * their head and size — read backwards in BACKFILL_CHUNK chunks, at most `maxBytes`, stopping once `maxLines` records
  * are held. A record still being written (after the last line end) is not included. `truncated`: older records exist
  * that were not read. Async and bounded — for an on-demand backfill when a Log is opened, never a whole-file read.
@@ -434,12 +443,15 @@ const BACKFILL_CHUNK = 256 * 1024;
  * Of the record that crosses a chunk's left edge only its first LINE_MAX_BYTES + LONG_HEAD_BYTES are kept (with its
  * exact length): enough for a short record whole, or for a long one's head.
  */
-export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number } = {}): Promise<{ records: Array<string | LongLine>; truncated: boolean }> {
+/** A record and where it starts in the file (its byte offset). */
+export interface TailRecord { record: string | LongLine; at: number }
+
+export async function readTailRecords(path: string, opts: { maxBytes?: number; maxLines?: number } = {}): Promise<{ records: TailRecord[]; truncated: boolean; end: number }> {
   const maxBytes = Math.max(1, opts.maxBytes ?? BACKFILL_MAX_BYTES);
   const maxLines = Math.max(1, opts.maxLines ?? 2000);
   const end = await lastLineBoundary(path);
-  const out: Array<string | LongLine> = [];
-  if (end === 0) return { records: out, truncated: false };
+  const out: TailRecord[] = [];
+  if (end === 0) return { records: out, truncated: false, end };
   const KEEP = LINE_MAX_BYTES + LONG_HEAD_BYTES;
   const fh = await open(path, "r");
   try {
@@ -447,7 +459,7 @@ export async function readTailRecords(path: string, opts: { maxBytes?: number; m
     let recEnd = end - 1;              // where the record being assembled ends (its line end)
     let acc: Buffer = Buffer.alloc(0); // its bytes after the current chunk: its first KEEP bytes at most
     let read = 0;
-    const emit = (bytes: Buffer, total: number) => { if (total > 0) out.push(toRecord(bytes, total)); };
+    const emit = (bytes: Buffer, total: number, at: number) => { if (total > 0) out.push({ record: toRecord(bytes, total), at }); };
     while (pos > 0 && read < maxBytes && out.length < maxLines) {
       const length = Math.min(BACKFILL_CHUNK, pos, maxBytes - read);
       const start = pos - length;
@@ -462,7 +474,7 @@ export async function readTailRecords(path: string, opts: { maxBytes?: number; m
       for (let i = length - 1; i >= 0 && out.length < maxLines; i--) {
         if (buf[i] !== 0x0a) continue;
         const total = recEnd - (start + i + 1);
-        emit(Buffer.concat([buf.subarray(i + 1, segEnd), acc]), total);
+        emit(Buffer.concat([buf.subarray(i + 1, segEnd), acc]), total, start + i + 1);
         acc = Buffer.alloc(0);
         recEnd = start + i;
         segEnd = i;
@@ -473,8 +485,8 @@ export async function readTailRecords(path: string, opts: { maxBytes?: number; m
       pos = start;
     }
     // The first record of the file, when the read reached it.
-    if (pos === 0 && out.length < maxLines) { emit(acc, recEnd); recEnd = 0; }
-    return { records: out.reverse(), truncated: recEnd > 0 };
+    if (pos === 0 && out.length < maxLines) { emit(acc, recEnd, 0); recEnd = 0; }
+    return { records: out.reverse(), truncated: recEnd > 0, end };
   } finally {
     await fh.close();
   }
@@ -490,7 +502,7 @@ function toRecord(piece: Buffer, bytes: number): string | LongLine {
 }
 
 /** Parse `records` (file order) with `parser` and return its last `max` steps. */
-export function stepsOf(parser: { push(item: string | LongLine): Emission; steps: LogStep[] }, records: Array<string | LongLine>, max = 200): LogStep[] {
-  for (const r of records) parser.push(r);
+export function stepsOf(parser: { push(item: string | LongLine, at?: number): Emission; steps: LogStep[] }, records: readonly TailRecord[], max = 200): LogStep[] {
+  for (const r of records) parser.push(r.record, r.at);
   return parser.steps.slice(-max);
 }

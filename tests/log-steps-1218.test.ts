@@ -20,7 +20,7 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 const FIX = join(import.meta.dirname, "fixtures");
 const CLAUDE = join(FIX, "log-steps-1218", "claude.jsonl");
 const CODEX = join(FIX, "reply-guard-1510", "codex-0.162.0", "rollout.jsonl");
-const brief = (s: { kind: string; tool?: string; cat?: string; subject?: string; status?: string; body?: string; turn: number; note?: string }) =>
+const brief = (s: { kind: string; tool?: string; cat?: string; subject?: string; status?: string; body?: string; turn: string; note?: string }) =>
   [s.turn, s.kind, s.tool ?? "", s.cat ?? "", s.subject ?? "", s.status ?? "", s.note ?? "", (s.body ?? "").slice(0, 30)].join("|");
 
 describe("masking: only actual secret values, everything else stays readable", () => {
@@ -77,20 +77,20 @@ describe("claude-code: the transcript as steps", () => {
 
   it("prompts, text, tool calls with their results, errors, turn ends and states — never thinking, meta or bookkeeping", () => {
     expect(parse().steps.map(brief)).toEqual([
-      "1|user||||||[user:han via telegram] 目前進度？",
-      "1|assistant||||||Checking the branch.",
-      "1|tool|Bash|run|git status --short|done|| M src/a.ts",
-      "1|tool|Read|read|/w/web-dev/src/a.ts|done||1\texport const a = 1;",
-      "1|tool|Grep|search|TODO in src|failed||rg: src: No such file",
-      "1|tool|mcp__agend__reply|message|agend:reply|done||sent",
-      "1|tool|Read|read|/w/web-dev/shot.png|done||[image]",
-      "1|turn_end||||||",
-      "2|user||||||/compact",
-      "2|state|||||compacted|",
-      "3|user||||||Run the tests",
-      "3|tool|Bash|run|npm test|interrupted||",
-      "3|error|||||429|API Error: 429 rate limited",
-      "4|user||||||Try again",
+      "pr1|user||||||[user:han via telegram] 目前進度？",
+      "pr1|assistant||||||Checking the branch.",
+      "pr1|tool|Bash|run|git status --short|done|| M src/a.ts",
+      "pr1|tool|Read|read|/w/web-dev/src/a.ts|done||1\texport const a = 1;",
+      "pr1|tool|Grep|search|TODO in src|failed||rg: src: No such file",
+      "pr1|tool|mcp__agend__reply|message|agend:reply|done||sent",
+      "pr1|tool|Read|read|/w/web-dev/shot.png|done||[image]",
+      "pr1|turn_end||||||",
+      "u16|user||||||/compact",
+      "u16|state|||||compacted|",
+      "u18|user||||||Run the tests",
+      "u18|tool|Bash|run|npm test|interrupted||",
+      "u18|error|||||429|API Error: 429 rate limited",
+      "u21|user||||||Try again",
     ]);
   });
 
@@ -173,14 +173,14 @@ describe("codex: the rollout as steps", () => {
       ev({ type: "task_complete", turn_id: "t1", last_agent_message: "done", duration_ms: 20000 }),
     ]) p.push(l);
     expect(p.steps.map(brief)).toEqual([
-      "1|user||||||fix it",
-      "1|tool|exec|run|exec_command|done||Script completed",
-      "1|tool|command|run|git status|done||clean",
-      "1|tool|command|run|npm test|failed||1 failed",
-      "1|tool|github:get_issue|mcp|github:get_issue|done||issue body",
-      "1|tool|file_change|edit|/w/src/a.ts|done||Success",
-      "1|assistant||||||done",
-      "1|turn_end||||||",
+      "t1|user||||||fix it",
+      "t1|tool|exec|run|exec_command|done||Script completed",
+      "t1|tool|command|run|git status|done||clean",
+      "t1|tool|command|run|npm test|failed||1 failed",
+      "t1|tool|github:get_issue|mcp|github:get_issue|done||issue body",
+      "t1|tool|file_change|edit|/w/src/a.ts|done||Success",
+      "t1|assistant||||||done",
+      "t1|turn_end||||||",
     ]);
     expect(p.steps[3]).toMatchObject({ exitCode: 1, durationMs: 12000 });
     expect(p.steps[7]).toMatchObject({ durationMs: 20000 });
@@ -194,7 +194,7 @@ describe("codex: the rollout as steps", () => {
     const out = p.push(ev({ type: "turn_aborted", turn_id: "t1", reason: "interrupted" }));
     expect(out.map(s => [s.kind, s.status, s.note ?? ""])).toEqual([["tool", "interrupted", ""], ["turn_end", "interrupted", "interrupted"]]);
     p.push(ev({ type: "task_started", turn_id: "t2" }));
-    expect(p.push(ev({ type: "task_complete", turn_id: "t2", last_agent_message: null }))[0]).toMatchObject({ kind: "turn_end", status: "failed", turn: 2 });
+    expect(p.push(ev({ type: "task_complete", turn_id: "t2", last_agent_message: null }))[0]).toMatchObject({ kind: "turn_end", status: "failed", turn: "t2" });
   });
 
   it("a long output line completes its call from the head of its text", () => {
@@ -211,6 +211,7 @@ describe("readTailRecords: an on-demand backfill reads only the end of a transcr
     expect(r.truncated).toBe(false);
     expect(r.records.length).toBe(readFileSync(CLAUDE, "utf8").split("\n").length - 1);
     expect(stepsOf(new ClaudeStepParser(), r.records).map(s => s.kind).at(-1)).toBe("user");
+    expect(r.records[0]!.at).toBe(0);
     expect(JSON.stringify(r.records)).not.toContain("still being wri");
   });
 
@@ -218,11 +219,11 @@ describe("readTailRecords: an on-demand backfill reads only the end of a transcr
     const f = join(temp(), "t.jsonl");
     writeFileSync(f, Array.from({ length: 5000 }, (_, i) => JSON.stringify({ i })).join("\n") + "\n");
     const a = await readTailRecords(f, { maxLines: 100 });
-    expect([a.records.length, a.truncated, a.records[0], a.records[99]]).toEqual([100, true, '{"i":4900}', '{"i":4999}']);
+    expect([a.records.length, a.truncated, a.records[0]!.record, a.records[99]!.record]).toEqual([100, true, '{"i":4900}', '{"i":4999}']);
     const b = await readTailRecords(f, { maxBytes: 300 });
     expect(b.truncated).toBe(true);
-    expect((b.records as string[]).every(x => /^\{"i":\d+\}$/.test(x))).toBe(true);
-    expect((b.records as string[]).at(-1)).toBe('{"i":4999}');
+    expect(b.records.every(x => /^\{"i":\d+\}$/.test(x.record as string))).toBe(true);
+    expect(b.records.at(-1)!.record).toBe('{"i":4999}');
   });
 
   it("a record longer than LINE_MAX_BYTES (across chunks): its head and exact size, in its place", async () => {
@@ -230,7 +231,8 @@ describe("readTailRecords: an on-demand backfill reads only the end of a transcr
     const big = JSON.stringify({ type: "user", message: { content: [{ tool_use_id: "b", type: "tool_result", content: "q".repeat(3 * LINE_MAX_BYTES) }] } });
     writeFileSync(f, '{"a":1}\n' + big + '\n{"b":2}\n');
     const r = await readTailRecords(f);
-    expect(r.records.map(x => (typeof x === "string" ? x : `long:${x.bytes}:${x.head.slice(0, 15)}`))).toEqual(['{"a":1}', `long:${Buffer.byteLength(big)}:{"type":"user",`, '{"b":2}']);
+    expect(r.records.map(({ record: x }) => (typeof x === "string" ? x : `long:${x.bytes}:${x.head.slice(0, 15)}`))).toEqual(['{"a":1}', `long:${Buffer.byteLength(big)}:{"type":"user",`, '{"b":2}']);
+    expect(r.records.map(x => x.at)).toEqual([0, 8, 8 + Buffer.byteLength(big) + 1]);
   });
 
   it("the default reads at most 8 MiB from the end of a bigger file", async () => {
@@ -241,6 +243,24 @@ describe("readTailRecords: an on-demand backfill reads only the end of a transcr
     expect(r.truncated).toBe(true);
     expect(r.records.length * (lineText.length + 1)).toBeLessThanOrEqual(BACKFILL_MAX_BYTES);
     appendFileSync(f, '{"last":1}\n');
-    expect((await readTailRecords(f, { maxLines: 1 })).records).toEqual(['{"last":1}']);
+    expect((await readTailRecords(f, { maxLines: 1 })).records.map(x => x.record)).toEqual(['{"last":1}']);
+  });
+});
+
+describe("ids do not depend on where parsing began (an on-demand Log parses a range at a time)", () => {
+  it("the steps of the whole transcript and of its tail have the same ids and turns where they overlap", async () => {
+    const all = stepsOf(new ClaudeStepParser(), (await readTailRecords(CLAUDE)).records, 1000);
+    const tail = stepsOf(new ClaudeStepParser(), (await readTailRecords(CLAUDE, { maxLines: 8 })).records, 1000);
+    const byId = new Map(all.map(s => [s.id, s]));
+    expect(tail.length).toBeGreaterThan(0);
+    // A range that begins mid-turn does not know that turn's key: its first steps say "" ("continues an earlier turn").
+    for (const s of tail) expect(byId.get(s.id), s.id).toMatchObject(s.turn ? { kind: s.kind, turn: s.turn } : { kind: s.kind });
+    expect(tail.findIndex(s => s.turn !== "")).toBeGreaterThan(0);
+  });
+  it("a result parsed in a later range carries its call's id: the page merges it into the call it already shows", () => {
+    const first = new ClaudeStepParser(), later = new ClaudeStepParser();
+    const call = first.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_x", name: "Bash", input: { command: "make" } }] } }), 100);
+    const done = later.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ tool_use_id: "toolu_x", type: "tool_result", content: "ok" }] } }), 400);
+    expect([call[0]!.id, done[0]!.id, done[0]!.status]).toEqual(["toolu_x", "toolu_x", "done"]);
   });
 });
