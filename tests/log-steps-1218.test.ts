@@ -71,7 +71,8 @@ describe("masking: only actual secret values, everything else stays readable", (
   });
 
   it("prose after a secret word stays; only a key-shaped argument is masked; quotes are kept around the mask", () => {
-    const keep = "the access_token expired yesterday; reset the password through the account settings page";
+    const keep = "the access_token expired yesterday; reset the password through the account settings page; the api_key v2beta1 "
+      + "header; see secret_rotation documentation_for_operators";
     expect(maskSecrets(keep)).toBe(keep);
     expect(maskSecrets(J('export DB_PASSWORD="a b"'))).toBe('export DB_PASSWORD="[REDACTED]"');
     expect(maskSecrets(J("db_password: 'x y'"))).toBe("db_password: '[REDACTED]'");
