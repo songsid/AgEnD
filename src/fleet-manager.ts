@@ -94,7 +94,6 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { readMuseModelCatalog } from "./backend/muse.js";
 import { CLI_ENV_TTL_MS, isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -16865,25 +16864,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     try {
       strategy = createBackend(backendName, this.getInstanceDir(instanceName)).getModelSwitchStrategy?.(model) ?? "restart";
     } catch { /* default restart */ }
-    let warn = isModelCompatible(backendName, model) ? "" : t("model.pattern_warning", model, backendName);
+    const warn = isModelCompatible(backendName, model) ? "" : t("model.pattern_warning", model, backendName);
 
     // #1690: claude takes any name; a mistyped one would be "switched" to and fail the next turn. Checked first —
     // nothing is typed or saved for an unknown one.
     if (backendName === "claude-code") {
       const check = this.claudeModelKnown(instanceName, model);
       if (!check.known) return t("model.unknown_name", model, check.names.join(", "));
-    }
-
-    // #1796: muse's list is a best-effort disk cache the vendor can hide or
-    // rename at any time, and muse accepts any --model string (the CLI, not
-    // the cache, decides what is valid) — so unlike claude above, an id
-    // missing from the fresh list is warned about, never rejected. The
-    // pinned choice stays verbatim, and contributor mode is never touched.
-    // (Sync, bounded, and fallible-internally: an unreadable catalog yields
-    // the fallback, never a throw past this point.)
-    if (backendName === "muse" && !readMuseModelCatalog().some(o => o.id === model)) {
-      warn += t("model.not_in_catalog", model);
-      if (model.endsWith("-contributor")) warn += t("model.contributor_separate_setting");
     }
 
     if (strategy === "runtime" && !this.instanceIpcClients.get(instanceName)) {
