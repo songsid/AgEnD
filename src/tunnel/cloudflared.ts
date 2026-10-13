@@ -95,6 +95,29 @@ export function validateQuickTunnelUrl(candidate: string): string | null {
  *   and commas are deliberately NOT separators: they can appear in a URL, so
  *   splitting on them shortens a hostile token into an acceptable one.
  */
+/** How long an exit before a URL waits for cloudflared's last output to arrive (#1767). */
+const OUTPUT_DRAIN_MS = 250;
+
+/**
+ * #1767: why cloudflared exited before printing a tunnel URL, from what it printed. `quick tunnel provisioning failed
+ * with status 429` is Cloudflare rate-limiting new quick tunnels for this network; another status is a refused
+ * provisioning; anything else keeps cloudflared's last line as the detail (logs only — never shown in a chat).
+ */
+export function exitBeforeUrl(output: string): TunnelStartError {
+  const status = /quick tunnel provisioning failed with status (\d{3})/i.exec(output)?.[1];
+  if (status === "429") return new TunnelStartError("rate-limited", "Cloudflare refused a new quick tunnel: HTTP 429 (rate limited)");
+  if (status) return new TunnelStartError("provisioning-failed", `Cloudflare refused a new quick tunnel: HTTP ${status}`);
+  const last = lastOutputLine(output);
+  return new TunnelStartError("no-url", `cloudflared exited before printing a tunnel URL${last ? `: ${last}` : ""}`);
+}
+
+/** cloudflared's last non-empty output line, without colour codes, URLs or control characters, at most 200 chars. */
+export function lastOutputLine(output: string): string {
+  const lines = output.replace(/\x1b\[[0-9;]*m/g, "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const last = lines.at(-1) ?? "";
+  return last.replace(/https?:\/\/\S+/g, "<url>").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 200);
+}
+
 export function extractTunnelUrl(text: string): string | null {
   // Strip ANSI first so colouring around the URL does not become part of it.
   const plain = text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
@@ -319,6 +342,8 @@ class CloudflaredHandle implements TunnelHandle {
   readonly identity: string | null;
 
   private buffered = "";
+  /** Its stdout and stderr have ended: everything it printed has been absorbed (#1767). */
+  private outputClosed = false;
   private urlResolved: ((base: string) => void) | null = null;
   private foundBase: string | null = null;
   private exit: TunnelExit | null = null;
@@ -358,6 +383,7 @@ class CloudflaredHandle implements TunnelHandle {
     };
     child.stdout?.on("data", absorb);
     child.stderr?.on("data", absorb);
+    child.on("close", () => { this.outputClosed = true; });
     child.on("exit", (code, signal) => {
       this.exit = { code, signal };
       if (this.published) for (const listener of this.exitListeners) listener(this.exit);
@@ -395,7 +421,13 @@ class CloudflaredHandle implements TunnelHandle {
         Math.max(1, deadline - now()),
       );
       const onAbort = () => settle(() => reject(new TunnelStartError("cancelled", "cancelled while waiting for the tunnel URL")));
-      const onExit = () => settle(() => reject(new TunnelStartError("no-url", "cloudflared exited before printing a tunnel URL")));
+      // #1767: why it exited is in what it printed last — read once its output has been delivered ("exit" can come
+      // before the last "data"): a refused provisioning (429 = rate limited) is not a missing URL, and never a timeout.
+      const onExit = () => {
+        const finish = () => settle(() => reject(exitBeforeUrl(this.buffered)));
+        if (this.outputClosed) finish();
+        else { this.child.once("close", finish); setTimeout(finish, OUTPUT_DRAIN_MS); }
+      };
       // A spawn that never produced a process must not wait out the deadline:
       // there is nothing to wait for, and the delay is what turns a missing
       // binary into a blocked lease.

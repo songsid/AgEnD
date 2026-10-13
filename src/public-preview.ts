@@ -21,6 +21,7 @@ import type { Socket } from "node:net";
 import { normalizeOrigin, previewFrameResponse } from "./web-preview.js";
 import { failureOf, type PublicLinkFailure } from "./public-link-progress.js";
 import { newTunnelSid, type ManagedTunnel } from "./tunnel/manager.js";
+import { logDetail } from "./public-web-link.js";
 import type { TunnelProvider, TunnelStopResult } from "./tunnel/types.js";
 
 const QUICK_TUNNEL_HOST = /^[a-z0-9-]+\.trycloudflare\.com$/;
@@ -170,7 +171,8 @@ export class PublicPreview {
     now?(): number;
     /** Told once when the preview settles (ready or failed), for the link's progress message. */
     onSettled?(status: PublicPreviewStatus): void;
-    log?(event: string): void;
+    /** `detail` (#1767): why, fit for daemon.log — never a URL. */
+    log?(event: string, detail?: string): void;
   }) {}
 
   status(): PublicPreviewStatus { return this.current; }
@@ -178,18 +180,19 @@ export class PublicPreview {
   /** Start in the background. Never throws, never awaited by the link: its outcome is only ever this status. */
   start(): void {
     this.running = this.run().catch((err: unknown) => {
-      this.settle({ state: "failed", reason: err instanceof PreviewStartFailure ? err.reason : this.abort.signal.aborted ? "closed" : "unknown" });
+      this.settle({ state: "failed", reason: err instanceof PreviewStartFailure ? err.reason : this.abort.signal.aborted ? "closed" : "unknown" },
+        logDetail(err instanceof PreviewStartFailure ? err.detail : (err as Error)?.message));
     });
   }
 
   private live(): boolean { return !this.abort.signal.aborted && !this.stopping && this.deps.isCurrent(); }
 
-  private settle(status: PublicPreviewStatus): void {
+  private settle(status: PublicPreviewStatus, detail?: string): void {
     if (this.current.state !== "starting" && status.state !== "failed") return;
     if (this.current.state === "failed") return;
     this.current = status;
     if (status.state === "failed") this.gateway?.setHost(null);
-    this.deps.log?.(status.state === "failed" ? `preview ${status.reason}` : "preview ready");
+    this.deps.log?.(status.state === "failed" ? `preview ${status.reason}` : "preview ready", detail);
     try { this.deps.onSettled?.(status); } catch { /* a progress message is no reason to fail */ }
   }
 
@@ -216,7 +219,7 @@ export class PublicPreview {
       this.deps.log?.("preview unreachable; retrying once");
       result = await attempt();
     }
-    if (!result.ok) throw new PreviewStartFailure(failureOf(result.errorKind));
+    if (!result.ok) throw new PreviewStartFailure(failureOf(result.errorKind), result.message);
     if (!this.live()) throw new PreviewStartFailure("closed");
     const published = new URL(result.handle.pageUrl);
     if (published.protocol !== "https:" || published.pathname !== "/ready" || !QUICK_TUNNEL_HOST.test(published.host)) {
@@ -246,5 +249,5 @@ export class PublicPreview {
 }
 
 class PreviewStartFailure extends Error {
-  constructor(readonly reason: PublicPreviewFailure) { super(reason); }
+  constructor(readonly reason: PublicPreviewFailure, readonly detail?: string) { super(reason); }
 }

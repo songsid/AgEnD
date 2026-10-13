@@ -31,7 +31,11 @@
   var cfg = { dashboardOrigin: "", previewOrigin: "", boot: "", reason: "", reasonCode: "", detail: "" };
   // Why it failed, in English when the app's dictionary has no word for it (chat-strings.js pvFail_*).
   var FAIL_EN = { exited: "its address closed unexpectedly", "spawn-failed": "cloudflared could not start for it", "no-address": "no address was given for it",
-    unreachable: "its address could not be reached", "lease-held": "an earlier preview tunnel is still being cleaned up", "gateway-failed": "its local listener could not start" };
+    unreachable: "its address could not be reached", "lease-held": "an earlier preview tunnel is still being cleaned up", "gateway-failed": "its local listener could not start",
+    // #1767: what cloudflared's exit before an address really was.
+    "rate-limited": "Cloudflare is limiting new temporary links from this machine — try again in a while",
+    "provisioning-failed": "Cloudflare refused to create its address right now", "process-exited": "cloudflared stopped before it gave an address",
+    "bad-address": "Cloudflare gave an address that could not be used" };
   // #1554: the page's words. `say(key, english, …values)` asks the app's dictionary (init's opts.text) and keeps the
   // English here when it has none — so this file still works, and reads the same, without the app.
   var text = null;

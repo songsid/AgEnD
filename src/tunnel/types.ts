@@ -22,6 +22,10 @@ export type TunnelErrorKind =
   | "not-logged-in"
   | "spawn-failed"
   | "no-url"
+  /** #1767: Cloudflare refused to provision a quick tunnel with HTTP 429 (rate limited for this network). */
+  | "rate-limited"
+  /** #1767: Cloudflare refused to provision a quick tunnel with another HTTP error. */
+  | "provisioning-failed"
   | "bad-url"
   | "readiness-failed"
   | "timeout"

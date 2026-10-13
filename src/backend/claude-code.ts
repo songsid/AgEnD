@@ -1,6 +1,6 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
-import { dirname, join, resolve } from "node:path";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
@@ -25,6 +25,77 @@ export function claudeProjectKey(cwd: string): string {
     hash = ((hash << 5) - hash + canonical.charCodeAt(i)) | 0;
   }
   return `${sanitized.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
+}
+
+/**
+ * #1754: the directory Claude Code keys a project's auto-memory by — the repository's own root, which for a git
+ * worktree is the main checkout's (its memory sits under `projects/<that root's key>/memory/`, shared by every worktree),
+ * and for a directory outside any repository the directory itself. Read from the files git leaves (`.git` as a folder,
+ * or a worktree's `.git` file → its `commondir`), never by running git: this runs at an instance's launch.
+ */
+export function claudeMemoryRoot(cwd: string): string {
+  let dir = resolve(cwd);
+  try { dir = realpathSync(dir); } catch { /* as given */ }
+  for (let at = dir; ; at = dirname(at)) {
+    const dotGit = join(at, ".git");
+    let st;
+    try { st = statSync(dotGit); } catch { st = null; }
+    if (st?.isDirectory()) return at;
+    if (st?.isFile()) {
+      try {
+        const gitdir = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf-8"))?.[1]?.trim();
+        if (gitdir) {
+          const worktreeGitDir = resolve(at, gitdir);
+          const common = resolve(worktreeGitDir, readFileSync(join(worktreeGitDir, "commondir"), "utf-8").trim());
+          if (basename(common) === ".git") return dirname(common);
+        }
+      } catch { /* a submodule or an unusual layout: this directory is its own root */ }
+      return at;
+    }
+    if (dirname(at) === at) return dir;
+  }
+}
+
+/**
+ * #1754: a named profile is its own `projects/`, so Claude Code's auto-memory for this project would start empty there
+ * and stay apart from every other instance's. Memory is knowledge, not an account — shared like the instructions,
+ * agents and skills are (#1699 (a)): `<profile>/projects/<repo key>/memory` becomes a link to the shared one
+ * (`<shared config>/projects/<repo key>/memory`). Transcripts beside it stay the profile's own.
+ * Never replaces anything real: a non-empty memory folder in the profile is left as it is (and said so); an empty one
+ * — what claude makes before it has written anything — gives way to the link. Returns what it found or did.
+ */
+export function linkSharedClaudeMemory(profileDir: string, workingDirectory: string, sharedConfigDir = claudeConfigDirFor(null)):
+  "linked" | "already-linked" | "kept-own" | "kept-other-link" | "failed" {
+  const key = claudeProjectKey(claudeMemoryRoot(workingDirectory));
+  const shared = join(sharedConfigDir, "projects", key, "memory");
+  const target = join(profileDir, "projects", key, "memory");
+  try {
+    let existing;
+    try { existing = lstatSync(target); } catch { existing = null; }
+    if (existing?.isSymbolicLink()) {
+      if (resolve(dirname(target), readlinkSync(target)) !== resolve(shared)) return "kept-other-link";
+      // Ours — but it may point at nothing yet (linked before the shared side was made, or that side since removed):
+      // the shared folder must be there for a note to land. A file in its place throws (EEXIST): the failure path below.
+      mkdirSync(shared, { recursive: true });
+      return "already-linked";
+    }
+    if (existing?.isDirectory()) {
+      if (readdirSync(target).length > 0) {
+        console.warn(`[agend] a credential profile has its own Claude memory, so it is not linked to the shared one: ${target}`);
+        return "kept-own";
+      }
+      rmdirSync(target);
+    } else if (existing) {
+      return "kept-own";
+    }
+    mkdirSync(shared, { recursive: true });
+    mkdirSync(dirname(target), { recursive: true });
+    symlinkSync(shared, target, "dir");
+    return "linked";
+  } catch (err) {
+    console.warn(`[agend] could not link a credential profile's Claude memory to the shared one (${(err as Error).message}): ${target}`);
+    return "failed";
+  }
 }
 
 /**
@@ -876,6 +947,8 @@ export class ClaudeCodeBackend implements CliBackend {
     const profileDir = claudeProfileConfigDir(config.backendOptions);
     if (profileDir) {
       prepareCredentialProfileHome(credentialHomeSpec("claude-code")!, profileDir);
+      // #1754: the project's auto-memory is the shared one, as on the default login.
+      linkSharedClaudeMemory(profileDir, config.workingDirectory, credentialHomeSpec("claude-code")!.sharedRoot());
       envPrefix.push(`CLAUDE_CONFIG_DIR=${shellQuote(profileDir)}`);
     }
     if (process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);

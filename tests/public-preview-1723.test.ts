@@ -80,11 +80,11 @@ function rig(opts: { web?: Record<string, unknown>; previewStart?: () => Promise
 }
 
 describe("#1723: the preview tunnel opens and closes with its exposure", () => {
-  it("opened beside the link (started before the link's own tunnel step), ready → its own origin and boot", async () => {
+  it("opened once the link's own tunnel has its address (#1767: the link asks Cloudflare first), ready → its own origin and boot", async () => {
     const h = rig();
     expect(await h.link.deliver(owner, async () => true)).toBe(true);
     await tick();
-    expect(h.order).toEqual(["preview tunnel", "link tunnel"]);
+    expect(h.order).toEqual(["link tunnel", "preview tunnel"]);
     expect(h.previewManager.start.mock.calls[0]![1].pagePath).toBe("/ready");
     expect(h.link.previewStatus(h.link.exposureId!)).toEqual({ state: "ready", origin: `https://${PREV}`, boot: "f".repeat(32) });
     expect(h.link.previewStatus("0".repeat(32)), "another exposure's page gets nothing").toBeNull();

@@ -247,7 +247,8 @@ describe("fleet-topic web echo (#1320 A)", () => {
       expect(h.received[0].meta).toMatchObject({ chat_id: h.chatId, thread_id: h.topic, adapter_id: "owner", source: "web" });
       await h.feed(h.sent[0].text); await h.feed("ordinary own message"); expect(h.ingress).toEqual([]); expect(h.received).toHaveLength(1);
       await h.feed("human control", "human"); await h.feed("peer bot control", "peer");
-      expect(h.ingress).toHaveLength(2); expect(h.received.filter(m => m.type === "fleet_inbound")).toHaveLength(3);
+      // #1752: a sibling fleet bot's ordinary post reaches the adapter but is never input to a fleet topic.
+      expect(h.ingress).toHaveLength(2); expect(h.received.filter(m => m.type === "fleet_inbound")).toHaveLength(2);
     });
     it(`${type}: web HTTP does not wait for echo, but even an immediate agent reply does`, async () => {
       const h = await harness(type), gate = deferred(); h.hold(gate.promise);
@@ -296,14 +297,15 @@ describe("fleet-topic web echo (#1320 A)", () => {
       await restarted.s.handleInboundMessage({ source: type, adapterId: "owner", chatId: restarted.chatId, threadId: restarted.topic,
         messageId: "old-replay-without-bot-flag", userId: "777", username: "sibling", text: echo, timestamp: new Date(), isBotMessage: false });
       expect(restarted.received).toEqual([]);
-      await restarted.feed("ordinary peer message", "peer"); expect(restarted.received).toHaveLength(1);
+      // #1752: nor does its ordinary post, once its identity is known.
+      await restarted.feed("ordinary peer message", "peer"); expect(restarted.received).toEqual([]);
       // Numeric platform ids can collide: the other platform is not authority.
       restarted.s.worlds.set("foreign", { id: "foreign", adapter: { type: type === "telegram" ? "discord" : "telegram", getBotUserId: () => "999" } });
-      await restarted.feed(echo, "human"); expect(restarted.received).toHaveLength(2);
-      await restarted.feed(echo, "external"); expect(restarted.received).toHaveLength(3);
+      await restarted.feed(echo, "human"); expect(restarted.received).toHaveLength(1);
+      await restarted.feed(echo, "external"); expect(restarted.received).toHaveLength(2);
       // A non-fleet bot with the prefix is still governed by existing collab.
       restarted.s.fleetConfig.channels[1].access = { ...OPEN, mode: "locked" };
-      await restarted.feed(echo, "external"); expect(restarted.received).toHaveLength(3);
+      await restarted.feed(echo, "external"); expect(restarted.received).toHaveLength(2);
     });
   }
 

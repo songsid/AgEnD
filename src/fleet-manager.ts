@@ -5115,17 +5115,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1753: the directory the CLI being stopped was launched in — its conversation is under that directory's key.
     const launchedIn = this.daemons.get(name)?.getConfigSnapshot?.()?.working_directory;
     // Between the stop and the start: the old CLI's transcript is complete, the new one has not looked yet.
-    const betweenStopAndStart = async () => {
+    /** `launching`: the login the start will use — read only when a switch is to be carried. */
+    const betweenStopAndStart = async (launching: () => { backend: string; profile: string | null }) => {
       // #1753: this restart's own carry, or one a caller joined it with before this point (restartSingleInstance).
       const gap = this.restartGaps.get(name);
       const carry = gap?.carry ?? opts?.carry;
       if (gap) gap.reached = true;
-      if (carry) carry.result = await this.switchConversation(name, { ...carry, workingDirectory: launchedIn });
-      else if (opts?.freshStart) this.writeFreshStartMarker(name);
+      if (!carry) { if (opts?.freshStart) this.writeFreshStartMarker(name); return; }
+      // Only into the login this start really launches: a restart that read its configuration before the switch was
+      // saved (one a switch joined) launches the old one — a copy into the new would be reported as carried, falsely.
+      const launch = launching();
+      if (launch.backend !== carry.backend || launch.profile !== carry.to) {
+        const login = (p: string | null) => (p ? `profile "${p}"` : "the default login");
+        carry.result = { carried: false, reason: `the restart launches ${launch.backend !== carry.backend ? launch.backend : login(launch.profile)}, not ${login(carry.to)}` };
+        this.logger.info({ name, launches: launch, carry: { backend: carry.backend, from: carry.from, to: carry.to } }, "Conversation not carried: the restart launches another login");
+        // The old login resumes its own conversation; any other starts fresh, as an uncarried switch does.
+        if (launch.backend !== carry.backend || launch.profile !== carry.from) this.writeFreshStartMarker(name);
+        return;
+      }
+      carry.result = await this.switchConversation(name, { ...carry, workingDirectory: launchedIn });
     };
     if (config) {
       await this.stopInstance(name, transition);
-      await betweenStopAndStart();
+      await betweenStopAndStart(() => {
+        const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+        return { backend, profile: credentialHomeSpec(backend) ? instanceCredentialProfile(config, this.fleetConfig?.defaults, backend) : null };
+      });
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
         () => this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
@@ -5139,7 +5154,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.classicChannels!.getAdapterIdByInstance(name);
       await this.stopInstance(name, transition);
       await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
-      await betweenStopAndStart();
+      await betweenStopAndStart(() => {
+        const backend = this.classicChannels!.getBackendByInstance(name, fleetBackend);
+        return { backend, profile: credentialHomeSpec(backend) ? profileName(this.classicChannels!.getCredentialProfileByInstance(name, this.fleetConfig?.defaults)) : null };
+      });
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason, () => this.startClassicInstance(
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
@@ -5353,12 +5371,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const result = this.webSessions?.revokeExposure(id);
         if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
       },
-      log: (event, exposureId) => this.logger.info({ event, exposureId }, "Public web link"),
+      log: (event, exposureId, detail) => this.logger.info({ event, exposureId, ...(detail ? { detail } : {}) }, "Public web link"),
       createPreview: ({ id, expiresAt, binary, protocol, dashboardOrigin, isCurrent }) => {
         if (!publicPreviewWanted(this.fleetConfig?.web)) return null;
         return new PublicPreview({ exposureId: id, expiresAt, dashboardOrigin, isCurrent, manager: this.getPreviewTunnel(),
           provider: () => new CloudflaredProvider({ binaryName: binary, protocol }),
-          log: event => this.logger.info({ event, exposureId: id }, "Public web link") });
+          log: (event, detail) => this.logger.info({ event, exposureId: id, ...(detail ? { detail } : {}) }, "Public web link") });
       },
       onCleanupUnconfirmed: (result, owner) => {
         this.logger.warn({ pid: result.confirmed ? null : result.pid }, "Public web access closed; tunnel cleanup unconfirmed");
@@ -5568,6 +5586,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }) : null;
     let lastSteps: PublicLinkProgress | undefined;
     let deliveredByDm = false;
+    // #1742: a DM was tried and did not go — only then is "open the private chat" the way out.
+    let dmRefused = false;
     const send = async (url: string, exposureId?: string, expiresAt?: number, current: () => boolean = () => this.publicOwnerCurrent(owner)): Promise<boolean> => {
       const token = this.webToken;
       if (!token || !current()) return false;
@@ -5590,6 +5610,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return sent;
           } catch (err) {
             this.logDashboardDmFailure(err);
+            dmRefused = true;
             if (direct.type !== "discord" || !data.respondPrivate || !current()) throw new Error("private delivery unavailable");
             const sent = await withinBudget(data.respondPrivate(text, c), deadline);
             codeAlone = body => data.respondPrivate!(body);
@@ -5630,11 +5651,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Only safe, static words enter General; never link, code or platform error text.
     // #1742: Telegram's failure walks through opening the DM (never a bare /start, which starts a ClassicBot agent),
     // with the "先開私訊 →" button when the bot's username is known; and for a while a bare /start there counts as
-    // /start web. A menu shown in the DM itself says the details are right below it.
+    // /start web. A menu shown in the DM itself says the details are right below it. Only when a DM was tried and did
+    // not go: a link that never got that far (the tunnel lane held, the owner gone) says so instead.
     const telegram = (owner.binding as ChannelAdapter).type === "telegram";
-    const tgLink = !ok && telegram ? this.tgStartWebUrl(adapterId) : null;
-    if (!ok && telegram) this.openTgWebStartWindow(adapterId, owner.userId);
-    const outcome = t(!ok ? (!telegram ? "dashboard.private_failed" : tgLink ? "dashboard.private_failed_tg" : "dashboard.private_failed_tg_nolink")
+    const dmSteps = !ok && telegram && dmRefused;
+    const tgLink = dmSteps ? this.tgStartWebUrl(adapterId) : null;
+    if (dmSteps) this.openTgWebStartWindow(adapterId, owner.userId);
+    const outcome = t(!ok ? (!telegram ? "dashboard.private_failed" : !dmSteps ? "dashboard.link_failed" : tgLink ? "dashboard.private_failed_tg" : "dashboard.private_failed_tg_nolink")
       : telegram && entry.chatId === owner.userId ? "dashboard.private_sent_below"
       : (owner.binding as ChannelAdapter).type !== "discord" ? "dashboard.private_sent" : deliveredByDm ? "dashboard.private_sent_dm" : "dashboard.private_sent_here");
     await progress;
@@ -7865,9 +7888,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     msg = { ...msg, humanOriginalBody: msg.humanOriginalBody ?? msg.text, humanOrigin: msg.isBotMessage ? undefined : msg.humanOrigin && { ...msg.humanOrigin } };
     if (msg.isBotMessage) return withSpawnHoldReply(undefined, () => this.handleInboundMessageCore(msg));
-    const adapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapters.get(msg.adapterId ?? "") ?? this.adapter;
-    return withSpawnHoldReply(text => adapter?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
+    return withSpawnHoldReply(text => this.inboundNoticeAdapter(msg)?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
       () => this.handleInboundMessageCore(msg));
+  }
+
+  /**
+   * #1752: the bot that speaks back about an inbound message — in a fleet topic the owning instance's adapter, never
+   * the sibling that happened to win the dedup race; elsewhere (ClassicBot rooms, no routed instance) the receiver.
+   */
+  private inboundNoticeAdapter(msg: InboundMessage): ChannelAdapter | null {
+    const id = this.governingAccess(msg, this.inboundRouteThreadId(msg)).adapterId ?? "";
+    return this.worlds.get(id)?.adapter ?? this.adapters.get(id) ?? this.adapter;
   }
 
   private async handleInboundMessageCore(msg: InboundMessage): Promise<void> {
@@ -7897,6 +7928,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const threadId = this.inboundRouteThreadId(msg);
+    // #1752: a post by one of this fleet's own bots is never input to a fleet topic's instance. They speak there only
+    // for an instance (its replies, notices, warnings) — taking that as a user turn makes one bot's notice another
+    // agent's "user" message, and a loop. Fleet /collab and open mode admit OTHER bots and webhooks; they never meant
+    // our own. Exempt: ClassicBot rooms, where bots this fleet runs deliberately talk to each other by @mention
+    // (same-channel multi-bot collab), and no-thread Telegram (classic candidates; Telegram bots never see each other).
+    if (msg.userId && fleetBotIds.has(msg.userId) && threadId && !this.classicChannels?.hasChannel(threadId)) {
+      this.logger.debug({ adapterId: msg.adapterId, threadId, messageId: msg.messageId, author: msg.userId },
+        "Inbound dropped: authored by one of this fleet's own bots in a fleet topic");
+      return;
+    }
     const rootCommand = this.telegramRootCommandTarget(msg, threadId);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
@@ -8490,9 +8531,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const lastWarn = this.rateLimitWarnedAt.get(instanceName) ?? 0;
     if (Date.now() - lastWarn < 30 * 60_000) return;
     this.rateLimitWarnedAt.set(instanceName, Date.now());
-    const warnAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-    if (warnAdapter && msg.chatId) {
-      warnAdapter.sendText(msg.chatId, warning, { threadId: msg.threadId ?? undefined }).catch(() => {});
+    // #1752: the instance's own bot, in the instance's own topic. `msg.adapterId` is whichever sibling bot won the
+    // inbound dedup race; a warning from that bot is a stranger's post in this topic (and, to the owning adapter, a
+    // bot message it would take as input).
+    const warnAdapter = this.getAdapterForInstance(instanceName);
+    const dest = this.cancelButtonDestination(instanceName);
+    const { chatId, threadId } = dest?.threadId ? dest : { chatId: msg.chatId, threadId: msg.threadId ?? undefined };
+    if (warnAdapter && chatId) {
+      warnAdapter.sendText(chatId, warning, { threadId }).catch(() => {});
     }
   }
 

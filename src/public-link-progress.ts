@@ -18,7 +18,9 @@ const NUMBERS: Record<PublicLinkStep, string> = { check: "①", download: "②",
 /** Why a step failed, as one of a fixed set: each has its own static sentence. */
 export type PublicLinkFailure =
   | "unsupported-platform" | "download-failed" | "checksum-mismatch" | "install-failed" | "cancelled"
-  | "spawn-failed" | "no-address" | "unreachable" | "lease-held" | "gateway-failed" | "delivery-failed" | "closed" | "unknown";
+  | "spawn-failed" | "no-address" | "unreachable" | "lease-held" | "gateway-failed" | "delivery-failed" | "closed" | "unknown"
+  // #1767: what cloudflared's exit before an address really was — never worded as a timeout.
+  | "rate-limited" | "provisioning-failed" | "process-exited" | "bad-address";
 
 export interface PublicLinkProgress {
   readonly startedAt: number;
@@ -40,8 +42,15 @@ export function failureOf(kind: CloudflaredInstallErrorKind | string | undefined
       return kind;
     case "binary-missing": case "binary-not-executable": case "spawn-failed": case "not-logged-in":
       return "spawn-failed";
-    case "no-url": case "bad-url": case "timeout":
+    // #1767: only a real timeout is "no address in time"; an exit before the address says what it was.
+    case "timeout":
       return "no-address";
+    case "rate-limited": case "provisioning-failed":
+      return kind;
+    case "no-url":
+      return "process-exited";
+    case "bad-url":
+      return "bad-address";
     case "readiness-failed":
       return "unreachable";
     default:
