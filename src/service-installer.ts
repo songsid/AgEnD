@@ -31,6 +31,12 @@ interface ServiceVars {
   workingDirectory: string;
   logPath: string;
   isRoot?: boolean;
+  /**
+   * The AgEnD home the service's fleet must use, when it is not the default one: written as AGEND_HOME into the
+   * definition, so a fleet started on a custom home comes back on it after a service restart or an update. Absent for
+   * the default home: the definition is then byte-identical to one without this field.
+   */
+  agendHome?: string;
 }
 
 export function detectPlatform(): "macos" | "linux" {
@@ -70,6 +76,10 @@ function validateVars(vars: ServiceVars & { path: string; nodePath: string; prog
   assertSafeServiceValue("workingDirectory", vars.workingDirectory);
   assertSafeServiceValue("logPath", vars.logPath);
   assertSafeServiceValue("path", vars.path);
+  if (vars.agendHome !== undefined) {
+    assertSafeServiceValue("agendHome", vars.agendHome);
+    assertAbsolutePath("agendHome", vars.agendHome);
+  }
   assertAbsolutePath("execPath", vars.execPath);
   assertAbsolutePath("workingDirectory", vars.workingDirectory);
   assertAbsolutePath("logPath", vars.logPath);
@@ -170,12 +180,49 @@ function withDefaults(vars: ServiceVars): ServiceVars & { path: string; nodePath
 
 export function renderLaunchdPlist(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "launchd.plist.ejs"), "utf-8");
-  return render(template, withDefaults(vars));
+  return render(template, { agendHome: undefined, ...withDefaults(vars) });
 }
 
 export function renderSystemdUnit(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "systemd.service.ejs"), "utf-8");
-  return render(template, { ...withDefaults(vars), systemdQuote, stopTimeoutSec: FLEET_STOP_TIMEOUT_MS / 1_000 });
+  return render(template, { agendHome: undefined, ...withDefaults(vars), systemdQuote, systemdEnvironmentQuote, stopTimeoutSec: FLEET_STOP_TIMEOUT_MS / 1_000 });
+}
+
+/**
+ * One `Environment=` assignment, exactly: double-quoted (a path with spaces stays one assignment), `\` and `"` escaped,
+ * and `%` (specifiers, which systemd expands in Environment=) as `%%`. Unlike a command line, `$` is NOT special in
+ * Environment= (systemd.exec: no variable expansion there), so it is left as is.
+ */
+export function systemdEnvironmentQuote(assignment: string): string {
+  return `"${assignment.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/%/g, "%%")}"`;
+}
+
+/**
+ * The AGEND_HOME a service definition carries, or null: read back from what renderLaunchdPlist / renderSystemdUnit
+ * write (a refresh keeps it). Anything not shaped like ours is null.
+ */
+export function serviceDefinitionAgendHome(text: string): string | null {
+  const plist = /<key>AGEND_HOME<\/key>\s*<string>([^<]*)<\/string>/.exec(text);
+  if (plist) {
+    return plist[1]!.replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(Number(n))).replace(/&#x([0-9a-f]+);/gi, (_m, n) => String.fromCharCode(parseInt(n, 16)))
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  }
+  const unit = /^Environment="AGEND_HOME=((?:[^"\\]|\\.)*)"\s*$/m.exec(text);
+  if (!unit) return null;
+  return unit[1]!.replace(/\\(.)/g, "$1").replace(/%%/g, "%");
+}
+
+/**
+ * Which AgEnD home a service definition being written should name. A non-default home of this CLI is named. On a
+ * REFRESH (`install --no-activate`, an update's) run from the default home, an existing definition's home is kept:
+ * an update typed in a shell without AGEND_HOME must not move a custom-home service back to ~/.agend.
+ */
+export function serviceHomeFor(cliHome: string, opts: { refresh: boolean; existingDefinition: string | null; isDefault: (home: string) => boolean }): { workingDirectory: string; logPath: string; agendHome?: string } {
+  const kept = opts.refresh && opts.isDefault(cliHome) && opts.existingDefinition ? serviceDefinitionAgendHome(opts.existingDefinition) : null;
+  const home = kept && kept.startsWith("/") ? kept : cliHome;
+  // The fleet's directory and log follow the same home it is told to use.
+  const where = { workingDirectory: home, logPath: join(home, "fleet.log") };
+  return opts.isDefault(home) ? where : { ...where, agendHome: home };
 }
 
 /**
