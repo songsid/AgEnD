@@ -4,6 +4,7 @@
  * steps_tick (a read after the page's cursor, merged by id), older steps on demand, a filter, outputs on demand.
  * The real Shell, router, store and panel in the mini DOM; fetch is a fake that records what is asked.
  */
+import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { installDom } from "./helpers/mini-dom.js";
@@ -23,7 +24,8 @@ async function fakeFetch(url: string, init: { method?: string; body?: string } =
   calls.push(`${m} ${url}`);
   if (url.startsWith("/ui/steps")) {
     const a = answers.length > 1 ? answers.shift() : answers[0];
-    return { ok: true, status: 200, json: async () => structuredClone(a), text: async () => JSON.stringify(a) };
+    // An answer may be a promise: held until the test settles it (a read still out while others land).
+    return { ok: true, status: 200, json: async () => structuredClone(await a), text: async () => JSON.stringify(await a) };
   }
   if (m === "PUT" && url === "/api/settings/fleet/web") {
     puts.push({ url, body: JSON.parse(String(init.body)) });
@@ -152,6 +154,110 @@ describe("on: the newest steps, live, older on demand", () => {
     expect(r.filter(x => x.startsWith("Read"))).toHaveLength(1);
   });
 
+  // #1790 review P3s: a page that outgrew PAGE_MAX no longer offers older pages (they would skip what was let go); an
+  // event seen twice shows once.
+  it("past PAGE_MAX the oldest steps are let go, and Load older is replaced by what to do instead", async () => {
+    const many = Array.from({ length: logp.PAGE_MAX }, (_, i) => step(`o${1000 + i}.0`, { kind: "assistant", body: `r${i}` }));
+    answers = [WINDOW, ON({ steps: many, after: 99_999 }), ON({ steps: [step("o5.0", { kind: "user", body: "new chat" })], reset: true, before: null, after: 10, key: "3-4" })];
+    const pg = await app("/ui/log/web-dev");
+    expect(pg.root.querySelector(".p-log .log-older button")).not.toBeNull();
+    await tick();
+    const r = rows(pg);
+    expect(r.filter(x => x.startsWith("Replied"))).toHaveLength(logp.PAGE_MAX);
+    expect(r.some(x => x.startsWith("Asked"))).toBe(false);               // the oldest (the prompt) was let go
+    expect(pg.root.querySelector(".p-log .log-older")).toBeNull();
+    expect(pg.root.querySelector(".p-log .log-start")?.textContent).toBe("Older steps were let go to keep this page light. Open the Log again to read further back.");
+    // A new conversation starts the page afresh: nothing was let go from it.
+    await tick();
+    expect(rows(pg)).toHaveLength(1);
+    expect(pg.root.querySelector(".p-log .log-start")?.textContent).toBe("The start of what can be read.");
+  });
+  // #1791 review (Prism): older pages are bounded the same way, and an older answer still out when a trim lands never
+  // restores the cursor the trim invalidated.
+  const page = (n: number, at: number, kind = "assistant") => Array.from({ length: n }, (_, i) => step(`o${at + i}.0`, { kind, body: `p${at + i}` }));
+  const olderBtn = (pg: AppPage) => pg.root.querySelector(".p-log .log-older button") as any;
+  const state = (pg: AppPage) => [rows(pg).length, !!olderBtn(pg)];
+  it("older pages: up to PAGE_MAX they page normally; past it the oldest are let go and older pages stop", async () => {
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), ...Array.from({ length: 9 }, (_, k) => ON({ steps: page(100, 80_000 - k * 1000), before: 79_000 - k * 1000 }))];
+    const pg = await app("/ui/log/web-dev");
+    for (let k = 0; k < 8; k++) { olderBtn(pg).click(); await settle(8); }
+    expect(state(pg)).toEqual([1000, true]);                              // the control: exactly PAGE_MAX, a valid cursor
+    olderBtn(pg).click(); await settle(8);
+    expect(state(pg)).toEqual([1000, false]);
+    expect(pg.root.querySelector(".p-log .log-start")?.textContent).toContain("Older steps were let go");
+  });
+  it("an older page still out when a live trim lands is dropped; one with no trim meanwhile applies", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), ON({ steps: page(799, 200_000), after: 300 }), held, ON({ steps: page(1, 300_000), after: 400 })];
+    const pg = await app("/ui/log/web-dev");
+    await tick();
+    expect(state(pg)).toEqual([999, true]);
+    olderBtn(pg).click(); await settle(4);                                  // the older read is out (held)
+    await tick();                                                           // a live step: 1000 → no trim yet
+    expect(state(pg)[0]).toBe(1000);
+    answers = [ON({ steps: page(1, 400_000), after: 500 })];
+    await tick();                                                           // 1001 → trimmed, Load older gone
+    expect(state(pg)).toEqual([1000, false]);
+    // The stale page overlaps what is shown (nothing new to add, so no overflow to catch it): still dropped.
+    release(ON({ steps: page(100, 100_001), before: 79_000 }));
+    await settle(8);
+    expect(state(pg)).toEqual([1000, false]);                              // the stale page changed nothing
+  });
+  it("an older page still out when a new conversation begins is dropped", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), held, ON({ steps: page(3, 5, "user"), reset: true, before: null, after: 50, key: "3-4" })];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(4);
+    await tick();
+    expect(state(pg)).toEqual([3, false]);
+    release(ON({ steps: page(100, 80_000), before: 79_000 }));
+    await settle(8);
+    expect(state(pg)).toEqual([3, false]);
+  });
+  it("an older read that comes back saying a new conversation began is dropped if a newer one was shown meanwhile", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    const C = ON({ steps: page(2, 7, "user"), reset: true, before: null, after: 60, key: "5-6" });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), held, C];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(4);                                  // conversation A's older read is out
+    await tick();                                                           // the live read sees conversation C
+    expect(state(pg)).toEqual([2, false]);
+    release(ON({ steps: page(1, 3, "user"), reset: true, before: 40, after: 20, key: "3-4" }));   // B, from before C
+    await settle(8);
+    expect(state(pg)).toEqual([2, false]);
+    expect(rows(pg).every(x => !x.includes("p3"))).toBe(true);
+  });
+  it("control: an older read that comes back saying a new conversation began, with nothing newer meanwhile, is taken", async () => {
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), ON({ steps: page(1, 3, "user"), reset: true, before: 40, after: 20, key: "3-4" })];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(8);
+    expect(state(pg)).toEqual([1, true]);
+    expect(pg.root.querySelector(".p-log .log-notice")?.textContent).toBe("A new conversation began: showing it from its latest steps.");
+  });
+  it("control: an older page held while nothing is trimmed applies when it lands", async () => {
+    let release!: (v: unknown) => void;
+    const held = new Promise((r) => { release = r; });
+    answers = [ON({ steps: page(200, 100_000), before: 90_000 }), held, ON({ steps: page(1, 300_000), after: 400 })];
+    const pg = await app("/ui/log/web-dev");
+    olderBtn(pg).click(); await settle(4);
+    await tick();
+    release(ON({ steps: page(100, 80_000), before: 79_000 }));
+    await settle(8);
+    expect(state(pg)).toEqual([301, true]);
+    olderBtn(pg).click(); await settle(8);                                  // the next older page starts at its cursor
+    expect(stepsCalls().at(-1)).toBe("instance=web-dev&before=79000&key=1-2");
+  });
+
+  it("a fleet event that comes again in a later answer is shown once", async () => {
+    answers = [WINDOW, ON({ events: [WINDOW.events[0], { id: 6, ts: Date.parse("2026-10-13T08:01:00Z"), type: "hang_detected" }], after: 180 })];
+    const pg = await app("/ui/log/web-dev");
+    await tick();
+    expect(pg.root.querySelectorAll(".p-log .log-item.k-event")).toHaveLength(2);
+  });
+
   it("Load older: before the oldest offset, put above what is shown", async () => {
     answers = [WINDOW, ON({ steps: [step("o0.0", { kind: "user", body: "earlier" })], before: null, after: null })];
     const pg = await app("/ui/log/web-dev");
@@ -184,6 +290,19 @@ describe("on: the newest steps, live, older on demand", () => {
     const pg2 = await app("/ui/log/api-server");
     expect(pg2.root.querySelector(".p-log .log-why")?.textContent).toContain("grok has no transcript AgEnD can read");
   });
+  it("kiro: the tab says which proof is missing, in each locale; every reason the gate gives has words", async () => {
+    answers = [ON({ instance: "api-server", backend: "kiro-cli", supported: false, reason: "kiro_v2_root", after: null, key: undefined })];
+    const pg = await app("/ui/log/api-server");
+    const why = pg.root.querySelector(".p-log .log-why")?.textContent ?? "";
+    expect(why).toContain("only when AgEnD can prove which conversation it is in now");
+    expect(why).toContain("inherited from tmux");
+    const src = readFileSync(new URL("../src/kiro-log-gate.ts", import.meta.url), "utf8");
+    const reasons = [...src.matchAll(/"(kiro_[a-z0-9_]+)"/g)].map(m => m[1]);
+    expect(new Set(reasons)).toEqual(logp.KIRO_REASONS);
+    // Worded in both locales (en, then zh-TW): each key once per table.
+    const panel = readFileSync(new URL("../src/ui/panel-log.js", import.meta.url), "utf8");
+    for (const r of [...reasons, "kiroWhy"]) expect(panel.split(`\n    ${r}: "`).length - 1, r).toBe(2);
+  });
 });
 
 describe("the page's helpers", () => {
@@ -199,6 +318,10 @@ describe("the page's helpers", () => {
     const running = { ...call, status: "running" };
     expect(logp.mergeSteps([running], [orphan])).toEqual([{ id: "c", kind: "tool", tool: "Bash", cat: "run", subject: "ls", input: "{}", status: "done", body: "ok", ts: 10 }]);
     expect(logp.mergeSteps([running], [{ ...orphan, tool: "Bash2", cat: "edit" }])[0]).toMatchObject({ tool: "Bash2", cat: "edit", ts: 20 });
+    // The same id twice in one answer: one step, the later one's fields — never a property on the array.
+    const dup = logp.mergeSteps([{ id: "1", v: 1 }], [{ id: "x", v: 1 }, { id: "x", v: 2, w: 1 }]);
+    expect(dup).toEqual([{ id: "1", v: 1 }, { id: "x", v: 2, w: 1 }]);
+    expect(Object.keys(dup)).toEqual(["0", "1"]);
     const named = { ...orphan, tool: "Read", cat: "read", subject: "a.ts" };
     expect(logp.mergeSteps([named], [call], true)).toEqual([named]);
   });

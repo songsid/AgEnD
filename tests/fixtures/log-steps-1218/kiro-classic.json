@@ -1,0 +1,146 @@
+{
+ "conversation_id": "conv-1",
+ "next_message": null,
+ "history": [
+  {
+   "user": {
+    "additional_context": "",
+    "env_context": {
+     "env_state": {
+      "operating_system": "linux",
+      "current_working_directory": "/w",
+      "environment_variables": []
+     }
+    },
+    "content": {
+     "Prompt": {
+      "prompt": "fix it"
+     }
+    },
+    "timestamp": "2026-10-13T16:00:00.123456789+08:00",
+    "images": null
+   },
+   "assistant": {
+    "ToolUse": {
+     "message_id": "a1",
+     "content": "Checking.",
+     "tool_uses": [
+      {
+       "id": "t1",
+       "name": "execute_bash",
+       "orig_name": "execute_bash",
+       "args": {
+        "command": "ls"
+       },
+       "orig_args": {
+        "command": "ls"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "user": {
+    "content": {
+     "ToolUseResults": {
+      "tool_use_results": [
+       {
+        "tool_use_id": "t1",
+        "content": [
+         {
+          "Json": {
+           "exit_status": "0",
+           "stdout": "a.ts",
+           "stderr": ""
+          }
+         }
+        ],
+        "status": "Success"
+       }
+      ]
+     }
+    },
+    "timestamp": "2026-10-13T16:00:02+08:00"
+   },
+   "assistant": {
+    "ToolUse": {
+     "message_id": "a2",
+     "content": "",
+     "tool_uses": [
+      {
+       "id": "t2",
+       "name": "fs_write",
+       "orig_name": "fs_write",
+       "args": {
+        "command": "create",
+        "path": "b.ts",
+        "file_text": "x"
+       },
+       "orig_args": {
+        "command": "create",
+        "path": "b.ts",
+        "file_text": "x"
+       }
+      },
+      {
+       "id": "t3",
+       "name": "thinking",
+       "orig_name": "thinking",
+       "args": {
+        "thought": "secret thoughts"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "user": {
+    "content": {
+     "CancelledToolUses": {
+      "prompt": "stop that",
+      "tool_use_results": [
+       {
+        "tool_use_id": "t2",
+        "content": [
+         {
+          "Text": "Tool use was cancelled by the user"
+         }
+        ],
+        "status": "Error"
+       },
+       {
+        "tool_use_id": "t3",
+        "content": [
+         {
+          "Text": "secret thoughts"
+         }
+        ],
+        "status": "Success"
+       }
+      ]
+     }
+    },
+    "timestamp": "2026-10-13T16:01:00+08:00"
+   },
+   "assistant": {
+    "Response": {
+     "message_id": "a3",
+     "content": "Stopped."
+    }
+   }
+  }
+ ],
+ "valid_history_range": [
+  0,
+  3
+ ],
+ "transcript": [
+  "> fix it"
+ ],
+ "tools": {},
+ "model_info": {
+  "model_id": "x"
+ }
+}

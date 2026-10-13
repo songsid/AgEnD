@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  BACKFILL_MAX_BYTES, ClaudeStepParser, CodexStepParser, RESULT_MAX, TEXT_MAX, bounded, describeTool, maskSecrets, readTailRecords, stepsOf,
+  BACKFILL_MAX_BYTES, ClaudeStepParser, CodexStepParser, KiroV2StepParser, RESULT_MAX, TEXT_MAX, bounded, describeTool, kiroClassicSteps, maskSecrets, readTailRecords, stepsOf,
 } from "../src/log-steps.js";
 import { LINE_MAX_BYTES } from "../src/transcript-jsonl.js";
 
@@ -393,5 +393,64 @@ describe("ids do not depend on where parsing began (an on-demand Log parses a ra
     const call = first.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id: "toolu_x", name: "Bash", input: { command: "make" } }] } }), 100);
     const done = later.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ tool_use_id: "toolu_x", type: "tool_result", content: "ok" }] } }), 400);
     expect([call[0]!.id, done[0]!.id, done[0]!.status]).toEqual(["toolu_x", "toolu_x", "done"]);
+  });
+});
+
+describe("kiro: the TUI (v2) message log and a classic (v1) conversation row as steps", () => {
+  const KV2 = join(FIX, "log-steps-1218", "kiro-v2.jsonl");
+  const KV1 = join(FIX, "log-steps-1218", "kiro-classic.json");
+  it("v2: prompts are turns; text; calls completed by their results (exit status, error); thinking never; AgEnD's tools are messages", () => {
+    const p = new KiroV2StepParser();
+    for (const l of readFileSync(KV2, "utf8").split("\n")) if (l.trim()) p.push(l);
+    expect(p.steps.map(brief)).toEqual([
+      "m1|user||||||check the build",
+      "m1|assistant||||||Running the tests.",
+      "m1|tool|shell|run|npm test|failed||1 failed",
+      "m1|tool|read|read|src/a.ts|done||export const a = 1;",
+      "m1|tool|write|edit|src/a.ts|failed||no match",
+      "m1|tool|send_to_instance|message|reviewer|done||sent",
+      "m1|tool|custom_tool|other|something new|interrupted||",
+      "m8|user||||||next",
+    ]);
+    expect(p.steps[2]).toMatchObject({ exitCode: 1, input: expect.stringContaining('"command": "npm test"') });
+    expect(p.steps[2]!.input).not.toContain("__tool_use_purpose");
+    expect(p.steps[0]!.ts).toBe(1791878400 * 1000);
+    expect(JSON.stringify(p.steps)).not.toContain("private reasoning");
+  });
+  it("v2: a tool result too long to parse completes its call by its head (exit code, start of output); others are left to a whole read", () => {
+    const p = new KiroV2StepParser();
+    const call = (id: string, name: string, input: unknown) => JSON.stringify({ version: "v1", kind: "AssistantMessage", data: { message_id: "m" + id, content: [{ kind: "toolUse", data: { toolUseId: id, name, input } }] } });
+    p.push(JSON.stringify({ version: "v1", kind: "Prompt", data: { message_id: "m0", content: [{ kind: "text", data: "go" }], meta: { timestamp: 1791878400 } } }));
+    p.push(call("tooluse_X", "shell", { command: "make" }));
+    p.push(call("tooluse_T", "thinking", { thought: "private" }));
+    const head = (id: string, exit: string) => '{"version":"v1","kind":"ToolResults","data":{"message_id":"m9","content":[{"kind":"toolResult","data":{"toolUseId":"'
+      + id + '","content":[{"kind":"json","data":{"exit_status":' + exit + ',"stdout":"line1\\nline2';
+    const long = (h: string) => ({ at: 0, head: h, bytes: 5_000_000, complete: true, offset: 0 });
+    expect(p.push(long(head("tooluse_T", '"0"')))).toEqual([]);                       // thinking: never a step
+    const [s] = p.push(long(head("tooluse_X", '"exit status: 2"')));
+    expect(s).toMatchObject({ id: "tooluse_X", tool: "shell", subject: "make", status: "failed", exitCode: 2, bodyBytes: 5_000_000 });
+    expect(s!.body).toBe("line1\nline2");
+    p.push(call("tooluse_Y", "shell", { command: "ls" }));
+    expect(p.push(long(head("tooluse_Y", "0")))[0]).toMatchObject({ status: "done", exitCode: 0 });
+    // A long reply or prompt is not a result: the Log reads those whole.
+    expect(p.push(long('{"version":"v1","kind":"AssistantMessage","data":{"content":[{"kind":"text","data":"x'))).toEqual([]);
+    expect(p.steps.filter(x => x.kind === "tool").map(x => x.id)).toEqual(["tooluse_X", "tooluse_Y"]);
+  });
+  it("classic: the history's prompts, replies and calls; results by id; a cancel interrupts; thinking never; ids by entry", () => {
+    const { steps, entries } = kiroClassicSteps(JSON.parse(readFileSync(KV1, "utf8")));
+    expect(entries).toBe(3);
+    expect(steps.map(brief)).toEqual([
+      "h0|user||||||fix it",
+      "h0|assistant||||||Checking.",
+      "h0|tool|execute_bash|run|ls|done||a.ts",
+      "h0|tool|fs_write|edit|b.ts|interrupted||Tool use was cancelled by the ",
+      "h2|user||||||stop that",
+      "h2|assistant||||||Stopped.",
+    ]);
+    expect(steps.map(s => s.id)).toEqual(["h0.u", "h0.a", "t1", "t2", "h2.u", "h2.a"]);
+    expect(steps[0]!.ts).toBe(Date.parse("2026-10-13T16:00:00.123+08:00"));
+    expect(JSON.stringify(steps)).not.toContain("secret thoughts");
+    expect(kiroClassicSteps({ history: "x" })).toEqual({ steps: [], entries: 0 });
+    expect(kiroClassicSteps(JSON.parse(readFileSync(KV1, "utf8")), 2).steps.map(s => s.id)).toEqual(["h2.u", "h2.a"]);
   });
 });

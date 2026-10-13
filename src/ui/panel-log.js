@@ -32,10 +32,19 @@ register("log", {
     enable: "Turn on the Log", enabling: "Waiting for a fleet admin to confirm it in General…", enabled: "The Log is on.",
     enableFailed: "The Log was not turned on: {0}", offPublic: "A fleet admin can turn it on in Settings → Web.",
     unsupported: "{0} has no transcript AgEnD can read, so this Log shows fleet events only. View shows its screen.",
-    coming: "Steps for {0} come in a later update. Fleet events are shown meanwhile.",
+    kiroWhy: "kiro's own steps are shown only when AgEnD can prove which conversation it is in now. {0} Fleet events are shown meanwhile.",
+    kiro_not_running: "It is not running.",
+    kiro_v3: "Its engine (V3) keeps a history AgEnD does not read.",
+    kiro_engine_unknown: "Its engine is not known.",
+    kiro_legacy: "It launched without its own agent (legacy mode), so it continues the folder's newest conversation, not one of its own.",
+    kiro_fresh: "This launch began a new conversation, which kiro names only later.",
+    kiro_v2_root: "Where its engine (TUI) keeps conversations is inherited from tmux, not set by its launch, so it is not proven.",
+    kiro_no_profile: "Where its engine (classic) keeps conversations is proven only when it runs with its own credential profile.",
+    kiro_session_unobservable: "A /clear or /chat load typed in its terminal can switch conversations without AgEnD seeing it.",
     notRunning: "Its transcript is found while it runs. Start it to see its steps; fleet events are shown meanwhile.",
     noTranscript: "No transcript yet: steps appear once it has worked.",
     empty: "Nothing here yet.", olderLoad: "Load older steps", olderStart: "The start of what can be read.", loading: "Loading…",
+    olderTrimmed: "Older steps were let go to keep this page light. Open the Log again to read further back.",
     all: "All", tools: "Tools", errors: "Errors", filter: "Show", live: "Live", reset: "A new conversation began: showing it from its latest steps.",
     user: "Asked", assistant: "Replied", error: "Error", errorCode: "Error {0}", turnEnd: "Turn ended", turnEndIn: "Turn ended · {0}",
     compacted: "Conversation compacted", turn: "Turn",
@@ -61,10 +70,19 @@ register("log", {
     enable: "開啟紀錄", enabling: "等待 fleet admin 在 General 確認…", enabled: "紀錄已開啟。",
     enableFailed: "紀錄沒有開啟：{0}", offPublic: "fleet admin 可以在「設定 → 網頁」開啟。",
     unsupported: "{0} 沒有 AgEnD 讀得到的對話紀錄，所以這裡只顯示 fleet 事件。「檢視」可以看它的畫面。",
-    coming: "{0} 的步驟會在之後的更新加入，目前先顯示 fleet 事件。",
+    kiroWhy: "只有在 AgEnD 能證明 kiro 目前所在的對話時，才會顯示它自己的步驟。{0}目前先顯示 fleet 事件。",
+    kiro_not_running: "它沒有在執行。",
+    kiro_v3: "它的引擎（V3）的紀錄 AgEnD 不讀取。",
+    kiro_engine_unknown: "不知道它用哪個引擎。",
+    kiro_legacy: "它啟動時沒有自己的 agent（舊模式），接續的是資料夾裡最新的對話，不是它自己的。",
+    kiro_fresh: "這次啟動開了新的對話，kiro 之後才會替它命名。",
+    kiro_v2_root: "它的引擎（TUI）存放對話的位置沿用 tmux 的設定，不是由啟動指定，因此無法證明。",
+    kiro_no_profile: "它的引擎（classic）存放對話的位置，只有使用自己的憑證設定檔時才能證明。",
+    kiro_session_unobservable: "在它的終端機輸入 /clear 或 /chat load 可能切換對話，而 AgEnD 看不到。",
     notRunning: "它執行時才找得到對話紀錄。啟動它就能看到步驟；目前先顯示 fleet 事件。",
     noTranscript: "還沒有對話紀錄：它開始工作後就會出現步驟。",
     empty: "目前還沒有內容。", olderLoad: "載入更早的步驟", olderStart: "已經是能讀到的最早內容。", loading: "載入中…",
+    olderTrimmed: "為了讓頁面保持輕快，較早的步驟已移出。重新開啟「紀錄」就能往前讀。",
     all: "全部", tools: "工具", errors: "錯誤", filter: "顯示", live: "即時", reset: "開始了新的對話：從它最新的步驟顯示。",
     user: "收到要求", assistant: "回覆", error: "錯誤", errorCode: "錯誤 {0}", turnEnd: "回合結束", turnEndIn: "回合結束 · {0}",
     compacted: "對話已壓縮", turn: "回合",
@@ -86,6 +104,8 @@ register("log", {
   },
 });
 const tl = (key, ...a) => t(`log.${key}`, ...a);
+/** Why a kiro Log shows fleet events only (kiro-log-gate.ts): each is worded above. */
+export const KIRO_REASONS = new Set(["kiro_not_running", "kiro_v3", "kiro_engine_unknown", "kiro_legacy", "kiro_fresh", "kiro_v2_root", "kiro_no_profile", "kiro_session_unobservable"]);
 
 /** The public link has no stream: the page asks this often while it is shown. */
 export const POLL_MS = 4000;
@@ -121,6 +141,7 @@ const eventLabel = (type) => { const k = `log.ev_${type}`; const v = t(k); retur
  */
 export function mergeSteps(list, incoming, older = false) {
   const at = new Map(list.map((s, i) => [s.id, i]));
+  const fresh = new Map();
   const next = list.slice();
   const added = [];
   for (const s of incoming) {
@@ -137,7 +158,10 @@ export function mergeSteps(list, incoming, older = false) {
         const { tool, cat, subject, input, ts } = s;
         next[i] = { ...next[i], tool, cat, ...(subject !== undefined ? { subject } : {}), ...(input !== undefined ? { input } : {}), ...(ts ? { ts } : {}) };
       }
-    } else { at.set(s.id, -1); added.push(s); }
+    } else if (fresh.has(s.id)) {
+      // The same step twice in one answer (never from the server's parser, whose ids are unique): the later one wins.
+      added[fresh.get(s.id)] = { ...added[fresh.get(s.id)], ...s };
+    } else { fresh.set(s.id, added.length); added.push(s); }
   }
   return older ? [...added, ...next] : [...next, ...added];
 }
@@ -196,7 +220,9 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   const [older, setOlder] = useState({ busy: false });
   const [notice, setNotice] = useState("");
   const [enabling, setEnabling] = useState(false);
-  const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0 });
+  // `epoch` moves whenever `before` stops being valid (a trim, a new conversation): an older page asked for before that
+  // is dropped when it comes back, so it never restores a cursor across steps that were let go.
+  const cursor = useRef({ key: null, after: null, skip: false, before: null, ev: 0, trimmed: false, epoch: 0 });
   const reading = useRef(false), again = useRef(false);
   const scroller = useRef(null), pinned = useRef(true);
   const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
@@ -211,18 +237,26 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
     if (!r.ok || !j) throw new Error((j && j.error) || String(r.status));
     return j;
   };
+  /**
+   * At most PAGE_MAX steps, the newest kept (#1790 review; #1791 review: older pages too). The oldest are let go to keep
+   * the page light; older pages would resume at a cursor past them and leave them out, so older pages are no longer
+   * offered — the page says so (reopening reads from the newest).
+   */
+  const capPage = (merged) => {
+    if (merged.length <= PAGE_MAX) return merged;
+    const c = cursor.current;
+    c.before = null; c.trimmed = true; c.epoch++;
+    return merged.slice(merged.length - PAGE_MAX);
+  };
   const take = (j, { replace = false } = {}) => {
     if (!j.enabled) { setState({ phase: "off" }); return; }
     setInfo({ backend: j.backend, supported: j.supported, reason: j.reason || null });
     const c = cursor.current;
     if (j.key) c.key = j.key;
     if (j.after !== null && j.after !== undefined) { c.after = j.after; c.skip = !!j.skip; }
-    if (replace) c.before = j.before ?? null;
+    if (replace) { c.before = j.before ?? null; c.trimmed = false; c.epoch++; }
     if (typeof j.ev === "number") c.ev = Math.max(c.ev, j.ev);
-    setSteps((list) => {
-      const merged = replace ? j.steps || [] : mergeSteps(list, j.steps || []);
-      return merged.length > PAGE_MAX ? merged.slice(merged.length - PAGE_MAX) : merged;
-    });
+    setSteps((list) => capPage(replace ? j.steps || [] : mergeSteps(list, j.steps || [])));
     if (j.events && j.events.length) setEvents((list) => (replace ? j.events : [...list, ...j.events.filter((e) => !list.some((x) => x.id === e.id))]));
     else if (replace) setEvents([]);
     if (j.reset) setNotice(tl("reset"));
@@ -261,14 +295,18 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
   const loadOlder = async () => {
     const c = cursor.current;
     if (c.before === null || older.busy) return;
+    const epoch = c.epoch;
     setOlder({ busy: true });
     try {
       const j = await read(q({ before: String(c.before), ...(c.key ? { key: c.key } : {}) }));
       if (j && j.enabled) {
+        // A trim or a new conversation meanwhile: this answer is stale — even one that says a new conversation began,
+        // which would replace what is shown now with an older snapshot and its cursor.
+        if (c.epoch !== epoch) return;
         if (j.reset) { take(j, { replace: true }); return; }
         c.before = j.before ?? null;
         const el = scroller.current, from = el ? el.scrollHeight - el.scrollTop : 0;
-        setSteps((list) => mergeSteps(list, j.steps || [], true));
+        setSteps((list) => capPage(mergeSteps(list, j.steps || [], true)));
         // Keep the reader where they were: what was at the top stays in view.
         requestAnimationFrame(() => { if (el && lease.current()) el.scrollTop = el.scrollHeight - from; });
       }
@@ -321,13 +359,15 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       action=${overPublicLink ? html`<p class="note">${tl("offPublic")}</p>`
         : html`<button type="button" class="btn btn-primary log-enable" disabled=${enabling} onClick=${enable}>${enabling ? tl("enabling") : tl("enable")}</button>`} /></div>`;
   } else {
-    const why = info && info.reason ? (info.reason === "unsupported" ? tl("unsupported", info.backend) : info.reason === "coming" ? tl("coming", info.backend)
+    const why = info && info.reason ? (info.reason === "unsupported" ? tl("unsupported", info.backend)
+      : KIRO_REASONS.has(info.reason) ? tl("kiroWhy", tl(info.reason))
       : info.reason === "not_running" ? tl("notRunning") : info.reason === "no_transcript" ? tl("noTranscript") : "") : "";
     content = html`
       ${why ? html`<p class="note log-why" role="status">${why}</p>` : null}
       ${notice ? html`<p class="note log-notice" role="status">${notice}</p>` : null}
       ${cursor.current.before !== null
         ? html`<div class="log-older"><button type="button" class="btn btn-sm" disabled=${older.busy} onClick=${loadOlder}>${older.busy ? tl("loading") : tl("olderLoad")}</button></div>`
+        : cursor.current.trimmed ? html`<p class="note log-start">${tl("olderTrimmed")}</p>`
         : steps.length ? html`<p class="note log-start">${tl("olderStart")}</p>` : null}
       ${items.length ? html`<ol class="log-list" role="log" aria-label=${t("app.log")}>${items.map((x, i) => html`<${Row} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} />`)}</ol>`
         : html`<p class="note log-empty">${tl("empty")}</p>`}`;

@@ -60,6 +60,7 @@ import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
+import { kiroLogGate } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -3111,7 +3112,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * #1218: where an instance's steps are read from, resolved only when its Log asks: the transcript its daemon follows
    * now; for claude-code, also the path its statusline last named (so a stopped instance's Log still shows its last
-   * work). kiro comes with its own reader later in phase 1; other backends have no transcript AgEnD can read.
+   * work). kiro: fleet events with the reason its history is not read (kiro-log-gate.ts); other backends have no
+   * transcript AgEnD can read.
    */
   private logSource(name: string): LogSource {
     const instances = this.fleetConfig?.instances ?? {};
@@ -3127,7 +3129,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { backend, path, format: "claude", ...(path ? {} : { reason: "no_transcript" }) };
     }
     if (backend === "codex") return { backend, path: live, format: "codex", ...(live ? {} : { reason: "not_running" }) };
-    if (backend === "kiro-cli") return { backend, path: null, format: null, reason: "coming" };
+    if (backend === "kiro-cli") {
+      // #1218 PR4: events only until the launch's root and the current conversation are both proven (kiro-log-gate.ts);
+      // the reason names which proof is missing. With today's proofs the gate never opens, and nothing is read for kiro:
+      // the reader is bound to an admitted launch when the proofs arrive (#849 root, #1789 current conversation).
+      const gate = kiroLogGate(this.lifecycle.daemons.get(name)?.logLaunch() ?? null);
+      return { backend, path: null, format: null, reason: gate.open ? "kiro_session_unobservable" : gate.reason };
+    }
     return { backend, path: null, format: null, reason: "unsupported" };
   }
 

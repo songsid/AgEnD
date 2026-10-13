@@ -293,12 +293,21 @@ describe("the fleet resolves where an instance's steps are read from — only wh
     fm.lifecycle.daemons.set("c", { logTranscriptPath: () => "/live/t.jsonl" });
     expect(fm.logSource("c").path).toBe("/live/t.jsonl");
   });
-  it("codex: only while it runs; kiro: its reader comes later in phase 1; others: none; a ClassicBot room by its backend", async () => {
+  it("codex: only while it runs; kiro: fleet events only, with the reason; others: none; a ClassicBot room by its backend", async () => {
     const fm = await fleet({ x: { working_directory: "/w/x", backend: "codex" }, k: { working_directory: "/w/k", backend: "kiro-cli" }, g: { working_directory: "/w/g", backend: "grok" } });
     expect(fm.logSource("x")).toEqual({ backend: "codex", path: null, format: "codex", reason: "not_running" });
     fm.lifecycle.daemons.set("x", { logTranscriptPath: () => "/r/rollout.jsonl" });
     expect(fm.logSource("x")).toEqual({ backend: "codex", path: "/r/rollout.jsonl", format: "codex" });
-    expect(fm.logSource("k")).toMatchObject({ backend: "kiro-cli", format: null, reason: "coming" });
+    // kiro (#1218 PR4): nothing is read; the reason is its launch's (kiro-log-gate.ts) — even the best-proven launch.
+    expect(fm.logSource("k")).toEqual({ backend: "kiro-cli", path: null, format: null, reason: "kiro_not_running" });
+    fm.lifecycle.daemons.set("k", { logTranscriptPath: () => "/never/read.jsonl", logLaunch: () => ({ engine: "v2", mode: "resume", credentialProfile: null }) });
+    expect(fm.logSource("k")).toEqual({ backend: "kiro-cli", path: null, format: null, reason: "kiro_v2_root" });
+    fm.lifecycle.daemons.set("k", { logTranscriptPath: () => "/never/read.jsonl", logLaunch: () => ({ engine: "v1", mode: "resume", credentialProfile: "work" }) });
+    expect(fm.logSource("k")).toEqual({ backend: "kiro-cli", path: null, format: null, reason: "kiro_session_unobservable" });
+    fm.lifecycle.daemons.set("k", { logTranscriptPath: () => null, logLaunch: () => ({ engine: "v1", mode: "legacy", credentialProfile: null }) });
+    expect(fm.logSource("k").reason).toBe("kiro_legacy");
+    expect(await fm.logSteps("k", { watch: true })).toMatchObject({ enabled: true, backend: "kiro-cli", supported: false, reason: "kiro_legacy", steps: [] });
+    expect(fm.log.watched()).toBe(0);                                       // nothing to watch: no lease, no timer
     expect(fm.logSource("g")).toMatchObject({ backend: "grok", format: null, reason: "unsupported" });
     fm.classicRoomFor = (n: string) => (n === "room" ? { name: "room", backend: "codex" } : null);
     expect(fm.logSource("room").backend).toBe("codex");
