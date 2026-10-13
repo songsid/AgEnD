@@ -9,7 +9,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LINE_MAX_BYTES, LONG_HEAD_BYTES, LOOKS_PER_POLL, READ_MAX_BYTES, readNewLines, recordsInOrder } from "../src/transcript-jsonl.js";
 import { TranscriptMonitor } from "../src/transcript-monitor.js";
 import { CodexRolloutSource, readLineRange } from "../src/transcript-sources.js";
@@ -116,6 +116,16 @@ describe("the claude monitor: bounded looks per poll, and a long line's head sti
     expect(events).toEqual(["use:Read", "result:toolu_1", "use:Write", "text:done now"]);
   });
 
+  it("inside a line longer than a poll: the monitor keeps skipping it (never re-reports its middle as a line), then reads on", async () => {
+    const f = join(temp(), "s.jsonl");
+    writeFileSync(f, user([{ tool_use_id: "toolu_9", type: "tool_result", content: "m".repeat(5 * READ_MAX_BYTES) }]) + assistant([{ type: "text", text: "after it" }]));
+    const { m, events } = monitorOn(f);
+    await m.pollIncrement();
+    expect([events, (m as any).skipping]).toEqual([["result:toolu_9"], true]);
+    await m.pollIncrement();
+    expect([events, (m as any).skipping]).toEqual([["result:toolu_9", "text:after it"], false]);
+  });
+
   it(`a 6 MiB delta: one poll takes at most ${LOOKS_PER_POLL} looks; the next poll continues — nothing lost, nothing twice`, async () => {
     const f = join(temp(), "s.jsonl");
     const n = Math.floor(6 * 1024 * 1024 / 200);
@@ -134,7 +144,7 @@ describe("the claude monitor: bounded looks per poll, and a long line's head sti
 });
 
 describe("the codex source: a long output line is skipped by its head; turns after it are still read", () => {
-  it("a 2 MiB custom_tool_call_output between a call and task_complete: the call, an output, and the turn's end", async () => {
+  it("a 6 MiB custom_tool_call_output between a call and task_complete: the call, an output, and the turn's end", async () => {
     const root = temp(), cwd = temp();
     const day = join(root, "2026", "10", "13"); mkdirSync(day, { recursive: true });
     const f = join(day, "rollout-2026-10-13T10-00-00-0000.jsonl");
@@ -145,14 +155,17 @@ describe("the codex source: a long output line is skipped by its head; turns aft
     appendFileSync(f,
       rec("event_msg", { type: "task_started", turn_id: "t1" })
       + rec("response_item", { type: "custom_tool_call", call_id: "c1", name: "exec", input: "ls" })
-      + rec("response_item", { type: "custom_tool_call_output", call_id: "c1", output: [{ type: "input_text", text: "o".repeat(2 * 1024 * 1024) }] })
+      + rec("response_item", { type: "custom_tool_call_output", call_id: "c1", output: [{ type: "input_text", text: "o".repeat(6 * 1024 * 1024) }] })
       + rec("event_msg", { type: "task_complete", turn_id: "t1", last_agent_message: "ok" }));
     const all = { uses: [] as string[], results: 0, turns: [] as string[] };
+    const mid: boolean[] = [];
     for (let i = 0; i < 4; i++) {
       const e = await source.poll();
+      mid.push((source as any).skipping);
       all.uses.push(...e.toolUses.map(u => u.name)); all.results += e.toolResults.length;
       all.turns.push(...(e.turns ?? []).map(t => `${t.kind}:${"end" in t ? t.end : ""}`));
     }
+    expect(mid.slice(0, 2), "inside the 6 MiB output across polls, then through its end").toEqual([true, false]);
     expect(all.uses).toEqual(["exec"]);
     expect(all.results).toBe(1);
     expect(all.turns).toContain("end:complete");
@@ -170,5 +183,10 @@ describe("readLineRange (a checkpoint's skipped range): chunked, long lines skip
     const end = Buffer.byteLength(a + big + b + c);
     expect(await readLineRange(f, 0, end)).toEqual([a.trim(), b.trim(), c.trim()]);
     expect(await readLineRange(f, 0, end, (l) => l.includes('"event_msg"') || l.includes('"role":"user"'))).toEqual([a.trim(), b.trim()]);
+    const alloc = vi.spyOn(Buffer, "alloc");
+    try {
+      await readLineRange(f, 0, end);
+      expect(Math.max(...alloc.mock.calls.map(c => Number(c[0]))), "never one buffer for the whole range").toBeLessThanOrEqual(READ_MAX_BYTES);
+    } finally { alloc.mockRestore(); }
   });
 });
