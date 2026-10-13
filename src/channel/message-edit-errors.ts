@@ -17,6 +17,7 @@ export function isMessageEditLoss(err: unknown): boolean {
     return err.error_code === 400 && /^Bad Request: (?:message to edit not found|chat not found|message thread not found|TOPIC_ID_INVALID|not enough rights to (?:edit|send) (?:text )?messages)(?:$|[.:])/.test(err.description);
   }
   return err instanceof DiscordAPIError
-    && ((err.status === 404 && [10003, 10008].includes(Number(err.code)))
-      || (err.status === 403 && [50001, 50013].includes(Number(err.code))));
+    && typeof err.code === "number"
+    && ((err.status === 404 && [10003, 10008].includes(err.code))
+      || (err.status === 403 && [50001, 50013].includes(err.code)));
 }

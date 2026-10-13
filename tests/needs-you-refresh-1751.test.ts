@@ -219,4 +219,9 @@ describe("#1751 loss evidence", () => {
       const err = new DiscordAPIError({ code, message: "fixture" }, code, status, "PATCH", "/fixture", { body: {} });
       expect(isMessageEditLoss(err)).toBe(loss);
     });
+
+  it("a malformed string Discord code cannot authorize replacement by coercion", () => {
+    const err = new DiscordAPIError({ code: "10008", message: "fixture" } as never, "10008", 404, "PATCH", "/fixture", { body: {} });
+    expect(isMessageEditLoss(err)).toBe(false);
+  });
 });
