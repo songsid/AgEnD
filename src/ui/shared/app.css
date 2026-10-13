@@ -690,8 +690,11 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .help-list { list-style: disc; padding-left: var(--s-5); display: flex; flex-direction: column; gap: var(--s-2); font-size: var(--fs-sm); }
 .err { color: var(--danger); font-size: var(--fs-sm); }
 .u-provider { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); display: flex; flex-direction: column; gap: var(--s-2); }
-.u-head { display: flex; align-items: center; gap: var(--s-2); }
-.u-order { margin-left: auto; display: flex; gap: 2px; }
+.u-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+/* #1749: one line beside ↑↓ — the name gives way first, then the plan badge (each with an ellipsis); ↑↓ never wrap. */
+.u-head strong { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-plan { min-width: 0; flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.u-order { margin-left: auto; display: flex; gap: 2px; flex: none; }
 .u-order .icon-btn { width: 28px; height: 28px; }
 .u-order .icon-btn:disabled { opacity: 0.3; }
 .u-metric { display: flex; flex-direction: column; gap: var(--s-1); }

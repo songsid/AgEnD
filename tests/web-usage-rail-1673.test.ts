@@ -193,3 +193,41 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     expect([hasDialog(pg), rail(pg)]).toEqual([false, false]);
   });
 });
+
+describe("#1749: the plan badge is one short line; the full plan stays on it for hover and a screen reader", () => {
+  it("planBadge: \"Name [Tier] (N×)\" → \"Name ×N\"; any other label as it is", async () => {
+    const { planBadge } = await import("/assets/usage-dialog.js");
+    expect(["Team Premium (6.25x)", "Team Standard (1.25x)", "Max (20x)", "Max (5x)", "Max", "Pro", "Plus", "Enterprise Plan", "", null]
+      .map((p) => planBadge(p))).toEqual(["Team ×6.25", "Team ×1.25", "Max ×20", "Max ×5", "Max", "Pro", "Plus", "Enterprise Plan", "", ""]);
+  });
+
+  it("each row: the short badge on screen, the full plan as its title and for a screen reader; the name keeps its own title", async () => {
+    const saved = USAGE.providers;
+    USAGE.providers = [
+      { id: "claude", name: "Claude", status: "ok", plan: "Team Premium (6.25x)", metrics: [] },
+      { id: "claude:work", name: "Claude · work", status: "ok", plan: "Max (20x)", metrics: [] },
+      { id: "codex", name: "Codex", status: "ok", plan: "Pro", metrics: [] },
+    ] as never;
+    try {
+      const { pg } = await app("/ui/chat/web-dev");
+      const rows = (pg.root.querySelectorAll("aside.u-rail .u-head") as any[]).map((hd) => {
+        const pill = hd.querySelector(".pill.u-plan");
+        return [hd.querySelector("strong").getAttribute("title"), pill.querySelector("[aria-hidden]").textContent, pill.getAttribute("title"), pill.querySelector(".sr-only").textContent];
+      });
+      expect(rows).toEqual([
+        ["Claude", "Team ×6.25", "Team Premium (6.25x)", "Team Premium (6.25x)"],
+        ["Claude · work", "Max ×20", "Max (20x)", "Max (20x)"],
+        ["Codex", "Pro", "Pro", "Pro"]]);
+    } finally { USAGE.providers = saved; }
+  });
+
+  it("the head stays one line: the badge and the name never wrap (each ends in an ellipsis; the name gives way first), ↑↓ never shrink", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync("src/ui/shared/app.css", "utf8");
+    const rule = (sel: string) => new RegExp(`(^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css)?.[2] ?? "";
+    const has = (sel: string, ...decls: string[]) => decls.every((d) => rule(sel).includes(d));
+    expect([has(".u-plan", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "flex: none", "max-width: 55%"),
+      has(".u-head strong", "white-space: nowrap", "text-overflow: ellipsis", "overflow: hidden", "min-width: 0"),
+      has(".u-order", "flex: none")]).toEqual([true, true, true]);
+  });
+});

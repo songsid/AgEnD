@@ -67,6 +67,15 @@ export function UsageMetric({ m }) {
   return html`<div class="u-metric"><div class="u-row"><span class="u-label">${label}</span><span class="u-val">${val}</span></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}</div>`;
 }
 /** "Updated 3 min ago" (#1585): how old the numbers are — the panel may show the last snapshot while a fresh one comes. */
+/**
+ * #1749: a plan as its badge reads — one short line. "Name [Tier] (N×)" (Claude's "Team Premium (6.25x)", "Max (20x)")
+ * becomes "Name ×N"; anything else (Pro, Codex's and muse's labels) as it is. The full name stays on the badge's
+ * tooltip and for a screen reader.
+ */
+export function planBadge(plan) {
+  const m = /^(\S+)(?: [^()]+)? \((\d+(?:\.\d+)?)x\)$/i.exec(String(plan || "").trim());
+  return m ? `${m[1]} ×${m[2]}` : String(plan || "");
+}
 export function updatedAgo(fetchedAt, now = Date.now()) {
   const ms = now - new Date(fetchedAt).getTime();
   if (!Number.isFinite(ms) || ms < 60_000) return tn("usageUpdatedJustNow");
@@ -125,7 +134,7 @@ export function UsageBody({ owner }) {
     const providers = ordered(data.providers);
     content = html`${!providers.length ? html`<p class="note">${tn("usage.empty_active")}</p>` : null}
       ${providers.map((p, i) => html`<section key=${key(p)} class="u-provider">
-        <div class="u-head"><strong>${p.name}</strong>${p.plan ? html`<span class="pill">${p.plan}</span>` : null}
+        <div class="u-head"><strong title=${p.name}>${p.name}</strong>${p.plan ? html`<span class="pill u-plan" title=${p.plan}><span aria-hidden="true">${planBadge(p.plan)}</span><span class="sr-only">${p.plan}</span></span>` : null}
           <span class="u-order">
             <button type="button" class="icon-btn" disabled=${i === 0} aria-label=${tn("usageMoveUp")} title=${tn("usageMoveUp")} onClick=${() => move(key(p), -1, data.providers)}><${Icon} name="up" size=${14} /></button>
             <button type="button" class="icon-btn" disabled=${i === providers.length - 1} aria-label=${tn("usageMoveDown")} title=${tn("usageMoveDown")} onClick=${() => move(key(p), 1, data.providers)}><${Icon} name="down" size=${14} /></button>
