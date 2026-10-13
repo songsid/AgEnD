@@ -313,7 +313,8 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
   classifyInstanceChange,
@@ -405,6 +406,14 @@ export function isOrphanInstanceWindowName(name: string): boolean {
 /** Retry cadence for retiring a cancel button whose delete failed (e.g. a DC
  * forum thread the bot momentarily can't reach). 3 retries × 5min = 15min. */
 const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
+/** #1753: a carried conversation this large is logged as a warning (it is still carried). */
+const CARRY_LARGE_BYTES = 256 * 1024 * 1024;
+/** restartSingleInstance's options. `carry` (#1753): a credential-profile switch; its outcome is written into `result`. */
+export interface RestartOpts {
+  freshStart?: boolean;
+  explicit?: boolean;
+  carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
+}
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
 const TG_WEB_START_WINDOW_MS = 10 * 60_000;
 const CANCEL_BTN_MAX_RETRIES = 3;
@@ -3009,7 +3018,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * setting as a value of its own rather than the shared login it would fall to.
    * A switch on the same backend that loses the conversation (kiro) starts fresh.
    */
-  private classicProfileChange(name: string, backendChanged: boolean): { changed: boolean; startsFresh: boolean; from?: string; to?: string } {
+  private classicProfileChange(name: string, backendChanged: boolean): {
+    changed: boolean; startsFresh: boolean; from?: string; to?: string;
+    /** #1753: the switch to hand to switchConversation — a same-backend move between two valid logins. */
+    carry?: { backend: string; from: string | null; to: string | null };
+  } {
     const launched = this.classicLaunchedProfile(name);
     if (!launched || !this.classicChannels) return { changed: false, startsFresh: false };
     const next = this.classicChannels.getCredentialProfileByInstance(name, this.fleetConfig?.defaults);
@@ -3021,6 +3034,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       startsFresh: !backendChanged && credentialSwitchStartsFresh(backend),
       from: profileKey(launched),
       to: profileKey(next),
+      ...(!backendChanged && launched.state !== "invalid" && next.state !== "invalid"
+        ? { carry: { backend, from: profileName(launched), to: profileName(next) } } : {}),
     };
   }
 
@@ -4224,7 +4239,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
         // #1220: a running CLI keeps the login it was launched with, so a new
         // credential_profile only takes effect through a restart.
-        const { changed: profileChanged, startsFresh: profileSwitchStartsFresh, from: profileFrom, to: profileTo } =
+        const { changed: profileChanged, startsFresh: profileSwitchStartsFresh, from: profileFrom, to: profileTo, carry: profileCarry } =
           this.classicProfileChange(ch.instanceName, backendChanged);
         if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged || profileChanged)) {
           this.logger.info(
@@ -4232,8 +4247,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               ...(profileChanged ? { profileFrom, profileTo } : {}) },
             "Backend/model/profile changed — restarting",
           );
+          const launchedIn = this.daemons.get(ch.instanceName)?.getConfigSnapshot?.()?.working_directory;
           await this.stopInstance(ch.instanceName).catch(() => {});
-          if (profileSwitchStartsFresh) this.writeFreshStartMarker(ch.instanceName);
+          // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
+          if (profileCarry) await this.switchConversation(ch.instanceName, { ...profileCarry, workingDirectory: launchedIn });
+          else if (profileSwitchStartsFresh) this.writeFreshStartMarker(ch.instanceName);
           // Small delay to let tmux window clean up
           await new Promise(r => setTimeout(r, 2000));
           // The manager already holds the new backend/model/auto-pause; the
@@ -4891,7 +4909,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
-  async restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean }): Promise<void> {
+  async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
     // One restart at a time per instance. Multiple sources can ask concurrently
     // (MCP revival, /restart, pty_error, model failover); a second stop/start
     // interleaved with the first tears down the window the first just created.
@@ -4952,7 +4970,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  private async doRestartSingleInstance(name: string, opts: { freshStart?: boolean; explicit?: boolean } | undefined, transition: TransitionHandle): Promise<void> {
+  private async doRestartSingleInstance(name: string, opts: RestartOpts | undefined, transition: TransitionHandle): Promise<void> {
     if (this.configPath) {
       this.loadConfig(this.configPath);
       this.routing.rebuild(this.fleetConfig!);
@@ -4982,16 +5000,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async doRestartWithSlot(
     name: string,
-    opts: { freshStart?: boolean; explicit?: boolean } | undefined,
+    opts: RestartOpts | undefined,
     transition: TransitionHandle,
     config: InstanceConfig | undefined,
     wasPaused: boolean,
   ): Promise<void> {
     const pausedAt = wasPaused ? (this.lifecycle.getLastPausedAt(name) ?? readPausedAt(this.getInstanceDir(name))) : null;
     const pauseReason = wasPaused ? readPauseReason(this.getInstanceDir(name)) : null;
+    // #1753: the directory the CLI being stopped was launched in — its conversation is under that directory's key.
+    const launchedIn = this.daemons.get(name)?.getConfigSnapshot?.()?.working_directory;
+    // Between the stop and the start: the old CLI's transcript is complete, the new one has not looked yet.
+    const betweenStopAndStart = async () => {
+      if (opts?.carry) opts.carry.result = await this.switchConversation(name, { ...opts.carry, workingDirectory: launchedIn });
+      else if (opts?.freshStart) this.writeFreshStartMarker(name);
+    };
     if (config) {
       await this.stopInstance(name, transition);
-      if (opts?.freshStart) this.writeFreshStartMarker(name);
+      await betweenStopAndStart();
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason,
         () => this.startInstance(name, config, topicMode ?? false, "fleet-topic", false, transition));
@@ -5005,7 +5030,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.classicChannels!.getAdapterIdByInstance(name);
       await this.stopInstance(name, transition);
       await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
-      if (opts?.freshStart) this.writeFreshStartMarker(name);
+      await betweenStopAndStart();
       await this.startAfterRestart(name, wasPaused, pausedAt, pauseReason, () => this.startClassicInstance(
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
@@ -5032,6 +5057,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.warn({ err, name }, "freshStart: failed to write crash-state marker");
     }
+  }
+
+  /**
+   * #1753: a credential-profile switch, between the old CLI's stop and the new one's start. Where the backend can take
+   * the conversation along (claude-code), copy it into the new profile and make it the one `--continue` picks; when that
+   * cannot be done, or the backend cannot, start fresh as before. Null when nothing was tried.
+   */
+  private async switchConversation(name: string, sw: { backend: string; from: string | null; to: string | null; workingDirectory?: string }): Promise<CarryResult | null> {
+    if (!credentialSwitchCarriesConversation(sw.backend)) {
+      if (credentialSwitchStartsFresh(sw.backend)) this.writeFreshStartMarker(name);
+      return null;
+    }
+    let sessionId: string | null = null;
+    try { sessionId = readFileSync(join(this.getInstanceDir(name), "session-id"), "utf-8"); } catch { /* none: nothing to carry */ }
+    const dir = (profile: string | null) => claudeConfigDirFor(profile ? credentialProfileHome(this.dataDir, sw.backend, profile) : null);
+    let result: CarryResult;
+    try {
+      result = await carryClaudeConversation({ sessionId, workingDirectory: sw.workingDirectory ?? "", fromConfigDir: dir(sw.from), toConfigDir: dir(sw.to) });
+    } catch (err) {
+      result = { carried: false, reason: `copy failed: ${(err as Error).message}` };
+    }
+    if (result.carried) {
+      const fields = { name, from: sw.from ?? "default", to: sw.to ?? "default", bytes: result.bytes, ms: result.ms, replacedOlderCopy: result.replacedOlderCopy };
+      if (result.bytes > CARRY_LARGE_BYTES) this.logger.warn(fields, "Conversation carried to the new credential profile (a large transcript)");
+      else this.logger.info(fields, "Conversation carried to the new credential profile");
+    } else {
+      this.logger.info({ name, from: sw.from ?? "default", to: sw.to ?? "default", reason: result.reason }, "Conversation not carried to the new credential profile; starting fresh");
+      this.writeFreshStartMarker(name);
+    }
+    return result;
   }
 
   /** Load .env file from data dir into process.env */
@@ -17432,8 +17487,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           this.logger.info({ instanceName: ch.instanceName, ...(profile.changed ? { profileFrom: profile.from, profileTo: profile.to } : {}) },
             "Classic cold config changed — restarting");
           observe?.(ch.instanceName, "restart", "running");
+          const launchedIn = this.daemons.get(ch.instanceName)?.getConfigSnapshot?.()?.working_directory;
           await this.stopInstance(ch.instanceName).catch(() => {});
-          if (profile.startsFresh) this.writeFreshStartMarker(ch.instanceName);
+          // #1753: the conversation goes along where it can; otherwise a switch that loses it starts fresh.
+          if (profile.carry) await this.switchConversation(ch.instanceName, { ...profile.carry, workingDirectory: launchedIn });
+          else if (profile.startsFresh) this.writeFreshStartMarker(ch.instanceName);
           await this.startClassicInstanceUnattended(ch, "classic instance after fleet reload");
           observe?.(ch.instanceName, "restart", "done");
           continue;

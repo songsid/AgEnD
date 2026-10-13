@@ -20,7 +20,8 @@ import { truncatePreview } from "./channel/markdown-chunk.js";
 import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import type { CarryResult } from "./backend/claude-carry.js";
 import { kiroEngineCandidates, kiroEngineStatus } from "./kiro-engine-status.js";
 import {
   formatCrossInstanceInboundMessage, type AgentMode,
@@ -91,7 +92,7 @@ export interface OutboundContext {
   } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
-  restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean }): Promise<void>;
+  restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean; carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null } }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
@@ -1267,18 +1268,25 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // was — taking a handover there would be describing a loss that did not
   // happen, and starting fresh would be causing one.
   const switchLosesConversation = profileSwitched && credentialSwitchStartsFresh(backendAfter);
+  // #1753: Claude Code's conversation can go along — copied into the new profile and resumed there, between the old
+  // CLI's stop and the new one's start (the restart does it, and says how it went). The handover is still taken now,
+  // while the daemon that holds it is alive: it is what the new session gets if the copy cannot be made.
+  const carry = profileSwitched && !backendSwitched && credentialSwitchCarriesConversation(backendAfter)
+    ? { backend: backendAfter, from: profileBefore, to: profileAfter, result: null as CarryResult | null }
+    : null;
   const handover = switchLosesConversation
     ? (ctx.lifecycle.daemons.get(v.data.name)?.collectHandoverContext() ?? "")
     : "";
 
   // Saving without restarting would report a subscription switch that has not
   // happened — the running CLI keeps the credentials it was launched with.
-  // A switch also starts fresh: the new store has no conversation for this
-  // directory, so resuming can only spend the resume startup budget waiting for
-  // something that is not there.
-  ctx.restartSingleInstance(v.data.name, switchLosesConversation || backendSwitched ? { freshStart: true } : undefined).then(
+  // A switch that cannot take the conversation along starts fresh: the new store
+  // has no conversation for this directory, so resuming can only spend the
+  // resume startup budget waiting for something that is not there.
+  ctx.restartSingleInstance(v.data.name, carry ? { carry } : switchLosesConversation || backendSwitched ? { freshStart: true } : undefined).then(
     async () => {
-      const handoverChars = await deliverProfileHandover(ctx, v.data.name, profileBefore, profileAfter, handover);
+      const carried = carry?.result?.carried === true;
+      const handoverChars = carried ? 0 : await deliverProfileHandover(ctx, v.data.name, profileBefore, profileAfter, handover);
       respond({
         success: true,
         name: v.data.name,
@@ -1292,9 +1300,11 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
               // across accounts is the thing nobody has been able to test yet,
               // so this says where the history lives rather than what will
               // happen when the agent reaches for it.
-              conversation_carried_over: !switchLosesConversation,
-              ...(switchLosesConversation
-                ? { handover_chars: handoverChars }
+              conversation_carried_over: carried || !switchLosesConversation,
+              ...(carried
+                ? { conversation_note: "The conversation was copied into the new profile and resumed there (the old profile keeps its own copy). The next reply re-reads it from a cold cache: one slower, full-price turn." }
+                : switchLosesConversation
+                ? { handover_chars: handoverChars, ...(carry?.result && !carry.result.carried ? { carry_failed: carry.result.reason } : {}) }
                 : { conversation_note: `${backendAfter} keeps its history outside the login, so it is shared across profiles; switching back to a profile returns to the same history.` }),
             }
           : {}),
