@@ -29,17 +29,20 @@ const withDir = (fn: (dir: string) => void) => {
 const ids = (dir: string) => readMuseModelCatalog(dir).map(o => o.id);
 
 describe("#1796: /model reads the on-disk catalog", () => {
-  it("new models appear, image-only rows are excluded, order kept", () => {
+  it("new models appear; hidden and image-only rows are excluded, order kept", () => {
     withDir(dir => {
       catalogFile(dir, "meta__tbh.json", [
         row("muse-wonder-1.0"),
         row("muse-wonder-1.0-contributor", { visibility: "hidden", description: "shares content" }),
         row("muse-spark-1.3"),
-        row("muse-image-1.0", { display_label: "Muse Image", context_limit: null, output_limit: null, reasoning_effort_variants: null, supports_image_generation: true }),
+        row("muse-spark-1.3-contributor", { visibility: "hidden" }),
+        row("muse-image-1.0", { display_label: "Muse Image", visibility: "hidden", context_limit: null, output_limit: null, reasoning_effort_variants: null, supports_image_generation: true }),
+        row("muse-future-9.9", { context_limit: null }),
       ]);
-      expect(ids(dir)).toEqual(["muse-wonder-1.0", "muse-wonder-1.0-contributor", "muse-spark-1.3"]);
+      // The 1.4.7 picker follows visibility: hidden -contributor siblings and
+      // the image model are not listed.
+      expect(ids(dir)).toEqual(["muse-wonder-1.0", "muse-spark-1.3"]);
       const labels = Object.fromEntries(readMuseModelCatalog(dir).map(o => [o.id, o.label]));
-      expect(labels["muse-wonder-1.0-contributor"]).toBe("muse-wonder-1.0-contributor (shares content)");
       expect(labels["muse-wonder-1.0"]).toBe("muse-wonder-1.0");
     });
   });
@@ -55,21 +58,30 @@ describe("#1796: /model reads the on-disk catalog", () => {
     });
   });
 
-  it("missing or empty catalog falls back to the last known set", () => {
+  it("missing or empty catalog falls back to the visible set, no -contributor ids", () => {
     withDir(dir => {
-      expect(ids(dir)).toEqual([
-        "muse-spark-1.3", "muse-spark-1.3-contributor", "muse-spark-1.2", "muse-spark-1.2-contributor",
-      ]);
+      expect(ids(dir)).toEqual(["muse-wonder-1.0", "muse-spark-1.3", "muse-spark-1.2"]);
       catalogFile(dir, "empty.json", []);
-      expect(ids(dir)).toEqual([
-        "muse-spark-1.3", "muse-spark-1.3-contributor", "muse-spark-1.2", "muse-spark-1.2-contributor",
-      ]);
+      expect(ids(dir)).toEqual(["muse-wonder-1.0", "muse-spark-1.3", "muse-spark-1.2"]);
     });
   });
 
   it("listModels delegates to the catalog reader", async () => {
-    const backend = new MuseBackend("/tmp/agend-muse-1796");
-    expect(await backend.listModels()).toEqual(readMuseModelCatalog());
+    // Hermetic via XDG_STATE_HOME: a frozen fallback cannot produce the
+    // fixture-only id.
+    const prev = process.env.XDG_STATE_HOME;
+    const dir = mkdtempSync(join(tmpdir(), "agend-1796-xdg-"));
+    try {
+      process.env.XDG_STATE_HOME = dir;
+      mkdirSync(join(dir, "muse", "model-catalog"), { recursive: true });
+      writeFileSync(join(dir, "muse", "model-catalog", "m.json"),
+        JSON.stringify({ rows: [row("muse-wonder-1.0"), row("muse-custom-9.9")] }));
+      const backend = new MuseBackend("/tmp/agend-muse-1796");
+      expect((await backend.listModels()).map(o => o.id)).toEqual(["muse-wonder-1.0", "muse-custom-9.9"]);
+    } finally {
+      if (prev === undefined) delete process.env.XDG_STATE_HOME; else process.env.XDG_STATE_HOME = prev;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("host catalog (when muse runs here) includes the new model", () => {

@@ -500,23 +500,24 @@ export function museLocalWorkQuitActive(pane: string): boolean {
 
 /**
  * #1796: the fallback `/model` set, used only when muse's on-disk provider
- * catalog is missing or unreadable. The live picker reads the catalog, so a
- * frozen list here would silently hide new models (muse-wonder-1.0).
+ * catalog is missing or unreadable. It mirrors what the 1.4.7 picker shows
+ * (visible rows only — no `-contributor` ids); the live catalog remains the
+ * source of truth whenever it can be read.
  */
 const MUSE_MODEL_FALLBACK: readonly ModelOption[] = [
+  { id: "muse-wonder-1.0", label: "muse-wonder-1.0" },
   { id: "muse-spark-1.3", label: "muse-spark-1.3" },
-  { id: "muse-spark-1.3-contributor", label: "muse-spark-1.3-contributor (shares content)" },
   { id: "muse-spark-1.2", label: "muse-spark-1.2" },
-  { id: "muse-spark-1.2-contributor", label: "muse-spark-1.2-contributor (shares content)" },
 ];
 
 /**
  * #1796: read the provider catalog muse caches on disk
  * (`<state>/model-catalog/<provider>__<profile>.json`). Bounded (at most 16
  * files, 256 KiB each) and best-effort — anything unexpected yields the
- * fallback. Chat rows only: a null `context_limit` marks a non-chat model
- * (the image one). File order is kept and ids deduped; `-contributor` keeps
- * the picker's "(shares content)" wording.
+ * fallback. Listed rows only: `visibility: "visible"` is what the 1.4.7
+ * picker shows (the `-contributor` siblings and the image model are hidden),
+ * and a null `context_limit` additionally marks a non-chat model. File order
+ * is kept and ids deduped.
  *
  * `stateDir` is injectable for tests; production passes nothing and reads the
  * host state dir (the fleet never isolates XDG_STATE_HOME, mirroring the
@@ -540,12 +541,12 @@ export function readMuseModelCatalog(stateDir?: string): ModelOption[] {
         const rows = (parsed as { rows?: unknown }).rows;
         if (!Array.isArray(rows)) continue;
         for (const row of rows.slice(0, 256)) {
-          const r = row as { model_id?: unknown; display_label?: unknown; context_limit?: unknown };
-          if (typeof r.model_id !== "string" || r.model_id === "" || r.context_limit == null) continue;
+          const r = row as { model_id?: unknown; display_label?: unknown; context_limit?: unknown; visibility?: unknown };
+          if (typeof r.model_id !== "string" || r.model_id === "" || r.visibility !== "visible") continue;
+          if (r.context_limit == null) continue;
           if (seen.has(r.model_id)) continue;
           seen.add(r.model_id);
-          const label = typeof r.display_label === "string" && r.display_label !== "" ? r.display_label : r.model_id;
-          out.push({ id: r.model_id, label: r.model_id.endsWith("-contributor") ? `${label} (shares content)` : label });
+          out.push({ id: r.model_id, label: typeof r.display_label === "string" && r.display_label !== "" ? r.display_label : r.model_id });
         }
       } catch { /* one bad file never hides the rest */ }
     }

@@ -710,7 +710,9 @@ describe("MuseBackend keys and commands", () => {
   it("lists the models the picker offers", async () => {
     const models = await backend.listModels();
     expect(models.map(m => m.id)).toContain("muse-spark-1.3");
-    expect(models.map(m => m.id)).toContain("muse-spark-1.3-contributor");
+    // #1796: the 1.4.7 picker follows catalog visibility — hidden
+    // -contributor siblings are never listed.
+    expect(models.map(m => m.id).filter(id => id.endsWith("-contributor"))).toEqual([]);
   });
 });
 
