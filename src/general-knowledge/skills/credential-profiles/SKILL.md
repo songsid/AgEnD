@@ -19,8 +19,9 @@ subscription is a different set of them: switching is a new conversation. Codex
 keeps its login in one file beside conversation stores that carry no account, so
 switching leaves the history where it is and both subscriptions see it. Claude
 Code behaves like Kiro: the profile is its whole config directory, conversations
-included, so switching is a new conversation. Say which one you are talking
-about.
+included, so switching is a new conversation — unless you copy the conversation
+across beforehand (see "Keep the Claude conversation when switching" below).
+Say which one you are talking about.
 
 ## Is a profile already set up?
 
@@ -111,6 +112,10 @@ is hand the new session a summary of what the old one was doing
 transcript. Tell the user plainly: the agent restarted on the other
 subscription, it knows what it was doing, it cannot quote what was said.
 
+**For claude-code**, if you want the conversation to continue on the new profile,
+copy it across before switching. See "Keep the Claude conversation when
+switching" below.
+
 **For codex** the reply says `conversation_carried_over: true` and carries a
 `conversation_note`. Relay it as what it is — a statement about where the
 history lives, not a promise about what happens next. The accurate sentence is
@@ -152,9 +157,94 @@ are two quotas, and adding them together would give a number that is true of
 neither. An agent with no profile appears under the plain `Kiro` row. Codex works
 the same way: `Codex (<profile>)` rows next to the plain `Codex`.
 
-A profile that is configured but has never been logged in still gets a row,
-reading **Signed out — run `kiro-cli` to log in**. That is the reminder to go
-and log it in, so report it as such rather than as a missing subscription.
+Claude Code also has a row per profile: `Claude (work)`, `Claude (personal)`,
+next to the plain `Claude` for the default login. A profile reads quota from its
+own login; a profile that is configured but has never been signed in shows
+**Not logged in — run `/login claude-code <profile>` to sign in**.
+
+A profile that is configured but has never been logged in (for kiro or codex)
+still gets a row, reading **Signed out — run `kiro-cli` to log in**. That is the
+reminder to go and log it in, so report it as such rather than as a missing
+subscription.
+
+## Keep the Claude conversation when switching (manual, until #1753 automates it)
+
+Switching a Claude Code credential profile normally starts a fresh conversation,
+because each profile is a separate config directory with its own conversation
+store. If the operator wants the existing conversation to carry over, they copy
+it before the switch. Run these steps on the host, or delegate them to an agent
+with shell access.
+
+1. **Stop the instance.**
+   ```
+   stop_instance("<name>")
+   ```
+
+2. **Copy** (never move) the conversation files from the old profile's config
+   directory to the new one.
+
+   The config directories follow this pattern:
+   - Default login: `~/.claude`
+   - Named profile: `${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>`
+
+   The conversation lives at:
+   ```
+   <config>/projects/<slug>/<session-id>.jsonl
+   <config>/projects/<slug>/<session-id>/      ← checkpoint folder, if present
+   ```
+
+   `<slug>` is the instance's working directory with every `/` replaced by `-`
+   (e.g. `/home/you/projects/app` → `-home-you-projects-app`).
+
+   `<session-id>` is in `<instanceDir>/session-id`, or it is the newest `.jsonl`
+   in that folder.
+
+   Copy both the `.jsonl` and the `<session-id>/` folder (if it exists) to the
+   same relative path under the **new** profile's config directory. Create the
+   `projects/<slug>/` folder first if it does not exist.
+
+3. **Touch the copied `.jsonl`** so it is the newest file in that folder, because
+   AgEnD resumes with `--continue`:
+   ```
+   touch <new-config>/projects/<slug>/<session-id>.jsonl
+   ```
+
+4. **Start the instance.**
+   ```
+   start_instance("<name>")
+   ```
+   Then verify:
+   - the copied `.jsonl` grows (the agent is resuming it);
+   - `<instanceDir>/session-id` equals the copied session id;
+   - the **original** file's mtime is unchanged (you copied, not moved).
+
+**Caveats:**
+- The first reply re-reads the whole transcript on the new account (cold cache,
+  counts against that profile's quota).
+- A large transcript (100 MB or more) takes a moment to copy.
+- Any message sent to the instance between the switch and the file restore will
+  not be in the resumed conversation — re-send pending work after the restore.
+- The original files stay in the old profile's directory, so switching back
+  works the same way.
+
+## Shared memory (until #1754 automates it)
+
+Claude Code writes auto-memory under `<config>/projects/<git-root slug>/memory`.
+A new profile starts with an empty one, so memories built under the default
+login are not visible on the new profile.
+
+To share the fleet's memory with a new profile, replace its **empty** memory
+directory with a symlink:
+
+```sh
+# Only if the target dir is empty:
+rmdir "${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
+ln -s ~/.claude/projects/<slug>/memory \
+      "${AGEND_HOME:-~/.agend}/credential-profiles/claude-code/<profile>/projects/<slug>/memory"
+```
+
+**Never replace a non-empty directory** — that discards memories the profile has
+already written.
 
 ## What to tell the user
 
@@ -163,11 +253,12 @@ and log it in, so report it as such rather than as a missing subscription.
 - Quotas only add up if the profiles are genuinely different billing accounts.
   Two profiles logged into the same account do not double anything, and it is
   worth saying so before someone sets this up expecting more headroom.
-- Claude Code profiles do not have usage rows of their own yet: the plain
-  `Claude` row reads the default login. Do not report it as a profile's quota.
-- Switching a profile does not carry the conversation across; the agent gets a
-  summary of the work, not the transcript. Say anything that must survive
-  verbatim in the channel before switching.
+- Claude Code profiles now each have their own usage row (`Claude (<profile>)`),
+  reading quota from that profile's own login.
+- Switching a profile for kiro or claude-code does not carry the conversation
+  across automatically; the agent gets a summary of the work, not the transcript.
+  Say anything that must survive verbatim in the channel before switching. For
+  claude-code, offer to copy the conversation first (see above).
 
 ## Do not
 
