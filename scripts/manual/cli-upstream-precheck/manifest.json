@@ -2471,7 +2471,7 @@
     {
      "text": "Switch to V3 and upgrade my agent configs",
      "kind": "string",
-     "surface": "other",
+     "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 428,
      "symbol": "KIRO_CLASSIC_NUDGE_V3.options"
@@ -2479,7 +2479,7 @@
     {
      "text": "You're using Kiro CLI V2",
      "kind": "string",
-     "surface": "other",
+     "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 431,
      "symbol": "KIRO_V3_EASE_IN_V2_USER.header"
@@ -2487,7 +2487,7 @@
     {
      "text": "Switch to V3 and upgrade my configs",
      "kind": "string",
-     "surface": "other",
+     "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 432,
      "symbol": "KIRO_V3_EASE_IN_V2_USER.options"
@@ -2495,7 +2495,7 @@
     {
      "text": "Your agent configs are still in the V2 format",
      "kind": "string",
-     "surface": "other",
+     "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 435,
      "symbol": "KIRO_AGENT_UPGRADE_V2_FORMAT.header"
