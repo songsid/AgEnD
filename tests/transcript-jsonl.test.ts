@@ -22,7 +22,7 @@ function scriptedRead(text: string, fromOffset = 0, size = fromOffset + Buffer.b
 }
 
 /** #1218 P0: the full answer of a look with no long line, within the budget. */
-const R = (lines: string[], newOffset: number) => ({ lines, newOffset, long: [], more: false, skipping: false });
+const R = (lines: string[], newOffset: number) => ({ lines, offsets: expect.any(Array), newOffset, long: [], more: false, skipping: false });
 
 describe("complete JSONL byte boundaries", () => {
   it("retains the entire range when there is no newline", async () => {
@@ -71,5 +71,12 @@ describe("complete JSONL byte boundaries", () => {
     io.read.mockRejectedValue(new Error("fixture read failure"));
     await expect(readNewLines("fixture", 0)).rejects.toThrow("fixture read failure");
     expect(io.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe("#1218: each line's offset", () => {
+  it("is where the line starts in the file, after the read's start; blank lines have none", async () => {
+    scriptedRead('{"a":1}\n\n{"b":2}\n', 100);
+    expect(await readNewLines("fixture", 100)).toMatchObject({ lines: ['{"a":1}', '{"b":2}'], offsets: [100, 109] });
   });
 });
