@@ -77,14 +77,15 @@ const PEM = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVAT
 const JSON_SECRET = new RegExp(`("${NAME}"\\s*:\\s*")((?:[^"\\\\]|\\\\.)+)(")`, "gi");
 /**
  * A secret's value: in double or single quotes up to the same quote (spaces included — a passphrase,
- * DB_PASSWORD="correct horse battery staple"), else up to whitespace, a quote or one of `stop`.
+ * DB_PASSWORD="correct horse battery staple"); in escaped quotes as JSON text writes them (DB_PASSWORD=\"…\", a
+ * tool's result that is JSON); else up to whitespace, a quote or one of `stop`.
  */
-const VALUE = (stop: string) => `(?:"([^"\\n]*)"|'([^'\\n]*)'|([^\\s${stop}]+))`;
+const VALUE = (stop: string) => `(?:"([^"\\n]*)"|'([^'\\n]*)'|\\\\"((?:[^"\\\\\\n]|\\\\[^"\\n])*)\\\\"|([^\\s${stop}]+))`;
 /** `head` and the value masked, quotes kept — unless the value is plain (a number, a boolean, null) or empty. */
-function masked(m: string, head: string, d?: string, sq?: string, bare?: string): string {
-  const v = d ?? sq ?? bare ?? "";
+function masked(m: string, head: string, d?: string, sq?: string, esc?: string, bare?: string): string {
+  const v = d ?? sq ?? esc ?? bare ?? "";
   if (!v.trim() || PLAIN.test(v.trim())) return m;
-  return d !== undefined ? `${head}"[REDACTED]"` : sq !== undefined ? `${head}'[REDACTED]'` : `${head}[REDACTED]`;
+  return d !== undefined ? `${head}"[REDACTED]"` : sq !== undefined ? `${head}'[REDACTED]'` : esc !== undefined ? `${head}\\"[REDACTED]\\"` : `${head}[REDACTED]`;
 }
 /** A flag: --password value, --api-key=value. */
 const FLAG_SECRET = new RegExp(`(--?${NAME})(\\s+|=)${VALUE("\"'")}`, "gi");
@@ -108,8 +109,8 @@ export function maskSecrets(text: string): string {
   return redactSecrets(text
     .replace(PEM, (_m, kind: string) => `-----BEGIN ${kind}PRIVATE KEY----- [REDACTED] -----END ${kind}PRIVATE KEY-----`)
     .replace(JSON_SECRET, (m, a: string, v: string, b: string) => (PLAIN.test(v) ? m : `${a}[REDACTED]${b}`))
-    .replace(FLAG_SECRET, (m, k: string, sep: string, d?: string, sq?: string, bare?: string) => masked(m, `${k}${sep}`, d, sq, bare))
-    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, d?: string, sq?: string, bare?: string) => masked(m, `${pre}${k}${sep}`, d, sq, bare))
+    .replace(FLAG_SECRET, (m, k: string, sep: string, d?: string, sq?: string, esc?: string, bare?: string) => masked(m, `${k}${sep}`, d, sq, esc, bare))
+    .replace(ASSIGN_SECRET, (m, pre: string, k: string, sep: string, d?: string, sq?: string, esc?: string, bare?: string) => masked(m, `${pre}${k}${sep}`, d, sq, esc, bare))
     .replace(POSITIONAL_SECRET, (m, pre: string, k: string, sep: string, v: string) => (/[A-Za-z]/.test(v) && /\d/.test(v) ? `${pre}${k}${sep}[REDACTED]` : m)))
     .replace(OPAQUE, (m) => (looksOpaque(m) ? "[REDACTED]" : m));
 }
@@ -284,7 +285,8 @@ abstract class StepParser {
 /** A tool result's text: a string, or text blocks joined (an image block says so). */
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return content == null ? "" : JSON.stringify(content);
+  // An object result is masked before it is JSON text, as arguments are (#1788 review P3).
+  if (!Array.isArray(content)) return content == null ? "" : JSON.stringify(maskArgs(content, RESULT_MAX, { n: 0 }));
   return content.map((b) => {
     const blk = b as Record<string, unknown>;
     if (typeof blk.text === "string") return blk.text;
