@@ -31,7 +31,8 @@ function child(boundary: "lane" | "exposure", reject: boolean): any {
   ` : `
     const { PublicWebLink } = await import(${link});
     let entered = false, release;
-    const manager = { start: () => { entered = true; return new Promise(resolve => { release = () => resolve({ ok: false, errorKind: "cancelled", leaseHeld: false, message: "closed" }); }); }, stop: async () => ({ confirmed: true }) };
+    // #1767: like the real provider, the link's tunnel reports its address before it holds — the preview starts only then.
+    const manager = { start: (_p, ctx) => { entered = true; ctx.onCandidateHost?.("rehearsal-host.trycloudflare.com"); return new Promise(resolve => { release = () => resolve({ ok: false, errorKind: "cancelled", leaseHeld: false, message: "closed" }); }); }, stop: async () => ({ confirmed: true }) };
     const lane = new TunnelPurposeLane(manager);
     const preview = { start() {}, stop: companion, status: () => ({ state: "starting" }) };
     const owner = { adapterId: "a", chatId: "c", userId: "u", binding: {} };

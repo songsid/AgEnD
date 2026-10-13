@@ -5289,12 +5289,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const result = this.webSessions?.revokeExposure(id);
         if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
       },
-      log: (event, exposureId) => this.logger.info({ event, exposureId }, "Public web link"),
+      log: (event, exposureId, detail) => this.logger.info({ event, exposureId, ...(detail ? { detail } : {}) }, "Public web link"),
       createPreview: ({ id, expiresAt, binary, protocol, dashboardOrigin, isCurrent }) => {
         if (!publicPreviewWanted(this.fleetConfig?.web)) return null;
         return new PublicPreview({ exposureId: id, expiresAt, dashboardOrigin, isCurrent, manager: this.getPreviewTunnel(),
           provider: () => new CloudflaredProvider({ binaryName: binary, protocol }),
-          log: event => this.logger.info({ event, exposureId: id }, "Public web link") });
+          log: (event, detail) => this.logger.info({ event, exposureId: id, ...(detail ? { detail } : {}) }, "Public web link") });
       },
       onCleanupUnconfirmed: (result, owner) => {
         this.logger.warn({ pid: result.confirmed ? null : result.pid }, "Public web access closed; tunnel cleanup unconfirmed");

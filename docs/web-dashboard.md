@@ -126,7 +126,7 @@ When an agent's reply contains a ` ```html ` block, or attaches a `.html` / `.ht
 - **Only agents' replies** get a card, marked so by the fleet. HTML from people (on the web, Telegram or Discord) is only ever shown as code, and a `.html` file a person uploads stays a plain download. A block cut off by the length limit gets no preview: ask the agent to send a `.html` file instead. Agents are told to prefer a file for whole pages, since a long block is split on Discord and Telegram.
 - **Where it works.** Previews come from a second local port, `health_port + 1` (19281). Over SSH, forward it too: `ssh -L 19280:127.0.0.1:19280 -L 19281:127.0.0.1:19281 <host>`. Through a tunnel or proxy they need `web.preview_origin`, a separate host name mapped to that port; the proxy must pass the external `Host` through. Otherwise the card says why previews are off, and shows the code and **Download** only.
 - **On the temporary public link (#1723)** previews work too, from a phone as well.
-  - The link opens a second quick tunnel of its own for them, in the background. The link never waits for it: it is ready as soon as its own tunnel is.
+  - The link opens a second quick tunnel of its own for them, in the background, once the link's own tunnel has its address (the link always asks Cloudflare first, #1767). The link never waits for it: it is ready as soon as its own tunnel is.
   - Until the preview tunnel is up, a card says *Preview is starting…*, then runs as usual. If it cannot open, the link keeps working and the card says why.
   - A preview tunnel that comes up unreachable (the edge has not learned its name in time) is opened once more, with a new address, while the card still says *starting* (#1732).
   - It closes with the link.

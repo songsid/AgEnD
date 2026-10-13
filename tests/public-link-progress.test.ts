@@ -107,7 +107,9 @@ describe("rendering", () => {
     expect(renderPublicLinkProgress(p.snapshot, clock)).toContain("⏳ ④ 啟動 tunnel · 2 秒");
   });
 
-  it.each([["binary-missing", "spawn-failed"], ["no-url", "no-address"], ["timeout", "no-address"], ["readiness-failed", "unreachable"],
+  // #1767: an exit before the address says what it was — only a real timeout is "no address in time".
+  it.each([["binary-missing", "spawn-failed"], ["no-url", "process-exited"], ["rate-limited", "rate-limited"], ["provisioning-failed", "provisioning-failed"],
+    ["bad-url", "bad-address"], ["timeout", "no-address"], ["readiness-failed", "unreachable"],
     ["checksum-mismatch", "checksum-mismatch"], ["lease-held", "lease-held"], ["something new", "unknown"]])("error kind %s → %s", (kind, reason) => {
     expect(failureOf(kind)).toBe(reason);
     expect(t(`dashboard.progress.fail.${reason}`)).not.toBe(`dashboard.progress.fail.${reason}`);

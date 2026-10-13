@@ -67,7 +67,13 @@ export function applyInstallProgress(progress: PublicLinkProgressTracker, p: Clo
 
 /** A start step that failed for a reason the user is shown. */
 class StartFailure extends Error {
-  constructor(readonly reason: PublicLinkFailure) { super(reason); }
+  /** `detail`: what the step itself said (e.g. cloudflared's error), for the log only — never shown in a chat. */
+  constructor(readonly reason: PublicLinkFailure, readonly detail?: string) { super(reason); }
+}
+/** A failure detail fit for daemon.log: no URLs, no control characters, bounded (#1767). */
+export function logDetail(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  return text.replace(/https?:\/\/\S+/g, "<url>").replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 300);
 }
 /** Owns access before child cleanup: losing a tunnel cannot leave a public web session alive. */
 export class PublicWebLink {
@@ -80,7 +86,8 @@ export class PublicWebLink {
     reserve(id: string): TunnelReservation | null;
     createGateway(id: string, current: () => boolean, open: () => boolean, failed: () => void): PublicGateway;
     revoke(id: string): void;
-    log(event: string, id: string): void;
+    /** `detail` (#1767): why, in words fit for daemon.log (logDetail) — never a URL. */
+    log(event: string, id: string, detail?: string): void;
     onCleanupUnconfirmed?(result: TunnelStopResult, owner: LoginCodeOwner): void;
     now?: () => number;
     wallNow?: () => number;
@@ -202,11 +209,15 @@ export class PublicWebLink {
       const binary = await (this.deps.ensure ?? ensureCloudflared)({ dataDir: this.deps.dataDir, pinnedOnly: true, signal: e.abort.signal,
         onProgress: p => applyInstallProgress(e.progress, p) });
       if (!this.current(e)) throw new Error("closed");
-      // #1723: the preview tunnel starts now, beside the link's, and is never awaited: no step below waits on it or
-      // reads it, so a slow or failing preview cannot delay or fail the link.
-      e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt, binary: binary.path, protocol,
-        dashboardOrigin: () => (e.url ? new URL(e.url).origin : null), isCurrent: () => this.current(e) }) ?? null;
-      e.preview?.start();
+      // #1723/#1767: the preview's quick tunnel is asked for only once the link's own tunnel has its address — the link
+      // always asks Cloudflare first (under a rate limit the preview can never take the request the link needed), a
+      // link that fails never spends one on a preview, and nothing below waits on the preview or reads it.
+      const startPreview = (): void => {
+        if (e.preview !== undefined || !this.current(e)) return;
+        e.preview = this.deps.createPreview?.({ id: e.id, expiresAt: e.expiresAt, binary: binary.path, protocol,
+          dashboardOrigin: () => (e.url ? new URL(e.url).origin : null), isCurrent: () => this.current(e) }) ?? null;
+        e.preview?.start();
+      };
       e.progress.begin("tunnel");
       const gateway = this.deps.createGateway(e.id, () => this.current(e), () => e.phase === "open", () => { void this.close("gateway failed", e.id); });
       e.gateway = gateway;
@@ -215,9 +226,9 @@ export class PublicWebLink {
       const provider = (this.deps.provider ?? ((path, p) => new CloudflaredProvider({ binaryName: path, protocol: p })))(binary.path, protocol);
       const result = await e.reservation.start(provider, {
         sid: e.id, origin, pagePath: "/signin", readinessMarker: gateway.readinessMarker, expiresAt: e.expiresAt,
-        signal: e.abort.signal, onCandidateHost: host => { if (this.current(e)) { gateway.setHost(host); e.progress.begin("address"); } },
+        signal: e.abort.signal, onCandidateHost: host => { if (this.current(e)) { gateway.setHost(host); e.progress.begin("address"); startPreview(); } },
       });
-      if (!result.ok) throw new StartFailure(failureOf(result.errorKind));
+      if (!result.ok) throw new StartFailure(failureOf(result.errorKind), result.message);
       if (!this.current(e)) throw new Error("tunnel unavailable");
       const published = new URL(result.handle.pageUrl);
       if (published.protocol !== "https:" || published.pathname !== "/signin" || published.username || published.password || published.search || published.hash) throw new Error("invalid public page");
@@ -229,11 +240,13 @@ export class PublicWebLink {
       e.progress.complete();
       this.deps.log("opened", e.id);
     } catch (err) {
-      e.progress.fail(err instanceof StartFailure ? err.reason : err instanceof CloudflaredInstallError ? failureOf(err.kind)
-        : this.current(e) ? "unknown" : "closed");
+      const reason: PublicLinkFailure = err instanceof StartFailure ? err.reason : err instanceof CloudflaredInstallError ? failureOf(err.kind)
+        : this.current(e) ? "unknown" : "closed";
+      e.progress.fail(reason);
       // deliver's finally joins close after this promise settles; no self-await.
       e.abort.abort(); e.gateway?.setHost(null); e.gateway?.close();
-      this.deps.log("startup failed", e.id);
+      // #1767: the reason and what the step said, so the next one is diagnosable from daemon.log.
+      this.deps.log(`startup failed: ${reason}`, e.id, logDetail(err instanceof StartFailure ? err.detail : (err as Error)?.message));
       throw new Error("public link unavailable");
     }
   }
