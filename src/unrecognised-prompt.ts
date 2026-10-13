@@ -26,8 +26,8 @@ const FOOTER_ROWS = 3;
 const QUESTION_ROWS = 8;
 export const QUESTION_MAX = 80;
 
-const CURSOR_OPTION = /^[ \t]*[❯›>][ \t]*(\d{1,2})[.)][ \t]+\S/;
-const OPTION = /^[ \t]*(?:[❯›>][ \t]*)?(\d{1,2})[.)][ \t]+\S/;
+const CURSOR_OPTION = /^[ \t]*[❯›⟩>][ \t]*(\d{1,2})[.)][ \t]+\S/;
+const OPTION = /^[ \t]*(?:[❯›⟩>][ \t]*)?(\d{1,2})[.)][ \t]+\S/;
 const YES_NO = /[[(][ \t]*[yY][ \t]*\/[ \t]*[nN][ \t]*[\])][ \t]*[:?]?[ \t]*$/;
 /** A rule or border row (box drawing, block elements, dashes): the top of a dialog. */
 const RULE = /^[ \t]*[─━═╌┄▔▁_\-=]{8,}[ \t]*$/;

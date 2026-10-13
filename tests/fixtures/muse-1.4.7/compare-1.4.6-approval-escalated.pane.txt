@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.6
+
+❯ run the escalated check
+
+◈ Calling tools (7s · esc to interrupt)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Would you like to run the following command?
+
+  $ echo perm-check
+
+› 1. Yes, proceed (y)
+  2. No, and tell Muse Code what to do differently (esc)
+Change approval defaults in /permissions
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · ~/work · Auto-review
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

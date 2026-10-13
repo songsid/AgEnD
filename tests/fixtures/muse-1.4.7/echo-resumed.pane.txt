@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.7
+
+  resumed session 01a135dd-e16b-7ad2-bce5-de881497b259
+
+❯ hello echo
+
+◆ echo: hello echo
+
+  session 01a135dd-e16b-7ad2-bce5-de881497b259 does not record a usable model for provider echo; using the provider
+  default model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  echo · ~/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -357,11 +357,14 @@ const MUSE_LOGIN_MENU: RuntimeDialog = {
  * always allow in this workspace / abort). 1.4.4 shows the same prompt with a
  * `›` marker and no footer line. Enter would take the preselected allow
  * option, so like #1716 this is recognised whole and never answered here.
+ * 1.4.7 draws the selection cursor as `⟩` on this prompt and on the #1716
+ * quit menu (tests/fixtures/muse-1.4.7); the other rows of those blocks are
+ * unchanged.
  */
 export const MUSE_APPROVAL_PROMPT = /^[ \t]*Would you like to run the following command\?[ \t]*$/m;
 const MUSE_APPROVAL_STAGE = /^[ \t]*Stage \d+\/\d+[ \t]*$/;
 const MUSE_APPROVAL_ARGV = /^[ \t]*Current argv: \[.*\][ \t]*$/;
-const MUSE_APPROVAL_OPT = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]+/;
+const MUSE_APPROVAL_OPT = /^[ \t]*[❯›⟩]?[ \t]*\d\.[ \t]+/;
 const MUSE_APPROVAL_FOOTER = /^[ \t]*Change approval defaults in \/permissions[ \t]*$/;
 /**
  * #1715: which request the approval prompt is showing — its `$ command` row.
@@ -400,15 +403,15 @@ function museApprovalBlock(screen: string[], top: number, bottom: number): { hea
       .map(entry => entry.row);
     if (options.length !== 2 && options.length !== 3) continue;
     if (!options.every(row => MUSE_APPROVAL_OPT.test(row))) continue;
-    const first = (options[0] ?? "").replace(/^[ \t]*[❯›]?[ \t]*/, "");
+    const first = (options[0] ?? "").replace(/^[ \t]*[❯›⟩]?[ \t]*/, "");
     const second = options[1] ?? "";
     if (options.length === 2) {
       if (!/^1\. Yes, proceed \(y\)[ \t]*$/.test(first)) continue;
-      if (!/^[ \t]*[❯›]?[ \t]*2\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(second)) continue;
+      if (!/^[ \t]*[❯›⟩]?[ \t]*2\. No, and tell Muse Code what to do differently \(esc\)[ \t]*$/.test(second)) continue;
     } else {
       if (!/^1\. Allow this stage once \(y\)[ \t]*$/.test(first)) continue;
-      if (!/^[ \t]*[❯›]?[ \t]*2\. Always allow in this workspace: .+ \(p\)[ \t]*$/.test(second)) continue;
-      if (!/^[ \t]*[❯›]?[ \t]*3\. Abort the entire command \(esc\)[ \t]*$/.test(options[2] ?? "")) continue;
+      if (!/^[ \t]*[❯›⟩]?[ \t]*2\. Always allow in this workspace: .+ \(p\)[ \t]*$/.test(second)) continue;
+      if (!/^[ \t]*[❯›⟩]?[ \t]*3\. Abort the entire command \(esc\)[ \t]*$/.test(options[2] ?? "")) continue;
     }
     return { head: window[h].index, command };
   }
@@ -443,8 +446,8 @@ export function museApprovalPromptActive(pane: string): boolean {
 
 export const MUSE_LOCAL_WORK_QUIT = /^[ \t]*Local work is still active[ \t]*$/m;
 const MUSE_QUIT_HINT = /^[ \t]*Enter to confirm · Esc to cancel[ \t]*$/;
-const MUSE_QUIT_OPT_1 = /^[ \t]*[❯›]?[ \t]*1\.[ \t]+Exit anyway[ \t]*$/m;
-const MUSE_QUIT_OPT_2 = /^[ \t]*[❯›]?[ \t]*2\.[ \t]+Stay[ \t]*$/m;
+const MUSE_QUIT_OPT_1 = /^[ \t]*[❯›⟩]?[ \t]*1\.[ \t]+Exit anyway[ \t]*$/m;
+const MUSE_QUIT_OPT_2 = /^[ \t]*[❯›⟩]?[ \t]*2\.[ \t]+Stay[ \t]*$/m;
 export function museLocalWorkQuitActive(pane: string): boolean {
   const screen = pane.replace(/\r/g, "").split("\n");
   while (screen.length && !screen[screen.length - 1].trim()) screen.pop();
