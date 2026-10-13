@@ -19,6 +19,12 @@ Collaboration MCP tools: `list_instances`, `send_to_instance`, `start_instance`,
 
 Schedules can target a specific instance or the same instance that created them. When a schedule triggers, the daemon pushes the message to Claude as if a user sent it.
 
+**Fleet → Schedules** in the web dashboard shows all schedules and lets you manage them (#1724):
+- Each row shows the schedule in words ("Weekdays 18:00", "Every 15 minutes", "Once · 2026-10-13 14:00 (UTC+8)") and the next run in the fleet's timezone. The raw cron expression moves to the tooltip. Disabled schedules are visually marked.
+- **Edit** opens the schedule form filled in, with a **Repeat / Once** toggle. Saving goes through the same validation as the `update_schedule` tool.
+- **New schedule** can create one-time schedules as well as recurring ones.
+- A temporary public link can view schedules but cannot create, edit, or delete them.
+
 ## Crash recovery
 
 Watches Claude's status line JSON for context usage metrics (used for dashboard and logging). All CLI backends (Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code) have built-in auto-compact that handles context limits internally — AgEnD does not trigger restarts based on context usage or session age.
