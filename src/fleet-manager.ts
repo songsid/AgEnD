@@ -7617,9 +7617,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     if (msg.isBotMessage) return withSpawnHoldReply(undefined, () => this.handleInboundMessageCore(msg));
-    const adapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapters.get(msg.adapterId ?? "") ?? this.adapter;
-    return withSpawnHoldReply(text => adapter?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
+    return withSpawnHoldReply(text => this.inboundNoticeAdapter(msg)?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
       () => this.handleInboundMessageCore(msg));
+  }
+
+  /**
+   * #1752: the bot that speaks back about an inbound message — in a fleet topic the owning instance's adapter, never
+   * the sibling that happened to win the dedup race; elsewhere (ClassicBot rooms, no routed instance) the receiver.
+   */
+  private inboundNoticeAdapter(msg: InboundMessage): ChannelAdapter | null {
+    const id = this.governingAccess(msg, this.inboundRouteThreadId(msg)).adapterId ?? "";
+    return this.worlds.get(id)?.adapter ?? this.adapters.get(id) ?? this.adapter;
   }
 
   private async handleInboundMessageCore(msg: InboundMessage): Promise<void> {
@@ -7649,6 +7657,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const threadId = this.inboundRouteThreadId(msg);
+    // #1752: a post by one of this fleet's own bots is never input to a fleet topic's instance. They speak there only
+    // for an instance (its replies, notices, warnings) — taking that as a user turn makes one bot's notice another
+    // agent's "user" message, and a loop. Fleet /collab and open mode admit OTHER bots and webhooks; they never meant
+    // our own. Exempt: ClassicBot rooms, where bots this fleet runs deliberately talk to each other by @mention
+    // (same-channel multi-bot collab), and no-thread Telegram (classic candidates; Telegram bots never see each other).
+    if (msg.userId && fleetBotIds.has(msg.userId) && threadId && !this.classicChannels?.hasChannel(threadId)) {
+      this.logger.debug({ adapterId: msg.adapterId, threadId, messageId: msg.messageId, author: msg.userId },
+        "Inbound dropped: authored by one of this fleet's own bots in a fleet topic");
+      return;
+    }
     const rootCommand = this.telegramRootCommandTarget(msg, threadId);
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
@@ -8237,9 +8255,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const lastWarn = this.rateLimitWarnedAt.get(instanceName) ?? 0;
     if (Date.now() - lastWarn < 30 * 60_000) return;
     this.rateLimitWarnedAt.set(instanceName, Date.now());
-    const warnAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-    if (warnAdapter && msg.chatId) {
-      warnAdapter.sendText(msg.chatId, warning, { threadId: msg.threadId ?? undefined }).catch(() => {});
+    // #1752: the instance's own bot, in the instance's own topic. `msg.adapterId` is whichever sibling bot won the
+    // inbound dedup race; a warning from that bot is a stranger's post in this topic (and, to the owning adapter, a
+    // bot message it would take as input).
+    const warnAdapter = this.getAdapterForInstance(instanceName);
+    const dest = this.cancelButtonDestination(instanceName);
+    const { chatId, threadId } = dest?.threadId ? dest : { chatId: msg.chatId, threadId: msg.threadId ?? undefined };
+    if (warnAdapter && chatId) {
+      warnAdapter.sendText(chatId, warning, { threadId }).catch(() => {});
     }
   }
 
