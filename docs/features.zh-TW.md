@@ -19,6 +19,12 @@ Claude：→ create_schedule(cron: "0 9 * * *", message: "檢查需要審查的 
 
 排程可以指定某個 instance，也可以指向建立它的 instance 自己。排程觸發時，daemon 會把訊息推給 Claude，就像使用者親自傳來的一樣。
 
+網頁儀表板的 **Fleet → 排程** 會列出所有排程，並可在那裡管理（#1724）：
+- 每一列以文字顯示排程的執行方式（「每週一到五 18:00」、「每 15 分鐘」、「一次 · 2026-10-13 14:00 (UTC+8)」），以及依 fleet 時區顯示的下次執行時間；原始 cron 改放在提示文字中。已停用的排程會有明顯標示。
+- **編輯**按鈕會開啟已填好內容的排程表單，可切換**重複 / 一次**，儲存時與 `update_schedule` 工具使用相同的驗證。
+- **新增排程**也能建立一次性排程。
+- 臨時公開連結可以檢視排程，但無法新增、編輯或刪除。
+
 ## 當機復原 (Crash recovery)
 
 AgEnD 會讀取 CLI 的狀態列 (status line) JSON 取得 context 用量（用於儀表板和日誌）。所有 CLI 後端（Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code）都內建 auto-compact，自己處理 context 上限，因此 AgEnD 不會因為 context 用量或 session 存在多久而觸發重啟。
