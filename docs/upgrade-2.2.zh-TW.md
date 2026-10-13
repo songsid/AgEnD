@@ -67,7 +67,7 @@ npm install -g @songsid/agend@2.2.0
 ## 3. 第一次啟動 2.2 之後的變化
 
 **只發生一次：**
-- **Kiro：** 恢復的對話維持它存檔時的 agent，並從共用的 `.kiro` 檔案取得 AgEnD 的 server 與指示；#906 的 pane 內 `/agent swap` 已暫停（#1800），因為有 instance 切換後失去了 AgEnD 的工具。已經切換過的 instance 會在下次啟動時拿回共用項目；重啟後請確認它會呼叫 `reply`。等所有使用該目錄的 fleet 都升級後，只手動刪掉 #906 之前、**沒有標記**的 `.kiro/steering/agend-<instance>.md`（第一行不是 `<!-- agend-agent:… -->`）；有標記的要保留，恢復的對話會讀它。
+- **Kiro：** 恢復的對話維持它存檔時的 agent，並從共用的 `.kiro` 檔案取得 AgEnD 的 server 與指示；#906 的 pane 內 `/agent swap` 已暫停（#1800），因為有 instance 切換後失去了 AgEnD 的工具。已經切換過的 instance 會在下次啟動時拿回共用項目；重啟後請確認它會呼叫 `reply`。等所有使用該目錄的 fleet 都升級後，只手動刪掉能確認是 AgEnD 在 #906 之前替同一個 instance、同一個工作目錄寫的 `.kiro/steering/agend-<instance>.md`：第一行沒有 `<!-- agend-agent:… -->`，且以舊的 `# AgEnD Fleet Context` 開頭、寫著該 instance 和該工作目錄。有標記的要保留（恢復的對話會讀它），其他同名檔案也不要動。
   - 從 2.1.11 之前升級也支援一次性的 Kiro 對話認領（#1624），會檢查共用 cwd 與 claim；見 [認領與 beta.1 復原](kiro-upgrade-recovery.zh-TW.md)。
 - **網頁登入：** 每個人都要重新登入一次。舊的 `?token=` 連結和書籤都會打開登入頁。對 bot 傳 `/web`，或在主機上執行 `agend web --code`，就能拿到一次性代碼（8 個字元，5 分鐘內有效）。
 - **General 會收到一則 web chat 介紹**（#1366），每個平台只送一次，記錄在 `AGEND_HOME/upgrade-notices.json`。
