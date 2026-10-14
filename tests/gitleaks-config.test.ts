@@ -85,7 +85,7 @@ describe(".gitleaks.toml release-keys commit allowlist", () => {
 
   it("is one of the match-target regexes, next to the WebSocket and token-env-name ones", () => {
     expect(releaseKeys).toBeDefined();
-    expect(patterns).toHaveLength(3);
+    expect(patterns).toHaveLength(4);
   });
 
   it("allows only RELEASE_KEYS_COMMIT with a 40-hex value", () => {
