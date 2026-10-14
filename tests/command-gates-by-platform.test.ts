@@ -128,6 +128,7 @@ async function rig(): Promise<Rig> {
   any.toggleFleetCollab = () => { reached.push("collab"); return true; };
   any.applyModel = async () => { reached.push("model"); return "ok"; };
   any.promptModelMenu = async () => { reached.push("model"); };
+  any.runBackendCommand = async () => { reached.push("backend"); };
   any.promptClearConfirmation = async () => { reached.push("clear"); };
   any.daemons.set("general", {});
   const tc = any.topicCommands;
@@ -219,6 +220,8 @@ const TG_EXPECTED: Array<{ name: string; text: string; label: string; general: T
   { name: "wake", text: "/wake", label: "wake", general: "pause-needs-instance" as never, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   // a fleet admin, or in a ClassicBot chat also a ClassicBot admin (`isModelAdmin`)
   { name: "model", text: "/model x", label: "model", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
+  // #1806: /model's cells exactly
+  { name: "backend", text: "/backend x", label: "backend", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   { name: "clear", text: "/clear", label: "clear", general: FA_ONLY, fleet: FA_ONLY, classic: FA_OR_CA, none: "refuse" },
   // no ClassicBot handler
   { name: "effort", text: "/effort high", label: "effort", general: FA_ONLY, fleet: FA_ONLY, classic: PASS_, none: "pass" },
@@ -445,7 +448,7 @@ describe("Discord's own handlers behind the table ask for no more than the table
 
   it.each([
     ["handlePauseWakeSlash", "pause"], ["handlePauseWakeSlash", "wake"], ["handleSlashSave", "save"],
-    ["handleModelSlash", "model"], ["handleClearSlash", "clear"],
+    ["handleModelSlash", "model"], ["handleBackendSlash", "backend"], ["handleClearSlash", "clear"],
   ])("%s (/%s): who passes its own check = who the table lets in, in a ClassicBot channel and in a fleet topic", async (handler, command) => {
     const r = await rig();
     for (const [scope, channelId] of [["classic", CLASSIC_GROUP], ["fleet", "30"]] as const) {

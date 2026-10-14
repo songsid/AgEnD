@@ -158,7 +158,7 @@ While the open chat's agent is working, a line above the composer says so, and *
 ### Answering the fleet's prompts
 When an instance looks hung, exits on its own, or is stuck on an interactive prompt, the buttons Telegram/Discord show also appear in that instance's chat: *Force restart* / *Keep waiting*, *Restart* / *Ignore*, *Ask General to help* / *I'll handle it myself*.
 - It is the **same prompt**: the first answer counts, from either place. The other side's buttons then show the outcome, and the prompt expires everywhere at once.
-- Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked. The web chat runs its own `/clear`, `/model` and `/effort` (below).
+- Only these instance-health prompts come to the web. A `/clear` confirmation, login, ClassicBot approvals, tips and the `/model` / `/effort` menus stay where they were asked. The web chat runs its own `/clear`, `/model`, `/backend` and `/effort` (below).
 - A prompt raised while the page was not connected appears as soon as it reconnects. One answered elsewhere meanwhile shows as answered.
 - **No chat platform?** On a dashboard-only fleet these prompts are asked here, in the instance's chat. An interactive prompt's *Ask General to help* asks your General instance to look at the terminal, so that one is offered only when the fleet has a General.
 
@@ -170,6 +170,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - `/compact [instructions]`
   - `/clear`: asks first.
   - `/model [name]` and `/effort [level]`: with nothing after them, the list to choose from.
+  - `/backend [backend] [model] [effort]`: another CLI backend, one choice at a time (the backend, its model, its effort), then asks first. It restarts once, in a fresh session. Model lists come from the cache only, as for `/model`.
   - `/cancel`
   - `/btw <question>`
   - `/steer <text>`

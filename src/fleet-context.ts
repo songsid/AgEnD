@@ -178,6 +178,21 @@ export interface FleetContext {
     adapterId?: string,
   ): Promise<string | null>;
 
+  /**
+   * #1806: `/backend` in a Telegram chat — its steps as inline keyboards, then one switch. `text` is the typed command
+   * (its arguments are the direct form). The caller has checked the channel admin.
+   */
+  runBackendCommand?(
+    instanceName: string,
+    text: string,
+    userId: string,
+    channelId: string,
+    adapter: import("./channel/types.js").ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+    adapterId?: string,
+  ): Promise<void>;
+
   /** Configured effort for an instance, for display (null when unset). */
   resolveInstanceEffort?(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
 

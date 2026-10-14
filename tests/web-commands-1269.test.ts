@@ -43,7 +43,7 @@ const run = (d: WebCommandDeps, command: string, args?: string, extra: Record<st
 
 describe("runWebCommand", () => {
   it("only the instance commands: /raw and the fleet-level ones are not commands here", async () => {
-    expect([...WEB_COMMANDS].sort()).toEqual(["btw", "cancel", "clear", "compact", "ctx", "effort", "model", "pause", "save", "steer", "wake"]);
+    expect([...WEB_COMMANDS].sort()).toEqual(["backend", "btw", "cancel", "clear", "compact", "ctx", "effort", "model", "pause", "save", "steer", "wake"]);
     const d = deps();
     for (const c of ["raw", "/raw", "status", "restart", "update", "login", "collab", "tips", "__proto__", "constructor"]) {
       expect(await run(d, c, "x"), c).toEqual({ status: 400, body: { error: `web.command_unknown|/${c.replace(/^\//, "")}` } });

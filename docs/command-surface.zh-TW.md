@@ -34,6 +34,7 @@
 | `/compact` | ✓ | H:F | H:F | H:F/C | R |
 | `/clear` | ✓ | H:F | H:F | H:F/C | R |
 | `/model` | ✓ | H:F | H:F | H:F/C | R |
+| `/backend` | ✓ | H:F | H:F | H:F/C | R |
 | `/effort` | ✓ | H:F | H:F | H:F/C | R |
 | `/collab` | ✓ | H:F | H:F | H:F/C | R |
 | `/save` | ✓ | H:F | H:F | H:F/C | R |
@@ -66,6 +67,7 @@
 | `/compact` | ✓ | ✓ | H:F | H:F | H:F/C | H:F/C | R(F) |
 | `/clear` | ✓ | ✓ | H:F | H:F | H:F/C | H:F/C | R(F) |
 | `/model` | ✓ | ✓ | H:F | H:F | H:F/C | H:F/C | R(F) |
+| `/backend` | ✓ | ✓ | H:F | H:F | H:F/C | H:F/C | R(F) |
 | `/effort` | ✓ | — | H:F | H:F | P | S/P | S/R |
 | `/collab` | ✓ | — | H:F | H:F | P | S/P | S/R |
 | `/save` | — | — | H:F | H:F | H:F/C | H:F/C | R(F) |

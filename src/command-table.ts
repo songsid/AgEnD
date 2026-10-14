@@ -148,6 +148,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   { name: "compact", slash: true, denied: ["cmd.admin_required", "/compact"], scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "clear", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   { name: "model", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
+  // #1806: exactly /model's row — it changes the same instance setting, and more of it. In a ClassicBot channel the
+  // handler (past this gate) says the agent is not switched by it: update_instance_config manages fleet.yaml only.
+  { name: "backend", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, CHANNEL_ADMIN, NOBODY_NO_AGENT_START) },
   // Telegram has no ClassicBot /effort handler (the text goes to the agent).
   { name: "effort", slash: true, denied: PERMISSION_DENIED, scopes: inAgentChannels("channel-admin", NO_AGENT), telegram: tg(FLEET_ADMIN, FLEET_ADMIN, PASS) },
   // Telegram has no ClassicBot /collab handler (the text goes to the agent).
@@ -227,7 +230,7 @@ export const TELEGRAM_MENUS = {
   /** The fleet's forum group (its `chat` and `chat_administrators` scopes): the General topic and the instance topics. */
   fleet: {
     scopes: ["general", "fleet"],
-    names: ["status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
+    names: ["status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
       "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility"],
   },
   /**
@@ -236,7 +239,7 @@ export const TELEGRAM_MENUS = {
    */
   classic: {
     scopes: ["classic", "none"],
-    names: ["start", "stop", "compact", "steer", "btw", "clear", "model", "pause", "wake", "ctx"],
+    names: ["start", "stop", "compact", "steer", "btw", "clear", "model", "backend", "pause", "wake", "ctx"],
   },
 } as const satisfies Record<string, { scopes: readonly CommandScope[]; names: readonly string[] }>;
 

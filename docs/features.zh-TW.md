@@ -405,6 +405,7 @@ State 欄把暫停、停止或當機和執行狀態合併顯示（見 [Instance 
 - **`/doctor`**（fleet 管理員）— 健康診斷，分成六個區塊：Prerequisites、Service、Fleet、Channel gateways、MCP IPC 和 Resources，每項檢查的結果是 `ok`、`warn` 或 `error`。
 - **`/sysinfo`**（所有人）— fleet 的運行時間和記憶體、instance 數量、系統記憶體，以及每個後端 CLI 的版本。
 - **`/model`**（頻道管理員）— 從選單切換 instance 的模型（Telegram 上也可以用 `/model <name>`）。
+- **`/backend`**（頻道管理員，和 `/model` 相同）— 把 instance 換到另一個 CLI backend：先選 backend（只列這台主機已安裝的 CLI），再選模型（`/model` 的清單，或預設），再選推理強度（`/effort` 的等級；backend 沒有推理強度就跳過），最後確認。instance 只在最後**重新啟動一次**，並開**全新的 session**：對話不會跨 backend 延續。`/backend <backend> [模型] [推理強度]` 會直接跳到確認。只適用 fleet instance；ClassicBot agent 的 backend 在 `classicBot.yaml` 或設定頁裡設定。
 - **`/effort`**（頻道管理員）— 設定推理強度（`low` / `medium` / `high` / `xhigh` / `max`，會限制在後端接受的範圍內）。Claude Code、Grok、Antigravity 和 Muse 可以在執行中直接更改；Kiro CLI 和 Codex 要重啟 instance 才會生效；OpenCode 沒有推理強度設定。agent 可以用 `get_effort` 讀取。
 
 ## 每日摘要 (Daily summary)
@@ -519,7 +520,7 @@ defaults:
 - **Topic 模式**：每個 instance 對應「AgEnD Agents」分類（可用 `options.category_name` 改名）底下的一個文字頻道，另有一個 General 頻道。
 - **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。`/start` 之後預設開啟 collab 模式，只有 @ 這個 bot 才會觸發 agent。
 - **同一個伺服器放多個 bot**：每個 bot 是 `channels[]` 裡獨立的一項；bot 只回應提到自己的訊息，絕不替別的 bot 回答。
-- **斜線指令**：共 25 個，包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
+- **斜線指令**：共 28 個，包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
 - **按鈕與選單**：權限核准（Allow / Always / Deny）、後端選單、取消，以及 hang / model / effort 選擇器。
 - **Reaction**：對 bot 訊息按的 reaction（包括其他 bot 按的）會轉給 agent；投遞狀態戳記可依 instance 或頻道設定；persona emoji 可以用伺服器 emoji。
 - **附件**：圖片、檔案和音訊都會下載；轉傳的訊息會保留圖片；回覆一張圖片時會把那張圖一起帶上。

@@ -430,6 +430,7 @@ Besides `/status`, these work from chat (on Discord as slash commands; on Telegr
 - **`/doctor`** (fleet admin) — health diagnostics in six sections: Prerequisites, Service, Fleet, Channel gateways, MCP IPC and Resources, each check `ok`, `warn` or `error`.
 - **`/sysinfo`** (anyone) — fleet uptime and memory, instance counts, system memory, and each backend CLI's version.
 - **`/model`** (channel admin) — switch the instance's model from a menu (on Telegram also `/model <name>`).
+- **`/backend`** (channel admin, as `/model`) — move the instance to another CLI backend: pick the backend (only CLIs installed on this host), then its model (`/model`'s list, or the default), then its effort (`/effort`'s levels, skipped for a backend without one), then confirm. The instance restarts **once**, at the end, in a **fresh session**: a conversation does not carry across backends. `/backend <backend> [model] [effort]` goes straight to the confirmation. Fleet instances only; a ClassicBot agent's backend is set in `classicBot.yaml` or Settings.
 - **`/effort`** (channel admin) — set the reasoning effort (`low` / `medium` / `high` / `xhigh` / `max`, clamped to what the backend accepts). Claude Code, Grok, Antigravity and Muse change it at runtime; Kiro CLI and Codex restart the instance to apply it; OpenCode has no effort setting. Agents read it with `get_effort`.
 
 ## Daily summary
@@ -544,8 +545,8 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 - **Topic mode**: one text channel per instance under an "AgEnD Agents" category (rename with `options.category_name`), plus a General channel.
 - **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode (on by default after `/start`) triggers the agent only when the bot is @-mentioned.
 - **Several bots in one server**: each bot is its own `channels[]` entry; a bot answers only messages that mention it and never answers for another bot.
-- **Slash commands**: 25, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/effort`, `/web`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
-- **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / effort pickers.
+- **Slash commands**: 28, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/backend`, `/effort`, `/web`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
+- **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / backend / effort pickers.
 - **Reactions**: reactions on the bot's messages (including other bots') reach the agent; delivery-status stamps are configurable per instance or channel; persona emoji can use server emoji.
 - **Attachments**: images, files and audio are downloaded; forwarded messages keep their images; replying to an image includes it.
 - **Long messages** are split at 2000 characters without breaking code fences; long slash-command replies use embeds.

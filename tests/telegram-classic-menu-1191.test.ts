@@ -52,11 +52,11 @@ const tg = (over: Partial<ChannelConfig> = {}): ChannelConfig =>
 // What each menu says, written out by hand from the table's Telegram column.
 const FLEET_MENU = [
   ["status", "🔒 "], ["sysinfo", ""], ["dashboard", "🔒 "], ["web", "🔒 "], ["ctx", ""], ["compact", "🔒 "], ["steer", ""], ["btw", ""],
-  ["clear", "🔒 "], ["model", "🔒 "], ["effort", "🔒 "], ["pause", "🔒 "], ["wake", "🔒 "], ["restart", "🔒 "],
+  ["clear", "🔒 "], ["model", "🔒 "], ["backend", "🔒 "], ["effort", "🔒 "], ["pause", "🔒 "], ["wake", "🔒 "], ["restart", "🔒 "],
   ["collab", "🔒 "], ["update", "🔒 "], ["profile", "🔒 "], ["doctor", "🔒 "], ["login", "🔒 "], ["usage", ""], ["tips", ""], ["visibility", "🔒 "],
 ];
 const CLASSIC_MENU = [
-  ["start", ""], ["stop", "🔒 "], ["compact", "🔒 "], ["steer", ""], ["btw", ""], ["clear", "🔒 "], ["model", "🔒 "],
+  ["start", ""], ["stop", "🔒 "], ["compact", "🔒 "], ["steer", ""], ["btw", ""], ["clear", "🔒 "], ["model", "🔒 "], ["backend", "🔒 "],
   ["pause", "🔒 "], ["wake", "🔒 "], ["ctx", ""],
 ];
 
@@ -134,7 +134,7 @@ describe("TopicCommands.registerBotCommands (#1191)", () => {
     }
     expect(sent()[0]!.commands.find((c: { command: string }) => c.command === "stop").description).toBe("🔒 Stop the agent in this channel");
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "tg-classic", fleetCommandCount: 0, classicCommandCount: 10, scopes: ["all_group_chats", "default"] }),
+      expect.objectContaining({ adapterId: "tg-classic", fleetCommandCount: 0, classicCommandCount: 11, scopes: ["all_group_chats", "default"] }),
       expect.stringContaining("no group_id"),
     );
     expect(warn).not.toHaveBeenCalled();

@@ -9,6 +9,7 @@ export const CHAT_COMMANDS = [
   { name: "compact", arg: "[instructions]" },
   { name: "clear", arg: "" },
   { name: "model", arg: "[name]" },
+  { name: "backend", arg: "[backend] [model] [effort]" },
   { name: "effort", arg: "[level]" },
   { name: "cancel", arg: "" },
   { name: "btw", arg: "<question>" },

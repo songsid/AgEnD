@@ -23,7 +23,7 @@ function telegramCells(spec: typeof COMMANDS[number]): string[] {
   const result = scopes.map(scope => cell(spec.telegram[scope], scope));
   if (spec.name === "start") result[2] = "R:active"; // existing registration already has an agent
   if (spec.name === "chat") result[2] = "P"; // Classic has ordinary wrapping, no special /chat dispatcher
-  if (["pause", "wake", "compact", "clear", "model", "save"].includes(spec.name)) result[3] = "R(F)";
+  if (["pause", "wake", "compact", "clear", "model", "backend", "save"].includes(spec.name)) result[3] = "R(F)";
   if (spec.name === "stop") result[3] = "R(C)";
   if (spec.name === "tips") { result[0] += "*"; result[1] += "*"; }
   // An addressed unsupported group command is not a conversational mention.

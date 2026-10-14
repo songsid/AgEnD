@@ -51,7 +51,7 @@ describe("Telegram command-menu registration", () => {
     expect(fleetPayloads.map(p => p.scope.type)).toEqual(["chat", "chat_administrators"]);
     for (const payload of fleetPayloads) {
       expect(payload.commands.map((c: { command: string }) => c.command)).toEqual([
-        "status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
+        "status", "sysinfo", "dashboard", "web", "ctx", "compact", "steer", "btw", "clear", "model", "backend", "effort",
         "pause", "wake", "restart", "collab", "update", "profile", "doctor", "login", "usage", "tips", "visibility",
       ]);
       expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
@@ -64,10 +64,10 @@ describe("Telegram command-menu registration", () => {
     // The ClassicBot list on default and all_group_chats (#1191); no /effort, which Telegram ClassicBot does not handle.
     for (const scope of ["default", "all_group_chats"]) {
       expect(payloads.find(p => p.scope.type === scope).commands.map((c: { command: string }) => c.command), scope)
-        .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "pause", "wake", "ctx"]);
+        .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "backend", "pause", "wake", "ctx"]);
     }
     expect(info).toHaveBeenCalledWith(
-      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 22, classicCommandCount: 10 }),
+      expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 23, classicCommandCount: 11 }),
       expect.stringContaining("Registered Telegram bot commands"),
     );
     expect(warn).not.toHaveBeenCalled();

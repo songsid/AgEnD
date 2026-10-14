@@ -82,6 +82,7 @@ const EXPECTED: Record<string, Row> = {
   compact: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                // Discord was: anyone, while labelled 🔒. Telegram: ClassicBot admin in a ClassicBot chat, nobody checked in a fleet topic
   clear: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),                  // unchanged for people who could use it
   model: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),
+  backend: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),   // #1806: /model's, cell for cell
   effort: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT),
   collab: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT_START),           // was in a ClassicBot channel: classic admin only
   save: agentChannels(FLEET_ADMIN, CHANNEL_ADMIN_IN_CLASSIC, NO_AGENT_START),             // was everywhere: classic admin only (the wrong kind in a fleet channel)
@@ -173,6 +174,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
   anyFm.handlePauseWakeSlash = async (data: { command: string; respond(text: string): Promise<unknown> }) => { reached.push(data.command); await data.respond(`ok:${data.command}`); };
   anyFm.handleSlashSave = marks("save");
   anyFm.handleModelSlash = marks("model");
+  anyFm.handleBackendSlash = marks("backend");
   anyFm.handleEffortSlash = marks("effort");
   anyFm.handleClearSlash = marks("clear");
   anyFm.handleLoginSlash = marks("login");
@@ -376,7 +378,7 @@ describe("the lock emoji is generated from the table", () => {
   it("is on exactly the commands that ask for more than 'anyone' somewhere", () => {
     const locked = COMMANDS.filter(isLocked).map(c => c.name).sort();
     expect(locked).toEqual(
-      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "pause", "profile", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
+      ["clear", "collab", "compact", "dashboard", "doctor", "effort", "load", "login", "model", "backend", "pause", "profile", "restart", "save", "status", "stop", "update", "visibility", "wake"].sort(),
     );
     for (const spec of COMMANDS) expect(slashLock(spec.name), spec.name).toBe(isLocked(spec) ? "🔒 " : "");
     expect(slashLock("not-a-command")).toBe("");

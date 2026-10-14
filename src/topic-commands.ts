@@ -502,6 +502,7 @@ const INSTANCE_FORMS: TypedForms = [
   ["collab", bare("collab")],
   ["effort", withArgs("effort")],
   ["model", withArgs("model")],
+  ["backend", withArgs("backend")],
   ["compact", text => parseCompactCommand(text) !== null],
   ["steer", withArgs("steer")],
   ["btw", withArgs("btw")],
@@ -822,6 +823,22 @@ export class TopicCommands {
         if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       } else {
         await adapter.sendText(msg.chatId, t("model.usage"), { threadId: msg.threadId });
+      }
+      return true;
+    }
+
+    if (command === "backend") {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      // #1806: the same gate as /model.
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
+      if (this.ctx.runBackendCommand) {
+        await this.ctx.runBackendCommand(instanceName, text, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId, msg.adapterId);
+      } else {
+        await adapter.sendText(msg.chatId, t("backend.usage"), { threadId: msg.threadId });
       }
       return true;
     }

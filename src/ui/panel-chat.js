@@ -320,6 +320,7 @@ function CommandCard({ name, lease }) {
         aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div>
     ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
     ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
+    ${c.choices && c.choices.prompt ? html`<pre class="cmd-text">${c.choices.prompt}</pre>` : null}
     ${c.choices ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdChoose")}>${c.choices.options.map((o) => html`<button key=${o.id} type="button"
       class=${`btn btn-sm${o.id === c.choices.current ? " current" : ""}`} aria-current=${o.id === c.choices.current ? "true" : undefined} onClick=${() => run(o.id)}>${o.label}</button>`)}</div>` : null}
   </div>`;

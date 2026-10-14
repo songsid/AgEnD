@@ -158,7 +158,7 @@ agent 的回覆裡有 ` ```html ` 區塊，或附上 `.html`／`.htm` 檔案時�
 ### 回應 fleet 的提示
 instance 看起來卡住、自己結束，或停在互動式提示時，Telegram／Discord 上的按鈕也會出現在該 instance 的聊天裡：*Force restart* / *Keep waiting*、*Restart* / *Ignore*、*請 General 協助* / *我自己處理*。
 - 它們是**同一個提示**：不論在哪邊，先回答的算數。另一邊的按鈕隨後會顯示結果，提示也會在所有地方同時到期。
-- 只有這幾種跟 instance 健康有關的提示會出現在 web 上；`/clear` 的確認、登入、ClassicBot 的核准、tips，以及 `/model`、`/effort` 選單，都會留在原本發出的地方。web chat 有自己的 `/clear`、`/model` 與 `/effort`（見下方）。
+- 只有這幾種跟 instance 健康有關的提示會出現在 web 上；`/clear` 的確認、登入、ClassicBot 的核准、tips，以及 `/model`、`/effort` 選單，都會留在原本發出的地方。web chat 有自己的 `/clear`、`/model`、`/backend` 與 `/effort`（見下方）。
 - 頁面沒連線時發出的提示，重新連上後會立刻出現；如果期間已經在別處回答了，會顯示為已回答。
 - **沒有聊天平台？** 只用 dashboard 的 fleet，這些提示會直接出現在該 instance 的聊天裡。互動式提示的 *請 General 協助* 是請 General instance 去看它的終端機，所以只有 fleet 有 General 時才會出現。
 
@@ -170,6 +170,7 @@ instance 看起來卡住、自己結束，或停在互動式提示時，Telegram
   - `/compact [指示]`
   - `/clear`：會先確認。
   - `/model [名稱]` 和 `/effort [等級]`：不加參數時會列出可選項目。
+  - `/backend [backend] [模型] [推理強度]`：換到另一個 CLI backend，一次選一項（backend、它的模型、它的推理強度），再先確認。只重新啟動一次，並開全新的 session。模型清單和 `/model` 一樣只用快取。
   - `/cancel`
   - `/btw <問題>`
   - `/steer <文字>`

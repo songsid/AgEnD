@@ -31,6 +31,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
 | 🔒 `/web` (`/dashboard` alias) | General admin menu: local sign-in or opt-in temporary public link; code/link by DM (Discord ephemeral fallback). `/web revoke` / Discord `action: revoke` closes the link and signs browsers out. `/dashboard` remains an alias of `/web` (#1569): the same gate, the same replies and `/web revoke` | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard). A typed name applies directly (`/model sonnet`); with no arg the menu opens. On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
+| 🔒 `/backend [backend] [model] [effort]` | Move the instance to another CLI backend: backend (only CLIs installed on this host) → model (`/model`'s list, or the default) → effort (`/effort`'s levels; skipped for a backend without one) → Confirm/Cancel. Nothing is written or restarted before the confirmation; then backend, model and effort are saved in one write and the instance restarts **once**, in a **fresh session** (a conversation does not carry across backends), interrupting a turn in progress. A typed form goes straight to the confirmation; an uninstalled backend or a model or effort the new backend does not offer is refused with the choices. The backend it already runs changes nothing (use `/model` or `/effort`). The switch is `update_instance_config`'s: the new backend's `backend_options` (its credential profile, kiro's engine) apply, and a credential profile with no login for it is refused with the command to log it in. A stopped or paused instance is saved and not started. Fleet instances only. | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max). A typed level applies directly; with no arg the menu opens | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok). | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
@@ -47,6 +48,7 @@ Registered via `setMyCommands` with `scope: all_group_chats` and `scope: default
 | 🔒 `/stop` | Stop the agent | Admin |
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/model` | Switch model | Admin |
+| 🔒 `/backend` | Not for a ClassicBot agent: says its backend is set in `classicBot.yaml` or Settings | Admin |
 | 🔒 `/pause` | Pause the agent | Admin |
 | 🔒 `/wake` | Wake the agent | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required) | Admin |
@@ -54,7 +56,7 @@ Registered via `setMyCommands` with `scope: all_group_chats` and `scope: default
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only) | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only) | All |
 
-Existing Classic `/compact`, `/save`, `/model`, `/pause`, `/wake` and `/clear` accept the owning bot's F **or** C. `/stop` requires C. In groups, handled slash commands must use `/command@OurBot`; bare slash commands are ignored.
+Existing Classic `/compact`, `/save`, `/model`, `/backend`, `/pause`, `/wake` and `/clear` accept the owning bot's F **or** C. `/stop` requires C. In groups, handled slash commands must use `/command@OurBot`; bare slash commands are ignored.
 
 ### Telegram ClassicBot — unregistered commands
 
@@ -98,6 +100,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/compact [instructions]` | Compact agent context; the optional text steers the summary (Claude Code only — other backends compact without it and say so) | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
 | 🔒 `/model` | Change backend model (select menu) | Admin |
+| 🔒 `/backend [backend] [model] [effort]` | Move the instance to another CLI backend (select menus, then Confirm/Cancel buttons; one restart, fresh session) — as on Telegram above | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Send `/chat load <filename>` to every Classic backend. Kiro supports it; on other backends AgEnD does not verify the response or successful import, and the CLI may reject it or treat it as input | ClassicBot admin |
@@ -132,7 +135,7 @@ On every platform, only the topic/entry owner ever answers, so a `/cmd` typed in
 **One table for both platforms:** Telegram typed commands and Discord slash commands are decided by the same command table (`src/command-table.ts`), so a command needs the same level on both. On Telegram the table judges only the forms a command actually runs in (for example `/status` or `/status@yourbot`, `/restart` in any case, `/pause <instance>`); any other text that starts with a slash, such as `/status report` or `/STATUS`, is a message to the agent, as before.
 
 Fleet-level commands — requires fleet admin:
-- `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
+- `/status`, `/restart`, `/update`, `/doctor`, `/visibility`, `/pause`, `/wake`, `/model`, `/backend`, `/effort`, `/clear`, `/login`
 - In fleet topics and channels also `/collab`, `/compact`, `/save` (both platforms), and Telegram `/raw`
 - `/pause` and `/wake` from a General reach only that bot's own instances: an admin of one bot is not an admin of another bot's instances
 - A fleet-admin slash command runs only in the fleet's own Discord server, also when it is typed in a ClassicBot channel of another server
@@ -143,7 +146,7 @@ ClassicBot management commands, ClassicBot admin only:
 - TG: `/start` (groups), `/stop`; Classic `/raw` has a C gate but no successful native raw route
 - DC: `/stop`, `/load`
 
-In a ClassicBot chat or channel, `/pause`, `/wake`, `/compact`, `/save`, `/model` and `/clear` accept a ClassicBot admin **or** a fleet admin of that chat's bot, on both platforms.
+In a ClassicBot chat or channel, `/pause`, `/wake`, `/compact`, `/save`, `/model`, `/backend` and `/clear` accept a ClassicBot admin **or** a fleet admin of that chat's bot, on both platforms.
 
 `defaults.admin_users` is **one list for every bot**: there is one `classicBot.yaml`, and a ClassicBot admin is an admin in the ClassicBot channels of every bot (Telegram and Discord), whichever bot the channel belongs to. It is not per bot. Keep that in mind when several bots share a fleet: give ClassicBot admin only to someone you would trust on all of them.
 
@@ -160,7 +163,7 @@ Permission varies by platform/mode:
 
 A button click is checked again when it is clicked, not only when the button was posted:
 - confirmation and picker buttons (login, `/clear`, `/web`, restart prompts, the advanced-tips unlock): a fleet admin of the bot that posted them (`/clear` in a ClassicBot channel: a ClassicBot admin too);
-- the `/model` and `/effort` menus: the admin who opened the menu, still an admin when they click, through the same bot;
+- the `/model`, `/backend` and `/effort` menus: the admin who opened the menu, still an admin when they click, through the same bot;
 - the ⏹ cancel button: anyone that instance's bot lets speak in the topic, through that bot, on that instance's own button.
 
 ### All Users

@@ -75,7 +75,7 @@ import {
   type DeliveryStatus, type GuildEmoji, type GuildEmojiGroup, type ResolvedStatusEmojis, type StatusEmojiKey,
 } from "./status-emojis.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
-import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
@@ -94,7 +94,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { CLI_ENV_TTL_MS, isModelCompatible, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -122,7 +122,8 @@ import {
 } from "./instance-lifecycle.js";
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
-import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
+import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
+import { backendArgs, backendStep, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
 import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
@@ -221,7 +222,7 @@ import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
-import { validateFleetConfig } from "./config-validator.js";
+import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
@@ -738,6 +739,21 @@ const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
+const BACKEND_SELECT_CALLBACK_PREFIX = "backend-select:";
+/** #1806: where a `/backend` step is shown and answered — the Discord interaction, or a Telegram chat. */
+interface BackendMenuPlace {
+  instanceName: string; userId: string; channelId: string; adapterId?: string;
+  respond: (text: string) => Promise<string | undefined>;
+  respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
+  /** Discord: the confirmation as two buttons, and the reply's components dropped when the flow ends. */
+  respondButtons?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
+  retireButtons?: (text: string) => Promise<void>;
+  adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
+}
+interface PendingBackendSelect extends BackendMenuPlace {
+  step: Extract<BackendStep, { kind: "choose" | "confirm" }>;
+  timer: ReturnType<typeof setTimeout>;
+}
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 /** #1386: how long a paused instance's marker reason is reused before it is read again (transitions drop it at once). */
@@ -1077,6 +1093,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
   private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
+  /** #1806: in-flight /backend steps, keyed by nonce (see handleBackendSelection). */
+  private pendingBackendSelects = new Map<string, PendingBackendSelect>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
@@ -3969,6 +3987,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(t("save.sent", `/chat load ${filename}`, name));
     } else if (data.command === "model") {
       await this.handleModelSlash(data, adapterId);
+    } else if (data.command === "backend") {
+      await this.handleBackendSlash(data, adapterId);
     } else if (data.command === "clear") {
       await this.handleClearSlash(data, adapterId);
     } else if (data.command === "effort") {
@@ -8236,6 +8256,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
+        // #1806: /backend — channel admin, as /model. A ClassicBot agent is not switched by it (it says so).
+        if (text === "/backend" || text.startsWith("/backend ") || text.startsWith("/backend@")) {
+          if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
+            await msgAdapter?.sendText(chatId, t("permission.denied"));
+            return;
+          }
+          const backendInstance = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!backendInstance) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          if (msgAdapter) await this.runBackendCommand(backendInstance, text, msg.userId, chatId, msgAdapter, chatId, undefined, msg.adapterId);
+          return;
+        }
+
         // Handle /compact command (admin only)
         const classicCompact = parseCompactCommand(text);
         if (classicCompact) {
@@ -12129,6 +12164,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleClassicBackendSelection(data)) return true;
     if (await this.handleModelSelection(data, adapterId)) return true;
     if (await this.handleEffortSelection(data, adapterId)) return true;
+    if (await this.handleBackendSelection(data, adapterId)) return true;
     if (await this.handleHangPrompt(data, adapterId, adapter)) return true;
     if (data.callbackData.startsWith("cancel:")) {
       this.handleCancelClick(data.callbackData.slice("cancel:".length), adapter ?? null, data, adapterId);
@@ -12816,6 +12852,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
+  /** #1806: the web's /backend confirmations — one per question, used once, for the arguments and backend asked about. */
+  private readonly webBackendTokens = new Map<string, { instance: string; asked: string; args: string[]; from: string; deadline: number }>();
   /** #1269: the web's /clear confirmations — one token per question, used once, for the instance as it was asked about. */
   private readonly webClearTokens = new Map<string, { instance: string; fence: () => boolean; deadline: number }>();
 
@@ -12851,6 +12889,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!levels.length) return null;
         const current = this.resolveInstanceEffort(instance).effort;
         return { current, options: levels.map(l => ({ id: l, label: this.effortChoiceLabel(l, current) })) };
+      },
+      backendStep: async (instance, args) => {
+        const refusal = this.backendCommandRefusal(instance);
+        if (refusal) return { error: refusal };
+        // The cached model lists only, as the web's /model: never a live probe on this path.
+        const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, backendArgs(args));
+        if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
+        if (step.kind === "choose") {
+          const id = (token: string) => [...step.args, token].join(" ");
+          return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => ({ id: id(c.token), label: c.label })) } };
+        }
+        const now = performance.now();
+        for (const [k, v] of this.webBackendTokens) if (v.deadline < now) this.webBackendTokens.delete(k);
+        const token = randomBytes(16).toString("hex");
+        this.webBackendTokens.set(token, { instance, asked: backendArgs(args).join(" "), args: step.args, from: step.from, deadline: now + CLASSIC_BACKEND_SELECTION_TIMEOUT_MS });
+        return { confirm: { token, message: step.text } };
+      },
+      backendConfirm: async (instance, args, token) => {
+        const entry = this.webBackendTokens.get(token);
+        this.webBackendTokens.delete(token);                                  // used once, whatever happens next
+        if (!entry || entry.instance !== instance || entry.asked !== backendArgs(args).join(" ") || performance.now() > entry.deadline) {
+          return { status: 409, text: t("backend.selection_expired") };
+        }
+        return { status: 200, text: await this.applyBackendSwitch(instance, entry.args, entry.from) };
       },
       cancel: (instance) => this.cancelInstance(instance),
       steer: (instance, text, originalBody) => this.topicCommands.sendSteer(instance, text, { ...webMeta(instance), humanOriginalBody: originalBody }),
@@ -15745,10 +15807,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * accepts any string ("Set model to opsu"), and its "Switch model?" then names the typo. Static aliases (with [1m]),
    * the cached account catalog, the configured model; without a cached catalog, any `claude-…` id too (cannot check).
    */
-  private claudeModelKnown(instanceName: string, model: string): { known: boolean; names: string[] } {
+  private claudeModelKnown(
+    instanceName: string, model: string,
+    /** #1806: null on a switch INTO claude-code — the configured model then belongs to the backend being left. */
+    configured: string | null | undefined = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model,
+  ): { known: boolean; names: string[] } {
     const aliases = ["default", "sonnet", "opus", "haiku", "opusplan", "Fable"];
     const api = (this.readCliEnv("claude-code")?.apiModels ?? []).map(m => m.id);
-    const configured = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model;
     const lower = model.trim().toLowerCase();
     const bare = lower.replace(/\[1m\]$/, "");
     const known = aliases.some(a => a.toLowerCase() === bare)
@@ -16927,6 +16992,254 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return source === "fleet-default"
       ? `\n${t("effort.current_fleet", effort)}`
       : `\n${t("effort.current", effort)}`;
+  }
+
+  // ── #1806: /backend — another CLI backend, with its model and effort, in one write and one relaunch ──
+
+  /** The steps' view of this fleet (backend-command.ts). `live`: a missing or stale model list may be probed (not on the web). */
+  private backendCommandDeps(instanceName: string, opts: { live: boolean; onLiveProbe?: () => void }): BackendCommandDeps {
+    return {
+      currentBackend: (name) => this.backendNameForInstance(name),
+      currentDisplay: (name) => `${this.backendNameForInstance(name)} · ${this.resolveInstanceModel(name).display}`,
+      installedBackends: () => KNOWN_BACKENDS.filter(b => b !== "mock" && this.backendInstalledHere(b)),
+      models: (backend) => this.backendModelOptions(backend, opts),
+      // claude-code takes names beyond its list (aliases, the account catalog) — the same check /model makes, without
+      // this instance's configured model, which belongs to the backend being left.
+      modelKnown: (backend, model) => backend === "claude-code" && this.claudeModelKnown(instanceName, model, null).known,
+      effortLevels: (backend) => this.backendEffortLevels(instanceName, backend),
+      inherited: (key) => {
+        const value = (getEffectiveInstanceDefaults(this.fleetConfig?.defaults) as Record<string, unknown>)[key];
+        return typeof value === "string" && value ? value : undefined;
+      },
+      modelCompatible: (backend, model) => isModelCompatible(backend, model),
+      state: (name) => {
+        const status = this.getInstanceStatus(name);
+        return { running: status === "running", busy: status === "running" && !this.getInstanceIdle(name), status };
+      },
+      t: (key, ...args) => t(key, ...args),
+    };
+  }
+
+  /** `/effort`'s levels for a backend this instance may move to (empty: it has no effort setting). A file read, never a CLI. */
+  private backendEffortLevels(instanceName: string, backend: string): string[] {
+    try {
+      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instanceName));
+      return strategy === "unsupported" ? [] : levels;
+    } catch { return []; }
+  }
+
+  /** Installed the way the launch finds a CLI (resolveBinary): on PATH or in a known install directory. */
+  private backendInstalledHere(backend: string): boolean {
+    const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+    return !!binary && resolveBinary(binary) !== binary;
+  }
+
+  /** The models `/model` would offer on a backend: the cached CLI env, else (live) a bounded probe. Never throws. */
+  private async backendModelOptions(backend: string, opts: { live: boolean; onLiveProbe?: () => void }): Promise<import("./backend/types.js").ModelOption[]> {
+    const cached = this.readCliEnv(backend);
+    if (!opts.live || (cached?.models.length && !this.cliEnvNeedsRefresh(cached))) return cached?.models ?? [];
+    opts.onLiveProbe?.();
+    const env = await this.probeBackendBounded(backend).catch(() => null);
+    return env?.models.length ? env.models : cached?.models ?? [];
+  }
+
+  /** `/backend` is for fleet.yaml instances: update_instance_config does not manage a ClassicBot agent. */
+  private backendCommandRefusal(instanceName: string): string | null {
+    return this.fleetConfig?.instances && Object.prototype.hasOwnProperty.call(this.fleetConfig.instances, instanceName)
+      ? null : t("backend.classic_unsupported", instanceName);
+  }
+
+  /**
+   * Apply a confirmed `/backend`: judged again first (a menu lives a minute — the backend may have moved, a CLI been
+   * removed), then update_instance_config's write: backend, model and effort at once, refused and rolled back whole
+   * (its credential-profile login gate included), then one fresh relaunch of a running instance.
+   */
+  async applyBackendSwitch(instanceName: string, args: readonly string[], from: string): Promise<string> {
+    if (this.backendNameForInstance(instanceName) !== from) return t("backend.changed", instanceName, from);
+    const deps = this.backendCommandDeps(instanceName, { live: false });
+    const step = await backendStep(deps, instanceName, args);
+    if (step.kind !== "confirm") return step.kind === "refuse" ? step.text : t("backend.usage");
+    const { plan } = step;
+    const shown = planDisplay(deps, plan);
+    const { value, error } = await new Promise<{ value: unknown; error?: string }>(resolve => {
+      applyInstanceConfigPatch(this, instanceName, { backend: plan.backend, model: plan.model, effort: plan.effort }, (value, error) => resolve({ value, error }));
+    });
+    if (error) return t("backend.refused", instanceName, error);
+    const result = (value ?? {}) as { restarted?: boolean; warning?: string };
+    if (result.warning) return t("backend.restart_failed", instanceName, plan.backend, result.warning);
+    if (result.restarted) return t("backend.switched", instanceName, plan.backend, shown.model, shown.effort);
+    return t("backend.switched_not_running", instanceName, plan.backend, shown.model, shown.effort, this.getInstanceStatus(instanceName));
+  }
+
+  /** A step's buttons: index callbacks (a model id can be longer than Telegram's 64-byte callback data allows). */
+  private backendStepButtons(instanceName: string, nonce: string, step: BackendStep): { id: string; label: string }[] {
+    if (step.kind === "choose") return step.choices.map((c, i) => ({ id: `${BACKEND_SELECT_CALLBACK_PREFIX}${nonce}:${i}`, label: c.label }));
+    if (step.kind !== "confirm") return [];
+    const running = this.getInstanceStatus(instanceName) === "running";
+    return [
+      { id: `${BACKEND_SELECT_CALLBACK_PREFIX}${nonce}:0`, label: t(running ? "backend.confirm_button" : "backend.confirm_button_stopped") },
+      { id: `${BACKEND_SELECT_CALLBACK_PREFIX}${nonce}:1`, label: t("backend.cancel_button") },
+    ];
+  }
+
+  /**
+   * Show a `/backend` step (a choice, or the confirmation) where the command was given: Discord edits its interaction
+   * reply; Telegram retires the previous step's keyboard and posts the next. One pending entry per step, under a fresh
+   * nonce: a click on an older step finds nothing.
+   */
+  private async presentBackendStep(place: BackendMenuPlace, step: Extract<BackendStep, { kind: "choose" | "confirm" }>): Promise<void> {
+    const nonce = randomBytes(6).toString("hex");
+    const buttons = this.backendStepButtons(place.instanceName, nonce, step);
+    const timer = setTimeout(() => {
+      const p = this.pendingBackendSelects.get(nonce);
+      if (!p) return;
+      this.pendingBackendSelects.delete(nonce);
+      void this.endBackendMenu(p, t("backend.selection_expired")).catch(() => {});
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    const pending: PendingBackendSelect = { ...place, step, timer };
+    this.pendingBackendSelects.set(nonce, pending);
+    try {
+      if (step.kind === "confirm" && place.respondButtons) {
+        await place.respondButtons(step.text, buttons);
+        return;
+      }
+      if (place.respondChoices) {
+        await place.respondChoices(step.text, buttons);
+        return;
+      }
+      if (!place.adapter || !place.adapterChatId) throw new Error("no place to show the menu");
+      if (place.menuMessageId && place.adapter.editMessageRemoveButtons) {
+        const chosen = t("backend.chosen", step.args.join(" "));
+        await place.adapter.editMessageRemoveButtons(place.adapterChatId, place.menuMessageId, chosen, place.adapterThreadId).catch(() => {});
+      }
+      const menuMessageId = await place.adapter.promptUser(place.adapterChatId, step.text, buttons, { threadId: place.adapterThreadId });
+      const fresh = this.pendingBackendSelects.get(nonce);
+      if (fresh) fresh.menuMessageId = menuMessageId;
+    } catch (err) {
+      this.pendingBackendSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName: place.instanceName }, "backend menu failed");
+      await place.respond(t("backend.usage")).catch(() => {});
+    }
+  }
+
+  /** Close a `/backend` menu with a last word: its buttons go (Telegram edits them away), the text stays. Returns where it was said. */
+  private async endBackendMenu(pending: BackendMenuPlace, text: string): Promise<string | undefined> {
+    if (pending.adapter && pending.adapterChatId) {
+      if (pending.menuMessageId && pending.adapter.editMessageRemoveButtons) {
+        try {
+          await pending.adapter.editMessageRemoveButtons(pending.adapterChatId, pending.menuMessageId, text, pending.adapterThreadId);
+          return pending.menuMessageId;
+        } catch { /* say it in a new message */ }
+      }
+      return (await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId })).messageId;
+    }
+    if (pending.retireButtons) await pending.retireButtons(text);
+    else await pending.respond(text);
+    return undefined;
+  }
+
+  /** Start `/backend` for a fleet instance from Discord or Telegram; the caller has checked the channel admin. */
+  private async beginBackendCommand(place: BackendMenuPlace, args: string[]): Promise<void> {
+    const refusal = this.backendCommandRefusal(place.instanceName);
+    if (refusal) { await place.respond(refusal); return; }
+    if (!place.respondChoices && !(place.adapter && place.adapterChatId)) { await place.respond(t("backend.usage")); return; }
+    const deps = this.backendCommandDeps(place.instanceName, {
+      live: true,
+      onLiveProbe: () => { void place.respond(t("model.refreshing")).catch(() => { /* the step still follows */ }); },
+    });
+    const step = await backendStep(deps, place.instanceName, args);
+    if (step.kind === "refuse") { await place.respond(step.text); return; }
+    await this.presentBackendStep(place, step);
+  }
+
+  /** `/backend` slash handler: channel admin, as `/model`. Options or typed text give the direct form. */
+  private async handleBackendSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
+    const name = this.resolveSlashTarget(data.channelId, adapterId);
+    if (!name) { await data.respond(t("classic.no_agent")); return; }
+    const option = (key: string) => typeof data.options?.[key] === "string" ? (data.options[key] as string).trim() : "";
+    const given = [option("backend"), option("model"), option("effort")];
+    // A later option without the one before it says nothing that can be judged in order.
+    if (given.some((value, i) => value && given.slice(0, i).some(before => !before))) { await data.respond(t("backend.usage")); return; }
+    const args = given[0] ? given.filter(Boolean) : backendArgs(data.text ?? "");
+    await this.beginBackendCommand({ instanceName: name, userId: data.userId, channelId: data.channelId, adapterId, respond: data.respond, respondChoices: data.respondChoices,
+      respondButtons: data.respondButtons, retireButtons: data.retireButtons }, args);
+  }
+
+  /** Telegram `/backend` in a fleet topic (topic-commands) or a ClassicBot chat; the caller has checked the admin. */
+  async runBackendCommand(
+    instanceName: string, text: string, userId: string, channelId: string,
+    adapter: ChannelAdapter, chatId: string, threadId?: string, adapterId?: string,
+  ): Promise<void> {
+    const respond = async (reply: string): Promise<string | undefined> => (await adapter.sendText(chatId, reply, { threadId })).messageId;
+    await this.beginBackendCommand(
+      { instanceName, userId, channelId, adapterId, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId },
+      backendArgs(text.replace(/^\/backend(@\S+)?/, "")),
+    );
+  }
+
+  /** Consume a `/backend` click: the next step, or on the confirmation the switch itself. True for every backend-select id. */
+  private async handleBackendSelection(data: AdapterCallbackData, adapterId: string): Promise<boolean> {
+    if (!data.callbackData.startsWith(BACKEND_SELECT_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^backend-select:([0-9a-f]+):(\d{1,2})$/);
+    if (!match) return true;
+    const pending = this.pendingBackendSelects.get(match[1]);
+    if (!pending) return true;
+    // As a /model click (#754 audit): the admin who opened it, through the same bot, in the same channel, still admin.
+    const cbChannel = data.threadId ?? data.chatId;
+    if (!data.userId || data.userId !== pending.userId
+      || (pending.adapterId !== undefined && pending.adapterId !== adapterId)
+      || (cbChannel !== pending.channelId && data.chatId !== pending.channelId)
+      || !this.menuClickStillCurrent(pending.instanceName, data.userId, pending.channelId, adapterId, pending.adapterChatId)) {
+      data.ack?.(t("buttons.admin_only"));
+      return true;
+    }
+    this.pendingBackendSelects.delete(match[1]);
+    clearTimeout(pending.timer);
+    if (!pending.menuMessageId && data.messageId) pending.menuMessageId = data.messageId;
+    const index = Number(match[2]);
+    const { step } = pending;
+
+    if (step.kind === "choose") {
+      const choice = step.choices[index];
+      if (!choice) return true;
+      const next = await backendStep(this.backendCommandDeps(pending.instanceName, { live: true }), pending.instanceName, [...step.args, choice.token]);
+      if (next.kind === "refuse") { await this.endBackendMenu(pending, next.text).catch(() => {}); return true; }
+      await this.presentBackendStep(pending, next);
+      return true;
+    }
+    if (index === 1) { await this.endBackendMenu(pending, t("backend.cancelled")).catch(() => {}); return true; }
+    if (index !== 0) return true;
+
+    // Confirmed: say so at once, then switch in the background (the relaunch takes a while) and say how it went.
+    const progressId = await this.endBackendMenu(pending, t("backend.switching", pending.instanceName, step.plan.backend)).catch(() => undefined);
+    const say = async (text: string) => {
+      if (pending.adapter && pending.adapterChatId) {
+        if (progressId) await pending.adapter.editMessage(pending.adapterChatId, progressId, text, pending.adapterThreadId);
+        else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
+      } else await pending.respond(text);
+    };
+    void (async () => {
+      let result: string;
+      try {
+        // Asked again after the awaits above: the instance may have moved, or the admin lost admin.
+        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+          ? await withSpawnHoldReply(say, () => this.applyBackendSwitch(pending.instanceName, step.args, step.from))
+          : t("menu.click_stale");
+      } catch (err) {
+        this.logger.error({ err, instance: pending.instanceName, backend: step.plan.backend }, "Backend switch failed");
+        result = t("backend.failed", pending.instanceName, step.plan.backend, err instanceof Error ? err.message : String(err));
+      }
+      await say(result).catch(() => {
+        if (pending.adapter && pending.adapterChatId) pending.adapter.sendText(pending.adapterChatId, result, { threadId: pending.adapterThreadId }).catch(() => {});
+      });
+    })();
+    return true;
   }
 
   /** Read recent chat log for agent context */

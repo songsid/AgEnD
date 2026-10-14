@@ -11,18 +11,27 @@
  * - The public link (a gateway request) is the outward-facing surface: /save is refused there — it makes the CLI
  *   write a file under a name the caller picks, outside the agent's own judgement.
  * - /clear asks first, as on the platforms: the first call answers a confirmation token; only the second, with that
- *   token, clears — and only if the instance is still the one that was asked about.
+ *   token, clears — and only if the instance is still the one that was asked about. /backend (#1806) asks the same way
+ *   once its backend, model and effort are chosen.
  */
 import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
 import { SAVE_FILENAME_RE } from "./topic-commands.js";
 
-export const WEB_COMMANDS = ["ctx", "compact", "clear", "model", "effort", "cancel", "btw", "steer", "pause", "wake", "save"] as const;
+export const WEB_COMMANDS = ["ctx", "compact", "clear", "model", "backend", "effort", "cancel", "btw", "steer", "pause", "wake", "save"] as const;
 export type WebCommand = typeof WEB_COMMANDS[number];
 /** Refused on the public link (see the header). */
 export const PUBLIC_LINK_REFUSED: ReadonlySet<WebCommand> = new Set<WebCommand>(["save"]);
 export const MAX_COMMAND_ARGS = 4000;
 
-export interface WebChoices { current: string | null; options: Array<{ id: string; label: string }> }
+export interface WebChoices {
+  current: string | null; options: Array<{ id: string; label: string }>;
+  /** What the choice is for, when the command asks more than one thing (/backend: backend, then model, then effort). */
+  prompt?: string;
+}
+
+/** #1806: what one `/backend` call answers — the next choice, the confirmation, a word, or why not. */
+export type WebBackendAnswer =
+  | { choices: WebChoices } | { confirm: { token: string; message: string } } | { text: string } | { error: string };
 
 export interface WebCommandDeps {
   /** The instance is one the web chat may command (a fleet instance or a ClassicBot room), and in which scope. */
@@ -34,6 +43,10 @@ export interface WebCommandDeps {
   modelChoices(instance: string): WebChoices | null;
   applyEffort(instance: string, level: string): Promise<string>;
   effortChoices(instance: string): WebChoices | null;
+  /** #1806: the next `/backend` step for these arguments (each choice's id is the arguments with it added). */
+  backendStep(instance: string, args: string): Promise<WebBackendAnswer>;
+  /** #1806: switch, if the token is live, for these same arguments, and the instance is still on the backend asked about. */
+  backendConfirm(instance: string, args: string, token: string): Promise<{ status: number; text: string }>;
   cancel(instance: string): boolean;
   steer(instance: string, text: string, originalBody: string): string;
   btw(instance: string, text: string, originalBody: string): string;
@@ -75,6 +88,14 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
       if (args) return ok(await deps.applyModel(instance, args));
       const choices = deps.modelChoices(instance);
       return choices ? { status: 200, body: { choices } } : ok(deps.t("model.list_unavailable", instance));
+    }
+    case "backend": {
+      // #1806: backend → model → effort, one call per step; the last answers a confirmation, as /clear does.
+      if (input.confirm) { const r = await deps.backendConfirm(instance, args, input.confirm); return { status: r.status, body: r.status === 200 ? { text: r.text } : { error: r.text } }; }
+      const r = await deps.backendStep(instance, args);
+      if ("choices" in r) return { status: 200, body: { choices: r.choices } };
+      if ("confirm" in r) return { status: 200, body: { confirm: r.confirm } };
+      return "error" in r ? { status: 400, body: { error: r.error } } : ok(r.text);
     }
     case "effort": {
       if (args) return ok(await deps.applyEffort(instance, args));

@@ -12,7 +12,7 @@ import type { EventLog } from "./event-log.js";
 import { deliveryContentDigest, deliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusSelector } from "./delivery-outbox.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
-import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES } from "./config.js";
+import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES, getEffectiveInstanceDefaults } from "./config.js";
 import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
@@ -1137,16 +1137,31 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   }
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
-  const inst = ctx.fleetConfig?.instances[v.data.name];
+  applyInstanceConfigPatch(ctx, v.data.name, v.data.config, respond);
+};
+
+/**
+ * What update_instance_config merges into an instance — and, in-process only, what chat `/backend` (#1806) needs on
+ * top: `effort`, and `null` for `model`/`effort` meaning "back to the inherited value". The MCP schema stays as it is,
+ * so an agent can do neither.
+ */
+export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>["config"], "model">
+  & { model?: string | null; effort?: string | null };
+
+/**
+ * update_instance_config's write: one validated config write, rolled back whole on a refusal, then one relaunch when
+ * the backend (fresh, #1217), a credential profile or backend_options changed. Answers through `respond` like the tool.
+ */
+export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
+  const inst = ctx.fleetConfig?.instances[name];
   if (!inst) {
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
-      .some(channel => channel.instanceName === v.data.name);
+      .some(channel => channel.instanceName === name);
     respond(null, isClassic
       ? "This is a ClassicBot instance (managed in classicBot.yaml). Use set_display_name or set_description to configure it."
-      : `Instance '${v.data.name}' not found in fleet config`);
+      : `Instance '${name}' not found in fleet config`);
     return;
   }
-  const patch = v.data.config;
   // Read before anything is mutated: the switch is what decides whether the
   // next launch may resume, and by then `inst` already holds the new value.
   const backendBefore = (inst as any).backend ?? "claude-code";
@@ -1154,11 +1169,19 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
   const beforeFields: Record<string, unknown> = {};
-  for (const key of ["backend", "model", "auto_pause_after", "display_name", "description"] as const) {
+  for (const key of ["backend", "model", "effort", "auto_pause_after", "display_name", "description"] as const) {
     if (patch[key] !== undefined) beforeFields[key] = (inst as any)[key];
   }
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
-  if (patch.model !== undefined) (inst as any).model = patch.model;
+  // null: the value this instance would have with no override of its own — what loading fleet.yaml gives it.
+  const inherited = getEffectiveInstanceDefaults(ctx.fleetConfig?.defaults) as Record<string, unknown>;
+  for (const key of ["model", "effort"] as const) {
+    const value = patch[key];
+    if (value === undefined) continue;
+    if (value !== null) (inst as any)[key] = value;
+    else if (inherited[key] !== undefined) (inst as any)[key] = inherited[key];
+    else delete (inst as any)[key];
+  }
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
   if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
   if (patch.description !== undefined) (inst as any).description = patch.description;
@@ -1250,18 +1273,18 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     return;
   }
   if (!relaunchNeeded) {
-    respond({ success: true, name: v.data.name, applied: patch });
+    respond({ success: true, name, applied: patch });
     return;
   }
   // Only a running instance is restarted. Switching the subscription of a
   // paused or stopped agent must not start it — restartSingleInstance is
   // stop-then-start and would — so the new credentials are read whenever it
   // next comes up on its own.
-  const status = targetState(ctx, v.data.name);
+  const status = targetState(ctx, name);
   if (status !== "running") {
     respond({
       success: true,
-      name: v.data.name,
+      name,
       applied: patch,
       restarted: false,
       note: `Instance is ${status}; the new ${backendSwitched ? "backend" : "backend_options"} apply when it next starts.`,
@@ -1288,7 +1311,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     ? { backend: backendAfter, from: profileBefore, to: profileAfter, result: null as CarryResult | null }
     : null;
   const handover = switchLosesConversation
-    ? (ctx.lifecycle.daemons.get(v.data.name)?.collectHandoverContext() ?? "")
+    ? (ctx.lifecycle.daemons.get(name)?.collectHandoverContext() ?? "")
     : "";
 
   // Saving without restarting would report a subscription switch that has not
@@ -1296,13 +1319,13 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // A switch that cannot take the conversation along starts fresh: the new store
   // has no conversation for this directory, so resuming can only spend the
   // resume startup budget waiting for something that is not there.
-  ctx.restartSingleInstance(v.data.name, carry ? { carry } : switchLosesConversation || backendSwitched ? { freshStart: true } : undefined).then(
+  ctx.restartSingleInstance(name, carry ? { carry } : switchLosesConversation || backendSwitched ? { freshStart: true } : undefined).then(
     async () => {
       const carried = carry?.result?.carried === true;
-      const handoverChars = carried ? 0 : await deliverProfileHandover(ctx, v.data.name, profileBefore, profileAfter, handover);
+      const handoverChars = carried ? 0 : await deliverProfileHandover(ctx, name, profileBefore, profileAfter, handover);
       respond({
         success: true,
-        name: v.data.name,
+        name,
         applied: patch,
         restarted: true,
         ...(backendSwitched ? { backend_switched: true, conversation_carried_over: false } : {}),
@@ -1325,13 +1348,13 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     },
     (err: unknown) => respond({
       success: true,
-      name: v.data.name,
+      name,
       applied: patch,
       restarted: false,
       warning: `Config saved, but the restart failed: ${(err as Error).message}. The new backend_options take effect on the next start.`,
     }),
   );
-};
+}
 
 /** Long enough for the relaunched CLI to be listening; matches replace_instance. */
 export const PROFILE_HANDOVER_SETTLE_MS = 3_000;

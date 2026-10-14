@@ -1288,6 +1288,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "model", description: slashLock("model") + t("slash.model"),
           },
           {
+            // #1806: no option is required — with none, a menu of the installed CLIs opens (a static choice list
+            // here would offer backends this host cannot run).
+            name: "backend", description: slashLock("backend") + t("slash.backend"),
+            options: [
+              { name: "backend", description: t("slash.option.backend_name"), type: ApplicationCommandOptionType.String, required: false },
+              { name: "model", description: t("slash.option.backend_model"), type: ApplicationCommandOptionType.String, required: false },
+              { name: "effort", description: t("slash.option.backend_effort"), type: ApplicationCommandOptionType.String, required: false },
+            ],
+          },
+          {
             name: "effort", description: slashLock("effort") + t("slash.effort"),
             options: [{
               name: "level", description: t("slash.option.effort_level"),
