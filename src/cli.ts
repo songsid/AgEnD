@@ -2785,26 +2785,18 @@ async function fuzzyMatch(query: string, names: string[]): Promise<string | null
 }
 
 async function resolveInstance(query: string, config: import("./types.js").FleetConfig): Promise<string> {
-  const names = await listInstanceNames(config);
+  const namesRaw = await listInstanceNames(config);
+  const names = [...new Set(namesRaw)]; // P3-3: deduplicate (a classicBot instanceName can equal a fleet name)
 
-  // Exact match on real name first — real names always win over labels.
-  const exactReal = names.find(n => n.toLowerCase() === query.toLowerCase());
-  if (exactReal) return exactReal;
-
-  // Resolve against the same display labels that `agend ls` shows (#1809).
-  // Unique label → the real name it maps to. Ambiguous display_name (two instances share one) → refuse.
-  const { assignDisplayLabels, resolveByLabel } = await import("./topic-commands.js");
-  const labelResult = resolveByLabel(
-    query,
-    names.map((name) => ({
-      name,
-      displayName: (config.instances[name] as { display_name?: string } | undefined)?.display_name,
-    })),
-  );
-  if (labelResult !== null) {
-    if (typeof labelResult === "string") return labelResult;
-    // ambiguous
-    console.error(`"${query}" matches multiple instances: ${labelResult.realNames.join(", ")}. Use the real name.`);
+  const { resolveName } = await import("./topic-commands.js");
+  const entries = names.map((name) => ({
+    name,
+    displayName: (config.instances[name] as { display_name?: string } | undefined)?.display_name,
+  }));
+  const result = resolveName(query, entries);
+  if (result.kind === "name") return result.realName;
+  if (result.kind === "ambiguous") {
+    console.error(`"${query}" matches multiple instances: ${result.realNames.join(", ")}. Use the real name.`);
     process.exit(1);
   }
 
