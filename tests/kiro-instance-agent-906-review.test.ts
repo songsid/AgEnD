@@ -403,11 +403,11 @@ describe("#14 the version warning is added to the isolation warnings, not writte
     db.exec("CREATE TABLE conversations_v2 (key TEXT NOT NULL, conversation_id TEXT NOT NULL, value TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (key, conversation_id)); CREATE INDEX idx_conversations_v2_key_updated ON conversations_v2(key, updated_at DESC);");
     db.prepare("INSERT INTO conversations_v2 VALUES (?, 'c1', '{}', 1, 1)").run(join(root, "work"));
     db.close();
-    const b = new KiroBackend(instanceDir(), { ...COMPAT, version: "kiro-cli 2.28.0", source: "help" });
+    const b = new KiroBackend(instanceDir(), { ...COMPAT, version: "kiro-cli 2.31.0", source: "help" });
     launch(b);
     const warning = b.consumeLaunchWarning() ?? "";
     expect(warning).toContain("steering");
-    expect(warning).toContain("2.28.0");
+    expect(warning).toContain("2.31.0");
   });
 });
 
