@@ -425,9 +425,9 @@ export function handleWebRequest(
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
-    res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
-    // #1823 (#1830 review): the server's clock, now and with every heartbeat — what the page counts a poll down by.
-    res.write(sseClock());
+    // #1823 (#1830 review): with the status, the server's clock — now and with every heartbeat — that the page counts a
+    // poll down by (one write: the frames a connect sends are unchanged in number).
+    res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n${sseClock()}`);
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
     const lastSeen = parseLastEventId(req.headers["last-event-id"]);
     if (lastSeen !== null && ctx.webChatHistory) {
@@ -456,8 +456,7 @@ export function handleWebRequest(
       }
       try {
         // Every open dashboard tab, every 10 s: the status of every instance, serialized on the fleet's loop (#1235).
-        res.write(measureSyncWork("web.sseStatus", () => `event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`));
-        res.write(sseClock());
+        res.write(measureSyncWork("web.sseStatus", () => `event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`) + sseClock());
       } catch {
         cleanup();
       }
