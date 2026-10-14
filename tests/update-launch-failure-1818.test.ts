@@ -60,7 +60,7 @@ describe("extractUpdateCause (#1818)", () => {
   });
 
   it("masks GitHub tokens in npm error lines", () => {
-    const cause = extractUpdateCause("npm ERR! Error: ghp_ABCDEFGHIJ1234567890AB_secret");
+    const cause = extractUpdateCause("npm ERR! Error: ghp_ABCDEFGHIJ1234567890AB_secret"); // gitleaks:allow
     expect(cause).not.toContain("ghp_ABCDEFGHIJ");
   });
 
@@ -146,7 +146,7 @@ describe("watchUpdateLaunch (#1818): cause from log file, not from pipes", () =>
   it("secret-looking text in log is masked in the cause shown in message", () => {
     const logPath = updateLogPath(dataDir);
     const fd = openUpdateLog(logPath, "--- run ---");
-    require("node:fs").writeSync(fd, "npm ERR! Error: npm_token=npm_ABCDEFGHIJ1234567890AB\n");
+    require("node:fs").writeSync(fd, "npm ERR! Error: fake_tok=fake_ABCDEFGHIJ1234567890AB\n"); // gitleaks:allow
     closeSync(fd);
     const { child, exit } = fakeChild(1);
     const messages: string[] = [];

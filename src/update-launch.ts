@@ -1,19 +1,22 @@
 /** Chat updates must survive the fleet's service cgroup being stopped (#1490 row 37). */
 import { execFile, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { updateCommand } from "./update-dispatch.js";
 import { maskSecrets } from "./log-steps.js";
 
-/** How many bytes of masked updater output to keep per run (older lines are rotated out). */
-export const UPDATE_LOG_MAX_BYTES = 200 * 1024;
+/** How many bytes to read from the tail of the log when extracting a cause after the updater exits. */
+const CAUSE_TAIL_BYTES = 8 * 1024;
 /** How many bytes to cap the update.log file at (across all runs). */
 export const UPDATE_LOG_FILE_CAP = 400 * 1024;
 
-/** Path of the update log file. */
+/**
+ * Path of the update log file (mode 0600; raw updater output may contain secrets —
+ * cause extraction masks before surfacing to chat).
+ */
 export function updateLogPath(dataDir: string): string {
   return join(dataDir, "update.log");
 }
@@ -24,7 +27,8 @@ export function updateLogPath(dataDir: string): string {
  * Falls back to the last non-blank line. Masks secrets and caps at ~300 chars.
  */
 export function extractUpdateCause(output: string): string | null {
-  const lines = output.split("\n").map(l => l.trimEnd()).filter(Boolean);
+  // Lines starting with --- are log headers, not updater output.
+  const lines = output.split("\n").map(l => l.trimEnd()).filter(l => Boolean(l) && !l.startsWith("---"));
   if (!lines.length) return null;
   const npmErr = lines.filter(l => /^npm (ERR!|error)\b/i.test(l));
   if (npmErr.length) return maskSecrets(npmErr[npmErr.length - 1]).slice(0, 300);
@@ -34,21 +38,33 @@ export function extractUpdateCause(output: string): string | null {
 }
 
 /**
- * Write a run header + masked output to the update log, rotating if the file exceeds UPDATE_LOG_FILE_CAP.
+ * Rotate the log file if needed, write a run header, and return an open file descriptor
+ * for the child process to write to directly — not a pipe.
+ *
+ * Using an fd instead of a pipe means the updater can keep writing after the fleet process
+ * that spawned it has been stopped: there is no read end to close, so no EPIPE.
+ * The caller must closeSync(fd) after spawn so the parent's copy of the fd is released.
  */
-export function appendUpdateLog(logPath: string, header: string, output: string): void {
-  const masked = maskSecrets(output);
-  // Ensure total log stays under cap: if it would exceed, truncate to half the cap first.
+export function openUpdateLog(logPath: string, header: string): number {
   try {
-    if (existsSync(logPath) && statSync(logPath).size > UPDATE_LOG_FILE_CAP - masked.length - header.length) {
-      const old = readFileSync(logPath, "utf8");
-      const kept = old.slice(Math.max(0, old.length - UPDATE_LOG_FILE_CAP / 2));
-      writeFileSync(logPath, kept, { mode: 0o600 });
+    if (existsSync(logPath) && statSync(logPath).size > UPDATE_LOG_FILE_CAP / 2) {
+      const old = readFileSync(logPath);
+      writeFileSync(logPath, old.subarray(Math.max(0, old.length - UPDATE_LOG_FILE_CAP / 2)));
     }
   } catch { /* best-effort */ }
   try {
-    appendFileSync(logPath, `${header}\n${masked}\n\n`, { mode: 0o600 });
+    appendFileSync(logPath, `${header}\n`, { mode: 0o600 });
   } catch { /* best-effort */ }
+  return openSync(logPath, "a", 0o600);
+}
+
+/** Read the tail of the update log and extract a cause (masking secrets). */
+function readLogCause(logPath: string): string | null {
+  try {
+    const buf = readFileSync(logPath);
+    const tail = buf.subarray(Math.max(0, buf.length - CAUSE_TAIL_BYTES)).toString("utf8");
+    return extractUpdateCause(tail);
+  } catch { return null; }
 }
 
 export interface UpdateLaunchDeps {
@@ -126,44 +142,23 @@ export async function resolveUpdateLaunch(agend: string, deps: UpdateLaunchDeps 
 
 /** Spawn/manager refusal and nonzero updater exit are visible; exit 75 is the existing pending hand-off. */
 export function watchUpdateLaunch(
-  child: Pick<ChildProcess, "once" | "stdout" | "stderr">,
+  child: Pick<ChildProcess, "once">,
   fail: (message: string) => void,
   logPath?: string,
 ): void {
   let reported = false;
-  let outputChunks: Buffer[] = [];
-  let outputBytes = 0;
-
-  const onData = (chunk: Buffer | string) => {
-    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
-    const space = UPDATE_LOG_MAX_BYTES - outputBytes;
-    if (space > 0) {
-      outputChunks.push(space < buf.length ? buf.subarray(0, space) : buf);
-      outputBytes += Math.min(buf.length, space);
-    }
-  };
-  if (child.stdout) child.stdout.on("data", onData);
-  if (child.stderr) child.stderr.on("data", onData);
 
   const report = (reason: string) => {
     if (reported) return;
     reported = true;
-    const raw = Buffer.concat(outputChunks).toString("utf8");
-    const cause = extractUpdateCause(raw);
+    const cause = logPath ? readLogCause(logPath) : null;
     const logNote = logPath ? ` Full log: ${logPath}.` : "";
     const detail = cause ? ` Cause: ${cause}.${logNote}` : logNote;
     fail(`/update could not complete (${reason}).${detail} Run \`agend update\` from a host shell.`);
   };
 
-  child.once("error", () => {
-    if (logPath) appendUpdateLog(logPath, `--- updater launch error ---`, Buffer.concat(outputChunks).toString("utf8"));
-    report("updater launch failed");
-  });
+  child.once("error", () => report("updater launch failed"));
   child.once("exit", (code, signal) => {
-    const raw = Buffer.concat(outputChunks).toString("utf8");
-    if (logPath && (signal || (code !== 0 && code !== 75))) {
-      appendUpdateLog(logPath, `--- updater exit code=${code ?? "null"} signal=${signal ?? "null"} ---`, raw);
-    }
     if (signal || (code !== 0 && code !== 75)) {
       report(signal ? "updater was interrupted" : `updater exited ${code ?? "without a status"}`);
     }
