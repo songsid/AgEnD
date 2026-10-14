@@ -147,7 +147,8 @@ export function pollResultsText(
   poll: PollConfig, ballots: readonly PollBallot[], closedAt: number,
 ): string {
   const counts = pollCounts(set.buttons.length, ballots);
-  const late = closedAt - set.expiresAt > 5_000 ? ` · closed ${Math.round((closedAt - set.expiresAt) / 1000)} s late (AgEnD was not running at the deadline)` : " · closed on time";
+  const late = closedAt - set.expiresAt > 5_000 ? ` · closed ${Math.round((closedAt - set.expiresAt) / 1000)} s late (AgEnD was not running at the deadline)`
+    : set.expiresAt - closedAt > 1_000 ? ` · closed early by close_poll after ${Math.round((closedAt - set.createdAt) / 1000)} s` : " · closed on time";
   const head = `[poll results] poll ${set.id.slice(0, 8)} · ${poll.multi ? "multiple choice" : "single choice"} · ${poll.seconds} s · ${ballots.length} voted${late}`;
   const lines = [head];
   if (poll.question) lines.push(`Q: ${poll.question}`);

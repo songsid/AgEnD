@@ -302,6 +302,21 @@ export class ReplyButtonsController {
     }
   }
 
+  /**
+   * #1823: `instance` closes its own open poll before the deadline (close_poll). The close is the same one the deadline
+   * makes — once, results through the outbox, the message redrawn — and the results say it closed early.
+   */
+  async closeEarly(instance: string, id: string): Promise<{ ok: true; voted: number } | { ok: false; error: string }> {
+    const set = this.deps.store.get(id);
+    if (!set?.poll || set.instance !== instance) return { ok: false, error: "no open poll of yours has that id" };
+    if (set.messageId === null) return { ok: false, error: "that poll is still being posted; try again in a moment" };
+    // The close itself is the check: of two closes (or a close and the deadline) only one changes the row.
+    if (!this.deps.store.closePoll(id, this.deps.now())) return { ok: false, error: "that poll is already closed" };
+    this.deps.logger.info({ set: id, instance }, "Poll closed early");
+    await this.sweep();
+    return { ok: true, voted: this.deps.store.ballots(id).length };
+  }
+
   /** #1823: a closed poll's message shows the tally, once (a failed edit is logged, not retried); with show_voters, who. */
   private async settlePoll(set: ReplyButtonSet): Promise<void> {
     const fresh = this.deps.store.get(set.id);

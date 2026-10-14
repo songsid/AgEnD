@@ -47,6 +47,11 @@ export const ReplyArgs = z.object({
     .describe("Make the buttons (2–10) a timed poll: everyone who may talk to you there votes once, may change their vote, and is told their own choice privately. At the deadline you get one message from AgEnD in the poll's chat, `[poll results]`: each option's count and voters, each with an id and the ms from the poll opening (just before it is posted) to their last change; answer it in the chat. AgEnD only counts votes: post the right answer and any scores yourself. The reply's result has `poll_id`."),
 });
 
+// #1823: early close of one of the caller's polls.
+export const ClosePollArgs = z.object({
+  poll_id: z.string().regex(/^[0-9a-f]{32}$/).describe("The poll_id the reply that opened the poll returned."),
+});
+
 export const ReactArgs = z.object({
   ...ChannelAddressFields,
   message_id: NonEmptyString,

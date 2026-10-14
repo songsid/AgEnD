@@ -37,6 +37,8 @@ afterEach(() => {
 const BEFORE: Record<string, string[]> = {
   standard: [
     "reply", "react", "edit_message",
+    // #1823: closing its own poll early (reply's `poll`).
+    "close_poll",
     "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
     // Persona emoji: its own status stamp, beside its own name and description.
@@ -55,6 +57,8 @@ const BEFORE: Record<string, string[]> = {
     "list_stickers", "preview_stickers"],
   general: [
     "reply", "react", "edit_message", "download_attachment",
+    // #1823: closing its own poll early (reply's `poll`).
+    "close_poll",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     "create_instance", "start_instance", "restart_instance", "wake_instance",

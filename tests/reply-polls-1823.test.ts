@@ -777,6 +777,59 @@ describe("where there is no fleet, a poll is refused (its votes and results live
   });
 });
 
+describe("close_poll: the instance ends its own poll early", () => {
+  const close = async (h: ReturnType<typeof fleet>, args: Record<string, unknown>, instance = "w") => {
+    const before = h.answers.length;
+    await h.any.handleOutboundFromInstance(instance, { tool: "close_poll", args, fleetRequestId: `c${before}` });
+    await vi.waitFor(() => expect(h.answers.length).toBeGreaterThan(before));
+    return h.answers[h.answers.length - 1];
+  };
+  it("closed now: drawn with the tally, results once (they say early), later votes refused", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const h = fleet();
+    h.ctl();
+    await h.reply({ text: "Q?", buttons: BUTTONS, poll: { seconds: 300 } });
+    const id = setIdOf(h);
+    await h.vote(0, "owner", "alice");
+    await vi.advanceTimersByTimeAsync(12_000);
+    const answer = await close(h, { poll_id: id });
+    expect(answer.error).toBeUndefined();
+    expect(answer.result).toEqual({ closed: true, poll_id: id, voted: 1 });
+    expect(h.rec.renders.filter(r => r.poll.closed)).toHaveLength(1);
+    const [notice, ...more] = h.notices();
+    expect(more).toEqual([]);
+    expect(JSON.parse(notice!.payload_json).content).toMatch(/· 1 voted · closed early by close_poll after 12 s\n/);
+    expect((await h.vote(1, "u2", "bob")).acks).toEqual(["This poll is closed."]);
+    expect((await close(h, { poll_id: id })).error).toBe("close_poll: that poll is already closed");
+    await vi.advanceTimersByTimeAsync(400_000);                          // the deadline passing later changes nothing
+    expect(h.notices()).toHaveLength(1);
+    expect(h.rec.renders.filter(r => r.poll.closed)).toHaveLength(1);
+  });
+  it.each([
+    ["another instance's poll", "v", (id: string) => ({ poll_id: id }), "close_poll: no open poll of yours has that id"],
+    ["an unknown id", "w", () => ({ poll_id: "0".repeat(32) }), "close_poll: no open poll of yours has that id"],
+  ])("refused: %s", async (_n, instance, args, error) => {
+    const h = fleet();
+    h.ctl();
+    await h.reply({ text: "Q?", buttons: BUTTONS, poll: { seconds: 300 } });
+    const id = setIdOf(h);
+    expect((await close(h, args(id), instance)).error).toBe(error);
+    expect((h.any.replyButtonsStore as ReplyButtonStore).get(id)!.closedAt).toBeNull();
+  });
+  it("refused: a malformed id, and a one-click buttons set is not a poll", async () => {
+    const h = fleet();
+    h.ctl();
+    expect((await close(h, { poll_id: "nope" })).error).toMatch(/poll_id/);
+    await h.reply({ text: "Deploy?", buttons: BUTTONS });
+    const id = (h.rec.sends.at(-1)!.opts.replyButtons as Array<{ id: string }>)[0]!.id.split(":")[1]!;
+    expect((await close(h, { poll_id: id })).error).toBe("close_poll: no open poll of yours has that id");
+  });
+  it("listed for every profile that can reply with a poll", async () => {
+    const { TOOL_PROFILES } = await import("../src/tool-permissions.js");
+    for (const p of ["worker", "general", "standard", "coordinator", "full"] as const) expect(TOOL_PROFILES[p], p).toContain("close_poll");
+  });
+});
+
 // ── the real adapters ──
 
 const SET = "a".repeat(32);

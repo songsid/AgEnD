@@ -51,6 +51,7 @@ import {
   GetFleetStatusArgs,
   GetInstanceLogsArgs,
   GetEffortArgs,
+  ClosePollArgs,
   KiroEngineStatusArgs,
   GetUsageArgs,
   ListModelsArgs,
@@ -1011,6 +1012,18 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
     return;
   }
   respond(status);
+};
+
+/** #1823: close one of the caller's own polls before its deadline; its results then go out as at the deadline. */
+const closePoll: Handler = async (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(ClosePollArgs, rawArgs, "close_poll");
+  if (!v.ok) { respond(null, v.error); return; }
+  const fm = ctx as unknown as { closePollEarly?(instance: string, id: string): Promise<{ ok: true; voted: number } | { ok: false; error: string }> };
+  const instance = meta?.instanceName;                                     // whose polls: the instance's (as the reply recorded)
+  if (!instance || !fm.closePollEarly) { respond(null, "close_poll is not available here"); return; }
+  const r = await fm.closePollEarly(instance, v.data.poll_id);
+  if (r.ok) respond({ closed: true, poll_id: v.data.poll_id, voted: r.voted });
+  else respond(null, `close_poll: ${r.error}`);
 };
 
 const getEffort: Handler = (ctx, rawArgs, respond, meta) => {
@@ -2139,6 +2152,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["stop_instance", stopInstance],
   ["get_fleet_status", getFleetStatus],
   ["get_effort", getEffort],
+  ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["get_usage", getUsage],
   ["list_models", listModels],

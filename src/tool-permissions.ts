@@ -32,7 +32,7 @@ export type ToolSetName = "full" | "standard" | "worker" | "coordinator" | "mini
 /** Everything an agent that is doing the work needs, and nothing that runs the fleet. */
 const WORKER: readonly string[] = [
   // Talking to people.
-  "reply", "react", "edit_message", "download_attachment",
+  "reply", "react", "edit_message", "download_attachment", "close_poll",
   // Talking to peers. `report_result` is why `standard` was never usable as a
   // worker profile: without it the delegate → work → report protocol has no
   // last step. `delegate_task` is here because it creates nothing and needs a
@@ -84,7 +84,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   worker: WORKER,
   coordinator: [...WORKER, ...ORCHESTRATION],
   general: [
-    "reply", "react", "edit_message", "download_attachment",
+    "reply", "react", "edit_message", "download_attachment", "close_poll",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
     // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
     "kiro_engine_status",
@@ -98,7 +98,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "list_stickers", "preview_stickers",
   ],
   standard: [
-    "reply", "react", "edit_message",
+    "reply", "react", "edit_message", "close_poll",
     "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "list_stickers", "preview_stickers",

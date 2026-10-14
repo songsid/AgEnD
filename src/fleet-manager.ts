@@ -12468,6 +12468,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The caller has passed the /ui gate (session, same origin, CSRF). Here: the prompt must be one offered
    * on the dashboard, about the instance the page named, and the action one of its own buttons.
    */
+  /** #1823: close_poll — `instance` closes one of its own polls before the deadline. */
+  closePollEarly(instance: string, id: string): Promise<{ ok: true; voted: number } | { ok: false; error: string }> {
+    const buttons = this.replyButtons();
+    return buttons ? buttons.closeEarly(instance, id) : Promise.resolve({ ok: false, error: "polls are unavailable until AgEnD restarts" });
+  }
+
   /**
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.

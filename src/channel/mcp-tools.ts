@@ -61,6 +61,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Manage fleet task board. Actions: create (new task), list (live tasks by default — compact rows; pass filter_status to include done/cancelled, verbose=true for full records; an unfiltered list returns the newest 100 with an omitted count, any filter lifts that cap), get (one full task by id/8-hex prefix), claim (assign to self), done (mark complete, works from open or claimed), update (change status/priority/assignee). Ids accept an 8-hex prefix. Write actions return {id, status, updated_at}."],
   ["post_decision", schemas.PostDecisionArgs,
     "Record a decision. scope='project' (default) is visible to instances sharing this working directory. scope='fleet' is visible to ALL instances regardless of directory — use for workflow rules, review policies, and team conventions."],
+  ["close_poll", schemas.ClosePollArgs,
+    "Close one of your open polls now, before its deadline (for example when everyone has answered). Its `[poll results]` come to you as when it times out, once."],
   ["list_decisions", schemas.ListDecisionsArgs,
     "List active decisions: this working directory's (scope='project') plus every fleet-scoped one, fleet first. Archived ones only with include_archived."],
   ["update_decision", schemas.UpdateDecisionArgs,
