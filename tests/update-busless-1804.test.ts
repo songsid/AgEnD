@@ -8,14 +8,14 @@
  * against a local fake server in a child process that behaves as sd-bus does at BEGIN. No systemd, no fleet.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, lstatSync as lstatSyncReal, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { activateService, readLoadedUnit } from "../src/service-activation.js";
 import { busUnreachable, readSystemdRuntime } from "../src/systemd-runtime.js";
-import { callPeer, peerCodec, peerEndpointUntrusted, peerReplyAsBusctl, peerRequestFor, peerUnreachable, privateSocketPath, type PeerBus } from "../src/systemd-peer-bus.js";
+import { callPeer, peerCodec, peerEndpoint, peerReplyAsBusctl, peerRequestFor, peerUnreachable, privateSocketPath, type PeerBus } from "../src/systemd-peer-bus.js";
 import { guardSystemd } from "../src/restart-guard.js";
 import type { CommandResult } from "../src/update-install.js";
 import { activationWorld } from "./support/activation-world-1490.js";
@@ -421,7 +421,7 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
     ["a user's manager: its own 0700 directory", { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" }, "/run/user/1000/systemd": { uid: 1000, mode: 0o755, kind: "dir" }, "/run/user/1000/systemd/private": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/run/user/1000/systemd/private", null],
     ["the system manager, as a user", { "/": root(), "/run": root(), "/run/systemd": root(), "/run/systemd/private": { uid: 0, mode: 0o777, kind: "sock" } }, 1000, "/run/systemd/private", null],
     ["under a root sticky /tmp, in our own directory", { "/": root(), "/tmp": root(0o1777), "/tmp/x": { uid: 1000, mode: 0o700, kind: "dir" }, "/tmp/x/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/tmp/x/s", null],
-  ])("%s → trusted", (_n, tree, euid, socket, want) => expect(peerEndpointUntrusted(socket, fs(tree as Record<string, Fake>, euid))).toBe(want));
+  ])("%s → trusted, connected at that path", (_n, tree, euid, socket, want) => expect(peerEndpoint(socket, fs(tree as Record<string, Fake>, euid))).toEqual(want === null ? { ok: true, path: socket } : want));
 
   it.each([
     ["another user's socket", { ...base, "/run/user/1001": { uid: 1001, mode: 0o700, kind: "dir" }, "/run/user/1001/systemd": { uid: 1001, mode: 0o755, kind: "dir" }, "/run/user/1001/systemd/private": { uid: 1001, mode: 0o755, kind: "sock" } }, 1000, "/run/user/1001/systemd/private", /^\/run\/user\/1001\/systemd\/private is owned by uid 1001, neither root nor 1000$/],
@@ -434,11 +434,32 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
     ["a sticky directory not owned by root", { "/": root(), "/shared": { uid: 1001, mode: 0o1777, kind: "dir" }, "/shared/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/shared/s", /owned by uid 1001/],
     ["a symlink where the socket should be", { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" }, "/run/user/1000/s": { uid: 1000, mode: 0o777, kind: "link" } }, 1000, "/run/user/1000/s", /is not a socket/],
     ["no socket", { ...base }, 1000, "/run/user/1000/s", /ENOENT/],
-  ])("%s → refused before connecting", (_n, tree, euid, socket, reason) => expect(peerEndpointUntrusted(socket, fs(tree as Record<string, Fake>, euid))).toMatch(reason));
+  ])("%s → refused before connecting", (_n, tree, euid, socket, reason) => {
+    const endpoint = peerEndpoint(socket, fs(tree as Record<string, Fake>, euid));
+    expect(endpoint.ok).toBe(false);
+    expect((endpoint as { reason: string }).reason).toMatch(reason);
+  });
 
   it("a directory reached through a symlink is judged where it really is", () => {
-    const tree = { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" as const }, "/home": root(), "/home/evil": { uid: 1001, mode: 0o755, kind: "dir" as const }, "/run/user/1000/link/s": { uid: 1000, mode: 0o755, kind: "sock" as const } };
-    expect(peerEndpointUntrusted("/run/user/1000/link/s", fs(tree, 1000, { "/run/user/1000/link": "/home/evil" }))).toMatch(/\/home\/evil is owned by uid 1001/);
+    const tree = { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" as const }, "/home": root(), "/home/evil": { uid: 1001, mode: 0o755, kind: "dir" as const }, "/home/evil/s": { uid: 1000, mode: 0o755, kind: "sock" as const } };
+    expect(peerEndpoint("/run/user/1000/link/s", fs(tree, 1000, { "/run/user/1000/link": "/home/evil" }))).toEqual({ ok: false, reason: "/home/evil is owned by uid 1001, neither root nor 1000" });
+  });
+
+  // Prism r3: the path checked is the path connected — resolved once, never the original alias again.
+  it("an alias through an open directory is judged, and connected, at its canonical path", () => {
+    const tree = { ...base, "/scratch": root(0o777), "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" as const }, "/run/user/1000/systemd": { uid: 1000, mode: 0o755, kind: "dir" as const }, "/run/user/1000/systemd/private": { uid: 1000, mode: 0o755, kind: "sock" as const } };
+    expect(peerEndpoint("/scratch/alias/private", fs(tree, 1000, { "/scratch/alias": "/run/user/1000/systemd" }))).toEqual({ ok: true, path: "/run/user/1000/systemd/private" });
+  });
+
+  it.each([
+    ["an unresolvable directory", "/gone/private", /ENOENT|no such/],
+    ["a trailing slash", "/run/user/1000/", /does not name a socket/],
+    ["a relative path", "run/user/1000/systemd/private", /not an absolute path/],
+  ])("%s → refused", (_n, socket, reason) => {
+    const deps = { ...fs({ ...base }, 1000), realpath: (p: string) => { if (p.startsWith("/gone")) throw Error(`ENOENT: no such file or directory, realpath '${p}'`); return p; } };
+    const endpoint = peerEndpoint(socket, deps);
+    expect(endpoint.ok).toBe(false);
+    expect((endpoint as { reason: string }).reason).toMatch(reason);
   });
 
   it("live: a listening socket in a directory others can write is refused before any connection", async () => {
@@ -460,6 +481,48 @@ describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => 
     } finally {
       for (const socket of accepted) socket.destroy();
       await new Promise(resolve => server.close(resolve));
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Prism r3: a symlink retargeted after the check cannot move the connection", () => {
+  const listen = async (path: string) => {
+    const accepted: import("node:net").Socket[] = [];
+    const server = createServer(socket => { accepted.push(socket); });
+    await new Promise<void>(resolve => server.listen(path, resolve));
+    return { accepted, close: async () => { for (const s of accepted) s.destroy(); await new Promise(resolve => server.close(resolve)); } };
+  };
+  const real = { lstat: (p: string) => lstatSyncReal(p), realpath: (p: string) => realpathSync(p), euid: process.geteuid?.() ?? 0 };
+
+  it("the alias resolves to A, is retargeted to B mid-check: A is connected, B never", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "agend-peer-alias-")));
+    const a = join(dir, "a"), b = join(dir, "b"), open = join(dir, "open");
+    for (const d of [a, b]) mkdirSync(d, { mode: 0o700 });
+    mkdirSync(open); chmodSync(open, 0o777);
+    const link = join(open, "link");
+    symlinkSync(a, link);
+    const serverA = await listen(join(a, "private")), serverB = await listen(join(b, "private"));
+    try {
+      const racing = { ...real, realpath: (p: string) => { const r = realpathSync(p); if (p === link) { unlinkSync(link); symlinkSync(b, link); } return r; } };
+      const result = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: racing });
+      expect(result.stderr).not.toMatch(/not systemd's own socket/);           // A passed the check, and A was dialled
+      expect(realpathSync(link)).toBe(b);                                     // the alias really points at B now
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(serverA.accepted).toHaveLength(1);
+      expect(serverB.accepted).toHaveLength(0);
+      // controls: the protected endpoint directly, and through the (now B) alias without a race
+      callPeer(true, capture.loadUnit!.args, { socket: join(a, "private"), timeoutMs: 300, endpoint: real });
+      callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: real });
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect([serverA.accepted.length, serverB.accepted.length]).toEqual([2, 1]);
+      // a dangling alias: unresolvable, refused
+      unlinkSync(link); symlinkSync(join(dir, "gone"), link);
+      const dangling = callPeer(true, capture.loadUnit!.args, { socket: join(link, "private"), timeoutMs: 300, endpoint: real });
+      expect(dangling.stderr).toMatch(/not systemd's own socket \(ENOENT/);
+      expect(peerUnreachable(dangling)).toBe(true);
+    } finally {
+      await serverA.close(); await serverB.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

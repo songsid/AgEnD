@@ -12,7 +12,7 @@
  * already have put the next package (#1450 C6).
  */
 import { lstatSync, realpathSync, type Stats } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import { MessageChannel, Worker, receiveMessageOnPort } from "node:worker_threads";
 import type { CommandResult } from "./update-install.js";
 
@@ -265,42 +265,58 @@ export function privateSocketPath(user: boolean, env: NodeJS.ProcessEnv = proces
   return user ? `${env.XDG_RUNTIME_DIR || `/run/user/${uid}`}/systemd/private` : "/run/systemd/private";
 }
 
+export interface EndpointDeps {
+  lstat(path: string): Pick<Stats, "uid" | "mode" | "isSocket" | "isDirectory" | "isSymbolicLink">;
+  realpath(path: string): string;
+  euid: number;
+}
+
 /**
- * Prism r2: whose server answers. SASL EXTERNAL proves who WE are; systemctl separately accepts only a peer running as
- * root or as itself (bus_check_peercred). Node cannot read a unix socket's peer credentials, so the same boundary is
+ * Prism r2/r3: whose server answers. SASL EXTERNAL proves who WE are; systemctl separately accepts only a peer running
+ * as root or as itself (bus_check_peercred). Node cannot read a unix socket's peer credentials, so the same boundary is
  * established from ownership instead: only root or this user can have bound the socket when the socket itself is owned
- * by one of them, and every directory on its real path is owned by one of them and writable by no one else (a
- * root-owned sticky directory such as /tmp excepted: no one else can replace an entry in it). Anything else — an
- * XDG_RUNTIME_DIR naming another user's directory, a symlinked socket — is refused before connecting.
+ * by one of them, and every directory above it is owned by one of them and writable by no one else (a root-owned
+ * sticky directory such as /tmp excepted: no one else can replace an entry in it).
+ *
+ * The path is resolved ONCE, here: the canonical socket path (its directory's realpath + its own name) is the one
+ * checked and the one returned for connecting — never the original, whose symlinks someone else could retarget between
+ * the check and the connect (r3). Every component of the canonical path is then a real directory nobody but root or
+ * this user can change. Anything unknown or unresolvable is refused.
  */
-export function peerEndpointUntrusted(socket: string, deps: { lstat(path: string): Pick<Stats, "uid" | "mode" | "isSocket" | "isDirectory" | "isSymbolicLink">; realpath(path: string): string; euid: number }): string | null {
+export function peerEndpoint(socket: string, deps: EndpointDeps): { ok: true; path: string } | { ok: false; reason: string } {
   const trusted = (uid: number) => uid === 0 || uid === deps.euid;
+  const refuse = (reason: string) => ({ ok: false as const, reason });
   try {
-    if (!socket.startsWith("/")) return `${socket} is not an absolute path`;
-    const own = deps.lstat(socket);
-    if (!own.isSocket()) return `${socket} is not a socket`;
-    if (!trusted(own.uid)) return `${socket} is owned by uid ${own.uid}, neither root nor ${deps.euid}`;
+    if (!socket.startsWith("/")) return refuse(`${socket} is not an absolute path`);
+    const name = basename(socket);
+    if (!name || name === "." || name === ".." || socket.endsWith("/")) return refuse(`${socket} does not name a socket`);
     const parent = deps.realpath(dirname(socket));
+    if (!parent.startsWith("/")) return refuse(`${dirname(socket)} resolves to ${parent}, not an absolute path`);
+    const path = parent === "/" ? `/${name}` : `${parent}/${name}`;
+    const own = deps.lstat(path);
+    if (!own.isSocket()) return refuse(`${path} is not a socket`);
+    if (!trusted(own.uid)) return refuse(`${path} is owned by uid ${own.uid}, neither root nor ${deps.euid}`);
     for (let dir = parent; ; dir = dirname(dir)) {
       const st = deps.lstat(dir);
-      if (!st.isDirectory()) return `${dir} is not a directory`;
-      if (!trusted(st.uid)) return `${dir} is owned by uid ${st.uid}, neither root nor ${deps.euid}`;
+      if (!st.isDirectory()) return refuse(`${dir} is not a directory`);
+      if (!trusted(st.uid)) return refuse(`${dir} is owned by uid ${st.uid}, neither root nor ${deps.euid}`);
       const othersWrite = (st.mode & 0o022) !== 0, sticky = (st.mode & 0o1000) !== 0;
-      if (othersWrite && !(sticky && st.uid === 0)) return `${dir} is writable by others (mode ${(st.mode & 0o7777).toString(8)})`;
-      if (dir === "/") return null;
+      if (othersWrite && !(sticky && st.uid === 0)) return refuse(`${dir} is writable by others (mode ${(st.mode & 0o7777).toString(8)})`);
+      if (dir === "/") return { ok: true, path };
     }
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return refuse(error instanceof Error ? error.message : String(error));
   }
 }
 
-/** One call over a private socket, synchronously, bounded. `socket`/`timeoutMs` are for tests. */
-export function callPeer(user: boolean, args: string[], opts: { socket?: string; timeoutMs?: number } = {}): CommandResult {
+/** One call over a private socket, synchronously, bounded. `socket`/`timeoutMs`/`endpoint` are for tests. */
+export function callPeer(user: boolean, args: string[], opts: { socket?: string; timeoutMs?: number; endpoint?: EndpointDeps } = {}): CommandResult {
   const request = peerRequestFor(args);
   if (!request) return { status: 2, signal: null, stdout: "", stderr: `unsupported call ${args.slice(0, 2).join(" ")}\n` };
-  const socket = opts.socket ?? privateSocketPath(user);
-  const untrusted = peerEndpointUntrusted(socket, { lstat: path => lstatSync(path), realpath: path => realpathSync(path), euid: process.geteuid?.() ?? 0 });
-  if (untrusted) return { status: 1, signal: null, stdout: "", stderr: `Failed to connect to ${socket}: not systemd's own socket (${untrusted})\n` };
+  const named = opts.socket ?? privateSocketPath(user);
+  const endpoint = peerEndpoint(named, opts.endpoint ?? { lstat: path => lstatSync(path), realpath: path => realpathSync(path), euid: process.geteuid?.() ?? 0 });
+  if (!endpoint.ok) return { status: 1, signal: null, stdout: "", stderr: `Failed to connect to ${named}: not systemd's own socket (${endpoint.reason})\n` };
+  const socket = endpoint.path;                                        // the checked path, and only it, is connected
   const timeoutMs = opts.timeoutMs ?? PEER_TIMEOUT_MS;
   const flag = new Int32Array(new SharedArrayBuffer(4));
   const { port1, port2 } = new MessageChannel();
