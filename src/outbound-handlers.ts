@@ -1252,7 +1252,9 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   // the escape hatch from a bad switch and must never be the thing that is
   // blocked, and an unlogged shared store means the CLI was never set up at
   // all — a state that predates this feature.
-  if (profileSwitched && profileAfter) {
+  // #1806 review: a profile is a login of ONE backend — the same name under another backend is another store, so a
+  // backend switch onto a named profile is checked too (claude-code "personal" says nothing about kiro-cli "personal").
+  if ((profileSwitched || backendSwitched) && profileAfter) {
     // The same root the launcher resolves the profile under, so the store this
     // probes is the store the CLI will be pointed at.
     const login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter);
