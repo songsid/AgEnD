@@ -29,7 +29,7 @@ import {
   resolveCredentialProfile,
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
-import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels } from "./codex-metadata.js";
+import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./codex-metadata.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
@@ -1187,10 +1187,15 @@ export class CodexBackend implements CliBackend {
       const provider = validateProvider(String(config.backendOptions.provider));
       cmd += ` -c ${shellQuote(`model_provider="${provider}"`)}`;
     }
-    // #1811: the configured effort, when the model's catalog entry lists it (launch-effort.ts); else a quiet note.
-    const effort = codexEffort(config.effort, readCodexModelEffortLevels({
-      isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: config.model?.trim() || null,
-    }));
+    // #1811: the configured effort, when the catalog entry of the model that will run lists it (launch-effort.ts); else
+    // a quiet note. That model is proven from the command line or the config files codex reads (#1813 review).
+    const runs = resolveCodexLaunchModel({
+      isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome,
+      model: config.model, workingDirectory: config.workingDirectory,
+    });
+    const effort = codexEffort(config.effort, runs.proven
+      ? readCodexModelEffortLevels({ isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: runs.model })
+      : { model: runs.model, levels: null, unproven: true });
     if (effort.arg) cmd += effort.arg;
     this.quietLaunchNotes = effort.note ? [effort.note] : [];
     // AgEnD instances are unattended processes: an interactive self-update

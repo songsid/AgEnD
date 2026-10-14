@@ -2,7 +2,8 @@ import { measureSyncWork } from "../sync-work-attribution.js";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { getAgendHome } from "../paths.js";
 
 export const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
@@ -69,11 +70,10 @@ function readCodexModelEffortLevelsSync(homes: {
   try {
     if (!model) {
       for (const home of [homes.isolatedHome, homes.sharedHome]) {
-        try {
-          const match = readFileSync(join(home, "config.toml"), "utf-8")
-            .match(/^model\s*=\s*"([^"]+)"/m);
-          if (match) { model = match[1]!; break; }
-        } catch { /* try the next home */ }
+        const config = readTomlTable(join(home, "config.toml"));
+        if (config === undefined) continue;                            // no such file: the next home
+        model = config === null ? null : tomlModel(config);             // a home that exists decides, unreadable or not
+        break;
       }
     }
     if (!model) return { model, levels: null };
@@ -91,4 +91,71 @@ function readCodexModelEffortLevelsSync(homes: {
   } catch {
     return { model, levels: null };
   }
+}
+
+type TomlTable = Record<string, unknown>;
+const isTable = (v: unknown): v is TomlTable => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** A TOML file's root table; undefined when there is no file, null when it cannot be read or parsed. */
+function readTomlTable(path: string): TomlTable | null | undefined {
+  let text: string;
+  try { text = readFileSync(path, "utf-8"); } catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? undefined : null; }
+  try { const parsed = parseToml(text); return isTable(parsed) ? parsed : null; } catch { return null; }
+}
+
+/**
+ * #1813 review: the model a config table sets — its ROOT `model` key, or the selected profile's (`profile = "x"` with
+ * `[profiles.x] model`), read through the TOML structure (a `model = …` line inside a multi-line string is text, not
+ * the key). Null when it sets none.
+ */
+function tomlModel(config: TomlTable): string | null {
+  const profileName = config.profile;
+  if (typeof profileName === "string") {
+    const profiles = isTable(config.profiles) ? config.profiles : undefined;
+    const profile = profiles && Object.prototype.hasOwnProperty.call(profiles, profileName) ? profiles[profileName] : undefined;
+    if (isTable(profile) && typeof profile.model === "string") return profile.model;
+  }
+  return typeof config.model === "string" ? config.model : null;
+}
+
+/**
+ * #1813 review: the model a codex launch runs, or why it cannot be proven. A model given on the command line
+ * (`-c model=…`) outranks every config file. Otherwise the instance's codex home `config.toml` (its CODEX_HOME), unless
+ * a project `.codex/config.toml` could override it: codex loads a trusted project's files (AgEnD trusts every
+ * instance's working directory) from the working directory up to the project root — the nearest directory holding one
+ * of `project_root_markers` (default `.git`), else every ancestor. Any such file that sets another model, selects a
+ * profile, or cannot be read makes the model unproven, and a launch passes no effort it cannot match to the model that
+ * will run. A codex home's own config.toml met on the way (`~/.codex`) is the user layer, not a project file.
+ */
+export function resolveCodexLaunchModel(input: {
+  isolatedHome: string; sharedHome: string; model?: string | null; workingDirectory?: string;
+}): { model: string | null; proven: boolean } {
+  const given = input.model?.trim();
+  if (given) return { model: given, proven: true };
+  let home: string | null = null;
+  let markers = [".git"];
+  for (const dir of [input.isolatedHome, input.sharedHome]) {
+    const config = readTomlTable(join(dir, "config.toml"));
+    if (config === undefined) continue;
+    if (config === null) return { model: null, proven: false };
+    home = tomlModel(config);
+    const configured = config.project_root_markers;
+    if (Array.isArray(configured) && configured.every(m => typeof m === "string")) markers = configured as string[];
+    break;
+  }
+  const homeConfigs = new Set([input.isolatedHome, input.sharedHome].map(dir => resolve(dir, "config.toml")));
+  if (input.workingDirectory) {
+    for (let dir = resolve(input.workingDirectory); ; dir = dirname(dir)) {
+      const file = join(dir, ".codex", "config.toml");
+      const project = homeConfigs.has(resolve(file)) ? undefined : readTomlTable(file);
+      if (project === null) return { model: home, proven: false };
+      if (project !== undefined) {
+        if (typeof project.profile === "string") return { model: home, proven: false };
+        if (typeof project.model === "string" && project.model !== home) return { model: home, proven: false };
+      }
+      if (markers.some(marker => existsSync(join(dir, marker)))) break;      // the project root: nothing above applies
+      if (dirname(dir) === dir) break;
+    }
+  }
+  return { model: home, proven: home !== null };
 }

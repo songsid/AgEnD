@@ -238,3 +238,81 @@ describe("the daemon", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("review r1: codex's effort follows the model that will really run", () => {
+  const CACHE = JSON.stringify({ models: [
+    { slug: "gpt-6.1-sol", supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map(effort => ({ effort })) },
+    { slug: "gpt-5.5", supported_reasoning_levels: ["low", "medium", "high", "xhigh"].map(effort => ({ effort })) },
+  ] });
+  const setup = (homeToml: string) => {
+    writeFileSync(join(root, "codex-shared", "models_cache.json"), CACHE);
+    writeFileSync(join(root, "codex-shared", "config.toml"), homeToml);
+    const dir = join(root, "agend", "instances", "worker");
+    const work = join(root, "work", "repo");
+    mkdirSync(dir, { recursive: true });
+    mkdirSync(join(work, ".git"), { recursive: true });
+    const b = new CodexBackend(dir);
+    (b as any).planResume = () => ({ mode: "fresh", reason: "none" });
+    const launch = (over: Record<string, unknown> = {}) => {
+      const cmd = b.buildCommand({ workingDirectory: work, instanceDir: dir, instanceName: "worker", mcpServers: {}, effort: "max", ...over } as never);
+      return { passed: cmd.includes(`model_reasoning_effort="max"`), notes: b.consumeQuietLaunchNotes() };
+    };
+    return { work, launch };
+  };
+  const UNPROVEN = t("effort.launch_skipped", "max", "codex", t("effort.launch_codex_model_unproven"));
+
+  it("(a) the ROOT model key, read as TOML — not a `model =` line inside a string, and in any key or quote form", () => {
+    const decoy = `developer_instructions = '''\nExample configuration:\nmodel = "gpt-6.1-sol"\n'''\n`;
+    for (const root_ of [`model = 'gpt-5.5'\n`, `"model" = "gpt-5.5"\n`, `  model = "gpt-5.5"\n`]) {
+      const { launch } = setup(root_ + decoy);
+      expect(launch().passed, root_).toBe(false);                                     // gpt-5.5 has no max
+    }
+    // Controls: the plain root key of a model that has max; a model given to the launch.
+    expect(setup(`model = "gpt-6.1-sol"\n` + decoy).launch().passed).toBe(true);
+    expect(setup(`model = 'gpt-5.5'\n` + decoy).launch({ model: "gpt-6.1-sol" }).passed).toBe(true);
+    // The profile the config selects is the one that runs.
+    expect(setup(`model = "gpt-6.1-sol"\nprofile = "slow"\n[profiles.slow]\nmodel = "gpt-5.5"\n`).launch().passed).toBe(false);
+  });
+
+  it("(b) a project .codex/config.toml that could set another model: unproven — no flag, a quiet note", () => {
+    const { work, launch } = setup(`model = "gpt-6.1-sol"\n`);
+    mkdirSync(join(work, ".codex"), { recursive: true });
+    writeFileSync(join(work, ".codex", "config.toml"), `model = "gpt-5.5"\n`);
+    expect(launch()).toEqual({ passed: false, notes: [UNPROVEN] });
+    // Control: a model given to the launch outranks every file.
+    expect(launch({ model: "gpt-6.1-sol" })).toEqual({ passed: true, notes: [] });
+    // The same model there, or none: proven.
+    writeFileSync(join(work, ".codex", "config.toml"), `model = "gpt-6.1-sol"\napproval_policy = "never"\n`);
+    expect(launch().passed).toBe(true);
+    // A profile it selects, or a file that does not parse: unproven.
+    writeFileSync(join(work, ".codex", "config.toml"), `profile = "x"\n`);
+    expect(launch().notes).toEqual([UNPROVEN]);
+    writeFileSync(join(work, ".codex", "config.toml"), `model = \n`);
+    expect(launch().notes).toEqual([UNPROVEN]);
+  });
+
+  it("(b) only up to the project root: a file above the nearest .git does not apply; project_root_markers = [] reads every ancestor", () => {
+    const { work, launch } = setup(`model = "gpt-6.1-sol"\n`);
+    mkdirSync(join(work, "..", ".codex"), { recursive: true });
+    writeFileSync(join(work, "..", ".codex", "config.toml"), `model = "gpt-5.5"\n`);
+    expect(launch().passed).toBe(true);                                                // above the repo's .git
+    writeFileSync(join(root, "codex-shared", "config.toml"), `model = "gpt-6.1-sol"\nproject_root_markers = []\n`);
+    expect(launch().notes).toEqual([UNPROVEN]);                                        // no root marker: it may apply
+  });
+
+  it("the codex home's own config.toml met on the way up is the user layer, not a project file", () => {
+    setup(`model = "gpt-6.1-sol"\nproject_root_markers = []\n`);                     // the working directory
+    // The home itself sits at <root>/.codex, an ancestor of the working directory; with no root marker the walk
+    // reaches it, and it must be read as the user layer it is, not as a project file.
+    process.env.CODEX_HOME = join(root, ".codex");
+    mkdirSync(join(root, ".codex"), { recursive: true });
+    writeFileSync(join(root, ".codex", "config.toml"), `model = "gpt-6.1-sol"\nproject_root_markers = []\n`);
+    writeFileSync(join(root, ".codex", "models_cache.json"), CACHE);
+    const dir = join(root, "agend", "instances", "worker2");
+    mkdirSync(dir, { recursive: true });
+    const b = new CodexBackend(dir);
+    (b as any).planResume = () => ({ mode: "fresh", reason: "none" });
+    const cmd = b.buildCommand({ workingDirectory: join(root, "work", "repo"), instanceDir: dir, instanceName: "w2", mcpServers: {}, effort: "max" } as never);
+    expect(cmd).toContain(`model_reasoning_effort="max"`);
+  });
+});

@@ -105,10 +105,13 @@ export function flagEffort(
  * codex: `-c model_reasoning_effort="<level>"` when the model's own catalog entry lists the level. `-c` is in every
  * codex AgEnD runs; what it does not check is the value, so the catalog is the gate.
  */
-export function codexEffort(effort: string | undefined, catalog: { model: string | null; levels: string[] | null }): LaunchEffort {
+export function codexEffort(
+  effort: string | undefined, catalog: { model: string | null; levels: string[] | null; unproven?: boolean },
+): LaunchEffort {
   if (!effort) return { arg: null, note: null };
   const level = canonical(effort);
   if (!level) return skip("codex", effort, t("effort.launch_not_a_level", CANONICAL_EFFORT.join(", ")));
+  if (catalog.unproven) return skip("codex", level, t("effort.launch_codex_model_unproven"));
   if (!catalog.levels) return skip("codex", level, t("effort.launch_codex_unknown_model", catalog.model ?? "—"));
   if (!catalog.levels.includes(level)) return skip("codex", level, t("effort.launch_level_not_offered", catalog.levels.join(", ")));
   return { arg: ` -c ${shellQuote(`model_reasoning_effort="${level}"`)}`, note: null };
