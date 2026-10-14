@@ -993,6 +993,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   get supportsPolls(): boolean { return true; }
   /** #1823: at most one poll redraw per chat every 3 s: under Telegram's ~20 edits a minute in a group. */
   get pollEditIntervalMs(): number { return 3_000; }
+  /** #1823: …counted over the whole group: Telegram's edit limit is per chat, its forum topics share it. */
+  get pollRateScope(): "chat" { return "chat"; }
   /** #1823: Telegram cannot count down by itself: the status button's time left is redrawn. */
   get pollCountdownTicks(): boolean { return true; }
   async renderPoll(chatId: string, messageId: string, _threadId: string | undefined, poll: PollRender): Promise<void> {

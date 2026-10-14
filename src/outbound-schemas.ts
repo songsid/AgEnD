@@ -44,7 +44,7 @@ export const ReplyArgs = z.object({
     reveal: z.enum(["close", "live"]).optional().describe("\"close\" (default): while open only \"N answered\" and the time left show, the counts at close. \"live\": the counts show as votes come."),
     show_voters: z.boolean().optional().describe("At close, also post who picked what in the chat. Default: counts only. You get the voters either way."),
   }).optional()
-    .describe("Make the buttons (2–10) a timed poll: everyone who may talk to you there votes once, may change their vote, and is told their own choice privately. At the deadline you get one message, `[poll results]`: each option's count and voters, each with an id and the ms from the poll opening to their last change. AgEnD only counts votes: post the right answer and any scores yourself. The reply's result has `poll_id`."),
+    .describe("Make the buttons (2–10) a timed poll: everyone who may talk to you there votes once, may change their vote, and is told their own choice privately. At the deadline you get one message from AgEnD in the poll's chat, `[poll results]`: each option's count and voters, each with an id and the ms from the poll opening (just before it is posted) to their last change; answer it in the chat. AgEnD only counts votes: post the right answer and any scores yourself. The reply's result has `poll_id`."),
 });
 
 export const ReactArgs = z.object({

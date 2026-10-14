@@ -832,6 +832,9 @@ export function channelStatus(meta: Record<string, string>): DeliveryStatus | un
   // A web chat message has no platform chat when the fleet has no channel, and still gets its reports:
   // they are the dashboard's ticks (the fleet routes them by the message id, never to a platform).
   if (!messageId || (!chatId && meta.source !== "web")) return undefined;
+  // #1823: a notice from AgEnD itself (a poll's results) names its chat so the answer goes there, but its message id
+  // is AgEnD's own, not a platform message: there is nothing to react to.
+  if (meta.source === "agend-system") return undefined;
   if (!chatId) return { chatId: "", messageId };
   const threadId = meta.thread_id || undefined;
   return threadId ? { chatId, messageId, threadId } : { chatId, messageId };

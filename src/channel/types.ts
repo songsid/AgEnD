@@ -131,6 +131,11 @@ export interface ChannelAdapter extends EventEmitter {
   renderPoll?(chatId: string, messageId: string, threadId: string | undefined, poll: PollRender): Promise<void>;
   /** #1823: the least time between two poll redraws in one chat, inside the platform's edit limits. */
   readonly pollEditIntervalMs?: number;
+  /**
+   * #1823: what `pollEditIntervalMs` is counted over: "chat" (Telegram: a group's edit limit covers all its topics) or
+   * the default, each thread (Discord: every channel and thread has its own bucket).
+   */
+  readonly pollRateScope?: "chat" | "thread";
   /** #1823: the platform cannot count down by itself: the status is redrawn as time passes (`pollTickMs`). */
   readonly pollCountdownTicks?: boolean;
   /** Delete a message (e.g. retire the Cancel button message when done).
