@@ -54,7 +54,7 @@ export const KIRO_INSTANCE_AGENT_MIN = "2.21.0";
  * the binary's own --help instead of the version table, and the operator is
  * told the version is unverified.
  */
-export const KIRO_TESTED_MAX = "2.27.0";
+export const KIRO_TESTED_MAX = "2.30.0";
 
 /**
  * kiro-cli versions, per TUI front-end, whose mid-turn steering AgEnD drives (#1405). Only kiro's TUI steers — typed
@@ -1156,9 +1156,9 @@ export class KiroBackend implements CliBackend {
     if (warnedVersionGateCacheKeys.has(key)) return;
     let warning: string | null = null;
     if (!versionAtLeast(parsed, KIRO_SUPPORTED_MIN)) {
-      warning = t("kiro.version_below_supported", this.compatibility.version!, KIRO_SUPPORTED_MIN);
+      warning = t("kiro.version_below_supported", parsed.join("."), KIRO_SUPPORTED_MIN);
     } else if (versionAtLeast(parsed, nextPatch(KIRO_TESTED_MAX))) {
-      warning = t("kiro.version_untested", this.compatibility.version!, KIRO_TESTED_MAX);
+      warning = t("kiro.version_untested", parsed.join("."), KIRO_TESTED_MAX);
     }
     if (!warning) return;
     warnedVersionGateCacheKeys.add(key);

@@ -330,14 +330,14 @@ describe("P3: version gate", () => {
     expect(probe(KIRO_TESTED_MAX, help("2.27.0")).calls).toEqual([["--version"]]);
   });
 
-  it.each(["2.27.1", "2.28.0", "3.0.0"])("kiro-cli %s (newer than tested) is read from its --help", (version) => {
-    const { calls, compat } = probe(version, help("2.27.0"));
+  it.each(["2.30.1", "2.31.0", "3.0.0"])("kiro-cli %s (newer than tested) is read from its --help", (version) => {
+    const { calls, compat } = probe(version, help("2.30.0"));
     expect(calls).toEqual([["--version"], ["chat", "--help"]]);
     expect(compat.source).toBe("help");
   });
 
   it("an untested 2.x whose help cannot be read falls back to the 2.x table", () => {
-    const { compat } = probe("2.28.0", null);
+    const { compat } = probe("2.31.0", null);
     expect(compat.source).toBe("version");
     expect(planKiroLaunch("legacy", compat)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
   });
@@ -345,16 +345,16 @@ describe("P3: version gate", () => {
   it("warns below the supported minimum and above the tested maximum — once per binary, never blocking", () => {
     const old = new KiroBackend("/tmp/kiro-1109", probe("2.14.2", null).compat);
     expect(thrown(() => old.buildCommand(config()))).toBeNull();
-    expect(old.consumeLaunchWarning()).toBe(t("kiro.version_below_supported", "kiro-cli 2.14.2", "2.21.0"));
+    expect(old.consumeLaunchWarning()).toBe(t("kiro.version_below_supported", "2.14.2", "2.21.0"));
     expect(old.consumeLaunchWarning()).toBeNull();
 
     const tested = new KiroBackend("/tmp/kiro-1109", probe("2.24.0", null).compat);
     tested.buildCommand(config());
     expect(tested.consumeLaunchWarning()).toBeNull();
 
-    const newer = new KiroBackend("/tmp/kiro-1109", probe("2.28.0", help("2.27.0")).compat);
+    const newer = new KiroBackend("/tmp/kiro-1109", probe("2.31.0", help("2.30.0")).compat);
     newer.buildCommand(config());
-    expect(newer.consumeLaunchWarning()).toBe(t("kiro.version_untested", "kiro-cli 2.28.0", KIRO_TESTED_MAX));
+    expect(newer.consumeLaunchWarning()).toBe(t("kiro.version_untested", "2.31.0", KIRO_TESTED_MAX));
     newer.buildCommand(config());
     expect(newer.consumeLaunchWarning()).toBeNull(); // once per binary generation
   });

@@ -132,15 +132,15 @@ describe("anything else is held for a human, never answered", () => {
   });
 });
 
-describe("2.28.0 keeps AgEnD's pins", () => {
-  it("is above the tested maximum, so its flags come from its own --help, and they are the same pins as 2.27", () => {
-    expect(KIRO_TESTED_MAX).toBe("2.27.0");
-    const compat = probe("2.28.0", HELP_228);
+describe("2.31.0 keeps AgEnD's pins", () => {
+  it("is above the tested maximum, so its flags come from its own --help, and they are the same pins as 2.27–2.30", () => {
+    expect(KIRO_TESTED_MAX).toBe("2.30.0");
+    const compat = probe("2.31.0", HELP_228); // 2.31's --help not yet published; use 2.28 as proxy (same flags)
     expect(compat.source).toBe("help");
     expect(compat.agentEngines).toEqual(["v2", "v1", "v3"]);
     expect(planKiroLaunch("legacy", compat)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
     expect(planKiroLaunch("tui", compat)).toEqual({ kind: "launch", ui: "tui", flags: ["--tui", "--agent-engine=v2"] });
-    // The same pins right after `chat`; 2.28 also runs the instance as its own agent (#906; a new instance: fresh).
+    // The same pins right after `chat`; 2.28+ also runs the instance as its own agent (#906; a new instance: fresh).
     expect(new KiroBackend("/tmp/kiro-1308", compat).buildCommand(config()))
       .toMatch(/ chat --legacy-ui --agent-engine=v1 --trust-all-tools --agent '[^']+'$/);
   });

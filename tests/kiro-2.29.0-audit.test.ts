@@ -50,9 +50,9 @@ describe("kiro-cli 2.29.0: the launch is still pinned", () => {
     expect(createHash("sha256").update(help).digest("hex")).toBe("34f05faf09a5eacb0df1fb81cbcb6ad8049e02f86f85f143288150a7da6dac39");
   });
 
-  it("read from its help (above TESTED_MAX): legacy → --legacy-ui --agent-engine=v1, tui → --tui --agent-engine=v2", () => {
+  it("read from the version table (within TESTED_MAX): legacy → --legacy-ui --agent-engine=v1, tui → --tui --agent-engine=v2", () => {
     const c = compat();
-    expect(c).toMatchObject({ source: "help", agentEngines: ["v2", "v1", "v3"], supportsLegacyUi: true, supportsTui: true, supportsV3: true, supportsInstanceAgent: true });
+    expect(c).toMatchObject({ source: "version", agentEngines: ["v2", "v1", "v3"], supportsLegacyUi: true, supportsTui: true, supportsV3: true, supportsInstanceAgent: true });
     expect(planKiroLaunch("legacy", c)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
     expect(planKiroLaunch("tui", c)).toEqual({ kind: "launch", ui: "tui", flags: ["--tui", "--agent-engine=v2"] });
   });
@@ -80,7 +80,7 @@ describe("a machine-wide chat.agentEngine=v3 refuses only an engine-less --legac
   it("every kiro-cli that has a v3 engine gets --legacy-ui only together with --agent-engine=v1 (version table and help)", () => {
     const versionOnly = (v: string) => probeKiroCliCompatibility("/fake/kiro-cli", (_bin, args) => { if (args[0] === "--version") return `kiro-cli ${v}\n`; throw new Error("no help"); });
     const fromHelp = (v: string) => probeKiroCliCompatibility("/fake/kiro-cli", (_bin, args) => (args[0] === "--version" ? `kiro-cli ${v}\n` : readFileSync(join(FIXTURES, "kiro-help", `chat-help-${v}.txt`), "utf-8")));
-    const cases = [...["2.8.0", "2.21.0", "2.26.0", KIRO_TESTED_MAX].map(versionOnly), ...["2.28.0", "2.29.0"].map(fromHelp)];
+    const cases = [...["2.8.0", "2.21.0", "2.26.0", KIRO_TESTED_MAX].map(versionOnly), ...["2.28.0", "2.29.0"].map(versionOnly)];
     for (const c of cases) {
       expect(c.supportsV3, c.version).toBe(true);
       const plan = planKiroLaunch("legacy", c);

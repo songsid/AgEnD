@@ -100,7 +100,7 @@ describe("kiro-cli 2.30.0: the launch is still pinned", () => {
 
   it("legacy → --legacy-ui --agent-engine=v1, tui → --tui --agent-engine=v2", () => {
     const c = compat();
-    expect(c).toMatchObject({ source: "help", agentEngines: ["v2", "v1", "v3"], supportsLegacyUi: true, supportsTui: true, supportsV3: true });
+    expect(c).toMatchObject({ source: "version", agentEngines: ["v2", "v1", "v3"], supportsLegacyUi: true, supportsTui: true, supportsV3: true });
     expect(planKiroLaunch("legacy", c)).toEqual({ kind: "launch", ui: "legacy", flags: ["--legacy-ui", "--agent-engine=v1"] });
     expect(planKiroLaunch("tui", c)).toEqual({ kind: "launch", ui: "tui", flags: ["--tui", "--agent-engine=v2"] });
   });

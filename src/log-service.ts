@@ -187,8 +187,15 @@ export class LogService {
     const events = rows
       .filter(r => (after === undefined || r.id > after) && LOG_EVENT_TYPES.has(r.event_type))
       .map(r => {
-        const detail = r.payload && typeof r.payload === "object" && Object.keys(r.payload as object).length
-          ? bounded(JSON.stringify(r.payload), 300).text : undefined;
+        const detail = r.payload && typeof r.payload === "object"
+          ? (() => {
+            const p = r.payload as Record<string, unknown>;
+            // When the payload is only (or includes) a `message`, show that text rather than raw JSON.
+            if (typeof p.message === "string" && p.message) return bounded(p.message, 300).text;
+            const keys = Object.keys(p);
+            return keys.length ? bounded(JSON.stringify(r.payload), 300).text : undefined;
+          })()
+          : undefined;
         return { id: r.id, ts: dbTime(r.created_at), type: r.event_type, ...(detail ? { detail } : {}) };
       })
       .reverse();

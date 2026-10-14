@@ -229,6 +229,22 @@ describe("fleet events from the event log", () => {
     expect(((await s.svc.steps("w", { ev: 5 })) as any).events.map((e: any) => e.id)).toEqual([6]);
     expect(LOG_EVENT_TYPES.has("tip_dismissed")).toBe(false);
   });
+
+  it("a {message} payload shows its text, not raw JSON (#1785-fix)", async () => {
+    const rows = [
+      { id: 2, event_type: "crash_respawn", payload: { code: 1, detail: "OOM" }, created_at: "2026-10-13 08:48:01" },
+      { id: 1, event_type: "backend_launch_warning", payload: { message: "kiro-cli 2.30.0 is newer…" }, created_at: "2026-10-13 08:48:00" },
+    ];
+    const s = service({ src: { backend: "kiro-cli", path: null, format: null, reason: "unsupported" }, events: () => rows });
+    const a: any = await s.svc.steps("w", {});
+    // message-only payload: detail is the message text, not JSON
+    const launchWarning = a.events.find((e: any) => e.type === "backend_launch_warning");
+    const crashRespawn = a.events.find((e: any) => e.type === "crash_respawn");
+    expect(launchWarning.detail).toBe("kiro-cli 2.30.0 is newer…");
+    expect(launchWarning.detail).not.toMatch(/^\{/);
+    // other-shape payload: JSON is still used
+    expect(crashRespawn.detail).toContain("OOM");
+  });
 });
 
 describe("the route, the public link, passive reads and the setting", () => {
