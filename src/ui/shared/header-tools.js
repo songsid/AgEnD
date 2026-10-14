@@ -58,7 +58,10 @@ export function setTextSize(size) {
 }
 export function setViewFit() { write(VIEW_FIT_KEY, "1"); textSizeStore.set((s) => ({ ...s, viewFit: true })); }
 
-/** Aa: S → M → L → S; on View, Fit → S → M → L → Fit. */
+/**
+ * Aa: S → M → L → S; on View, Fit → S → M → L → Fit. Every page's button is as wide as its widest name (Fit's
+ * included): switching pages or sizes never moves the controls beside it.
+ */
 export function TextSizeButton({ view = false }) {
   const st = useStore(textSizeStore);
   const cur = view && st.viewFit ? "fit" : st.size;
@@ -67,7 +70,8 @@ export function TextSizeButton({ view = false }) {
   const name = t(`app.textSize_${cur}`);
   const label = t("app.textSize", name);
   return html`<button type="button" class="btn btn-ghost btn-sm hd-text" onClick=${() => (next === "fit" ? setViewFit() : setTextSize(next))}
-    title=${label} aria-label=${label}><${Icon} name="type" size=${16} /><span class="hide-narrow" aria-hidden="true">${name}</span></button>`;
+    title=${label} aria-label=${label}><${Icon} name="type" size=${16} /><span class="hide-narrow" aria-hidden="true"><span class="hd-text-names">${
+      ["fit", ...TEXT_SIZES].map(k => html`<span key=${k} class=${k === cur ? "on" : undefined}>${t(`app.textSize_${k}`)}</span>`)}</span></span></button>`;
 }
 
 /** Whether the fleet serves the usage panel: the page says so (data-usage-panel); "0" only when turned off. */
@@ -79,8 +83,8 @@ export function usageOffered() {
 // hidden is this device's choice (agend_usage_rail; "0" = hidden, else shown) — a layout choice, not synced (#1665).
 export const RAIL_MEDIA = "(min-width: 1200px)";
 export const RAIL_KEY = "agend_usage_rail";
-/** The pages whose header has ◔ — the rail is theirs. */
-export const RAIL_PANELS = ["chat", "view", "details", "fleet"];
+/** The pages whose header has ◔ — the rail is theirs (Log's too: one frame on every tab of an instance). */
+export const RAIL_PANELS = ["chat", "view", "log", "details", "fleet"];
 export const usageRailStore = createStore({ open: true });
 /** A page load: this device's choice. */
 export function initUsageRail() { usageRailStore.set({ open: read(RAIL_KEY) !== "0" }); }
@@ -140,4 +144,8 @@ export function UsageButton({ navKey }) {
 /** The shared controls, in the one order every page uses. `navKey`: the page's navigation (the usage dialog's owner). */
 export function HeaderTools({ view = false, navKey }) {
   return html`<${TextSizeButton} view=${view} /><${UsageButton} navKey=${navKey} />`;
+}
+/** Where a page with no control of its own after the shared ones (Log) keeps the room Chat's ⋯ takes: the same box on every tab. */
+export function HeaderSlot() {
+  return html`<span class="icon-btn hd-slot" aria-hidden="true"></span>`;
 }
