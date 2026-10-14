@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { registerExecutableFixture } from "./support/process-guard.js";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +24,7 @@ const { backendStep, planDisplay } = await import("../src/backend-command.js");
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { runWebCommand } = await import("../src/web-commands.js");
 const { t } = await import("../src/locale.js");
+const { resetCliHelpCache } = await import("../src/backend/launch-effort.js");
 import type { BackendCommandDeps } from "../src/backend-command.js";
 
 // ── The steps (pure) ─────────────────────────────────────────────────────────
@@ -171,6 +173,7 @@ const INSTALLED = new Set(["claude-code", "codex", "kiro-cli", "opencode"]);
 function fleet(instance: Record<string, unknown> = {}, opts: { status?: string; busy?: boolean } = {}) {
   const fm = new FleetManager(dataDir);
   const any = fm as any;
+  mkdirSync(join(dataDir, "w"), { recursive: true });                // its working directory, as a real instance's
   fm.fleetConfig = {
     channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } },
     defaults: {},
@@ -602,5 +605,55 @@ describe("review r1: a listed model is selectable, whatever its name looks like 
     expect((await backendStep(d, "w", ["antigravity", 'bad"q'])).kind).toBe("refuse");
     expect((await backendStep(d, "w", ["antigravity", "x\ny"])).kind).toBe("refuse");
     expect((await backendStep(d, "w", ["codex", "gpt 5"])).kind).toBe("refuse");                  // codex's builder runs validateModel
+  });
+});
+
+// ── #1811 landed: the effort step offers only what the new CLI's launch will pass ──────────────────────────
+
+describe("the effort step relies on the launch gate (#1811)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); resetCliHelpCache(); });
+  /** A fake `claude` first on PATH, printing this help (a generated fixture, never the real CLI). */
+  const fakeClaude = (help: string) => {
+    const bin = mkdtempSync(join(dataDir, "bin-"));
+    const path = join(bin, "claude");
+    writeFileSync(path, `#!/bin/sh\ncat <<'AGEND_HELP_EOF'\n${help}\nAGEND_HELP_EOF\n`);
+    chmodSync(path, 0o755);
+    registerExecutableFixture(path);
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    resetCliHelpCache();
+  };
+  const onCodex = () => { const f = fleet({ backend: "codex", model: "gpt-5.5" }); delete f.any.backendEffortLevels; return f; };
+  const step = (f: ReturnType<typeof fleet>, args: string[]) => backendStep(f.any.backendCommandDeps("worker", { live: false }), "worker", args);
+
+  it("claude whose help lists --effort and its levels: those levels", async () => {
+    fakeClaude("  --effort <level>    Effort level for the current session\n                      (low, medium, high, xhigh, max)\n");
+    const s = await step(onCodex(), ["claude-code", "sonnet"]);
+    expect(s.kind === "choose" && s.choices.map(c => c.token)).toEqual(["default", "low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("a claude without --effort: no effort step, the confirmation says so, and a typed effort is refused", async () => {
+    fakeClaude("  --model <model>   Model\n");
+    const f = onCodex();
+    const s = await step(f, ["claude-code", "sonnet"]);
+    expect(s.kind).toBe("confirm");
+    expect(s.kind === "confirm" && s.text).toContain(t("backend.confirm_no_effort", "claude-code"));
+    expect(await step(f, ["claude-code", "sonnet", "high"])).toEqual({ kind: "refuse", text: t("backend.no_effort", "claude-code") });
+  });
+
+  it("codex whose model a project config could change: no effort step (the launch would not pass one)", async () => {
+    const f = fleet();
+    delete f.any.backendEffortLevels;
+    const home = mkdtempSync(join(dataDir, "codex-home-"));
+    writeFileSync(join(home, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-5.5", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] }] }));
+    writeFileSync(join(home, "config.toml"), `model = "gpt-5.5"\n`);
+    vi.stubEnv("CODEX_HOME", home);
+    const work = join(dataDir, "w");
+    mkdirSync(join(work, ".git"), { recursive: true });
+    expect(((await step(f, ["codex", "default"])) as any).choices.map((c: { token: string }) => c.token)).toEqual(["default", "low", "high"]);
+    mkdirSync(join(work, ".codex"), { recursive: true });
+    writeFileSync(join(work, ".codex", "config.toml"), `model = "gpt-6"\n`);
+    expect((await step(f, ["codex", "default"])).kind).toBe("confirm");
+    // A model chosen here is given on the command line: proven again.
+    expect(((await step(f, ["codex", "gpt-5.5"])) as any).choices.map((c: { token: string }) => c.token)).toEqual(["default", "low", "high"]);
   });
 });
