@@ -782,6 +782,7 @@ const WEB_MIRRORED_PROMPT_PREFIXES: ReadonlySet<string> = new Set([
 const WEB_ONLY_REPLY_SINK = {
   type: "web",
   supportsReplyButtons: true,                    // #1266: the web chat shows a reply's buttons itself
+  supportsPolls: true,                           // #1823: …and a poll (its pages are told; there is nothing to edit)
   sendText: async () => ({ chatId: "web", messageId: newWebMessageId() }),
   sendFile: async () => ({ chatId: "web", messageId: newWebMessageId() }),
 } as unknown as ChannelAdapter;
@@ -8869,7 +8870,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const parsedPoll = parsePoll(args.poll, parsedButtons && "buttons" in parsedButtons ? parsedButtons.buttons : null, args.text);
       if (parsedPoll && "error" in parsedPoll) { respond(null, `reply: ${parsedPoll.error}`); return; }
       if (parsedPoll && (!outAdapter.supportsPolls || !this.replyButtons())) {
-        respond(null, `reply: a poll cannot be shown here${outAdapter.supportsPolls ? " (reply buttons are unavailable until AgEnD restarts)" : " — polls work in Discord and Telegram chats"}; send the question without poll`);
+        respond(null, `reply: a poll cannot be shown here${outAdapter.supportsPolls ? " (reply buttons are unavailable until AgEnD restarts)" : " — polls work in Discord and Telegram chats and the web chat"}; send the question without poll`);
         return;
       }
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
@@ -8906,8 +8907,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const carrying = sent?.buttonsMessageId ?? sent?.messageId;
           if (!error && carrying) {
             this.replyButtonsCtl?.bind(replySet.id, carrying);
-            // #1823: a poll is not shown in the web chat yet (it would offer one-click buttons there).
-            buttonsView = replySet.poll ? null : this.replyButtonsCtl?.viewOf(replySet.id) ?? null;
+            buttonsView = this.replyButtonsCtl?.viewOf(replySet.id) ?? null;
           } else {
             this.replyButtonsCtl?.discard(replySet.id);
           }
@@ -12468,10 +12468,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The caller has passed the /ui gate (session, same origin, CSRF). Here: the prompt must be one offered
    * on the dashboard, about the instance the page named, and the action one of its own buttons.
    */
-  /** #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). */
-  clickWebReplyButton(instance: string, id: string, index: number): Promise<{ status: 200 | 400 | 403 | 409; error?: string }> {
+  /**
+   * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
+   * poll (#1823) it is `voter`'s vote: the page's session.
+   */
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; name: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
-    return buttons ? buttons.clickWeb(instance, id, index) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
+    return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
 
   async clickWebPrompt(instance: string, nonce: string, action: string): Promise<{ status: 200 | 400 | 403 | 409; error?: string; outcome?: string }> {

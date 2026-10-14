@@ -11,7 +11,7 @@ import {
   type ReplyButton, type ReplyButtonSet, type ReplyButtonStore,
 } from "./reply-buttons.js";
 import {
-  POLL_CLOSED_CALLBACK, POLL_STATUS_CALLBACK, pollRender, pollResultsText, pollTickMs, pollVoteNotice, pollVotersText,
+  POLL_CLOSED_CALLBACK, POLL_STATUS_CALLBACK, pollCounts, pollRender, pollResultsText, pollTickMs, pollVoteNotice, pollVotersText,
   type PollConfig, type PollRender,
 } from "./reply-polls.js";
 
@@ -31,9 +31,24 @@ export interface ReplyButtonClick {
 export interface ReplyButtonsView {
   id: string;
   labels: string[];
-  state: "open" | "chosen" | "expired";
+  state: "open" | "chosen" | "expired" | "closed";
   chosen?: number;
   by?: string;
+  /** #1823: the set is a poll ("closed" once its deadline came). */
+  poll?: PollView;
+}
+/**
+ * #1823: a poll as a page shows it. Counts only when revealed (`reveal: "live"`, or closed); voters' names only when
+ * closed with `show_voters`. `rev` orders views of one poll (a page keeps the newest).
+ */
+export interface PollView {
+  deadline: number;
+  answered: number;
+  multi: boolean;
+  reveal: "close" | "live";
+  rev: number;
+  counts?: number[];
+  voters?: string[][];
 }
 
 export interface ReplyButtonsDeps {
@@ -65,6 +80,8 @@ const KEEP_SETTLED_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_TIMER_MS = 2_147_483_647;
 /** #1823: redraw spacing for an adapter that names none. */
 const DEFAULT_POLL_EDIT_INTERVAL_MS = 3_000;
+/** #1823: how often a web-only poll's pages are told about new votes. */
+const WEB_POLL_PUBLISH_MS = 1_000;
 /** #1823: how soon results the outbox could not take are offered again. */
 const RESULTS_RETRY_MS = 30_000;
 
@@ -111,6 +128,16 @@ export class ReplyButtonsController {
 
   view(set: ReplyButtonSet, now = this.deps.now()): ReplyButtonsView {
     const labels = set.buttons.map(b => b.label);
+    if (set.poll) {
+      const ballots = this.deps.store.ballots(set.id);
+      const closed = set.closedAt !== null;
+      const counts = closed || set.poll.reveal === "live" ? pollCounts(labels.length, ballots) : undefined;
+      const voters = closed && set.poll.showVoters ? labels.map((_, i) => ballots.filter(b => b.options.includes(i)).map(b => b.name)) : undefined;
+      return {
+        id: set.id, labels, state: closed ? "closed" : "open",
+        poll: { deadline: set.expiresAt, answered: ballots.length, multi: set.poll.multi, reveal: set.poll.reveal, rev: now, ...(counts ? { counts } : {}), ...(voters ? { voters } : {}) },
+      };
+    }
     if (set.deliveredAt !== null && set.chosenIndex !== null) return { id: set.id, labels, state: "chosen", chosen: set.chosenIndex, by: set.chosenBy ?? "" };
     // Settled without a delivered choice: expired, or a claim a stopped process never delivered (closed as expired).
     if (set.settledAt !== null) return { id: set.id, labels, state: "expired" };
@@ -166,12 +193,21 @@ export class ReplyButtonsController {
     return { ok: true, options: result.options };
   }
 
-  /** A click in the web chat (the caller has passed the /ui gate: a session, or the public link). */
-  async clickWeb(instance: string, id: string, index: number): Promise<{ status: 200 | 400 | 403 | 409; error?: string }> {
+  /**
+   * A click in the web chat (the caller has passed the /ui gate: a session, or the public link). On a poll (#1823) it
+   * is `voter`'s vote — a session's public handle, so each signed-in device is one voter — and the answer carries the
+   * ballot, for the page to mark the voter's own choice.
+   */
+  async clickWeb(instance: string, id: string, index: number, voter?: { key: string; name: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     if (!/^[0-9a-f]{32}$/.test(id) || !Number.isInteger(index) || index < 0) return { status: 400, error: "Malformed button" };
     const set = this.deps.store.get(id);
     if (!set) return { status: 409, error: t("reply_buttons.closed") };
     if (set.instance !== instance) return { status: 403, error: "This button belongs to another instance" };
+    if (set.poll) {
+      if (!voter) return { status: 403, error: "A vote needs a signed-in session" };
+      const r = this.vote(id, voter.key, voter.name, index);
+      return r.ok ? { status: 200, options: r.options } : { status: 409, error: r.error };
+    }
     let notice: string | undefined;
     const ok = await this.choose(id, index, { userId: "web-user", username: "web-user", source: "web", humanOrigin: webHumanOrigin(true) }, n => { notice = n; });
     return ok ? { status: 200 } : { status: 409, error: notice ?? t("reply_buttons.closed") };
@@ -274,6 +310,7 @@ export class ReplyButtonsController {
     const pace = this.pace.get(fresh.id);
     this.dropPace(fresh.id);                                                 // a redraw waiting to go now stands down
     while (pace?.inflight) await pace.inflight;                              // the one going lands before the closed one
+    this.deps.publish(fresh.instance, this.view(fresh));
     const adapter = this.deps.adapterFor(fresh.adapterId);
     if (!adapter?.renderPoll) return;
     try { await adapter.renderPoll(fresh.chatId, fresh.messageId, fresh.threadId || undefined, this.pollRenderOf(fresh, true)); }
@@ -297,7 +334,8 @@ export class ReplyButtonsController {
     pace.dirty = true;
     if (pace.timer !== null) return;
     const adapter = this.deps.adapterFor(set.adapterId);
-    const interval = adapter?.pollEditIntervalMs ?? DEFAULT_POLL_EDIT_INTERVAL_MS;
+    // Only the web chat (no platform message to edit): its pages are told as often as once a second.
+    const interval = adapter ? adapter.pollEditIntervalMs ?? DEFAULT_POLL_EDIT_INTERVAL_MS : WEB_POLL_PUBLISH_MS;
     // The platform's limit is per chat (Telegram: the whole group, its topics included) or per thread (Discord: each
     // channel or thread has its own bucket) — the adapter says which (#1824 review).
     const chat = adapter?.pollRateScope === "chat" ? `${set.adapterId}\u0000${set.chatId}` : `${set.adapterId}\u0000${set.chatId}\u0000${set.threadId}`;
@@ -320,6 +358,7 @@ export class ReplyButtonsController {
     const set = this.deps.store.get(id);
     if (!set?.poll || set.closedAt !== null || set.messageId === null) return;   // closing draws its own final state
     if (this.deps.now() >= set.expiresAt) { void this.sweep(); return; }
+    this.deps.publish(set.instance, this.view(set));                        // the web chat, whatever the platform
     const adapter = this.deps.adapterFor(set.adapterId);
     if (adapter?.renderPoll) {
       // Kept while in flight: the close waits for it, so an open redraw never lands on top of the closed one.

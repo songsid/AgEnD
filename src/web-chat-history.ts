@@ -57,17 +57,38 @@ const ROLES: ReadonlySet<string> = new Set(["agent", "user", "status"]);
 export interface WebChatButtons {
   id: string;
   labels: string[];
-  state: "open" | "chosen" | "expired";
+  state: "open" | "chosen" | "expired" | "closed";
   chosen?: number;
   by?: string;
+  /** #1823: a poll (ReplyButtonsView's `poll`). */
+  poll?: WebChatPoll;
+}
+export interface WebChatPoll {
+  deadline: number; answered: number; multi: boolean; reveal: "close" | "live"; rev: number;
+  counts?: number[]; voters?: string[][];
+}
+const count = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+function webChatPoll(raw: unknown, options: number): WebChatPoll | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const p = raw as Record<string, unknown>;
+  if (!count(p.deadline) || !count(p.answered) || !count(p.rev) || typeof p.multi !== "boolean") return undefined;
+  const counts = Array.isArray(p.counts) && p.counts.length === options && p.counts.every(count) ? p.counts as number[] : undefined;
+  const voters = Array.isArray(p.voters) && p.voters.length === options && p.voters.every(v => Array.isArray(v))
+    ? (p.voters as unknown[][]).map(v => v.slice(0, 200).map(n => String(n).slice(0, 80))) : undefined;
+  return {
+    deadline: p.deadline, answered: p.answered, multi: p.multi, reveal: p.reveal === "live" ? "live" : "close", rev: p.rev,
+    ...(counts ? { counts } : {}), ...(voters ? { voters } : {}),
+  };
 }
 function webChatButtons(raw: unknown): WebChatButtons | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const b = raw as Record<string, unknown>;
   if (typeof b.id !== "string" || !/^[0-9a-f]{32}$/.test(b.id) || !Array.isArray(b.labels)) return undefined;
-  const state = b.state === "chosen" || b.state === "expired" ? b.state : "open";
+  const labels = b.labels.slice(0, 10).map(l => String(l).slice(0, 80));
+  const poll = webChatPoll(b.poll, labels.length);
+  const state = b.state === "chosen" || b.state === "expired" || (poll && b.state === "closed") ? b.state : "open";
   return {
-    id: b.id, labels: b.labels.slice(0, 10).map(l => String(l).slice(0, 80)), state,
+    id: b.id, labels, state, ...(poll ? { poll } : {}),
     ...(state === "chosen" && typeof b.chosen === "number" ? { chosen: b.chosen } : {}),
     ...(state === "chosen" && typeof b.by === "string" ? { by: b.by.slice(0, 64) } : {}),
   };
@@ -315,7 +336,11 @@ export class WebChatHistory {
     if (!next || !slot) return null;
     for (let i = slot.messages.length - 1; i >= 0; i--) {
       const m = slot.messages[i]!;
-      if (m.buttons?.id === next.id) { m.buttons = next; this.persist(instance); return m; }
+      if (m.buttons?.id !== next.id) continue;
+      // #1823: a poll's views can arrive out of order; the newest (by rev) stands, and closed is final.
+      const had = m.buttons.poll;
+      if (had && next.poll && (m.buttons.state === "closed" && next.state !== "closed" || (m.buttons.state === next.state && had.rev > next.poll.rev))) return m;
+      m.buttons = next; this.persist(instance); return m;
     }
     return null;
   }
@@ -324,7 +349,8 @@ export class WebChatHistory {
   buttonStates(): Array<{ instance: string; buttons: WebChatButtons }> {
     const out: Array<{ instance: string; buttons: WebChatButtons }> = [];
     for (const [instance, slot] of this.byInstance) {
-      for (const m of slot.messages) if (m.buttons && m.buttons.state !== "open") out.push({ instance, buttons: m.buttons });
+      // #1823: an open poll too — its count of answers changes while it is open.
+      for (const m of slot.messages) if (m.buttons && (m.buttons.state !== "open" || m.buttons.poll)) out.push({ instance, buttons: m.buttons });
     }
     return out;
   }

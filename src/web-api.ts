@@ -240,7 +240,7 @@ export interface WebApiContext {
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number): Promise<{ status: number; error?: string }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; name: string }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -643,8 +643,15 @@ export function handleWebRequest(
         json(res, 400, { error: "instance, id and index required" });
         return;
       }
-      const r = await click(instance, id, index);
-      json(res, r.status, r.status === 200 ? { answered: true } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
+      // #1823: on a poll the click is a vote, and the voter is this page's session — its public handle (never the
+      // session id), so each signed-in device votes once. The CLI's header token votes as one "web" voter.
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      const voter = verdict.kind === "allow" && verdict.via === "session" && verdict.session
+        // The device label is not unique (two "Chrome on Linux"): the handle's first characters tell them apart.
+        ? { key: `web:${verdict.session.handle}`, name: `web · ${verdict.session.label} (${verdict.session.handle.slice(0, 4)})` }
+        : verdict.kind === "allow" ? { key: "web:cli", name: "web" } : undefined;
+      const r = await click(instance, id, index, voter);
+      json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
       try { json(res, 500, { error: "Click failed" }); } catch { /* already answered */ }

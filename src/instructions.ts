@@ -173,7 +173,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       "",
       "## Tool Usage",
       "- reply: respond to users. react: add an emoji reaction — needs `message_id` + `emoji`. edit_message: update a sent message — needs `message_id` + `text`. download_attachment: fetch files.",
-      "- reply can also offer choices: `buttons` (1–10, `{label, value?}`); a click comes back as a message `[button] <label>` (or `[button] <label> (value: <value>)` when the value differs). Add `poll: { seconds }` to make the buttons a timed vote by everyone there (Discord, Telegram); its results come back as one `[poll results]` message. And `stickers` (up to 3 ids from `list_stickers`; not together with buttons).",
+      "- reply can also offer choices: `buttons` (1–10, `{label, value?}`); a click comes back as a message `[button] <label>` (or `[button] <label> (value: <value>)` when the value differs). Add `poll: { seconds }` to make the buttons a timed vote by everyone there (Discord, Telegram, web chat); its results come back as one `[poll results]` message. And `stickers` (up to 3 ids from `list_stickers`; not together with buttons).",
       "- `message_id` comes from the inbound message header line `(message_id: … | …)`, which lists the fields that are set.",
       "- `[📷 Image: PATH]` in a message: Read PATH — it is a photo. `[📎 File: NAME → PATH]`: a saved file at PATH.",
       "- If the header has `attachment_file_id`, call download_attachment then Read the returned path.",

@@ -79,6 +79,11 @@ describe("a ballot, the tally and what is shown", () => {
     expect(notice.length).toBe(200);
     expect(notice.endsWith("…")).toBe(true);
     expect(pollVoteNotice(["Paris"], [0])).toBe("✓ Your vote: Paris");
+    // An emoji across the cut is dropped whole, never halved (a lone surrogate).
+    const emoji = pollVoteNotice(["x".repeat(185) + "😀😀😀😀😀😀😀😀"], [0]);
+    expect(emoji.length).toBeLessThanOrEqual(200);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(emoji)).toBe(false);
+    expect(emoji).toBe(`✓ Your vote: ${"x".repeat(185)}…`);
   });
   it("one choice: the click is the vote; the same option again changes nothing", () => {
     expect(nextBallot(null, 1, false)).toEqual({ options: [1], changed: true });
@@ -318,7 +323,7 @@ function fleet(options: { dir?: string; ticks?: boolean; polls?: boolean; classi
 const setIdOf = (h: ReturnType<typeof fleet>) => h.pollCbs()[0]!.split(":")[1]!;
 
 describe("the reply path", () => {
-  it("a poll goes out as its options plus a status; the result names the poll; the web chat shows the text only", async () => {
+  it("a poll goes out as its options plus a status; the result names the poll; the web chat shows it too", async () => {
     vi.useFakeTimers({ now: 1_000_000 });
     const h = fleet();
     h.ctl();
@@ -334,7 +339,7 @@ describe("the reply path", () => {
     const store = h.any.replyButtonsStore as ReplyButtonStore;
     expect(store.get(id)).toMatchObject({ messageId: "msg-1-last", expiresAt: 1_030_000, poll: { seconds: 30, multi: false, reveal: "close" } });
     const msg = h.sse.find(e => e.event === "message" && e.data.role === "agent")!.data;
-    expect(msg.buttons).toBeUndefined();
+    expect(msg.buttons).toEqual({ id, labels: ["Paris", "London", "Rome"], state: "open", poll: { deadline: 1_030_000, answered: 0, multi: false, reveal: "close", rev: expect.any(Number) } });
   });
   it.each([
     ["a poll on one button", { buttons: BUTTONS.slice(0, 1), poll: { seconds: 30 } }, /at least 2 buttons/],
