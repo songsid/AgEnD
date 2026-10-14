@@ -333,7 +333,7 @@ exit 0
     expect(update(process.pid).restarted).toBe(false); // the test runner: not a fleet, and newer anyway
     expect(update(null).restarted).toBe(false);
     expect(update(2 ** 22 + 4321).restarted).toBe(false); // a pid that does not exist
-  });
+  }, 60_000);   // three built-CLI runs; the two with no fleet also verify the install (#1829)
 });
 
 describe("detached `agend restart` signals only a confirmed fleet (built CLI; the self-spawn is recorded, no fleet starts)", () => {
