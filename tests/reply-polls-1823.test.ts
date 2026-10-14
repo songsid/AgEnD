@@ -173,9 +173,12 @@ describe("the store: one ballot per voter, until the deadline; it outlives a res
     expect(store.ballots(ID)).toEqual([]);
     store.close();
   });
-  it("a poll is never consumed as one-click buttons", () => {
+  it("a poll is never consumed as one-click buttons — not even through a read that missed it is a poll", () => {
     const store = open(join(scratch(), "rb.db"));
     store.bind(ID, "55");
+    expect(store.consume(ID, 0, "alice", 2_000)).toMatchObject({ ok: false, reason: "missing" });
+    const real = store.get(ID)!;
+    vi.spyOn(store, "get").mockReturnValueOnce({ ...real, poll: null });
     expect(store.consume(ID, 0, "alice", 2_000)).toMatchObject({ ok: false });
     expect(store.get(ID)!.consumedAt).toBeNull();
     expect(store.unsettled(40_000)).toEqual([]);             // one-click bookkeeping never picks a poll up
@@ -453,6 +456,17 @@ describe("redraws stay inside the platform's edit limits", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(h.rec.renders).toHaveLength(2);                                      // nothing changed: nothing redrawn
   });
+  it("a vote that changes nothing (the same option again) redraws nothing", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const h = fleet();
+    h.ctl();
+    await h.reply({ text: "Q?", buttons: BUTTONS, poll: { seconds: 60 } });
+    await h.vote(1);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect((await h.vote(1)).acks).toEqual(["✓ Your vote: London"]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.rec.renders).toHaveLength(1);
+  });
   it("two polls in one chat share its interval", async () => {
     vi.useFakeTimers({ now: 1_000_000 });
     const h = fleet();
@@ -474,6 +488,8 @@ describe("redraws stay inside the platform's edit limits", () => {
     await h.reply({ text: "Q?", buttons: BUTTONS, poll: { seconds: 20 } });
     await vi.advanceTimersByTimeAsync(16_000);
     expect(h.rec.renders.map(r => Math.round((r.at - 1_000_000) / 1000))).toEqual([5, 10, 15]);
+    // On the step's boundaries of the time left (a late redraw does not shift the next): within a timer's ms of one.
+    for (const r of h.rec.renders) { const d = (r.poll.deadline - r.at) % 5_000; expect(Math.min(d, 5_000 - d)).toBeLessThanOrEqual(2); }
     expect(h.rec.renders.map(r => r.poll.deadline)).toEqual([1_020_000, 1_020_000, 1_020_000]);
   });
   it("a platform that counts down itself (Discord) is not redrawn just for the time", async () => {
@@ -541,14 +557,13 @@ describe("the close: shown once, results to the agent exactly once — across a 
     await h.vote(0);
     await vi.advanceTimersByTimeAsync(0);
     expect(order).toEqual(["open:start"]);
-    const closing = vi.advanceTimersByTimeAsync(10_000);
-    await vi.advanceTimersByTimeAsync(0);
+    // The 5 s tick and the deadline both come while the first edit is still out: neither may go before it lands.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(order).toEqual(["open:start"]);
+    expect((h.any.replyButtonsStore as ReplyButtonStore).get(setIdOf(h))!.closedAt).not.toBeNull();
     release();
-    await closing;
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(order.slice(0, 2)).toEqual(["open:start", "open:done"]);         // nothing overtook the slow edit
-    expect(order.at(-1)).toBe("closed");
-    expect(order.filter(o => o === "closed")).toHaveLength(1);
+    expect(order).toEqual(["open:start", "open:done", "closed"]);           // the tick's redraw saw it closed
   });
   it("show_voters: one follow-up under the poll names who picked what; without it, none", async () => {
     vi.useFakeTimers({ now: 1_000_000 });
@@ -636,6 +651,47 @@ describe("the close: shown once, results to the agent exactly once — across a 
     expect(more).toEqual([]);
     expect(JSON.parse(notice!.payload_json).content).toMatch(/· closed 300 s late \(AgEnD was not running at the deadline\)/);
     expect(b.rec.renders.filter(r => r.poll.closed)).toHaveLength(1);
+  });
+});
+
+describe("where there is no fleet, a poll is refused (its votes and results live in the fleet)", () => {
+  it("the standalone daemon refuses it before sending; buttons alone still go out as text options", async () => {
+    const { Daemon } = await import("../src/daemon.js");
+    const d = new Daemon("poll-standalone", {
+      working_directory: "/tmp", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, log_level: "silent",
+    } as any, scratch(), false, undefined, undefined, { child: () => ({ debug() {}, info() {}, warn() {}, error() {} }) } as any) as any;
+    const sendText = vi.fn(async () => ({ messageId: "m1", chatId: "c" }));
+    const adapter = { id: "tg", type: "telegram", sendText, sendFile: vi.fn() };
+    d.messageBus = { getAllAdapters: () => [adapter], getAdapter: () => adapter };
+    d.lastChatId = "c"; d.lastAdapterId = "tg";
+    const sent: any[] = [];
+    d.ipcServer = { send: (_s: unknown, m: unknown) => { sent.push(m); return true; }, broadcast: vi.fn() };
+    const socket = {} as any;
+    d.handleToolCall({ tool: "reply", requestId: 1, args: { text: "Q?", buttons: BUTTONS, poll: { seconds: 30 } } }, socket);
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({ requestId: 1, result: null, error: "reply: a poll needs AgEnD's fleet; send the question without poll" });
+    expect(sendText).not.toHaveBeenCalled();
+    d.handleToolCall({ tool: "reply", requestId: 2, args: { text: "Q?", buttons: BUTTONS } }, socket);
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(sendText).toHaveBeenCalledWith("c", "Q?\n\nOptions: 1) Paris  2) London  3) Rome — reply with your choice.", expect.anything());
+  });
+  it("agend-agent reply (POST /agent) refuses it before sending", async () => {
+    const { dispatchAgentOperation } = await import("../src/agent-endpoint.js");
+    const { ReplyDeduper } = await import("../src/reply-dedup.js");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const dataDir = scratch();
+    mkdirSync(join(dataDir, "instances", "agy"), { recursive: true });
+    writeFileSync(join(dataDir, "instances", "agy", "last-chat.json"), JSON.stringify({ chatId: "chat-1", adapterId: "tg" }));
+    const sendText = vi.fn(async () => ({ messageId: "t1", chatId: "chat-1" }));
+    const ctx = {
+      dataDir, fleetConfig: { defaults: {}, instances: { agy: { tool_set: "worker" } } },
+      adapters: new Map([["tg", { id: "tg", type: "telegram", sendText, sendFile: vi.fn() }]]), replyDeduper: new ReplyDeduper(),
+      logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }, clearCancelButton: vi.fn(),
+    } as any;
+    expect(await dispatchAgentOperation(ctx, "agy", "reply", { text: "Q?", buttons: BUTTONS, poll: { seconds: 30 } }))
+      .toEqual({ error: "reply: a poll cannot be sent from here; send the question without poll" });
+    expect(sendText).not.toHaveBeenCalled();
   });
 });
 
