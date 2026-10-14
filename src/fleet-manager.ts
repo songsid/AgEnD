@@ -213,7 +213,7 @@ import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScop
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
-import { resolveUpdateLaunch, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
+import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -2656,10 +2656,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.failUpdateProgress(t("not_authorized"));
       return;
     }
+    const logPath = updateLogPath(this.dataDir);
+    const ts = new Date().toISOString();
+    const logFd = openUpdateLog(logPath, `--- /update ${ts} ---`);
     const child = spawn(launch.command, launch.args, {
-      detached: true, stdio: ["ignore", "pipe", "pipe"], env: withOrigin(origin),
+      detached: true, stdio: ["ignore", logFd, logFd], env: withOrigin(origin),
     });
-    watchUpdateLaunch(child, message => this.failUpdateProgress(message), updateLogPath(this.dataDir));
+    closeSync(logFd); // parent closes its copy; the child's fd stays open
+    watchUpdateLaunch(child, message => this.failUpdateProgress(message), logPath);
     child.unref();
   }
 

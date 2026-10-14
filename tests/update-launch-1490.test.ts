@@ -139,7 +139,14 @@ describe.each(["discord", "telegram"] as const)("real %s update entry", platform
     expect(effects[0].command).toBe("systemd-run");
     expect(effects[0].args).toContain("--scope"); expect(effects[0].args).toContain("--user");
     expect(effects[0].args.slice(-5)).toEqual(["sh", "-c", DELAYED_UPDATE_SCRIPT, "sh", agend]);
-    expect(effects[0].options.detached).toBe(true); expect(effects[0].options.stdio).toEqual(["ignore", "pipe", "pipe"]);
+    expect(effects[0].options.detached).toBe(true);
+    const [ign, fd1, fd2] = effects[0].options.stdio as unknown[];
+    expect(ign).toBe("ignore");
+    // stdout and stderr must be fd numbers (not "pipe"/"inherit"/null): the updater writes to a file,
+    // not a pipe, so EPIPE cannot crash it when the fleet process that spawned it is stopped.
+    expect(typeof fd1).toBe("number");
+    expect(typeof fd2).toBe("number");
+    expect(fd1).toBe(fd2); // both point to the same log file
     expect(effects[0].options.env.PATH).toBe(process.env.PATH);
     expect(effects[0].options).not.toHaveProperty("cwd");
     expect((effects[0].child as any).unref).toHaveBeenCalledOnce();
