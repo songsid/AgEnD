@@ -47,7 +47,10 @@ function fleet(instance: Record<string, unknown> = {}, defaults: Record<string, 
   any.getInstanceStatus = vi.fn(() => "running");
   any.probeBackendBounded = vi.fn(async () => { throw new Error("no live probe in this test"); });
   // As readEffortMetadata answers, without reading a real ~/.codex.
-  any.backendEffortLevels = vi.fn((_i: string, b: string) => b === "codex" ? ["low", "medium", "high"] : b === "opencode" ? [] : ["low", "medium", "high", "xhigh", "max"]);
+  // codex's levels depend on the model that will run (as readEffortMetadata answers per model).
+  any.backendEffortLevels = vi.fn((_i: string, b: string, m: string | null) => b === "codex"
+    ? (m === "gpt-5.5-mini" ? ["low", "medium", "high", "xhigh", "max"] : ["low", "medium", "high"])
+    : b === "opencode" ? [] : ["low", "medium", "high", "xhigh", "max"]);
   const call = (config: unknown) => new Promise<{ result: any; error?: string }>(resolve => {
     void outboundHandlers.get("update_instance_config")!(fm as never, { name: "worker", config } as never, (result, error) => resolve({ result, error }), {} as never);
   });
@@ -97,6 +100,10 @@ describe("update_instance_config: a backend switch", () => {
     let f = fleet();
     expect(await run(f, { backend: "codex", model: "gpt-5.5", effort: "max" }))
       .toBe('Rejected: codex has no effort "max". Choose one of: low, medium, high — or leave effort out for its default.');
+    // The model given decides: gpt-5.5-mini has max here.
+    f = fleet();
+    expect(await run(f, { backend: "codex", model: "gpt-5.5-mini", effort: "max" })).toBeUndefined();
+    expect(f.saves).toEqual([expect.objectContaining({ backend: "codex", model: "gpt-5.5-mini", effort: "max" })]);
     f = fleet();
     writeFileSync(join(agendHome, "cli-env", "opencode.json"), JSON.stringify({ backend: "opencode", models: [{ id: "p/m", label: "m" }], probedAt: Date.now() }));
     expect(await run(f, { backend: "opencode", effort: "high" })).toBe("Rejected: opencode has no effort setting — leave effort out.");
