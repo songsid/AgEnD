@@ -14,14 +14,16 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 2.1.12's updater refreshes the service settings and restarts the fleet, so on a normal user-unit host this is all you need.
 
 > **If the update fails:**
-> 2.1's updater removes the installed AgEnD *before* installing the new one. If the install then fails for any reason (AgEnD 2.2 refusing your host, a network or registry problem, a proxy), nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. The failure message prints the recovery commands:
+> 2.1's updater removes the installed AgEnD *before* installing the new one. If the install then fails for any reason (AgEnD 2.2 refusing your host, a network or registry problem, a proxy), nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. If AgEnD 2.2 rejected the install, the message prints the recovery commands. For other failures (network, npm error), run these yourself:
 > ```sh
 > npm install -g @songsid/agend@<2.2 version>   # put a version back
-> agend restart                                   # or, for a service: agend install
+> agend install                                   # as a service: rewrites and starts it
+> # or, without a service:
+> agend fleet start
 > ```
 > Run `agend install` even if the fleet is still answering — it is running from deleted files and will not survive a restart.
 >
-> **Root hosts on the `agend` system service** (not the user service): if `agend restart` is refused, run `agend install` instead. The old fleet keeps running while you do.
+> **Root hosts on the `agend` system service** (not the user service): if the restart is refused, run `agend install` instead. The old fleet keeps running while you do.
 
 ## 2. Advanced: manual upgrade
 
