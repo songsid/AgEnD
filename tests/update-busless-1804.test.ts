@@ -173,8 +173,9 @@ describe("the worker: a real connection, as systemdPeerBus makes it", () => {
     const refused = callPeer(true, capture.loadUnit!.args, { socket: await serve("refuse", "refuse"), timeoutMs: 5000 });
     expect(refused.stderr).toMatch(/^Failed to connect to .*: authentication refused \("REJECTED EXTERNAL"\)/);
     const closed = callPeer(true, capture.loadUnit!.args, { socket: await serve("close", "close"), timeoutMs: 5000 });
-    // Closed after BEGIN: our call either meets the closed socket (EPIPE) or waits for a reply that never comes.
-    expect(closed).toMatchObject({ status: 1, stderr: expect.stringMatching(/^Call failed: (the connection closed before a reply|write EPIPE)/) });
+    // Closed after BEGIN: depending on timing our call meets the closed socket (write EPIPE, read ECONNRESET — seen on CI)
+    // or waits for a reply that never comes. Each is a failed call after authentication, never "unreachable".
+    expect(closed).toMatchObject({ status: 1, signal: null, stderr: expect.stringMatching(/^Call failed: (the connection closed before a reply|write EPIPE|read ECONNRESET)\n$/) });
     expect(peerUnreachable(closed)).toBe(false);
     const silentSocket = await serve("silent", "silent");
     const started = performance.now();
