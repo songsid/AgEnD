@@ -29,8 +29,9 @@ import {
   resolveCredentialProfile,
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
-import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels } from "./codex-metadata.js";
+import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels } from "./codex-metadata.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { codexEffort } from "./launch-effort.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { type CodexResumePlan, codexSiblingState, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
@@ -1136,6 +1137,10 @@ export class CodexBackend implements CliBackend {
     return /↳/;
   }
 
+  /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
+  private quietLaunchNotes: string[] = [];
+  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
   buildCommand(config: CliBackendConfig): string {
     this.lastKnownModel = config.model?.trim() || null;
     this.credentialProfile = this.readProfile(config);
@@ -1182,6 +1187,12 @@ export class CodexBackend implements CliBackend {
       const provider = validateProvider(String(config.backendOptions.provider));
       cmd += ` -c ${shellQuote(`model_provider="${provider}"`)}`;
     }
+    // #1811: the configured effort, when the model's catalog entry lists it (launch-effort.ts); else a quiet note.
+    const effort = codexEffort(config.effort, readCodexModelEffortLevels({
+      isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: config.model?.trim() || null,
+    }));
+    if (effort.arg) cmd += effort.arg;
+    this.quietLaunchNotes = effort.note ? [effort.note] : [];
     // AgEnD instances are unattended processes: an interactive self-update
     // picker blocks delivery and must never be enabled by a copied global or
     // managed config layer. Keep this last so the CLI override is authoritative.

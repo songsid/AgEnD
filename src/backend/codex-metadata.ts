@@ -45,32 +45,50 @@ function readCodexEffortLevelsSync(homes: {
   sharedHome: string;
   model?: string | null;
 }): string[] {
-  const fallback = ["low", "medium", "high", "xhigh"];
+  return readCodexModelEffortLevelsSync(homes).levels ?? ["low", "medium", "high", "xhigh"];
+}
+
+/**
+ * #1811: the levels the model's catalog entry lists, and which model that was — `levels: null` when there is no model,
+ * no readable cache or no entry for it (no fallback: a launch passes only a level the catalog lists).
+ */
+export function readCodexModelEffortLevels(homes: {
+  isolatedHome: string;
+  sharedHome: string;
+  model?: string | null;
+}): { model: string | null; levels: string[] | null } {
+  return measureSyncWork("codex.effortMetadata", () => readCodexModelEffortLevelsSync(homes));
+}
+function readCodexModelEffortLevelsSync(homes: {
+  isolatedHome: string;
+  sharedHome: string;
+  model?: string | null;
+}): { model: string | null; levels: string[] | null } {
   const canonical = new Set(["low", "medium", "high", "xhigh", "max"]);
+  let model = homes.model ?? null;
   try {
-    let model = homes.model;
     if (!model) {
       for (const home of [homes.isolatedHome, homes.sharedHome]) {
         try {
           const match = readFileSync(join(home, "config.toml"), "utf-8")
             .match(/^model\s*=\s*"([^"]+)"/m);
-          if (match) { model = match[1]; break; }
+          if (match) { model = match[1]!; break; }
         } catch { /* try the next home */ }
       }
     }
-    if (!model) return fallback;
+    if (!model) return { model, levels: null };
     const isolatedCache = join(homes.isolatedHome, "models_cache.json");
     const cachePath = existsSync(isolatedCache) ? isolatedCache : join(homes.sharedHome, "models_cache.json");
-    if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) return fallback;
+    if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) return { model, levels: null };
     const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
-    if (!Array.isArray(parsed.models)) return fallback;
+    if (!Array.isArray(parsed.models)) return { model, levels: null };
     const entry = parsed.models.find((m): m is Record<string, unknown> =>
       !!m && typeof m === "object" && (m as Record<string, unknown>).slug === model);
     const levels = (entry?.supported_reasoning_levels as { effort?: unknown }[] | undefined)
       ?.map(l => l?.effort)
       .filter((e): e is string => typeof e === "string" && canonical.has(e));
-    return levels?.length ? levels : fallback;
+    return { model, levels: levels?.length ? levels : null };
   } catch {
-    return fallback;
+    return { model, levels: null };
   }
 }

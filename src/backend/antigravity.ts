@@ -1,4 +1,5 @@
 import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels } from "./effort-metadata.js";
+import { flagEffort } from "./launch-effort.js";
 import { dirname, join } from "node:path";
 import { ensureInstanceDir } from "../private-dir.js";
 import { homedir } from "node:os";
@@ -148,6 +149,10 @@ export class AntigravityBackend implements CliBackend {
     this.mcpWrapperPath = join(instanceDir, "agy-mcp-env.sh");
   }
 
+  /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
+  private quietLaunchNotes: string[] = [];
+  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
   buildCommand(config: CliBackendConfig): string {
     // agy 1.1.17+ has no per-workspace MCP config and no --mcp-config flag. Its
     // global MCP child does inherit the CLI process environment, so MCP-mode
@@ -163,6 +168,10 @@ export class AntigravityBackend implements CliBackend {
       // agy may expose human-readable model names containing spaces/parens.
       cmd += ` --model ${shellQuote(config.model)}`;
     }
+    // #1811: the configured effort, where this agy takes it (1.0.x has no --effort; launch-effort.ts); else a quiet note.
+    const effort = flagEffort("antigravity", config.effort, this.binaryPath);
+    if (effort.arg) cmd += effort.arg;
+    this.quietLaunchNotes = effort.note ? [effort.note] : [];
     return cmd;
   }
 
