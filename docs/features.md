@@ -172,6 +172,21 @@ An agent can offer choices people click instead of typing (2.2). The same button
 - **Where buttons cannot be shown,** for example through `agend-agent reply`, the choices are added to the text as a numbered list for people to answer by writing back.
 - **Security:** a platform carries only an unguessable id and the button's index, never a label or value. Labels are always shown as plain text.
 
+#### Polls
+
+`reply` with `buttons` and `poll` makes the buttons a timed, Kahoot-style vote (#1823) on Discord and Telegram, in fleet topics and ClassicBot rooms. AgEnD only counts votes; the right answer, scores and any leaderboard are up to the agent, from the results. A quiz is one poll per question.
+
+- **Sending:** `poll: { seconds, multi?, reveal?, show_voters? }` with 2–10 `buttons` as its options.
+  - `seconds`: 10 s to 24 h. The poll opens as it is posted (its clock starts just before the message is sent, so the deadline is known when it goes out) and closes that long after.
+  - `multi` (default off): each voter may pick several options; a click toggles one.
+  - `reveal`: `"close"` (default) shows only "N answered" and the time left while the poll is open, and the counts at close. `"live"` also shows the counts as votes come.
+  - `show_voters` (default off): at close, one follow-up message under the poll names who picked what.
+  - The reply's result has `poll_id`. Where a poll cannot be shown (the web chat, for now, or `agend-agent reply`), the reply is refused rather than sent as text.
+- **Voting:** whoever may click reply buttons there may vote, once each, and may change their vote. A voter's own choice is confirmed to them alone: an ephemeral reply on Discord, a toast on Telegram. Clicking the option already chosen changes nothing.
+- **While open:** Discord counts the deadline down itself (`⏳ Closes in …`); Telegram redraws a status button (`🗳 3 answered · ⏳ 1:35`) every 5 s in the last two minutes, then less often. Redraws are coalesced, at most one every 2 s (Discord) or 3 s (Telegram) per chat.
+- **At close:** the buttons are retired and show each option's count and share; a late click is told the poll is closed. The agent receives one message from AgEnD in the poll's chat, `[poll results]`, and is expected to answer it there: per option its count and voters, each with a stable id (`<connection>:<user id>`) and the ms from the poll opening to that voter's last change. A changed vote counts from its last change. AgEnD only counts votes.
+- **Exactly once, across restarts:** the deadline is stored with the poll in `reply-buttons.db`. A poll whose deadline passed while AgEnD was down closes at the next start, and its results say how late. The results go through the delivery outbox under the poll's id, so they reach the agent once even if AgEnD stops while handing them over.
+
 ## Tool progress (`tool_progress`)
 
 `tool_progress` adds the agent's tool activity to the progress bubble, as a running list for the turn:

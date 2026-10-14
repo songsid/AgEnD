@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import type { PollRender } from "../reply-polls.js";
 
 export interface Choice {
   id: string;
@@ -124,6 +125,19 @@ export interface ChannelAdapter extends EventEmitter {
   readonly supportsReplyButtons?: boolean;
   /** #1266: show a reply's buttons as ended — the choice and who made it, or expired — on the message carrying them. */
   settleReplyButtons?(chatId: string, messageId: string, threadId: string | undefined, labels: readonly string[], outcome: ReplyButtonsOutcome): Promise<void>;
+  /** #1823: this adapter shows a poll (`SendOpts.replyPoll`) and redraws it (`renderPoll`). */
+  readonly supportsPolls?: boolean;
+  /** #1823: redraw a poll's buttons and status (its options, "N answered", the countdown; at close, the tally). */
+  renderPoll?(chatId: string, messageId: string, threadId: string | undefined, poll: PollRender): Promise<void>;
+  /** #1823: the least time between two poll redraws in one chat, inside the platform's edit limits. */
+  readonly pollEditIntervalMs?: number;
+  /**
+   * #1823: what `pollEditIntervalMs` is counted over: "chat" (Telegram: a group's edit limit covers all its topics) or
+   * the default, each thread (Discord: every channel and thread has its own bucket).
+   */
+  readonly pollRateScope?: "chat" | "thread";
+  /** #1823: the platform cannot count down by itself: the status is redrawn as time passes (`pollTickMs`). */
+  readonly pollCountdownTicks?: boolean;
   /** Delete a message (e.g. retire the Cancel button message when done).
    * threadId locates the message when it lives in a topic/thread. */
   deleteMessage?(chatId: string, messageId: string, threadId?: string): Promise<void>;
@@ -260,6 +274,8 @@ export interface SendOpts {
    * callback (`rb:<set>:<index>`), never the label or value. Only adapters with `supportsReplyButtons` honour it.
    */
   replyButtons?: Array<{ id: string; label: string }>;
+  /** #1823: the reply's buttons are a poll's options: this is how it looks when posted (it replaces `replyButtons`). */
+  replyPoll?: PollRender;
   /**
    * #1686: URL buttons on the message's last chunk (Telegram inline_keyboard `url` rows). Ignored by adapters
    * that do not support them (Discord, etc.).

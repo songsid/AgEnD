@@ -15,6 +15,7 @@ import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { t } from "../../locale.js";
 import { isTelegramEditNotModified } from "../message-edit-errors.js";
+import { POLL_STATUS_CALLBACK, pollRemaining, type PollRender } from "../../reply-polls.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 const TELEGRAM_NETWORK_RETRY_MS = 250;
@@ -846,7 +847,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   get supportsReplyButtons(): boolean { return true; }
 
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
-    if (opts?.replyButtons?.length) return this.sendTextWithReplyButtons(chatId, text, opts, opts.replyButtons);
+    if (opts?.replyPoll) return this.sendTextWithReplyButtons(chatId, text, opts, telegramPollKeyboard(opts.replyPoll, Date.now()));
+    if (opts?.replyButtons?.length) return this.sendTextWithReplyButtons(chatId, text, opts, telegramReplyKeyboard(opts.replyButtons));
     if (opts?.urlButtons?.length) return this.sendTextWithUrlButtons(chatId, text, opts, opts.urlButtons);
     // Try rich message for content with tables, code blocks, headings, etc.
     if (this.needsRichMessage(text)) {
@@ -961,8 +963,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return { messageId: String(msg.message_id), chatId, threadId: opts.threadId };
   }
 
-  private async sendTextWithReplyButtons(chatId: string, text: string, opts: SendOpts, buttons: NonNullable<SendOpts["replyButtons"]>): Promise<SentMessage> {
-    const keyboard = telegramReplyKeyboard(buttons);
+  private async sendTextWithReplyButtons(chatId: string, text: string, opts: SendOpts, keyboard: Array<Array<{ text: string; callback_data: string }>>): Promise<SentMessage> {
     const chunkLimit = opts.chunkLimit ?? 4096;
     const chunks: string[] = [];
     for (let offset = 0; offset < text.length; offset += chunkLimit) chunks.push(text.slice(offset, offset + chunkLimit));
@@ -986,6 +987,18 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     await this.editButtons(Number(chatId), Number(messageId), {
       reply_markup: { inline_keyboard: [[{ text: label.length > 64 ? `${label.slice(0, 63)}…` : label, callback_data: REPLY_BUTTONS_CLOSED }]] },
     });
+  }
+
+  /** #1823: polls — an inline keyboard of the options and one inert status row, redrawn as votes come and time passes. */
+  get supportsPolls(): boolean { return true; }
+  /** #1823: at most one poll redraw per chat every 3 s: under Telegram's ~20 edits a minute in a group. */
+  get pollEditIntervalMs(): number { return 3_000; }
+  /** #1823: …counted over the whole group: Telegram's edit limit is per chat, its forum topics share it. */
+  get pollRateScope(): "chat" { return "chat"; }
+  /** #1823: Telegram cannot count down by itself: the status button's time left is redrawn. */
+  get pollCountdownTicks(): boolean { return true; }
+  async renderPoll(chatId: string, messageId: string, _threadId: string | undefined, poll: PollRender): Promise<void> {
+    await this.editButtons(Number(chatId), Number(messageId), { reply_markup: { inline_keyboard: telegramPollKeyboard(poll, Date.now()) } });
   }
 
   async sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage> {
@@ -1646,6 +1659,15 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async confirmPairing(code: string, callerUserId?: string): Promise<boolean> {
     return this.accessManager.confirmCode(code, callerUserId);
   }
+}
+
+/**
+ * #1823: a poll as an inline keyboard: its options (laid out as reply buttons are), then one status button — "N
+ * answered · ⏳ time left" while open, the closed line after. The status button is inert (POLL_STATUS_CALLBACK).
+ */
+export function telegramPollKeyboard(poll: PollRender, now: number): Array<Array<{ text: string; callback_data: string }>> {
+  const status = poll.closed ? poll.status : `${poll.status} · ⏳ ${pollRemaining(poll.deadline - now)}`;
+  return [...telegramReplyKeyboard(poll.options), [{ text: status, callback_data: POLL_STATUS_CALLBACK }]];
 }
 
 /** #1266: the callback a settled reply-button set carries — inert (the fleet answers it "closed"). */

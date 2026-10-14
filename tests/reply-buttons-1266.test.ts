@@ -136,7 +136,7 @@ describe("the store: one choice per set, atomically, and it outlives a restart",
     store.close();
   });
   it("a click is on the set's message: same adapter and message, and its chat or thread is the set's (Discord and Telegram shapes)", () => {
-    const set = { id: "e".repeat(32), instance: "w", adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1", buttons: [], createdAt: 0, expiresAt: 1, consumedAt: null, chosenIndex: null, chosenBy: null, deliveredAt: null, settledAt: null };
+    const set = { id: "e".repeat(32), instance: "w", adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1", buttons: [], createdAt: 0, expiresAt: 1, consumedAt: null, chosenIndex: null, chosenBy: null, deliveredAt: null, settledAt: null, poll: null, closedAt: null, resultsAt: null };
     expect(replyButtonsClickPlace(set, { adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1" })).toBe(true);
     expect(replyButtonsClickPlace({ ...set, chatId: "chan", threadId: "" }, { adapterId: "dc", chatId: "guild", threadId: "chan", messageId: "m1" }), "Discord ClassicBot room").toBe(true);
     expect(replyButtonsClickPlace({ ...set, adapterId: "tg", chatId: "-100", threadId: "42" }, { adapterId: "tg", chatId: "-100", threadId: "42", messageId: "m1" }), "Telegram topic").toBe(true);

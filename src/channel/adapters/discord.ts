@@ -56,6 +56,7 @@ import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-chunk.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES } from "../../cross-instance-notice.js";
+import { POLL_STATUS_CALLBACK, type PollRender } from "../../reply-polls.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -118,6 +119,28 @@ export function buttonRows(choices: ReadonlyArray<{ id: string; label: string }>
         .setStyle(ButtonStyle.Secondary)),
     ));
   }
+  return rows;
+}
+
+/** #1823: the deadline line under a poll's text, and how a closed poll's line is found again. */
+function discordPollLine(deadline: number): string {
+  return `\n\n⏳ ${t("poll.closes")} <t:${Math.ceil(deadline / 1000)}:R>`;
+}
+const DISCORD_POLL_LINE = /\n\n⏳ [^\n]*<t:\d+:R>$/;
+
+/**
+ * #1823: a poll's components — its options (disabled once closed, each with its count then), and a last row holding
+ * one disabled status button ("N answered"; at close the closed line).
+ */
+export function discordPollRows(poll: PollRender): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < poll.options.length; i += BUTTONS_PER_ROW) {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(poll.options.slice(i, i + BUTTONS_PER_ROW).map(o => new ButtonBuilder()
+      .setCustomId(o.id).setLabel(o.label.length > 80 ? `${o.label.slice(0, 79)}…` : o.label)
+      .setStyle(ButtonStyle.Secondary).setDisabled(poll.closed))));
+  }
+  rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder()
+    .setCustomId(POLL_STATUS_CALLBACK).setLabel(poll.status.slice(0, 80)).setStyle(ButtonStyle.Secondary).setDisabled(true)));
   return rows;
 }
 
@@ -1432,7 +1455,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const channel = await this._fetchTextChannel(channelId);
     const chunkLimit = opts?.chunkLimit ?? DISCORD_MAX_LENGTH;
 
-    const chunks = splitTextFenceAware(text, chunkLimit);
+    // #1823: a poll's deadline as a line Discord counts down by itself, on every client.
+    const chunks = splitTextFenceAware(opts?.replyPoll ? `${text}${discordPollLine(opts.replyPoll.deadline)}` : text, chunkLimit);
     if (chunks.length === 0) throw new Error("Empty text");
 
     // Await every platform POST before reporting success. Previously only the
@@ -1441,7 +1465,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     let first: Awaited<ReturnType<typeof channel.send>> | undefined;
     let last: Awaited<ReturnType<typeof channel.send>> | undefined;
     // #1266: a reply's buttons go on the last part (built first: too many buttons is an error before anything is sent).
-    const replyRows = opts?.replyButtons?.length ? buttonRows(opts.replyButtons) : null;
+    const replyRows = opts?.replyPoll ? discordPollRows(opts.replyPoll) : opts?.replyButtons?.length ? buttonRows(opts.replyButtons) : null;
     for (const [i, chunk] of chunks.entries()) {
       const components = replyRows && i === chunks.length - 1 ? { components: replyRows } : {};
       const sent = await channel.send(opts?.disablePreview || opts?.allowedMentions || replyRows
@@ -1476,6 +1500,20 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       })));
     }
     await msg.edit({ components: rows });
+  }
+
+  /** #1823: polls — the options as buttons, a disabled status button, and a deadline line Discord counts down itself. */
+  get supportsPolls(): boolean { return true; }
+  /** #1823: at most one poll redraw per channel every 2 s: inside Discord's 5 edits per 5 s. */
+  get pollEditIntervalMs(): number { return 2_000; }
+
+  /** #1823: redraw a poll's buttons; at close, also its deadline line, which becomes "closed". */
+  async renderPoll(chatId: string, messageId: string, threadId: string | undefined, poll: PollRender): Promise<void> {
+    const channel = await this._fetchTextChannel(threadId ?? chatId);
+    if (!poll.closed) { await channel.messages.edit(messageId, { components: discordPollRows(poll) }); return; }
+    const msg = await channel.messages.fetch(messageId);
+    const content = msg.content.replace(DISCORD_POLL_LINE, `\n\n${t("poll.closed_line")}`);
+    await msg.edit({ components: discordPollRows(poll), ...(content !== msg.content ? { content } : {}) });
   }
 
   async sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage> {
