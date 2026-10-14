@@ -154,6 +154,27 @@ describe("a web-only fleet: the poll is in the web chat", () => {
   });
 });
 
+describe("names stay private unless the poll asked otherwise", () => {
+  it("closed without show_voters: the counts, never who — on the stream and in the history; a polling page sees the open poll's count", async () => {
+    vi.useFakeTimers({ now: 1_000_000, toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    const h = webFleet();
+    h.ctl();
+    await h.reply({ text: "Capital?", buttons: BUTTONS, poll: { seconds: 10 } });
+    const id = h.pollMsg().buttons!.id;
+    const w = webCtx(h.fm);
+    await post(w.ctx, { instance: "w", id, index: 1 }, { sessionId: w.session("A").sessionId });
+    await vi.advanceTimersByTimeAsync(0);
+    // The public link's poll (/ui/poll) reads buttonStates: an open poll is there too, with its count.
+    expect(h.fm.webChatHistory.buttonStates()).toEqual([{ instance: "w", buttons: expect.objectContaining({ id, state: "open", poll: expect.objectContaining({ answered: 1 }) }) }]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    const views = h.sse.filter(e => e.event === "reply_buttons" && e.data.buttons.id === id).map(e => e.data.buttons);
+    expect(views.at(-1)).toMatchObject({ state: "closed", poll: { counts: [0, 1, 0] } });
+    expect(views.every(v => v.poll.voters === undefined)).toBe(true);
+    expect(h.pollMsg().buttons!.poll!.voters).toBeUndefined();
+    expect(JSON.stringify(h.fm.webChatHistory.list("w"))).not.toContain("web · A");
+  });
+});
+
 describe("the public link votes as its own session, through the real gateway", () => {
   it("a gateway session's click is that session's vote", async () => {
     vi.useFakeTimers({ now: 1_000_000, toFake: ["Date", "setTimeout", "clearTimeout"] });
