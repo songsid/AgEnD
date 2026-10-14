@@ -94,7 +94,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { CLI_ENV_TTL_MS, isModelCompatible, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, validateModel, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -17003,9 +17003,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       currentDisplay: (name) => `${this.backendNameForInstance(name)} · ${this.resolveInstanceModel(name).display}`,
       installedBackends: () => KNOWN_BACKENDS.filter(b => b !== "mock" && this.backendInstalledHere(b)),
       models: (backend) => this.backendModelOptions(backend, opts),
-      // claude-code takes names beyond its list (aliases, the account catalog) — the same check /model makes, without
-      // this instance's configured model, which belongs to the backend being left.
-      modelKnown: (backend, model) => backend === "claude-code" && this.claudeModelKnown(instanceName, model, null).known,
+      // #1808: the same rule update_instance_config's switch applies (backendModelVerdict).
+      modelKnown: (backend, model) => this.backendModelVerdict(instanceName, backend, model).ok,
       effortLevels: (backend) => this.backendEffortLevels(instanceName, backend),
       inherited: (key) => {
         const value = (getEffectiveInstanceDefaults(this.fleetConfig?.defaults) as Record<string, unknown>)[key];
@@ -17020,8 +17019,26 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     };
   }
 
+  /**
+   * #1808: whether a backend takes this model name — the one rule for /backend and update_instance_config's switch.
+   * The name must be one a launch line can carry; then its offered list (the cached CLI env), and claude-code's known
+   * names (without this instance's configured model, which belongs to the backend being left). With no list known,
+   * the backend's usual name pattern decides.
+   */
+  backendModelVerdict(instanceName: string, backend: string, model: string): { ok: true } | { ok: false; choices: string[] } {
+    const listed = this.readCliEnv(backend)?.models ?? [];
+    const choices = listed.slice(0, 24).map(o => o.id);
+    try { validateModel(model); } catch { return { ok: false, choices }; }
+    if (listed.some(o => o.id === model)) return { ok: true };
+    if (backend === "claude-code") {
+      const check = this.claudeModelKnown(instanceName, model, null);
+      return check.known ? { ok: true } : { ok: false, choices: check.names };
+    }
+    return listed.length === 0 && isModelCompatible(backend, model) ? { ok: true } : { ok: false, choices };
+  }
+
   /** `/effort`'s levels for a backend this instance may move to (empty: it has no effort setting). A file read, never a CLI. */
-  private backendEffortLevels(instanceName: string, backend: string): string[] {
+  backendEffortLevels(instanceName: string, backend: string): string[] {
     try {
       const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instanceName));
       return strategy === "unsupported" ? [] : levels;

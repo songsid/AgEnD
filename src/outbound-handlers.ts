@@ -146,6 +146,10 @@ export interface OutboundContext {
   getActiveUsageProviderIds?(): ReadonlySet<string>;
   /** Effective process state used to annotate cross-instance delivery results. */
   getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
+  /** #1808: whether `backend` takes this model name (the rule /backend applies too); `choices`: what it offers. */
+  backendModelVerdict?(instanceName: string, backend: string, model: string): { ok: true } | { ok: false; choices: string[] };
+  /** #1808: `/effort`'s levels on a backend this instance may move to; empty when it has no effort setting. */
+  backendEffortLevels?(instanceName: string, backend: string): string[];
   resolveInstanceModel?(name: string): {
     model: string;
     source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved";
@@ -1165,6 +1169,30 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   // Read before anything is mutated: the switch is what decides whether the
   // next launch may resume, and by then `inst` already holds the new value.
   const backendBefore = (inst as any).backend ?? "claude-code";
+  // #1808: a model and an effort name the backend they were chosen for. On a switch the new backend gets the ones
+  // given — if it takes them, refused here before anything is written — or none of the instance's own (the inherited
+  // value, else the CLI's default). Never the old backend's: codex launched with `--model opus` fails every turn.
+  if (patch.backend !== undefined && patch.backend !== backendBefore) {
+    const backendNew = patch.backend;
+    if (typeof patch.model === "string") {
+      const verdict = ctx.backendModelVerdict?.(name, backendNew, patch.model);
+      if (verdict && !verdict.ok) {
+        respond(null, `Rejected: ${backendNew} does not take the model "${patch.model}". ${verdict.choices.length
+          ? `Choose one of: ${verdict.choices.join(", ")}` : `No ${backendNew} model list is known yet`} — or leave model out for its default.`);
+        return;
+      }
+    }
+    if (typeof patch.effort === "string") {
+      const levels = ctx.backendEffortLevels?.(name, backendNew);
+      if (levels && !levels.includes(patch.effort)) {
+        respond(null, levels.length
+          ? `Rejected: ${backendNew} has no effort "${patch.effort}". Choose one of: ${levels.join(", ")} — or leave effort out for its default.`
+          : `Rejected: ${backendNew} has no effort setting — leave effort out.`);
+        return;
+      }
+    }
+    patch = { ...patch, model: patch.model === undefined ? null : patch.model, effort: patch.effort === undefined ? null : patch.effort };
+  }
   const profileBefore = instanceCredentialProfile(inst, ctx.fleetConfig?.defaults, backendBefore);
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);

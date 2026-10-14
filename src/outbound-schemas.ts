@@ -281,8 +281,8 @@ export const GetFleetConfigArgs = z.object({
 export const UpdateInstanceConfigArgs = z.object({
   name: NonEmptyString.describe("Instance name to update"),
   config: z.object({
-    backend: z.string().optional().describe("CLI backend"),
-    model: z.string().optional().describe("Model override"),
+    backend: z.string().optional().describe("CLI backend. A switch restarts the instance in a fresh session, and drops its own model and effort: give `model` here for the new backend, or it runs on that backend's default."),
+    model: z.string().optional().describe("Model override. With a backend switch: a model the new backend takes, else the switch is refused."),
     auto_pause_after: z.number().optional().describe("Minutes idle before auto-pause (0 = disabled)"),
     display_name: z.string().optional().describe("Display name"),
     description: z.string().optional().describe("Role description"),
