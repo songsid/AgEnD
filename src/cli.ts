@@ -1459,7 +1459,7 @@ program
       const { newAgendInvocation, retireSystemCopy, activationSettled } = await import("./update-install.js");
       // What the restart came to — carried, never inferred from the exit code (pending ≠ restarted).
       let restartResult: "restarted" | "pending" | "failed" | null = null;
-      const { activateService } = await import("./service-activation.js");
+      const { activateService, systemdPeerBus } = await import("./service-activation.js");
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
       const { accessSync, constants } = await import("node:fs");
       const newAgend = newAgendInvocation({ viaNvm, nvmSh }, verified.agendPath);
@@ -1517,6 +1517,7 @@ program
         log: message => console.log(message),
         restorePackage,
         systemdRecovery: restoreChecked ? { restorePackage: restoreChecked } : undefined,
+        peerBus: systemdPeerBus,
       });
       // Settled: after a success only this transition's preimage is kept (for a repair); a failure consumed it.
       if (activationSettled(outcome, restartResult) && rollback) prunePreimages(rollback.prefix, rollback.preimage);
@@ -2147,7 +2148,8 @@ program
         }
       }
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
-      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps))) return;
+      const { systemdPeerBus } = await import("./service-activation.js");
+      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps, systemdPeerBus))) return;
       // Clears the failed state AND the start-limit counter (#1113:
       // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
       // so an operator's restart is never refused by the limit.

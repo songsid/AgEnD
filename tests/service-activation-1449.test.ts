@@ -251,7 +251,9 @@ describe("#1450 C6: a systemd failure before the restart restores the unit (relo
   it("the restore cannot be reloaded: said so, never called loaded", () => {
     const { m } = systemd([0, 1]);                         // the refresh reloads; the restore's reload fails
     const outcome = activateService({ kind: "systemd", unit: "com.agend.fleet", user: true, unitPath }, verified, m.deps);
-    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("back on disk but systemd does not show it loaded") });
+    // #1804: the reason is the failed reload, not a claim about what systemd has loaded.
+    expect(outcome).toMatchObject({ ok: false, message: expect.stringContaining("back on disk, but systemctl --user daemon-reload failed") });
+    expect((outcome as { message: string }).message).not.toContain("back and loaded");
     expect(m.files[unitPath]).toBe(OLD);
   });
 });
