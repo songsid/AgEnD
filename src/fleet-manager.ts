@@ -192,6 +192,8 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, typ
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { WebPrefsStore } from "./web-prefs.js";
+import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
+import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { parsePoll, type PollRender } from "./reply-polls.js";
@@ -1236,6 +1238,62 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly seenUsers = new SeenUsers();
   private webPrefsStore?: WebPrefsStore;
   /** #1665: the web preferences kept on the host (<home>/web-prefs.json), read on first use. */
+  /**
+   * #1827: a web person as agents and chats see them. Signed in as an account (a sign-in code DMed to it): that
+   * account's user id — still `via web`, and only for recognition — and the name they chose, else their account's name
+   * at sign-in (made safe). Otherwise (an `agend web` session): "web-user", as before, under a name the operator may set.
+   * Names are checked again now: one an instance or bot has taken since reads as the next choice down.
+   */
+  webPerson(owner?: WebAccount): WebPersonView {
+    const key = webPersonKey(owner);
+    let profile: ReturnType<WebPrefsStore["profile"]> = null;
+    try { profile = this.webPrefs.profile(key); } catch (err) { this.logger.warn({ err: (err as Error).message }, "Web profile unavailable"); }
+    const reserved = (n: string) => this.webNameReserved(n);
+    const own = profile?.name !== undefined ? webNameInUse(profile.name, reserved) : WEB_NAME_FALLBACK;
+    const chosen = own !== WEB_NAME_FALLBACK;
+    const platformName = owner ? safeWebName(profile?.platformName, reserved) : undefined;
+    return {
+      key, bound: !!owner,
+      userId: owner ? owner.userId : WEB_NAME_FALLBACK,
+      // A poll ballot is the account's — the same key its votes on the platform have — or the operator's.
+      voterKey: owner ? `${owner.adapterId}:${owner.userId}` : "web:operator",
+      name: chosen ? own : platformName ?? WEB_NAME_FALLBACK,
+      set: chosen,
+      ...(platformName !== undefined ? { platformName } : {}),
+    };
+  }
+  /** #1827: set (null: clear — back to their account's name) a web person's own name; validated in full. */
+  setWebPersonName(owner: WebAccount | undefined, raw: unknown): { ok: true; person: WebPersonView } | { ok: false; status: number; error: string } {
+    let name: string | null = null;
+    if (raw !== null) {
+      const v = validateWebName(raw, (n) => this.webNameReserved(n));
+      if (!v.ok) return { ok: false, status: 400, error: v.error };
+      name = v.name;
+    }
+    const w = this.webPrefs.setProfileName(webPersonKey(owner), name);
+    return w.ok ? { ok: true, person: this.webPerson(owner) } : { ok: false, status: w.status, error: w.error };
+  }
+  /** #1827 (auth-api): a sign-in as this account — its display name then is the web name it starts with. */
+  noteWebSignIn(account: { adapterId: string; userId: string; username?: string }): void {
+    if (account.username) this.webPrefs.setPlatformName(webPersonKey(account), account.username);
+  }
+  /**
+   * #1827: a name that belongs to something here — an instance (or ClassicBot room), its display name, a bot. On the web
+   * send path: it never throws (a lookup that fails reserves nothing; the name was checked in full when it was set).
+   */
+  private webNameReserved(lowered: string): boolean {
+    try { return this.webNameTaken(lowered); } catch { return false; }
+  }
+  private webNameTaken(lowered: string): boolean {
+    const low = (s: unknown) => (typeof s === "string" ? s.normalize("NFC").toLocaleLowerCase("en-US") : "");
+    for (const [name, cfg] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (low(name) === lowered || low((cfg as { display_name?: unknown }).display_name) === lowered) return true;
+    }
+    for (const ch of this.classicChannels?.getAll() ?? []) if (low(ch.instanceName) === lowered || low(ch.displayName) === lowered) return true;
+    for (const w of this.worlds.values()) if (w.botUsername && low(w.botUsername) === lowered) return true;
+    return false;
+  }
+
   get webPrefs(): WebPrefsStore {
     // #1664: a favorite must be an instance of this fleet now — fleet.yaml's (own keys) or a ClassicBot room's.
     return (this.webPrefsStore ??= new WebPrefsStore(this.dataDir, {
@@ -3563,7 +3621,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or a rebound adapter is never posted through a stale route. A copy
    * already in flight may still land late — the contract permits that.
    */
-  async sendClassicWebEcho(instance: string, text: string): Promise<number> {
+  /** `sender` (#1827): the web person's name, as the room log records them ("web-user" when none). */
+  async sendClassicWebEcho(instance: string, text: string, sender = WEB_NAME_FALLBACK): Promise<number> {
     const guard = this.webChannelEchoGuards.get(instance);
     const handled = new Set<string>();
     let posted = 0;
@@ -3593,7 +3652,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         if (!adapter?.sendText) continue;
         await adapter.sendText(entry.channelId, text, { format: "text", allowedMentions: { parse: [] } });
-        ClassicChannelManager.logMessage(instance, "web-user", text, new Date());
+        ClassicChannelManager.logMessage(instance, sender, text, new Date());
         posted++;
       } catch (err) {
         this.logger.warn({ err, instance, channelId: entry.channelId }, "Classic web echo failed");
@@ -4088,7 +4147,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const result = this.revokeWebSessions();
         await data.respond(result.durable ? t("dashboard.revoked", result.count) : t("dashboard.revoked_not_durable", result.count));
       } else {
-        const owner = this.dashboardOwner(data.userId, adapterId, data.channelId);
+        const owner = this.dashboardOwner(data.userId, adapterId, data.channelId, undefined, data.username);
         if (!owner) { await this.sendLocalDashboard(data, adapterId); return; }
         // Discord shows a deferred reply that is never answered as "the application did not respond".
         if (!await this.showDashboardMenu(owner, data.respondButtons, data.retireButtons)) await data.respond(t("dashboard.menu_failed"));
@@ -5403,7 +5462,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && cfg.topic_id?.toString() === owner.threadId);
   }
   /** Exact owning General. No primary-adapter or name fallback participates in authorization. */
-  private dashboardOwner(userId: string, adapterId: string, address: string, threadId?: string): LoginCodeOwner | null {
+  private dashboardOwner(userId: string, adapterId: string, address: string, threadId?: string, username?: string): LoginCodeOwner | null {
     const world = this.worlds.get(adapterId);
     if (!world || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(userId, adapterId)) return null;
     for (const [name, cfg] of Object.entries(this.fleetConfig?.instances ?? {})) {
@@ -5414,7 +5473,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const dc = world.adapter.id === adapterId && world.channelConfig.type === "discord";
       const matched = dc ? topic === address || (group === address && topic === threadId)
         : group === address && ((topic === "1" && (threadId === undefined || threadId === "1")) || topic === threadId);
-      if (group && matched) return { userId, adapterId, chatId: group, threadId: topic, binding: world.adapter };
+      if (group && matched) return { userId, adapterId, chatId: group, threadId: topic, binding: world.adapter, ...(username ? { username } : {}) };
     }
     return null;
   }
@@ -5423,7 +5482,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * — this bot's configured group and its one General topic. No address to match in a DM, so it must be unambiguous:
    * no General, or more than one on this bot and group, and there is no owner (nothing is guessed).
    */
-  private dmDashboardOwner(userId: string, adapterId: string): LoginCodeOwner | null {
+  private dmDashboardOwner(userId: string, adapterId: string, username?: string): LoginCodeOwner | null {
     const world = this.worlds.get(adapterId);
     if (!world || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(userId, adapterId)) return null;
     const configured = (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).find(ch => (ch.id ?? ch.type) === adapterId);
@@ -5434,7 +5493,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         && String(this.getGroupIdForInstance(name) ?? "") === group)
       .map(([, cfg]) => cfg.topic_id!.toString());
     if (topics.length !== 1) return null;
-    const owner = { userId, adapterId, chatId: group, threadId: topics[0], binding: world.adapter };
+    const owner = { userId, adapterId, chatId: group, threadId: topics[0], binding: world.adapter, ...(username ? { username } : {}) };
     return this.publicOwnerCurrent(owner) ? owner : null;
   }
   /**
@@ -5458,7 +5517,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1742: `/start web` from a fleet admin: the /web menu right here in the DM, for the General this bot serves. */
   private async startWebInDm(msg: InboundMessage, adapter: ChannelAdapter | undefined): Promise<void> {
     if (!adapter) return;
-    const owner = msg.chatId === msg.userId ? this.dmDashboardOwner(msg.userId, msg.adapterId ?? "") : null;
+    const owner = msg.chatId === msg.userId ? this.dmDashboardOwner(msg.userId, msg.adapterId ?? "", msg.username) : null;
     if (!owner) { await adapter.sendText(msg.chatId, t("dashboard.start_web_ack")); return; }
     if (!await this.showDashboardMenu(owner, undefined, undefined, msg.chatId)) {
       await adapter.sendText(msg.chatId, t("dashboard.menu_failed")).catch(() => undefined);
@@ -5503,7 +5562,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Telegram's typed command enters through the same strict owner and nonce path as Discord. */
   async dashboardMenu(msg: InboundMessage): Promise<void> {
     const id = msg.adapterId;
-    const owner = id ? this.dashboardOwner(msg.userId, id, msg.chatId, msg.threadId) : null;
+    const owner = id ? this.dashboardOwner(msg.userId, id, msg.chatId, msg.threadId, msg.username) : null;
     if (!owner) {
       const adapter = id ? this.adapters.get(id) : undefined;
       await adapter?.sendText(msg.chatId, t("dashboard.public_general"), { threadId: msg.threadId }); return;
@@ -5529,7 +5588,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const token = this.webToken;
     if (!adapter || !token) { await data.respond(text); return; }
     this.initializeWebSessions();
-    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token) });
+    // #1827: the code goes privately to this account (a DM, or else this slash command's ephemeral answer): whoever
+    // redeems it is recognised as that account. Recognition only — no owner (this is not an owning General's code).
+    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) } });
     const current = (): boolean => !this.shuttingDown && this.adapters.get(adapterId) === adapter
       && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
     const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
@@ -12478,7 +12539,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1266: a click on a reply's button in the web chat (the /ui gate is passed: a session, or the public link). On a
    * poll (#1823) it is `voter`'s vote: the page's session.
    */
-  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; name: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
+  clickWebReplyButton(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string }): Promise<{ status: 200 | 400 | 403 | 409; error?: string; options?: number[] }> {
     const buttons = this.replyButtons();
     return buttons ? buttons.clickWeb(instance, id, index, voter) : Promise.resolve({ status: 409, error: t("reply_buttons.closed") });
   }
@@ -12906,11 +12967,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly webClearTokens = new Map<string, { instance: string; fence: () => boolean; deadline: number }>();
 
   /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
-  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean }): Promise<WebCommandResult> {
+  webCommand(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: Pick<WebPersonView, "userId" | "name"> }): Promise<WebCommandResult> {
     const webMeta = (instance: string) => {
       const topicId = this.fleetConfig?.instances[instance]?.topic_id;
       return {
-        chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(), username: "web-user", userId: "web-user",
+        // #1827: a /steer or /btw reaches the agent as the web person who wrote it.
+        chatId: this.getGroupIdForInstance(instance) || "", messageId: newWebMessageId(),
+        username: opts.person?.name ?? WEB_NAME_FALLBACK, userId: opts.person?.userId ?? WEB_NAME_FALLBACK,
         threadId: topicId != null ? String(topicId) : undefined, adapterId: this.getAdapterForInstance(instance)?.id ?? "", source: "web" as const, humanOrigin: webHumanOrigin(true),
       };
     };

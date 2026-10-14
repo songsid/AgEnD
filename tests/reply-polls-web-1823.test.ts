@@ -89,8 +89,9 @@ function webCtx(fm: FleetManager) {
   const token = "c".repeat(48);
   const sessions = new WebSessionStore();
   const ctx = Object.create(fm, { webToken: { value: token }, webSessions: { value: sessions } });
-  const session = (label: string, surface: "local" | "gateway" = "local", exposureId?: string) =>
-    sessions.create({ tier: "admin", surface, label, tokenEpoch: tokenEpoch(token), ...(exposureId ? { exposureId } : {}) });
+  // #1827: `owner` is the account the sign-in code was sent to — the web person; none is the host operator.
+  const session = (label: string, surface: "local" | "gateway" = "local", exposureId?: string, owner?: { adapterId: string; userId: string }) =>
+    sessions.create({ tier: "admin", surface, label, tokenEpoch: tokenEpoch(token), ...(exposureId ? { exposureId } : {}), ...(owner ? { owner } : {}) });
   return { ctx, token, sessions, session };
 }
 
@@ -106,26 +107,29 @@ describe("a web-only fleet: the poll is in the web chat", () => {
     expect(b.poll!.counts).toBeUndefined();
     expect(answer.result.poll_id).toBe(b.id);
   });
-  it("each signed-in device is one voter, told its own ballot; the CLI's token is one more; a stranger without a session cannot", async () => {
+  it("each person is one voter on all their devices, told their own ballot; the operator (CLI token) is one more; no session cannot (#1827)", async () => {
     vi.useFakeTimers({ now: 1_000_000, toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     const h = webFleet();
     h.ctl();
     await h.reply({ text: "Capital?", buttons: BUTTONS, poll: { seconds: 30, multi: true } });
     const id = h.pollMsg().buttons!.id;
     const w = webCtx(h.fm);
-    const laptop = w.session("Chrome on macOS"), phone = w.session("Safari on iOS");
+    // Ann signs in on two devices (codes sent to her Telegram user); Bob on one; both call themselves "Sam".
+    const ANN = { adapterId: "tg", userId: "1" }, BOB = { adapterId: "dc", userId: "2" };
+    const laptop = w.session("Chrome on macOS", "local", undefined, ANN), phone = w.session("Safari on iOS", "local", undefined, ANN);
+    const bob = w.session("Firefox", "local", undefined, BOB);
+    expect(h.fm.setWebPersonName(ANN, "Sam")).toMatchObject({ ok: true });
+    expect(h.fm.setWebPersonName(BOB, "Sam")).toMatchObject({ ok: true });
     expect(await post(w.ctx, { instance: "w", id, index: 0 }, { sessionId: laptop.sessionId })).toEqual({ status: 200, body: { answered: true, options: [0] } });
-    expect(await post(w.ctx, { instance: "w", id, index: 2 }, { sessionId: laptop.sessionId })).toEqual({ status: 200, body: { answered: true, options: [0, 2] } });
-    expect(await post(w.ctx, { instance: "w", id, index: 1 }, { sessionId: phone.sessionId })).toEqual({ status: 200, body: { answered: true, options: [1] } });
+    expect(await post(w.ctx, { instance: "w", id, index: 2 }, { sessionId: phone.sessionId })).toEqual({ status: 200, body: { answered: true, options: [0, 2] } });   // her ballot
+    expect(await post(w.ctx, { instance: "w", id, index: 1 }, { sessionId: bob.sessionId })).toEqual({ status: 200, body: { answered: true, options: [1] } });
     expect(await post(w.ctx, { instance: "w", id, index: 1 }, { token: w.token })).toEqual({ status: 200, body: { answered: true, options: [1] } });
+    // A web ballot is the account's — the key its vote on the platform has; the operator's is its own.
     const ballots = (h.any.replyButtonsStore as ReplyButtonStore).ballots(id);
     expect(ballots.map(b => [b.voter, b.name, b.options])).toEqual(expect.arrayContaining([
-      [`web:${laptop.record.handle}`, `web · Chrome on macOS (${laptop.record.handle.slice(0, 4)})`, [0, 2]],
-      [`web:${phone.record.handle}`, `web · Safari on iOS (${phone.record.handle.slice(0, 4)})`, [1]],
-      ["web:cli", "web", [1]],
+      ["tg:1", "Sam", [0, 2]], ["dc:2", "Sam", [1]], ["web:operator", "web-user", [1]],
     ]));
-    expect(ballots).toHaveLength(3);
-    expect(JSON.stringify(ballots)).not.toContain(laptop.sessionId);            // the handle, never the session id
+    expect(ballots).toHaveLength(3);                                           // the same name, never the same voter
     expect(await h.fm.clickWebReplyButton("w", id, 0)).toEqual({ status: 403, error: "A vote needs a signed-in session" });
   });
   it("the pages are told the count as votes come (at most once a second), then the closed tally; the results go to the agent once", async () => {
@@ -135,7 +139,8 @@ describe("a web-only fleet: the poll is in the web chat", () => {
     await h.reply({ text: "Capital?", buttons: BUTTONS, poll: { seconds: 30, show_voters: true } });
     const id = h.pollMsg().buttons!.id;
     const w = webCtx(h.fm);
-    const a = w.session("A"), b = w.session("B");
+    const a = w.session("A", "local", undefined, { adapterId: "tg", userId: "1" }), b = w.session("B", "local", undefined, { adapterId: "tg", userId: "2" });
+    h.fm.setWebPersonName({ adapterId: "tg", userId: "1" }, "Ann"); h.fm.setWebPersonName({ adapterId: "tg", userId: "2" }, "Bob");
     const views = () => h.sse.filter(e => e.event === "reply_buttons" && e.data.buttons.id === id).map(e => e.data.buttons);
     await post(w.ctx, { instance: "w", id, index: 0 }, { sessionId: a.sessionId });
     await vi.advanceTimersByTimeAsync(100);                                   // A's view goes at once; B votes later
@@ -146,7 +151,7 @@ describe("a web-only fleet: the poll is in the web chat", () => {
     expect(views().map(v => [v.state, v.poll.answered, v.poll.counts])).toEqual([["open", 1, undefined], ["open", 2, undefined]]);
     await vi.advanceTimersByTimeAsync(30_000);
     const closed = views().at(-1);
-    expect(closed).toMatchObject({ state: "closed", poll: { answered: 2, counts: [2, 0, 0], voters: [[`web · A (${a.record.handle.slice(0, 4)})`, `web · B (${b.record.handle.slice(0, 4)})`], [], []] } });
+    expect(closed).toMatchObject({ state: "closed", poll: { answered: 2, counts: [2, 0, 0], voters: [["Ann", "Bob"], [], []] } });
     expect(h.pollMsg().buttons).toMatchObject({ state: "closed", poll: { counts: [2, 0, 0] } });
     expect(h.fm.webChatHistory.buttonStates()).toEqual([{ instance: "w", buttons: expect.objectContaining({ id, state: "closed" }) }]);
     expect((await post(w.ctx, { instance: "w", id, index: 1 }, { sessionId: a.sessionId }))).toEqual({ status: 409, body: { error: "This poll is closed.", gone: true } });
@@ -184,7 +189,7 @@ describe("the public link votes as its own session, through the real gateway", (
     const id = h.pollMsg().buttons!.id;
     const w = webCtx(h.fm);
     const exposureId = "a".repeat(32), host = "sample.trycloudflare.com", pub = `https://${host}`;
-    const s = w.session("phone", "gateway", exposureId);
+    const s = w.session("phone", "gateway", exposureId, { adapterId: "tg", userId: "9" });
     let callback!: (req: any, res: any) => void;
     const server: any = Object.assign(new EventEmitter(), { setTimeout() {}, listen: (_p: number, _h: string, cb: () => void) => cb(), address: () => ({ port: 1 }), close() {}, closeAllConnections() {} });
     const g = createPublicWebGateway({ exposureId, isCurrent: () => true, isOpen: () => true, create: ((cb: any) => { callback = cb; return server; }) as never,
@@ -199,7 +204,7 @@ describe("the public link votes as its own session, through the real gateway", (
       setImmediate(() => { req.emit("data", Buffer.from(JSON.stringify({ instance: "w", id, index: 2 }))); req.emit("end"); });
     });
     expect([status, JSON.parse(body)]).toEqual([200, { answered: true, options: [2] }]);
-    expect((h.any.replyButtonsStore as ReplyButtonStore).ballots(id).map(b => b.voter)).toEqual([`web:${s.record.handle}`]);
+    expect((h.any.replyButtonsStore as ReplyButtonStore).ballots(id).map(b => b.voter)).toEqual(["tg:9"]);
     g.close();
   });
 });

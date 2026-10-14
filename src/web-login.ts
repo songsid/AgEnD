@@ -51,6 +51,18 @@ export interface LoginCodeOwner {
   readonly userId: string;
   readonly chatId: string;
   readonly threadId?: string;
+  /** #1827: the account's display name when the code was asked for — the web name it starts with. */
+  readonly username?: string;
+}
+/**
+ * #1827: the account a code was sent to privately, for recognition only — the web person a session redeemed with it is
+ * (their id, `via web`; their name). Unlike an owner it authorizes nothing and gates nothing (no returning device, no
+ * public-link confirmation): a code delivered to a fleet admin outside an owning General still says who it went to.
+ */
+export interface LoginCodeRecipient {
+  readonly adapterId: string;
+  readonly userId: string;
+  readonly username?: string;
 }
 export interface IssuedLoginCode {
   readonly issuanceId: string;
@@ -61,7 +73,7 @@ export interface IssuedLoginCode {
 }
 
 export type LoginRedeemResult =
-  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner }
+  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient }
   /** Wrong, expired, spent, or none issued — deliberately indistinguishable. */
   | { readonly kind: "invalid" }
   /** The breaker is open. Even a correct code is refused until it closes. */
@@ -71,6 +83,7 @@ interface Outstanding {
   readonly issuanceId: string;
   readonly audience: string;
   readonly owner?: LoginCodeOwner;
+  readonly recipient?: LoginCodeRecipient;
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
@@ -105,12 +118,14 @@ export class WebLoginCodes {
    * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
    * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
    */
-  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner }): IssuedLoginCode {
+  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
-    this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner };
+    this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner,
+      // #1827: an owner is also who the code went to; a recipient alone is recognition only.
+      ...(opts.owner || opts.recipient ? { recipient: opts.recipient ?? { adapterId: opts.owner!.adapterId, userId: opts.owner!.userId, ...(opts.owner!.username ? { username: opts.owner!.username } : {}) } } : {}) };
     this.onEvent("issued");
     return { display: formatOneTimeCode(code), expiresAt, tier, issuanceId };
   }
@@ -161,7 +176,7 @@ export class WebLoginCodes {
     if (constantTimeMatches(provided, active.code) && active.audience === audience) {
       this.outstanding = null;
       this.onEvent("spent");
-      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}) };
+      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}) };
     }
 
     active.failures += 1;

@@ -651,7 +651,7 @@ Simplified 4-question setup wizard for new users. Auto-detects installed backend
 
 ## Web Dashboard
 
-The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web-user: …`, and the agent's replies show in both. Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
+The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 <your name>: …`, and the agent's replies show in both. Signed in with a `/web` code, you are your Discord or Telegram account to the agent (its user id, `via web`, for recognition only — see [web-dashboard.md](web-dashboard.md#who-the-agent-sees-1827)). Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
 
 Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 

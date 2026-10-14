@@ -27,6 +27,8 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/(send|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|tasks|config)$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/tasks\/[^/]+$/.test(path)) return true;
+  // #1827: the person's own name (a profile edit, which the public link may make).
+  if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).
   // #1689: teams are not created, edited or deleted over the public link (the handlers refuse it too).
   // Settings has an explicit method/subroute manifest (not an arbitrary /api prefix).

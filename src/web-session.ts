@@ -93,6 +93,13 @@ export interface SessionRecord {
   readonly label: string;
   /** `sha256(web.token)` when the session was made; a mismatch means the token was rotated. */
   readonly tokenEpoch: string;
+  /**
+   * #1827: the account the session was signed in as — the Discord or Telegram user its sign-in code was sent to
+   * privately. Agents see web messages from it under that account's id (still `via web`), and it is the web person
+   * whose name follows them across devices. None: an `agend web` code, or a session from before — the host operator.
+   * For recognition only: never an authorization input (#1756 — a web message has no verified platform actor).
+   */
+  readonly owner?: { readonly adapterId: string; readonly userId: string };
 }
 
 export interface SessionSummary {
@@ -185,6 +192,14 @@ export interface WebSessionStoreOptions {
   readonly onWarn?: (message: string) => void;
 }
 
+/** #1827: a bound account as the sessions file keeps it: both ids, short, one line. */
+function isOwner(v: unknown): v is { adapterId: string; userId: string } {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  const id = (s: unknown) => typeof s === "string" && s.length >= 1 && s.length <= 128 && !/[\u0000-\u001f\u007f]/.test(s);
+  return Object.keys(o).length === 2 && id(o.adapterId) && id(o.userId);
+}
+
 function isRecord(value: unknown): value is SessionRecord {
   if (!value || typeof value !== "object") return false;
   const v = value as Record<string, unknown>;
@@ -197,6 +212,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.tier === "admin" || v.tier === "read")
     && (v.surface === "local" || v.surface === "gateway")
     && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
+    && (v.owner === undefined || isOwner(v.owner))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
@@ -262,7 +278,7 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string } }): { sessionId: string; record: SessionRecord } {
     const now = this.now();
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
@@ -280,6 +296,7 @@ export class WebSessionStore {
       ...(input.exposureId ? { exposureId: input.exposureId } : {}),
       label: sanitizeLabel(input.label),
       tokenEpoch: input.tokenEpoch,
+      ...(input.owner ? { owner: { adapterId: input.owner.adapterId, userId: input.owner.userId } } : {}),
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);

@@ -44,7 +44,7 @@ import {
   type WebGateRequest,
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
-import type { LoginCodeOwner, WebLoginCodes } from "./web-login.js";
+import type { LoginCodeOwner, LoginCodeRecipient, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookie, type ReturningDevice } from "./web-returning-device.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +65,8 @@ export interface AuthApiContext {
   onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string }): void;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
+  /** #1827: a sign-in as this account — its display name then is the web name it starts with. */
+  noteWebSignIn?(account: LoginCodeRecipient): void;
   /** #1570: the returning device a cookie value proves, or null. */
   verifyReturningDevice?(value: string | undefined): ReturningDevice | null;
   /** #1570: send a fresh code privately to the device's owner, if they still may have one. */
@@ -246,7 +248,16 @@ export function handleAuthRequest(
       const previous = readSessionCookie(gateReq);
       if (previous && sessions.authenticate(previous, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId })) sessions.revokeById(previous);
       const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
-      const { sessionId, record } = sessions.create({ tier: result.tier, surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId, pending: !!gateway });
+      // #1827: the session is bound to the account the code was sent to privately (agents recognise them by its id on
+      // the web) — recognition only; no recipient (an `agend web` code): the operator, as before.
+      const account = result.recipient;
+      const { sessionId, record } = sessions.create({ tier: result.tier, surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId, pending: !!gateway,
+        ...(account ? { owner: { adapterId: account.adapterId, userId: account.userId } } : {}) });
+      // …and that account's display name then is the name the person starts with (on every device of theirs). A code
+      // re-sent to a returning device (#1570) carries no name: the one from their last sign-in stays.
+      if (account?.username) {
+        try { ctx.noteWebSignIn?.(account); } catch (err) { ctx.logger.debug({ err }, "web sign-in name not recorded"); }
+      }
       if (gateway) candidateId = sessionId;
       if (gateway) {
         try {

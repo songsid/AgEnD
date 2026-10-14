@@ -37,6 +37,7 @@ import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
+import { WEB_NAME_FALLBACK, type WebAccount } from "./web-profile.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -193,7 +194,7 @@ export interface WebApiContext {
    * (#1320 part B). Resolves the entries and adapters itself; returns how
    * many channels were posted to. Never rejects the web send on failure.
    */
-  sendClassicWebEcho?(instance: string, text: string): Promise<number>;
+  sendClassicWebEcho?(instance: string, text: string, sender?: string): Promise<number>;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
   deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string): Promise<boolean | void>;
@@ -234,13 +235,20 @@ export interface WebApiContext {
   /** #1468: the prompt-cache expiry analysis for a window ("24h" | "7d" | "30d"); absent: not offered. */
   cacheReport?(window: string): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson }): Promise<{ status: number; body: unknown }>;
+  /**
+   * #1827: a web person — for the account a session is bound to (none: the operator) — as agents and chats see them.
+   * Absent: everyone is "web-user", as before.
+   */
+  webPerson?(owner?: WebAccount): WebPerson;
+  /** #1827: set (or, with null, clear) a person's own name; refused with a reason. */
+  setWebPersonName?(owner: WebAccount | undefined, raw: unknown): { ok: true; person: WebPerson } | { ok: false; status: number; error: string };
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
   /** Answer one of them, exactly as a click on its platform button would. */
   clickWebPrompt?(instance: string, nonce: string, action: string): Promise<{ status: number; error?: string }>;
   /** #1266: a click on an agent reply's button. */
-  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; name: string }): Promise<{ status: number; error?: string; options?: number[] }>;
+  clickWebReplyButton?(instance: string, id: string, index: number, voter?: { key: string; userId: string; name: string }): Promise<{ status: number; error?: string; options?: number[] }>;
   /** Interrupt the current reply and drop what was queued for it; false when the instance is not running. */
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
@@ -296,6 +304,50 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) return true;
   json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
   return false;
+}
+
+/** #1827: a web person as the web chat shows them to agents and chats. */
+export interface WebPerson {
+  /** Their key in the web preferences (web-profile.ts webPersonKey): never shown. */
+  readonly key: string;
+  /** Signed in as an account (a sign-in code DMed to it), or the operator. */
+  readonly bound: boolean;
+  /** What agents see as the id: the bound account's user id on its platform (still `via web`), or "web-user". */
+  readonly userId: string;
+  /** Their poll ballot's key: the account's `<connection>:<user id>` (as on the platform), or the operator's. */
+  readonly voterKey: string;
+  /** The name in use: the one they chose, else their account's name at sign-in, else "web-user". */
+  readonly name: string;
+  /** Whether the name in use is one they chose. */
+  readonly set: boolean;
+  /** Their account's name at sign-in, made safe (bound only). */
+  readonly platformName?: string;
+}
+/**
+ * #1827: whose a request is, asked NOW (after its body arrived: a session revoked, expired or rotated away meanwhile is
+ * no one — `null`, never the operator). An authorized session is the account it was signed in as, or (an `agend web`
+ * session, the CLI's header token) none: the operator. For recognition only; nothing here authorizes anything.
+ */
+function webAccountOf(req: IncomingMessage, url: URL, ctx: WebApiContext): { owner?: WebAccount } | null {
+  const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  if (verdict.kind !== "allow") return null;
+  return verdict.via === "session" && verdict.session?.owner ? { owner: verdict.session.owner } : {};
+}
+function webPersonOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebPerson | null {
+  // No people kept here: everyone is "web-user", as before, and there is no identity to protect.
+  if (!ctx.webPerson) return { key: OPERATOR, bound: false, userId: WEB_NAME_FALLBACK, voterKey: "web:operator", name: WEB_NAME_FALLBACK, set: false };
+  const who = webAccountOf(req, url, ctx);
+  return who ? ctx.webPerson(who.owner) : null;
+}
+/** #1827: the person, or the request is answered 401 here (it is no longer authorized) and null is returned. */
+function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): WebPerson | null {
+  const p = webPersonOf(req, url, ctx);
+  if (!p) json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
+  return p;
+}
+/** #1827: what the page's profile card reads — the name they chose (or null), the one in use, and how agents know them. */
+function profileBody(p: WebPerson): Record<string, unknown> {
+  return { name: p.set ? p.name : null, shown: p.name, id: p.userId, bound: p.bound, ...(p.platformName !== undefined ? { platform_name: p.platformName } : {}) };
 }
 
 /** #1823: an SSE frame with the server's clock (no id: it is not a message, and a reconnect gets a fresh one). */
@@ -636,6 +688,38 @@ export function handleWebRequest(
     return true;
   }
 
+  // #1827: the person's own name — the one agents and chats see for their web messages. Their own profile, so the public
+  // link may read and set it too (profile edits are allowed there); a read-only session may as well: it is about them.
+  if (path === "/ui/profile" && method === "GET") {
+    if (!ctx.webPerson) { json(res, 404, { error: "Profiles are not kept on this fleet" }); return true; }
+    const p = webPersonOr401(req, res, url, ctx);
+    if (p) json(res, 200, profileBody(p));
+    return true;
+  }
+  if (path === "/ui/profile" && method === "POST") {
+    if (!ctx.setWebPersonName) { json(res, 404, { error: "Profiles are not kept on this fleet" }); return true; }
+    const set = ctx.setWebPersonName.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (!body || typeof body !== "object" || Array.isArray(body) || !Object.hasOwn(body, "name")) { json(res, 400, { error: "name required (text, or null to clear)" }); return; }
+      // Whose: asked once the body is in. A session revoked, expired or rotated away meanwhile writes nothing — it is
+      // not the operator (#1833 review).
+      const who = webAccountOf(req, url, ctx);
+      if (!who) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      const r = set(who.owner, body.name);
+      if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+      // The person's other devices read it at their next status (the prefs rev moved).
+      ctx.emitSseEvent("status", ctx.getUiStatus());
+      json(res, 200, profileBody(r.person));
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Saving the web name failed");
+      try { json(res, 500, { error: "Saving the name failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   // #1266: a click on an agent reply's button. The set id travels in the body; the public link may click too (a click
   // is a message, and the public link may send messages).
   if (method === "POST" && path === "/ui/reply-button") {
@@ -650,14 +734,12 @@ export function handleWebRequest(
         json(res, 400, { error: "instance, id and index required" });
         return;
       }
-      // #1823: on a poll the click is a vote, and the voter is this page's session — its public handle (never the
-      // session id), so each signed-in device votes once. The CLI's header token votes as one "web" voter.
-      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      const voter = verdict.kind === "allow" && verdict.via === "session" && verdict.session
-        // The device label is not unique (two "Chrome on Linux"): the handle's first characters tell them apart.
-        ? { key: `web:${verdict.session.handle}`, name: `web · ${verdict.session.label} (${verdict.session.handle.slice(0, 4)})` }
-        : verdict.kind === "allow" ? { key: "web:cli", name: "web" } : undefined;
-      const r = await click(instance, id, index, voter);
+      // #1823/#1827: the click is this page's person's — on a poll their vote (one per person, on every device of
+      // theirs), on one-click buttons their choice — under their web id and name. A request that no longer passes the
+      // gate (a session revoked meanwhile) clicks nothing as anyone.
+      const person = webPersonOr401(req, res, url, ctx);
+      if (!person) return;
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
@@ -758,7 +840,10 @@ export function handleWebRequest(
       if (!instance || !isSafeInstanceName(instance) || !command) { json(res, 400, { error: "instance and command required" }); return; }
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
-      const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined }, { publicLink: !!gatewayRequestContext(req) });
+      const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
+      if (!person) return;
+      const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
+        { publicLink: !!gatewayRequestContext(req), person });
       json(res, r.status, r.body);
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web command failed");
@@ -782,7 +867,7 @@ export function handleWebRequest(
       return true;
     }
     if (!ctx.cancelInstance(name)) { json(res, 409, { error: `${name} is not running` }); return true; }
-    ctx.eventLog?.logActivity("cancel", "web-user", "stop the current reply", name);
+    ctx.eventLog?.logActivity("cancel", webPersonOf(req, url, ctx)?.name ?? WEB_NAME_FALLBACK, "stop the current reply", name);
     json(res, 200, { cancelled: name });
     return true;
   }
@@ -1006,12 +1091,14 @@ export function handleWebRequest(
         if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(TaskCreateSchema, body, res);
         if (!parsed) return;
+        const person = webPersonOr401(req, res, url, ctx);                // #1827: asked again, now the body is in
+        if (!person) return;
         const task = ctx.scheduler!.db.createTask({
           title: parsed.title,
           description: parsed.description,
           priority: parsed.priority,
           assignee: parsed.assignee,
-          created_by: "web-user",
+          created_by: person.name,                                           // #1827
         });
         json(res, 200, task);
       } catch (err) {
@@ -1036,7 +1123,9 @@ export function handleWebRequest(
         if (!parsed) return;
         let result: unknown;
         if (parsed.action === "claim") {
-          result = ctx.scheduler!.db.claimTask(id, parsed.assignee || "web-user");
+          const person = parsed.assignee ? null : webPersonOr401(req, res, url, ctx);   // #1827: the default is the person
+          if (!parsed.assignee && !person) return;
+          result = ctx.scheduler!.db.claimTask(id, parsed.assignee || person!.name);
         } else if (parsed.action === "complete") {
           result = ctx.scheduler!.db.completeTask(id, parsed.result);
         } else {
@@ -1338,6 +1427,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         return;
       }
       const message = typed;
+      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
+      // body is in: a session revoked meanwhile sends nothing (not as the operator).
+      const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
+      if (!person) { ctx.webFiles?.release(files); json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       const ts = new Date().toISOString();
       // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
       const messageId = newWebMessageId();
@@ -1356,14 +1449,14 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // opt-in resolved at send time inside sendClassicWebEcho.
       const canClassicEcho = ctx.isClassicInstance?.(instance) === true && !!ctx.sendClassicWebEcho;
       const settleClassicEcho = canClassicEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
-        await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho("web-user", preview, t("web.echo_full_text")));
+        await ctx.sendClassicWebEcho!(instance, formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), person.name);
       }) : undefined;
       const settleEcho = canEcho ? ctx.reserveWebChannelEcho?.(instance, async () => {
         // A replacement adapter or edited binding is not the route we reserved.
         if ((ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter) !== syncAdapter
           || (ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "")) !== groupId
           || ctx.fleetConfig?.instances[instance]?.topic_id !== topicId) return;
-        return syncAdapter.sendText(String(groupId), formatWebChannelEcho("web-user", preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
+        return syncAdapter.sendText(String(groupId), formatWebChannelEcho(person.name, preview, t("web.echo_full_text")), { threadId: String(topicId), format: "text", allowedMentions: { parse: [] } });
       }) : undefined;
       let delivered: boolean | void;
       try {
@@ -1377,7 +1470,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           meta: {
             chat_id: groupId ? String(groupId) : "",
             message_id: messageId,
-            user: "web-user", user_id: "web-user",
+            user: person.name, user_id: person.userId,
             ts,
             thread_id: topicId != null ? String(topicId) : "",
             source: "web",
@@ -1414,9 +1507,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         ctx.reserveWebChannelEcho?.(instance, () => startProgress(instance), { copy: false })(true);
       }
       ctx.webFiles?.commit(files);
-      ctx.lastInboundUser.set(instance, "web-user");
-      ctx.eventLog?.logActivity("message", "web-user", (message || `[${files.length} file(s)]`).slice(0, 200), instance);
-      ctx.emitSseEvent("message", { instance, sender: "web-user", role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId });
+      ctx.lastInboundUser.set(instance, person.name);
+      ctx.eventLog?.logActivity("message", person.name, (message || `[${files.length} file(s)]`).slice(0, 200), instance);
+      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId });
       json(res, 200, { sent: true, messageId });
     } catch {
       json(res, 400, { error: "Invalid JSON" });

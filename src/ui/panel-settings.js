@@ -293,7 +293,8 @@ export function DeviceSection() {
     setTimeout(go, 0);
   };
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
-  return html`<section class="card s-device s-synced"><h3>${tn("syncedTitle")}</h3>
+  return html`<${ProfileCard} />
+  <section class="card s-device s-synced"><h3>${tn("syncedTitle")}</h3>
     <p class="sub">${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}</p>
     <${DevicePrefs} labels=${true} />
     ${P() ? html`<label class="check"><input type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
@@ -302,6 +303,52 @@ export function DeviceSection() {
   <section class="card s-device s-local"><h3>${tn("deviceTitle")}</h3>
     <p class="sub">${tn("deviceLead")}</p>
     <div class="s-device-row"><button type="button" id="tourBtn" class="btn" title=${t("chat.tourBtnTitle")} onClick=${replay}><${Icon} name="info" size=${16} />${t("chat.tour")}</button></div>
+  </section>`;
+}
+
+/**
+ * #1827: who agents see when this person writes from the web. Signed in with a code sent to their Discord or Telegram
+ * account, they are that account — its user id, and its name unless they choose another (it follows them to every
+ * device, the public link included). Otherwise "web-user", as before. The host checks a name in full and says why it
+ * refuses one; this only shows what it says.
+ */
+const view = (b) => ({ phase: "ready", name: b.name || "", shown: b.shown || "", id: b.id || "", bound: b.bound === true, platform: b.platform_name || "", error: "" });
+export function ProfileCard() {
+  const [state, setState] = useState({ phase: "loading", name: "", shown: "", id: "", bound: false, platform: "", error: "" });
+  const [draft, setDraft] = useState("");
+  const lease = useLease();
+  useEffect(() => {
+    let live = true;
+    api("/ui/profile").then((r) => {
+      if (!live) return;
+      if (!r.ok || !r.body) { setState((s) => ({ ...s, phase: "unavailable" })); return; }
+      setState(view(r.body));
+      setDraft(r.body.name || "");
+    }).catch(() => { if (live) setState((s) => ({ ...s, phase: "unavailable" })); });
+    return () => { live = false; };
+  }, []);
+  if (state.phase === "unavailable") return null;
+  const save = (clear) => {
+    setState((s) => ({ ...s, phase: "saving", error: "" }));
+    api("/ui/profile", { method: "POST", body: JSON.stringify({ name: clear ? null : draft }) }).then((r) => {
+      if (lease && !lease.current()) return;
+      if (!r.ok) { setState((s) => ({ ...s, phase: "ready", error: (r.body && r.body.error) || tn("profileFailed") })); return; }
+      setState(view(r.body));
+      setDraft(r.body.name || "");
+      toast(tn("profileSaved", r.body.shown || "web-user"));
+    }).catch(() => setState((s) => ({ ...s, phase: "ready", error: tn("profileFailed") })));
+  };
+  const busy = state.phase !== "ready";
+  const changed = draft.trim() !== state.name;
+  return html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>
+    <p class="sub">${state.bound ? tn("profileLeadBound") : tn("profileLeadUnbound")}</p>
+    <div class="field"><label for="profile-name">${tn("profileName")}</label>
+      <input id="profile-name" type="text" maxlength="200" autocomplete="nickname" value=${draft} disabled=${busy}
+        placeholder=${state.platform || "web-user"} aria-invalid=${state.error ? "true" : "false"} aria-describedby="profile-help"
+        onInput=${(e) => setDraft(e.target.value)} onKeyDown=${(e) => { if (e.key === "Enter" && changed && draft.trim()) save(false); }} />
+      <p class="sub" id="profile-help">${state.error ? html`<span class="err" role="alert">${state.error}</span>` : tn("profileHelp", state.shown || "web-user", state.id)}</p></div>
+    <div class="s-device-row"><button type="button" class="btn primary" disabled=${busy || !changed || !draft.trim()} onClick=${() => save(false)}>${tn("profileSave")}</button>
+      ${state.name ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => save(true)}>${state.bound ? tn("profileUseAccount", state.platform || "web-user") : tn("profileClear")}</button>` : null}</div>
   </section>`;
 }
 

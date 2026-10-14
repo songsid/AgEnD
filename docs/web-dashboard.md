@@ -61,11 +61,21 @@ If the server cannot save the change (a disk problem), the reply says so: everyo
 ## The chat (`/ui`)
 
 Pick an instance on the left to talk to it. The web chat is **the same conversation** as its Telegram/Discord topic:
-- A message you send from the web is echoed into the topic as `🌐 web-user: …`.
+- A message you send from the web is echoed into the topic as `🌐 <your name>: …` (see *Who the agent sees* below).
 - The agent's reply goes to Telegram/Discord as usual and also appears here.
 - You can switch between the web and your phone mid-conversation.
 - **No chat platform at all?** With no `channel` / `channels` in `fleet.yaml`, the dashboard alone is enough: an agent's replies come to the web chat.
 - **First time here?** The first time `/ui` opens on a device, a short tour points out the instance list, files, Stop and the *needs you* badge. **Settings → Preferences → Tour** shows it again.
+
+### Who the agent sees (#1827)
+
+- **Signed in with a code from `/web`:** the code was sent privately to your Discord or Telegram account, and this browser is that account to the agent. Your web messages arrive as `[user:<name> via web, id:<your user id on that platform>]`. An agent that knows you from Discord or Telegram recognises you, and `via web` says where you wrote from.
+  - **The name:** your account's display name at sign-in, unless you choose another under **Settings → Preferences → Your name**. The choice follows you to every device you sign in on, the public link included. The id never changes with the name.
+  - **Name rules:** 1–32 characters of letters, digits, spaces, single emoji and `. - _ ' ·`. A name can't contain the word "via", and can't be a name AgEnD reserves or an agent's or bot's name here.
+- **Signed in otherwise** (an `agend web` code, or a session from before 2.2): `web-user`, as before. You can still set a name for those messages; signing in once with a `/web` code makes this browser your account.
+- **It is for recognition only.** A web message is never a verified message from that platform account: it grants no permission, and a #1756 human-authorization receipt never names it as one.
+- **The same name is used** in the topic echo, a ClassicBot room's log, reply-button choices, poll results, tasks you create or claim, and web `/steer` and `/btw`.
+- **Polls:** your web vote is your account's ballot, the same one as your vote on Discord or Telegram.
 
 ### The layout
 - The conversation is one centred column. Your messages are bubbles on the right; an agent's replies use the full column, each with **Copy**.
