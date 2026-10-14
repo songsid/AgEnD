@@ -35,5 +35,6 @@ regexes = [
   '''token_env["'\x60]?\s*[:=]\s*["'\x60]?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+["'\x60;\s]?$''',
   # #1818: deliberate fake npm_token strings in update-log masking tests (test data for verifying
   # that secrets written to update.log are masked before being shown in chat). Exact known fixture value.
-  '''npm_token=npm_ABCDEFGHIJ1234567890AB''',
+  # regexTarget="match" means this is matched against the secret value itself, not the full line.
+  '''npm_ABCDEFGHIJ1234567890AB''',
 ]
