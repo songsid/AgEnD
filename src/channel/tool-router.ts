@@ -2,6 +2,7 @@ import { resolve, sep, join } from "node:path";
 import { realpathSync, existsSync, readFileSync } from "node:fs";
 import yaml from "js-yaml";
 import type { ChannelAdapter } from "./types.js";
+import type { PollRender } from "../reply-polls.js";
 import { getAgendHome } from "../paths.js";
 import { validateFleetConfig, validateClassicBotConfig } from "../config-validator.js";
 
@@ -53,7 +54,7 @@ export function routeToolCall(
   threadId: string | undefined,
   respond: (result: unknown, error?: string) => void,
   /** #1266: a reply's buttons, prepared by the fleet (never read from the agent's arguments). */
-  extra: { replyButtons?: Array<{ id: string; label: string }> } = {},
+  extra: { replyButtons?: Array<{ id: string; label: string }>; replyPoll?: PollRender } = {},
 ): boolean {
   const chatId = args.chat_id as string ?? "";
 
@@ -80,7 +81,7 @@ export function routeToolCall(
         respond(null, "reply: this channel cannot send stickers");
         return true;
       }
-      const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format, ...(extra.replyButtons?.length ? { replyButtons: extra.replyButtons } : {}) };
+      const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format, ...(extra.replyButtons?.length ? { replyButtons: extra.replyButtons } : {}), ...(extra.replyPoll ? { replyPoll: extra.replyPoll } : {}) };
       const sending = stickers.length
         ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text: (args.text as string | undefined) ?? "" })
         : adapter.sendText(chatId, args.text as string ?? "", sendOpts);

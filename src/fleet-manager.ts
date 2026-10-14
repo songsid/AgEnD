@@ -194,6 +194,7 @@ import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type 
 import { WebPrefsStore } from "./web-prefs.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
+import { parsePoll, type PollRender } from "./reply-polls.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
@@ -1529,6 +1530,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       mayClick: (set, userId) => this.mayAnswerReplyButtons(set.instance, set.adapterId, userId),
       deliver: (set, button, by) => this.deliverReplyButtonChoice(set, button, by),
       publish: (instance, view) => this.emitSseEvent("reply_buttons", { instance, buttons: view }),
+      admitResults: (set, key, text) => this.admitPollResults(set, key, text),
+      monotonic: () => performance.now(),
       logger: this.logger,
       setTimer: (fn, ms) => { const h = setTimeout(fn, ms); h.unref?.(); return h; },
       clearTimer: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
@@ -1537,6 +1540,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.replyButtonsCtl;
   }
   private replyButtonsStore: ReplyButtonStore | null = null;
+
+  /**
+   * #1823: a closed poll's results go to its instance through the delivery outbox, as a system notice keyed by the
+   * poll: durable (held until the instance can take it) and admitted once, however often this is asked. Addressed to
+   * the poll's chat, so the instance's answer (the right option, the scores) goes there.
+   */
+  private admitPollResults(set: { instance: string; adapterId: string; chatId: string; threadId: string }, key: string, text: string): boolean {
+    this.ensureDeliveryOutbox();
+    const outbox = this.deliveryOutbox;
+    if (!outbox) return false;
+    outbox.admitSystemNotice(set.instance, key, text, new Date(), {
+      chatId: set.chatId, threadId: set.threadId || undefined, adapterId: set.adapterId === "web" ? undefined : set.adapterId,
+    });
+    return true;
+  }
 
   /**
    * #1266: who may answer a reply's buttons on a platform — whoever may message that instance there: in a ClassicBot
@@ -6746,6 +6764,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
+    // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
     void this.replyButtons()?.sweep().catch(err => this.logger.warn({ err }, "Reply-button sweep failed"));
 
     // Daily update check — first check after 1 hour, then every 24 hours
@@ -8845,6 +8864,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #1266: buttons are checked before anything is sent, like stickers.
       const parsedButtons = parseReplyButtons(args.buttons, args);
       if (parsedButtons && "error" in parsedButtons) { respond(null, `reply: ${parsedButtons.error}`); return; }
+      // #1823: a poll is checked with its buttons. Where it cannot be shown it is refused, never sent as text: text
+      // options would never come back as results.
+      const parsedPoll = parsePoll(args.poll, parsedButtons && "buttons" in parsedButtons ? parsedButtons.buttons : null, args.text);
+      if (parsedPoll && "error" in parsedPoll) { respond(null, `reply: ${parsedPoll.error}`); return; }
+      if (parsedPoll && (!outAdapter.supportsPolls || !this.replyButtons())) {
+        respond(null, `reply: a poll cannot be shown here${outAdapter.supportsPolls ? " (reply buttons are unavailable until AgEnD restarts)" : " — polls work in Discord and Telegram chats"}; send the question without poll`);
+        return;
+      }
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }
@@ -8860,12 +8887,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       // #1266: the buttons' set, before the send (a click cannot match it until the message is known). Where buttons
       // cannot be shown, the choices go into the text instead.
-      let replySet: { id: string; callbacks: Array<{ id: string; label: string }> } | null = null;
+      let replySet: { id: string; callbacks: Array<{ id: string; label: string }>; poll?: PollRender } | null = null;
       if (parsedButtons && "buttons" in parsedButtons) {
         const buttons = outAdapter.supportsReplyButtons ? this.replyButtons() : null;
         if (buttons) {
           const outId = outAdapter === WEB_ONLY_REPLY_SINK ? "web" : ((outAdapter as { id?: unknown }).id as string | undefined) ?? contextAdapterId ?? "";
-          replySet = buttons.prepare({ instance: instanceName, adapterId: outId, chatId: String(args.chat_id ?? ""), threadId }, parsedButtons.buttons);
+          replySet = buttons.prepare({ instance: instanceName, adapterId: outId, chatId: String(args.chat_id ?? ""), threadId }, parsedButtons.buttons,
+            parsedPoll && "poll" in parsedPoll ? parsedPoll.poll : null);
         } else {
           args.text = `${String(args.text)}\n\n${replyButtonsFallbackText(parsedButtons.buttons)}`;
         }
@@ -8878,11 +8906,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const carrying = sent?.buttonsMessageId ?? sent?.messageId;
           if (!error && carrying) {
             this.replyButtonsCtl?.bind(replySet.id, carrying);
-            buttonsView = this.replyButtonsCtl?.viewOf(replySet.id) ?? null;
+            // #1823: a poll is not shown in the web chat yet (it would offer one-click buttons there).
+            buttonsView = replySet.poll ? null : this.replyButtonsCtl?.viewOf(replySet.id) ?? null;
           } else {
             this.replyButtonsCtl?.discard(replySet.id);
           }
         }
+        // #1823: the agent learns its poll's id (the results name it).
+        if (replySet?.poll && !error && result && typeof result === "object") result = { ...(result as object), poll_id: replySet.id };
         ticket.complete(result, error);
         // Return the platform outcome first. Bookkeeping below must never turn
         // a confirmed Discord/Telegram POST into a tool error if a secondary
@@ -8908,7 +8939,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
         }
       };
-      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, replySet ? { replyButtons: replySet.callbacks } : {})) {
+      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, replySet ? { replyButtons: replySet.callbacks, ...(replySet.poll ? { replyPoll: replySet.poll } : {}) } : {})) {
         return;
       }
       if (replySet) this.replyButtonsCtl?.discard(replySet.id);

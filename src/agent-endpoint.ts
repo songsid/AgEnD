@@ -429,6 +429,8 @@ export async function dispatchAgentOperation(
         const replyArgs = fullArgs as Record<string, unknown>;
         const buttons = parseReplyButtons(replyArgs.buttons, replyArgs);
         if (buttons && "error" in buttons) return { error: `reply: ${buttons.error}` };
+        // #1823: this path cannot show a poll (its votes and results live in the fleet's reply-button store).
+        if (replyArgs.poll !== undefined && replyArgs.poll !== null) return { error: "reply: a poll cannot be sent from here; send the question without poll" };
         if (buttons) { replyArgs.text = `${String(replyArgs.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}`; delete replyArgs.buttons; }
       }
       // The same pre-check as the MCP path, before anything is sent: a sticker this channel cannot send

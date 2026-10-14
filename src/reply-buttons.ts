@@ -11,6 +11,7 @@
  */
 import Database from "better-sqlite3";
 import { randomBytes } from "node:crypto";
+import { nextBallot, type PollBallot, type PollConfig } from "./reply-polls.js";
 
 export const REPLY_BUTTONS_MAX = 10;
 /** Discord's limit per label (the strictest of the three); counted in UTF-16 units, as Discord counts. */
@@ -104,7 +105,21 @@ export interface ReplyButtonSet {
   deliveredAt: number | null;
   /** Set when the platform message was updated to its final state (chosen / expired). */
   settledAt: number | null;
+  /**
+   * #1823: a poll — everyone may vote until `expiresAt` (its deadline; `createdAt` is when it opened). Null: ordinary
+   * buttons, the first click answers for everyone.
+   */
+  poll: PollConfig | null;
+  /** #1823: when the poll stopped taking votes (at or after its deadline). */
+  closedAt: number | null;
+  /** #1823: when the results were handed to the delivery outbox (idempotent per poll: the agent gets them once). */
+  resultsAt: number | null;
 }
+
+/** #1823: one click on a poll. */
+export type VoteResult =
+  | { ok: true; set: ReplyButtonSet; options: number[]; changed: boolean }
+  | { ok: false; reason: "missing" | "pending" | "closed"; set?: ReplyButtonSet };
 
 export type ConsumeResult =
   | { ok: true; set: ReplyButtonSet; button: ReplyButton }
@@ -114,12 +129,15 @@ interface Row {
   id: string; instance: string; adapter_id: string; chat_id: string; thread_id: string; message_id: string | null;
   buttons: string; created_at: number; expires_at: number; consumed_at: number | null; chosen_index: number | null;
   chosen_by: string | null; settled_at: number | null; delivered_at: number | null;
+  poll: string | null; closed_at: number | null; results_at: number | null;
 }
 const fromRow = (r: Row): ReplyButtonSet => ({
   id: r.id, instance: r.instance, adapterId: r.adapter_id, chatId: r.chat_id, threadId: r.thread_id, messageId: r.message_id,
   buttons: JSON.parse(r.buttons) as ReplyButton[], createdAt: r.created_at, expiresAt: r.expires_at, consumedAt: r.consumed_at,
   chosenIndex: r.chosen_index, chosenBy: r.chosen_by, deliveredAt: r.delivered_at ?? null, settledAt: r.settled_at,
+  poll: r.poll ? JSON.parse(r.poll) as PollConfig : null, closedAt: r.closed_at ?? null, resultsAt: r.results_at ?? null,
 });
+interface BallotRow { voter: string; name: string; options: string; at: number }
 
 /** The button sets, in `<dataDir>/reply-buttons.db`. Wall-clock instants: an expiry is a calendar time that must hold across restarts. */
 export class ReplyButtonStore {
@@ -149,13 +167,32 @@ export class ReplyButtonStore {
     `);
     const columns = (this.db.prepare("PRAGMA table_info(reply_buttons)").all() as Array<{ name: string }>).map(c => c.name);
     if (!columns.includes("delivered_at")) this.db.exec("ALTER TABLE reply_buttons ADD COLUMN delivered_at INTEGER");
+    // #1823: polls. Older rows are ordinary buttons (poll NULL).
+    for (const c of ["poll TEXT", "closed_at INTEGER", "results_at INTEGER"]) {
+      if (!columns.includes(c.split(" ")[0]!)) this.db.exec(`ALTER TABLE reply_buttons ADD COLUMN ${c}`);
+    }
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS poll_ballots (
+        poll_id TEXT NOT NULL,
+        voter TEXT NOT NULL,
+        name TEXT NOT NULL,
+        options TEXT NOT NULL,
+        at INTEGER NOT NULL,
+        PRIMARY KEY (poll_id, voter)
+      );
+    `);
   }
   close(): void { this.db.close(); }
 
-  /** Before the send: the set exists, unbound (a click cannot match it until the platform message is known). */
-  create(set: Pick<ReplyButtonSet, "id" | "instance" | "adapterId" | "chatId" | "threadId" | "buttons">, now: number): ReplyButtonSet {
-    this.db.prepare(`INSERT INTO reply_buttons (id, instance, adapter_id, chat_id, thread_id, buttons, created_at, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(set.id, set.instance, set.adapterId, set.chatId, set.threadId ?? "", JSON.stringify(set.buttons), now, now + REPLY_BUTTON_TTL_MS);
+  /**
+   * Before the send: the set exists, unbound (a click cannot match it until the platform message is known). A poll
+   * opens now: its deadline is `seconds` from here, and its votes are timed from here.
+   */
+  create(set: Pick<ReplyButtonSet, "id" | "instance" | "adapterId" | "chatId" | "threadId" | "buttons"> & { poll?: PollConfig | null }, now: number): ReplyButtonSet {
+    const expires = set.poll ? now + set.poll.seconds * 1000 : now + REPLY_BUTTON_TTL_MS;
+    this.db.prepare(`INSERT INTO reply_buttons (id, instance, adapter_id, chat_id, thread_id, buttons, created_at, expires_at, poll)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(set.id, set.instance, set.adapterId, set.chatId, set.threadId ?? "", JSON.stringify(set.buttons), now, expires,
+      set.poll ? JSON.stringify(set.poll) : null);
     return this.get(set.id)!;
   }
   /** After the send: the message the buttons are on. Only an unbound set can be bound. */
@@ -163,7 +200,10 @@ export class ReplyButtonStore {
     return this.db.prepare("UPDATE reply_buttons SET message_id = ? WHERE id = ? AND message_id IS NULL").run(messageId, id).changes === 1;
   }
   /** A send that failed: the set never existed for anyone. */
-  remove(id: string): void { this.db.prepare("DELETE FROM reply_buttons WHERE id = ?").run(id); }
+  remove(id: string): void {
+    this.db.prepare("DELETE FROM reply_buttons WHERE id = ?").run(id);
+    this.db.prepare("DELETE FROM poll_ballots WHERE poll_id = ?").run(id);
+  }
   get(id: string): ReplyButtonSet | null {
     const r = this.db.prepare("SELECT * FROM reply_buttons WHERE id = ?").get(id) as Row | undefined;
     return r ? fromRow(r) : null;
@@ -181,8 +221,9 @@ export class ReplyButtonStore {
     if (now >= set.expiresAt) return { ok: false, reason: "expired", set };
     const button = set.buttons[index];
     if (!button) return { ok: false, reason: "missing", set };
+    if (set.poll) return { ok: false, reason: "missing", set };          // a poll is voted on, never consumed
     const won = this.db.prepare(`UPDATE reply_buttons SET consumed_at = ?, chosen_index = ?, chosen_by = ?
-      WHERE id = ? AND consumed_at IS NULL AND message_id IS NOT NULL AND expires_at > ?`).run(now, index, by, id, now).changes === 1;
+      WHERE id = ? AND consumed_at IS NULL AND message_id IS NOT NULL AND expires_at > ? AND poll IS NULL`).run(now, index, by, id, now).changes === 1;
     const after = this.get(id)!;
     return won ? { ok: true, set: after, button } : { ok: false, reason: after.consumedAt !== null ? "used" : "expired", set: after };
   }
@@ -207,14 +248,76 @@ export class ReplyButtonStore {
    * still being delivered is neither (#1500 review): it may yet be released.
    */
   unsettled(now: number): ReplyButtonSet[] {
-    return (this.db.prepare(`SELECT * FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL
+    return (this.db.prepare(`SELECT * FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL AND poll IS NULL
       AND (delivered_at IS NOT NULL OR (consumed_at IS NULL AND expires_at <= ?))`).all(now) as Row[]).map(fromRow);
   }
-  /** The next expiry still to come, for the one sweep timer. */
+  /** The next expiry or poll deadline still to come, for the one sweep timer. */
   nextExpiry(now: number): number | null {
-    const r = this.db.prepare(`SELECT MIN(expires_at) AS t FROM reply_buttons WHERE settled_at IS NULL AND consumed_at IS NULL
-      AND message_id IS NOT NULL AND expires_at > ?`).get(now) as { t: number | null };
+    const r = this.db.prepare(`SELECT MIN(expires_at) AS t FROM reply_buttons WHERE settled_at IS NULL AND message_id IS NOT NULL
+      AND expires_at > ? AND ((poll IS NULL AND consumed_at IS NULL) OR (poll IS NOT NULL AND closed_at IS NULL))`).get(now) as { t: number | null };
     return r.t ?? null;
+  }
+
+  // ── #1823: polls ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * One voter's click on a poll, already placed on its message and permitted by the caller. In one transaction: the poll
+   * must be bound, not closed and before its deadline; the voter's ballot becomes `nextBallot` of it, timed `now` when
+   * it changed (an unchanged ballot keeps its time). An emptied ballot withdraws the voter.
+   */
+  vote(id: string, voter: string, name: string, index: number, now: number): VoteResult {
+    return this.db.transaction((): VoteResult => {
+      const set = this.get(id);
+      if (!set || !set.poll) return { ok: false, reason: "missing" };
+      if (set.messageId === null) return { ok: false, reason: "pending", set };
+      if (set.closedAt !== null || now >= set.expiresAt) return { ok: false, reason: "closed", set };
+      if (!Number.isInteger(index) || index < 0 || index >= set.buttons.length) return { ok: false, reason: "missing", set };
+      const row = this.db.prepare("SELECT options FROM poll_ballots WHERE poll_id = ? AND voter = ?").get(id, voter) as { options: string } | undefined;
+      const next = nextBallot(row ? JSON.parse(row.options) as number[] : null, index, set.poll.multi);
+      if (next.changed) {
+        if (next.options.length) {
+          this.db.prepare(`INSERT INTO poll_ballots (poll_id, voter, name, options, at) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (poll_id, voter) DO UPDATE SET name = excluded.name, options = excluded.options, at = excluded.at`)
+            .run(id, voter, name, JSON.stringify(next.options), now);
+        } else {
+          this.db.prepare("DELETE FROM poll_ballots WHERE poll_id = ? AND voter = ?").run(id, voter);
+        }
+      }
+      return { ok: true, set, options: next.options, changed: next.changed };
+    })();
+  }
+  /** A poll's ballots, earliest change first. */
+  ballots(id: string): PollBallot[] {
+    return (this.db.prepare("SELECT voter, name, options, at FROM poll_ballots WHERE poll_id = ? ORDER BY at, voter").all(id) as BallotRow[])
+      .map(r => ({ voter: r.voter, name: r.name, options: JSON.parse(r.options) as number[], at: r.at }));
+  }
+  /** Stop taking votes, once: true for the one call that closed it. */
+  closePoll(id: string, now: number): boolean {
+    return this.db.prepare("UPDATE reply_buttons SET closed_at = ? WHERE id = ? AND poll IS NOT NULL AND closed_at IS NULL AND message_id IS NOT NULL")
+      .run(now, id).changes === 1;
+  }
+  /** Bound polls still open whose deadline has come. */
+  pollsDue(now: number): ReplyButtonSet[] {
+    return (this.db.prepare(`SELECT * FROM reply_buttons WHERE poll IS NOT NULL AND closed_at IS NULL AND message_id IS NOT NULL
+      AND expires_at <= ? ORDER BY expires_at, id`).all(now) as Row[]).map(fromRow);
+  }
+  /** Bound polls still taking votes (their countdowns are redrawn after a restart). */
+  openPolls(): ReplyButtonSet[] {
+    return (this.db.prepare("SELECT * FROM reply_buttons WHERE poll IS NOT NULL AND closed_at IS NULL AND message_id IS NOT NULL ORDER BY expires_at, id")
+      .all() as Row[]).map(fromRow);
+  }
+  /** Closed polls whose results the outbox has not taken yet (a crash, or an outbox that was not open). */
+  pollsAwaitingResults(): ReplyButtonSet[] {
+    return (this.db.prepare("SELECT * FROM reply_buttons WHERE poll IS NOT NULL AND closed_at IS NOT NULL AND results_at IS NULL ORDER BY closed_at, id")
+      .all() as Row[]).map(fromRow);
+  }
+  markResults(id: string, now: number): void {
+    this.db.prepare("UPDATE reply_buttons SET results_at = ? WHERE id = ? AND closed_at IS NOT NULL AND results_at IS NULL").run(now, id);
+  }
+  /** Closed polls whose platform message does not show it yet. */
+  pollsUnsettled(): ReplyButtonSet[] {
+    return (this.db.prepare("SELECT * FROM reply_buttons WHERE poll IS NOT NULL AND closed_at IS NOT NULL AND settled_at IS NULL ORDER BY closed_at, id")
+      .all() as Row[]).map(fromRow);
   }
   /** Sets on these messages, for the web chat's view of a reply's buttons. */
   forMessages(instance: string, messageIds: readonly string[]): ReplyButtonSet[] {
@@ -225,6 +328,9 @@ export class ReplyButtonStore {
   }
   /** Settled sets older than `before` are history the store no longer needs. */
   prune(before: number): number {
-    return this.db.prepare("DELETE FROM reply_buttons WHERE settled_at IS NOT NULL AND settled_at < ?").run(before).changes;
+    // A poll's results not yet handed over are kept whatever its age: they are owed to the agent.
+    const n = this.db.prepare("DELETE FROM reply_buttons WHERE settled_at IS NOT NULL AND settled_at < ? AND (poll IS NULL OR results_at IS NOT NULL)").run(before).changes;
+    if (n) this.db.prepare("DELETE FROM poll_ballots WHERE poll_id NOT IN (SELECT id FROM reply_buttons)").run();
+    return n;
   }
 }

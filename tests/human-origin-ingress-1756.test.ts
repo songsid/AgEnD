@@ -68,7 +68,7 @@ describe("trusted native human ingress snapshots", () => {
     cleanup.push(() => store.close());
     const deliver = vi.fn(async (..._args: any[]) => true);
     const ctl = new ReplyButtonsController({ store, now: () => 1000, adapterFor: () => undefined, mayClick: () => true, deliver,
-      publish: () => {}, logger: { info() {}, warn() {} }, setTimer: () => null, clearTimer: () => {} });
+      publish: () => {}, admitResults: () => true, monotonic: () => 0, logger: { info() {}, warn() {} }, setTimer: () => null, clearTimer: () => {} });
     cleanup.push(() => ctl.stop());
     const prep = () => { const p = ctl.prepare({ instance: "leader", adapterId: "dc", chatId: "guild", threadId: "room" }, [{ label: "Yes", value: "yes" }]); ctl.bind(p.id, "bot-message"); return p; };
     const p = prep();

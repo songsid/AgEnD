@@ -10047,6 +10047,8 @@ export class Daemon extends EventEmitter {
     if (tool === "reply") {
       const buttons = parseReplyButtons(args.buttons, args);
       if (buttons && "error" in buttons) { respond(null, `reply: ${buttons.error}`); return; }
+      // #1823: a poll's results need the fleet's store and outbox; as text it would never close.
+      if (args.poll !== undefined && args.poll !== null) { respond(null, "reply: a poll needs AgEnD's fleet; send the question without poll"); return; }
       if (buttons) { routed = { ...args, text: `${String(args.text)}\n\n${replyButtonsFallbackText(buttons.buttons)}` }; delete routed.buttons; }
     }
     if (!routeToolCall(adapter, tool, routed, this.lastThreadId, respond)) {

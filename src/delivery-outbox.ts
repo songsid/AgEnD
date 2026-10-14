@@ -970,8 +970,12 @@ export class DeliveryOutbox extends EventEmitter {
    * so it still arrives when the target is down right now (a General that the
    * same broken CLI stopped). `sourceKey` makes it idempotent: the same key is
    * admitted once. Returns whether it was newly admitted.
+   *
+   * `place` (#1823) addresses it to a chat: the notice is about something there (a poll's results), so the instance's
+   * answer goes there too. Without it the notice belongs to no chat.
    */
-  admitSystemNotice(target: string, sourceKey: string, content: string, now: Date = new Date()): boolean {
+  admitSystemNotice(target: string, sourceKey: string, content: string, now: Date = new Date(),
+    place?: { chatId: string; threadId?: string; adapterId?: string }): boolean {
     const noticeId = randomUUID();
     const nowIso = now.toISOString();
     const payload = {
@@ -979,7 +983,8 @@ export class DeliveryOutbox extends EventEmitter {
       content,
       meta: {
         user: "AgEnD", user_id: "agend-system", message_id: `system-notice-${noticeId}`,
-        chat_id: "", thread_id: "", source: "agend-system",
+        chat_id: place?.chatId ?? "", thread_id: place?.threadId ?? "", source: "agend-system",
+        ...(place?.adapterId ? { adapter_id: place.adapterId } : {}),
       },
     };
     const inserted = this.db.prepare(`
