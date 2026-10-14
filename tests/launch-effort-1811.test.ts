@@ -204,6 +204,9 @@ describe("the real builders: fresh and resumed launches", () => {
     // gpt-5.5 lists no max: launched without it.
     expect(b.buildCommand(config(dir, { effort: "max", model: "gpt-5.5" }))).not.toContain("model_reasoning_effort");
     expect(b.consumeQuietLaunchNotes()).toEqual([t("effort.launch_skipped", "max", "codex", t("effort.launch_level_not_offered", "low, medium, high, xhigh"))]);
+    // A model the catalog does not list (or lists without levels): nothing is passed — no guessed floor.
+    expect(b.buildCommand(config(dir, { effort: "high", model: "gpt-9" }))).not.toContain("model_reasoning_effort");
+    expect(b.consumeQuietLaunchNotes()).toEqual([t("effort.launch_skipped", "high", "codex", t("effort.launch_codex_unknown_model", "gpt-9"))]);
     // No model given: config.toml's model is the one that runs.
     writeFileSync(join(root, "codex-shared", "config.toml"), `model = "gpt-5.5"\n`);
     expect(b.buildCommand(config(dir, { effort: "xhigh" }))).toContain(` -c 'model_reasoning_effort="xhigh"'`);
