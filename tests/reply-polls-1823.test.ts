@@ -79,6 +79,11 @@ describe("a ballot, the tally and what is shown", () => {
     expect(notice.length).toBe(200);
     expect(notice.endsWith("…")).toBe(true);
     expect(pollVoteNotice(["Paris"], [0])).toBe("✓ Your vote: Paris");
+    // An emoji across the cut is dropped whole, never halved (a lone surrogate).
+    const emoji = pollVoteNotice(["x".repeat(185) + "😀😀😀😀😀😀😀😀"], [0]);
+    expect(emoji.length).toBeLessThanOrEqual(200);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(emoji)).toBe(false);
+    expect(emoji).toBe(`✓ Your vote: ${"x".repeat(185)}…`);
   });
   it("one choice: the click is the vote; the same option again changes nothing", () => {
     expect(nextBallot(null, 1, false)).toEqual({ options: [1], changed: true });
