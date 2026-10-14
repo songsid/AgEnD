@@ -98,7 +98,7 @@ register("app", {
     theme: "主題", themeSystem: "跟隨系統", themeLight: "淺色", themeDark: "深色", language: "語言",
     previews: "允許預覽 HTML", tour: "導覽", tourTitle: "再看一次網頁聊天導覽",
     needsYou: "等你回應", approxNote: "從終端畫面判讀，僅供參考", chat: "聊天", details: "詳細資訊", log: "紀錄", instanceViews: "{0} 的檢視",
-    textSize: "字級：{0}", textSize_s: "小", textSize_m: "中", textSize_l: "大", textSize_fit: "剛好填滿", usage: "用量", usageHide: "隱藏用量",
+    textSize: "字級：{0}", textSize_s: "小", textSize_m: "中", textSize_l: "大", textSize_fit: "填滿", usage: "用量", usageHide: "隱藏用量",
     statusRunning: "執行中", statusStopped: "已停止", statusPaused: "已暫停", statusCrashed: "已當掉", statusWorking: "工作中", statusStuck: "似乎卡住", statusIdle: "閒置",
     connReconnecting: "連不上 AgEnD——可能正在重新啟動。正在重新連線…", connReconnectingIn: "連不上 AgEnD——可能正在重新啟動。{0} 秒後再試。",
     hydrating: "正在載入目前的狀態…", hydrateFailed: "無法載入目前的狀態（提示、送達標記）。",

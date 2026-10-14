@@ -204,7 +204,7 @@ describe("#1563 review: the usage dialog belongs to the navigation that opened i
 });
 
 describe("#1563 review: View's Help says the new cycle", () => {
-  it.each([["en", "Text size cycles Fit → S → M → L."], ["zh-TW", "「字級」會在剛好填滿 → 小 → 中 → 大之間切換。"]])("%s", async (lang, want) => {
+  it.each([["en", "Text size cycles Fit → S → M → L."], ["zh-TW", "「字級」會在填滿 → 小 → 中 → 大之間切換。"]])("%s", async (lang, want) => {
     const pg = await app("/view/web-dev");
     (await import("/assets/app-i18n.js")).setLang(lang); await settle(6);
     pg.root.querySelector(".p-view .panel-actions > button.icon-btn").click(); await settle(4);
