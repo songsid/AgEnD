@@ -12,6 +12,8 @@ description = "Confirmed false positives: a fake JWT fixture, public WebSocket h
 paths = [
   # Known fake JWT used to verify progress-log redaction
   '''^tests/tool-progress\.test\.ts$''',
+  # Update-log masking tests: deliberate fake token strings to verify secrets are masked
+  '''^tests/update-launch-failure-1818\.test\.ts$''',
   # Vendored third-party xterm.js (minified high-entropy strings, not secrets)
   '''^src/ui/web-terminal/vendor/.*\.js$''',
 ]
