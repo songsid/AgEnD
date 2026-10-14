@@ -57,8 +57,11 @@ export function extractUpdateCause(output: string): string | null {
  * Using an fd instead of a pipe means the updater can keep writing after the fleet process
  * that spawned it has been stopped: there is no read end to close, so no EPIPE.
  * The caller must closeSync(fd) after spawn so the parent's copy of the fd is released.
+ *
+ * Returns `null` when the log file cannot be opened (dataDir unwritable, disk full, etc.).
+ * In that case the caller should fall back to `stdio: "ignore"` and omit the log note.
  */
-export function openUpdateLog(logPath: string, header: string): { fd: number; offset: number } {
+export function openUpdateLog(logPath: string, header: string): { fd: number; offset: number } | null {
   // Rotate BEFORE opening the fd the child will use (never write to the same inode concurrently).
   try {
     if (existsSync(logPath) && statSync(logPath).size > UPDATE_LOG_FILE_CAP / 2) {
@@ -69,7 +72,12 @@ export function openUpdateLog(logPath: string, header: string): { fd: number; of
   try {
     appendFileSync(logPath, `${header}\n`, { mode: 0o600 });
   } catch { /* best-effort */ }
-  const fd = openSync(logPath, "a", 0o600);
+  let fd: number;
+  try {
+    fd = openSync(logPath, "a", 0o600);
+  } catch {
+    return null; // caller falls back to stdio: "ignore" and no log note
+  }
   // fchmod: mode param of openSync only applies to new files; existing files keep their mode.
   try { fchmodSync(fd, 0o600); } catch { /* best-effort */ }
   // Record the offset so readRunCause only reads this run's output, not previous runs.

@@ -1695,10 +1695,10 @@ export class TopicCommands {
     const ts = new Date().toISOString();
     const logFd = openUpdateLog(logPath, `--- /update ${ts} ---`);
     const child = spawn(launch.command, launch.args, {
-      detached: true, stdio: ["ignore", logFd.fd, logFd.fd], env: withOrigin(origin),
+      detached: true, stdio: ["ignore", logFd ? logFd.fd : "ignore", logFd ? logFd.fd : "ignore"], env: withOrigin(origin),
     });
-    closeSync(logFd.fd);
-    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message), logPath, logFd.offset);
+    if (logFd) closeSync(logFd.fd);
+    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message), logFd ? logPath : undefined, logFd?.offset);
     child.unref();
   }
 

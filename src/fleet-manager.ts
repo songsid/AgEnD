@@ -2660,10 +2660,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const ts = new Date().toISOString();
     const logFd = openUpdateLog(logPath, `--- /update ${ts} ---`);
     const child = spawn(launch.command, launch.args, {
-      detached: true, stdio: ["ignore", logFd.fd, logFd.fd], env: withOrigin(origin),
+      detached: true, stdio: ["ignore", logFd ? logFd.fd : "ignore", logFd ? logFd.fd : "ignore"], env: withOrigin(origin),
     });
-    closeSync(logFd.fd); // parent closes its copy; the child's fd stays open
-    watchUpdateLaunch(child, message => this.failUpdateProgress(message), logPath, logFd.offset);
+    if (logFd) closeSync(logFd.fd); // parent closes its copy; the child's fd stays open
+    watchUpdateLaunch(child, message => this.failUpdateProgress(message), logFd ? logPath : undefined, logFd?.offset);
     child.unref();
   }
 

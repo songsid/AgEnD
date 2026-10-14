@@ -94,7 +94,9 @@ describe("extractUpdateCause (#1818)", () => {
 describe("openUpdateLog (#1818): fd-based, correct permissions, offset tracking", () => {
   it("returns a numeric fd and records offset after the header", () => {
     const logPath = updateLogPath(dataDir);
-    const { fd, offset } = openUpdateLog(logPath, "--- test run ---");
+    const logFd = openUpdateLog(logPath, "--- test run ---");
+    if (!logFd) throw new Error("openUpdateLog returned null");
+    const { fd, offset } = logFd;
     expect(typeof fd).toBe("number");
     closeSync(fd);
     expect(existsSync(logPath)).toBe(true);
@@ -109,15 +111,18 @@ describe("openUpdateLog (#1818): fd-based, correct permissions, offset tracking"
     const logPath = updateLogPath(dataDir);
     // Create a too-permissive file first
     writeFileSync(logPath, "", { mode: 0o644 });
-    const { fd } = openUpdateLog(logPath, "--- test ---");
-    closeSync(fd);
+    const logFd = openUpdateLog(logPath, "--- test ---");
+    if (!logFd) throw new Error("openUpdateLog returned null");
+    closeSync(logFd.fd);
     const mode = statSync(logPath).mode & 0o777;
     expect(mode).toBe(0o600);
   });
 
   it("a child that keeps writing via the fd after parent closes still has output in the log", () => {
     const logPath = updateLogPath(dataDir);
-    const { fd, offset } = openUpdateLog(logPath, "--- fd test ---");
+    const logFd = openUpdateLog(logPath, "--- fd test ---");
+    if (!logFd) throw new Error("openUpdateLog returned null");
+    const { fd, offset } = logFd;
     require("node:fs").writeSync(fd, "parent output\n");
     closeSync(fd);
     // Simulate child continuing to write after parent closed its fd copy.
@@ -134,7 +139,7 @@ describe("openUpdateLog (#1818): fd-based, correct permissions, offset tracking"
     const logPath = updateLogPath(dataDir);
     // Write a previous run's error
     writeFileSync(logPath, "--- previous run ---\nnpm ERR! ENOTEMPTY from previous run\n", { mode: 0o600 });
-    const { fd, offset } = openUpdateLog(logPath, "--- new run ---");
+    const _logFd = openUpdateLog(logPath, "--- new run ---"); if (!_logFd) throw new Error("null fd"); const { fd, offset } = _logFd;
     // This run writes nothing (or writes something benign)
     require("node:fs").writeSync(fd, "Downloading...\n");
     closeSync(fd);
@@ -152,7 +157,7 @@ describe("openUpdateLog (#1818): fd-based, correct permissions, offset tracking"
 describe("watchUpdateLaunch (#1818): cause from log file offset, not from pipes", () => {
   it("npm EACCES in log → cause in message and log path referenced", () => {
     const logPath = updateLogPath(dataDir);
-    const { fd, offset } = openUpdateLog(logPath, "--- run ---");
+    const _logFd = openUpdateLog(logPath, "--- run ---"); if (!_logFd) throw new Error("null fd"); const { fd, offset } = _logFd;
     require("node:fs").writeSync(fd, "npm error code EACCES\nnpm ERR! Error: EACCES: permission denied, /usr/local\n");
     closeSync(fd);
     const { child, exit } = fakeChild(1);
@@ -167,7 +172,7 @@ describe("watchUpdateLaunch (#1818): cause from log file offset, not from pipes"
 
   it("✗ line in log → cause extracted", () => {
     const logPath = updateLogPath(dataDir);
-    const { fd, offset } = openUpdateLog(logPath, "--- run ---");
+    const _logFd = openUpdateLog(logPath, "--- run ---"); if (!_logFd) throw new Error("null fd"); const { fd, offset } = _logFd;
     require("node:fs").writeSync(fd, "Installing…\n✗ activation failed: Service refused to start\n");
     closeSync(fd);
     const { child, exit } = fakeChild(1);
@@ -181,7 +186,7 @@ describe("watchUpdateLaunch (#1818): cause from log file offset, not from pipes"
     const logPath = updateLogPath(dataDir);
     // Pre-write a previous run's error
     writeFileSync(logPath, "--- prev ---\nnpm ERR! old error\n", { mode: 0o600 });
-    const { fd, offset } = openUpdateLog(logPath, "--- new run ---");
+    const _logFd = openUpdateLog(logPath, "--- new run ---"); if (!_logFd) throw new Error("null fd"); const { fd, offset } = _logFd;
     closeSync(fd);
     const { child, exit } = fakeChild(1);
     const messages: string[] = [];
@@ -193,7 +198,7 @@ describe("watchUpdateLaunch (#1818): cause from log file offset, not from pipes"
 
   it("secret-looking text in log is masked in the cause shown in message", () => {
     const logPath = updateLogPath(dataDir);
-    const { fd, offset } = openUpdateLog(logPath, "--- run ---");
+    const _logFd = openUpdateLog(logPath, "--- run ---"); if (!_logFd) throw new Error("null fd"); const { fd, offset } = _logFd;
     require("node:fs").writeSync(fd, "npm ERR! Error: fake_tok=fake_ABCDEFGHIJ1234567890AB\n"); // gitleaks:allow
     closeSync(fd);
     const { child, exit } = fakeChild(1);
@@ -228,19 +233,26 @@ describe("watchUpdateLaunch (#1818): cause from log file offset, not from pipes"
   });
 });
 
-// ── openUpdateLog: file cap ──────────────────────────────────────────────────
+// ── openUpdateLog: file is capped at UPDATE_LOG_FILE_CAP ──────────────────────────────────────────────────────────
 
 describe("openUpdateLog: file is capped at UPDATE_LOG_FILE_CAP", () => {
   it("log file is rotated when it would exceed UPDATE_LOG_FILE_CAP", () => {
     const logPath = updateLogPath(dataDir);
     writeFileSync(logPath, "x".repeat(UPDATE_LOG_FILE_CAP));
-    const { fd } = openUpdateLog(logPath, "--- new run ---");
-    closeSync(fd);
+    const logFd = openUpdateLog(logPath, "--- new run ---");
+    if (logFd) closeSync(logFd.fd);
     const size = readFileSync(logPath).length;
     expect(size).toBeLessThan(UPDATE_LOG_FILE_CAP + 200);
   });
 
   it("the update.log path is under AGEND_HOME", () => {
     expect(updateLogPath("/home/user/.agend")).toBe("/home/user/.agend/update.log");
+  });
+
+  it("returns null when the path is unwritable (fallback to stdio: ignore)", () => {
+    // Use a path under a non-existent directory to trigger an openSync failure.
+    const badPath = join(dataDir, "nonexistent", "update.log");
+    const result = openUpdateLog(badPath, "--- test ---");
+    expect(result).toBeNull();
   });
 });
