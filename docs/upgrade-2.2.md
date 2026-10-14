@@ -10,13 +10,22 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 - On **Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64**, AgEnD 2.2 brings its own Node 22.23.3 (`@songsid/agend-node-<os>-<cpu>`, installed with it) and runs on that, whatever Node is on your PATH. You do not need to upgrade Node yourself.
 - **Anywhere else** (musl Linux such as Alpine, 32-bit, other systems), AgEnD 2.2 needs Node **22.14 or newer** (or 23.6+, or 24+) on your PATH, and refuses to install on an older one.
 
-**From any 2.1.x, upgrade with `npm install -g @songsid/agend@<2.2 version>`, not with `agend update` or `/update`.**
+**Upgrade with `/update` in chat, or `agend update` on the host.**
+2.1.12's updater refreshes the service settings and restarts the fleet, so on a normal user-unit host this is all you need.
 
-- **Why (#1487):** 2.1's updater removes the installed AgEnD *before* it installs the new one. If that install then fails for any reason, nothing is left: AgEnD 2.2 refusing your host, a network or registry problem, or a proxy. There is no `agend` command, and the running fleet keeps going only until its next restart or login, after which the service cannot start. This was reproduced on a real Mac: launchd reports `EX_CONFIG` and the fleet stays down.
-- **A direct `npm install -g` has no removal step:** if it is refused, your current version stays.
-- **If `agend update` already failed this way,** see [section 7](#7-if-agend-update-from-21-already-failed).
+> **If the update fails:**
+> 2.1's updater removes the installed AgEnD *before* installing the new one. If the install then fails for any reason (AgEnD 2.2 refusing your host, a network or registry problem, a proxy), nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. The failure message prints the recovery commands:
+> ```sh
+> npm install -g @songsid/agend@<2.2 version>   # put a version back
+> agend restart                                   # or, for a service: agend install
+> ```
+> Run `agend install` even if the fleet is still answering — it is running from deleted files and will not survive a restart.
+>
+> **Root hosts on the `agend` system service** (not the user service): if `agend restart` is refused, run `agend install` instead. The old fleet keeps running while you do.
 
-## 2. Upgrade, step by step
+## 2. Advanced: manual upgrade
+
+If `/update` is not available or you prefer a controlled step-by-step upgrade, follow this procedure. Most users can skip straight to [section 3](#3-what-changes-on-the-first-start-of-22) after the update completes.
 
 `AGEND_HOME` below is your AgEnD data directory: `~/.agend` unless you set `AGEND_HOME`.
 

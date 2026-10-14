@@ -10,13 +10,24 @@
 - 在 **Linux（glibc 2.28 以上）和 macOS 11 以上的 x64 或 arm64** 上，AgEnD 2.2 自帶 Node 22.23.3（`@songsid/agend-node-<os>-<cpu>`，會隨 AgEnD 一起安裝），不管 PATH 上是哪個 Node，都用自帶的那個執行。你不需要自己升級 Node。
 - **其他平台**（musl Linux 例如 Alpine、32 位元、其他系統）需要 PATH 上的 Node 是 **22.14 以上**（或 23.6+、24+），版本太舊時會拒絕安裝。
 
-**從任何 2.1.x 升級，請用 `npm install -g @songsid/agend@<2.2 版本>`，不要用 `agend update` 或 `/update`。**
+**在聊天室輸入 `/update`，或在主機執行 `agend update` 即可升級。**
+2.1.12 的更新程式會刷新服務設定並重啟 fleet，所以在一般的 user unit 主機上，這樣就夠了。
 
-- **原因（#1487）：** 2.1 的更新程式會*先*移除已安裝的 AgEnD，再安裝新版。之後的安裝只要因為任何原因失敗，就什麼都不剩：AgEnD 2.2 拒絕安裝在你的主機、網路或 registry 出問題，或是 proxy。沒有 `agend` 指令；正在跑的 fleet 只能撐到下一次重啟或登入，之後服務就無法啟動。這在真的 Mac 上重現過：launchd 回報 `EX_CONFIG`，fleet 起不來。
-- **直接用 `npm install -g` 沒有移除這一步：** 如果被拒絕，你目前的版本會留著。
-- **如果 `agend update` 已經這樣失敗，** 請看[第 7 節](#7-如果從-21-執行-agend-update-已經失敗)。
+> **如果升級失敗：**
+> 2.1 的更新程式會*先*移除已安裝的 AgEnD，再安裝新版。之後的安裝只要因為任何原因失敗（AgEnD 2.2 拒絕安裝在你的主機、網路或 registry 出問題、或是 proxy），就什麼都不剩。正在跑的 fleet 只能撐到下一次重啟或登入，之後服務就無法啟動。失敗訊息會印出恢復指令：
+> ```sh
+> npm install -g @songsid/agend@<2.2 版本>   # 重新裝回一個版本
+> agend restart                               # 或服務用途的：agend install
+> ```
+> 即使 fleet 看起來還在跑，也要執行 `agend install`——它正在從已刪除的檔案執行，下次重啟就會起不來。
+>
+> **在 `agend` 系統服務（非使用者服務）上的 root 主機：** 如果 `agend restart` 被拒絕，改執行 `agend install`。執行期間舊的 fleet 會繼續運作。
 
 ## 2. 照步驟升級
+
+## 2. 進階：手動升級
+
+如果 `/update` 無法使用，或是你偏好逐步控制，請按照這個流程操作。大多數使用者在更新完成後，可以直接跳到[第 3 節](#3-第一次啟動-22-時會發生什麼事)。
 
 下面的 `AGEND_HOME` 指的是 AgEnD 的資料目錄：沒有另外設定 `AGEND_HOME` 時就是 `~/.agend`。
 
