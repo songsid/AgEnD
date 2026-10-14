@@ -197,6 +197,27 @@ function disambiguateLabel(
 /** Allowed filename for /save and /load (no path separators, no shell/inject chars). */
 export const SAVE_FILENAME_RE = /^[\w.-]+$/;
 
+/**
+ * #1809: resolve a display label (as shown by `agend ls`) back to a real instance name.
+ * Returns the real name on a unique match, `null` when the query does not match any label,
+ * or throws `{ ambiguous: true, realNames }` when two or more instances share the same label.
+ * Always case-insensitive. Real names are NOT resolved here — callers must try real names first.
+ */
+export function resolveByLabel(
+  query: string,
+  entries: { name: string; displayName?: string | null }[],
+): string | null | { ambiguous: true; realNames: string[] } {
+  const labelMap = assignDisplayLabels(entries);
+  const q = query.toLowerCase();
+  const matches: string[] = [];
+  for (const [realName, label] of labelMap) {
+    if (label.toLowerCase() === q) matches.push(realName);
+  }
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  return { ambiguous: true, realNames: matches };
+}
+
 /** Backends with a native side-question command that does not steer the active turn. */
 export const BTW_SUPPORTED_BACKENDS = new Set(["claude-code"]);
 
