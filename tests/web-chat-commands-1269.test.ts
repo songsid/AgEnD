@@ -153,6 +153,32 @@ describe("the chat's commands (the real page modules)", () => {
     });
   }
 
+  it("/backend (#1806): one choice at a time, each with its question; the last asks in the dialog, labelled as the switch it is", async () => {
+    const c = await chatPage();
+    const ui = await import("/assets/ui-confirm.js" as string);
+    (globalThis as any).confirm = undefined;                                   // drive the app's own dialog
+    c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {}
+      : body.confirm ? { text: "w now runs codex" }
+      : !body.args ? { choices: { prompt: "Now: claude-code\nSelect a backend:", current: "claude-code", options: [{ id: "claude-code", label: "✓ claude-code" }, { id: "codex", label: "codex" }] } }
+      : body.args === "codex" ? { choices: { prompt: "Model for codex:", current: null, options: [{ id: "codex default", label: "default" }, { id: "codex gpt-5.5", label: "GPT-5.5" }] } }
+      : { confirm: { token: "f".repeat(32), message: "Switch w to codex?" } });
+    const pick = async (label: string) => {
+      fire([...c.card().querySelectorAll(".cmd-choices button")].find((b: any) => b.textContent === label), "click");
+      await settle(8);
+    };
+    await c.type("/backend"); await c.key("Enter");
+    expect(c.card().querySelector("pre.cmd-text").textContent).toBe("Now: claude-code\nSelect a backend:");
+    await pick("codex");
+    expect(c.card().querySelector("pre.cmd-text").textContent).toBe("Model for codex:");
+    await pick("GPT-5.5");
+    const asked = ui.confirmStore.get().queue;
+    expect(asked.map((q: any) => [q.title, q.message, q.confirmLabel])).toEqual([["/backend", "Switch w to codex?", "Switch and restart"]]);
+    ui.answerConfirm(asked[0].id, true); await settle(8);
+    expect(c.commands().map((x) => [x.body.args ?? null, x.body.confirm ?? null]))
+      .toEqual([[null, null], ["codex", null], ["codex gpt-5.5", null], ["codex gpt-5.5", "f".repeat(32)]]);
+    expect(c.card().querySelector(".cmd-text").textContent).toBe("w now runs codex");
+  });
+
   it("/clear: a yes given after the chat went does nothing", async () => {
     const c = await chatPage();
     c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.confirm ? { text: "Clear sent" } : { confirm: { token: "f".repeat(32), message: "Clear?" } });

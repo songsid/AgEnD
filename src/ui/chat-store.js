@@ -300,7 +300,7 @@ export function createChatStore(deps) {
     };
     let r = await post({});
     if (r && r.confirm) {
-      const yes = deps.confirm ? await deps.confirm({ title: `/${command}`, message: r.confirm.message, confirmLabel: t("chat.cmdConfirm"), danger: true }) : false;
+      const yes = deps.confirm ? await deps.confirm({ title: `/${command}`, message: r.confirm.message, confirmLabel: t(command === "backend" ? "chat.cmdConfirmBackend" : "chat.cmdConfirm"), danger: true }) : false;
       if (!yes || !alive()) { delete s.commands[target]; changed(target); return; }
       r = await post({ confirm: r.confirm.token });
     }
