@@ -20,11 +20,14 @@ describe("install.sh parity (#1296)", () => {
   it("installs only @songsid/agend, not the obsolete plugin (#1831)", () => {
     const root = join(import.meta.dirname, "..");
     const repo = readFileSync(join(root, "install.sh"), "utf-8");
-    // Discord is built in since #134 — the standalone plugin must never be installed again.
-    expect(repo).not.toContain("@songsid/agend-plugin-discord\" ");
-    expect(repo).not.toContain("@songsid/agend @songsid/agend-plugin-discord");
-    // The obsolete-plugin removal block must be present.
-    expect(repo).toContain("agend-plugin-discord");
-    expect(repo).toContain("Removing obsolete");
+    // Every line that contains `npm install -g` must NOT mention the obsolete plugin.
+    // This catches: plugin added on a separate line, plugin listed before @songsid/agend, etc.
+    const installLines = repo.split("\n").filter(l => l.includes("npm install -g"));
+    for (const line of installLines) {
+      expect(line, `install line must not mention agend-plugin-discord: ${line}`)
+        .not.toContain("agend-plugin-discord");
+    }
+    // The uninstall block must actively remove the plugin (not just warn).
+    expect(repo).toContain("npm uninstall -g @songsid/agend-plugin-discord");
   });
 });
