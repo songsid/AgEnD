@@ -647,7 +647,8 @@ export function handleWebRequest(
       // session id), so each signed-in device votes once. The CLI's header token votes as one "web" voter.
       const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
       const voter = verdict.kind === "allow" && verdict.via === "session" && verdict.session
-        ? { key: `web:${verdict.session.handle}`, name: `web · ${verdict.session.label}` }
+        // The device label is not unique (two "Chrome on Linux"): the handle's first characters tell them apart.
+        ? { key: `web:${verdict.session.handle}`, name: `web · ${verdict.session.label} (${verdict.session.handle.slice(0, 4)})` }
         : verdict.kind === "allow" ? { key: "web:cli", name: "web" } : undefined;
       const r = await click(instance, id, index, voter);
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });

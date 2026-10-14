@@ -120,8 +120,8 @@ describe("a web-only fleet: the poll is in the web chat", () => {
     expect(await post(w.ctx, { instance: "w", id, index: 1 }, { token: w.token })).toEqual({ status: 200, body: { answered: true, options: [1] } });
     const ballots = (h.any.replyButtonsStore as ReplyButtonStore).ballots(id);
     expect(ballots.map(b => [b.voter, b.name, b.options])).toEqual(expect.arrayContaining([
-      [`web:${laptop.record.handle}`, "web · Chrome on macOS", [0, 2]],
-      [`web:${phone.record.handle}`, "web · Safari on iOS", [1]],
+      [`web:${laptop.record.handle}`, `web · Chrome on macOS (${laptop.record.handle.slice(0, 4)})`, [0, 2]],
+      [`web:${phone.record.handle}`, `web · Safari on iOS (${phone.record.handle.slice(0, 4)})`, [1]],
       ["web:cli", "web", [1]],
     ]));
     expect(ballots).toHaveLength(3);
@@ -146,7 +146,7 @@ describe("a web-only fleet: the poll is in the web chat", () => {
     expect(views().map(v => [v.state, v.poll.answered, v.poll.counts])).toEqual([["open", 1, undefined], ["open", 2, undefined]]);
     await vi.advanceTimersByTimeAsync(30_000);
     const closed = views().at(-1);
-    expect(closed).toMatchObject({ state: "closed", poll: { answered: 2, counts: [2, 0, 0], voters: [["web · A", "web · B"], [], []] } });
+    expect(closed).toMatchObject({ state: "closed", poll: { answered: 2, counts: [2, 0, 0], voters: [[`web · A (${a.record.handle.slice(0, 4)})`, `web · B (${b.record.handle.slice(0, 4)})`], [], []] } });
     expect(h.pollMsg().buttons).toMatchObject({ state: "closed", poll: { counts: [2, 0, 0] } });
     expect(h.fm.webChatHistory.buttonStates()).toEqual([{ instance: "w", buttons: expect.objectContaining({ id, state: "closed" }) }]);
     expect((await post(w.ctx, { instance: "w", id, index: 1 }, { sessionId: a.sessionId }))).toEqual({ status: 409, body: { error: "This poll is closed.", gone: true } });
