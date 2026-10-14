@@ -11,7 +11,10 @@
  */
 import type { CommandResult } from "./update-install.js";
 import { systemdWords } from "./service-installer.js";
-import { busUnreachable, commandFailure, readSystemdRuntime, systemctlShow, systemdRunning, systemdStopped, type SystemdRuntime } from "./systemd-runtime.js";
+import { readSystemdRuntime, systemdChannel, systemdRunning, systemdStopped, type SystemdRuntime } from "./systemd-runtime.js";
+import type { PeerBus } from "./systemd-peer-bus.js";
+// The private-socket client, loaded with this module (before npm replaces the package, #1450 C6).
+export { systemdPeerBus, type PeerBus } from "./systemd-peer-bus.js";
 
 /** What a manager would execute: the program, its full argv (argv[0] included), and the environment it sets. */
 export interface ActivationTuple {
@@ -99,14 +102,6 @@ export interface LoadedUnit {
   needDaemonReload: boolean;
 }
 
-/** The unit file AgEnD wrote: on a host whose bus busctl cannot reach, what systemd loaded is proven against it (#1804). */
-export interface UnitFileSource {
-  path: string;
-  readFile(path: string): string | null;
-  /** When given, a FragmentPath naming the same file through another path (a symlinked home) also counts. */
-  realpath?(path: string): string | null;
-}
-
 type LoadedUnitRead = { ok: true; unit: LoadedUnit } | { ok: false; reason: string };
 
 /** The effective environment: the manager's, then the unit's `Environment=`, then `UnsetEnvironment=` (`KEY` or `KEY=VALUE`). */
@@ -126,18 +121,19 @@ function effectiveEnvironment(manager: Record<string, string>, own: Record<strin
  * manager's environment, then the unit's `Environment=`, then `UnsetEnvironment=`. A unit that also reads
  * `EnvironmentFile=` or uses `PassEnvironment=` cannot be proven from here: refused, never guessed.
  *
- * Without a bus busctl can reach (#1804: no dbus-user-session), the same facts come from systemctl and `file`; see
- * readLoadedUnitWithoutBus. With no `file`, such a host is refused.
+ * #1804: on a host where busctl cannot reach a bus at all (no dbus-user-session), the same calls go to the manager's
+ * private socket through `peer` — the same D-Bus values, the same proof. Without `peer`, such a host is refused.
  */
-export function readLoadedUnit(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, file?: UnitFileSource): LoadedUnitRead {
-  const scope = user ? ["--user"] : [];
+export function readLoadedUnit(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, peer?: PeerBus): LoadedUnitRead {
   const name = unit.endsWith(".service") ? unit : `${unit}.service`;
-  const bus = (args: string[]) => busData(run("busctl", [...scope, "--json=short", ...args]));
-  const load = run("busctl", [...scope, "--json=short", "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "LoadUnit", "s", name]);
-  if (busUnreachable(load)) return readLoadedUnitWithoutBus(run, user, name, file, commandFailure(load));
-  const path = busData(load);
-  const objectPath = Array.isArray(path) && typeof path[0] === "string" ? path[0] : null;
-  if (!objectPath) return { ok: false, reason: `busctl could not load ${name} (${commandFailure(load)})` };
+  const channel = systemdChannel(run, user, name, peer);
+  if (!channel.ok) return { ok: false, reason: channel.reason };
+  const bus = (args: string[]) => busData(channel.call(args));
+  const objectPath = channel.objectPath;
+  // Only to name the failure: a unit systemd has no file for. Unreadable (an older reader's fake) proves nothing either way.
+  if (bus(["get-property", "org.freedesktop.systemd1", objectPath, "org.freedesktop.systemd1.Unit", "LoadState"]) === "not-found") {
+    return { ok: false, reason: `systemd does not know ${name}` };
+  }
   const prop = (iface: string, property: string) => bus(["get-property", "org.freedesktop.systemd1", objectPath, `org.freedesktop.systemd1.${iface}`, property]);
   const exec = prop("Service", "ExecStart");
   if (!Array.isArray(exec) || exec.length !== 1 || !Array.isArray(exec[0]) || typeof exec[0][0] !== "string" || !Array.isArray(exec[0][1])) {
@@ -161,127 +157,6 @@ export function readLoadedUnit(run: (command: string, args: string[]) => Command
   const need = prop("Unit", "NeedDaemonReload");
   if (typeof need !== "boolean") return { ok: false, reason: "NeedDaemonReload cannot be read" };
   return { ok: true, unit: { tuple: { program: exec[0][0] as string, argv: argv as string[], env }, needDaemonReload: need } };
-}
-
-/**
- * #1804: what systemd loaded, on a host where busctl cannot reach the bus but systemctl reaches the manager (through its
- * private socket). systemctl's own ExecStart and Environment= output is lossy (argv joined with spaces), so they come from
- * the unit file instead — and only when systemctl proves that what systemd loaded IS that file, unchanged: LoadState
- * loaded, FragmentPath the file, no drop-ins, no reload pending, no EnvironmentFile=/PassEnvironment=; and the file
- * reads byte-identical before and after. The file is then read as systemd reads it, and anything this reader cannot read
- * exactly as systemd does is refused (parseUnitExec).
- */
-function readLoadedUnitWithoutBus(run: (command: string, args: string[]) => CommandResult, user: boolean, name: string, file: UnitFileSource | undefined, busFailure: string): LoadedUnitRead {
-  const scope = user ? " --user" : "";
-  const bus = `the D-Bus ${user ? "user " : ""}bus cannot be reached (busctl ${busFailure})`;
-  const unproven = (why: string): LoadedUnitRead => ({ ok: false, reason: `${bus}, and systemctl cannot prove ${name} is its unit file: ${why}` });
-  const before = file ? file.readFile(file.path) : null;
-  const shown = systemctlShow(run, user, name, ["LoadState", "FragmentPath", "DropInPaths", "NeedDaemonReload", "EnvironmentFiles", "PassEnvironment"]);
-  if (!shown.ok) return { ok: false, reason: `neither busctl nor systemctl can reach the systemd${scope} manager (busctl ${busFailure}; ${shown.reason})` };
-  const values = (key: string) => shown.values.get(key) ?? [];
-  const one = (key: string): string | null => { const v = values(key); return v.length === 1 ? v[0]! : null; };
-  const state = one("LoadState");
-  if (state === "not-found") return { ok: false, reason: `systemd does not know ${name}` };
-  if (state !== "loaded") return unproven(`its load state is ${state ?? "unreadable"}`);
-  if (!file) return unproven("no unit file was given to prove it against");
-  const fragment = one("FragmentPath");
-  const sameFile = fragment === file.path || (!!fragment && !!file.realpath && file.realpath(fragment) !== null && file.realpath(fragment) === file.realpath(file.path));
-  if (!sameFile) return unproven(`systemd loaded it from ${fragment || "no file"}, not ${file.path}`);
-  if (one("DropInPaths") !== "") return unproven(`drop-ins apply to it (${values("DropInPaths").join(" ") || "unreadable"})`);
-  if (one("NeedDaemonReload") !== "no") return unproven(`NeedDaemonReload is ${one("NeedDaemonReload") ?? "unreadable"} (the loaded definition is not the file)`);
-  // systemd prints one EnvironmentFiles line per file, none for none.
-  if (values("EnvironmentFiles").some(v => v !== "")) return unproven("it reads EnvironmentFile=, whose effect cannot be proven here");
-  if (one("PassEnvironment") !== "") return unproven("it uses PassEnvironment=, whose effect cannot be proven here");
-  const after = file.readFile(file.path);
-  if (before === null || after !== before) return unproven(`${file.path} could not be read, or changed while systemd was asked`);
-  const parsed = parseUnitExec(before);
-  if (!parsed.ok) return unproven(parsed.reason);
-  const manager = managerEnvironmentWithoutBus(run, user);
-  if (!manager.ok) return unproven(manager.reason);
-  const env = effectiveEnvironment(manager.env, parsed.env, parsed.unset);
-  if (parsed.env.PATH === undefined && env.PATH !== undefined && manager.opaque.has("PATH")) {
-    return unproven("the manager's PATH is printed quoted by systemctl show-environment and cannot be read exactly");
-  }
-  return { ok: true, unit: { tuple: { program: parsed.argv[0]!, argv: parsed.argv, env }, needDaemonReload: false } };
-}
-
-/**
- * The manager's environment from `systemctl show-environment` (#1804). A plain value prints as it is; any other is
- * shell-quoted (`$'…'`) and kept as printed, marked opaque: the caller refuses it where its exact value matters (PATH).
- * An INTERPRETER_ENV key is refused for being set at all, whatever its value.
- */
-function managerEnvironmentWithoutBus(run: (command: string, args: string[]) => CommandResult, user: boolean):
-  { ok: true; env: Record<string, string>; opaque: Set<string> } | { ok: false; reason: string } {
-  const result = run("systemctl", [...(user ? ["--user"] : []), "show-environment"]);
-  if (result.status !== 0 || result.signal !== null) return { ok: false, reason: `the manager's environment cannot be read (systemctl show-environment ${commandFailure(result)})` };
-  const env: Record<string, string> = {};
-  const opaque = new Set<string>();
-  for (const line of result.stdout.split("\n")) {
-    if (line === "") continue;
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
-    if (!m) return { ok: false, reason: `the manager's environment cannot be read (systemctl show-environment printed ${JSON.stringify(line.slice(0, 80))})` };
-    env[m[1]!] = m[2]!;
-    if (/^(\$'|'|")/.test(m[2]!)) opaque.add(m[1]!); else opaque.delete(m[1]!);
-  }
-  return { ok: true, env, opaque };
-}
-
-/**
- * A unit file's `[Service]` ExecStart, Environment= and UnsetEnvironment=, read as systemd 249 reads them — or refused
- * wherever this reader and systemd could differ (#1804). systemdWords splits words exactly as systemd does for what
- * `agend install` writes (systemdQuote/systemdEnvironmentQuote); beyond that: no line continuations, no `.include`, no
- * whitespace but spaces and tabs, no escape but `\\` `\"` `\'`, no specifier but `%%`; in ExecStart no prefix
- * (`-@:+!`), no `$` (variable expansion), no lone `;` (a second command), and an absolute program.
- */
-export function parseUnitExec(text: string): { ok: true; argv: string[]; env: Record<string, string>; unset: string[] } | { ok: false; reason: string } {
-  const exec: string[] = [];
-  let env: Record<string, string> = {};
-  let unset: string[] = [];
-  let section = "";
-  const plainEscapes = (value: string) => !/\\(?:[^\\"']|$)/.test(value.replace(/\\[\\"']/g, ""));
-  const plainSpecifiers = (value: string) => !value.replace(/%%/g, "").includes("%");
-  const readable = (value: string, what: string): string | null =>
-    /[\x00-\x08\x0a-\x1f\x7f]/.test(value) || /[^\S \t]/.test(value) ? `its ${what} has whitespace or control characters other than spaces and tabs`
-      : !plainEscapes(value) ? `its ${what} has a backslash escape other than \\\\, \\" or \\'`
-      : !plainSpecifiers(value) ? `its ${what} uses a % specifier`
-      : null;
-  for (const raw of text.split("\n")) {
-    const line = raw.replace(/^[ \t\r]+|[ \t\r]+$/g, "");
-    if (line.endsWith("\\")) return { ok: false, reason: "it has a line continuation" };
-    if (line === "" || line.startsWith("#") || line.startsWith(";")) continue;
-    if (line.startsWith(".include")) return { ok: false, reason: "it uses .include" };
-    if (line.startsWith("[")) { section = line; continue; }
-    if (section !== "[Service]") continue;
-    const eq = line.indexOf("=");
-    if (eq < 0) continue;
-    const key = line.slice(0, eq).replace(/[ \t]+$/, ""), value = line.slice(eq + 1).replace(/^[ \t]+/, "");
-    if (key === "EnvironmentFile" || key === "PassEnvironment") {
-      if (value !== "") return { ok: false, reason: `it sets ${key}=, whose effect cannot be proven here` };
-    } else if (key === "ExecStart") {
-      exec.push(value);
-    } else if (key === "Environment" || key === "UnsetEnvironment") {
-      if (value === "") { if (key === "Environment") env = {}; else unset = []; continue; }
-      const bad = readable(value, `${key}=`);
-      if (bad) return { ok: false, reason: bad };
-      // systemdWords undoes `$$`, which Environment= keeps as it is.
-      if (key === "Environment" && value.includes("$$")) return { ok: false, reason: "its Environment= has $$, which this reader cannot read exactly" };
-      for (const word of systemdWords(value)) {
-        const name = /^[A-Za-z_][A-Za-z0-9_]*(?==|$)/.exec(word)?.[0];
-        if (!name || (key === "Environment" && word.length === name.length)) return { ok: false, reason: `its ${key}= has an invalid assignment (${JSON.stringify(word)})` };
-        if (key === "Environment") env[name] = word.slice(name.length + 1); else unset.push(word);
-      }
-    }
-  }
-  if (exec.length !== 1 || exec[0] === "") return { ok: false, reason: `its ExecStart is not exactly one command (${exec.length} assignments${exec.includes("") ? ", one empty" : ""})` };
-  const line = exec[0]!;
-  if (/^[-@:+!]/.test(line)) return { ok: false, reason: "its ExecStart has a prefix (-@:+!)" };
-  const bad = readable(line, "ExecStart");
-  if (bad) return { ok: false, reason: bad };
-  if (line.includes("$")) return { ok: false, reason: "its ExecStart has $ (variable expansion)" };
-  const argv = systemdWords(line);
-  if (argv.includes(";")) return { ok: false, reason: "its ExecStart has a lone ; (more than one command)" };
-  if (!argv[0]?.startsWith("/")) return { ok: false, reason: `its program ${JSON.stringify(argv[0] ?? "")} is not an absolute path` };
-  return { ok: true, argv, env, unset };
 }
 
 /** XML character data → text: the five named entities and numeric references (EJS writes `"` as `&#34;`), in one pass. */
@@ -423,6 +298,8 @@ export interface ActivationDeps extends TupleDeps {
    * files inside the package. Returns one line for the outcome.
    */
   restorePackage?(): string;
+  /** #1804: systemd's private socket, for a host where busctl cannot reach a bus (systemdPeerBus in production). */
+  peerBus?: PeerBus;
   /** Checked package recovery, available only while the updater owns its install-prefix lock. */
   systemdRecovery?: { restorePackage(): { ok: boolean; message: string } };
   /** Blocking pause between launchd polls (default: Atomics.wait); tests pass a no-op. */
@@ -463,12 +340,11 @@ function recoverSystemd(
   const oldArgv = systemdWords(/^ExecStart=(.*)$/m.exec(preimage)?.[1] ?? "");
   if (!sameArgs(before.tuple.argv, oldArgv)) return failed("The previous loaded service was not its unit file");
   const completed = (r: CommandResult) => r.status === 0 && r.signal === null;
-  const file: UnitFileSource = { path, readFile: deps.readFile, realpath: deps.realpath };
   // Re-read definition, runtime and disk after every potentially blocking manager/package operation. In particular,
   // package restoration can remove the new Node, so subsequent comparisons use the captured raw tuple, not realpaths.
   const currentStopped = (bytes: string, want: LoadedUnit): boolean => {
-    const loaded = readLoadedUnit(deps.run, manager.user, manager.unit, file);
-    const runtime = readSystemdRuntime(deps.run, manager.user, manager.unit);
+    const loaded = readLoadedUnit(deps.run, manager.user, manager.unit, deps.peerBus);
+    const runtime = readSystemdRuntime(deps.run, manager.user, manager.unit, deps.peerBus);
     return !!loaded.ok && !loaded.unit.needDaemonReload && sameLoadedJob(loaded.unit.tuple, want.tuple) &&
       systemdStopped(runtime) && deps.readFile(path) === bytes;
   };
@@ -489,8 +365,8 @@ function recoverSystemd(
     if (!currentStopped(preimage, before)) return failed("Service ownership changed before the recovery start");
     // The start is the last effect: the old package, exact loaded unit, and stopped runtime were all proven above.
     if (!completed(deps.run("systemctl", [...scope, "start", manager.unit]))) return failed("Starting the previous service failed");
-    const loadedBack = readLoadedUnit(deps.run, manager.user, manager.unit, file);
-    const runningBack = readSystemdRuntime(deps.run, manager.user, manager.unit);
+    const loadedBack = readLoadedUnit(deps.run, manager.user, manager.unit, deps.peerBus);
+    const runningBack = readSystemdRuntime(deps.run, manager.user, manager.unit, deps.peerBus);
     if (!loadedBack.ok || loadedBack.unit.needDaemonReload || !sameLoadedJob(loadedBack.unit.tuple, before.tuple) ||
         !systemdRunning(runningBack) || deps.readFile(path) !== preimage) return failed("The previous running service could not be confirmed");
     return { ok: false, stopped: false,
@@ -518,10 +394,9 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
   if (manager.kind === "systemd") {
     const scope = manager.user ? ["--user"] : [];
     const preimage = manager.unitPath ? deps.readFile(manager.unitPath) : null;
-    const file: UnitFileSource | undefined = manager.unitPath ? { path: manager.unitPath, readFile: deps.readFile, realpath: deps.realpath } : undefined;
-    const beforeRead = preimage !== null && deps.systemdRecovery ? readLoadedUnit(deps.run, manager.user, manager.unit, file) : null;
+    const beforeRead = preimage !== null && deps.systemdRecovery ? readLoadedUnit(deps.run, manager.user, manager.unit, deps.peerBus) : null;
     const before = beforeRead?.ok ? beforeRead.unit : null;
-    const runtimeBefore = before ? readSystemdRuntime(deps.run, manager.user, manager.unit) : null;
+    const runtimeBefore = before ? readSystemdRuntime(deps.run, manager.user, manager.unit, deps.peerBus) : null;
     // C6 step 5, a failure before the restart: the unit preimage goes back and is reloaded, and the LOADED ExecStart
     // must be the preimage's again; then the package preimage. The old fleet was never stopped.
     const fail = (why: string): ActivationOutcome => {
@@ -529,7 +404,7 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
       if (preimage !== null && manager.unitPath) {
         deps.writeFile(manager.unitPath, preimage);
         const reloaded = deps.run("systemctl", [...scope, "daemon-reload"]);
-        const back = reloaded.status === 0 ? readLoadedUnit(deps.run, manager.user, manager.unit, file) : null;
+        const back = reloaded.status === 0 ? readLoadedUnit(deps.run, manager.user, manager.unit, deps.peerBus) : null;
         const want = systemdWords(/^ExecStart=(.*)$/m.exec(preimage)?.[1] ?? "");
         const reloadCommand = `systemctl${manager.user ? " --user" : ""} daemon-reload`;
         // #1804: say what was actually seen — a failed reload, a loaded unit that cannot be read (and why), or another one.
@@ -546,7 +421,7 @@ export function activateService(manager: ServiceManager, verified: VerifiedTarge
     if (refreshed.status !== 0) deps.log(`  ⚠ Service file refresh failed: ${(refreshed.stderr || refreshed.stdout).trim()}`);
     const reload = deps.run("systemctl", [...scope, "daemon-reload"]);
     if (reload.status !== 0) return fail(`systemctl${manager.user ? " --user" : ""} daemon-reload failed, so systemd still runs the old definition`);
-    const read = readLoadedUnit(deps.run, manager.user, manager.unit, file);
+    const read = readLoadedUnit(deps.run, manager.user, manager.unit, deps.peerBus);
     if (!read.ok) return fail(`Cannot prove what systemd will run for ${manager.unit}: ${read.reason}`);
     const loaded = read.unit;
     if (loaded.needDaemonReload) return fail(`systemd still needs a daemon-reload for ${manager.unit} (the loaded definition is not the file)`);

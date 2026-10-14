@@ -1,23 +1,29 @@
 /**
- * #1804: on a host with no D-Bus user bus (no dbus-user-session), `busctl --user` cannot connect while `systemctl --user`
- * still reaches the manager through `$XDG_RUNTIME_DIR/systemd/private`. The update must still prove what systemd will
- * run — from systemctl and the unit file, never by guessing — and say which of these it was when it cannot.
- * The command shapes below were captured from a real systemd 249 (249.11-0ubuntu3.22, ubuntu:22.04, no
- * dbus-user-session). Everything here runs against scripted runners: no systemd, no fleet.
+ * #1804: on a host with no D-Bus user bus (no dbus-user-session), `busctl --user` cannot connect while systemd's own
+ * private socket (`$XDG_RUNTIME_DIR/systemd/private`, what `systemctl` uses there) still answers. The readers then make
+ * the same D-Bus calls over that socket — the same exact values (argv as `as`, environments as `as`), the same proof —
+ * and every failure says which of: neither reachable, systemd does not know the unit, the call refused, not proven.
+ *
+ * The codec is checked against real systemd 249 bytes (tests/fixtures/systemd-249-private-socket); the worker runs
+ * against a local fake server in a child process that behaves as sd-bus does at BEGIN. No systemd, no fleet.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { activateService, parseUnitExec, readLoadedUnit, type UnitFileSource } from "../src/service-activation.js";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { activateService, readLoadedUnit } from "../src/service-activation.js";
 import { busUnreachable, readSystemdRuntime } from "../src/systemd-runtime.js";
+import { callPeer, peerCodec, peerReplyAsBusctl, peerRequestFor, peerUnreachable, privateSocketPath, type PeerBus } from "../src/systemd-peer-bus.js";
 import { guardSystemd } from "../src/restart-guard.js";
-import { renderSystemdUnit } from "../src/service-installer.js";
 import type { CommandResult } from "../src/update-install.js";
 import { activationWorld } from "./support/activation-world-1490.js";
 
+const FIXTURES = join(import.meta.dirname, "fixtures", "systemd-249-private-socket", "capture.json");
+const capture = JSON.parse(readFileSync(FIXTURES, "utf8")) as Record<string, { args: string[]; request: string; reply: string }>;
 const NO_BUS: CommandResult = { status: 1, signal: null, stdout: "", stderr: "Failed to connect to bus: No such file or directory\n" };
 const ok = (stdout = ""): CommandResult => ({ status: 0, signal: null, stdout, stderr: "" });
+const json = (type: string, data: unknown) => ok(`${JSON.stringify({ type, data })}\n`);
 
 describe("which busctl failures mean 'no bus'", () => {
   it.each([
@@ -29,203 +35,158 @@ describe("which busctl failures mean 'no bus'", () => {
   ])("%s → %s", (_name, result, want) => expect(busUnreachable(result)).toBe(want));
 });
 
-describe("the unit file, read as systemd reads it — or refused", () => {
-  const rendered = renderSystemdUnit({
-    label: "com.agend.fleet", execPath: "/usr/lib/node_modules/@songsid/agend/dist/cli.js", nodePath: "/opt/node 22/bin/node",
-    path: "/opt/node22/bin:/usr/bin", workingDirectory: "/root/.agend", logPath: "/root/.agend/fleet.log", isRoot: true, agendHome: "/srv/agend 100%",
+describe("the wire format, against real systemd 249 bytes", () => {
+  const codec = peerCodec();
+  it("the capture is whole", () => expect(Object.keys(capture)).toHaveLength(12));
+
+  it("every request this client sends is byte-identical to one systemd 249 answered", () => {
+    for (const { args, request } of Object.values(capture)) expect(codec.encodeCall(peerRequestFor(args)!, 1).toString("hex"), args.join(" ")).toBe(request);
   });
 
-  it("what `agend install` writes: argv, Environment= and the quoting it uses (a space, a %)", () => {
-    const parsed = parseUnitExec(rendered);
-    expect(parsed).toMatchObject({
-      ok: true,
-      argv: ["/opt/node 22/bin/node", "/usr/lib/node_modules/@songsid/agend/dist/cli.js", "fleet", "start"],
-      env: { TERM: "xterm-256color", AGEND_HOME: "/srv/agend 100%", IS_SANDBOX: "1" },
-      unset: [],
-    });
-    // buildServicePath appends its fallbacks after the caller's PATH.
-    expect((parsed as { env: Record<string, string> }).env.PATH).toMatch(/^\/opt\/node22\/bin:\/usr\/bin(:|$)/);
+  const reply = (key: string) => codec.decode(Buffer.from(capture[key]!.reply, "hex"))!;
+  it("argv and environments exactly as systemd holds them — what `systemctl show` cannot print", () => {
+    expect(reply("execStart").values).toEqual([{ type: "a(sasbttttuii)", data: [["/bin/sl eep", ["/bin/sl eep", "a b", "c", 'd"e', "f'g", "h\\i", "%", "$$x", ";"], false, 0, 0, 0, 0, 0, 0, 0]] }]);
+    expect(reply("environment").values).toEqual([{ type: "as", data: ["P=a b", 'Q=x"y', "R=z$$w", "S=t\\u", "T="] }]);
+    expect(reply("unsetEnvironment").values).toEqual([{ type: "as", data: ["U=a b", "V", "W=$$x"] }]);
+    // show-environment prints NODE_OPTIONS=$'--require /x.js'; the bus value is the value.
+    expect((reply("managerEnvironment").values[0] as { data: string[] }).data).toEqual(expect.arrayContaining(["NODE_OPTIONS=--require /x.js", "Q=a b"]));
   });
 
-  const unit = (service: string) => `[Unit]\nDescription=x\n\n[Service]\n${service}\n\n[Install]\nWantedBy=default.target\n`;
-  it.each([
-    ["two ExecStart", 'ExecStart="/n" "/c" fleet start\nExecStart=/n /c fleet start', /not exactly one command \(2/],
-    ["a reset then one", "ExecStart=\nExecStart=/n /c fleet start", /not exactly one command/],
-    ["no ExecStart", "Type=notify", /not exactly one command \(0/],
-    ["a prefix", "ExecStart=-/n /c fleet start", /has a prefix/],
-    ["a specifier", "ExecStart=/n %h/c fleet start", /% specifier/],
-    ["a variable", "ExecStart=/n $CLI fleet start", /has \$/],
-    ["a C escape systemd would undo", 'ExecStart="/n\\x41" /c fleet start', /backslash escape/],
-    ["a line continuation", "ExecStart=/n /c \\\n  fleet start", /line continuation/],
-    ["a second command", "ExecStart=/n /c fleet start ; /bin/true", /lone ;/],
-    ["a relative program", "ExecStart=node /c fleet start", /not an absolute path/],
-    ["a non-breaking space", "ExecStart=/n /c fleet start", /whitespace or control/],
-    ["EnvironmentFile=", "ExecStart=/n /c fleet start\nEnvironmentFile=-/etc/agend.env", /EnvironmentFile=/],
-    ["PassEnvironment=", "ExecStart=/n /c fleet start\nPassEnvironment=NODE_OPTIONS", /PassEnvironment=/],
-    ["$$ in Environment=", "ExecStart=/n /c fleet start\nEnvironment=A=x$$y", /\$\$/],
-    ["an assignment without =", "ExecStart=/n /c fleet start\nEnvironment=JUSTANAME", /invalid assignment/],
-  ])("%s → refused", (_name, service, reason) => {
-    const parsed = parseUnitExec(unit(service));
-    expect(parsed.ok).toBe(false);
-    expect((parsed as { reason: string }).reason).toMatch(reason);
+  it("the other shapes the readers use: o, a(sb) empty and not, b, s, (uo) idle and queued, and an error", () => {
+    expect(reply("loadUnit")).toMatchObject({ type: 2, replySerial: 1, signature: "o", values: ["/org/freedesktop/systemd1/unit/t_2eservice"] });
+    expect(reply("environmentFilesEmpty").values).toEqual([{ type: "a(sb)", data: [] }]);
+    expect(reply("environmentFiles").values).toEqual([{ type: "a(sb)", data: [["/root/x.env", false], ["/root/y.env", true]] }]);
+    expect(reply("needDaemonReload").values).toEqual([{ type: "b", data: false }]);
+    expect(reply("loadStateNotFound").values).toEqual([{ type: "s", data: "not-found" }]);
+    expect(reply("jobIdle").values).toEqual([{ type: "(uo)", data: [0, "/"] }]);
+    expect(reply("jobQueued").values).toEqual([{ type: "(uo)", data: [7, "/org/freedesktop/systemd1/job/7"] }]);
+    expect(reply("unknownProperty")).toMatchObject({ type: 3, errorName: "org.freedesktop.DBus.Error.UnknownProperty", values: ["Unknown interface org.freedesktop.systemd1.Service or property NoSuchProp."] });
   });
 
-  it("sections, comments, resets and UnsetEnvironment= are read as systemd reads them", () => {
-    expect(parseUnitExec([
-      "[Unit]", "ExecStart=/not/this one", "[Service]", "# ExecStart=/commented", "  ExecStart = /n /c fleet start  ",
-      "Environment=A=1 B=2", "Environment=", "Environment='C=3 4' D=5%%", "UnsetEnvironment=C=3", "[Service]", "Environment=E=$x",
-    ].join("\n"))).toEqual({ ok: true, argv: ["/n", "/c", "fleet", "start"], env: { C: "3 4", D: "5%", E: "$x" }, unset: ["C=3"] });
+  it("partial input waits; malformed input is refused, never guessed", () => {
+    const whole = Buffer.from(capture.execStart!.reply, "hex");
+    expect(codec.decode(whole.subarray(0, whole.length - 1))).toBeNull();
+    const bool = Buffer.from(capture.needDaemonReload!.reply, "hex");
+    bool[bool.length - 4] = 2;
+    expect(() => codec.decode(bool)).toThrow(/boolean/);
+    const version = Buffer.from(whole);
+    version[3] = 2;
+    expect(() => codec.decode(version)).toThrow(/version/);
+    const string = Buffer.from(whole);
+    string[string.indexOf(Buffer.from("/bin/sl eep")) + 11] = 0x41;   // the NUL after the program, overwritten
+    expect(() => codec.decode(string)).toThrow();
+  });
+
+  it("as busctl --json=short prints it: a property unwrapped, a call's out-arguments as an array, errors and connect failures", () => {
+    const get = capture.execStart!.args, call = capture.loadUnit!.args;
+    const r = (key: string) => ({ ok: true as const, signature: reply(key).signature, values: reply(key).values });
+    expect(JSON.parse(peerReplyAsBusctl(get, r("execStart"), "/s").stdout)).toEqual({ type: "a(sasbttttuii)", data: [["/bin/sl eep", ["/bin/sl eep", "a b", "c", 'd"e', "f'g", "h\\i", "%", "$$x", ";"], false, 0, 0, 0, 0, 0, 0, 0]] });
+    expect(JSON.parse(peerReplyAsBusctl(call, r("loadUnit"), "/s").stdout)).toEqual({ type: "o", data: ["/org/freedesktop/systemd1/unit/t_2eservice"] });
+    expect(peerReplyAsBusctl(get, { ok: false, stage: "call", message: "org.freedesktop.DBus.Error.AccessDenied: no" }, "/s")).toEqual({ status: 1, signal: null, stdout: "", stderr: "Call failed: org.freedesktop.DBus.Error.AccessDenied: no\n" });
+    const refused = peerReplyAsBusctl(get, { ok: false, stage: "connect", message: "connect ENOENT /s" }, "/s");
+    expect(refused.stderr).toBe("Failed to connect to /s: connect ENOENT /s\n");
+    expect(peerUnreachable(refused)).toBe(true);
+    expect(peerUnreachable(peerReplyAsBusctl(get, { ok: false, stage: "protocol", message: "x" }, "/s"))).toBe(false);
+  });
+
+  it("only systemd's calls are mapped; the socket is the manager's own", () => {
+    expect(peerRequestFor(["call", "org.freedesktop.DBus", "/", "org.freedesktop.DBus", "Hello"])).toBeNull();
+    expect(peerRequestFor(["call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "LoadUnit", "s"])).toBeNull();
+    expect(privateSocketPath(true, { XDG_RUNTIME_DIR: "/run/user/0" }, 0)).toBe("/run/user/0/systemd/private");
+    expect(privateSocketPath(true, {}, 1000)).toBe("/run/user/1000/systemd/private");
+    expect(privateSocketPath(false, {}, 0)).toBe("/run/systemd/private");
   });
 });
 
-/** systemd 249's own `systemctl --user show` output for a loaded, running unit with no drop-ins (captured). */
-function busless(over: { show?: Record<string, string[] | null>; showStatus?: number; env?: string; envStatus?: number } = {}) {
-  const calls: string[] = [];
-  const base: Record<string, string[]> = {
-    LoadState: ["loaded"], FragmentPath: ["/root/.config/systemd/user/com.agend.fleet.service"], DropInPaths: [""],
-    NeedDaemonReload: ["no"], PassEnvironment: [""], ActiveState: ["active"], SubState: ["running"], MainPID: ["82"],
-    ControlPID: ["0"], Job: [""], Type: ["notify"], KillMode: ["mixed"], SendSIGKILL: ["yes"],
-  };
-  const run = (command: string, args: string[]): CommandResult => {
-    calls.push([command, ...args].join(" "));
-    if (command === "busctl") return NO_BUS;
-    if (command === "systemctl" && args.includes("show-environment")) {
-      return over.envStatus ? { status: over.envStatus, signal: null, stdout: "", stderr: "Failed to connect to bus: No such file or directory\n" } : ok(over.env ?? "HOME=/root\nPATH=/usr/local/bin:/usr/bin:/bin\n");
+/**
+ * A local stand-in for the manager's private socket, in a child process (the caller blocks its own thread). Like sd-bus
+ * 249, it drops whatever arrives in the same read as BEGIN; it answers each captured request with its captured reply.
+ */
+const SERVER = String.raw`
+const net = require("net"), fs = require("fs");
+const [socket, fixtures, mode] = process.argv.slice(1);
+const replies = new Map(Object.values(JSON.parse(fs.readFileSync(fixtures, "utf8"))).map(v => [v.request, v.reply]));
+net.createServer(c => {
+  let stage = "auth", buf = Buffer.alloc(0);
+  c.on("error", () => {});
+  c.on("data", chunk => {
+    if (stage !== "call") {
+      let text = chunk.toString("latin1");
+      if (stage === "auth") {
+        if (!/^\0AUTH EXTERNAL [0-9a-f]+\r\n/.test(text)) return c.destroy();
+        if (mode === "refuse") { c.write("REJECTED EXTERNAL\r\n"); return; }
+        c.write("OK 0123456789abcdef0123456789abcdef\r\n"); stage = "begin"; text = text.slice(text.indexOf("\r\n") + 2);
+      }
+      if (text.startsWith("BEGIN\r\n")) { stage = "call"; if (mode === "close") c.destroy(); }
+      return;                                          // the rest of this read is dropped, as sd-bus does
     }
-    if (command === "systemctl" && args.includes("show")) {
-      if (over.showStatus) return { status: over.showStatus, signal: null, stdout: "", stderr: "Failed to connect to bus: No such file or directory\n" };
-      const wanted = args.find(a => a.startsWith("--property="))!.slice("--property=".length).split(",");
-      const lines = wanted.flatMap(key => {
-        const values = key in (over.show ?? {}) ? over.show![key] : base[key];
-        return (values ?? []).map(v => `${key}=${v}`);
-      });
-      return ok(lines.join("\n") + "\n");
+    buf = Buffer.concat([buf, chunk]);
+    if (buf.length < 16) return;
+    const total = Math.ceil((16 + buf.readUInt32LE(12)) / 8) * 8 + buf.readUInt32LE(4);
+    if (buf.length < total) return;
+    const reply = replies.get(buf.subarray(0, total).toString("hex"));
+    if (!reply || mode === "silent") return;
+    c.write(Buffer.from(reply, "hex"));
+  });
+}).listen(socket, () => process.stdout.write("ready\n"));
+`;
+
+describe("the worker: a real connection, as systemdPeerBus makes it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "agend-peer-"));
+  const servers: ChildProcess[] = [];
+  const serve = (name: string, mode = "") => new Promise<string>((resolve, reject) => {
+    const socket = join(dir, name);
+    const child = spawn(process.execPath, ["-e", SERVER, socket, FIXTURES, mode], { stdio: ["ignore", "pipe", "inherit"] });
+    servers.push(child);
+    child.on("error", reject);
+    child.stdout!.once("data", () => resolve(socket));
+  });
+  afterAll(() => { for (const s of servers) s.kill(); rmSync(dir, { recursive: true, force: true }); });
+
+  it("authenticates, waits for OK before the call, and returns what busctl would print", async () => {
+    const socket = await serve("ok");
+    for (const key of ["loadUnit", "execStart", "managerEnvironment", "jobQueued"]) {
+      const result = callPeer(true, capture[key]!.args, { socket, timeoutMs: 5000 });
+      const decoded = peerCodec().decode(Buffer.from(capture[key]!.reply, "hex"))!;
+      const want = key === "loadUnit" ? { type: "o", data: decoded.values } : decoded.values[0];
+      expect(result.status, `${key}: ${result.stderr}`).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual(want);
     }
-    throw Error(`unexpected ${command} ${args.join(" ")}`);
-  };
-  return { run, calls };
-}
-
-const UNIT_PATH = "/root/.config/systemd/user/com.agend.fleet.service";
-const UNIT = "[Service]\nType=notify\nExecStart=\"/opt/node/bin/node\" \"/pkg/dist/cli.js\" fleet start\nEnvironment=PATH=/opt/node/bin:/usr/bin\nKillMode=mixed\n";
-const fileOf = (text: string | (() => string | null), realpath?: (p: string) => string | null): UnitFileSource => ({
-  path: UNIT_PATH, readFile: p => (p === UNIT_PATH ? (typeof text === "function" ? text() : text) : null), ...(realpath ? { realpath } : {}),
-});
-
-describe("readLoadedUnit without a bus: proven from systemctl and the unit file", () => {
-  it("loaded, from our file, no drop-ins, no reload pending: the file's ExecStart, over the manager's environment", () => {
-    const { run, calls } = busless({ env: "HOME=/root\nPATH=/usr/bin\nLANG=C.UTF-8\n" });
-    expect(readLoadedUnit(run, true, "com.agend.fleet", fileOf(UNIT))).toEqual({ ok: true, unit: {
-      tuple: { program: "/opt/node/bin/node", argv: ["/opt/node/bin/node", "/pkg/dist/cli.js", "fleet", "start"], env: { HOME: "/root", PATH: "/opt/node/bin:/usr/bin", LANG: "C.UTF-8" } },
-      needDaemonReload: false,
-    } });
-    expect(calls).toEqual([
-      "busctl --user --json=short call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager LoadUnit s com.agend.fleet.service",
-      "systemctl --user show com.agend.fleet.service --property=LoadState,FragmentPath,DropInPaths,NeedDaemonReload,EnvironmentFiles,PassEnvironment",
-      "systemctl --user show-environment",
-    ]);
   });
 
-  it.each([
-    ["a reload is pending", { show: { NeedDaemonReload: ["yes"] } }, /cannot prove .* NeedDaemonReload is yes/],
-    ["a drop-in applies", { show: { DropInPaths: ["/root/.config/systemd/user/com.agend.fleet.service.d/z.conf"] } }, /drop-ins apply to it \(.*z\.conf\)/],
-    ["an EnvironmentFile (one line per file)", { show: { EnvironmentFiles: ["/root/x.env (ignore_errors=no)", "/root/y.env (ignore_errors=yes)"] } }, /EnvironmentFile=/],
-    ["PassEnvironment", { show: { PassEnvironment: ["NODE_OPTIONS"] } }, /PassEnvironment=/],
-    ["another fragment", { show: { FragmentPath: ["/etc/systemd/user/com.agend.fleet.service"] } }, /loaded it from \/etc\/systemd\/user/],
-    ["a generated unit (no fragment)", { show: { FragmentPath: [""] } }, /loaded it from no file/],
-    ["masked", { show: { LoadState: ["masked"] } }, /load state is masked/],
-    ["an unreadable reload flag", { show: { NeedDaemonReload: null } }, /NeedDaemonReload is unreadable/],
-    ["the manager's PATH printed quoted, and the unit sets none", { env: "PATH=$'/usr/bin:/a b'\n" }, /manager's PATH is printed quoted/],
-    ["show-environment fails", { envStatus: 1 }, /manager's environment cannot be read/],
-  ])("%s → refused, saying the bus is unreachable and why the file cannot stand in", (_name, over, reason) => {
-    const { run } = busless(over as Parameters<typeof busless>[0]);
-    const unit = reason.source.includes("PATH is printed") ? UNIT.replace(/^Environment=PATH.*\n/m, "") : UNIT;
-    const read = readLoadedUnit(run, true, "com.agend.fleet", fileOf(unit));
-    expect(read.ok).toBe(false);
-    expect((read as { reason: string }).reason).toMatch(/^the D-Bus user bus cannot be reached \(busctl exited 1: Failed to connect to bus: No such file or directory\), and systemctl cannot prove com\.agend\.fleet\.service is its unit file: /);
-    expect((read as { reason: string }).reason).toMatch(reason);
+  it("an error reply is a failed call, not an unreachable socket", async () => {
+    const socket = await serve("err");
+    const result = callPeer(true, capture.unknownProperty!.args, { socket, timeoutMs: 5000 });
+    expect(result).toMatchObject({ status: 1, stderr: "Call failed: org.freedesktop.DBus.Error.UnknownProperty: Unknown interface org.freedesktop.systemd1.Service or property NoSuchProp.\n" });
+    expect(peerUnreachable(result)).toBe(false);
   });
 
-  it("the file changing while systemd is asked → refused", () => {
-    let n = 0;
-    const read = readLoadedUnit(busless().run, true, "com.agend.fleet", fileOf(() => (n++ === 0 ? UNIT : `${UNIT}# edited\n`)));
-    expect(read).toMatchObject({ ok: false, reason: expect.stringMatching(/changed while systemd was asked/) });
-  });
-
-  it("a symlinked home: FragmentPath names the same file through another path", () => {
-    const { run } = busless({ show: { FragmentPath: ["/data/root/.config/systemd/user/com.agend.fleet.service"] } });
-    const same = (p: string) => p.replace(/^\/data/, "");
-    expect(readLoadedUnit(run, true, "com.agend.fleet", fileOf(UNIT, same)).ok).toBe(true);
-    expect(readLoadedUnit(run, true, "com.agend.fleet", fileOf(UNIT)).ok).toBe(false);
-  });
-
-  it("a quoted manager value other than PATH is kept as printed; an interpreter variable is set whatever its quoting", () => {
-    const read = readLoadedUnit(busless({ env: "Q=$'a b'\nNODE_OPTIONS=$'--require /x.js'\n" }).run, true, "com.agend.fleet", fileOf(UNIT));
-    expect(read).toMatchObject({ ok: true, unit: { tuple: { env: { Q: "$'a b'", NODE_OPTIONS: "$'--require /x.js'" } } } });
-  });
-
-  it("the four reasons stay apart", () => {
-    // 1. neither busctl nor systemctl reaches the manager
-    expect(readLoadedUnit(busless({ showStatus: 1 }).run, true, "com.agend.fleet", fileOf(UNIT))).toEqual({ ok: false,
-      reason: "neither busctl nor systemctl can reach the systemd --user manager (busctl exited 1: Failed to connect to bus: No such file or directory; systemctl --user show exited 1: Failed to connect to bus: No such file or directory)" });
-    // 2. systemd does not know the unit
-    expect(readLoadedUnit(busless({ show: { LoadState: ["not-found"], FragmentPath: [""] } }).run, true, "com.agend.fleet", fileOf(UNIT)))
-      .toEqual({ ok: false, reason: "systemd does not know com.agend.fleet.service" });
-    // 3. the bus is there, and LoadUnit failed: no systemctl fallback
-    const calls: string[] = [];
-    const refused = (command: string, args: string[]): CommandResult => { calls.push(command); return { status: 1, signal: null, stdout: "", stderr: "Call failed: Access denied\n" }; };
-    expect(readLoadedUnit(refused, true, "com.agend.fleet", fileOf(UNIT))).toEqual({ ok: false, reason: "busctl could not load com.agend.fleet.service (exited 1: Call failed: Access denied)" });
-    expect(calls).toEqual(["busctl"]);
-    // 4. no bus, and the file cannot stand in (see the table above); with no file at all:
-    expect(readLoadedUnit(busless().run, true, "com.agend.fleet")).toMatchObject({ ok: false, reason: expect.stringMatching(/cannot prove .* no unit file was given/) });
+  it("no socket, a refused authentication, a closed connection, a silent server", async () => {
+    const missing = callPeer(true, capture.loadUnit!.args, { socket: join(dir, "missing"), timeoutMs: 5000 });
+    expect(missing.stderr).toMatch(/^Failed to connect to .*missing: connect ENOENT/);
+    expect(peerUnreachable(missing)).toBe(true);
+    const refused = callPeer(true, capture.loadUnit!.args, { socket: await serve("refuse", "refuse"), timeoutMs: 5000 });
+    expect(refused.stderr).toMatch(/^Failed to connect to .*: authentication refused \("REJECTED EXTERNAL"\)/);
+    const closed = callPeer(true, capture.loadUnit!.args, { socket: await serve("close", "close"), timeoutMs: 5000 });
+    // Closed after BEGIN: our call either meets the closed socket (EPIPE) or waits for a reply that never comes.
+    expect(closed).toMatchObject({ status: 1, stderr: expect.stringMatching(/^Call failed: (the connection closed before a reply|write EPIPE)/) });
+    expect(peerUnreachable(closed)).toBe(false);
+    const silent = callPeer(true, capture.loadUnit!.args, { socket: await serve("silent", "silent"), timeoutMs: 300 });
+    expect(silent).toMatchObject({ status: null, signal: "SIGTERM", stderr: expect.stringMatching(/did not answer within 0\.3s/) });
+    expect(busUnreachable(silent) || peerUnreachable(silent)).toBe(false);
   });
 });
 
-describe("readSystemdRuntime without a bus: systemctl show, as systemd 249 prints it", () => {
-  it.each([
-    ["running, no job (`Job=` is empty)", {}, { active: "active", sub: "running", pid: 82, control: 0, job: 0, type: "notify", killMode: "mixed", sendSigkill: true }],
-    ["a queued job (`Job=15`)", { Job: ["15"], ActiveState: ["activating"], SubState: ["start"] }, { active: "activating", sub: "start", pid: 82, control: 0, job: 15, type: "notify", killMode: "mixed", sendSigkill: true }],
-    ["stopped", { ActiveState: ["inactive"], SubState: ["dead"], MainPID: ["0"], SendSIGKILL: ["no"] }, { active: "inactive", sub: "dead", pid: 0, control: 0, job: 0, type: "notify", killMode: "mixed", sendSigkill: false }],
-  ])("%s", (_name, show, want) => {
-    expect(readSystemdRuntime(busless({ show }).run, true, "com.agend.fleet")).toEqual(want);
-  });
-
-  it.each([
-    ["Job missing", { Job: null }], ["Job=0 (never printed by systemd)", { Job: ["0"] }], ["MainPID not a number", { MainPID: ["x"] }],
-    ["SendSIGKILL unreadable", { SendSIGKILL: ["maybe"] }], ["a property printed twice", { Type: ["notify", "simple"] }],
-  ])("%s → unknown (null), never a guess", (_name, show) => {
-    expect(readSystemdRuntime(busless({ show: show as Record<string, string[] | null> }).run, true, "com.agend.fleet")).toBeNull();
-  });
-
-  it("systemctl unreachable too → unknown", () => {
-    expect(readSystemdRuntime(busless({ showStatus: 1 }).run, true, "com.agend.fleet")).toBeNull();
-  });
-});
-
-/** The #1490 world (private files, scripted manager), with busctl unable to connect and systemctl answering `show`. */
-function buslessWorld(root: string, opts: { dropIn?: boolean; needReload?: boolean } = {}) {
+/** The #1490 world (private files, scripted manager) with busctl unable to connect; its bus answers come over `peer`. */
+function buslessWorld(root: string) {
   const w = activationWorld(root);
-  let loaded = w.oldUnit;
+  const peerCalls: string[] = [];
   const run = (command: string, args: string[]): CommandResult => {
-    if (command === "busctl") { w.calls.push(`busctl ${args.join(" ")}`); return NO_BUS; }
-    if (command === "systemctl" && args.includes("show-environment")) { w.calls.push("systemctl show-environment"); return ok("HOME=/root\n"); }
-    if (command === "systemctl" && args.includes("show")) {
-      w.calls.push(`systemctl show ${args.find(a => a.startsWith("--property="))}`);
-      const onDisk = w.deps.readFile(w.unitPath);
-      const values: Record<string, string> = {
-        LoadState: "loaded", FragmentPath: w.unitPath, DropInPaths: opts.dropIn ? `${w.unitPath}.d/override.conf` : "",
-        NeedDaemonReload: opts.needReload || loaded !== onDisk ? "yes" : "no", PassEnvironment: "",
-        ActiveState: w.state.active, SubState: w.state.sub, MainPID: String(w.state.pid), ControlPID: String(w.state.control),
-        Job: w.state.job ? String(w.state.job) : "", Type: w.state.type, KillMode: w.state.killMode, SendSIGKILL: w.state.sendSigkill ? "yes" : "no",
-      };
-      const wanted = args.find(a => a.startsWith("--property="))!.slice("--property=".length).split(",");
-      return ok(wanted.filter(k => k in values).map(k => `${k}=${values[k]}`).join("\n") + "\n");
-    }
-    const r = w.run(command, args);
-    if (command === "systemctl" && args.includes("daemon-reload") && r.status === 0) loaded = w.deps.readFile(w.unitPath)!;
-    return r;
+    if (command === "busctl") { w.calls.push("busctl (no bus)"); return NO_BUS; }
+    return w.run(command, args);
   };
-  return { ...w, deps: { ...w.deps, run } };
+  const peer: PeerBus = (user, args) => { peerCalls.push(args.at(-1)!); return w.run("busctl", [...(user ? ["--user"] : []), "--json=short", ...args]); };
+  return { ...w, peerCalls, deps: { ...w.deps, run, peerBus: peer } };
 }
 
 describe("agend update on a host without a user bus", () => {
@@ -234,65 +195,115 @@ describe("agend update on a host without a user bus", () => {
   afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
   const manager = (w: { unitPath: string }) => ({ kind: "systemd" as const, unit: "com.agend.fleet", user: true, unitPath: w.unitPath });
 
-  it("the unit is provably the one AgEnD wrote: the update restarts through systemd", () => {
+  it("the loaded unit starts the verified install: the update restarts through systemd, every read over the private socket", () => {
     const w = buslessWorld(root());
     w.setRestart("restarted");
     expect(activateService(manager(w), w.verified, w.deps)).toEqual({ ok: true, via: "restart" });
     expect(w.calls).toContain("restart");
-    expect(w.calls).toContain("systemctl show --property=LoadState,FragmentPath,DropInPaths,NeedDaemonReload,EnvironmentFiles,PassEnvironment");
+    expect(w.peerCalls).toEqual(expect.arrayContaining(["com.agend.fleet.service", "ExecStart", "Environment", "NeedDaemonReload", "MainPID"]));
     expect(w.calls).not.toContain("restore-package");
-    expect(w.deps.readFile(w.unitPath)).toBe(w.newUnit);
   });
 
-  it.each([
-    ["a drop-in applies", { dropIn: true }, /drop-ins apply to it/],
-    ["systemd still needs a reload", { needReload: true }, /NeedDaemonReload is yes/],
-  ])("%s: refused before anything stops, the previous unit and package go back, and the reason is the real one", (_name, opts, reason) => {
-    const w = buslessWorld(root(), opts);
+  // Prism r1 P1-1: the file on disk says one thing, the manager still holds another — read from the manager, refused.
+  it("systemd still holds the old ExecStart although the file is new: refused, rolled back, nothing stopped", () => {
+    const w = buslessWorld(root());
     w.setRestart("restarted");
+    w.setLoadedArgv([w.oldNode, w.entry, "fleet", "start"]);
     const outcome = activateService(manager(w), w.verified, w.deps) as { ok: boolean; stopped: boolean; message: string };
-    expect(outcome.ok).toBe(false);
-    expect(outcome.stopped).toBe(false);
-    expect(outcome.message).toMatch(/Cannot prove what systemd will run for com\.agend\.fleet: the D-Bus user bus cannot be reached/);
-    expect(outcome.message).toMatch(reason);
-    expect(outcome.message).not.toMatch(/does not know/);
-    // The rollback line says what was seen, not "does not show it loaded".
-    expect(outcome.message).toMatch(/the previous com\.agend\.fleet is back on disk, but what systemd loaded cannot be confirmed: the D-Bus user bus cannot be reached/);
-    expect(outcome.message).toContain("Previous package restored");
+    expect(outcome).toMatchObject({ ok: false, stopped: false });
+    expect(outcome.message).toContain(`does not start the verified install: it starts ${w.oldNode}`);
     expect(w.calls).not.toContain("restart");
-    expect(w.deps.readFile(w.unitPath)).toBe(w.oldUnit);
     expect(w.version()).toBe("2.1.12");
   });
 
-  it("a failed restart is recovered without a bus too: previous package and unit back, the previous service running", () => {
+  // Prism r1 P1-2/P1-3: the environment is systemd's own, exactly — an unset that does not match keeps NODE_OPTIONS.
+  it.each([
+    ["an unset whose value differs only by $$", ["NODE_OPTIONS=--require=/x$.js"], ["NODE_OPTIONS=--require=/x$$.js"]],
+    ["an unset written as show-environment prints the value", ["NODE_OPTIONS=--require /evil.js"], ["NODE_OPTIONS=$'--require /evil.js'"]],
+  ])("%s: NODE_OPTIONS stays, refused", (_name, managerEnv, unset) => {
+    const w = buslessWorld(root());
+    w.setRestart("restarted");
+    w.setManagerEnv(managerEnv);
+    const peer: PeerBus = (user, args) => (args.at(-1) === "UnsetEnvironment" ? json("as", unset) : w.deps.peerBus(user, args));
+    const outcome = activateService(manager(w), w.verified, { ...w.deps, peerBus: peer }) as { ok: boolean; message: string };
+    expect(outcome.ok).toBe(false);
+    expect(outcome.message).toContain("it sets NODE_OPTIONS");
+    expect(w.calls).not.toContain("restart");
+  });
+
+  it("a failed restart is recovered over the private socket too: previous package and unit back, the previous service running", () => {
     const w = buslessWorld(root());
     w.setRestart("failed");
-    const outcome = activateService(manager(w), w.verified, w.deps);
-    expect(outcome).toEqual({ ok: false, stopped: false,
+    expect(activateService(manager(w), w.verified, w.deps)).toEqual({ ok: false, stopped: false,
       message: "  ✗ Fleet restart failed. The previous package and loaded unit were restored; the previous service is running. The update did not succeed." });
     expect(w.deps.readFile(w.unitPath)).toBe(w.oldUnit);
     expect(w.version()).toBe("2.1.12");
     expect(w.state).toMatchObject({ active: "active", sub: "running", pid: 222 });
   });
 
-  it("with the bus: unchanged — no systemctl show, no show-environment", () => {
+  it("with the bus: unchanged — the private socket is never used", () => {
     const w = activationWorld(root());
     w.setRestart("restarted");
-    expect(activateService(manager(w), w.verified, w.deps)).toEqual({ ok: true, via: "restart" });
-    expect(w.calls.filter(c => /^systemctl .*show/.test(c))).toEqual([]);
+    const peer: PeerBus = () => { throw Error("the private socket must not be used when busctl reaches the bus"); };
+    expect(activateService(manager(w), w.verified, { ...w.deps, peerBus: peer })).toEqual({ ok: true, via: "restart" });
   });
 });
 
-describe("agend restart's guard without a bus (the update's restart goes through it)", () => {
-  const expected = { node: "/opt/node/bin/node", entry: "/pkg/dist/cli.js" };
-  const deps = { realpath: (p: string) => p, isExecutable: () => true };
-  it("proven from the unit file: allowed", () => {
-    expect(guardSystemd(busless().run, true, "com.agend.fleet", expected, deps, fileOf(UNIT))).toEqual({ ok: true });
+describe("the four reasons stay apart", () => {
+  const PATH = "/org/freedesktop/systemd1/unit/com_2eagend_2efleet_2eservice";
+  const unreachable: PeerBus = () => ({ status: 1, signal: null, stdout: "", stderr: "Failed to connect to /run/user/0/systemd/private: connect ENOENT /run/user/0/systemd/private\n" });
+  it("1. neither busctl nor the private socket reaches the manager", () => {
+    expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet", unreachable)).toEqual({ ok: false,
+      reason: "neither busctl nor the systemd --user manager's private socket can be reached (busctl exited 1: Failed to connect to bus: No such file or directory; exited 1: Failed to connect to /run/user/0/systemd/private: connect ENOENT /run/user/0/systemd/private)" });
   });
-  it("no unit file to prove against: refused, saying so", () => {
-    expect(guardSystemd(busless().run, true, "com.agend.fleet", expected, deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/no unit file was given/) });
+  it("2. systemd does not know the unit (LoadState=not-found), on either channel", () => {
+    const answer = (args: string[]): CommandResult => (args.includes("LoadUnit") ? json("o", [PATH]) : args.at(-1) === "LoadState" ? json("s", "not-found") : { status: 1, signal: null, stdout: "", stderr: "Call failed\n" });
+    expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet", (_u, args) => answer(args))).toEqual({ ok: false, reason: "systemd does not know com.agend.fleet.service" });
+    expect(readLoadedUnit((_c, args) => answer(args.slice(2)), true, "com.agend.fleet")).toEqual({ ok: false, reason: "systemd does not know com.agend.fleet.service" });
   });
-  it("a drop-in: refused", () => {
-    expect(guardSystemd(busless({ show: { DropInPaths: ["/x.conf"] } }).run, true, "com.agend.fleet", expected, deps, fileOf(UNIT)).ok).toBe(false);
+  it("3. the call is refused on a reachable channel: no fallback", () => {
+    const peerCalls: string[] = [];
+    const peer: PeerBus = (_u, args) => { peerCalls.push(args[0]!); return NO_BUS; };
+    expect(readLoadedUnit(() => ({ status: 1, signal: null, stdout: "", stderr: "Call failed: Access denied\n" }), true, "com.agend.fleet", peer))
+      .toEqual({ ok: false, reason: "busctl could not load com.agend.fleet.service (exited 1: Call failed: Access denied)" });
+    expect(peerCalls).toEqual([]);
+    const refusing: PeerBus = () => ({ status: 1, signal: null, stdout: "", stderr: "Call failed: org.freedesktop.DBus.Error.AccessDenied: no\n" });
+    expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet", refusing)).toEqual({ ok: false,
+      reason: "the D-Bus user bus cannot be reached (busctl exited 1: Failed to connect to bus: No such file or directory), and systemd could not load com.agend.fleet.service over its private socket (exited 1: Call failed: org.freedesktop.DBus.Error.AccessDenied: no)" });
+  });
+  it("4. reachable but not proven: the bus path's own reasons (here EnvironmentFile=)", () => {
+    const answers: Record<string, CommandResult> = {
+      ExecStart: json("a(sasbttttuii)", [["/n", ["/n", "/c", "fleet", "start"], false, 0, 0, 0, 0, 0, 0, 0]]),
+      EnvironmentFiles: json("a(sb)", [["/root/x.env", false]]),
+    };
+    const peer: PeerBus = (_u, args) => (args.includes("LoadUnit") ? json("o", [PATH]) : answers[args.at(-1)!] ?? { status: 1, signal: null, stdout: "", stderr: "Call failed\n" });
+    expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet", peer)).toEqual({ ok: false, reason: "it reads EnvironmentFile=, whose effect cannot be proven here" });
+  });
+  it("and with no private socket offered, a host without a bus is refused, saying so", () => {
+    expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet")).toEqual({ ok: false,
+      reason: "the D-Bus user bus cannot be reached (busctl exited 1: Failed to connect to bus: No such file or directory), and systemd's private socket was not tried" });
+  });
+});
+
+describe("runtime state and agend restart's guard over the private socket", () => {
+  const roots: string[] = [];
+  afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
+  const world = () => { const r = mkdtempSync(join(tmpdir(), "agend-busless-")); roots.push(r); return buslessWorld(r); };
+
+  it("readSystemdRuntime: the same evidence, a queued job included; none without a private socket", () => {
+    const w = world();
+    expect(readSystemdRuntime(w.deps.run, true, "com.agend.fleet", w.deps.peerBus)).toEqual({ active: "active", sub: "running", pid: 111, control: 0, job: 0, type: "notify", killMode: "mixed", sendSigkill: true });
+    w.state.job = 7;
+    expect(readSystemdRuntime(w.deps.run, true, "com.agend.fleet", w.deps.peerBus)?.job).toBe(7);
+    expect(readSystemdRuntime(w.deps.run, true, "com.agend.fleet")).toBeNull();
+  });
+
+  it("guardSystemd: allowed over the private socket, refused without one", () => {
+    const w = world();
+    w.setLoadedArgv([w.newNode, w.entry, "fleet", "start"]);       // the world's old Node went with the old package
+    const expected = { node: w.newNode, entry: w.entry };
+    const deps = { realpath: w.deps.realpath, isExecutable: w.deps.isExecutable };
+    expect(guardSystemd(w.deps.run, true, "com.agend.fleet", expected, deps, w.deps.peerBus)).toEqual({ ok: true });
+    expect(guardSystemd(w.deps.run, true, "com.agend.fleet", expected, deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/private socket was not tried/) });
   });
 });

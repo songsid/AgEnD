@@ -1,4 +1,5 @@
 import type { CommandResult } from "./update-install.js";
+import { peerUnreachable, type PeerBus } from "./systemd-peer-bus.js";
 
 /** Runtime evidence is independent of the definition on disk. Unknown is never stopped. */
 export interface SystemdRuntime {
@@ -16,7 +17,7 @@ export interface SystemdRuntime {
  * #1804: busctl could not reach the bus at all — no D-Bus user bus (a host without dbus-user-session, where systemctl
  * still reaches the manager through `$XDG_RUNTIME_DIR/systemd/private`, a peer socket busctl cannot use: it always sends
  * Hello(), which that socket answers with "Invalid request descriptor"), or no busctl to run. Only then do the readers
- * fall back to systemctl; any other busctl failure keeps its bus-path meaning.
+ * turn to the private socket (systemd-peer-bus.ts); any other busctl failure keeps its bus-path meaning.
  */
 export function busUnreachable(result: CommandResult): boolean {
   if (result.signal !== null) return false;
@@ -30,63 +31,56 @@ export function commandFailure(result: CommandResult): string {
   return `${result.signal ? `killed by ${result.signal}` : result.status === null ? "did not run" : `exited ${result.status}`}${said ? `: ${said}` : ""}`;
 }
 
+/** The D-Bus channel for one reader: busctl, or — only when busctl cannot reach a bus — the private socket. */
+export type SystemdChannel = { ok: true; call: (args: string[]) => CommandResult; objectPath: string } | { ok: false; reason: string };
+
 /**
- * `systemctl show <unit> --property=…` → each property's printed values (EnvironmentFiles prints one line per file, and
- * none at all when there is none). A non-zero exit means systemctl could not reach the manager: for a unit it does not
- * know, `show` still exits 0 with LoadState=not-found.
+ * #1804: load `name` (LoadUnit) over busctl; if busctl cannot reach a bus at all, over the manager's private socket
+ * through `peer` (systemdPeerBus), and every later read of this unit goes the same way. Each failure says which:
+ * neither reachable, the call refused on a reachable channel, or no private socket offered.
  */
-export function systemctlShow(run: (command: string, args: string[]) => CommandResult, user: boolean, name: string, properties: string[]):
-  { ok: true; values: Map<string, string[]> } | { ok: false; reason: string } {
-  const result = run("systemctl", [...(user ? ["--user"] : []), "show", name, `--property=${properties.join(",")}`]);
-  if (result.status !== 0 || result.signal !== null) return { ok: false, reason: `systemctl${user ? " --user" : ""} show ${commandFailure(result)}` };
-  const values = new Map<string, string[]>();
-  for (const line of result.stdout.split("\n")) {
-    if (line === "") continue;
-    const eq = line.indexOf("=");
-    const key = eq > 0 ? line.slice(0, eq) : "";
-    if (!properties.includes(key)) return { ok: false, reason: `systemctl show printed an unexpected line (${JSON.stringify(line.slice(0, 80))})` };
-    values.set(key, [...(values.get(key) ?? []), line.slice(eq + 1)]);
-  }
-  return { ok: true, values };
-}
-
-/** The same runtime evidence from `systemctl show`, for a host whose bus busctl cannot reach (#1804). */
-function readSystemdRuntimeWithoutBus(run: (command: string, args: string[]) => CommandResult, user: boolean, name: string): SystemdRuntime | null {
-  const shown = systemctlShow(run, user, name, ["ActiveState", "SubState", "MainPID", "ControlPID", "Job", "Type", "KillMode", "SendSIGKILL"]);
-  if (!shown.ok) return null;
-  const one = (key: string): string | null => { const v = shown.values.get(key); return v?.length === 1 ? v[0]! : null; };
-  const uint = (text: string | null): number | null => {
-    if (text === null || !/^(0|[1-9]\d{0,9})$/.test(text)) return null;
-    const n = Number(text);
-    return n <= 0xffffffff ? n : null;
-  };
-  const active = one("ActiveState"), sub = one("SubState"), type = one("Type"), killMode = one("KillMode"), sigkill = one("SendSIGKILL");
-  const pid = uint(one("MainPID")), control = uint(one("ControlPID"));
-  // systemd 249 prints `Job=` with no job and `Job=<id>` with one queued (never `Job=0`).
-  const jobText = one("Job");
-  const job = jobText === "" ? 0 : jobText !== null && jobText !== "0" ? uint(jobText) : null;
-  if (!active || !sub || !type || !killMode || (sigkill !== "yes" && sigkill !== "no") || pid === null || control === null || job === null) return null;
-  return { active, sub, pid, control, job, type, killMode, sendSigkill: sigkill === "yes" };
-}
-
-export function readSystemdRuntime(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string): SystemdRuntime | null {
+export function systemdChannel(run: (command: string, args: string[]) => CommandResult, user: boolean, name: string, peer?: PeerBus): SystemdChannel {
   const scope = user ? ["--user"] : [];
-  const name = unit.endsWith(".service") ? unit : `${unit}.service`;
-  const parse = (r: CommandResult, type: string): unknown => {
+  const loadUnit = ["call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "LoadUnit", "s", name];
+  const viaBusctl = (args: string[]) => run("busctl", [...scope, "--json=short", ...args]);
+  const objectPath = (r: CommandResult): string | null => {
+    if (r.status !== 0 || r.signal !== null) return null;
     try {
+      const parsed = JSON.parse(r.stdout) as { type?: unknown; data?: unknown };
+      const path = parsed.type === "o" && Array.isArray(parsed.data) && parsed.data.length === 1 ? parsed.data[0] : null;
+      return typeof path === "string" && path.startsWith("/org/freedesktop/systemd1/unit/") ? path : null;
+    } catch { return null; }
+  };
+  const viaBus = viaBusctl(loadUnit);
+  if (!busUnreachable(viaBus)) {
+    const path = objectPath(viaBus);
+    return path ? { ok: true, call: viaBusctl, objectPath: path } : { ok: false, reason: `busctl could not load ${name} (${commandFailure(viaBus)})` };
+  }
+  const bus = `the D-Bus ${user ? "user " : ""}bus cannot be reached (busctl ${commandFailure(viaBus)})`;
+  if (!peer) return { ok: false, reason: `${bus}, and systemd's private socket was not tried` };
+  const viaPeer = (args: string[]) => peer(user, args);
+  const loaded = viaPeer(loadUnit);
+  if (peerUnreachable(loaded)) return { ok: false, reason: `neither busctl nor the systemd${user ? " --user" : ""} manager's private socket can be reached (busctl ${commandFailure(viaBus)}; ${commandFailure(loaded)})` };
+  const path = objectPath(loaded);
+  return path ? { ok: true, call: viaPeer, objectPath: path } : { ok: false, reason: `${bus}, and systemd could not load ${name} over its private socket (${commandFailure(loaded)})` };
+}
+
+/** `peer`: the manager's private socket, for a host where busctl cannot reach a bus (#1804). */
+export function readSystemdRuntime(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, peer?: PeerBus): SystemdRuntime | null {
+  const name = unit.endsWith(".service") ? unit : `${unit}.service`;
+  let channel: SystemdChannel;
+  try { channel = systemdChannel(run, user, name, peer); } catch { return null; }
+  if (!channel.ok) return null;
+  const { call, objectPath } = channel;
+  const bus = (args: string[], type: string): unknown => {
+    try {
+      const r = call(args);
       if (r.status !== 0 || r.signal !== null) return null;
       const parsed = JSON.parse(r.stdout) as { type?: unknown; data?: unknown };
       return parsed.type === type ? parsed.data : null;
     } catch { return null; }
   };
-  const call = (args: string[]): CommandResult | null => { try { return run("busctl", [...scope, "--json=short", ...args]); } catch { return null; } };
-  const bus = (args: string[], type: string): unknown => { const r = call(args); return r && parse(r, type); };
-  const load = call(["call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "LoadUnit", "s", name]);
-  if (!load) return null;
-  if (busUnreachable(load)) { try { return readSystemdRuntimeWithoutBus(run, user, name); } catch { return null; } }
-  const path = parse(load, "o");
-  if (!Array.isArray(path) || path.length !== 1 || typeof path[0] !== "string" || !path[0].startsWith("/org/freedesktop/systemd1/unit/")) return null;
-  const prop = (iface: string, property: string, type: string) => bus(["get-property", "org.freedesktop.systemd1", path[0] as string, `org.freedesktop.systemd1.${iface}`, property], type);
+  const prop = (iface: string, property: string, type: string) => bus(["get-property", "org.freedesktop.systemd1", objectPath, `org.freedesktop.systemd1.${iface}`, property], type);
   const active = prop("Unit", "ActiveState", "s"), sub = prop("Unit", "SubState", "s");
   const job = prop("Unit", "Job", "(uo)");
   const type = prop("Service", "Type", "s"), killMode = prop("Service", "KillMode", "s");

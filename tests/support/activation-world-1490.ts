@@ -52,6 +52,7 @@ export function activationWorld(root: string) {
     if (property === "Environment") return json("as", args.includes("org.freedesktop.systemd1.Manager") ? managerEnv : ["PATH=/usr/bin:/bin"]);
     if (["EnvironmentFiles", "PassEnvironment", "UnsetEnvironment"].includes(property!)) return json("as", []);
     if (property === "NeedDaemonReload") return json("b", loaded !== readFileSync(unitPath, "utf8"));
+    if (property === "LoadState") return json("s", "loaded");
     if (property === "ActiveState") return json("s", state.active);
     if (property === "SubState") return json("s", state.sub);
     if (property === "MainPID") return json("u", state.pid);
