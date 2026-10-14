@@ -10,20 +10,18 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 - On **Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64**, AgEnD 2.2 brings its own Node 22.23.3 (`@songsid/agend-node-<os>-<cpu>`, installed with it) and runs on that, whatever Node is on your PATH. You do not need to upgrade Node yourself.
 - **Anywhere else** (musl Linux such as Alpine, 32-bit, other systems), AgEnD 2.2 needs Node **22.14 or newer** (or 23.6+, or 24+) on your PATH, and refuses to install on an older one.
 
-**Upgrade with `/update` in chat, or `agend update` on the host.**
-2.1.12's updater refreshes the service settings and restarts the fleet, so on a normal user-unit host this is all you need.
+**Upgrading from 2.1.12 on a built-in-Node platform (Linux glibc 2.28+, macOS 11+, x64 or arm64):** upgrade with `/update` in chat, or `agend update` on the host.
+2.1.12's updater refreshes the service settings and restarts the fleet on these platforms, so this is all you need.
 
-> **If the update fails:**
-> 2.1's updater removes the installed AgEnD *before* installing the new one. If the install then fails for any reason (AgEnD 2.2 refusing your host, a network or registry problem, a proxy), nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. If AgEnD 2.2 rejected the install, the message prints the recovery commands. For other failures (network, npm error), run these yourself:
+**Upgrading from 2.1.0–2.1.11, or from any 2.1.x on a platform without a built-in Node** (musl Linux, 32-bit, or a PATH Node below 22.14): use the [manual upgrade](#2-advanced-manual-upgrade) procedure below. Those older updaters and unsupported-Node cases are where "remove before install" fails most easily.
+
+> **If `/update` or `agend update` fails:**
+> 2.1's updater removes the installed AgEnD *before* installing the new one. If the install fails for any reason, nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. If AgEnD 2.2 rejected the install, its message includes recovery commands. For other failures (network, npm error), run these yourself — or see [section 7](#7-if-agend-update-from-21-already-failed) for the full recovery steps:
 > ```sh
-> npm install -g @songsid/agend@<2.2 version>   # put a version back
-> agend install                                   # as a service: rewrites and starts it
-> # or, without a service:
-> agend fleet start
+> npm install -g @songsid/agend@<2.2 version>
+> agend install    # rewrites and starts the service; run even if the fleet still answers
 > ```
 > Run `agend install` even if the fleet is still answering — it is running from deleted files and will not survive a restart.
->
-> **Root hosts on the `agend` system service** (not the user service): if the restart is refused, run `agend install` instead. The old fleet keeps running while you do.
 
 ## 2. Advanced: manual upgrade
 
