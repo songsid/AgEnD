@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import { canonicalCliEntry } from "./cli-entry.js";
 import {
   INTERPRETER_ENV, cwdDependentPath, launchdManagerEnvViolation, parseLaunchctlPrint, parsePlist, readLoadedUnit, sameJob,
-  type ActivationTuple, type TupleDeps,
+  type ActivationTuple, type TupleDeps, type UnitFileSource,
 } from "./service-activation.js";
 import type { CommandResult } from "./update-install.js";
 
@@ -97,9 +97,12 @@ export function judgeTuple(tuple: ActivationTuple, expected: ExpectedTuple, deps
   return { ok: true };
 }
 
-/** systemd: the LOADED unit (D-Bus, after any reload), and no reload pending. */
-export function guardSystemd(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath" | "isExecutable">): Judgement {
-  const loaded = readLoadedUnit(run, user, unit);
+/**
+ * systemd: the LOADED unit (D-Bus, after any reload), and no reload pending. `file` is the unit file, which proves the
+ * loaded unit on a host whose bus busctl cannot reach (#1804).
+ */
+export function guardSystemd(run: (command: string, args: string[]) => CommandResult, user: boolean, unit: string, expected: ExpectedTuple, deps: Pick<TupleDeps, "realpath" | "isExecutable">, file?: UnitFileSource): Judgement {
+  const loaded = readLoadedUnit(run, user, unit, file);
   if (!loaded.ok) return { ok: false, reason: `the loaded ${unit} cannot be read: ${loaded.reason}` };
   if (loaded.unit.needDaemonReload) return { ok: false, reason: `${unit} changed on disk and is not reloaded (a reload is pending or failed)` };
   const judged = judgeTuple(loaded.unit.tuple, expected, deps);

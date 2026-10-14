@@ -2147,7 +2147,8 @@ program
         }
       }
       if (filterCustom) console.log(`  ⚠ ${unitPath} sets its own CoredumpFilter; left as is. CoredumpFilter=0 keeps crash dumps to a few KB (#1113).`);
-      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps))) return;
+      const unitFile = unitPath ? { path: unitPath, readFile: (path: string) => { try { return readFileSync(path, "utf-8"); } catch { return null; } }, realpath: guardDeps.realpath } : undefined;
+      if (expectation.ok && refuses(guard.guardSystemd(captureRun, systemdTarget.user, systemdTarget.unit, expectation.expected, guardDeps, unitFile))) return;
       // Clears the failed state AND the start-limit counter (#1113:
       // StartLimitBurst=4 in 30min) for whichever unit this restart targets,
       // so an operator's restart is never refused by the limit.
