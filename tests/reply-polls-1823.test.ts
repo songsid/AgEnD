@@ -20,7 +20,7 @@ import type { ChannelConfig } from "../src/types.js";
 import { ReplyButtonStore, replyButtonCallback } from "../src/reply-buttons.js";
 import {
   POLL_CLOSED_CALLBACK, POLL_STATUS_CALLBACK, nextBallot, parsePoll, pollCounts, pollRemaining, pollRender, pollResultsText,
-  pollTickMs, pollVotersText, type PollBallot, type PollConfig,
+  pollTickMs, pollVoteNotice, pollVotersText, type PollBallot, type PollConfig,
 } from "../src/reply-polls.js";
 
 const dirs: string[] = [];
@@ -73,6 +73,13 @@ describe("the poll argument", () => {
 });
 
 describe("a ballot, the tally and what is shown", () => {
+  it("the voter's notice fits a Telegram toast (200 characters), however many long options are picked", () => {
+    const labels = Array.from({ length: 5 }, (_, i) => `${i}`.repeat(80));
+    const notice = pollVoteNotice(labels, [0, 1, 2, 3, 4]);
+    expect(notice.length).toBe(200);
+    expect(notice.endsWith("…")).toBe(true);
+    expect(pollVoteNotice(["Paris"], [0])).toBe("✓ Your vote: Paris");
+  });
   it("one choice: the click is the vote; the same option again changes nothing", () => {
     expect(nextBallot(null, 1, false)).toEqual({ options: [1], changed: true });
     expect(nextBallot([1], 2, false)).toEqual({ options: [2], changed: true });
@@ -244,12 +251,12 @@ interface Rec {
 }
 
 /** A platform-like adapter with polls; `ticks` makes it one that cannot count down by itself (Telegram). */
-function pollAdapter(id: string, rec: Rec, o: { ticks?: boolean; polls?: boolean; interval?: number } = {}): ChannelAdapter {
+function pollAdapter(id: string, rec: Rec, o: { ticks?: boolean; polls?: boolean; interval?: number; scope?: "chat" } = {}): ChannelAdapter {
   let n = 0;
   return {
     id, type: o.ticks ? "telegram" : "discord",
     supportsReplyButtons: true,
-    ...(o.polls === false ? {} : { supportsPolls: true, pollEditIntervalMs: o.interval ?? 2_000, ...(o.ticks ? { pollCountdownTicks: true } : {}) }),
+    ...(o.polls === false ? {} : { supportsPolls: true, pollEditIntervalMs: o.interval ?? 2_000, ...(o.ticks ? { pollCountdownTicks: true } : {}), ...(o.scope ? { pollRateScope: o.scope } : {}) }),
     sendText: async (chatId: string, text: string, opts: any) => {
       rec.sends.push({ chatId, text, opts });
       const mid = `msg-${++n}`;
@@ -262,15 +269,15 @@ function pollAdapter(id: string, rec: Rec, o: { ticks?: boolean; polls?: boolean
   } as unknown as ChannelAdapter;
 }
 
-function fleet(options: { dir?: string; ticks?: boolean; polls?: boolean; classic?: boolean } = {}) {
+function fleet(options: { dir?: string; ticks?: boolean; polls?: boolean; classic?: boolean; scope?: "chat"; interval?: number } = {}) {
   const dir = options.dir ?? scratch();
   const fm = new FleetManager(dir);
   fleets.push(fm);
   const any = fm as any;
   const rec: Rec = { sends: [], renders: [] };
-  const adapter = pollAdapter("dc", rec, { ticks: options.ticks, polls: options.polls });
+  const adapter = pollAdapter("dc", rec, { ticks: options.ticks, polls: options.polls, scope: options.scope, interval: options.interval });
   const channel = { id: "dc", type: "discord", mode: "topic", bot_token_env: "X", group_id: "guild", access: { mode: "locked", allowed_users: ["owner", "u2", "u3", "bot-self"], max_pending_codes: 0, code_expiry_minutes: 0 } } as unknown as ChannelConfig;
-  any.fleetConfig = { channels: [channel], defaults: {}, instances: { w: { working_directory: "/tmp", topic_id: "42", channel_id: "dc" } } };
+  any.fleetConfig = { channels: [channel], defaults: {}, instances: { w: { working_directory: "/tmp", topic_id: "42", channel_id: "dc" }, v: { working_directory: "/tmp", topic_id: "43", channel_id: "dc" } } };
   const world = new AdapterWorld("dc", adapter, new AccessManager(channel.access as any, join(dir, "access.json")), channel);
   world.botUserId = "bot-self";
   any.worlds.set("dc", world);
@@ -278,6 +285,7 @@ function fleet(options: { dir?: string; ticks?: boolean; polls?: boolean; classi
   if (options.classic) any.classicChannels = { getChannelIdByInstance: (name: string) => (name === "w" ? "room" : undefined), getAll: () => [], isCollab: () => false };
   const answers: any[] = [];
   any.instanceIpcClients.set("w", { send: (m: unknown) => { answers.push(m); return true; } });
+  any.instanceIpcClients.set("v", { send: (m: unknown) => { answers.push(m); return true; } });
   any.getInstanceIdle = () => true; any.clearCancelButton = () => {}; any.reactDone = () => {};
   any.deliverToInstance = vi.fn(async () => true);
   const sse: Array<{ event: string; data: any }> = [];
@@ -288,9 +296,9 @@ function fleet(options: { dir?: string; ticks?: boolean; polls?: boolean; classi
     c.deps.monotonic = () => Date.now();                    // fake timers drive Date; the throttle reads this
     return c;
   };
-  const reply = async (args: Record<string, unknown>) => {
+  const reply = async (args: Record<string, unknown>, instance = "w") => {
     const before = answers.length;
-    await any.handleOutboundFromInstance("w", { tool: "reply", args: { chat_id: "guild", ...args }, fleetRequestId: `r${before}` });
+    await any.handleOutboundFromInstance(instance, { tool: "reply", args: { chat_id: "guild", ...args }, fleetRequestId: `r${before}` });
     await vi.waitFor(() => expect(answers.length).toBeGreaterThan(before));
     return answers[answers.length - 1];
   };
@@ -428,6 +436,14 @@ describe("voting", () => {
     expect((await h.vote(0)).acks).toEqual(["This poll is closed."]);
     expect((h.any.replyButtonsStore as ReplyButtonStore).ballots(setIdOf(h))).toEqual([]);
   });
+  it("a click in the instant between the send and the bind is told to try again, not that the poll is closed", async () => {
+    const h = fleet();
+    const c = h.ctl();
+    const { id } = c.prepare({ instance: "w", adapterId: "dc", chatId: "guild", threadId: "42" }, BUTTONS, POLL);
+    const acks: Array<string | undefined> = [];
+    expect(c.vote(id, "dc:owner", "alice", 0, (n?: string) => acks.push(n))).toMatchObject({ ok: false });
+    expect(acks).toEqual(["This poll is still being posted — try again in a moment."]);
+  });
   it("the status button and a closed poll's options answer without counting anything", async () => {
     const h = fleet();
     h.ctl();
@@ -480,6 +496,34 @@ describe("redraws stay inside the platform's edit limits", () => {
     const [a, b] = h.rec.renders;
     expect([a!.messageId, b!.messageId]).toEqual(["msg-1-last", "msg-2-last"]);
     expect(b!.at - a!.at).toBe(2_000);
+  });
+  it("Telegram: polls in two topics of one group share the group's interval (its edit limit is per chat)", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const h = fleet({ scope: "chat", interval: 3_000 });
+    h.ctl();
+    await h.reply({ text: "Q1?", buttons: BUTTONS, poll: { seconds: 60 } }, "w");
+    const first = { cb: h.pollCbs(), msg: `msg-${h.rec.sends.length}-last` };
+    await h.reply({ text: "Q2?", buttons: BUTTONS, poll: { seconds: 60 } }, "v");
+    expect(h.rec.sends.map(s => s.opts.threadId)).toEqual(["42", "43"]);
+    await h.any.dispatchAdapterCallback({ callbackData: first.cb[0], chatId: "guild", threadId: "42", messageId: first.msg, userId: "owner", username: "a", ack: () => {} }, "dc", h.adapter);
+    await h.vote(0, "owner", "a", { threadId: "43" });
+    await vi.advanceTimersByTimeAsync(10_000);
+    const [a, b] = h.rec.renders;
+    expect([a!.threadId, b!.threadId]).toEqual(["42", "43"]);
+    expect(b!.at - a!.at).toBe(3_000);
+  });
+  it("Discord: polls in two channels do not wait for each other (each has its own bucket)", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const h = fleet();
+    h.ctl();
+    await h.reply({ text: "Q1?", buttons: BUTTONS, poll: { seconds: 60 } }, "w");
+    const first = { cb: h.pollCbs(), msg: `msg-${h.rec.sends.length}-last` };
+    await h.reply({ text: "Q2?", buttons: BUTTONS, poll: { seconds: 60 } }, "v");
+    await h.any.dispatchAdapterCallback({ callbackData: first.cb[0], chatId: "guild", threadId: "42", messageId: first.msg, userId: "owner", username: "a", ack: () => {} }, "dc", h.adapter);
+    await h.vote(0, "owner", "a", { threadId: "43" });
+    await vi.advanceTimersByTimeAsync(10_000);
+    const [a, b] = h.rec.renders;
+    expect(b!.at - a!.at).toBe(0);
   });
   it("a platform that cannot count down is redrawn as time passes: every 5 s in the last two minutes", async () => {
     vi.useFakeTimers({ now: 1_000_000 });
@@ -564,6 +608,36 @@ describe("the close: shown once, results to the agent exactly once — across a 
     release();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(order).toEqual(["open:start", "open:done", "closed"]);           // the tick's redraw saw it closed
+  });
+  it("#1824 review P1: edits slower than the interval still go one at a time, and the closed one only after every open one", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const h = fleet();
+    h.ctl();
+    const log: string[] = [];
+    let active = 0, maxActive = 0, n = 0;
+    let releaseFirst!: () => void;
+    (h.adapter as any).renderPoll = (_c: string, _m: string, _t: string | undefined, poll: any) => {
+      const tag = `${poll.closed ? "closed" : "open"}#${++n}`;
+      active++; maxActive = Math.max(maxActive, active); log.push(`${tag}:start`);
+      const done = () => { active--; log.push(`${tag}:done`); };
+      // The first edit sticks until released; the next ones take 8 s each (a channel queued behind its rate limit).
+      return new Promise<void>(r => { if (n === 1) releaseFirst = () => { done(); r(); }; else setTimeout(() => { done(); r(); }, 8_000); });
+    };
+    await h.reply({ text: "Q?", buttons: BUTTONS, poll: { seconds: 20 } });
+    await h.vote(0, "owner");
+    await vi.advanceTimersByTimeAsync(2_100);
+    await h.vote(1, "u2");                                                 // its redraw waits for the stuck one
+    await vi.advanceTimersByTimeAsync(2_100);
+    await h.vote(2, "u3");                                                 // …and so does this one
+    await vi.advanceTimersByTimeAsync(1_000);
+    releaseFirst();                                                         // both waiters wake on the same edit
+    await vi.advanceTimersByTimeAsync(40_000);                              // the deadline comes while one is out
+    expect(maxActive).toBe(1);
+    const closedStart = log.indexOf(log.find(l => l.startsWith("closed"))!);
+    const lastOpenDone = Math.max(...log.map((l, i) => (l.startsWith("open") && l.endsWith(":done") ? i : -1)));
+    expect(closedStart).toBeGreaterThan(lastOpenDone);
+    expect(log.filter(l => l.startsWith("closed") && l.endsWith(":start"))).toHaveLength(1);
+    expect(log.at(-1)).toMatch(/^closed#\d+:done$/);
   });
   it("show_voters: one follow-up under the poll names who picked what; without it, none", async () => {
     vi.useFakeTimers({ now: 1_000_000 });
@@ -654,6 +728,14 @@ describe("the close: shown once, results to the agent exactly once — across a 
   });
 });
 
+describe("the results notice names its chat, but has no platform message to react to (#1824 review)", () => {
+  it("channelStatus: none for a notice from AgEnD; an ordinary message keeps its status holder", async () => {
+    const { channelStatus } = await import("../src/daemon.js");
+    expect(channelStatus({ chat_id: "guild", thread_id: "42", message_id: "system-notice-1", source: "agend-system" })).toBeUndefined();
+    expect(channelStatus({ chat_id: "guild", thread_id: "42", message_id: "m1", source: "discord" })).toEqual({ chatId: "guild", messageId: "m1", threadId: "42" });
+  });
+});
+
 describe("where there is no fleet, a poll is refused (its votes and results live in the fleet)", () => {
   it("the standalone daemon refuses it before sending; buttons alone still go out as text options", async () => {
     const { Daemon } = await import("../src/daemon.js");
@@ -719,7 +801,7 @@ describe("Telegram", () => {
   }
   it("posted: the options, then an inert status row with the time left; redrawn by editing the keyboard", async () => {
     const { adapter, calls } = telegram();
-    expect([adapter.supportsPolls, adapter.pollCountdownTicks, adapter.pollEditIntervalMs]).toEqual([true, true, 3_000]);
+    expect([adapter.supportsPolls, adapter.pollCountdownTicks, adapter.pollEditIntervalMs, adapter.pollRateScope]).toEqual([true, true, 3_000, "chat"]);
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     await adapter.sendText("-100", "Capital?", { threadId: "5", replyPoll: render(false) });
     expect(calls[0]!.opts.reply_markup.inline_keyboard).toEqual([
@@ -761,7 +843,7 @@ describe("Discord", () => {
   it("posted: a deadline line Discord counts down itself, the options, and a disabled status button", async () => {
     const { adapter, sends } = discord();
     const generic: ChannelAdapter = adapter;
-    expect([generic.supportsPolls, generic.pollCountdownTicks, generic.pollEditIntervalMs]).toEqual([true, undefined, 2_000]);
+    expect([generic.supportsPolls, generic.pollCountdownTicks, generic.pollEditIntervalMs, generic.pollRateScope]).toEqual([true, undefined, 2_000, undefined]);
     const sent = await adapter.sendText("guild-1", "Capital?", { threadId: "chan", replyPoll: render(false) });
     expect(sends[0].content).toBe("Capital?\n\n⏳ Closes <t:1030:R>");
     expect(sends[0].rows.map((r: any) => r.components.map((c: any) => [c.custom_id, c.label, c.disabled ?? false]))).toEqual([

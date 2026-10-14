@@ -182,7 +182,8 @@ export class ReplyButtonsController {
   vote(id: string, voter: string, name: string, index: number, ack?: (notice?: string) => void): { ok: boolean; options?: number[]; error?: string } {
     const result = this.deps.store.vote(id, voter, name, index, this.deps.now());
     if (!result.ok) {
-      const error = t("poll.closed");
+      // Sent but not yet bound to its message (a click in that instant): not closed — try again in a moment.
+      const error = result.reason === "pending" ? t("poll.not_ready") : t("poll.closed");
       ack?.(error);
       if (result.reason === "closed") void this.sweep();                 // a deadline the timer has not reached yet
       return { ok: false, error };
@@ -306,9 +307,9 @@ export class ReplyButtonsController {
     const fresh = this.deps.store.get(set.id);
     if (!fresh?.poll || fresh.closedAt === null || fresh.settledAt !== null || fresh.messageId === null) return;
     this.deps.store.markSettled(fresh.id, this.deps.now());               // first: a concurrent settle does nothing
-    const inflight = this.pace.get(fresh.id)?.inflight;
-    this.dropPace(fresh.id);
-    if (inflight) await inflight;                                           // an open redraw lands before the closed one
+    const pace = this.pace.get(fresh.id);
+    this.dropPace(fresh.id);                                                 // a redraw waiting to go now stands down
+    while (pace?.inflight) await pace.inflight;                              // the one going lands before the closed one
     this.deps.publish(fresh.instance, this.view(fresh));
     const adapter = this.deps.adapterFor(fresh.adapterId);
     if (!adapter?.renderPoll) return;
@@ -335,8 +336,11 @@ export class ReplyButtonsController {
     const adapter = this.deps.adapterFor(set.adapterId);
     // Only the web chat (no platform message to edit): its pages are told as often as once a second.
     const interval = adapter ? adapter.pollEditIntervalMs ?? DEFAULT_POLL_EDIT_INTERVAL_MS : WEB_POLL_PUBLISH_MS;
-    const chat = `${set.adapterId}\u0000${set.chatId}\u0000${set.threadId}`;
+    // The platform's limit is per chat (Telegram: the whole group, its topics included) or per thread (Discord: each
+    // channel or thread has its own bucket) — the adapter says which (#1824 review).
+    const chat = adapter?.pollRateScope === "chat" ? `${set.adapterId}\u0000${set.chatId}` : `${set.adapterId}\u0000${set.chatId}\u0000${set.threadId}`;
     const now = this.deps.monotonic();
+    for (const [k, free] of this.chatNextFree) if (free <= now) this.chatNextFree.delete(k);   // past slots: forgotten
     const slot = Math.max(now, this.chatNextFree.get(chat) ?? 0, pace.lastAt ? pace.lastAt + interval : 0);
     this.chatNextFree.set(chat, slot + interval);
     pace.timer = this.deps.setTimer(() => { pace.timer = null; void this.redraw(set.id); }, slot - now);
@@ -347,7 +351,9 @@ export class ReplyButtonsController {
     if (!pace || !pace.dirty) return;
     pace.dirty = false;
     pace.lastAt = this.deps.monotonic();
-    if (pace.inflight) await pace.inflight;                                // one edit at a time per poll, in order
+    // One edit at a time per poll, in order: every waiter re-checks after waking (two woken by the same edit must not
+    // both go — #1824 review).
+    while (pace.inflight) await pace.inflight;
     if (this.pace.get(id) !== pace) return;                                // the close took it over meanwhile
     const set = this.deps.store.get(id);
     if (!set?.poll || set.closedAt !== null || set.messageId === null) return;   // closing draws its own final state

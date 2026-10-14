@@ -129,9 +129,12 @@ export function pollTickMs(remainingMs: number): number {
   return 5 * 60_000;
 }
 
-/** What a voter is told, privately, after a click. */
+/** Telegram's limit on a click's toast (answerCallbackQuery text); Discord's ephemeral reply allows more. */
+export const POLL_NOTICE_MAX = 200;
+/** What a voter is told, privately, after a click — cut to fit a Telegram toast (several long options can exceed it). */
 export function pollVoteNotice(labels: readonly string[], options: readonly number[]): string {
-  return options.length ? t("poll.voted", options.map(i => labels[i] ?? "?").join(", ")) : t("poll.withdrawn");
+  const notice = options.length ? t("poll.voted", options.map(i => labels[i] ?? "?").join(", ")) : t("poll.withdrawn");
+  return notice.length > POLL_NOTICE_MAX ? `${notice.slice(0, POLL_NOTICE_MAX - 1)}…` : notice;
 }
 
 /**
