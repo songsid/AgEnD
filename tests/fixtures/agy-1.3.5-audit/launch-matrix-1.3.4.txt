@@ -1,0 +1,128 @@
+######## 134A
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Medium)
+? for shortcuts                                                                                                    Gemini 3.8 Flash · medium
+common.go:338] failed to apply model override: failed to resolve model: model gemini-3.8-flash-medium is not recognized as a known model or custom model in settings
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (Medium)"
+model_resolver.go:107] Resolving model gemini-3.8-flash-medium
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134B
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (High)
+? for shortcuts                                                                                                      Gemini 3.8 Flash · high
+common.go:338] failed to apply model override: failed to resolve model: model Gemini 3.8 Flash (High) is not recognized as a known model or custom model in settings
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (High)"
+model_resolver.go:107] Resolving model Gemini 3.8 Flash (High)
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134C
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Medium)
+⚠ Warning
+ ⎿  model Gemini 3.8 Flash is not recognized as a known model or custom model in settings. Using "Gemini 3.8 Flash (Medium)" instead.
+? for shortcuts                                                                                                    Gemini 3.8 Flash · medium
+common.go:338] failed to apply model override: failed to resolve model: model Gemini 3.8 Flash is not recognized as a known model or custom model in settings
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (Medium)"
+model_config_manager.go:80] Failed to resolve model flag Gemini 3.8 Flash: model Gemini 3.8 Flash is not recognized as a known model or custom model in settings
+model_resolver.go:107] Resolving model Gemini 3.8 Flash
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134D
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Medium)
+⚠ Warning
+ ⎿  --effort is not supported for model "Gemini 3.8 Flash". Using "Gemini 3.8 Flash (Medium)" instead.
+? for shortcuts                                                                                                    Gemini 3.8 Flash · medium
+common.go:338] failed to apply model override: --effort is not supported for model "Gemini 3.8 Flash"
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (Medium)"
+model_config_manager.go:80] Failed to resolve model flag Gemini 3.8 Flash: --effort is not supported for model "Gemini 3.8 Flash"
+model_resolver.go:107] Resolving model Gemini 3.8 Flash
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134E
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Medium)
+⚠ Warning
+ ⎿  --model gemini-3.8-flash-medium conflicts with --effort=high. Using "Gemini 3.8 Flash (Medium)" instead.
+? for shortcuts                                                                                                    Gemini 3.8 Flash · medium
+common.go:338] failed to apply model override: --effort is not supported for model "gemini-3.8-flash-medium"
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (Medium)"
+model_config_manager.go:68] Failed to resolve model flag "gemini-3.8-flash-medium": --model gemini-3.8-flash-medium conflicts with --effort=high
+model_resolver.go:107] Resolving model gemini-3.8-flash-medium
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134F
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)
+⚠ Warning
+ ⎿  --effort is not supported for model "Gemini 3.8 Flash (High)". Using "Gemini 3.8 Flash (Low)" instead.
+? for shortcuts                                                                                                       Gemini 3.8 Flash · low
+common.go:338] failed to apply model override: --effort is not supported for model "Gemini 3.8 Flash (High)"
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (Low)"
+model_config_manager.go:85] Failed to resolve model flag Gemini 3.8 Flash (High): --effort is not supported for model "Gemini 3.8 Flash (High)"
+model_resolver.go:107] Resolving model Gemini 3.8 Flash (High)
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134G
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (High)
+⚠ Warning
+ ⎿  model Gemini 3.5 Flash (High) is not recognized as a known model or custom model in settings. Using "Gemini 3.8 Flash (High)" instead.
+? for shortcuts                                                                                                      Gemini 3.8 Flash · high
+common.go:338] failed to apply model override: failed to resolve model: model Gemini 3.5 Flash (High) is not recognized as a known model or custom model in settings
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (High)"
+model_config_manager.go:80] Failed to resolve model flag Gemini 3.5 Flash (High): model Gemini 3.5 Flash (High) is not recognized as a known model or custom model in settings
+model_resolver.go:107] Resolving model Gemini 3.5 Flash (High)
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134H
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Claude Sonnet 5.5
+⚠ Warning
+ ⎿  model gemini-3.5-flash-high is not recognized as a known model or custom model in settings. Using "Claude Sonnet 5.5" instead.
+? for shortcuts                                                                                                            Claude Sonnet 5.5
+common.go:338] failed to apply model override: failed to resolve model: model gemini-3.5-flash-high is not recognized as a known model or custom model in settings
+model_config_manager.go:340] Propagating selected model override to backend: label="Claude Sonnet 5.5"
+model_config_manager.go:80] Failed to resolve model flag gemini-3.5-flash-high: model gemini-3.5-flash-high is not recognized as a known model or custom model in settings
+model_resolver.go:107] Resolving model gemini-3.5-flash-high
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134J
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      GPT-OSS 120B (Medium)
+⚠ Warning
+ ⎿  --effort is not supported for model "Gemini 3.8 Flash". Using "GPT-OSS 120B (Medium)" instead.
+? for shortcuts                                                                                                        GPT-OSS 120B (Medium)
+common.go:338] failed to apply model override: --effort is not supported for model "Gemini 3.8 Flash"
+model_config_manager.go:340] Propagating selected model override to backend: label="GPT-OSS 120B (Medium)"
+model_config_manager.go:80] Failed to resolve model flag Gemini 3.8 Flash: --effort is not supported for model "Gemini 3.8 Flash"
+model_resolver.go:107] Resolving model Gemini 3.8 Flash
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134K
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      GPT-OSS 120B (Medium)
+⚠ Warning
+ ⎿  --effort is not supported for model "claude-opus-5-5". Using "GPT-OSS 120B (Medium)" instead.
+? for shortcuts                                                                                                        GPT-OSS 120B (Medium)
+common.go:338] failed to apply model override: --effort is not supported for model "claude-opus-5-5"
+model_config_manager.go:340] Propagating selected model override to backend: label="GPT-OSS 120B (Medium)"
+model_config_manager.go:85] Failed to resolve model flag claude-opus-5-5: --effort is not supported for model "claude-opus-5-5"
+model_resolver.go:107] Resolving model claude-opus-5-5
+resolver.go:111] Model resolved via default
+settings.model= None
+######## 134I
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (High)
+? for shortcuts                                                                                                      Gemini 3.8 Flash · high
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (High)"
+settings.model= Gemini 3.8 Flash (High)
+######## 134L
+ ▄▀▀▄        Antigravity CLI 1.3.4
+ ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)
+⚠ Warning
+ ⎿  "Gemini 3.5 Flash (High)" is no longer available. Using "Gemini 3.8 Flash (Low)".
+? for shortcuts                                                                                                       Gemini 3.8 Flash · low
+model_config_manager.go:340] Propagating selected model override to backend: label="Gemini 3.8 Flash (Low)"
+settings.model= Gemini 3.5 Flash (High)

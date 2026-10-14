@@ -100,11 +100,11 @@ describe("the gate", () => {
   const helpRun = (help: string) => () => help;
   it("passes the flag when the help lists it and the level is one it takes", () => {
     const bin = fakeBinary("x", "");
-    expect(flagEffort("claude-code", "high", bin, helpRun(CLAUDE_HELP))).toEqual({ arg: " --effort high", note: null });
+    expect(flagEffort("claude-code", "high", bin, helpRun(CLAUDE_HELP))).toEqual({ arg: " --effort high", note: null, level: "high" });
     resetCliHelpCache();
-    expect(flagEffort("antigravity", "MAX ", bin, helpRun(AGY_HELP))).toEqual({ arg: " --effort max", note: null });
+    expect(flagEffort("antigravity", "MAX ", bin, helpRun(AGY_HELP))).toEqual({ arg: " --effort max", note: null, level: "max" });
     resetCliHelpCache();
-    expect(flagEffort("grok", "medium", bin, helpRun(GROK_HELP))).toEqual({ arg: " --reasoning-effort medium", note: null });
+    expect(flagEffort("grok", "medium", bin, helpRun(GROK_HELP))).toEqual({ arg: " --reasoning-effort medium", note: null, level: "medium" });
   });
 
   it("nothing, with a note, when the version lacks the flag, its help cannot be read, or lists no levels", () => {

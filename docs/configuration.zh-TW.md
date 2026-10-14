@@ -300,7 +300,7 @@ templates:
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | 所有 backend（含 Antigravity）的預設通訊模式為 MCP；`"cli"` 改用 `agend-agent` HTTP 指令，不啟動 MCP server |
 | `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（29 個）、`minimal`（9 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | 頻道進度泡泡中的工具活動：`standard` 只列語意標籤、不含 shell 參數；`verbose` 加上截短的命令預覽。預設關閉，啟用後會向頻道顯示活動 |
-| `effort` | string | — | 預設推理強度（`low`／`medium`／`high`／`xhigh`／`max`，依 backend 限制）。每次啟動（包括接續對話的啟動）都會在 CLI 接受時傳入：`--effort`（claude-code、kiro-cli、antigravity）、`--reasoning-effort`（grok、muse）、`-c model_reasoning_effort`（codex）。codex、claude-code、grok 和 antigravity 只有在已安裝版本的 `--help` 列出這個參數、且等級是它接受的（codex：模型目錄列出的等級）時才會傳；否則 instance 用 CLI 自己的設定啟動，並在紀錄分頁說明原因。執行中可用 `/effort` 覆寫 |
+| `effort` | string | — | 預設推理強度（`low`／`medium`／`high`／`xhigh`／`max`，依 backend 限制）。每次啟動（包括接續對話的啟動）都會在 CLI 接受時傳入：`--effort`（claude-code、kiro-cli、antigravity）、`--reasoning-effort`（grok、muse）、`-c model_reasoning_effort`（codex）。codex、claude-code、grok 和 antigravity 只有在已安裝版本的 `--help` 列出這個參數、且等級是它接受的（codex：模型目錄列出的等級）時才會傳；否則 instance 用 CLI 自己的設定啟動，並在紀錄分頁說明原因。antigravity 的模型清單是每個等級各一個模型，所以推理強度會選那個等級的模型（`gemini-3.8-flash-medium` 加 `high` 會以 `gemini-3.8-flash-high` 啟動），`--effort` 不會和 `--model` 一起傳；模型沒有的等級就用設定的模型啟動、不帶推理強度。執行中可用 `/effort` 覆寫 |
 | `backend_options` | object | — | 以 backend 名稱為鍵的選項，如 `{ codex: { provider: "glm" } }`；`credential_profile` 見下方帳號隔離章節 |
 | `terminal.enabled` | boolean | `true` | 啟用邏輯終端大小；`false` 固定為相容用的 80×24 |
 | `terminal.columns` | number | `120` | 啟用時的寬度；整數 `80`–`300` |

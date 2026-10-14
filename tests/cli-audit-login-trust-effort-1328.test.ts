@@ -237,7 +237,9 @@ describe("agy: effort levels from the binary's own --help", () => {
       }
     });
 
-    it("past the CLI env TTL the cache is not read, and a later failed help does not revive it", async () => {
+    // #1825 review: past the TTL the levels still describe the binary the probe ran, while that same file is
+    // installed; once it is replaced they are not read, and a later failed help does not revive them.
+    it("past the CLI env TTL: read while the probed file is installed; not once it is replaced, nor revived", async () => {
       const { CLI_ENV_TTL_MS } = await import("../src/backend/types.js");
       vi.stubEnv("AGEND_HOME", scratch());
       vi.useFakeTimers({ toFake: ["Date"] });
@@ -248,8 +250,10 @@ describe("agy: effort levels from the binary's own --help", () => {
       vi.setSystemTime(t0 + CLI_ENV_TTL_MS - 1);
       expect(agyEffortLevels()).toEqual(FIVE);
       vi.setSystemTime(t0 + CLI_ENV_TTL_MS);
+      expect(agyEffortLevels()).toEqual(FIVE);                                          // the same file
+      const replaced = fakeAgy(dir, null, "1.3.1");                                       // another file at that path
       expect(agyEffortLevels()).toEqual(THREE);
-      await probe(fakeAgy(dir, null, "1.3.1"));                                         // same version, but stale
+      await probe(replaced);                                                              // same version, help failed
       expect(agyEffortLevels()).toEqual(THREE);
     });
   });

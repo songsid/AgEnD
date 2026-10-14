@@ -16884,7 +16884,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** How this instance's backend applies an effort change. */
   effortStrategyFor(instanceName: string): "runtime" | "restart" | "unsupported" {
     try {
-      const { strategy, levels } = readEffortMetadata(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      const { strategy, levels } = this.instanceEffortMetadata(instanceName);
       return strategy !== "unsupported" && levels.length > 0 ? strategy : "unsupported";
     } catch { return "unsupported"; }
   }
@@ -16892,9 +16892,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** Effort levels this instance's backend actually accepts (empty = unsupported). */
   effortLevelsFor(instanceName: string): string[] {
     try {
-      const { strategy, levels } = readEffortMetadata(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      const { strategy, levels } = this.instanceEffortMetadata(instanceName);
       return strategy === "unsupported" ? [] : levels;
     } catch { return []; }
+  }
+
+  /** The instance's backend's effort metadata; agy's levels are its model's (#1825), the one the instance runs. */
+  private instanceEffortMetadata(instanceName: string) {
+    const backend = this.backendNameForInstance(instanceName);
+    let model: string | null = null;
+    if (backend === "antigravity") {
+      const resolved = this.resolveInstanceModel(instanceName);
+      model = resolved.source === "unresolved" ? null : resolved.model;
+    }
+    return readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
   }
 
   /** Configured effort for an instance: per-instance, else fleet default, else none. */

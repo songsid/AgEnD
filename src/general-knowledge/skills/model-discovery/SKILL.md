@@ -67,7 +67,10 @@ Underlying commands, if you need them by hand:
 **antigravity: keep the effort suffix.** The suffix is part of the selectable id,
 not decoration — the same model at two effort levels is two different ids. Take
 the id from `list_models` (e.g. `gemini-3.6-flash-high`), not the display label
-the TUI shows.
+the TUI shows. With an `effort` set, AgEnD launches that level's id instead
+(`gemini-3.8-flash-medium` + `high` runs `gemini-3.8-flash-high`). A level the model
+lacks launches the configured id without it. A name agy does not list does not fail:
+agy starts on **another model**, with a warning in its pane.
 
 **Pass-through: AgEnD does not gate model names.** An unknown id is warned about,
 then handed to the CLI anyway. So a name missing from `list_models` may still be

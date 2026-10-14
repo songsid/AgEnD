@@ -1,5 +1,5 @@
-import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels } from "./effort-metadata.js";
-import { flagEffort } from "./launch-effort.js";
+import { CANONICAL_EFFORT, EFFORT_CAPABILITIES, agyEffortLevels, readAgyCliEnv } from "./effort-metadata.js";
+import { flagEffort, readHelpText, resolveAgyLaunch } from "./launch-effort.js";
 import { dirname, join } from "node:path";
 import { ensureInstanceDir } from "../private-dir.js";
 import { homedir } from "node:os";
@@ -23,6 +23,7 @@ import {
   type ErrorPattern,
   type RuntimeDialog,
   type StartupDialog,
+  cliBinaryIdentity,
   resolveBinary,
   shellQuote,
   warnIfModelMismatch,
@@ -79,6 +80,10 @@ const AGY_WORKING_ROW_ABOVE_COMPOSER = new RegExp(
  *     ↑/↓ Navigate · enter Confirm
  *                                                   Gemini 3.8 Flash · high
  *
+ * The row under the hint is agy's status: the model, right-aligned ("Gemini 3.8 Flash · high", or "GPT-OSS 120B
+ * (Medium)" for a model without effort levels), or — under AgEnD's own statusLine hook, which every launch enables —
+ * what that hook prints, "Context 0% used", at column 0 (#1825, captured from 1.3.4 and 1.3.5).
+ *
  * "yes": the prompt is the live screen and the one cursor is on "Yes, I trust this folder"; "other": it is the live
  * screen but the cursor is elsewhere, missing or doubled; null: not the live screen (not present, or something other
  * than its own hint/status rows follows the options — a quoted copy in a conversation).
@@ -92,7 +97,11 @@ export function agyTrustDialogState(pane: string): "yes" | "other" | null {
   const yes = below.findIndex(row => /^[ \t]*(?:\S[ \t]+)?Yes, I trust this folder$/.test(row));
   if (yes < 0 || yes > 2 || !/^[ \t]*(?:\S[ \t]+)?No, exit$/.test(below[yes + 1] ?? "")) return null;
   const tail = below.slice(yes + 2);
-  if (tail.length > 2 || !tail.every(row => /Navigate|Confirm|·/.test(row))) return null;
+  // The key hint, then at most the status row — which, when it is the right-aligned model or AgEnD's hook text, is the
+  // pane's last row (#1825 review: a row like that anywhere else is not agy's status).
+  const hint = (row: string) => /Navigate|Confirm|·/.test(row);
+  const status = (row: string) => hint(row) || /^[ \t]{20,}\S/.test(row) || /^[ \t]*Context \d+% used$/.test(row);
+  if (tail.length > 2 || !tail.every((row, i) => (i === tail.length - 1 ? status(row) : hint(row)))) return null;
   const cursorOn = (row: string) => /^[ \t]*[>❯›][ \t]/.test(row);
   return cursorOn(below[yes]!) && !cursorOn(below[yes + 1]!) ? "yes" : "other";
 }
@@ -163,15 +172,16 @@ export class AntigravityBackend implements CliBackend {
       : "";
     let cmd = `${prefix}${this.binaryPath} --dangerously-skip-permissions`;
     if (!config.skipResume) cmd += " --continue";
-    if (config.model) {
-      warnIfModelMismatch("antigravity", config.model);
-      // agy may expose human-readable model names containing spaces/parens.
-      cmd += ` --model ${shellQuote(config.model)}`;
-    }
+    if (config.model) warnIfModelMismatch("antigravity", config.model);
     // #1811: the configured effort, where this agy takes it (1.0.x has no --effort; launch-effort.ts); else a quiet note.
     const effort = flagEffort("antigravity", config.effort, this.binaryPath);
-    if (effort.arg) cmd += effort.arg;
-    this.quietLaunchNotes = effort.note ? [effort.note] : [];
+    // #1825: with an effort, the model is the catalog's variant for that level; never `--model` + another `--effort`.
+    const env = effort.level ? readAgyCliEnv(this.agendHome, this.binaryPath) : null;
+    const launch = resolveAgyLaunch(config.model || undefined, effort.level ?? null, env?.models ?? null, env?.currentModel ?? null);
+    // agy may expose human-readable model names containing spaces/parens.
+    if (launch.model) cmd += ` --model ${shellQuote(launch.model)}`;
+    if (launch.effort) cmd += ` --effort ${launch.effort}`;
+    this.quietLaunchNotes = [effort.note, launch.note].filter((note): note is string => !!note);
     return cmd;
   }
 
@@ -475,10 +485,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
     // and the cache keeps the previous levels only for the same version (persistCliEnvProbeResult).
     let effortLevels: string[] | undefined;
     try {
-      const help = execFileSync(this.binaryPath, ["--help"], { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      // agy prints its usage to stderr (#1825); readHelpText takes it from there.
+      const help = readHelpText(this.binaryPath);
       effortLevels = parseAgyEffortLevels(help) ?? [];
     } catch { /* no help → previous value for the same version, else the fallback */ }
-    return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}) };
+    // The file this probe ran: its catalog and levels describe that binary while it stays installed (#1825 review).
+    const binary = cliBinaryIdentity(this.binaryPath) ?? undefined;
+    return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}), ...(binary ? { binary } : {}) };
   }
 
   getErrorPatterns(): ErrorPattern[] {

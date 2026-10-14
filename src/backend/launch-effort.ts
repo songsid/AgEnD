@@ -13,21 +13,31 @@
  * notice. A resumed session gets the flag too (verified: claude `--continue`/`--resume` with `--effort`, codex
  * `resume <id>` with `-c`). The runtime `/effort` paste is unchanged.
  */
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
 import { measureSyncWork } from "../sync-work-attribution.js";
-import { EFFORT_CAPABILITIES, CANONICAL_EFFORT } from "./effort-metadata.js";
+import { EFFORT_CAPABILITIES, CANONICAL_EFFORT, agyModelFamily } from "./effort-metadata.js";
 import { t } from "../locale.js";
 import { shellQuote } from "./types.js";
 
-/** What a launch does with a configured effort: the argument to append (with its leading space), or why none. */
-export interface LaunchEffort { arg: string | null; note: string | null }
+/** What a launch does with a configured effort: the argument to append (with its leading space) and its level, or why none. */
+export interface LaunchEffort { arg: string | null; note: string | null; level?: string }
 
 export type HelpRunner = (binary: string, args: string[]) => string;
 
-const defaultRun: HelpRunner = (binary, args) => execFileSync(binary, args, {
-  encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"],
-});
+/**
+ * A CLI's help text: its stdout, or its stderr when stdout is empty — agy (a Go CLI) prints its usage to stderr
+ * (#1825: 1.3.4 and 1.3.5 write nothing to stdout, so reading stdout alone saw no `--effort` at all). Throws when the
+ * CLI cannot run or exits non-zero.
+ */
+export function readHelpText(binary: string, args: string[] = ["--help"]): string {
+  const run = spawnSync(binary, args, { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] });
+  if (run.error) throw run.error;
+  if (run.status !== 0) throw new Error(`${binary} ${args.join(" ")} exited ${run.status ?? run.signal}`);
+  return run.stdout || run.stderr;
+}
+
+const defaultRun: HelpRunner = (binary, args) => readHelpText(binary, args);
 
 /** `--help` per binary FILE: the path and what is there (size, mtime) — an update gives a new answer. */
 const helpCache = new Map<string, string | null>();
@@ -98,7 +108,45 @@ export function flagEffort(
   const levels = option.levels ?? (backend === "grok" ? [...EFFORT_CAPABILITIES.grok.levels] : null);
   if (!levels) return skip(backend, level, t("effort.launch_no_levels", flag));
   if (!levels.includes(level)) return skip(backend, level, t("effort.launch_level_not_offered", levels.join(", ")));
-  return { arg: ` ${flag} ${level}`, note: null };
+  return { arg: ` ${flag} ${level}`, note: null, level };
+}
+
+/** agy's model and effort for one launch: `--model` (absent: none), `--effort` (null: none), and why, quietly. */
+export interface AgyLaunch { model: string | undefined; effort: string | null; note: string | null }
+
+/**
+ * #1825: agy's catalog has one model per effort level (`gemini-3.8-flash-medium`, `…-high`, …), and agy 1.3.4/1.3.5
+ * resolve `--model` and `--effort` together: a variant with another level ("conflicts with --effort=high"), a label
+ * with any `--effort`, a level the model does not have, or a model it does not list each make agy run ANOTHER model,
+ * with only a warning row in the pane (verified offline against the real binaries). So the effort picks the exact
+ * variant — `gemini-3.8-flash-medium` + high launches `--model gemini-3.8-flash-high`, no `--effort` — and anything
+ * else launches the configured model without `--effort`. `--model` alone (a variant's slug or its label) and a bare
+ * `--effort` on agy's own model are what agy resolves exactly. fleet.yaml is never rewritten; the note says what ran.
+ *
+ * `catalog`/`current`: the CLI env probe's cached `agy models` and settings model (null: none cached).
+ */
+export function resolveAgyLaunch(
+  model: string | undefined, level: string | null,
+  catalog: readonly { id: string; label: string }[] | null, current: string | null = null,
+): AgyLaunch {
+  if (!level) return { model, effort: null, note: null };
+  const skipped = (why: string): AgyLaunch => ({ model, effort: null, note: t("effort.launch_skipped", level, "antigravity", why) });
+  const listed = (name: string) => !!catalog?.some(m => m.id === name || m.label === name);
+  if (!model) {
+    // A bare --effort applies to agy's own model; one it knows to lack the level would make agy run another.
+    const family = current && catalog ? agyModelFamily(current, catalog) : null;
+    if (family && !family.variants.has(level)) {
+      return skipped(t("effort.launch_level_not_offered", [...family.variants.keys()].join(", ")));
+    }
+    if (!family && current && listed(current)) return skipped(t("effort.launch_agy_model_no_levels", current));
+    return { model, effort: level, note: null };
+  }
+  if (!catalog?.length) return skipped(t("effort.launch_agy_no_catalog", model));
+  const family = agyModelFamily(model, catalog);
+  if (!family) return skipped(t(listed(model) ? "effort.launch_agy_model_no_levels" : "effort.launch_agy_model_not_listed", model));
+  const variant = family.variants.get(level);
+  if (!variant) return skipped(t("effort.launch_level_not_offered", [...family.variants.keys()].join(", ")));
+  return { model: variant, effort: null, note: variant === model ? null : t("effort.launch_agy_variant", level, variant, model) };
 }
 
 /**
