@@ -306,7 +306,8 @@ describe("review r1: codex's effort follows the model that will really run", () 
     // reaches it, and it must be read as the user layer it is, not as a project file.
     process.env.CODEX_HOME = join(root, ".codex");
     mkdirSync(join(root, ".codex"), { recursive: true });
-    writeFileSync(join(root, ".codex", "config.toml"), `model = "gpt-6.1-sol"\nproject_root_markers = []\n`);
+    // It selects a profile: read as a project file that alone would make the model unproven.
+    writeFileSync(join(root, ".codex", "config.toml"), `profile = "deep"\nproject_root_markers = []\n[profiles.deep]\nmodel = "gpt-6.1-sol"\n`);
     writeFileSync(join(root, ".codex", "models_cache.json"), CACHE);
     const dir = join(root, "agend", "instances", "worker2");
     mkdirSync(dir, { recursive: true });
