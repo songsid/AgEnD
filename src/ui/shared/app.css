@@ -206,7 +206,9 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
 /* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
 .inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }
-.inst-switch .seg-item { min-height: 30px; }
+.inst-switch .seg-item { min-height: 30px; flex-direction: column; justify-content: center; gap: 0; }
+/* The label again in the current tab's weight, taking width but no height and never seen: the bar's size does not change with the tab. */
+.inst-switch .seg-item::after { content: attr(data-label); font-weight: var(--fw-semibold); height: 0; overflow: hidden; visibility: hidden; pointer-events: none; user-select: none; }
 /* #1523 N3 (Q2 = A): the text size, one custom property from the root's data-text-size (header-tools.js). The chat's
    messages, Details and the Fleet tabs scale the type tokens by it; View's terminal scales itself (VIEW_SCALE). */
 :root { --text-scale: 1; }
@@ -722,7 +724,13 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .nav-chip { display: flex; align-items: center; gap: var(--s-2); cursor: pointer; color: var(--text); }
 .nav-facet-reset { font-size: var(--fs-xs); }
 
-.p-view .panel-actions .btn { gap: var(--s-1); }
+/* One gap on every page (View's, #1448): the header's controls are the same size on every tab. */
+.panel-actions .btn { gap: var(--s-1); }
+/* Aa's names share one cell, only the current one shown: the button is as wide as its widest name on every page. */
+.hd-text-names { display: inline-grid; }
+.hd-text-names > span { grid-area: 1 / 1; visibility: hidden; }
+.hd-text-names > .on { visibility: visible; }
+.hd-slot { visibility: hidden; pointer-events: none; }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }
 .v-pre { margin: 0; min-width: 100%; min-height: 100%; font-family: var(--font-mono); line-height: 1.2; white-space: pre; color: #d0d0d0; }
 .v-pre .ansi[data-b] { font-weight: var(--fw-bold); }

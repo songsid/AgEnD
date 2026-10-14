@@ -22,7 +22,7 @@ async function fakeFetch(url: string) {
   return { ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) };
 }
 
-let chat: any, details: any, fleet: any, view: any, tools: any;
+let chat: any, details: any, fleet: any, view: any, log: any, tools: any;
 beforeAll(async () => {
   // @ts-expect-error — a JS module of the app, with no types
   await import("../src/ui/chat-render.js");
@@ -36,6 +36,8 @@ beforeAll(async () => {
   details = await import("../src/ui/panel-details.js");
   // @ts-expect-error — a JS module of the app, with no types
   fleet = await import("../src/ui/panel-fleet.js");
+  // @ts-expect-error — a JS module of the app, with no types
+  log = await import("../src/ui/panel-log.js");
   view = await import("/assets/panel-view.js");
   tools = await import("/assets/header-tools.js");
   chat.boot({ stream: { on() {} }, boot: null, deps: { fetch: () => new Promise(() => {}) } });
@@ -61,7 +63,7 @@ function screen(wide: boolean) {
 
 const PANELS = () => new Map([
   ["chat", { load: async () => chat.ChatPanel }], ["details", { load: async () => details.DetailsPanel }],
-  ["fleet", { load: async () => fleet.FleetPanel }], ["view", { load: async () => view.ViewPanel }],
+  ["fleet", { load: async () => fleet.FleetPanel }], ["view", { load: async () => view.ViewPanel }], ["log", { load: async () => log.LogPanel }],
   ["settings", { Component: () => h("div", { class: "stub-settings" }, "settings") }], ["needs", { Component: () => h("div", { class: "stub-needs" }, "needs") }],
 ]);
 async function app(path: string, opts: { wide?: boolean; storage?: Record<string, string>; usagePanel?: string; scr?: ReturnType<typeof screen> } = {}) {
@@ -93,9 +95,9 @@ const dialogRows = (pg: AppPage) => (pg.root.querySelectorAll("dialog .u-provide
 const usageBtn = (pg: AppPage) => pg.root.querySelector(".panel-head .hd-usage");
 
 describe("#1673: a wide screen shows usage as a rail beside the page", () => {
-  it("on Chat, View, Details and Fleet — the dialog's rows — and not on Settings or Needs you", async () => {
+  it("on Chat, View, Log, Details and Fleet — the dialog's rows — and not on Settings or Needs you", async () => {
     const { pg } = await app("/ui/chat/web-dev");
-    for (const path of ["/ui/chat/web-dev", "/view/web-dev", "/ui/fleet/agent/web-dev", "/ui/fleet/org"]) {
+    for (const path of ["/ui/chat/web-dev", "/view/web-dev", "/ui/log/web-dev", "/ui/fleet/agent/web-dev", "/ui/fleet/org"]) {
       if (path !== "/ui/chat/web-dev") await go(path);
       expect(rail(pg), path).toBe(true);
       expect(railRows(pg), path).toHaveLength(1);
@@ -105,6 +107,64 @@ describe("#1673: a wide screen shows usage as a rail beside the page", () => {
       expect(usageBtn(pg)?.getAttribute("aria-pressed"), path).toBe("true");
     }
     for (const path of ["/settings", "/ui/needs"]) { await go(path); expect(rail(pg), path).toBe(false); }
+  });
+
+  // The user's report (beta.11): the rail was missing on Log, so the page jumped, and ◔ there turned off a rail that
+  // was not shown — back on Chat it was gone.
+  it("one frame on every tab: switching Chat → View → Log → Details → Chat keeps the rail as this device chose it; ◔ on Log hides the rail it shows", async () => {
+    const TABS = ["/ui/chat/web-dev", "/view/web-dev", "/ui/log/web-dev", "/ui/fleet/agent/web-dev", "/ui/chat/web-dev"];
+    for (const stored of [undefined, "0"]) {
+      const { pg } = await app("/ui/chat/web-dev", { storage: stored ? { agend_usage_rail: stored } : {} });
+      for (const path of TABS) {
+        if (path !== TABS[0] || pg.window.location.pathname !== path) await go(path);
+        expect([rail(pg), usageBtn(pg)?.getAttribute("aria-pressed"), pg.storage.get("agend_usage_rail") ?? null], `${stored} ${path}`)
+          .toEqual([stored !== "0", stored === "0" ? "false" : "true", stored ?? null]);
+      }
+    }
+    const { pg } = await app("/ui/log/web-dev");
+    usageBtn(pg).click(); await settle(4);
+    expect([rail(pg), pg.storage.get("agend_usage_rail")]).toEqual([false, "0"]);
+    await go("/ui/chat/web-dev");
+    expect([rail(pg), usageBtn(pg).getAttribute("aria-pressed")]).toEqual([false, "false"]);
+    await go("/ui/log/web-dev");
+    usageBtn(pg).click(); await settle(4);
+    expect([rail(pg), pg.storage.get("agend_usage_rail")]).toEqual([true, "1"]);
+  });
+
+  it("the header's controls have one shape on every tab: Aa (every size's name in one cell, the current one shown), ◔, then one 36 px control — Log keeps that room empty", async () => {
+    const { pg } = await app("/ui/chat/web-dev");
+    const shapes: string[] = [];
+    for (const path of ["/ui/chat/web-dev", "/view/web-dev", "/ui/log/web-dev", "/ui/fleet/agent/web-dev"]) {
+      if (path !== "/ui/chat/web-dev") await go(path);
+      const kids = [...pg.root.querySelector(".panel-head .panel-actions").children] as any[];
+      const kind = (e: any) => e.classList.contains("hd-text") ? "Aa" : e.classList.contains("hd-usage") ? "usage"
+        : e.classList.contains("menu") || e.classList.contains("icon-btn") ? "36" : e.tagName;
+      shapes.push(kids.map(kind).join(" "));
+      const names = [...pg.root.querySelectorAll(".panel-head .hd-text .hd-text-names > span")] as any[];
+      expect(names.map(n => n.textContent), path).toEqual(["Fit", "S", "M", "L"]);
+      expect(names.filter(n => n.classList.contains("on")).map(n => n.textContent), path).toEqual([path.startsWith("/view/") ? "Fit" : "M"]);
+      const tabs = [...pg.root.querySelectorAll(".panel-head .inst-switch .seg-item")] as any[];
+      expect(tabs.map(a => a.getAttribute("data-label") === a.textContent), path).toEqual([true, true, true, true]);
+      const slot = pg.root.querySelector(".panel-head .hd-slot");
+      expect(slot ? [slot.getAttribute("aria-hidden"), slot.tagName, slot.textContent, slot.classList.contains("icon-btn")] : null, path)
+        .toEqual(path.startsWith("/ui/log/") ? ["true", "SPAN", "", true] : null);
+    }
+    expect(shapes).toEqual(Array(4).fill("Aa usage 36"));
+  });
+
+  it("what keeps those sizes in the stylesheet: the names share one cell; each tab reserves its label in the current tab's weight; one gap on every page; the slot is unseen", async () => {
+    const { readFileSync } = await import("node:fs");
+    const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
+    const rule = (sel: string) => { const i = css.indexOf(`${sel} {`); return i < 0 ? null : css.slice(i + sel.length + 2, css.indexOf("}", i)).trim(); };
+    expect(rule(".hd-text-names")).toBe("display: inline-grid;");
+    expect(rule(".hd-text-names > span")).toBe("grid-area: 1 / 1; visibility: hidden;");
+    expect(rule(".hd-text-names > .on")).toBe("visibility: visible;");
+    expect(rule(".inst-switch .seg-item")).toContain("flex-direction: column;");
+    expect(rule(".inst-switch .seg-item")).toContain("gap: 0;");
+    for (const d of ["content: attr(data-label);", "font-weight: var(--fw-semibold);", "height: 0;", "visibility: hidden;"]) expect(rule(".inst-switch .seg-item::after"), d).toContain(d);
+    expect(rule(".seg-item.active")).toContain("font-weight: var(--fw-semibold);");
+    expect([rule(".panel-actions .btn"), rule(".p-view .panel-actions .btn")]).toEqual(["gap: var(--s-1);", null]);
+    expect(rule(".hd-slot")).toContain("visibility: hidden;");
   });
 
   it("the rail's rows are the dialog's rows (one body)", async () => {

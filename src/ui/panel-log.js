@@ -17,7 +17,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle, statusClass, statusLabel, openDrawer } from "/assets/app-shell.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
-import { HeaderTools } from "/assets/header-tools.js";
+import { HeaderSlot, HeaderTools } from "/assets/header-tools.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
@@ -376,7 +376,7 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       ${["all", "tools", "errors"].map((k) => html`<button key=${k} type="button" class=${`chip-btn${filter === k ? " on" : ""}`} aria-pressed=${filter === k ? "true" : "false"} onClick=${() => setFilter(k)}>${tl(k)}</button>`)}
       <span class="grow"></span><span class="log-live" title=${tl("live")}><span class="dot running" aria-hidden="true"></span>${tl("live")}</span></div>` : null;
   return html`<div class="panel p-log">
-    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+    <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /><${HeaderSlot} /></${PanelHeader}>
     ${tools}
     <div class="panel-body log-body" ref=${scroller} onScroll=${onScroll}><div class="col log-col">${content}</div></div>
   </div>`;
