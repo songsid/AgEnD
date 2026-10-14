@@ -78,7 +78,9 @@
   function inline(escaped, store) {
     var s = escaped;
     // `code` first: nothing inside it is Markdown.
-    s = s.replace(/`([^`\n]+)`/g, function (_m, code) { return stash(store, "<code>" + code + "</code>"); });
+    // #1812: in a table cell a path may wrap after its separators — the cell keeps words whole, so without these a long
+    // path held its whole column wide.
+    s = s.replace(/`([^`\n]+)`/g, function (_m, code) { return stash(store, "<code>" + (store.inCell ? code.replace(/\//g, "/<wbr>") : code) + "</code>"); });
     var known = store.emojis;
     if (known) s = s.replace(EMOJI_RE, function (m, _a, name, id) { return known(id) ? stash(store, emojiImg(id, name)) : m; });
     var names = store.mentions;
@@ -180,7 +182,8 @@
   function renderTable(header, aligns, rows, store) {
     function cell(tag, text, i) {
       var a = aligns[i] ? ' class="al-' + aligns[i] + '"' : "";
-      return "<" + tag + a + ">" + inline(text, store) + "</" + tag + ">";
+      store.inCell = true;
+      try { return "<" + tag + a + ">" + inline(text, store) + "</" + tag + ">"; } finally { store.inCell = false; }
     }
     function row(tag, cells) {
       var out = "";
