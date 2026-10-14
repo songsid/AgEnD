@@ -3,11 +3,12 @@
  * to a capped update.log file via a file descriptor (not a pipe), so the updater can keep writing
  * after the fleet process that spawned it is stopped.
  *
- * Tests: fake updater scripts, cause extraction, log capping, fd-vs-pipe mutation.
+ * Tests: cause extraction (npm ERR!, npm 10 footer, ✗, fallback, masking, offset isolation),
+ * openUpdateLog (fd, fchmod, offset, rotation), watchUpdateLaunch (cause from log, no previous-run bleed).
  * Never spawns the real `agend update`.
  */
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, openSync, closeSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, openSync, closeSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -38,15 +39,28 @@ describe("extractUpdateCause (#1818)", () => {
     expect(extractUpdateCause("   \n  \n")).toBeNull();
   });
 
-  it("returns last npm ERR! line", () => {
-    const out = "npm ERR! code EACCES\nnpm ERR! errno -13\nnpm ERR! Error: EACCES: permission denied, mkdir '/usr/local/lib/node_modules'";
-    expect(extractUpdateCause(out)).toMatch(/EACCES/);
+  it("returns last npm ERR! line (npm 9 style — ! is not a word boundary)", () => {
+    // \\b after ! fails because ! is non-word. The fix uses (?:\\s|$).
+    const out = "npm ERR! code EACCES\nnpm ERR! Error: EACCES: permission denied, mkdir\nsome other line";
+    const cause = extractUpdateCause(out);
+    // Must get an npm ERR! line, not "some other line"
+    expect(cause).toMatch(/^npm ERR!/);
+    expect(cause).toMatch(/EACCES/);
   });
 
-  it("returns last npm error line (lowercase variant)", () => {
-    const out = "npm error code ETARGET\nnpm error notarget No matching version found for @songsid/agend@99.0.0";
+  it("npm 10: takes code line + next line, skips 'A complete log' footer", () => {
+    // Simulated npm 10 EACCES output
+    const out = [
+      "npm error code EACCES",
+      "npm error syscall mkdir",
+      "npm error path /usr/local/lib/node_modules",
+      "npm error errno -13",
+      "npm error EACCES: permission denied, mkdir '/usr/local/lib/node_modules'",
+      "npm error A complete log of this run can be found in: /home/user/.npm/_logs/2026-10-14T10_00_00_000Z-debug-0.log",
+    ].join("\n");
     const cause = extractUpdateCause(out);
-    expect(cause).toMatch(/notarget/);
+    expect(cause).toMatch(/npm error code EACCES/);
+    expect(cause).not.toMatch(/A complete log/);
   });
 
   it("returns last ✗ line when no npm error", () => {
@@ -61,57 +75,89 @@ describe("extractUpdateCause (#1818)", () => {
 
   it("masks GitHub tokens in npm error lines", () => {
     const cause = extractUpdateCause("npm ERR! Error: ghp_ABCDEFGHIJ1234567890AB_secret"); // gitleaks:allow
-    expect(cause).not.toContain("ghp_ABCDEFGHIJ");
+    expect(cause).not.toContain("ghp_ABCDEFGHIJ"); // gitleaks:allow
   });
 
   it("caps at 300 chars", () => {
     const long = `npm ERR! ${"x".repeat(1000)}`;
     expect(extractUpdateCause(long)!.length).toBeLessThanOrEqual(300);
   });
+
+  it("--- header lines are excluded from cause extraction", () => {
+    const out = "--- header from openUpdateLog ---";
+    expect(extractUpdateCause(out)).toBeNull();
+  });
 });
 
-// ── openUpdateLog: file descriptor, not pipe ─────────────────────────────────
+// ── openUpdateLog: fd, fchmod, offset ────────────────────────────────────────
 
-describe("openUpdateLog (#1818): returns a file descriptor, not a pipe", () => {
-  it("returns a numeric fd and writes the header to the log", () => {
+describe("openUpdateLog (#1818): fd-based, correct permissions, offset tracking", () => {
+  it("returns a numeric fd and records offset after the header", () => {
     const logPath = updateLogPath(dataDir);
-    const fd = openUpdateLog(logPath, "--- test run ---");
+    const { fd, offset } = openUpdateLog(logPath, "--- test run ---");
     expect(typeof fd).toBe("number");
     closeSync(fd);
     expect(existsSync(logPath)).toBe(true);
-    expect(readFileSync(logPath, "utf8")).toContain("--- test run ---");
+    const content = readFileSync(logPath, "utf8");
+    expect(content).toContain("--- test run ---");
+    // offset must point past the header line
+    expect(offset).toBeGreaterThan(0);
+    expect(offset).toBe(statSync(logPath).size);
   });
 
-  it("a child that keeps writing via the fd after parent closes still has output in the log (fd survives parent close)", () => {
-    // Write to the fd, close the parent's copy, then write to the file path directly
-    // to simulate what the child does after the parent is gone.
+  it("fchmod: file is mode 0o100600 (owner read/write only)", () => {
     const logPath = updateLogPath(dataDir);
-    const fd = openUpdateLog(logPath, "--- fd test ---");
-    // Parent writes then closes its copy.
+    // Create a too-permissive file first
+    writeFileSync(logPath, "", { mode: 0o644 });
+    const { fd } = openUpdateLog(logPath, "--- test ---");
+    closeSync(fd);
+    const mode = statSync(logPath).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
+  it("a child that keeps writing via the fd after parent closes still has output in the log", () => {
+    const logPath = updateLogPath(dataDir);
+    const { fd, offset } = openUpdateLog(logPath, "--- fd test ---");
     require("node:fs").writeSync(fd, "parent output\n");
     closeSync(fd);
-    // Child continues writing to the same file via its own fd reference.
-    // (In production the child has its own fd from spawn; here we simulate with a new open.)
+    // Simulate child continuing to write after parent closed its fd copy.
     const childFd = openSync(logPath, "a", 0o600);
     require("node:fs").writeSync(childFd, "child output after parent exited\n");
     closeSync(childFd);
     const content = readFileSync(logPath, "utf8");
     expect(content).toContain("parent output");
     expect(content).toContain("child output after parent exited");
+    expect(offset).toBeGreaterThan(0); // offset is past the header
+  });
+
+  it("offset isolates this run: previous run's output is NOT in the cause", () => {
+    const logPath = updateLogPath(dataDir);
+    // Write a previous run's error
+    writeFileSync(logPath, "--- previous run ---\nnpm ERR! ENOTEMPTY from previous run\n", { mode: 0o600 });
+    const { fd, offset } = openUpdateLog(logPath, "--- new run ---");
+    // This run writes nothing (or writes something benign)
+    require("node:fs").writeSync(fd, "Downloading...\n");
+    closeSync(fd);
+    // Test that reading from offset doesn't see the previous run's npm ERR!
+    const buf = readFileSync(logPath);
+    const runBytes = buf.subarray(offset).toString("utf8");
+    const cause = extractUpdateCause(runBytes);
+    expect(cause).not.toMatch(/ENOTEMPTY from previous run/);
+    expect(cause).toMatch(/Downloading/);
   });
 });
 
 // ── watchUpdateLaunch with log and cause ────────────────────────────────────
 
-describe("watchUpdateLaunch (#1818): cause from log file, not from pipes", () => {
+describe("watchUpdateLaunch (#1818): cause from log file offset, not from pipes", () => {
   it("npm EACCES in log → cause in message and log path referenced", () => {
     const logPath = updateLogPath(dataDir);
-    const fd = openUpdateLog(logPath, "--- run ---");
+    const { fd, offset } = openUpdateLog(logPath, "--- run ---");
     require("node:fs").writeSync(fd, "npm error code EACCES\nnpm ERR! Error: EACCES: permission denied, /usr/local\n");
     closeSync(fd);
     const { child, exit } = fakeChild(1);
     const messages: string[] = [];
-    watchUpdateLaunch(child, m => messages.push(m), logPath);
+    watchUpdateLaunch(child, m => messages.push(m), logPath, offset);
     exit();
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatch(/EACCES/);
@@ -121,38 +167,40 @@ describe("watchUpdateLaunch (#1818): cause from log file, not from pipes", () =>
 
   it("✗ line in log → cause extracted", () => {
     const logPath = updateLogPath(dataDir);
-    const fd = openUpdateLog(logPath, "--- run ---");
+    const { fd, offset } = openUpdateLog(logPath, "--- run ---");
     require("node:fs").writeSync(fd, "Installing…\n✗ activation failed: Service refused to start\n");
     closeSync(fd);
     const { child, exit } = fakeChild(1);
     const messages: string[] = [];
-    watchUpdateLaunch(child, m => messages.push(m), logPath);
+    watchUpdateLaunch(child, m => messages.push(m), logPath, offset);
     exit();
     expect(messages[0]).toMatch(/activation failed/);
   });
 
-  it("empty log → message contains exit code, no cause", () => {
+  it("empty run (no output after header) → no cause from previous runs", () => {
     const logPath = updateLogPath(dataDir);
-    const fd = openUpdateLog(logPath, "--- run ---");
+    // Pre-write a previous run's error
+    writeFileSync(logPath, "--- prev ---\nnpm ERR! old error\n", { mode: 0o600 });
+    const { fd, offset } = openUpdateLog(logPath, "--- new run ---");
     closeSync(fd);
     const { child, exit } = fakeChild(1);
     const messages: string[] = [];
-    watchUpdateLaunch(child, m => messages.push(m), logPath);
+    watchUpdateLaunch(child, m => messages.push(m), logPath, offset);
     exit();
     expect(messages[0]).toContain("updater exited 1");
-    expect(messages[0]).not.toContain("Cause:");
+    expect(messages[0]).not.toContain("old error");
   });
 
   it("secret-looking text in log is masked in the cause shown in message", () => {
     const logPath = updateLogPath(dataDir);
-    const fd = openUpdateLog(logPath, "--- run ---");
+    const { fd, offset } = openUpdateLog(logPath, "--- run ---");
     require("node:fs").writeSync(fd, "npm ERR! Error: fake_tok=fake_ABCDEFGHIJ1234567890AB\n"); // gitleaks:allow
     closeSync(fd);
     const { child, exit } = fakeChild(1);
     const messages: string[] = [];
-    watchUpdateLaunch(child, m => messages.push(m), logPath);
+    watchUpdateLaunch(child, m => messages.push(m), logPath, offset);
     exit();
-    expect(messages[0]).not.toContain("npm_ABCDEFGHIJ1234567890AB");
+    expect(messages[0]).not.toContain("fake_ABCDEFGHIJ1234567890AB");
   });
 
   it("exit 75 (pending) produces no failure message", () => {
@@ -178,21 +226,6 @@ describe("watchUpdateLaunch (#1818): cause from log file, not from pipes", () =>
     exit(null, "SIGTERM");
     expect(messages[0]).toContain("interrupted");
   });
-
-  it("MUTATION: if log is NOT written before reading, cause is null (not guessing from nowhere)", () => {
-    // This pins that cause is derived from the log file, not from in-memory buffers.
-    // A mutation that reads buffers instead would find nothing here and still pass,
-    // while the "npm EACCES in log" test above would break if buffers were read (they'd be empty).
-    const logPath = updateLogPath(dataDir);
-    // Do NOT write anything to the log
-    const { child, exit } = fakeChild(1);
-    const messages: string[] = [];
-    watchUpdateLaunch(child, m => messages.push(m), logPath);
-    exit();
-    // No log file → no cause
-    expect(messages[0]).not.toContain("Cause:");
-    expect(messages[0]).toContain("updater exited 1");
-  });
 });
 
 // ── openUpdateLog: file cap ──────────────────────────────────────────────────
@@ -200,9 +233,8 @@ describe("watchUpdateLaunch (#1818): cause from log file, not from pipes", () =>
 describe("openUpdateLog: file is capped at UPDATE_LOG_FILE_CAP", () => {
   it("log file is rotated when it would exceed UPDATE_LOG_FILE_CAP", () => {
     const logPath = updateLogPath(dataDir);
-    // Fill file over the cap threshold
     writeFileSync(logPath, "x".repeat(UPDATE_LOG_FILE_CAP));
-    const fd = openUpdateLog(logPath, "--- new run ---");
+    const { fd } = openUpdateLog(logPath, "--- new run ---");
     closeSync(fd);
     const size = readFileSync(logPath).length;
     expect(size).toBeLessThan(UPDATE_LOG_FILE_CAP + 200);

@@ -1,7 +1,7 @@
 /** Chat updates must survive the fleet's service cgroup being stopped (#1490 row 37). */
 import { execFile, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, closeSync, existsSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, fchmodSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -14,8 +14,8 @@ const CAUSE_TAIL_BYTES = 8 * 1024;
 export const UPDATE_LOG_FILE_CAP = 400 * 1024;
 
 /**
- * Path of the update log file (mode 0600; raw updater output may contain secrets —
- * cause extraction masks before surfacing to chat).
+ * Path of the update log file (mode 0600; raw updater output is written directly — secrets are
+ * masked only when extracting the short cause shown in chat; the file itself is owner-readable only).
  */
 export function updateLogPath(dataDir: string): string {
   return join(dataDir, "update.log");
@@ -30,8 +30,21 @@ export function extractUpdateCause(output: string): string | null {
   // Lines starting with --- are log headers, not updater output.
   const lines = output.split("\n").map(l => l.trimEnd()).filter(l => Boolean(l) && !l.startsWith("---"));
   if (!lines.length) return null;
-  const npmErr = lines.filter(l => /^npm (ERR!|error)\b/i.test(l));
-  if (npmErr.length) return maskSecrets(npmErr[npmErr.length - 1]).slice(0, 300);
+  // npm ERR! ends with !, a non-word char: \b does not anchor here. Use (?:\s|$) instead.
+  const npmErrRe = /^npm (ERR!|error)(?:\s|$)/i;
+  const npmLines = lines.filter(l => npmErrRe.test(l));
+  if (npmLines.length) {
+    // npm 10 always ends with "A complete log of this run can be found in: …". Skip that footer.
+    // Prefer the first `npm error code` line plus the next for context.
+    const codeIdx = npmLines.findIndex(l => /^npm (ERR!|error) code\s/i.test(l));
+    if (codeIdx >= 0) {
+      const summary = [npmLines[codeIdx], npmLines[codeIdx + 1]].filter(Boolean).join(" — ");
+      return maskSecrets(summary).slice(0, 300);
+    }
+    const meaningful = npmLines.filter(l => !/A complete log of this run can be found in/i.test(l));
+    const pick = meaningful.length ? meaningful[meaningful.length - 1] : npmLines[npmLines.length - 1];
+    return maskSecrets(pick).slice(0, 300);
+  }
   const cross = lines.filter(l => /^\s*[✗✕×✘]/.test(l));
   if (cross.length) return maskSecrets(cross[cross.length - 1]).slice(0, 300);
   return maskSecrets(lines[lines.length - 1]).slice(0, 300);
@@ -45,7 +58,8 @@ export function extractUpdateCause(output: string): string | null {
  * that spawned it has been stopped: there is no read end to close, so no EPIPE.
  * The caller must closeSync(fd) after spawn so the parent's copy of the fd is released.
  */
-export function openUpdateLog(logPath: string, header: string): number {
+export function openUpdateLog(logPath: string, header: string): { fd: number; offset: number } {
+  // Rotate BEFORE opening the fd the child will use (never write to the same inode concurrently).
   try {
     if (existsSync(logPath) && statSync(logPath).size > UPDATE_LOG_FILE_CAP / 2) {
       const old = readFileSync(logPath);
@@ -55,14 +69,23 @@ export function openUpdateLog(logPath: string, header: string): number {
   try {
     appendFileSync(logPath, `${header}\n`, { mode: 0o600 });
   } catch { /* best-effort */ }
-  return openSync(logPath, "a", 0o600);
+  const fd = openSync(logPath, "a", 0o600);
+  // fchmod: mode param of openSync only applies to new files; existing files keep their mode.
+  try { fchmodSync(fd, 0o600); } catch { /* best-effort */ }
+  // Record the offset so readRunCause only reads this run's output, not previous runs.
+  const offset = (() => { try { return statSync(logPath).size; } catch { return 0; } })();
+  return { fd, offset };
 }
 
-/** Read the tail of the update log and extract a cause (masking secrets). */
-function readLogCause(logPath: string): string | null {
+/**
+ * Read only this run's output from the log (from `offset`) and extract a cause.
+ * Prevents a run with no output from picking up the previous run's error as the cause.
+ */
+function readRunCause(logPath: string, offset: number): string | null {
   try {
     const buf = readFileSync(logPath);
-    const tail = buf.subarray(Math.max(0, buf.length - CAUSE_TAIL_BYTES)).toString("utf8");
+    const runBytes = buf.subarray(offset);
+    const tail = runBytes.subarray(Math.max(0, runBytes.length - CAUSE_TAIL_BYTES)).toString("utf8");
     return extractUpdateCause(tail);
   } catch { return null; }
 }
@@ -145,13 +168,15 @@ export function watchUpdateLaunch(
   child: Pick<ChildProcess, "once">,
   fail: (message: string) => void,
   logPath?: string,
+  /** Byte offset into the log file at which this run's output begins. */
+  logOffset?: number,
 ): void {
   let reported = false;
 
   const report = (reason: string) => {
     if (reported) return;
     reported = true;
-    const cause = logPath ? readLogCause(logPath) : null;
+    const cause = logPath != null && logOffset != null ? readRunCause(logPath, logOffset) : null;
     const logNote = logPath ? ` Full log: ${logPath}.` : "";
     const detail = cause ? ` Cause: ${cause}.${logNote}` : logNote;
     fail(`/update could not complete (${reason}).${detail} Run \`agend update\` from a host shell.`);
