@@ -309,7 +309,7 @@ describe("applying it: update_instance_config's write, whole or not at all", () 
   it("the credential-profile login gate's refusal is shown as it is, and backend, model and effort stay as they were", async () => {
     // kiro-cli under a profile nobody has logged into (its store would be under the scratch data dir).
     const f = fleet({ backend_options: { "kiro-cli": { credential_profile: "personal" } } });
-    const reply = await f.fm.applyBackendSwitch("worker", ["kiro-cli", "default", "default"], "claude-code");
+    const reply = await f.fm.applyBackendSwitch("worker", ["kiro-cli", "default", "default"], "claude-code", () => true);
     expect(reply).toContain(t("backend.refused", "worker", "").trim().split("\n")[0]!);
     expect(reply).toContain('credential profile "personal" has no kiro-cli login yet');
     expect(reply).toContain("kiro-cli login");
@@ -321,7 +321,7 @@ describe("applying it: update_instance_config's write, whole or not at all", () 
   it("a save that fails leaves the instance as it was, and nothing restarts", async () => {
     const f = fleet();
     f.any.saveFleetConfig = vi.fn(() => { throw new Error("disk full"); });
-    const reply = await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code");
+    const reply = await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true);
     expect(reply).toBe(t("backend.refused", "worker", "Failed to save config: disk full"));
     expect(f.worker()).toMatchObject({ backend: "claude-code", model: "opus", effort: "max" });
     expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
@@ -330,17 +330,17 @@ describe("applying it: update_instance_config's write, whole or not at all", () 
   it("judged again when applied: a backend that moved meanwhile, or input that is no longer valid, writes nothing", async () => {
     const f = fleet();
     f.worker().backend = "opencode";
-    expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code")).toBe(t("backend.changed", "worker", "claude-code"));
+    expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true)).toBe(t("backend.changed", "worker", "claude-code"));
     f.worker().backend = "claude-code";
     f.any.backendInstalledHere = vi.fn(() => false);
-    expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code")).toBe(t("backend.not_installed", "codex", "—"));
+    expect(await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true)).toBe(t("backend.not_installed", "codex", "—"));
     expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
   });
 
   it("default: the inherited value, as loading fleet.yaml would give it", async () => {
     const f = fleet();
     (f.fm.fleetConfig!.defaults as any).effort = "high";
-    await f.fm.applyBackendSwitch("worker", ["kiro-cli", "default", "default"], "claude-code");
+    await f.fm.applyBackendSwitch("worker", ["kiro-cli", "default", "default"], "claude-code", () => true);
     expect(f.saves).toHaveLength(1);
     expect(f.saves[0]).not.toHaveProperty("model");
     expect(f.saves[0]).toMatchObject({ backend: "kiro-cli", effort: "high" });
@@ -348,7 +348,7 @@ describe("applying it: update_instance_config's write, whole or not at all", () 
 
   it("a stopped instance is saved and not started", async () => {
     const f = fleet({}, { status: "stopped" });
-    const reply = await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code");
+    const reply = await f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true);
     expect(reply).toBe(t("backend.switched_not_running", "worker", "codex", "gpt-5.5", "—", "stopped"));
     expect(f.any.saveFleetConfig).toHaveBeenCalledTimes(1);
     expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
@@ -465,5 +465,142 @@ describe("the MCP tool is unchanged", () => {
     expect((await call({ model: null })).error).toBeTruthy();
     await call({ effort: "low", display_name: "W" });
     expect(f.worker()).toMatchObject({ model: "opus", effort: "max", display_name: "W" });
+  });
+});
+
+// ── #1807 review (Prism r1) ──────────────────────────────────────────────────
+
+describe("review r1: effort levels are the model's that will run (codex's differ per model)", () => {
+  function codexHome(configured: string) {
+    const home = mkdtempSync(join(dataDir, "codex-home-"));
+    const model = (slug: string, efforts: string[]) => ({ slug, supported_reasoning_levels: efforts.map(effort => ({ effort })) });
+    writeFileSync(join(home, "models_cache.json"), JSON.stringify({ models: [
+      model("gpt-5.5", ["low", "medium", "high", "xhigh"]), model("gpt-5.6-luna", ["low", "medium", "high", "xhigh", "max"]),
+    ] }));
+    writeFileSync(join(home, "config.toml"), `model = "${configured}"\n`);
+    vi.stubEnv("CODEX_HOME", home);
+  }
+  const levelsFor = async (f: ReturnType<typeof fleet>, args: string[]) => {
+    delete f.any.backendEffortLevels;                                // the real per-model read, under the scratch CODEX_HOME
+    const step = await backendStep(f.any.backendCommandDeps("worker", { live: false }), "worker", args);
+    return step.kind === "choose" ? step.choices.map(c => c.token) : step;
+  };
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("the chosen model's, not the one in config.toml", async () => {
+    writeFileSync(join(agendHome, "cli-env", "codex.json"), JSON.stringify({ backend: "codex", models: [{ id: "gpt-5.5", label: "a" }, { id: "gpt-5.6-luna", label: "b" }], probedAt: Date.now() }));
+    codexHome("gpt-5.5");
+    expect(await levelsFor(fleet(), ["codex", "gpt-5.6-luna"])).toEqual(["default", "low", "medium", "high", "xhigh", "max"]);
+    codexHome("gpt-5.6-luna");
+    expect(await levelsFor(fleet(), ["codex", "gpt-5.5"])).toEqual(["default", "low", "medium", "high", "xhigh"]);
+    // …and judged the same way when typed: max is no level of gpt-5.5.
+    expect(await levelsFor(fleet(), ["codex", "gpt-5.5", "max"])).toMatchObject({ kind: "refuse" });
+    // Control: the default model is config.toml's.
+    expect(await levelsFor(fleet(), ["codex", "default"])).toEqual(["default", "low", "medium", "high", "xhigh", "max"]);
+  });
+});
+
+describe("review r1: the switch is fenced to the instance and backend it was confirmed for", () => {
+  it("two switches confirmed together: one is written, the other refused", async () => {
+    const f = fleet();
+    writeFileSync(join(agendHome, "cli-env", "opencode.json"), JSON.stringify({ backend: "opencode", models: [{ id: "p/m", label: "m" }], probedAt: Date.now() }));
+    const replies = await Promise.all([
+      f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true),
+      f.fm.applyBackendSwitch("worker", ["opencode", "default"], "claude-code", () => true),
+    ]);
+    expect(replies.filter(r => r === t("backend.changed", "worker", "claude-code"))).toHaveLength(1);
+    expect(f.saves).toHaveLength(1);
+    expect(f.any.restartSingleInstance).toHaveBeenCalledTimes(1);
+  });
+
+  it("a backend changed while the model list was being read: nothing written", async () => {
+    const f = fleet();
+    let release!: () => void;
+    const held = new Promise<void>(r => { release = r; });
+    const real = f.any.backendModelOptions.bind(f.fm);
+    f.any.backendModelOptions = vi.fn(async (b: string, o: unknown) => { await held; return real(b, o); });
+    const pending = f.fm.applyBackendSwitch("worker", ["codex", "gpt-5.5"], "claude-code", () => true);
+    await settle();
+    f.worker().backend = "opencode";
+    release();
+    expect(await pending).toBe(t("backend.changed", "worker", "claude-code"));
+    expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it("the web: a token asked for a stopped instance that was deleted and created again is refused; the same instance is not", async () => {
+    const f = fleet({}, { status: "stopped" });
+    const ask = async () => (await f.fm.webCommand({ instance: "worker", command: "backend", args: "codex gpt-5.5" }, { publicLink: false })).body.confirm!.token;
+    const confirm = (token: string) => f.fm.webCommand({ instance: "worker", command: "backend", args: "codex gpt-5.5", confirm: token }, { publicLink: false });
+    const stale = await ask();
+    const instances = f.fm.fleetConfig!.instances as any;
+    const old = instances.worker;
+    delete instances.worker;
+    instances.worker = { ...old, working_directory: join(dataDir, "elsewhere") };      // the same name, another instance
+    expect((await confirm(stale)).status).toBe(409);
+    expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
+    // Control: asked and confirmed for the instance as it is — saved once, and a stopped one is not started.
+    expect(await confirm(await ask())).toEqual({ status: 200, body: { text: t("backend.switched_not_running", "worker", "codex", "gpt-5.5", "—", "stopped") } });
+    expect(f.any.saveFleetConfig).toHaveBeenCalledTimes(1);
+    expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
+  });
+
+  it("a menu step clicked after the instance was replaced is stale", async () => {
+    const f = fleet();
+    await f.fm.runBackendCommand("worker", "/backend", "admin", "chan", f.adapter, "chat", "topic", "telegram");
+    const instances = f.fm.fleetConfig!.instances as any;
+    instances.worker = { ...instances.worker };
+    await click(f, "codex");
+    expect(f.editMessageRemoveButtons.mock.calls.at(-1)![2]).toBe(t("menu.click_stale"));
+    expect(f.promptUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("review r1: a credential profile is a login of one backend", () => {
+  it("the same profile name under the new backend is checked: refused while that backend has no login there", async () => {
+    const f = fleet({ backend_options: { "claude-code": { credential_profile: "personal" }, "kiro-cli": { credential_profile: "personal" } } });
+    const reply = await f.fm.applyBackendSwitch("worker", ["kiro-cli", "default", "default"], "claude-code", () => true);
+    expect(reply).toContain('credential profile "personal" has no kiro-cli login yet');
+    expect(f.worker()).toMatchObject({ backend: "claude-code", model: "opus", effort: "max" });
+    expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it("control: the shared login (no profile for the new backend) is not gated", async () => {
+    const f = fleet({ backend_options: { "claude-code": { credential_profile: "personal" } } });
+    const reply = await f.fm.applyBackendSwitch("worker", ["kiro-cli", "default", "default"], "claude-code", () => true);
+    expect(reply).toBe(t("backend.switched", "worker", "kiro-cli", t("backend.default_cli"), t("backend.default_cli")));
+    expect(f.any.saveFleetConfig).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("review r1: a listed model is selectable, whatever its name looks like on its backend", () => {
+  const AGY = [{ id: "Gemini 3.5 Flash (High)", label: "Gemini 3.5 Flash (High)" }, { id: "gemini-3.6-flash-high", label: "flash" }];
+  beforeEach(() => writeFileSync(join(agendHome, "cli-env", "antigravity.json"), JSON.stringify({ backend: "antigravity", models: AGY, probedAt: Date.now() })));
+
+  const withAgy = () => { const f = fleet(); f.any.backendInstalledHere = vi.fn(() => true); return f; };
+
+  it("Telegram: antigravity's display-name model goes on to the effort step", async () => {
+    const f = withAgy();
+    await f.fm.runBackendCommand("worker", "/backend antigravity", "admin", "chan", f.adapter, "chat", "topic", "telegram");
+    await click(f, "Gemini 3.5 Flash (High)");
+    expect(f.promptUser.mock.calls.at(-1)![1]).toBe(t("backend.effort_menu", "antigravity", "Gemini 3.5 Flash (High)"));
+  });
+
+  it("the web: the choice keeps the name whole, and the next call is the effort step, not the usage", async () => {
+    const f = withAgy();
+    const step = await f.fm.webCommand({ instance: "worker", command: "backend", args: "antigravity" }, { publicLink: false });
+    const id = step.body.choices!.options.find(o => o.label === "Gemini 3.5 Flash (High)")!.id;
+    expect(id).toBe('antigravity "Gemini 3.5 Flash (High)"');
+    const next = await f.fm.webCommand({ instance: "worker", command: "backend", args: id }, { publicLink: false });
+    expect(next.body.choices!.prompt).toBe(t("backend.effort_menu", "antigravity", "Gemini 3.5 Flash (High)"));
+    expect(next.body.choices!.options[1]!.id).toBe('antigravity "Gemini 3.5 Flash (High)" low');
+  });
+
+  it("controls: the slug still works; a name its launch line cannot carry is refused, listed or not", async () => {
+    const d = deps({ installedBackends: () => ["claude-code", "codex", "antigravity"], models: async b => b === "antigravity" ? [...AGY, { id: 'bad"q', label: "q" }] : [{ id: "gpt 5", label: "spaced" }] });
+    expect((await backendStep(d, "w", ["antigravity", "gemini-3.6-flash-high"])).kind).toBe("confirm");
+    expect((await backendStep(d, "w", ["antigravity", "Gemini 3.5 Flash (High)"])).kind).toBe("confirm");
+    expect((await backendStep(d, "w", ["antigravity", 'bad"q'])).kind).toBe("refuse");
+    expect((await backendStep(d, "w", ["antigravity", "x\ny"])).kind).toBe("refuse");
+    expect((await backendStep(d, "w", ["codex", "gpt 5"])).kind).toBe("refuse");                  // codex's builder runs validateModel
   });
 });

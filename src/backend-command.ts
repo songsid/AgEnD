@@ -30,8 +30,8 @@ export interface BackendCommandDeps {
   models(backend: string): Promise<ModelOption[]>;
   /** A name the backend accepts beyond its list (claude-code's aliases and account catalog). */
   modelKnown(backend: string, model: string): boolean;
-  /** `/effort`'s levels on that backend; empty when it has no effort setting. */
-  effortLevels(backend: string): string[];
+  /** `/effort`'s levels on that backend for this model (codex's differ per model; null: the CLI's own default model). */
+  effortLevels(backend: string, model: string | null): string[];
   /** The model or effort the instance inherits when it has none of its own (fleet defaults). */
   inherited(key: "model" | "effort"): string | undefined;
   /** Whether a model name looks like one of this backend's (advisory, as `/model`'s warning). */
@@ -62,12 +62,30 @@ function shown(deps: BackendCommandDeps, key: "model" | "effort", value: string 
 
 /** How a plan's model and effort read in the reply after it is applied ("—": the backend has no effort setting). */
 export function planDisplay(deps: BackendCommandDeps, plan: BackendPlan): { model: string; effort: string } {
-  return { model: shown(deps, "model", plan.model), effort: deps.effortLevels(plan.backend).length ? shown(deps, "effort", plan.effort) : "—" };
+  const levels = deps.effortLevels(plan.backend, plan.model ?? deps.inherited("model") ?? null);
+  return { model: shown(deps, "model", plan.model), effort: levels.length ? shown(deps, "effort", plan.effort) : "—" };
 }
 
-/** Split a typed argument string the way every surface does. */
+/**
+ * Split a typed argument string the way every surface does: on whitespace, except inside double quotes — a model can
+ * have spaces in its name (antigravity's "Gemini 3.5 Flash (High)").
+ */
 export function backendArgs(text: string): string[] {
-  return text.trim().split(/\s+/).filter(Boolean);
+  return [...text.matchAll(/"([^"]*)"|(\S+)/g)].map(m => m[1] ?? m[2]!).filter(Boolean);
+}
+
+/** The arguments as one string that backendArgs splits back into the same tokens (the web's choice ids). */
+export function joinBackendArgs(args: readonly string[]): string {
+  return args.map(a => /\s/.test(a) ? `"${a}"` : a).join(" ");
+}
+
+/**
+ * A model name the backend's launch line can carry. Antigravity's builder shell-quotes the name whole (its catalog
+ * has display names); every other builder runs validateModel's rule. Never a control character or a double quote.
+ */
+export function modelNameCarried(backend: string, model: string): boolean {
+  if (!model || /[\x00-\x1f\x7f"]/.test(model) || model.trim() !== model) return false;
+  return backend === "antigravity" || /^[A-Za-z0-9._:/[\]-]+$/.test(model);
 }
 
 /** The next step for these arguments: `[]`, `[backend]`, `[backend, model]` or `[backend, model, effort]`. */
@@ -106,8 +124,8 @@ export async function backendStep(deps: BackendCommandDeps, instance: string, ar
   const modelArg = args[1]!;
   let model: string | null = null;
   if (modelArg.toLowerCase() !== BACKEND_DEFAULT) {
-    // The same name rule `/model` applies before a name can reach a launch command line (validateModel).
-    const known = /^[A-Za-z0-9._:/[\]-]+$/.test(modelArg)
+    // Only a name this backend's launch line can carry (validateModel's rule, or antigravity's quoting), then known.
+    const known = modelNameCarried(backend, modelArg)
       && (models.some(o => o.id === modelArg) || deps.modelKnown(backend, modelArg));
     if (!known) {
       const names = [BACKEND_DEFAULT, ...models.slice(0, MAX_MODEL_CHOICES).map(o => o.id)].join(", ");
@@ -116,7 +134,8 @@ export async function backendStep(deps: BackendCommandDeps, instance: string, ar
     model = modelArg;
   }
 
-  const levels = deps.effortLevels(backend);
+  // The levels of the model that will run: the one chosen, else the inherited one, else the CLI's default (#1806 review).
+  const levels = deps.effortLevels(backend, model ?? defaultModel ?? null);
   const effortDisplay = (e: string | null) => shown(deps, "effort", e);
   if (args.length === 2 && levels.length > 0) {
     return {

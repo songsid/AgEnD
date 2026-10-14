@@ -20,9 +20,10 @@ export interface EffortMetadata {
 }
 
 /** Pure status/menu lookup: only existing Codex config/cache files may be read. */
-export function readEffortMetadata(backend: string, instanceDir: string): EffortMetadata {
+export function readEffortMetadata(backend: string, instanceDir: string, model?: string | null): EffortMetadata {
   if (backend === "codex") {
-    return { strategy: EFFORT_CAPABILITIES.codex.strategy, levels: readCodexEffortLevels(codexMetadataHomes(instanceDir)) };
+    // Codex's levels are per model (#1806 review): `model` when the caller knows which one runs, else config.toml's.
+    return { strategy: EFFORT_CAPABILITIES.codex.strategy, levels: readCodexEffortLevels({ ...codexMetadataHomes(instanceDir), model: model ?? null }) };
   }
   if (backend === "antigravity") {
     // From the binary's own --help, via the CLI env probe's cache (agyEffortLevels); three levels until then.

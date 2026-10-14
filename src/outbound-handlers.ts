@@ -148,8 +148,8 @@ export interface OutboundContext {
   getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
   /** #1808: whether `backend` takes this model name (the rule /backend applies too); `choices`: what it offers. */
   backendModelVerdict?(instanceName: string, backend: string, model: string): { ok: true } | { ok: false; choices: string[] };
-  /** #1808: `/effort`'s levels on a backend this instance may move to; empty when it has no effort setting. */
-  backendEffortLevels?(instanceName: string, backend: string): string[];
+  /** #1808: `/effort`'s levels on a backend this instance may move to, for the model that will run there; empty: none. */
+  backendEffortLevels?(instanceName: string, backend: string, model: string | null): string[];
   resolveInstanceModel?(name: string): {
     model: string;
     source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved";
@@ -1183,7 +1183,10 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
       }
     }
     if (typeof patch.effort === "string") {
-      const levels = ctx.backendEffortLevels?.(name, backendNew);
+      // The levels of the model that will run there (codex's differ per model): the one given, else the inherited one.
+      const inheritedModel = (getEffectiveInstanceDefaults(ctx.fleetConfig?.defaults) as { model?: unknown }).model;
+      const runs = typeof patch.model === "string" ? patch.model : typeof inheritedModel === "string" ? inheritedModel : null;
+      const levels = ctx.backendEffortLevels?.(name, backendNew, runs);
       if (levels && !levels.includes(patch.effort)) {
         respond(null, levels.length
           ? `Rejected: ${backendNew} has no effort "${patch.effort}". Choose one of: ${levels.join(", ")} — or leave effort out for its default.`
@@ -1280,7 +1283,9 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   // the escape hatch from a bad switch and must never be the thing that is
   // blocked, and an unlogged shared store means the CLI was never set up at
   // all — a state that predates this feature.
-  if (profileSwitched && profileAfter) {
+  // #1806 review: a profile is a login of ONE backend — the same name under another backend is another store, so a
+  // backend switch onto a named profile is checked too (claude-code "personal" says nothing about kiro-cli "personal").
+  if ((profileSwitched || backendSwitched) && profileAfter) {
     // The same root the launcher resolves the profile under, so the store this
     // probes is the store the CLI will be pointed at.
     const login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter);

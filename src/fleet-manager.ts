@@ -94,7 +94,7 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
-import { CLI_ENV_TTL_MS, isModelCompatible, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, validateModel, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, isModelCompatible, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -123,7 +123,7 @@ import {
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
-import { backendArgs, backendStep, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
+import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
 import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
@@ -749,6 +749,8 @@ interface BackendMenuPlace {
   respondButtons?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
   retireButtons?: (text: string) => Promise<void>;
   adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
+  /** The instance's config entry when the command was given: a step or the switch for any other is stale. */
+  target?: object;
 }
 interface PendingBackendSelect extends BackendMenuPlace {
   step: Extract<BackendStep, { kind: "choose" | "confirm" }>;
@@ -12853,7 +12855,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #1806: the web's /backend confirmations — one per question, used once, for the arguments and backend asked about. */
-  private readonly webBackendTokens = new Map<string, { instance: string; asked: string; args: string[]; from: string; deadline: number }>();
+  private readonly webBackendTokens = new Map<string, { instance: string; asked: string; args: string[]; from: string; target: object | undefined; deadline: number }>();
   /** #1269: the web's /clear confirmations — one token per question, used once, for the instance as it was asked about. */
   private readonly webClearTokens = new Map<string, { instance: string; fence: () => boolean; deadline: number }>();
 
@@ -12897,22 +12899,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const step = await backendStep(this.backendCommandDeps(instance, { live: false }), instance, backendArgs(args));
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
-          const id = (token: string) => [...step.args, token].join(" ");
+          const id = (token: string) => joinBackendArgs([...step.args, token]);
           return { choices: { prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => ({ id: id(c.token), label: c.label })) } };
         }
         const now = performance.now();
         for (const [k, v] of this.webBackendTokens) if (v.deadline < now) this.webBackendTokens.delete(k);
         const token = randomBytes(16).toString("hex");
-        this.webBackendTokens.set(token, { instance, asked: backendArgs(args).join(" "), args: step.args, from: step.from, deadline: now + CLASSIC_BACKEND_SELECTION_TIMEOUT_MS });
+        this.webBackendTokens.set(token, {
+          instance, asked: joinBackendArgs(backendArgs(args)), args: step.args, from: step.from,
+          target: this.fleetConfig!.instances[instance], deadline: now + CLASSIC_BACKEND_SELECTION_TIMEOUT_MS,
+        });
         return { confirm: { token, message: step.text } };
       },
       backendConfirm: async (instance, args, token) => {
         const entry = this.webBackendTokens.get(token);
         this.webBackendTokens.delete(token);                                  // used once, whatever happens next
-        if (!entry || entry.instance !== instance || entry.asked !== backendArgs(args).join(" ") || performance.now() > entry.deadline) {
+        if (!entry || entry.instance !== instance || entry.asked !== joinBackendArgs(backendArgs(args)) || performance.now() > entry.deadline) {
           return { status: 409, text: t("backend.selection_expired") };
         }
-        return { status: 200, text: await this.applyBackendSwitch(instance, entry.args, entry.from) };
+        // The instance it was asked about: one deleted and created again under the name, stopped or not, is another.
+        const stillCurrent = () => this.backendTargetIs(instance, entry.target);
+        if (!stillCurrent()) return { status: 409, text: t("menu.click_stale") };
+        return { status: 200, text: await this.applyBackendSwitch(instance, entry.args, entry.from, stillCurrent) };
       },
       cancel: (instance) => this.cancelInstance(instance),
       steer: (instance, text, originalBody) => this.topicCommands.sendSteer(instance, text, { ...webMeta(instance), humanOriginalBody: originalBody }),
@@ -17005,7 +17013,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       models: (backend) => this.backendModelOptions(backend, opts),
       // #1808: the same rule update_instance_config's switch applies (backendModelVerdict).
       modelKnown: (backend, model) => this.backendModelVerdict(instanceName, backend, model).ok,
-      effortLevels: (backend) => this.backendEffortLevels(instanceName, backend),
+      effortLevels: (backend, model) => this.backendEffortLevels(instanceName, backend, model),
       inherited: (key) => {
         const value = (getEffectiveInstanceDefaults(this.fleetConfig?.defaults) as Record<string, unknown>)[key];
         return typeof value === "string" && value ? value : undefined;
@@ -17021,14 +17029,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /**
    * #1808: whether a backend takes this model name — the one rule for /backend and update_instance_config's switch.
-   * The name must be one a launch line can carry; then its offered list (the cached CLI env), and claude-code's known
-   * names (without this instance's configured model, which belongs to the backend being left). With no list known,
-   * the backend's usual name pattern decides.
+   * The name must be one its launch line can carry (modelNameCarried); then its offered list (the cached CLI env), and
+   * claude-code's known names (without this instance's configured model, which belongs to the backend being left).
+   * With no list known, the backend's usual name pattern decides.
    */
   backendModelVerdict(instanceName: string, backend: string, model: string): { ok: true } | { ok: false; choices: string[] } {
     const listed = this.readCliEnv(backend)?.models ?? [];
     const choices = listed.slice(0, 24).map(o => o.id);
-    try { validateModel(model); } catch { return { ok: false, choices }; }
+    if (!modelNameCarried(backend, model)) return { ok: false, choices };
     if (listed.some(o => o.id === model)) return { ok: true };
     if (backend === "claude-code") {
       const check = this.claudeModelKnown(instanceName, model, null);
@@ -17037,10 +17045,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return listed.length === 0 && isModelCompatible(backend, model) ? { ok: true } : { ok: false, choices };
   }
 
-  /** `/effort`'s levels for a backend this instance may move to (empty: it has no effort setting). A file read, never a CLI. */
-  backendEffortLevels(instanceName: string, backend: string): string[] {
+  /**
+   * `/effort`'s levels for a backend this instance may move to, for the model that will run there (codex's levels are
+   * per model; null: its configured default). Empty: it has no effort setting. A file read, never a CLI.
+   */
+  backendEffortLevels(instanceName: string, backend: string, model: string | null = null): string[] {
     try {
-      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instanceName));
+      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
       return strategy === "unsupported" ? [] : levels;
     } catch { return []; }
   }
@@ -17060,6 +17071,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return env?.models.length ? env.models : cached?.models ?? [];
   }
 
+  /**
+   * #1806 review: the instance a `/backend` was asked about is still this config entry — not one deleted and created
+   * again under the same name, or replaced by a Settings edit (both put a new object there), stopped or not.
+   */
+  private backendTargetIs(instanceName: string, target: object | undefined): boolean {
+    const instances = this.fleetConfig?.instances;
+    return !!target && !!instances && Object.prototype.hasOwnProperty.call(instances, instanceName) && instances[instanceName] === target;
+  }
+
   /** `/backend` is for fleet.yaml instances: update_instance_config does not manage a ClassicBot agent. */
   private backendCommandRefusal(instanceName: string): string | null {
     return this.fleetConfig?.instances && Object.prototype.hasOwnProperty.call(this.fleetConfig.instances, instanceName)
@@ -17071,11 +17091,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * removed), then update_instance_config's write: backend, model and effort at once, refused and rolled back whole
    * (its credential-profile login gate included), then one fresh relaunch of a running instance.
    */
-  async applyBackendSwitch(instanceName: string, args: readonly string[], from: string): Promise<string> {
+  async applyBackendSwitch(instanceName: string, args: readonly string[], from: string, stillCurrent: () => boolean): Promise<string> {
     if (this.backendNameForInstance(instanceName) !== from) return t("backend.changed", instanceName, from);
+    if (!stillCurrent()) return t("menu.click_stale");
     const deps = this.backendCommandDeps(instanceName, { live: false });
     const step = await backendStep(deps, instanceName, args);
     if (step.kind !== "confirm") return step.kind === "refuse" ? step.text : t("backend.usage");
+    // Asked again after the await, with nothing awaited between here and the write (applyInstanceConfigPatch writes
+    // synchronously): two switches confirmed together, or an instance changed meanwhile, never both succeed.
+    if (this.backendNameForInstance(instanceName) !== from) return t("backend.changed", instanceName, from);
+    if (!stillCurrent()) return t("menu.click_stale");
     const { plan } = step;
     const shown = planDisplay(deps, plan);
     const { value, error } = await new Promise<{ value: unknown; error?: string }>(resolve => {
@@ -17127,7 +17152,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
       if (!place.adapter || !place.adapterChatId) throw new Error("no place to show the menu");
       if (place.menuMessageId && place.adapter.editMessageRemoveButtons) {
-        const chosen = t("backend.chosen", step.args.join(" "));
+        const chosen = t("backend.chosen", joinBackendArgs(step.args));
         await place.adapter.editMessageRemoveButtons(place.adapterChatId, place.menuMessageId, chosen, place.adapterThreadId).catch(() => {});
       }
       const menuMessageId = await place.adapter.promptUser(place.adapterChatId, step.text, buttons, { threadId: place.adapterThreadId });
@@ -17162,6 +17187,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const refusal = this.backendCommandRefusal(place.instanceName);
     if (refusal) { await place.respond(refusal); return; }
     if (!place.respondChoices && !(place.adapter && place.adapterChatId)) { await place.respond(t("backend.usage")); return; }
+    place = { ...place, target: this.fleetConfig!.instances[place.instanceName] };
     const deps = this.backendCommandDeps(place.instanceName, {
       live: true,
       onLiveProbe: () => { void place.respond(t("model.refreshing")).catch(() => { /* the step still follows */ }); },
@@ -17225,6 +17251,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (step.kind === "choose") {
       const choice = step.choices[index];
       if (!choice) return true;
+      if (!this.backendTargetIs(pending.instanceName, pending.target)) { await this.endBackendMenu(pending, t("menu.click_stale")).catch(() => {}); return true; }
       const next = await backendStep(this.backendCommandDeps(pending.instanceName, { live: true }), pending.instanceName, [...step.args, choice.token]);
       if (next.kind === "refuse") { await this.endBackendMenu(pending, next.text).catch(() => {}); return true; }
       await this.presentBackendStep(pending, next);
@@ -17245,8 +17272,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the awaits above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
-          ? await withSpawnHoldReply(say, () => this.applyBackendSwitch(pending.instanceName, step.args, step.from))
+        const stillCurrent = () => this.backendTargetIs(pending.instanceName, pending.target)
+          && this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId);
+        result = stillCurrent()
+          ? await withSpawnHoldReply(say, () => this.applyBackendSwitch(pending.instanceName, step.args, step.from, stillCurrent))
           : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, backend: step.plan.backend }, "Backend switch failed");
