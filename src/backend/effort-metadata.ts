@@ -2,7 +2,7 @@ import { codexMetadataHomes, readCodexEffortLevels } from "./codex-metadata.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
-import { CLI_ENV_TTL_MS } from "./types.js";
+import { CLI_ENV_TTL_MS, cliBinaryIdentity } from "./types.js";
 
 /** Capability data shared with backend getters; resolving it never launches a CLI. */
 export const EFFORT_CAPABILITIES = {
@@ -42,10 +42,17 @@ export const CANONICAL_EFFORT: readonly string[] = ["low", "medium", "high", "xh
 /** The CLI env probe's cached agy state (`<AGEND_HOME>/cli-env/antigravity.json`), while it is valid; else null. */
 export interface AgyCliEnv { models: { id: string; label: string }[]; currentModel: string | null; effortLevels: unknown[] | null }
 
-export function readAgyCliEnv(agendHome: string = getAgendHome()): AgyCliEnv | null {
+/**
+ * Valid: within the CLI env TTL, or — past it — while the binary the probe ran is the one installed: the file it
+ * recorded (`binary`) is still at `binaryPath` (default: its own path) with the same size and mtime (#1825 review: the
+ * fleet probes only at start, in the background, so a fleet up for a day, or one cold-started after a day, would
+ * otherwise launch without the catalog). A stat, never a CLI run.
+ */
+export function readAgyCliEnv(agendHome: string = getAgendHome(), binaryPath?: string): AgyCliEnv | null {
   try {
     const env = JSON.parse(readFileSync(join(agendHome, "cli-env", "antigravity.json"), "utf-8")) as Record<string, unknown>;
-    if (typeof env?.probedAt !== "number" || Date.now() - env.probedAt >= CLI_ENV_TTL_MS) return null;
+    if (typeof env?.probedAt !== "number") return null;
+    if (Date.now() - env.probedAt >= CLI_ENV_TTL_MS && !sameBinary(env.binary, binaryPath)) return null;
     const models = Array.isArray(env.models)
       ? env.models.filter((m): m is { id: string; label: string } => typeof m?.id === "string" && typeof m?.label === "string")
       : [];
@@ -55,6 +62,15 @@ export function readAgyCliEnv(agendHome: string = getAgendHome()): AgyCliEnv | n
       effortLevels: Array.isArray(env.effortLevels) ? env.effortLevels : null,
     };
   } catch { return null; }                                         // no probe yet, or unreadable
+}
+
+/** Whether the recorded binary is the file now at `binaryPath` (default: the recorded path): same size and mtime. */
+function sameBinary(recorded: unknown, binaryPath?: string): boolean {
+  const r = recorded as { path?: unknown; size?: unknown; mtimeMs?: unknown } | null;
+  if (!r || typeof r.path !== "string" || typeof r.size !== "number" || typeof r.mtimeMs !== "number") return false;
+  if (binaryPath !== undefined && binaryPath !== r.path) return false;
+  const now = cliBinaryIdentity(r.path);
+  return now !== null && now.size === r.size && now.mtimeMs === r.mtimeMs;
 }
 
 /**

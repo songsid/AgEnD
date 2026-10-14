@@ -203,8 +203,24 @@ export interface CliEnv {
    * read and lists none (the fallback applies); absent: the help could not be read.
    */
   effortLevels?: string[];
+  /**
+   * The binary file the probe ran (antigravity, #1825): what is at `path`, by size and mtime. While that same file is
+   * installed, its catalog and levels still describe it past the TTL — the launch and /effort read them by it.
+   */
+  binary?: CliBinaryIdentity;
   /** Epoch ms the probe ran (drives the cache TTL). */
   probedAt: number;
+}
+
+/** A binary file, as `stat` sees it (no CLI runs): its path, size and mtime. */
+export interface CliBinaryIdentity { path: string; size: number; mtimeMs: number }
+
+/** The identity of the file at `path`, or null when it cannot be stat'ed. */
+export function cliBinaryIdentity(path: string): CliBinaryIdentity | null {
+  try {
+    const st = statSync(path);
+    return st.isFile() ? { path, size: st.size, mtimeMs: st.mtimeMs } : null;
+  } catch { return null; }
 }
 
 /** Backends whose installed CLI versions are surfaced by `/sysinfo`. */
@@ -840,7 +856,7 @@ export interface CliBackend {
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
    */
-  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[] }>;
+  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[]; effortLevels?: string[]; binary?: CliBinaryIdentity }>;
 
   /**
    * Ask the CLI to refresh its OWN model catalog before the next probe reads it.

@@ -12,7 +12,7 @@
  *
  * No real CLI, fleet or tmux runs here (bd0c88aa): the "binaries" are generated shell scripts.
  */
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -151,6 +151,57 @@ describe("the fleet's /effort levels for an agy instance are its model's", () =>
   });
 });
 
+describe("past the CLI env TTL: the catalog still counts while the probed binary is the one installed (review P2)", () => {
+  const DAY_AND_MORE = Date.now() - 25 * 60 * 60 * 1000;
+  const identity = (path: string) => { const st = statSync(path); return { path, size: st.size, mtimeMs: st.mtimeMs }; };
+  const launch = (bin: string, over: Record<string, unknown>) => {
+    const dir = join(root, "agend", "instances", "worker");
+    mkdirSync(dir, { recursive: true });
+    const be = new AntigravityBackend(dir, root, join(root, "agend"));
+    (be as unknown as { binaryPath: string }).binaryPath = bin;
+    const cmd = be.buildCommand({ workingDirectory: dir, instanceDir: dir, instanceName: "worker", mcpServers: {}, ...over } as never);
+    return { cmd, notes: be.consumeQuietLaunchNotes() };
+  };
+
+  it("the probe records the file it ran", async () => {
+    const bin = fakeAgy();
+    const be = new AntigravityBackend(root, root, join(root, "agend"));
+    (be as unknown as { binaryPath: string }).binaryPath = bin;
+    (be as unknown as { listModels: () => Promise<unknown[]> }).listModels = async () => CATALOG;
+    expect((await be.probeCLIEnv()).binary).toEqual(identity(bin));
+  });
+
+  it("a day-old cache of this same binary → the level's variant at launch, and the model's levels for /effort", () => {
+    const bin = fakeAgy();
+    cacheCliEnv({ probedAt: DAY_AND_MORE, binary: identity(bin), effortLevels: ["low", "medium", "high", "xhigh", "max"] });
+    const { cmd, notes } = launch(bin, { model: "gemini-3.8-flash-medium", effort: "high" });
+    expect(cmd).toContain(" --model 'gemini-3.8-flash-high'");
+    expect(cmd).not.toContain("--effort");
+    expect(notes).toEqual([t("effort.launch_agy_variant", "high", "gemini-3.8-flash-high", "gemini-3.8-flash-medium")]);
+    expect(agyModelEffortLevels("gpt-oss-120b-medium")).toEqual(["medium"]);
+    expect(readEffortMetadata("antigravity", root, "gemini-3.8-flash-low").levels).toEqual(["low", "medium", "high"]);
+  });
+
+  it("a day-old cache of another binary — replaced at that path, or a different path — is not read", () => {
+    const bin = fakeAgy();
+    const stale = (binary: unknown) => cacheCliEnv({ probedAt: DAY_AND_MORE, binary, effortLevels: ["low", "medium", "high", "xhigh", "max"] });
+    const noCatalog = [t("effort.launch_skipped", "high", "antigravity", t("effort.launch_agy_no_catalog", "gemini-3.8-flash-medium"))];
+    stale({ ...identity(bin), size: identity(bin).size + 1 });
+    expect(launch(bin, { model: "gemini-3.8-flash-medium", effort: "high" }).notes).toEqual(noCatalog);
+    expect(agyModelEffortLevels("gpt-oss-120b-medium")).toEqual(["low", "medium", "high"]);
+    const other = fakeAgy("agy-other");
+    stale(identity(other));
+    expect(launch(bin, { model: "gemini-3.8-flash-medium", effort: "high" }).notes).toEqual(noCatalog);
+    stale({ ...identity(bin), mtimeMs: identity(bin).mtimeMs - 1000 });                     // agy updated in place
+    expect(launch(bin, { model: "gemini-3.8-flash-medium", effort: "high" }).notes).toEqual(noCatalog);
+    // A recorded file that is gone (agy uninstalled or moved) describes nothing.
+    for (const binary of [undefined, null, { path: bin }, "x", { path: join(root, "gone"), size: 1, mtimeMs: 1 }]) {
+      stale(binary);
+      expect(agyModelEffortLevels("gpt-oss-120b-medium"), JSON.stringify(binary)).toEqual(["low", "medium", "high"]);
+    }
+  });
+});
+
 describe("resolveAgyLaunch: never --model with another level's --effort", () => {
   const skipped = (level: string, why: string) => t("effort.launch_skipped", level, "antigravity", why);
   const GEMINI = "low, medium, high";
@@ -278,6 +329,13 @@ describe("1.3.5 panes", () => {
     expect(agyTrustDialogState(pane.replace("Context 0% used", "  two-column indent"))).toBeNull();
     const status = audit("trust-dialog-no-effort-model.pane.txt");
     expect(agyTrustDialogState(`${status.trimEnd()}\n${" ".repeat(40)}one more right-aligned row`)).toBeNull();     // ≤ 2 rows
+    // A status-like row counts only as the last row, under the hint (review P3).
+    const hintRow = "  ↑/↓ Navigate · enter Confirm";
+    for (const row of ["Context 0% used", `${" ".repeat(40)}GPT-OSS 120B (Medium)`]) {
+      const swapped = pane.replace(`${hintRow}\nContext 0% used`, `${row}\n${hintRow}`);
+      expect(swapped).not.toBe(pane);
+      expect(agyTrustDialogState(swapped), row).toBeNull();
+    }
   });
 
   it("idle, busy, logged-out and the model picker read as on 1.3.1", () => {

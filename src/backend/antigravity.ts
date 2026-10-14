@@ -23,6 +23,7 @@ import {
   type ErrorPattern,
   type RuntimeDialog,
   type StartupDialog,
+  cliBinaryIdentity,
   resolveBinary,
   shellQuote,
   warnIfModelMismatch,
@@ -96,8 +97,11 @@ export function agyTrustDialogState(pane: string): "yes" | "other" | null {
   const yes = below.findIndex(row => /^[ \t]*(?:\S[ \t]+)?Yes, I trust this folder$/.test(row));
   if (yes < 0 || yes > 2 || !/^[ \t]*(?:\S[ \t]+)?No, exit$/.test(below[yes + 1] ?? "")) return null;
   const tail = below.slice(yes + 2);
-  const ownRow = (row: string) => /Navigate|Confirm|·/.test(row) || /^[ \t]{20,}\S/.test(row) || /^[ \t]*Context \d+% used$/.test(row);
-  if (tail.length > 2 || !tail.every(ownRow)) return null;
+  // The key hint, then at most the status row — which, when it is the right-aligned model or AgEnD's hook text, is the
+  // pane's last row (#1825 review: a row like that anywhere else is not agy's status).
+  const hint = (row: string) => /Navigate|Confirm|·/.test(row);
+  const status = (row: string) => hint(row) || /^[ \t]{20,}\S/.test(row) || /^[ \t]*Context \d+% used$/.test(row);
+  if (tail.length > 2 || !tail.every((row, i) => (i === tail.length - 1 ? status(row) : hint(row)))) return null;
   const cursorOn = (row: string) => /^[ \t]*[>❯›][ \t]/.test(row);
   return cursorOn(below[yes]!) && !cursorOn(below[yes + 1]!) ? "yes" : "other";
 }
@@ -172,7 +176,7 @@ export class AntigravityBackend implements CliBackend {
     // #1811: the configured effort, where this agy takes it (1.0.x has no --effort; launch-effort.ts); else a quiet note.
     const effort = flagEffort("antigravity", config.effort, this.binaryPath);
     // #1825: with an effort, the model is the catalog's variant for that level; never `--model` + another `--effort`.
-    const env = effort.level ? readAgyCliEnv(this.agendHome) : null;
+    const env = effort.level ? readAgyCliEnv(this.agendHome, this.binaryPath) : null;
     const launch = resolveAgyLaunch(config.model || undefined, effort.level ?? null, env?.models ?? null, env?.currentModel ?? null);
     // agy may expose human-readable model names containing spaces/parens.
     if (launch.model) cmd += ` --model ${shellQuote(launch.model)}`;
@@ -485,7 +489,9 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
       const help = readHelpText(this.binaryPath);
       effortLevels = parseAgyEffortLevels(help) ?? [];
     } catch { /* no help → previous value for the same version, else the fallback */ }
-    return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}) };
+    // The file this probe ran: its catalog and levels describe that binary while it stays installed (#1825 review).
+    const binary = cliBinaryIdentity(this.binaryPath) ?? undefined;
+    return { version: probeCliVersion(this.binaryPath), models, currentModel, ...(effortLevels ? { effortLevels } : {}), ...(binary ? { binary } : {}) };
   }
 
   getErrorPatterns(): ErrorPattern[] {
