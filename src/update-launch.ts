@@ -3,7 +3,7 @@ import { execFile, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { appendFileSync, closeSync, existsSync, fchmodSync, openSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { updateCommand } from "./update-dispatch.js";
 import { maskSecrets } from "./log-steps.js";
@@ -50,6 +50,34 @@ export function extractUpdateCause(output: string): string | null {
   return maskSecrets(lines[lines.length - 1]).slice(0, 300);
 }
 
+/** A version or dist-tag as the updater printed it, safe to put in a suggested command; else a placeholder. */
+function updateTarget(output: string): string {
+  const to = /Updating AgEnD v\S+ → v(\S+?)\.\.\./.exec(output)?.[1] ?? /Updating AgEnD to (\S+?)\.\.\./.exec(output)?.[1];
+  return to && /^[0-9A-Za-z][0-9A-Za-z.+-]*$/.test(to) ? to : "<version>";
+}
+
+/**
+ * #1829: the one-line fix for a failure AgEnD knows, from this run's output (a small lookup; anything else: null).
+ * - `agendGone`: the launched `agend` is no longer there (an install that removed it and did not put it back).
+ * - npm `ENOTEMPTY` on its rename: a staging directory left by an interrupted install. npm names the same one on every
+ *   retry, so the retry fails the same way until it is removed — only that exact directory, and only when it is one of
+ *   AgEnD's own (`@songsid/.agend…`), never a pattern.
+ * - "systemd does not know …": the activation proof could not read the user manager (#1804): the one-time manual hop.
+ */
+export function updateFixHint(output: string, opts: { agendGone?: boolean } = {}): string | null {
+  const target = updateTarget(output);
+  if (opts.agendGone) return `\`npm install -g @songsid/agend@${target}\``;
+  if (/^npm (?:ERR!|error) code ENOTEMPTY\b/im.test(output)) {
+    const named = /^npm (?:ERR!|error) dest (.+)$/im.exec(output)?.[1]?.trim() ?? /ENOTEMPTY[^\n]*rename '[^'\n]+' -> '([^'\n]+)'/.exec(output)?.[1];
+    const ours = named && isAbsolute(named) && !/['"\s\\`$]/.test(named)
+      && basename(dirname(named)) === "@songsid" && /^\.agend[A-Za-z0-9._-]*$/.test(basename(named));
+    if (ours) return `remove the directory an interrupted install left, then update again: \`rm -rf '${named}' && agend update\``;
+    return null;
+  }
+  if (/systemd does not know /.test(output)) return `\`npm i -g @songsid/agend@${target} && agend restart\``;
+  return null;
+}
+
 /**
  * Rotate the log file if needed, write a run header, and return an open file descriptor
  * for the child process to write to directly — not a pipe.
@@ -86,15 +114,14 @@ export function openUpdateLog(logPath: string, header: string): { fd: number; of
 }
 
 /**
- * Read only this run's output from the log (from `offset`) and extract a cause.
+ * Read only this run's output from the log (from `offset`): its tail, for the cause and the fix.
  * Prevents a run with no output from picking up the previous run's error as the cause.
  */
-function readRunCause(logPath: string, offset: number): string | null {
+function readRunTail(logPath: string, offset: number): string | null {
   try {
     const buf = readFileSync(logPath);
     const runBytes = buf.subarray(offset);
-    const tail = runBytes.subarray(Math.max(0, runBytes.length - CAUSE_TAIL_BYTES)).toString("utf8");
-    return extractUpdateCause(tail);
+    return runBytes.subarray(Math.max(0, runBytes.length - CAUSE_TAIL_BYTES)).toString("utf8");
   } catch { return null; }
 }
 
@@ -178,16 +205,21 @@ export function watchUpdateLaunch(
   logPath?: string,
   /** Byte offset into the log file at which this run's output begins. */
   logOffset?: number,
+  /** The `agend` the updater runs: there at launch and gone after a failure → reinstalling is the fix (#1829). */
+  agendPath?: string,
 ): void {
   let reported = false;
+  const agendAtLaunch = agendPath !== undefined && existsSync(agendPath);
 
   const report = (reason: string) => {
     if (reported) return;
     reported = true;
-    const cause = logPath != null && logOffset != null ? readRunCause(logPath, logOffset) : null;
+    const tail = logPath != null && logOffset != null ? readRunTail(logPath, logOffset) : null;
+    const cause = tail === null ? null : extractUpdateCause(tail);
     const logNote = logPath ? ` Full log: ${logPath}.` : "";
     const detail = cause ? ` Cause: ${cause}.${logNote}` : logNote;
-    fail(`/update could not complete (${reason}).${detail} Run \`agend update\` from a host shell.`);
+    const fix = updateFixHint(tail ?? "", { agendGone: agendAtLaunch && !existsSync(agendPath!) });
+    fail(`/update could not complete (${reason}).${detail} ${fix ? `Fix: ${fix}` : "Run `agend update` from a host shell."}`);
   };
 
   child.once("error", () => report("updater launch failed"));

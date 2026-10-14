@@ -46,6 +46,7 @@ import {
   reportUpdateRestart,
   shouldSkipUpdate,
   runningFleetPredatesInstall,
+  fleetProvenStopped,
   processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
@@ -1588,15 +1589,9 @@ program
       let installedAtMs = Number.NaN;
       // When this code landed on disk: npm writes the package's files at install.
       try { installedAtMs = statSync(fileURLToPath(import.meta.url)).mtimeMs; } catch { /* unknown */ }
-      if (runningFleetPredatesInstall({
-        pid: fleetPid,
-        installedAtMs,
-        processStartMs: pid => processStartMs(pid),
-        isFleetProcess: pid => isFleetStartCommandLine(readProcessCommandLine(pid)),
-      })) {
-        console.log(`\n  v${pkgVersion} is installed, but the running fleet started before it was — verifying it before restarting onto it.`);
-        // The earlier update may have stopped exactly because this install failed verification (#1449 review): a
-        // second `agend update` must not restart onto it unchecked.
+      // The earlier update may have stopped exactly because this install failed verification (#1449 review): a
+      // second `agend update` must not restart onto it — nor call it up to date — unchecked.
+      const verifyInstalled = async () => {
         const { verifyInstalledPackage } = await import("./update-install.js");
         const verified = verifyInstalledPackage(
           { pkg: `@songsid/agend@${pkgVersion}`, targetVersion: pkgVersion, viaNvm: false, nvmSh },
@@ -1613,11 +1608,35 @@ program
           console.error(message);
           setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() });
           process.exitCode = 1;
-          return;
         }
+        return verified;
+      };
+      if (runningFleetPredatesInstall({
+        pid: fleetPid,
+        installedAtMs,
+        processStartMs: pid => processStartMs(pid),
+        isFleetProcess: pid => isFleetStartCommandLine(readProcessCommandLine(pid)),
+      })) {
+        console.log(`\n  v${pkgVersion} is installed, but the running fleet started before it was — verifying it before restarting onto it.`);
+        const verified = await verifyInstalled();
+        if (!verified.ok) return;
         console.log(`  ✓ v${pkgVersion} verified — restarting the fleet onto it.\n`);
         markUpdateInProgress(DATA_DIR);
         await activateVerified(verified, false);
+        return;
+      }
+      // #1829 ⑥: installed, but no fleet runs (a restart that never finished, a stopped service): not "up to date".
+      // Verified first, then the exact next step — never started from here, so nothing bypasses `agend start`'s checks.
+      if (fleetProvenStopped({
+        pid: fleetPid,
+        alive: pid => { try { process.kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException).code === "EPERM"; } },
+        commandLine: pid => readProcessCommandLine(pid),
+        isFleetProcess: line => isFleetStartCommandLine(line),
+      })) {
+        const verified = await verifyInstalled();
+        if (!verified.ok) return;
+        console.error(`\n  ✗ AgEnD v${pkgVersion} is installed but the fleet is not running — run: agend start\n`);
+        process.exitCode = 1;
         return;
       }
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);

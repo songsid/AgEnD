@@ -194,6 +194,23 @@ export function runningFleetPredatesInstall(opts: {
   return started < opts.installedAtMs - (opts.marginMs ?? 2_000);
 }
 
+/**
+ * #1829 ⑥: whether the fleet is PROVEN not running — no fleet.pid (a fleet removes it when it stops), a pid that no
+ * longer exists, or a live pid whose readable command line is not a fleet's (a recycled pid). A command line that
+ * cannot be read proves nothing either way: not stopped.
+ */
+export function fleetProvenStopped(opts: {
+  pid: number | null;
+  alive: (pid: number) => boolean;
+  commandLine: (pid: number) => string;
+  isFleetProcess: (commandLine: string) => boolean;
+}): boolean {
+  if (opts.pid === null) return true;
+  if (!opts.alive(opts.pid)) return true;
+  const line = opts.commandLine(opts.pid);
+  return line !== "" && !opts.isFleetProcess(line);
+}
+
 /** Start time of a live process, via `ps -o lstart=` (Linux and macOS); null if gone. */
 export function processStartMs(pid: number, run: (args: string[]) => string = args =>
   execFileSync("ps", args, { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: process.env.TZ }, stdio: ["ignore", "pipe", "ignore"], timeout: 5000 }),

@@ -2682,7 +2682,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       detached: true, stdio: ["ignore", logFd ? logFd.fd : "ignore", logFd ? logFd.fd : "ignore"], env: withOrigin(origin),
     });
     if (logFd) closeSync(logFd.fd); // parent closes its copy; the child's fd stays open
-    watchUpdateLaunch(child, message => this.failUpdateProgress(message), logFd ? logPath : undefined, logFd?.offset);
+    watchUpdateLaunch(child, message => this.failUpdateProgress(message), logFd ? logPath : undefined, logFd?.offset, installed.agend);
     child.unref();
   }
 

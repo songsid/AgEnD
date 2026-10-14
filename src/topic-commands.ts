@@ -1698,7 +1698,7 @@ export class TopicCommands {
       detached: true, stdio: ["ignore", logFd ? logFd.fd : "ignore", logFd ? logFd.fd : "ignore"], env: withOrigin(origin),
     });
     if (logFd) closeSync(logFd.fd);
-    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message), logFd ? logPath : undefined, logFd?.offset);
+    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message), logFd ? logPath : undefined, logFd?.offset, installed.agend);
     child.unref();
   }
 
