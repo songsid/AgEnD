@@ -39,3 +39,32 @@ or missing Linux smoke result. Required-check absence remains an error.
 
 Runner queue delays vary with GitHub capacity. Moving Mac jobs out of routine
 runs reduces that dependency; it is not a fixed wall-clock completion guarantee.
+
+## The published 2.1.12 comes from a cached tarball
+
+The Node 20 rollback smoke, `data-downgrade.yml`, the runtime-acceptance hop and the Mac GUI rehearsal all install
+the published `@songsid/agend@2.1.12`. Each registry fetch of that tarball counts as an npm download, so CI fetches it
+once and keeps it in the Actions cache (`.github/actions/published-agend-tarball`, key `agend-tarball-2.1.12-v1`):
+
+- Before every use, the tarball's sha512 must equal the registry's `dist.integrity` (`npm view`, a metadata request,
+  not a download). A mismatch fails the job; nothing re-fetches around it. A freshly fetched tarball is cached only
+  after it passes.
+- `scripts/ci/install-published-tarball.sh` installs it with npm's http log on and fails if npm fetched an
+  `@songsid/agend` tarball anyway. Dependencies still come from the registry.
+- On a cache hit, the action's log says `cache hit (agend-tarball-2.1.12-v1): no registry download of
+  @songsid/agend`, and the install reports how many dependency requests it made, none for our tarball.
+
+A new pull request restores the entry its base branch saved. To drop it on purpose, bump the key's `-v1`.
+
+### Rehearsals
+
+A release rehearsal that installs a published version in several legs packs it once and reuses the file, rather than
+installing it by name in each leg:
+
+```sh
+mkdir -p ~/.cache/agend-published && cd ~/.cache/agend-published
+npm pack @songsid/agend@2.1.12      # once: the only download
+bash <checkout>/scripts/ci/verify-published-tarball.sh ~/.cache/agend-published/songsid-agend-2.1.12.tgz @songsid/agend 2.1.12
+# each leg:
+npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.tgz
+```

@@ -133,7 +133,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per leg.
+      - name: Published 2.1.12 tarball (cached, integrity-checked)
+        id: old-tarball
+        uses: ./.github/actions/published-agend-tarball
+        with:
+          version: 2.1.12
       - name: 2.1.12 → candidate, through the old updater and through plain npm
+        env:
+          AGEND_OLD_TARBALL: ${{ steps.old-tarball.outputs.tarball }}
         run: bash scripts/ci/runtime-acceptance/hop.sh "$RUNNER_TEMP/packages"
 
   native-managers:

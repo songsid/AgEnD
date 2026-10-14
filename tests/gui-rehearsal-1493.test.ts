@@ -23,6 +23,9 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
   for (const d of [bin, home, pkgs, join(temp, "registry")]) mkdirSync(d, { recursive: true });
   writeFileSync(join(pkgs, "candidate.json"), JSON.stringify({ version: CAND, pin: "22.23.3", tarballs: [] }));
   writeFileSync(join(temp, "registry", "npmrc"), "");
+  // #1819: the published 2.1.12 comes as a tarball (the CI action restores and checks it); a placeholder here.
+  const oldTgz = join(root, "songsid-agend-2.1.12.tgz");
+  writeFileSync(oldTgz, "");
   const calls = join(root, "calls"), state = join(root, "installed");
   writeFileSync(state, "2.1.12");
   const stub = (name: string, body: string) => { writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> '${calls}'\n${body}\n`); chmodSync(join(bin, name), 0o755); };
@@ -42,10 +45,11 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
   ].join("\n"));
   const r = spawnSync("bash", [SCRIPT, pkgs], {
     encoding: "utf8", timeout: 60_000,
-    env: { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, RUNNER_TEMP: temp },
+    env: { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, RUNNER_TEMP: temp, AGEND_OLD_TARBALL: oldTgz },
   });
   const log = existsSync(calls) ? readFileSync(calls, "utf8") : "";
-  return { status: r.status, out: r.stdout + r.stderr, restarts: log.split("\n").filter(l => l.startsWith("agend restart")).length };
+  return { status: r.status, out: r.stdout + r.stderr, restarts: log.split("\n").filter(l => l.startsWith("agend restart")).length,
+    npm: log.split("\n").filter(l => l.startsWith("npm ")), oldTgz };
 }
 
 describe("gui-rehearsal.sh: the hop's verdict comes from the old updater alone", () => {
@@ -68,5 +72,9 @@ describe("gui-rehearsal.sh: the hop's verdict comes from the old updater alone",
     const r = rehearse({ rc: 0, leavesPlan: false });
     expect(r.out).toContain(`hop verdict: the old updater installed ${CAND}, exited 0 and consumed the planned activation`);
     expect(r.restarts).toBe(0);
+  });
+  it("#1819: 2.1.12 is installed from its tarball, never fetched from the registry by name", () => {
+    const r = rehearse({ rc: 0, leavesPlan: false });
+    expect(r.npm).toEqual([`npm install --global --no-audit --no-fund --loglevel=http --registry https://registry.npmjs.org/ ${r.oldTgz}`]);
   });
 });
