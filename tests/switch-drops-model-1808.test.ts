@@ -236,13 +236,27 @@ describe("review r1: the backend an instance runs includes the fleet default it 
     await f.call({ backend: "claude-code" });
     expect(f.worker()).toMatchObject({ model: "gpt-5.5", effort: "high" });
     f = await settingsEntry({ backend: "codex" });
-    await f.call({ display_name: "W" });
+    f.any.getInstanceStatus = vi.fn(() => "running");                  // a running one: an edit must not relaunch it
+    const r = await f.call({ display_name: "W" });
     expect(f.worker()).toMatchObject({ model: "gpt-5.5", effort: "high", display_name: "W" });
     expect(f.worker()).not.toHaveProperty("backend");
+    expect(r.result).not.toHaveProperty("restarted");
+    expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
   });
 });
 
 describe("review r1: a backend name that is no backend is refused, never thrown on", () => {
+  it("each guard on its own: unknown names never reach the model rule; the name pattern reads own keys only", async () => {
+    const f = fleet();
+    const verdict = vi.spyOn(f.fm, "backendModelVerdict");
+    for (const name of ["__proto__", "toString", "nope"]) await f.call({ backend: name, model: "x" });
+    expect(verdict).not.toHaveBeenCalled();
+    const { isModelCompatible } = await import("../src/backend/types.js");
+    expect(isModelCompatible("__proto__", "x")).toBe(true);                       // unknown backend: pass through
+    expect(isModelCompatible("toString", "x")).toBe(true);
+    expect(isModelCompatible("codex", "opus")).toBe(false);                        // control: a known one still decides
+  });
+
   it.each(["__proto__", "toString", "constructor", "nope"])("%s", async (name) => {
     const f = fleet();
     const { error } = await f.call({ backend: name, model: "x" });
