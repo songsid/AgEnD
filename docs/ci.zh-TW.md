@@ -23,3 +23,25 @@ CI、Gitleaks、data-downgrade、npm-rollback-proof 以 workflow + PR number 作
 Merge gate 要求 exact head 的必要 checks 成功，也檢查該 head 上其他所有 check-runs，因此不接受 `skipped`。一般事件的 OS matrix 只建立 Linux 格：optional Mac check-runs 完全缺席，而非建立後跳過。必要的 `build` aggregate 永遠存在，仍拒絕失敗、取消、跳過或缺少的 Linux smoke 結果。必要 check 缺席仍是錯誤。
 
 Runner 排隊時間隨 GitHub 容量改變。移出一般 run 的 Mac 格可減少這項依賴，但不保證固定的完成時間。
+
+## 已發布的 2.1.12 來自快取的 tarball
+
+Node 20 rollback smoke、`data-downgrade.yml`、runtime-acceptance 的 hop 與 Mac GUI rehearsal 都會安裝已發布的 `@songsid/agend@2.1.12`。每次從 registry 抓這個 tarball 都會算一次 npm 下載，所以 CI 只抓一次，存在 Actions cache（`.github/actions/published-agend-tarball`，key `agend-tarball-2.1.12-v1`）：
+
+- 每次使用前，tarball 的 sha512 必須等於 registry 的 `dist.integrity`（`npm view`，是 metadata 請求，不算下載）。不符就讓 job 失敗，不會改去重抓。新抓的 tarball 要通過檢查才會存進快取。
+- `scripts/ci/install-published-tarball.sh` 開著 npm 的 http log 安裝它；如果 npm 仍然抓了 `@songsid/agend` 的 tarball，步驟就失敗。依賴套件仍從 registry 取得。
+- 快取命中時，action 的 log 會寫 `cache hit (agend-tarball-2.1.12-v1): no registry download of @songsid/agend`，安裝步驟會列出依賴套件的請求數，其中沒有我們的 tarball。
+
+新的 pull request 會還原 base branch 存下的快取。要刻意丟掉它，把 key 的 `-v1` 加一。
+
+### Rehearsal
+
+Release rehearsal 若要在多個 leg 安裝同一個已發布版本，先 pack 一次再重複使用那個檔案，不要每個 leg 都用套件名稱安裝：
+
+```sh
+mkdir -p ~/.cache/agend-published && cd ~/.cache/agend-published
+npm pack @songsid/agend@2.1.12      # 只有這一次會下載
+bash <checkout>/scripts/ci/verify-published-tarball.sh ~/.cache/agend-published/songsid-agend-2.1.12.tgz @songsid/agend 2.1.12
+# 每個 leg：
+npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.tgz
+```

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # #1450 rehearsal in launchd's GUI domain, on a GitHub-hosted macOS runner (its runner user has a logged-in Aqua
-# session, so gui/<uid> exists). Everything is the REAL thing — launchctl, the published 2.1.12 from npmjs on Node
-# 20.19, its own `agend update` — except that the candidate and its runtime packages come from a local registry.
+# session, so gui/<uid> exists). Everything is the REAL thing — launchctl, the published 2.1.12 on Node 20.19 (its
+# tarball, cached and checked against npmjs's dist.integrity, #1819), its own `agend update` — except that the candidate
+# and its runtime packages come from a local registry.
 #   1. 2.1.12 + Node 20: `agend install` loads com.agend.fleet into gui/<uid>; the fleet answers /health.
 #   2. 2.1.12's `agend update --version <candidate>` (npm, verification, service refresh, restart).
 #   3. After it: the planned activation was consumed, launchd runs <bundled node> <pkg>/dist/cli.js fleet start (a new
@@ -17,6 +18,7 @@ PKGS="${1:?packages dir}"
 CAND="$(node -p 'require(process.argv[1]).version' "$PKGS/candidate.json")"
 PIN="$(node -p 'require(process.argv[1]).pin' "$PKGS/candidate.json")"
 SYS_NODE="$(command -v node)"; SYS_NODE_VERSION="$(node --version)"
+OLD_TGZ="${AGEND_OLD_TARBALL:?the published 2.1.12 tarball (.github/actions/published-agend-tarball)}"
 WORK="${RUNNER_TEMP:?}/gui"; PREFIX="$WORK/prefix"
 mkdir -p "$WORK" "$PREFIX"
 # shellcheck source=checks.sh
@@ -36,8 +38,8 @@ health() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/health
 wait_health() { for _ in $(seq 90); do [ "$(health)" = 200 ] && return 0; sleep 1; done; return 1; }
 show_job() { launchctl print "$TARGET" | grep -E '^[[:space:]]+(state|pid|program) =|^[[:space:]]+arguments = \{' -A4 | head -12 | sed 's/^/    /'; }
 
-step "2.1.12 on Node $SYS_NODE_VERSION (npmjs), a fleet with no channels, \`agend install\` into $DOMAIN"
-npm install -g --no-audit --no-fund --registry https://registry.npmjs.org/ @songsid/agend@2.1.12 >/dev/null
+step "2.1.12 on Node $SYS_NODE_VERSION (its published tarball), a fleet with no channels, \`agend install\` into $DOMAIN"
+bash "$HERE/../install-published-tarball.sh" @songsid/agend "$OLD_TGZ" --registry https://registry.npmjs.org/ >/dev/null
 [ "$(agend --version)" = 2.1.12 ] || fail "agend 2.1.12 did not install"
 mkdir -p "$HOME/.agend"
 printf 'health_port: %s\ninstances: {}\n' "$PORT" > "$HOME/.agend/fleet.yaml"

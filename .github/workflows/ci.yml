@@ -463,14 +463,23 @@ jobs:
         if: needs.detect-changes.outputs.docs-only != 'true'
         with:
           node-version: '20'
+      # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per run.
+      - name: Published 2.1.12 tarball (cached, integrity-checked)
+        id: baseline-tarball
+        if: needs.detect-changes.outputs.docs-only != 'true'
+        uses: ./.github/actions/published-agend-tarball
+        with:
+          version: 2.1.12
       - name: Rollback proof — Node 20 is refused a package with no runtime for it; 2.1.12 stays
         if: needs.detect-changes.outputs.docs-only != 'true'
+        env:
+          BASELINE_TGZ: ${{ steps.baseline-tarball.outputs.tarball }}
         run: |
           set -euo pipefail
           PREFIX="$RUNNER_TEMP/node20-rollback-prefix"
           mkdir -p "$PREFIX"
-          # Install old baseline
-          npm install --global --prefix "$PREFIX" @songsid/agend@2.1.12
+          # Install old baseline: the published 2.1.12, from its verified tarball (no registry download of it)
+          bash scripts/ci/install-published-tarball.sh @songsid/agend "$BASELINE_TGZ" --prefix "$PREFIX"
           BEFORE=$("$PREFIX/bin/agend" --version)
           echo "Before: $BEFORE"
           [ "$BEFORE" = "2.1.12" ] || { echo "baseline install failed"; exit 1; }

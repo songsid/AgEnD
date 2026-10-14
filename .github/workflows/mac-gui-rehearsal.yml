@@ -59,7 +59,15 @@ jobs:
           node-version: 20.19.0
       - name: tmux for the fleet
         run: command -v tmux || brew install tmux
+      # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per leg.
+      - name: Published 2.1.12 tarball (cached, integrity-checked)
+        id: old-tarball
+        uses: ./.github/actions/published-agend-tarball
+        with:
+          version: 2.1.12
       - name: 2.1.12 → candidate in the GUI domain, through the old updater
+        env:
+          AGEND_OLD_TARBALL: ${{ steps.old-tarball.outputs.tarball }}
         run: bash scripts/ci/runtime-acceptance/gui-rehearsal.sh "$RUNNER_TEMP/packages"
       - name: Diagnostics on failure
         if: failure()

@@ -19,6 +19,9 @@ CAND="$(node -p 'require(process.argv[1]).version' "$PKGS/candidate.json")"
 PIN="$(node -p 'require(process.argv[1]).pin' "$PKGS/candidate.json")"
 SYS_NODE="$(command -v node)"; SYS_NODE_VERSION="$(node --version)"
 OLD=2.1.12
+# #1819: the published $OLD, from its cached tarball that .github/actions/published-agend-tarball checked against the
+# registry's dist.integrity: installing it downloads no @songsid/agend tarball from npmjs (that would count as a download).
+OLD_TGZ="${AGEND_OLD_TARBALL:?the published 2.1.12 tarball (.github/actions/published-agend-tarball)}"
 # shellcheck source=checks.sh
 . "$HERE/checks.sh"
 case "$SYS_NODE_VERSION" in v18.*|v20.*) OLD_STARTS=1 ;; v16.*) OLD_STARTS=0 ;; *) fail "the hop runs on an old Node: 16, 18 or 20 (got $SYS_NODE_VERSION)" ;; esac
@@ -47,8 +50,8 @@ STUB
   export AGEND_BOUNDARY_STUBS="$WORK/guard"
   : > "$AGEND_BOUNDARY_LOG"
   export NODE_OPTIONS="--require=$HERE/boundary.cjs"
-  step "[$1] npm install -g @songsid/agend@$OLD (npmjs) on Node $SYS_NODE_VERSION, npm $(npm --version)"
-  npm install -g --no-audit --no-fund --registry https://registry.npmjs.org/ "@songsid/agend@$OLD"
+  step "[$1] npm install -g @songsid/agend@$OLD (its published tarball; dependencies from npmjs) on Node $SYS_NODE_VERSION, npm $(npm --version)"
+  bash "$HERE/../install-published-tarball.sh" @songsid/agend "$OLD_TGZ" --registry https://registry.npmjs.org/
   [ -f "$PREFIX/lib/node_modules/@songsid/agend/package.json" ] && [ "$(node -p 'require(process.argv[1]).version' "$PREFIX/lib/node_modules/@songsid/agend/package.json")" = "$OLD" ] || fail "agend $OLD did not install"
   if [ "$OLD_STARTS" = 1 ]; then [ "$(agend --version)" = "$OLD" ] || fail "agend $OLD does not start"; fi
   [ "$(command -v agend)" = "$PREFIX/bin/agend" ] || fail "agend resolves to $(command -v agend)"

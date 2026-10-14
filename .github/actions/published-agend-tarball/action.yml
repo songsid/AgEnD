@@ -1,0 +1,52 @@
+# #1819: a PUBLISHED @songsid/agend as one tarball that CI installs from. It is fetched from the registry once and kept in
+# the Actions cache (key agend-tarball-<version>-v1), so routine runs stop adding to the package's npm download count.
+# Every use first checks the tarball against the registry's dist.integrity (metadata, not a download) and fails closed
+# on a mismatch (scripts/ci/verify-published-tarball.sh); a freshly fetched tarball is cached only once it passes.
+# Install it with scripts/ci/install-published-tarball.sh, which also fails if npm fetched the package's tarball anyway.
+# Bump the key's -v<n> only to drop a cache entry on purpose.
+name: Published AgEnD tarball
+description: The published @songsid/agend tarball at one version, from the Actions cache, integrity-checked
+inputs:
+  version:
+    description: The published version, e.g. 2.1.12
+    required: true
+outputs:
+  tarball:
+    description: Absolute path of the verified tarball
+    value: ${{ steps.verify.outputs.tarball }}
+runs:
+  using: composite
+  steps:
+    - id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/agend-published-tarball
+        key: agend-tarball-${{ inputs.version }}-v1
+    - name: Cache miss — fetch the published tarball from the registry, once
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        dir="$HOME/.cache/agend-published-tarball"
+        mkdir -p "$dir"
+        echo "cache miss (agend-tarball-$VERSION-v1): one registry download of @songsid/agend@$VERSION; later runs restore it"
+        npm pack "@songsid/agend@$VERSION" --pack-destination "$dir" --registry https://registry.npmjs.org/
+    - id: verify
+      name: Check the tarball against the registry's dist.integrity
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        CACHE_HIT: ${{ steps.restore.outputs.cache-hit }}
+      run: |
+        set -euo pipefail
+        tgz="$HOME/.cache/agend-published-tarball/songsid-agend-$VERSION.tgz"
+        if [ "$CACHE_HIT" = true ]; then echo "cache hit (agend-tarball-$VERSION-v1): no registry download of @songsid/agend"; fi
+        bash "$GITHUB_WORKSPACE/scripts/ci/verify-published-tarball.sh" "$tgz" @songsid/agend "$VERSION"
+        echo "tarball=$tgz" >> "$GITHUB_OUTPUT"
+    - if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/agend-published-tarball
+        key: agend-tarball-${{ inputs.version }}-v1
