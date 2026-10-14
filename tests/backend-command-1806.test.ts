@@ -284,6 +284,16 @@ describe("the Telegram flow", () => {
     expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
   });
 
+  it("into claude-code: the model the instance has now belongs to the backend it leaves, and is not taken as known", async () => {
+    const f = fleet({ backend: "codex", model: "gpt-5.5" });
+    await f.fm.runBackendCommand("worker", "/backend claude-code gpt-5.5", "admin", "chan", f.adapter, "chat", "topic", "telegram");
+    expect(f.sendText.mock.calls.at(-1)![1]).toContain(t("backend.unknown_model", "gpt-5.5", "claude-code", "default").slice(0, 40));
+    expect(f.promptUser).not.toHaveBeenCalled();
+    // claude's own aliases are known without a list.
+    await f.fm.runBackendCommand("worker", "/backend claude-code sonnet", "admin", "chan", f.adapter, "chat", "topic", "telegram");
+    expect(f.promptUser).toHaveBeenCalledTimes(1);
+  });
+
   it("a ClassicBot agent is not switched by it, and says so", async () => {
     const f = fleet();
     await f.fm.runBackendCommand("room-agent", "/backend codex", "admin", "chan", f.adapter, "chat", undefined, "telegram");
