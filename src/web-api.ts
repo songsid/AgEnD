@@ -298,6 +298,9 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
   return false;
 }
 
+/** #1823: an SSE frame with the server's clock (no id: it is not a message, and a reconnect gets a fresh one). */
+function sseClock(): string { return `event: clock\ndata: ${JSON.stringify({ now: Date.now() })}\n\n`; }
+
 /**
  * Handle a Web UI request. Returns true if handled, false to pass through.
  */
@@ -409,6 +412,8 @@ export function handleWebRequest(
       // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
       // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
       cursor: history ? history.pollCursor() : null,
+      // #1823 (#1830 review): the server's clock now, for the page's poll countdown (a poll's deadline is the server's).
+      now: Date.now(),
     });
     return true;
   }
@@ -421,6 +426,8 @@ export function handleWebRequest(
       Connection: "keep-alive",
     });
     res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
+    // #1823 (#1830 review): the server's clock, now and with every heartbeat — what the page counts a poll down by.
+    res.write(sseClock());
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
     const lastSeen = parseLastEventId(req.headers["last-event-id"]);
     if (lastSeen !== null && ctx.webChatHistory) {
@@ -450,6 +457,7 @@ export function handleWebRequest(
       try {
         // Every open dashboard tab, every 10 s: the status of every instance, serialized on the fleet's loop (#1235).
         res.write(measureSyncWork("web.sseStatus", () => `event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`));
+        res.write(sseClock());
       } catch {
         cleanup();
       }

@@ -694,7 +694,7 @@ describe("the chat panel's prompts (the real page modules)", () => {
     handleWebRequest(req as unknown as IncomingMessage, res as unknown as ServerResponse, new URL("http://localhost/ui/events"), server);
     res.emit("close");
     const frames = writes.join("").split("\n\n").filter(Boolean).map(f => ({ event: f.match(/^event: (.*)$/m)![1]!, data: f.match(/^data: (.*)$/m)![1]! }));
-    expect(frames.map(f => f.event)).toEqual(["status", "prompts"]);
+    expect(frames.map(f => f.event)).toEqual(["status", "clock", "prompts"]);
     c.stream.start();
     for (const f of frames) c.sources[0].listeners.get(f.event)?.({ data: f.data });
     await c.mount("w");

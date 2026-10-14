@@ -30,7 +30,7 @@
 // - suspend()/resume(): the page is leaving (pagehide) / came back from the back-forward cache.
 
 // #1218: steps_tick — an instance's transcript moved while a Log watches it (SSE only: a poll page asks the Log itself).
-const EVENTS = ["status", "message", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "steps_tick"];
+const EVENTS = ["status", "message", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "steps_tick", "clock"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed
@@ -114,6 +114,7 @@ export function createStream(opts) {
         if (closed || mine !== pollSeq || !r.ok) return false;
         const d = await r.json();
         if (closed || mine !== pollSeq) return false;
+        if (typeof d.now === "number") emit("clock", { now: d.now });   // #1823: read just now, handed over at once
         if (d.status) emit("status", d.status);
         for (const m of d.messages || []) emit("message", m);
         if (typeof d.cursor === "string") state.cursor = d.cursor;
@@ -209,6 +210,8 @@ export function createStream(opts) {
         try { data = JSON.parse(e.data); } catch { return; }
         if (!spoke) { spoke = true; alive(); if (again) catchUp(); }
         else alive();
+        // #1823: a clock reading is about now, not about order: it is never held behind a catch-up (it would be stale).
+        if (name === "clock") { emit(name, data); return; }
         live(name, data, name === "message" ? e.lastEventId : null);
       });
     }

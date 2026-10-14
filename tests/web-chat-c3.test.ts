@@ -909,7 +909,7 @@ describe("the chat panel (the real page modules)", () => {
     // …and the browser reconnects with the cursor it had, before any fallback poll.
     const { c: server } = ctx({ webChatHistory: h, getUiStatus: () => ({ uptime: 1, instances: [] }) });
     const frames = connect(server, h.cursorOf(m));
-    expect(frames.map(f => f.event), "nothing new to replay — only the status and the ticks").toEqual(["status", "deliveries"]);
+    expect(frames.map(f => f.event), "nothing new to replay — only the status, the clock (#1823) and the ticks").toEqual(["status", "clock", "deliveries"]);
     for (const f of frames) source.listeners.get(f.event)!({ data: f.data, lastEventId: f.id });
     expect([seen, c.store().state.msgs.w[0].delivery]).toEqual([final === "cancelled" ? "queued" : "processing", final]);
     expect(c.fx.calls, "no poll was needed").toEqual([]);

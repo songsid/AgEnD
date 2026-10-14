@@ -204,6 +204,39 @@ describe("the public link votes as its own session, through the real gateway", (
   });
 });
 
+describe("the server says what time it is (#1830 review)", () => {
+  async function get(ctx: unknown, path: string, token: string, keepOpen = false) {
+    const host = "127.0.0.1:19280", origin = `http://${host}`;
+    const req = Object.assign(new EventEmitter(), { method: "GET", url: path, headers: { host, origin, "x-agend-token": token }, destroy() {}, socket: { destroy() {}, remoteAddress: "127.0.0.1" } });
+    const writes: string[] = [];
+    let status = 0;
+    const res = Object.assign(new EventEmitter(), { headersSent: false, destroyed: false, setHeader() {}, writeHead: (c: number) => { status = c; return res; }, write: (x: string) => { writes.push(x); return true; }, end: (x = "") => { writes.push(x); return res; }, destroy() {} });
+    handleWebRequest(req as never, res as never, new URL(path, origin), ctx as never);
+    if (!keepOpen) await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
+    return { status, writes, res };
+  }
+  it("/ui/poll answers with `now`", async () => {
+    vi.useFakeTimers({ now: 1_234_567, toFake: ["Date"] });
+    const h = webFleet();
+    const w = webCtx(h.fm);
+    const r = await get(w.ctx, "/ui/poll?after=", w.token);
+    expect(JSON.parse(r.writes.join("")).now).toBe(1_234_567);
+  });
+  it("the stream sends a `clock` right after its status, and again with every heartbeat", async () => {
+    vi.useFakeTimers({ now: 5_000_000, toFake: ["Date", "setInterval", "clearInterval"] });
+    const h = webFleet();
+    const w = webCtx(h.fm);
+    Object.defineProperty(w.ctx, "sseHeartbeatMs", { value: 10_000 });
+    const r = await get(w.ctx, "/ui/events", w.token, true);
+    const frames = () => r.writes.join("").split("\n\n").filter(Boolean).map(f => ({ event: f.match(/^event: (.*)$/m)![1]!, data: JSON.parse(f.match(/^data: (.*)$/m)![1]!) }));
+    expect(frames().slice(0, 2).map(f => f.event)).toEqual(["status", "clock"]);
+    expect(frames()[1]!.data).toEqual({ now: 5_000_000 });
+    vi.advanceTimersByTime(10_000);
+    expect(frames().filter(f => f.event === "clock").map(f => f.data.now)).toEqual([5_000_000, 5_010_000]);
+    r.res.emit("close");
+  });
+});
+
 describe("the history keeps the newest view of a poll", () => {
   it("an older view (by rev) never replaces a newer one, and closed is final", () => {
     const hist = new WebChatHistory({ perInstance: 50 });
@@ -306,19 +339,64 @@ describe("the page: ordering, the countdown, and its own vote", () => {
       expect(again.state.pollMine["f".repeat(32)]).toEqual([0, 1]);
     } finally { dom.restore(); }
   });
-  it("the countdown runs on the server's clock: a live view's rev gives the skew; an ended view's does not", () => {
+  it("the countdown runs on the server's clock, from its explicit `clock` — never from a view's rev (#1830 review)", () => {
     const dom = installDom({});
     try {
       vi.useFakeTimers({ now: 1_000_000 });
       const store = createChatStore({ fetch: vi.fn(), toast: vi.fn(), announce: vi.fn(), t: (k: string) => k, now: () => 0 } as any);
       const handlers: Record<string, (d: any) => void> = {};
       store.attach({ on: (e: string, fn: (d: any) => void) => { handlers[e] = fn; } });
-      handlers.message!({ boot: "x", id: 1, instance: "w", sender: "w", role: "agent", text: "Q", ts: "2026-01-01T00:00:00Z", buttons: view("open", 0, 1_007_000) });
+      handlers.clock!({ now: 1_007_000 });
       expect(store.state.clockSkew).toBe(7_000);                            // this device is 7 s behind the server
-      handlers.reply_buttons!({ instance: "w", buttons: view("open", 1, 997_000) });
-      expect(store.state.clockSkew).toBe(-3_000);
-      handlers.reply_buttons!({ instance: "w", buttons: view("closed", 1, 2_000_000) });
-      expect(store.state.clockSkew).toBe(-3_000);                           // an ended view may be old: not a clock reading
+      handlers.clock!({ now: 1_005_000 });
+      expect(store.state.clockSkew).toBe(5_000);
+      // Views say when they were made, not what time it is: an open one from 60 s ago changes nothing.
+      handlers.message!({ boot: "x", id: 1, instance: "w", sender: "w", role: "agent", text: "Q", ts: "2026-01-01T00:00:00Z", buttons: view("open", 0, 940_000) });
+      handlers.reply_buttons!({ instance: "w", buttons: view("open", 1, 940_000) });
+      expect(store.state.clockSkew).toBe(5_000);
+      handlers.clock!({ now: "soon" });
+      expect(store.state.clockSkew).toBe(5_000);
+    } finally { dom.restore(); }
+  });
+  it("the stream: a clock is handed over at once, even while live events are held behind a catch-up", async () => {
+    // @ts-expect-error — a shipped ESM module with no types (the app's own file)
+    const { createStream } = await import("../src/ui/shared/app-stream.js");
+    const dom = installDom({});
+    try {
+      const sources: Array<{ listeners: Map<string, (e: { data: string }) => void> }> = [];
+      class FakeSource { listeners = new Map(); constructor() { sources.push(this); } addEventListener(n: string, fn: any) { this.listeners.set(n, fn); } close() {} }
+      const env = { EventSource: FakeSource, fetch: () => new Promise(() => {}), setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {} };
+      const stream = createStream({ mode: "full", env });
+      const store = createChatStore({ fetch: vi.fn(), toast: vi.fn(), announce: vi.fn(), t: (k: string) => k, now: () => 0 } as any);
+      store.attach(stream);
+      stream.start();
+      const fire = (name: string, data: unknown) => sources[0]!.listeners.get(name)!({ data: JSON.stringify(data) });
+      fire("status", {});
+      void stream.catchUp();                                               // its read never answers: live events are held
+      const now = Date.now();
+      fire("clock", { now: now + 9_000 });
+      expect(store.state.clockSkew).toBeGreaterThan(8_900);
+      expect(store.state.clockSkew).toBeLessThanOrEqual(9_000);
+    } finally { dom.restore(); }
+  });
+  it("the poll transport: a poll answer carrying a 60 s old open view sets the skew from its `now`, not the view", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    // @ts-expect-error — a shipped ESM module with no types (the app's own file)
+    const { createStream } = await import("../src/ui/shared/app-stream.js");
+    const dom = installDom({});
+    try {
+      const answer = { now: 1_002_000, cursor: "c1", reply_buttons: [{ instance: "w", buttons: view("open", 2, 940_000) }] };
+      const env = {
+        fetch: async () => ({ ok: true, status: 200, json: async () => answer }),
+        setInterval: () => 1, clearInterval() {}, setTimeout: () => 2, clearTimeout() {},
+      };
+      const stream = createStream({ mode: "full", transport: "poll", env });
+      const store = createChatStore({ fetch: vi.fn(), toast: vi.fn(), announce: vi.fn(), t: (k: string) => k, now: () => 0 } as any);
+      store.attach(stream);
+      stream.start();
+      // now − the time the page read it (vi.waitFor's own ticks may pass first): about +2 s — never the view's −60 s.
+      await vi.waitFor(() => expect(store.state.clockSkew).toBeGreaterThan(1_800));
+      expect(store.state.clockSkew).toBeLessThanOrEqual(2_000);
     } finally { dom.restore(); }
   });
   it("the thread counts down from the server's now when it is given one", () => {
