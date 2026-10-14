@@ -179,3 +179,75 @@ describe("backendModelVerdict: the one rule", () => {
 function noListRefusal(f: ReturnType<typeof fleet>): Promise<string | undefined> {
   return f.call({ backend: "grok", model: "opus" }).then(r => r.error);
 }
+
+describe("review r1: a custom provider's model is judged by the provider, not the account", () => {
+  it("accepted on the provider — given in this patch, already the instance's, or inherited from the fleet; with no account list too", async () => {
+    let f = fleet();
+    expect((await f.call({ backend: "codex", model: "glm-4.6", backend_options: { codex: { provider: "glm" } } })).error).toBeUndefined();
+    expect(f.saves).toEqual([expect.objectContaining({ backend: "codex", model: "glm-4.6", backend_options: { codex: { provider: "glm" } } })]);
+    f = fleet({ backend_options: { codex: { provider: "glm" } } });
+    expect((await f.call({ backend: "codex", model: "glm-4.6" })).error).toBeUndefined();
+    f = fleet({}, { backend_options: { codex: { provider: "glm" } } });
+    expect((await f.call({ backend: "codex", model: "glm-4.6" })).error).toBeUndefined();
+    rmSync(join(agendHome, "cli-env", "codex.json"));
+    f = fleet({ backend_options: { codex: { provider: "glm" } } });
+    expect((await f.call({ backend: "codex", model: "glm-4.6" })).error).toBeUndefined();
+  });
+
+  it("controls: an unsafe name is refused on a provider too; without a provider, another backend's model still is; a provider removed in the patch is none", async () => {
+    let f = fleet({ backend_options: { codex: { provider: "glm" } } });
+    expect((await f.call({ backend: "codex", model: "glm 4.6" })).error).toMatch(/^Rejected: codex does not take the model "glm 4.6"/);
+    f = fleet();
+    expect((await f.call({ backend: "codex", model: "opus" })).error).toMatch(/^Rejected: codex does not take the model "opus"/);
+    f = fleet({ backend_options: { codex: { provider: "glm" } } });
+    expect((await f.call({ backend: "codex", model: "glm-4.6", backend_options: { codex: { provider: null } } })).error)
+      .toMatch(/^Rejected: codex does not take the model "glm-4.6"/);
+    expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe("review r1: the backend an instance runs includes the fleet default it inherits", () => {
+  /** An entry as Settings creates it: no `backend` of its own. */
+  async function settingsEntry(defaults: Record<string, unknown>) {
+    const { normalizeSettingsInstancePatch } = await import("../src/settings-instance-patch.js");
+    const f = fleet({}, defaults);
+    (f.fm.fleetConfig!.instances as any).worker = normalizeSettingsInstancePatch({}, { working_directory: join(dataDir, "w"), model: "gpt-5.5", effort: "high" });
+    f.any.getInstanceStatus = vi.fn(() => "stopped");
+    return f;
+  }
+
+  it("(a) inheriting codex, switched to claude-code: a switch — the codex model and effort go", async () => {
+    const f = await settingsEntry({ backend: "codex" });
+    expect(f.any.backendNameForInstance("worker")).toBe("codex");
+    expect((await f.call({ backend: "claude-code" })).error).toBeUndefined();
+    expect(f.worker()).toMatchObject({ backend: "claude-code" });
+    expect(f.worker()).not.toHaveProperty("model");
+    expect(f.worker()).not.toHaveProperty("effort");
+  });
+
+  it("(b) inheriting codex, given codex: not a switch — model and effort stay", async () => {
+    const f = await settingsEntry({ backend: "codex" });
+    expect((await f.call({ backend: "codex" })).error).toBeUndefined();
+    expect(f.worker()).toMatchObject({ model: "gpt-5.5", effort: "high" });
+  });
+
+  it("controls: no fleet default (claude-code), given claude-code: not a switch; a display-name edit keeps both", async () => {
+    let f = await settingsEntry({});
+    await f.call({ backend: "claude-code" });
+    expect(f.worker()).toMatchObject({ model: "gpt-5.5", effort: "high" });
+    f = await settingsEntry({ backend: "codex" });
+    await f.call({ display_name: "W" });
+    expect(f.worker()).toMatchObject({ model: "gpt-5.5", effort: "high", display_name: "W" });
+    expect(f.worker()).not.toHaveProperty("backend");
+  });
+});
+
+describe("review r1: a backend name that is no backend is refused, never thrown on", () => {
+  it.each(["__proto__", "toString", "constructor", "nope"])("%s", async (name) => {
+    const f = fleet();
+    const { error } = await f.call({ backend: name, model: "x" });
+    expect(error).toMatch(/^Rejected: /);
+    expect(f.worker()).toMatchObject({ backend: "claude-code", model: "opus" });
+    expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
+  });
+});

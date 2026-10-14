@@ -17058,7 +17058,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * claude-code's known names (without this instance's configured model, which belongs to the backend being left).
    * With no list known, the backend's usual name pattern decides.
    */
-  backendModelVerdict(instanceName: string, backend: string, model: string): { ok: true } | { ok: false; choices: string[] } {
+  backendModelVerdict(
+    instanceName: string, backend: string, model: string,
+    /** The provider the backend will run on (default: this instance's own, else the fleet's). */
+    opts: { provider: string | null } = { provider: this.customProviderFor(instanceName, backend) },
+  ): { ok: true } | { ok: false; choices: string[] } {
+    // A custom provider has its own catalog, which the CLI reads at launch and AgEnD cannot see before one (#1815
+    // review): only the launch-line rule applies — never the account's list or the default provider's naming pattern.
+    if (opts.provider) return modelNameCarried(backend, model) ? { ok: true } : { ok: false, choices: [] };
     const listed = this.readCliEnv(backend)?.models ?? [];
     const choices = listed.slice(0, 24).map(o => o.id);
     if (!modelNameCarried(backend, model)) return { ok: false, choices };

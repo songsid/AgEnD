@@ -1,4 +1,4 @@
-import { validateFleetConfig, type ValidationResult } from "./config-validator.js";
+import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -147,7 +147,7 @@ export interface OutboundContext {
   /** Effective process state used to annotate cross-instance delivery results. */
   getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
   /** #1808: whether `backend` takes this model name (the rule /backend applies too); `choices`: what it offers. */
-  backendModelVerdict?(instanceName: string, backend: string, model: string): { ok: true } | { ok: false; choices: string[] };
+  backendModelVerdict?(instanceName: string, backend: string, model: string, opts?: { provider: string | null }): { ok: true } | { ok: false; choices: string[] };
   /** #1808: `/effort`'s levels on a backend this instance may move to, for the model that will run there; empty: none. */
   backendEffortLevels?(instanceName: string, backend: string, model: string | null): string[];
   resolveInstanceModel?(name: string): {
@@ -1168,21 +1168,32 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   }
   // Read before anything is mutated: the switch is what decides whether the
   // next launch may resume, and by then `inst` already holds the new value.
-  const backendBefore = (inst as any).backend ?? "claude-code";
+  // The backend an instance runs: its own, else the fleet default (#1815 review: a Settings-created entry may omit it).
+  const effectiveBackend = (): string => (inst as any).backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+  const backendBefore = effectiveBackend();
   // #1808: a model and an effort name the backend they were chosen for. On a switch the new backend gets the ones
   // given — if it takes them, refused here before anything is written — or none of the instance's own (the inherited
   // value, else the CLI's default). Never the old backend's: codex launched with `--model opus` fails every turn.
   if (patch.backend !== undefined && patch.backend !== backendBefore) {
     const backendNew = patch.backend;
-    if (typeof patch.model === "string") {
-      const verdict = ctx.backendModelVerdict?.(name, backendNew, patch.model);
+    // Only a backend AgEnD knows gets these checks; any other name is refused by validation below, as before (and a
+    // "__proto__" or "toString" never reaches a lookup keyed by backend name).
+    const known = KNOWN_BACKENDS.includes(backendNew);
+    // The provider the new backend will run on (#1815 review): this patch's backend_options over the instance's, else
+    // the fleet defaults' — a custom provider has its own catalog, which the account's list says nothing about.
+    const options = mergeBackendOptions((inst as any).backend_options, patch.backend_options ?? {})[backendNew]
+      ?? ctx.fleetConfig?.defaults?.backend_options?.[backendNew];
+    const rawProvider = (options as { provider?: unknown } | undefined)?.provider;
+    const provider = typeof rawProvider === "string" && rawProvider.trim() ? rawProvider.trim() : null;
+    if (known && typeof patch.model === "string") {
+      const verdict = ctx.backendModelVerdict?.(name, backendNew, patch.model, { provider });
       if (verdict && !verdict.ok) {
         respond(null, `Rejected: ${backendNew} does not take the model "${patch.model}". ${verdict.choices.length
           ? `Choose one of: ${verdict.choices.join(", ")}` : `No ${backendNew} model list is known yet`} — or leave model out for its default.`);
         return;
       }
     }
-    if (typeof patch.effort === "string") {
+    if (known && typeof patch.effort === "string") {
       // The levels of the model that will run there (codex's differ per model): the one given, else the inherited one.
       const inheritedModel = (getEffectiveInstanceDefaults(ctx.fleetConfig?.defaults) as { model?: unknown }).model;
       const runs = typeof patch.model === "string" ? patch.model : typeof inheritedModel === "string" ? inheritedModel : null;
@@ -1223,17 +1234,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
   let relaunchNeeded = false;
   if (patch.backend_options !== undefined) {
     const before = JSON.stringify(previousOptions ?? {});
-    const merged: Record<string, Record<string, unknown>> = { ...(previousOptions ?? {}) };
-    for (const [backendName, options] of Object.entries(patch.backend_options)) {
-      const namespace: Record<string, unknown> = { ...(merged[backendName] ?? {}), ...options };
-      // A merge cannot express removal, so null (or "") means "drop this key"
-      // — that is how an agent goes back to the fleet's default login.
-      for (const [key, value] of Object.entries(options)) {
-        if (value === null || value === "") delete namespace[key];
-      }
-      if (Object.keys(namespace).length) merged[backendName] = namespace;
-      else delete merged[backendName];
-    }
+    const merged = mergeBackendOptions(previousOptions, patch.backend_options);
     (inst as any).backend_options = merged;
     relaunchNeeded = JSON.stringify(merged) !== before;
   }
@@ -1260,7 +1261,7 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
     return;
   }
 
-  const backendAfter = (inst as any).backend ?? "claude-code";
+  const backendAfter = effectiveBackend();
   const profileAfter = instanceCredentialProfile(inst, ctx.fleetConfig?.defaults, backendAfter);
   const profileSwitched = profileAfter !== profileBefore;
   // #1217: a running CLI is the backend it was launched as. Saving a new
@@ -1387,6 +1388,26 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
       warning: `Config saved, but the restart failed: ${(err as Error).message}. The new backend_options take effect on the next start.`,
     }),
   );
+}
+
+/**
+ * backend_options merged per backend namespace, so setting a kiro option cannot silently drop a codex one. A merge
+ * cannot express removal, so null (or "") means "drop this key" — that is how an agent goes back to the fleet's
+ * default login.
+ */
+function mergeBackendOptions(
+  previous: Record<string, Record<string, unknown>> | undefined, patch: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> {
+  const merged: Record<string, Record<string, unknown>> = { ...(previous ?? {}) };
+  for (const [backendName, options] of Object.entries(patch)) {
+    const namespace: Record<string, unknown> = { ...(merged[backendName] ?? {}), ...options };
+    for (const [key, value] of Object.entries(options)) {
+      if (value === null || value === "") delete namespace[key];
+    }
+    if (Object.keys(namespace).length) merged[backendName] = namespace;
+    else delete merged[backendName];
+  }
+  return merged;
 }
 
 /** Long enough for the relaunched CLI to be listening; matches replace_instance. */

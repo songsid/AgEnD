@@ -964,7 +964,8 @@ const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
 
 /** Check if a model name is compatible with the given backend. */
 export function isModelCompatible(backendName: string, model: string): boolean {
-  const pattern = BACKEND_MODEL_PATTERNS[backendName];
+  // Own keys only: "__proto__" or "toString" names no backend (#1815 review).
+  const pattern = Object.prototype.hasOwnProperty.call(BACKEND_MODEL_PATTERNS, backendName) ? BACKEND_MODEL_PATTERNS[backendName] : undefined;
   if (!pattern) return true; // unknown backend — pass through
   return pattern.test(model);
 }
