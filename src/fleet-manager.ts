@@ -1274,8 +1274,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return w.ok ? { ok: true, person: this.webPerson(owner) } : { ok: false, status: w.status, error: w.error };
   }
   /** #1827 (auth-api): a sign-in as this account — its display name then is the web name it starts with. */
-  noteWebSignIn(owner: LoginCodeOwner): void {
-    if (owner.username) this.webPrefs.setPlatformName(webPersonKey(owner), owner.username);
+  noteWebSignIn(account: { adapterId: string; userId: string; username?: string }): void {
+    if (account.username) this.webPrefs.setPlatformName(webPersonKey(account), account.username);
   }
   /**
    * #1827: a name that belongs to something here — an instance (or ClassicBot room), its display name, a bot. On the web
@@ -5482,7 +5482,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * — this bot's configured group and its one General topic. No address to match in a DM, so it must be unambiguous:
    * no General, or more than one on this bot and group, and there is no owner (nothing is guessed).
    */
-  private dmDashboardOwner(userId: string, adapterId: string): LoginCodeOwner | null {
+  private dmDashboardOwner(userId: string, adapterId: string, username?: string): LoginCodeOwner | null {
     const world = this.worlds.get(adapterId);
     if (!world || !this.hasFleetAdmins(adapterId) || !this.isFleetAdmin(userId, adapterId)) return null;
     const configured = (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).find(ch => (ch.id ?? ch.type) === adapterId);
@@ -5493,7 +5493,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         && String(this.getGroupIdForInstance(name) ?? "") === group)
       .map(([, cfg]) => cfg.topic_id!.toString());
     if (topics.length !== 1) return null;
-    const owner = { userId, adapterId, chatId: group, threadId: topics[0], binding: world.adapter };
+    const owner = { userId, adapterId, chatId: group, threadId: topics[0], binding: world.adapter, ...(username ? { username } : {}) };
     return this.publicOwnerCurrent(owner) ? owner : null;
   }
   /**
@@ -5517,7 +5517,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1742: `/start web` from a fleet admin: the /web menu right here in the DM, for the General this bot serves. */
   private async startWebInDm(msg: InboundMessage, adapter: ChannelAdapter | undefined): Promise<void> {
     if (!adapter) return;
-    const owner = msg.chatId === msg.userId ? this.dmDashboardOwner(msg.userId, msg.adapterId ?? "") : null;
+    const owner = msg.chatId === msg.userId ? this.dmDashboardOwner(msg.userId, msg.adapterId ?? "", msg.username) : null;
     if (!owner) { await adapter.sendText(msg.chatId, t("dashboard.start_web_ack")); return; }
     if (!await this.showDashboardMenu(owner, undefined, undefined, msg.chatId)) {
       await adapter.sendText(msg.chatId, t("dashboard.menu_failed")).catch(() => undefined);
@@ -5588,7 +5588,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const token = this.webToken;
     if (!adapter || !token) { await data.respond(text); return; }
     this.initializeWebSessions();
-    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token) });
+    // #1827: the code goes privately to this account (a DM, or else this slash command's ephemeral answer): whoever
+    // redeems it is recognised as that account. Recognition only — no owner (this is not an owning General's code).
+    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) } });
     const current = (): boolean => !this.shuttingDown && this.adapters.get(adapterId) === adapter
       && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
     const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;

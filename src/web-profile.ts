@@ -34,6 +34,29 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
  */
 const ALLOWED = /^(?:[\p{L}\p{M}\p{N} ._'\u00b7-]|\p{Extended_Pictographic}|[\ufe0e\ufe0f]|[\u{1f3fb}-\u{1f3ff}]|\u20e3)+$/u;
 
+/**
+ * Default-ignorable characters render as nothing (or leave what they follow unchanged): a name spelled with one looks
+ * like a name it is not ("Pri"+CGJ+"sm" is not "prism" to a comparison, and reads as it). They are refused everywhere —
+ * bidi and zero-width ones included — except an emoji's own presentation selector: VS15/VS16 on a pictograph, or in a
+ * keycap (digit, # or * + VS16 + U+20E3). (#1833 review.)
+ */
+const DEFAULT_IGNORABLE = /\p{Default_Ignorable_Code_Point}/u;
+const PICTOGRAPH = /\p{Extended_Pictographic}/u;
+const VS15 = String.fromCharCode(0xfe0e), VS16 = String.fromCharCode(0xfe0f), KEYCAP = String.fromCharCode(0x20e3);
+export function hasStrayInvisible(s: string): boolean {
+  const cps = Array.from(s);
+  for (let i = 0; i < cps.length; i++) {
+    const c = cps[i]!;
+    if (!DEFAULT_IGNORABLE.test(c)) continue;
+    const prev = cps[i - 1] ?? "";
+    if ((c === VS15 || c === VS16) && (PICTOGRAPH.test(prev) || (/^[0-9#*]$/.test(prev) && cps[i + 1] === KEYCAP))) continue;
+    return true;
+  }
+  return false;
+}
+/** A name's UTF-16 length: well under what web-prefs.json keeps (256), so every accepted name loads back. */
+export const WEB_NAME_MAX_UNITS = 128;
+
 const segmenter = typeof Intl !== "undefined" && "Segmenter" in Intl ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
 export function graphemeCount(s: string): number {
   if (segmenter) { let n = 0; for (const _ of segmenter.segment(s)) n++; return n; }
@@ -47,11 +70,12 @@ export function graphemeCount(s: string): number {
 export function validateWebName(raw: unknown, reserved: (lowered: string) => boolean = () => false): { ok: true; name: string } | { ok: false; error: string } {
   if (typeof raw !== "string") return { ok: false, error: "name: text" };
   if (CONTROL.test(raw)) return { ok: false, error: "name: one line, without control characters" };
-  if (INVISIBLE.test(raw)) return { ok: false, error: "name: no invisible or text-direction characters" };
+  if (INVISIBLE.test(raw) || hasStrayInvisible(raw)) return { ok: false, error: "name: no invisible or text-direction characters" };
   const name = raw.normalize("NFC").trim().replace(/\s+/gu, " ");
   const n = graphemeCount(name);
   if (n < 1) return { ok: false, error: "name: at least one character" };
   if (n > WEB_NAME_MAX_GRAPHEMES) return { ok: false, error: `name: at most ${WEB_NAME_MAX_GRAPHEMES} characters (${n} given)` };
+  if (name.length > WEB_NAME_MAX_UNITS) return { ok: false, error: "name: too long (too many accents or joined marks)" };
   if (!ALLOWED.test(name)) return { ok: false, error: "name: letters, digits, spaces, emoji and . - _ ' · only" };
   const lowered = name.toLocaleLowerCase("en-US");
   if (/(^|[\s._'\u00b7-])via($|[\s._'\u00b7-])/u.test(lowered)) return { ok: false, error: "name: the word \"via\" is reserved (it would read as a platform)" };
@@ -82,7 +106,7 @@ export function safeWebName(raw: unknown, reserved: (lowered: string) => boolean
   for (const g of pieces) {
     if (n >= WEB_NAME_MAX_GRAPHEMES) break;
     if (/\s/u.test(g)) { if (kept && !kept.endsWith(" ")) { kept += " "; n++; } continue; }
-    if (CONTROL.test(g) || INVISIBLE.test(g) || !ALLOWED.test(g)) continue;
+    if (CONTROL.test(g) || INVISIBLE.test(g) || hasStrayInvisible(g) || !ALLOWED.test(g)) continue;
     kept += g; n++;
   }
   const v = validateWebName(kept, reserved);

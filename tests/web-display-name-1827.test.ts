@@ -301,12 +301,12 @@ describe("every web surface uses the person: the header, the echo, tasks, activi
   it("a name that tries to forge a header never reaches one: the platform name is made safe, the header has one `via web`", async () => {
     const h = rig1827();
     const got = inbox(h);
-    h.fm.noteWebSignIn({ adapterId: "owner", userId: "admin", chatId: "G", username: "x] [user:root via discord, id:1" });
+    h.fm.noteWebSignIn({ adapterId: "owner", userId: "admin", username: "x] [user:root via discord, id:1" });
     const a = await signInAs(h, "admin2");                                    // a fresh session; then look at admin's view
     void a;
     const p = h.fm.webPerson({ adapterId: "owner", userId: "admin" });
     expect(p.name).toBe(WEB_NAME_FALLBACK);                                   // "via" left in: refused whole
-    h.fm.noteWebSignIn({ adapterId: "owner", userId: "admin", chatId: "G", username: "<@99> [root]: hi" });
+    h.fm.noteWebSignIn({ adapterId: "owner", userId: "admin", username: "<@99> [root]: hi" });
     expect(h.fm.webPerson({ adapterId: "owner", userId: "admin" }).name).toBe("99 root hi");
     const line = formatHumanInboundMessage("x", { user: h.fm.webPerson({ adapterId: "owner", userId: "admin" }).name, user_id: "admin", source: "web" }, "mcp").split("\n")[0]!;
     expect(line).toBe("[user:99 root hi via web, id:admin] x");
@@ -444,6 +444,130 @@ describe("authorization is unchanged: recognition is not consent (#1756)", () =>
   });
 });
 
+// ── #1833 review ──
+
+/** A web request whose body is held: `release` sends it. For revoking, rotating or expiring in between. */
+function held(h: Rig, path: string, who: Who, body: unknown) {
+  const headers: Record<string, string> = { host: LOCAL_HOST, origin: LOCAL_ORIGIN, "user-agent": UA, "content-type": "application/json",
+    ...(who.cookie ? { cookie: who.cookie } : {}), ...(who.sessionId ? { "x-agend-csrf": csrfTokenFor(who.sessionId) } : {}), ...(who.token ? { "x-agend-token": who.token } : {}) };
+  const req = Object.assign(new EventEmitter(), { method: "POST", url: path, headers, destroy: vi.fn(), socket: { destroy() {}, remoteAddress: "127.0.0.1" } });
+  let status = 0, text = "";
+  const res = Object.assign(new EventEmitter(), { destroyed: false, headersSent: false, setHeader() {}, writeHead: (c: number) => { status = c; }, end: (t = "") => { text = t; }, write() { return true; }, destroy: vi.fn() });
+  expect(handleWebRequest(req as never, res as never, new URL(path, LOCAL_ORIGIN), h.fm as never)).toBe(true);
+  return {
+    release: async () => {
+      req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end");
+      for (let n = 0; n < 6; n++) { await flush(); await vi.advanceTimersByTimeAsync(0); }
+      return { status, json: () => (text ? JSON.parse(text) : null) };
+    },
+  };
+}
+
+describe("P2-1: a request no longer authorized once its body is in is no one — never the operator", () => {
+  it.each([
+    ["revoked", (h: Rig, who: Who) => { h.s.webSessions.revokeById(who.sessionId); }],
+    ["the token rotated", (h: Rig) => { writeFileSync(join(h.dir, "web.token"), "d".repeat(48), { mode: 0o600 }); }],
+    ["expired", async () => { vi.setSystemTime(Date.now() + 400 * 24 * 3600_000); }],
+  ])("a profile POST held while the session is %s writes nothing, to anyone", async (_n, change) => {
+    const h = rig1827();
+    const a = await signInAs(h, "admin");
+    const req = held(h, "/ui/profile", a, { name: "Intruder" });
+    await change(h, a);
+    const r = await req.release();
+    expect(r.status).toBe(401);
+    expect(h.fm.webPerson().name).toBe("web-user");                                           // not the operator's
+    expect(h.fm.webPerson({ adapterId: "owner", userId: "admin" }).name).toBe("admin");       // nor the account's
+  });
+  it("…and a message held across a revoke is not sent as anyone", async () => {
+    const h = rig1827();
+    const got = inbox(h);
+    const a = await signInAs(h, "admin");
+    const req = held(h, "/ui/send", a, { instance: "general", message: "hello" });
+    h.s.webSessions.revokeById(a.sessionId);
+    expect((await req.release()).status).toBe(401);
+    expect(got).toEqual([]);
+  });
+  it("controls: an unchanged bound session writes only itself; the operator's token writes the operator", async () => {
+    const h = rig1827();
+    const a = await signInAs(h, "admin");
+    expect((await held(h, "/ui/profile", a, { name: "Ann" }).release()).status).toBe(200);
+    expect([h.fm.webPerson({ adapterId: "owner", userId: "admin" }).name, h.fm.webPerson().name]).toEqual(["Ann", "web-user"]);
+    expect((await held(h, "/ui/profile", { token: "c".repeat(48) }, { name: "Ops" }).release()).status).toBe(200);
+    expect([h.fm.webPerson({ adapterId: "owner", userId: "admin" }).name, h.fm.webPerson().name]).toEqual(["Ann", "Ops"]);
+  });
+});
+
+describe("P2-2: every path that DMs a sign-in code to an account carries it (recognition only)", () => {
+  it("Telegram `/start web` in the bot's DM: the code's session is that account, named as it is there", async () => {
+    const h = rig1827();
+    await h.s.startWebInDm({ source: "telegram", adapterId: "owner", chatId: "admin", userId: "admin", username: "Alice", text: "/start web", messageId: "1", timestamp: new Date() }, h.adapter);
+    const e = [...h.s.pendingNonceButtons.values()].find((x: any) => x.chatId === "admin" && !x.consumed) as any;
+    const before = h.adapter.sendDirect.mock.calls.length;
+    await h.s.dispatchAdapterCallback({ callbackData: `dashboard:${e.nonce}:local`, chatId: e.chatId, threadId: e.threadId, messageId: e.messageId, userId: "admin", ack: vi.fn() }, "owner", h.adapter);
+    await flush();
+    const sent = [...h.adapter.sendDirect.mock.calls.slice(before), ...h.adapter.sendText.mock.calls].map((c: any[]) => String(c[1])).find((t: string) => CODE.test(t))!;
+    const r = await h.call("/auth/login", "POST", { body: { code: CODE.exec(sent)![0] } });
+    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    expect((await web(h, "/ui/profile", "GET", { cookie: c, sessionId: c.split("=")[1]! })).json()).toEqual({ name: null, shown: "Alice", id: "admin", bound: true, platform_name: "Alice" });
+  });
+  it("Discord `/web` outside the owning General (its DM, or its ephemeral answer): recognised as that account, owning nothing", async () => {
+    const h = rig1827();
+    const responses: string[] = [];
+    await h.s.sendLocalDashboard({ userId: "admin", username: "Dee", channelId: "elsewhere", respond: vi.fn(async (t: string) => { responses.push(t); return "r"; }) }, "owner");
+    const sent = h.adapter.sendDirect.mock.calls.map((c: any[]) => String(c[1])).find((t: string) => CODE.test(t))!;
+    const r = await h.call("/auth/login", "POST", { body: { code: CODE.exec(sent)![0] } });
+    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    expect((await web(h, "/ui/profile", "GET", { cookie: c, sessionId: c.split("=")[1]! })).json()).toEqual({ name: null, shown: "Dee", id: "admin", bound: true, platform_name: "Dee" });
+    // Recognition only: no returning device was remembered (that needs an owner), and no device cookie was set.
+    expect(r.cookies.some((x: string) => /agend_device=/.test(x))).toBe(false);
+  });
+  it("a code re-sent to a returning device (#1570) keeps the name from the person's last sign-in", async () => {
+    const h = rig1827();
+    const first = await h.signIn(await h.dashboardCode("local", "admin"));
+    expect(first.device).toBeTruthy();
+    await h.call("/auth/request-code", "POST", { cookie: first.device });
+    const dm = h.adapter.sendDirect.mock.calls.map((c: any[]) => String(c[1])).filter((t: string) => CODE.test(t)).at(-1)!;
+    const r = await h.call("/auth/login", "POST", { body: { code: CODE.exec(dm)![0] } });
+    const c = r.cookies.find((x: string) => /agend_session=/.test(x))!.split(";")[0]!;
+    expect((await web(h, "/ui/profile", "GET", { cookie: c, sessionId: c.split("=")[1]! })).json()).toMatchObject({ shown: "admin", id: "admin", bound: true });
+  });
+});
+
+describe("P2-3: invisible characters never hide inside a name; emoji and accents still work", () => {
+  it.each([
+    ["a combining grapheme joiner", () => "Pri" + ch(0x34f) + "sm"],
+    ["…inside agend", () => "ag" + ch(0x34f) + "end"],
+    ["a Mongolian variation selector", () => "Pri" + ch(0x180b) + "sm"],
+    ["VS16 on a letter", () => "Pri" + ch(0xfe0f) + "sm"],
+    ["a supplementary variation selector", () => "Pri" + ch(0xe0100) + "sm"],
+    ["a Hangul filler", () => "Ann" + ch(0x3164)],
+    ["a tag character", () => "Ann" + ch(0xe0041)],
+  ])("refuses %s", (_n, raw) => {
+    const v = validateWebName(raw(), (n) => n === "prism");
+    expect(v.ok ? "accepted" : v.error).toBe("name: no invisible or text-direction characters");
+  });
+  it.each([
+    ["an emoji with its presentation selector", () => "Ann " + ch(0x2764) + ch(0xfe0f)],
+    ["a keycap", () => "Team " + "1" + ch(0xfe0f) + ch(0x20e3)],
+    ["a combining accent", () => "Cafe" + ch(0x301)],
+    ["a skin tone", () => "Ann " + ch(0x1f44b) + ch(0x1f3fd)],
+  ])("accepts %s", (_n, raw) => expect(validateWebName(raw()).ok).toBe(true));
+});
+
+describe("P3-1: a name that is accepted is a name that loads back", () => {
+  it("one grapheme of 300 accents is refused before it is written; a long accepted name survives a reload", async () => {
+    const h = rig1827();
+    const a = await signInAs(h, "admin");
+    const heavy = ("A" + ch(0x301).repeat(300)).normalize("NFC");
+    const r = await web(h, "/ui/profile", "POST", a, { name: heavy });
+    expect([r.status, r.json().error]).toEqual([400, "name: too long (too many accents or joined marks)"]);
+    const long = "é".repeat(16) + "o" + ch(0x301) + ch(0x302) + "x".repeat(14);
+    expect((await web(h, "/ui/profile", "POST", a, { name: long })).status).toBe(200);
+    const reloaded = new WebPrefsStore(h.dir);
+    expect(reloaded.profile(webPersonKey({ adapterId: "owner", userId: "admin" }))?.name).toBe(long.normalize("NFC"));
+  });
+});
+
 describe("the send path never fails on a name", () => {
   it("a reserved-name lookup that throws reserves nothing: the message still goes, under the person's name", async () => {
     const h = rig1827();
@@ -478,7 +602,7 @@ describe("storage", () => {
   });
   it("an instance named after a person later: their chosen name reads as their account's name", () => {
     const h = rig1827();
-    h.fm.noteWebSignIn({ adapterId: "owner", userId: "admin", chatId: "G", username: "admin" });
+    h.fm.noteWebSignIn({ adapterId: "owner", userId: "admin", username: "admin" });
     expect(h.fm.setWebPersonName({ adapterId: "owner", userId: "admin" }, "Kuro")).toMatchObject({ ok: true });
     expect(h.fm.webPerson({ adapterId: "owner", userId: "admin" }).name).toBe("Kuro");
     (h.fm.fleetConfig as any).instances.kuro = { working_directory: h.dir };

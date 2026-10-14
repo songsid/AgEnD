@@ -324,17 +324,26 @@ export interface WebPerson {
   readonly platformName?: string;
 }
 /**
- * #1827: whose a request is — the account its session was signed in as, or none (an `agend web` session, the CLI's
- * header token): the operator. For recognition only; nothing here authorizes anything.
+ * #1827: whose a request is, asked NOW (after its body arrived: a session revoked, expired or rotated away meanwhile is
+ * no one — `null`, never the operator). An authorized session is the account it was signed in as, or (an `agend web`
+ * session, the CLI's header token) none: the operator. For recognition only; nothing here authorizes anything.
  */
-function webAccountOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebAccount | undefined {
+function webAccountOf(req: IncomingMessage, url: URL, ctx: WebApiContext): { owner?: WebAccount } | null {
   const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-  return verdict.kind === "allow" && verdict.via === "session" && verdict.session ? verdict.session.owner : undefined;
+  if (verdict.kind !== "allow") return null;
+  return verdict.via === "session" && verdict.session?.owner ? { owner: verdict.session.owner } : {};
 }
-function webPersonOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebPerson {
-  const owner = webAccountOf(req, url, ctx);
-  return ctx.webPerson ? ctx.webPerson(owner)
-    : { key: OPERATOR, bound: false, userId: WEB_NAME_FALLBACK, voterKey: "web:operator", name: WEB_NAME_FALLBACK, set: false };
+function webPersonOf(req: IncomingMessage, url: URL, ctx: WebApiContext): WebPerson | null {
+  // No people kept here: everyone is "web-user", as before, and there is no identity to protect.
+  if (!ctx.webPerson) return { key: OPERATOR, bound: false, userId: WEB_NAME_FALLBACK, voterKey: "web:operator", name: WEB_NAME_FALLBACK, set: false };
+  const who = webAccountOf(req, url, ctx);
+  return who ? ctx.webPerson(who.owner) : null;
+}
+/** #1827: the person, or the request is answered 401 here (it is no longer authorized) and null is returned. */
+function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): WebPerson | null {
+  const p = webPersonOf(req, url, ctx);
+  if (!p) json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
+  return p;
 }
 /** #1827: what the page's profile card reads — the name they chose (or null), the one in use, and how agents know them. */
 function profileBody(p: WebPerson): Record<string, unknown> {
@@ -683,8 +692,8 @@ export function handleWebRequest(
   // link may read and set it too (profile edits are allowed there); a read-only session may as well: it is about them.
   if (path === "/ui/profile" && method === "GET") {
     if (!ctx.webPerson) { json(res, 404, { error: "Profiles are not kept on this fleet" }); return true; }
-    const p = webPersonOf(req, url, ctx);
-    json(res, 200, profileBody(p));
+    const p = webPersonOr401(req, res, url, ctx);
+    if (p) json(res, 200, profileBody(p));
     return true;
   }
   if (path === "/ui/profile" && method === "POST") {
@@ -695,8 +704,11 @@ export function handleWebRequest(
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
       if (!permitWebContinuation(req, res, ctx)) return;
       if (!body || typeof body !== "object" || Array.isArray(body) || !Object.hasOwn(body, "name")) { json(res, 400, { error: "name required (text, or null to clear)" }); return; }
-      // Whose: asked once the body is in (a session revoked meanwhile is refused by the gate's continuation above).
-      const r = set(webAccountOf(req, url, ctx), body.name);
+      // Whose: asked once the body is in. A session revoked, expired or rotated away meanwhile writes nothing — it is
+      // not the operator (#1833 review).
+      const who = webAccountOf(req, url, ctx);
+      if (!who) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+      const r = set(who.owner, body.name);
       if (!r.ok) { json(res, r.status, { error: r.error }); return; }
       // The person's other devices read it at their next status (the prefs rev moved).
       ctx.emitSseEvent("status", ctx.getUiStatus());
@@ -725,9 +737,9 @@ export function handleWebRequest(
       // #1823/#1827: the click is this page's person's — on a poll their vote (one per person, on every device of
       // theirs), on one-click buttons their choice — under their web id and name. A request that no longer passes the
       // gate (a session revoked meanwhile) clicks nothing as anyone.
-      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      const person = verdict.kind === "allow" ? webPersonOf(req, url, ctx) : undefined;
-      const r = await click(instance, id, index, person ? { key: person.voterKey, userId: person.userId, name: person.name } : undefined);
+      const person = webPersonOr401(req, res, url, ctx);
+      if (!person) return;
+      const r = await click(instance, id, index, { key: person.voterKey, userId: person.userId, name: person.name });
       json(res, r.status, r.status === 200 ? { answered: true, ...(r.options ? { options: r.options } : {}) } : { error: r.error ?? "Refused", ...(r.status === 409 ? { gone: true } : {}) });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web reply-button click failed");
@@ -828,8 +840,10 @@ export function handleWebRequest(
       if (!instance || !isSafeInstanceName(instance) || !command) { json(res, 400, { error: "instance and command required" }); return; }
       if (body.args !== undefined && str(body.args, MAX_COMMAND_ARGS) === undefined) { json(res, 400, { error: "args too long" }); return; }
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
+      const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
+      if (!person) return;
       const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
-        { publicLink: !!gatewayRequestContext(req), person: webPersonOf(req, url, ctx) });
+        { publicLink: !!gatewayRequestContext(req), person });
       json(res, r.status, r.body);
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web command failed");
@@ -853,7 +867,7 @@ export function handleWebRequest(
       return true;
     }
     if (!ctx.cancelInstance(name)) { json(res, 409, { error: `${name} is not running` }); return true; }
-    ctx.eventLog?.logActivity("cancel", webPersonOf(req, url, ctx).name, "stop the current reply", name);
+    ctx.eventLog?.logActivity("cancel", webPersonOf(req, url, ctx)?.name ?? WEB_NAME_FALLBACK, "stop the current reply", name);
     json(res, 200, { cancelled: name });
     return true;
   }
@@ -1077,12 +1091,14 @@ export function handleWebRequest(
         if (!permitWebContinuation(req, res, ctx)) return;
         const parsed = parseOrReject(TaskCreateSchema, body, res);
         if (!parsed) return;
+        const person = webPersonOr401(req, res, url, ctx);                // #1827: asked again, now the body is in
+        if (!person) return;
         const task = ctx.scheduler!.db.createTask({
           title: parsed.title,
           description: parsed.description,
           priority: parsed.priority,
           assignee: parsed.assignee,
-          created_by: webPersonOf(req, url, ctx).name,                     // #1827
+          created_by: person.name,                                           // #1827
         });
         json(res, 200, task);
       } catch (err) {
@@ -1107,7 +1123,9 @@ export function handleWebRequest(
         if (!parsed) return;
         let result: unknown;
         if (parsed.action === "claim") {
-          result = ctx.scheduler!.db.claimTask(id, parsed.assignee || webPersonOf(req, url, ctx).name);
+          const person = parsed.assignee ? null : webPersonOr401(req, res, url, ctx);   // #1827: the default is the person
+          if (!parsed.assignee && !person) return;
+          result = ctx.scheduler!.db.claimTask(id, parsed.assignee || person!.name);
         } else if (parsed.action === "complete") {
           result = ctx.scheduler!.db.completeTask(id, parsed.result);
         } else {
@@ -1409,8 +1427,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         return;
       }
       const message = typed;
-      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by.
+      // #1827: who is writing — the name agents and chats see, and the id they tell people apart by. Asked now that the
+      // body is in: a session revoked meanwhile sends nothing (not as the operator).
       const person = webPersonOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);
+      if (!person) { ctx.webFiles?.release(files); json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       const ts = new Date().toISOString();
       // The id the agent is given, and the one its delivery reports come back under: the page's ticks.
       const messageId = newWebMessageId();
