@@ -139,7 +139,7 @@ describe.each(["discord", "telegram"] as const)("real %s update entry", platform
     expect(effects[0].command).toBe("systemd-run");
     expect(effects[0].args).toContain("--scope"); expect(effects[0].args).toContain("--user");
     expect(effects[0].args.slice(-5)).toEqual(["sh", "-c", DELAYED_UPDATE_SCRIPT, "sh", agend]);
-    expect(effects[0].options.detached).toBe(true); expect(effects[0].options.stdio).toBe("ignore");
+    expect(effects[0].options.detached).toBe(true); expect(effects[0].options.stdio).toEqual(["ignore", "pipe", "pipe"]);
     expect(effects[0].options.env.PATH).toBe(process.env.PATH);
     expect(effects[0].options).not.toHaveProperty("cwd");
     expect((effects[0].child as any).unref).toHaveBeenCalledOnce();

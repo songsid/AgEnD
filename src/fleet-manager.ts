@@ -213,7 +213,7 @@ import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScop
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import { installedChannel, isPrereleaseVersion, updateNoticeKey } from "./update-check.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
-import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
+import { resolveUpdateLaunch, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery } from "./login-controller.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -2657,9 +2657,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const child = spawn(launch.command, launch.args, {
-      detached: true, stdio: "ignore", env: withOrigin(origin),
+      detached: true, stdio: ["ignore", "pipe", "pipe"], env: withOrigin(origin),
     });
-    watchUpdateLaunch(child, message => this.failUpdateProgress(message));
+    watchUpdateLaunch(child, message => this.failUpdateProgress(message), updateLogPath(this.dataDir));
     child.unref();
   }
 

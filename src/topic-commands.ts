@@ -34,7 +34,7 @@ import { instanceSupportsSteer } from "./steer-capability.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
-import { resolveUpdateLaunch, watchUpdateLaunch } from "./update-launch.js";
+import { resolveUpdateLaunch, updateLogPath, watchUpdateLaunch } from "./update-launch.js";
 import { selfCommand } from "./cli-entry.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
@@ -1692,9 +1692,9 @@ export class TopicCommands {
       return;
     }
     const child = spawn(launch.command, launch.args, {
-      detached: true, stdio: "ignore", env: withOrigin(origin),
+      detached: true, stdio: ["ignore", "pipe", "pipe"], env: withOrigin(origin),
     });
-    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message));
+    watchUpdateLaunch(child, message => this.ctx.failUpdateProgress?.(message), updateLogPath(this.ctx.dataDir));
     child.unref();
   }
 
