@@ -135,6 +135,14 @@ describe("backendModelVerdict: the one rule", () => {
     expect(f.fm.backendModelVerdict("worker", "grok", "grok-4 --x").ok).toBe(false);
   });
 
+  it("a name is judged by what that backend's launch line carries: antigravity's display names, never codex with a space", () => {
+    const f = fleet();
+    writeFileSync(join(process.env.AGEND_HOME as string, "cli-env", "antigravity.json"),
+      JSON.stringify({ backend: "antigravity", models: [{ id: "Gemini 3.5 Flash (High)", label: "x" }], probedAt: Date.now() }));
+    expect(f.fm.backendModelVerdict("worker", "antigravity", "Gemini 3.5 Flash (High)")).toEqual({ ok: true });
+    expect(f.fm.backendModelVerdict("worker", "codex", "gpt 5.5").ok).toBe(false);
+  });
+
   it("claude-code: its known names, never the model the instance has on the backend it leaves", () => {
     const f = fleet({ backend: "codex", model: "gpt-5.5" });
     expect(f.fm.backendModelVerdict("worker", "claude-code", "sonnet")).toEqual({ ok: true });
