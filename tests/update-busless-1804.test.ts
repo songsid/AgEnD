@@ -8,13 +8,14 @@
  * against a local fake server in a child process that behaves as sd-bus does at BEGIN. No systemd, no fleet.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { activateService, readLoadedUnit } from "../src/service-activation.js";
 import { busUnreachable, readSystemdRuntime } from "../src/systemd-runtime.js";
-import { callPeer, peerCodec, peerReplyAsBusctl, peerRequestFor, peerUnreachable, privateSocketPath, type PeerBus } from "../src/systemd-peer-bus.js";
+import { callPeer, peerCodec, peerEndpointUntrusted, peerReplyAsBusctl, peerRequestFor, peerUnreachable, privateSocketPath, type PeerBus } from "../src/systemd-peer-bus.js";
 import { guardSystemd } from "../src/restart-guard.js";
 import type { CommandResult } from "../src/update-install.js";
 import { activationWorld } from "./support/activation-world-1490.js";
@@ -167,7 +168,7 @@ describe("the worker: a real connection, as systemdPeerBus makes it", () => {
 
   it("no socket, a refused authentication, a closed connection, a silent server", async () => {
     const missing = callPeer(true, capture.loadUnit!.args, { socket: join(dir, "missing"), timeoutMs: 5000 });
-    expect(missing.stderr).toMatch(/^Failed to connect to .*missing: connect ENOENT/);
+    expect(missing.stderr).toMatch(/^Failed to connect to .*missing: .*ENOENT/);
     expect(peerUnreachable(missing)).toBe(true);
     const refused = callPeer(true, capture.loadUnit!.args, { socket: await serve("refuse", "refuse"), timeoutMs: 5000 });
     expect(refused.stderr).toMatch(/^Failed to connect to .*: authentication refused \("REJECTED EXTERNAL"\)/);
@@ -317,5 +318,146 @@ describe("runtime state and agend restart's guard over the private socket", () =
     const deps = { realpath: w.deps.realpath, isExecutable: w.deps.isExecutable };
     expect(guardSystemd(w.deps.run, true, "com.agend.fleet", expected, deps, w.deps.peerBus)).toEqual({ ok: true });
     expect(guardSystemd(w.deps.run, true, "com.agend.fleet", expected, deps)).toMatchObject({ ok: false, reason: expect.stringMatching(/private socket was not tried/) });
+  });
+});
+
+/**
+ * A METHOD_RETURN as systemd would send it (little-endian, reply serial 1), for values no capture holds. Supports the
+ * shapes these tests need: s o g b u i t, arrays, structs, variants ({ type, data }).
+ */
+function encodeReply(signature: string, values: unknown[]): Buffer {
+  const bytes: number[] = [];
+  const ALIGN: Record<string, number> = { y: 1, b: 4, u: 4, i: 4, t: 8, s: 4, o: 4, g: 1, v: 1, a: 4, "(": 8 };
+  const pad = (n: number) => { while (bytes.length % n) bytes.push(0); };
+  const u32 = (n: number) => { pad(4); const b = Buffer.alloc(4); b.writeUInt32LE(n); bytes.push(...b); };
+  const end = (sig: string, i: number): number => sig[i] === "a" ? end(sig, i + 1) : sig[i] === "(" ? (() => { let j = i + 1; while (sig[j] !== ")") j = end(sig, j); return j + 1; })() : i + 1;
+  const split = (sig: string) => { const out: string[] = []; for (let i = 0; i < sig.length;) { const e = end(sig, i); out.push(sig.slice(i, e)); i = e; } return out; };
+  const write = (type: string, value: unknown): void => {
+    pad(ALIGN[type[0]!]!);
+    switch (type[0]) {
+      case "b": u32(value ? 1 : 0); return;
+      case "u": u32(value as number); return;
+      case "i": { const b = Buffer.alloc(4); b.writeInt32LE(value as number); bytes.push(...b); return; }
+      case "t": { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(value as number)); bytes.push(...b); return; }
+      case "s": case "o": { const b = Buffer.from(value as string, "utf8"); u32(b.length); bytes.push(...b, 0); return; }
+      case "g": { const b = Buffer.from(value as string, "ascii"); bytes.push(b.length, ...b, 0); return; }
+      case "v": { const v = value as { type: string; data: unknown }; write("g", v.type); write(v.type, v.data); return; }
+      case "a": {
+        u32(0); const at = bytes.length - 4; pad(ALIGN[type[1]!]!); const start = bytes.length;
+        for (const item of value as unknown[]) write(type.slice(1), item);
+        const n = bytes.length - start; bytes[at] = n & 255; bytes[at + 1] = (n >> 8) & 255; bytes[at + 2] = (n >> 16) & 255; bytes[at + 3] = n >>> 24; return;
+      }
+      case "(": split(type.slice(1, -1)).forEach((t, k) => write(t, (value as unknown[])[k])); return;
+      default: throw Error(`encodeReply: ${type}`);
+    }
+  };
+  split(signature).forEach((t, k) => write(t, values[k]));
+  const body = Buffer.from(bytes);
+  bytes.length = 0;
+  bytes.push(0x6c, 2, 1, 1); u32(body.length); u32(2); u32(0);
+  pad(8); bytes.push(5); write("g", "u"); u32(1);                       // REPLY_SERIAL 1
+  pad(8); bytes.push(8); write("g", "g"); write("g", signature);        // SIGNATURE
+  const fields = bytes.length - 16; bytes[12] = fields & 255; bytes[13] = (fields >> 8) & 255;
+  pad(8);
+  return Buffer.concat([Buffer.from(bytes), body]);
+}
+
+describe("Prism r2 P1-1: a leading U+FEFF is part of a string", () => {
+  const codec = peerCodec();
+  it("encodeReply round-trips through the codec (control for the helper)", () => {
+    expect(codec.decode(encodeReply("v", [{ type: "as", data: ["a", "b c"] }]))).toMatchObject({ type: 2, replySerial: 1, signature: "v", values: [{ type: "as", data: ["a", "b c"] }] });
+  });
+  it("kept in a scalar and inside argv; invalid UTF-8 still refused", () => {
+    expect(codec.decode(encodeReply("v", [{ type: "s", data: "\uFEFFfleet" }]))!.values).toEqual([{ type: "s", data: "\uFEFFfleet" }]);
+    expect(codec.decode(encodeReply("v", [{ type: "as", data: ["\uFEFF/x/cli.js", "fleet"] }]))!.values).toEqual([{ type: "as", data: ["\uFEFF/x/cli.js", "fleet"] }]);
+    const bad = encodeReply("v", [{ type: "s", data: "ab" }]);
+    bad[bad.length - 3] = 0xff;                                           // "a" → an invalid UTF-8 byte
+    expect(() => codec.decode(bad)).toThrow();
+  });
+
+  /** The whole path: the decoded reply, as busctl JSON, into readLoadedUnit and agend restart's guard. */
+  const guardOver = (argv: string[]) => {
+    const PATH = "/org/freedesktop/systemd1/unit/com_2eagend_2efleet_2eservice";
+    const replies: Record<string, Buffer> = {
+      ExecStart: encodeReply("v", [{ type: "a(sasbttttuii)", data: [[argv[0], argv, false, 0, 0, 0, 0, 0, 0, 0]] }]),
+      Environment: encodeReply("v", [{ type: "as", data: ["PATH=/usr/bin"] }]),
+      EnvironmentFiles: encodeReply("v", [{ type: "a(sb)", data: [] }]),
+      PassEnvironment: encodeReply("v", [{ type: "as", data: [] }]),
+      UnsetEnvironment: encodeReply("v", [{ type: "as", data: [] }]),
+      NeedDaemonReload: encodeReply("v", [{ type: "b", data: false }]),
+      LoadState: encodeReply("v", [{ type: "s", data: "loaded" }]),
+    };
+    const peer: PeerBus = (_u, args) => {
+      if (args.includes("LoadUnit")) return json("o", [PATH]);
+      const m = codec.decode(replies[args.at(-1)!] ?? replies.Environment!)!;
+      return peerReplyAsBusctl(args, { ok: true, signature: m.signature, values: m.values }, "/s");
+    };
+    const real = (p: string) => p;
+    return guardSystemd(() => NO_BUS, true, "com.agend.fleet", { node: "/verified/node", entry: "/verified/dist/cli.js" }, { realpath: real, isExecutable: () => true }, peer);
+  };
+  it("a BOM'd entry or argument is not the verified one: refused; the exact argv: allowed", () => {
+    expect(guardOver(["/verified/node", "/verified/dist/cli.js", "fleet", "start"])).toEqual({ ok: true });
+    expect(guardOver(["/verified/node", "\uFEFF/verified/dist/cli.js", "fleet", "start"])).toMatchObject({ ok: false, reason: expect.stringMatching(/starts \uFEFF\/verified\/dist\/cli\.js, not/) });
+    expect(guardOver(["/verified/node", "/verified/dist/cli.js", "\uFEFFfleet", "start"])).toMatchObject({ ok: false, reason: expect.stringMatching(/its arguments are/) });
+  });
+});
+
+describe("Prism r2 P2-1: only root's or this user's socket is systemd's", () => {
+  type Fake = { uid: number; mode: number; kind: "dir" | "sock" | "link" };
+  const fs = (tree: Record<string, Fake>, euid: number, links: Record<string, string> = {}) => ({
+    euid,
+    realpath: (p: string) => links[p] ?? p,
+    lstat: (p: string) => {
+      const f = tree[p];
+      if (!f) throw Object.assign(Error(`ENOENT: no such file or directory, lstat '${p}'`), { code: "ENOENT" });
+      return { uid: f.uid, mode: f.mode, isSocket: () => f.kind === "sock", isDirectory: () => f.kind === "dir", isSymbolicLink: () => f.kind === "link" };
+    },
+  });
+  const root = (mode = 0o755): Fake => ({ uid: 0, mode, kind: "dir" });
+  const base = { "/": root(), "/run": root(), "/run/user": root() };
+
+  it.each([
+    ["root's manager: /run/user/0/systemd/private", { ...base, "/run/user/0": root(0o700), "/run/user/0/systemd": root(), "/run/user/0/systemd/private": { uid: 0, mode: 0o755, kind: "sock" } }, 0, "/run/user/0/systemd/private", null],
+    ["a user's manager: its own 0700 directory", { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" }, "/run/user/1000/systemd": { uid: 1000, mode: 0o755, kind: "dir" }, "/run/user/1000/systemd/private": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/run/user/1000/systemd/private", null],
+    ["the system manager, as a user", { "/": root(), "/run": root(), "/run/systemd": root(), "/run/systemd/private": { uid: 0, mode: 0o777, kind: "sock" } }, 1000, "/run/systemd/private", null],
+    ["under a root sticky /tmp, in our own directory", { "/": root(), "/tmp": root(0o1777), "/tmp/x": { uid: 1000, mode: 0o700, kind: "dir" }, "/tmp/x/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/tmp/x/s", null],
+  ])("%s → trusted", (_n, tree, euid, socket, want) => expect(peerEndpointUntrusted(socket, fs(tree as Record<string, Fake>, euid))).toBe(want));
+
+  it.each([
+    ["another user's socket", { ...base, "/run/user/1001": { uid: 1001, mode: 0o700, kind: "dir" }, "/run/user/1001/systemd": { uid: 1001, mode: 0o755, kind: "dir" }, "/run/user/1001/systemd/private": { uid: 1001, mode: 0o755, kind: "sock" } }, 1000, "/run/user/1001/systemd/private", /owned by uid 1001, neither root nor 1000/],
+    ["our socket in another user's directory", { ...base, "/run/user/1001": { uid: 1001, mode: 0o755, kind: "dir" }, "/run/user/1001/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/run/user/1001/s", /\/run\/user\/1001 is owned by uid 1001/],
+    ["a group-writable directory of ours", { ...base, "/run/user/1000": { uid: 1000, mode: 0o770, kind: "dir" }, "/run/user/1000/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/run/user/1000/s", /writable by others \(mode 770\)/],
+    ["a world-writable directory without the sticky bit", { "/": root(), "/scratch": root(0o777), "/scratch/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/scratch/s", /writable by others \(mode 777\)/],
+    ["a sticky directory not owned by root", { "/": root(), "/shared": { uid: 1001, mode: 0o1777, kind: "dir" }, "/shared/s": { uid: 1000, mode: 0o755, kind: "sock" } }, 1000, "/shared/s", /owned by uid 1001/],
+    ["a symlink where the socket should be", { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" }, "/run/user/1000/s": { uid: 1000, mode: 0o777, kind: "link" } }, 1000, "/run/user/1000/s", /is not a socket/],
+    ["no socket", { ...base }, 1000, "/run/user/1000/s", /ENOENT/],
+  ])("%s → refused before connecting", (_n, tree, euid, socket, reason) => expect(peerEndpointUntrusted(socket, fs(tree as Record<string, Fake>, euid))).toMatch(reason));
+
+  it("a directory reached through a symlink is judged where it really is", () => {
+    const tree = { ...base, "/run/user/1000": { uid: 1000, mode: 0o700, kind: "dir" as const }, "/home": root(), "/home/evil": { uid: 1001, mode: 0o755, kind: "dir" as const }, "/run/user/1000/link/s": { uid: 1000, mode: 0o755, kind: "sock" as const } };
+    expect(peerEndpointUntrusted("/run/user/1000/link/s", fs(tree, 1000, { "/run/user/1000/link": "/home/evil" }))).toMatch(/\/home\/evil is owned by uid 1001/);
+  });
+
+  it("live: a listening socket in a directory others can write is refused before any connection", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-peer-open-"));
+    const open = join(dir, "open");
+    mkdirSync(open);
+    chmodSync(open, 0o777);
+    const accepted: import("node:net").Socket[] = [];
+    const server = createServer(socket => { accepted.push(socket); });
+    await new Promise<void>(resolve => server.listen(join(open, "private"), resolve));
+    try {
+      const result = callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 2000 });
+      expect(result.stderr).toMatch(/not systemd's own socket \(.*open is writable by others \(mode 777\)\)/);
+      expect(peerUnreachable(result)).toBe(true);
+      chmodSync(open, 0o755);                                              // control: the same socket, protected
+      expect(callPeer(true, capture.loadUnit!.args, { socket: join(open, "private"), timeoutMs: 300 }).stderr).not.toMatch(/not systemd's own socket/);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(accepted).toHaveLength(1);                                    // only the control connected
+    } finally {
+      for (const socket of accepted) socket.destroy();
+      await new Promise(resolve => server.close(resolve));
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
