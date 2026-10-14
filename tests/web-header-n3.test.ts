@@ -173,6 +173,33 @@ describe("no style attribute (#1300): one attribute on the root, one custom prop
   });
 });
 
+// beta.11 report (「UI 歪歪的 不同高」): the sidebar's brand row was 56 px with its centre at 30, every page header 52 px
+// with its centre at 26; the title sat on its baseline, so badges and the status were 1–2 px lower than it; the header's
+// small buttons and tabs were 30 px beside 36 px icon buttons. Real Chromium measured it (smoke-align.mts); these are the
+// rules that hold the one row.
+describe("one header row: the brand row and every page's header share a height and a centre line", () => {
+  const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rule = (sel: string) => { const m = new RegExp(`(?:^|\\n)\\s*${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css); return m ? m[1].replace(/\s+/g, " ").trim() : null; };
+  it("the brand row: the header's row height and padding, the top inset its own (not the sidebar's)", () => {
+    const side = rule(".side-head")!;
+    for (const d of ["align-items: center;", "box-sizing: content-box;", "min-height: calc(var(--header-h) - 2 * var(--s-1));",
+      "padding: max(var(--s-1), env(safe-area-inset-top)) var(--s-2) var(--s-1) var(--s-4);"]) expect(side, d).toContain(d);
+    expect(rule(".sidebar")).toContain("padding: 0 0 env(safe-area-inset-bottom) env(safe-area-inset-left);");
+    expect(rule(".panel-head")).toContain("padding: max(var(--s-1), env(safe-area-inset-top))");
+  });
+  it("the title row: one --header-h row on every page (a phone's tabs wrap under it), its title, status and badges centred", () => {
+    const title = rule(".panel-title")!;
+    expect(title).toContain("align-items: center;");
+    expect(title).not.toContain("baseline");
+    expect(title).toContain("min-height: calc(var(--header-h) - 2 * var(--s-1));");
+  });
+  it("the header's controls are one height: small buttons always; the instance tabs where they share the row", () => {
+    expect(rule(".panel-head .btn-sm")).toBe("min-height: 36px;");
+    expect(css).toMatch(/@media \(min-width: 900px\) \{ \.panel-head \.inst-switch \.seg-item \{ min-height: 36px; \} \}/);
+    expect(rule(".icon-btn")).toContain("height: 36px;");
+  });
+});
+
 describe("#1563 review: the usage dialog belongs to the navigation that opened it", () => {
   const gate = () => { let open!: (v: unknown) => void; const p = new Promise((r) => { open = r; }); return { p, open }; };
   const OLD = { providers: [{ id: "p", name: "OLD NAVIGATION", status: "ok", metrics: [] }], fetchedAt: 1 };

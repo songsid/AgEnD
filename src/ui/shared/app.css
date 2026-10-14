@@ -69,10 +69,12 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .sidebar {
   width: var(--sidebar-w); flex-shrink: 0; display: flex; flex-direction: column; background: var(--bg-sidebar);
   position: relative;   /* #1722: the resize handle sits on its right edge (the width above: tokens.css, or this device's) */
-  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding: 0 0 env(safe-area-inset-bottom) env(safe-area-inset-left);   /* the top inset is the head's, as the page header's is */
 }
 .sb-collapsed .sidebar { display: none; }
-.side-head { display: flex; align-items: center; gap: var(--s-1); padding: var(--s-3) var(--s-2) var(--s-2) var(--s-4); }
+/* The brand row is the page header's row: the same height, padding and centre line (--header-h; .panel-head, .panel-title). */
+.side-head { display: flex; align-items: center; gap: var(--s-1); box-sizing: content-box; min-height: calc(var(--header-h) - 2 * var(--s-1));
+  padding: max(var(--s-1), env(safe-area-inset-top)) var(--s-2) var(--s-1) var(--s-4); }
 .brand { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); letter-spacing: -0.01em; }
 .side-nav { display: flex; flex-direction: column; padding: var(--s-1) var(--s-2); gap: 1px; }
 .side-row {
@@ -199,7 +201,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 }
 .panel-head .sb-open { display: none; }
 .sb-collapsed .panel-head .sb-open { display: inline-flex; }
-.panel-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--s-3); }
+/* One row of --header-h on every page (a phone's instance tabs wrap below it): the title, its status and badges on one centre line. */
+.panel-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--s-3); min-height: calc(var(--header-h) - 2 * var(--s-1)); }
 .panel-title h1 { font-size: var(--fs-lg); line-height: var(--lh-lg); font-weight: var(--fw-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; outline: none; }
 .panel-sub { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
@@ -252,6 +255,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .p-log .log-older, .p-log .log-start { text-align: center; margin: var(--s-2) 0; }
 .p-log .log-off { padding: var(--s-6) var(--s-4); }
 .p-details .d-edit { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-2); }
+/* The header's controls are one height, the icon buttons' (36 px): its small buttons, and the instance tabs when they share
+   its row (a phone puts them on a row of their own, under it). */
+.panel-head .btn-sm { min-height: 36px; }
+@media (min-width: 900px) { .panel-head .inst-switch .seg-item { min-height: 36px; } }
 @media (max-width: 899px) {
   .panel-head:has(.inst-switch) { flex-wrap: wrap; }
   .inst-switch.seg { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0 0 var(--s-1); }
