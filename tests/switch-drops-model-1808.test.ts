@@ -99,14 +99,14 @@ describe("update_instance_config: a backend switch", () => {
       new Promise<string | undefined>(resolve => applyInstanceConfigPatch(f.fm as never, "worker", patch as never, (_r, e) => resolve(e)));
     let f = fleet();
     expect(await run(f, { backend: "codex", model: "gpt-5.5", effort: "max" }))
-      .toBe('Rejected: codex has no effort "max". Choose one of: low, medium, high — or leave effort out for its default.');
+      .toBe('Rejected: codex takes no effort "max" at launch on this host. Choose one of: low, medium, high — or leave effort out for its default.');
     // The model given decides: gpt-5.5-mini has max here.
     f = fleet();
     expect(await run(f, { backend: "codex", model: "gpt-5.5-mini", effort: "max" })).toBeUndefined();
     expect(f.saves).toEqual([expect.objectContaining({ backend: "codex", model: "gpt-5.5-mini", effort: "max" })]);
     f = fleet();
     writeFileSync(join(agendHome, "cli-env", "opencode.json"), JSON.stringify({ backend: "opencode", models: [{ id: "p/m", label: "m" }], probedAt: Date.now() }));
-    expect(await run(f, { backend: "opencode", effort: "high" })).toBe("Rejected: opencode has no effort setting — leave effort out.");
+    expect(await run(f, { backend: "opencode", effort: "high" })).toBe("Rejected: opencode takes no effort at launch on this host — leave effort out.");
     expect(f.worker()).toMatchObject({ backend: "claude-code", model: "opus", effort: "max" });
     expect(f.any.saveFleetConfig).not.toHaveBeenCalled();
   });

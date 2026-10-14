@@ -589,6 +589,11 @@ export interface CliBackend {
    */
   consumeLaunchWarning?(): string | null;
   /**
+   * #1811: notes about the last buildCommand that go to daemon.log and the Log tab only, never to a channel (an effort
+   * the launch could not pass, and why). Cleared on read.
+   */
+  consumeQuietLaunchNotes?(): string[];
+  /**
    * #1218 (kiro): the last launch this backend built in full — its engine, how it chose its conversation, its credential
    * profile — or null (none, or the last build threw). For the Log's reason only: it never selects what is read.
    */

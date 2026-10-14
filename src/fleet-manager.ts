@@ -94,6 +94,8 @@ import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
+import { codexEffort, flagEffort } from "./backend/launch-effort.js";
+import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
 import { CLI_ENV_TTL_MS, isModelCompatible, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -17028,6 +17030,29 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /**
+   * `/effort`'s levels for a backend this instance may move to, for the model that will run there (codex's levels are
+   * per model; null: its configured default). Empty: it has no effort setting. A file read, never a CLI.
+   */
+  backendEffortLevels(instanceName: string, backend: string, model: string | null = null): string[] {
+    // codex: the model the NEXT launch runs, for the levels and the gate alike (#1807 review r2).
+    let runs = model;
+    if (backend === "codex") {
+      const next = this.prospectiveCodexModel(instanceName, model);
+      if (!next.proven) return [];
+      runs = next.model;
+    }
+    let levels: string[];
+    try {
+      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs);
+      levels = metadata.strategy === "unsupported" ? [] : metadata.levels;
+    } catch { return []; }
+    // #1811: only the levels this host's launch of that backend will pass (launch-effort.ts, the gate the launch
+    // itself applies) — an effort chosen here reaches the new CLI with the one relaunch, or is not offered.
+    const takes = this.launchEffortGate(instanceName, backend, runs);
+    return levels.filter(takes);
+  }
+
+  /**
    * #1808: whether a backend takes this model name — the one rule for /backend and update_instance_config's switch.
    * The name must be one its launch line can carry (modelNameCarried); then its offered list (the cached CLI env), and
    * claude-code's known names (without this instance's configured model, which belongs to the backend being left).
@@ -17046,14 +17071,34 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /**
-   * `/effort`'s levels for a backend this instance may move to, for the model that will run there (codex's levels are
-   * per model; null: its configured default). Empty: it has no effort setting. A file read, never a CLI.
+   * #1807 review r2: the model codex's next launch of this instance runs. Every launch's writeConfig copies the SHARED
+   * config.toml into the instance's codex home first, so that source decides — not the home's copy from an earlier
+   * launch. Read-only; a model chosen here (`-c model=…`) outranks it; a project file that could change it, unproven.
    */
-  backendEffortLevels(instanceName: string, backend: string, model: string | null = null): string[] {
-    try {
-      const { strategy, levels } = readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
-      return strategy === "unsupported" ? [] : levels;
-    } catch { return []; }
+  private prospectiveCodexModel(instanceName: string, model: string | null): { model: string | null; proven: boolean } {
+    const { sharedHome } = codexMetadataHomes(this.getInstanceDir(instanceName));
+    return resolveCodexLaunchModel({
+      isolatedHome: sharedHome, sharedHome, model,
+      workingDirectory: this.fleetConfig?.instances[instanceName]?.working_directory,
+    });
+  }
+
+  /** #1811: whether a launch of `backend` here would pass a level: the same gate its builder applies. */
+  private launchEffortGate(instanceName: string, backend: string, model: string | null): (level: string) => boolean {
+    if (backend === "claude-code" || backend === "grok" || backend === "antigravity") {
+      const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+      if (!binary) return () => false;
+      const path = resolveBinary(binary);
+      return level => flagEffort(backend, level, path).arg !== null;
+    }
+    if (backend === "codex") {
+      // `model` is the next launch's, proven by the caller (prospectiveCodexModel); the catalog is codex's own cache.
+      if (!model) return () => false;
+      const catalog = readCodexModelEffortLevels({ ...codexMetadataHomes(this.getInstanceDir(instanceName)), model });
+      return level => codexEffort(level, catalog).arg !== null;
+    }
+    // kiro-cli gates its own --effort by version at launch (a quiet console note otherwise); muse always passes it.
+    return () => true;
   }
 
   /** Installed the way the launch finds a CLI (resolveBinary): on PATH or in a known install directory. */

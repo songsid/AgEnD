@@ -1189,8 +1189,8 @@ export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, pat
       const levels = ctx.backendEffortLevels?.(name, backendNew, runs);
       if (levels && !levels.includes(patch.effort)) {
         respond(null, levels.length
-          ? `Rejected: ${backendNew} has no effort "${patch.effort}". Choose one of: ${levels.join(", ")} — or leave effort out for its default.`
-          : `Rejected: ${backendNew} has no effort setting — leave effort out.`);
+          ? `Rejected: ${backendNew} takes no effort "${patch.effort}" at launch on this host. Choose one of: ${levels.join(", ")} — or leave effort out for its default.`
+          : `Rejected: ${backendNew} takes no effort at launch on this host — leave effort out.`);
         return;
       }
     }

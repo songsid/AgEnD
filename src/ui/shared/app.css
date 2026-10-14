@@ -400,10 +400,13 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .text-card { margin-top: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); }
 .text-card .tc-head { display: flex; align-items: center; gap: var(--s-2); }
 .text-card .tc-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-family: var(--font-mono); color: var(--text-2); }
-.text-card .tc-body { margin-top: var(--s-2); max-height: 480px; overflow: auto; }
+/* #1812: the scroller spans the card's padding box and insets its own content — 12px on both sides, from the border on
+   the left and from the scrollbar (or the border, with overlay scrollbars) on the right. A stable gutter keeps a
+   classic scrollbar off the content, and the content from shifting when the scrollbar comes and goes. */
+.text-card .tc-body { margin: var(--s-2) calc(-1 * var(--s-3)) 0; padding: 0 var(--s-3); max-height: 480px; overflow: auto; scrollbar-gutter: stable; }
 .text-card .tc-body[hidden] { display: none; }
 .text-card .tc-pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: var(--fs-xs); }
-.text-card .tc-table-wrap { overflow-x: auto; }
+.text-card .tc-table-wrap { overflow-x: auto; padding-bottom: var(--s-3); }
 .text-card .tc-table { border-collapse: collapse; font-size: var(--fs-xs); }
 .text-card .tc-table th, .text-card .tc-table td { border: 1px solid var(--border); padding: 2px 6px; text-align: left; vertical-align: top; }
 .text-card .tc-more { margin-top: var(--s-2); }
@@ -436,10 +439,17 @@ html.lb-open .scroller { overflow: hidden; }
 .msg .md ul { list-style: disc; } .msg .md ol { list-style: decimal; }
 .msg .md li > ul, .msg .md li > ol { margin: 2px 0; }
 .msg .md hr { border: 0; border-top: 1px solid var(--border); margin: var(--s-3) 0; }
-.msg .md .tbl { overflow-x: auto; margin: var(--s-2) 0; }
+/* #1812: a table too wide for its message scrolls in this wrapper (see the cell rule below); the bottom padding keeps an
+   overlay scrollbar off the last row. */
+.msg .md .tbl { overflow-x: auto; margin: var(--s-2) 0 0; padding-bottom: var(--s-3); }
 .msg .md table { border-collapse: collapse; font-size: var(--fs-sm); }
 .msg .md th, .msg .md td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; }
 .msg .md th { background: var(--surface); font-weight: var(--fw-semibold); }
+/* #1812: table cells keep their words whole. The message's `overflow-wrap: anywhere` also shrinks a cell's minimum
+   width, so auto table layout squeezed the columns and split words ("directo|r"); `break-word` breaks a word only when
+   it alone is wider than its line and leaves the minimum at whole words, so a wide table overflows into its scrolling
+   wrapper instead. A column keeps at least 5em: CJK text can break between any two characters. */
+.msg .md th, .msg .md td, .text-card .tc-table th, .text-card .tc-table td { overflow-wrap: break-word; word-break: normal; min-width: 5em; }
 .msg .md .al-c { text-align: center; } .msg .md .al-r { text-align: right; }
 .msg .md h3, .msg .md h4, .msg .md h5, .msg .md h6 { margin: var(--s-3) 0 var(--s-2); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
 .msg .md .tk-k { color: var(--tk-k); } .msg .md .tk-s { color: var(--tk-s); } .msg .md .tk-n { color: var(--tk-n); } .msg .md .tk-c { color: var(--tk-c); font-style: italic; }

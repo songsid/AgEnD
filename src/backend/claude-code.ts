@@ -1,4 +1,5 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { flagEffort } from "./launch-effort.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -938,6 +939,10 @@ export class ClaudeCodeBackend implements CliBackend {
     this.binaryPath = resolveBinary("claude");
   }
 
+  /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
+  private quietLaunchNotes: string[] = [];
+  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
   buildCommand(config: CliBackendConfig): string {
     const settingsPath = join(this.instanceDir, "claude-settings.json");
     const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
@@ -977,6 +982,10 @@ export class ClaudeCodeBackend implements CliBackend {
       warnIfModelMismatch("claude-code", model);
       cmd += ` --model ${shellQuote(model)}`;
     }
+    // #1811: the configured effort, where this claude takes it (launch-effort.ts); else a quiet note.
+    const effort = flagEffort("claude-code", config.effort, this.binaryPath);
+    if (effort.arg) cmd += effort.arg;
+    this.quietLaunchNotes = effort.note ? [effort.note] : [];
 
     // Additive system prompt: append fleet instructions without overriding Claude's built-in prompt
     const instrFile = join(this.instanceDir, "fleet-instructions.md");

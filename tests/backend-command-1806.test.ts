@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { registerExecutableFixture } from "./support/process-guard.js";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +24,7 @@ const { backendStep, planDisplay } = await import("../src/backend-command.js");
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { runWebCommand } = await import("../src/web-commands.js");
 const { t } = await import("../src/locale.js");
+const { resetCliHelpCache } = await import("../src/backend/launch-effort.js");
 import type { BackendCommandDeps } from "../src/backend-command.js";
 
 // ── The steps (pure) ─────────────────────────────────────────────────────────
@@ -171,6 +173,7 @@ const INSTALLED = new Set(["claude-code", "codex", "kiro-cli", "opencode"]);
 function fleet(instance: Record<string, unknown> = {}, opts: { status?: string; busy?: boolean } = {}) {
   const fm = new FleetManager(dataDir);
   const any = fm as any;
+  mkdirSync(join(dataDir, "w"), { recursive: true });                // its working directory, as a real instance's
   fm.fleetConfig = {
     channel: { type: "telegram", group_id: "chat", access: { mode: "locked", allowed_users: ["admin"] } },
     defaults: {},
@@ -602,5 +605,124 @@ describe("review r1: a listed model is selectable, whatever its name looks like 
     expect((await backendStep(d, "w", ["antigravity", 'bad"q'])).kind).toBe("refuse");
     expect((await backendStep(d, "w", ["antigravity", "x\ny"])).kind).toBe("refuse");
     expect((await backendStep(d, "w", ["codex", "gpt 5"])).kind).toBe("refuse");                  // codex's builder runs validateModel
+  });
+});
+
+// ── #1811 landed: the effort step offers only what the new CLI's launch will pass ──────────────────────────
+
+describe("the effort step relies on the launch gate (#1811)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); resetCliHelpCache(); });
+  /** A fake `claude` first on PATH, printing this help (a generated fixture, never the real CLI). */
+  const fakeClaude = (help: string) => {
+    const bin = mkdtempSync(join(dataDir, "bin-"));
+    const path = join(bin, "claude");
+    writeFileSync(path, `#!/bin/sh\ncat <<'AGEND_HELP_EOF'\n${help}\nAGEND_HELP_EOF\n`);
+    chmodSync(path, 0o755);
+    registerExecutableFixture(path);
+    vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);
+    resetCliHelpCache();
+  };
+  const onCodex = () => { const f = fleet({ backend: "codex", model: "gpt-5.5" }); delete f.any.backendEffortLevels; return f; };
+  const step = (f: ReturnType<typeof fleet>, args: string[]) => backendStep(f.any.backendCommandDeps("worker", { live: false }), "worker", args);
+
+  it("claude whose help lists --effort and its levels: those levels", async () => {
+    fakeClaude("  --effort <level>    Effort level for the current session\n                      (low, medium, high, xhigh, max)\n");
+    const s = await step(onCodex(), ["claude-code", "sonnet"]);
+    expect(s.kind === "choose" && s.choices.map(c => c.token)).toEqual(["default", "low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("a claude without --effort: no effort step, the confirmation says so, and a typed effort is refused", async () => {
+    fakeClaude("  --model <model>   Model\n");
+    const f = onCodex();
+    const s = await step(f, ["claude-code", "sonnet"]);
+    expect(s.kind).toBe("confirm");
+    expect(s.kind === "confirm" && s.text).toContain(t("backend.confirm_no_effort", "claude-code"));
+    expect(await step(f, ["claude-code", "sonnet", "high"])).toEqual({ kind: "refuse", text: t("backend.no_effort", "claude-code") });
+  });
+
+  it("codex whose model a project config could change: no effort step (the launch would not pass one)", async () => {
+    const f = fleet();
+    delete f.any.backendEffortLevels;
+    const home = mkdtempSync(join(dataDir, "codex-home-"));
+    writeFileSync(join(home, "models_cache.json"), JSON.stringify({ models: [{ slug: "gpt-5.5", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] }] }));
+    writeFileSync(join(home, "config.toml"), `model = "gpt-5.5"\n`);
+    vi.stubEnv("CODEX_HOME", home);
+    const work = join(dataDir, "w");
+    mkdirSync(join(work, ".git"), { recursive: true });
+    expect(((await step(f, ["codex", "default"])) as any).choices.map((c: { token: string }) => c.token)).toEqual(["default", "low", "high"]);
+    mkdirSync(join(work, ".codex"), { recursive: true });
+    writeFileSync(join(work, ".codex", "config.toml"), `model = "gpt-6"\n`);
+    expect((await step(f, ["codex", "default"])).kind).toBe("confirm");
+    // A model chosen here is given on the command line: proven again.
+    expect(((await step(f, ["codex", "gpt-5.5"])) as any).choices.map((c: { token: string }) => c.token)).toEqual(["default", "low", "high"]);
+  });
+});
+
+describe("review r2: with the default model, codex's levels are those of the model its NEXT launch runs", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const CATALOG = JSON.stringify({ models: [
+    { slug: "gpt-5.6-luna", supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map(effort => ({ effort })) },
+    { slug: "gpt-5.5", supported_reasoning_levels: ["low", "medium", "high", "xhigh"].map(effort => ({ effort })) },
+  ] });
+  /** The shared codex config, and (optionally) the instance's codex home as an earlier launch's real writeConfig left it. */
+  async function setup(opts: { earlier?: string; shared: string; defaults?: Record<string, unknown> }) {
+    const { CodexBackend } = await import("../src/backend/codex.js");
+    const shared = mkdtempSync(join(dataDir, "codex-shared-"));
+    writeFileSync(join(shared, "models_cache.json"), CATALOG);
+    vi.stubEnv("CODEX_HOME", shared);
+    writeFileSync(join(agendHome, "cli-env", "codex.json"), JSON.stringify({ backend: "codex", probedAt: Date.now(),
+      models: [{ id: "gpt-5.5", label: "GPT-5.5" }, { id: "gpt-5.6-luna", label: "Luna" }] }));
+    const f = fleet({ backend: "claude-code", model: "opus" });
+    Object.assign(f.fm.fleetConfig!.defaults, opts.defaults ?? {});
+    delete f.any.backendEffortLevels;
+    const instanceDir = f.any.getInstanceDir("worker");
+    mkdirSync(instanceDir, { recursive: true });
+    const work = join(dataDir, "w");
+    mkdirSync(join(work, ".git"), { recursive: true });
+    const launchConfig = { workingDirectory: work, instanceDir, instanceName: "worker", mcpServers: {} };
+    if (opts.earlier) {
+      writeFileSync(join(shared, "config.toml"), `model = "${opts.earlier}"\n`);
+      new CodexBackend(instanceDir).writeConfig(launchConfig as never);            // the earlier codex launch
+    }
+    writeFileSync(join(shared, "config.toml"), `model = "${opts.shared}"\n`);
+    const levels = async (model = "default") => {
+      const s = await backendStep(f.any.backendCommandDeps("worker", { live: false }), "worker", ["codex", model]);
+      return s.kind === "choose" ? s.choices.map(c => c.token) : [];
+    };
+    /** The real next launch: writeConfig, then buildCommand — does it pass max? */
+    const nextLaunchPassesMax = (model?: string) => {
+      const b = new CodexBackend(instanceDir);
+      b.writeConfig(launchConfig as never);
+      (b as any).planResume = () => ({ mode: "fresh", reason: "none" });
+      return b.buildCommand({ ...launchConfig, effort: "max", ...(model ? { model } : {}) } as never).includes(`model_reasoning_effort="max"`);
+    };
+    return { f, levels, nextLaunchPassesMax };
+  }
+
+  it("an earlier launch's luna, the shared config now gpt-5.5: no max offered, none accepted — the next launch would drop it", async () => {
+    const s = await setup({ earlier: "gpt-5.6-luna", shared: "gpt-5.5" });
+    expect(await s.levels()).not.toContain("max");
+    expect(await s.f.fm.applyBackendSwitch("worker", ["codex", "default", "max"], "claude-code", () => true))
+      .toBe(t("backend.unknown_effort", "max", "codex", "default, low, medium, high, xhigh"));
+    expect(s.f.any.saveFleetConfig).not.toHaveBeenCalled();
+    expect(s.nextLaunchPassesMax()).toBe(false);
+  });
+
+  it("the inverse: an earlier gpt-5.5, the shared config now luna — max is offered, and the next launch passes it", async () => {
+    const s = await setup({ earlier: "gpt-5.5", shared: "gpt-5.6-luna" });
+    expect(await s.levels()).toContain("max");
+    expect(s.nextLaunchPassesMax()).toBe(true);
+  });
+
+  it("controls: no earlier codex home; both the same; a chosen model; an inherited model outranks both files", async () => {
+    expect(await (await setup({ shared: "gpt-5.6-luna" })).levels()).toContain("max");
+    const same = await setup({ earlier: "gpt-5.5", shared: "gpt-5.5" });
+    expect(await same.levels()).not.toContain("max");
+    expect(same.nextLaunchPassesMax()).toBe(false);
+    const chosen = await setup({ earlier: "gpt-5.5", shared: "gpt-5.5" });
+    expect(await chosen.levels("gpt-5.6-luna")).toContain("max");
+    expect(chosen.nextLaunchPassesMax("gpt-5.6-luna")).toBe(true);
+    const inherited = await setup({ earlier: "gpt-5.6-luna", shared: "gpt-5.6-luna", defaults: { model: "gpt-5.5" } });
+    expect(await inherited.levels()).not.toContain("max");
   });
 });

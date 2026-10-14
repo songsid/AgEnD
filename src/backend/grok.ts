@@ -1,4 +1,5 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { flagEffort } from "./launch-effort.js";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
@@ -104,6 +105,10 @@ export class GrokBackend implements CliBackend {
     this.binaryPath = resolveBinary("grok");
   }
 
+  /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
+  private quietLaunchNotes: string[] = [];
+  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
   buildCommand(config: CliBackendConfig): string {
     this.workingDirectory = config.workingDirectory;
     // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
@@ -125,6 +130,10 @@ export class GrokBackend implements CliBackend {
       warnIfModelMismatch("grok", model);
       cmd += ` --model ${shellQuote(model)}`;
     }
+    // #1811: the configured effort, where this grok takes it (launch-effort.ts); else a quiet note.
+    const effort = flagEffort("grok", config.effort, this.binaryPath);
+    if (effort.arg) cmd += effort.arg;
+    this.quietLaunchNotes = effort.note ? [effort.note] : [];
     return cmd;
   }
 
