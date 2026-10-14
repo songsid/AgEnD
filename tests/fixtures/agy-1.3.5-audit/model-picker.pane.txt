@@ -1,0 +1,40 @@
+
+      ▄▀▀▄        Antigravity CLI 1.3.5
+     ▀▀▀▀▀▀       audit@example.invalid
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (Low)
+   ▄▀▀    ▀▀▄     ~/work
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Switch Model
+
+  Search:
+          ────────────────────
+
+> Gemini 3.8 Flash      (current)
+  Claude Opus 5.5
+  Claude Sonnet 5.5
+  GPT-OSS 120B (Medium)
+
+  Effort  ◂        ◉──────────────○──────────────○        ▸
+                  low          medium          high
+            Faster responses, lighter reasoning — great for simpler tasks
+
+Keyboard: ↑/↓ Navigate  ←/→ Effort  enter Select  esc Go Back
+
+                                                                                                                      Gemini 3.8 Flash · low
+
+
+
+
+
+
+
+
+
+
+
+
+

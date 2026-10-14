@@ -1,7 +1,11 @@
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, execFileSync: (file: string, args: string[], ...rest: any[]) => file.endsWith("agy")
-    ? (args[0] === "--version" ? "agy 1.3.1" : "--effort (low|medium|high)") : (real.execFileSync as any)(file, args, ...rest) };
+    ? (args[0] === "--version" ? "agy 1.3.1" : "--effort (low|medium|high)") : (real.execFileSync as any)(file, args, ...rest),
+    // agy prints --help to stderr (#1825).
+    spawnSync: (file: string, args: string[], ...rest: any[]) => file.endsWith("agy")
+      ? { status: 0, signal: null, stdout: "", stderr: "  --effort  Reasoning effort (low|medium|high)\n", pid: 0, output: [] }
+      : (real.spawnSync as any)(file, args, ...rest) };
 });
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

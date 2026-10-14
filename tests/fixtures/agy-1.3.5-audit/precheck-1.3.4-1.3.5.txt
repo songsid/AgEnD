@@ -1,0 +1,21 @@
+precheck agy (manifest scripts/manual/cli-upstream-precheck/sources.json, 19 literals)
+  old: <host>/agy (1.3.4) — 1 file(s), 214.7 MB
+  new: <scratch>/1.3.5 — 1 file(s), 215.1 MB
+
+literals in the old artifact: 16 of 19 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 0
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 0
+
+NEW PROMPT-LIKE STRINGS elsewhere: 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 0
+
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 0, hinted new prompts 0
+BASIS: hard=0; hinted=0
+PRECHECK: NONE
