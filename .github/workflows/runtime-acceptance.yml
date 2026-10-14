@@ -15,6 +15,10 @@ on:
       - scripts/preinstall-guard.cjs
       - scripts/runtime/**
       - scripts/ci/runtime-acceptance/**
+      # #1819: the hop installs the published 2.1.12 through these.
+      - .github/actions/published-agend-tarball/**
+      - scripts/ci/install-published-tarball.sh
+      - scripts/ci/verify-published-tarball.sh
       - .github/workflows/runtime-acceptance.yml
       - package.json
       - src/service-installer.ts

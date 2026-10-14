@@ -150,6 +150,27 @@ describe("no workflow fetches the published package from the registry by name", 
     expect(steps[0].with!.path).toBe(steps[3].with!.path);
   });
 
+  it("a workflow that filters pull requests by path runs when a helper it installs through changes (#1821 review)", () => {
+    const helpers = [
+      ".github/actions/published-agend-tarball/action.yml",
+      "scripts/ci/install-published-tarball.sh",
+      "scripts/ci/verify-published-tarball.sh",
+    ];
+    // GitHub's filter globs as these workflows use them: a literal path, or a directory prefix ending in /**.
+    const covers = (pattern: string, file: string) => pattern.endsWith("/**") ? file.startsWith(pattern.slice(0, -2)) : pattern === file;
+    const filtered = files(join(ROOT, ".github", "workflows"), /\.ya?ml$/).flatMap(f => {
+      const text = readFileSync(f, "utf8");
+      if (!text.includes("./.github/actions/published-agend-tarball")) return [];
+      const on = (yaml.load(text) as { on: { pull_request?: { paths?: string[] } | null } }).on;
+      const paths = on.pull_request?.paths;
+      return paths ? [{ file: f.slice(ROOT.length + 1), paths }] : [];
+    });
+    expect(filtered.map(w => w.file)).toEqual([".github/workflows/runtime-acceptance.yml"]);
+    for (const w of filtered) {
+      expect(helpers.filter(h => !w.paths.some(p => covers(p, h))), w.file).toEqual([]);
+    }
+  });
+
   it.each([
     ["ci.yml", "node20-rollback-smoke", "baseline-tarball", "BASELINE_TGZ"],
     ["data-downgrade.yml", "data-downgrade", "baseline-tarball", "BASELINE_TGZ"],
