@@ -75,6 +75,10 @@ describe("the wire format, against real systemd 249 bytes", () => {
     const string = Buffer.from(whole);
     string[string.indexOf(Buffer.from("/bin/sl eep")) + 11] = 0x41;   // the NUL after the program, overwritten
     expect(() => codec.decode(string)).toThrow();
+    const load = Buffer.from(capture.loadUnit!.reply, "hex");
+    const longer = Buffer.concat([load, Buffer.alloc(4)]);
+    longer.writeUInt32LE(load.readUInt32LE(4) + 4, 4);               // a body longer than its signature
+    expect(() => codec.decode(longer)).toThrow(/body length/);
   });
 
   it("as busctl --json=short prints it: a property unwrapped, a call's out-arguments as an array, errors and connect failures", () => {
@@ -171,7 +175,10 @@ describe("the worker: a real connection, as systemdPeerBus makes it", () => {
     // Closed after BEGIN: our call either meets the closed socket (EPIPE) or waits for a reply that never comes.
     expect(closed).toMatchObject({ status: 1, stderr: expect.stringMatching(/^Call failed: (the connection closed before a reply|write EPIPE)/) });
     expect(peerUnreachable(closed)).toBe(false);
-    const silent = callPeer(true, capture.loadUnit!.args, { socket: await serve("silent", "silent"), timeoutMs: 300 });
+    const silentSocket = await serve("silent", "silent");
+    const started = performance.now();
+    const silent = callPeer(true, capture.loadUnit!.args, { socket: silentSocket, timeoutMs: 300 });
+    expect(performance.now() - started).toBeLessThan(3000);         // bounded: the update never hangs on the socket
     expect(silent).toMatchObject({ status: null, signal: "SIGTERM", stderr: expect.stringMatching(/did not answer within 0\.3s/) });
     expect(busUnreachable(silent) || peerUnreachable(silent)).toBe(false);
   });
@@ -278,6 +285,11 @@ describe("the four reasons stay apart", () => {
     };
     const peer: PeerBus = (_u, args) => (args.includes("LoadUnit") ? json("o", [PATH]) : answers[args.at(-1)!] ?? { status: 1, signal: null, stdout: "", stderr: "Call failed\n" });
     expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet", peer)).toEqual({ ok: false, reason: "it reads EnvironmentFile=, whose effect cannot be proven here" });
+  });
+  it("a LoadUnit reply that is not a unit's object path is a refused call on either channel", () => {
+    const notAUnit = () => json("o", ["/org/freedesktop/systemd1"]);
+    expect(readLoadedUnit(notAUnit, true, "com.agend.fleet")).toMatchObject({ ok: false, reason: expect.stringMatching(/^busctl could not load com\.agend\.fleet\.service \(exited 0: .*"\/org\/freedesktop\/systemd1"\]/) });
+    expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet", notAUnit)).toMatchObject({ ok: false, reason: expect.stringMatching(/could not load com\.agend\.fleet\.service over its private socket/) });
   });
   it("and with no private socket offered, a host without a bus is refused, saying so", () => {
     expect(readLoadedUnit(() => NO_BUS, true, "com.agend.fleet")).toEqual({ ok: false,
