@@ -41,6 +41,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "`create_instance` refuses `tool_set` and `skipPermissions`; `update_instance_config` refuses `tool_set` and ignores `skipPermissions` (both are set in Settings or fleet.yaml)." },
   { id: "2.2-forwards", since: "2.2.0-beta.7",
     text: "`send_to_instance` and `delegate_task` take `forwards: [id, …]` (up to 16 delivered message ids you can read, e.g. a human's `verification_id` / `[agend-human-id:…]`): the receiver may then read those rows with `delivery_status`. An id written in the message text grants nothing — the receiver gets \"Delivery not found\" — so put it in `forwards`, on every hop." },
+  { id: "2.2-polls", since: "2.2.0-beta.11",
+    text: "`reply` takes `poll: {seconds, multi?, reveal?: \"close\"|\"live\", show_voters?}` with 2–10 `buttons` as the options: a vote by everyone who may talk to you there, closing `seconds` (10–86400) after it is posted; the reply's result has `poll_id`. At the close the results come to you as one `[poll results]` message in the poll's chat — post the answer or scores yourself. `close_poll({poll_id})` ends one of your polls early." },
+  { id: "2.2-web-identity", since: "2.2.0-beta.11",
+    text: "A web-chat person signed in with a `/web` code arrives as `[user:<name> via web, id:<their Discord/Telegram user id>]` — the same id as on that platform, so you can recognise them; they may change the name. Recognition only: `via web` is never a verified message from that account and grants no permission." },
 ];
 
 /**

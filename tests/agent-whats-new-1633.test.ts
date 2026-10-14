@@ -61,16 +61,47 @@ describe("what an instance is told", () => {
   it("#1780: an instance told everything up to beta.6 is told `forwards` once on reaching beta.7 or later — and not before", () => {
     const told = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0-beta.6")! <= 0).map(e => e.id);
     expect(planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.6" })).toBeNull();
-    for (const version of ["2.2.0-beta.7", "2.2.0-beta.8", "2.2.0"]) {
+    for (const version of ["2.2.0-beta.7", "2.2.0-beta.8", "2.2.0-beta.10"]) {
       const plan = planWhatsNew({ record: { announced: told }, fresh: false, version });
       expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.2-forwards"]);
     }
+    const later = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0" });
+    expect(later && "ids" in later ? later.ids : later).toEqual(["2.2-forwards", "2.2-polls", "2.2-web-identity"]);
     const plan = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.8" });
     const notice = plan && "notice" in plan ? plan.notice : "";
     for (const s of ["`send_to_instance` and `delegate_task` take `forwards: [id, …]`", "`verification_id`", "`delivery_status`",
       "An id written in the message text grants nothing", "\"Delivery not found\"", "on every hop",
       "a resumed session keeps the copy it first loaded, and reloading it does not refresh it", "Use them anyway — AgEnD's server accepts them."]) expect(notice, s).toContain(s);
     expect(notice).not.toContain("ToolSearch");                 // reloading does not refresh a Claude Code copy (#1780)
+  });
+  it("an instance told everything up to beta.10 hears of polls and web identity once on reaching beta.11 or later — and not before", () => {
+    const told = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0-beta.10")! <= 0).map(e => e.id);
+    expect(told).toContain("2.2-forwards");
+    expect(planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.10" })).toBeNull();
+    for (const version of ["2.2.0-beta.11", "2.2.0-beta.12", "2.2.0"]) {
+      const plan = planWhatsNew({ record: { announced: told }, fresh: false, version });
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.2-polls", "2.2-web-identity"]);
+    }
+    const plan = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.11" });
+    const notice = plan && "notice" in plan ? plan.notice : "";
+    expect(notice.split("\n")[0]).toBe("[system:whats-new] AgEnD is now 2.2.0-beta.11. New for you since your session began:");
+    for (const s of ["`reply` takes `poll: {seconds, multi?, reveal?: \"close\"|\"live\", show_voters?}`", "2–10 `buttons`", "`poll_id`", "one `[poll results]` message",
+      "`close_poll({poll_id})`", "`[user:<name> via web, id:<their Discord/Telegram user id>]`", "Recognition only", "grants no permission",
+      "a resumed session keeps the copy it first loaded, and reloading it does not refresh it", "Use them anyway — AgEnD's server accepts them."]) expect(notice, s).toContain(s);
+    expect(notice).not.toContain("forwards");
+    // A new instance on beta.11 starts with the current schemas: told nothing, both recorded.
+    const fresh = planWhatsNew({ record: null, fresh: true, version: "2.2.0-beta.11" });
+    expect(fresh && "silent" in fresh ? fresh.silent : fresh).toEqual(EVERY);
+  });
+  it("the poll entry names the schema's exact parameters and limits", async () => {
+    const { ReplyArgs, ClosePollArgs } = await import("../src/outbound-schemas.js");
+    const poll = (ReplyArgs as any).shape.poll.unwrap();
+    expect(Object.keys(poll.shape)).toEqual(["seconds", "multi", "reveal", "show_voters"]);
+    expect(poll.shape.reveal.unwrap().options).toEqual(["close", "live"]);
+    expect([poll.shape.seconds.minValue, poll.shape.seconds.maxValue]).toEqual([10, 86400]);
+    expect(Object.keys((ClosePollArgs as any).shape)).toEqual(["poll_id"]);
+    const text = AGENT_WHATS_NEW.find(e => e.id === "2.2-polls")!.text;
+    for (const s of ["`seconds` (10–86400)", "`close_poll({poll_id})`"]) expect(text, s).toContain(s);
   });
   it("an unreadable record, or an unknown running version: nothing (never a repeat flood)", () => {
     expect([planWhatsNew({ record: "unreadable", fresh: false, version: "2.2.0" }), planWhatsNew({ record: null, fresh: false, version: null })]).toEqual([null, null]);
