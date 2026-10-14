@@ -11164,6 +11164,11 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ warning: launchWarning }, "Backend launch fell back");
       this.emit("backend_launch_warning", { name: this.name, message: launchWarning });
     }
+    // #1811: what the launch left out and why (an effort this CLI or model does not take) — the Log tab, not the chat.
+    for (const note of this.backend!.consumeQuietLaunchNotes?.() ?? []) {
+      this.logger.info({ note }, "Launch note");
+      this.emit("backend_launch_warning", { name: this.name, message: note, quiet: true });
+    }
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
