@@ -657,3 +657,72 @@ describe("the effort step relies on the launch gate (#1811)", () => {
     expect(((await step(f, ["codex", "gpt-5.5"])) as any).choices.map((c: { token: string }) => c.token)).toEqual(["default", "low", "high"]);
   });
 });
+
+describe("review r2: with the default model, codex's levels are those of the model its NEXT launch runs", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const CATALOG = JSON.stringify({ models: [
+    { slug: "gpt-5.6-luna", supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map(effort => ({ effort })) },
+    { slug: "gpt-5.5", supported_reasoning_levels: ["low", "medium", "high", "xhigh"].map(effort => ({ effort })) },
+  ] });
+  /** The shared codex config, and (optionally) the instance's codex home as an earlier launch's real writeConfig left it. */
+  async function setup(opts: { earlier?: string; shared: string; defaults?: Record<string, unknown> }) {
+    const { CodexBackend } = await import("../src/backend/codex.js");
+    const shared = mkdtempSync(join(dataDir, "codex-shared-"));
+    writeFileSync(join(shared, "models_cache.json"), CATALOG);
+    vi.stubEnv("CODEX_HOME", shared);
+    writeFileSync(join(agendHome, "cli-env", "codex.json"), JSON.stringify({ backend: "codex", probedAt: Date.now(),
+      models: [{ id: "gpt-5.5", label: "GPT-5.5" }, { id: "gpt-5.6-luna", label: "Luna" }] }));
+    const f = fleet({ backend: "claude-code", model: "opus" });
+    Object.assign(f.fm.fleetConfig!.defaults, opts.defaults ?? {});
+    delete f.any.backendEffortLevels;
+    const instanceDir = f.any.getInstanceDir("worker");
+    mkdirSync(instanceDir, { recursive: true });
+    const work = join(dataDir, "w");
+    mkdirSync(join(work, ".git"), { recursive: true });
+    const launchConfig = { workingDirectory: work, instanceDir, instanceName: "worker", mcpServers: {} };
+    if (opts.earlier) {
+      writeFileSync(join(shared, "config.toml"), `model = "${opts.earlier}"\n`);
+      new CodexBackend(instanceDir).writeConfig(launchConfig as never);            // the earlier codex launch
+    }
+    writeFileSync(join(shared, "config.toml"), `model = "${opts.shared}"\n`);
+    const levels = async (model = "default") => {
+      const s = await backendStep(f.any.backendCommandDeps("worker", { live: false }), "worker", ["codex", model]);
+      return s.kind === "choose" ? s.choices.map(c => c.token) : [];
+    };
+    /** The real next launch: writeConfig, then buildCommand — does it pass max? */
+    const nextLaunchPassesMax = (model?: string) => {
+      const b = new CodexBackend(instanceDir);
+      b.writeConfig(launchConfig as never);
+      (b as any).planResume = () => ({ mode: "fresh", reason: "none" });
+      return b.buildCommand({ ...launchConfig, effort: "max", ...(model ? { model } : {}) } as never).includes(`model_reasoning_effort="max"`);
+    };
+    return { f, levels, nextLaunchPassesMax };
+  }
+
+  it("an earlier launch's luna, the shared config now gpt-5.5: no max offered, none accepted — the next launch would drop it", async () => {
+    const s = await setup({ earlier: "gpt-5.6-luna", shared: "gpt-5.5" });
+    expect(await s.levels()).not.toContain("max");
+    expect(await s.f.fm.applyBackendSwitch("worker", ["codex", "default", "max"], "claude-code", () => true))
+      .toBe(t("backend.unknown_effort", "max", "codex", "default, low, medium, high, xhigh"));
+    expect(s.f.any.saveFleetConfig).not.toHaveBeenCalled();
+    expect(s.nextLaunchPassesMax()).toBe(false);
+  });
+
+  it("the inverse: an earlier gpt-5.5, the shared config now luna — max is offered, and the next launch passes it", async () => {
+    const s = await setup({ earlier: "gpt-5.5", shared: "gpt-5.6-luna" });
+    expect(await s.levels()).toContain("max");
+    expect(s.nextLaunchPassesMax()).toBe(true);
+  });
+
+  it("controls: no earlier codex home; both the same; a chosen model; an inherited model outranks both files", async () => {
+    expect(await (await setup({ shared: "gpt-5.6-luna" })).levels()).toContain("max");
+    const same = await setup({ earlier: "gpt-5.5", shared: "gpt-5.5" });
+    expect(await same.levels()).not.toContain("max");
+    expect(same.nextLaunchPassesMax()).toBe(false);
+    const chosen = await setup({ earlier: "gpt-5.5", shared: "gpt-5.5" });
+    expect(await chosen.levels("gpt-5.6-luna")).toContain("max");
+    expect(chosen.nextLaunchPassesMax("gpt-5.6-luna")).toBe(true);
+    const inherited = await setup({ earlier: "gpt-5.6-luna", shared: "gpt-5.6-luna", defaults: { model: "gpt-5.5" } });
+    expect(await inherited.levels()).not.toContain("max");
+  });
+});

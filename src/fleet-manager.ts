@@ -17035,15 +17035,35 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * per model; null: its configured default). Empty: it has no effort setting. A file read, never a CLI.
    */
   private backendEffortLevels(instanceName: string, backend: string, model: string | null = null): string[] {
+    // codex: the model the NEXT launch runs, for the levels and the gate alike (#1807 review r2).
+    let runs = model;
+    if (backend === "codex") {
+      const next = this.prospectiveCodexModel(instanceName, model);
+      if (!next.proven) return [];
+      runs = next.model;
+    }
     let levels: string[];
     try {
-      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), model);
+      const metadata = readEffortMetadata(backend, this.getInstanceDir(instanceName), runs);
       levels = metadata.strategy === "unsupported" ? [] : metadata.levels;
     } catch { return []; }
     // #1811: only the levels this host's launch of that backend will pass (launch-effort.ts, the gate the launch
     // itself applies) — an effort chosen here reaches the new CLI with the one relaunch, or is not offered.
-    const takes = this.launchEffortGate(instanceName, backend, model);
+    const takes = this.launchEffortGate(instanceName, backend, runs);
     return levels.filter(takes);
+  }
+
+  /**
+   * #1807 review r2: the model codex's next launch of this instance runs. Every launch's writeConfig copies the SHARED
+   * config.toml into the instance's codex home first, so that source decides — not the home's copy from an earlier
+   * launch. Read-only; a model chosen here (`-c model=…`) outranks it; a project file that could change it, unproven.
+   */
+  private prospectiveCodexModel(instanceName: string, model: string | null): { model: string | null; proven: boolean } {
+    const { sharedHome } = codexMetadataHomes(this.getInstanceDir(instanceName));
+    return resolveCodexLaunchModel({
+      isolatedHome: sharedHome, sharedHome, model,
+      workingDirectory: this.fleetConfig?.instances[instanceName]?.working_directory,
+    });
   }
 
   /** #1811: whether a launch of `backend` here would pass a level: the same gate its builder applies. */
@@ -17055,10 +17075,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return level => flagEffort(backend, level, path).arg !== null;
     }
     if (backend === "codex") {
-      const homes = codexMetadataHomes(this.getInstanceDir(instanceName));
-      const runs = resolveCodexLaunchModel({ ...homes, model, workingDirectory: this.fleetConfig?.instances[instanceName]?.working_directory });
-      if (!runs.proven) return () => false;
-      const catalog = readCodexModelEffortLevels({ ...homes, model: runs.model });
+      // `model` is the next launch's, proven by the caller (prospectiveCodexModel); the catalog is codex's own cache.
+      if (!model) return () => false;
+      const catalog = readCodexModelEffortLevels({ ...codexMetadataHomes(this.getInstanceDir(instanceName)), model });
       return level => codexEffort(level, catalog).arg !== null;
     }
     // kiro-cli gates its own --effort by version at launch (a quiet console note otherwise); muse always passes it.
