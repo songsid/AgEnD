@@ -63,6 +63,17 @@ describe("extractUpdateCause (#1818)", () => {
     expect(cause).not.toMatch(/A complete log/);
   });
 
+  it("npm 10: without a code line, skips 'A complete log' footer and takes the last meaningful line", () => {
+    // No 'npm error code' line — mutation guard: removing the 'A complete log' filter makes this return the footer.
+    const out = [
+      "npm error Cannot read properties of undefined (reading 'version')",
+      "npm error A complete log of this run can be found in: /home/user/.npm/_logs/2026-10-14-debug-0.log",
+    ].join("\n");
+    const cause = extractUpdateCause(out);
+    expect(cause).toMatch(/Cannot read properties/);
+    expect(cause).not.toMatch(/A complete log/);
+  });
+
   it("returns last ✗ line when no npm error", () => {
     const out = "Installing…\n✗ Post-install step failed: cannot verify signature";
     expect(extractUpdateCause(out)).toMatch(/Post-install/);
