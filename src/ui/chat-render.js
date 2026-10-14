@@ -342,6 +342,22 @@
    */
   function buttonsRank(b) { return b && b.state !== "open" ? 1 : 0; }
   /**
+   * Whether `next` is an older view than `had` of the same buttons: they only go forward (open → ended), and a poll's
+   * views (#1823), which change while it is open, by their `rev`.
+   */
+  function olderButtons(next, had) {
+    var d = buttonsRank(next) - buttonsRank(had);
+    if (d) return d < 0;
+    return !!(next && had && next.poll && had.poll && next.poll.rev < had.poll.rev);
+  }
+  /** #1823: a poll's time left, counted down by the page every second: m:ss, or h:mm:ss. */
+  function pollRemaining(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    var mm = h ? String(m).padStart(2, "0") : String(m);
+    return (h ? h + ":" : "") + mm + ":" + String(r).padStart(2, "0");
+  }
+  /**
    * #1266: a reply's buttons changed (one was chosen, or they expired): the message carrying them, by its set id.
    * Returns the list unchanged when no message carries that set.
    */
@@ -349,7 +365,7 @@
     if (!Array.isArray(list) || !buttons || typeof buttons.id !== "string") return list;
     var i = -1;
     for (var j = list.length - 1; j >= 0; j--) if (list[j] && list[j].buttons && list[j].buttons.id === buttons.id) { i = j; break; }
-    if (i < 0 || buttonsRank(list[i].buttons) > buttonsRank(buttons)) return list;
+    if (i < 0 || olderButtons(buttons, list[i].buttons)) return list;
     var out = list.slice();
     out[i] = Object.assign({}, list[i], { buttons: buttons });
     return out;
@@ -369,7 +385,7 @@
         var next = nextDeliveryState(had.delivery, m.delivery);
         if (next !== had.delivery) out[seen[k]] = had = Object.assign({}, had, { delivery: next });
         // #1266: …and the copy whose buttons got further (open → chosen / expired) shows them.
-        if (m.buttons && (!had.buttons || buttonsRank(m.buttons) > buttonsRank(had.buttons))) out[seen[k]] = Object.assign({}, had, { buttons: m.buttons });
+        if (m.buttons && (!had.buttons || buttonsRank(m.buttons) > buttonsRank(had.buttons) || (buttonsRank(m.buttons) === buttonsRank(had.buttons) && m.buttons.poll && had.buttons.poll && m.buttons.poll.rev > had.buttons.poll.rev))) out[seen[k]] = Object.assign({}, had, { buttons: m.buttons });
         return;
       }
       seen[k] = out.length;
@@ -568,6 +584,7 @@
 
   return {
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
+    pollRemaining: pollRemaining,
     settleFailedSend: settleFailedSend, putBack: putBack,
     FILE_LIMITS: FILE_LIMITS, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,

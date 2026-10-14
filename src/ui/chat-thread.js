@@ -99,6 +99,7 @@ export function createThread(list, scroller, opts) {
    */
   function replyButtonsHtml(b) {
     if (!b || typeof b.id !== "string" || !Array.isArray(b.labels) || !b.labels.length) return "";
+    if (b.poll && typeof b.poll === "object") return pollHtml(b);
     const busy = !!(opts.replyButtonBusy && opts.replyButtonBusy(b.id));
     const off = b.state !== "open" || busy;
     const items = b.labels.map((label, i) => {
@@ -108,12 +109,51 @@ export function createThread(list, scroller, opts) {
     const note = b.state === "chosen" ? trf("chat.rbChosen", b.by || "") : b.state === "expired" ? tr("chat.rbExpired") : "";
     return `<div class="rb-row" role="group" aria-label="${escAttr(tr("chat.rbGroup"))}">${items}${note ? `<span class="rb-note">${escAttr(note)}</span>` : ""}</div>`;
   }
+  /**
+   * #1823: a poll. Anyone here may click while it is open; the page marks its own vote (opts.pollMine), which no one else
+   * sees. Counts only when the server sends them (revealed: live, or closed); names only at close with show_voters. The
+   * time left is not in the html (a node is kept by its html): pollLeft writes it, every second.
+   */
+  function pollHtml(b) {
+    const p = b.poll, closed = b.state === "closed";
+    const busy = !!(opts.replyButtonBusy && opts.replyButtonBusy(b.id));
+    const mine = (opts.pollMine && opts.pollMine(b.id)) || [];
+    const counts = Array.isArray(p.counts) && p.counts.length === b.labels.length ? p.counts : null;
+    const items = b.labels.map((label, i) => {
+      const me = !closed && mine.includes(i);
+      const tally = counts ? ` · ${counts[i]}${closed && p.answered ? ` (${Math.round((counts[i] / p.answered) * 100)}%)` : ""}` : "";
+      return `<button type="button" class="btn btn-sm rb-btn${me ? " chosen" : ""}" data-act="replyButton" data-arg="${escAttr(`${b.id}:${i}`)}" aria-pressed="${me ? "true" : "false"}"${closed || busy ? " disabled" : ""}>${escAttr(`${me ? "✓ " : ""}${label}${tally}`)}</button>`;
+    }).join("");
+    const status = closed
+      ? escAttr(trf("chat.pollClosed", p.answered))
+      : `${escAttr(trf("chat.pollAnswered", p.answered))} · ⏳ <span class="poll-left" data-deadline="${escAttr(p.deadline)}" title="${escAttr(tr("chat.pollLeft"))}"></span>`;
+    const voters = closed && Array.isArray(p.voters)
+      ? `<ul class="poll-voters" aria-label="${escAttr(tr("chat.pollVoters"))}">${b.labels.map((label, i) => `<li>${escAttr(`${label}: ${(p.voters[i] || []).join(", ") || "—"}`)}</li>`).join("")}</ul>`
+      : "";
+    return `<div class="rb-row poll" role="group" aria-label="${escAttr(tr("chat.pollGroup"))}">${items}<span class="rb-note">${status}</span></div>${voters}`;
+  }
+  /** #1823: the time left on this node's open polls, now. */
+  function pollLeft(node) {
+    for (const el of node.querySelectorAll(".poll-left[data-deadline]")) {
+      const v = R().pollRemaining(Number(el.dataset.deadline) - Date.now());
+      if (el.textContent !== v) el.textContent = v;
+    }
+  }
+  // #1823: while an open poll is on screen, its time left is rewritten every second.
+  let pollTick = null;
+  function armPolls() {
+    const open = nodes.size > 0 && !!list.querySelector(".poll-left[data-deadline]");
+    if (open && !pollTick) pollTick = setInterval(() => pollLeft(list), 1000);
+    else if (!open && pollTick) { clearInterval(pollTick); pollTick = null; }
+  }
+
   function msgNode(html, x, stoppedKeys) {
     const tpl = list.ownerDocument.createElement("template");
     tpl.innerHTML = html;
     const node = tpl.content.firstElementChild;
     decorateCode(node);
     timeLabel(node);
+    pollLeft(node);
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
     if (x) decorateTextCards(node, x);
     return node;
@@ -419,6 +459,7 @@ export function createThread(list, scroller, opts) {
       prev = have.node;
     }
     armDay();
+    armPolls();
     if ("restore" in renderOpts) {
       unseen = 0;
       if (renderOpts.restore == null) toBottom();
@@ -498,6 +539,7 @@ export function createThread(list, scroller, opts) {
     if (P()) P().stopAll("leave");
     nodes.clear();
     armDay();
+    armPolls();
   }
 
   return { render, onScroll, onClick, jumpLatest, reveal, refreshCards, dispose, nodes, get unseen() { return unseen; } };

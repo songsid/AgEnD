@@ -11,11 +11,32 @@ import "./chat-render.js";
 
 const R = () => globalThis.AgendChatRender;
 
+// #1823: this device's own votes on polls (set id → options), so a reload still marks them. A convenience only: the
+// server holds the ballot; storage may be missing or throw (private window), and then marks last for the page.
+const POLL_MINE_KEY = "agend_poll_mine";
+const POLL_MINE_MAX = 50;
+function readPollMine() {
+  try {
+    const v = JSON.parse(globalThis.localStorage?.getItem(POLL_MINE_KEY) || "{}");
+    const out = {};
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      for (const [id, opts] of Object.entries(v)) if (/^[0-9a-f]{32}$/.test(id) && Array.isArray(opts)) out[id] = opts.filter(Number.isInteger);
+    }
+    return out;
+  } catch { return {}; }
+}
+function writePollMine(mine) {
+  const ids = Object.keys(mine);
+  for (const id of ids.slice(0, Math.max(0, ids.length - POLL_MINE_MAX))) delete mine[id];   // the oldest go first
+  try { globalThis.localStorage?.setItem(POLL_MINE_KEY, JSON.stringify(mine)); } catch { /* storage unavailable */ }
+}
+
 /** Build a store. `deps` (fetch, toast, announce, t, now) are injected so tests can drive every path. */
 export function createChatStore(deps) {
   const s = {
     msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
+    pollMine: readPollMine(),
     exec: {}, awaiting: {}, current: null,
     // #1269: the last chat command per instance — { command, busy, text?, error?, choices? } — shown above the composer.
     commands: {},
@@ -87,13 +108,17 @@ export function createChatStore(deps) {
     s.msgs[u.instance] = R().applyReplyButtons(before, u.buttons);
     if (s.msgs[u.instance] !== before) changed(u.instance, "msgs");
   }
-  /** #1266: click one of a reply's buttons (the first click anywhere answers for everyone). */
+  /**
+   * #1266: click one of a reply's buttons (the first click anywhere answers for everyone). On a poll (#1823) it is this
+   * session's vote: the answer is its ballot, which only this page marks.
+   */
   async function clickReplyButton(instance, id, index) {
     if (s.rbBusy.has(id)) return;
     s.rbBusy.add(id); changed(instance, "msgs");
     let r;
     try { r = await api("POST", "/ui/reply-button", { instance, id, index }); }
     catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
+    if (r && r.answered && Array.isArray(r.options)) { s.pollMine[id] = r.options.filter(Number.isInteger); writePollMine(s.pollMine); }
     s.rbBusy.delete(id); changed(instance, "msgs");
     if (!r || !r.answered) deps.toast(r && r.error ? r.error : t("chat.disconnected"), false);
   }

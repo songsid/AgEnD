@@ -310,7 +310,7 @@ function fleet(options: { dir?: string; ticks?: boolean; polls?: boolean; classi
 const setIdOf = (h: ReturnType<typeof fleet>) => h.pollCbs()[0]!.split(":")[1]!;
 
 describe("the reply path", () => {
-  it("a poll goes out as its options plus a status; the result names the poll; the web chat shows the text only", async () => {
+  it("a poll goes out as its options plus a status; the result names the poll; the web chat shows it too", async () => {
     vi.useFakeTimers({ now: 1_000_000 });
     const h = fleet();
     h.ctl();
@@ -326,7 +326,7 @@ describe("the reply path", () => {
     const store = h.any.replyButtonsStore as ReplyButtonStore;
     expect(store.get(id)).toMatchObject({ messageId: "msg-1-last", expiresAt: 1_030_000, poll: { seconds: 30, multi: false, reveal: "close" } });
     const msg = h.sse.find(e => e.event === "message" && e.data.role === "agent")!.data;
-    expect(msg.buttons).toBeUndefined();
+    expect(msg.buttons).toEqual({ id, labels: ["Paris", "London", "Rome"], state: "open", poll: { deadline: 1_030_000, answered: 0, multi: false, reveal: "close", rev: expect.any(Number) } });
   });
   it.each([
     ["a poll on one button", { buttons: BUTTONS.slice(0, 1), poll: { seconds: 30 } }, /at least 2 buttons/],
