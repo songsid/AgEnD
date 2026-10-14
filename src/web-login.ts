@@ -51,6 +51,8 @@ export interface LoginCodeOwner {
   readonly userId: string;
   readonly chatId: string;
   readonly threadId?: string;
+  /** #1827: the account's display name when the code was asked for — the web name it starts with. */
+  readonly username?: string;
 }
 export interface IssuedLoginCode {
   readonly issuanceId: string;

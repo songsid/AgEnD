@@ -104,7 +104,7 @@ describe("#1604: Settings → This device", () => {
     const S = await import("../src/ui/panel-settings.js");      // (its chat import brings the real preview.js)
     await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: "settings:device|1|en" }));
     await settle(4);
-    const sec = pg.root.querySelector(".s-device") as any;
+    const sec = pg.root.querySelector(".s-device.s-synced") as any;    // #1827: the profile card comes first
     expect(sec, "drawn while the configuration is still loading").toBeTruthy();
     expect(pg.root.querySelector(".seg-item.active")?.textContent?.trim()).toBe("Preferences");   // #1665: synced across devices, and what stays on this one
     const theme = sec.querySelector('select[aria-label="Theme"]');
@@ -128,7 +128,9 @@ describe("#1604: Settings → This device", () => {
       const S = await import("../src/ui/panel-settings.js");
       await pg.mount(h(S.SettingsPanel, { route: { panel: "settings", section: "device" }, navKey: `settings:device|${publicLink}|en` }));
       await settle(4);
-      const cards = [...pg.root.querySelectorAll(".s-device")] as any[];
+      // #1827: the person's name card leads (its own test: web-display-name-1827); then these two.
+      expect(pg.root.querySelector(".s-device.s-profile h3")?.textContent).toBe("Your name");
+      const cards = [...pg.root.querySelectorAll(".s-device:not(.s-profile)")] as any[];
       expect(cards.map((c) => [c.querySelector("h3").textContent, c.querySelector(".sub").textContent, !!c.querySelector('select[aria-label="Theme"]')]), String(publicLink)).toEqual([
         ["Synced across your devices", publicLink ? "On the public link these are read-only: a change here stays in this browser." : "Changes here apply on every device where you are signed in.", true],
         ["This device only", "The tour, text size, view fit, the sidebar shown or hidden, panel widths and desktop notifications stay on each device.", false],

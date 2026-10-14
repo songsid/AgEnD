@@ -138,7 +138,7 @@ describe("POST /ui/command", () => {
   it("passes a valid request through — publicLink false here — and answers what the command answered", async () => {
     const webCommand = vi.fn(async () => ({ status: 200, body: { text: "ok" } }));
     expect(await post("/ui/command", { instance: "w", command: "compact", args: "x" }, { webCommand })).toEqual({ status: 200, body: { text: "ok" } });
-    expect(webCommand).toHaveBeenCalledWith({ instance: "w", command: "compact", args: "x", confirm: undefined }, { publicLink: false });
+    expect(webCommand).toHaveBeenCalledWith({ instance: "w", command: "compact", args: "x", confirm: undefined }, expect.objectContaining({ publicLink: false }));
   });
   it("rejects what is not a request: names, oversized args, a malformed confirmation", async () => {
     const webCommand = vi.fn(async () => ({ status: 200, body: {} }));
@@ -155,7 +155,7 @@ describe("POST /ui/command", () => {
     expect(isPassiveWebRead("POST", "/ui/command")).toBe(false);
     const webCommand = vi.fn(async (_input: unknown, _opts: unknown) => ({ status: 403, body: { error: "no" } }));
     await post("/ui/command", { instance: "w", command: "save", args: "a.md" }, { webCommand }, true);
-    expect(webCommand.mock.calls[0]![1]).toEqual({ publicLink: true });
+    expect(webCommand.mock.calls[0]![1]).toMatchObject({ publicLink: true });
   });
 });
 

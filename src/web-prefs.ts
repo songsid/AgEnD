@@ -37,6 +37,11 @@ function uniqueStrings(v: unknown, max: number, each: (s: unknown) => boolean, w
   return v as string[];
 }
 
+/** #1827: a web person's profile keys (internal: not settable through /ui/prefs, not in its view). */
+const PROFILE_NAME = "profile.name";
+const PROFILE_PLATFORM_NAME = "profile.platformName";
+const PROFILE_KEYS: ReadonlySet<string> = new Set([PROFILE_NAME, PROFILE_PLATFORM_NAME]);
+
 /** #1664: at most this many favorites. */
 export const MAX_FAVORITES = 50;
 const FAVORITES = "nav.favorites";
@@ -78,9 +83,15 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   ["preview.optIn", (v) => (typeof v === "boolean" ? v : bad("preview.optIn: true or false"))],
   // #1722: which name leads where the web shows an instance — its nickname (display name) or its real instance name.
   ["names.primary", (v) => (v === "nickname" || v === "instance" ? v : bad("names.primary: nickname or instance"))],
+  // #1827: a web person's own profile — the name they chose, and their account's display name at their last sign-in.
+  // Kept here so it follows the person (their bucket), but never a /ui/prefs key: read and written only through
+  // profile() / setProfileName() / setPlatformName(), and checked in full where it is used (web-profile.ts). The file's
+  // own check is only its shape.
+  [PROFILE_NAME, (v) => (typeof v === "string" && v.length >= 1 && v.length <= 256 ? v : bad("profile.name"))],
+  [PROFILE_PLATFORM_NAME, (v) => (typeof v === "string" && v.length >= 1 && v.length <= 256 ? v : bad("profile.platformName"))],
 ]);
-export const WEB_PREF_KEYS: readonly string[] = [...REGISTRY.keys()];
-export function isWebPrefKey(key: string): boolean { return REGISTRY.has(key); }
+export const WEB_PREF_KEYS: readonly string[] = [...REGISTRY.keys()].filter((k) => !PROFILE_KEYS.has(k));
+export function isWebPrefKey(key: string): boolean { return REGISTRY.has(key) && !PROFILE_KEYS.has(key); }
 
 export interface WebPrefsView {
   /** Every key that is set, and its value (a key not set has its default: the page's own). */
@@ -103,7 +114,7 @@ export function parseWebPrefsPatch(set: unknown, exists?: (name: string) => bool
   const keys = Object.keys(set);
   if (!keys.length) return { ok: false, error: "set: at least one preference" };
   for (const key of keys) {
-    const validate = REGISTRY.get(key);
+    const validate = PROFILE_KEYS.has(key) ? undefined : REGISTRY.get(key);
     if (!validate) return { ok: false, error: `unknown_pref: ${key.slice(0, 64)}` };
     const raw = set[key];
     if (raw === null) { patch.set(key, null); continue; }
@@ -194,7 +205,7 @@ export class WebPrefsStore {
   private viewOf(state: State, identity: string): WebPrefsView {
     const values: Record<string, unknown> = Object.create(null);
     const bucket = state.buckets.get(identity);
-    if (bucket) for (const [k, v] of bucket.values) values[k] = v;
+    if (bucket) for (const [k, v] of bucket.values) if (!PROFILE_KEYS.has(k)) values[k] = v;
     // #1664: a favorite whose instance was deleted is dropped (paused or stopped ones are still instances: kept).
     if (Object.hasOwn(values, FAVORITES)) {
       const exists = this.opts.exists;
@@ -234,6 +245,35 @@ export class WebPrefsStore {
     this.state = candidate;
     return { ok: true, view: this.viewOf(candidate, identity), changed };
   }
+
+  /** #1827: a web person's profile as kept (checked again where it is used); null while the file cannot be read. */
+  profile(identity: string): WebProfile | null {
+    const state = this.load();
+    if (state === "unreadable") return null;
+    const values = state.buckets.get(identity)?.values;
+    const name = values?.get(PROFILE_NAME) as string | undefined;
+    const platformName = values?.get(PROFILE_PLATFORM_NAME) as string | undefined;
+    return { ...(name !== undefined ? { name } : {}), ...(platformName !== undefined ? { platformName } : {}) };
+  }
+
+  /** #1827: set (or, with null, clear) a person's own name — already validated by the caller (web-profile.ts). */
+  setProfileName(identity: string, name: string | null): { ok: true } | { ok: false; status: 400 | 503; error: string } {
+    const w = this.write(identity, new Map([[PROFILE_NAME, name]]));
+    return w.ok ? { ok: true } : w;
+  }
+
+  /** #1827: their account's display name at a sign-in (a change is a write and a new rev; the same, nothing). */
+  setPlatformName(identity: string, name: string): void {
+    const value = name.slice(0, 256);
+    if (value) this.write(identity, new Map([[PROFILE_PLATFORM_NAME, value]]));
+  }
+}
+
+export interface WebProfile {
+  /** The name they chose (as stored); absent: not set — their platform name is used. */
+  readonly name?: string;
+  /** Their account's display name at their last sign-in with a code. */
+  readonly platformName?: string;
 }
 
 function serialize(state: State): string {
