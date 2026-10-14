@@ -246,6 +246,8 @@ Each row also says how it was routed and what became of it after it reached the 
 
 An instance only sees rows it sent or received (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` is how an agent checks that a peer message really came through the fleet: "Delivery not found" means it did not. Every tool profile has `delivery_status`, `minimal` included.
 
+`send_to_instance` and `delegate_task` accept an optional `forwards` list of up to 16 delivered message IDs the sender can already read. The receiver may then call `delivery_status` on those IDs — including a human consent receipt (`verification_id` / `agend-human-id`). Every hop in a relay chain must include `forwards` explicitly; writing an ID in the message text grants nothing. Human receipts preserve the original actor, adapter, platform and content separately from the formatted wire payload, and remain uncertain without owned submission evidence. See [cross-instance-messaging.md](cross-instance-messaging.md) and [delivery-verification.md](delivery-verification.md) for the full guidance.
+
 ### `awaiting_input`
 
 `list_instances` and `describe_instance` report an `instance_state`. Besides the execution states (`idle`, `working`, `stuck`, `paused`) it can be `awaiting_input`: the CLI is showing a prompt that waits for a person — a permission request, a dangerous-command confirmation, a login screen or another dialog — and the observation is fresh (under 15 seconds old) and confirmed rather than suspected. The separate `execution_state`, `interaction` and `interaction_summary` fields carry the detail. It is presentation only: it never feeds the fleet's own state or its gates.
@@ -911,6 +913,8 @@ instances:
 
 Install with `/login muse`, or in a shell: `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`. The launcher keeps its binary next to itself, so it is saved as `~/.local/bin/muse` first; piped straight into `bash` it would download into the current directory instead and sign in with `muse login`. `/login` does not cover muse yet. Muse steers rather than queues: a message sent while a turn is running is taken into that turn, so `/steer` works (verified on muse 1.3.0). `/clear` starts a new conversation. Subscription usage is relayed from muse's response stream into `/usage`.
 
+When `skip_permissions: false`, the \"Would you like to run the following command?\" approval prompt is recognised as a permission interaction awaiting a human (#1715): deliveries are held while it is on screen, it appears in Needs-you, and AgEnD never auto-answers it. When a backgrounded task is running and `/quit` is issued, the \"Local work is still active\" confirmation menu is recognised and handled deliberately (#1716): deliveries are held, stop cancels the menu with Escape rather than answering an option, and the ended background work is reported to the instance's topic instead of being discarded silently. `/model` lists models from muse's own on-disk provider catalog, so newly released models appear after a restart without requiring a hard-coded update (#1796).
+
 ## Grok Build backend
 
 AgEnD supports xAI's Grok Build CLI (`grok`) as a backend. It needs Grok CLI 1.0.13 or later: the server refuses older versions (HTTP 426), and AgEnD then tells the operator to run `grok update`.
@@ -1139,6 +1143,7 @@ Since then:
 - **Fleet → Org chart** (`/ui/fleet/org`, #1389): General, teams and instances, each with its live state and a link to its thread.
 - **Fleet → Cache** (`/ui/fleet/cache`, #1468): a per-instance prompt-cache expiry analysis with a keep-warm recommendation. It is read from local transcripts and priced at list price, and the check date is shown.
 - **The chat's commands and quick actions** (#1269): typing `/` runs the instance's own topic commands through the same handlers and command table. A paste over 4,000 characters is attached as a text file, and the thread stays at the newest message as content grows.
+- **Log tab** (`#1218`): a per-instance **Log** panel shows each prompt, the agent's replies (never its thinking), every tool call with arguments and result, errors, and fleet events such as crashes or restarts. Steps are read on demand from the agent's transcript while the tab is open, and update live; secret values are masked and long text is truncated. Off by default (`web.log_tab`); a fleet admin enables it in Settings → Web, and it then appears over the public link too. Supported fully on claude-code and codex; other backends show fleet events only; kiro shows fleet events with a note explaining why its own steps are not yet available.
 
 See [web-dashboard.md](web-dashboard.md).
 
