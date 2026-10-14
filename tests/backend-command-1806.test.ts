@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * update_instance_config's backend switch. Nothing here starts a CLI, a fleet or a probe: the relaunch, the binary
  * lookup and the vendor probe are stubbed, and every store a check reads is under a scratch dir.
  */
+// This file's own AGEND_HOME, under the run's: the cli-env cache it writes would otherwise race other files' (one
+// AGEND_HOME serves every worker). Set before FleetManager is imported, so nothing is created under the shared one.
+process.env.AGEND_HOME = mkdtempSync(join(process.env.AGEND_HOME as string, "backend-1806-home-"));
 vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/probe-worker.js")).FakeProbeWorker }));
 vi.mock("../src/logger.js", async () => ({
   createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger,
