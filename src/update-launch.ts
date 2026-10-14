@@ -68,7 +68,7 @@ export function updateFixHint(output: string, opts: { agendGone?: boolean } = {}
   const target = updateTarget(output);
   if (opts.agendGone) return `\`npm install -g @songsid/agend@${target}\``;
   if (/^npm (?:ERR!|error) code ENOTEMPTY\b/im.test(output)) {
-    const named = /^npm (?:ERR!|error) dest (.+)$/im.exec(output)?.[1]?.trim() ?? /ENOTEMPTY[^\n]*rename '[^'\n]+' -> '([^'\n]+)'/.exec(output)?.[1];
+    const named = /^npm (?:ERR!|error) dest (.+)$/im.exec(output)?.[1] ?? /ENOTEMPTY[^\n]*rename '[^'\n]+' -> '([^'\n]+)'/.exec(output)?.[1];
     const ours = named && isAbsolute(named) && !/['"\s\\`$]/.test(named)
       && basename(dirname(named)) === "@songsid" && /^\.agend[A-Za-z0-9._-]*$/.test(basename(named));
     if (ours) return `remove the directory an interrupted install left, then update again: \`rm -rf '${named}' && agend update\``;

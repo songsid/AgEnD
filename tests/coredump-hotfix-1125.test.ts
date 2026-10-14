@@ -206,11 +206,12 @@ describe("`agend update` when the package is already current (built CLI copy, st
    * Runs `agend update --beta` from a fresh COPY of dist/: its cli.js mtime is
    * "now", so a process started before the copy predates the install.
    */
-  function update(fleetPid: number | null, opts: { installedVersion?: string } = {}) {
+  function update(fleetPid: number | null, opts: { installedVersion?: string; pidFile?: (path: string) => void } = {}) {
     const home = tmp();
     const agendHome = join(home, ".agend");
     mkdirSync(agendHome, { recursive: true });
     if (fleetPid !== null) writeFileSync(join(agendHome, "fleet.pid"), `${fleetPid}\n`);
+    opts.pidFile?.(join(agendHome, "fleet.pid"));
     spawnSync("sleep", ["2.5"]); // past the 2 s margin
     const pkg = join(home, "pkg");
     mkdirSync(pkg);
@@ -300,7 +301,23 @@ exit 0
       expect(r.stderr, out).toContain("is installed but the fleet is not running — run: agend start");
       expect(r.status, out).toBe(1);
     }
-  });
+  }, 30_000);
+
+  // #1829 review: a fleet.pid that cannot be read or parsed is not evidence of a stopped fleet — the old answer stays.
+  it.skipIf(!existsSync(cli) || !linux)("a fleet.pid that is a directory, empty, malformed or unreadable → not 'not running'", () => {
+    const writers: Array<[string, (path: string) => void]> = [
+      ["directory", path => mkdirSync(path)],
+      ["empty", path => writeFileSync(path, "")],
+      ["malformed", path => writeFileSync(path, "not-a-pid\n")],
+    ];
+    if (process.getuid?.() !== 0) writers.push(["unreadable", path => { writeFileSync(path, `${process.pid}\n`); chmodSync(path, 0o000); }]);
+    for (const [label, pidFile] of writers) {
+      const { r, out, restarted } = update(null, { pidFile });
+      expect(restarted, `${label}\n${out}`).toBe(false);
+      expect(r.stderr, `${label}\n${out}`).not.toContain("the fleet is not running");
+      expect(r.stdout, `${label}\n${out}`).toContain("Already up to date");
+    }
+  }, 60_000);
 
   it.skipIf(!existsSync(cli) || !linux)("no fleet running and the installed package does not verify → the reinstall message, not 'run: agend start'", () => {
     const { r, out, restarted } = update(null, { installedVersion: "0.0.1" });

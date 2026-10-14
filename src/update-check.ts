@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE } from "./service-restart-selection.js";
 
 /**
@@ -192,6 +193,22 @@ export function runningFleetPredatesInstall(opts: {
   const started = opts.processStartMs(opts.pid);
   if (started === null) return false;
   return started < opts.installedAtMs - (opts.marginMs ?? 2_000);
+}
+
+/**
+ * #1829 review: what fleet.pid says, as evidence — "missing" only when the file is not there (ENOENT), "valid" for a
+ * whole positive pid, "unknown" for anything else (unreadable, a directory, empty, malformed). Unknown is never read
+ * as a stopped fleet.
+ */
+export function readFleetPidEvidence(path: string, read: (path: string) => string = p => readFileSync(p, "utf-8")):
+  { kind: "missing" } | { kind: "valid"; pid: number } | { kind: "unknown" } {
+  let raw: string;
+  try { raw = read(path); } catch (err) {
+    return (err as NodeJS.ErrnoException)?.code === "ENOENT" ? { kind: "missing" } : { kind: "unknown" };
+  }
+  const text = raw.trim();
+  const pid = /^[1-9][0-9]{0,9}$/.test(text) ? Number(text) : Number.NaN;
+  return Number.isSafeInteger(pid) ? { kind: "valid", pid } : { kind: "unknown" };
 }
 
 /**

@@ -47,6 +47,7 @@ import {
   shouldSkipUpdate,
   runningFleetPredatesInstall,
   fleetProvenStopped,
+  readFleetPidEvidence,
   processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
@@ -1627,8 +1628,11 @@ program
       }
       // #1829 ⑥: installed, but no fleet runs (a restart that never finished, a stopped service): not "up to date".
       // Verified first, then the exact next step — never started from here, so nothing bypasses `agend start`'s checks.
-      if (fleetProvenStopped({
-        pid: fleetPid,
+      // Only a fleet.pid that is missing, or names a pid proven gone / not a fleet, says so (review: unreadable,
+      // empty or malformed is unknown, and keeps the old answer).
+      const pidEvidence = readFleetPidEvidence(join(DATA_DIR, "fleet.pid"));
+      if (pidEvidence.kind !== "unknown" && fleetProvenStopped({
+        pid: pidEvidence.kind === "valid" ? pidEvidence.pid : null,
         alive: pid => { try { process.kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException).code === "EPERM"; } },
         commandLine: pid => readProcessCommandLine(pid),
         isFleetProcess: line => isFleetStartCommandLine(line),

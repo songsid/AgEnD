@@ -11,7 +11,7 @@ import { closeSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fleetProvenStopped } from "../src/update-check.js";
+import { fleetProvenStopped, readFleetPidEvidence } from "../src/update-check.js";
 import { openUpdateLog, updateFixHint, updateLogPath, watchUpdateLaunch } from "../src/update-launch.js";
 
 describe("fleetProvenStopped (#1829 ⑥)", () => {
@@ -29,6 +29,28 @@ describe("fleetProvenStopped (#1829 ⑥)", () => {
   it("not proven stopped: a live fleet, or a live pid whose command line cannot be read", () => {
     expect(check(4242, true, FLEET)).toBe(false);
     expect(check(4242, true, "")).toBe(false);
+  });
+});
+
+describe("readFleetPidEvidence (#1829 review): only a missing file is 'missing'", () => {
+  const thrown = (code: string) => () => { throw Object.assign(new Error(code), { code }); };
+  it("ENOENT → missing; a whole positive pid → valid", () => {
+    expect(readFleetPidEvidence("/x", thrown("ENOENT"))).toEqual({ kind: "missing" });
+    expect(readFleetPidEvidence("/x", () => "4242\n")).toEqual({ kind: "valid", pid: 4242 });
+    expect(readFleetPidEvidence("/x", () => " 17 ")).toEqual({ kind: "valid", pid: 17 });
+  });
+  it("unreadable, a directory, empty or malformed → unknown (never 'stopped')", () => {
+    for (const code of ["EACCES", "EISDIR", "EIO"]) expect(readFleetPidEvidence("/x", thrown(code)), code).toEqual({ kind: "unknown" });
+    for (const text of ["", "\n", "abc", "12 34", "0", "-5", "12abc", "1e3", "99999999999"]) {
+      expect(readFleetPidEvidence("/x", () => text), JSON.stringify(text)).toEqual({ kind: "unknown" });
+    }
+  });
+  it("the real file system: a missing file and a directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1829-pid-"));
+    try {
+      expect(readFleetPidEvidence(join(dir, "fleet.pid"))).toEqual({ kind: "missing" });
+      expect(readFleetPidEvidence(dir)).toEqual({ kind: "unknown" });
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
@@ -65,6 +87,9 @@ describe("updateFixHint (#1829): a small lookup", () => {
       "/usr/lib/node_modules/@songsid/.agend-a'x",            // a quote
       "/usr/lib/node_modules/@songsid/.agend-$(id)",          // shell expansion
       "node_modules/@songsid/.agend-pW3rL0aX",                // relative
+      "/usr/lib/node_modules/@songsid/.agend-pW3rL0aX ",      // trailing space: another name, never trimmed into this one
+      " /usr/lib/node_modules/@songsid/.agend-pW3rL0aX",      // leading space
+      "/usr/lib/node_modules/@songsid/.agend-pW3rL0aX\t",     // trailing tab
     ]) {
       const out = ENOTEMPTY_10.replace(/\/usr\/lib\/node_modules\/@songsid\/\.agend-pW3rL0aX/g, dest);
       expect(updateFixHint(out), dest).toBeNull();
