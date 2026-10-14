@@ -135,7 +135,7 @@ export function createThread(list, scroller, opts) {
   /** #1823: the time left on this node's open polls, now. */
   function pollLeft(node) {
     for (const el of node.querySelectorAll(".poll-left[data-deadline]")) {
-      const v = R().pollRemaining(Number(el.dataset.deadline) - Date.now());
+      const v = R().pollRemaining(Number(el.dataset.deadline) - (opts.serverNow ? opts.serverNow() : Date.now()));
       if (el.textContent !== v) el.textContent = v;
     }
   }

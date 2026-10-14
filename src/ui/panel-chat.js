@@ -253,6 +253,7 @@ function Thread({ name, th }) {
       clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
       replyButtonBusy: (id) => store.state.rbBusy.has(id),
       pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
+      serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
       panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
       openImage: openLightbox,                                               // an image, full size, in the page
       emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji

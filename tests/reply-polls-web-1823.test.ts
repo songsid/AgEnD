@@ -306,6 +306,37 @@ describe("the page: ordering, the countdown, and its own vote", () => {
       expect(again.state.pollMine["f".repeat(32)]).toEqual([0, 1]);
     } finally { dom.restore(); }
   });
+  it("the countdown runs on the server's clock: a live view's rev gives the skew; an ended view's does not", () => {
+    const dom = installDom({});
+    try {
+      vi.useFakeTimers({ now: 1_000_000 });
+      const store = createChatStore({ fetch: vi.fn(), toast: vi.fn(), announce: vi.fn(), t: (k: string) => k, now: () => 0 } as any);
+      const handlers: Record<string, (d: any) => void> = {};
+      store.attach({ on: (e: string, fn: (d: any) => void) => { handlers[e] = fn; } });
+      handlers.message!({ boot: "x", id: 1, instance: "w", sender: "w", role: "agent", text: "Q", ts: "2026-01-01T00:00:00Z", buttons: view("open", 0, 1_007_000) });
+      expect(store.state.clockSkew).toBe(7_000);                            // this device is 7 s behind the server
+      handlers.reply_buttons!({ instance: "w", buttons: view("open", 1, 997_000) });
+      expect(store.state.clockSkew).toBe(-3_000);
+      handlers.reply_buttons!({ instance: "w", buttons: view("closed", 1, 2_000_000) });
+      expect(store.state.clockSkew).toBe(-3_000);                           // an ended view may be old: not a clock reading
+    } finally { dom.restore(); }
+  });
+  it("the thread counts down from the server's now when it is given one", () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    const dom = installDom({});
+    const doc = (globalThis as any).document;
+    const scroller = doc.createElement("div"); const list = doc.createElement("div");
+    scroller.append(list); doc.body.append(scroller);
+    const th = createThread(list, scroller, {
+      t: (k: string) => t(k), tf: (k: string, ...a: unknown[]) => t(k, ...a), isUser: () => false, onJump() {}, onEmpty() {},
+      setPreviewOptIn() {}, copyText: async () => true, download() {}, toggleWrap() {}, clickReplyButton() {}, pollMine: () => [],
+      serverNow: () => Date.now() + 7_000,
+    });
+    try {
+      th.render([agent(view("open", 0, 1))]);
+      expect(list.querySelector(".poll-left").textContent).toBe("0:23");     // 30 s on the server's clock, 7 s gone there
+    } finally { th.dispose(); dom.restore(); }
+  });
   it("storage that throws (a private window) loses only the mark", async () => {
     const dom = installDom({});
     const g = globalThis as any;

@@ -37,6 +37,9 @@ export function createChatStore(deps) {
     msgs: {}, drafts: {}, failedSends: {}, pendingFiles: {}, sending: {}, inFlightFiles: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
+    // #1823 (#1828 review): the server's clock minus this device's, from a live poll view's rev (stamped when the server
+    // made it). A poll's deadline is the server's; a page whose clock is a few seconds off would count a 10 s poll wrong.
+    clockSkew: 0,
     exec: {}, awaiting: {}, current: null,
     // #1269: the last chat command per instance — { command, busy, text?, error?, choices? } — shown above the composer.
     commands: {},
@@ -83,8 +86,14 @@ export function createChatStore(deps) {
   }
 
   // ── Messages: one way in, from the stream, a poll or the history; one entry per boot+id.
+  /** #1823: a poll view fresh off the stream says what time it is on the server (history views are older: not used). */
+  function noteServerClock(buttons) {
+    const rev = buttons && buttons.poll && buttons.state === "open" ? buttons.poll.rev : null;
+    if (typeof rev === "number" && Number.isFinite(rev)) s.clockSkew = rev - Date.now();
+  }
   function ingest(m) {
     if (!m || typeof m.instance !== "string") return;
+    noteServerClock(m.buttons);
     const before = s.msgs[m.instance];
     s.msgs[m.instance] = R().mergeMessages(before, [m], 500);
     if (m.instance === s.current && s.msgs[m.instance] !== before && m.role !== "status" && !isUser(m, m.instance) && (s.msgs[m.instance] || []).length > (before || []).length) deps.announce(tf("chat.a11yReplied", m.sender));
@@ -104,6 +113,7 @@ export function createChatStore(deps) {
   /** #1266: a reply's buttons ended — its message shows it. */
   function applyReplyButtons(u) {
     if (!u || typeof u.instance !== "string") return;
+    noteServerClock(u.buttons);
     const before = s.msgs[u.instance];
     s.msgs[u.instance] = R().applyReplyButtons(before, u.buttons);
     if (s.msgs[u.instance] !== before) changed(u.instance, "msgs");
