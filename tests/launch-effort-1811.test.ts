@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,7 @@ import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import { GrokBackend } from "../src/backend/grok.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
+import { resolveCodexLaunchModel } from "../src/backend/codex-metadata.js";
 import { t } from "../src/locale.js";
 import { registerExecutableFixture } from "./support/process-guard.js";
 import pino from "pino";
@@ -270,7 +271,9 @@ describe("review r1: codex's effort follows the model that will really run", () 
     // Controls: the plain root key of a model that has max; a model given to the launch.
     expect(setup(`model = "gpt-6.1-sol"\n` + decoy).launch().passed).toBe(true);
     expect(setup(`model = 'gpt-5.5'\n` + decoy).launch({ model: "gpt-6.1-sol" }).passed).toBe(true);
-    // The profile the config selects is the one that runs.
+    // A top-level profile: read as older codex versions did (its [profiles.x] model). This is the reader's rule, not a
+    // claim about codex 0.162.1, which refuses a top-level `profile` at startup — either way the root model's levels
+    // are not borrowed.
     expect(setup(`model = "gpt-6.1-sol"\nprofile = "slow"\n[profiles.slow]\nmodel = "gpt-5.5"\n`).launch().passed).toBe(false);
   });
 
@@ -315,5 +318,57 @@ describe("review r1: codex's effort follows the model that will really run", () 
     (b as any).planResume = () => ({ mode: "fresh", reason: "none" });
     const cmd = b.buildCommand({ workingDirectory: join(root, "work", "repo"), instanceDir: dir, instanceName: "w2", mcpServers: {}, effort: "max" } as never);
     expect(cmd).toContain(`model_reasoning_effort="max"`);
+  });
+});
+
+describe("review r2: the walk starts where codex really runs — the physical working directory", () => {
+  const CACHE = JSON.stringify({ models: [
+    { slug: "gpt-6.1-sol", supported_reasoning_levels: ["low", "medium", "high", "xhigh", "max"].map(effort => ({ effort })) },
+    { slug: "gpt-5.5", supported_reasoning_levels: ["low", "medium", "high", "xhigh"].map(effort => ({ effort })) },
+  ] });
+  const layout = (projectModel: string) => {
+    writeFileSync(join(root, "codex-shared", "models_cache.json"), CACHE);
+    writeFileSync(join(root, "codex-shared", "config.toml"), `model = "gpt-6.1-sol"\n`);
+    const repo = join(root, "repos", "repo");
+    mkdirSync(join(repo, ".git"), { recursive: true });
+    mkdirSync(join(repo, "sub"), { recursive: true });
+    mkdirSync(join(repo, ".codex"), { recursive: true });
+    writeFileSync(join(repo, ".codex", "config.toml"), `model = "${projectModel}"\n`);
+    mkdirSync(join(root, "links"), { recursive: true });
+    symlinkSync(join(repo, "sub"), join(root, "links", "alias"));
+    symlinkSync(repo, join(root, "links", "root-alias"));
+    const dir = join(root, "agend", "instances", "worker");
+    mkdirSync(dir, { recursive: true });
+    const b = new CodexBackend(dir);
+    (b as any).planResume = () => ({ mode: "fresh", reason: "none" });
+    return (workingDirectory: string, over: Record<string, unknown> = {}) => {
+      const cmd = b.buildCommand({ workingDirectory, instanceDir: dir, instanceName: "worker", mcpServers: {}, effort: "max", ...over } as never);
+      b.consumeQuietLaunchNotes();
+      return cmd.includes(`model_reasoning_effort="max"`);
+    };
+  };
+
+  it("a symlink into the repo is walked from its target: the repo's project model counts", () => {
+    const launch = layout("gpt-5.5");
+    expect(launch(join(root, "links", "alias"))).toBe(false);
+    expect(resolveCodexLaunchModel({ isolatedHome: join(root, "none"), sharedHome: join(root, "codex-shared"), workingDirectory: join(root, "links", "alias") }))
+      .toEqual({ model: "gpt-6.1-sol", proven: false });
+  });
+
+  it("controls: the real path; a link to the repo root; a model on the command line; a project with the same model", () => {
+    let launch = layout("gpt-5.5");
+    expect(launch(join(root, "repos", "repo", "sub"))).toBe(false);
+    expect(launch(join(root, "links", "root-alias"))).toBe(false);
+    expect(launch(join(root, "links", "alias"), { model: "gpt-6.1-sol" })).toBe(true);
+    rmSync(join(root, "repos"), { recursive: true, force: true });
+    rmSync(join(root, "links"), { recursive: true, force: true });
+    launch = layout("gpt-6.1-sol");
+    expect(launch(join(root, "links", "alias"))).toBe(true);
+  });
+
+  it("a working directory that cannot be resolved proves nothing", () => {
+    layout("gpt-6.1-sol");
+    expect(resolveCodexLaunchModel({ isolatedHome: join(root, "none"), sharedHome: join(root, "codex-shared"), workingDirectory: join(root, "gone") }))
+      .toEqual({ model: "gpt-6.1-sol", proven: false });
   });
 });

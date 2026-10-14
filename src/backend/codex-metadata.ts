@@ -1,6 +1,6 @@
 import { measureSyncWork } from "../sync-work-attribution.js";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
@@ -104,9 +104,10 @@ function readTomlTable(path: string): TomlTable | null | undefined {
 }
 
 /**
- * #1813 review: the model a config table sets — its ROOT `model` key, or the selected profile's (`profile = "x"` with
- * `[profiles.x] model`), read through the TOML structure (a `model = …` line inside a multi-line string is text, not
- * the key). Null when it sets none.
+ * #1813 review: the model a config table sets — its ROOT `model` key, read through the TOML structure (a `model = …`
+ * line inside a multi-line string is text, not the key). Null when it sets none. A top-level `profile = "x"` is read
+ * as older codex versions did (`[profiles.x] model`); codex 0.162.1 refuses a top-level `profile` at startup, so there
+ * it decides nothing that launch would run.
  */
 function tomlModel(config: TomlTable): string | null {
   const profileName = config.profile;
@@ -126,6 +127,9 @@ function tomlModel(config: TomlTable): string | null {
  * of `project_root_markers` (default `.git`), else every ancestor. Any such file that sets another model, selects a
  * profile, or cannot be read makes the model unproven, and a launch passes no effort it cannot match to the model that
  * will run. A codex home's own config.toml met on the way (`~/.codex`) is the user layer, not a project file.
+ * The walk starts from the PHYSICAL directory (#1813 review r2): tmux starts codex there (`-c <cwd>`, no `--cd`), and
+ * codex walks the ancestors of its current_dir() — a symlinked working directory's lexical parents are not those. One
+ * that cannot be resolved is unproven.
  */
 export function resolveCodexLaunchModel(input: {
   isolatedHome: string; sharedHome: string; model?: string | null; workingDirectory?: string;
@@ -143,11 +147,14 @@ export function resolveCodexLaunchModel(input: {
     if (Array.isArray(configured) && configured.every(m => typeof m === "string")) markers = configured as string[];
     break;
   }
-  const homeConfigs = new Set([input.isolatedHome, input.sharedHome].map(dir => resolve(dir, "config.toml")));
+  const physical = (path: string): string => { try { return realpathSync(path); } catch { return resolve(path); } };
+  const homeConfigs = new Set([input.isolatedHome, input.sharedHome].map(dir => join(physical(dir), "config.toml")));
   if (input.workingDirectory) {
-    for (let dir = resolve(input.workingDirectory); ; dir = dirname(dir)) {
+    let start: string;
+    try { start = realpathSync(input.workingDirectory); } catch { return { model: home, proven: false }; }
+    for (let dir = start; ; dir = dirname(dir)) {
       const file = join(dir, ".codex", "config.toml");
-      const project = homeConfigs.has(resolve(file)) ? undefined : readTomlTable(file);
+      const project = homeConfigs.has(file) ? undefined : readTomlTable(file);
       if (project === null) return { model: home, proven: false };
       if (project !== undefined) {
         if (typeof project.profile === "string") return { model: home, proven: false };
