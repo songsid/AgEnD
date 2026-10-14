@@ -2785,7 +2785,22 @@ async function fuzzyMatch(query: string, names: string[]): Promise<string | null
 }
 
 async function resolveInstance(query: string, config: import("./types.js").FleetConfig): Promise<string> {
-  const names = await listInstanceNames(config);
+  const namesRaw = await listInstanceNames(config);
+  const names = [...new Set(namesRaw)]; // P3-3: deduplicate (a classicBot instanceName can equal a fleet name)
+
+  const { resolveName } = await import("./topic-commands.js");
+  const entries = names.map((name) => ({
+    name,
+    displayName: (config.instances[name] as { display_name?: string } | undefined)?.display_name,
+  }));
+  const result = resolveName(query, entries);
+  if (result.kind === "name") return result.realName;
+  if (result.kind === "ambiguous") {
+    console.error(`"${query}" matches multiple instances: ${result.realNames.join(", ")}. Use the real name.`);
+    process.exit(1);
+  }
+
+  // Fall through to the original fuzzy match on real names.
   const match = await fuzzyMatch(query, names);
   if (!match) {
     console.error(`No instance matching "${query}". Available: ${names.join(", ")}`);

@@ -197,6 +197,56 @@ function disambiguateLabel(
 /** Allowed filename for /save and /load (no path separators, no shell/inject chars). */
 export const SAVE_FILENAME_RE = /^[\w.-]+$/;
 
+/**
+ * #1809: resolve a display label (as shown by `agend ls`) back to a real instance name.
+ * Returns the real name on a unique match, `null` when the query does not match any label,
+ * or `{ ambiguous: true, realNames }` when two labels are identical under case-folding
+ * (e.g. display_names "Prism" and "prism" both fold to "prism").
+ * Always case-insensitive. Real names are NOT resolved here — callers must try real names first.
+ */
+export function resolveByLabel(
+  query: string,
+  entries: { name: string; displayName?: string | null }[],
+): string | null | { ambiguous: true; realNames: string[] } {
+  const labelMap = assignDisplayLabels(entries);
+  const q = query.toLowerCase();
+  const matches: string[] = [];
+  for (const [realName, label] of labelMap) {
+    if (label.toLowerCase() === q) matches.push(realName);
+  }
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+  return { ambiguous: true, realNames: matches };
+}
+
+/**
+ * #1809: full label/name resolution pipeline without process.exit or readline — suitable for
+ * unit testing and for callers that want to decide what to do on each outcome.
+ *
+ * Resolution order:
+ * 1. Exact match on real name (case-insensitive) — always wins.
+ * 2. Exact match on the display label `agend ls` shows (via `resolveByLabel`).
+ * 3. No match → `{ kind: "none" }`.
+ *
+ * Returns `{ kind: "name", realName }` on success,
+ *         `{ kind: "ambiguous", realNames }` when two labels are case-identical,
+ *         or `{ kind: "none" }` when nothing matched.
+ */
+export function resolveName(
+  query: string,
+  entries: { name: string; displayName?: string | null }[],
+): { kind: "name"; realName: string } | { kind: "ambiguous"; realNames: string[] } | { kind: "none" } {
+  // Step 1: exact real-name match wins.
+  const q = query.toLowerCase();
+  const exactReal = entries.find(e => e.name.toLowerCase() === q);
+  if (exactReal) return { kind: "name", realName: exactReal.name };
+  // Step 2: label match.
+  const labelResult = resolveByLabel(query, entries);
+  if (labelResult === null) return { kind: "none" };
+  if (typeof labelResult === "string") return { kind: "name", realName: labelResult };
+  return { kind: "ambiguous", realNames: labelResult.realNames };
+}
+
 /** Backends with a native side-question command that does not steer the active turn. */
 export const BTW_SUPPORTED_BACKENDS = new Set(["claude-code"]);
 
