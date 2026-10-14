@@ -48,6 +48,7 @@ import {
   runningFleetPredatesInstall,
   fleetProvenStopped,
   readFleetPidEvidence,
+  pidAlive,
   processStartMs,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage, type UpdateReceipt } from "./update-marker.js";
@@ -1633,7 +1634,7 @@ program
       const pidEvidence = readFleetPidEvidence(join(DATA_DIR, "fleet.pid"));
       if (pidEvidence.kind !== "unknown" && fleetProvenStopped({
         pid: pidEvidence.kind === "valid" ? pidEvidence.pid : null,
-        alive: pid => { try { process.kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException).code === "EPERM"; } },
+        alive: pid => pidAlive(pid),
         commandLine: pid => readProcessCommandLine(pid),
         isFleetProcess: line => isFleetStartCommandLine(line),
       })) {

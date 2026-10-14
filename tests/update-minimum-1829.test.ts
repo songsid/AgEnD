@@ -11,7 +11,7 @@ import { closeSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { fleetProvenStopped, readFleetPidEvidence } from "../src/update-check.js";
+import { MAX_PID, fleetProvenStopped, pidAlive, readFleetPidEvidence } from "../src/update-check.js";
 import { openUpdateLog, updateFixHint, updateLogPath, watchUpdateLaunch } from "../src/update-launch.js";
 
 describe("fleetProvenStopped (#1829 ⑥)", () => {
@@ -32,6 +32,21 @@ describe("fleetProvenStopped (#1829 ⑥)", () => {
   });
 });
 
+describe("pidAlive (#1829 review): only ESRCH proves a pid gone", () => {
+  const throwing = (err: unknown) => () => { throw err; };
+  it("ESRCH → gone; success, EPERM, or a refused argument → not proven gone", () => {
+    expect(pidAlive(4242, throwing(Object.assign(new Error("x"), { code: "ESRCH" })))).toBe(false);
+    expect(pidAlive(4242, () => true)).toBe(true);
+    expect(pidAlive(4242, throwing(Object.assign(new Error("x"), { code: "EPERM" })))).toBe(true);
+    expect(pidAlive(4242, throwing(Object.assign(new TypeError("x"), { code: "ERR_INVALID_ARG_TYPE" })))).toBe(true);
+    expect(pidAlive(2147483648)).toBe(true);                              // the real call refuses it: not "gone"
+  });
+  it("the real call: a pid that exists, and one that does not", () => {
+    expect(pidAlive(process.pid)).toBe(true);
+    expect(pidAlive(2147483646)).toBe(false);                             // in range, no such process
+  });
+});
+
 describe("readFleetPidEvidence (#1829 review): only a missing file is 'missing'", () => {
   const thrown = (code: string) => () => { throw Object.assign(new Error(code), { code }); };
   it("ENOENT → missing; a whole positive pid → valid", () => {
@@ -41,10 +56,17 @@ describe("readFleetPidEvidence (#1829 review): only a missing file is 'missing'"
   });
   it("unreadable, a directory, empty or malformed → unknown (never 'stopped')", () => {
     for (const code of ["EACCES", "EISDIR", "EIO"]) expect(readFleetPidEvidence("/x", thrown(code)), code).toEqual({ kind: "unknown" });
-    for (const text of ["", "\n", "abc", "12 34", "0", "-5", "12abc", "1e3", "99999999999"]) {
+    for (const text of ["", "\n", "abc", "12 34", "0", "-5", "12abc", "1e3", "99999999999", "2147483648", "4294967295", "9999999999"]) {
       expect(readFleetPidEvidence("/x", () => text), JSON.stringify(text)).toEqual({ kind: "unknown" });
     }
   });
+  it("the pid range process.kill takes: 2147483647 is the last valid one, 2147483648 the first unknown (review)", () => {
+    expect(MAX_PID).toBe(2_147_483_647);
+    expect(readFleetPidEvidence("/x", () => "2147483647")).toEqual({ kind: "valid", pid: 2147483647 });
+    expect(readFleetPidEvidence("/x", () => "2147483648")).toEqual({ kind: "unknown" });
+    expect(() => process.kill(2147483648, 0)).toThrow();                  // Node refuses it before asking the OS
+  });
+
   it("the real file system: a missing file and a directory", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-1829-pid-"));
     try {

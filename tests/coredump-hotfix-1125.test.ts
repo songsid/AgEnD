@@ -309,6 +309,7 @@ exit 0
       ["directory", path => mkdirSync(path)],
       ["empty", path => writeFileSync(path, "")],
       ["malformed", path => writeFileSync(path, "not-a-pid\n")],
+      ["beyond process.kill's range", path => writeFileSync(path, "2147483648\n")],
     ];
     if (process.getuid?.() !== 0) writers.push(["unreadable", path => { writeFileSync(path, `${process.pid}\n`); chmodSync(path, 0o000); }]);
     for (const [label, pidFile] of writers) {

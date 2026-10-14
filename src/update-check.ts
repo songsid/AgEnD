@@ -208,7 +208,19 @@ export function readFleetPidEvidence(path: string, read: (path: string) => strin
   }
   const text = raw.trim();
   const pid = /^[1-9][0-9]{0,9}$/.test(text) ? Number(text) : Number.NaN;
-  return Number.isSafeInteger(pid) ? { kind: "valid", pid } : { kind: "unknown" };
+  // process.kill takes a signed 32-bit pid (review): anything above is not a pid it can ask about.
+  return pid <= MAX_PID ? { kind: "valid", pid } : { kind: "unknown" };
+}
+
+/** The largest pid `process.kill` accepts (a signed 32-bit integer). */
+export const MAX_PID = 2_147_483_647;
+
+/**
+ * Whether `pid` may be alive: only ESRCH ("no such process") proves it gone. EPERM is a live process of another
+ * user, and any other failure (an argument the call refused, for one) proves nothing — so: alive.
+ */
+export function pidAlive(pid: number, kill: (pid: number, signal: 0) => unknown = (p, s) => process.kill(p, s)): boolean {
+  try { kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException)?.code !== "ESRCH"; }
 }
 
 /**
