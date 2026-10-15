@@ -66,6 +66,11 @@ const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
  * zero-width joiner, which emoji sequences (👨‍👩‍👧) are made of.
  */
 const FORBIDDEN_TEXT = /(?!\u200d)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/**
+ * At least one character that draws something: not a mark, control, format or separator, nor a blank that renders as
+ * nothing (Hangul fillers, braille blank) — so a lone joiner, variation selector or filler is not a label (#1887 P3).
+ */
+const VISIBLE = /[^\p{M}\p{C}\p{Z}\u115f\u1160\u3164\uffa0\u2800]/u;
 /** A card's bio (r4 §1): NFC, 1..280 graphemes, at most 3 line breaks ("\n" only), otherwise as one line. */
 export const BIO_MAX_GRAPHEMES = 280;
 export const BIO_MAX_BREAKS = 3;
@@ -74,7 +79,7 @@ export function canonicalBio(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.normalize("NFC");
   const lines = s.split("\n");
-  if (lines.length > BIO_MAX_BREAKS + 1 || s.trim() !== s) return null;
+  if (lines.length > BIO_MAX_BREAKS + 1 || s.trim() !== s || !VISIBLE.test(s)) return null;
   if (lines.some(l => FORBIDDEN_TEXT.test(l))) return null;
   const n = [...GRAPHEMES.segment(s)].length;
   return n >= 1 && n <= BIO_MAX_GRAPHEMES ? s : null;
@@ -83,7 +88,7 @@ export function canonicalBio(v: unknown): string | null {
 export function canonicalText(v: unknown, min: number, max: number): string | null {
   if (typeof v !== "string") return null;
   const s = v.normalize("NFC");
-  if (FORBIDDEN_TEXT.test(s) || s.trim() !== s) return null;
+  if (FORBIDDEN_TEXT.test(s) || s.trim() !== s || !VISIBLE.test(s)) return null;
   const n = [...GRAPHEMES.segment(s)].length;
   return n >= min && n <= max ? s : null;
 }

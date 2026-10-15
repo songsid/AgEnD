@@ -9908,6 +9908,9 @@ export class Daemon extends EventEmitter {
     // #1629: the caller's own web theme. set_web_theme_asset's file is read HERE, on the agent's side (in its working
     // directory, no symlink, size-capped): the fleet receives bytes, never a workspace path.
     if (Object.hasOwn(WEB_THEME_IPC, tool)) {
+      // Answered exactly once, whatever happens on the way (#1887 review: a throw here once left the call unanswered).
+      let answered = false;
+      const reply = (result: unknown, error?: string) => { if (answered) return; answered = true; respond(result, error); };
       // One fleet request; resolves with its answer, or an error string (never rejects).
       const ask = (payload: Record<string, unknown>) => new Promise<{ result: unknown; error?: string }>((resolve) => {
         const fleetReqId = `theme_${++this.fleetRequestSeq}_${requestId}`;
@@ -9922,9 +9925,11 @@ export class Daemon extends EventEmitter {
         this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
       void (async () => {
-        if (tool !== "set_web_theme_asset") { const r = await ask(args); respond(r.result, r.error); return; }
+        if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }
         const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: WEB_THEME_ASSET_MAX_BYTES });
-        if (!read.ok) { respond(null, `set_web_theme_asset: ${String(args.file ?? "").slice(0, 200)} — ${read.reason}`); return; }
+        // The path as the agent gave it — only a string is shown (an object from raw JSON args is never coerced).
+        const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
+        if (!read.ok) { reply(null, `set_web_theme_asset: ${named} — ${read.reason}`); return; }
         // A picture larger than one IPC message goes up in parts (r4 §1: a card portrait may be megabytes).
         let failed: string | undefined;
         const answer = await sendAssetInParts(args.slot, read.bytes, async (payload) => {
@@ -9932,8 +9937,8 @@ export class Daemon extends EventEmitter {
           if (r.error) { failed = r.error; return { error: r.error }; }
           return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
         });
-        respond(failed ? null : answer, failed);
-      })();
+        reply(failed ? null : answer, failed);
+      })().catch((err: unknown) => reply(null, `${tool} failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 
