@@ -613,12 +613,12 @@ describe("signin.js, run against a fake page", () => {
     expect(await load(`http://127.0.0.1:1/settings?tab=2&token=${token}#x`)).toEqual(["/settings?tab=2#x"]);
   });
 
-  it("alpha.2 sweep: the hint's command is a <code> that never breaks (both languages); other strings stay text", async () => {
+  it("alpha.2 sweep: the No-chat-bot help's command is a <code> that never breaks (both languages); other strings stay text", async () => {
     const { readFileSync } = await import("node:fs");
     const vm = await import("node:vm");
     for (const language of ["en", "zh-TW"]) {
       const made: Array<{ tag: string; textContent: string }> = [];
-      const hint = { attr: "hint", textContent: "", children: null as unknown[] | null, getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } };
+      const hint = { attr: "nobot_body", textContent: "", children: null as unknown[] | null, getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } };
       const title = { attr: "title", textContent: "", children: null as unknown[] | null, getAttribute() { return this.attr; }, replaceChildren(...c: unknown[]) { this.children = c; } };
       const el = () => ({ hidden: false, textContent: "", value: "", disabled: false, addEventListener() {}, focus() {}, select() {} });
       const elements: Record<string, ReturnType<typeof el>> = {};
@@ -633,7 +633,7 @@ describe("signin.js, run against a fake page", () => {
       expect(made.map((e) => [e.tag, e.textContent]), language).toEqual([["code", "agend web --code"]]);
       expect(hint.children!.length, language).toBe(3);
       expect(hint.children![1], language).toBe(made[0]);
-      expect(String(hint.children![0]) + "agend web --code" + String(hint.children![2]), language).toContain("/web");
+      expect(String(hint.children![0]) + "agend web --code" + String(hint.children![2]), language).toMatch(/AgEnD/);
       expect(title.children, language).toBeNull();
       expect(title.textContent.length, language).toBeGreaterThan(0);
     }

@@ -11,10 +11,12 @@
   const $ = (id) => document.getElementById(id);
   const T = {
     en: {
-      checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter the one-time code from your chat channel.",
+      checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your sign-in code.",
       label: "One-time code", submit: "Sign in", working: "Signing in…",
-      hint: "Send /web to your AgEnD bot, or run “agend web --code” on the host. A code works once and expires in 5 minutes.",
-      refused: "That code did not work — it may be wrong, expired or already used. Ask for a new one with /web.",
+      hint: "No code? Send /web in General, then press a sign-in button to get one.",
+      nobot: "No chat bot?", nobot_body: "Ask the operator to run agend web --code on the AgEnD computer.",
+      refused: "The code is invalid or no longer works. Send /web in General, then press a sign-in button for a new code.",
+      unconfirmed: "Sign-in could not be confirmed. Get a new code and try again; if it keeps failing, contact the operator.",
       paused: "Too many wrong codes — sign-in is paused for a few minutes.",
       network: "Could not reach AgEnD. Check the connection and try again.",
       resend: "Send me a new code", resent: "A new code was sent to you privately in chat. Enter it above.",
@@ -22,10 +24,12 @@
       resend_refused: "A new code could not be sent. Ask for one with /web.",
     },
     "zh-TW": {
-      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "請輸入聊天頻道給你的一次性登入碼。",
+      checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
       label: "一次性登入碼", submit: "登入", working: "登入中…",
-      hint: "在 AgEnD bot 傳 /web，或在主機執行「agend web --code」。登入碼只能用一次，5 分鐘內有效。",
-      refused: "登入碼無效：可能輸入錯誤、已過期或已使用。請用 /web 再要一個。",
+      hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
+      nobot: "沒有聊天 bot？", nobot_body: "請管理員在 AgEnD 電腦執行 agend web --code。",
+      refused: "登入碼無效或已失效。請在 General 傳 /web，再按登入按鈕取新碼。",
+      unconfirmed: "登入暫時無法確認。請重新取碼再試；若仍失敗，請聯絡管理員。",
       paused: "錯誤次數過多，登入暫停幾分鐘。",
       network: "連不上 AgEnD，請檢查連線後再試。",
       resend: "傳一組新的登入碼給我", resent: "新的登入碼已私訊給你，請在上方輸入。",
@@ -47,8 +51,8 @@
       history.replaceState(null, "", here.pathname + here.search + here.hash);
     }
   } catch { /* nothing to clean */ }
-  // The command in the hint is a <code> that never breaks across lines (a break inside "--code" reads as two dashes
-  // and a word, alpha.2 sweep); the text around it is text.
+  // The command in the "No chat bot?" help is a <code> that never breaks across lines (a break inside "--code" reads as
+  // two dashes and a word, alpha.2 sweep); the text around it is text.
   const CMD = "agend web --code";
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const text = t(el.getAttribute("data-i18n"));
@@ -163,7 +167,9 @@
         body: JSON.stringify({ code: $("code").value }),
       });
       if (r.ok) { clearBounce(); location.replace(nextTarget()); return; }
-      msg.textContent = r.status === 429 ? t("paused") : t("refused");
+      // #1854: a 5xx is the server failing to confirm the sign-in (503: a public link's notice did not go out), not a
+      // wrong code — say so. The code is spent either way: the way on is a new one.
+      msg.textContent = r.status === 429 ? t("paused") : r.status >= 500 ? t("unconfirmed") : t("refused");
     } catch {
       msg.textContent = t("network");
     }
