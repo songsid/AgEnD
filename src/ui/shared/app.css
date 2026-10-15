@@ -1156,3 +1156,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4) 0; background: var(--bg); }
 .v-id .id-card { margin: 0; }
 .form-sub { margin: var(--s-2) 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+/* #1629 r4.1 Q3 (b): Settings → Appearance, the card's upload limits (three to a row; one on a phone). */
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
+.s-limit-warnings { margin: var(--s-2) 0; padding-left: var(--s-4); }
+@media (max-width: 479px) { .grid3 { grid-template-columns: minmax(0, 1fr); } }

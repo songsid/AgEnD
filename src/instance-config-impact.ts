@@ -99,6 +99,9 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   // #1620: read at every session check, and by /login when it starts a terminal.
   "web.session.local.absolute_hours": "now",
   "web.session.local.idle_hours": "now",
+  // #1629 r4.1 Q3 (b): the identity card's upload limits and the picture quota — read at each upload.
+  ...Object.fromEntries(["portrait.max_width", "portrait.max_height", "portrait.max_kib", "banner.max_width", "banner.max_height", "banner.max_kib",
+    "instance_quota.files", "instance_quota.mib"].map((k) => [`web.appearance.${k}`, "now" as const])),
   "web_terminal.enabled": "now",
   "web_terminal.ttl_minutes": "now",
   "defaults.locale": "now",

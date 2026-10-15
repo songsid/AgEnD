@@ -8,6 +8,8 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
 import { setThemesShown, themesStore } from "/assets/app-themes.js";
+import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "/assets/identity-card.js";
+import { confirmedWrite } from "./settings-confirm.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -34,7 +36,78 @@ function refusal(body) {
 export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
-  return html`<${ThemesCard} /><${OwnerCssCard} /><${DeviceCard} />`;
+  return html`<${ThemesCard} /><${CardSizeCard} /><${OwnerCssCard} /><${DeviceCard} /><${CardLimitsCard} />`;
+}
+
+/** #1629 r4.1 Q3 (a): every identity card's size on this person's screens (a card's own control sets it apart). */
+function CardSizeCard() {
+  useStore(cardSizeStore);
+  const size = cardSizeDefault();
+  return html`<section class="card s-appearance s-synced"><h3>${tn("cardSizeTitle")}</h3>
+    <div class="card-size" role="group" aria-label=${tn("cardSizeTitle")}>
+      ${CARD_SIZES.map((s) => html`<button key=${s} type="button" class=${`seg-item${s === size ? " active" : ""}`} aria-pressed=${s === size ? "true" : "false"}
+        onClick=${() => setCardSizeDefault(s)}>${t(`card.size${s.toUpperCase()}Name`)}</button>`)}
+    </div>
+    <p class="sub">${tn("cardSizeLead")}</p>
+  </section>`;
+}
+
+const LIMIT_FIELDS = [["portrait", "max_width"], ["portrait", "max_height"], ["portrait", "max_kib"], ["banner", "max_width"], ["banner", "max_height"], ["banner", "max_kib"],
+  ["instance_quota", "files"], ["instance_quota", "mib"]];
+/**
+ * #1629 r4.1 Q3 (b): the identity card's upload limits (fleet.yaml web.appearance). Each field shows what is in force
+ * when it differs from what is written (a value beyond its bound is clamped). A lower limit applies at once; a higher
+ * one waits for a fleet admin's confirmation (the server decides). Stored pictures are never touched.
+ */
+function CardLimitsCard() {
+  const [view, setView] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const load = async () => {
+    const r = await call("/api/settings/fleet/appearance");
+    if (!r.ok || !r.body) { setView({ error: true }); return; }
+    setView(r.body);
+    const d = {};
+    for (const [g, k] of LIMIT_FIELDS) { const v = r.body.configured && r.body.configured[g] && r.body.configured[g][k]; d[`${g}.${k}`] = typeof v === "number" ? String(v) : ""; }
+    setDraft(d);
+  };
+  useEffect(() => { load(); }, []);
+  if (!view) return null;
+  if (view.error) return html`<section class="card s-appearance"><h3>${tn("cardLimitsTitle")}</h3><p class="sub">${tn("cardLimitsUnavailable")}</p></section>`;
+  const configured = (g, k) => (view.configured && view.configured[g] && typeof view.configured[g][k] === "number" ? view.configured[g][k] : null);
+  const save = async () => {
+    const body = {};
+    for (const [g, k] of LIMIT_FIELDS) {
+      const raw = (draft[`${g}.${k}`] || "").trim();
+      const next = raw === "" ? null : Number(raw);
+      if (next !== null && !(Number.isInteger(next) && next > 0)) { setMsg(tn("cardLimitsWhole")); return; }
+      if (next !== configured(g, k)) (body[g] ??= {})[k] = next;
+    }
+    if (!Object.keys(body).length) { setMsg(tn("cardLimitsNoChange")); return; }
+    setBusy(true); setMsg(null);
+    const r = await confirmedWrite("/api/settings/fleet/appearance", { method: "PUT", body, label: tn("cardLimitsTitle") });
+    setBusy(false);
+    if (r.ok) { setMsg(tn("cardLimitsSaved")); load(); } else setMsg(tn("cardLimitsFailed", (r.body && r.body.error) || r.status));
+  };
+  const warnings = Array.isArray(view.warnings) ? view.warnings : [];
+  return html`<section class="card s-appearance"><h3>${tn("cardLimitsTitle")}</h3>
+    <p class="sub">${tn("cardLimitsLead")}</p>
+    <fieldset class="form" disabled=${busy}>
+      ${["portrait", "banner", "instance_quota"].map((g) => html`<div key=${g} class="grid3">
+        ${LIMIT_FIELDS.filter(([gg]) => gg === g).map(([, k]) => {
+          const id = `cardLimit-${g}-${k}`, eff = view.effective[g][k], conf = configured(g, k);
+          return html`<div key=${k} class="field"><label for=${id}>${tn(`cardLimit_${g}_${k}`)}</label>
+            <input id=${id} type="number" min="1" step="1" placeholder=${String(view.defaults[g][k])} value=${draft[`${g}.${k}`] || ""}
+              onInput=${(e) => setDraft({ ...draft, [`${g}.${k}`]: e.target.value })} />
+            ${conf !== null && conf !== eff ? html`<span class="note">${tn("cardLimitInForce", eff, view.bounds[g][k][0], view.bounds[g][k][1])}</span>` : null}</div>`;
+        })}
+      </div>`)}
+    </fieldset>
+    ${warnings.length ? html`<ul class="note s-limit-warnings">${warnings.map((w, i) => html`<li key=${i}><code>${w.path}</code>: ${w.message}</li>`)}</ul>` : null}
+    <div class="save-row"><button type="button" class="btn btn-primary" disabled=${busy} onClick=${save}>${tn("cardLimitsSave")}</button>
+      ${msg ? html`<span class="note" role="status">${msg}</span>` : null}</div>
+  </section>`;
 }
 
 /** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
