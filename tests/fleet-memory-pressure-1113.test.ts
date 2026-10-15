@@ -7,7 +7,7 @@ import { getLocale, setLocale } from "../src/locale.js";
 import type { HostMemory } from "../src/host-memory.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 // Keep the constructor on the injected reader path on every test host; Darwin policy is selected below.
 vi.mock("node:os", async importOriginal => ({ ...await importOriginal<typeof import("node:os")>(), platform: () => "linux" }));
 const MiB = 1024 * 1024;

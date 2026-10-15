@@ -11,7 +11,7 @@ import { KiroBackend } from "../src/backend/kiro.js";
 import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import pino from "pino";
 import type { Logger } from "../src/logger.js";
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 const roots: string[] = [];
 function scratch() {
   const parent = join(process.cwd(), ".artifacts"); mkdirSync(parent, { recursive: true });

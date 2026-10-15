@@ -7,7 +7,7 @@ vi.mock("node:worker_threads", async () => ({ Worker: (await import("./helpers/p
 vi.mock("../src/logger.js", async () => ({ createLogger: (await import("./helpers/probe-worker.js")).fakeProbeLogger, rotateLogIfNeeded: vi.fn() }));
 const { createBackend } = vi.hoisted(() => ({ createBackend: vi.fn(() => { throw new Error("parent backend construction forbidden"); }) }));
 vi.mock("../src/backend/factory.js", () => ({ createBackend }));
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 vi.mock("node:child_process", async original => {
   const actual = await original<typeof import("node:child_process")>();
   const forbidden = () => { throw new Error("real child process forbidden in probe regression"); };

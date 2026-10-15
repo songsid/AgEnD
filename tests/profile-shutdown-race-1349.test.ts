@@ -15,7 +15,7 @@ vi.mock("node:child_process", async original => ({ ...await original<typeof impo
   execFileSync: () => { throw Error("No CLI"); }, execSync: () => { throw Error("No CLI"); }, spawnSync: () => { throw Error("No CLI"); } }));
 vi.mock("../src/backend/index.js", async original => ({ ...await original<typeof import("../src/backend/index.js")>(), createBackend: () => { throw Error("No backend"); } }));
 vi.mock("../src/tmux-manager.js", () => ({ TmuxManager: new Proxy({}, { get: () => () => { throw Error("No live tmux"); } }) }));
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 vi.mock("../src/fleet-lock.js", async original => ({ ...await original<typeof import("../src/fleet-lock.js")>(), releaseProcessFleetLock: vi.fn() }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { RuntimeCpuProfiler } from "../src/runtime-cpu-profile.js";
