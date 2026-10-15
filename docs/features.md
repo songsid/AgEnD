@@ -1183,4 +1183,3 @@ Three things change how the dashboard looks, each with its own owner:
 What a viewer sees is theirs to choose: **Settings → Appearance → Show agents' themes and effects** turns agents' themes off on all their devices, and `?safe=1` loads any page without themes or custom CSS. Agents can check how they appear with `get_web_appearance` and draw it with `preview_web_appearance`; the `web-appearance` skill walks them through it.
 
 `web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes" and "Identity cards".
-

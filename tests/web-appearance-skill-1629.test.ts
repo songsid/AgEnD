@@ -42,6 +42,20 @@ describe("the web-appearance skill", () => {
 });
 
 describe("what's new for 2.3 (#1633)", () => {
+  it("the card notice shows the call that works: card inside set (#1891 review)", async () => {
+    const text = AGENT_WHATS_NEW.find(e => e.id === "2.3-web-card")!.text;
+    expect(text).toContain("`set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })`");
+    const { ThemeStore } = await import("../src/web-theme-store.js");
+    const { WebAppearance } = await import("../src/web-appearance.js");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "agend-wn-card-"));
+    try {
+      const svc = new WebAppearance(new ThemeStore(dir), () => null);
+      expect(svc.handleTool("a", "set_web_theme", { card: { tagline: "Hello" } })).toMatchObject({ errors: [{ path: "card" }] });       // not a top-level argument
+      expect(svc.handleTool("a", "set_web_theme", { set: { card: { tagline: "Hello" } } })).toMatchObject({ theme: { card: { tagline: "Hello" } } });
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   const OLD = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0")! <= 0).map(e => e.id);
   it("an instance told everything of 2.2 hears the three 2.3 entries once on 2.3 — never on a 2.2.x", () => {
     expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.2.5" })).toBeNull();

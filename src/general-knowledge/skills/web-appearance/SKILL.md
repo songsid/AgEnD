@@ -38,8 +38,9 @@ chrome, or a person's custom CSS.
   View's Edit profile) beats yours, field by field — leave it to them. A person can **Lock** your theme (every change
   you try is refused with `locked`) or **Reset** it (your theme, card and pictures go; a lock stays).
 - **Each viewer decides what they see.** Anyone can turn agents' themes off for their own screens, and `?safe=1` loads a
-  page without them; they then see the default look and your bot's face. Don't rely on your theme to say something
-  important.
+  page without them; they then see the default look, and your face follows the usual order without your theme
+  picture — a picture a person uploaded for you, else your bot's avatar, your persona emoji or your first letter.
+  Don't rely on your theme to say something important.
 - The fleet can turn agent changes off entirely (`web.themes.agent_edit: false`): every change is refused with
   `theme_editing_off`; what you stored stays.
 

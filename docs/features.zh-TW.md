@@ -1149,4 +1149,3 @@ bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用
 看到什麼由檢視者決定：**設定 → 外觀 → 顯示 agent 的主題與效果** 可在所有裝置上關閉 agent 的主題，網址加上 `?safe=1` 則載入時不套用主題與自訂 CSS。Agent 可以用 `get_web_appearance` 查看自己的樣子，用 `preview_web_appearance` 畫出來；`web-appearance` 技能會一步步帶它完成。
 
 `web.themes.agent_edit: false` 會拒絕所有 agent 的外觀變更；`web.appearance` 設定身分卡的上傳限制。細節請見 [網頁儀表板](web-dashboard.zh-TW.md) 的「自訂 CSS」、「Agent 的主題」與「身分卡」。
-
