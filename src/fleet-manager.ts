@@ -202,7 +202,8 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { handleViewRequest, humanCards, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { cardVersion, resolveCard } from "./web-card.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
 import { accentColor, avatarFor, ownBotConnections, type AvatarDescriptor } from "./instance-avatar.js";
@@ -20454,6 +20455,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // /api/profiles (resolveInstanceIdentity) — the sidebar groups, searches and labels with it on every page.
     const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
     const profiles = profileIdentities(this.dataDir);
+    // #1629 r4 §1: the identity card's version per instance (the page reads the card when it moves).
+    const cards = humanCards(this.dataDir);
     // #1630: decorative — whatever goes wrong deciding an avatar never costs the frame (every instance gets its first character).
     let bots = { own: new Map<string, string>(), speaking: new Map<string, string>() };
     try { bots = this.webBots(); } catch (err) { this.logger.debug({ err }, "bots unreadable (getUiStatus)"); }
@@ -20505,6 +20508,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // #1629: the agent's theme's picture and ring colour, for viewers who show agents' themes.
         ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
+        ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,
