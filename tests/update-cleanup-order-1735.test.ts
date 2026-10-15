@@ -137,7 +137,7 @@ describe("#1735: the /update message ends with the cleanup lines in both orders"
     const b = boot(dir => { const r = updaterPending(dir); writeCleanupOutcome(dir, r, { warning: WARNING, cleanupCommand: COMMAND }); });
     const outcome = b.fm.updateCleanupAtCompletion(b.pending, "update");
     const text = formatRestartProgressCompletion("update", { ...summary, warningText: outcome.render.warning, warningCommand: outcome.render.cleanupCommand }, b.pending!.startedAt);
-    expect(text).toContain("✅ Fleet restarted");
+    expect(text).toContain("✅ AgEnD updated");
     expect(text).toContain(`⚠️ ${WARNING}`);
     expect(text).toContain(`\`$ ${COMMAND}\``);
     b.fm.clearSettledUpdateMarker(b.bootMarker);
@@ -159,7 +159,7 @@ describe("#1735: the /update message ends with the cleanup lines in both orders"
     if (!beforeClear) updaterRetired(b.dir);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(b.edits).toHaveLength(1);
-    expect(b.edits[0]).toContain("✅ Fleet restarted");
+    expect(b.edits[0]).toContain("✅ AgEnD updated");
     expect(b.edits[0]).toContain(`⚠️ ${WARNING}`);
     expect(b.edits[0]).toContain(`\`$ ${COMMAND}\``);
     expect(readUpdateProgress(b.dir)).toBeNull();

@@ -112,17 +112,18 @@ describe("#1686: tgStartWebUrl validates bot username", () => {
   });
 });
 
-// ─── menu hint ────────────────────────────────────────────────────────────
+// ─── action-first menu ────────────────────────────────────────────────────────────
 
-describe("#1686: Telegram /web menu carries the hint", () => {
-  it("menu text includes the start hint for valid Telegram username", async () => {
+describe("#1854: Telegram /web defers DM instructions until refusal", () => {
+  it("a known username does not add pre-emptive Start instructions", async () => {
     const h = rig("telegram");
     await h.typed(); await flush();
     const alertCalls = h.adapter.notifyAlert.mock.calls;
     const menuText: string = alertCalls[0]?.[1]?.message ?? "";
     expect(menuText).toBeTruthy();
-    const expected = t("dashboard.menu_tg_hint", `https://t.me/${VALID}?start=web`);
-    expect(menuText).toContain(expected);
+    expect(menuText).not.toContain("t.me");
+    expect(menuText).not.toContain("Start");
+    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
   });
 
   it("menu text has no hint when username fails validation (too short)", async () => {

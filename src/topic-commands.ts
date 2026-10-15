@@ -712,6 +712,14 @@ export class TopicCommands {
   }
 
   /**
+   * General's action-first menu. The click owns private issuance; no URL or code exists in this copy.
+   */
+  getDashboardMenuText(): string {
+    const access = this.ctx.getDashboardAccess?.();
+    return access?.ready && access.token ? t("dashboard.menu_instruction") : t("dashboard.starting");
+  }
+
+  /**
    * Pure, secret-free dashboard/menu copy. Issuance belongs to the private
    * delivery action; rendering or previewing this text cannot retire a code.
    */

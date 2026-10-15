@@ -196,6 +196,7 @@ async function rig(opts: { primaryMode?: "open" | "locked"; ownerGone?: boolean;
   tc.getStatusText = async () => { reached.push("status"); return "ok:status"; };
   tc.sendSysInfo = async (send: (text: string) => Promise<unknown>) => { reached.push("sysinfo"); await send("ok:sysinfo"); };
   tc.getDashboardText = () => { reached.push("dashboard"); return "ok:dashboard"; };
+  tc.getDashboardMenuText = tc.getDashboardText; // #1854: General's menu and direct-code text share this reachability probe.
   tc.registerBotCommands = async () => {};
   anyFm.probeCliEnvs = () => {};
   vi.spyOn(ClassicChannelManager, "logMessage").mockImplementation(() => {});
