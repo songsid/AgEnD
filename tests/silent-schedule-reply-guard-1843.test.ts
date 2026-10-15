@@ -18,7 +18,8 @@ const cleanups: Array<() => void> = [];
 const READY = readFileSync(join(import.meta.dirname, "fixtures/reply-guard-1510/codex-0.162.0/frames/tool-idle.txt"), "utf8");
 const HUMAN = "Please check this project";
 const HEARTBEAT = "Check the task board; stay silent when nothing needs attention.";
-const meta = { chat_id: "guild", thread_id: "channel", adapter_id: "discord", message_id: "m-human" };
+const RETIRE_LOG = "Reply guard retired before silent schedule write";
+const meta = { chat_id: "guild", thread_id: "channel", adapter_id: "discord", message_id: "m-human", correlation_id: "cid-human" };
 type Proof = "submitted" | "stranded" | "unproven";
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-15T00:00:00Z")); });
@@ -35,6 +36,7 @@ function harness(proof: Proof = "stranded", silent = true, busy = false) {
   writeFileSync(join(instanceDir, "window-id"), "@worker");
   const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager-test");
   const backend = new CodexBackend(instanceDir);
+  const info = vi.spyOn(logger, "info");
   const daemon: any = new Daemon("worker", {
     backend: "codex", working_directory: root, reply_completion_guard: true, log_level: "silent",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
@@ -103,10 +105,11 @@ function harness(proof: Proof = "stranded", silent = true, busy = false) {
     daemon.clearReplyGuardConfirm(); daemon.fenceDeliveryWritesForStop();
     outbox.close(); rmSync(root, { recursive: true, force: true });
   });
+  const dispatch = () => manager.dispatchDurableDelivery(claimed);
   async function run() {
-    const dispatch = manager.dispatchDurableDelivery(claimed);
+    const handoff = dispatch();
     await vi.advanceTimersByTimeAsync(5_000);
-    await daemon.pasteLock; await dispatch;
+    await daemon.pasteLock; await handoff;
     // wake itself is an inert stub; no other lifecycle handler may run.
     for (const spawn of spawning.slice(1)) expect(spawn).not.toHaveBeenCalled();
   }
@@ -124,11 +127,12 @@ function harness(proof: Proof = "stranded", silent = true, busy = false) {
   const replies = () => broadcast.mock.calls.filter(([msg]) => msg.type === "fleet_outbound" && msg.tool === "reply");
   const recovery = () => delivery.mock.calls.filter(args => String(args[0]).startsWith("[system:reply-required]"));
   const interruptedHuman = () => existsSync(join(instanceDir, "in-flight-turn.json"));
-  return { daemon, manager, tmux, outbox, row, run, endTurn, humanTurn, detected, unrecovered, replies, recovery, lateProof, interruptedHuman };
+  const retirements = () => info.mock.calls.filter(args => args[1] === RETIRE_LOG).map(args => args[0]);
+  return { daemon, manager, tmux, outbox, row, dispatch, run, endTurn, humanTurn, detected, unrecovered, replies, recovery, lateProof, interruptedHuman, retirements };
 }
 
 describe("#1843 silent-schedule attribution does not depend on submission proof", () => {
-  it.each<Proof>(["submitted", "unproven", "stranded"])("%s: silent turn retires the stale channel obligation before proof", async proof => {
+  it.each<Proof>(["submitted", "unproven", "stranded"])("%s: silent write closes the preceding human guard with a trace before proof", async proof => {
     const h = harness(proof);
     await h.run();
     expect(h.outbox.get(h.row.deliveryId)?.state, JSON.stringify(h.outbox.get(h.row.deliveryId))).toBe(proof === "submitted" ? "delivered" : "uncertain");
@@ -136,6 +140,9 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
     expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
     expect(h.daemon.replyGuardIdleConfirm).toBeNull();
+    expect(h.retirements()).toEqual([expect.objectContaining({
+      correlationId: "cid-human", generation: 1, phase: "awaiting", reason: "silent_schedule_delivery", deliveryId: h.row.deliveryId,
+    })]);
     await h.endTurn();
     expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
     expect(h.interruptedHuman()).toBe(false);
@@ -167,6 +174,7 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     expect(h.detected).toHaveBeenCalledTimes(1);
     expect(h.replies()).toHaveLength(1);
     expect(h.recovery()).toHaveLength(1);
+    expect(h.retirements()).toEqual([]);
   });
 
   it("a silent native-queue handoff cannot lend its later idle edge to the old human turn", async () => {
@@ -208,5 +216,30 @@ describe("#1843 silent-schedule attribution does not depend on submission proof"
     expect(h.tmux.pasteBuffer).not.toHaveBeenCalled();
     expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ target: { deliveredText: HUMAN } });
     expect(h.interruptedHuman()).toBe(true);
+    expect(h.retirements()).toEqual([]);
+  });
+
+  it("a recovering human guard cannot inject its queued recovery prompt into the silent work", async () => {
+    const h = harness();
+    let release!: () => void;
+    h.daemon.pasteLock = new Promise<void>(resolve => { release = resolve; });
+    // Silent work is queued first; before it writes, the old human turn enters recovery.
+    const handoff = h.dispatch();
+    h.daemon.startReplyRecovery(h.daemon.turnReplyGuard.snapshot(), "no_valid_call");
+    expect(h.daemon.turnReplyGuard.snapshot()).toMatchObject({ phase: "recovering" });
+    expect(h.replies()).toHaveLength(1); // the original human's status, already sent before the silent write
+    release();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await h.daemon.pasteLock; await handoff;
+    expect(h.outbox.get(h.row.deliveryId)?.state).toBe("uncertain");
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+    expect(h.daemon.turnReplyGuard.snapshot()).toBeNull();
+    expect(h.recovery()).toEqual([]);
+    expect(h.replies()).toHaveLength(1); // no new notice path, even for a genuinely missed human reply
+    expect(h.unrecovered).not.toHaveBeenCalled();
+    expect(h.retirements()).toEqual([expect.objectContaining({
+      correlationId: "cid-human", generation: 1, phase: "recovering", reason: "silent_schedule_delivery", deliveryId: h.row.deliveryId,
+    })]);
   });
 });

@@ -8667,12 +8667,22 @@ export class Daemon extends EventEmitter {
       if (rawPaste) {
         verdict.paneWriteStarted = true;
         // #1843: this write starts silent work even if its submission proof later stays uncertain.
-        // Retire an older human turn before the first write, not after proof: its idle callback must never
-        // turn a silent heartbeat into a channel reply or a reply-required recovery prompt.
+        // Retire the preceding human guard before the first write, not after proof: its idle callback must never
+        // turn a silent heartbeat into a channel reply or a reply-required recovery prompt. This may also retire a
+        // genuine missed human reply still awaiting confirmation/recovery; log that tradeoff instead of notifying.
         if (durableAttempt?.silentSchedule) {
           this.clearReplyGuardConfirm();
           const previous = this.turnReplyGuard.snapshot();
-          if (previous) this.turnReplyGuard.complete(previous.generation);
+          if (previous) {
+            this.turnReplyGuard.complete(previous.generation);
+            this.logger.info({
+              correlationId: previous.target.correlationId ?? null,
+              generation: previous.generation,
+              phase: previous.phase,
+              reason: "silent_schedule_delivery",
+              deliveryId: durableAttempt.deliveryId,
+            }, "Reply guard retired before silent schedule write");
+          }
         }
       }
       // For raw commands the paste itself may alter the live composer. Treat a
