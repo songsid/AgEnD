@@ -110,6 +110,8 @@ export interface AgentEndpointContext extends OutboundContext {
   handlePreviewStickersHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handlePreviewEmojisHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
+  /** #1629: the caller's own web theme (agend-agent theme …). */
+  handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 const DURABLE_HTTP_TOOLS = new Set([
@@ -385,6 +387,11 @@ export async function dispatchAgentOperation(
   if (op === "persona-emoji") {
     return ctx.handleSetPersonaEmojiHttp(instance, args);
   }
+  // #1629: agend-agent theme get|set|clear|asset|reset — the caller's own theme only (the token's instance).
+  if (op === "theme-get") return ctx.handleWebThemeHttp(instance, "get_web_theme", {});
+  if (op === "theme-set" || op === "theme-clear") return ctx.handleWebThemeHttp(instance, "set_web_theme", args);
+  if (op === "theme-asset") return ctx.handleWebThemeHttp(instance, "set_web_theme_asset", args);
+  if (op === "theme-reset") return ctx.handleWebThemeHttp(instance, "reset_web_theme", {});
   if (op === "emoji-preview") {
     return ctx.handlePreviewEmojisHttp(instance, args);
   }

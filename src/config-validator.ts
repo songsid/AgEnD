@@ -26,7 +26,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -381,6 +381,13 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       warn(`web.${key}`, key === "access"
         ? "web.access is not a setting; fleet admins come from channel(s).access.allowed_users — ignored"
         : `unknown key (known: ${WEB_KEYS.join(", ")}) — ignored`);
+    }
+    if (config.web.themes !== undefined) {
+      if (!isObj(config.web.themes)) err("web.themes", "must be a mapping");
+      else {
+        for (const k of Object.keys(config.web.themes)) if (k !== "agent_edit") warn(`web.themes.${k}`, "unknown key (known: agent_edit) — ignored");
+        if (config.web.themes.agent_edit !== undefined && typeof config.web.themes.agent_edit !== "boolean") err("web.themes.agent_edit", "must be a boolean");
+      }
     }
     if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto");
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {

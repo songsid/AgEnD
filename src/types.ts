@@ -390,6 +390,11 @@ export interface WebConfig {
    * instead of it; web.preview: false turns previews off everywhere.
    */
   preview_on_public_link?: boolean;
+  /**
+   * #1629: agents' own web themes and effects. `agent_edit` (default true): false refuses every agent appearance write,
+   * fleet-wide; what is stored stays, and people can still reset and lock.
+   */
+  themes?: { agent_edit?: boolean };
 }
 
 /** `login:` section — remote /login behaviour. */

@@ -3,7 +3,7 @@
  * served is the re-serialisation (never the uploaded bytes) and tokenizes back to the checked tokens.
  */
 import { describe, expect, it } from "vitest";
-import { checkOwnerCss, OWNER_CSS_MAX_BYTES, serializeOwnerCss, tokenizeCss } from "../src/web-owner-css.js";
+import { checkOwnerCss, OWNER_CSS_MAX_BYTES, serializeCssTokens, serializeOwnerCss, tokenizeCss } from "../src/web-owner-css.js";
 
 const A = "0123456789abcdef0123456789abcdef";
 const assets = new Set([A]);
@@ -132,5 +132,15 @@ describe("review r1 (#1883)", () => {
     expect(served("a{color:#123}")).toBe("a{color:#123}");
     expect(tokenizeCss("#\\31 23")[0]).toMatchObject({ type: "hash", value: "123", hashType: "id" });
     expect(tokenizeCss("#123")[0]).toMatchObject({ type: "hash", value: "123", hashType: "unrestricted" });
+  });
+});
+
+describe("#1629 B2 seam: serializeCssTokens is the generic serialiser", () => {
+  it("no asset rewriting (that is serializeOwnerCss's); the same round-trip check", () => {
+    const A2 = "0123456789abcdef0123456789abcdef";
+    const css = `a{background:url("asset:${A2}");content:"asset:${A2}"}`;
+    expect(serializeCssTokens(tokenizeCss(css))).toBe(css);
+    expect(serializeOwnerCss(tokenizeCss(css))).toBe(`a{background:url("/ui/owner-css/asset/${A2}");content:"/ui/owner-css/asset/${A2}"}`);
+    expect(() => serializeCssTokens([{ type: "ws", value: " " }, { type: "ws", value: " " }])).toThrow(/re-serialise/);
   });
 });

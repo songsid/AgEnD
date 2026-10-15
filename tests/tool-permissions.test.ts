@@ -45,6 +45,8 @@ const BEFORE: Record<string, string[]> = {
     "list_emojis", "set_persona_emoji", "preview_emojis",
     // #1226: stickers, see-and-send like the emojis (sending is reply's own field).
     "list_stickers", "preview_stickers",
+    // #1629: its own web theme (no target; the caller's own).
+    "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",
@@ -69,6 +71,8 @@ const BEFORE: Record<string, string[]> = {
     "list_emojis", "preview_emojis", "set_persona_emoji",
     // #1226: stickers.
     "list_stickers", "preview_stickers",
+    // #1629: its own web theme, like its own status stamp.
+    "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
   ],
