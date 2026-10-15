@@ -137,7 +137,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 - 主 adapter 使用 `<dataDir>/access/access.json`；額外 adapter 使用 `access/access-<adapterId>.json`。`dataDir` 預設為 `~/.agend`，可由 `AGEND_HOME` 指定。
 - 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；配對核准會加入持久化名單。
 - `locked`／`pairing` 下，撤銷使用者必須讓持久化與 YAML 兩份名單都不再授權；只改其中一份可能仍允許存取。`open` 本來就不限制使用者。
-- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或已核准配對本身不授予 fleet admin，YAML 名單空白時沒有人有此權限。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
+- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或已核准配對本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
 
 ---
 

@@ -327,11 +327,11 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
 
   it("an empty allowed_users list refuses — it used to let everyone through", async () => {
     const r = await rig({ primary: { mode: "open", allowed_users: [] } });
-    expect(await slash(r, "discord", { command: "update", userId: "member" })).toEqual([t("update.disabled")]);
+    expect(await slash(r, "discord", { command: "update", userId: "member" })).toEqual([t("update.disabled", "channels[id: discord].access.allowed_users")]);
     expect(await slash(r, "discord", { command: "doctor", userId: "member" })).toEqual([t("not_authorized")]);
     expect(await slash(r, "discord", { command: "visibility", userId: "member", options: { mode: "hidden" } })).toEqual([t("not_authorized")]);
     expect(r.fm.fleetConfig!.defaults).not.toHaveProperty("cross_instance_visibility");
-    expect(await slash(r, "discord", { command: "dashboard", userId: "member" })).toEqual([t("dashboard.disabled")]);
+    expect(await slash(r, "discord", { command: "dashboard", userId: "member" })).toEqual([t("dashboard.disabled", "channels[id: discord].access.allowed_users")]);
     expect(await slash(r, "discord", { command: "collab", userId: "member" })).toEqual([t("not_authorized")]);
     expect(r.doctor).not.toHaveBeenCalled();
     expect(spawned).toHaveLength(0);
@@ -380,8 +380,8 @@ describe("/update /doctor /dashboard /collab: the invoking adapter's fleet admin
 
   it("a second adapter with no admins of its own is off, even when the primary has some", async () => {
     const r = await rig({ primary: OPEN, second: { mode: "open", allowed_users: [] } });
-    expect(await slash(r, "second", { command: "update", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("update.disabled")]);
-    expect(await slash(r, "second", { command: "dashboard", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("dashboard.disabled")]);
+    expect(await slash(r, "second", { command: "update", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("update.disabled", "channels[id: second].access.allowed_users")]);
+    expect(await slash(r, "second", { command: "dashboard", userId: "admin", guildId: "G2", channelId: "C-second" })).toEqual([t("dashboard.disabled", "channels[id: second].access.allowed_users")]);
     expect(spawned).toHaveLength(0);
   });
 
@@ -438,8 +438,8 @@ describe("the typed versions of /update /doctor /dashboard follow the same rule"
 
   it("an empty list refuses (update/dashboard say disabled; doctor says not authorised)", async () => {
     const r = await rig({ primary: { mode: "open", allowed_users: [] } });
-    expect(await typed(r, "discord", "/update", "member")).toEqual([t("update.disabled")]);
-    expect(await typed(r, "discord", "/dashboard", "member")).toEqual([t("dashboard.disabled")]);
+    expect(await typed(r, "discord", "/update", "member")).toEqual([t("update.disabled", "channels[id: discord].access.allowed_users")]);
+    expect(await typed(r, "discord", "/dashboard", "member")).toEqual([t("dashboard.disabled", "channels[id: discord].access.allowed_users")]);
     expect(await typed(r, "discord", "/doctor", "member")).toEqual([t("not_authorized")]);
     expect(spawned).toHaveLength(0);
   });

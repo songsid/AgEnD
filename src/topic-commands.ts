@@ -593,7 +593,14 @@ export class TopicCommands {
       classicAdmin: () => false,
     }, "telegram");
     if (decision.allow || "passthrough" in decision) return null;
+    // A command off for want of fleet admins names where they go (`{0}` in its disabled reply).
+    if (decision.reply === spec.disabled) return [...decision.reply, this.adminListKey(msg.adapterId)] as [string, ...unknown[]];
     return decision.reply as [string, ...unknown[]];
+  }
+
+  /** Where the adapter's fleet-admin list is in fleet.yaml (the fleet's answer; a bare key without it). */
+  private adminListKey(adapterId?: string): string {
+    return this.ctx.adminListKey?.(adapterId) ?? "access.allowed_users";
   }
 
   private async sendRefusal(msg: InboundMessage, [key, ...args]: [string, ...unknown[]]): Promise<void> {
@@ -754,7 +761,7 @@ export class TopicCommands {
     const chatId = msg.chatId;
     const threadId = msg.threadId;
     // The caller's own adapter decides, and an empty list means the command is off for everyone.
-    if (!this.ctx.hasFleetAdmins(msg.adapterId)) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
+    if (!this.ctx.hasFleetAdmins(msg.adapterId)) { await adapter.sendText(chatId, t("dashboard.disabled", this.adminListKey(msg.adapterId)), { threadId }); return; }
     if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
 
     const arg = (msg.text ?? "").trim().replace(/^\/(?:dashboard|web)(?:@\S+)?/i, "").trim().toLowerCase();
@@ -1669,7 +1676,7 @@ export class TopicCommands {
 
     // Access control — only fleet admins of THIS adapter can trigger an update; empty = disabled
     if (!this.ctx.hasFleetAdmins(msg.adapterId)) {
-      await adapter.sendText(chatId, t("update.disabled"), { threadId });
+      await adapter.sendText(chatId, t("update.disabled", this.adminListKey(msg.adapterId)), { threadId });
       return;
     }
     if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {

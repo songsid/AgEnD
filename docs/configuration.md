@@ -130,7 +130,7 @@ The fallback values below apply only when the whole block is omitted; an explici
 - The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
 - A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; approved pairing adds to the saved list.
 - Under `locked`/`pairing`, revocation must remove the grant from both lists; changing only one can leave access enabled. `open` does not restrict users in the first place.
-- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or approved pairing alone does not grant fleet admin; an empty YAML list grants nobody that role. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
+- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or approved pairing alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
 
 #### channel.options (Discord)
 
