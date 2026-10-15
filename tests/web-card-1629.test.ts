@@ -341,5 +341,8 @@ describe("the card's routes", () => {
     await call("POST", "/api/profile/alpha", JSON.stringify({ card_tagline: "Hello again" }));
     expect([typeof v1, v() !== v1]).toEqual(["string", true]);
     expect(existsSync(join(dir, "profiles.db"))).toBe(true);
+    // View's roster carries the same card_v (its anonymous reader reads the card when it moves).
+    const roster = JSON.parse((await call("GET", "/api/profiles")).body) as Array<{ instance_name: string; card_v?: string }>;
+    expect(roster.find(r => r.instance_name === "alpha")!.card_v).toBe(v());
   }, 60_000);
 });

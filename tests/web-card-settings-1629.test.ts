@@ -63,6 +63,10 @@ describe("judged by direction, on the limit given", () => {
     expect(judge({ portrait: { max_width: null } }, { web: { appearance: { portrait: { max_width: 512 } } } })?.summary.slice(1))
       .toEqual(["fleet.web.appearance.portrait.max\\_width: 512 → default"]);
     expect(judge({ portrait: { max_width: null } }, { web: { appearance: { portrait: { max_width: 2000 } } } })).toBeNull();
+    // Only the clamp tells these apart: below the floor (64 in force) and above the ceiling (2048 in force), nothing moves.
+    expect(judge({ portrait: { max_width: 60 } }, { web: { appearance: { portrait: { max_width: 50 } } } })).toBeNull();
+    expect(judge({ portrait: { max_width: 3000 } }, { web: { appearance: { portrait: { max_width: 2048 } } } })).toBeNull();
+    expect(judge({ portrait: { max_width: 100 } }, { web: { appearance: { portrait: { max_width: 50 } } } })).not.toBeNull();   // 64 → 100
   });
   it("one higher limit in a batch of lower ones is confirmed, and only it is named; a bad body is refused before anything", () => {
     expect(judge({ portrait: { max_kib: 256, max_width: 1200 }, banner: { max_kib: 128 } })?.summary.slice(1)).toEqual(["fleet.web.appearance.portrait.max\\_width: default → 1200"]);
