@@ -60,7 +60,7 @@ function OwnerCssCard() {
     const r = await postJson("/ui/owner-css", { text });
     setBusy(false);
     if (!r.ok) { setError(refusal(r.body)); return; }
-    startOwnerCssTrial(r.body.sha, r.body.previous);
+    startOwnerCssTrial(r.body.trial, r.body.sha, r.body.previous);
     toast(tn("cssTrying"));
     load({ text: false });
   };
