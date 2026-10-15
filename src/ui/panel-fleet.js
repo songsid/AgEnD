@@ -5,7 +5,7 @@
 // here re-reads anything). Every read is under the navigation's lease: a list that arrives after the person moved on
 // is dropped (#1408 §4).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { t, register } from "/assets/app-i18n.js";
+import { t, register, lang } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
@@ -27,6 +27,7 @@ register("fleet", {
     hostMemory_elevated: "Host memory pressure: elevated — new agents start one at a time, at least 5 s apart",
     hostMemory_critical: "Host memory pressure: critical — new agents wait for memory to recover",
     title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", config: "Config",
+    docs: "Docs", docsNewTab: "Docs (opens in a new tab)",
     newTask: "New task", newSchedule: "New schedule", newTeam: "New team",
     noTasks: "No tasks yet", noTasksHint: "Create one to coordinate fleet work.", noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
     noTeams: "No teams yet", noTeamsHint: "Group instances for coordinated work.", countTasks: "{0} tasks", countSchedules: "{0} schedules", countTeams: "{0} teams", countTask: "1 task", countSchedule: "1 schedule", countTeam: "1 team",
@@ -57,6 +58,7 @@ register("fleet", {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
     hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
     title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", config: "設定",
+    docs: "文件", docsNewTab: "文件（在新分頁開啟）",
     newTask: "新增 task", newSchedule: "新增排程", newTeam: "新增 team",
     noTasks: "還沒有 task", noTasksHint: "建立一個來協調 fleet 的工作。", noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
     noTeams: "還沒有 team", noTeamsHint: "把 instance 分組一起工作。", countTasks: "{0} 個 task", countSchedules: "{0} 個排程", countTeams: "{0} 個 team", countTask: "1 個 task", countSchedule: "1 個排程", countTeam: "1 個 team",
@@ -84,6 +86,11 @@ register("fleet", {
   },
 });
 
+// The project's docs site (website/, GitHub Pages), in the dashboard's language — its own pages, not the app's.
+const DOCS_SITE = "https://songsid.github.io/AgEnD";
+export function docsUrl(language = lang()) {
+  return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/getting-started/`;
+}
 const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", config: "sliders" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
@@ -128,11 +135,17 @@ export function FleetPanel({ route, navKey }) {
   const { hostMemory } = useStore(appStore);
   const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}</span>` : null;
   return html`<div class="panel p-fleet">
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+    <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     <nav class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
       aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
     <div class="panel-body"><div class=${`col${tab === "org" || tab === "cache" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
+}
+
+/** #1844: the project's docs, from the overview — a link out (a new tab, no opener), not a Fleet tab; in front of the shared controls. */
+function DocsLink() {
+  return html`<a class="btn btn-ghost btn-sm hd-docs" href=${docsUrl()} target="_blank" rel="noopener noreferrer" aria-label=${t("fleet.docsNewTab")} title=${t("fleet.docsNewTab")}>
+    <${Icon} name="book" size=${16} /><span class="hide-narrow" aria-hidden="true">${t("fleet.docs")}</span><${Icon} name="external" size=${12} cls="hd-ext" /></a>`;
 }
 
 function ListHead({ count, label, action }) {

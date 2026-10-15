@@ -738,6 +738,8 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .hd-text-names > span { grid-area: 1 / 1; visibility: hidden; }
 .hd-text-names > .on { visibility: visible; }
 .hd-slot { visibility: hidden; pointer-events: none; }
+/* #1844 Fleet overview → Docs: the arrow says "opens a new tab". */
+.hd-docs .hd-ext { color: var(--text-3); }
 .v-term { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; background: #000000; position: relative; }
 .v-pre { margin: 0; min-width: 100%; min-height: 100%; font-family: var(--font-mono); line-height: 1.2; white-space: pre; color: #d0d0d0; }
 .v-pre .ansi[data-b] { font-weight: var(--fw-bold); }
