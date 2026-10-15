@@ -3,7 +3,7 @@ title: Features
 description: What a fleet does once it is running.
 ---
 
-A fleet is a set of independent agent sessions, one per project, that you reach from one bot. This page covers what they do without you.
+A fleet is a set of independent agent sessions, one per project, that you reach from one bot — or from the browser. This page is the short version; each section links to the full reference in the repository's [`docs/`](https://github.com/songsid/AgEnD/tree/main/docs).
 
 ## One bot, many projects
 
@@ -18,9 +18,26 @@ General: → delegating to infra-agent
 
 Instances run in tmux, so closing your terminal changes nothing.
 
+## The web dashboard
+
+The fleet serves a dashboard on `127.0.0.1`, on `health_port` (default 19280). It is one app with a sidebar:
+
+- **Chat** (`/ui`) — talk to any instance from the browser. It is the same conversation as its Telegram or Discord topic: what you send is echoed there as `🌐 <your name>: …`, and the agent's replies show in both. Files and images, **Stop**, and ticks showing how far each message got all work. A fleet with no chat platform at all can be run from the dashboard alone.
+- **Fleet** (`/ui/fleet`) — the task board, schedules and teams, an **Org chart** of General, teams and instances with their live state, a prompt-cache **Cache** analysis, and the fleet's config. **Docs** in its header opens this site.
+- **Needs you** (`/ui/needs`) — everything waiting on you, from every bot, in one list: permission prompts, hang alerts, sign-ins, deliveries that could not be confirmed. Something handled anywhere leaves every list.
+- **View** (`/view`) — every agent's live terminal, the roster, AI subscription usage, and each agent's profile and avatar.
+- **Log** — per instance, each prompt, reply, tool call and fleet event, read from the agent's transcript. Off by default; a fleet admin turns it on in **Settings → Web** (`web.log_tab`).
+- **Settings** (`/settings`) — agents, connections, ClassicBot, General and Web settings and the whole `fleet.yaml`, staged and applied together. Bot tokens are entered here and checked with the platform before anything is saved.
+
+**Signing in.** Send `/web` in General (fleet admins), or run `agend web` on the host, and type the one-time code on the sign-in page. A code works once and expires after five minutes; a session lasts 48 hours by default. Signed in with a `/web` code, you are your Discord or Telegram account to the agent — for recognition only; it grants nothing.
+
+**From a phone.** `/web` can also open a **temporary public link** through a Cloudflare Quick Tunnel: nothing is exposed until you choose it, the link and code come to you privately, and it closes after two hours by default (or with `/web revoke`). It grants full dashboard access, so do not forward it.
+
+Full guide: [web-dashboard.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md).
+
 ## Agents that talk to each other
 
-Every instance is a peer. There is no dispatcher in the middle — agents discover, wake, and message each other directly through MCP tools.
+Every instance is a peer. Agents discover, wake, and message each other directly through MCP tools; General only routes what you send it.
 
 Three tools do most of the work:
 
@@ -28,9 +45,19 @@ Three tools do most of the work:
 - `delegate_task` — hand over work with success criteria
 - `report_result` — return the answer, linked to the request that asked for it
 
-Agents can also `create_instance`, `start_instance`, and `replace_instance` — but only with the `coordinator` tool profile. An ordinary worker can hand work to a peer and cannot spawn one. See [Tool profiles](/AgEnD/docs/configuration/#tool-profiles).
+`delivery_status` tells an agent whether a message it sent was delivered. A shared **task board** and fleet-wide **decisions** keep multi-step work in view.
+
+Starting and replacing instances needs a tool profile that allows it: `coordinator` (or the General instance's own profile) can `create_instance` and `start_instance`, and only `coordinator` can `replace_instance`. An ordinary worker can hand work to a peer and cannot spawn one. See [Tool profiles](/AgEnD/docs/configuration/#tool-profiles).
 
 `create_instance` takes a `branch`, which puts the new agent in its own git worktree.
+
+## Buttons, polls and stickers
+
+- **Reply buttons.** An agent's `reply` can carry 1–10 `buttons`. They appear on Telegram, on Discord and in the web chat; a click reaches the agent as `[button] <label>`. One choice answers for everyone, and the buttons then show who chose what. They expire after 24 hours and survive a restart.
+- **Polls.** `reply` with `buttons` and `poll: { seconds, multi?, reveal?, show_voters? }` makes a timed vote (10 seconds to 24 hours). Everyone who may click may vote once and change their vote. At the deadline — or when the agent calls `close_poll` — the agent receives one `[poll results]` message with the counts and voters. AgEnD only counts; scoring a quiz is up to the agent.
+- **Stickers and persona emoji.** Agents can list, preview and send Discord and Telegram stickers, and pick an emoji that stands for them as their "done" reaction.
+
+Details: [Reply buttons and polls](https://github.com/songsid/AgEnD/blob/main/docs/features.md#reply-buttons).
 
 ## Staying up without you
 
@@ -38,11 +65,22 @@ Agents can also `create_instance`, `start_instance`, and `replace_instance` — 
 
 Repeated crashes back off exponentially, and three crashes in five minutes stop the respawns entirely rather than looping.
 
-If the tmux server itself dies, every instance loses its window at once. Two such crashes in five minutes pause all respawns for 30 seconds, so the fleet does not stampede.
+If the tmux server itself dies, every instance loses its window at once. The fleet treats that as one incident: respawns are held for 30 seconds after the first such crash, 2 minutes after a second and 10 minutes from the third, and no message is pasted into an instance until it has recovered.
 
-**Hang detection.** An instance with no activity for 15 minutes (configurable) gets a notification with two buttons: force restart, or keep waiting. Detection reads both transcript activity and statusline freshness, so a long tool call is not mistaken for a hang.
+**Hang detection.** When an instance's screen stops changing in the middle of a turn for longer than `hang_detector.timeout_minutes`, you get a notification with two buttons: **Force restart**, or **Keep waiting**. It is also listed in **Needs you**.
 
 **Instance replacement.** When a session is stuck in a loop or its context is polluted, `replace_instance` swaps it atomically: collect handover context, stop the old one, create a new one with the same config and the same topic, deliver the handover.
+
+**After an upgrade**, each existing instance gets one short what's-new notice before its next message, listing the agent-facing changes, so a resumed session knows about tools that changed under it.
+
+## Backends, models and logins
+
+- `/model` and `/effort` change an instance's model and reasoning effort from a menu.
+- `/backend` moves an instance to another CLI backend installed on the host: backend → model → effort → confirm. The instance restarts once, in a fresh session — a conversation does not carry across backends.
+- `/login` signs a backend CLI in (and installs it if missing) without SSH: a device code in the chat for Codex and Grok, a one-time browser terminal for Claude Code and Kiro CLI.
+- **Credential profiles** give an instance its own login — a second subscription — for Kiro CLI, Codex and Claude Code (`backend_options.<backend>.credential_profile`). `/usage` and the dashboard show one row per subscription.
+
+Details: [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md), [credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
 
 ## Spending
 
@@ -56,7 +94,7 @@ defaults:
     timezone: Asia/Taipei
 ```
 
-You get a warning in the topic at the warn threshold, and at the limit the instance is paused and you are told. It resumes the next day, or when you restart it.
+You get a warning in the topic at the warn threshold. At the limit the instance is stopped and its topic is told; start it again to continue.
 
 `/status` in the General topic shows where the money went:
 
@@ -70,7 +108,7 @@ A summary of the same is posted daily at 21:00 by default.
 
 ## Rate limits
 
-When the primary model is rate-limited, the next session restart moves to the next model you listed:
+List a backup model and the fleet switches to it when the primary runs short:
 
 ```yaml
 instances:
@@ -78,9 +116,9 @@ instances:
     model_failover: [opus, sonnet]
 ```
 
-You are told when it switches, and told again when it switches back.
+When the 5-hour usage reaches 90%, the next launch uses the backup model; once it is back under 50%, the primary returns. You are told both times.
 
-Scheduled triggers defer themselves when the 5-hour rate limit is over 85% used. They are not lost — they fire on the next cron tick once there is headroom.
+Scheduled triggers defer themselves when the 5-hour rate limit is over 85% used. A deferred run is retried once, after the window resets — never twice, and never past the schedule's next regular run.
 
 ## Idle instances
 
@@ -94,6 +132,8 @@ defaults:
   warm_cap: 15
 ```
 
+Both are off (`0`) unless you set them.
+
 ## Scheduled work
 
 Agents create their own schedules, backed by SQLite, and they survive restarts:
@@ -105,13 +145,15 @@ Agent: → create_schedule(cron: "0 9 * * *", …)
 
 When a schedule fires, the message arrives as though you had sent it. Every agent can schedule for itself — heartbeats, reminders, "check back in 30 minutes" — and can change or remove the schedules it made for itself. Scheduling work for another agent, or changing a schedule someone else set, takes a coordinator (`coordinator`, `general` or `full`); a `minimal` agent has no schedules at all.
 
-Manage them from the terminal with [`agend schedule`](/AgEnD/docs/cli/#schedules).
+Manage them from the terminal with [`agend schedule`](/AgEnD/docs/cli/#schedules), or in the dashboard under **Fleet → Schedules**.
 
 ## From your phone
 
-**Cancel button.** Every message carries an inline button that interrupts generation. Works on Telegram and Discord.
+**Cancel.** When a message is delivered to an agent, a 🛑 Cancel button is posted in its topic or channel. It interrupts the generation and, after 30 seconds, also shows how long the agent has been working. `/cancel` does the same. The web chat has **Stop**.
 
-**Delivery status.** 👀 received → ⏳ processing → ✅ done, or ❌ failed. You can see where a message got to.
+**Steer.** `/steer <message>` interjects into the agent's current turn instead of waiting for it to finish (Claude Code, Codex, Grok, Muse and Kiro's TUI); `/btw <message>` asks a side question without interrupting (Claude Code).
+
+**Delivery status.** A reaction on your message shows where it got to. On Discord: 👀 received, ⏳ queued, ✅ delivered, ❌ failed. Telegram accepts fewer reactions, so it shows 👀 until delivery and 👎 if it fails. Both are configurable with `status_emojis`.
 
 **Permission prompts** arrive as inline buttons — approve or deny a tool call without opening a terminal.
 
@@ -127,7 +169,7 @@ Two ways to use Discord. Forum-style topics work like Telegram's. Or use **Class
 | `/chat <message>` | Talk to it |
 | `/stop` | Stop it |
 
-Restrict which servers may use it with `allowed_guilds` in `classicBot.yaml`; an empty list allows all. Changes are picked up every 30 seconds.
+A ClassicBot admin can start one directly. Anyone else needs their server listed in `defaults.allowed_guilds` in `classicBot.yaml`; otherwise — including when the list is empty — the start asks General for approval. Changes are picked up every 30 seconds.
 
 ## Teams and templates
 
@@ -139,17 +181,19 @@ teams:
     members: [reviewer-a, reviewer-b]
 ```
 
-A **template** deploys several instances in one command, each in its own git worktree, optionally registering them as a team. Agents deploy them with `deploy_template` and tear them down with `teardown_deployment`.
-
-A shared **task board** tracks multi-step work across instances, so one agent can see what another has finished.
+A **template** deploys several instances in one command, optionally registering them as a team. Pass a `branch` and each gets its own git worktree; without one they share the project directory. Agents deploy them with `deploy_template` and tear them down with `teardown_deployment`.
 
 ## Watching and exporting
 
-**Web dashboard** — `agend web` opens live fleet monitoring with SSE updates and a chat UI. `agend view` is the read-only version.
+**Dashboard** — see [above](#the-web-dashboard). `agend web` signs you in from the host; `agend view` opens `/view`.
 
 **Mirror topic** — point `mirror_topic_id` at a topic and cross-instance messages are mirrored there, so you can watch agents work without being in their topics.
 
-**HTML export** — `agend export-chat` writes a session as a single self-contained file.
+**HTML export** — `agend export-chat` writes the fleet's activity over a date range (`--from`, `--to`) as one self-contained HTML file.
+
+## Updating
+
+`agend update` (or `/update` in chat) installs the newest version on the channel you are on — stable, `--beta` or `--alpha` — and restarts the fleet. See [Beta and alpha update channels](https://github.com/songsid/AgEnD/blob/main/docs/features.md#beta-and-alpha-update-channels).
 
 ## Backends
 
@@ -163,17 +207,17 @@ A shared **task board** tracks multi-step work across instances, so one agent ca
 | Meta Muse Code | Escape cancels; Ctrl+C quits |
 | OpenCode | |
 
-OpenCode and Kiro CLI do not read the MCP server's `instructions` field, so fleet context and workflow templates are not injected into their system prompts. This is an upstream limitation.
+Every backend gets the full fleet instructions through its own route (a system-prompt file, `AGENTS.md`, its agent config); the MCP server's `instructions` field carries only a compact contract. See [Fleet instructions and session context](https://github.com/songsid/AgEnD/blob/main/docs/configuration.md#fleet-instructions-and-session-context).
 
 ## Extending
 
-- **Webhooks** — POST on instance lifecycle events, with your own headers
+- **Webhooks** — POST to your URL, with your own headers, on hangs, MCP or terminal failures, cost warnings and limits, deferred schedules, and model failover
 - **Health endpoint** — HTTP on `health_port`, default 19280
 - **External sessions** — a process outside the fleet can join over IPC and be messaged like any instance
 - **Adapter plugins** — add a chat platform without changing AgEnD
 
 ## Limits
 
-- macOS and Linux only. Windows is not supported; use WSL
+- macOS and Linux only. On Windows, use WSL — the [Windows installer](/AgEnD/install-windows/) sets it up
 - The official Telegram plugin in a global `enabledPlugins` causes 409 polling conflicts
-- All backends run with permission checks skipped. Read the security notes before pointing one at something you care about
+- Agents run with permission checks skipped unless you set `skipPermissions: false` for an instance. Read the security notes before pointing one at something you care about

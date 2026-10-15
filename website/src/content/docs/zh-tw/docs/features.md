@@ -3,7 +3,7 @@ title: 功能
 description: Fleet 跑起來之後會做的事。
 ---
 
-一個 fleet 是一組獨立的 agent session，一個專案一個，全部從同一個 bot 操作。這頁講的是它們在你不在的時候做什麼。
+一個 fleet 是一組獨立的 agent session，一個專案一個，全部從同一個 bot 操作 — 也可以從瀏覽器。這頁是精簡版；每一節都連到 repo [`docs/`](https://github.com/songsid/AgEnD/tree/main/docs) 裡的完整說明。
 
 ## 一個 bot，多個專案
 
@@ -18,9 +18,26 @@ General：→ 交給 infra-agent
 
 Instance 跑在 tmux 裡，所以關掉終端機什麼事都不會發生。
 
+## Web 儀表板
+
+Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表板。它是一個有側邊欄的 app：
+
+- **聊天**（`/ui`）— 從瀏覽器跟任何 instance 說話。它和那個 instance 的 Telegram 或 Discord topic 是**同一段對話**：你送出的訊息會在 topic 裡顯示成 `🌐 <你的名字>: …`，agent 的回覆兩邊都看得到。可以傳檔案和圖片、按 **Stop** 停止，還有打勾顯示每則訊息走到哪一步。完全沒有聊天平台的 fleet 也能只靠儀表板運作。
+- **Fleet**（`/ui/fleet`）— 任務板、排程和 team，一張 General、team 與 instance 加上即時狀態的**組織圖**，prompt cache 的**快取**分析，以及 fleet 設定。標題列的**文件**會開啟這個網站。
+- **等你處理**（`/ui/needs`）— 所有 bot 等你處理的事集中在一個清單：權限詢問、卡住通知、登入、無法確認送達的訊息。在任何地方處理掉，每個清單都會消失。
+- **檢視**（`/view`）— 每個 agent 的即時終端畫面、名單、AI 訂閱用量，以及每個 agent 的個人資料和頭像。
+- **紀錄** — 每個 instance 的每則 prompt、回覆、工具呼叫和 fleet 事件，從 agent 的 transcript 讀出來。預設關閉；fleet 管理員在**設定 → Web**（`web.log_tab`）打開。
+- **設定**（`/settings`）— agent、連線、ClassicBot、General 與 Web 設定，以及整份 `fleet.yaml`，先暫存再一起套用。Bot token 在這裡輸入，存檔前會先向平台確認是哪個 bot。
+
+**登入。** 在 General 送 `/web`（fleet 管理員），或在主機上執行 `agend web`，然後在登入頁輸入一次性代碼。代碼只能用一次、5 分鐘後失效；session 預設維持 48 小時。用 `/web` 的代碼登入時，agent 看到的你就是你的 Discord 或 Telegram 帳號 — 只用來認人，不給任何權限。
+
+**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和代碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。它等於整個儀表板的存取權，不要轉傳。
+
+完整說明：[web-dashboard.zh-TW.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
+
 ## Agent 之間會互相說話
 
-每個 instance 都是對等的。中間沒有派工者 — agent 透過 MCP tools 直接互相發現、喚醒、傳訊。
+每個 instance 都是對等的。Agent 透過 MCP tools 直接互相發現、喚醒、傳訊；General 只負責轉送你送給它的訊息。
 
 主要靠三個工具：
 
@@ -28,9 +45,19 @@ Instance 跑在 tmux 裡，所以關掉終端機什麼事都不會發生。
 - `delegate_task` — 把工作交出去，附上完成標準
 - `report_result` — 回傳結果，並連回當初那個請求
 
-Agent 也可以 `create_instance`、`start_instance`、`replace_instance` — 但要有 `coordinator` 工具權限組。一般的 worker 可以把工作交給同儕，但不能生出同儕。見[工具權限組](/AgEnD/zh-tw/docs/configuration/#工具權限組)。
+`delivery_status` 讓 agent 知道它送出的訊息有沒有送到。共用的**任務板**和全 fleet 的**決策**讓多步驟的工作一目了然。
+
+建立和替換 instance 需要允許它的工具權限組：`coordinator`（或 General instance 自己的權限組）可以 `create_instance`、`start_instance`，只有 `coordinator` 能 `replace_instance`。一般的 worker 可以把工作交給同儕，但不能生出同儕。見[工具權限組](/AgEnD/zh-tw/docs/configuration/#工具權限組)。
 
 `create_instance` 吃 `branch` 參數，會把新 agent 放進自己的 git worktree。
+
+## 按鈕、投票與貼圖
+
+- **回覆按鈕。** Agent 的 `reply` 可以帶 1–10 個 `buttons`，在 Telegram、Discord 和 web 聊天都會出現；按下去 agent 會收到 `[button] <標籤>`。一個選擇就代表所有人回答了，之後按鈕會顯示誰選了什麼。按鈕 24 小時後過期，重啟後仍然有效。
+- **投票。** `reply` 加上 `buttons` 和 `poll: { seconds, multi?, reveal?, show_voters? }` 就是限時投票（10 秒到 24 小時）。能按按鈕的人都能投一次，也能改票。時間到 — 或 agent 呼叫 `close_poll` — agent 會收到一則 `[poll results]`，裡面有票數和投票者。AgEnD 只負責計票；測驗怎麼算分由 agent 決定。
+- **貼圖與代表 emoji。** Agent 可以列出、預覽並傳送 Discord 和 Telegram 的貼圖，也能挑一個代表自己的 emoji 當「完成」的反應。
+
+詳細：[回覆按鈕與投票](https://github.com/songsid/AgEnD/blob/main/docs/features.zh-TW.md#回覆按鈕)。
 
 ## 沒人顧也活著
 
@@ -38,11 +65,22 @@ Agent 也可以 `create_instance`、`start_instance`、`replace_instance` — �
 
 連續 crash 會指數退避，五分鐘內 crash 三次就完全停止重生，而不是一直迴圈。
 
-如果是 tmux server 自己死掉，所有 instance 會同時失去視窗。五分鐘內發生兩次，所有重生會暫停 30 秒，避免整個 fleet 一起衝。
+如果是 tmux server 自己死掉，所有 instance 會同時失去視窗。Fleet 會把它當成一次事故處理：第一次這種 crash 後重生暫停 30 秒，第二次 2 分鐘，第三次起 10 分鐘；instance 恢復之前不會把任何訊息貼進去。
 
-**卡住偵測。** Instance 超過 15 分鐘（可設定）沒有動靜，就會發一則帶兩個按鈕的通知：強制重啟，或繼續等。偵測同時看 transcript 活動和 statusline 的新鮮度，所以跑很久的工具呼叫不會被誤判成卡住。
+**卡住偵測。** Instance 在一個回合中途畫面停住超過 `hang_detector.timeout_minutes`，就會發一則帶兩個按鈕的通知：**強制重啟**，或**繼續等**。它也會出現在**等你處理**。
 
 **換掉 instance。** Session 陷入迴圈或 context 被污染時，`replace_instance` 會原子性地換掉它：收集交接內容、停掉舊的、用同樣的設定和同一個 topic 建新的、把交接內容送過去。
+
+**升級之後**，每個既有的 instance 在收到下一則訊息前會先收到一則簡短的「新功能」通知，列出跟 agent 有關的變更，讓接續的 session 知道哪些工具已經變了。
+
+## 後端、模型與登入
+
+- `/model` 和 `/effort` 用選單切換 instance 的模型和推理強度。
+- `/backend` 把 instance 換到主機上已安裝的另一個 CLI 後端：後端 → 模型 → 推理強度 → 確認。Instance 只重啟一次，而且是新的 session — 對話不會跨後端延續。
+- `/login` 不用 SSH 就能登入後端 CLI（沒裝的話先安裝）：Codex 和 Grok 會在聊天裡給 device code，Claude Code 和 Kiro CLI 會開一個一次性的瀏覽器終端機。
+- **Credential profile** 讓 instance 有自己的登入 — 也就是第二個訂閱 — 支援 Kiro CLI、Codex 和 Claude Code（`backend_options.<backend>.credential_profile`）。`/usage` 和儀表板每個訂閱各一列。
+
+詳細：[commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md)、[Credential profiles](https://github.com/songsid/AgEnD/blob/main/docs/configuration.zh-TW.md#credential-profiles同一-backend-的多個帳號)。
 
 ## 花費
 
@@ -56,7 +94,7 @@ defaults:
     timezone: Asia/Taipei
 ```
 
-到警告門檻時 topic 裡會收到提醒，到上限時 instance 會被暫停並通知你。隔天會恢復，或你手動重啟。
+到警告門檻時 topic 裡會收到提醒。到上限時 instance 會被停下並通知 topic；要繼續就再啟動它。
 
 在 General topic 打 `/status` 看錢花到哪去：
 
@@ -70,7 +108,7 @@ defaults:
 
 ## Rate limit
 
-主要模型被 rate limit 時，下一次 session 重啟就會換到你列的下一個：
+列一個備用模型，主要模型額度快用完時 fleet 會換過去：
 
 ```yaml
 instances:
@@ -78,9 +116,9 @@ instances:
     model_failover: [opus, sonnet]
 ```
 
-切換時會通知你，切回來時也會。
+5 小時用量到 90% 時，下一次啟動改用備用模型；回到 50% 以下就換回主要模型。兩次都會通知你。
 
-排程觸發在 5 小時 rate limit 用超過 85% 時會自動延後。它們不會消失 — 等額度回來後的下一個 cron tick 就會執行。
+排程觸發在 5 小時 rate limit 用超過 85% 時會自動延後。延後的那次會在額度重置後重試一次 — 不會跑兩次，也不會超過排程的下一次正常執行。
 
 ## 閒置的 instance
 
@@ -94,6 +132,8 @@ defaults:
   warm_cap: 15
 ```
 
+兩個都預設關閉（`0`），要自己設。
+
 ## 排程工作
 
 Agent 自己建排程，存在 SQLite 裡，重啟後還在：
@@ -105,13 +145,15 @@ Agent：→ create_schedule(cron: "0 9 * * *", …)
 
 排程觸發時，訊息會像你自己送的一樣抵達。每個 agent 都能替自己排程（heartbeat、提醒、「30 分鐘後回來看」），也能修改或刪除自己替自己建的排程。要替別的 agent 排工作，或修改別人設下的排程，需要 coordinator（`coordinator`、`general` 或 `full`）；`minimal` 則完全沒有排程功能。
 
-在終端機用 [`agend schedule`](/AgEnD/zh-tw/docs/cli/#排程) 管理。
+在終端機用 [`agend schedule`](/AgEnD/zh-tw/docs/cli/#排程) 管理，或在儀表板的 **Fleet → 排程**。
 
 ## 從手機操作
 
-**取消按鈕。** 每則訊息都帶一個可以中斷生成的按鈕。Telegram 和 Discord 都有。
+**取消。** 訊息送到 agent 後，topic 或頻道裡會出現一個 🛑 Cancel 按鈕，按下就中斷生成；30 秒後它也會顯示 agent 已經做了多久。`/cancel` 效果一樣。Web 聊天則有 **Stop**。
 
-**送達狀態。** 👀 已接收 → ⏳ 處理中 → ✅ 完成，或 ❌ 失敗。你看得到訊息走到哪一步。
+**插話。** `/steer <訊息>` 直接插進 agent 目前的回合，不用等它做完（Claude Code、Codex、Grok、Muse 與 Kiro 的 TUI）；`/btw <訊息>` 問個旁支問題而不打斷它（Claude Code）。
+
+**送達狀態。** 你的訊息上的反應會顯示它走到哪一步。Discord：👀 已接收、⏳ 排隊中、✅ 已送達、❌ 失敗。Telegram 能用的反應比較少，所以送達前都是 👀，失敗是 👎。兩邊都能用 `status_emojis` 自訂。
 
 **權限詢問**會變成按鈕 — 不用打開終端機就能同意或拒絕一次工具呼叫。
 
@@ -127,7 +169,7 @@ Discord 有兩種用法。論壇形式的 topic 跟 Telegram 一樣。或是用 
 | `/chat <訊息>` | 跟它說話 |
 | `/stop` | 停掉它 |
 
-用 `classicBot.yaml` 的 `allowed_guilds` 限制哪些伺服器能用；空的代表全部允許。改動每 30 秒生效。
+ClassicBot 管理員可以直接開。其他人要伺服器列在 `classicBot.yaml` 的 `defaults.allowed_guilds` 裡；否則 — 包括清單是空的時候 — 會先請 General 核准。改動每 30 秒生效。
 
 ## Team 與 template
 
@@ -139,17 +181,19 @@ teams:
     members: [reviewer-a, reviewer-b]
 ```
 
-**Template** 一個指令部署多個 instance，每個在自己的 git worktree 裡，還可以順便註冊成一個 team。Agent 用 `deploy_template` 部署、`teardown_deployment` 拆掉。
-
-共用的**任務板**追蹤跨 instance 的多步驟工作，讓一個 agent 看得到另一個做完了什麼。
+**Template** 一個指令部署多個 instance，還可以順便註冊成一個 team。給 `branch` 時每個 instance 會有自己的 git worktree；沒給就共用專案目錄。Agent 用 `deploy_template` 部署、`teardown_deployment` 拆掉。
 
 ## 觀察與匯出
 
-**Web 儀表板** — `agend web` 開即時監控，SSE 更新加上聊天介面。`agend view` 是唯讀版。
+**儀表板** — 見[上面](#web-儀表板)。`agend web` 讓你從主機登入；`agend view` 開啟 `/view`。
 
 **Mirror topic** — 把 `mirror_topic_id` 指到某個 topic，跨 instance 的訊息會鏡像過去，你不用待在 agent 的 topic 裡也看得到它們在做什麼。
 
-**HTML 匯出** — `agend export-chat` 把 session 寫成一個獨立檔案。
+**HTML 匯出** — `agend export-chat` 把一段日期範圍（`--from`、`--to`）內的 fleet 活動寫成一個獨立的 HTML 檔。
+
+## 更新
+
+`agend update`（或在聊天裡 `/update`）會安裝你目前頻道上的最新版 — stable、`--beta` 或 `--alpha` — 然後重啟 fleet。見 [Beta 與 Alpha 更新頻道](https://github.com/songsid/AgEnD/blob/main/docs/features.zh-TW.md#beta-與-alpha-更新頻道-beta-and-alpha-update-channels)。
 
 ## 後端
 
@@ -163,17 +207,17 @@ teams:
 | Meta Muse Code | Escape 是取消；Ctrl+C 是離開 |
 | OpenCode | |
 
-OpenCode 和 Kiro CLI 不讀 MCP server 的 `instructions` 欄位，所以 fleet context 和 workflow template 不會被注入它們的 system prompt。這是上游的限制。
+每個後端都會透過自己的管道收到完整的 fleet 指示（system prompt 檔、`AGENTS.md`、它的 agent 設定）；MCP server 的 `instructions` 欄位只帶一份精簡的約定。見 [Fleet context 注入機制](https://github.com/songsid/AgEnD/blob/main/docs/configuration.zh-TW.md#fleet-context-注入機制)。
 
 ## 擴充
 
-- **Webhook** — instance 生命週期事件發生時 POST 出去，可帶自訂 header
+- **Webhook** — 卡住、MCP 或終端機故障、花費警告與上限、排程延後、模型切換時 POST 到你的網址，可帶自訂 header
 - **Health endpoint** — 在 `health_port` 上開 HTTP，預設 19280
 - **外部 session** — fleet 以外的程序可以透過 IPC 加入，像一般 instance 一樣被傳訊
 - **Adapter 外掛** — 不改 AgEnD 就能加新的聊天平台
 
 ## 限制
 
-- 只支援 macOS 和 Linux。不支援 Windows，請用 WSL
+- 只支援 macOS 和 Linux。Windows 請用 WSL — [Windows 安裝程式](/AgEnD/zh-tw/install-windows/)會幫你裝好
 - 全域 `enabledPlugins` 裡有官方 Telegram 外掛會造成 409 polling 衝突
-- 所有後端都是跳過權限確認在跑。把它指向你在乎的東西之前，先讀安全性說明
+- Agent 預設跳過權限確認在跑，除非你替 instance 設 `skipPermissions: false`。把它指向你在乎的東西之前，先讀安全性說明
