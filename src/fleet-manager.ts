@@ -1308,6 +1308,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries the rev */ } }));
   }
 
+  /** A fleet.yaml instance (own key) or a ClassicBot room, now (#1629: a person's reset/lock names one). */
+  isKnownInstance(name: string): boolean {
+    return Object.hasOwn(this.fleetConfig?.instances ?? {}, name) || (this.classicChannels?.getAll() ?? []).some((ch) => ch.instanceName === name);
+  }
+
   private ownerCssStore?: OwnerCssStore;
   /** #1629 r4 §3: each person's own CSS; which version is in force is their `css.active` in the web preferences. */
   get ownerCss(): OwnerCssStore {
@@ -10901,7 +10906,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * One instance's avatar and ring for the status frame. Synchronous: what is cached now; fetches run behind. The bot
    * is its own, else the one it speaks through (#1867) — one cache entry per bot, so a shared bot is fetched once.
    */
-  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string } {
+  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string } {
     let profileVersion: string | null = null;
     if (profileAvatar && imageMimeForFile(profileAvatar)) {
       try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileAvatar))).mtimeMs).toString(36); } catch { /* removed */ }
@@ -10917,7 +10922,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const accent = !profileVersion && bot && ownConnection && owner
       ? this.webAccent(ownConnection, owner, cfg ? (cfg.topic_id == null ? undefined : String(cfg.topic_id)) : this.classicChannels?.getChannelIdByInstance(name))
       : null;
-    return accent ? { avatar, accent } : { avatar };
+    // #1629 (first design §5, r2 (d)): the agent's theme may name its own picture and ring colour. Both come below a
+    // person's upload (never when there is one) and ride beside the theme-free face: a viewer who turned agents'
+    // themes off (fx.show), or a safe-mode load, shows `avatar` and `accent` as before.
+    let theme: ReturnType<ThemeStore["get"]>["theme"] = { v: 1 };
+    try { theme = this.themeStore.get(name).theme; } catch { /* unreadable themes: none */ }
+    const themeAvatar: AvatarDescriptor | undefined = !profileVersion && theme.avatar ? { kind: "image", src: `/ui/img/theme/${encodeURIComponent(name)}/${theme.avatar}` } : undefined;
+    const themeAccent = !profileVersion && theme.accent ? theme.accent : undefined;
+    return { avatar, ...(accent ? { accent } : {}), ...(themeAvatar ? { themeAvatar } : {}), ...(themeAccent ? { themeAccent } : {}) };
   }
   /**
    * GET /ui/img/bot|avatar/<key>: what is cached, never a fetch. Only a connection some instance or room speaks
@@ -20480,7 +20492,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
-      let image: { avatar: AvatarDescriptor; accent?: string };
+      let image: { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string };
       try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, bots); }
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
@@ -20488,6 +20500,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         display_name: identity.display_name || undefined,
         avatar: image.avatar,
         ...(image.accent ? { accent: image.accent } : {}),
+        // #1629: the agent's theme's picture and ring colour, for viewers who show agents' themes.
+        ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
+        ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,

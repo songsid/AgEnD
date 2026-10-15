@@ -86,6 +86,8 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   [FAVORITES, (v) => uniqueStrings(v, MAX_FAVORITES, name, FAVORITES)],
   // HTML previews allowed. Who may write it at all is the route's business (a signed-in session, never the public link).
   ["preview.optIn", (v) => (typeof v === "boolean" ? v : bad("preview.optIn: true or false"))],
+  // #1629 r2 (d): whether this person's screens show agents' themes and effects (default true; synced like the rest).
+  ["fx.show", (v) => (typeof v === "boolean" ? v : bad("fx.show: true or false"))],
   // #1722: which name leads where the web shows an instance — its nickname (display name) or its real instance name.
   ["names.primary", (v) => (v === "nickname" || v === "instance" ? v : bad("names.primary: nickname or instance"))],
   // #1827: a web person's own profile — the name they chose, and their account's display name at their last sign-in.

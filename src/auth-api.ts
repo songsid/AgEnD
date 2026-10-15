@@ -102,6 +102,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-prefs.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
     "owner-css.js",
+    // #1629: agents' themes on their own chat surfaces (static code; the themes are read behind the gate).
+    "app-themes.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },

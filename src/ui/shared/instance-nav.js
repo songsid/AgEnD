@@ -16,6 +16,7 @@ import { Skeleton } from "./ui-states.js";
 import { viewStore } from "./view-roster-store.js";
 import { onPrefsChanged, prefInForce, prefsWritable, savePref } from "./app-prefs.js";
 import "./view-strings.js";
+import { themesShown, themesStore } from "./app-themes.js";
 
 /** view.* text with named values. */
 function tn(key, values = {}) {
@@ -280,9 +281,16 @@ const CLI_MONOGRAM = { "claude-code": "C", codex: "X", "kiro-cli": "K", grok: "G
 // One path segment under /ui/img/<kind>/ — no further slash or backslash, and not a dot segment ("." / ".." or their
 // %2e spellings, which a browser resolves too): the picture can only ever be one of those routes (#1642 review).
 const sameOrigin = (src) => typeof src === "string"
-  && /^\/ui\/img\/(bot|avatar|emoji)\/(?!(?:\.|%2[eE]){1,2}(?:\?|$))[^/\\?#\s]+(\?v=[0-9A-Za-z%._-]*)?$/.test(src);
-/** The avatar to draw: the server's, if it is one the page may load; else the first character. */
+  && (/^\/ui\/img\/(bot|avatar|emoji)\/(?!(?:\.|%2[eE]){1,2}(?:\?|$))[^/\\?#\s]+(\?v=[0-9A-Za-z%._-]*)?$/.test(src)
+    // #1629: a theme's picture — one name segment, then its 32-hex content id.
+    || /^\/ui\/img\/theme\/(?!(?:\.|%2[eE]){1,2}\/)[^/\\?#\s]+\/[0-9a-f]{32}$/.test(src));
+/**
+ * The avatar to draw: the server's, if it is one the page may load; else the first character. #1629: the agent's theme
+ * picture first, while this viewer shows agents' themes (fx.show, not safe mode).
+ */
 export function avatarOf(it) {
+  const th = it && themesShown() ? it.theme_avatar : null;
+  if (th && th.kind === "image" && sameOrigin(th.src)) return { kind: "image", src: th.src };
   const a = it && it.avatar;
   if (a && a.kind === "image" && sameOrigin(a.src)) return { kind: "image", src: a.src };
   if (a && a.kind === "emoji" && sameOrigin(a.src)) return { kind: "emoji", src: a.src, alt: typeof a.alt === "string" ? a.alt : "" };
@@ -308,10 +316,13 @@ export function dotLabel(state) { return (DOT[state] || DOT.stopped)[1](); }
 
 /** An instance's avatar with its status dot. The ring (its bot's colour) is a CSS custom property set through the CSSOM. */
 export function InstanceAvatar({ it, state, cli = false }) {
+  useStore(themesStore);                                    // #1629: redraw when the viewer turns agents' themes on or off
   const a = avatarOf(it);
   const [broken, setBroken] = useState("");
   const el = useRef(null);
-  const accent = typeof it.accent === "string" && ACCENT.test(it.accent) && a.kind === "image" ? it.accent : "";
+  // #1629: the theme's ring colour beats the bot's while themes are shown.
+  const ring = themesShown() && typeof it.theme_accent === "string" && ACCENT.test(it.theme_accent) ? it.theme_accent : it.accent;
+  const accent = typeof ring === "string" && ACCENT.test(ring) && a.kind === "image" ? ring : "";
   useLayoutEffect(() => {
     const node = el.current;
     if (!node || !node.style) return;

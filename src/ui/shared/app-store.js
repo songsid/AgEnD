@@ -39,6 +39,8 @@ export function applyStatus(d) {
     connections: typeof d.connections === "number" ? d.connections : null,
     // #1665: the host preferences' revision (app-prefs.js re-reads them when it moves).
     prefsRev: typeof d.prefs_rev === "number" ? d.prefs_rev : null,
+    // #1629: the agents' themes' revision (app-themes.js re-reads them when it moves).
+    themesRev: typeof d.themes_rev === "number" ? d.themes_rev : null,
     // #1685: host memory pressure slowing or holding new agents ("elevated" | "critical"), else null.
     hostMemory: d.host_memory === "elevated" || d.host_memory === "critical" ? d.host_memory : null });
 }
