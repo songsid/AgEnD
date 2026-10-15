@@ -8,6 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,9 +24,16 @@ const realDeps = {
   open: (path: string) => openSync(path, "a", 0o600),
   write: (fd: number, text: string) => { writeSync(fd, text); },
   close: (fd: number) => closeSync(fd),
-  spawn: (command: string, args: string[], options: Parameters<typeof spawn>[2]) => spawn(command, args, options),
+  spawn: (command: string, args: string[], options: Parameters<typeof spawn>[2]) => spawn(command, args, options!),
   now: () => new Date("2026-10-15T08:26:54Z"),
 };
+
+/** A ChildProcess stand-in that reports its launch the way Node does: an event, after spawn() has returned. */
+function fakeChild(outcome: "spawn" | Error) {
+  const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+  setImmediate(() => { if (outcome === "spawn") child.emit("spawn"); else child.emit("error", outcome); });
+  return child;
+}
 
 describe("#1871: who hands off", () => {
   it("an agent session does; an operator's shell and the detached copy itself do not", () => {
@@ -37,10 +45,11 @@ describe("#1871: who hands off", () => {
 });
 
 describe("#1871: the hand-off", () => {
-  it("starts a detached copy with its own origin and the no-repeat marker, output to the log", () => {
+  it("starts a detached copy with its own origin and the no-repeat marker, output to the log", async () => {
     const home = scratch();
-    const spawned = vi.fn((_c: string, _a: string[], _o: unknown) => ({ unref: vi.fn() }));
-    const result = handOff({ agendHome: home, self: { command: "/node", args: ["/pkg/dist/cli.js", "restart"] }, env: { AGEND_INSTANCE_NAME: "probe", PATH: "/bin" }, action: "restart" },
+    const child = fakeChild("spawn");
+    const spawned = vi.fn((_c: string, _a: string[], _o: unknown) => child);
+    const result = await handOff({ agendHome: home, self: { command: "/node", args: ["/pkg/dist/cli.js", "restart"] }, env: { AGEND_INSTANCE_NAME: "probe", PATH: "/bin" }, action: "restart" },
       { ...realDeps, spawn: spawned });
     expect(result).toEqual({ ok: true, log: join(home, HANDOFF_LOG) });
     const [command, args, options] = spawned.mock.calls[0] as [string, string[], { detached: boolean; stdio: unknown[]; env: NodeJS.ProcessEnv }];
@@ -48,14 +57,24 @@ describe("#1871: the hand-off", () => {
     expect(options.env).toMatchObject({ PATH: "/bin", AGEND_INSTANCE_NAME: "probe", [HANDED_OFF_ENV]: "1" });
     expect(options.env[ORIGIN_ENV]).toContain("restart");
     expect(readFileSync(join(home, HANDOFF_LOG), "utf8")).toContain("agend restart, handed off from probe's session");
+    expect(child.unref).toHaveBeenCalled();
   });
 
-  it("says why when the copy cannot start (the caller then goes on itself)", () => {
+  it("a launch that fails is reported, not handed off — also when Node reports it as an event after spawn() returned", async () => {
     const home = scratch();
-    const result = handOff({ agendHome: home, self: { command: "/node", args: [] }, env: { AGEND_INSTANCE_NAME: "probe" }, action: "update" },
-      { ...realDeps, spawn: () => { throw new Error("EAGAIN"); } });
-    expect(result).toEqual({ ok: false, reason: "the detached copy did not start: EAGAIN" });
-    expect(handOff({ agendHome: join(home, "missing"), self: { command: "/node", args: [] }, env: {}, action: "update" }, realDeps).ok).toBe(false);
+    const late = fakeChild(Object.assign(new Error("spawn /node EAGAIN"), { code: "EAGAIN" }));
+    const result = await handOff({ agendHome: home, self: { command: "/node", args: [] }, env: { AGEND_INSTANCE_NAME: "probe" }, action: "update" },
+      { ...realDeps, spawn: () => late });
+    expect(result).toEqual({ ok: false, reason: "the detached copy did not start: spawn /node EAGAIN" });
+    expect(late.unref).not.toHaveBeenCalled();
+    // The real thing: a missing executable is an `error` event (ENOENT), never an exception, and never ok.
+    const missing = await handOff({ agendHome: home, self: { command: join(home, "no-such-node"), args: [] }, env: { AGEND_INSTANCE_NAME: "probe" }, action: "restart" }, realDeps);
+    expect(missing.ok).toBe(false);
+    expect(!missing.ok && missing.reason).toContain("ENOENT");
+    const thrown = await handOff({ agendHome: home, self: { command: "/node", args: [] }, env: { AGEND_INSTANCE_NAME: "probe" }, action: "update" },
+      { ...realDeps, spawn: () => { throw new Error("EINVAL"); } });
+    expect(thrown).toEqual({ ok: false, reason: "the detached copy did not start: EINVAL" });
+    expect((await handOff({ agendHome: join(home, "missing"), self: { command: "/node", args: [] }, env: {}, action: "update" }, realDeps)).ok).toBe(false);
   });
 
   it("the copy outlives the pane: the pane's whole process group is SIGKILLed, the copy still finishes", async () => {
@@ -65,7 +84,7 @@ describe("#1871: the hand-off", () => {
     const script = `
       const { handOff } = await import(${JSON.stringify(new URL("../src/launchd-handoff.ts", import.meta.url).href)});
       const fs = await import("node:fs"); const cp = await import("node:child_process");
-      const r = handOff({ agendHome: ${JSON.stringify(home)}, self: { command: "sh", args: ["-c", "sleep 1.5; echo finished > ${done}"] }, env: { ...process.env, AGEND_INSTANCE_NAME: "probe" }, action: "restart" },
+      const r = await handOff({ agendHome: ${JSON.stringify(home)}, self: { command: "sh", args: ["-c", "sleep 1.5; echo finished > ${done}"] }, env: { ...process.env, AGEND_INSTANCE_NAME: "probe" }, action: "restart" },
         { open: p => fs.openSync(p, "a"), write: (fd, t) => fs.writeSync(fd, t), close: fd => fs.closeSync(fd), spawn: (c, a, o) => cp.spawn(c, a, o), now: () => new Date() });
       console.log(JSON.stringify(r)); setInterval(() => {}, 1000);`;
     const pane = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], { detached: true, stdio: ["ignore", "pipe", "inherit"] });
@@ -89,17 +108,23 @@ describe("#1871: agend start drops the plan it has just carried out", () => {
     return { home, files, deps };
   };
 
-  it("the plist it loaded is the planned one: the plan goes", () => {
-    const w = setup("<new/>", "<new/>");
-    expect(dropConsumedPlan(w.home, PLIST, w.deps)).toBe(true);
+  it("control: it bootstrapped A, the plan is A and A is still on disk → the plan goes", () => {
+    const w = setup("<A/>", "<A/>");
+    expect(dropConsumedPlan(w.home, PLIST, "<A/>", w.deps)).toBe(true);
     expect(w.files.has(planPath(w.home))).toBe(false);
   });
 
-  it("a plist that changed since, or a plan for another file, stays for `agend restart` to judge", () => {
-    const changed = setup("<edited/>", "<new/>");
-    expect(dropConsumedPlan(changed.home, PLIST, changed.deps)).toBe(false);
+  it("Prism's witness: it bootstrapped A, a refresh meanwhile wrote B and planned B → plan B stays (the job runs A)", () => {
+    const w = setup("<B/>", "<B/>");
+    expect(dropConsumedPlan(w.home, PLIST, "<A/>", w.deps)).toBe(false);
+    expect(w.files.has(planPath(w.home))).toBe(true);
+  });
+
+  it("a plan for A whose file has changed since, or a plan for another file, stays for `agend restart` to judge", () => {
+    const changed = setup("<edited/>", "<A/>");
+    expect(dropConsumedPlan(changed.home, PLIST, "<A/>", changed.deps)).toBe(false);
     expect(changed.files.has(planPath(changed.home))).toBe(true);
-    const other = setup("<new/>", "<new/>", "/elsewhere.plist");
-    expect(dropConsumedPlan(other.home, PLIST, other.deps)).toBe(false);
+    const other = setup("<A/>", "<A/>", "/elsewhere.plist");
+    expect(dropConsumedPlan(other.home, PLIST, "<A/>", other.deps)).toBe(false);
   });
 });

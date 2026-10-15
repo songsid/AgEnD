@@ -104,9 +104,9 @@ function planDeps() {
  * #1871: hand this command to a detached copy that outlives the fleet's stop (see launchd-handoff.ts). True when it
  * did; false to carry on here (not an agent session, or the copy could not be started — said so).
  */
-function handOffLaunchdActivation(action: string): boolean {
+async function handOffLaunchdActivation(action: string): Promise<boolean> {
   if (!shouldHandOff(process.env)) return false;
-  const handed = handOff({ agendHome: DATA_DIR, self: selfCommand(process.argv.slice(2)), env: process.env, action }, {
+  const handed = await handOff({ agendHome: DATA_DIR, self: selfCommand(process.argv.slice(2)), env: process.env, action }, {
     open: path => openSync(path, "a", 0o600),
     write: (fd, text) => writeSync(fd, text),
     close: fd => closeSync(fd),
@@ -1440,7 +1440,7 @@ program
     // #1871: on launchd the activation boots out the fleet this agent session runs in; the update must outlive that.
     {
       const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
-      if (detectPlatform() === "macos" && !getSystemServicePath() && getServicePath() && handOffLaunchdActivation("update")) return;
+      if (detectPlatform() === "macos" && !getSystemServicePath() && getServicePath() && await handOffLaunchdActivation("update")) return;
     }
     const { spawnSync } = await import("node:child_process");
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
@@ -2007,12 +2007,16 @@ program
       console.log("Fleet starting in background.");
       return;
     }
+    // #1871: the definition this start bootstraps, read before it does — what it consumed is this, not whatever a
+    // concurrent refresh has written by the time it returns.
+    const launchd = !systemServicePath && !!userServicePath && detectPlatform() === "macos";
+    const startedPlist = launchd ? planDeps().readFile(userServicePath!) : null;
     const started = systemServicePath ? startSystemService() : startService();
     if (started) {
       console.log("Service started.");
-      if (!systemServicePath && userServicePath && detectPlatform() === "macos") {
+      if (launchd && startedPlist !== null) {
         const { dropConsumedPlan } = await import("./service-plan.js");
-        if (dropConsumedPlan(DATA_DIR, userServicePath, planDeps())) console.log("  ✓ That was the launchd activation an interrupted update left pending; nothing is pending now.");
+        if (dropConsumedPlan(DATA_DIR, userServicePath!, startedPlist, planDeps())) console.log("  ✓ That was the launchd activation an interrupted update left pending; nothing is pending now.");
       }
     } else {
       // A service file means the service manager owns this fleet. Falling back
@@ -2254,7 +2258,7 @@ program
             process.exitCode = 1;
             return;
           }
-          if (handOffLaunchdActivation("restart")) return;
+          if (await handOffLaunchdActivation("restart")) return;
           const { activateService } = await import("./service-activation.js");
           const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
             { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
