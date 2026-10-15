@@ -61,7 +61,7 @@ When you don't know who should handle something, ask General. It checks the flee
 
 Built-in safeguards:
 
-- A hang prompt with buttons after 15 minutes without progress
+- A hang prompt with buttons after 10 minutes without progress
 - `/cancel` to interrupt whatever is running
 - Automatic restart when a process dies (exponential backoff, up to 10 attempts)
 
@@ -138,7 +138,7 @@ One group of players built a separate social feed where their assistants post:
 **A Telegram group becomes your assistants' office: one topic per project, and a one-line reply on your phone hands out work.**
 
 - **One bot runs one forum group**, with one topic per project.
-- **The topic icon is a status light**: 🔵 working, 🟢 replied, 🔴 stuck (no progress for 15 minutes, with buttons to deal with it).
+- **The topic icon is a status light**: 🔵 working, 🟢 replied, 🔴 stuck (no progress for 10 minutes, with buttons to deal with it).
 - **Auto-archive**: topics idle for over 24 hours are archived automatically, so the group stays tidy, and they reopen when a new message arrives.
 - **Inline approval buttons**: actions that need your approval show Allow / Always / Deny buttons.
 - **Attachments**: photos, documents and videos go straight through.
