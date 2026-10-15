@@ -94,14 +94,45 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
   beforeEach(() => { savedTz = process.env.TZ; process.env.TZ = "Asia/Taipei"; });
   afterEach(() => { if (savedTz === undefined) delete process.env.TZ; else process.env.TZ = savedTz; });
 
-  it("Telegram public link: the DM keeps code, hint, revoke and close button; the code follows alone in <code>, to the same user", async () => {
+  it.each([
+    ["telegram", "en", "local"], ["discord", "en", "local"],
+    ["telegram", "zh-TW", "local"], ["discord", "zh-TW", "local"],
+    ["telegram", "en", "public"], ["discord", "en", "public"],
+    ["telegram", "zh-TW", "public"], ["discord", "zh-TW", "public"],
+  ] as const)("#1854 %s %s %s packet keeps the exact body and separate usable code", async (platform, language, action) => {
+    const h = rig(platform); setLocale(language);
+    if (platform === "discord") await h.slash(); else await h.typed();
+    await h.click(action);
+    const calls = h.adapter.sendDirect.mock.calls;
+    expect(calls).toHaveLength(2);
+    const text = calls[0]![1]; const code = codeOf(text);
+    const url = action === "public" ? "https://sample.trycloudflare.com/signin" : "http://localhost:19280/signin";
+    const lines = language === "en"
+      ? [url, `Code: ${code} (single use; valid for 5 minutes)`, "Do not forward; /web revoke signs out all browsers and closes the public link."]
+      : [url, `登入碼：${code}（單次使用，5 分鐘有效）`, "勿轉傳；/web revoke 可登出所有瀏覽器並關閉公開連結。"];
+    if (action === "public") {
+      const expiry = formatFleetTime(h.s.publicWebLink.status().expiresAt, "Asia/Taipei");
+      lines.splice(2, 0, language === "en" ? `Public link expires: ${expiry}` : `公開連結到期：${expiry}`);
+    }
+    expect(text.split("\n")).toEqual(lines);
+    expect(calls[0]![0]).toBe("admin");
+    expect(calls[1]).toEqual(platform === "telegram"
+      ? ["admin", `<code>${code}</code>`, { format: "html", disablePreview: true }]
+      : ["admin", `\`${code}\``, { disablePreview: true }]);
+    expect(h.adapter.sendText.mock.calls.flat().join(" ")).not.toMatch(CODE);
+    expect(h.manager.start).toHaveBeenCalledTimes(action === "public" ? 1 : 0);
+    expect(h.s.webLoginCodes.redeem(code, tokenEpoch("c".repeat(48)), action === "public" ? h.s.publicWebLink.exposureId : "local").kind).toBe("ok");
+  });
+
+  it("Telegram public link: the DM keeps code, revoke and close button; the code follows alone in <code>, to the same user", async () => {
     const h = rig(); await h.typed(); await h.click("public");
     const calls = h.adapter.sendDirect.mock.calls;
     expect(calls).toHaveLength(2);
     const [to, text, opts] = calls[0]!;
     expect(to).toBe("admin");
     expect(text).toMatch(CODE);
-    expect(text).toContain(t("dashboard.code_next"));
+    expect(text.split("\n")).toHaveLength(4);
+    expect(text).not.toContain(t("dashboard.code_next"));
     expect(text).toContain("/web revoke");
     expect(opts.choices[0].id).toMatch(/^dashboard:[a-f0-9]{32}:close$/);        // the close button stays on the sign-in DM
     expect(calls[1]).toEqual(["admin", `<code>${codeOf(text)}</code>`, { format: "html", disablePreview: true }]);
@@ -112,7 +143,7 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     const h = rig(); await h.typed(); await h.click("public");
     const text = String(h.adapter.sendDirect.mock.calls[0]![1]);
     const expiresAt = h.s.publicWebLink.status().expiresAt as number;
-    expect(text).toContain(`${t("dashboard.private_link").split("\n")[3]!.replace("{3}", "")}${formatFleetTime(expiresAt, "Asia/Taipei")}`);
+    expect(text).toContain(`Public link expires: ${formatFleetTime(expiresAt, "Asia/Taipei")}`);
     expect(text).toMatch(/\d{4}-\d\d-\d\d \d\d:\d\d \(UTC\+8\)/);
     expect(text).not.toMatch(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z/);
   });
@@ -137,7 +168,8 @@ describe("#1586 the sign-in DM: the code on its own, the link's expiry in the fl
     const privateReply = vi.fn(async (_text: string, _c?: unknown) => ({ messageId: "private", chatId: "T0", retire: async () => {} }));
     await h.click("local", { respondPrivate: privateReply });
     expect(privateReply).toHaveBeenCalledTimes(2);
-    expect(privateReply.mock.calls[0]![0]).toContain(t("dashboard.code_next"));
+    expect(privateReply.mock.calls[0]![0].split("\n")).toHaveLength(3);
+    expect(privateReply.mock.calls[0]![0]).not.toContain(t("dashboard.code_next"));
     expect(privateReply.mock.calls[1]![0]).toBe(`\`${codeOf(privateReply.mock.calls[0]![0])}\``);
   });
 

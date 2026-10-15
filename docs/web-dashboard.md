@@ -26,6 +26,8 @@ The dashboard signs in with a **one-time code**, never with a link that carries 
    - on the host, run **`agend web`**. It prints the code and opens the sign-in page. `agend web --code` only prints them.
 2. Open the sign-in page and type the 8-character code (`ABCD-EFGH`, with or without the dash, in any case).
 
+The private local packet has three lines: the sign-in URL, the five-minute single-use code and the secrecy/revoke reminder. A public packet adds its actual link expiry in the fleet time zone. A local URL has no separate link-expiry row; the code and browser-session lifetimes are different. The code-only follow-up is retained.
+
 About the codes:
 - A code works **once** and expires after **5 minutes**. Only the newest code works: asking again replaces the previous one.
 - Five wrong tries use up a code. Enough wrong tries across codes pause sign-in for a few minutes. While no code has been issued, there is nothing to guess.
