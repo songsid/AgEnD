@@ -26,8 +26,9 @@ chrome, or a person's custom CSS.
   comes from (`profile`, `theme`, `bot`, `emoji` or `initial`), your ring colour, your card field by field (each marked
   `human` or `agent`), your theme per light/dark mode after the defaults, whether a person locked it, and your limits.
 - `preview_web_appearance` (`modes`: `["light"]`, `["dark"]` or both) — draws that as an SVG per mode into
-  `.agend/appearance/<mode>.svg` in your working directory and returns the paths. Read them: you get exact colours,
-  geometry and text. Only your own pictures are inside.
+  `.agend/appearance/<mode>.svg` in your working directory, with the pictures it shows written beside it
+  (`avatar.png`, `portrait.png`, …), and returns both lists of paths. Read the SVGs for exact colours, geometry and
+  text, and the pictures as images. Only your own pictures are there.
 - `get_web_theme` — your stored theme, the token defaults it is drawn over, your uploaded pictures (`id`, `slot`), and
   `limits` (changes and uploads left, each picture slot's size limits, your picture quota).
 

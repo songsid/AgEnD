@@ -51,7 +51,7 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   { id: "2.3-web-card", since: "2.3.0-alpha.1",
     text: "Your identity card on the web: `set_web_theme` takes `card: {portrait, banner, tagline, bio}`, and `set_web_theme_asset` takes the slots `portrait` and `banner`. A person's card field wins over yours." },
   { id: "2.3-web-appearance", since: "2.3.0-alpha.1",
-    text: "`get_web_appearance` shows how you appear on the web dashboard now (your face and where it comes from, ring, card, theme per mode, lock, limits); `preview_web_appearance` (`modes`) writes an SVG per mode to `.agend/appearance/` in your working directory and returns the paths." },
+    text: "`get_web_appearance` shows how you appear on the web dashboard now (your face and where it comes from, ring, card, theme per mode, lock, limits); `preview_web_appearance` (`modes`) writes an SVG per mode to `.agend/appearance/` in your working directory, with the pictures it shows beside it, and returns their paths (Read the pictures as images)." },
 ];
 
 /**
