@@ -9,7 +9,7 @@
  * it is reverted here, at the next read — a closed tab, or CSS that hid the question, reverts too.
  * Nothing here is reachable from an agent: no tool, CLI command or agent route names it.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
@@ -33,12 +33,19 @@ export interface OwnerCssPointer {
   ownerCssActive(person: string): string | null;
   setOwnerCss(person: string, change: { active?: string | null; trial?: string | null }): { ok: true } | { ok: false; status: 400 | 503; error: string };
 }
-interface Pending { sha: string; previous: string | null; at: number; until: number }
+/**
+ * One trial: `id` is random per save, so the same text saved twice is two trials — a keep or revert names its trial,
+ * never content (#1883 r2). `css.trial` holds the id, so a new trial always moves the person's revision.
+ */
+interface Pending { id: string; sha: string; previous: string | null; at: number; until: number }
 interface Index { versions: Array<{ sha: string; at: number }>; assets: Array<{ id: string; kind: MediaKind; bytes: number }>; pending?: Pending }
 export interface OwnerCssState {
   active: string | null;
-  /** The active version is on trial: kept by this deadline (epoch ms), or reverted to `previous`. */
-  pending: { sha: string; previous: string | null; until: number } | null;
+  /**
+   * The active version is on trial (`id`): kept within `remaining_ms` — the host's own clock, so a device's clock never
+   * stretches or shortens it — or reverted to `previous`.
+   */
+  pending: { id: string; sha: string; previous: string | null; remaining_ms: number } | null;
   /** The active version's text as uploaded (for the editor). */
   text: string | null;
   versions: Array<{ sha: string; at: number; bytes: number }>;
@@ -65,7 +72,7 @@ export class OwnerCssStore {
       const versions = Array.isArray(raw.versions) ? raw.versions.filter(v => v && SHA.test(String(v.sha)) && Number.isFinite(v.at)) : [];
       const assets = Array.isArray(raw.assets) ? raw.assets.filter(a => a && SHA.test(String(a.id)) && ASSET_KINDS.has(a.kind) && Number.isSafeInteger(a.bytes)) : [];
       const p = raw.pending;
-      const pending = p && SHA.test(String(p.sha)) && (p.previous === null || SHA.test(String(p.previous))) && Number.isFinite(p.at) && Number.isFinite(p.until) ? p : undefined;
+      const pending = p && SHA.test(String(p.id)) && SHA.test(String(p.sha)) && (p.previous === null || SHA.test(String(p.previous))) && Number.isFinite(p.at) && Number.isFinite(p.until) ? p : undefined;
       return { versions, assets, ...(pending ? { pending } : {}) };
     } catch { return { versions: [], assets: [] }; }
   }
@@ -123,7 +130,9 @@ export class OwnerCssStore {
     const kept = active && index.versions.some(v => v.sha === active) ? active : null;
     return {
       active: kept,
-      pending: index.pending && index.pending.sha === kept ? { sha: index.pending.sha, previous: index.pending.previous, until: index.pending.until } : null,
+      pending: index.pending && index.pending.sha === kept
+        ? { id: index.pending.id, sha: index.pending.sha, previous: index.pending.previous, remaining_ms: Math.max(0, Math.min(OWNER_CSS_KEEP_MS, index.pending.until - this.now())) }
+        : null,
       text: kept ? this.readText(person, kept) : null,
       versions: index.versions.map(v => ({ ...v, bytes: Buffer.byteLength(this.readText(person, v.sha) ?? "", "utf8") })),
       assets: index.assets,
@@ -135,7 +144,7 @@ export class OwnerCssStore {
    * Check, store and select a new version — on trial until kept (keep()). `previous`: the version in force before,
    * which an unkept trial goes back to.
    */
-  save(person: string, text: unknown): OwnerCssResult<{ sha: string; previous: string | null }> {
+  save(person: string, text: unknown): OwnerCssResult<{ sha: string; previous: string | null; trial: string }> {
     if (typeof text !== "string") return { ok: false, status: 400, error: "css: text" };
     const index = this.readIndex(person);
     const checked = checkOwnerCss(text, this.assetIds(index));
@@ -153,32 +162,39 @@ export class OwnerCssStore {
     if (previous && !keepList.some(v => v.sha === previous)) { const p = versions.find(v => v.sha === previous); if (p) keepList.push(p); }
     const dropped = versions.filter(v => !keepList.includes(v));
     const at = this.now();
-    this.writeIndex(person, { ...index, versions: keepList, pending: { sha, previous, at, until: at + OWNER_CSS_KEEP_MS } });
-    const set = this.pointer.setOwnerCss(person, { active: sha, trial: sha });
+    const trial = randomBytes(16).toString("hex");
+    this.writeIndex(person, { ...index, versions: keepList, pending: { id: trial, sha, previous, at, until: at + OWNER_CSS_KEEP_MS } });
+    const set = this.pointer.setOwnerCss(person, { active: sha, trial });
     if (!set.ok) return set;
     for (const v of dropped) { try { unlinkSync(join(this.dir(person), `${v.sha}.css`)); } catch { /* already gone */ } }
-    return { ok: true, sha, previous };
+    return { ok: true, sha, previous, trial };
   }
 
-  /** Keep the version on trial (the person answered "Keep"). Too late, or another version: 409. */
-  keep(person: string, sha: unknown): OwnerCssResult<{ active: string }> {
-    if (typeof sha !== "string" || !SHA.test(sha)) return { ok: false, status: 400, error: "sha" };
+  /** The trial `id` names, while it still is the one on trial and in force; else null. */
+  private trialOf(person: string, id: unknown): Index | null {
+    if (typeof id !== "string" || !SHA.test(id)) return null;
     this.settle(person);
     const index = this.readIndex(person);
-    if (!index.pending || index.pending.sha !== sha || this.pointer.ownerCssActive(person) !== sha) return { ok: false, status: 409, error: "not_on_trial" };
+    return index.pending && index.pending.id === id && this.pointer.ownerCssActive(person) === index.pending.sha ? index : null;
+  }
+
+  /** Keep this trial (the person answered "Keep"). Too late, or another trial (even of the same text): 409. */
+  keep(person: string, trial: unknown): OwnerCssResult<{ active: string }> {
+    if (typeof trial !== "string" || !SHA.test(trial)) return { ok: false, status: 400, error: "trial" };
+    const index = this.trialOf(person, trial);
+    if (!index) return { ok: false, status: 409, error: "not_on_trial" };
     if (!this.endTrial(person, index, "keep")) return { ok: false, status: 503, error: "prefs_unwritable" };
-    return { ok: true, active: sha };
+    return { ok: true, active: index.pending!.sha };
   }
 
   /**
-   * Revert exactly this trial — the page's Revert, or its timer. Only while `sha` is still the version on trial: a trial
-   * kept (or reverted, or replaced) meanwhile, on any device, is left alone (409). Never a history restore.
+   * Revert exactly this trial — the page's Revert, or its timer. Only while it still is the trial: one kept, reverted
+   * or replaced meanwhile (a new trial of the same text included), on any device, is left alone (409).
    */
-  revertTrial(person: string, sha: unknown): OwnerCssResult<{ active: string | null }> {
-    if (typeof sha !== "string" || !SHA.test(sha)) return { ok: false, status: 400, error: "sha" };
-    this.settle(person);
-    const index = this.readIndex(person);
-    if (!index.pending || index.pending.sha !== sha || this.pointer.ownerCssActive(person) !== sha) return { ok: false, status: 409, error: "not_on_trial" };
+  revertTrial(person: string, trial: unknown): OwnerCssResult<{ active: string | null }> {
+    if (typeof trial !== "string" || !SHA.test(trial)) return { ok: false, status: 400, error: "trial" };
+    const index = this.trialOf(person, trial);
+    if (!index) return { ok: false, status: 409, error: "not_on_trial" };
     if (!this.endTrial(person, index, "revert")) return { ok: false, status: 503, error: "prefs_unwritable" };
     return { ok: true, active: this.pointer.ownerCssActive(person) };
   }

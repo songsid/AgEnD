@@ -26,7 +26,7 @@ function store() {
 const keepSaved = (s: OwnerCssStore, person: string, text: string) => {
   const r = s.save(person, text);
   if (!r.ok) throw new Error(r.error);
-  expect(s.keep(person, r.sha).ok).toBe(true);
+  expect(s.keep(person, r.trial).ok).toBe(true);
   return r.sha;
 };
 const png = (n: number) => Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 1, 0x49, 0x44, 0x41, 0x54, n, 0, 0, 0, 0, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0, 0, 0, 0]);
@@ -68,7 +68,7 @@ describe("keep or revert, on the host's clock", () => {
     expect(s.state("p").active, "still on trial").toBe(two.sha);
     tick(2);
     expect([s.state("p").active, s.state("p").pending]).toEqual([one, null]);
-    expect(s.keep("p", two.sha)).toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
+    expect(s.keep("p", two.trial)).toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
   });
   it("a clock that went back past the save counts as expired", () => {
     const { s, setNow } = store();
@@ -140,15 +140,44 @@ describe("review r1 (#1883)", () => {
     const a = keepSaved(s, "p", ".a{}");
     const b = s.save("p", ".b{}");
     if (!b.ok) throw new Error(b.error);
-    expect(trials.get("p"), "the trial is announced").toBe(b.sha);
-    expect(s.keep("p", b.sha)).toMatchObject({ ok: true });
+    expect(trials.get("p"), "the trial is announced").toBe(b.trial);
+    expect(s.keep("p", b.trial)).toMatchObject({ ok: true });
     expect(trials.get("p"), "keeping it is announced too").toBeNull();
-    expect(s.revertTrial("p", b.sha), "a stale page's revert").toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
+    expect(s.revertTrial("p", b.trial), "a stale page's revert").toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
     expect(s.active("p")).toBe(b.sha);
     const c = s.save("p", ".c{}");
     if (!c.ok) throw new Error(c.error);
-    expect(s.revertTrial("p", a), "not the trial").toMatchObject({ ok: false, status: 409 });
-    expect(s.revertTrial("p", c.sha)).toMatchObject({ ok: true, active: b.sha });
+    expect(s.revertTrial("p", a), "a version's sha is not a trial").toMatchObject({ ok: false, status: 409 });
+    expect(s.revertTrial("p", c.trial)).toMatchObject({ ok: true, active: b.sha });
     expect([s.active("p"), trials.get("p")]).toEqual([b.sha, null]);
+  });
+
+  it("P2-2 r2 (a): the same text saved again is a new trial — the old trial's late keep or revert is 409; the new one stays", () => {
+    const { s, trials, tick } = store();
+    const a = keepSaved(s, "p", ".a{}");
+    const t1 = s.save("p", ".b{}");
+    if (!t1.ok) throw new Error(t1.error);
+    expect(s.keep("p", t1.trial).ok).toBe(true);
+    expect(s.restore("p", a).ok).toBe(true);
+    tick(1_000);
+    const t2 = s.save("p", ".b{}");
+    if (!t2.ok) throw new Error(t2.error);
+    expect([t2.sha, t2.trial === t1.trial]).toEqual([t1.sha, false]);
+    expect(s.revertTrial("p", t1.trial), "trial 1's delayed revert").toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
+    expect(s.keep("p", t1.trial), "trial 1's delayed keep").toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
+    expect([s.active("p"), s.state("p").pending?.id]).toEqual([t2.sha, t2.trial]);
+    // Saving B again while B is on trial is another trial too: a new id, so the person's devices hear of it.
+    const t3 = s.save("p", ".b{}");
+    if (!t3.ok) throw new Error(t3.error);
+    expect([trials.get("p"), t3.trial !== t2.trial, s.state("p").pending?.id]).toEqual([t3.trial, true, t3.trial]);
+    expect(s.keep("p", t2.trial)).toMatchObject({ ok: false, status: 409 });
+  });
+  it("P2-2 r2 (c): state says how long is left on the host's own clock, within the trial's budget", () => {
+    const { s, tick } = store();
+    keepSaved(s, "p", ".a{}");
+    s.save("p", ".b{}");
+    expect(s.state("p").pending?.remaining_ms).toBe(OWNER_CSS_KEEP_MS);
+    tick(5_000);
+    expect(s.state("p").pending?.remaining_ms).toBe(OWNER_CSS_KEEP_MS - 5_000);
   });
 });

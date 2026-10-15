@@ -401,15 +401,15 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
       const saved = store.save(person, body.text);
       if (!saved.ok) { json(res, saved.status, { error: saved.error, ...(saved.detail ? { detail: saved.detail } : {}) }); return; }
       announce();
-      json(res, 200, { sha: saved.sha, previous: saved.previous });
+      json(res, 200, { sha: saved.sha, previous: saved.previous, trial: saved.trial });
     } else if (path === "/ui/owner-css/keep") {
-      const kept = store.keep(person, body.sha);
+      const kept = store.keep(person, body.trial);
       if (!kept.ok) { json(res, kept.status, { error: kept.error }); return; }
       announce();                                                         // the person's other devices drop their bar
       json(res, 200, { active: kept.active });
     } else if (path === "/ui/owner-css/revert") {
       // Exactly this trial, while it still is one: a trial kept (or ended) on another device meanwhile stays (409).
-      const reverted = store.revertTrial(person, body.sha);
+      const reverted = store.revertTrial(person, body.trial);
       if (!reverted.ok) { json(res, reverted.status, { error: reverted.error }); return; }
       announce();
       json(res, 200, { active: reverted.active });

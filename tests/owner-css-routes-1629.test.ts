@@ -188,8 +188,9 @@ describe("keep or revert", () => {
     const f = await fleet();
     try {
       const a = f.session({ owner: A });
-      const first = JSON.parse((await raw(f.port, "POST", "/ui/owner-css", { ...a.write, ...JSON_H }, JSON.stringify({ text: ".one{}" }))).body).sha;
-      expect((await raw(f.port, "POST", "/ui/owner-css/keep", { ...a.write, ...JSON_H }, JSON.stringify({ sha: first }))).status).toBe(200);
+      const one = JSON.parse((await raw(f.port, "POST", "/ui/owner-css", { ...a.write, ...JSON_H }, JSON.stringify({ text: ".one{}" }))).body);
+      const first = one.sha;
+      expect((await raw(f.port, "POST", "/ui/owner-css/keep", { ...a.write, ...JSON_H }, JSON.stringify({ trial: one.trial }))).status).toBe(200);
       const second = JSON.parse((await raw(f.port, "POST", "/ui/owner-css", { ...a.write, ...JSON_H }, JSON.stringify({ text: ".two{}" }))).body);
       expect(second.previous).toBe(first);
       let state = JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body);
@@ -199,7 +200,7 @@ describe("keep or revert", () => {
       vi.spyOn(Date, "now").mockImplementation(() => realNow() + OWNER_CSS_KEEP_MS + 1_000);
       state = JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body);
       expect([state.active, state.pending]).toEqual([first, null]);
-      const late = await raw(f.port, "POST", "/ui/owner-css/keep", { ...a.write, ...JSON_H }, JSON.stringify({ sha: second.sha }));
+      const late = await raw(f.port, "POST", "/ui/owner-css/keep", { ...a.write, ...JSON_H }, JSON.stringify({ trial: second.trial }));
       expect([late.status, JSON.parse(late.body).error]).toEqual([409, "not_on_trial"]);
     } finally { await f.stop(); }
   }, 30_000);
@@ -211,16 +212,16 @@ describe("#1883 r1 (P2-2): a revert names its trial", () => {
     try {
       const a = f.session({ owner: A });
       const post = (path: string, body: unknown) => raw(f.port, "POST", path, { ...a.write, ...JSON_H }, JSON.stringify(body));
-      const first = JSON.parse((await post("/ui/owner-css", { text: ".a{}" })).body).sha;
-      await post("/ui/owner-css/keep", { sha: first });
-      const second = JSON.parse((await post("/ui/owner-css", { text: ".b{}" })).body).sha;
-      expect((await post("/ui/owner-css/keep", { sha: second })).status).toBe(200);
-      const stale = await post("/ui/owner-css/revert", { sha: second });
+      const first = JSON.parse((await post("/ui/owner-css", { text: ".a{}" })).body);
+      await post("/ui/owner-css/keep", { trial: first.trial });
+      const second = JSON.parse((await post("/ui/owner-css", { text: ".b{}" })).body);
+      expect((await post("/ui/owner-css/keep", { trial: second.trial })).status).toBe(200);
+      const stale = await post("/ui/owner-css/revert", { trial: second.trial });
       expect([stale.status, JSON.parse(stale.body).error]).toEqual([409, "not_on_trial"]);
-      expect(JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body).active).toBe(second);
-      const third = JSON.parse((await post("/ui/owner-css", { text: ".c{}" })).body).sha;
-      const back = await post("/ui/owner-css/revert", { sha: third });
-      expect([back.status, JSON.parse(back.body).active]).toEqual([200, second]);
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body).active).toBe(second.sha);
+      const third = JSON.parse((await post("/ui/owner-css", { text: ".c{}" })).body);
+      const back = await post("/ui/owner-css/revert", { trial: third.trial });
+      expect([back.status, JSON.parse(back.body).active]).toEqual([200, second.sha]);
     } finally { await f.stop(); }
   }, 30_000);
 });

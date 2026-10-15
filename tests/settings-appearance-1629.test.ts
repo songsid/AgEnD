@@ -19,7 +19,7 @@ async function mount(opts: { publicLink?: boolean; save?: { status: number; body
   g.fetch = async (url: string, init: any = {}) => {
     calls.push({ url, method: init.method ?? "GET", ...(typeof init.body === "string" ? { body: JSON.parse(init.body) } : {}) });
     if (url === "/ui/owner-css/state") return { ok: true, status: 200, json: async () => ({ active: S1, pending: null, text: ".x { color: red }", versions: [{ sha: S1, at: 1, bytes: 17 }], assets: [], limits: { maxAssets: 16 } }) };
-    if (url === "/ui/owner-css") { const r = opts.save ?? { status: 200, body: { sha: S2, previous: S1 } }; return { ok: r.status === 200, status: r.status, json: async () => r.body }; }
+    if (url === "/ui/owner-css") { const r = opts.save ?? { status: 200, body: { sha: S2, previous: S1, trial: "c".repeat(32) } }; return { ok: r.status === 200, status: r.status, json: async () => r.body }; }
     return { ok: true, status: 200, json: async () => ({}) };
   };
   const { AppearanceSection } = await import("/ui/js/settings-appearance.js");
@@ -39,7 +39,7 @@ describe("Settings → Appearance", () => {
     p!.root.querySelector(".s-css-actions .btn-primary").click();
     await settle(); await settle();
     expect(calls.find(c => c.url === "/ui/owner-css")?.body).toEqual({ text: ".x { color: blue }" });
-    expect(oc.ownerCssTrial.get()).toMatchObject({ sha: S2, previous: S1 });
+    expect(oc.ownerCssTrial.get()).toMatchObject({ id: "c".repeat(32), sha: S2, previous: S1 });
     await oc.revertOwnerCss();                                          // end the trial this test started
   });
   it("a refused text: the reason in words, and no trial", async () => {
