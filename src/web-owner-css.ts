@@ -381,23 +381,30 @@ function needsComment(a: CssToken, b: CssToken): boolean {
  * Throws if the result does not tokenize back to the same tokens (it never should; the route then serves nothing).
  */
 export function serializeOwnerCss(tokens: readonly CssToken[]): string {
-  const out: string[] = [];
-  const rewritten: CssToken[] = tokens.map(t => {
-    if (t.type === "url") { const id = assetIdOf(t.value); return id ? { ...t, value: ownerCssAssetUrl(id) } : t; }
-    if (t.type === "string") { const id = assetIdOf(t.value); return id ? { ...t, value: ownerCssAssetUrl(id) } : t; }
+  return serializeCssTokens(tokens.map(t => {
+    if (t.type === "url" || t.type === "string") { const id = assetIdOf(t.value); return id ? { ...t, value: ownerCssAssetUrl(id) } : t; }
     return t;
-  });
-  rewritten.forEach((t, k) => {
-    const prev = rewritten[k - 1];
+  }));
+}
+
+/**
+ * #1629: the generic serialiser (effects reuse it, B2): canonical text for these tokens, exactly as given (no asset
+ * rewriting), with a comment between pairs that would merge. Throws if the text does not tokenize back to the same
+ * tokens (type, value, unit, hash type; whitespace as whitespace).
+ */
+export function serializeCssTokens(tokens: readonly CssToken[]): string {
+  const out: string[] = [];
+  tokens.forEach((t, k) => {
+    const prev = tokens[k - 1];
     if (prev && needsComment(prev, t)) out.push("/**/");
     out.push(serializeToken(t));
   });
   const text = out.join("");
   const again = tokenizeCss(text);
-  const same = again.length === rewritten.length && again.every((t, k) => {
-    const o = rewritten[k]!;
+  const same = again.length === tokens.length && again.every((t, k) => {
+    const o = tokens[k]!;
     return t.type === o.type && (t.type === "ws" || (t.value === o.value && (t.unit ?? "") === (o.unit ?? "") && (t.hashType ?? "") === (o.hashType ?? "")));
   });
-  if (!same) throw new Error("owner CSS did not re-serialise to the same tokens");
+  if (!same) throw new Error("CSS did not re-serialise to the same tokens");
   return text;
 }
