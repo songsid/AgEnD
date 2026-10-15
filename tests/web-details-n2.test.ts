@@ -12,7 +12,11 @@ const mounted: AppPage[] = [];
 let calls: string[] = [];
 let detail: Record<string, unknown> = {};
 const live = (name: string, o: Record<string, unknown> = {}) => ({ name, status: "running", backend: "claude-code", model: "opus", context_pct: 10, tags: [], execution_state: "idle", ...o });
-const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner")];
+const INSTANCES = [live("web-dev", { tags: ["Platform"] }), live("api-server", { status: "stopped" }), live("qa-bot", { status: "paused" }), live("classic-ops-1", { tags: ["classic"] }), live("loner", { card_v: "v1" })];
+/** #1629 r4 §1: loner's identity card, as GET /api/card/loner answers it (a person's tagline over the agent's bio). */
+const PIC = "a".repeat(32);
+const CARD = { portrait: { id: PIC, by: "agent", src: `/api/card/loner/portrait?v=${PIC}` }, banner: { id: PIC, by: "human", src: `/api/card/other/banner?v=${PIC}` },
+  tagline: { text: "<b>Reviews</b> your PRs", by: "human" }, bio: { text: "Line one\nhttps://example.com", by: "agent" }, limits: {} };
 const ROOM = { name: "classic-ops-1", status: "running", kind: "classic", description: "the ops room", display_name: "Ops", working_directory: null, backend: "codex", tags: ["classic"],
   binding: null, room: { name: "ops", channel_id: "555", adapter_id: "discord" }, model: "gpt", model_source: "live", effort: null, context_pct: 5, statusline: {}, recent_activity: [] };
 /** Answers for /ui/instance/<name> held by a test: each read takes the next one (a promise it can settle later). */
@@ -32,6 +36,7 @@ async function fakeFetch(url: string, init: { method?: string } = {}) {
     "/api/settings/classic": { defaults: {}, channels: { "555:discord": { instanceName: "classic-ops-1", name: "ops", adapterId: "discord", channelId: "555", backend: "codex" } } }, "/api/settings/connections": [],
     "/api/settings/status-emojis": { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] }, "/api/fleet": { version: "2.2.0", instances: [{ name: "web-dev", status: "running" }] },
     "/api/profiles": [{ instance_name: "web-dev", status: "running", backend: "claude-code", tags: [] }], "/api/settings/pending": [],
+    "/api/card/loner": CARD,
   };
   if (m === "GET" && Object.prototype.hasOwnProperty.call(SETTINGS, url)) return { ok: true, status: 200, json: async () => structuredClone(SETTINGS[url]), text: async () => "" };
   if (url.startsWith("/ui/instance/") && held.get(decodeURIComponent(url.slice("/ui/instance/".length)))?.length) {
@@ -274,5 +279,36 @@ describe("#1561 review: Settings opens a ClassicBot room's own dialog", () => {
       expect([name, dlg ? "dialog" : null, dlg ? /ops/.test(dlg.textContent) : null]).toEqual([name, want, want ? true : null]);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
+  });
+});
+
+describe("#1629 r4 §1: the identity card", () => {
+  it("Details: at the top, text as text (never markup or a link), only this card's own picture paths, sized by its own S / M / L", async () => {
+    const pg = await app("/ui/fleet/agent/loner");
+    const card = pg.root.querySelector(".p-details .id-card");
+    expect(card?.getAttribute("class")).toBe("id-card card-m");
+    expect([card.querySelector(".id-tagline").textContent, card.querySelector(".id-bio").textContent]).toEqual(["<b>Reviews</b> your PRs", "Line one\nhttps://example.com"]);
+    expect([card.querySelectorAll("b").length, card.querySelectorAll("a").length]).toEqual([0, 0]);
+    expect(card.querySelectorAll("img").map((i: any) => [i.getAttribute("class"), i.getAttribute("src")])).toEqual([["id-portrait", `/api/card/loner/portrait?v=${PIC}`]]);   // another card's banner path is dropped
+    expect(card.querySelector(".id-tagline").getAttribute("title")).toBe("set by a person");
+    const size = (label: string) => card.querySelectorAll(".card-size .seg-item").find((b: any) => b.textContent === label);
+    size("L").click(); await settle(2);
+    expect([pg.root.querySelector(".p-details .id-card").getAttribute("class"), JSON.parse(pg.storage.get("agend_card_sizes") ?? "null")]).toEqual(["id-card card-l", { loner: "l" }]);
+    size("M").click(); await settle(2);   // the default: its entry goes
+    expect([pg.root.querySelector(".p-details .id-card").getAttribute("class"), pg.storage.get("agend_card_sizes") ?? null]).toEqual(["id-card card-m", null]);
+    expect(calls.filter(c => c === "GET /api/card/loner").length).toBeLessThanOrEqual(1);   // once per version (the store is module-wide)
+  });
+  it("an instance with no card_v shows none, and reads none", async () => {
+    const pg = await app("/ui/fleet/agent/web-dev");
+    expect([pg.root.querySelector(".p-details .id-card"), calls.filter(c => c.startsWith("GET /api/card/"))]).toEqual([null, []]);
+  });
+  it("Chat: folded into the header by default (the tagline peeks); open is this device's choice, at the chat's own compact size", async () => {
+    const pg = await app("/ui/chat/loner");
+    const toggle = () => pg.root.querySelector(".p-chat .chat-card-toggle");
+    expect([toggle().getAttribute("aria-expanded"), pg.root.querySelector(".p-chat .id-card"), pg.root.querySelector(".chat-card-peek").textContent]).toEqual(["false", null, "<b>Reviews</b> your PRs"]);
+    toggle().click(); await settle(2);
+    expect([pg.root.querySelector(".p-chat .id-card").getAttribute("class"), pg.root.querySelector(".p-chat .card-size"), pg.storage.get("agend_chat_card")]).toEqual(["id-card card-c", null, "open"]);
+    toggle().click(); await settle(2);
+    expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null]).toEqual([null, null]);
   });
 });
