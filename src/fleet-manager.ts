@@ -2704,7 +2704,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleUpdateSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     const gate = this.fleetAdminGate(data.userId, adapterId);
     if (gate !== "ok") {
-      await data.respond(t(gate === "disabled" ? "update.disabled" : "not_authorized"));
+      await data.respond(gate === "disabled" ? t("update.disabled", this.adminListKey(adapterId)) : t("not_authorized"));
       return;
     }
     const messageId = await data.respond(t("update.progress.preparing", 0));
@@ -3948,6 +3948,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hasFleetAdmins(adapterId?: string): boolean {
     return (this.adminListOf(adapterId)?.length ?? 0) > 0;
   }
+  /**
+   * Where this adapter's fleet-admin list is in fleet.yaml, as the operator wrote it, for the "disabled" replies:
+   * `channel.access.allowed_users` (the single-channel form), else the `channels:` entry — by its `id:`, or its
+   * `type:` when it has none. Read from the raw file: loading turns `channel:` into `channels` and fills in ids.
+   */
+  adminListKey(adapterId?: string): string {
+    const raw = this.rawFleetConfig;
+    if (!Array.isArray(raw.channels) && raw.channel) return "channel.access.allowed_users";
+    const channels = Array.isArray(raw.channels) ? raw.channels : this.fleetConfig?.channels ?? [];
+    const id = adapterId ?? this.getPrimaryAdapterId();
+    const entry = channels.find(ch => (ch.id ?? ch.type) === id);
+    return `channels[${entry?.id ? `id: ${entry.id}` : `type: ${entry?.type ?? id}`}].access.allowed_users`;
+  }
 
   /**
    * The one question the privileged commands (/update, /doctor, /dashboard, /collab) ask: may THIS caller,
@@ -4026,6 +4039,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!decision.allow) {
       this.logger.info({ command: data.command, adapterId, scope, reply: decision.reply[0] }, "Slash command refused by the command table");
       const [key, ...args] = decision.reply;
+      // A command off for want of fleet admins names where they go (`{0}` in its disabled reply).
+      if (decision.reply === spec.disabled) args.push(this.adminListKey(adapterId));
       await data.respond(t(key, ...args)).catch(() => { /* the interaction may already be gone */ });
       return;
     }

@@ -112,7 +112,7 @@ describe("#1569: Discord /web does exactly what /dashboard does", () => {
     expect(web).toEqual(dashboard);
     // …and it is the real outcome, not two identical nothings:
     if (user === "member") expect(web.replies).toEqual([[t("not_authorized")]]);
-    else if (admins && admins.length === 0) expect(web.replies).toEqual([[t("dashboard.disabled")]]);
+    else if (admins && admins.length === 0) expect(web.replies).toEqual([[t("dashboard.disabled", "channels[id: owner].access.allowed_users")]]);
     else if (action === "revoke") expect(web.revoked).toBe(1);
     else expect(web.menus.length + web.dms.length).toBeGreaterThan(0);
   });
@@ -144,7 +144,7 @@ describe("#1569: Telegram /web does exactly what /dashboard does", () => {
     expect(web.handled, "a command, not text for the agent").toBe(true);
     if (thread === "T1") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("cmd.use_in_general", "/web")).slice(1, -1));
     else if (user === "member") expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("not_authorized")).slice(1, -1));
-    else if (admins && admins.length === 0) expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("dashboard.disabled")).slice(1, -1));
+    else if (admins && admins.length === 0) expect(JSON.stringify(web.posts)).toContain(JSON.stringify(t("dashboard.disabled", "channels[id: owner].access.allowed_users")).slice(1, -1));
     else if (args === " revoke") expect(web.revoked).toBe(1);
     else expect(web.armed, "the menu was posted").toBe(1);
   });
