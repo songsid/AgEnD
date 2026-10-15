@@ -68,6 +68,18 @@ describe("#1865: codex's idle composer with a closed rollout turn recovers on th
     expect(h.daemon.instanceState).toBe("idle");         // minutes, not the 15-minute stuck window
   });
 
+  it("only the safety sweep, and only codex, recovers a working reading", async () => {
+    const probed = harness(IDLE_LOOKING);
+    probed.rollout(STARTED_0237, ENDED_0226);
+    for (let i = 0; i < 3; i++) { await probed.daemon.captureAndEvaluateInstanceState("initial"); vi.advanceTimersByTime(SWEEP_MS); }
+    expect(probed.daemon.instanceState).toBe("working");
+    const other = harness(IDLE_LOOKING);
+    Object.defineProperty(other.daemon.backend, "binaryName", { value: "muse" });
+    other.rollout(STARTED_0237, ENDED_0226);
+    for (let i = 0; i < 3; i++) { await other.sweep(); vi.advanceTimersByTime(SWEEP_MS); }
+    expect(other.daemon.instanceState).toBe("working");
+  });
+
   it("an open turn stays working on the same pane", async () => {
     const h = harness(IDLE_LOOKING);
     h.rollout(STARTED_2225);
