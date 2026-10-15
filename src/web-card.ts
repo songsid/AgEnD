@@ -15,7 +15,7 @@ import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { type AppearanceLimits } from "./web-appearance-limits.js";
 import { imageSize, MEDIA_EXT, MEDIA_MIME, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
-import { canonicalBio, canonicalText, TAGLINE_MAX_GRAPHEMES, BIO_MAX_GRAPHEMES, BIO_MAX_BREAKS, type ThemeCard } from "./web-theme.js";
+import { canonicalBio, canonicalTagline, TAGLINE_MAX_GRAPHEMES, BIO_MAX_GRAPHEMES, BIO_MAX_BREAKS, type ThemeCard } from "./web-theme.js";
 
 export type CardSlot = "portrait" | "banner";
 export const CARD_SLOTS: readonly CardSlot[] = ["portrait", "banner"];
@@ -74,7 +74,7 @@ export class HumanCardStore {
     if (patch.tagline !== undefined) {
       const v = patch.tagline;
       if (v === null || (typeof v === "string" && !v.trim())) set.push(["tagline", null]);
-      else { const t = canonicalText(v, 1, TAGLINE_MAX_GRAPHEMES); if (t === null) return { ok: false, status: 400, error: "card_tagline", detail: `1..${TAGLINE_MAX_GRAPHEMES} characters on one line, no control or direction characters` }; set.push(["tagline", t]); }
+      else { const t = canonicalTagline(v); if (t === null) return { ok: false, status: 400, error: "card_tagline", detail: `1..${TAGLINE_MAX_GRAPHEMES} characters on one line, no control or direction characters` }; set.push(["tagline", t]); }
     }
     if (patch.bio !== undefined) {
       const v = patch.bio;
@@ -179,5 +179,5 @@ export function resolveCard(name: string, human: HumanCard | undefined, agent: T
 /** A short version of what is drawn (the status frame's card_v): the page reads the card again when it moves. */
 export function cardVersion(card: ResolvedCard): string | null {
   if (!Object.keys(card).length) return null;
-  return hash32(JSON.stringify([card.portrait?.id, card.banner?.id, card.tagline?.text, card.tagline?.by, card.bio?.text, card.bio?.by])).slice(0, 12);
+  return hash32(JSON.stringify([card.portrait?.id, card.portrait?.by, card.banner?.id, card.banner?.by, card.tagline?.text, card.tagline?.by, card.bio?.text, card.bio?.by])).slice(0, 12);
 }

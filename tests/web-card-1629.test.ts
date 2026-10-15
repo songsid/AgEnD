@@ -241,6 +241,14 @@ describe("a person's card wins, field by field", () => {
     return { dir, store: new HumanCardStore(dir, open), open };
   };
   const limits = effectiveAppearanceLimits({}).limits;
+  it("one explicit bound in UTF-16 units too: 280 emoji families are a bio; 280 graphemes of 12 units are not (#1889 review)", () => {
+    const { store } = cards();
+    const family = "👨‍👩‍👧".repeat(280);
+    expect([family.length, store.setText("a", { bio: family })]).toEqual([2240, { ok: true }]);
+    expect(resolveCard("a", store.get("a"), undefined).bio).toEqual({ text: family, by: "human" });
+    expect(store.setText("a", { bio: ("x" + "\u0301".repeat(11)).repeat(280) })).toMatchObject({ ok: false, error: "card_bio" });
+    expect(store.setText("a", { tagline: ("x" + "\u0301".repeat(11)).repeat(60) })).toMatchObject({ ok: false, error: "card_tagline" });
+  });
   it("text: the agent's rules; blank clears; CRLF is a line break", () => {
     const { store } = cards();
     expect(store.setText("a", { tagline: "Mine", bio: "one\r\ntwo" })).toEqual({ ok: true });
@@ -275,6 +283,10 @@ describe("a person's card wins, field by field", () => {
       bio: { text: "Agent's bio", by: "agent" },
     });
     expect(cardVersion(resolveCard("x", undefined, undefined))).toBeNull();
+    // #1889 review: whose picture it is moves the version too (the same bytes, set by a person over the agent's).
+    const C = "c".repeat(32);
+    const onlyPicture = { tagline: null, bio: null, portrait: `portrait-${C}.png`, banner: null, updated_at: 2 };
+    expect(cardVersion(resolveCard("x", undefined, { portrait: C }))).not.toBe(cardVersion(resolveCard("x", onlyPicture, { portrait: C })));
     const v1 = cardVersion(resolveCard("x", human, agent)), v2 = cardVersion(resolveCard("x", { ...human, tagline: null }, agent));
     expect([typeof v1, v1 === v2]).toEqual(["string", false]);
   });
@@ -299,7 +311,7 @@ describe("the card's routes", () => {
     fm.initializeWebAuthTokens(); fm.initializeWebSessions();
     const P = (fm.themeStore.addAsset("alpha", "portrait", png(20, 30)) as { id: string }).id;
     fm.webAppearance.setTheme("alpha", { set: { card: { portrait: P, tagline: "Agent's" } } });
-    const call = (method: string, path: string, body?: Buffer | string, gateway = false) => new Promise<{ status: number; body: string; headers: Record<string, string> }>((resolve) => {
+    const call = (method: string, path: string, body?: Buffer | string, gateway = false, beforeBody?: () => void) => new Promise<{ status: number; body: string; headers: Record<string, string> }>((resolve) => {
       const surface = gateway ? "gateway" : "local";
       const { sessionId } = fm.webSessions.create({ tier: "admin", surface, ...(gateway ? { exposureId: "e".repeat(32) } : {}), label: "t", tokenEpoch: tokenEpoch(fm.webToken) });
       const host = gateway ? "x.trycloudflare.com" : "127.0.0.1:19280";
@@ -309,7 +321,7 @@ describe("the card's routes", () => {
       let status = 0; const headers: Record<string, string> = {};
       const res: any = { headersSent: false, setHeader(k: string, v: string) { headers[k.toLowerCase()] = v; }, writeHead(c: number, h?: Record<string, string>) { status = c; Object.assign(headers, Object.fromEntries(Object.entries(h ?? {}).map(([k, v]) => [k.toLowerCase(), v]))); res.headersSent = true; return res; }, end(b?: Buffer | string) { resolve({ status, body: b ? b.toString() : "", headers }); } };
       expect(handleViewRequest(req, res, new URL(`${origin}${path}`), fm)).toBe(true);
-      setImmediate(() => { if (body !== undefined) req.emit("data", Buffer.isBuffer(body) ? body : Buffer.from(body)); req.emit("end"); });
+      setImmediate(() => { beforeBody?.(); if (body !== undefined) req.emit("data", Buffer.isBuffer(body) ? body : Buffer.from(body)); req.emit("end"); });
     });
     const resolved = async () => { const { limits, ...card } = JSON.parse((await call("GET", "/api/card/alpha")).body); expect(limits.portrait).toEqual({ max_width: 1024, max_height: 1536, max_bytes: 1536 * 1024 }); return card; };
     expect(await resolved()).toEqual({ portrait: { id: P, by: "agent", src: `/api/card/alpha/portrait?v=${P}` }, tagline: { text: "Agent's", by: "agent" } });
@@ -332,6 +344,17 @@ describe("the card's routes", () => {
     expect(await resolved()).toEqual({});
     expect((await call("GET", "/api/card/alpha/portrait")).status).toBe(404);
     expect((await call("GET", "/api/card/ghost")).status).toBe(404);
+    // #1889 review: the limits in force when the picture is stored, not when its upload began.
+    const limit = (w: number) => { fm.fleetConfig.web = { appearance: { portrait: { max_width: w } } }; };
+    limit(200);
+    const lowered = await call("POST", "/api/card/alpha/portrait", png(100, 100, 7), false, () => limit(64));
+    expect([lowered.status, JSON.parse(lowered.body).error]).toEqual([400, "card_dimensions"]);
+    limit(64);
+    expect((await call("POST", "/api/card/alpha/portrait", png(100, 100, 8), false, () => limit(200))).status).toBe(200);   // raised meanwhile: kept
+    limit(200);
+    expect((await call("POST", "/api/card/alpha/portrait", png(100, 100, 9))).status).toBe(200);                           // unchanged: kept
+    delete fm.fleetConfig.web;
+    expect((await call("DELETE", "/api/card/alpha")).status).toBe(200);
     // The frame's card_v follows what is drawn.
     vi.spyOn(fm, "getInstanceStatus").mockReturnValue("running");
     const v = () => fm.getUiStatus().instances.find((i: { name: string }) => i.name === "alpha").card_v;
