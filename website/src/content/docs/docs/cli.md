@@ -21,7 +21,7 @@ Update to the latest release and restart:
 agend update
 ```
 
-Pick a different target with `--beta`, `--version 2.1.2`, or force a reinstall you already have with `--force`.
+Pick a different target with `--beta`, `--alpha`, `--stable`, `--version 2.1.2`, or force a reinstall you already have with `--force`. Run from a fleet agent's session requires `--yes`; otherwise the command is refused.
 
 Re-read `fleet.yaml` without restarting the fleet process:
 
@@ -51,6 +51,7 @@ Restart gracefully — it waits for the agent to go idle first:
 
 ```bash
 agend fleet restart
+agend fleet restart <name>   # restart a specific instance
 ```
 
 That reuses the running code. To pick up a new version of AgEnD itself, restart the process:
@@ -101,7 +102,7 @@ agend ls
 
 `--json` for structured output, `--names-only` for one name per line.
 
-Attach to an instance's tmux window — fuzzy-matches the name, or shows a menu with no argument:
+Attach to an instance's tmux window — accepts the real name, the display label shown by `agend ls` (including CJK/emoji labels), or a fuzzy prefix; shows a menu with no argument:
 
 ```bash
 agend attach <name>
@@ -154,13 +155,14 @@ agend validate
 
 ## Web dashboard
 
-Open the live dashboard:
+Open the live dashboard and print a sign-in code:
 
 ```bash
 agend web
+agend web --code     # only print the code, no browser
 ```
 
-`agend view` opens the read-only version.
+`agend view` opens the read-only View panel.
 
 Revoke every dashboard link and browser session at once:
 
@@ -193,11 +195,9 @@ agend setup --tunnel
 
 It asks you to confirm every time, and refuses when there is no terminal to ask — no flag answers this in advance. **The bot token you type travels through Cloudflare's edge**, so set up from the machine itself if that is not acceptable. Without `cloudflared` installed the page stays on loopback and says so.
 
-`--tunnel` cannot be combined with `--port`, and never binds the health port. When you finish, the page revokes its credentials, releases the port, stops the tunnel, and only then starts AgEnD. If the tunnel cannot be confirmed stopped, AgEnD still starts, but the message names the process to kill and no further tunnel opens until you resolve it.
+`--tunnel` cannot be combined with `--port`, and never binds the health port. When you finish, the page revokes its credentials, releases the port, stops the tunnel, and only then starts AgEnD.
 
-`agend setup` refuses to run once a fleet is configured, and points at the dashboard's setup wizard instead — that one edits `fleet.yaml` in place, while this page writes the file fresh. `agend setup --reset` is the only way back, and only from the machine.
-
-If the dashboard says **"No session"** right after you followed a link from web Telegram or Discord, reload once: the cookie is `SameSite=Strict` and the reload is same-site. If it loops forever, check whether a proxy in front of AgEnD sets `X-Forwarded-Proto: https` while serving plain HTTP — that makes the browser refuse the cookie.
+`agend setup` refuses to run once a fleet is configured, and points at the dashboard's setup wizard instead. `agend setup --reset` is the only way back, and only from the machine.
 
 ## Schedules
 
@@ -224,12 +224,25 @@ agend schedule disable <id>
 agend schedule delete <id>
 ```
 
-Run one now, or see when it last ran:
+See when a schedule last ran:
 
 ```bash
-agend schedule trigger <id>
 agend schedule history <id>
 ```
+
+To trigger a schedule immediately, use the `/schedule trigger` interface in Telegram or Discord — the CLI cannot fire a schedule directly without a running fleet manager.
+
+## Settings confirmation
+
+Sensitive config changes (from the web dashboard or Settings) become pending proposals that require confirmation on the host:
+
+```bash
+agend settings confirm <id>        # inspect the diff, then confirm
+agend settings confirm <id> --yes  # confirm non-interactively after you have inspected
+agend settings reject <id>
+```
+
+Run on the host as the same user as the fleet. Agent sessions cannot use this command.
 
 ## Topics and access
 
@@ -284,6 +297,7 @@ Tab-completes instance names for `agend attach` and `agend fleet start|stop|rest
 
 ```bash
 agend completion install
+agend completion status     # check that <TAB> will work in a new shell
 ```
 
 On bash this writes `~/.local/share/bash-completion/completions/agend` and touches no rc file. On zsh it prints the line to add, because enabling it means editing `~/.zshrc` — pass `--modify-rc` to let it append that line for you.
@@ -296,16 +310,31 @@ Names come from `agend ls --names-only`, so completion offers exactly what `atta
 
 ## Chat commands
 
-These run in the chat app, in the General topic, and are admin-only:
+These run in the chat app, in fleet topics (General or an instance topic). For the full command list with per-platform details and permissions, see [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md).
 
-| Command | What it does |
-|---|---|
-| `/status` | Fleet table: backend, model, context, effort, cost, state |
-| `/restart` | Restart every instance in place, without exiting the process |
-| `/update` | Update AgEnD to the latest version |
-| `/sysinfo` | Version, load, IPC status, each backend CLI's version |
-| `/pause` | Pause an instance |
-| `/wake` | Wake a paused instance |
+| Command | What it does | Permission |
+|---|---|---|
+| `/status` | Fleet table: backend, model, context, effort, cost, state | 🔒 admin |
+| `/sysinfo` | Version, load, IPC status, each backend CLI's version | All |
+| `/usage` | AI subscription usage (one row per subscription) | All |
+| `/ctx` | Agent context usage | All |
+| `/steer <text>` | Interject into the current turn (claude-code, codex, grok, muse, kiro TUI) | All |
+| `/btw <text>` | Side question without interrupting the current task (claude-code only) | All |
+| `/compact` | Compact agent context | All in fleet topics |
+| `/clear` | Full conversation reset (asks Confirm/Cancel) | 🔒 admin |
+| `/model` | Switch backend model | 🔒 admin |
+| `/effort` | Adjust AI reasoning effort | 🔒 admin |
+| `/backend` | Move instance to another CLI backend | 🔒 admin |
+| `/pause` | Pause an instance | 🔒 admin |
+| `/wake` | Wake a paused instance | 🔒 admin |
+| `/restart` | Restart every instance in place | 🔒 admin |
+| `/update` | Update AgEnD to the latest version | 🔒 admin |
+| `/doctor` | Fleet health diagnostics | 🔒 admin |
+| `/login [backend]` | Remote CLI sign-in (installs the CLI if missing) | 🔒 admin |
+| `/web` | Sign in to the web dashboard; `/web revoke` signs everyone out | 🔒 admin |
+| `/collab` | Toggle bot/webhook message reception in a fleet topic | All in fleet topics |
+| `/visibility` | How cross-instance messages appear in topics (full/summary/hidden) | 🔒 admin |
+| `/tips` | Draw a random usage tip | All |
 
 Everything else — creating instances, deleting them, handing out tasks — you ask the General instance for in plain language.
 

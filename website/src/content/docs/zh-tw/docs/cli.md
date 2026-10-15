@@ -21,7 +21,7 @@ agend restart
 agend update
 ```
 
-要指定別的目標，用 `--beta`、`--version 2.1.2`，或用 `--force` 重裝你已經有的版本。
+要指定別的目標，用 `--beta`、`--alpha`、`--stable`、`--version 2.1.2`，或用 `--force` 重裝你已經有的版本。從 fleet agent 的 session 內執行時需要加 `--yes`，否則會被拒絕。
 
 重讀 `fleet.yaml`，不重啟 fleet 程序：
 
@@ -51,6 +51,7 @@ agend fleet stop <name>
 
 ```bash
 agend fleet restart
+agend fleet restart <name>   # 重啟指定的 instance
 ```
 
 這會沿用正在跑的程式碼。要載入新版的 AgEnD 本身，重啟程序：
@@ -101,7 +102,7 @@ agend ls
 
 `--json` 給結構化輸出，`--names-only` 一行一個名字。
 
-接進某個 instance 的 tmux window — 名字支援模糊比對，不給參數就出選單：
+接進某個 instance 的 tmux window — 接受真實名稱、`agend ls` 顯示的顯示標籤（含中文／emoji 標籤），或模糊前綴；不給參數就出選單：
 
 ```bash
 agend attach <name>
@@ -154,13 +155,14 @@ agend validate
 
 ## Web 儀表板
 
-開啟即時儀表板：
+開啟即時儀表板並印出登入碼：
 
 ```bash
 agend web
+agend web --code     # 只印碼，不開瀏覽器
 ```
 
-`agend view` 開唯讀版。
+`agend view` 開唯讀版 View 面板。
 
 一次撤銷所有儀表板連結和瀏覽器 session：
 
@@ -193,11 +195,9 @@ agend setup --tunnel
 
 它每次都會要你確認，沒有終端機可問時直接拒絕 — 沒有任何旗標可以事先回答這題。**你輸入的 bot token 會經過 Cloudflare 的邊緣節點**，不能接受的話請在機器本機上設定。機器上沒有 `cloudflared` 時，頁面會留在 loopback 並直說。
 
-`--tunnel` 不能跟 `--port` 併用，而且永遠不會綁 health port。你完成之後，頁面會先撤銷自己的憑證、釋放 port、關掉 tunnel，最後才啟動 AgEnD。萬一無法確認 tunnel 已關閉，AgEnD 還是會啟動，但訊息會告訴你該砍哪個 process，而且在你處理完之前不會再開新的 tunnel。
+`--tunnel` 不能跟 `--port` 併用，而且永遠不會綁 health port。你完成之後，頁面會先撤銷自己的憑證、釋放 port、關掉 tunnel，最後才啟動 AgEnD。
 
-已經有 fleet 之後 `agend setup` 會拒絕執行，並指向儀表板裡的設定精靈 — 那個是就地修改 `fleet.yaml`，而這個頁面是重新寫一份檔案。`agend setup --reset` 是唯一的回頭路，而且只能在本機執行。
-
-從網頁版 Telegram 或 Discord 點連結進來，儀表板如果說 **"No session"**，重新整理一次就好：cookie 是 `SameSite=Strict`，重新整理那次算同站。如果一直繞回同一句，去看 AgEnD 前面擋著什麼 — 代理伺服器如果送 `X-Forwarded-Proto: https` 但實際走 plain HTTP，瀏覽器就會拒絕存這個 cookie。
+已經有 fleet 之後 `agend setup` 會拒絕執行，並指向儀表板裡的設定精靈。`agend setup --reset` 是唯一的回頭路，而且只能在本機執行。
 
 ## 排程
 
@@ -224,12 +224,25 @@ agend schedule disable <id>
 agend schedule delete <id>
 ```
 
-立刻執行一次，或看它上次跑的結果：
+看某個排程的執行記錄：
 
 ```bash
-agend schedule trigger <id>
 agend schedule history <id>
 ```
+
+要立刻觸發排程，請用 Telegram 或 Discord 的 `/schedule trigger` 介面 — CLI 沒有 fleet manager 在跑時無法直接觸發排程。
+
+## 設定確認
+
+來自網頁儀表板或 Settings 的敏感設定變更會成為待確認的提案，需要在主機上確認：
+
+```bash
+agend settings confirm <id>        # 檢視 diff，然後確認
+agend settings confirm <id> --yes  # 非互動式確認（你已看過 diff）
+agend settings reject <id>
+```
+
+必須以跟 fleet 相同的使用者在主機上執行。Agent session 內不能使用這個指令。
 
 ## Topic 與存取控制
 
@@ -284,6 +297,7 @@ agend import config.tar.gz
 
 ```bash
 agend completion install
+agend completion status     # 檢查 <TAB> 在新 shell 裡能不能用
 ```
 
 bash 會寫入 `~/.local/share/bash-completion/completions/agend`，不動任何 rc 檔。zsh 則是印出該加的那行給你，因為啟用它就得改 `~/.zshrc` — 加 `--modify-rc` 可以讓它幫你寫進去。
@@ -296,16 +310,31 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 
 ## 聊天指令
 
-這些在聊天軟體的 General topic 裡執行，而且只有管理員能用：
+這些在聊天軟體的 fleet topic（General 或 instance topic）裡執行。完整指令清單（含各平台權限細節）請看 [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md)。
 
-| 指令 | 作用 |
-|---|---|
-| `/status` | Fleet 表格：backend、model、context、推理強度、花費、執行狀態 |
-| `/restart` | 就地重啟所有 instance，程序不結束 |
-| `/update` | 更新 AgEnD 到最新版 |
-| `/sysinfo` | 版本、負載、IPC 狀態、各 backend CLI 版本 |
-| `/pause` | 暫停某個 instance |
-| `/wake` | 喚醒暫停中的 instance |
+| 指令 | 作用 | 權限 |
+|---|---|---|
+| `/status` | Fleet 表格：backend、model、context、推理強度、花費、執行狀態 | 🔒 管理員 |
+| `/sysinfo` | 版本、負載、IPC 狀態、各 backend CLI 版本 | 所有人 |
+| `/usage` | AI 訂閱用量（每個訂閱各一列） | 所有人 |
+| `/ctx` | Agent context 用量 | 所有人 |
+| `/steer <text>` | 插入當前 turn（claude-code、codex、grok、muse、kiro TUI） | 所有人 |
+| `/btw <text>` | 不中斷當前任務的側邊提問（claude-code 限定） | 所有人 |
+| `/compact` | 壓縮 agent context | Fleet topic 所有人 |
+| `/clear` | 完全重置對話（要求確認） | 🔒 管理員 |
+| `/model` | 切換後端模型 | 🔒 管理員 |
+| `/effort` | 調整 AI 推理強度 | 🔒 管理員 |
+| `/backend` | 將 instance 移至另一個 CLI 後端 | 🔒 管理員 |
+| `/pause` | 暫停 instance | 🔒 管理員 |
+| `/wake` | 喚醒暫停中的 instance | 🔒 管理員 |
+| `/restart` | 就地重啟所有 instance | 🔒 管理員 |
+| `/update` | 更新 AgEnD 到最新版 | 🔒 管理員 |
+| `/doctor` | Fleet 健康診斷 | 🔒 管理員 |
+| `/login [backend]` | 遠端登入 CLI（缺少時先安裝） | 🔒 管理員 |
+| `/web` | 登入網頁儀表板；`/web revoke` 讓所有人登出 | 🔒 管理員 |
+| `/collab` | 在 fleet topic 切換 bot/webhook 訊息接收 | Fleet topic 所有人 |
+| `/visibility` | 跨 instance 訊息在 topic 裡的顯示方式（full/summary/hidden） | 🔒 管理員 |
+| `/tips` | 抽一條隨機使用提示 | 所有人 |
 
 其他事情 — 建立 instance、刪除、派任務 — 直接用自然語言跟 General instance 講。
 
