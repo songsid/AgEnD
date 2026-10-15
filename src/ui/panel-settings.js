@@ -270,7 +270,11 @@ export function DeviceSection() {
   const replay = () => {
     let last = null;
     try { last = localStorage.getItem("agend_last_instance"); } catch { /* none */ }
-    navigate(last ? chatPath(last) : "/ui");
+    // #1854: the tour is about an agent's chat — with no agent to open (none remembered, or it is gone), say so instead
+    // of opening an empty chat that waits ~3 s and shows nothing.
+    const { instances } = appStore.get();
+    if (!last || !(instances || []).some((i) => i && i.name === last)) { toast(t("chat.tourNoAgent"), false); return; }
+    navigate(chatPath(last));
     // This replay belongs to the navigation it just made — that one, by its sequence number, not by URL (A → B → A, or
     // the same path again, is a new navigation). It did not happen (a leave guard said no) or it is not the chat:
     // nothing. Left meanwhile (another page, another navigation): nothing (#1609 review).
@@ -285,7 +289,7 @@ export function DeviceSection() {
     let tries = 0;
     const go = () => {
       if (!current()) return;
-      if (!document.getElementById("sendBtn")) { if (++tries <= 30) setTimeout(go, 100); return; }
+      if (!document.getElementById("sendBtn")) { if (++tries <= 30) setTimeout(go, 100); else toast(t("chat.tourNoAgent"), false); return; }
       const here = document.getElementById("msgIn") || document.getElementById("main");
       if (here && typeof here.focus === "function") here.focus();
       if (current()) startTour();

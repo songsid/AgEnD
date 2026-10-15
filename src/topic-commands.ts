@@ -1684,7 +1684,7 @@ export class TopicCommands {
     // agend, verified by identity, by absolute path — or a refusal, never whatever `agend` is first on PATH.
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
-      this.ctx.failUpdateProgress?.(`/update cannot verify the installed AgEnD (${installed.reason}). Run \`agend update\` from a shell.`);
+      this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
       return;
     }
     const { spawn } = await import("node:child_process");
@@ -1692,7 +1692,7 @@ export class TopicCommands {
     recordInternalRequest(this.ctx.dataDir, "update", origin);
     const launch = await resolveUpdateLaunch(installed.agend);
     if (!launch.ok) {
-      this.ctx.failUpdateProgress?.(`/update cannot prepare an independent updater (${launch.reason}). Run ` + "`agend update` from a host shell.");
+      this.ctx.failUpdateProgress?.(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
     }
     if (!this.ctx.hasFleetAdmins(msg.adapterId) || !this.ctx.isFleetAdmin(msg.userId, msg.adapterId) || this.ctx.isFleetStopping()) {

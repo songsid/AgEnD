@@ -2719,14 +2719,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // "not a beta" and sent a beta install to @latest. #1450 C5: the INSTALLED agend, verified, by absolute path.
     const installed = await resolveInstalledAgend();
     if (!installed.ok) {
-      this.failUpdateProgress(`/update cannot verify the installed AgEnD (${installed.reason}). Run \`agend update\` from a shell.`);
+      this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.installed", installed.reason)}`);
       return;
     }
     const origin = `slash /update by ${adapterId}:${data.userId}`;
     recordInternalRequest(this.dataDir, "update", origin);
     const launch = await resolveUpdateLaunch(installed.agend);
     if (!launch.ok) {
-      this.failUpdateProgress(`/update cannot prepare an independent updater (${launch.reason}). Run ` + "`agend update` from a host shell.");
+      this.failUpdateProgress(`${t("update.failure.shell")} ${t("update.failure.independent", launch.reason)}`);
       return;
     }
     if (this.fleetAdminGate(data.userId, adapterId) !== "ok" || this.shuttingDown) {

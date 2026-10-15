@@ -37,7 +37,8 @@ vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { defaultUpdateLaunchDeps, inServiceCgroup, resolveUpdateLaunch, watchUpdateLaunch, type UpdateLaunchDeps } from "../src/update-launch.js";
-import { DELAYED_UPDATE_SCRIPT } from "../src/update-dispatch.js";
+import { DELAYED_UPDATE_SCRIPT, resolveInstalledAgend } from "../src/update-dispatch.js";
+import { setLocale } from "../src/locale.js";
 
 const nativeNonce = defaultUpdateLaunchDeps.nonce;
 const nativeCgroup = defaultUpdateLaunchDeps.cgroup;
@@ -112,6 +113,7 @@ beforeEach(() => {
   vi.spyOn(defaultUpdateLaunchDeps, "nonce").mockReturnValue(ID);
 });
 afterEach(() => {
+  setLocale("en");
   vi.restoreAllMocks();
   for (const fm of managers.splice(0)) { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
   for (const p of dirs.splice(0)) rmSync(p, { recursive: true, force: true });
@@ -131,6 +133,29 @@ async function handler(platform: "discord" | "telegram", admin = () => true) {
   }
   return failed;
 }
+
+describe.each(["en", "zh-TW"] as const)("#1854 real entry failure copy in %s", language => {
+  it.each(["discord", "telegram"] as const)("%s: installed verification refusal keeps its reason and dispatches nothing", async platform => {
+    setLocale(language);
+    vi.mocked(resolveInstalledAgend).mockResolvedValueOnce({ ok: false, reason: "fixture install unproven" });
+    const failed = await handler(platform);
+    expect(effects).toHaveLength(0);
+    expect(failed.mock.calls).toEqual([[language === "en"
+      ? "Run `agend update` from a host shell. /update cannot verify the installed AgEnD (fixture install unproven)."
+      : "請在主機終端機執行 `agend update`。 /update 無法驗證已安裝的 AgEnD（fixture install unproven）。"]]);
+    expect(defaultUpdateLaunchDeps.cgroup).not.toHaveBeenCalled();
+  });
+
+  it.each(["discord", "telegram"] as const)("%s: independent-updater refusal keeps its reason and dispatches nothing", async platform => {
+    setLocale(language);
+    vi.mocked(defaultUpdateLaunchDeps.cgroup).mockRejectedValue(Error("EACCES"));
+    const failed = await handler(platform);
+    expect(effects).toHaveLength(0);
+    expect(failed.mock.calls).toEqual([[language === "en"
+      ? "Run `agend update` from a host shell. /update cannot prepare an independent updater (cannot read the fleet's service cgroup)."
+      : "請在主機終端機執行 `agend update`。 /update 無法準備獨立的更新程序（cannot read the fleet's service cgroup）。"]]);
+  });
+});
 
 describe.each(["discord", "telegram"] as const)("real %s update entry", platform => {
   it("uses the independent scope, literal verified path, inherited env and detached handles", async () => {

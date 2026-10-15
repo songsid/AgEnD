@@ -115,7 +115,7 @@ describe("#1604: Settings → This device", () => {
     box.checked = true; fire(box, "change"); await settle(6);
     expect([asked.length, pg.storage.get("agend_html_preview")]).toEqual([1, "on"]);   // asked once (the same question), then allowed — the device's own key
     expect(asked[0]).toMatch(/Allow HTML previews\?\n\nThis applies on every device where you are signed in\./);
-    expect(pg.root.querySelector(".s-local #tourBtn")?.textContent?.trim()).toBe("Tour");   // #1665: the tour is this device's
+    expect(pg.root.querySelector(".s-local #tourBtn")?.textContent?.trim()).toBe("Chat tour");   // #1665: the tour is this device's (#1854: "Chat tour")
     delete g.confirm;
   });
   it("#1665: two cards — what is synced across devices (saying so), and what stays on this one; the public link says its changes stay here", async () => {
