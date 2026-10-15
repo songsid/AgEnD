@@ -124,17 +124,37 @@ export function admitPlan(plan: ServicePlan, o: { target: string; expected: Expe
   return { ok: true };
 }
 
+/** What consuming a plan needs beyond reading: an atomic claim of the record, and a put-back that never overwrites. */
+export interface ConsumeDeps extends Pick<PlanDeps, "readFile" | "removeFile"> {
+  /** Atomic rename; false when there is nothing at `from`. */
+  rename(from: string, to: string): boolean;
+  /** Hard link `to` → `from`; false when `to` already exists (a newer record, which wins). */
+  link(from: string, to: string): boolean;
+  /** A private name next to the record, unique to this consumer. */
+  claimPath(record: string): string;
+}
+
 /**
  * #1871: `agend start` just bootstrapped `plistPath`, whose content was `startedPlist` when it did. A plan whose proven
  * plist is exactly that content, and is still the file on disk, has now happened. An update that died between bootout
  * and bootstrap leaves such a plan behind, and kept, it would make every later `agend restart` refuse, because the job
  * now loaded is not the planned-from job. A plan for any other content (a refresh since, a different file) stays.
- * True when the plan was dropped.
+ *
+ * The record lives at a shared path that a concurrent `install --no-activate` may republish at any moment, so it is
+ * never unlinked by name: it is claimed (renamed to a private name, atomically), and what was claimed is judged. Ours
+ * is deleted; anything else is linked back, unless a still newer record has appeared there (a refresh always revokes
+ * the plan before it, so the newer one is the one that counts). True when our plan was dropped.
  */
-export function dropConsumedPlan(agendHome: string, plistPath: string, startedPlist: string, deps: Pick<PlanDeps, "readFile" | "removeFile">): boolean {
+export function dropConsumedPlan(agendHome: string, plistPath: string, startedPlist: string, deps: ConsumeDeps): boolean {
   const plan = readPlan(agendHome, deps);
   if (!plan || plan.plistPath !== plistPath || plan.sha256 !== sha256(startedPlist)) return false;
   if (deps.readFile(plistPath) !== startedPlist) return false;
-  deps.removeFile(planPath(agendHome));
-  return true;
+  const record = planPath(agendHome);
+  const claim = deps.claimPath(record);
+  if (!deps.rename(record, claim)) return false;
+  const claimed = readPlan(agendHome, { readFile: path => deps.readFile(path === record ? claim : path) });
+  const ours = !!claimed && claimed.plistPath === plistPath && claimed.sha256 === sha256(startedPlist);
+  if (!ours) deps.link(claim, record);
+  deps.removeFile(claim);
+  return ours;
 }

@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, linkSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HANDED_OFF_ENV, HANDOFF_LOG, handOff, shouldHandOff } from "../src/launchd-handoff.js";
@@ -97,34 +97,79 @@ describe("#1871: the hand-off", () => {
 });
 
 describe("#1871: agend start drops the plan it has just carried out", () => {
-  const PLIST = "/Users/u/Library/LaunchAgents/com.agend.fleet.plist";
-  const setup = (plistOnDisk: string, planned: string, plistPath = PLIST) => {
+  // A real directory: the record is claimed with the real rename(2) and put back with the real link(2).
+  const record = (plistPath: string, planned: string) => JSON.stringify({
+    kind: "launchd-activation", label: "com.agend.fleet", plistPath, sha256: createHash("sha256").update(planned).digest("hex"),
+    preimage: { plist: "<old/>", tuple: { program: "/old" }, pid: 701 }, pkgDir: "/pkg", createdAt: "2026-10-15T08:26:54.000Z",
+  });
+  const setup = (plistOnDisk: string, planned: string, plannedFor?: string) => {
     const home = scratch();
-    const files = new Map<string, string>([[PLIST, plistOnDisk], [planPath(home), JSON.stringify({
-      kind: "launchd-activation", label: "com.agend.fleet", plistPath, sha256: createHash("sha256").update(planned).digest("hex"),
-      preimage: { plist: "<old/>", tuple: { program: "/old" }, pid: 701 }, pkgDir: "/pkg", createdAt: "2026-10-15T08:26:54.000Z",
-    })]]);
-    const deps = { readFile: (p: string) => files.get(p) ?? null, removeFile: (p: string) => { files.delete(p); } };
-    return { home, files, deps };
+    const plist = join(home, "com.agend.fleet.plist");
+    writeFileSync(plist, plistOnDisk);
+    writeFileSync(planPath(home), record(plannedFor ?? plist, planned));
+    let claims = 0;
+    const deps = {
+      readFile: (p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } },
+      removeFile: (p: string) => { try { unlinkSync(p); } catch { /* absent */ } },
+      rename: (from: string, to: string) => { try { renameSync(from, to); return true; } catch { return false; } },
+      link: (from: string, to: string) => { try { linkSync(from, to); return true; } catch { return false; } },
+      claimPath: (r: string) => `${r}.consumed-test-${++claims}`,
+    };
+    /** What a concurrent `install --no-activate` does: revoke the plan, write the new plist, record its plan. */
+    const refreshTo = (next: string) => { deps.removeFile(planPath(home)); writeFileSync(plist, next); writeFileSync(planPath(home), record(plist, next)); };
+    /** Which plan the record holds now: "A", "B", "C" or null. */
+    const pending = () => {
+      const p = deps.readFile(planPath(home));
+      if (!p) return null;
+      const sha = JSON.parse(p).sha256;
+      return ["A", "B", "C"].find(x => createHash("sha256").update(`<${x}/>`).digest("hex") === sha) ?? "?";
+    };
+    const leftovers = () => readdirSync(home).filter(f => f.includes(".consumed-"));
+    return { home, plist, deps, refreshTo, pending, leftovers };
   };
 
   it("control: it bootstrapped A, the plan is A and A is still on disk → the plan goes", () => {
     const w = setup("<A/>", "<A/>");
-    expect(dropConsumedPlan(w.home, PLIST, "<A/>", w.deps)).toBe(true);
-    expect(w.files.has(planPath(w.home))).toBe(false);
+    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(true);
+    expect([existsSync(planPath(w.home)), w.leftovers()]).toEqual([false, []]);
   });
 
-  it("Prism's witness: it bootstrapped A, a refresh meanwhile wrote B and planned B → plan B stays (the job runs A)", () => {
-    const w = setup("<B/>", "<B/>");
-    expect(dropConsumedPlan(w.home, PLIST, "<A/>", w.deps)).toBe(false);
-    expect(w.files.has(planPath(w.home))).toBe(true);
+  it("Prism's r1 witness: it bootstrapped A, a refresh meanwhile wrote B and planned B → plan B stays", () => {
+    const w = setup("<A/>", "<A/>");
+    w.refreshTo("<B/>");
+    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(false);
+    expect(w.pending()).toBe("B");
+  });
+
+  it("Prism's r2 witness: B is published right after the last read saw A → B survives the consume (claimed, judged, put back)", () => {
+    const w = setup("<A/>", "<A/>");
+    const read = w.deps.readFile;
+    let raced = false;
+    w.deps.readFile = (p: string) => {
+      const text = read(p);
+      if (p === w.plist && !raced) { raced = true; w.refreshTo("<B/>"); }   // another process, between the read and what follows
+      return text;
+    };
+    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(false);
+    expect([w.pending(), w.leftovers()]).toEqual(["B", []]);
+  });
+
+  it("put-back never overwrites: B is claimed, C is published before B could go back → C stays, B goes", () => {
+    const w = setup("<A/>", "<A/>");
+    const read = w.deps.readFile, rename = w.deps.rename;
+    let raced = false;
+    w.deps.readFile = (p: string) => { const text = read(p); if (p === w.plist && !raced) { raced = true; w.refreshTo("<B/>"); } return text; };
+    w.deps.rename = (from: string, to: string) => { const done = rename(from, to); w.refreshTo("<C/>"); return done; };
+    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(false);
+    expect([w.pending(), w.leftovers()]).toEqual(["C", []]);
   });
 
   it("a plan for A whose file has changed since, or a plan for another file, stays for `agend restart` to judge", () => {
     const changed = setup("<edited/>", "<A/>");
-    expect(dropConsumedPlan(changed.home, PLIST, "<A/>", changed.deps)).toBe(false);
-    expect(changed.files.has(planPath(changed.home))).toBe(true);
+    expect(dropConsumedPlan(changed.home, changed.plist, "<A/>", changed.deps)).toBe(false);
+    expect(existsSync(planPath(changed.home))).toBe(true);
     const other = setup("<A/>", "<A/>", "/elsewhere.plist");
-    expect(dropConsumedPlan(other.home, PLIST, "<A/>", other.deps)).toBe(false);
+    expect(dropConsumedPlan(other.home, other.plist, "<A/>", other.deps)).toBe(false);
+    expect(existsSync(planPath(other.home))).toBe(true);
   });
 });

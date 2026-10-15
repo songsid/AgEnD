@@ -34,6 +34,8 @@ import {
   openSync,
   writeSync,
   closeSync,
+  renameSync,
+  linkSync,
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -2016,7 +2018,13 @@ program
       console.log("Service started.");
       if (launchd && startedPlist !== null) {
         const { dropConsumedPlan } = await import("./service-plan.js");
-        if (dropConsumedPlan(DATA_DIR, userServicePath!, startedPlist, planDeps())) console.log("  ✓ That was the launchd activation an interrupted update left pending; nothing is pending now.");
+        const consumeDeps = {
+          ...planDeps(),
+          rename: (from: string, to: string) => { try { renameSync(from, to); return true; } catch { return false; } },
+          link: (from: string, to: string) => { try { linkSync(from, to); return true; } catch { return false; } },
+          claimPath: (record: string) => `${record}.consumed-${process.pid}-${Date.now()}`,
+        };
+        if (dropConsumedPlan(DATA_DIR, userServicePath!, startedPlist, consumeDeps)) console.log("  ✓ That was the launchd activation an interrupted update left pending; nothing is pending now.");
       }
     } else {
       // A service file means the service manager owns this fleet. Falling back
