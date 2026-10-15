@@ -38,7 +38,7 @@ agend validate
 | Key | 預設 | 作用 |
 |---|---|---|
 | `web.usage_panel` | `true` | `false` 會隱藏所有訂閱用量顯示，並停用 `/api/ai-usage` |
-| `web.log_tab` | `false` | 開啟每個 instance 的 **Log**（紀錄）分頁：它的 prompt、回覆、工具呼叫和錯誤，機密值會遮蔽 |
+| `web.log_tab` | `false` | 開啟每個 instance 的 **Log**（紀錄）分頁。Claude Code 和 Codex 會顯示 agent transcript 裡的 prompt、回覆、工具呼叫和錯誤，機密值會遮蔽。其他後端（含 Kiro）只顯示 fleet 事件，並說明原因 |
 | `web.allowed_hosts` | — | 透過反向代理或 port forward 連線時，dashboard 額外接受的 `Host` 名稱。其他 `Host` 一律 403 |
 | `web.view_access` | `open` | `session` 會讓沒登入的人看不到 `/view` |
 | `web.notify_login` | `true` | `false` 就不會在 General 通知每次本機網頁登入 |
@@ -160,7 +160,7 @@ instances:
 | `systemPrompt` | string | — | 額外指示，直接寫內容或 `file:路徑`（相對於 `working_directory`） |
 | `workflow` | string \| false | `builtin` | `builtin`、`file:路徑`、直接寫內容、或 `false` |
 | `pre_task_command` | string | — | 每則使用者訊息前先貼上的指令 |
-| `skipPermissions` | boolean | 除非設 `false`，否則為 `true` | 用各後端的旗標跳過 CLI 自己的權限確認 |
+| `skipPermissions` | boolean | 除非設 `false`，否則為 `true` | 用各後端的旗標跳過 CLI 自己的權限確認。Antigravity 一律帶 `--dangerously-skip-permissions` 啟動，設 `false` 也一樣 |
 | `startup_timeout_ms` | number | `25000` | 給 CLI 啟動的時間 |
 | `log_level` | string | `info` | `debug`、`info`、`warn`、`error` |
 | `lightweight` | boolean | `false` | 跳過非必要子系統 |
@@ -298,10 +298,12 @@ Kiro 只複製登入資訊：kiro 下載的大型執行環境會連回共用的�
 | `allowed_guilds` | string[] | `[]` | 可以啟動 ClassicBot 的 Discord server |
 | `allowed_groups` | string[] | `[]` | 可以用的 Telegram 群組 |
 | `allowed_users` | string[] | `[]` | 可以在私人對話使用的 Telegram 使用者 |
-| `admin_users` | string[] | `[]` | ClassicBot 管理員，可以直接啟動；其他需要管理員的指令見[指令範圍表](https://github.com/songsid/AgEnD/blob/main/docs/command-surface.zh-TW.md) |
+| `admin_users` | string[] | `[]` | ClassicBot 管理員，在新頻道啟動時不受名單限制；其他需要管理員的指令見[指令範圍表](https://github.com/songsid/AgEnD/blob/main/docs/command-surface.zh-TW.md) |
 | `reply_completion_guard` | boolean | 繼承 | 同 instance 的同名欄位 |
 
-**名單是空的不代表開放。** 不在名單上的 server、群組或使用者執行 `/start` 時，會在 General 請你核准，附上 **Allow / Allow+admin / Ignore** 按鈕。核准不會直接啟動 agent，請再執行一次 `/start`。已經註冊的頻道照常運作。
+**名單是空的不代表開放。** 不是 ClassicBot 管理員的人在新頻道執行 `/start`，而該 server、群組或私人對話不在名單上時，會在 General 請你核准，附上 **Allow / Allow+admin / Ignore** 按鈕。核准不會直接啟動 agent，請再執行一次 `/start`。管理員不受此限，已經註冊的頻道也照常運作。
+
+在 Telegram 群組裡，即使群組已被允許，也只有 ClassicBot 管理員能啟動 agent。**Allow** 只允許群組；請用 **Allow+admin**，或請管理員執行 `/start`。
 
 在 Telegram 群組裡要指名 bot：`/start@YourBot`（或 `/start@YourBot codex`）。沒有 `@YourBot` 的群組指令會被忽略。
 
@@ -319,9 +321,11 @@ channels:
 | `name` | string | — | 顯示名稱 |
 | `backend` / `model` | string | 同 defaults | 這個頻道的覆寫 |
 | `context_lines` | number | 同 defaults | 這個頻道的覆寫 |
-| `collab` | boolean | `false` | 把頻道裡每則訊息都留作上下文。觸發回合仍需要 @提及 bot |
+| `collab` | boolean | `false` | Discord：把頻道裡每則訊息都留作上下文。觸發回合仍需要 @提及 bot，或用 `/chat`。不要在 Telegram 設定，見下 |
 | `pre_task_command` | string | — | 每則訊息前先貼上的指令 |
 | `reply_completion_guard` | boolean | 同 defaults | 這個頻道的覆寫 |
+
+在 Telegram 上，檔案裡寫了 `collab: true` 會讓 bot 等待 Discord 式的提及，一般訊息可能就不會有回應。一般的 Telegram `/start` 不會設定它。
 
 後端的決定順序：頻道 → `defaults.backend` → `fleet.yaml` 的 defaults → `claude-code`。
 

@@ -129,7 +129,7 @@ Unblock-File .\install-agend.ps1</pre>
 
     <!-- Auto-start -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">開機自動啟動機制</h2>
-    <p class="text-sm text-text-secondary mb-4">腳本已設定三道機制，讓 Bot 在每次重開機後自動上線，完全不需手動操作：</p>
+    <p class="text-sm text-text-secondary mb-4">腳本已設定三道機制，讓 Bot 在每次重開機後自動上線，完全不需手動操作。第二道需要第 5 步安裝的服務：quickstart 詢問要不要安裝服務時請回答要。如果跳過或安裝失敗，請在 WSL 裡執行 <code class="font-mono text-accent">agend install</code>。</p>
     <ul class="space-y-3 text-sm text-text-secondary mb-14">
       <li>1. <b class="text-text-primary">Windows 登入後自動啟動 WSL</b>：透過 Startup 資料夾中的 <code class="font-mono text-accent">start-wsl.vbs</code>（位置 <code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code>）。</li>
       <li>2. <b class="text-text-primary">WSL 內 AgEnD 由 systemd 服務自動啟動</b>：只要 WSL 在運行，AgEnD 就會自動啟動。</li>

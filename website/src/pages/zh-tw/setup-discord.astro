@@ -200,7 +200,7 @@ const homeHref = `${base}zh-tw/`;
     <img src={img('discord-10-external-bot-permissions.png')} alt="不含管理員的較小 Discord bot 權限組合" width="1568" height="754" loading="lazy" class="rounded-lg border border-border w-full mb-4" />
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       用 <code class="font-mono text-accent">~/.agend/classicBot.yaml</code> 的 <code class="font-mono text-accent">allowed_guilds</code>
-      控制哪些 server 可以使用 ClassicBot。有人在不在名單上的 server 執行 <code class="font-mono text-accent">/start</code> 時，General 會先問你，附上 <b class="text-text-primary">Allow / Allow+admin / Ignore</b> 按鈕。名單留空不代表所有 server 都可以。quickstart 會把你自己的 server 加進去。
+      控制哪些 server 可以使用 ClassicBot。不是 ClassicBot 管理員的人在不在名單上的 server 的新頻道執行 <code class="font-mono text-accent">/start</code> 時，General 會先問你，附上 <b class="text-text-primary">Allow / Allow+admin / Ignore</b> 按鈕。名單留空不代表所有 server 都可以。ClassicBot 管理員（<code class="font-mono text-accent">admin_users</code>）和已經啟動的頻道不會再被問。quickstart 會把你自己的 server 加進去，並把你設為管理員。
       <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">defaults:
   backend: claude-code
   allowed_guilds:

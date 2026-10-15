@@ -20,7 +20,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
-沒有 Node.js 或版本太舊時，會用 nvm 裝 Node.js 22，接著裝 tmux、裝 `agend`，然後詢問要不要直接跑設定精靈。
+沒有 Node.js 或版本太舊時，會用 nvm 裝 Node.js 22，接著裝 tmux、裝 `agend`，然後提示你執行 `agend quickstart`。腳本在互動式終端機裡執行（不是透過管線）時，會詢問要不要直接開始。
 
 已經有 Node 和 tmux：
 
@@ -96,7 +96,7 @@ agend install
 
 在 **General** topic（Telegram）或 General 頻道（Discord）傳一則訊息。General 會把它路由給該處理的 agent，也能為你的專案建立新的 agent。之後每個 agent 各有自己的 topic 或 thread。
 
-ClassicBot 可以把 agent 掛到其他任何頻道。Discord 上用 `/start` 在那裡開一個 agent、`/chat <訊息>` 跟它說話、`/stop` 結束它。在 Telegram 群組裡用 `/start@YourBot` 開啟。不在 ClassicBot 名單上的 server、群組或使用者，會先在 General 請你核准。
+ClassicBot 可以把 agent 掛到其他任何頻道。Discord 上用 `/start` 在那裡開一個 agent、`/chat <訊息>` 跟它說話、`/stop` 結束它。在 Telegram 群組裡，由 ClassicBot 管理員用 `/start@YourBot` 開啟。其他人在不在 ClassicBot 名單上的新 server、群組或私人對話開啟時，會先在 General 請你核准。
 
 ## 打開網頁儀表板
 
@@ -109,7 +109,7 @@ agend web          # 在這台機器上：印出登入碼並打開登入頁
 agend web --code   # 只印出來
 ```
 
-或在 General 傳 `/web`（fleet 管理員）。bot 會私訊給你連結和登入碼；手機連不到這台機器時，也可以選臨時公開連結。登入碼只能用一次、5 分鐘內有效。一次登入預設維持 48 小時。
+或在 General 傳 `/web`（fleet 管理員）。bot 會私訊給你連結和登入碼；手機連不到這台機器時，也可以選臨時公開連結。登入碼只能用一次、5 分鐘內有效。直接連到儀表板的登入預設維持 48 小時；透過公開連結的登入維持 4 小時（閒置 30 分鐘），連結關閉時也會結束。
 
 儀表板只聽 `127.0.0.1`。要從別的地方連，見[網頁儀表板說明](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
 

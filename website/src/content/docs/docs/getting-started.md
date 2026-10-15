@@ -20,7 +20,7 @@ macOS and Linux are supported. Native Windows is not: run AgEnD inside WSL, whic
 curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
-This installs Node.js 22 through nvm if you have no Node or one that is too old, installs tmux, installs `agend`, then offers to run the setup wizard.
+This installs Node.js 22 through nvm if you have no Node or one that is too old, installs tmux, installs `agend`, then tells you to run `agend quickstart`. When the script runs in an interactive terminal rather than through a pipe, it offers to start it right away.
 
 Already have Node and tmux:
 
@@ -96,7 +96,7 @@ agend install
 
 Send a message in the **General** topic (Telegram) or the General channel (Discord). General routes it to whichever agent should handle it, and can create new agents for your projects. Each agent then gets its own topic or thread.
 
-ClassicBot attaches an agent to any other channel. On Discord, `/start` begins one there, `/chat <message>` talks to it, and `/stop` ends it. In a Telegram group, start one with `/start@YourBot`. A server, group or user not on ClassicBot's allow lists asks General for approval first.
+ClassicBot attaches an agent to any other channel. On Discord, `/start` begins one there, `/chat <message>` talks to it, and `/stop` ends it. In a Telegram group, a ClassicBot admin starts one with `/start@YourBot`. When anyone else starts one in a new server, group or private chat that is not on ClassicBot's allow lists, General is asked for approval first.
 
 ## Open the web dashboard
 
@@ -109,7 +109,7 @@ agend web          # on the machine: prints the code and opens the sign-in page
 agend web --code   # only prints them
 ```
 
-Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in lasts 48 hours by default.
+Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts 4 hours (30 minutes idle) and ends when the link closes.
 
 The dashboard listens only on `127.0.0.1`. To reach it from elsewhere, see the [web dashboard guide](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md).
 

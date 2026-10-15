@@ -207,7 +207,7 @@ const telegramHref = `${base}setup-telegram/`;
     <img src={img('discord-10-external-bot-permissions.png')} alt="A narrower set of Discord bot permissions, without Administrator" width="1568" height="754" loading="lazy" class="rounded-lg border border-border w-full mb-4" />
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       Control which servers may use ClassicBot with <code class="font-mono text-accent">allowed_guilds</code> in
-      <code class="font-mono text-accent">~/.agend/classicBot.yaml</code>. When someone runs <code class="font-mono text-accent">/start</code> in a server that is not listed, General asks you first, with <b class="text-text-primary">Allow / Allow+admin / Ignore</b> buttons. An empty list does not mean every server. Quickstart adds your own server.
+      <code class="font-mono text-accent">~/.agend/classicBot.yaml</code>. When someone who is not a ClassicBot admin runs <code class="font-mono text-accent">/start</code> in a new channel of a server that is not listed, General asks you first, with <b class="text-text-primary">Allow / Allow+admin / Ignore</b> buttons. An empty list does not mean every server. ClassicBot admins (<code class="font-mono text-accent">admin_users</code>) and channels already started are not asked again. Quickstart adds your own server and makes you an admin.
       <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">defaults:
   backend: claude-code
   allowed_guilds:

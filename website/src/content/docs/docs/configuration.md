@@ -38,7 +38,7 @@ The most used keys. The [full reference](https://github.com/songsid/AgEnD/blob/m
 | Key | Default | What it does |
 |---|---|---|
 | `web.usage_panel` | `true` | `false` hides subscription usage everywhere and disables `/api/ai-usage` |
-| `web.log_tab` | `false` | Turns on each instance's **Log** tab (its prompts, replies, tool calls and errors, secrets masked) |
+| `web.log_tab` | `false` | Turns on each instance's **Log** tab. For Claude Code and Codex it shows the prompts, replies, tool calls and errors from the agent's transcript, secrets masked. Other backends (Kiro included) show fleet events only, with the reason |
 | `web.allowed_hosts` | — | Extra `Host` names the dashboard answers to behind a reverse proxy or port forward. Any other `Host` gets 403 |
 | `web.view_access` | `open` | `session` closes `/view` to anyone not signed in |
 | `web.notify_login` | `true` | `false` stops General being told about each local web sign-in |
@@ -160,7 +160,7 @@ instances:
 | `systemPrompt` | string | — | Extra instructions, inline or `file:path` (relative to `working_directory`) |
 | `workflow` | string \| false | `builtin` | `builtin`, `file:path`, inline text, or `false` |
 | `pre_task_command` | string | — | Pasted before every user message |
-| `skipPermissions` | boolean | `true` unless `false` | Skip the CLI's own permission prompts, with each backend's flag |
+| `skipPermissions` | boolean | `true` unless `false` | Skip the CLI's own permission prompts, with each backend's flag. Antigravity always launches with `--dangerously-skip-permissions`, even with `false` |
 | `startup_timeout_ms` | number | `25000` | How long the CLI gets to come up |
 | `log_level` | string | `info` | `debug`, `info`, `warn`, `error` |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
@@ -298,10 +298,12 @@ For Kiro, only the login is duplicated: the large runtimes kiro downloads link b
 | `allowed_guilds` | string[] | `[]` | Discord servers allowed to start ClassicBot |
 | `allowed_groups` | string[] | `[]` | Telegram groups allowed |
 | `allowed_users` | string[] | `[]` | Telegram users allowed in a private chat |
-| `admin_users` | string[] | `[]` | ClassicBot admins. They may start directly; the [command surface](https://github.com/songsid/AgEnD/blob/main/docs/command-surface.md) lists what else needs one |
+| `admin_users` | string[] | `[]` | ClassicBot admins. They may start in a new room without the allow lists; the [command surface](https://github.com/songsid/AgEnD/blob/main/docs/command-surface.md) lists what else needs one |
 | `reply_completion_guard` | boolean | inherited | As the instance field of the same name |
 
-**An empty allow list does not mean open.** A `/start` from a server, group or user not on a list asks General for approval, with **Allow / Allow+admin / Ignore** buttons. Approving does not start the agent: run `/start` again. Rooms already registered keep working.
+**An empty allow list does not mean open.** When someone who is not a ClassicBot admin runs `/start` in a new room whose server, group or private chat is not on a list, General is asked for approval, with **Allow / Allow+admin / Ignore** buttons. Approving does not start the agent: run `/start` again. Admins skip this, and rooms already registered keep working.
+
+In a Telegram group, only a ClassicBot admin can start an agent, even once the group is allowed. **Allow** grants just the group; use **Allow+admin**, or have an admin run `/start`.
 
 In a Telegram group, address the bot: `/start@YourBot` (or `/start@YourBot codex`). A group command without `@YourBot` is ignored.
 
@@ -319,9 +321,11 @@ channels:
 | `name` | string | — | Display name |
 | `backend` / `model` | string | from defaults | Override for this channel |
 | `context_lines` | number | from defaults | Override for this channel |
-| `collab` | boolean | `false` | Keep every message in the channel as context. A turn still needs an @mention of the bot |
+| `collab` | boolean | `false` | Discord: keep every message in the channel as context. A turn still needs an @mention of the bot, or `/chat`. Don't set it on Telegram, see below |
 | `pre_task_command` | string | — | Pasted before every message |
 | `reply_completion_guard` | boolean | from defaults | Override for this channel |
+
+On Telegram, a `collab: true` written into the file makes the bot wait for a Discord-style mention, so ordinary messages can go unanswered. A normal Telegram `/start` never sets it.
 
 Backend resolution order: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`.
 

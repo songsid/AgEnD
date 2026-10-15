@@ -129,7 +129,7 @@ Unblock-File .\install-agend.ps1</pre>
 
     <!-- Auto-start -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">Auto-start on boot</h2>
-    <p class="text-sm text-text-secondary mb-4">The installer wires up three mechanisms so your bot is online after every reboot with zero manual steps:</p>
+    <p class="text-sm text-text-secondary mb-4">The installer wires up three mechanisms so your bot is online after every reboot with zero manual steps. The second one needs the service from stage 5: answer yes when quickstart offers to install it. If that step was skipped or failed, run <code class="font-mono text-accent">agend install</code> inside WSL.</p>
     <ul class="space-y-3 text-sm text-text-secondary mb-14">
       <li>1. <b class="text-text-primary">WSL starts on Windows login</b> via <code class="font-mono text-accent">start-wsl.vbs</code> in the Startup folder (<code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code>).</li>
       <li>2. <b class="text-text-primary">AgEnD starts inside WSL</b> via a systemd service — whenever WSL is running, AgEnD runs.</li>
