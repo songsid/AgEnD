@@ -18,6 +18,7 @@ import { startNeedsNotifier } from "./app-needs.js";
 import { toast } from "./ui-toast.js";
 import { t } from "./app-i18n.js";
 import { initTextSize, initUsageRail } from "./header-tools.js";
+import { installOwnerCss } from "./owner-css.js";
 
 const boot = document.body.dataset;
 // #1523 N3: this device's text size, on the root before the first paint of any panel.
@@ -99,6 +100,8 @@ if (mode === "full") {
 } else appStore.set({ connection: "none" });
 
 startRouter(window);
+// #1629 r4 §3: the person's owner CSS (full app only; never on Settings, in safe mode or where this device turned it off).
+installOwnerCss();
 // /ui on its own opens the chat this browser had open last (an unknown name shows the panel's "not found").
 {
   const r = navStore.get().route;

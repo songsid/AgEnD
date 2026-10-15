@@ -54,6 +54,8 @@ const P = {
   panel: () => html`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/>`,
   back: () => html`<path d="M19 12H5M12 19l-7-7 7-7"/>`,
   forward: () => html`<path d="M5 12h14M12 5l7 7-7 7"/>`,
+  // #1629: Settings → Appearance.
+  palette: () => html`<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/><circle cx="7.5" cy="10.5" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>`,
   book: () => html`<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>`,
   external: () => html`<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>`,
 };

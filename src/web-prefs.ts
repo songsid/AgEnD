@@ -40,7 +40,10 @@ function uniqueStrings(v: unknown, max: number, each: (s: unknown) => boolean, w
 /** #1827: a web person's profile keys (internal: not settable through /ui/prefs, not in its view). */
 const PROFILE_NAME = "profile.name";
 const PROFILE_PLATFORM_NAME = "profile.platformName";
-const PROFILE_KEYS: ReadonlySet<string> = new Set([PROFILE_NAME, PROFILE_PLATFORM_NAME]);
+/** #1629 r4 §3: the person's active owner-CSS version (a sha), internal too: set only by the owner-CSS routes. */
+const OWNER_CSS_ACTIVE = "css.active";
+/** Keys kept in a person's bucket that /ui/prefs neither shows nor sets. */
+const PROFILE_KEYS: ReadonlySet<string> = new Set([PROFILE_NAME, PROFILE_PLATFORM_NAME, OWNER_CSS_ACTIVE]);
 
 /** #1664: at most this many favorites. */
 export const MAX_FAVORITES = 50;
@@ -89,6 +92,7 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   // own check is only its shape.
   [PROFILE_NAME, (v) => (typeof v === "string" && v.length >= 1 && v.length <= 256 ? v : bad("profile.name"))],
   [PROFILE_PLATFORM_NAME, (v) => (typeof v === "string" && v.length >= 1 && v.length <= 256 ? v : bad("profile.platformName"))],
+  [OWNER_CSS_ACTIVE, (v) => (typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : bad("css.active"))],
 ]);
 export const WEB_PREF_KEYS: readonly string[] = [...REGISTRY.keys()].filter((k) => !PROFILE_KEYS.has(k));
 export function isWebPrefKey(key: string): boolean { return REGISTRY.has(key) && !PROFILE_KEYS.has(key); }
@@ -259,6 +263,20 @@ export class WebPrefsStore {
   /** #1827: set (or, with null, clear) a person's own name — already validated by the caller (web-profile.ts). */
   setProfileName(identity: string, name: string | null): { ok: true } | { ok: false; status: 400 | 503; error: string } {
     const w = this.write(identity, new Map([[PROFILE_NAME, name]]));
+    return w.ok ? { ok: true } : w;
+  }
+
+  /** #1629 r4 §3: the person's active owner-CSS version, or null (none, or the file cannot be read). */
+  ownerCssActive(identity: string): string | null {
+    const state = this.load();
+    if (state === "unreadable") return null;
+    const v = state.buckets.get(identity)?.values.get(OWNER_CSS_ACTIVE);
+    return typeof v === "string" ? v : null;
+  }
+  /** #1629 r4 §3: select (or, with null, turn off) the person's owner CSS — a new rev, so their other devices follow. */
+  setOwnerCssActive(identity: string, sha: string | null): { ok: true } | { ok: false; status: 400 | 503; error: string } {
+    if (sha !== null && !/^[0-9a-f]{32}$/.test(sha)) return { ok: false, status: 400, error: "css.active" };
+    const w = this.write(identity, new Map([[OWNER_CSS_ACTIVE, sha]]));
     return w.ok ? { ok: true } : w;
   }
 

@@ -41,9 +41,10 @@ import { takeAgentRequest } from "./settings-request.js";
 import { setPreviewOptIn } from "./panel-chat.js";
 import { startTour } from "./chat-tour.js";
 import "./chat-strings.js";
+import { AppearanceSection } from "./settings-appearance.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
-const ICONS = { device: "user", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
+const ICONS = { device: "user", appearance: "palette", agents: "bot", bots: "plug", classic: "room", general: "sliders", web: "globe", advanced: "code" };
 const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
@@ -224,6 +225,8 @@ export function SettingsPanel({ route, navKey }) {
   }, [!!ctx, navKey]);
   // #1604: This device needs no configuration: shown at once, whatever the configuration read does.
   const sectionBody = section === "device" ? html`<${DeviceSection} />`
+    // #1629 r4 §3: Appearance is the person's own (no configuration read): shown at once, like Preferences.
+    : section === "appearance" ? html`<${AppearanceSection} />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${Agents} ctx=${ctx} search=${search} openDialog=${(d) => setDialog({ ...d, key: navKey })} />`

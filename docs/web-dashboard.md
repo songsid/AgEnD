@@ -255,6 +255,25 @@ A fleet with no chat connection yet (web only) shows a card above the Agents and
   - A connection shows **Token set** (with the bot's name while it runs) or **Token missing**, never the token. A new connection starts as soon as Apply runs, without a restart, when AgEnD is already running another connection and nothing else at fleet level changed; the Apply card says "Starting the new connection". A fleet's first connection, or a change to an existing one, still offers **Restart AgEnD**. A token replaced on a connection that is not running starts it the same way; for the first connection it waits for that restart.
 - **A change that needs a fleet admin's confirmation** (see [Confirming sensitive changes](#confirming-sensitive-changes)) shows a card in any panel: what it changes, the time left, and **Withdraw**. Apply waits for it; once it is confirmed the rest goes on, and if it is refused or expires, nothing after it is applied and those changes are staged again (a bot token has to be entered again).
 
+### Custom CSS (Settings → Appearance)
+
+**Appearance** holds your own stylesheet. It applies only to your screens: every device where you are signed in, never anyone else's. It covers Chat, Fleet, Details, Needs you, Log and View.
+
+- **Never on Settings.** Settings is always drawn without your CSS, so you can always undo a stylesheet that hides something.
+- **Never in these places either:**
+  - the sign-in page;
+  - a temporary public link (a different person, who can't reach Settings);
+  - the anonymous `/view` reader.
+- **Save and try.** A saved version is on trial. A bar on every page asks **Keep this custom CSS?** Choose **Keep** within 15 seconds, or it reverts on its own. It also reverts if the tab is closed or the CSS hides the bar.
+- **What it may contain.** At most 64 KiB, and it never loads anything from the internet:
+  - `@import`, `@namespace` and `@charset` are refused.
+  - Any `url()` or `src()` is refused, except `url("asset:<id>")` naming a file under **Assets**.
+  - `image-set()`, `cross-fade()`, `element()`, `paint()`, `expression()`, `behavior`, `-moz-binding`, `javascript:` and `vbscript:` are refused.
+  - The reason for a refusal is shown when you save. What is served is a clean rewrite of what you wrote, never the uploaded bytes.
+- **Assets.** PNG, WebP, JPEG, GIF or WOFF2: up to 16 files and 1 MiB in total. Metadata such as GPS location is removed. **Copy reference** gives you the `url("asset:<id>")` to paste.
+- **Earlier versions.** The last five are kept, and **Use this** puts one back. **Turn off (all devices)** goes back to the stock look.
+- **On this device.** **Turn off custom CSS on this device** affects only this browser, so a phone layout can be fixed on the phone. Add `?safe=1` to any page's address to load it once without custom CSS.
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone
@@ -339,6 +358,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
 | "Your session has ended" | 48 hours without use or since sign-in (the defaults), or someone revoked. Sign in again. |
 | Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds. Nothing to do — it is not shown as a problem. |
+| A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Appearance** is never styled by it: fix the CSS there, or turn it off. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |
 

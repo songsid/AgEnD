@@ -14,6 +14,7 @@ import { savePref } from "./app-prefs.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { UsageRail, usageRailStore } from "./header-tools.js";
+import { OwnerCssKeepBar } from "./owner-css.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
@@ -512,6 +513,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
+    ${viewOnly ? null : html`<${OwnerCssKeepBar} />`}
     <${Toasts} />
   </div>`;
 }

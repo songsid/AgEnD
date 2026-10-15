@@ -6,6 +6,7 @@ import type { SettingsExecution } from "./settings-transaction.js";
 import type { PaneContextSource } from "./pane-context-cache.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
+import type { OwnerCssStore } from "./web-owner-css-store.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -37,7 +38,7 @@ import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
-import { WEB_NAME_FALLBACK, type WebAccount } from "./web-profile.js";
+import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -222,6 +223,8 @@ export interface WebApiContext {
   readonly sseHeartbeatMs?: number;
   /** #1665: the web preferences kept on the host (one bucket: the operator's); absent: /ui/prefs is not offered. */
   readonly webPrefs?: WebPrefsStore;
+  /** #1629 r4 §3: each person's own CSS (human sessions only; never the public link, never an agent). */
+  readonly ownerCss?: OwnerCssStore;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
@@ -304,6 +307,106 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
   if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false })) return true;
   json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
   return false;
+}
+
+/**
+ * #1629 r4 §3: the owner-CSS routes (see their call site). `who()`, asked first and again after any body: the person a
+ * signed-in human session is, or the status to answer.
+ */
+function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const store = ctx.ownerCss;
+  if (!store) { json(res, 404, { error: "Owner CSS is not kept on this fleet" }); return true; }
+  const reading = method === "GET" || method === "HEAD";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "owner_css_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "owner_css_needs_a_signed_in_person" };
+    if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "owner_css_read_only" };
+    return { person: webPersonKey(verdict.session.owner) };
+  };
+  const first = who();
+  if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  const again = (): string | null => {
+    if (!permitWebContinuation(req, res, ctx)) return null;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return null; }
+    if (now.person !== first.person) { json(res, 409, { error: "owner_css_person_changed" }); return null; }
+    return now.person;
+  };
+  const announce = () => ctx.emitSseEvent("status", ctx.getUiStatus());   // their other devices see the new prefs rev
+  const fail = (err: unknown) => {
+    ctx.logger.error({ err: (err as Error).message }, "Owner CSS request failed");
+    try { json(res, 500, { error: "Owner CSS request failed" }); } catch { /* already answered */ }
+  };
+
+  if (path === "/ui/owner-css.css" && method === "GET") {
+    const v = url.searchParams.get("v");
+    const sha = v ?? store.state(first.person).active;
+    const text = sha ? store.served(first.person, sha) : null;
+    if (text === null) { json(res, 404, { error: "no owner CSS" }); return true; }
+    res.writeHead(200, {
+      "Content-Type": "text/css; charset=utf-8", "X-Content-Type-Options": "nosniff",
+      // Keyed by its sha (?v): a version's text never changes. Without ?v it is whatever is in force now.
+      "Cache-Control": v ? "private, max-age=31536000, immutable" : "private, no-store",
+    });
+    res.end(text);
+    return true;
+  }
+  const assetPath = /^\/ui\/owner-css\/asset\/([0-9a-f]{32})$/.exec(path);
+  if (assetPath && method === "GET") {
+    const asset = store.asset(first.person, assetPath[1]!);
+    if (!asset) { json(res, 404, { error: "no such asset" }); return true; }
+    res.writeHead(200, {
+      "Content-Type": asset.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=31536000, immutable",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+    });
+    res.end(asset.bytes);
+    return true;
+  }
+  if (path === "/ui/owner-css/state" && method === "GET") { json(res, 200, store.state(first.person)); return true; }
+  if (assetPath && method === "DELETE") {
+    const removed = store.removeAsset(first.person, assetPath[1]!);
+    json(res, removed.ok ? 200 : removed.status, removed.ok ? { ok: true } : { error: removed.error });
+    return true;
+  }
+  if (method !== "POST" || !["/ui/owner-css", "/ui/owner-css/keep", "/ui/owner-css/restore", "/ui/owner-css/asset"].includes(path)) {
+    json(res, 404, { error: "not found" });
+    return true;
+  }
+  (async () => {
+    if (path === "/ui/owner-css/asset") {
+      let bytes: Buffer;
+      try { bytes = await readBoundedWebBody(req, 1024 * 1024); } catch { json(res, 413, { error: "asset_quota", detail: "at most 1 MiB" }); return; }
+      const person = again();
+      if (!person) return;
+      const added = store.addAsset(person, bytes);
+      if (!added.ok) { json(res, added.status, { error: added.error, ...(added.detail ? { detail: added.detail } : {}) }); return; }
+      json(res, 200, { id: added.id, kind: added.kind, bytes: added.bytes });
+      return;
+    }
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    const person = again();
+    if (!person) return;
+    if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "an object" }); return; }
+    if (path === "/ui/owner-css") {
+      const saved = store.save(person, body.text);
+      if (!saved.ok) { json(res, saved.status, { error: saved.error, ...(saved.detail ? { detail: saved.detail } : {}) }); return; }
+      announce();
+      json(res, 200, { sha: saved.sha, previous: saved.previous });
+    } else if (path === "/ui/owner-css/keep") {
+      const kept = store.keep(person, body.sha);
+      if (!kept.ok) { json(res, kept.status, { error: kept.error }); return; }
+      json(res, 200, { active: kept.active });
+    } else {
+      const restored = store.restore(person, body.sha);
+      if (!restored.ok) { json(res, restored.status, { error: restored.error }); return; }
+      announce();
+      json(res, 200, { active: restored.active });
+    }
+  })().catch(fail);
+  return true;
 }
 
 /** #1827: a web person as the web chat shows them to agents and chats. */
@@ -800,6 +903,14 @@ export function handleWebRequest(
       try { json(res, 500, { error: "Saving preferences failed" }); } catch { /* already answered */ }
     });
     return true;
+  }
+
+  // #1629 r4 §3: owner CSS — one person's own stylesheet, for their own screens. Every route is a signed-in human's
+  // session: never the CLI's header token (no person, and the way an agent could reach it), never the public link
+  // (absent from its manifest, and refused here too), reads included. The stylesheet and its assets are that session's
+  // person's only: no name or identity in any URL.
+  if (path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")) {
+    return handleOwnerCss(req, res, url, ctx, path, method);
   }
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
@@ -1599,6 +1710,10 @@ export interface AppShellContext {
   readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
+  /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
+  readonly ownerCss?: OwnerCssStore;
+  readonly webToken?: string | null;
+  readonly webSessions?: WebApiContext["webSessions"];
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -1660,8 +1775,22 @@ function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode): string {
   return `<html lang="${lang}" data-prefs="${attr(JSON.stringify({ rev: view.rev, values: view.values }))}">`;
 }
 
+/**
+ * #1629 r4 §3: the owner CSS this load links (its sha), or null. Only the full app of a signed-in human session — never
+ * the public link, the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels).
+ */
+function shellOwnerCss(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string | null {
+  if (mode !== "full" || gatewayRequestContext(req) || !ctx.ownerCss) return null;
+  try {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow" || verdict.via !== "session" || !verdict.session) return null;
+    return ctx.ownerCss.active(webPersonKey(verdict.session.owner));
+  } catch { return null; }
+}
+
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string {
   const p = shellPreview(req, ctx, mode);
+  const ownerCss = shellOwnerCss(req, ctx, mode);
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
@@ -1675,6 +1804,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
     // #1770: the fleet's zone (chat-logs' and fleet.log's), in which the chat reads its message times and days.
     + ` data-fleet-tz="${attr(resolveTz())}"`
+    // #1629 r4 §3: the person's owner CSS in force (a sha), linked by the page unless this device or this load says not.
+    + `${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}>`;
 }
