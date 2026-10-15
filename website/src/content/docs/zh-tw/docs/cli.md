@@ -51,7 +51,12 @@ agend fleet stop <name>
 
 ```bash
 agend fleet restart
-agend fleet restart <name>   # 重啟指定的 instance
+```
+
+立即重啟指定的 instance（不等 idle — 可能中斷正在忙碌的工作）：
+
+```bash
+agend fleet restart <name>
 ```
 
 這會沿用正在跑的程式碼。要載入新版的 AgEnD 本身，重啟程序：
@@ -230,11 +235,17 @@ agend schedule delete <id>
 agend schedule history <id>
 ```
 
-要立刻觸發排程，請用 Telegram 或 Discord 的 `/schedule trigger` 介面 — CLI 沒有 fleet manager 在跑時無法直接觸發排程。
+要立刻觸發排程，執行：
+
+```bash
+agend schedule trigger <id>
+```
+
+這只會印出觸發方式的指引，CLI 本身無法直接觸發排程。需要觸發時，必須有 fleet manager 在跑，可透過網頁儀表板或 fleet API 操作。
 
 ## 設定確認
 
-來自網頁儀表板或 Settings 的敏感設定變更會成為待確認的提案，需要在主機上確認：
+敏感設定變更（來自網頁儀表板或 Settings）會成為待確認的提案。AgEnD 會先嘗試透過 General instance 向 fleet admin 發送確認（聊天軟體裡的 Confirm/Reject 按鈕）。若沒有可用的 General instance — 例如變更跨平台、或找不到合適的 General — 則退回主機 CLI 確認：
 
 ```bash
 agend settings confirm <id>        # 檢視 diff，然後確認
@@ -310,7 +321,7 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 
 ## 聊天指令
 
-這些在聊天軟體的 fleet topic（General 或 instance topic）裡執行。完整指令清單（含各平台權限細節）請看 [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md)。
+這些在聊天軟體裡執行。在 **Discord** 上，它們可以在任何 fleet topic 頻道使用。在 **Telegram** 上，操作整個 fleet 的指令（`/status`、`/sysinfo`、`/usage`、`/restart`、`/update`、`/doctor`、`/login`、`/web`、`/visibility`）只能在 General topic 使用；在 worker topic 下會被拒絕。完整指令清單（含各平台權限細節）請看 [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md)。
 
 | 指令 | 作用 | 權限 |
 |---|---|---|
@@ -320,7 +331,7 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 | `/ctx` | Agent context 用量 | 所有人 |
 | `/steer <text>` | 插入當前 turn（claude-code、codex、grok、muse、kiro TUI） | 所有人 |
 | `/btw <text>` | 不中斷當前任務的側邊提問（claude-code 限定） | 所有人 |
-| `/compact` | 壓縮 agent context | Fleet topic 所有人 |
+| `/compact` | 壓縮 agent context | 🔒 管理員 |
 | `/clear` | 完全重置對話（要求確認） | 🔒 管理員 |
 | `/model` | 切換後端模型 | 🔒 管理員 |
 | `/effort` | 調整 AI 推理強度 | 🔒 管理員 |
@@ -332,7 +343,7 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 | `/doctor` | Fleet 健康診斷 | 🔒 管理員 |
 | `/login [backend]` | 遠端登入 CLI（缺少時先安裝） | 🔒 管理員 |
 | `/web` | 登入網頁儀表板；`/web revoke` 讓所有人登出 | 🔒 管理員 |
-| `/collab` | 在 fleet topic 切換 bot/webhook 訊息接收 | Fleet topic 所有人 |
+| `/collab` | 在 fleet topic 切換 bot/webhook 訊息接收 | 🔒 管理員 |
 | `/visibility` | 跨 instance 訊息在 topic 裡的顯示方式（full/summary/hidden） | 🔒 管理員 |
 | `/tips` | 抽一條隨機使用提示 | 所有人 |
 

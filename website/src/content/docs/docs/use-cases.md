@@ -181,7 +181,7 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
 | Pause or wake manually | `/pause`, `/wake` (a paused instance also wakes on a new message) |
 | Status, usage and settings | `/web` (admin), `/usage`, `/sysinfo` |
 
-Slash commands are handled by AgEnD itself, not guessed by a model. `/dashboard`, for example, is answered directly with links, while `/chat` and `/steer` pass their text to the assistant. In Telegram groups, use `/command@botname`.
+Slash commands are handled by AgEnD itself, not guessed by a model. `/web` (also available as `/dashboard`) is answered directly with links, while `/chat` and `/steer` pass their text to the assistant. In Telegram groups, use `/command@botname`.
 
 ---
 

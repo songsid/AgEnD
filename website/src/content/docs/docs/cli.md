@@ -51,7 +51,12 @@ Restart gracefully — it waits for the agent to go idle first:
 
 ```bash
 agend fleet restart
-agend fleet restart <name>   # restart a specific instance
+```
+
+Restart a specific instance immediately (no idle wait — may interrupt a busy turn):
+
+```bash
+agend fleet restart <name>
 ```
 
 That reuses the running code. To pick up a new version of AgEnD itself, restart the process:
@@ -230,11 +235,17 @@ See when a schedule last ran:
 agend schedule history <id>
 ```
 
-To trigger a schedule immediately, use the `/schedule trigger` interface in Telegram or Discord — the CLI cannot fire a schedule directly without a running fleet manager.
+To trigger a schedule immediately, run:
+
+```bash
+agend schedule trigger <id>
+```
+
+This prints the instruction for how to trigger it from the CLI, but cannot fire the schedule itself directly. Triggering requires the fleet manager to be running; use the fleet's web dashboard or schedule the trigger via the running fleet API.
 
 ## Settings confirmation
 
-Sensitive config changes (from the web dashboard or Settings) become pending proposals that require confirmation on the host:
+Sensitive config changes (from the web dashboard or Settings) become pending proposals. AgEnD first tries to prompt a fleet admin through the General instance (Confirm/Reject buttons in chat). If no matching General instance is available — for example when the change spans platforms or no General is reachable — it falls back to host CLI confirmation:
 
 ```bash
 agend settings confirm <id>        # inspect the diff, then confirm
@@ -310,7 +321,7 @@ Names come from `agend ls --names-only`, so completion offers exactly what `atta
 
 ## Chat commands
 
-These run in the chat app, in fleet topics (General or an instance topic). For the full command list with per-platform details and permissions, see [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md).
+These run in the chat app. On **Discord** they work in any fleet-topic channel. On **Telegram**, commands that operate on the whole fleet — `/status`, `/sysinfo`, `/usage`, `/restart`, `/update`, `/doctor`, `/login`, `/web`, `/visibility` — are handled in the General topic only; in a worker topic they are refused. For the full command list with per-platform details and permissions, see [commands.md](https://github.com/songsid/AgEnD/blob/main/docs/commands.md).
 
 | Command | What it does | Permission |
 |---|---|---|
@@ -320,7 +331,7 @@ These run in the chat app, in fleet topics (General or an instance topic). For t
 | `/ctx` | Agent context usage | All |
 | `/steer <text>` | Interject into the current turn (claude-code, codex, grok, muse, kiro TUI) | All |
 | `/btw <text>` | Side question without interrupting the current task (claude-code only) | All |
-| `/compact` | Compact agent context | All in fleet topics |
+| `/compact` | Compact agent context | 🔒 admin |
 | `/clear` | Full conversation reset (asks Confirm/Cancel) | 🔒 admin |
 | `/model` | Switch backend model | 🔒 admin |
 | `/effort` | Adjust AI reasoning effort | 🔒 admin |
@@ -332,7 +343,7 @@ These run in the chat app, in fleet topics (General or an instance topic). For t
 | `/doctor` | Fleet health diagnostics | 🔒 admin |
 | `/login [backend]` | Remote CLI sign-in (installs the CLI if missing) | 🔒 admin |
 | `/web` | Sign in to the web dashboard; `/web revoke` signs everyone out | 🔒 admin |
-| `/collab` | Toggle bot/webhook message reception in a fleet topic | All in fleet topics |
+| `/collab` | Toggle bot/webhook message reception in a fleet topic | 🔒 admin |
 | `/visibility` | How cross-instance messages appear in topics (full/summary/hidden) | 🔒 admin |
 | `/tips` | Draw a random usage tip | All |
 
