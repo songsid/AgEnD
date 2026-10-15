@@ -235,13 +235,7 @@ See when a schedule last ran:
 agend schedule history <id>
 ```
 
-To trigger a schedule immediately, run:
-
-```bash
-agend schedule trigger <id>
-```
-
-This prints the instruction for how to trigger it from the CLI, but cannot fire the schedule itself directly. Triggering requires the fleet manager to be running; use the fleet's web dashboard or schedule the trigger via the running fleet API.
+\`agend schedule trigger <id>\` currently prints guidance only — it does not execute a schedule.
 
 ## Settings confirmation
 

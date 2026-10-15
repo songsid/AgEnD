@@ -235,13 +235,7 @@ agend schedule delete <id>
 agend schedule history <id>
 ```
 
-要立刻觸發排程，執行：
-
-```bash
-agend schedule trigger <id>
-```
-
-這只會印出觸發方式的指引，CLI 本身無法直接觸發排程。需要觸發時，必須有 fleet manager 在跑，可透過網頁儀表板或 fleet API 操作。
+\`agend schedule trigger <id>\` 目前只會印出指引，不會執行排程。
 
 ## 設定確認
 
