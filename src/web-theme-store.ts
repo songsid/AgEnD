@@ -16,11 +16,13 @@ import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, MEDIA_EXT, MEDIA_MIME, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
 import { checkTheme, type Theme } from "./web-theme.js";
+import { type AppearanceLimits, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 
 export type AppearanceActor = "agent" | "human";
 export interface Placement { id: string; by: AppearanceActor; at: number }
 export interface Placements { effects: Placement[]; widgets: { chat_header?: Placement; details?: Placement } }
-export type ThemeAssetSlot = "background" | "avatar";
+import { THEME_ASSET_SLOTS, type ThemeAssetSlot } from "./web-asset-parts.js";
+export { THEME_ASSET_SLOTS, type ThemeAssetSlot };
 export interface ThemeAsset { id: string; slot: ThemeAssetSlot; kind: MediaKind; bytes: number }
 export interface ThemeRecord {
   theme: Theme;
@@ -34,13 +36,20 @@ export interface ThemeRecord {
 }
 export type StoreWrite<T = Record<never, never>> = ({ ok: true; rev: number } & T) | { ok: false; status: 400 | 404 | 409 | 413 | 503; error: string; detail?: string };
 
-/** Per-slot limits (first design §4) and the per-instance quota (r4 §1: 8 files, 4 MiB; r4.1 makes it configurable). */
-export const THEME_ASSET_LIMITS: Record<ThemeAssetSlot, { maxBytes: number; maxSide: number }> = {
+/** The theme's own picture slots (first design §4). The card's (portrait, banner) are `web.appearance`'s (r4.1 Q3 (b)). */
+export const THEME_ASSET_LIMITS: Record<"background" | "avatar", { maxBytes: number; maxSide: number }> = {
   background: { maxBytes: 512 * 1024, maxSide: 4096 },
   avatar: { maxBytes: 256 * 1024, maxSide: 4096 },
 };
-export const THEME_ASSET_QUOTA = { files: 8, bytes: 4 * 1024 * 1024 } as const;
+/** Width, height and bytes a slot takes now. */
+export function slotLimit(slot: ThemeAssetSlot, limits: AppearanceLimits): { maxWidth: number; maxHeight: number; maxBytes: number } {
+  if (slot === "portrait" || slot === "banner") return limits[slot];
+  const l = THEME_ASSET_LIMITS[slot];
+  return { maxWidth: l.maxSide, maxHeight: l.maxSide, maxBytes: l.maxBytes };
+}
 const PICTURE_KINDS: ReadonlySet<MediaKind> = new Set(["png", "jpeg", "webp", "gif"]);
+/** A card picture is a still: png, webp or jpeg (r4 §1). */
+const CARD_KINDS: ReadonlySet<MediaKind> = new Set(["png", "jpeg", "webp"]);
 const ASSET_ID = /^[0-9a-f]{32}$/;
 
 const hash32 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex").slice(0, 32);
@@ -59,9 +68,11 @@ type State = { rev: number; records: Map<string, ThemeRecord> } | "unreadable";
 export class ThemeStore {
   private state: State | null = null;
   readonly path: string;
-  constructor(private readonly dataDir: string, private readonly opts: { now?: () => number } = {}) {
+  constructor(private readonly dataDir: string, private readonly opts: { now?: () => number; limits?: () => AppearanceLimits } = {}) {
     this.path = join(dataDir, "web-themes.json");
   }
+  /** The limits in force now (`web.appearance`, clamped); checked at each upload, never against what is stored. */
+  limits(): AppearanceLimits { return this.opts.limits?.() ?? effectiveAppearanceLimits(undefined).limits; }
   private now(): number { return (this.opts.now ?? Date.now)(); }
   private assetDir(name: string): string { return join(this.dataDir, "web-themes", hash32(`instance\0${name}`)); }
 
@@ -76,9 +87,9 @@ export class ThemeStore {
       const records = new Map<string, ThemeRecord>();
       for (const [name, raw] of Object.entries(doc.instances as Record<string, unknown>)) {
         const r = raw as Partial<ThemeRecord>;
-        const assets = Array.isArray(r.assets) ? r.assets.filter(a => a && ASSET_ID.test(String(a.id)) && (a.slot === "background" || a.slot === "avatar") && PICTURE_KINDS.has(a.kind) && Number.isSafeInteger(a.bytes)) : [];
+        const assets = Array.isArray(r.assets) ? r.assets.filter(a => a && ASSET_ID.test(String(a.id)) && THEME_ASSET_SLOTS.includes(a.slot) && PICTURE_KINDS.has(a.kind) && Number.isSafeInteger(a.bytes)) : [];
         // A stored theme is checked again on load: one that no longer passes (a rule tightened) is the default.
-        const checked = checkTheme(r.theme ?? { v: 1 }, { assets: new Set(assets.map(a => a.id)) });
+        const checked = checkTheme(r.theme ?? { v: 1 }, { assets: new Set(assets.map(a => a.id)), slotOf: id => assets.find(a => a.id === id)?.slot });
         records.set(name, {
           theme: checked.ok ? checked.theme : { v: 1 },
           placements: sanePlacements(r.placements),
@@ -147,29 +158,39 @@ export class ThemeStore {
     return { ...w, theme: clone(theme) };
   }
 
-  /** A picture for the theme: magic bytes, size and dimensions for its slot, metadata stripped, the instance's quota. */
+  /**
+   * A picture for the theme or its card: magic bytes, size and dimensions for its slot (the limits in force now),
+   * metadata stripped, the instance's quota. An asset is its kept bytes and holds one slot: the same picture uploaded
+   * again for that slot is the same id; for another slot, 409 (a card names only its own slot's pictures).
+   */
   addAsset(name: string, slot: unknown, bytes: Uint8Array): StoreWrite<{ id: string }> {
-    if (slot !== "background" && slot !== "avatar") return { ok: false, status: 400, error: "slot", detail: "background or avatar" };
+    if (!THEME_ASSET_SLOTS.includes(slot as ThemeAssetSlot)) return { ok: false, status: 400, error: "slot", detail: THEME_ASSET_SLOTS.join(", ") };
+    const s = slot as ThemeAssetSlot;
+    const card = s === "portrait" || s === "banner";
     const kind = sniffMedia(bytes);
-    if (!kind || !PICTURE_KINDS.has(kind)) return { ok: false, status: 400, error: "asset_type", detail: "png, jpeg, webp or gif" };
-    const lim = THEME_ASSET_LIMITS[slot];
-    if (bytes.length > lim.maxBytes) return { ok: false, status: 413, error: "asset_too_large", detail: `at most ${lim.maxBytes / 1024} KiB for ${slot}` };
+    const kinds = card ? CARD_KINDS : PICTURE_KINDS;
+    if (!kind || !kinds.has(kind)) return { ok: false, status: 400, error: "asset_type", detail: card ? "png, jpeg or webp" : "png, jpeg, webp or gif" };
+    const limits = this.limits();
+    const lim = slotLimit(s, limits);
+    if (bytes.length > lim.maxBytes) return { ok: false, status: 413, error: "asset_too_large", detail: `at most ${lim.maxBytes / 1024} KiB for ${s}` };
     const size = imageSize(bytes, kind);
     if (!size || size.width < 1 || size.height < 1) return { ok: false, status: 400, error: "asset_unreadable" };
-    if (size.width > lim.maxSide || size.height > lim.maxSide) return { ok: false, status: 400, error: "asset_dimensions", detail: `at most ${lim.maxSide} px a side` };
+    if (size.width > lim.maxWidth || size.height > lim.maxHeight) return { ok: false, status: 400, error: "asset_dimensions", detail: `at most ${lim.maxWidth}×${lim.maxHeight} px for ${s}` };
     const kept = stripMetadata(bytes, kind);
     if (!kept) return { ok: false, status: 400, error: "asset_unreadable" };
     const id = hash32(kept);
     const prev = this.get(name);
-    if (prev.assets.some(a => a.id === id)) return { ok: true, rev: this.rev(), id };
-    if (prev.assets.length >= THEME_ASSET_QUOTA.files || prev.assets.reduce((n, a) => n + a.bytes, 0) + kept.length > THEME_ASSET_QUOTA.bytes) {
-      return { ok: false, status: 409, error: "asset_quota", detail: `at most ${THEME_ASSET_QUOTA.files} files and ${THEME_ASSET_QUOTA.bytes / 1024 / 1024} MiB` };
+    const same = prev.assets.find(a => a.id === id);
+    if (same) return same.slot === s ? { ok: true, rev: this.rev(), id } : { ok: false, status: 409, error: "asset_other_slot", detail: `this picture is already this instance's ${same.slot}` };
+    const quota = limits.quota;
+    if (prev.assets.length >= quota.files || prev.assets.reduce((n, a) => n + a.bytes, 0) + kept.length > quota.bytes) {
+      return { ok: false, status: 409, error: "asset_quota", detail: `at most ${quota.files} files and ${quota.bytes / 1024 / 1024} MiB` };
     }
     try {
       mkdirSync(this.assetDir(name), { recursive: true, mode: 0o700 });
       writeBytesAtomic(join(this.assetDir(name), `${id}.${MEDIA_EXT[kind]}`), kept);
     } catch (err) { return { ok: false, status: 503, error: "asset_write_failed", detail: (err as Error).message }; }
-    const next: ThemeRecord = { ...prev, assets: [...prev.assets, { id, slot, kind, bytes: kept.length }], updated: this.now() };
+    const next: ThemeRecord = { ...prev, assets: [...prev.assets, { id, slot: s, kind, bytes: kept.length }], updated: this.now() };
     const w = this.commit(name, next);
     if (!w.ok) { try { unlinkSync(join(this.assetDir(name), `${id}.${MEDIA_EXT[kind]}`)); } catch { /* none */ } return w; }
     return { ...w, id };
@@ -238,6 +259,8 @@ function referencedAssets(theme: Theme): Set<string> {
   const out = new Set<string>();
   if (theme.background) out.add(theme.background.image);
   if (theme.avatar) out.add(theme.avatar);
+  if (theme.card?.portrait) out.add(theme.card.portrait);
+  if (theme.card?.banner) out.add(theme.card.banner);
   return out;
 }
 function sanePlacements(raw: unknown): Placements {

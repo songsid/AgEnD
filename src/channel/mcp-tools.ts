@@ -142,7 +142,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_web_theme", schemas.SetWebThemeArgs,
     "Change your own web theme, all or nothing: typed values only (colours #rrggbb, choices from fixed lists, numbers in range), contrast checked per light/dark mode. Returns { theme, rev } or { errors: [{ path, problem }] }. Rate-limited (30 s apart, 10 an hour); refused while a person has locked your theme."],
   ["set_web_theme_asset", schemas.SetWebThemeAssetArgs,
-    "Upload a picture from your working directory for your theme's background or avatar; returns { id } to name in set_web_theme. Metadata (EXIF/GPS) is removed. At most 3 uploads an hour."],
+    "Upload a picture from your working directory for your theme's background or avatar, or your identity card's portrait or banner; returns { id } to name in set_web_theme (background.image, avatar, card.portrait, card.banner). Metadata (EXIF/GPS) is removed. At most 3 uploads an hour."],
   ["reset_web_theme", schemas.ResetWebThemeArgs,
     "Reset your own web theme to the default (counts as a change for the rate limit)."],
   ["set_description", schemas.SetDescriptionArgs,

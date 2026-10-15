@@ -21,6 +21,7 @@ import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { readAgentFile } from "./agent-file-read.js";
+import { ASSET_UPLOAD_MAX_BYTES, sendAssetInParts } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
@@ -91,8 +92,8 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   get_web_theme: "fleet_get_web_theme", set_web_theme: "fleet_set_web_theme",
   set_web_theme_asset: "fleet_set_web_theme_asset", reset_web_theme: "fleet_reset_web_theme",
 });
-/** The largest picture a theme slot takes (the background's 512 KiB): read no more than that. */
-const WEB_THEME_ASSET_MAX_BYTES = 512 * 1024;
+/** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
+const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
 const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
@@ -9907,23 +9908,31 @@ export class Daemon extends EventEmitter {
     // #1629: the caller's own web theme. set_web_theme_asset's file is read HERE, on the agent's side (in its working
     // directory, no symlink, size-capped): the fleet receives bytes, never a workspace path.
     if (Object.hasOwn(WEB_THEME_IPC, tool)) {
-      void (async () => {
-        let payload: Record<string, unknown> = args;
-        if (tool === "set_web_theme_asset") {
-          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: WEB_THEME_ASSET_MAX_BYTES });
-          if (!read.ok) { respond(null, `set_web_theme_asset: ${String(args.file ?? "").slice(0, 200)} — ${read.reason}`); return; }
-          payload = { slot: args.slot, data_b64: read.bytes.toString("base64") };
-        }
+      // One fleet request; resolves with its answer, or an error string (never rejects).
+      const ask = (payload: Record<string, unknown>) => new Promise<{ result: unknown; error?: string }>((resolve) => {
         const fleetReqId = `theme_${++this.fleetRequestSeq}_${requestId}`;
         const timeout = setTimeout(() => {
           this.pendingIpcRequests.delete(fleetReqId);
-          respond(null, `${tool} timed out`);
+          resolve({ result: null, error: `${tool} timed out` });
         }, daemonBudgetMs(tool));
         this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
           clearTimeout(timeout);
-          respond(respMsg.result, respMsg.error as string | undefined);
+          resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
         this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
+      });
+      void (async () => {
+        if (tool !== "set_web_theme_asset") { const r = await ask(args); respond(r.result, r.error); return; }
+        const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: WEB_THEME_ASSET_MAX_BYTES });
+        if (!read.ok) { respond(null, `set_web_theme_asset: ${String(args.file ?? "").slice(0, 200)} — ${read.reason}`); return; }
+        // A picture larger than one IPC message goes up in parts (r4 §1: a card portrait may be megabytes).
+        let failed: string | undefined;
+        const answer = await sendAssetInParts(args.slot, read.bytes, async (payload) => {
+          const r = await ask(payload);
+          if (r.error) { failed = r.error; return { error: r.error }; }
+          return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
+        });
+        respond(failed ? null : answer, failed);
       })();
       return;
     }

@@ -194,6 +194,7 @@ import { WebPrefsStore } from "./web-prefs.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WebAppearance } from "./web-appearance.js";
+import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
 import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
@@ -1300,7 +1301,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webAppearanceService?: WebAppearance;
   /** #1629: every instance's theme, placements, assets and lock (web-themes.json). */
   get themeStore(): ThemeStore {
-    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir));
+    // r4.1 Q3 (b): the card's limits are read from fleet.yaml at each upload (a change applies without a restart).
+    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits }));
   }
   /** #1629: the theme tools, a person's reset and lock, and the one appearance rate limiter (shared with effects). */
   get webAppearance(): WebAppearance {
@@ -10639,7 +10641,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.limiter.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
