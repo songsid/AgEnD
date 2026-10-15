@@ -143,7 +143,7 @@ describe("a chat /update runs the installed `agend update`, by absolute path", (
       await (fm as any).handleUpdateSlash({ command: "update", channelId: "c1", userId: "admin", respond }, "discord-main");
       expect(spawned).toEqual([]);
       expect(failed).toEqual([expect.stringContaining(reason)]);
-      expect(failed[0]).toContain("Run `agend update` from a shell");
+      expect(failed[0]).toContain("Run `agend update` from a host shell");
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); }
   });
 

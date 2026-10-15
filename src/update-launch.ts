@@ -7,6 +7,7 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { updateCommand } from "./update-dispatch.js";
 import { maskSecrets } from "./log-steps.js";
+import { t } from "./locale.js";
 
 /** How many bytes to read from the tail of the log when extracting a cause after the updater exits. */
 const CAUSE_TAIL_BYTES = 8 * 1024;
@@ -71,7 +72,7 @@ export function updateFixHint(output: string, opts: { agendGone?: boolean } = {}
     const named = /^npm (?:ERR!|error) dest (.+)$/im.exec(output)?.[1] ?? /ENOTEMPTY[^\n]*rename '[^'\n]+' -> '([^'\n]+)'/.exec(output)?.[1];
     const ours = named && isAbsolute(named) && !/['"\s\\`$]/.test(named)
       && basename(dirname(named)) === "@songsid" && /^\.agend[A-Za-z0-9._-]*$/.test(basename(named));
-    if (ours) return `remove the directory an interrupted install left, then update again: \`rm -rf '${named}' && agend update\``;
+    if (ours) return t("update.failure.remove_staging", `\`rm -rf '${named}' && agend update\``);
     return null;
   }
   if (/systemd does not know /.test(output)) return `\`npm i -g @songsid/agend@${target} && agend restart\``;
@@ -216,16 +217,21 @@ export function watchUpdateLaunch(
     reported = true;
     const tail = logPath != null && logOffset != null ? readRunTail(logPath, logOffset) : null;
     const cause = tail === null ? null : extractUpdateCause(tail);
-    const logNote = logPath ? ` Full log: ${logPath}.` : "";
-    const detail = cause ? ` Cause: ${cause}.${logNote}` : logNote;
     const fix = updateFixHint(tail ?? "", { agendGone: agendAtLaunch && !existsSync(agendPath!) });
-    fail(`/update could not complete (${reason}).${detail} ${fix ? `Fix: ${fix}` : "Run `agend update` from a host shell."}`);
+    // The persisted marker caps this text at 300 chars: keep the action and log before raw diagnostics.
+    fail([
+      fix ? t("update.failure.fix", fix) : t("update.failure.shell"),
+      ...(logPath ? [t("update.failure.log", logPath)] : []),
+      t("update.failure.summary", reason),
+      ...(cause ? [t("update.failure.cause", cause)] : []),
+    ].join(" "));
   };
 
-  child.once("error", () => report("updater launch failed"));
+  child.once("error", () => report(t("update.failure.launch")));
   child.once("exit", (code, signal) => {
     if (signal || (code !== 0 && code !== 75)) {
-      report(signal ? "updater was interrupted" : `updater exited ${code ?? "without a status"}`);
+      report(signal ? t("update.failure.interrupted")
+        : code == null ? t("update.failure.no_status") : t("update.failure.exit", code));
     }
   });
 }
