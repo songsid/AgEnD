@@ -17,6 +17,7 @@ import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
 import { themeMenuItems, themesStore } from "/assets/app-themes.js";
+import { IdentityCard, useCard } from "/assets/identity-card.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
@@ -41,6 +42,8 @@ export function DetailsPanel({ route, navKey }) {
 function DetailsView({ name, inst, navKey, exec, awaiting }) {
   useStore(themesStore);   // #1629: Lock / Unlock follows the themes as read
   const lease = useLease(`details:${name}`);
+  // #1629 r4 §1: the identity card at the top, read when the status frame's card_v moves.
+  const card = useCard(name, inst.card_v);
   const [d, setD] = useState(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState("");
@@ -148,6 +151,6 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   }
   return html`<div class="panel p-details">
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}${content}</div></div>
+    <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />${content}</div></div>
   </div>`;
 }

@@ -21,6 +21,11 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // write, which the page no longer makes, is not offered on the public link either.
   if (method === "POST" && /^\/api\/(profile|avatar)\/[^/]+$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/avatar\/[^/]+$/.test(path)) return true;   // #1630 follow-up: removing it, as uploading it
+  // #1629 r4.1 Q2: the identity card follows the profile and avatar (the person's card, read and edited here); the
+  // agent's theme, its reset and lock stay off this list.
+  if (reads && /^\/api\/card\/[^/]+(?:\/(?:portrait|banner))?$/.test(path)) return true;
+  if ((method === "POST" || method === "DELETE") && /^\/api\/card\/[^/]+\/(?:portrait|banner)$/.test(path)) return true;
+  if (method === "DELETE" && /^\/api\/card\/[^/]+$/.test(path)) return true;   // Clear card
   if (method === "POST" && (/^\/stop\/[^/]+$/.test(path) || /^\/api\/instance\/[^/]+\/start$/.test(path))) return true;
   if (method === "GET" && /^\/ui\/js\/[a-z0-9_-]+\.js$/.test(path)) return true;
   if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|cache|prefs|preview-status|steps)$/.test(path)) return true;

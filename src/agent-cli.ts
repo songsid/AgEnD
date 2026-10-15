@@ -14,6 +14,7 @@ import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
 import { readAgentFile } from "./agent-file-read.js";
+import { ASSET_UPLOAD_MAX_BYTES, sendAssetInParts, THEME_ASSET_SLOTS } from "./web-asset-parts.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -47,8 +48,6 @@ function themeSetPairs(pairs: string[]): Record<string, unknown> {
   }
   return set;
 }
-/** What fits the agent endpoint's 512 KiB body once base64-encoded; the MCP tool takes up to the slot's own limit. */
-const CLI_ASSET_MAX_BYTES = 360 * 1024;
 
 function post(op: string, args: Record<string, unknown>): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -205,12 +204,19 @@ async function main(): Promise<void> {
       args = { clear: rest };
       break;
     case "theme-asset": {
-      if ((rest[0] !== "background" && rest[0] !== "avatar") || !rest[1]) die("Usage: agend-agent theme asset <background|avatar> <file>");
-      // Read here, on the agent's side, in its working directory: the fleet never opens a workspace path.
-      const read = await readAgentFile(rest[1], { workspace: process.cwd(), stateDir: DATA_DIR, maxBytes: CLI_ASSET_MAX_BYTES });
-      if (!read.ok) die(`theme asset: ${rest[1]} — ${read.reason}${read.reason.startsWith("over the size") ? " (use the set_web_theme_asset tool for larger pictures)" : ""}`);
-      args = { slot: rest[0], data_b64: read.bytes.toString("base64") };
-      break;
+      if (!(THEME_ASSET_SLOTS as readonly string[]).includes(rest[0] ?? "") || !rest[1]) die(`Usage: agend-agent theme asset <${THEME_ASSET_SLOTS.join("|")}> <file>`);
+      // Read here, on the agent's side, in its working directory: the fleet never opens a workspace path. A picture
+      // larger than one request body goes up in parts (r4 §1); the fleet checks the slot's limit in force.
+      const read = await readAgentFile(rest[1], { workspace: process.cwd(), stateDir: DATA_DIR, maxBytes: ASSET_UPLOAD_MAX_BYTES });
+      if (!read.ok) die(`theme asset: ${rest[1]} — ${read.reason}`);
+      try {
+        const answer = await sendAssetInParts(rest[0], read.bytes, async (part) => {
+          const text = await post(op, part);
+          try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; }
+        });
+        console.log(JSON.stringify(answer));
+      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
+      return;
     }
     case "theme-reset":
       break;

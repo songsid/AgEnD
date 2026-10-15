@@ -556,4 +556,89 @@ describe("within one navigation, an older answer never lands over a newer one; a
       } finally { await s.done(); }
     });
   });
+  // #1629 r4 §1 / r4.1: the identity card's fields — the person's — in the same editor and the same Save.
+  describe("the identity card in Edit profile (#1629)", () => {
+    const ID = "a".repeat(32);
+    const CARD = { tagline: { text: "Mine", by: "human" }, bio: { text: "Agent's", by: "agent" }, portrait: { id: ID, by: "human", src: `/api/card/alpha/portrait?v=${ID}` },
+      limits: { portrait: { max_width: 100, max_height: 100, max_bytes: 1000 }, banner: { max_width: 100, max_height: 50, max_bytes: 1000 } } };
+    const withCard = (u: string) => (u === "/api/card/alpha" ? json(CARD) : json({ ok: true }));
+    const save = async (dlg: any) => { dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click(); await settle(8); };
+    const writes = (s: Awaited<ReturnType<typeof setup>>) => s.calls.filter(c => c.init && c.init.method && c.init.method !== "GET").map(c => `${c.init.method} ${c.url}`);
+    const inputs = (dlg: any) => dlg.querySelectorAll("input");
+    it("a changed tagline rides the profile write; an unchanged field is not sent; the person's own picture can be removed", async () => {
+      const s = await setup({ other: withCard });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        const tagline = inputs(dlg).find((i: any) => i.value === "Mine");
+        expect(tagline).toBeDefined();
+        tagline.value = "Ours"; fire(tagline, "input"); await settle(2);
+        dlg.querySelectorAll(".btn").find((b: any) => b.textContent === "Remove yours").click(); await settle(2);
+        await save(dlg);
+        const profile = s.calls.find(c => c.url === "/api/profile/alpha");
+        expect([JSON.parse(profile!.init.body).card_tagline, Object.hasOwn(JSON.parse(profile!.init.body), "card_bio")]).toEqual(["Ours", false]);
+        expect(writes(s)).toEqual(["POST /api/profile/alpha", "DELETE /api/card/alpha/portrait"]);
+      } finally { await s.done(); }
+    });
+    it("the card's fields wait for the first read: disabled while it is out, then filled — nothing typed is overwritten (#1889 review)", async () => {
+      let release!: () => void;
+      const held = new Promise<void>(r => { release = r; });
+      const s = await setup({ other: async (u: string) => { if (u === "/api/card/alpha") { await held; return json(CARD); } return json({ ok: true }); } });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        const cardSet = () => dlg.querySelectorAll("fieldset").find((f: any) => f.getAttribute("aria-busy") !== null);
+        const tagline = () => cardSet().querySelector("input");
+        expect([cardSet().disabled, cardSet().getAttribute("aria-busy"), tagline().value]).toEqual([true, "true", ""]);
+        release(); await settle(6);
+        expect([cardSet().disabled, cardSet().getAttribute("aria-busy"), tagline().value]).toEqual([false, "false", "Mine"]);
+        const bio = cardSet().querySelector("textarea");
+        expect(bio.value).toBe("");                                                 // the agent's bio is not the person's to edit
+      } finally { await s.done(); }
+    });
+    it("a failed first read still lets the card's fields be edited, starting empty", async () => {
+      const s = await setup({ other: (u: string) => (u === "/api/card/alpha" ? { ok: false, status: 500, headers: { get: () => null }, json: async () => ({}) } : json({ ok: true })) });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        const cardSet = dlg.querySelectorAll("fieldset").find((f: any) => f.getAttribute("aria-busy") !== null);
+        expect([cardSet.disabled, cardSet.querySelector("input").value]).toEqual([false, ""]);
+      } finally { await s.done(); }
+    });
+    it("Clear card: one DELETE of the person's card after the profile write, and no card field with it", async () => {
+      const s = await setup({ other: withCard });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        inputs(dlg).find((i: any) => i.value === "Mine").value = "Ignored";
+        dlg.querySelectorAll(".btn").find((b: any) => b.textContent === "Clear card").click(); await settle(2);
+        await save(dlg);
+        expect(writes(s)).toEqual(["POST /api/profile/alpha", "DELETE /api/card/alpha"]);
+        expect(Object.keys(JSON.parse(s.calls.find(c => c.url === "/api/profile/alpha")!.init.body)).filter(k => k.startsWith("card_"))).toEqual([]);
+      } finally { await s.done(); }
+    });
+    it("a picture that fits goes as it is; one too large is asked about first — declining writes nothing at all", async () => {
+      const s = await setup({ other: withCard });
+      const ui = await import("/assets/ui-confirm.js");
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        (globalThis as any).createImageBitmap = async (f: { w: number; h: number }) => ({ width: f.w, height: f.h });
+        let dlg = await openEditor(s);
+        const files = () => inputs(dlg).filter((i: any) => i.getAttribute("type") === "file");
+        const small = { type: "image/png", size: 10, w: 50, h: 40 };
+        files()[1].files = [small];                                                   // portrait (after the avatar's)
+        await save(dlg);
+        const post = s.calls.find(c => c.url === "/api/card/alpha/portrait" && c.init.method === "POST");
+        expect([post?.init.body, post?.init.headers["Content-Type"]]).toEqual([small, "image/png"]);
+        s.calls.length = 0;
+        dlg = await openEditor(s);
+        files()[2].files = [{ type: "image/png", size: 10, w: 400, h: 400 }];          // banner, too large
+        const asked: string[] = [];
+        (globalThis as any).confirm = (m: string) => { asked.push(m); expect(writes(s), "nothing before the answer").toEqual([]); return false; };
+        dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click(); await settle(8);
+        expect([asked, writes(s), ui.confirmStore.get().queue.length]).toEqual([["This picture is 400×400; it will be resized to 50×50."], [], 0]);
+        expect(s.p.root.querySelector("dialog")).not.toBeNull();                     // the editor stays open
+      } finally { delete (globalThis as any).createImageBitmap; delete (globalThis as any).confirm; await s.done(); }
+    });
+  });
 });

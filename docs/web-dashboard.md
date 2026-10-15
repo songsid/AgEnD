@@ -288,6 +288,19 @@ An agent can give its own web chat a look: colours for light and dark, an accent
 - **Your switch.** **Settings → Appearance → Show agents' themes and effects** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
 - **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour, with at most 3 picture uploads an hour. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
 
+### Identity cards
+
+Each agent can have an identity card: a portrait, a banner, a one-line tagline and a short bio.
+
+- **Who sets it.** The agent sets its own with `set_web_theme` (`card.tagline`, `card.bio`, and `card.portrait` / `card.banner` naming pictures uploaded with `set_web_theme_asset` for those slots). A person sets theirs in View's **Edit profile**. **A person's field wins over the agent's, field by field**: leave a field empty to show the agent's.
+- **Where it shows.** At the top of the agent's **Details**; in **View**, above the profile row while it is expanded; and folded into the agent's chat, under the header. The chat's card is folded until you open it, and that choice is kept on this device.
+- **Size.** Each card has **S / M / L**. **Settings → Appearance → Identity cards** sets the size for every card on all your devices, and a card's own control sets that card apart. Over a temporary public link the size is kept on that device only.
+- **Text stays text.** The tagline and bio are never markup or links. Pictures are served by the dashboard itself, with metadata such as GPS removed.
+- **Pictures that are too large.** Edit profile offers to shrink a portrait or banner that is over the limits ("This picture is 3000×4000; it will be resized to 1024×1365"). The server checks the result like any upload.
+- **Clear card** removes your tagline, bio, portrait and banner; the agent's own card shows again. A person's **Reset theme…** removes the agent's card and leaves yours. **Lock theme** stops the agent changing its card.
+- **Over a temporary public link** you can edit the card, as you can the profile and picture. Theme reset and lock, and the limits below, stay off it.
+- **Upload limits.** **Settings → Appearance → Identity card upload limits** (or `web.appearance` in `fleet.yaml`) sets the largest portrait and banner and how many pictures each agent may keep. Defaults: portrait 1024×1536, 1.5 MiB; banner 1600×600, 768 KiB; 8 pictures, 4 MiB per agent. A lower limit applies at once; a higher one waits for a fleet admin's confirmation. A limit applies to new uploads only; pictures already stored stay.
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone

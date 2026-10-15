@@ -4,7 +4,8 @@ import { settingsRequestExecution, settingsWrite } from "./settings-request-capa
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
+import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
@@ -701,6 +702,54 @@ export function handleSettingsRequest(
         return json(res, 500, { ok: false, error: (err as Error).message });
       }
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  // ── #1629 r4.1 Q3 (b): the identity card's upload limits (Settings → Appearance) — never over the public link: absent
+  // from its manifest, and refused here too. A lower limit applies directly; a higher one is confirmed (settings-change.ts).
+  if (path === "/api/settings/fleet/appearance" && (method === "GET" || method === "PUT")) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    const view = (configured: unknown) => {
+      const { limits, warnings } = effectiveAppearanceLimits(configured);
+      const kib = (n: number) => n / 1024;
+      return {
+        configured: configured ?? {},
+        effective: {
+          portrait: { max_width: limits.portrait.maxWidth, max_height: limits.portrait.maxHeight, max_kib: kib(limits.portrait.maxBytes) },
+          banner: { max_width: limits.banner.maxWidth, max_height: limits.banner.maxHeight, max_kib: kib(limits.banner.maxBytes) },
+          instance_quota: { files: limits.quota.files, mib: limits.quota.bytes / 1024 / 1024 },
+        },
+        defaults: APPEARANCE_DEFAULTS, bounds: APPEARANCE_BOUNDS, warnings,
+      };
+    };
+    if (method === "GET") { json(res, 200, view(cfg.web?.appearance)); return true; }
+    readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      let body: unknown;
+      try { body = JSON.parse(buf.toString("utf-8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      const parsed = parseAppearanceSettingsBody(body);
+      if ("error" in parsed) return json(res, 400, { error: parsed.error });
+      if (!parsed.length) return json(res, 200, { ok: true, ...view(cfg.web?.appearance) });
+      const appearance = applyAppearanceChanges(cfg.web?.appearance, parsed);
+      const web = { ...cfg.web };
+      if (appearance) web.appearance = appearance; else delete web.appearance;
+      const changes: RawConfigPatch[] = parsed.map(c => c.value === null
+        ? { path: ["web", "appearance", c.group, c.key], value: undefined, remove: true }
+        : { path: ["web", "appearance", c.group, c.key], value: c.value });
+      const before = validateFleetConfig(cfg);
+      const after = validateFleetConfig({ ...cfg, web });
+      if (rejectIfWorse(res, before, after)) return;
+      const previous = { web: cfg.web, hadWeb: "web" in cfg };
+      try {
+        settingsWrite(req, () => { cfg.web = web; ctx.saveFleetConfig(changes); });
+      } catch (err) {
+        if (previous.hadWeb) cfg.web = previous.web; else delete (cfg as { web?: unknown }).web;
+        ctx.logger.warn({ err }, "settings: appearance save refused");
+        return json(res, 500, { ok: false, error: (err as Error).message });
+      }
+      json(res, 200, { ok: true, ...view(web.appearance) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

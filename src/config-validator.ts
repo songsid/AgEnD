@@ -6,6 +6,7 @@ import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } fro
 import { hostnameOf } from "./web-host-guard.js";
 import { previewOriginProblem } from "./web-preview.js";
 import { DEFAULT_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
+import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -26,7 +27,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -389,6 +390,8 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         if (config.web.themes.agent_edit !== undefined && typeof config.web.themes.agent_edit !== "boolean") err("web.themes.agent_edit", "must be a boolean");
       }
     }
+    // #1629 r4.1 Q3 (b): never an error — a value out of its bound is clamped, a wrong one falls back to its default.
+    if (config.web.appearance !== undefined) for (const w of effectiveAppearanceLimits(config.web.appearance).warnings) warn(w.path, w.message);
     if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto");
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
       err("web.echo_to_channel", "must be a boolean");

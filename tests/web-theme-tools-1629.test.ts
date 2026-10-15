@@ -25,7 +25,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...real, lstat: (path: string, ...rest: unknown[]) => (fsHook.lstat ? Promise.resolve(fsHook.lstat(path)) : (real.lstat as (...a: unknown[]) => unknown)(path, ...rest)) };
 });
 import { AppearanceLimiter } from "../src/web-appearance-policy.js";
-import { ThemeStore, THEME_ASSET_QUOTA } from "../src/web-theme-store.js";
+import { ThemeStore } from "../src/web-theme-store.js";
 import { WebAppearance } from "../src/web-appearance.js";
 import { readAgentFile } from "../src/agent-file-read.js";
 import * as schemas from "../src/outbound-schemas.js";
@@ -103,7 +103,7 @@ describe("the theme store", () => {
     expect(s.addAsset("a", "avatar", png(4, 4, 256 * 1024))).toMatchObject({ ok: false, error: "asset_too_large" });
     expect(s.addAsset("a", "background", png(4, 4, 256 * 1024))).toMatchObject({ ok: true });
     expect(s.addAsset("a", "wallpaper", png())).toMatchObject({ ok: false, error: "slot" });
-    for (let k = s.get("a").assets.length; k < THEME_ASSET_QUOTA.files; k++) expect(s.addAsset("a", "avatar", png(4 + k)).ok).toBe(true);
+    for (let k = s.get("a").assets.length; k < s.limits().quota.files; k++) expect(s.addAsset("a", "avatar", png(4 + k)).ok).toBe(true);
     expect(s.addAsset("a", "avatar", png(99))).toMatchObject({ ok: false, error: "asset_quota" });
   });
   it("an asset the theme stops naming is deleted; one uploaded but never named stays", () => {

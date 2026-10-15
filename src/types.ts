@@ -395,6 +395,12 @@ export interface WebConfig {
    * fleet-wide; what is stored stays, and people can still reset and lock.
    */
   themes?: { agent_edit?: boolean };
+  /**
+   * #1629 r4.1 Q3 (b): the identity card's upload limits and each agent's picture quota. Defaults: portrait
+   * 1024×1536 / 1536 KiB, banner 1600×600 / 768 KiB, quota 8 files / 4 MiB. A value outside its hard bound is clamped
+   * (and warned about); a change applies to new uploads only.
+   */
+  appearance?: import("./web-appearance-limits.js").AppearanceLimitsConfig;
 }
 
 /** `login:` section — remote /login behaviour. */

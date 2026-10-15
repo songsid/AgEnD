@@ -4,6 +4,7 @@ import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
+import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -54,6 +55,13 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web_terminal", "ttl_minutes"], def: 10, looser: (a, b) => b > a },
   // #1218: the Log tab shows each agent's steps on the web (the public link included): turning it on is confirmed.
   { path: ["fleet", "web", "log_tab"], def: false, looser: (a, b) => b === true && a !== true },
+  // #1629 r4.1 Q3 (b): the card's upload limits and the picture quota — a lower one applies directly, a higher one is
+  // confirmed. Judged as the limit they GIVE (clamped to the bounds, as the loader does): 9999 → 5000 changes nothing.
+  ...Object.entries(APPEARANCE_BOUNDS).flatMap(([group, keys]) => Object.entries(keys as Record<string, readonly [number, number]>).map(([key, [floor, ceiling]]) => {
+    const def = (APPEARANCE_DEFAULTS as Record<string, Record<string, number>>)[group]![key]!;
+    const given = (v: number) => (Number.isInteger(v) ? Math.min(ceiling, Math.max(floor, v)) : def);
+    return { path: ["fleet", "web", "appearance", group, key], def, looser: (a: number, b: number) => given(b) > given(a) };
+  })),
 ];
 /** null: not a directional key (judged as before); true/false: whether this change loosens it. */
 function loosens(path: readonly string[], old: unknown, next: unknown): boolean | null {

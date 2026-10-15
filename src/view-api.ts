@@ -14,6 +14,10 @@ import { gatewayRequestContext } from "./web-request-context.js";
  *   GET  /api/avatar/:instance  → avatar image
  *   POST /api/avatar/:instance  → upload avatar               (signed in)
  *   DELETE /api/avatar/:instance → remove the uploaded avatar (signed in; #1630 follow-up)
+ *   GET  /api/card/:instance    → the identity card as drawn: the person's fields over the agent's (#1629 r4 §1)
+ *   GET  /api/card/:instance/:slot → its portrait or banner (slot = portrait | banner)
+ *   POST|DELETE /api/card/:instance/:slot → the person's picture  (signed in; the public link too, r4.1 Q2)
+ *   DELETE /api/card/:instance  → "Clear card": the person's fields  (signed in; the public link too)
  *   GET/POST /api/sort-order    → sidebar order               (POST: signed in)
  *
  * Auth: reads follow `web.view_access` — `open` (the default; the page is a
@@ -41,6 +45,9 @@ import { getTmuxSession } from "./config.js";
 import { getTmuxSocketName } from "./paths.js";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
+import { CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard } from "./web-card.js";
+import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
+import type { ThemeCard } from "./web-theme.js";
 
 const execFileP = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +69,8 @@ export interface ViewApiContext {
   resolveInstanceModel?(name: string): { model: string };
   /** #1306: the preview origin chosen for a signed-in shell load (the same hook web-api.ts uses). */
   previewForUi?: AppShellContext["previewForUi"];
+  /** #1629 r4 §1: the agent's side of the identity card (theme.card) and its pictures. */
+  readonly themeStore?: { get(name: string): { theme: { card?: ThemeCard } }; asset(name: string, id: string): { bytes: Buffer; mime: string } | null };
 }
 
 interface ProfileRow {
@@ -107,6 +116,17 @@ export function profileIdentities(dataDir: string): Map<string, Pick<ProfileRow,
     const rows = profileDb(dataDir).prepare("SELECT instance_name, display_name, description, role, avatar_path FROM instance_profile").all() as ProfileRow[];
     return new Map(rows.map(r => [r.instance_name, r]));
   } catch { return new Map(); }
+}
+
+/** The person's side of the identity card (#1629 r4 §1), in profiles.db's own table. */
+let _cards: { dir: string; store: HumanCardStore } | null = null;
+function cardStore(ctx: { dataDir: string }): HumanCardStore {
+  if (_cards?.dir !== ctx.dataDir) _cards = { dir: ctx.dataDir, store: new HumanCardStore(ctx.dataDir, () => profileDb(ctx.dataDir)) };
+  return _cards.store;
+}
+/** Every person-set card, for a status read (never creates profiles.db or its table). */
+export function humanCards(dataDir: string): ReturnType<typeof HumanCardStore.all> {
+  return HumanCardStore.all(dataDir, () => profileDb(dataDir));
 }
 
 // Lazy per-dataDir SQLite handle for instance profiles.
@@ -233,6 +253,7 @@ export function isViewPath(path: string): boolean {
     || path === "/api/profiles"
     || path.startsWith("/api/profile/")
     || path.startsWith("/api/avatar/")
+    || path.startsWith("/api/card/")
     || path === "/api/sort-order";
 }
 
@@ -308,6 +329,7 @@ export function handleViewRequest(
       effort: string | null;
       effort_source: string | null;
       display_name?: string;
+      card_v?: string;
     }> };
     const live = new Map(ui.instances.map(i => [i.name, i]));
     const db = profileDb(ctx.dataDir);
@@ -346,6 +368,8 @@ export function handleViewRequest(
         avatar_path: p?.avatar_path ?? null,
         description: identity.description,
         has_avatar: !!p?.avatar_path,
+        // #1629 r4 §1: the identity card's version (the status frame's): View reads the card when it moves.
+        ...(l?.card_v ? { card_v: l.card_v } : {}),
       };
     });
     json(res, 200, roster);
@@ -418,6 +442,15 @@ export function handleViewRequest(
           if (v !== null && typeof v !== "string") { json(res, 400, { error: `${key} must be a string` }); return; }
           set.push([key, typeof v === "string" && v.trim() ? v : null]);
         }
+        // #1629 r4 §1: the card's tagline and bio (the person's — they win over the agent's, field by field). Checked
+        // before anything is written, so a bad one changes nothing.
+        const cardText: { tagline?: unknown; bio?: unknown } = {};
+        if (Object.hasOwn(body, "card_tagline")) cardText.tagline = body.card_tagline;
+        if (Object.hasOwn(body, "card_bio")) cardText.bio = body.card_bio;
+        if (cardText.tagline !== undefined || cardText.bio !== undefined) {
+          const cw = cardStore(ctx).setText(name, cardText);
+          if (!cw.ok) { json(res, cw.status, { error: cw.error, ...(cw.detail ? { detail: cw.detail } : {}) }); return; }
+        }
         if (!set.length) { json(res, 200, { ok: true }); return; }
         const db = profileDb(ctx.dataDir);
         // Column names come only from the fixed list above; avatar_path is the avatar route's — never touched here.
@@ -428,6 +461,60 @@ export function handleViewRequest(
           .run({ n: name, t: Date.now(), ...Object.fromEntries(set) });
         json(res, 200, { ok: true });
       }).catch(err => json(res, 400, { error: (err as Error).message }));
+      return true;
+    }
+    json(res, 405, { error: "method not allowed" });
+    return true;
+  }
+
+  // ── /api/card/:instance[/:slot] (#1629 r4 §1, r4.1 Q2) ──
+  if (path.startsWith("/api/card/")) {
+    const m = /^\/api\/card\/([^/]+)(?:\/(portrait|banner))?$/.exec(path);
+    let name = "";
+    try { name = m ? decodeURIComponent(m[1]!) : ""; } catch { name = ""; }
+    if (!m || !knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
+    const slot = m[2] as CardSlot | undefined;
+    const store = cardStore(ctx);
+    if (method === "GET" && !slot) {
+      // The limits in force ride along, so View's editor can fit a picture before it is sent (r4.1 Q3 (b)).
+      const limits = effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits;
+      const slot = (l: { maxWidth: number; maxHeight: number; maxBytes: number }) => ({ max_width: l.maxWidth, max_height: l.maxHeight, max_bytes: l.maxBytes });
+      json(res, 200, { ...resolveCard(name, store.get(name), ctx.themeStore?.get(name).theme.card), limits: { portrait: slot(limits.portrait), banner: slot(limits.banner) } });
+      return true;
+    }
+    if (method === "GET" && slot) {
+      // The picture drawn: the person's, else the agent's (the same rule as the card's JSON).
+      const own = store.picture(name, slot);
+      const agentId = own ? null : ctx.themeStore?.get(name).theme.card?.[slot];
+      const pic = own ?? (agentId ? ctx.themeStore?.asset(name, agentId) ?? null : null);
+      if (!pic) { json(res, 404, { error: "no picture" }); return true; }
+      res.writeHead(200, { "Content-Type": pic.mime, "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-cache" });
+      res.end(pic.bytes);
+      return true;
+    }
+    if (method === "POST" && slot) {
+      const limits = effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits;
+      readBody(req, limits[slot].maxBytes + 1).then(buf => {
+        if (!permitWebContinuation(req, res, ctx)) return;
+        if (buf.length === 0) { json(res, 400, { error: "empty body" }); return; }
+        // The limits in force when it is stored, not when the upload began (#1889 review): the body cap above only
+        // bounded what was received.
+        const w = store.setPicture(name, slot, buf, effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits);
+        if (!w.ok) { json(res, w.status, { error: w.error, ...(w.detail ? { detail: w.detail } : {}) }); return; }
+        json(res, 200, { ok: true, id: w.id });
+      }).catch(err => json(res, 413, { error: "card_too_large", detail: (err as Error).message }));
+      return true;
+    }
+    if (method === "DELETE" && slot) {
+      const w = store.removePicture(name, slot);
+      if (!w.ok) { json(res, w.status, { error: w.error }); return true; }
+      json(res, 200, { ok: true, removed: w.removed });
+      return true;
+    }
+    if (method === "DELETE" && !slot) {
+      const w = store.clear(name);
+      if (!w.ok) { json(res, w.status, { error: w.error }); return true; }
+      json(res, 200, { ok: true });
       return true;
     }
     json(res, 405, { error: "method not allowed" });

@@ -24,6 +24,23 @@ import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
+import { IdentityCard, useCard } from "/assets/identity-card.js";
+
+// #1629 r4 §1: the identity card folded into the chat's header — folded by default; open or not is this device's choice.
+const CHAT_CARD_KEY = "agend_chat_card";
+const chatCardOpen = () => { try { return localStorage.getItem(CHAT_CARD_KEY) === "open"; } catch { return false; } };
+function ChatCard({ name, card }) {
+  const [open, setOpen] = useState(chatCardOpen);
+  if (!card) return null;
+  const toggle = () => { const next = !open; setOpen(next); try { if (next) localStorage.setItem(CHAT_CARD_KEY, "open"); else localStorage.removeItem(CHAT_CARD_KEY); } catch { /* this page only */ } };
+  return html`<div class=${`chat-card${open ? " open" : ""}`}>
+    <button type="button" class="chat-card-toggle" aria-expanded=${open ? "true" : "false"} onClick=${toggle}>
+      <${Icon} name="chevron" size=${14} cls=${open ? "caret" : "caret flipped"} /><span>${t(open ? "card.hide" : "card.show")}</span>
+      ${!open && card.tagline ? html`<span class="chat-card-peek">${card.tagline.text}</span>` : null}
+    </button>
+    ${open ? html`<${IdentityCard} name=${name} card=${card} compact=${true} />` : null}
+  </div>`;
+}
 import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
@@ -197,6 +214,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const mode = useResolvedMode(lease);
   const theme = themeFor(name);
   const themeKey = JSON.stringify(theme);
+  const card = useCard(name, inst.card_v);
   const [dialog, setDialog] = useState(null);       // "delete" | null
   const [wrap, setWrap] = useState(codeWrap);
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null);
@@ -258,6 +276,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
     <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${ChatCard} key=${name} name=${name} card=${card} />
     <div class="chat-split" ref=${split}>
       <div class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}

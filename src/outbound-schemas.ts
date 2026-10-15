@@ -214,12 +214,12 @@ export const SetPersonaEmojiArgs = z.object({
 export const GetWebThemeArgs = z.object({});
 export const SetWebThemeArgs = z.object({
   set: z.record(z.string(), z.unknown()).optional()
-    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters)"),
+    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters), card.{portrait, banner} (asset ids uploaded for those slots), card.tagline (1..60 characters, one line), card.bio (1..280 characters, at most 3 line breaks)"),
   clear: z.array(z.string().max(64)).max(32).optional().describe("Dotted paths to remove, e.g. [\"colors.dark.bg\", \"workingLabel\"]"),
 });
 export const SetWebThemeAssetArgs = z.object({
-  slot: z.enum(["background", "avatar"]).describe("What the picture is for"),
-  file: NonEmptyString.describe("A png, jpeg, webp or gif in your working directory (background ≤ 512 KiB, avatar ≤ 256 KiB, ≤ 4096 px a side)"),
+  slot: z.enum(["background", "avatar", "portrait", "banner"]).describe("What the picture is for: your theme's background or avatar, or your identity card's portrait or banner"),
+  file: NonEmptyString.describe("A picture in your working directory: png, jpeg, webp or gif for background (≤ 512 KiB) and avatar (≤ 256 KiB), ≤ 4096 px a side; png, jpeg or webp for portrait and banner (limits set by the fleet — get_web_theme's limits.asset_slots says the ones in force)"),
 });
 export const ResetWebThemeArgs = z.object({});
 

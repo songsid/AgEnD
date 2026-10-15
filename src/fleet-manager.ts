@@ -194,6 +194,7 @@ import { WebPrefsStore } from "./web-prefs.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WebAppearance } from "./web-appearance.js";
+import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
 import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
@@ -201,7 +202,8 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { handleViewRequest, humanCards, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { cardVersion, resolveCard } from "./web-card.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
 import { accentColor, avatarFor, ownBotConnections, type AvatarDescriptor } from "./instance-avatar.js";
@@ -1300,7 +1302,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private webAppearanceService?: WebAppearance;
   /** #1629: every instance's theme, placements, assets and lock (web-themes.json). */
   get themeStore(): ThemeStore {
-    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir));
+    // r4.1 Q3 (b): the card's limits are read from fleet.yaml at each upload (a change applies without a restart).
+    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits }));
   }
   /** #1629: the theme tools, a person's reset and lock, and the one appearance rate limiter (shared with effects). */
   get webAppearance(): WebAppearance {
@@ -10639,7 +10642,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.limiter.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -20452,6 +20455,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // /api/profiles (resolveInstanceIdentity) — the sidebar groups, searches and labels with it on every page.
     const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
     const profiles = profileIdentities(this.dataDir);
+    // #1629 r4 §1: the identity card's version per instance (the page reads the card when it moves).
+    const cards = humanCards(this.dataDir);
     // #1630: decorative — whatever goes wrong deciding an avatar never costs the frame (every instance gets its first character).
     let bots = { own: new Map<string, string>(), speaking: new Map<string, string>() };
     try { bots = this.webBots(); } catch (err) { this.logger.debug({ err }, "bots unreadable (getUiStatus)"); }
@@ -20503,6 +20508,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // #1629: the agent's theme's picture and ring colour, for viewers who show agents' themes.
         ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
+        ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,

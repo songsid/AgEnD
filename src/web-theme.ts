@@ -20,7 +20,10 @@ export interface Theme {
   background?: { image: AssetId; fit: "cover" | "contain"; opacity: number };
   avatar?: AssetId;
   workingLabel?: string;
+  /** r4 §1: the agent's identity card. A person's card fields (View's Edit profile) win field by field. */
+  card?: ThemeCard;
 }
+export interface ThemeCard { portrait?: AssetId; banner?: AssetId; tagline?: string; bio?: string }
 export interface ThemeProblem { path: string; problem: string }
 
 export const THEME_MAX_BYTES = 4096;
@@ -68,6 +71,30 @@ const FORBIDDEN_TEXT = /(?!\u200d)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
  * nothing (Hangul fillers, braille blank) — so a lone joiner, variation selector or filler is not a label (#1887 P3).
  */
 const VISIBLE = /[^\p{M}\p{C}\p{Z}\u115f\u1160\u3164\uffa0\u2800]/u;
+/** A card's bio (r4 §1): NFC, 1..280 graphemes, at most 3 line breaks ("\n" only), otherwise as one line. */
+export const BIO_MAX_GRAPHEMES = 280;
+export const BIO_MAX_BREAKS = 3;
+export const TAGLINE_MAX_GRAPHEMES = 60;
+/**
+ * #1889 review: one explicit bound in UTF-16 units too, for the host and the page alike — a grapheme may be many units
+ * (an emoji family is 8), so 10 per grapheme keeps every ordinary text and still bounds what is stored.
+ */
+export const TAGLINE_MAX_UNITS = TAGLINE_MAX_GRAPHEMES * 10;
+export const BIO_MAX_UNITS = 2800;
+/** A card's tagline: one line of 1..60 graphemes, at most TAGLINE_MAX_UNITS units. */
+export function canonicalTagline(v: unknown): string | null {
+  const t = canonicalText(v, 1, TAGLINE_MAX_GRAPHEMES);
+  return t !== null && t.length <= TAGLINE_MAX_UNITS ? t : null;
+}
+export function canonicalBio(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.normalize("NFC");
+  const lines = s.split("\n");
+  if (s.length > BIO_MAX_UNITS || lines.length > BIO_MAX_BREAKS + 1 || s.trim() !== s || !VISIBLE.test(s)) return null;
+  if (lines.some(l => FORBIDDEN_TEXT.test(l))) return null;
+  const n = [...GRAPHEMES.segment(s)].length;
+  return n >= 1 && n <= BIO_MAX_GRAPHEMES ? s : null;
+}
 /** One line of text: NFC, `min..max` graphemes, nothing invisible or directional. */
 export function canonicalText(v: unknown, min: number, max: number): string | null {
   if (typeof v !== "string") return null;
@@ -94,6 +121,8 @@ export function effectivePalette(theme: Theme, mode: ThemeMode): Required<Palett
 export interface ThemeContext {
   /** The asset ids this instance has (background and avatar must name one). */
   assets: ReadonlySet<string>;
+  /** r4 §1: each asset's slot — a card's portrait and banner must name a picture uploaded for that slot. */
+  slotOf?: (id: string) => string | undefined;
 }
 
 /**
@@ -105,7 +134,7 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
   const bad = (path: string, problem: string) => { errors.push({ path, problem }); };
   if (!isObj(input)) return { ok: false, errors: [{ path: "", problem: "must be an object" }] };
   const out: Theme = { v: 1 };
-  const known = new Set(["v", "colors", "accent", "bubble", "font", "background", "avatar", "workingLabel"]);
+  const known = new Set(["v", "colors", "accent", "bubble", "font", "background", "avatar", "workingLabel", "card"]);
   for (const k of Object.keys(input)) if (!known.has(k)) bad(k, "unknown key");
   if (input.v !== undefined && input.v !== 1) bad("v", "must be 1");
 
@@ -174,6 +203,31 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
     const t = canonicalText(input.workingLabel, 1, 24);
     if (t === null) bad("workingLabel", "1..24 characters on one line, no control or direction characters"); else out.workingLabel = t;
   }
+  if (input.card !== undefined) {
+    const c = input.card;
+    if (!isObj(c)) bad("card", "must be an object");
+    else {
+      const card: ThemeCard = {};
+      for (const k of Object.keys(c)) if (!["portrait", "banner", "tagline", "bio"].includes(k)) bad(`card.${k}`, "unknown key");
+      for (const slot of ["portrait", "banner"] as const) {
+        const id = c[slot];
+        if (id === undefined) continue;
+        if (typeof id !== "string" || !ASSET_ID.test(id)) bad(`card.${slot}`, "an asset id");
+        else if (!ctx.assets.has(id)) bad(`card.${slot}`, "no such asset of this instance");
+        else if (ctx.slotOf && ctx.slotOf(id) !== slot) bad(`card.${slot}`, `a picture uploaded for the ${slot} slot`);
+        else card[slot] = id;
+      }
+      if (c.tagline !== undefined) {
+        const t = canonicalTagline(c.tagline);
+        if (t === null) bad("card.tagline", `1..${TAGLINE_MAX_GRAPHEMES} characters on one line, no control or direction characters`); else card.tagline = t;
+      }
+      if (c.bio !== undefined) {
+        const b = canonicalBio(c.bio);
+        if (b === null) bad("card.bio", `1..${BIO_MAX_GRAPHEMES} characters, at most ${BIO_MAX_BREAKS} line breaks, no control or direction characters`); else card.bio = b;
+      }
+      if (Object.keys(card).length) out.card = card;
+    }
+  }
   if (errors.length) return { ok: false, errors };
 
   for (const mode of MODES) {
@@ -204,6 +258,11 @@ export function canonicalTheme(t: Theme): Theme {
   if (t.background) out.background = { image: t.background.image, fit: t.background.fit, opacity: t.background.opacity };
   if (t.avatar) out.avatar = t.avatar;
   if (t.workingLabel) out.workingLabel = t.workingLabel;
+  if (t.card) {
+    const c: ThemeCard = {};
+    for (const k of ["portrait", "banner", "tagline", "bio"] as const) if (t.card[k]) c[k] = t.card[k];
+    if (Object.keys(c).length) out.card = c;
+  }
   return out;
 }
 

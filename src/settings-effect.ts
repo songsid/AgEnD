@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { agentConflict, draftQuickstart, newConnectionConflict, planQuickstart, validateWizardInput, withExistingAgent, wizardChannels, type WizardPlanInput } from "./quickstart-api.js";
 import type { FleetConfig } from "./types.js";
 import { settingsChangeDiff, type SettingsChangeDiff } from "./settings-change.js";
-import { parseWebSettingsBody } from "./web-settings-patch.js";
+import { applyAppearanceChanges, parseAppearanceSettingsBody, parseWebSettingsBody } from "./web-settings-patch.js";
 import { SettingsConfirmationError } from "./settings-confirmation.js";
 import { validateFleetConfig, validateClassicBotConfig } from "./config-validator.js";
 import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAuthority } from "./settings-authority.js";
@@ -19,7 +19,7 @@ export interface SettingsEffectContext {
 }
 export function isSettingsMutation(method: string, path: string): boolean {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
-  return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
+  return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
     || path === "/ui/config" || path === "/ui/instances" || /^\/ui\/instances\/[^/]+\/delete$/.test(path);
 }
 function record(body: unknown): Record<string, any> {
@@ -88,6 +88,14 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       for (const k of Object.keys(wt)) if (wt[k] === null) delete wt[k];
       after.fleet.web_terminal = wt;
     }
+  } else if (path === "/api/settings/fleet/appearance") {
+    if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
+    // #1629 r4.1 Q3 (b): one parser with the handler; each limit is judged by direction (settings-change.ts).
+    const parsed = parseAppearanceSettingsBody(body);
+    if ("error" in parsed) throw new SettingsConfirmationError(400, "invalid_appearance_settings");
+    const appearance = applyAppearanceChanges(cfg.web?.appearance, parsed);
+    after.fleet.web = { ...cfg.web };
+    if (appearance) after.fleet.web.appearance = appearance; else delete after.fleet.web.appearance;
   } else if (path === "/api/settings/classic/defaults") {
     after.classic.defaults = { ...(before.classic.defaults ?? {}), ...record(body) };
     for (const key of ["tool_progress", "reply_completion_guard"]) if (after.classic.defaults[key] === null) delete after.classic.defaults[key];
