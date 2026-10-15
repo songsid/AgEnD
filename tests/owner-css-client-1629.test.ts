@@ -11,7 +11,7 @@ let p: AppPage | null = null;
 const g = globalThis as any;
 afterEach(async () => { vi.useRealTimers(); if (p) { try { const { render } = await import("/assets/app-html.js"); render(null, p.root); } catch { /* none */ } p.restore(); p = null; } delete g.fetch; vi.resetModules(); });
 
-async function boot(opts: { url?: string; owner?: string | null; mode?: string; publicLink?: boolean; storage?: Record<string, string>; route?: unknown } = {}) {
+async function boot(opts: { url?: string; owner?: string | null; mode?: string; publicLink?: boolean; storage?: Record<string, string>; route?: unknown; pending?: unknown } = {}) {
   vi.resetModules();
   p = page({ url: opts.url ?? "http://127.0.0.1:19280/ui/fleet", storage: opts.storage ?? {} });
   const body = p.document.body;
@@ -21,10 +21,10 @@ async function boot(opts: { url?: string; owner?: string | null; mode?: string; 
   const calls: Array<{ url: string; body?: unknown }> = [];
   g.fetch = vi.fn(async (url: string, init: any = {}) => {
     calls.push({ url, ...(init.body ? { body: JSON.parse(init.body) } : {}) });
-    if (url === "/ui/owner-css/state") return { ok: true, status: 200, json: async () => ({ active: state.active, pending: null }) };
+    if (url === "/ui/owner-css/state") return { ok: true, status: 200, json: async () => ({ active: state.active, pending: state.pending }) };
     return { ok: true, status: 200, json: async () => ({}) };
   });
-  const state = { active: opts.owner === null ? null : opts.owner ?? S1 };
+  const state: { active: string | null; pending: unknown } = { active: opts.owner === null ? null : opts.owner ?? S1, pending: opts.pending ?? null };
   const nav = await import("/assets/app-nav.js");
   nav.navStore.set({ route: opts.route ?? { panel: "fleet" }, seq: 1 });
   const oc = await import("/assets/owner-css.js");
@@ -97,9 +97,9 @@ describe("keep or revert", () => {
     oc.startOwnerCssTrial(S2, S1);
     expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S2}`);
     await vi.advanceTimersByTimeAsync(14_900);
-    expect(calls.some(c => c.url === "/ui/owner-css/restore")).toBe(false);
+    expect(calls.some(c => c.url === "/ui/owner-css/revert")).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
-    expect(calls.find(c => c.url === "/ui/owner-css/restore")?.body).toEqual({ sha: S1 });
+    expect(calls.find(c => c.url === "/ui/owner-css/revert")?.body, "the trial by its sha, never a history restore").toEqual({ sha: S2 });
     expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S1}`);
   });
   it("Keep: kept on the host, and nothing reverts afterwards", async () => {
@@ -108,7 +108,7 @@ describe("keep or revert", () => {
     oc.startOwnerCssTrial(S2, S1);
     await oc.keepOwnerCss();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect([calls.find(c => c.url === "/ui/owner-css/keep")?.body, calls.some(c => c.url === "/ui/owner-css/restore")]).toEqual([{ sha: S2 }, false]);
+    expect([calls.find(c => c.url === "/ui/owner-css/keep")?.body, calls.some(c => c.url === "/ui/owner-css/revert")]).toEqual([{ sha: S2 }, false]);
     expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S2}`);
   });
   it("the bar: on any page, a trust area, with the seconds left, Keep and Revert", async () => {
@@ -127,5 +127,33 @@ describe("keep or revert", () => {
     await settle(); await settle();
     expect(oc.ownerCssTrial.get(), "Revert ends the trial").toBeNull();
     expect(p!.root.querySelector(".oc-keep")).toBeNull();
+  });
+
+  // #1883 review r1 (P2-2): another device's trial, and a page loaded during one.
+  it("a page loaded during a trial (another device's, or a reload) shows the bar — and never reverts it itself", async () => {
+    // The host's deadline is near (real time: the page counts to it, plus a second, then asks again).
+    const { oc, calls, state, store } = await boot({ owner: S2, pending: { sha: S2, previous: S1, until: Date.now() + 300 } });
+    await settle(); await settle();
+    expect(oc.ownerCssTrial.get()).toMatchObject({ sha: S2, previous: S1, local: false });
+    state.pending = null;                                               // kept on the device that saved it
+    await new Promise(r => setTimeout(r, 1_600));
+    await settle();
+    expect(calls.some(c => c.url === "/ui/owner-css/revert"), "no revert from here").toBe(false);
+    expect(calls.filter(c => c.url === "/ui/owner-css/state").length, "it asked the host again").toBeGreaterThanOrEqual(2);
+    expect([oc.ownerCssTrial.get(), p!.document.getElementById("owner-css")?.getAttribute("href")]).toEqual([null, `/ui/owner-css.css?v=${S2}`]);
+    void store;
+  });
+  it("another device saves (the prefs rev moves): the bar appears here; it kept it: the bar goes", async () => {
+    const { oc, state, store } = await boot();
+    store.appStore.set((s: any) => ({ ...s, prefsRev: 1 }));
+    await settle();
+    state.active = S2; state.pending = { sha: S2, previous: S1, until: Date.now() + 15_000 };
+    store.appStore.set((s: any) => ({ ...s, prefsRev: 2 }));
+    await settle(); await settle();
+    expect(oc.ownerCssTrial.get()).toMatchObject({ sha: S2, local: false });
+    state.pending = null;
+    store.appStore.set((s: any) => ({ ...s, prefsRev: 3 }));
+    await settle(); await settle();
+    expect(oc.ownerCssTrial.get()).toBeNull();
   });
 });
