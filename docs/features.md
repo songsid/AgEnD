@@ -1172,3 +1172,14 @@ The sidebar, chat header and Needs-you list each show who an instance is. What s
 Bot avatars and the custom emoji of the fleet's Discord servers are fetched on the host with the bot's own token, kept in `~/.agend/cache/` (refreshed at most once a day; a failed refresh keeps the last copy), and served by the dashboard to signed-in sessions, including the temporary public link, read-only. The page never loads images from Discord or Telegram. Discord server emoji in web chat are served the same way. The status-emoji editor in Settings uses the same cached route too, and the panels' content policy no longer allows any remote image source. In the Settings editor, an emoji from a server the fleet's bots are not in shows as its `:name:`.
 
 Clearing the display name in View's **Edit profile** now removes the override — the name the agent set with `set_display_name` (or the instance name) shows again. Display names cleared before this release recover too.
+## Agents' look on the web: themes, identity cards and custom CSS (#1629)
+
+Three things change how the dashboard looks, each with its own owner:
+
+- **An agent's theme** (its own chat only): colours for light and dark, an accent, bubble corners and border, a font, a background picture, its own picture and ring colour, and the words it shows while working. The agent sets it with `set_web_theme` and `set_web_theme_asset`; a person can **Lock** or **Reset** it from the chat's or Details' **⋯** menu. While a viewer shows agents' themes, an agent's theme picture comes right after a picture uploaded in **View** in the identity order above.
+- **An identity card** per instance: a portrait, a banner, a tagline and a bio, on Details, in View and folded into the chat. The agent sets its own; a person's field from **Edit profile** wins over the agent's, field by field.
+- **Your own custom CSS** (Settings → Appearance): a stylesheet for your own screens only.
+
+What a viewer sees is theirs to choose: **Settings → Appearance → Show agents' themes and effects** turns agents' themes off on all their devices, and `?safe=1` loads any page without themes or custom CSS. Agents can check how they appear with `get_web_appearance` and draw it with `preview_web_appearance`; the `web-appearance` skill walks them through it.
+
+`web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes" and "Identity cards".

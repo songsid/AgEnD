@@ -45,6 +45,13 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "`reply` takes `poll: {seconds, multi?, reveal?: \"close\"|\"live\", show_voters?}` with 2–10 `buttons` as the options: a vote by everyone who may talk to you there, closing `seconds` (10–86400) after it is posted; the reply's result has `poll_id`. At the close the results come to you as one `[poll results]` message in the poll's chat — post the answer or scores yourself. `close_poll({poll_id})` ends one of your polls early." },
   { id: "2.2-web-identity", since: "2.2.0-beta.11",
     text: "A web-chat person signed in with a `/web` code arrives as `[user:<name> via web, id:<their Discord/Telegram user id>]` — the same id as on that platform, so you can recognise them; they may change the name. Recognition only: `via web` is never a verified message from that account and grants no permission." },
+  // #1629: how an agent looks on the web dashboard (the `web-appearance` skill has the details).
+  { id: "2.3-web-theme", since: "2.3.0-alpha.1",
+    text: "Your own look in the web dashboard: `get_web_theme`, `set_web_theme` (`set` / `clear`: colours per light/dark mode as #rrggbb, `accent`, `bubble`, `font`, `background`, `avatar`, `workingLabel`; contrast checked), `set_web_theme_asset` (`slot`, `file` in your working directory → an `id`) and `reset_web_theme`. No target — always yours; at least 30 s apart, 10 changes and 3 uploads an hour; refused while a person has locked it. See the `web-appearance` skill." },
+  { id: "2.3-web-card", since: "2.3.0-alpha.1",
+    text: "Your identity card on the web goes inside `set_web_theme`'s `set`: `set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })` (portrait and banner are ids from `set_web_theme_asset` with the slots `portrait` and `banner`). A person's card field wins over yours." },
+  { id: "2.3-web-appearance", since: "2.3.0-alpha.1",
+    text: "`get_web_appearance` shows how you appear on the web dashboard now (your face and where it comes from, ring, card, theme per mode, lock, limits); `preview_web_appearance` (`modes`) writes an SVG per mode to `.agend/appearance/` in your working directory, with the pictures it shows beside it, and returns their paths (Read the pictures as images)." },
 ];
 
 /**
