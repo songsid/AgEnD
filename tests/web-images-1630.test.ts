@@ -171,8 +171,8 @@ describe("what stands for an instance", () => {
   it("the first character is a grapheme: a family emoji, an accented letter, a CJK character, leading spaces", () => {
     expect(["👨‍👩‍👧 team", "élan", "中文", "  x", "🇹🇼 tw", ""].map(firstCharacter)).toEqual(["👨‍👩‍👧", "É", "中", "X", "🇹🇼", "?"]);
   });
-  it("an own bot: not the primary, and answering for exactly one instance or room", () => {
-    const own = ownBotConnections("discord", [
+  it("an own bot: answering for exactly one instance or room — a shared primary is nobody's own", () => {
+    const own = ownBotConnections([
       ["a", "discord"], ["b", "discord"],            // the shared fleet bot
       ["solo", "discord-2"],                          // its own
       ["p1", "telegram-2"], ["p2", "telegram-2"],     // a bot two instances share
@@ -180,7 +180,8 @@ describe("what stands for an instance", () => {
       ["primary-only", "discord"], ["unbound", undefined],
     ]);
     expect([...own.entries()]).toEqual([["solo", "discord-2"], ["room", "discord-3"]]);
-    expect([...ownBotConnections("discord", [["only", "discord"]]).entries()], "the primary is never anyone's own").toEqual([]);
+    // #1630 follow-up: a primary kept for General alone is General's own bot.
+    expect([...ownBotConnections([["general", "discord"], ["solo", "discord-2"]]).entries()]).toEqual([["general", "discord"], ["solo", "discord-2"]]);
   });
   it("a role colour: #rrggbb, never black (Discord's 'no colour'), nothing else", () => {
     expect(["#E91E63", "#000000", "red", "#fff", "#12345g", null, "#1abc9c"].map(accentColor)).toEqual(["#e91e63", null, null, null, null, null, "#1abc9c"]);

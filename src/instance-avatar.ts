@@ -2,7 +2,7 @@
  * #1630 (design: the comment on #1630): what stands for an instance in the web app — decided here, on the server,
  * once; the page only draws it. In order:
  *   0. the picture uploaded for it in View (its profile avatar);
- *   1. its own bot's avatar, when it has a bot of its own (a persona bot);
+ *   1. its own bot's avatar, when it has a bot of its own (a persona bot, or the primary when it serves it alone);
  *   2. (#1867) else the avatar of the bot it speaks through on Telegram/Discord — the General (primary) bot, or a bot it
  *      shares — so the web shows the face the chat shows; with no connection of its own (web-only), the primary's.
  *      A bot with no avatar set falls through at 1 and 2 (a default avatar says nothing);
@@ -46,10 +46,11 @@ export function avatarFor(input: {
 }
 
 /**
- * The connections that are ONE instance's own bot: not the primary (that is the fleet's shared bot), and answering for
- * exactly one instance or ClassicBot room. `assignments` is every instance and room with the connection it uses.
+ * The connections that are ONE instance's own bot: answering for exactly one instance or ClassicBot room. The primary
+ * counts too when one instance is all it serves (a fleet that keeps it for General only — #1630 follow-up); shared by
+ * more, it is nobody's own. `assignments` is every instance and room with the connection it uses.
  */
-export function ownBotConnections(primary: string | undefined, assignments: ReadonlyArray<readonly [instance: string, connection: string | undefined]>): Map<string, string> {
+export function ownBotConnections(assignments: ReadonlyArray<readonly [instance: string, connection: string | undefined]>): Map<string, string> {
   const users = new Map<string, string[]>();
   for (const [instance, connection] of assignments) {
     if (!connection) continue;
@@ -57,7 +58,7 @@ export function ownBotConnections(primary: string | undefined, assignments: Read
     if (list) list.push(instance); else users.set(connection, [instance]);
   }
   const own = new Map<string, string>();          // instance → its own connection
-  for (const [connection, instances] of users) if (connection !== primary && instances.length === 1) own.set(instances[0]!, connection);
+  for (const [connection, instances] of users) if (instances.length === 1) own.set(instances[0]!, connection);
   return own;
 }
 

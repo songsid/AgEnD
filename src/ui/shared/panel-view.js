@@ -317,6 +317,8 @@ function EditProfile({ it, onClose }) {
   const [f, setF] = useState({ display: it.display_name || "", role: it.role || "", desc: it.description || "" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  // #1630 follow-up: the uploaded picture is removed on Save (Cancel keeps it); a newly picked file wins over removing.
+  const [removePic, setRemovePic] = useState(false);
   const file = useRef(null);
   async function save() {
     if (busy) return;
@@ -326,6 +328,7 @@ function EditProfile({ it, onClose }) {
     const name = encodeURIComponent(it.instance_name);
     const draft = { display_name: f.display, role: f.role, description: f.desc };
     const picked = file.current && file.current.files && file.current.files[0];
+    const removing = removePic;
     try {
       const r = await fetch(`/api/profile/${name}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
       if (!lease.current()) return;
@@ -334,6 +337,9 @@ function EditProfile({ it, onClose }) {
       if (picked) {
         const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": picked.type }, body: picked });
         if (!ar.ok) { const e = await ar.json().catch(() => ({})); throw new Error(tn("avatarFailed", { error: e.error || ar.status })); }
+      } else if (removing) {                              // a newly picked file replaces it instead
+        const dr = await fetch(`/api/avatar/${name}`, { method: "DELETE" });
+        if (!dr.ok) { const e = await dr.json().catch(() => ({})); throw new Error(tn("avatarRemoveFailed", { error: e.error || dr.status })); }
       }
       if (!lease.current()) return;
       setBusy(false);
@@ -348,6 +354,8 @@ function EditProfile({ it, onClose }) {
       <label class="field"><span>${tn("role")}</span><input value=${f.role} onInput=${(e) => setF({ ...f, role: e.target.value })} /></label>
       <label class="field"><span>${tn("description")}</span><textarea rows="3" value=${f.desc} onInput=${(e) => setF({ ...f, desc: e.target.value })}></textarea></label>
       <label class="field"><span>${tn("avatar")}</span><input ref=${file} type="file" accept="image/png,image/jpeg,image/gif,image/webp" /></label>
+      ${it.has_avatar ? html`<div class="field-row"><button type="button" class="btn btn-sm" aria-pressed=${removePic ? "true" : "false"}
+        onClick=${() => setRemovePic(!removePic)}>${tn(removePic ? "keepPicture" : "removePicture")}</button>${removePic ? html`<span class="muted">${tn("removePictureNote")}</span>` : null}</div>` : null}
     </fieldset></form>
     ${msg ? html`<p class="err" role="alert">${msg}${msg === tn("signInToSave") ? html` <a class="link" href=${signInHref()}>${t("app.signIn")}</a>` : null}</p>` : null}
   </${Dialog}>`;

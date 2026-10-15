@@ -189,6 +189,8 @@ describe("/view writes need a credential — in either mode", () => {
         expect(res.status, path).toBe(401);
       }
       expect(existsSync(join(h.dir, "avatars"))).toBe(false);
+      // #1630 follow-up: removing the picture is a write like uploading it.
+      expect((await raw(h.port, "DELETE", "/api/avatar/alpha", { origin: h.origin })).status, "DELETE").toBe(401);
       await stop(h.fm);
     }, 30_000);
   }
@@ -201,6 +203,7 @@ describe("/view writes need a credential — in either mode", () => {
       const res = await raw(h.port, "POST", `${path}?token=${h.token}`, headers, body);
       expect(res.status, path).toBe(401);
     }
+    expect((await raw(h.port, "DELETE", `/api/avatar/alpha?token=${h.token}`)).status, "DELETE with a URL token").toBe(401);
     // ...and a wrong header token is still refused.
     const wrong = await raw(h.port, "POST", "/api/profile/alpha", { ...JSON_H, "x-agend-token": "0".repeat(48) }, PROFILE);
     expect(wrong.status).toBe(401);
@@ -214,6 +217,8 @@ describe("/view writes need a credential — in either mode", () => {
     expect(res.status).toBe(200);
     const read = JSON.parse((await raw(h.port, "GET", "/api/profile/alpha")).body);
     expect(read).toMatchObject({ display_name: "Alpha", role: "tester" });
+    expect((await raw(h.port, "POST", "/api/avatar/alpha", { "content-type": "image/png", "x-agend-token": h.token }, PNG)).status).toBe(200);
+    expect((await raw(h.port, "DELETE", "/api/avatar/alpha", { "x-agend-token": h.token })).status, "DELETE with the header token").toBe(200);
     await stop(h.fm);
   }, 30_000);
 
@@ -239,6 +244,17 @@ describe("/view writes need a credential — in either mode", () => {
     expect(avatar.status).toBe(200);
     const sort = await raw(h.port, "POST", "/api/sort-order", { ...JSON_H, cookie: s.cookie, origin: h.origin, "x-agend-csrf": s.csrf }, "[]");
     expect(sort.status).toBe(200);
+
+    // #1630 follow-up: DELETE /api/avatar takes the same checks as POST — Origin and the CSRF value, same-site.
+    for (const [why, headers] of [
+      ["bare", { cookie: s.cookie }], ["no CSRF", { cookie: s.cookie, origin: h.origin }],
+      ["cross-origin", { cookie: s.cookie, origin: "https://evil.example", "x-agend-csrf": s.csrf }],
+      ["cross-site", { cookie: s.cookie, origin: h.origin, "x-agend-csrf": s.csrf, "sec-fetch-site": "cross-site" }],
+    ] as const) expect((await raw(h.port, "DELETE", "/api/avatar/alpha", headers)).status, why).toBe(403);
+    expect(existsSync(join(h.dir, "avatars", "alpha.png")), "still there").toBe(true);
+    const removed = await raw(h.port, "DELETE", "/api/avatar/alpha", { cookie: s.cookie, origin: h.origin, "x-agend-csrf": s.csrf });
+    expect([removed.status, JSON.parse(removed.body).removed, existsSync(join(h.dir, "avatars", "alpha.png"))]).toEqual([200, true, false]);
+    expect((await raw(h.port, "GET", "/api/avatar/alpha")).status).toBe(404);
     await stop(h.fm);
   }, 30_000);
 
@@ -313,6 +329,8 @@ describe("the /view handler does not lean on the gate for writes", () => {
     expect(call("POST", "/api/profile/alpha")).toBe(401);
     expect(call("POST", "/api/avatar/alpha", { "content-type": "image/png" })).toBe(401);
     expect(call("POST", "/api/sort-order")).toBe(401);
+    expect(call("DELETE", "/api/avatar/alpha")).toBe(401);
+    expect(call("DELETE", `/api/avatar/alpha?token=${token}`)).toBe(401);
     expect(call("POST", `/api/profile/alpha?token=${token}`)).toBe(401);
     expect(call("POST", "/api/profile/alpha", { "x-agend-token": "0".repeat(48) })).toBe(401);
     expect(existsSync(join(dir, "avatars"))).toBe(false);

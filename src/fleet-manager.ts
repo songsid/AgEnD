@@ -10762,8 +10762,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /**
    * The bots instances and ClassicBot rooms speak through, by connections configured now (a connection removed from
-   * fleet.yaml is nobody's, whatever an instance still names — #1635 review). `own`: instance → its own bot (not the
-   * primary, answering for it alone). `speaking` (#1867): instance → the bot it speaks through — its own, a shared one,
+   * fleet.yaml is nobody's, whatever an instance still names — #1635 review). `own`: instance → its own bot (answering
+   * for it alone; the primary too, when it serves one instance only). `speaking` (#1867): instance → the bot it speaks through — its own, a shared one,
    * or, with none configured for it, the primary.
    */
   private webBots(): { own: Map<string, string>; speaking: Map<string, string> } {
@@ -10778,7 +10778,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const primary = this.getPrimaryAdapterId(), fallback = primary && configured.has(primary) ? primary : undefined;
     const speaking = new Map<string, string>();
     for (const [instance, connection] of assignments) { const c = connection ?? fallback; if (c) speaking.set(instance, c); }
-    return { own: ownBotConnections(primary, assignments), speaking };
+    return { own: ownBotConnections(assignments), speaking };
   }
   /** instance → the connection that is its own bot (see webBots). */
   private ownBots(): Map<string, string> { return this.webBots().own; }

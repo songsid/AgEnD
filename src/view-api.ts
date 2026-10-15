@@ -13,6 +13,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
  *   POST /api/profile/:instance → upsert profile              (signed in)
  *   GET  /api/avatar/:instance  → avatar image
  *   POST /api/avatar/:instance  → upload avatar               (signed in)
+ *   DELETE /api/avatar/:instance → remove the uploaded avatar (signed in; #1630 follow-up)
  *   GET/POST /api/sort-order    → sidebar order               (POST: signed in)
  *
  * Auth: reads follow `web.view_access` — `open` (the default; the page is a
@@ -479,6 +480,19 @@ export function handleViewRequest(
           .run({ n: name, a: filename, t: Date.now() });
         json(res, 200, { ok: true, avatar_path: filename });
       }).catch(err => json(res, 400, { error: (err as Error).message }));
+      return true;
+    }
+
+    // #1630 follow-up: back to the default — the bot's avatar, the persona emoji or the initial (instance-avatar.ts).
+    // Only the file this instance's row records is deleted, then the row's avatar_path is cleared.
+    if (method === "DELETE") {
+      const db = profileDb(ctx.dataDir);
+      const row = db.prepare("SELECT avatar_path FROM instance_profile WHERE instance_name = ?").get(name) as { avatar_path: string | null } | undefined;
+      if (row?.avatar_path) {
+        try { unlinkSync(join(ctx.dataDir, "avatars", basename(row.avatar_path))); } catch { /* already gone */ }
+        db.prepare("UPDATE instance_profile SET avatar_path = NULL, updated_at = ? WHERE instance_name = ?").run(Date.now(), name);
+      }
+      json(res, 200, { ok: true, removed: Boolean(row?.avatar_path) });
       return true;
     }
     json(res, 405, { error: "method not allowed" });

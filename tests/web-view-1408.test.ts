@@ -502,4 +502,58 @@ describe("within one navigation, an older answer never lands over a newer one; a
       expect(avatar[0]!.init.body).toBe(picked);
     } finally { await s.done(); }
   });
+  // #1630 follow-up: the uploaded picture can be removed — on Save, from the editor; the button only when there is one.
+  describe("Remove picture (#1630 follow-up)", () => {
+    const withPicture = () => json(ROSTER_B.map(r => (r.instance_name === "alpha" ? { ...r, has_avatar: true } : r)));
+    const removeBtn = (dlg: any) => dlg.querySelectorAll(".btn").find((b: any) => /Remove picture|Keep picture/.test(b.textContent));
+    const save = async (dlg: any) => { dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Save")).click(); await settle(6); };
+    const avatarCalls = (s: Awaited<ReturnType<typeof setup>>) => s.calls.filter(c => c.url.startsWith("/api/avatar/")).map(c => `${c.init.method} ${c.url}`);
+
+    it("no picture uploaded: no Remove button", async () => {
+      const s = await setup();
+      try { await s.mount("alpha", "view:alpha|1|en"); await settle(6); expect(removeBtn(await openEditor(s))).toBeUndefined(); }
+      finally { await s.done(); }
+    });
+    it("Remove picture, then Save: one DELETE to this agent after the profile write; the editor closes", async () => {
+      const s = await setup({ profiles: withPicture });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        removeBtn(dlg).click(); await settle(2);
+        expect([removeBtn(dlg).textContent, removeBtn(dlg).getAttribute("aria-pressed")]).toEqual(["Keep picture", "true"]);
+        expect(avatarCalls(s), "nothing until Save").toEqual([]);
+        await save(dlg);
+        expect(avatarCalls(s)).toEqual(["DELETE /api/avatar/alpha"]);
+        expect(s.p.root.querySelector("dialog")).toBeNull();
+      } finally { await s.done(); }
+    });
+    it("Remove then Keep, or Cancel: nothing is removed; a newly picked file wins over removing", async () => {
+      const s = await setup({ profiles: withPicture });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        let dlg = await openEditor(s);
+        removeBtn(dlg).click(); await settle(2); removeBtn(dlg).click(); await settle(2);
+        await save(dlg);
+        dlg = await openEditor(s);
+        removeBtn(dlg).click(); await settle(2);
+        dlg.querySelectorAll(".btn").find((b: any) => b.textContent.includes("Cancel")).click(); await settle(4);
+        expect(avatarCalls(s)).toEqual([]);
+        dlg = await openEditor(s);
+        removeBtn(dlg).click(); await settle(2);
+        dlg.querySelectorAll("input").find((i: any) => i.getAttribute("type") === "file").files = [{ type: "image/png", name: "new.png" }];
+        await save(dlg);
+        expect(avatarCalls(s)).toEqual(["POST /api/avatar/alpha"]);
+      } finally { await s.done(); }
+    });
+    it("a refused removal says so and keeps the editor open", async () => {
+      const s = await setup({ profiles: withPicture, avatar: () => ({ ok: false, status: 500, headers: { get: () => null }, json: async () => ({ error: "disk" }) }) });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        removeBtn(dlg).click(); await settle(2);
+        await save(dlg);
+        expect(s.p.root.querySelector("dialog .err")?.textContent).toBe("Could not remove the picture: disk");
+      } finally { await s.done(); }
+    });
+  });
 });

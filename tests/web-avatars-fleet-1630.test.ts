@@ -5,7 +5,7 @@
  * read-only allowlist. Fake adapters and a stubbed fetch for Discord's CDN — no platform is called; nothing forks.
  */
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,7 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const { handleWebRequest } = await import("../src/web-api.js");
 const { isPassiveWebRead } = await import("../src/web-auth.js");
 const { isPublicWebRoute } = await import("../src/public-web-gateway.js");
+const { handleViewRequest } = await import("../src/view-api.js");
 
 const TOKEN = "t".repeat(48);
 const dirs: string[] = [];
@@ -176,6 +177,84 @@ describe("the status frame: what stands for each instance", () => {
   });
 });
 
+// ── #1630 follow-ups (hxhsandy, 2026-10-14): a primary kept for General alone; removing an uploaded picture ──
+
+describe("a primary that serves one instance is that instance's own bot (#1630 follow-up)", () => {
+  const generalOnly = (f: ReturnType<typeof fleet>) => {
+    f.fm.fleetConfig.instances = { general: { working_directory: f.dir, topic_id: "1" }, solo: { working_directory: f.dir, channel_id: "discord-2", topic_id: "555" } };
+  };
+  it("General alone on the primary: the primary's face and its colour as the ring, like any own bot", async () => {
+    const f = fleet();
+    generalOnly(f);
+    f.frame(); await flush(); f.frame(); await flush();
+    const frame = f.frame();
+    expect(frame.general).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord\?v=/) }, accent: "#ff0000" });
+    expect(frame.solo!.accent).toBe("#e91e63");
+    expect((await get(f.fm, "/ui/img/bot/discord")).status).toBe(200);
+  });
+  it("a primary several instances use is nobody's own: its face through the speaking bot, no ring, its colour never read", async () => {
+    const f = fleet();                                                // a and b share the primary
+    f.frame(); await flush(); f.frame(); await flush();
+    const frame = f.frame();
+    expect([frame.a!.accent, frame.b!.accent, (frame.a!.avatar as { src?: string }).src]).toEqual([undefined, undefined, expect.stringMatching(/^\/ui\/img\/bot\/discord\?v=/)]);
+    expect(f.calls.accent).toEqual(["555"]);
+  });
+  it("a ClassicBot room on the primary makes it shared again: General loses the ring", async () => {
+    const f = fleet();
+    generalOnly(f);
+    Object.assign(f.fm.classicChannels, { getAll: () => [{ instanceName: "room" }], getChannelIdByInstance: (n: string) => (n === "room" ? "777" : undefined) });
+    f.frame(); await flush(); f.frame(); await flush();
+    const frame = f.frame();
+    expect([frame.general!.accent, frame.room!.accent]).toEqual([undefined, undefined]);
+    expect((frame.general!.avatar as { src?: string }).src).toMatch(/^\/ui\/img\/bot\/discord\?v=/);
+  });
+});
+
+describe("removing an uploaded picture (DELETE /api/avatar/:instance, #1630 follow-up)", () => {
+  const del = (f: ReturnType<typeof fleet>, name: string) => new Promise<{ status: number; body: string }>(resolve => {
+    let status = 0;
+    const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { status = c; res.headersSent = true; return res; }, end(b?: string) { resolve({ status, body: String(b ?? "") }); } };
+    const req = Object.assign(new EventEmitter(), { method: "DELETE", url: `/api/avatar/${name}`, headers: { "x-agend-token": TOKEN }, destroy() {}, resume() {} });
+    const ctx = { webToken: TOKEN, dataDir: f.dir, fleetConfig: f.fm.fleetConfig, classicChannels: null, logger: { debug() {}, info() {}, warn() {}, error() {} },
+      getInstanceStatus: () => "running", getUiStatus: () => ({ instances: [] }) };
+    expect(handleViewRequest(req as never, res, new URL(`http://127.0.0.1${req.url}`), ctx as never)).toBe(true);
+  });
+  const avatarPath = (dir: string, name: string) => {
+    const db = new Database(join(dir, "profiles.db"));
+    try { return (db.prepare("SELECT avatar_path FROM instance_profile WHERE instance_name = ?").get(name) as { avatar_path: string | null }).avatar_path; } finally { db.close(); }
+  };
+  it("clears the row and deletes the file; the avatar falls through — own bot (with its ring), speaking bot, emoji", async () => {
+    const f = fleet({ persona: { a: "🦊" } });
+    f.fm.fleetConfig.instances.p1.status_emojis = { delivered: "🐙" };
+    for (const n of ["solo", "a", "p1"]) uploadProfile(f.dir, n, `${n}.png`, Buffer.alloc(9, 4));
+    f.fm.adapters.get("telegram-2").fetchBotAvatar = async () => null;   // p1's speaking bot has no avatar
+    f.frame(); await flush(); f.frame(); await flush();
+    expect(Object.values(f.frame()).filter(i => /\/ui\/img\/avatar\//.test((i.avatar as { src?: string }).src ?? "")).length).toBe(3);
+    for (const n of ["solo", "a", "p1"]) {
+      const r = await del(f, n);
+      expect([r.status, JSON.parse(r.body)], n).toEqual([200, { ok: true, removed: true }]);
+      expect([avatarPath(f.dir, n), existsSync(join(f.dir, "avatars", `${n}.png`))], n).toEqual([null, false]);
+      expect((await get(f.fm, `/ui/img/avatar/${n}`)).status, n).toBe(404);
+    }
+    f.frame(); await flush();
+    const frame = f.frame();
+    expect(frame.solo).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord-2\?v=/) }, accent: "#e91e63" });
+    expect(frame.a).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord\?v=/) }, accent: undefined });
+    expect(frame.p1).toEqual({ avatar: { kind: "emoji", text: "🐙" }, accent: undefined });
+  });
+  it("only this instance's recorded file goes; nothing uploaded: 200, removed false; an unknown instance: 404", async () => {
+    const f = fleet();
+    uploadProfile(f.dir, "a", "a.png", Buffer.alloc(9, 4));
+    uploadProfile(f.dir, "b", "b.png", Buffer.alloc(9, 5));
+    writeFileSync(join(f.dir, "avatars", "a.extra.png"), Buffer.alloc(3));
+    expect((await del(f, "a")).status).toBe(200);
+    expect([existsSync(join(f.dir, "avatars", "b.png")), existsSync(join(f.dir, "avatars", "a.extra.png")), avatarPath(f.dir, "b")]).toEqual([true, true, "b.png"]);
+    expect(JSON.parse((await del(f, "a")).body)).toEqual({ ok: true, removed: false });
+    expect(JSON.parse((await del(f, "solo")).body)).toEqual({ ok: true, removed: false });
+    expect((await del(f, "ghost")).status).toBe(404);
+  });
+});
+
 describe("the image routes", () => {
   it("a speaking bot's cached avatar is served, typed, nosniff, private — own, primary or shared (#1867); a connection nobody speaks through or an unknown name: 404", async () => {
     const f = fleet();
@@ -247,6 +326,9 @@ describe("the image routes", () => {
       expect([isPassiveWebRead("GET", p), isPublicWebRoute("GET", p), isPublicWebRoute("POST", p)], p).toEqual([true, true, false]);
     }
     expect([isPassiveWebRead("GET", "/ui/img/other/x"), isPublicWebRoute("GET", "/ui/img/other/x")]).toEqual([false, false]);
+    // #1630 follow-up: removing an upload is allowed over the public link exactly as uploading it is (a cosmetic edit).
+    expect(["POST", "DELETE"].map(m => isPublicWebRoute(m, "/api/avatar/a"))).toEqual([true, true]);
+    expect(isPublicWebRoute("DELETE", "/api/profile/a"), "only the picture").toBe(false);
   });
 });
 
