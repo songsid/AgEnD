@@ -797,7 +797,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 
 在 `fleet.yaml` 的 `templates` 區塊定義可重複使用的 fleet 設定。部署一個模板，就能一次建立多個 instance 和一個 team：
 
-- `deploy_template` — 建立 instance，也可以一併建立 team；有給 `branch` 時每個 instance 會有自己的 git worktree，否則共用專案目錄
+- `deploy_template` — 建立 instance，也可以一併建立 team；有給 `branch` 時每個 instance 會有自己的 git worktree。沒給的話，同一目錄的第二個角色會被當成重複而拒絕，整個部署會回滾，所以多個角色需要 `branch`
 - `teardown_deployment` — 停止並刪除某次部署的所有 instance 和 team
 - `list_deployments` — 列出目前的部署和其中 instance 的狀態
 

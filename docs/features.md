@@ -822,7 +822,7 @@ Set `AGEND_HOME` environment variable to change the data directory (default: `~/
 
 Define reusable fleet configurations in `fleet.yaml` under the `templates` section. Deploy a template to create multiple instances and a team in one operation:
 
-- `deploy_template` — creates instances and optionally a team; with `branch`, each instance gets its own git worktree, otherwise they share the project directory
+- `deploy_template` — creates instances and optionally a team; with `branch`, each instance gets its own git worktree. Without it, a second role in the same directory is refused as a duplicate and the deployment is rolled back, so several roles need `branch`
 - `teardown_deployment` — stops and deletes all instances and team from a deployment
 - `list_deployments` — shows active deployments with instance status
 

@@ -26,12 +26,12 @@ The fleet serves a dashboard on `127.0.0.1`, on `health_port` (default 19280). I
 - **Fleet** (`/ui/fleet`) — the task board, schedules and teams, an **Org chart** of General, teams and instances with their live state, a prompt-cache **Cache** analysis, and the fleet's config. **Docs** in its header opens this site.
 - **Needs you** (`/ui/needs`) — everything waiting on you, from every bot, in one list: permission prompts, hang alerts, sign-ins, deliveries that could not be confirmed. Something handled anywhere leaves every list.
 - **View** (`/view`) — every agent's live terminal, the roster, AI subscription usage, and each agent's profile and avatar.
-- **Log** — per instance, each prompt, reply, tool call and fleet event, read from the agent's transcript. Off by default; a fleet admin turns it on in **Settings → Web** (`web.log_tab`).
+- **Log** — per instance: on Claude Code and Codex, each prompt, reply and tool call, read from the agent's transcript, plus fleet events such as crashes and restarts; other backends show the fleet events only. Off by default; a fleet admin turns it on in **Settings → Web** (`web.log_tab`).
 - **Settings** (`/settings`) — agents, connections, ClassicBot, General and Web settings and the whole `fleet.yaml`, staged and applied together. Bot tokens are entered here and checked with the platform before anything is saved.
 
-**Signing in.** Send `/web` in General (fleet admins), or run `agend web` on the host, and type the one-time code on the sign-in page. A code works once and expires after five minutes; a session lasts 48 hours by default. Signed in with a `/web` code, you are your Discord or Telegram account to the agent — for recognition only; it grants nothing.
+**Signing in.** Send `/web` in General (fleet admins), or run `agend web` on the host, and type the one-time code on the sign-in page. A code works once and expires after five minutes. On the dashboard reached directly a session lasts 48 hours by default (configurable); one opened through the public link lasts at most 4 hours, ends after 30 minutes unused, and ends when the link closes. Signed in with a `/web` code, you are your Discord or Telegram account to the agent — for recognition only; it grants nothing.
 
-**From a phone.** `/web` can also open a **temporary public link** through a Cloudflare Quick Tunnel: nothing is exposed until you choose it, the link and code come to you privately, and it closes after two hours by default (or with `/web revoke`). It grants full dashboard access, so do not forward it.
+**From a phone.** `/web` can also open a **temporary public link** through a Cloudflare Quick Tunnel: nothing is exposed until you choose it, the link and code come to you privately, and it closes after two hours by default (or with `/web revoke`). Whoever has it can use your chats, terminals, files and most of the dashboard — the public link only refuses a few changes (schedules, teams, Web settings, secrets) — so do not forward it.
 
 Full guide: [web-dashboard.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md).
 
@@ -47,7 +47,7 @@ Three tools do most of the work:
 
 `delivery_status` tells an agent whether a message it sent was delivered. A shared **task board** and fleet-wide **decisions** keep multi-step work in view.
 
-Starting and replacing instances needs a tool profile that allows it: `coordinator` (or the General instance's own profile) can `create_instance` and `start_instance`, and only `coordinator` can `replace_instance`. An ordinary worker can hand work to a peer and cannot spawn one. See [Tool profiles](/AgEnD/docs/configuration/#tool-profiles).
+Starting and replacing instances needs a tool profile that allows it: `coordinator` and `full` (and the General instance's own profile) can `create_instance` and `start_instance`, and only `coordinator` and `full` can `replace_instance`. An ordinary worker can hand work to a peer and cannot spawn one. See [Tool profiles](/AgEnD/docs/configuration/#tool-profiles).
 
 `create_instance` takes a `branch`, which puts the new agent in its own git worktree.
 
@@ -181,7 +181,7 @@ teams:
     members: [reviewer-a, reviewer-b]
 ```
 
-A **template** deploys several instances in one command, optionally registering them as a team. Pass a `branch` and each gets its own git worktree; without one they share the project directory. Agents deploy them with `deploy_template` and tear them down with `teardown_deployment`.
+A **template** deploys several instances in one command, optionally registering them as a team. Pass a `branch` and each gets its own git worktree. Without one, every role would use the same project directory: the second is refused as a duplicate and the whole deployment is rolled back, so a template with several roles needs `branch`. Agents deploy them with `deploy_template` and tear them down with `teardown_deployment`.
 
 ## Watching and exporting
 
@@ -220,4 +220,4 @@ Every backend gets the full fleet instructions through its own route (a system-p
 
 - macOS and Linux only. On Windows, use WSL — the [Windows installer](/AgEnD/install-windows/) sets it up
 - The official Telegram plugin in a global `enabledPlugins` causes 409 polling conflicts
-- Agents run with permission checks skipped unless you set `skipPermissions: false` for an instance. Read the security notes before pointing one at something you care about
+- Agents run with permission checks skipped unless you set `skipPermissions: false` for an instance — except Antigravity, which always launches with `--dangerously-skip-permissions`. Read the security notes before pointing one at something you care about
