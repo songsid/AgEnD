@@ -64,7 +64,7 @@ const homeHref = `${base}zh-tw/`;
     </div>
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       <b class="text-text-primary">小提示：</b>事先把 Bot Token 記在記事本，安裝時可直接貼上比較順暢。
-      你的伺服器／頻道與管理員身分會在你從群組發送訊息時自動偵測，不需要手動填 Server ID 或 User ID。
+      Telegram：你在群組傳 <code class="font-mono text-accent">/start</code> 時，quickstart 會找出群組和你的 User ID。Discord：quickstart 會問你的 User ID 和 General 頻道的 ID，請看 <a href={`${base}zh-tw/setup-discord/`} class="text-accent hover:underline">Discord Bot 設定教學</a>。
     </div>
 
     <!-- Steps -->
@@ -116,7 +116,7 @@ Unblock-File .\install-agend.ps1</pre>
           </li>
           <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
           <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
-          <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token，然後在群組發一則訊息讓 Bot 偵測頻道。腳本會自動產生設定、安裝服務並啟動。</li>
+          <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token。Telegram 要在群組傳 <code class="font-mono text-accent">/start</code> 讓 quickstart 找到群組；Discord 要貼上你的 User ID 和 General 頻道 ID。接著寫入設定，再詢問要不要安裝服務並啟動。</li>
         </ol>
       </div>
     </div>
@@ -129,7 +129,7 @@ Unblock-File .\install-agend.ps1</pre>
 
     <!-- Auto-start -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">開機自動啟動機制</h2>
-    <p class="text-sm text-text-secondary mb-4">腳本已設定三道機制，讓 Bot 在每次重開機後自動上線，完全不需手動操作：</p>
+    <p class="text-sm text-text-secondary mb-4">腳本已設定三道機制，讓 Bot 在每次重開機後自動上線，完全不需手動操作。第二道需要第 5 步安裝的服務：quickstart 詢問要不要安裝服務時請回答要。如果跳過或安裝失敗，請在 WSL 裡執行 <code class="font-mono text-accent">agend install</code>。</p>
     <ul class="space-y-3 text-sm text-text-secondary mb-14">
       <li>1. <b class="text-text-primary">Windows 登入後自動啟動 WSL</b>：透過 Startup 資料夾中的 <code class="font-mono text-accent">start-wsl.vbs</code>（位置 <code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code>）。</li>
       <li>2. <b class="text-text-primary">WSL 內 AgEnD 由 systemd 服務自動啟動</b>：只要 WSL 在運行，AgEnD 就會自動啟動。</li>
@@ -146,6 +146,7 @@ agend start                                  # 啟動所有 Agent 服務
 agend stop                                   # 停止所有 Agent 服務
 agend attach &lt;名稱&gt;                          # 進入某個 Agent 的操作畫面
 agend update                                 # 更新 AgEnD 到最新版
+agend web --code                             # 網頁 dashboard 的登入代碼（localhost:19280）
 kiro-cli                                     # 手動開啟 Kiro CLI
 exit                                         # 離開 WSL</pre>
     <div class="mb-14 rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
@@ -187,7 +188,7 @@ exit                                         # 離開 WSL</pre>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
         <summary class="cursor-pointer font-medium text-text-primary">如何更新 AgEnD？</summary>
-        <p class="mt-3 text-sm text-text-secondary">進入 WSL 後執行 <code class="font-mono text-accent">agend update</code>。</p>
+        <p class="mt-3 text-sm text-text-secondary">在 General 傳 <code class="font-mono text-accent">/update</code>，或進入 WSL 後執行 <code class="font-mono text-accent">agend update</code>。</p>
       </details>
     </div>
 

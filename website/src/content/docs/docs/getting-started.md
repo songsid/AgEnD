@@ -12,7 +12,7 @@ AgEnD runs your AI coding agents as a system service and puts them in your Teleg
 - A Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token
 - At least one AI coding CLI, installed and logged in — see [Backends](#install-a-backend)
 
-macOS and Linux are supported. Windows is not; use WSL.
+macOS and Linux are supported. Native Windows is not: run AgEnD inside WSL, which the [Windows installation guide](/AgEnD/install-windows/) sets up for you.
 
 ## Install
 
@@ -20,7 +20,7 @@ macOS and Linux are supported. Windows is not; use WSL.
 curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
-This installs Node.js through nvm if you don't have it, installs tmux, installs `agend`, then runs the setup wizard.
+This installs Node.js 22 through nvm if you have no Node or one that is too old, installs tmux, installs `agend`, then tells you to run `agend quickstart`. When the script runs in an interactive terminal rather than through a pipe, it offers to start it right away.
 
 Already have Node and tmux:
 
@@ -46,7 +46,7 @@ AgEnD drives a CLI you already use. Install one and log in before running setup.
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install \| bash` | `kiro-cli login` |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy` |
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` |
-| Meta Muse Code | `curl -fsSL https://api.meta.ai/muse-launcher.sh \| bash` | `muse login` |
+| Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"` | `muse login` |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode` |
 
 Check the one you picked before going further:
@@ -54,6 +54,8 @@ Check the one you picked before going further:
 ```bash
 agend backend doctor claude-code
 ```
+
+Once the fleet is running you can also do this from chat: `/login` in General installs a missing CLI and signs it in (Claude Code, Codex, Kiro CLI, Grok), so you don't need SSH. OpenCode and Muse are install-only there, and Antigravity is signed in on the host.
 
 ## Set up
 
@@ -65,12 +67,14 @@ It runs in four steps:
 
 1. It finds the AI coding CLI you have, and asks which one if there are several.
 2. It asks for Telegram, Discord, or both. Discord is built in, so there is nothing extra to install.
-3. It checks your bot token. On Telegram it then finds your group once you send `/start` there. On Discord it lists the servers the bot is in, or asks for the server ID if it is in none. It then asks for your user ID and the General channel's ID.
+3. It checks your bot token. On Telegram it then finds your group and your user ID once you send `/start` in the group. On Discord it lists the servers the bot is in, or asks for the server ID if it is in none. It then asks for your user ID and the General channel's ID (Discord's Developer Mode → Copy ID), and offers to set up ClassicBot.
 4. It asks where your projects live.
 
-At the end it offers to install the fleet as a service and start it. It then shows where the web dashboard is.
+It writes `~/.agend/fleet.yaml`, with access locked to your user ID, and the bot token to `~/.agend/.env`. At the end it offers to install the fleet as a service and start it, then shows where the web dashboard is.
 
-Run `agend quickstart` again later to add users or servers to an existing config.
+Step-by-step bot guides: [Telegram](/AgEnD/setup-telegram/), [Discord](/AgEnD/setup-discord/).
+
+Run `agend quickstart` again later to add users, a second platform, or a Discord persona bot to an existing config.
 
 To set up from your phone instead of the terminal, see [`agend setup --tunnel`](/AgEnD/docs/cli/#web-dashboard).
 
@@ -90,25 +94,40 @@ agend install
 
 ## Send your first message
 
-Open Telegram, find your bot, and send it a message. In a forum group, each topic is one agent; a message to the **General** topic is routed to whichever agent should handle it.
+Send a message in the **General** topic (Telegram) or the General channel (Discord). General routes it to whichever agent should handle it, and can create new agents for your projects. Each agent then gets its own topic or thread.
 
-On Discord, `/start` begins an agent in the current channel, `/chat <message>` talks to it, and `/stop` ends it.
+ClassicBot attaches an agent to any other channel. On Discord, `/start` begins one there, `/chat <message>` talks to it, and `/stop` ends it. In a Telegram group, a ClassicBot admin starts one with `/start@YourBot`. When anyone else starts one in a new server, group or private chat that is not on ClassicBot's allow lists, General is asked for approval first.
 
 ## Open the web dashboard
 
-The fleet also serves a dashboard at `http://localhost:19280/`. It has the same chats as your bot, and Settings, where you can add a bot, an agent, or a token. To sign in, run this on the machine:
+The fleet also serves a dashboard at `http://localhost:19280/`. It has the same chats as your bot, a **Needs you** list of everything waiting on you, and Settings, where you can add a bot, an agent, or a token.
+
+It signs in with a one-time code, never a link that carries a password. Get one either way:
 
 ```bash
-agend web --code
+agend web          # on the machine: prints the code and opens the sign-in page
+agend web --code   # only prints them
 ```
 
-You can also send `/dashboard` to your bot. Either one gives you a one-time code for the sign-in page.
+Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts 4 hours (30 minutes idle) and ends when the link closes.
+
+The dashboard listens only on `127.0.0.1`. To reach it from elsewhere, see the [web dashboard guide](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md).
 
 If nothing answers, check the fleet first:
 
 ```bash
 agend health
 ```
+
+## Updating
+
+Send `/update` in General (fleet admins), or run this on the host:
+
+```bash
+agend update
+```
+
+It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
 
 ## Next steps
 

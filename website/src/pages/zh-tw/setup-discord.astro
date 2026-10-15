@@ -159,13 +159,33 @@ const homeHref = `${base}zh-tw/`;
       <div class="rounded-xl border border-border bg-surface p-6">
         <div class="flex items-center gap-3 mb-3">
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">9</span>
-          <h3 class="font-semibold text-text-primary">執行 quickstart 並啟動 fleet</h3>
+          <h3 class="font-semibold text-text-primary">開啟開發者模式，複製兩個 ID</h3>
         </div>
-        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Discord，貼上 bot token
-agend fleet start     # 啟動</pre>
+        <p class="text-sm text-text-secondary mb-3">
+          quickstart 會問你的 Discord 使用者 ID，以及 General agent 要回覆的頻道 ID。
+          在 Discord：<b class="text-text-primary">使用者設定 → 進階 → 開發者模式</b>打開，然後：
+        </p>
+        <ul class="text-sm text-text-secondary space-y-1">
+          <li>• 對自己按右鍵 → <b class="text-text-primary">複製使用者 ID</b>。fleet 會鎖定只給你用。</li>
+          <li>• 對要當 General 的文字頻道按右鍵 → <b class="text-text-primary">複製頻道 ID</b>。</li>
+        </ul>
+      </div>
+
+      <!-- 10 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">10</span>
+          <h3 class="font-semibold text-text-primary">執行 quickstart</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Discord，貼上 bot token、你的使用者 ID 和頻道 ID</pre>
         <p class="text-sm text-text-secondary mt-3">
-          quickstart 會一起設好 <code class="font-mono text-accent">fleet.yaml</code> 和
-          <code class="font-mono text-accent">classicBot.yaml</code>。在 server 傳一則訊息讓 bot 偵測頻道和你的帳號，就上線了。
+          quickstart 會找出 bot 所在的 server，寫好 <code class="font-mono text-accent">fleet.yaml</code>（存取權鎖定給你的使用者 ID），
+          並詢問要不要設定 ClassicBot（<code class="font-mono text-accent">classicBot.yaml</code>，允許這個 server、你是管理員）。
+          最後會詢問要不要把 fleet 安裝成服務並啟動；如果你選了不要，就執行 <code class="font-mono text-accent">agend fleet start</code>。
+        </p>
+        <p class="text-sm text-text-secondary mt-3">
+          接著在 General 頻道傳一則訊息。要開網頁 dashboard，在那裡用 <code class="font-mono text-accent">/web</code>：
+          bot 會私訊給你登入連結和一次性代碼。
         </p>
       </div>
     </div>
@@ -180,7 +200,7 @@ agend fleet start     # 啟動</pre>
     <img src={img('discord-10-external-bot-permissions.png')} alt="不含管理員的較小 Discord bot 權限組合" width="1568" height="754" loading="lazy" class="rounded-lg border border-border w-full mb-4" />
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       用 <code class="font-mono text-accent">~/.agend/classicBot.yaml</code> 的 <code class="font-mono text-accent">allowed_guilds</code>
-      控制哪些 server 可以使用 ClassicBot。留空 = bot 所在的所有 server 都可以。
+      控制哪些 server 可以使用 ClassicBot。不是 ClassicBot 管理員的人在不在名單上的 server 的新頻道執行 <code class="font-mono text-accent">/start</code> 時，General 會先問你，附上 <b class="text-text-primary">Allow / Allow+admin / Ignore</b> 按鈕。名單留空不代表所有 server 都可以。ClassicBot 管理員（<code class="font-mono text-accent">admin_users</code>）和已經啟動的頻道不會再被問。quickstart 會把你自己的 server 加進去，並把你設為管理員。
       <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">defaults:
   backend: claude-code
   allowed_guilds:
@@ -215,9 +235,9 @@ agend fleet start     # 啟動</pre>
             <td class="py-3">在自己的 server 給 Administrator，或至少開 Manage Channels / Manage Threads</td>
           </tr>
           <tr>
-            <td class="py-3 pr-4"><span class="font-mono">/start</span> 被拒絕</td>
-            <td class="py-3 pr-4">Server 未在白名單</td>
-            <td class="py-3">把 guild ID 加進 <span class="font-mono">classicBot.yaml</span> 的 <span class="font-mono">allowed_guilds</span></td>
+            <td class="py-3 pr-4">在 server 執行 <span class="font-mono">/start</span> 沒有啟動 agent</td>
+            <td class="py-3 pr-4">Server 不在 <span class="font-mono">allowed_guilds</span></td>
+            <td class="py-3">在 General 核准請求，或把 guild ID 加進 <span class="font-mono">classicBot.yaml</span> 的 <span class="font-mono">allowed_guilds</span>，再執行一次 <span class="font-mono">/start</span></td>
           </tr>
         </tbody>
       </table>

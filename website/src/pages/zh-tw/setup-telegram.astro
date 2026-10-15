@@ -23,7 +23,7 @@ const homeHref = `${base}zh-tw/`;
       <p class="mt-4 text-lg text-text-secondary leading-relaxed">
         AgEnD 透過 Telegram bot 跟你溝通：Group 開啟 Topics 後，每個 agent instance 各自佔一個 Topic。
         這份教學帶你建立 bot、把 Group 準備好，並取得 <code class="font-mono text-accent">agend quickstart</code>
-        會問你的兩個值 —— <b class="text-text-primary">Bot Token</b> 和你的 <b class="text-text-primary">User ID</b>。
+        會問你的 <b class="text-text-primary">Bot Token</b>。你在 Group 裡傳 <code class="font-mono text-accent">/start</code> 時，quickstart 會自己找出 Group 和你的 <b class="text-text-primary">User ID</b>。
         大約 5 分鐘。
       </p>
     </div>
@@ -34,7 +34,7 @@ const homeHref = `${base}zh-tw/`;
       <ul class="space-y-2 text-sm text-text-secondary">
         <li>• 一組 bot token，格式像 <code class="font-mono text-accent">123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code></li>
         <li>• 一個已開啟 <b class="text-text-primary">Topics</b> 的私人 Group，bot 已是 admin</li>
-        <li>• 你的 Telegram User ID（純數字，用來把 bot 鎖給你自己用）</li>
+        <li>• 你的 Telegram User ID（純數字；quickstart 從你的 <code class="font-mono text-accent">/start</code> 讀到，用來把 bot 鎖給你自己用）</li>
       </ul>
     </div>
 
@@ -55,7 +55,7 @@ const homeHref = `${base}zh-tw/`;
         </ol>
         <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-4">AGEND_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz</pre>
         <p class="text-sm text-text-secondary mt-3">
-          不用自己動手寫檔案 —— <code class="font-mono text-accent">agend quickstart</code> 會問你 token 並寫進設定。
+          不用自己動手寫檔案 —— <code class="font-mono text-accent">agend quickstart</code> 會問你 token 並寫進 <code class="font-mono text-accent">~/.agend/.env</code>。
           Token 等同密碼，拿到的人就能完全操控你的 bot。
         </p>
       </div>
@@ -147,7 +147,8 @@ const homeHref = `${base}zh-tw/`;
         </div>
         <p class="text-sm text-text-secondary mb-3">
           User ID 用於 <code class="font-mono text-accent">fleet.yaml</code> 的存取控制，把 bot 鎖給你自己用。
-          沒設的話，任何人找到你的 bot 就能操控你的 agent。
+          沒有存取名單的話，任何人找到你的 bot 就能操控你的 agent。quickstart 會從你在 Group 傳的
+          <code class="font-mono text-accent">/start</code> 取得你的 User ID，所以這一步只是用來確認，或之後加同事時使用。
         </p>
         <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
           <li>在 Telegram 搜尋 <a href="https://t.me/userinfobot" class="text-accent hover:underline">@userinfobot</a>。</li>
@@ -159,7 +160,7 @@ const homeHref = `${base}zh-tw/`;
           <figcaption class="mt-2 text-xs text-text-muted">搜尋 @userinfobot</figcaption>
         </figure>
         <p class="text-sm text-text-secondary mt-4">
-          <code class="font-mono text-accent">agend quickstart</code> 會問你這個值並自動寫入：
+          <code class="font-mono text-accent">agend quickstart</code> 會自動寫入：
         </p>
         <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-3">channel:
   access:
@@ -173,12 +174,16 @@ const homeHref = `${base}zh-tw/`;
       <div class="rounded-xl border border-border bg-surface p-6">
         <div class="flex items-center gap-3 mb-3">
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">6</span>
-          <h3 class="font-semibold text-text-primary">執行 quickstart 並啟動 fleet</h3>
+          <h3 class="font-semibold text-text-primary">執行 quickstart</h3>
         </div>
-        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Telegram，貼上 token 和你的 user ID
-agend fleet start     # 啟動</pre>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Telegram，貼上 token，再到 Group 傳 /start</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          quickstart 會等你在 Group 傳 <code class="font-mono text-accent">/start</code>，從中取得 Group 和你的 User ID。
+          最後會詢問要不要把 fleet 安裝成服務並啟動；如果你選了不要，就執行 <code class="font-mono text-accent">agend fleet start</code>。
+        </p>
         <p class="text-sm text-text-secondary mt-3">
           接著在 Group 的 General topic 傳一則訊息。Bot 有回你就完成了，之後就能陸續加專案 instance。
+          要開網頁 dashboard，在 General 傳 <code class="font-mono text-accent">/web</code>：bot 會私訊給你登入連結和一次性代碼（請先跟 bot 開啟私人對話）。
         </p>
       </div>
     </div>
@@ -214,6 +219,11 @@ agend fleet start     # 啟動</pre>
             <td class="py-3 pr-4">Group ID 格式錯</td>
             <td class="py-3 pr-4">沒用完整 ID</td>
             <td class="py-3">Supergroup ID 以 <span class="font-mono">-100</span> 開頭，例如 <span class="font-mono">-1001234567890</span></td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">quickstart 說有其他程序正在讀這個 bot 的更新</td>
+            <td class="py-3 pr-4">正在執行的 AgEnD 或另一個 quickstart 用了同一個 token</td>
+            <td class="py-3">先停掉它（<span class="font-mono">agend stop</span>），再執行一次 quickstart</td>
           </tr>
           <tr>
             <td class="py-3 pr-4">同事無法使用</td>

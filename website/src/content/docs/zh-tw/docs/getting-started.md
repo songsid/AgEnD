@@ -12,7 +12,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 - Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token
 - 至少一個已安裝並登入的 AI coding CLI — 見[安裝後端](#安裝後端)
 
-支援 macOS 和 Linux。不支援 Windows，請用 WSL。
+支援 macOS 和 Linux。不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
 
 ## 安裝
 
@@ -20,7 +20,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
-沒有 Node.js 的話會用 nvm 裝，接著裝 tmux、裝 `agend`，然後直接跑設定精靈。
+沒有 Node.js 或版本太舊時，會用 nvm 裝 Node.js 22，接著裝 tmux、裝 `agend`，然後提示你執行 `agend quickstart`。腳本在互動式終端機裡執行（不是透過管線）時，會詢問要不要直接開始。
 
 已經有 Node 和 tmux：
 
@@ -46,7 +46,7 @@ AgEnD 是驅動你本來就在用的 CLI。先裝一個並登入，再跑設定�
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install \| bash` | `kiro-cli login` |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy` |
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` |
-| Meta Muse Code | `curl -fsSL https://api.meta.ai/muse-launcher.sh \| bash` | `muse login` |
+| Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"` | `muse login` |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode` |
 
 往下走之前先確認你選的那個能用：
@@ -54,6 +54,8 @@ AgEnD 是驅動你本來就在用的 CLI。先裝一個並登入，再跑設定�
 ```bash
 agend backend doctor claude-code
 ```
+
+fleet 跑起來之後，也可以在聊天裡做這件事：在 General 用 `/login`，會安裝缺少的 CLI 並登入（Claude Code、Codex、Kiro CLI、Grok），不需要 SSH。OpenCode 和 Muse 在那裡只能安裝，Antigravity 要在主機上登入。
 
 ## 設定
 
@@ -65,12 +67,14 @@ agend quickstart
 
 1. 找出你已安裝的 AI coding CLI，有好幾個時讓你選。
 2. 問你要用 Telegram、Discord 還是兩者都要。Discord 是內建的，不用另外裝東西。
-3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著會問你的 user ID 和 General 頻道的 ID。
+3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組和你的 user ID。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著會問你的 user ID 和 General 頻道的 ID（Discord 的開發者模式 → 複製 ID），並詢問要不要設定 ClassicBot。
 4. 問你的專案放在哪裡。
 
-最後它會提議把 fleet 裝成系統服務並啟動，接著告訴你網頁儀表板在哪裡。
+它會寫好 `~/.agend/fleet.yaml`（存取權鎖定給你的 user ID），bot token 則寫進 `~/.agend/.env`。最後它會提議把 fleet 裝成系統服務並啟動，接著告訴你網頁儀表板在哪裡。
 
-之後要加使用者或伺服器到現有設定，再跑一次 `agend quickstart`。
+逐步的 bot 設定教學：[Telegram](/AgEnD/zh-tw/setup-telegram/)、[Discord](/AgEnD/zh-tw/setup-discord/)。
+
+之後要在現有設定加使用者、第二個平台或 Discord persona bot，再跑一次 `agend quickstart`。
 
 想用手機設定而不是在終端機設定，見 [`agend setup --tunnel`](/AgEnD/zh-tw/docs/cli/#web-儀表板)。
 
@@ -90,25 +94,40 @@ agend install
 
 ## 送出第一則訊息
 
-打開 Telegram 找到你的 bot，傳一則訊息給它。在論壇群組裡，每個 topic 就是一個 agent；送到 **General** topic 的訊息會被路由給該處理它的那個 agent。
+在 **General** topic（Telegram）或 General 頻道（Discord）傳一則訊息。General 會把它路由給該處理的 agent，也能為你的專案建立新的 agent。之後每個 agent 各有自己的 topic 或 thread。
 
-Discord 上用 `/start` 在目前頻道開一個 agent、`/chat <訊息>` 跟它說話、`/stop` 結束它。
+ClassicBot 可以把 agent 掛到其他任何頻道。Discord 上用 `/start` 在那裡開一個 agent、`/chat <訊息>` 跟它說話、`/stop` 結束它。在 Telegram 群組裡，由 ClassicBot 管理員用 `/start@YourBot` 開啟。其他人在不在 ClassicBot 名單上的新 server、群組或私人對話開啟時，會先在 General 請你核准。
 
 ## 打開網頁儀表板
 
-fleet 也會在 `http://localhost:19280/` 提供儀表板。裡面有和你的 bot 一樣的對話，還有設定頁，可以新增 bot、agent 或 token。要登入，在這台機器上執行：
+fleet 也會在 `http://localhost:19280/` 提供儀表板。裡面有和你的 bot 一樣的對話、列出所有在等你處理的事的 **等你處理** 清單，還有設定頁，可以新增 bot、agent 或 token。
+
+登入用的是一次性登入碼，不是帶著密碼的連結。兩種方式都能拿到：
 
 ```bash
-agend web --code
+agend web          # 在這台機器上：印出登入碼並打開登入頁
+agend web --code   # 只印出來
 ```
 
-也可以傳 `/dashboard` 給你的 bot。兩種方式都會給你一組登入頁用的一次性登入碼。
+或在 General 傳 `/web`（fleet 管理員）。bot 會私訊給你連結和登入碼；手機連不到這台機器時，也可以選臨時公開連結。登入碼只能用一次、5 分鐘內有效。直接連到儀表板的登入預設維持 48 小時；透過公開連結的登入維持 4 小時（閒置 30 分鐘），連結關閉時也會結束。
+
+儀表板只聽 `127.0.0.1`。要從別的地方連，見[網頁儀表板說明](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
 
 如果都沒有回應，先看 fleet 的狀況：
 
 ```bash
 agend health
 ```
+
+## 更新
+
+在 General 傳 `/update`（fleet 管理員），或在主機上執行：
+
+```bash
+agend update
+```
+
+它會留在你安裝的頻道（beta 就留在 beta），安裝新版、檢查它，然後重啟 fleet。從 2.1 升級，請先看[從 2.1 升級到 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.zh-TW.md)。從 2.1.0–2.1.11 升級，或主機沒有 AgEnD 內建的 Node 時，請改照它的手動步驟。
 
 ## 下一步
 

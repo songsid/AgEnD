@@ -165,14 +165,34 @@ const telegramHref = `${base}setup-telegram/`;
       <div class="rounded-xl border border-border bg-surface p-6">
         <div class="flex items-center gap-3 mb-3">
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">9</span>
-          <h3 class="font-semibold text-text-primary">Run quickstart and start the fleet</h3>
+          <h3 class="font-semibold text-text-primary">Turn on Developer Mode and copy two IDs</h3>
         </div>
-        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Discord, paste the bot token
-agend fleet start     # launch</pre>
+        <p class="text-sm text-text-secondary mb-3">
+          Quickstart asks for your Discord user ID and the ID of the channel the General agent will answer in.
+          In Discord: <b class="text-text-primary">User Settings → Advanced → Developer Mode</b> on. Then:
+        </p>
+        <ul class="text-sm text-text-secondary space-y-1">
+          <li>• Right-click yourself → <b class="text-text-primary">Copy User ID</b>. This locks the fleet to you.</li>
+          <li>• Right-click the text channel for General → <b class="text-text-primary">Copy Channel ID</b>.</li>
+        </ul>
+      </div>
+
+      <!-- Step 10 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">10</span>
+          <h3 class="font-semibold text-text-primary">Run quickstart</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Discord, paste the token, your user ID and the channel ID</pre>
         <p class="text-sm text-text-secondary mt-3">
-          Quickstart sets up both <code class="font-mono text-accent">fleet.yaml</code> and
-          <code class="font-mono text-accent">classicBot.yaml</code>. Send a message in the server so the bot
-          detects the channel and your user, and you're live.
+          Quickstart finds the server the bot is in, writes <code class="font-mono text-accent">fleet.yaml</code> with access locked to your user ID,
+          and offers to set up ClassicBot (<code class="font-mono text-accent">classicBot.yaml</code>, with this server allowed and you as its admin).
+          At the end it offers to install the fleet as a service and start it. If you said no, run
+          <code class="font-mono text-accent">agend fleet start</code>.
+        </p>
+        <p class="text-sm text-text-secondary mt-3">
+          Then send a message in the General channel. To open the web dashboard, use <code class="font-mono text-accent">/web</code> there:
+          the bot sends you a sign-in link and a one-time code privately.
         </p>
       </div>
     </div>
@@ -187,7 +207,7 @@ agend fleet start     # launch</pre>
     <img src={img('discord-10-external-bot-permissions.png')} alt="A narrower set of Discord bot permissions, without Administrator" width="1568" height="754" loading="lazy" class="rounded-lg border border-border w-full mb-4" />
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       Control which servers may use ClassicBot with <code class="font-mono text-accent">allowed_guilds</code> in
-      <code class="font-mono text-accent">~/.agend/classicBot.yaml</code>. Leaving it empty allows every server the bot is in.
+      <code class="font-mono text-accent">~/.agend/classicBot.yaml</code>. When someone who is not a ClassicBot admin runs <code class="font-mono text-accent">/start</code> in a new channel of a server that is not listed, General asks you first, with <b class="text-text-primary">Allow / Allow+admin / Ignore</b> buttons. An empty list does not mean every server. ClassicBot admins (<code class="font-mono text-accent">admin_users</code>) and channels already started are not asked again. Quickstart adds your own server and makes you an admin.
       <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">defaults:
   backend: claude-code
   allowed_guilds:
@@ -222,9 +242,9 @@ agend fleet start     # launch</pre>
             <td class="py-3">Give it Administrator on your own server, or grant Manage Channels / Manage Threads</td>
           </tr>
           <tr>
-            <td class="py-3 pr-4"><span class="font-mono">/start</span> rejected in a server</td>
-            <td class="py-3 pr-4">Server not whitelisted</td>
-            <td class="py-3">Add the guild ID to <span class="font-mono">allowed_guilds</span> in <span class="font-mono">classicBot.yaml</span></td>
+            <td class="py-3 pr-4"><span class="font-mono">/start</span> in a server doesn't start an agent</td>
+            <td class="py-3 pr-4">Server not in <span class="font-mono">allowed_guilds</span></td>
+            <td class="py-3">Approve the request General posts, or add the guild ID to <span class="font-mono">allowed_guilds</span> in <span class="font-mono">classicBot.yaml</span>. Then run <span class="font-mono">/start</span> again</td>
           </tr>
         </tbody>
       </table>

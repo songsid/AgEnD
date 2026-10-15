@@ -63,7 +63,7 @@ const zhHref = `${base}zh-tw/install-windows/`;
     </div>
     <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
       <b class="text-text-primary">Tip:</b> keep your Bot Token handy in a notepad so you can paste it during setup.
-      Your server/channel and admin user are detected automatically when you send a message from the group — no manual IDs needed.
+      On Telegram, quickstart finds your group and your user ID when you send <code class="font-mono text-accent">/start</code> in the group. On Discord, it asks for your user ID and the General channel's ID: see the <a href={`${base}setup-discord/`} class="text-accent hover:underline">Discord bot setup guide</a>.
     </div>
 
     <!-- Steps -->
@@ -116,7 +116,7 @@ Unblock-File .\install-agend.ps1</pre>
           </li>
           <li><b class="text-text-primary">[3/5] Log in to each backend</b> — the script walks you through logging in to every backend you picked. Kiro shows a URL to open in your browser (sign in with AWS Builder ID / GitHub / Google); Claude / Antigravity / Codex each launch and redirect you to their sign-in on first run. Complete the auth and it continues.</li>
           <li><b class="text-text-primary">[4/5] Install AgEnD</b> — automatic (installs Node.js 22 LTS + tmux via the official installer).</li>
-          <li><b class="text-text-primary">[5/5] Connect your bot &amp; start</b> — runs <code class="font-mono text-accent">agend quickstart</code>: choose Discord or Telegram, paste your Bot Token, then send a message in your group so the bot detects the channel. It generates the config, installs the service, and starts everything.</li>
+          <li><b class="text-text-primary">[5/5] Connect your bot &amp; start</b> — runs <code class="font-mono text-accent">agend quickstart</code>: choose Discord or Telegram and paste your Bot Token. On Telegram, send <code class="font-mono text-accent">/start</code> in your group so quickstart finds it; on Discord, paste your user ID and the General channel ID. It writes the config, then offers to install the service and start it.</li>
         </ol>
       </div>
     </div>
@@ -129,7 +129,7 @@ Unblock-File .\install-agend.ps1</pre>
 
     <!-- Auto-start -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">Auto-start on boot</h2>
-    <p class="text-sm text-text-secondary mb-4">The installer wires up three mechanisms so your bot is online after every reboot with zero manual steps:</p>
+    <p class="text-sm text-text-secondary mb-4">The installer wires up three mechanisms so your bot is online after every reboot with zero manual steps. The second one needs the service from stage 5: answer yes when quickstart offers to install it. If that step was skipped or failed, run <code class="font-mono text-accent">agend install</code> inside WSL.</p>
     <ul class="space-y-3 text-sm text-text-secondary mb-14">
       <li>1. <b class="text-text-primary">WSL starts on Windows login</b> via <code class="font-mono text-accent">start-wsl.vbs</code> in the Startup folder (<code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code>).</li>
       <li>2. <b class="text-text-primary">AgEnD starts inside WSL</b> via a systemd service — whenever WSL is running, AgEnD runs.</li>
@@ -146,6 +146,7 @@ agend start                                  # start all agent services
 agend stop                                   # stop all agent services
 agend attach &lt;name&gt;                          # open an agent's tmux screen
 agend update                                 # update AgEnD to the latest version
+agend web --code                             # sign-in code for the web dashboard (localhost:19280)
 kiro-cli                                     # open Kiro CLI manually
 exit                                         # leave WSL</pre>
     <div class="mb-14 rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
@@ -187,7 +188,7 @@ exit                                         # leave WSL</pre>
       </details>
       <details class="group rounded-xl border border-border bg-surface p-5">
         <summary class="cursor-pointer font-medium text-text-primary">How do I update AgEnD?</summary>
-        <p class="mt-3 text-sm text-text-secondary">Enter WSL and run <code class="font-mono text-accent">agend update</code>.</p>
+        <p class="mt-3 text-sm text-text-secondary">Send <code class="font-mono text-accent">/update</code> in General, or enter WSL and run <code class="font-mono text-accent">agend update</code>.</p>
       </details>
     </div>
 
