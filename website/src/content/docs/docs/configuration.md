@@ -116,7 +116,7 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `hang_detector.timeout_minutes` | number | `10` | Minutes a working instance's screen may stay unchanged before alerting |
 | `daily_summary.enabled` | boolean | `true` | Daily cost and status report |
 | `daily_summary.hour` / `.minute` | number | `21` / `0` | When it is sent, local time |
-| `tips` | boolean | `true` | Daily tips in General, and tips after an update |
+| `tips` | boolean | `true` | Daily tips in General |
 | `scheduler.max_schedules` | number | `100` | Schedule limit |
 | `scheduler.default_timezone` | string | `Asia/Taipei` | Time zone of schedules that name none |
 | `scheduler.retry_count` / `.retry_interval_ms` | number | `3` / `30000` | Retries of a failed scheduled delivery |

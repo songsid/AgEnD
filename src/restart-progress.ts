@@ -30,8 +30,6 @@ export interface RestartProgressSummary {
   version: string;
   pausedNames: string[];
   failedNames?: string[];
-  /** Optional update-completion tip; ignored for ordinary restarts. */
-  tipText?: string;
   /** Instances whose background work this restart/update ended (#1716); all modes. */
   backgroundWorkEndedNames?: string[];
   /** Optional non-fatal cleanup note (e.g. old system copy left behind); update mode only. */
@@ -106,7 +104,6 @@ export function formatRestartProgressCompletion(
   }
   if (mode === "update" && summary.warningText) lines.push("", `⚠️ ${summary.warningText}`);
   if (mode === "update" && summary.warningCommand) lines.push(`\`$ ${summary.warningCommand}\``);
-  if (mode === "update" && summary.tipText) lines.push("", summary.tipText);
   return lines.join("\n");
 }
 
