@@ -18,6 +18,7 @@ export default defineConfig({
       },
       sidebar: [
         { label: 'Getting Started', slug: 'docs/getting-started' },
+        { label: 'Web Guide', translations: { 'zh-TW': '網頁使用說明' }, slug: 'docs/web-guide' },
         { label: 'Use Cases', translations: { 'zh-TW': '使用情境' }, slug: 'docs/use-cases' },
         { label: 'Features', slug: 'docs/features' },
         { label: 'CLI Reference', slug: 'docs/cli' },

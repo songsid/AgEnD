@@ -89,7 +89,7 @@ register("fleet", {
 // The project's docs site (website/, GitHub Pages), in the dashboard's language — its own pages, not the app's.
 const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
-  return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/getting-started/`;
+  return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
 const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", config: "sliders" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
