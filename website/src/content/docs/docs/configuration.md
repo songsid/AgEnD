@@ -113,7 +113,7 @@ Every `instances.<name>` field can be set here. These are defaults-only:
 | `cost_guard.warn_at_percentage` | number | `80` | Warn at this share of the limit |
 | `cost_guard.timezone` | string | system | IANA zone the daily reset follows |
 | `hang_detector.enabled` | boolean | `true` | Detect stuck instances |
-| `hang_detector.timeout_minutes` | number | `15` | Minutes without output before alerting |
+| `hang_detector.timeout_minutes` | number | `10` | Minutes a working instance's screen may stay unchanged before alerting |
 | `daily_summary.enabled` | boolean | `true` | Daily cost and status report |
 | `daily_summary.hour` / `.minute` | number | `21` / `0` | When it is sent, local time |
 | `tips` | boolean | `true` | Daily tips in General, and tips after an update |

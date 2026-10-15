@@ -113,7 +113,7 @@ Telegram 吃：
 | `cost_guard.warn_at_percentage` | number | `80` | 到達上限的幾成時警告 |
 | `cost_guard.timezone` | string | 系統時區 | 每日重置依據的 IANA 時區 |
 | `hang_detector.enabled` | boolean | `true` | 偵測卡住的 instance |
-| `hang_detector.timeout_minutes` | number | `15` | 沒有輸出幾分鐘後通知 |
+| `hang_detector.timeout_minutes` | number | `10` | 工作中的 instance 畫面幾分鐘沒變化後通知 |
 | `daily_summary.enabled` | boolean | `true` | 每日花費與狀態報告 |
 | `daily_summary.hour` / `.minute` | number | `21` / `0` | 當地時間的發送時刻 |
 | `tips` | boolean | `true` | General 的每日提示，以及更新後的提示 |
