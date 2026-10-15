@@ -135,7 +135,8 @@ describe("Telegram typed commands are decided by the command table before any ha
     (r.fm.fleetConfig as any).channels[0].access.allowed_users = [];
     expect(await r.any.topicCommands.handleGeneralCommand(typed("/update", ADMIN_A, "1"), "general")).toBe(true);
     const [key, ...args] = commandSpec("update")!.disabled!;
-    expect(r.replies.map(x => x.text)).toEqual([t(key, ...args)]);
+    // #1874: the reply names where this bot's fleet admins go.
+    expect(r.replies.map(x => x.text)).toEqual([t(key, ...args, "channels[id: tg-a].access.allowed_users")]);
   });
   it("a command the table passes through in an instance topic is left alone (handled as before)", async () => {
     const r = rig("open");

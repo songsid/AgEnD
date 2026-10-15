@@ -1,6 +1,6 @@
 import { validPublicLinkPatch } from "./public-web-link.js";
 import { validateProvider } from "./backend/types.js";
-import { DELIVERY_WORKER_MODES } from "./types.js";
+import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
@@ -23,6 +23,12 @@ export interface ValidationIssue {
   path: string;
   message: string;
 }
+
+/** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
+const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link"] as const satisfies ReadonlyArray<keyof WebConfig>;
+const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
+void WEB_KEYS_COMPLETE;
 
 export interface ValidationResult {
   valid: boolean;
@@ -368,6 +374,14 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   if (config.web !== undefined && !isObj(config.web)) {
     err("web", "must be a mapping");
   } else if (isObj(config.web)) {
+    // Unknown keys warn (they are ignored). `web.access` is the usual guess for who may run /web — that is the
+    // channel's fleet-admin list.
+    for (const key of Object.keys(config.web)) {
+      if ((WEB_KEYS as readonly string[]).includes(key)) continue;
+      warn(`web.${key}`, key === "access"
+        ? "web.access is not a setting; fleet admins come from channel(s).access.allowed_users — ignored"
+        : `unknown key (known: ${WEB_KEYS.join(", ")}) — ignored`);
+    }
     if (config.web.public_link !== undefined && !validPublicLinkPatch(config.web.public_link)) err("web.public_link", "expected allow_public boolean, ttl_minutes integer 1..480, protocol http2/quic/auto");
     if (config.web.echo_to_channel !== undefined && typeof config.web.echo_to_channel !== "boolean") {
       err("web.echo_to_channel", "must be a boolean");
