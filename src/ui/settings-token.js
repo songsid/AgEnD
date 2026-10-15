@@ -10,6 +10,13 @@ import { api } from "./settings-confirm.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 
+// UI feedback only: the plan and commit independently enforce this on the server.
+export const adminUserIdPattern = (platform) => platform === "discord" ? "[1-9][0-9]{16,19}" : "[1-9][0-9]{0,19}";
+export function adminUserIdError(platform, value) {
+  return typeof value === "string" && new RegExp(`^${adminUserIdPattern(platform)}$`).test(value)
+    ? null : tn(platform === "discord" ? "wizardNeedDiscordAdmin" : "wizardNeedTelegramAdmin");
+}
+
 /** Who this token is: { valid, username?, reason? } — one outbound check, the token sent once and not kept. */
 export async function verifyBotToken(platform, token) {
   const res = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform, token }) })

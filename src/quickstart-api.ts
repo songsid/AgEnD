@@ -29,12 +29,14 @@ import {
   detectInstalledBackends,
   listDiscordGuilds,
   listDiscordTextChannels,
+  isAdminUserId,
   TelegramPollConflictError,
   verifyDiscordToken,
   verifyTelegramToken,
   type BotIdentity,
   type DiscordGuild,
 } from "./provider-probe.js";
+import { t } from "./locale.js";
 
 /** One slice of Telegram long polling, so the browser gets an answer. */
 export const TELEGRAM_WAIT_SLICE_MS = 25_000;
@@ -94,7 +96,7 @@ export interface WizardPlanInput {
   group_id?: string;
   guild_id?: string;
   general_channel_id?: string;
-  admin_user_id?: string;
+  admin_user_id: string;
 }
 
 /** What the last step shows before anything is written. */
@@ -196,6 +198,7 @@ export function newConnectionConflict(input: Pick<WizardPlanInput, "token_env" |
 }
 
 export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment & { taken_env?: ReadonlySet<string> }): WizardPlan {
+  if (!isAdminUserId(input.platform, input.admin_user_id)) throw new Error(t(`setup.admin.${input.platform}_invalid`));
   const warnings: string[] = [];
   const channelId = input.channel_id || nextChannelId(input.platform, env.channels);
   const tokenEnv = input.token_env || generateTokenEnvName(input.platform, channelId,
@@ -205,7 +208,7 @@ export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment & 
     type: input.platform,
     bot_token_env: tokenEnv,
     mode: "topic",
-    access: { mode: "locked", allowed_users: input.admin_user_id ? [input.admin_user_id] : [] },
+    access: { mode: "locked", allowed_users: [input.admin_user_id] },
   };
   // Only the id that platform has — Discord has a guild, Telegram a group.
   if (input.platform === "discord") {
@@ -218,9 +221,6 @@ export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment & 
     channel.group_id = input.group_id;
   }
 
-  if (!input.admin_user_id) {
-    warnings.push("No admin user id: access stays locked with an empty allow list, so nobody can drive the bot until you add one.");
-  }
   if (!input.connection_only && !input.existing_agent && !env.backends.includes(input.backend)) {
     warnings.push(`${input.backend} was not found on this host; the agent will fail to start until it is installed.`);
   }
@@ -402,6 +402,7 @@ export function wizardChannels(cfg: FleetConfig | null): WizardEnvironment["chan
 /** Reject anything that would land in fleet.yaml or a shell env file unchecked. */
 export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tokenEnvOptional?: boolean } = {}): string | null {
   if (input.platform !== "telegram" && input.platform !== "discord") return "platform must be telegram or discord";
+  if (!isAdminUserId(input.platform, input.admin_user_id)) return t(`setup.admin.${input.platform}_invalid`);
   if (input.connection_only !== undefined && typeof input.connection_only !== "boolean") return "connection_only must be a boolean";
   if (input.existing_agent !== undefined && typeof input.existing_agent !== "boolean") return "existing_agent must be a boolean";
   if (input.token_env_generated !== undefined && typeof input.token_env_generated !== "boolean") return "token_env_generated must be a boolean";
@@ -417,7 +418,7 @@ export function validateWizardInput(input: Partial<WizardPlanInput>, opts: { tok
   }
   for (const [field, value] of Object.entries({
     group_id: input.group_id, guild_id: input.guild_id,
-    general_channel_id: input.general_channel_id, admin_user_id: input.admin_user_id,
+    general_channel_id: input.general_channel_id,
   })) {
     if (value !== undefined && value !== "" && !/^-?\d{1,20}$/.test(String(value))) return `${field} must be numeric`;
   }

@@ -3,7 +3,8 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSy
 import { discordInviteUrl } from "./discord-permissions.js";
 import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
 // The same probes the Settings wizard makes — one copy, one behaviour.
-import { awaitTelegramGroupStart, listDiscordGuilds, TelegramPollConflictError, verifyDiscordToken } from "./provider-probe.js";
+import { awaitDiscordUserMessage, awaitTelegramGroupStart, isAdminUserId, listDiscordGuilds, TelegramPollConflictError, verifyDiscordToken } from "./provider-probe.js";
+import { t } from "./locale.js";
 import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
@@ -302,7 +303,7 @@ async function runTelegramFlow(rl: import("node:readline/promises").Interface, s
   return { type: "telegram", token, tokenEnvName, botUsername, groupId, userId };
 }
 
-async function runDiscordFlow(rl: import("node:readline/promises").Interface, step?: string): Promise<PlatformResult> {
+export async function runDiscordFlow(rl: import("node:readline/promises").Interface, step?: string): Promise<PlatformResult> {
   console.log(bold(step ? `${step}: Discord Bot` : "Discord Bot"));
   console.log(`  1. Go to Discord Developer Portal: ${dim("https://discord.com/developers/applications")}`);
   console.log(`  2. New Application → Bot → Reset Token → Copy`);
@@ -346,9 +347,27 @@ async function runDiscordFlow(rl: import("node:readline/promises").Interface, st
     console.log(`  ${green("✓")} Guild: ${guilds[gIdx].name}`);
   }
 
-  console.log(`\n  To get your User ID:`);
-  console.log(`  Discord Settings → Advanced → ${bold("Developer Mode")} ON → Right-click yourself → Copy User ID\n`);
-  const userId = (await rl.question("  Paste your User ID: ")).trim();
+  console.log(`\n  ${t("setup.discord_admin.connecting")}`);
+  const stop = new AbortController(), onClose = () => stop.abort();
+  rl.once("close", onClose);
+  let candidate;
+  try {
+    candidate = await awaitDiscordUserMessage(token, groupId, {
+      deadlineMs: 30_000, signal: stop.signal,
+      onReady: () => console.log(`  ${t("setup.discord_admin.wait", groupId, botUsername)}`),
+    });
+  } finally { rl.off("close", onClose); }
+  if (stop.signal.aborted) throw new Error(t("setup.admin.cancelled"));
+  let userId = "";
+  if (candidate) {
+    console.log(`  ${t("setup.discord_admin.found", candidate.username, candidate.userId)}`);
+    if (/^(y|yes)$/i.test((await rl.question(`  ${t("setup.discord_admin.confirm")} `)).trim())) userId = candidate.userId;
+  } else console.log(`  ${t("setup.discord_admin.not_found")}`);
+  if (!userId) console.log(`  ${t("setup.discord_admin.manual_help")}`);
+  while (!isAdminUserId("discord", userId)) {
+    userId = (await rl.question(`  ${t("setup.discord_admin.manual")} `)).trim();
+    if (!isAdminUserId("discord", userId)) console.log(`  ${yellow(t("setup.admin.discord_invalid"))}`);
+  }
   console.log(`  ${green("✓")} User: ${userId}\n`);
 
   console.log(`\n  To get a Channel ID for the General channel:`);
@@ -366,7 +385,8 @@ async function runDiscordFlow(rl: import("node:readline/promises").Interface, st
 }
 
 /** Build a channel config object from a PlatformResult */
-function buildChannelConfig(p: PlatformResult): Record<string, any> {
+export function buildChannelConfig(p: PlatformResult): Record<string, any> {
+  if (!isAdminUserId(p.type, p.userId)) throw new Error(t(`setup.admin.${p.type}_invalid`));
   const cfg: Record<string, any> = {
     id: p.type,
     type: p.type,

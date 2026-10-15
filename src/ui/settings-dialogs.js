@@ -10,7 +10,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { api, confirmedWrite, newKey } from "./settings-confirm.js";
-import { botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
+import { adminUserIdError, adminUserIdPattern, botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-token.js";
 import { DiscordServerPicker } from "./settings-discord.js";
 import { startOperation } from "./settings-apply.js";
 import {
@@ -466,17 +466,18 @@ export function BotDialog({ id, ctx, onClose }) {
  */
 export function NewBotDialog({ ctx, onClose }) {
   const lease = useLease("new-bot");
-  const [f, setF] = useState({ type: "discord", id: "", token: "", identity: null, guilds: [], group: "", general: "" });
+  const [f, setF] = useState({ type: "discord", id: "", token: "", identity: null, guilds: [], group: "", general: "", admin: "" });
   const [plan, setPlan] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   // The form's revision (#1529 review): any change to the token, platform, id or group moves it; a Verify or a plan
   // that began before is dropped when it lands — never restoring an old token, naming it, or planning for it.
   const rev = useRef(0);
-  const body = (x) => ({ platform: x.type, connection_only: true, ...(x.id.trim() ? { channel_id: x.id.trim() } : {}),
+  const body = (x) => ({ platform: x.type, connection_only: true, admin_user_id: x.admin.trim(), ...(x.id.trim() ? { channel_id: x.id.trim() } : {}),
     ...(x.group.trim() ? (x.type === "discord" ? { guild_id: x.group.trim() } : { group_id: x.group.trim() }) : {}),
     ...(x.type === "discord" && x.general.trim() ? { general_channel_id: x.general.trim() } : {}) });
   const planFor = async (x) => {
+    if (adminUserIdError(x.type, x.admin.trim())) { setPlan(null); return null; }
     const at = rev.current;
     const res = await api("/api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(body(x)) }).catch(() => ({ ok: false, body: {} }));
     if (!lease.current() || rev.current !== at) return null;
@@ -501,6 +502,8 @@ export function NewBotDialog({ ctx, onClose }) {
   };
   const save = async () => {
     if (!f.identity || !f.identity.valid) { setErr(tn("wizardNeedVerify")); return; }
+    const adminError = adminUserIdError(f.type, f.admin.trim());
+    if (adminError) { setErr(adminError); return; }
     const x = f;
     setBusy(true);
     const p = await planFor(x);
@@ -514,7 +517,7 @@ export function NewBotDialog({ ctx, onClose }) {
   };
   // A change of platform or id is another connection: what was verified and planned no longer applies. The server or
   // group does not change the id or the token's name, so the plan (and its name under Advanced) stays.
-  const set = (k) => (v) => { rev.current++; setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "", general: "" } : {}) })); if (k !== "group" && k !== "general") setPlan(null); };
+  const set = (k) => (v) => { rev.current++; setF((x) => ({ ...x, [k]: v, ...(k === "type" ? { identity: null, guilds: [], group: "", general: "", admin: "" } : {}) })); if (k !== "group" && k !== "general") setPlan(null); };
   return html`<${Dialog} title=${tn("newBot")} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tn("cancel")}</button>
       <button type="button" class="btn btn-primary" disabled=${busy || !f.identity || !f.identity.valid} onClick=${save}>${tn("save")}</button>`}>
@@ -528,6 +531,8 @@ export function NewBotDialog({ ctx, onClose }) {
             guild=${f.group} onGuild=${set("group")} channel=${f.general} onChannel=${set("general")} />`
         : html`<div class="field"><label for="nb-group">${tn("groupIdField")}</label>
             <input id="nb-group" type="text" value=${f.group} onInput=${(e) => set("group")(e.target.value.trim())} /></div>`}
+      <div class="field"><label for="nb-user">${tn("wizardAdminUser")}</label>
+        <input id="nb-user" type="text" required=${true} inputmode="numeric" pattern=${adminUserIdPattern(f.type)} value=${f.admin} onInput=${(e) => set("admin")(e.target.value.trim())} /></div>
       <${Drawer} title=${tn("advancedSection")}>
         <div class="field"><label for="nb-id">${tn("connectionIdOptional")}</label><input id="nb-id" type="text" placeholder=${plan ? plan.channel_id : f.type}
           value=${f.id} onInput=${(e) => set("id")(e.target.value)} onBlur=${() => { if (f.identity && f.identity.valid) planFor(f); }} /></div>

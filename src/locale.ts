@@ -23,6 +23,16 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+    "setup.admin.cancelled": "Setup cancelled; no admin selected.",
+    "setup.discord_admin.connecting": "Connecting to Discord to detect your account…",
+    "setup.discord_admin.wait": "Send a message in server {0}, or DM @{1}. Waiting up to 30 seconds…",
+    "setup.discord_admin.found": "Found @{0} (user ID: {1}).",
+    "setup.discord_admin.confirm": "Is this your account? Type yes to confirm [y/N]:",
+    "setup.discord_admin.not_found": "Could not detect your account. Enter your user ID instead.",
+    "setup.discord_admin.manual_help": "Discord Settings → Advanced → Developer Mode ON → right-click yourself → Copy User ID.",
+    "setup.discord_admin.manual": "Paste your user ID (required):",
+    "setup.admin.discord_invalid": "Your Discord user ID is required: enter 17–20 digits, without a leading zero.",
+    "setup.admin.telegram_invalid": "Your Telegram user ID is required: enter 1–20 positive digits, without a leading zero.",
     "memory.action_held": "⏳ Held: host memory is low. This action will continue when memory recovers; see the Fleet dashboard for status.",
     "cancel.button": "🛑 Cancel",
     "cancel.sent": "🛑 Sent cancel to {0}.",
@@ -1020,6 +1030,16 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+    "setup.admin.cancelled": "設定已取消，未選取管理員。",
+    "setup.discord_admin.connecting": "正在連線到 Discord，以偵測你的帳號…",
+    "setup.discord_admin.wait": "請在伺服器 {0} 發一則訊息，或私訊 @{1}。最多等待 30 秒…",
+    "setup.discord_admin.found": "找到 @{0}（使用者 ID：{1}）。",
+    "setup.discord_admin.confirm": "這是你的帳號嗎？輸入 yes 確認 [y/N]：",
+    "setup.discord_admin.not_found": "無法偵測你的帳號，請改為輸入使用者 ID。",
+    "setup.discord_admin.manual_help": "Discord 設定 → 進階 → 開啟開發者模式 → 對自己按右鍵 → 複製使用者 ID。",
+    "setup.discord_admin.manual": "貼上你的使用者 ID（必填）：",
+    "setup.admin.discord_invalid": "Discord 使用者 ID 必填：請輸入 17–20 位數字，開頭不能是 0。",
+    "setup.admin.telegram_invalid": "Telegram 使用者 ID 必填：請輸入 1–20 位正整數字，開頭不能是 0。",
     "memory.action_held": "⏳ 已延後：主機記憶體吃緊。記憶體恢復後會繼續這次操作；目前狀態請看儀表板的 Fleet 頁面。",
     "cancel.button": "🛑 取消",
     "cancel.sent": "🛑 已送出取消給 {0}。",

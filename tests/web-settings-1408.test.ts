@@ -479,7 +479,7 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     await type("#wz-wd", "/w");
     btn(d(), "Next").click(); await settle(2);
     btn(d(), "Next").click(); await settle(2);
-    await type("#wz-token", "fake-wizard-token");
+    await type("#wz-user", "42"); await type("#wz-token", "fake-wizard-token");
     btn(d(), "Verify").click(); await settle(6);
     btn(d(), "Next").click(); await settle(6);
     btn(d(), "Create and start").click();
@@ -547,7 +547,7 @@ describe("#1453 review", () => {
       const d = () => p.root.querySelector("dialog");
       const type = async (sel: string, v: string) => { const i = d().querySelector(sel); i.value = v; fire(i, "input"); await settle(2); };
       await type("#wz-wd", "/w"); btn(d(), "Next").click(); await settle(2); btn(d(), "Next").click(); await settle(2);
-      await type("#wz-token", "fake-wizard-token"); btn(d(), "Verify").click(); await settle(6); btn(d(), "Next").click(); await settle(6);
+      await type("#wz-user", "42"); await type("#wz-token", "fake-wizard-token"); btn(d(), "Verify").click(); await settle(6); btn(d(), "Next").click(); await settle(6);
       btn(d(), "Create and start").click(); await settle(2);
     };
     await mount(); await settle(6);
@@ -928,6 +928,22 @@ describe("#1465 review: confirmations that outlive their view", () => {
 describe("#1519 P1: a bot token entered in the browser", () => {
   const verifyAs = (username: string) => routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "verify" ? { body: { identity: { valid: true, username } } } : undefined));
 
+  it("#1878 New connection requires a canonical admin before any plan or commit", async () => {
+    verifyAs("fixture_bot");
+    await mount("bots", "settings:bots|1|en"); await settle(6);
+    btn(p.root, "New connection").click(); await settle(4);
+    const dlg = () => p.root.querySelector("dialog"), token = dlg().querySelector("#nb-token");
+    token.value = "probe-token"; fire(token, "input"); await settle(2);
+    btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(6);
+    expect(dlg().querySelector("#nb-user")?.hasAttribute("required")).toBe(true);
+    for (const value of ["", "42", "-1", "1".repeat(21)]) {
+      const user = dlg().querySelector("#nb-user"); user.value = value; fire(user, "input"); await settle(2);
+      btn(dlg(), "Save").click(); await settle(4);
+      expect(dlg()?.querySelector(".feedback.error")?.textContent).toBe("Enter your Discord user ID: 17–20 digits, without a leading zero.");
+      expect(reqs.some(r => /quickstart\/(plan|commit)$/.test(r.url))).toBe(false);
+    }
+  });
+
   it("New connection: verify names the bot, the plan's generated env is shown read-only, and Save is the wizard's write without an agent", async () => {
     verifyAs("persona_bot");
     routes.push(r => (r.url === "/api/settings/quickstart/probe" && r.body?.action === "guilds" ? { body: { guilds: [{ id: "555", name: "HHV" }] } } : undefined));
@@ -938,6 +954,7 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     const dlg = () => p.root.querySelector("dialog");
     expect(dlg().textContent, "no .env instruction").not.toMatch(/Reload Fleet|~\/\.agend\/\.env under this env var/);
     expect(dlg().querySelector("#nb-env"), "no env-name question").toBeNull();
+    const admin = dlg().querySelector("#nb-user"); admin.value = "987654321012345678"; fire(admin, "input"); await settle(2);
     const token = dlg().querySelector("#nb-token");
     expect(token.getAttribute("type")).toBe("password");
     token.value = "fake-persona-token"; fire(token, "input"); await settle(2);
@@ -945,13 +962,13 @@ describe("#1519 P1: a bot token entered in the browser", () => {
     btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(6);
     expect(dlg().querySelector(".token-field .feedback")?.textContent).toBe("This is @persona_bot.");
     const plan = reqs.find(r => r.url === "/api/settings/quickstart/plan")!;
-    expect(plan.body).toEqual({ platform: "discord", connection_only: true });
+    expect(plan.body).toEqual({ platform: "discord", admin_user_id: "987654321012345678", connection_only: true });
     expect([...dlg().querySelectorAll("details.drawer code")].map((c: any) => c.textContent)).toEqual(["AGEND_DISCORD_2_TOKEN"]);
     const guild = dlg().querySelector("#nb-guild"); guild.value = "555"; fire(guild, "change"); await settle(2);
     btn(dlg(), "Save").click(); await settle(8);
     await vi.waitFor(() => expect(reqs.some(r => r.url === "/api/settings/apply")).toBe(true));
     const commit = reqs.find(r => r.url === "/api/settings/quickstart/commit")!;
-    expect(commit.body).toEqual({ platform: "discord", connection_only: true, guild_id: "555", channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", token_env_generated: true, token: "fake-persona-token" });
+    expect(commit.body).toEqual({ platform: "discord", admin_user_id: "987654321012345678", connection_only: true, guild_id: "555", channel_id: "discord-2", token_env: "AGEND_DISCORD_2_TOKEN", token_env_generated: true, token: "fake-persona-token" });
     expect(reqs.some(r => r.url === "/api/settings/fleet/channels"), "no channels PUT with a typed env name").toBe(false);
     // verify, guilds, the chosen server's channels (#1519 P3) — the probes — then the commit; nothing else saw it.
     expect(reqs.filter(r => JSON.stringify(r).includes("fake-persona-token")).map(r => r.body?.action ?? r.url)).toEqual(["verify", "guilds", "channels", "/api/settings/quickstart/commit"]);
@@ -1002,6 +1019,7 @@ describe("#1519 P1: a bot token entered in the browser", () => {
       await mount("bots", "settings:bots|1|en"); await settle(6);
       btn(p.root, "New connection").click(); await settle(4);
       const dlg = () => p.root.querySelector("dialog");
+      const admin = dlg().querySelector("#nb-user"); admin.value = "987654321012345678"; fire(admin, "input"); await settle(2);
       const token = dlg().querySelector("#nb-token"); token.value = "dc-token"; fire(token, "input"); await settle(2);
       btn(dlg().querySelector(".token-field"), "Verify").click(); await settle(8);
       const invite = dlg().querySelector(".discord-setup a.btn");
@@ -1052,6 +1070,7 @@ describe("#1519 P1: a bot token entered in the browser", () => {
       routes.push(r => (r.url === "/api/settings/quickstart/plan" ? { body: { channel: {}, instance: null, channel_id: "discord", token_env: "AGEND_DISCORD_TOKEN", env_keys: [], warnings: [] } } : undefined));
       await mount("bots", "settings:bots|1|en"); await settle(6);
       btn(p.root, "New connection").click(); await settle(4);
+      const admin = p.root.querySelector("dialog #nb-user"); admin.value = "987654321012345678"; fire(admin, "input"); await settle(2);
       const token = p.root.querySelector("dialog #nb-token"); token.value = "dc-token"; fire(token, "input"); await settle(2);
       btn(p.root.querySelector("dialog .token-field"), "Verify").click(); await settle(8);
     };

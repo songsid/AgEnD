@@ -165,14 +165,15 @@ const telegramHref = `${base}setup-telegram/`;
       <div class="rounded-xl border border-border bg-surface p-6">
         <div class="flex items-center gap-3 mb-3">
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">9</span>
-          <h3 class="font-semibold text-text-primary">Turn on Developer Mode and copy two IDs</h3>
+          <h3 class="font-semibold text-text-primary">Prepare the General channel ID</h3>
         </div>
         <p class="text-sm text-text-secondary mb-3">
-          Quickstart asks for your Discord user ID and the ID of the channel the General agent will answer in.
+          Quickstart first detects your account from a message and asks you to confirm its username and ID.
+          Prepare the ID of the channel the General agent will answer in; your user ID is a manual fallback.
           In Discord: <b class="text-text-primary">User Settings → Advanced → Developer Mode</b> on. Then:
         </p>
         <ul class="text-sm text-text-secondary space-y-1">
-          <li>• Right-click yourself → <b class="text-text-primary">Copy User ID</b>. This locks the fleet to you.</li>
+          <li>• For manual entry or the web wizard: right-click yourself → <b class="text-text-primary">Copy User ID</b>. A valid 17–20-digit ID is required.</li>
           <li>• Right-click the text channel for General → <b class="text-text-primary">Copy Channel ID</b>.</li>
         </ul>
       </div>
@@ -183,7 +184,13 @@ const telegramHref = `${base}setup-telegram/`;
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">10</span>
           <h3 class="font-semibold text-text-primary">Run quickstart</h3>
         </div>
-        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Discord, paste the token, your user ID and the channel ID</pre>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Discord, paste the token, confirm your account and enter the channel ID</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          When prompted, send a message in the selected server where the bot can see it, or DM the bot.
+          Confirm the displayed username and user ID only if they are yours. Detection waits at most 30 seconds;
+          if it fails or you decline, paste your own user ID. Blank or malformed IDs are refused.
+          Detection does not need Message Content intent; normal fleet chat still needs the intent enabled above.
+        </p>
         <p class="text-sm text-text-secondary mt-3">
           Quickstart finds the server the bot is in, writes <code class="font-mono text-accent">fleet.yaml</code> with access locked to your user ID,
           and offers to set up ClassicBot (<code class="font-mono text-accent">classicBot.yaml</code>, with this server allowed and you as its admin).
