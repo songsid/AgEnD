@@ -1141,7 +1141,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .id-tagline { margin: 0 0 var(--s-1); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
 .id-bio { margin: 0; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
 .card-size { display: flex; flex-shrink: 0; gap: var(--s-1); }
-.card-size .seg-item { min-height: 28px; padding: 0 var(--s-2); border: 0; background: none; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.card-size .seg-item { min-height: 28px; padding: 0 var(--s-2); border: 1px solid transparent; background: none; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.card-size .seg-item.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
 .chat-card { flex-shrink: 0; border-bottom: 1px solid var(--border); }
 .chat-card-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 32px; padding: 0 var(--s-4); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
 .chat-card-peek { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }

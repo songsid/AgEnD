@@ -66,6 +66,7 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "nav.order": [{ item_type: "group", item_name: "Ops", sort_index: 0, group_name: null }, { item_type: "instance", item_name: "alpha", sort_index: 0, group_name: "Ops" }],
     "nav.collapsed": ["Ops"], "nav.filter": { q: "rev", status: ["working"], cli: ["claude-code"] },
     "nav.favorites": ["alpha"], "preview.optIn": true, "names.primary": "instance", "fx.show": false,
+    "card.size": "l", "card.sizeByInstance": { alpha: "s", __proto__x: "m" },
   };
   const INVALID: Record<string, unknown[]> = {
     theme: ["blue", "", 1],
@@ -79,6 +80,8 @@ describe("the registry: each key validated on its own, unknown keys refused", ()
     "preview.optIn": ["true", 1],
     "names.primary": ["display", "", true, ["instance"]],
     "fx.show": ["off", 0, "false"],
+    "card.size": ["xl", "M", 1],
+    "card.sizeByInstance": [[], { a: "xl" }, { "": "s" }, Object.fromEntries(Array.from({ length: 201 }, (_, i) => [`n${i}`, "s"]))],
   };
   it("covers every key the store knows", () => {
     expect([Object.keys(VALID).sort(), Object.keys(INVALID).sort()]).toEqual([[...WEB_PREF_KEYS].sort(), [...WEB_PREF_KEYS].sort()]);
