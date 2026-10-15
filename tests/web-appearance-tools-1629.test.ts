@@ -207,7 +207,10 @@ describe("preview_web_appearance", () => {
     for (const name of ["../x.svg", "notes.txt", "light.svg.png", "dark"]) expect(await one({ name, data_b64: "AAAA" }), name).toMatchObject({ error: "preview" });
     expect(await one({ name: "light.svg", data_b64: 5 })).toMatchObject({ error: "preview" });
     expect(await receivePreview({ files: [{ name: "light.svg", data_b64: "AA" }, { name: "light.svg", data_b64: "AA" }] }, async () => ({}))).toMatchObject({ error: "preview" });
-    expect(await one({ name: "light.svg", bytes: data.length, sha256: sha, parts: 65 }, { preview: "p" })).toMatchObject({ error: "preview" });
+    // 65 parts that would add up exactly: only the cap refuses them.
+    const all65 = Buffer.concat(Array(65).fill(data));
+    expect(await one({ name: "light.svg", bytes: all65.length, sha256: createHash("sha256").update(all65).digest("hex"), parts: 65 }, { preview: "p" })).toMatchObject({ error: "preview" });
+    expect(await one({ name: "light.svg", bytes: data.length * 64, sha256: createHash("sha256").update(Buffer.concat(Array(64).fill(data))).digest("hex"), parts: 64 }, { preview: "p" })).toHaveProperty("files");
     expect(await one({ name: "light.svg", bytes: data.length, sha256: sha, parts: 1 }, { preview: "p" })).toEqual({ files: [{ name: "light.svg", data }] });
     // Tampered at the same length: the sha alone tells it apart.
     const same = Buffer.from("<svh/>");
