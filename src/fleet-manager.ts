@@ -5759,9 +5759,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!token || !current()) return false;
       this.initializeWebSessions();
       const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
-      // #1586: the expiry in the fleet's zone with its offset, never a bare UTC ISO string.
-      const text = t("dashboard.private_link", url, issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), expiresAt ? formatFleetTime(expiresAt) : t("dashboard.local"))
-        + "\n" + t("dashboard.code_next");
+      // Only a public link has a link expiry; the code's five-minute lifetime applies to either packet.
+      const minutes = Math.round(LOGIN_CODE_TTL_MS / 60_000);
+      const text = expiresAt !== undefined
+        ? t("dashboard.private_public", url, issued.display, minutes, formatFleetTime(expiresAt))
+        : t("dashboard.private_local", url, issued.display, minutes);
       const deadline = performance.now() + 10_000;
       const direct = owner.binding as ChannelAdapter;
       // The route the sign-in message took: the code-only follow-up takes the same one (#1586).

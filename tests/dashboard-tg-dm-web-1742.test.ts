@@ -162,6 +162,16 @@ describe("/start web from a fleet admin: the /web menu in the DM, the code to th
 });
 
 describe("Telegram failure texts: the DM, step by step — never a bare /start", () => {
+  it.each(["en", "zh-TW"] as const)("#1854 pins the approved refusal instruction and button in %s", async language => {
+    const h = rig(); setLocale(language);
+    await h.typed(); await h.click("G", "local");
+    const edit = lastEdit(h);
+    expect(edit?.[2]).toBe(language === "en"
+      ? "Press “Open private chat”, press Start in Telegram, then choose a sign-in button."
+      : "按「開啟私訊」，在 Telegram 按「開始」，再選登入按鈕。");
+    expect(edit?.[4]).toEqual([{ label: language === "en" ? "Open private chat" : "開啟私訊", url: LINK }]);
+  });
+
   it("username known: the steps and the 先開私訊 → button; unknown: send /start web; neither has a bare /start (en and zh-TW)", async () => {
     const out = [];
     for (const username of [VALID, null]) {
