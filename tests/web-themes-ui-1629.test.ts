@@ -14,7 +14,7 @@ import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page, type AppPage } from "./helpers/app-harness.js";
+import { page, settle, type AppPage } from "./helpers/app-harness.js";
 
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
@@ -187,11 +187,12 @@ describe("the page", () => {
   it("not shown: with the viewer's switch off, or in safe mode (?safe=1)", async () => {
     let { themes } = await load({ fxShow: false });
     expect(themes.themesShown()).toBe(false);
+    // Safe mode holds from the start: the app starts themes before installOwnerCss runs (smoke: ?safe=1 drew the theme).
     ({ themes } = await load({ url: "http://127.0.0.1:19280/ui/chat/alpha?safe=1" }));
-    const oc = await import("/assets/owner-css.js");
-    oc.installOwnerCss();
-    expect(themes.themesShown()).toBe(false);
-    themes.themesStore.set({ themes: { alpha: T }, shown: false });
+    themes.startThemes();
+    themes.themesStore.set({ themes: { alpha: T } });
+    expect([themes.themesShown(), themes.themesStore.get().shown, themes.themeFor("alpha")]).toEqual([false, false, null]);
+    themes.themesStore.set({ shown: true });                                // even a store that says shown: safe mode wins
     expect(themes.themeFor("alpha")).toBeNull();
   });
   it("the sidebar: the theme's picture and ring while shown; the bot's face and colour otherwise; only same-origin theme paths", async () => {
@@ -201,7 +202,15 @@ describe("the page", () => {
     pg!.storage.set("agend_fx_show", "off");
     expect(themes.themesShown()).toBe(false);
     expect(nav.avatarOf(it0)).toEqual({ kind: "image", src: "/ui/img/bot/discord?v=1" });
+    const ring = async () => {
+      const P = await import("/assets/app-html.js");                         // this module graph's preact (modules were reset)
+      P.render(P.h("div", null, P.h(nav.InstanceAvatar, { it: it0, state: "idle" })), pg!.root); await settle();
+      return (pg!.root.querySelector(".av") as any).style["--ring"] ?? "";
+    };
+    expect(await ring(), "themes off: the bot's colour").toBe("#ff0000");
     pg!.storage.delete("agend_fx_show");
+    themes.themesStore.set({ shown: themes.themesShown() });
+    expect(await ring(), "themes shown: the theme's").toBe("#8b5cf6");
     for (const src of ["/ui/img/theme/../x", `/ui/img/theme/%2e%2e/${"a".repeat(32)}`, "https://evil/x.png", `/ui/img/theme/a/b/${"a".repeat(32)}`]) {
       expect(nav.avatarOf({ ...it0, theme_avatar: { kind: "image", src } }), src).toEqual({ kind: "image", src: "/ui/img/bot/discord?v=1" });
     }

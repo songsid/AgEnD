@@ -45,7 +45,7 @@ export function resolvedMode() {
 /** The theme to draw for `name`, re-checked; null when none (or not shown). */
 export function themeFor(name) {
   const s = themesStore.get();
-  if (!s.shown || !own(s.themes, name)) return null;
+  if (!s.shown || !themesShown() || !own(s.themes, name)) return null;
   const t = s.themes[name];
   if (!t || typeof t !== "object") return null;
   const out = {};

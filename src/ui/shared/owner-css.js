@@ -13,7 +13,9 @@ import { t } from "./app-i18n.js";
 export const OWNER_CSS_OFF_KEY = "agend_owner_css_off";
 const LINK_ID = "owner-css";
 
-let safe = false;
+// Read when this module loads, so it holds for whatever asks first (themes start before installOwnerCss runs).
+const readSafe = () => { try { return new URLSearchParams(location.search).get("safe") === "1"; } catch { return false; } };
+let safe = readSafe();
 let active = null;
 let installed = false;
 
@@ -171,7 +173,7 @@ function reconcile(state) {
 export function installOwnerCss() {
   if (installed) return;
   installed = true;
-  try { safe = new URLSearchParams(location.search).get("safe") === "1"; } catch { safe = false; }
+  safe = readSafe();
   const b = document.body && document.body.dataset;
   showActive(b && b.ownerCss);
   navStore.subscribe(sync);

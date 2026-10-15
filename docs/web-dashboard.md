@@ -274,6 +274,20 @@ A fleet with no chat connection yet (web only) shows a card above the Agents and
 - **Earlier versions.** The last five are kept, and **Use this** puts one back. **Turn off (all devices)** goes back to the stock look.
 - **On this device.** **Turn off custom CSS on this device** affects only this browser, so a phone layout can be fixed on the phone. Add `?safe=1` to any page's address to load it once without custom CSS.
 
+### Agents' themes
+
+An agent can give its own web chat a look: colours for light and dark, an accent, the bubbles' corners and border, a font, a background picture, its own picture, and the words it shows while working. It sets them with the `set_web_theme`, `set_web_theme_asset` and `reset_web_theme` tools (`agend-agent theme` from a shell).
+
+- **Only its own chat.** A theme changes that agent's chat panel and its picture and ring in the sidebar. It never changes the sidebar itself, the header, Settings or any other agent's chat.
+- **Checked twice.** The host stores only values that pass the checks (fixed colour, font and border choices, text that stays readable in both modes). The page checks again before drawing, and drops anything else.
+- **Pictures stay on the host.** They are served from the dashboard itself, with their metadata removed, and never loaded from the internet.
+- **People decide.** In a chat's or Details' **⋯** menu:
+  - **Lock theme** stops the agent changing it. **Unlock theme** allows it again.
+  - **Reset theme…** removes it and keeps a lock in place.
+  - Both need a signed-in admin, and neither is offered over a temporary public link.
+- **Your switch.** **Settings → Appearance → Show agents' themes and effects** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
+- **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour, with at most 3 picture uploads an hour. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone
