@@ -392,7 +392,12 @@ export class CodexRolloutSource implements TranscriptSource {
       const firstLine = head.split("\n")[0];
       const meta = JSON.parse(firstLine);
       const cwd = meta?.payload?.cwd;
-      if (meta?.type === "session_meta" && cwd === this.workingDirectory) {
+      // #1849: a subagent's rollout (codex multi-agent) carries the parent's cwd and is the newest file while it works.
+      // Its turns are not this CLI's own turn: following it read the idle parent as busy for the subagent's whole run.
+      const source = meta?.payload?.source;
+      const subagent = meta?.payload?.thread_source === "subagent"
+        || (typeof source === "object" && source !== null && Object.hasOwn(source, "subagent"));
+      if (meta?.type === "session_meta" && cwd === this.workingDirectory && !subagent) {
         this.accepted.add(path);
         return true;
       }
