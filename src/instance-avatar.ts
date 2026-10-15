@@ -10,6 +10,9 @@
  *      emoji through the emoji route (a Telegram custom emoji has no picture here and falls through);
  *   4. the first character of its display name, or of its name.
  * The accent ring (a Discord role colour) goes with an own bot's face only: a shared bot's would ring everyone alike.
+ * #1629: the agent's own web theme may name a picture and a ring colour. They rank right after a person's upload
+ * (never above it) and travel beside this descriptor in the status frame (`theme_avatar`, `theme_accent`): a viewer
+ * who does not show agents' themes, or a safe-mode load, keeps this one.
  * Images are same-origin `/ui/img/…` URLs only; the version makes a changed picture a new URL.
  */
 import { normalizeEmoji } from "./status-emojis.js";

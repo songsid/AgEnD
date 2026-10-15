@@ -4,8 +4,11 @@
 // CSSOM (custom properties) and fixed class tokens. No style attribute, no CSS text, no url() built in CSS.
 // Not shown: with "Show agents' themes and effects" off (fx.show, synced), and in safe mode (?safe=1).
 import { appStore, createStore } from "./app-store.js";
-import { hostPref, onPrefsChanged } from "./app-prefs.js";
+import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
 import { safeMode } from "./owner-css.js";
+import { t } from "./app-i18n.js";
+import { toast } from "./ui-toast.js";
+import { confirmDialog } from "./ui-confirm.js";
 
 /** { rev, themes: { <name>: theme }, locked: [<name>] } as GET /ui/themes said (rev -1: not read yet). */
 export const themesStore = createStore({ rev: -1, themes: {}, locked: [], shown: true });
@@ -19,7 +22,16 @@ const FONTS = ["inter", "system", "mono"], BORDERS = ["none", "thin", "accent"],
 /** Whether this page shows agents' themes now: the viewer's switch (default on), and never in safe mode. */
 export function themesShown() {
   if (safeMode()) return false;
-  try { return hostPref("fx.show") !== false; } catch { return true; }
+  try {
+    const f = prefInForce("fx.show");                       // this page's choice, else the host's, else the default
+    if (f) return f.value !== false;
+    return localStorage.getItem("agend_fx_show") !== "off";  // not known here (the public link): this browser's copy
+  } catch { return true; }
+}
+/** The viewer's switch (Settings → Appearance): kept with the person's preferences, and in force on this page at once. */
+export function setThemesShown(on) {
+  savePref("fx.show", on ? null : false);
+  themesStore.set({ shown: themesShown() });
 }
 
 /** The mode the page is drawn in: the chosen one, or the system's for "system". */
@@ -109,4 +121,30 @@ export function startThemes() {
     read(rev);
   });
   onPrefsChanged((changed) => { if (changed.has("fx.show")) themesStore.set({ shown: themesShown() }); });
+}
+
+const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
+
+/** A person's Reset or Lock of an agent's theme (an admin session; never over the public link). */
+async function themeAction(name, what, body) {
+  let r;
+  try {
+    const res = await fetch(`/ui/themes/${encodeURIComponent(name)}/${what}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) r = { error: r && r.error ? r.error : `HTTP ${res.status}` };
+  } catch (err) { r = { error: err && err.message ? err.message : "network" }; }
+  if (r && r.error) toast(t("chat.themeFailed", r.error), false);
+  else toast(t(what === "reset" ? "chat.themeResetDone" : body && body.locked ? "chat.themeLocked" : "chat.themeUnlocked", name));
+}
+
+/** The chat's and Details' ⋯ entries for an agent's theme: Lock/Unlock and Reset… — none over the public link. */
+export function themeMenuItems(name) {
+  if (publicLink()) return [];
+  const locked = isThemeLocked(name);
+  return [
+    { key: "theme-lock", label: t(locked ? "chat.themeUnlock" : "chat.themeLock"), icon: "key", onSelect: () => themeAction(name, "lock", { locked: !locked }) },
+    { key: "theme-reset", label: t("chat.themeReset"), icon: "restart", onSelect: async () => {
+      if (await confirmDialog({ message: t("chat.themeResetConfirm", name), confirmLabel: t("chat.themeResetGo"), danger: true })) themeAction(name, "reset");
+    } },
+  ];
 }

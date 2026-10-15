@@ -6,7 +6,8 @@ import { t } from "/assets/app-i18n.js";
 import { useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { ownerCssOffHere, ownerCssTrial, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
+import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
+import { setThemesShown, themesStore } from "/assets/app-themes.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -33,7 +34,17 @@ function refusal(body) {
 export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
-  return html`<${OwnerCssCard} /><${DeviceCard} />`;
+  return html`<${ThemesCard} /><${OwnerCssCard} /><${DeviceCard} />`;
+}
+
+/** #1629 r2 (d): whether this person's screens show agents' themes (and, as they come, effects) — synced. */
+function ThemesCard() {
+  const s = useStore(themesStore);
+  return html`<section class="card s-appearance s-synced"><h3>${tn("themesTitle")}</h3>
+    <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
+      <span>${tn("themesShow")}</span></label>
+    <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
+  </section>`;
 }
 
 function OwnerCssCard() {

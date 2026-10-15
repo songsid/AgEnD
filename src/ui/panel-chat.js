@@ -23,7 +23,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
-import { applyTheme, isThemeLocked, resolvedMode, themeFor, themeImageUrl, themesStore } from "/assets/app-themes.js";
+import { applyTheme, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
@@ -190,20 +190,6 @@ function useResolvedMode(lease) {
   return mode;
 }
 
-const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
-
-/** #1629: a person's Reset or Lock of an agent's theme (an admin session; never over the public link). */
-async function themeAction(name, what, body) {
-  let r;
-  try {
-    const res = await fetch(`/ui/themes/${encodeURIComponent(name)}/${what}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-    r = await res.json().catch(() => ({}));
-    if (!res.ok) r = { error: r && r.error ? r.error : `HTTP ${res.status}` };
-  } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
-  if (r && r.error) toast(t("chat.themeFailed", r.error), false);
-  else toast(t(what === "reset" ? "chat.themeResetDone" : body && body.locked ? "chat.themeLocked" : "chat.themeUnlocked", name));
-}
-
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const names = useStore(namesStore);   // #1722: which name leads (the title)
   // #1629: this agent's theme, on this surface only; redrawn when the themes, the viewer's switch or the mode move.
@@ -261,11 +247,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
-    publicLink() ? null : { key: "theme-lock", label: t(isThemeLocked(name) ? "chat.themeUnlock" : "chat.themeLock"), icon: "key",
-      onSelect: () => themeAction(name, "lock", { locked: !isThemeLocked(name) }) },
-    publicLink() ? null : { key: "theme-reset", label: t("chat.themeReset"), icon: "restart", onSelect: async () => {
-      if (await confirmDialog(t("chat.themeResetConfirm", name), { confirmLabel: t("chat.themeResetGo"), danger: true })) themeAction(name, "reset");
-    } },
+    ...themeMenuItems(name),
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
