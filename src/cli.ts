@@ -2443,6 +2443,17 @@ program
     await runSetupWizard();
   });
 
+// The opener is optional (a server or WSL without xdg-open): a spawn failure is an `error` event, and unhandled it
+// crashed the command after the link was already printed (#1854). The printed link still works, so say so instead.
+function openInBrowser(url: string): void {
+  const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+  const child = spawn(cmd, [url], { detached: true, stdio: "ignore" });
+  child.on("error", (err: NodeJS.ErrnoException) => {
+    console.error(`Could not open a browser (${cmd}: ${err.code ?? err.message}). Open the link above yourself.`);
+  });
+  child.unref();
+}
+
 program
   .command("web")
   .description("Open the Web UI sign-in page in your browser and print a one-time sign-in code")
@@ -2483,9 +2494,7 @@ program
     console.log(`Sign-in page: ${signin}`);
     console.log(`Code:         ${code}   (works once, valid ~${minutes} min)`);
     if (opts.code) return;
-    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-    const child = spawn(cmd, [signin], { detached: true, stdio: "ignore" });
-    child.unref();
+    openInBrowser(signin);
   });
 
 program
@@ -2517,9 +2526,7 @@ program
     const port = fleet.health_port ?? 19280;
     const url = `http://localhost:${port}/view`;
     console.log(`Opening ${url}`);
-    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
-    const child = spawn(cmd, [url], { detached: true, stdio: "ignore" });
-    child.unref();
+    openInBrowser(url);
   });
 
   program

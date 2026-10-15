@@ -98,9 +98,9 @@ describe("the one-time web chat notice in General", () => {
     expect([tgChat, tgOpts]).toEqual(["-100777", { threadId: "1" }]);
     const [dcChat, , dcOpts] = sends(fm, "discord")[0];
     expect([dcChat, dcOpts]).toEqual(["guild-1", { threadId: "chan-general" }]);
-    expect(tgText).toMatch(/web chat/i);
-    expect(tgText).toContain("/web");
-    expect(tgText).toContain(WEB_REMOTE_DOCS_URL);
+    // #1854: two lines, no feature list and no URL.
+    expect(tgText).toBe("🆕 AgEnD 2.2 adds web chat. You can keep chatting here.\n"
+      + "Admins: send /web in General, then press a sign-in button to get a code.");
 
     const next = twoPlatforms();                               // a restart: same AGEND_HOME, fresh process
     await next.announceWebChatOnce("2.2.0");
