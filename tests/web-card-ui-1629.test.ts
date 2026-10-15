@@ -132,6 +132,27 @@ describe("loadCard: the version this page wants now (#1889 review)", () => {
     await card.loadCard("a", "A", async () => { calls.push("again"); return { ok: true, json: async () => body("x") }; });
     expect(calls.at(-1)).toBe("fresh");                                       // read in this epoch: no second read
   });
+  it("A read in an earlier epoch does not count for A wanted again: B's failed read in between, then A reads afresh", async () => {
+    const { card } = await load();
+    const calls: string[] = [];
+    await card.loadCard("a", "A", async () => { calls.push("a1"); return { ok: true, json: async () => body("A1") }; });
+    await card.loadCard("a", "B", async () => { calls.push("b"); return { ok: false, json: async () => ({}) }; });
+    await card.loadCard("a", "A", async () => { calls.push("a2"); return { ok: true, json: async () => body("A2") }; });
+    expect([calls, card.cardsStore.get().a.card]).toEqual([["a1", "b", "a2"], { tagline: { text: "A2", by: "agent" } }]);
+  });
+  it("an older read ending never removes its replacement: the current epoch's read is still shared", async () => {
+    const { card } = await load();
+    const h = held();
+    const old = card.loadCard("a", "A", h.fetcher("A"));
+    const calls: string[] = [];
+    let releaseB!: () => void;
+    const bHeld = new Promise<void>(r => { releaseB = r; });
+    const b = card.loadCard("a", "B", async () => { calls.push("b1"); await bHeld; return { ok: true, json: async () => body("B") }; });
+    h.pending[0]!.resolve(); await old;
+    const again = card.loadCard("a", "B", async () => { calls.push("b2"); return { ok: true, json: async () => body("B2") }; });
+    releaseB(); await Promise.all([b, again]);
+    expect([calls, card.cardsStore.get().a.card]).toEqual([["b1"], { tagline: { text: "B", by: "agent" } }]);
+  });
   it("control: the same version asked twice while out is read once, and applied", async () => {
     const { card } = await load();
     const h = held();
