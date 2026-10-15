@@ -66,7 +66,9 @@ function CardLimitsCard() {
   const [msg, setMsg] = useState(null);
   const load = async () => {
     const r = await call("/api/settings/fleet/appearance");
-    if (!r.ok || !r.body) { setView({ error: true }); return; }
+    // Only an answer of the expected shape is drawn: every group's in-force values, defaults and bounds.
+    const ok = r.ok && r.body && ["portrait", "banner", "instance_quota"].every((g) => r.body.effective && r.body.effective[g] && r.body.defaults && r.body.defaults[g] && r.body.bounds && r.body.bounds[g]);
+    if (!ok) { setView({ error: true }); return; }
     setView(r.body);
     const d = {};
     for (const [g, k] of LIMIT_FIELDS) { const v = r.body.configured && r.body.configured[g] && r.body.configured[g][k]; d[`${g}.${k}`] = typeof v === "number" ? String(v) : ""; }
