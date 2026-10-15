@@ -8,13 +8,22 @@
  * - The doors: typed IPC answers for the connection's instance whatever the payload says; the agent endpoint's
  *   theme-* ops; agend-agent's forms; the daemon reads the picture and sends bytes — the fleet never sees a path.
  */
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants as fsConstants, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import pino from "pino";
 import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// #1887 review: the moment between agent-file-read's lstat and its open, made deterministic — a test may answer the
+// lstat with another file's stat (a regular file swapped for a FIFO after it was looked at).
+const fsHook = vi.hoisted(() => ({ lstat: null as null | ((path: string) => unknown) }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...real, lstat: (path: string, ...rest: unknown[]) => (fsHook.lstat ? Promise.resolve(fsHook.lstat(path)) : (real.lstat as (...a: unknown[]) => unknown)(path, ...rest)) };
+});
 import { AppearanceLimiter } from "../src/web-appearance-policy.js";
 import { ThemeStore, THEME_ASSET_QUOTA } from "../src/web-theme-store.js";
 import { WebAppearance } from "../src/web-appearance.js";
@@ -22,7 +31,7 @@ import { readAgentFile } from "../src/agent-file-read.js";
 import * as schemas from "../src/outbound-schemas.js";
 
 const dirs: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { fsHook.lstat = null; vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 const tmp = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
 
 const be32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
@@ -230,6 +239,29 @@ describe("the doors", () => {
     expect(send.mock.calls.at(-1)![1] as Record<string, unknown>).toMatchObject({ requestId: 8, error: expect.stringContaining("outside your working directory") });
     expect(broadcast).toHaveBeenCalledOnce();
   });
+  it("a malformed file argument (raw JSON args) is answered once, with an error — never a throw left unanswered", async () => {
+    const ws = tmp("agend-th-ws-");
+    const { Daemon } = await import("../src/daemon.js");
+    const daemon = new Daemon("worker", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
+      context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as never, join(ws, ".instance"), true, undefined, undefined, pino({ level: "silent" }) as never) as any;
+    const broadcast = vi.fn(), send = vi.fn((_socket: unknown, _msg: unknown) => true);
+    daemon.ipcServer = { send, broadcast };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => { unhandled.push(e); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const malformed: unknown[] = [{ toString: null }, Object.create(null), ["a.png"], 12];
+      malformed.forEach((file, i) => daemon.handleToolCall({ tool: "set_web_theme_asset", args: { slot: "avatar", file }, requestId: i + 1 }, {} as never));
+      daemon.handleToolCall({ tool: "set_web_theme_asset", args: { slot: "avatar", file: "missing.png" }, requestId: 5 }, {} as never);   // control
+      await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(5));
+      await new Promise(r => setTimeout(r, 50));
+      const answers = send.mock.calls.map(c => c[1] as { requestId: number; error?: string });
+      expect(answers.map(a => a.requestId).sort()).toEqual([1, 2, 3, 4, 5]);
+      expect(answers.every(a => typeof a.error === "string" && a.error.includes("a file path in your working directory") || a.requestId === 5)).toBe(true);
+      expect(answers.find(a => a.requestId === 5)!.error).toContain("missing.png — cannot be read");
+      expect([unhandled, broadcast.mock.calls.length, send.mock.calls.length]).toEqual([[], 0, 5]);
+    } finally { process.off("unhandledRejection", onUnhandled); }
+  });
 });
 
 describe("reading the agent's file (the daemon's and the CLI's side)", () => {
@@ -251,6 +283,27 @@ describe("reading the agent's file (the daemon's and the CLI's side)", () => {
     expect(await read("missing.png")).toEqual({ ok: false, reason: "cannot be read" });
     expect(await readAgentFile("x", { workspace: undefined, stateDir: state, maxBytes: 10 })).toEqual({ ok: false, reason: "this instance has no working directory" });
     chmodSync(join(ws, "ok.png"), 0o644);
+  });
+  it("a regular file swapped for a FIFO after the lstat: refused at once, never waiting for a writer (#1887 review)", async () => {
+    const ws = tmp("agend-th-ws-"), state = join(ws, ".agend");
+    writeFileSync(join(ws, "ok.png"), "x");
+    const fifo = join(ws, "swapped.png");
+    execFileSync("mkfifo", [fifo]);
+    // The lstat saw a regular file (ok.png's stat); by the open, the name is a FIFO with no writer.
+    fsHook.lstat = (path: string) => (path === fifo ? lstatSync(join(ws, "ok.png")) : lstatSync(path));
+    const opts = { workspace: ws, stateDir: state, maxBytes: 10 };
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<"still waiting">(r => { timer = setTimeout(() => r("still waiting"), 2_000); });
+    try {
+      const got = await Promise.race([readAgentFile("swapped.png", opts), late]);
+      expect(got).toEqual({ ok: false, reason: "not a regular file" });
+    } finally {
+      clearTimeout(timer);
+      // Had the open blocked, a writer releases its worker (opening for write succeeds while a reader waits).
+      try { closeSync(openSync(fifo, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK)); } catch { /* no reader waiting: nothing blocked */ }
+    }
+    fsHook.lstat = null;
+    expect(await readAgentFile("ok.png", opts)).toMatchObject({ ok: true });   // control: the ordinary file still reads
   });
 });
 

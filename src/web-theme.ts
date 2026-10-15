@@ -63,11 +63,16 @@ const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
  * zero-width joiner, which emoji sequences (👨‍👩‍👧) are made of.
  */
 const FORBIDDEN_TEXT = /(?!\u200d)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+/**
+ * At least one character that draws something: not a mark, control, format or separator, nor a blank that renders as
+ * nothing (Hangul fillers, braille blank) — so a lone joiner, variation selector or filler is not a label (#1887 P3).
+ */
+const VISIBLE = /[^\p{M}\p{C}\p{Z}\u115f\u1160\u3164\uffa0\u2800]/u;
 /** One line of text: NFC, `min..max` graphemes, nothing invisible or directional. */
 export function canonicalText(v: unknown, min: number, max: number): string | null {
   if (typeof v !== "string") return null;
   const s = v.normalize("NFC");
-  if (FORBIDDEN_TEXT.test(s) || s.trim() !== s) return null;
+  if (FORBIDDEN_TEXT.test(s) || s.trim() !== s || !VISIBLE.test(s)) return null;
   const n = [...GRAPHEMES.segment(s)].length;
   return n >= min && n <= max ? s : null;
 }

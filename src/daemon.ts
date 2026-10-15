@@ -9907,24 +9907,29 @@ export class Daemon extends EventEmitter {
     // #1629: the caller's own web theme. set_web_theme_asset's file is read HERE, on the agent's side (in its working
     // directory, no symlink, size-capped): the fleet receives bytes, never a workspace path.
     if (Object.hasOwn(WEB_THEME_IPC, tool)) {
+      // Answered exactly once, whatever happens on the way (#1887 review: a throw here once left the call unanswered).
+      let answered = false;
+      const answer = (result: unknown, error?: string) => { if (answered) return; answered = true; respond(result, error); };
       void (async () => {
         let payload: Record<string, unknown> = args;
         if (tool === "set_web_theme_asset") {
           const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: WEB_THEME_ASSET_MAX_BYTES });
-          if (!read.ok) { respond(null, `set_web_theme_asset: ${String(args.file ?? "").slice(0, 200)} — ${read.reason}`); return; }
+          // The path as the agent gave it — only a string is shown (an object from raw JSON args is never coerced).
+          const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
+          if (!read.ok) { answer(null, `set_web_theme_asset: ${named} — ${read.reason}`); return; }
           payload = { slot: args.slot, data_b64: read.bytes.toString("base64") };
         }
         const fleetReqId = `theme_${++this.fleetRequestSeq}_${requestId}`;
         const timeout = setTimeout(() => {
           this.pendingIpcRequests.delete(fleetReqId);
-          respond(null, `${tool} timed out`);
+          answer(null, `${tool} timed out`);
         }, daemonBudgetMs(tool));
         this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
           clearTimeout(timeout);
-          respond(respMsg.result, respMsg.error as string | undefined);
+          answer(respMsg.result, respMsg.error as string | undefined);
         });
         this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
-      })();
+      })().catch((err: unknown) => answer(null, `${tool} failed: ${err instanceof Error ? err.message : "error"}`));
       return;
     }
 
