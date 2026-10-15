@@ -47,6 +47,8 @@ const OWNER_CSS_TRIAL = "css.trial";
 /** Keys kept in a person's bucket that /ui/prefs neither shows nor sets. */
 const PROFILE_KEYS: ReadonlySet<string> = new Set([PROFILE_NAME, PROFILE_PLATFORM_NAME, OWNER_CSS_ACTIVE, OWNER_CSS_TRIAL]);
 
+/** #1629 r4.1 Q3 (a): at most this many per-instance card sizes. */
+export const MAX_CARD_SIZES = 200;
 /** #1664: at most this many favorites. */
 export const MAX_FAVORITES = 50;
 const FAVORITES = "nav.favorites";
@@ -88,6 +90,16 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   ["preview.optIn", (v) => (typeof v === "boolean" ? v : bad("preview.optIn: true or false"))],
   // #1629 r2 (d): whether this person's screens show agents' themes and effects (default true; synced like the rest).
   ["fx.show", (v) => (typeof v === "boolean" ? v : bad("fx.show: true or false"))],
+  // #1629 r4.1 Q3 (a): how large this person's screens draw identity cards — the default for every card, and the cards
+  // set apart from it (at most 200; the page drops the oldest). A display size only: no agent reads or sets it.
+  ["card.size", (v) => (v === "s" || v === "m" || v === "l" ? v : bad("card.size: s, m or l"))],
+  ["card.sizeByInstance", (v) => {
+    if (!plain(v)) return bad("card.sizeByInstance: { <instance>: s | m | l }");
+    const keys = Object.keys(v);
+    if (keys.length > MAX_CARD_SIZES) return bad(`card.sizeByInstance: at most ${MAX_CARD_SIZES} instances`);
+    for (const k of keys) if (!name(k) || !["s", "m", "l"].includes(v[k] as string)) return bad("card.sizeByInstance: { <instance>: s | m | l }");
+    return v;
+  }],
   // #1722: which name leads where the web shows an instance — its nickname (display name) or its real instance name.
   ["names.primary", (v) => (v === "nickname" || v === "instance" ? v : bad("names.primary: nickname or instance"))],
   // #1827: a web person's own profile — the name they chose, and their account's display name at their last sign-in.

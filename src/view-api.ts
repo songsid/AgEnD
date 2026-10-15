@@ -329,6 +329,7 @@ export function handleViewRequest(
       effort: string | null;
       effort_source: string | null;
       display_name?: string;
+      card_v?: string;
     }> };
     const live = new Map(ui.instances.map(i => [i.name, i]));
     const db = profileDb(ctx.dataDir);
@@ -367,6 +368,8 @@ export function handleViewRequest(
         avatar_path: p?.avatar_path ?? null,
         description: identity.description,
         has_avatar: !!p?.avatar_path,
+        // #1629 r4 §1: the identity card's version (the status frame's): View reads the card when it moves.
+        ...(l?.card_v ? { card_v: l.card_v } : {}),
       };
     });
     json(res, 200, roster);
