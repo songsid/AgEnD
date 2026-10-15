@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 
-const S1 = "1".repeat(32), S2 = "2".repeat(32);
+const S1 = "1".repeat(32), S2 = "2".repeat(32), T1 = "a".repeat(32), T2 = "b".repeat(32);
 let p: AppPage | null = null;
 const g = globalThis as any;
 afterEach(async () => { vi.useRealTimers(); if (p) { try { const { render } = await import("/assets/app-html.js"); render(null, p.root); } catch { /* none */ } p.restore(); p = null; } delete g.fetch; vi.resetModules(); });
@@ -94,21 +94,21 @@ describe("keep or revert", () => {
   it("no answer within 15 s: reverted to the version before — at once on the page, and on the host", async () => {
     const { oc, link, calls } = await boot();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
-    oc.startOwnerCssTrial(S2, S1);
+    oc.startOwnerCssTrial(T1, S2, S1);
     expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S2}`);
     await vi.advanceTimersByTimeAsync(14_900);
     expect(calls.some(c => c.url === "/ui/owner-css/revert")).toBe(false);
     await vi.advanceTimersByTimeAsync(200);
-    expect(calls.find(c => c.url === "/ui/owner-css/revert")?.body, "the trial by its sha, never a history restore").toEqual({ sha: S2 });
+    expect(calls.find(c => c.url === "/ui/owner-css/revert")?.body, "the trial by its id, never a history restore").toEqual({ trial: T1 });
     expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S1}`);
   });
   it("Keep: kept on the host, and nothing reverts afterwards", async () => {
     const { oc, link, calls } = await boot();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "performance"] });
-    oc.startOwnerCssTrial(S2, S1);
+    oc.startOwnerCssTrial(T1, S2, S1);
     await oc.keepOwnerCss();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect([calls.find(c => c.url === "/ui/owner-css/keep")?.body, calls.some(c => c.url === "/ui/owner-css/revert")]).toEqual([{ sha: S2 }, false]);
+    expect([calls.find(c => c.url === "/ui/owner-css/keep")?.body, calls.some(c => c.url === "/ui/owner-css/revert")]).toEqual([{ trial: T1 }, false]);
     expect(link()?.getAttribute("href")).toBe(`/ui/owner-css.css?v=${S2}`);
   });
   it("the bar: on any page, a trust area, with the seconds left, Keep and Revert", async () => {
@@ -117,7 +117,7 @@ describe("keep or revert", () => {
     render(html`<${oc.OwnerCssKeepBar} />`, p!.root);
     await settle();
     expect(p!.root.querySelector(".oc-keep")).toBeNull();
-    oc.startOwnerCssTrial(S2, null);
+    oc.startOwnerCssTrial(T1, S2, null);
     await settle();
     const bar = p!.root.querySelector(".oc-keep");
     expect([bar?.getAttribute("data-trust"), bar?.getAttribute("role"), bar?.querySelectorAll("button").map((b: any) => b.textContent)])
@@ -132,7 +132,7 @@ describe("keep or revert", () => {
   // #1883 review r1 (P2-2): another device's trial, and a page loaded during one.
   it("a page loaded during a trial (another device's, or a reload) shows the bar — and never reverts it itself", async () => {
     // The host's deadline is near (real time: the page counts to it, plus a second, then asks again).
-    const { oc, calls, state, store } = await boot({ owner: S2, pending: { sha: S2, previous: S1, until: Date.now() + 300 } });
+    const { oc, calls, state, store } = await boot({ owner: S2, pending: { id: T1, sha: S2, previous: S1, remaining_ms: 300 } });
     await settle(); await settle();
     expect(oc.ownerCssTrial.get()).toMatchObject({ sha: S2, previous: S1, local: false });
     state.pending = null;                                               // kept on the device that saved it
@@ -147,7 +147,7 @@ describe("keep or revert", () => {
     const { oc, state, store } = await boot();
     store.appStore.set((s: any) => ({ ...s, prefsRev: 1 }));
     await settle();
-    state.active = S2; state.pending = { sha: S2, previous: S1, until: Date.now() + 15_000 };
+    state.active = S2; state.pending = { id: T2, sha: S2, previous: S1, remaining_ms: 15_000 };
     store.appStore.set((s: any) => ({ ...s, prefsRev: 2 }));
     await settle(); await settle();
     expect(oc.ownerCssTrial.get()).toMatchObject({ sha: S2, local: false });
@@ -155,5 +155,41 @@ describe("keep or revert", () => {
     store.appStore.set((s: any) => ({ ...s, prefsRev: 3 }));
     await settle(); await settle();
     expect(oc.ownerCssTrial.get()).toBeNull();
+  });
+
+  // #1883 review r2 (P2-2 b, c).
+  it("(b) an older /state answer never overwrites a newer one (or a local change)", async () => {
+    const { oc, link } = await boot();
+    const held: Array<(v: unknown) => void> = [];
+    g.fetch = vi.fn(async (url: string) => {
+      if (url !== "/ui/owner-css/state") return { ok: true, status: 200, json: async () => ({}) };
+      const n = held.length;
+      return { ok: true, status: 200, json: () => new Promise(r => held.push(r)).then(v => v) , n };
+    });
+    const store = await import("/assets/app-store.js");
+    store.appStore.set((s: any) => ({ ...s, prefsRev: 10 })); await settle();
+    store.appStore.set((s: any) => ({ ...s, prefsRev: 11 })); await settle();   // read A asked
+    store.appStore.set((s: any) => ({ ...s, prefsRev: 12 })); await settle();   // read B asked
+    await vi.waitFor(() => expect(held.length).toBe(2));
+    held[1]!({ active: S2, pending: null });                                     // the newer answer: B kept
+    await settle(); await settle();
+    held[0]!({ active: S1, pending: { id: T1, sha: S1, previous: null, remaining_ms: 5_000 } });   // the older one, late
+    await settle(); await settle();
+    expect([link()?.getAttribute("href"), oc.ownerCssTrial.get()]).toEqual([`/ui/owner-css.css?v=${S2}`, null]);
+  });
+  it("(c) another device's trial is timed by the host's remaining time — a device clock an hour behind changes nothing", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() - 3_600_000);
+    const { oc } = await boot({ owner: S2, pending: { id: T1, sha: S2, previous: S1, remaining_ms: 5_000 } });
+    await settle(); await settle();
+    const trial = oc.ownerCssTrial.get();
+    expect(trial).toMatchObject({ id: T1, local: false });
+    const left = trial.deadline - performance.now();
+    expect(left).toBeGreaterThan(5_000);
+    expect(left).toBeLessThanOrEqual(6_100);
+  });
+  it("(c) however much the host says is left, a non-local page asks again within the trial's whole budget (21 s)", async () => {
+    const { oc } = await boot({ owner: S2, pending: { id: T1, sha: S2, previous: S1, remaining_ms: 3_600_000 } });
+    await settle(); await settle();
+    expect(oc.ownerCssTrial.get().deadline - performance.now()).toBeLessThanOrEqual(21_000);
   });
 });

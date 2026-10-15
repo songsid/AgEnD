@@ -55,8 +55,17 @@ function sync() {
   document.head.appendChild(link);                     // last in <head>: after app.css in the cascade
 }
 
+// #1883 r2: every change this page makes, and every read it starts, moves `gen`. A host answer is taken only if nothing
+// newer happened after it was asked for — an older /state answer never overwrites a newer read, save, keep or revert.
+let gen = 0;
+const local = () => ++gen;
+
 /** This page saved, restored or turned off a version: show it at once (null: none). */
 export function setOwnerCssActive(sha) {
+  local();
+  showActive(sha);
+}
+function showActive(sha) {
   active = typeof sha === "string" && /^[0-9a-f]{32}$/.test(sha) ? sha : null;
   sync();
 }
@@ -64,14 +73,16 @@ export function setOwnerCssActive(sha) {
 // ── Keep or revert (r4 §3): a saved version is on trial. "Keep" within 15 s keeps it; anything else reverts it — the
 // page that saved it at 15 s, and the host at its own deadline (a closed tab, or CSS that hid this bar). The bar is the
 // shell's, on every page and every device of the person's, so they can look at the result before answering.
-// A revert names its trial (POST /ui/owner-css/revert { sha }): the host reverts only that trial, only while it still
-// is one — a trial kept on another device meanwhile stays kept.
+// A trial has an id of its own (the same text saved twice is two trials): keep and revert name it, and the host acts
+// only while that trial still is the one on trial — one kept, reverted or replaced meanwhile, anywhere, stays.
 export const KEEP_SECONDS = 15;
-/** { sha, previous, deadline (performance.now ms), local } while a version is on trial, else null. */
+/** The host's whole trial budget (20 s) and a second: the longest a page that did not save a trial waits to ask again. */
+const HOST_TRIAL_SECONDS = 21;
+/** { id, sha, previous, deadline (performance.now ms), local } while a version is on trial, else null. */
 export const ownerCssTrial = createStore(null);
 let trialTimer = null;
 // set(fn) replaces the state; set(object) would merge into it (createStore), and null merges as nothing.
-const clearTrial = () => { if (trialTimer) clearTimeout(trialTimer); trialTimer = null; ownerCssTrial.set(() => null); };
+const dropTrial = () => { if (trialTimer) clearTimeout(trialTimer); trialTimer = null; ownerCssTrial.set(() => null); };
 
 async function post(path, body) {
   const res = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -81,33 +92,38 @@ async function post(path, body) {
 }
 
 /**
- * A version is in force on trial: show it, and ask. `local`: this page saved it — at the end of `seconds` it reverts it
- * (by its sha). Otherwise (another device's trial, or this page reloaded during one) it counts down to the host's
- * deadline and then asks the host again, which has settled it by then: a device's clock never reverts early.
+ * Trial `id` (of version `sha`) is in force: show it, and ask. `local`: this page saved it — at the end of `seconds` it
+ * reverts it (by its id). Otherwise (another device's trial, or this page loaded during one) `seconds` is the host's
+ * own remaining time (never the device's clock), and at its end the page asks the host again, which has settled it.
  */
-export function startOwnerCssTrial(sha, previous, seconds = KEEP_SECONDS, local = true) {
-  clearTrial();
-  setOwnerCssActive(sha);
-  const s = Math.max(0, local ? Math.min(KEEP_SECONDS, seconds) : seconds);
-  // The bar shows the real time left: 15 s here; up to the host's deadline on a page that did not save it.
-  const trial = { sha, previous: previous || null, deadline: performance.now() + s * 1000, local };
+export function startOwnerCssTrial(id, sha, previous, seconds = KEEP_SECONDS, isLocal = true) {
+  local();
+  if (trialTimer) clearTimeout(trialTimer);
+  showActive(sha);
+  const s = Math.max(0, Math.min(isLocal ? KEEP_SECONDS : HOST_TRIAL_SECONDS, Number.isFinite(seconds) ? seconds : 0));
+  const trial = { id, sha, previous: previous || null, deadline: performance.now() + s * 1000, local: isLocal };
   ownerCssTrial.set(() => trial);
-  trialTimer = setTimeout(() => { if (local) revertOwnerCss(); else { clearTrial(); reread(); } }, s * 1000);
+  trialTimer = setTimeout(() => {
+    if (ownerCssTrial.get() !== trial) return;
+    if (isLocal) revertOwnerCss(); else { dropTrial(); reread(); }
+  }, s * 1000);
 }
 export async function keepOwnerCss() {
   const trial = ownerCssTrial.get();
   if (!trial) return false;
-  clearTrial();
-  const r = await post("/ui/owner-css/keep", { sha: trial.sha });
+  local();
+  dropTrial();
+  const r = await post("/ui/owner-css/keep", { trial: trial.id });
   if (!r.ok) { await reread(); return false; }                        // too late: the host reverted it — show what is in force
   return true;
 }
 export async function revertOwnerCss() {
   const trial = ownerCssTrial.get();
   if (!trial) return;
-  clearTrial();
-  setOwnerCssActive(trial.previous);                                   // at once; the host's answer below is what stays
-  await post("/ui/owner-css/revert", { sha: trial.sha }).catch(() => null);
+  local();
+  dropTrial();
+  showActive(trial.previous);                                          // at once; the host's answer below is what stays
+  await post("/ui/owner-css/revert", { trial: trial.id }).catch(() => null);
   await reread();
 }
 
@@ -132,21 +148,23 @@ export function OwnerCssKeepBar() {
 /** Ask the host which version is in force (another device changed it, or a trial ended), and whether one is on trial. */
 async function reread() {
   if (!eligiblePage()) return;
+  const mine = local();
   try {
     const res = await fetch("/ui/owner-css/state", { credentials: "same-origin" });
     if (!res.ok) return;
     const body = await res.json();
-    if (body) reconcile(body);
+    if (body && mine === gen) reconcile(body);                         // nothing newer happened since this was asked
   } catch { /* the next change tries again */ }
 }
 /** Match the host: the version in force, and whether one is on trial (another device's included) — or none any more. */
 function reconcile(state) {
-  const pending = state.pending && state.pending.sha === state.active ? state.pending : null;
+  const pending = state.pending && state.pending.sha === state.active && typeof state.pending.id === "string" ? state.pending : null;
   const trial = ownerCssTrial.get();
-  if (!pending) { if (trial) clearTrial(); setOwnerCssActive(state.active); return; }
-  if (trial && trial.sha === pending.sha) return;                      // already asking about this one
-  // A margin under the host's deadline would let this device revert early; it asks again just after the deadline.
-  startOwnerCssTrial(pending.sha, pending.previous, Math.max(0, (pending.until - Date.now()) / 1000) + 1, false);
+  if (!pending) { if (trial) dropTrial(); showActive(state.active); return; }
+  if (trial && trial.id === pending.id) return;                        // already asking about this one
+  // The host's own remaining time and a second (never this device's clock): it has settled the trial by then.
+  const remaining = typeof pending.remaining_ms === "number" && Number.isFinite(pending.remaining_ms) ? pending.remaining_ms : 0;
+  startOwnerCssTrial(pending.id, pending.sha, pending.previous, remaining / 1000 + 1, false);
 }
 
 /** Once per page load, before the first panel paints. */
@@ -155,7 +173,7 @@ export function installOwnerCss() {
   installed = true;
   try { safe = new URLSearchParams(location.search).get("safe") === "1"; } catch { safe = false; }
   const b = document.body && document.body.dataset;
-  setOwnerCssActive(b && b.ownerCss);
+  showActive(b && b.ownerCss);
   navStore.subscribe(sync);
   // What the host says now: a trial in progress (this page reloaded during one, or another device's) shows the bar;
   // one the host has settled since the page was served shows its outcome.
