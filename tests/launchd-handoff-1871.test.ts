@@ -4,18 +4,20 @@
  * the restart with it, before the bootstrap. (Reproduced on the real-Mac test host.)
  * - From an agent session, the activation is handed to a detached copy that survives the pane's process group being
  *   killed; the copy carries its own origin and never hands off again.
- * - `agend start` drops the plan whose plist it has just loaded, so a later `agend restart` is not refused over it.
+ * - A plan whose job launchd already runs (the interrupted update, then `agend start`) counts as carried out, so
+ *   `agend restart` restarts that job instead of refusing it — read-only, nothing deleted or moved.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, linkSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HANDED_OFF_ENV, HANDOFF_LOG, handOff, shouldHandOff } from "../src/launchd-handoff.js";
 import { ORIGIN_ENV } from "../src/fleet-control-audit.js";
-import { dropConsumedPlan, planPath } from "../src/service-plan.js";
+import { planCarriedOut, refreshLaunchdWithoutActivating, type ServicePlan } from "../src/service-plan.js";
+import type { CommandResult } from "../src/update-install.js";
 
 const dirs: string[] = [];
 const scratch = () => { const d = mkdtempSync(join(tmpdir(), "agend-1871-")); dirs.push(d); return d; };
@@ -96,80 +98,67 @@ describe("#1871: the hand-off", () => {
   }, 15_000);
 });
 
-describe("#1871: agend start drops the plan it has just carried out", () => {
-  // A real directory: the record is claimed with the real rename(2) and put back with the real link(2).
-  const record = (plistPath: string, planned: string) => JSON.stringify({
-    kind: "launchd-activation", label: "com.agend.fleet", plistPath, sha256: createHash("sha256").update(planned).digest("hex"),
-    preimage: { plist: "<old/>", tuple: { program: "/old" }, pid: 701 }, pkgDir: "/pkg", createdAt: "2026-10-15T08:26:54.000Z",
+describe("#1871: a plan whose job launchd already runs is carried out (read-only)", () => {
+  const PKG = "/Users/u/.npm-global/lib/node_modules/@songsid/agend";
+  const RT = `${PKG}/node_modules/@songsid/agend-node-darwin-arm64/bin/node`;
+  const ENTRY = `${PKG}/dist/cli.js`;
+  const PLIST = "/Users/u/Library/LaunchAgents/com.agend.fleet.plist";
+  const TARGET = "gui/501/com.agend.fleet";
+  const plist = (args: string[]) => `<?xml version="1.0"?><plist><dict><key>Label</key><string>com.agend.fleet</string><key>ProgramArguments</key><array>${args.map(a => `<string>${a}</string>`).join("")}</array><key>EnvironmentVariables</key><dict><key>PATH</key><string>/usr/bin:/bin</string></dict><key>RunAtLoad</key><true/><key>KeepAlive</key><true/></dict></plist>`;
+  const OLD = [`${PKG}/bin/agend`, "fleet", "start"];             // 2.1.12's plist: the bin script
+  const NEW = [RT, ENTRY, "fleet", "start"];
+  const printed = (args: string[], pid: number): Partial<CommandResult> => ({
+    status: 0, stdout: [`${TARGET} = {`, `\tprogram = ${args[0]}`, "\targuments = {", ...args.map(a => `\t\t${a}`), "\t}", "\tenvironment = {", "\t\tPATH => /usr/bin:/bin", "\t}", "\tstate = running", `\tpid = ${pid}`, "}"].join("\n"),
   });
-  const setup = (plistOnDisk: string, planned: string, plannedFor?: string) => {
-    const home = scratch();
-    const plist = join(home, "com.agend.fleet.plist");
-    writeFileSync(plist, plistOnDisk);
-    writeFileSync(planPath(home), record(plannedFor ?? plist, planned));
-    let claims = 0;
+  /** The plan the old updater's `install --no-activate` records against the 2.1.12 job (pid 701), by the real refresh. */
+  function planned() {
+    const files: Record<string, string> = { [PLIST]: plist(OLD) };
+    let loaded: Partial<CommandResult> = printed(OLD, 701);
     const deps = {
-      readFile: (p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } },
-      removeFile: (p: string) => { try { unlinkSync(p); } catch { /* absent */ } },
-      rename: (from: string, to: string) => { try { renameSync(from, to); return true; } catch { return false; } },
-      link: (from: string, to: string) => { try { linkSync(from, to); return true; } catch { return false; } },
-      claimPath: (r: string) => `${r}.consumed-test-${++claims}`,
+      run: (_c: string, _a: string[]) => ({ status: 0, signal: null, stdout: "", stderr: "", ...loaded }) as CommandResult,
+      readFile: (p: string) => files[p] ?? null,
+      writeFile: (p: string, c: string) => { files[p] = c; },
+      removeFile: (p: string) => { delete files[p]; },
+      realpath: (p: string) => ([RT, ENTRY].includes(p) ? p : null),
+      isExecutable: () => false,
+      now: () => new Date("2026-10-15T08:26:54Z"),
     };
-    /** What a concurrent `install --no-activate` does: revoke the plan, write the new plist, record its plan. */
-    const refreshTo = (next: string) => { deps.removeFile(planPath(home)); writeFileSync(plist, next); writeFileSync(planPath(home), record(plist, next)); };
-    /** Which plan the record holds now: "A", "B", "C" or null. */
-    const pending = () => {
-      const p = deps.readFile(planPath(home));
-      if (!p) return null;
-      const sha = JSON.parse(p).sha256;
-      return ["A", "B", "C"].find(x => createHash("sha256").update(`<${x}/>`).digest("hex") === sha) ?? "?";
-    };
-    const leftovers = () => readdirSync(home).filter(f => f.includes(".consumed-"));
-    return { home, plist, deps, refreshTo, pending, leftovers };
-  };
+    const out = refreshLaunchdWithoutActivating({ label: "com.agend.fleet", target: TARGET, plistPath: PLIST, newPlist: plist(NEW), expected: { node: RT, entry: ENTRY }, pkgDir: PKG, agendHome: "/Users/u/.agend" }, deps);
+    expect(out).toMatchObject({ ok: true, planned: true });
+    const plan = JSON.parse(files["/Users/u/.agend/service-plan.json"]!) as ServicePlan;
+    // Only what planCarriedOut may use: a read and a print. Anything that writes, deletes or moves is absent.
+    const readOnly = { readFile: deps.readFile, run: deps.run };
+    return { plan, files, readOnly, load: (next: Partial<CommandResult>) => { loaded = next; } };
+  }
 
-  it("control: it bootstrapped A, the plan is A and A is still on disk → the plan goes", () => {
-    const w = setup("<A/>", "<A/>");
-    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(true);
-    expect([existsSync(planPath(w.home)), w.leftovers()]).toEqual([false, []]);
+  it("#1871's state: the update died after bootout, `agend start` loaded the planned plist → carried out", () => {
+    const w = planned();
+    w.load(printed(NEW, 41363));
+    expect(planCarriedOut(w.plan, TARGET, w.readOnly)).toBe(true);
+    expect(Object.keys(w.files).sort()).toEqual(["/Users/u/.agend/service-plan.json", PLIST]);   // nothing deleted
   });
 
-  it("Prism's r1 witness: it bootstrapped A, a refresh meanwhile wrote B and planned B → plan B stays", () => {
-    const w = setup("<A/>", "<A/>");
-    w.refreshTo("<B/>");
-    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(false);
-    expect(w.pending()).toBe("B");
+  it("the planned-from job still runs with its recorded pid → not carried out (admitPlan activates it)", () => {
+    const w = planned();
+    expect(planCarriedOut(w.plan, TARGET, w.readOnly)).toBe(false);
   });
 
-  it("Prism's r2 witness: B is published right after the last read saw A → B survives the consume (claimed, judged, put back)", () => {
-    const w = setup("<A/>", "<A/>");
-    const read = w.deps.readFile;
-    let raced = false;
-    w.deps.readFile = (p: string) => {
-      const text = read(p);
-      if (p === w.plist && !raced) { raced = true; w.refreshTo("<B/>"); }   // another process, between the read and what follows
-      return text;
-    };
-    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(false);
-    expect([w.pending(), w.leftovers()]).toEqual(["B", []]);
+  it("launchd runs anything but the planned job (the old job respawned, another pid) → not carried out (admitPlan refuses)", () => {
+    const w = planned();
+    w.load(printed(OLD, 702));
+    expect(planCarriedOut(w.plan, TARGET, w.readOnly)).toBe(false);
   });
 
-  it("put-back never overwrites: B is claimed, C is published before B could go back → C stays, B goes", () => {
-    const w = setup("<A/>", "<A/>");
-    const read = w.deps.readFile, rename = w.deps.rename;
-    let raced = false;
-    w.deps.readFile = (p: string) => { const text = read(p); if (p === w.plist && !raced) { raced = true; w.refreshTo("<B/>"); } return text; };
-    w.deps.rename = (from: string, to: string) => { const done = rename(from, to); w.refreshTo("<C/>"); return done; };
-    expect(dropConsumedPlan(w.home, w.plist, "<A/>", w.deps)).toBe(false);
-    expect([w.pending(), w.leftovers()]).toEqual(["C", []]);
-  });
-
-  it("a plan for A whose file has changed since, or a plan for another file, stays for `agend restart` to judge", () => {
-    const changed = setup("<edited/>", "<A/>");
-    expect(dropConsumedPlan(changed.home, changed.plist, "<A/>", changed.deps)).toBe(false);
-    expect(existsSync(planPath(changed.home))).toBe(true);
-    const other = setup("<A/>", "<A/>", "/elsewhere.plist");
-    expect(dropConsumedPlan(other.home, other.plist, "<A/>", other.deps)).toBe(false);
-    expect(existsSync(planPath(other.home))).toBe(true);
+  it("the plist changed since the plan — even with launchd running the changed one — or nothing is loaded → not carried out", () => {
+    const w = planned();
+    const other = [RT, ENTRY, "fleet", "start", "--other"];
+    w.files[PLIST] = plist(other);
+    w.load(printed(NEW, 41363));
+    expect(planCarriedOut(w.plan, TARGET, w.readOnly)).toBe(false);
+    w.load(printed(other, 41363));                                  // a plan about another plist: admitPlan reports the change
+    expect(planCarriedOut(w.plan, TARGET, w.readOnly)).toBe(false);
+    const n = planned();
+    n.load({ status: 113, stdout: "" });
+    expect(planCarriedOut(n.plan, TARGET, n.readOnly)).toBe(false);
   });
 });

@@ -124,37 +124,23 @@ export function admitPlan(plan: ServicePlan, o: { target: string; expected: Expe
   return { ok: true };
 }
 
-/** What consuming a plan needs beyond reading: an atomic claim of the record, and a put-back that never overwrites. */
-export interface ConsumeDeps extends Pick<PlanDeps, "readFile" | "removeFile"> {
-  /** Atomic rename; false when there is nothing at `from`. */
-  rename(from: string, to: string): boolean;
-  /** Hard link `to` → `from`; false when `to` already exists (a newer record, which wins). */
-  link(from: string, to: string): boolean;
-  /** A private name next to the record, unique to this consumer. */
-  claimPath(record: string): string;
-}
-
 /**
- * #1871: `agend start` just bootstrapped `plistPath`, whose content was `startedPlist` when it did. A plan whose proven
- * plist is exactly that content, and is still the file on disk, has now happened. An update that died between bootout
- * and bootstrap leaves such a plan behind, and kept, it would make every later `agend restart` refuse, because the job
- * now loaded is not the planned-from job. A plan for any other content (a refresh since, a different file) stays.
+ * #1871: has this plan already happened? An update that died between bootout and bootstrap leaves its plan behind;
+ * after `agend start` loads the plist, launchd runs exactly the planned job, but under a new pid, so admitPlan refuses
+ * it ("the job launchd has loaded changed"), and every `agend restart` with it. True when the plist on disk is still the
+ * proven one and launchd runs its job. `agend restart` then restarts that job as an unchanged one (path 1, whose
+ * guard proves it again); a plan that changes nothing about the job comes to the same restart.
  *
- * The record lives at a shared path that a concurrent `install --no-activate` may republish at any moment, so it is
- * never unlinked by name: it is claimed (renamed to a private name, atomically), and what was claimed is judged. Ours
- * is deleted; anything else is linked back, unless a still newer record has appeared there (a refresh always revokes
- * the plan before it, so the newer one is the one that counts). True when our plan was dropped.
+ * Read-only on purpose: the record stays where it is, and the next refresh revokes it as it revokes every plan. A
+ * consumer that deleted or moved it would race with a refresh publishing or revoking at the same path.
  */
-export function dropConsumedPlan(agendHome: string, plistPath: string, startedPlist: string, deps: ConsumeDeps): boolean {
-  const plan = readPlan(agendHome, deps);
-  if (!plan || plan.plistPath !== plistPath || plan.sha256 !== sha256(startedPlist)) return false;
-  if (deps.readFile(plistPath) !== startedPlist) return false;
-  const record = planPath(agendHome);
-  const claim = deps.claimPath(record);
-  if (!deps.rename(record, claim)) return false;
-  const claimed = readPlan(agendHome, { readFile: path => deps.readFile(path === record ? claim : path) });
-  const ours = !!claimed && claimed.plistPath === plistPath && claimed.sha256 === sha256(startedPlist);
-  if (!ours) deps.link(claim, record);
-  deps.removeFile(claim);
-  return ours;
+export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<PlanDeps, "readFile" | "run">): boolean {
+  const onDisk = deps.readFile(plan.plistPath);
+  if (onDisk === null || sha256(onDisk) !== plan.sha256) return false;
+  const planned = parsePlist(onDisk);
+  if (!planned) return false;
+  const printed = deps.run("launchctl", ["print", target]);
+  if (!completed(printed) || printed.status !== 0) return false;
+  const loaded = parseLaunchctlPrint(printed.stdout);
+  return !!loaded.tuple && sameJob(loaded.tuple, planned);
 }

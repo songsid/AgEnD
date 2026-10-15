@@ -34,8 +34,6 @@ import {
   openSync,
   writeSync,
   closeSync,
-  renameSync,
-  linkSync,
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -1996,7 +1994,7 @@ program
   .command("start")
   .description("Start the AgEnD service, or start a detached fleet if no service is installed")
   .action(async () => {
-    const { getServicePath, getSystemServicePath, startService, startSystemService, detectPlatform } = await import("./service-installer.js");
+    const { getServicePath, getSystemServicePath, startService, startSystemService } = await import("./service-installer.js");
     const userServicePath = getServicePath();
     const systemServicePath = getSystemServicePath();
     if (!userServicePath && !systemServicePath) {
@@ -2009,23 +2007,9 @@ program
       console.log("Fleet starting in background.");
       return;
     }
-    // #1871: the definition this start bootstraps, read before it does — what it consumed is this, not whatever a
-    // concurrent refresh has written by the time it returns.
-    const launchd = !systemServicePath && !!userServicePath && detectPlatform() === "macos";
-    const startedPlist = launchd ? planDeps().readFile(userServicePath!) : null;
     const started = systemServicePath ? startSystemService() : startService();
     if (started) {
       console.log("Service started.");
-      if (launchd && startedPlist !== null) {
-        const { dropConsumedPlan } = await import("./service-plan.js");
-        const consumeDeps = {
-          ...planDeps(),
-          rename: (from: string, to: string) => { try { renameSync(from, to); return true; } catch { return false; } },
-          link: (from: string, to: string) => { try { linkSync(from, to); return true; } catch { return false; } },
-          claimPath: (record: string) => `${record}.consumed-${process.pid}-${Date.now()}`,
-        };
-        if (dropConsumedPlan(DATA_DIR, userServicePath!, startedPlist, consumeDeps)) console.log("  ✓ That was the launchd activation an interrupted update left pending; nothing is pending now.");
-      }
     } else {
       // A service file means the service manager owns this fleet. Falling back
       // to a detached process here creates a second fleet when the bus recovers.
@@ -2256,8 +2240,12 @@ program
       if (printed.status === 0) {
         const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
         // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
-        const { readPlan, admitPlan, planPath } = await import("./service-plan.js");
-        const plan = opts.force ? null : readPlan(DATA_DIR, deps);
+        const { readPlan, admitPlan, planPath, planCarriedOut } = await import("./service-plan.js");
+        const recorded = opts.force ? null : readPlan(DATA_DIR, deps);
+        // #1871: an interrupted update's plan whose job launchd already runs (after `agend start`) is done: restart that
+        // job as an unchanged one (path 1) instead of refusing it for its new pid.
+        const plan = recorded && planCarriedOut(recorded, target, deps) ? null : recorded;
+        if (recorded && !plan) console.log("  ℹ launchd already runs the job an interrupted update planned; restarting it as it is.");
         if (plan && expectation.ok) {
           const pkgDir = dirname(dirname(expectation.expected.entry));
           const admitted = admitPlan(plan, { target, expected: expectation.expected, pkgDir }, deps);
