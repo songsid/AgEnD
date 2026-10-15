@@ -63,9 +63,8 @@ export function setCardSizeDefault(size) {
 }
 
 // ── The card's data: read once per version (the status frame's / View roster's card_v) ──
-/** { <name>: { v, card } } — card null until read; a failed read keeps the last one. */
+/** { <name>: { v, epoch, card } } — card null until read; a failed read keeps the last one. */
 export const cardsStore = createStore({});
-const reading = new Map();
 const SRC = /^\/api\/card\/[^/?#\\]+\/(portrait|banner)\?v=[0-9a-f]{32}$/;
 const ID = /^[0-9a-f]{32}$/;
 /** What the host said, checked again: same-origin picture paths of this card, text as text. */
@@ -85,33 +84,39 @@ export function checkCard(name, body) {
   }
   return Object.keys(out).length ? out : null;
 }
-// #1889 review: per instance, the version this page wants now. A read is applied only if it is still the one wanted —
-// a newer version asked for meanwhile, or a clear (no version), turns an older answer away.
-const wanted = new Map();
+// #1889 review: per instance, an epoch that moves whenever the version this page wants changes (a clear included).
+// GET /api/card is not versioned — its body is whatever the host had then — so a read belongs to the epoch that started
+// it: only a read of the current epoch is shared or applied, and an older read never touches its replacement.
+const want = new Map();        // name → { epoch, v }
+const inflight = new Map();    // name → { epoch, promise }
 /** Read `name`'s card if `v` is newer than what this page has (no version: no card). */
 export async function loadCard(name, v, fetcher = (u) => fetch(u, { credentials: "same-origin" })) {
   if (!name) return;
+  const target = v || null;
+  const cur = want.get(name);
+  const epoch = cur && cur.v === target ? cur.epoch : (cur ? cur.epoch : 0) + 1;
+  if (!cur || cur.v !== target) want.set(name, { epoch, v: target });
   const have = own(cardsStore.get(), name) ? cardsStore.get()[name] : null;
-  if (!v) {
-    wanted.set(name, null);
+  if (!target) {
     if (have) cardsStore.set((s) => { const n = { ...s }; delete n[name]; return n; });
     return;
   }
-  wanted.set(name, v);
-  if (have && have.v === v) return;
-  const key = `${name}\0${v}`;
-  if (reading.has(key)) return reading.get(key);
-  const p = (async () => {
+  if (have && have.v === target && have.epoch === epoch) return;          // read in this epoch already
+  const out = inflight.get(name);
+  if (out && out.epoch === epoch) return out.promise;                       // this epoch's read is on its way
+  const current = () => want.get(name)?.epoch === epoch;
+  const entry = { epoch, promise: null };
+  entry.promise = (async () => {
     try {
       const r = await fetcher(`/api/card/${encodeURIComponent(name)}`);
-      if (!r.ok || wanted.get(name) !== v) return;
+      if (!r.ok || !current()) return;
       const card = checkCard(name, await r.json());
-      if (wanted.get(name) !== v) return;                     // superseded or cleared while the body was read
-      cardsStore.set((s) => ({ ...s, [name]: { v, card } }));
-    } catch { /* the next version tries again */ } finally { reading.delete(key); }
+      if (!current()) return;                                               // superseded or cleared while it was read
+      cardsStore.set((s) => ({ ...s, [name]: { v: target, epoch, card } }));
+    } catch { /* the next version tries again */ } finally { if (inflight.get(name) === entry) inflight.delete(name); }
   })();
-  reading.set(key, p);
-  return p;
+  inflight.set(name, entry);
+  return entry.promise;
 }
 /** `name`'s card for version `v` (null while none or not read yet). */
 export function useCard(name, v) {
