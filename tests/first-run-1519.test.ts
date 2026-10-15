@@ -25,7 +25,7 @@ import { fire } from "./helpers/mini-dom.js";
 
 const CH = { id: "telegram", type: "telegram", mode: "topic", bot_token_env: "AGEND_TELEGRAM_TOKEN", group_id: "-100", access: { mode: "locked", allowed_users: [] } };
 const cfgOf = (instances: Record<string, unknown>, channels: unknown[] = []) => ({ defaults: { backend: "codex" }, instances, channels }) as unknown as FleetConfig;
-const NEW = { platform: "discord", backend: "claude-code", working_directory: "/w/new", instance_name: "alpha", token_env: "AGEND_DISCORD_TOKEN" } as WizardPlanInput;
+const NEW = { platform: "discord", admin_user_id: "987654321012345678", backend: "claude-code", working_directory: "/w/new", instance_name: "alpha", token_env: "AGEND_DISCORD_TOKEN" } as WizardPlanInput;
 
 describe("the wizard never overwrites an agent", () => {
   const cfg = cfgOf({ alpha: { working_directory: "/w/a", backend: "kiro-cli", description: "A", model: "m1", channel_id: "telegram" } }, [CH]);
@@ -40,7 +40,7 @@ describe("the wizard never overwrites an agent", () => {
   });
 
   it("an existing agent keeps everything; only its connection becomes the new one — and the plan shows its own directory and backend", () => {
-    const body = { platform: "discord", instance_name: "alpha", existing_agent: true, token_env: "AGEND_DISCORD_TOKEN" } as WizardPlanInput;
+    const body = { platform: "discord", admin_user_id: "987654321012345678", instance_name: "alpha", existing_agent: true, token_env: "AGEND_DISCORD_TOKEN" } as WizardPlanInput;
     expect(validateWizardInput(body), "no backend or directory is asked for").toBeNull();
     const plan = planQuickstart(withExistingAgent(body, cfg), { backends: [], has_fleet: true, channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_TELEGRAM_TOKEN" }] } as never);
     expect(plan.instance).toEqual({ name: "alpha", working_directory: "/w/a", backend: "kiro-cli", channel_id: "discord", existing: true });
@@ -60,9 +60,9 @@ describe("the wizard never overwrites an agent", () => {
 describe("#1549 review: a topic belongs to its chat — moving an agent to another chat does not carry it", () => {
   const TG1 = { ...CH, id: "telegram", group_id: "-100111" };
   const fleetWith = (agent: Record<string, unknown>, channels: unknown[] = [TG1]) => cfgOf({ alpha: { working_directory: "/w/a", backend: "codex", ...agent } }, channels);
-  const tgPlan = (cfg: FleetConfig, group: string) => planQuickstart(withExistingAgent({ platform: "telegram", instance_name: "alpha", existing_agent: true, token_env: "AGEND_TELEGRAM_2_TOKEN", group_id: group, channel_id: "telegram-2" } as WizardPlanInput, cfg),
+  const tgPlan = (cfg: FleetConfig, group: string) => planQuickstart(withExistingAgent({ platform: "telegram", admin_user_id: "42", instance_name: "alpha", existing_agent: true, token_env: "AGEND_TELEGRAM_2_TOKEN", group_id: group, channel_id: "telegram-2" } as WizardPlanInput, cfg),
     { backends: [], has_fleet: true, channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_TELEGRAM_TOKEN", group_id: "-100111", allowed_users: [] }] } as never);
-  const body = (group: string) => ({ platform: "telegram", instance_name: "alpha", existing_agent: true, token_env: "AGEND_TELEGRAM_2_TOKEN", group_id: group, channel_id: "telegram-2" }) as WizardPlanInput;
+  const body = (group: string) => ({ platform: "telegram", admin_user_id: "42", instance_name: "alpha", existing_agent: true, token_env: "AGEND_TELEGRAM_2_TOKEN", group_id: group, channel_id: "telegram-2" }) as WizardPlanInput;
   /** What the fleet would route a message from `chatId`'s topic `thread` to, on this configuration (the real router). */
   function routeOf(cfg: FleetConfig, chatId: string, thread: string): string | null {
     const dir = mkdtempSync(join(tmpdir(), "agend-test-topic-route-"));
@@ -205,7 +205,7 @@ describe("the quickstart route", () => {
   it("plan: a new agent named like an existing one is a 409; as the existing agent it plans with that agent's own values", async () => {
     const taken = await call("POST", "/api/settings/quickstart/plan", cfg(), { ...NEW, token_env: undefined });
     expect([taken.status, taken.body.error]).toEqual([409, expect.stringMatching(/already exists/)]);
-    const ok = await call("POST", "/api/settings/quickstart/plan", cfg(), { platform: "discord", instance_name: "alpha", existing_agent: true });
+    const ok = await call("POST", "/api/settings/quickstart/plan", cfg(), { platform: "discord", admin_user_id: "987654321012345678", instance_name: "alpha", existing_agent: true });
     expect([ok.status, ok.body.instance]).toEqual([200, { name: "alpha", working_directory: "/w/a", backend: "kiro-cli", channel_id: "discord", existing: true }]);
   });
 });
@@ -373,6 +373,7 @@ describe("the wizard's first step", () => {
     btn(d(), "Next").click(); await settle(2);
     const t = d().querySelector("#wz-token"); t.value = "fake-wizard-token"; fire(t, "input"); await settle(2);
     btn(d(), "Verify").click(); await settle(6);
+    const admin = d().querySelector("#wz-user"); admin.value = "42"; fire(admin, "input"); await settle(2);
     btn(d(), "Next").click(); await settle(6);
     return reqs.filter(r => r.url === "/api/settings/quickstart/plan").map(r => r.body);
   };
@@ -383,7 +384,7 @@ describe("the wizard's first step", () => {
     expect(d().querySelector("#wz-agent")?.value ?? null).toBe("alpha");
     expect(d().querySelector("#wz-wd")?.id ?? null, "no directory to ask").toBeNull();
     const [plan] = await toPlan();
-    expect(plan).toEqual({ platform: "telegram", instance_name: "alpha", existing_agent: true });
+    expect(plan).toEqual({ platform: "telegram", admin_user_id: "42", instance_name: "alpha", existing_agent: true });
   });
 
   it("#1549 review: a topic the move does not carry is said at the plan (and a General's new one is shown)", async () => {
@@ -409,7 +410,7 @@ describe("the wizard's first step", () => {
     expect(d().querySelector(".feedback.error")?.textContent ?? null).toBe("Enter an absolute working directory.");
     const wd = d().querySelector("#wz-wd"); wd.value = "/w/new"; fire(wd, "input"); await settle(2);
     const [plan] = await toPlan();
-    expect(plan).toEqual({ platform: "telegram", backend: "claude-code", working_directory: "/w/new", instance_name: "agent-2" });
+    expect(plan).toEqual({ platform: "telegram", admin_user_id: "42", backend: "claude-code", working_directory: "/w/new", instance_name: "agent-2" });
   });
 
   it("no agents: no choice, the first agent as before", async () => {

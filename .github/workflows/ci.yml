@@ -7,7 +7,8 @@ on:
     branches: [main, 'release/**']
     tags: ['v*']
   pull_request:
-    branches: [main, 'release/**']
+    # feat/2.3-web-mod: the 2.3.0 web-mod feature branch (#1629) — its PRs get the full gates before the branch lands.
+    branches: [main, 'release/**', 'feat/2.3-web-mod']
   workflow_dispatch:
   schedule:
     - cron: '17 3 * * 1' # Weekly Mac signal; never a PR/main required run.

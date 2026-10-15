@@ -10,7 +10,7 @@ import { handleWebRequest } from "../src/web-api.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 vi.mock("node:os", async original => ({ ...await original<typeof import("node:os")>(), platform: () => "linux" }));
 const MiB = 1024 * 1024;
 const reading = (level: "normal" | "elevated" | "critical" | "unknown", platform: string): HostMemory => ({

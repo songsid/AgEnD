@@ -123,3 +123,24 @@ export function admitPlan(plan: ServicePlan, o: { target: string; expected: Expe
   }
   return { ok: true };
 }
+
+/**
+ * #1871: has this plan already happened? An update that died between bootout and bootstrap leaves its plan behind;
+ * after `agend start` loads the plist, launchd runs exactly the planned job, but under a new pid, so admitPlan refuses
+ * it ("the job launchd has loaded changed"), and every `agend restart` with it. True when the plist on disk is still the
+ * proven one and launchd runs its job. `agend restart` then restarts that job as an unchanged one (path 1, whose
+ * guard proves it again); a plan that changes nothing about the job comes to the same restart.
+ *
+ * Read-only on purpose: the record stays where it is, and the next refresh revokes it as it revokes every plan. A
+ * consumer that deleted or moved it would race with a refresh publishing or revoking at the same path.
+ */
+export function planCarriedOut(plan: ServicePlan, target: string, deps: Pick<PlanDeps, "readFile" | "run">): boolean {
+  const onDisk = deps.readFile(plan.plistPath);
+  if (onDisk === null || sha256(onDisk) !== plan.sha256) return false;
+  const planned = parsePlist(onDisk);
+  if (!planned) return false;
+  const printed = deps.run("launchctl", ["print", target]);
+  if (!completed(printed) || printed.status !== 0) return false;
+  const loaded = parseLaunchctlPrint(printed.stdout);
+  return !!loaded.tuple && sameJob(loaded.tuple, planned);
+}

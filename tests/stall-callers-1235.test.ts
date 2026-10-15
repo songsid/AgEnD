@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 const io = vi.hoisted(() => ({ now: 0, missing: false, read: false,
-  exec: vi.fn(), shell: vi.fn(), forbidden: vi.fn(() => { throw new Error("real process/tmux/IPC forbidden"); }) }));
+  exec: vi.fn(), shell: vi.fn(), lookup: vi.fn(), forbidden: vi.fn(() => { throw new Error("real process/tmux/IPC forbidden"); }) }));
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(),
   execFileSync: io.exec, spawnSync: io.shell, execSync: io.forbidden, execFile: io.forbidden,
   spawn: io.forbidden, exec: io.forbidden, fork: io.forbidden }));
+// #1877: the installer's login-shell lookup is async (runOnLoginShell); it is driven here, never a real shell.
+vi.mock("../src/login-shell.js", () => ({ runOnLoginShell: io.lookup }));
 vi.mock("node:fs", async original => {
   const actual = await original<typeof import("node:fs")>();
   return { ...actual,
@@ -34,7 +36,7 @@ const tags = () => slowSyncWorkSince(-1, io.now).map(entry => entry.caller);
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "agend-1235-observe-"));
   vi.stubEnv("HOME", dir); vi.stubEnv("AGEND_HOME", join(dir, "data")); vi.stubEnv("CODEX_HOME", join(dir, "codex"));
-  io.now = 0; io.missing = false; io.read = false; io.exec.mockReset(); io.shell.mockReset(); io.forbidden.mockClear();
+  io.now = 0; io.missing = false; io.read = false; io.exec.mockReset(); io.shell.mockReset(); io.lookup.mockReset(); io.forbidden.mockClear();
   resetSyncWorkAttributionForTests(); vi.spyOn(performance, "now").mockImplementation(() => io.now);
 });
 afterEach(() => {
@@ -58,15 +60,21 @@ describe("real synchronous caller paths remain unchanged and gain attribution", 
     expect(probeKiroCliCompatibility("/private/missing").source).toBe("unknown");
     expect(tags()).toEqual(expect.arrayContaining(["kiro.version", "kiro.help", "kiro.compatibilitySync"]));
   });
-  it("names installer bash and validation without changing the synchronous result", () => {
+  it("#1877: the installer's login-shell lookup left the loop — same verdicts, awaited, no synchronous attribution", async () => {
     const path = join(dir, "grok"); writeFileSync(path, "not executed"); chmodSync(path, 0o755);
     const fm: any = new FleetManager(join(dir, "fleet"));
-    io.shell.mockImplementation(() => { io.now += 75; return { status: 0, stdout: `${path}\n` }; });
-    expect(fm.locateBinaryOnLoginShell("grok")).toBe(path);
-    expect(tags()).toEqual(expect.arrayContaining(["fleet.installLoginShell", "fleet.installLookup"]));
-    io.shell.mockImplementation(() => { io.now += 75; return { status: 0, stdout: "alias grok='echo nope'" }; });
-    expect(fm.locateBinaryOnLoginShell("grok")).toBeNull();
-    expect(io.shell).toHaveBeenCalledWith("bash", ["-lc", "command -v grok"], expect.objectContaining({ timeout: 10_000 }));
+    io.lookup.mockImplementation(async () => { io.now += 75; return { status: 0, stdout: `${path}\n`, timedOut: false }; });
+    const pending = fm.locateBinaryOnLoginShell("grok");
+    expect(pending).toBeInstanceOf(Promise);
+    expect(await pending).toBe(path);
+    io.lookup.mockImplementation(async () => ({ status: 0, stdout: "alias grok='echo nope'", timedOut: false }));
+    expect(await fm.locateBinaryOnLoginShell("grok")).toBeNull();
+    io.lookup.mockImplementation(async () => ({ status: null, stdout: "", timedOut: true }));
+    expect(await fm.locateBinaryOnLoginShell("grok")).toBeNull();
+    expect(io.lookup).toHaveBeenCalledWith("command -v grok");
+    expect(io.shell, "no spawnSync left on this path").not.toHaveBeenCalled();
+    expect(tags()).not.toEqual(expect.arrayContaining(["fleet.installLoginShell"]));
+    expect(tags()).not.toEqual(expect.arrayContaining(["fleet.installLookup"]));
   });
   it("names the existing statusline tick while retaining cost/rate/failover output", () => {
     vi.useFakeTimers(); io.read = true;

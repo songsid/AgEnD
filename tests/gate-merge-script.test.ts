@@ -484,6 +484,36 @@ describe("gate-merge: merge-synced and green", () => {
     expect(r.line).toMatch(/^BLOCKED CI on \S+: build=missing/);
   });
 
+  // ── #1629: the 2.3.0 feature branch feat/2.3-web-mod is gated like release/** (CodeQL's default setup never runs there) ──
+  const featBase = (w: ReturnType<typeof world>, branch: string) => {
+    w.sh(w.dev, "checkout", "-q", "main");
+    w.sh(w.dev, "push", "-q", "origin", `HEAD:refs/heads/${branch}`);
+    w.state.prs[7]!.baseRefName = branch;
+  };
+  it("feat/2.3-web-mod base + build and scan green, no CodeQL → WOULD_MERGE (#1629)", () => {
+    const w = world();
+    featBase(w, "feat/2.3-web-mod");
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect([r.status, r.lines], r.stderr).toEqual([0, [`WOULD_MERGE ${w.approved}`]]);
+  });
+  it("feat/2.3-web-mod base: no build → BLOCKED; a present failed CodeQL still → BLOCKED (#1629)", () => {
+    const w = world();
+    featBase(w, "feat/2.3-web-mod");
+    w.state.checkRuns[w.approved] = [w.ok("scan", 2)];
+    expect(w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]).line).toMatch(/^BLOCKED CI on \S+: build=missing/);
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2), { ...w.ok("CodeQL", 3), conclusion: "failure" }];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect([r.status, r.line]).toEqual([1, expect.stringMatching(/^BLOCKED CI on \S+: .*CodeQL/)]);
+  });
+  it("only that branch: another feat/* base without CodeQL → still BLOCKED (#1629)", () => {
+    const w = world();
+    featBase(w, "feat/other");
+    w.state.checkRuns[w.approved] = [w.ok("build", 1), w.ok("scan", 2)];
+    const r = w.run(["--dry-run", "7", w.approved, "xmsg-approve-1"]);
+    expect([r.status, r.line]).toEqual([1, expect.stringMatching(/^BLOCKED CI on \S+: .*CodeQL=missing/)]);
+  });
+
   it("main base + no CodeQL → still BLOCKED (base=main behaviour unchanged) (#gate-1348 mutation)", () => {
     // Mutation check: removing the release check makes the release-base test above pass for main too,
     // but this test ensures the original main behaviour is kept.

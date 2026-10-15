@@ -159,14 +159,15 @@ const homeHref = `${base}zh-tw/`;
       <div class="rounded-xl border border-border bg-surface p-6">
         <div class="flex items-center gap-3 mb-3">
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">9</span>
-          <h3 class="font-semibold text-text-primary">開啟開發者模式，複製兩個 ID</h3>
+          <h3 class="font-semibold text-text-primary">準備 General 頻道 ID</h3>
         </div>
         <p class="text-sm text-text-secondary mb-3">
-          quickstart 會問你的 Discord 使用者 ID，以及 General agent 要回覆的頻道 ID。
+          quickstart 會先從訊息偵測你的帳號，請你確認使用者名稱與 ID。
+          請先準備 General agent 要回覆的頻道 ID；使用者 ID 留作手動輸入備用。
           在 Discord：<b class="text-text-primary">使用者設定 → 進階 → 開發者模式</b>打開，然後：
         </p>
         <ul class="text-sm text-text-secondary space-y-1">
-          <li>• 對自己按右鍵 → <b class="text-text-primary">複製使用者 ID</b>。fleet 會鎖定只給你用。</li>
+          <li>• 手動輸入或網頁精靈：對自己按右鍵 → <b class="text-text-primary">複製使用者 ID</b>。必須是有效的 17–20 位數字 ID。</li>
           <li>• 對要當 General 的文字頻道按右鍵 → <b class="text-text-primary">複製頻道 ID</b>。</li>
         </ul>
       </div>
@@ -177,7 +178,13 @@ const homeHref = `${base}zh-tw/`;
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">10</span>
           <h3 class="font-semibold text-text-primary">執行 quickstart</h3>
         </div>
-        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Discord，貼上 bot token、你的使用者 ID 和頻道 ID</pre>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Discord，貼上 bot token、確認自己的帳號，再輸入頻道 ID</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          看到提示後，在所選伺服器中 bot 看得到的頻道發一則訊息，或私訊 bot。
+          只有顯示的使用者名稱與 ID 確實屬於自己時才確認。偵測最多等待 30 秒；
+          如果失敗或你不確認，就貼上自己的使用者 ID。空白或格式錯誤都不會接受。
+          偵測不需要 Message Content intent；正常 fleet 聊天仍需開啟前面說明的 intent。
+        </p>
         <p class="text-sm text-text-secondary mt-3">
           quickstart 會找出 bot 所在的 server，寫好 <code class="font-mono text-accent">fleet.yaml</code>（存取權鎖定給你的使用者 ID），
           並詢問要不要設定 ClassicBot（<code class="font-mono text-accent">classicBot.yaml</code>，允許這個 server、你是管理員）。

@@ -25,7 +25,6 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus, homedir } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -55,7 +54,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
-import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
+import { sdNotify, sdNotifyBlocking, setSdNotifyWarn } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.js";
 import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
@@ -210,6 +209,7 @@ import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permis
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
+import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
 import { decideSlash, type SlashFacts, type SlashScope, type SlashSpeaker } from "./slash-authz.js";
 import { canonicalCommand, commandSpec, decideCommand, ruleFor, type CommandScope } from "./command-table.js";
@@ -6648,6 +6648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // into the same broken state, and a user who has legitimately stopped every
     // instance would get a restart loop. Those conditions surface through /health
     // (which now returns 503) and through the General-topic notifications instead.
+    setSdNotifyWarn((fields, message) => this.logger.warn(fields, message));
     this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
     // #1231: a stalled loop is what turns a slash command into "did not respond";
     // put each long stall in the log instead of leaving it to be guessed at.
@@ -14863,10 +14864,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           return;
         }
+        // Between the install ending and the sign-in starting there is no
+        // session to cancel; this hand-off is what `/login cancel` stops — from
+        // here on, as the login-shell lookup below is an await.
+        const handoff = { backend, cancelled: false };
+        this.installHandoff = handoff;
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        const installedAt = this.locateBinaryOnLoginShell(info.binary) ?? this.locateInInstallerBinDirs(info);
+        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? this.locateInInstallerBinDirs(info);
+        if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
+          this.installHandoff = null;
           await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
             { threadId: chat.threadId }).catch(() => {});
           return;
@@ -14877,6 +14885,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // installed, reported as verified, and then offered nowhere.
         this.adoptBinaryDirectory(installedAt, backend);
         if (!LOGIN_FLOWS[backend]) {
+          this.installHandoff = null;
           await chat.adapter.sendText(chat.chatId, t("install.success_no_login", backend),
             { threadId: chat.threadId }).catch(() => {});
           return;
@@ -14886,10 +14895,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // publish a durable completion line first so a successful install can
         // never look like it silently disappeared.  Include the binary that
         // passed the fresh-login-shell verification and the exact next step.
-        // Between the install ending and the sign-in starting there is no
-        // session to cancel; this hand-off is what `/login cancel` stops.
-        const handoff = { backend, cancelled: false };
-        this.installHandoff = handoff;
         await chat.adapter.sendText(chat.chatId, t("install.success", backend, info.binary),
           { threadId: chat.threadId }).catch(err => this.logger.warn({ err, backend },
             "Failed to send durable install success notification"));
@@ -14952,15 +14957,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The absolute path a fresh login shell resolves `binary` to, or null. Only
    * a real executable file counts: `command -v` also answers with an alias
    * definition or a function name, neither of which a spawn could run.
+   * Async (runOnLoginShell): a login file that backgrounds a process holding the shell's output once froze the fleet loop here.
    */
-  private locateBinaryOnLoginShell(binary: string): string | null {
-    return measureSyncWork("fleet.installLookup", () => this.locateBinaryOnLoginShellSync(binary));
-  }
-  private locateBinaryOnLoginShellSync(binary: string): string | null {
+  private async locateBinaryOnLoginShell(binary: string): Promise<string | null> {
     try {
-      const result = measureSyncWork("fleet.installLoginShell", () => spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe", encoding: "utf8" }));
+      const result = await runOnLoginShell(`command -v ${binary}`);
       if (result.status !== 0) return null;
-      const path = String(result.stdout ?? "").trim().split("\n").pop()?.trim() ?? "";
+      const path = result.stdout.trim().split("\n").pop()?.trim() ?? "";
       if (!isAbsolute(path)) return null;
       accessSync(path, fsConstants.X_OK);
       return statSync(path).isFile() ? path : null;

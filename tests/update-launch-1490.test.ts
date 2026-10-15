@@ -33,7 +33,7 @@ vi.mock("../src/update-dispatch.js", async original => {
   return { ...real, resolveInstalledAgend: vi.fn(async () => ({ ok: true, agend: "/test prefix/$HOME/agend", version: "2.2.0" })) };
 });
 // Shutdown notifications stay inert even if the test runner inherited a service environment.
-vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn() }));
+vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn() }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { defaultUpdateLaunchDeps, inServiceCgroup, resolveUpdateLaunch, watchUpdateLaunch, type UpdateLaunchDeps } from "../src/update-launch.js";

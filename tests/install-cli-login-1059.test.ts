@@ -111,7 +111,7 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
     const { fm, chat } = fleet();
     process.env.PATH = `${profileBin}:/usr/bin:/bin`;
     await fm.startInstallSession("grok", chat).catch(() => {}); // already installed now
-    const located = (fm as any).locateBinaryOnLoginShell("grok");
+    const located = await (fm as any).locateBinaryOnLoginShell("grok");
     (fm as any).adoptBinaryDirectory(located, "grok");
     expect(process.env.PATH).toBe(`${profileBin}:/usr/bin:/bin`);
   });
@@ -140,17 +140,43 @@ describe("every way an install ends is reported, with the next step (#1059)", ()
 });
 
 describe("locateBinaryOnLoginShell accepts only a real executable", () => {
-  it("an alias or a function the profile defines is not a binary", () => {
+  it("an alias or a function the profile defines is not a binary", async () => {
     const { fm } = fleet();
     rmSync(join(profileBin, "grok"));
     writeFileSync(join(home, ".bash_profile"), "alias grok='echo hi'\ngrok2() { :; }\n");
-    expect((fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
-    expect((fm as any).locateBinaryOnLoginShell("grok2")).toBeNull();
+    expect(await (fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
+    expect(await (fm as any).locateBinaryOnLoginShell("grok2")).toBeNull();
   });
 
-  it("a file without the execute bit is not a binary", () => {
+  it("a file without the execute bit is not a binary", async () => {
     const { fm } = fleet();
     chmodSync(join(profileBin, "grok"), 0o644);
-    expect((fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
+    expect(await (fm as any).locateBinaryOnLoginShell("grok")).toBeNull();
+  });
+});
+
+describe("the login-shell lookup never holds the fleet loop", () => {
+  it("a profile that backgrounds a process holding the shell's output: found at once, the loop kept turning", async () => {
+    const { fm } = fleet();
+    // What an agent or keychain line in a profile does: a child that outlives the shell and keeps its stdout.
+    writeFileSync(join(home, ".bash_profile"), `export PATH="$HOME/.grok/bin:$PATH"\nsleep 20 &\n`);
+    let ticks = 0;
+    const timer = setInterval(() => { ticks++; }, 10);
+    const started = performance.now();
+    try {
+      expect(await (fm as any).locateBinaryOnLoginShell("grok")).toBe(join(profileBin, "grok"));
+    } finally { clearInterval(timer); }
+    expect(performance.now() - started, "returned without waiting for the background child").toBeLessThan(5_000);
+    expect(ticks, "timers ran meanwhile").toBeGreaterThan(0);
+  }, 15_000);
+
+  it("a /login cancel while the lookup runs stops the hand-off to sign-in", async () => {
+    const { fm, chat } = fleet();
+    const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
+    await fm.startInstallSession("grok", chat);
+    const done = fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
+    expect(await fm.cancelLoginSession()).toContain("grok");
+    await done;
+    expect(signIn).not.toHaveBeenCalled();
   });
 });

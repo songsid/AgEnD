@@ -31,6 +31,9 @@ import {
   rmSync,
   statSync,
   realpathSync,
+  openSync,
+  writeSync,
+  closeSync,
 } from "node:fs";
 import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -69,6 +72,7 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { requestCpuProfile } from "./profile-control.js";
 import { requestSettingsConfirmation, type SettingsInspection } from "./settings-control.js";
 import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
+import { handOff, shouldHandOff } from "./launchd-handoff.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -95,6 +99,27 @@ function planDeps() {
     isExecutable: (path: string) => { try { return statSync(path).isFile() && (statSync(path).mode & 0o111) !== 0; } catch { return false; } },
     now: () => new Date(),
   };
+}
+/**
+ * #1871: hand this command to a detached copy that outlives the fleet's stop (see launchd-handoff.ts). True when it
+ * did; false to carry on here (not an agent session, or the copy could not be started — said so).
+ */
+async function handOffLaunchdActivation(action: string): Promise<boolean> {
+  if (!shouldHandOff(process.env)) return false;
+  const handed = await handOff({ agendHome: DATA_DIR, self: selfCommand(process.argv.slice(2)), env: process.env, action }, {
+    open: path => openSync(path, "a", 0o600),
+    write: (fd, text) => writeSync(fd, text),
+    close: fd => closeSync(fd),
+    spawn: (command, args, options) => spawn(command, args, options),
+    now: () => new Date(),
+  });
+  if (handed.ok) {
+    console.log(`  ↪ This session belongs to the fleet that launchd is about to stop, so \`agend ${action}\` goes on in the background.`);
+    console.log(`  Its output: ${handed.log}`);
+    return true;
+  }
+  console.log(`  ⚠ Could not continue in the background (${handed.reason}); going on in this session.`);
+  return false;
 }
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 
@@ -1412,6 +1437,11 @@ program
       process.exit(1);
     }
     if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);
+    // #1871: on launchd the activation boots out the fleet this agent session runs in; the update must outlive that.
+    {
+      const { getServicePath, getSystemServicePath, detectPlatform } = await import("./service-installer.js");
+      if (detectPlatform() === "macos" && !getSystemServicePath() && getServicePath() && await handOffLaunchdActivation("update")) return;
+    }
     const { spawnSync } = await import("node:child_process");
     // The channel follows the version being replaced — this CLI's own package — so an alpha or beta stays on its channel.
     const tag = getUpdateSelector(opts, pkgVersion);
@@ -2210,8 +2240,12 @@ program
       if (printed.status === 0) {
         const plistPath = getServicePath() ?? join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
         // Path 2 (#1450 C6): a proven new plist waits on disk with its plan — exactly one bootout + bootstrap.
-        const { readPlan, admitPlan, planPath } = await import("./service-plan.js");
-        const plan = opts.force ? null : readPlan(DATA_DIR, deps);
+        const { readPlan, admitPlan, planPath, planCarriedOut } = await import("./service-plan.js");
+        const recorded = opts.force ? null : readPlan(DATA_DIR, deps);
+        // #1871: an interrupted update's plan whose job launchd already runs (after `agend start`) is done: restart that
+        // job as an unchanged one (path 1) instead of refusing it for its new pid.
+        const plan = recorded && planCarriedOut(recorded, target, deps) ? null : recorded;
+        if (recorded && !plan) console.log("  ℹ launchd already runs the job an interrupted update planned; restarting it as it is.");
         if (plan && expectation.ok) {
           const pkgDir = dirname(dirname(expectation.expected.entry));
           const admitted = admitPlan(plan, { target, expected: expectation.expected, pkgDir }, deps);
@@ -2220,6 +2254,7 @@ program
             process.exitCode = 1;
             return;
           }
+          if (await handOffLaunchdActivation("restart")) return;
           const { activateService } = await import("./service-activation.js");
           const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
             { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
