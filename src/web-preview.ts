@@ -2,7 +2,7 @@
  * #1306: the preview listener — where an agent's HTML may run, away from the dashboard's authority.
  * Design: docs/design/1306-inline-html-preview.md (r3, approved).
  *
- * A second loopback listener (default health_port + 1) serves one static document, `GET /frame`: a shim that
+ * A second loopback listener (default health_port + 1) serves `GET /frame` and the local-only `GET /effect`: shims that
  * receives HTML by postMessage only from the dashboard origins it was built with, and writes it into its own
  * opaque, sandboxed document. Everything else is an empty 404. It reads no cookie, no header but Host, and logs
  * nothing about a request. The dashboard decides per /ui load whether a preview origin is reachable from the
@@ -15,6 +15,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { allowedHostNames, hostnameOf, LOOPBACK_HOST_NAMES, type HostGuardConfig } from "./web-host-guard.js";
+import { EFFECT_DOCUMENT_WRITE_PATTERN, EFFECT_HTML_NAMESPACE, EFFECT_SCRIPT_TYPES, EFFECT_UNSUPPORTED_TAGS } from "./web-effect-template.js";
 
 /** The most HTML a preview takes (UTF-8 bytes): the parent refuses more before sending, the shim refuses it too. */
 export const PREVIEW_HTML_MAX_BYTES = 1024 * 1024;
@@ -207,6 +208,111 @@ export function buildShim(bootId: string, origins: readonly string[]): string {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Preview</title></head><body><script>${script}</script></body></html>`;
 }
 
+/**
+ * #1629 r3: a separate effect document. Unlike /frame, it has no resize or heartbeat window protocol.
+ * One exact render transfers a private port; the effect sees only a frozen subscription/ready facade.
+ * This primitive does not authorize a placement or mount a frame: those are dashboard-owned decisions.
+ */
+export function buildEffectShim(bootId: string, origins: readonly string[]): string {
+  const literal = (value: unknown): string => JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+  const script = `(function () {
+  "use strict";
+  var BOOT = ${literal(bootId)}, ORIGINS = ${literal([...origins])}, MAX = ${PREVIEW_HTML_MAX_BYTES};
+  var SCRIPT_TYPES = ${literal(EFFECT_SCRIPT_TYPES)}, BLOCKED_TAGS = ${literal(EFFECT_UNSUPPORTED_TAGS)};
+  var HTML_NS = ${literal(EFFECT_HTML_NAMESPACE)}, WRITE_PATTERN = ${literal(EFFECT_DOCUMENT_WRITE_PATTERN)};
+  // No effect code runs inside a port-bearing event, including through a poisoned data getter.
+  var defer = window.setTimeout.bind(window);
+  var readData = Function.prototype.call.bind(Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data").get);
+  var done = false;
+  function bytes(s) { try { return new TextEncoder().encode(s).length; } catch (e) { return Infinity; } }
+  function render(e) {
+    if (done || e.source !== window.parent || e.origin === "null" || ORIGINS.indexOf(e.origin) < 0) return;
+    var d = e.data;
+    if (!d || typeof d !== "object" || Object.getPrototypeOf(d) !== Object.prototype) return;
+    if (Reflect.ownKeys(d).sort().join(",") !== "ch,html,type,v" || d.v !== 1 || d.type !== "render") return;
+    if (typeof d.ch !== "string" || !/^[0-9a-f]{16,64}$/.test(d.ch) || typeof d.html !== "string" || bytes(d.html) > MAX) return;
+    if (!e.ports || e.ports.length !== 1) return;
+    var port = e.ports[0];
+    if (!port || typeof port.postMessage !== "function" || typeof port.addEventListener !== "function" || typeof port.start !== "function" || typeof port.close !== "function") return;
+    if (new RegExp(WRITE_PATTERN, "i").test(d.html)) return;
+    var parsed, scripts;
+    try {
+      parsed = new DOMParser().parseFromString(d.html, "text/html");
+      var elements = Array.from(parsed.querySelectorAll("*"));
+      if (elements.some(function (el) {
+        if (BLOCKED_TAGS.indexOf(el.localName.toLowerCase()) >= 0) return true;
+        if (el.localName === "meta" && el.hasAttribute("http-equiv")) return true;
+        if (el.localName !== "script") return false;
+        return el.namespaceURI !== HTML_NS || Array.from(el.attributes).some(function (a) { return a.name !== "type"; }) ||
+          SCRIPT_TYPES.indexOf((el.getAttribute("type") || "").trim().toLowerCase()) < 0;
+      })) return;
+      scripts = Array.from(parsed.querySelectorAll("script"));
+    } catch (ignored) { return; }
+    done = true;
+    window.removeEventListener("message", render);
+    var post = port.postMessage.bind(port), close = port.close.bind(port);
+    var subscribe = port.addEventListener.bind(port), start = port.start.bind(port);
+    var active = true, ready = false, callbacks = Object.create(null);
+    var kinds = ["state", "reply", "mention", "theme", "env", "pointer", "status", "usage", "fleet"];
+    var api = Object.freeze({
+      on: function (kind, fn) {
+        if (!active || kinds.indexOf(kind) < 0 || typeof fn !== "function") return;
+        if (!callbacks[kind]) callbacks[kind] = [];
+        callbacks[kind].push(fn);
+      },
+      ready: function () {
+        if (!active || ready) return;
+        ready = true;
+        post({ type: "ready" });
+      }
+    });
+    subscribe("message", function (event) {
+      var payload = readData(event);
+      defer(function () {
+        if (!active || !payload || payload.v !== 1 || kinds.indexOf(payload.type) < 0) return;
+        var listeners = (callbacks[payload.type] || []).slice();
+        listeners.forEach(function (fn) { try { fn(payload); } catch (ignored) {} });
+      }, 0);
+    });
+    ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "RTCIceTransport", "RTCSctpTransport"].forEach(function (key) {
+      try { delete window[key]; } catch (ignored) {}
+      try { if (window[key]) Object.defineProperty(window, key, { value: undefined, configurable: false, writable: false }); } catch (ignored) {}
+    });
+    defer(function () { try {
+      Object.defineProperty(window, "agend", { value: api, writable: false, configurable: false });
+      // Compatibility guards; they are not a substitute for sandbox/CSP or the parent's second-load fence.
+      ["open", "write", "writeln", "close"].forEach(function (key) {
+        Object.defineProperty(document, key, { value: function () { throw new Error("Unsupported effect document method"); }, writable: false, configurable: false });
+      });
+      // Effects get one synthetic lifecycle, even if render precedes the bootstrap's native load.
+      function bootstrapEvent(event) { if (event.isTrusted) event.stopImmediatePropagation(); }
+      document.addEventListener("DOMContentLoaded", bootstrapEvent, true);
+      window.addEventListener("load", bootstrapEvent, true);
+      start();
+      document.head.replaceWith(document.adoptNode(parsed.head));
+      document.body.replaceWith(document.adoptNode(parsed.body));
+      Array.from(parsed.documentElement.attributes).forEach(function (a) { document.documentElement.setAttribute(a.name, a.value); });
+      scripts.forEach(function (script) {
+        if (!script.parentNode) return;
+        var fresh = document.createElement("script");
+        fresh.type = script.getAttribute("type") || "text/javascript";
+        fresh.textContent = script.textContent;
+        script.replaceWith(fresh);
+      });
+      document.dispatchEvent(new Event("DOMContentLoaded", { bubbles: true }));
+      window.dispatchEvent(new Event("load"));
+    } catch (error) {
+      active = false;
+      callbacks = Object.create(null);
+      close();
+    } }, 0);
+  }
+  window.addEventListener("message", render);
+  window.parent.postMessage({ v: 1, type: "ready", ch: null, boot: BOOT }, "*");
+})();`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Effect</title></head><body><script>${script}</script></body></html>`;
+}
+
 export interface PreviewListener {
   readonly server: Server;
   readonly bootId: string;
@@ -217,7 +323,7 @@ export interface PreviewListener {
 }
 
 /**
- * The preview listener: GET /frame (no query) → the shim with the §5.1 headers; anything else → empty 404; a Host
+ * The preview listener: exact GET /frame or /effect → a shim with the §5.1 headers; anything else → empty 404; a Host
  * it does not answer to → empty 403. No X-Frame-Options (it must be framable by the dashboard), no cookie or
  * header parsing beyond Host, nothing logged per request. Built once: the shim and its headers never change.
  */
@@ -226,7 +332,16 @@ export interface PreviewListener {
  * local preview listener and the public link's own preview gateway (#1723), so both serve the very same frame.
  */
 export function previewFrameResponse(bootId: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
-  const body = Buffer.from(buildShim(bootId, origins), "utf8");
+  return shimResponse(buildShim(bootId, origins), origins);
+}
+
+/** Effects use the exact existing preview response policy, on the local listener only. */
+export function previewEffectResponse(bootId: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
+  return shimResponse(buildEffectShim(bootId, origins), origins);
+}
+
+function shimResponse(html: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
+  const body = Buffer.from(html, "utf8");
   return {
     body,
     headers: {
@@ -253,6 +368,8 @@ export function createPreviewListener(opts: {
   const bootId = opts.bootId ?? randomBytes(16).toString("hex");
   const origins = dashboardOrigins(opts.settings, opts.healthPort, opts.config);
   const { body, headers } = previewFrameResponse(bootId, origins);
+  // Public-link origins may widen /frame, never /effect. Effects remain local-dashboard only.
+  const effect = previewEffectResponse(bootId, origins);
   let widened: { key: string; body: Buffer; headers: Record<string, string> } | null = null;
   const frameFor = (): { body: Buffer; headers: Record<string, string> } => {
     const extra = (opts.extraOrigins?.() ?? []).filter(o => !origins.includes(o));
@@ -272,7 +389,12 @@ export function createPreviewListener(opts: {
     // Host only. The cookie a same-host port receives (cookies are not port-isolated) is never read.
     const host = typeof req.headers.host === "string" ? hostnameOf(req.headers.host) : null;
     if (!host || !hosts.has(host)) return empty(res, 403);
-    if (req.method !== "GET" || req.url !== "/frame") return empty(res, 404);
+    if (req.method !== "GET") return empty(res, 404);
+    if (req.url === "/effect") {
+      res.writeHead(200, effect.headers);
+      return res.end(effect.body);
+    }
+    if (req.url !== "/frame") return empty(res, 404);
     const frame = frameFor();
     res.writeHead(200, frame.headers);
     res.end(frame.body);
