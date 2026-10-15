@@ -10,6 +10,7 @@
  * The fleet keeps one upload per instance and drops it after a minute without a part (web-appearance.ts).
  */
 import { createHash } from "node:crypto";
+import { writeAgentFile } from "./agent-file-read.js";
 
 /** Every picture slot an agent uploads for (the theme's two and the card's two). Here so agend-agent stays small. */
 export const THEME_ASSET_SLOTS = ["background", "avatar", "portrait", "banner"] as const;
@@ -49,37 +50,60 @@ export async function sendAssetInParts(
   return answer;
 }
 
+/** Every file a preview may carry: an SVG per mode, and the pictures it names (web-appearance-view.ts PREVIEW_FILE). */
+export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|background)\.(?:png|jpg|webp|gif))$/;
+/** The most parts one preview file may come in (its largest picture, a 4 MiB portrait, is 12). */
+export const PREVIEW_MAX_PARTS = 64;
 /**
- * #1629 r4 §1: preview_web_appearance's answer on the agent's side (the daemon, agend-agent): its files whole, or —
- * larger than one message — fetched part by part with `send({ part: { preview, mode, index } })`, each checked against
- * the declared bytes and sha256. Returns the files, or the first error.
+ * #1629 r4 §1: preview_web_appearance's answer on the agent's side (the daemon, agend-agent): its files — an SVG per
+ * mode and the pictures they name — whole, or (larger than one message) fetched part by part with
+ * `send({ part: { preview, name, index } })`, each checked against the declared bytes and sha256. Returns the files,
+ * or the first error. Only the names above are taken.
  */
 export async function receivePreview(
   first: Record<string, unknown>,
   send: (args: Record<string, unknown>) => Promise<Record<string, unknown>>,
-): Promise<{ files: Array<{ mode: string; data: Buffer }> } | { error: string; message?: string }> {
+): Promise<{ files: Array<{ name: string; data: Buffer }> } | { error: string; message?: string }> {
   if (typeof first.error === "string") return first as { error: string };
   const files = Array.isArray(first.files) ? first.files as Array<Record<string, unknown>> : [];
-  const MODE = /^(light|dark)$/;
-  if (!files.length || !files.every(f => typeof f.mode === "string" && MODE.test(f.mode))) return { error: "preview", message: "The fleet sent no preview." };
+  if (!files.length || !files.every(f => typeof f.name === "string" && PREVIEW_FILE.test(f.name)) || new Set(files.map(f => f.name)).size !== files.length) {
+    return { error: "preview", message: "The fleet sent no preview." };
+  }
   if (typeof first.preview !== "string") {
     if (!files.every(f => typeof f.data_b64 === "string")) return { error: "preview", message: "The fleet sent no preview." };
-    return { files: files.map(f => ({ mode: f.mode as string, data: Buffer.from(f.data_b64 as string, "base64") })) };
+    return { files: files.map(f => ({ name: f.name as string, data: Buffer.from(f.data_b64 as string, "base64") })) };
   }
-  const out: Array<{ mode: string; data: Buffer }> = [];
+  const out: Array<{ name: string; data: Buffer }> = [];
   for (const f of files) {
     const bytes = f.bytes, count = f.parts;
-    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(count) || (count as number) < 1 || (count as number) > 64 || typeof f.sha256 !== "string") return { error: "preview", message: "The fleet sent an unreadable preview." };
+    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(count) || (count as number) < 1 || (count as number) > PREVIEW_MAX_PARTS || typeof f.sha256 !== "string") return { error: "preview", message: "The fleet sent an unreadable preview." };
     const chunks: Buffer[] = [];
     for (let index = 0; index < (count as number); index++) {
-      const a = await send({ part: { preview: first.preview, mode: f.mode, index } });
+      const a = await send({ part: { preview: first.preview, name: f.name, index } });
       if (typeof a.error === "string") return a as { error: string };
       if (typeof a.data_b64 !== "string") return { error: "preview", message: "A part of the preview is missing." };
       chunks.push(Buffer.from(a.data_b64, "base64"));
     }
     const data = Buffer.concat(chunks);
     if (data.length !== bytes || createHash("sha256").update(data).digest("hex") !== f.sha256) return { error: "preview", message: "The preview's parts do not add up." };
-    out.push({ mode: f.mode as string, data });
+    out.push({ name: f.name as string, data });
   }
   return { files: out };
+}
+
+/**
+ * Write a received preview into `.agend/appearance/` of the working directory (on the agent's side), and say where:
+ * the SVG per mode, and the pictures they name (Read those as images).
+ */
+export async function writePreview(files: Array<{ name: string; data: Buffer }>, opts: { workspace: string | undefined; stateDir: string }):
+  Promise<{ files: Array<{ mode: string; path: string }>; pictures: Array<{ role: string; path: string }> } | { error: string }> {
+  const out = { files: [] as Array<{ mode: string; path: string }>, pictures: [] as Array<{ role: string; path: string }> };
+  for (const f of files) {
+    if (!PREVIEW_FILE.test(f.name)) return { error: `.agend/appearance/${f.name.slice(0, 40)} — not a preview file` };
+    const w = await writeAgentFile(".agend/appearance", f.name, f.data, opts);
+    if (!w.ok) return { error: `.agend/appearance/${f.name} — ${w.reason}` };
+    const [base] = f.name.split(".");
+    if (f.name.endsWith(".svg")) out.files.push({ mode: base!, path: w.path }); else out.pictures.push({ role: base!, path: w.path });
+  }
+  return out;
 }

@@ -20,8 +20,8 @@ import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-tur
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
-import { readAgentFile, writeAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts } from "./web-asset-parts.js";
+import { readAgentFile } from "./agent-file-read.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
@@ -9939,13 +9939,9 @@ export class Daemon extends EventEmitter {
           });
           if (failed) { reply(null, failed); return; }
           if ("error" in got) { reply(got, undefined); return; }
-          const files: Array<{ mode: string; path: string }> = [];
-          for (const f of got.files) {
-            const w = await writeAgentFile(".agend/appearance", `${f.mode}.svg`, f.data, { workspace: this.config.working_directory, stateDir: getAgendHome() });
-            if (!w.ok) { reply(null, `preview_web_appearance: .agend/appearance/${f.mode}.svg — ${w.reason}`); return; }
-            files.push({ mode: f.mode, path: w.path });
-          }
-          reply({ files }, undefined);
+          const written = await writePreview(got.files, { workspace: this.config.working_directory, stateDir: getAgendHome() });
+          if ("error" in written) { reply(null, `preview_web_appearance: ${written.error}`); return; }
+          reply(written, undefined);
           return;
         }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }

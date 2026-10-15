@@ -4,10 +4,11 @@
  * from the page's own layout numbers). Pure: the fleet passes in what it already resolved; nothing here reads a file,
  * a path or another instance.
  *
- * The SVG embeds only this instance's pictures, as data: URIs; text is XML-escaped; fonts are generic families. No
- * browser, no live session, no other instance's content.
+ * The SVG names only this instance's pictures, as side files next to it (`avatar.png`, …: #1890 review — an SVG with a
+ * picture inside outgrew what an agent's Read takes); text is XML-escaped; colours are checked again; fonts are generic
+ * families. No browser, no live session, no other instance's content.
  */
-import { effectivePalette, type Palette, type Theme, type ThemeMode } from "./web-theme.js";
+import { effectivePalette, type Palette, type Theme, THEME_DEFAULTS, type ThemeMode } from "./web-theme.js";
 import type { ResolvedCard } from "./web-card.js";
 
 export type AvatarSource = "profile" | "theme" | "bot" | "emoji" | "initial";
@@ -82,22 +83,28 @@ const W = 720, PAD = 16, PORTRAIT_H = 240, BANNER_H = 120, HEADER_H = 56;
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const FONT: Record<string, string> = { inter: "sans-serif", system: "sans-serif", mono: "monospace" };
 
-export interface PreviewPictures {
-  /** This instance's picture by role, as bytes and a type (null: none, or not readable). */
-  avatar: { bytes: Buffer; mime: string } | null;
-  portrait: { bytes: Buffer; mime: string } | null;
-  banner: { bytes: Buffer; mime: string } | null;
-  background: { bytes: Buffer; mime: string } | null;
+export const PICTURE_ROLES = ["avatar", "portrait", "banner", "background"] as const;
+export type PictureRole = typeof PICTURE_ROLES[number];
+/** This instance's pictures by role, as the side files' names (null: none). */
+export type PreviewPictures = Record<PictureRole, string | null>;
+const PICTURE_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+/** A side file's name for a picture of this role and type, or null for a type no page shows. */
+export function pictureFileName(role: PictureRole, mime: string): string | null {
+  return Object.hasOwn(PICTURE_EXT, mime) ? `${role}.${PICTURE_EXT[mime]}` : null;
 }
-const dataUri = (p: { bytes: Buffer; mime: string }) => `data:${p.mime};base64,${p.bytes.toString("base64")}`;
-const PICTURE_MIME = /^image\/(png|jpeg|webp|gif)$/;
+/** Every name a preview writes: an SVG per mode, and the pictures it names. */
+export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|background)\.(?:png|jpg|webp|gif))$/;
+const COLOR = /^#[0-9a-f]{6}$/;
 
 /** One mode's SVG. Every picture is one of `pics` (this instance's), inline; nothing else is referenced. */
 export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPictures): string {
-  const t = effectiveTheme(i.theme)[mode];
+  const raw = effectiveTheme(i.theme)[mode];
+  // Colours go into attributes: each is checked again here (a file someone may open in a browser), else the default's.
+  const t = { ...raw };
+  for (const k of ["bg", "surface", "text", "text2", "accent", "userBubble", "agentBubble"] as const) if (!COLOR.test(t[k])) t[k] = THEME_DEFAULTS[mode][k];
   const font = FONT[t.font] ?? "sans-serif";
-  const img = (p: { bytes: Buffer; mime: string } | null, x: number, y: number, w: number, h: number, extra = "") =>
-    p && PICTURE_MIME.test(p.mime) ? `<image href="${dataUri(p)}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"${extra}/>` : "";
+  const img = (name: string | null, x: number, y: number, w: number, h: number, extra = "") =>
+    name && PREVIEW_FILE.test(name) && !name.endsWith(".svg") ? `<image href="${name}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"${extra}/>` : "";
   const out: string[] = [];
   let y = 0;
   // The card, as Details draws it at M.
@@ -117,7 +124,7 @@ export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPic
   out.push(`<rect x="0" y="${hy}" width="${W}" height="${HEADER_H}" fill="${t.surface}"/>`);
   const cx = PAD + 16, cy = hy + HEADER_H / 2;
   const ring = resolvedRing(i.entry), face = resolvedAvatar(i.entry);
-  if (ring) out.push(`<circle cx="${cx}" cy="${cy}" r="18" fill="none" stroke="${ring.color}" stroke-width="2"/>`);
+  if (ring && COLOR.test(ring.color)) out.push(`<circle cx="${cx}" cy="${cy}" r="18" fill="none" stroke="${ring.color}" stroke-width="2"/>`);
   out.push(`<clipPath id="face"><circle cx="${cx}" cy="${cy}" r="16"/></clipPath>`);
   if (pics.avatar && (face.source === "theme" || face.source === "profile" || face.source === "bot")) out.push(img(pics.avatar, cx - 16, cy - 16, 32, 32, ` clip-path="url(#face)"`));
   else {
