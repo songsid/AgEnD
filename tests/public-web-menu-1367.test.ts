@@ -14,6 +14,7 @@ import { PublicWebLink } from "../src/public-web-link.js";
 import { TunnelPurposeLane } from "../src/tunnel/purpose-lane.js";
 import { tokenEpoch } from "../src/web-session.js";
 import { setLocale, t } from "../src/locale.js";
+import { formatFleetTime } from "../src/tz-utils.js";
 const rigs: Array<{dir: string; fm: FleetManager; s: any}> = [];
 let mono = 0;
 function rig(platform: "telegram" | "discord" = "telegram") {
@@ -61,6 +62,56 @@ afterEach(async () => {
   vi.useRealTimers(); vi.restoreAllMocks();
 });
 describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel", () => {
+  it.each([
+    ["telegram", "en"], ["discord", "en"], ["telegram", "zh-TW"], ["discord", "zh-TW"],
+  ] as const)("#1854 %s General menu is action-first in %s, with no code until a click", async (platform, language) => {
+    setLocale(language);
+    const h = rig(platform);
+    h.s.worlds.get("owner").botUsername = "fixturebot";
+    if (platform === "discord") await h.slash(); else await h.typed();
+    const copy = platform === "discord" ? h.respondButtons.mock.calls[0]![0] : h.adapter.notifyAlert.mock.calls[0]![1].message;
+    const choices = platform === "discord" ? h.respondButtons.mock.calls[0]![1] : h.adapter.notifyAlert.mock.calls[0]![1].choices;
+    expect(copy).toBe(language === "en"
+      ? "Press a sign-in button to get your private link and code.\nPublic links use Cloudflare TLS; anyone who signs in can manage the fleet. Do not forward."
+      : "按登入按鈕，取得僅傳給你的連結和登入碼。\n公開連結使用 Cloudflare TLS；登入者可管理艦隊，勿轉傳。");
+    expect(choices.map((c: any) => c.label)).toEqual(language === "en"
+      ? ["💻 AgEnD computer: get a code", "🌐 Other device (temporary public)"]
+      : ["💻 AgEnD 電腦登入（取碼）", "🌐 其他裝置登入（臨時公開）"]);
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
+    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
+    expect(h.manager.start).not.toHaveBeenCalled();
+    await h.click("local");
+    expect(h.adapter.sendDirect.mock.calls[0]![1]).toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
+    expect(h.manager.start).not.toHaveBeenCalled();
+  });
+
+  it.each(["telegram", "discord"] as const)("#1854 %s public-disabled menu is one instruction and one local button", async platform => {
+    const h = rig(platform); h.fm.fleetConfig!.web = { public_link: { allow_public: false } };
+    if (platform === "discord") await h.slash(); else await h.typed();
+    const copy = platform === "discord" ? h.respondButtons.mock.calls[0]![0] : h.adapter.notifyAlert.mock.calls[0]![1].message;
+    const choices = platform === "discord" ? h.respondButtons.mock.calls[0]![1] : h.adapter.notifyAlert.mock.calls[0]![1].choices;
+    expect(copy).toBe("Press a sign-in button to get your private link and code.");
+    expect(choices.map((c: any) => c.id.split(":").at(-1))).toEqual(["local"]);
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
+  });
+
+  it("#1854 preserves active public expiry and the close control", async () => {
+    const h = rig(); const expiresAt = Date.now() + 60_000;
+    vi.spyOn(h.fm, "getPublicWebStatus").mockReturnValue({ state: "open", remainingSeconds: 60, expiresAt });
+    await h.typed();
+    const menu = h.adapter.notifyAlert.mock.calls[0]![1];
+    expect(menu.message).toContain("Public link: open · 60s remaining");
+    expect(menu.message).toContain(t("dashboard.public_until", formatFleetTime(expiresAt)));
+    expect(menu.choices.map((c: any) => c.id.split(":").at(-1))).toEqual(["local", "public", "close"]);
+  });
+
+  it("#1854 an unavailable dashboard does not promise a ready sign-in action", async () => {
+    const h = rig(); vi.spyOn(h.fm, "getDashboardAccess").mockReturnValue({ ready: false, token: null });
+    await h.typed();
+    expect(h.adapter.notifyAlert.mock.calls[0]![1].message).toBe(`${t("dashboard.starting")}\n${t("dashboard.public_risk")}`);
+    expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
+  });
+
   it.each(["telegram", "discord"] as const)("%s menu is secret-free; click sends link/code only by DM with a close button", async platform => {
     const h = rig(platform); if (platform === "discord") await h.slash(); else await h.typed();
     expect(h.manager.start).not.toHaveBeenCalled(); expect(h.s.webLoginCodes.hasOutstandingCode).toBe(false);
@@ -121,6 +172,9 @@ describe("real dashboard dispatcher/nonce/private delivery, no fleet or tunnel",
     await h.slash("admin", "T1");
     // #1586: the sign-in DM, then the code alone, to the same user.
     expect(h.adapter.sendDirect).toHaveBeenCalledTimes(2);
+    expect(h.adapter.sendDirect.mock.calls[0]![1]).toContain(t("dashboard.code_help"));
+    expect(h.adapter.sendDirect.mock.calls[0]![1]).not.toContain(t("dashboard.menu_instruction"));
+    expect(h.adapter.sendDirect.mock.calls[0]![1]).not.toMatch(/choose.*below|選擇下方/i);
     expect(h.adapter.sendDirect.mock.calls.map(c => c[0])).toEqual(["admin", "admin"]);
     expect(h.adapter.sendDirect.mock.calls[1][1]).toBe(`\`${/[A-Z0-9]{4}-[A-Z0-9]{4}/.exec(h.adapter.sendDirect.mock.calls[0][1])![0]}\``);   // #1606
     expect(h.respond).toHaveBeenCalledTimes(1);

@@ -5688,13 +5688,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapter = owner.binding as ChannelAdapter;
     const status = this.getPublicWebStatus();
     const publicAllowed = publicLinkSettings(this.fleetConfig?.web).allowed;
-    const tgHint = adapter.type === "telegram" && dmChatId === undefined ? this.tgStartWebUrl(owner.adapterId) : null;
-    const menuText = this.topicCommands.getDashboardText(false, !publicAllowed)
-      + (publicAllowed ? "\n\n" + t("dashboard.public_risk") : "")
-      + "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
-      + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : "")
-      + (tgHint ? "\n" + t("dashboard.menu_tg_hint", tgHint) : "");
-    const choices = [{ action: "local", label: t("dashboard.local") },
+    // Show the action before any link exists. TG's Start instructions belong to confirmed DM refusal below.
+    const menuText = this.topicCommands.getDashboardMenuText()
+      + (publicAllowed ? "\n" + t("dashboard.public_risk") : "")
+      + (status.state !== "closed" ? "\n" + t("dashboard.public_status", status.state, status.remainingSeconds ?? 0)
+        + (status.expiresAt ? t("dashboard.public_until", formatFleetTime(status.expiresAt)) : "") : "");
+    const choices = [{ action: "local", label: t("dashboard.local_signin") },
       ...(publicLinkSettings(this.fleetConfig?.web).allowed ? [{ action: "public", label: t("dashboard.public_open") }] : []),
       ...(status.state !== "closed" ? [{ action: "close", label: t("dashboard.public_close") }] : [])];
     const posted = await this.postNonceButtonPrompt({
