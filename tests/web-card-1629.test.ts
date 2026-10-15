@@ -285,7 +285,8 @@ describe("a person's card wins, field by field", () => {
     expect(cardVersion(resolveCard("x", undefined, undefined))).toBeNull();
     // #1889 review: whose picture it is moves the version too (the same bytes, set by a person over the agent's).
     const C = "c".repeat(32);
-    expect(cardVersion(resolveCard("x", undefined, { portrait: C }))).not.toBe(cardVersion(resolveCard("x", { ...human, portrait: `portrait-${C}.png` }, { portrait: C })));
+    const onlyPicture = { tagline: null, bio: null, portrait: `portrait-${C}.png`, banner: null, updated_at: 2 };
+    expect(cardVersion(resolveCard("x", undefined, { portrait: C }))).not.toBe(cardVersion(resolveCard("x", onlyPicture, { portrait: C })));
     const v1 = cardVersion(resolveCard("x", human, agent)), v2 = cardVersion(resolveCard("x", { ...human, tagline: null }, agent));
     expect([typeof v1, v1 === v2]).toEqual(["string", false]);
   });
