@@ -46,6 +46,7 @@ describe("the face and ring, as the page resolves them (all five sources)", () =
     ["profile", { name: "w", avatar: { kind: "image", src: "/ui/img/avatar/w?v=k1" } }, "/ui/img/avatar/w?v=k1", null],
     ["bot", { name: "w", avatar: { kind: "image", src: "/ui/img/bot/conn-1?v=1" }, accent: "#ff0000" }, "/ui/img/bot/conn-1?v=1", "#ff0000"],
     ["emoji", { name: "w", avatar: { kind: "emoji", text: "🦊" } }, "", null],
+    ["emoji", { name: "w", avatar: { kind: "emoji", text: "🦊" }, accent: "#ff0000", theme_accent: "#8b5cf6" }, "", null],   // no picture, no ring (as the page)
     ["initial", { name: "worker", display_name: "Worker", avatar: { kind: "initial", text: "W" } }, "", null],
   ];
   it.each(ROWS)("%s", async (source, entry, src, ring) => {
