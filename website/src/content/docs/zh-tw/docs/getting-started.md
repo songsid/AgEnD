@@ -9,7 +9,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 
 - Node.js 和 npm。在 macOS（11 以上）和 glibc 2.28 以上的 Linux（x64 或 arm64）上，AgEnD 會安裝並使用自己的 Node 22，不論執行 npm 的是哪個 Node。其他環境需要 Node 22.14+、23.6+ 或 24+。
 - tmux
-- Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token
+- 要從 Telegram 或 Discord 聊天：Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token。沒有 bot 也能只用網頁儀表板，見[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 - 至少一個已安裝並登入的 AI coding CLI — 見[安裝後端](#安裝後端)
 
 支援 macOS 和 Linux。不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
@@ -111,7 +111,7 @@ agend web --code   # 只印出來
 
 或在 General 傳 `/web`（fleet 管理員）。bot 會私訊給你連結和登入碼；手機連不到這台機器時，也可以選臨時公開連結。登入碼只能用一次、5 分鐘內有效。直接連到儀表板的登入預設維持 48 小時；透過公開連結的登入維持 4 小時（閒置 30 分鐘），連結關閉時也會結束。
 
-儀表板只聽 `127.0.0.1`。要從別的地方連，見[網頁儀表板說明](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
+儀表板只聽 `127.0.0.1`。要用手機開啟，以及登入期限和登出，見[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 
 如果都沒有回應，先看 fleet 的狀況：
 
@@ -131,6 +131,7 @@ agend update
 
 ## 下一步
 
+- [網頁使用說明](/AgEnD/zh-tw/docs/web-guide/) — 登入、用手機開啟、登出
 - [功能](/AgEnD/zh-tw/docs/features/) — fleet 能做什麼
 - [CLI 參考](/AgEnD/zh-tw/docs/cli/) — 所有指令
 - [設定](/AgEnD/zh-tw/docs/configuration/) — `fleet.yaml` 完整參考
