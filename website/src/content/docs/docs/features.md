@@ -67,7 +67,7 @@ Repeated crashes back off exponentially, and three crashes in five minutes stop 
 
 If the tmux server itself dies, every instance loses its window at once. The fleet treats that as one incident: respawns are held for 30 seconds after the first such crash, 2 minutes after a second and 10 minutes from the third, and no message is pasted into an instance until it has recovered.
 
-**Hang detection.** When an instance's screen stops changing in the middle of a turn for longer than `hang_detector.timeout_minutes`, you get a notification with two buttons: **Force restart**, or **Keep waiting**. It is also listed in **Needs you**.
+**Hang detection.** When an instance's screen stops changing in the middle of a turn for 10 minutes (`hang_detector.timeout_minutes`), you get a notification with two buttons: **Force restart**, or **Keep waiting**. It is also listed in **Needs you**.
 
 **Instance replacement.** When a session is stuck in a loop or its context is polluted, `replace_instance` swaps it atomically: collect handover context, stop the old one, create a new one with the same config and the same topic, deliver the handover.
 

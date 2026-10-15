@@ -192,7 +192,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `cost_guard.warn_at_percentage` | number | `80` | Warn threshold (% of limit) |
 | `cost_guard.timezone` | string | system TZ | IANA timezone for daily reset |
 | `hang_detector.enabled` | boolean | `true` | Enable stuck instance detection |
-| `hang_detector.timeout_minutes` | number | `15` | Minutes of no output before alert |
+| `hang_detector.timeout_minutes` | number | `10` | Minutes of no output before alert |
 | `daily_summary.enabled` | boolean | `true` | Enable daily cost/status report |
 | `daily_summary.hour` | number | `21` | Report hour (local time) |
 | `daily_summary.minute` | number | `0` | Report minute |

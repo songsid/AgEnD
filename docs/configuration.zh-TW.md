@@ -148,7 +148,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
 | `cost_guard` | object | 停用 | 全 fleet 花費守衛 |
-| `hang_detector` | object | 啟用，15 分鐘 | 卡住偵測 |
+| `hang_detector` | object | 啟用，10 分鐘 | 卡住偵測 |
 | `daily_summary` | object | 啟用，21:00 | 每日花費摘要 |
 | `scheduler` | object | — | 排程設定 |
 | `webhooks` | object[] | `[]` | Webhook 通知 |
@@ -178,7 +178,7 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
 | `enabled` | boolean | `true` | 啟用卡住偵測 |
-| `timeout_minutes` | number | `15` | 無輸出多久後發出警告 |
+| `timeout_minutes` | number | `10` | 無輸出多久後發出警告 |
 
 ### defaults.daily_summary
 

@@ -67,7 +67,7 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 
 如果是 tmux server 自己死掉，所有 instance 會同時失去視窗。Fleet 會把它當成一次事故處理：第一次這種 crash 後重生暫停 30 秒，第二次 2 分鐘，第三次起 10 分鐘；instance 恢復之前不會把任何訊息貼進去。
 
-**卡住偵測。** Instance 在一個回合中途畫面停住超過 `hang_detector.timeout_minutes`，就會發一則帶兩個按鈕的通知：**強制重啟**，或**繼續等**。它也會出現在**等你處理**。
+**卡住偵測。** Instance 在一個回合中途畫面停住 10 分鐘（`hang_detector.timeout_minutes`），就會發一則帶兩個按鈕的通知：**強制重啟**，或**繼續等**。它也會出現在**等你處理**。
 
 **換掉 instance。** Session 陷入迴圈或 context 被污染時，`replace_instance` 會原子性地換掉它：收集交接內容、停掉舊的、用同樣的設定和同一個 topic 建新的、把交接內容送過去。
 

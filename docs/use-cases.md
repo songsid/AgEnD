@@ -60,7 +60,7 @@ When you don't know who should handle something, ask General. It checks the flee
 
 Built-in safeguards:
 
-- A hang prompt with buttons after 15 minutes without progress
+- A hang prompt with buttons after 10 minutes without progress
 - `/cancel` to interrupt whatever is running
 - Automatic restart when a process dies (exponential backoff, up to 10 attempts)
 

@@ -427,7 +427,7 @@ defaults:
     timezone: "Asia/Taipei"
 ```
 
-When an instance approaches the limit, a warning is posted to its Telegram topic. When the limit is reached, the instance is automatically paused and a notification is sent. Paused instances resume the next day or when manually restarted.
+When an instance approaches the limit, a warning is posted to its Telegram topic. When the limit is reached, the instance is stopped and a notification is sent. It does not resume by itself; start it again to continue.
 
 ## Fleet status
 
@@ -466,12 +466,12 @@ Total: $10.30
 
 ## Hang detection
 
-If an instance shows no activity for 15 minutes (configurable), the daemon posts a notification with inline buttons:
+If an instance is working but its screen has not changed for 10 minutes (`hang_detector.timeout_minutes`), the daemon posts a notification with inline buttons:
 
 - **Force restart** — stops and restarts the instance
 - **Keep waiting** — dismisses the alert
 
-Uses multi-signal detection: checks both transcript activity and statusline freshness to avoid false positives during long-running tool calls.
+Detection follows the pane's state: a turn whose screen output has stopped for the whole timeout counts as stuck; any new output restarts the clock.
 
 ## Rate limit-aware scheduling
 
@@ -669,7 +669,7 @@ After a successful login, the backend's running instances are restarted to pick 
 
 ## Credential profiles and a second subscription
 
-A CLI keeps its login in one place, so by default every instance of a backend shares one account. `credential_profile` gives an instance a named, separate login for **`kiro-cli`** and **`codex`**:
+A CLI keeps its login in one place, so by default every instance of a backend shares one account. `credential_profile` gives an instance a named, separate login for **`kiro-cli`**, **`codex`** and **`claude-code`**:
 
 ```yaml
 instances:
@@ -822,7 +822,7 @@ Set `AGEND_HOME` environment variable to change the data directory (default: `~/
 
 Define reusable fleet configurations in `fleet.yaml` under the `templates` section. Deploy a template to create multiple instances and a team in one operation:
 
-- `deploy_template` — creates instances (each with its own git worktree) and optionally a team
+- `deploy_template` — creates instances and optionally a team; with `branch`, each instance gets its own git worktree, otherwise they share the project directory
 - `teardown_deployment` — stops and deletes all instances and team from a deployment
 - `list_deployments` — shows active deployments with instance status
 

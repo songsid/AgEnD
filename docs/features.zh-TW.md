@@ -402,7 +402,7 @@ defaults:
     timezone: "Asia/Taipei"
 ```
 
-instance 接近上限時，會在它的 Telegram topic 發出警告；達到上限時，instance 會自動暫停並發出通知。暫停的 instance 會在隔天，或有人手動重啟時恢復。
+instance 接近上限時，會在它的 Telegram topic 發出警告；達到上限時，instance 會被停止並發出通知。它不會自己恢復；要繼續就再啟動它。
 
 ## Fleet 狀態 (Fleet status)
 
@@ -441,12 +441,12 @@ Total: $10.30
 
 ## 卡住偵測 (Hang detection)
 
-instance 連續 15 分鐘（可設定）沒有任何活動時，daemon 會發出附 inline 按鈕的通知：
+instance 正在工作、但畫面連續 10 分鐘（`hang_detector.timeout_minutes`）沒有變化時，daemon 會發出附 inline 按鈕的通知：
 
 - **Force restart** — 停止並重啟 instance
 - **Keep waiting** — 關閉這則警示
 
-它採用多重訊號偵測：同時檢查對話紀錄的活動和狀態列是否仍在更新，避免在長時間執行的工具呼叫期間誤報。
+偵測依據的是 pane 的狀態：一個回合在整段逾時內畫面都沒有新輸出，才算卡住；只要有新輸出就重新計時。
 
 ## 感知頻率限制的排程 (Rate limit-aware scheduling)
 
@@ -644,7 +644,7 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 
 ## 憑證 profile 與第二份訂閱 (Credential profiles and a second subscription)
 
-CLI 只會把登入資訊存在一個地方，所以預設情況下，同一個後端的所有 instance 共用一個帳號。`credential_profile` 可以替 instance 指定一份有名字、獨立的登入，支援 **`kiro-cli`** 和 **`codex`**：
+CLI 只會把登入資訊存在一個地方，所以預設情況下，同一個後端的所有 instance 共用一個帳號。`credential_profile` 可以替 instance 指定一份有名字、獨立的登入，支援 **`kiro-cli`**、**`codex`** 和 **`claude-code`**：
 
 ```yaml
 instances:
@@ -797,7 +797,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 
 在 `fleet.yaml` 的 `templates` 區塊定義可重複使用的 fleet 設定。部署一個模板，就能一次建立多個 instance 和一個 team：
 
-- `deploy_template` — 建立 instance（各自擁有自己的 git worktree），也可以一併建立 team
+- `deploy_template` — 建立 instance，也可以一併建立 team；有給 `branch` 時每個 instance 會有自己的 git worktree，否則共用專案目錄
 - `teardown_deployment` — 停止並刪除某次部署的所有 instance 和 team
 - `list_deployments` — 列出目前的部署和其中 instance 的狀態
 
