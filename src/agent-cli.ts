@@ -13,8 +13,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
-import { readAgentFile, writeAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS } from "./web-asset-parts.js";
+import { readAgentFile } from "./agent-file-read.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writePreview } from "./web-asset-parts.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -230,13 +230,9 @@ async function main(): Promise<void> {
       try {
         const got = await receivePreview(await ask(rest.length ? { modes: rest } : {}), ask);
         if ("error" in got) { console.log(JSON.stringify(got)); process.exit(1); }
-        const files: Array<{ mode: string; path: string }> = [];
-        for (const f of got.files) {
-          const w = await writeAgentFile(".agend/appearance", `${f.mode}.svg`, f.data, { workspace: process.cwd(), stateDir: DATA_DIR });
-          if (!w.ok) die(`appearance preview: .agend/appearance/${f.mode}.svg — ${w.reason}`);
-          files.push({ mode: f.mode, path: w.path });
-        }
-        console.log(JSON.stringify({ files }));
+        const written = await writePreview(got.files, { workspace: process.cwd(), stateDir: DATA_DIR });
+        if ("error" in written) die(`appearance preview: ${written.error}`);
+        console.log(JSON.stringify(written));
       } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
       return;
     }

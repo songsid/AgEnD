@@ -146,7 +146,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["get_web_appearance", schemas.GetWebAppearanceArgs,
     "How you appear on the web dashboard now: your face and where it comes from (profile, theme, bot, emoji or initial), your ring colour, your identity card field by field (a person's field wins over yours), your theme per light/dark mode after the defaults, whether a person locked it, and your limits. No target: always yours."],
   ["preview_web_appearance", schemas.PreviewWebAppearanceArgs,
-    "Draw how you appear on the web dashboard as an SVG per mode (your card, the chat header with your face and ring, a pair of bubbles in your colours, your working label), written to .agend/appearance/<mode>.svg in your working directory. Returns the paths to Read."],
+    "Draw how you appear on the web dashboard as an SVG per mode (your card, the chat header with your face and ring, a pair of bubbles in your colours, your working label), written to .agend/appearance/<mode>.svg in your working directory, with the pictures it shows beside it (avatar, portrait, banner, background). Returns the paths: Read the SVGs for geometry, colours and text, and the pictures as images."],
   ["reset_web_theme", schemas.ResetWebThemeArgs,
     "Reset your own web theme to the default (counts as a change for the rate limit)."],
   ["set_description", schemas.SetDescriptionArgs,

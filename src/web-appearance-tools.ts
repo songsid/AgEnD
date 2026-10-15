@@ -5,7 +5,7 @@
  * directory (the fleet never names a path); a preview larger than one message is handed over in parts.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { appearanceView, type AppearanceInput, type FrameEntry, previewSvg, type PreviewPictures } from "./web-appearance-view.js";
+import { appearanceView, type AppearanceInput, type FrameEntry, PICTURE_ROLES, pictureFileName, previewSvg, type PictureRole, type PreviewPictures } from "./web-appearance-view.js";
 import { ASSET_PART_BYTES } from "./web-asset-parts.js";
 import type { ResolvedCard } from "./web-card.js";
 import type { Theme, ThemeMode } from "./web-theme.js";
@@ -29,7 +29,7 @@ export interface AppearanceDeps {
 export const PREVIEW_INLINE_BYTES = 600 * 1024;
 export const PREVIEW_IDLE_MS = 60_000;
 const MODES: readonly ThemeMode[] = ["light", "dark"];
-type Built = { id: string; files: Array<{ mode: ThemeMode; data: Buffer; sha256: string }>; last: number };
+type Built = { id: string; files: Array<{ name: string; data: Buffer; sha256: string }>; last: number };
 
 export class AppearanceTools {
   private readonly previews = new Map<string, Built>();
@@ -54,43 +54,47 @@ export class AppearanceTools {
   }
 
   handle(name: string, tool: string, args: Record<string, unknown>): Record<string, unknown> {
+    const now = this.now();
+    for (const [k, b] of this.previews) if (now - b.last > PREVIEW_IDLE_MS) this.previews.delete(k);   // nothing stale stays
     if (tool === "get_web_appearance") return appearanceView(this.input(name));
     if (tool !== "preview_web_appearance") return { error: "unknown_tool" };
-    if (args.part !== undefined) return this.part(name, args.part);
+    if (args.part !== undefined) return this.part(name, args.part, now);
     const modes = args.modes === undefined ? MODES : args.modes;
     if (!Array.isArray(modes) || !modes.length || modes.length > 2 || !modes.every(m => m === "light" || m === "dark") || new Set(modes).size !== modes.length) {
       return { error: "modes", message: "modes: light and/or dark" };
     }
     const input = this.input(name);
-    const pics: PreviewPictures = {
+    const bytes: Record<PictureRole, Picture> = {
       avatar: this.avatar(name, input),
       portrait: input.card.portrait ? this.deps.cardPicture(name, "portrait") : null,
       banner: input.card.banner ? this.deps.cardPicture(name, "banner") : null,
       background: input.theme.background ? this.deps.themeAsset(name, input.theme.background.image) : null,
     };
-    const files = (modes as ThemeMode[]).map(mode => {
-      const data = Buffer.from(previewSvg(input, mode, pics), "utf8");
-      return { mode, data, sha256: createHash("sha256").update(data).digest("hex") };
-    });
+    // Each picture is its own file next to the SVGs (#1890 review: inside, they outgrew what an agent's Read takes).
+    const names = {} as PreviewPictures;
+    const files: Built["files"] = [];
+    const add = (fileName: string, data: Buffer) => files.push({ name: fileName, data, sha256: createHash("sha256").update(data).digest("hex") });
+    for (const role of PICTURE_ROLES) {
+      const p = bytes[role], fileName = p ? pictureFileName(role, p.mime) : null;
+      names[role] = fileName;
+      if (p && fileName) add(fileName, p.bytes);
+    }
+    for (const mode of modes as ThemeMode[]) add(`${mode}.svg`, Buffer.from(previewSvg(input, mode, names), "utf8"));
     const total = files.reduce((n, f) => n + f.data.length, 0);
-    if (total <= PREVIEW_INLINE_BYTES) return { files: files.map(f => ({ mode: f.mode, data_b64: f.data.toString("base64") })) };
-    const now = this.now();
-    for (const [k, b] of this.previews) if (now - b.last > PREVIEW_IDLE_MS) this.previews.delete(k);
+    if (total <= PREVIEW_INLINE_BYTES) return { files: files.map(f => ({ name: f.name, data_b64: f.data.toString("base64") })) };
     const built: Built = { id: randomBytes(8).toString("hex"), files, last: now };
     this.previews.set(name, built);                                    // one per instance: a new preview replaces it
-    return { preview: built.id, files: files.map(f => ({ mode: f.mode, bytes: f.data.length, sha256: f.sha256, parts: Math.ceil(f.data.length / ASSET_PART_BYTES) })) };
+    return { preview: built.id, files: files.map(f => ({ name: f.name, bytes: f.data.length, sha256: f.sha256, parts: Math.ceil(f.data.length / ASSET_PART_BYTES) })) };
   }
-  /** One part of the caller's own preview in progress (its id, a mode it holds, an index in range, not gone stale). */
-  private part(name: string, raw: unknown): Record<string, unknown> {
-    const p = raw as { preview?: unknown; mode?: unknown; index?: unknown } | null;
+  /** One part of the caller's own preview in progress (its id, a file it holds, an index in range, not gone stale). */
+  private part(name: string, raw: unknown, now: number): Record<string, unknown> {
+    const p = raw as { preview?: unknown; name?: unknown; index?: unknown } | null;
     const b = this.previews.get(name);
     if (!p || typeof p !== "object" || !b || p.preview !== b.id) return { error: "preview", message: "No such preview: ask for it again." };
-    const now = this.now();
-    if (now - b.last > PREVIEW_IDLE_MS) { this.previews.delete(name); return { error: "preview", message: "The preview waited too long: ask for it again." }; }
-    const f = b.files.find(x => x.mode === p.mode);
+    const f = b.files.find(x => x.name === p.name);
     const count = f ? Math.ceil(f.data.length / ASSET_PART_BYTES) : 0;
     if (!f || !Number.isSafeInteger(p.index) || (p.index as number) < 0 || (p.index as number) >= count) return { error: "part", message: "No such part." };
-    b.last = now;
+    b.last = now;                                                      // a preview being fetched stays while it is
     const i = p.index as number;
     return { data_b64: f.data.subarray(i * ASSET_PART_BYTES, (i + 1) * ASSET_PART_BYTES).toString("base64") };
   }

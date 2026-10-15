@@ -67,6 +67,10 @@ export async function writeAgentFile(dir: string, name: string, bytes: Uint8Arra
   const { randomBytes } = await import("node:crypto");
   try {
     const ws = await realpath(opts.workspace);
+    const state = [resolve(opts.stateDir)];
+    try { state.push(await realpath(opts.stateDir)); } catch { /* not there */ }
+    // Refused before anything is created (#1890 review: a $HOME working directory got ~/.agend/appearance first).
+    if (state.some(root => under(resolve(ws, dir), root))) return { ok: false, reason: "inside the AgEnD state directory" };
     let at = ws;
     for (const part of dir.split("/")) {
       at = resolve(at, part);
@@ -77,8 +81,6 @@ export async function writeAgentFile(dir: string, name: string, bytes: Uint8Arra
     }
     const real = await realpath(at);
     if (!under(real, ws)) return { ok: false, reason: "outside your working directory" };
-    const state = [resolve(opts.stateDir)];
-    try { state.push(await realpath(opts.stateDir)); } catch { /* not there */ }
     if (state.some(root => under(real, root))) return { ok: false, reason: "inside the AgEnD state directory" };
     const tmp = resolve(real, `.${name}.${randomBytes(6).toString("hex")}.tmp`);
     const fh = await open(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
