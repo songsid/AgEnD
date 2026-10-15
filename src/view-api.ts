@@ -497,7 +497,9 @@ export function handleViewRequest(
       readBody(req, limits[slot].maxBytes + 1).then(buf => {
         if (!permitWebContinuation(req, res, ctx)) return;
         if (buf.length === 0) { json(res, 400, { error: "empty body" }); return; }
-        const w = store.setPicture(name, slot, buf, limits);
+        // The limits in force when it is stored, not when the upload began (#1889 review): the body cap above only
+        // bounded what was received.
+        const w = store.setPicture(name, slot, buf, effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits);
         if (!w.ok) { json(res, w.status, { error: w.error, ...(w.detail ? { detail: w.detail } : {}) }); return; }
         json(res, 200, { ok: true, id: w.id });
       }).catch(err => json(res, 413, { error: "card_too_large", detail: (err as Error).message }));

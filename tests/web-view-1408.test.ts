@@ -580,6 +580,31 @@ describe("within one navigation, an older answer never lands over a newer one; a
         expect(writes(s)).toEqual(["POST /api/profile/alpha", "DELETE /api/card/alpha/portrait"]);
       } finally { await s.done(); }
     });
+    it("the card's fields wait for the first read: disabled while it is out, then filled — nothing typed is overwritten (#1889 review)", async () => {
+      let release!: () => void;
+      const held = new Promise<void>(r => { release = r; });
+      const s = await setup({ other: async (u: string) => { if (u === "/api/card/alpha") { await held; return json(CARD); } return json({ ok: true }); } });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        const cardSet = () => dlg.querySelectorAll("fieldset").find((f: any) => f.getAttribute("aria-busy") !== null);
+        const tagline = () => cardSet().querySelector("input");
+        expect([cardSet().disabled, cardSet().getAttribute("aria-busy"), tagline().value]).toEqual([true, "true", ""]);
+        release(); await settle(6);
+        expect([cardSet().disabled, cardSet().getAttribute("aria-busy"), tagline().value]).toEqual([false, "false", "Mine"]);
+        const bio = cardSet().querySelector("textarea");
+        expect(bio.value).toBe("");                                                 // the agent's bio is not the person's to edit
+      } finally { await s.done(); }
+    });
+    it("a failed first read still lets the card's fields be edited, starting empty", async () => {
+      const s = await setup({ other: (u: string) => (u === "/api/card/alpha" ? { ok: false, status: 500, headers: { get: () => null }, json: async () => ({}) } : json({ ok: true })) });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        const cardSet = dlg.querySelectorAll("fieldset").find((f: any) => f.getAttribute("aria-busy") !== null);
+        expect([cardSet.disabled, cardSet.querySelector("input").value]).toEqual([false, ""]);
+      } finally { await s.done(); }
+    });
     it("Clear card: one DELETE of the person's card after the profile write, and no card field with it", async () => {
       const s = await setup({ other: withCard });
       try {

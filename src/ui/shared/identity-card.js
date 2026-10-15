@@ -77,25 +77,36 @@ export function checkCard(name, body) {
     const p = body[slot];
     if (p && typeof p === "object" && typeof p.src === "string" && SRC.test(p.src) && p.src.startsWith(base + slot + "?") && ID.test(p.id) && (p.by === "human" || p.by === "agent")) out[slot] = { src: p.src, by: p.by };
   }
+  // The host's bounds (web-theme.ts TAGLINE_MAX_UNITS / BIO_MAX_UNITS): anything it stores is shown.
+  const MAX = { tagline: 600, bio: 2800 };
   for (const k of ["tagline", "bio"]) {
     const v = body[k];
-    if (v && typeof v === "object" && typeof v.text === "string" && v.text.length && v.text.length <= 2000 && (v.by === "human" || v.by === "agent")) out[k] = { text: v.text, by: v.by };
+    if (v && typeof v === "object" && typeof v.text === "string" && v.text.length && v.text.length <= MAX[k] && (v.by === "human" || v.by === "agent")) out[k] = { text: v.text, by: v.by };
   }
   return Object.keys(out).length ? out : null;
 }
+// #1889 review: per instance, the version this page wants now. A read is applied only if it is still the one wanted —
+// a newer version asked for meanwhile, or a clear (no version), turns an older answer away.
+const wanted = new Map();
 /** Read `name`'s card if `v` is newer than what this page has (no version: no card). */
 export async function loadCard(name, v, fetcher = (u) => fetch(u, { credentials: "same-origin" })) {
   if (!name) return;
   const have = own(cardsStore.get(), name) ? cardsStore.get()[name] : null;
-  if (!v) { if (have) cardsStore.set((s) => { const n = { ...s }; delete n[name]; return n; }); return; }
+  if (!v) {
+    wanted.set(name, null);
+    if (have) cardsStore.set((s) => { const n = { ...s }; delete n[name]; return n; });
+    return;
+  }
+  wanted.set(name, v);
   if (have && have.v === v) return;
   const key = `${name}\0${v}`;
   if (reading.has(key)) return reading.get(key);
   const p = (async () => {
     try {
       const r = await fetcher(`/api/card/${encodeURIComponent(name)}`);
-      if (!r.ok) return;
+      if (!r.ok || wanted.get(name) !== v) return;
       const card = checkCard(name, await r.json());
+      if (wanted.get(name) !== v) return;                     // superseded or cleared while the body was read
       cardsStore.set((s) => ({ ...s, [name]: { v, card } }));
     } catch { /* the next version tries again */ } finally { reading.delete(key); }
   })();

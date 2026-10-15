@@ -333,13 +333,17 @@ function EditProfile({ it, onClose }) {
   const pics = { portrait: useRef(null), banner: useRef(null) };
   useEffect(() => {
     let live = true;
+    // The card's fields stay disabled until this read is in (#1889 review: a draft typed meanwhile was overwritten);
+    // a failed read lets them be edited, starting empty.
+    const none = { mine: { tagline: null, bio: null, portrait: null, banner: null }, limits: null };
     lease.fetch(`/api/card/${encodeURIComponent(it.instance_name)}`).then((r) => (r.ok ? r.json() : null)).then((body) => {
-      if (!live || !lease.current() || !body) return;
+      if (!live || !lease.current()) return;
+      if (!body) { setCard(none); return; }
       const resolved = checkCard(it.instance_name, body);
       const mine = (k) => (resolved && resolved[k] && resolved[k].by === "human" ? resolved[k] : null);
       setCard({ mine: { tagline: mine("tagline"), bio: mine("bio"), portrait: mine("portrait"), banner: mine("banner") }, limits: body.limits || null });
       setCardText({ tagline: mine("tagline") ? mine("tagline").text : "", bio: mine("bio") ? mine("bio").text : "" });
-    }).catch(() => { /* the card's fields stay empty; saving them still works */ });
+    }).catch(() => { if (live && lease.current()) setCard(none); });
     return () => { live = false; };
   }, []);
   async function save() {
@@ -412,7 +416,7 @@ function EditProfile({ it, onClose }) {
         onClick=${() => setRemovePic(!removePic)}>${tn(removePic ? "keepPicture" : "removePicture")}</button>${removePic ? html`<span class="muted">${tn("removePictureNote")}</span>` : null}</div>` : null}
       <h3 class="form-sub">${tn("cardSection")}</h3>
       <p class="note">${tn("cardLead")}</p>
-      <fieldset class="form" disabled=${clearCard}>
+      <fieldset class="form" disabled=${clearCard || !card} aria-busy=${card ? "false" : "true"}>
         <label class="field"><span>${tn("cardTagline")}</span><input value=${cardText.tagline} onInput=${(e) => setCardText({ ...cardText, tagline: e.target.value })} /></label>
         <label class="field"><span>${tn("cardBio")}</span><textarea rows="4" value=${cardText.bio} onInput=${(e) => setCardText({ ...cardText, bio: e.target.value })}></textarea></label>
         ${["portrait", "banner"].map((slot) => html`<div key=${slot} class="form">
