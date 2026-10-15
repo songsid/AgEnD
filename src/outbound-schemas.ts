@@ -209,6 +209,20 @@ export const SetPersonaEmojiArgs = z.object({
     .describe("Which of your status stamps to set (default: delivered, the one that stays on a handled message). progress_prefix is not a reaction: it is the emoji at the start of your progress message."),
 });
 
+// ── #1629: your own web theme (no target: always the caller's) ─────────────
+
+export const GetWebThemeArgs = z.object({});
+export const SetWebThemeArgs = z.object({
+  set: z.record(z.string(), z.unknown()).optional()
+    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters)"),
+  clear: z.array(z.string().max(64)).max(32).optional().describe("Dotted paths to remove, e.g. [\"colors.dark.bg\", \"workingLabel\"]"),
+});
+export const SetWebThemeAssetArgs = z.object({
+  slot: z.enum(["background", "avatar"]).describe("What the picture is for"),
+  file: NonEmptyString.describe("A png, jpeg, webp or gif in your working directory (background ≤ 512 KiB, avatar ≤ 256 KiB, ≤ 4096 px a side)"),
+});
+export const ResetWebThemeArgs = z.object({});
+
 export const SetDescriptionArgs = z.object({
   description: NonEmptyString.describe(
     "Your role description, e.g. 'Code reviewer focused on security and error handling'",

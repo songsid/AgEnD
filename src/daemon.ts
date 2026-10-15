@@ -20,6 +20,7 @@ import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-tur
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
+import { readAgentFile } from "./agent-file-read.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
@@ -85,6 +86,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Tool routing sets — module-level to avoid re-creation on every handleToolCall
+/** #1629: the caller's own web theme tools, each its own typed IPC message (one tool per type, for the permission check). */
+const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
+  get_web_theme: "fleet_get_web_theme", set_web_theme: "fleet_set_web_theme",
+  set_web_theme_asset: "fleet_set_web_theme_asset", reset_web_theme: "fleet_reset_web_theme",
+});
+/** The largest picture a theme slot takes (the background's 512 KiB): read no more than that. */
+const WEB_THEME_ASSET_MAX_BYTES = 512 * 1024;
 const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "delivery_status", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
@@ -1312,7 +1320,7 @@ export class BlockingProcessDetector {
 /** Response types the fleet sends back for tool calls the daemon forwarded. */
 const FLEET_RESPONSE_TYPES = new Set([
   "fleet_schedule_response", "fleet_outbound_response", "fleet_decision_response", "fleet_task_response",
-  "fleet_display_name_response", "fleet_description_response", "fleet_persona_emoji_response",
+  "fleet_display_name_response", "fleet_description_response", "fleet_persona_emoji_response", "fleet_web_theme_response",
 ]);
 
 export class Daemon extends EventEmitter {
@@ -9893,6 +9901,30 @@ export class Daemon extends EventEmitter {
         meta: { instance_name: this.name },
         fleetRequestId: fleetReqId,
       });
+      return;
+    }
+
+    // #1629: the caller's own web theme. set_web_theme_asset's file is read HERE, on the agent's side (in its working
+    // directory, no symlink, size-capped): the fleet receives bytes, never a workspace path.
+    if (Object.hasOwn(WEB_THEME_IPC, tool)) {
+      void (async () => {
+        let payload: Record<string, unknown> = args;
+        if (tool === "set_web_theme_asset") {
+          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: WEB_THEME_ASSET_MAX_BYTES });
+          if (!read.ok) { respond(null, `set_web_theme_asset: ${String(args.file ?? "").slice(0, 200)} — ${read.reason}`); return; }
+          payload = { slot: args.slot, data_b64: read.bytes.toString("base64") };
+        }
+        const fleetReqId = `theme_${++this.fleetRequestSeq}_${requestId}`;
+        const timeout = setTimeout(() => {
+          this.pendingIpcRequests.delete(fleetReqId);
+          respond(null, `${tool} timed out`);
+        }, daemonBudgetMs(tool));
+        this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
+          clearTimeout(timeout);
+          respond(respMsg.result, respMsg.error as string | undefined);
+        });
+        this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
+      })();
       return;
     }
 

@@ -192,6 +192,8 @@ import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { WebPrefsStore } from "./web-prefs.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
+import { ThemeStore } from "./web-theme-store.js";
+import { WebAppearance } from "./web-appearance.js";
 import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
 import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
@@ -1292,6 +1294,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ch of this.classicChannels?.getAll() ?? []) if (low(ch.instanceName) === lowered || low(ch.displayName) === lowered) return true;
     for (const w of this.worlds.values()) if (w.botUsername && low(w.botUsername) === lowered) return true;
     return false;
+  }
+
+  private themeStoreInstance?: ThemeStore;
+  private webAppearanceService?: WebAppearance;
+  /** #1629: every instance's theme, placements, assets and lock (web-themes.json). */
+  get themeStore(): ThemeStore {
+    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir));
+  }
+  /** #1629: the theme tools, a person's reset and lock, and the one appearance rate limiter (shared with effects). */
+  get webAppearance(): WebAppearance {
+    return (this.webAppearanceService ??= new WebAppearance(this.themeStore, () => this.fleetConfig?.web ?? null,
+      () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries the rev */ } }));
   }
 
   private ownerCssStore?: OwnerCssStore;
@@ -9438,6 +9452,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
     if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis"
       || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { this.handlePersonaEmoji(name, msg); return; }
+    if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme") {
+      this.handleWebTheme(name, msg); return;
+    }
+  }
+
+  /**
+   * #1629: the caller's own web theme over IPC (the agent endpoint calls the same service). `name` is the instance this
+   * IPC connection belongs to — never anything the message says. A refusal is a result the agent reads (its `error`
+   * and what to do), not a transport error.
+   */
+  private handleWebTheme(instanceName: string, msg: Record<string, unknown>): void {
+    const fleetRequestId = msg.fleetRequestId as string;
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc) return;
+    const tool = String(msg.type).replace(/^fleet_/, "");
+    try {
+      const result = this.webAppearance.handleTool(instanceName, tool, (msg.payload ?? {}) as Record<string, unknown>);
+      ipc.send({ type: "fleet_web_theme_response", fleetRequestId, result });
+    } catch (err) {
+      ipc.send({ type: "fleet_web_theme_response", fleetRequestId, error: (err as Error).message });
+    }
   }
 
   /** `list_emojis` / `set_persona_emoji` / `preview_emojis` / `list_stickers` / `preview_stickers` over IPC; the agent endpoint calls the same methods. */
@@ -9858,6 +9893,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async handleSetPersonaEmojiHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
     return this.setPersonaEmoji(instance, args);
+  }
+
+  /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
+  async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+    return this.webAppearance.handleTool(instance, tool, args);
   }
 
   async handlePreviewEmojisHttp(instance: string, args: Record<string, unknown>): Promise<unknown> {
@@ -10594,6 +10634,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.limiter.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -17814,6 +17855,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, ch.instanceName)
         && !this.classicChannels.getAll().some((c) => c.instanceName === ch.instanceName)) {
       try { this.webPrefs.forgetInstance(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room from web favorites failed"); }
+      try { this.themeStore.forget(ch.instanceName); this.webAppearance.limiter.forget(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room's web theme failed"); }
     }
 
     this.instanceWorldBinding.delete(ch.instanceName);
@@ -20470,6 +20512,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       connections: (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).length,
       // #1665: the host preferences' revision — a page that has another re-reads /ui/prefs (no values in this frame).
       prefs_rev: this.webPrefs.rev(),
+      // #1629: the themes' revision — the page re-reads GET /ui/themes when it moves.
+      themes_rev: this.themeStore.rev(),
       // #1685: host memory pressure while it slows or holds new agents (the dashboard's indicator; macOS elevated is
       // shown here rather than in chat). null when normal, unknown or advisory.
       host_memory: this.hostMemoryIndicator(),

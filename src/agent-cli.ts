@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
+import { readAgentFile } from "./agent-file-read.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -26,6 +27,28 @@ function readInstanceToken(): string | null {
     return null;
   }
 }
+
+/**
+ * #1629: `theme set` pairs → the patch's `set`: dotted keys nest, numbers where the schema has numbers
+ * (bubble.radius, background.opacity), everything else as written (the fleet checks every value).
+ */
+const NUMERIC_THEME_KEYS = new Set(["bubble.radius", "background.opacity"]);
+function themeSetPairs(pairs: string[]): Record<string, unknown> {
+  const set: Record<string, unknown> = {};
+  for (const pair of pairs) {
+    const at = pair.indexOf("=");
+    if (at < 1) die(`theme set: "${pair}" is not key=value`);
+    const key = pair.slice(0, at), raw = pair.slice(at + 1);
+    const parts = key.split(".");
+    if (parts.some(p => !/^[a-zA-Z0-9]+$/.test(p))) die(`theme set: "${key}" is not a theme key`);
+    let node = set;
+    for (const part of parts.slice(0, -1)) node = (node[part] ??= {}) as Record<string, unknown>;
+    node[parts.at(-1)!] = NUMERIC_THEME_KEYS.has(key) && raw.trim() !== "" && Number.isFinite(Number(raw)) ? Number(raw) : raw;
+  }
+  return set;
+}
+/** What fits the agent endpoint's 512 KiB body once base64-encoded; the MCP tool takes up to the slot's own limit. */
+const CLI_ASSET_MAX_BYTES = 360 * 1024;
 
 function post(op: string, args: Record<string, unknown>): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -63,8 +86,11 @@ function die(msg: string): never {
 }
 
 async function main(): Promise<void> {
-  const [,, op, ...rest] = process.argv;
-  if (!op) die("Usage: agend-agent <op> [args...]");
+  const [,, first, ...given] = process.argv;
+  if (!first) die("Usage: agend-agent <op> [args...]");
+  // #1629: `theme <get|set|clear|asset|reset> …` is sent as its own op each (theme-get, …): one op, one tool.
+  const op = first === "theme" ? `theme-${given[0] ?? ""}` : first;
+  const rest = first === "theme" ? given.slice(1) : given;
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
   let args: Record<string, unknown> = {};
@@ -157,6 +183,36 @@ async function main(): Promise<void> {
     case "emoji-preview":
       if (rest.length === 0) die("Usage: agend-agent emoji-preview <:name:id> [more…]");
       args = { emojis: rest };
+      break;
+
+    // #1629: your own web theme.
+    case "theme-get":
+      break;
+    case "theme-set":
+      if (rest[0] === "--json") {
+        if (!rest[1]) die("Usage: agend-agent theme set --json '<patch>'");
+        let patch: unknown;
+        try { patch = JSON.parse(rest[1]); } catch { die("theme set --json: not JSON"); }
+        const p = patch as Record<string, unknown>;
+        args = p && typeof p === "object" && (Object.hasOwn(p, "set") || Object.hasOwn(p, "clear")) ? p : { set: p };
+      } else {
+        if (rest.length === 0) die('Usage: agend-agent theme set key=value [key=value…]   e.g. colors.dark.accent=#7c3aed bubble.radius=12 workingLabel="Thinking"');
+        args = { set: themeSetPairs(rest) };
+      }
+      break;
+    case "theme-clear":
+      if (rest.length === 0) die("Usage: agend-agent theme clear <dotted.path> [more…]   e.g. colors.dark.bg");
+      args = { clear: rest };
+      break;
+    case "theme-asset": {
+      if ((rest[0] !== "background" && rest[0] !== "avatar") || !rest[1]) die("Usage: agend-agent theme asset <background|avatar> <file>");
+      // Read here, on the agent's side, in its working directory: the fleet never opens a workspace path.
+      const read = await readAgentFile(rest[1], { workspace: process.cwd(), stateDir: DATA_DIR, maxBytes: CLI_ASSET_MAX_BYTES });
+      if (!read.ok) die(`theme asset: ${rest[1]} — ${read.reason}${read.reason.startsWith("over the size") ? " (use the set_web_theme_asset tool for larger pictures)" : ""}`);
+      args = { slot: rest[0], data_b64: read.bytes.toString("base64") };
+      break;
+    }
+    case "theme-reset":
       break;
 
     // Task board
