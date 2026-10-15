@@ -311,7 +311,7 @@ describe("the card's routes", () => {
       expect(handleViewRequest(req, res, new URL(`${origin}${path}`), fm)).toBe(true);
       setImmediate(() => { if (body !== undefined) req.emit("data", Buffer.isBuffer(body) ? body : Buffer.from(body)); req.emit("end"); });
     });
-    const resolved = async () => JSON.parse((await call("GET", "/api/card/alpha")).body);
+    const resolved = async () => { const { limits, ...card } = JSON.parse((await call("GET", "/api/card/alpha")).body); expect(limits.portrait).toEqual({ max_width: 1024, max_height: 1536, max_bytes: 1536 * 1024 }); return card; };
     expect(await resolved()).toEqual({ portrait: { id: P, by: "agent", src: `/api/card/alpha/portrait?v=${P}` }, tagline: { text: "Agent's", by: "agent" } });
     const agentPic = await call("GET", "/api/card/alpha/portrait");
     expect([agentPic.status, agentPic.headers["x-content-type-options"], agentPic.headers["content-security-policy"]]).toEqual([200, "nosniff", "default-src 'none'; sandbox"]);

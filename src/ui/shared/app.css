@@ -1127,3 +1127,32 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 /* #1682: a mention, as Discord draws one — accent text on a tint of it; the id (or the Telegram handle) on hover. */
 .md .mention { display: inline; padding: 0 0.2em; border-radius: var(--r-sm); color: var(--accent); background: var(--accent-dim);
   font-weight: var(--fw-medium); white-space: nowrap; }
+
+/* #1629 r4 §1 / r4.1 Q3 (a): the identity card (identity-card.js). The size is a class token; its heights are here
+   (S 160 / M 240 / L 360 px, on a phone 120 / 180 / 240); the banner scales with the portrait. Never a style attribute. */
+.id-card { --id-h: 240px; margin: 0 0 var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.id-card.card-s { --id-h: 160px; }
+.id-card.card-l { --id-h: 360px; }
+.id-card.card-c { --id-h: 96px; margin: 0; border: 0; border-radius: 0; background: none; }
+.id-banner { display: block; width: 100%; height: calc(var(--id-h) / 2); object-fit: cover; }
+.id-row { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3) var(--s-4); }
+.id-portrait { display: block; flex-shrink: 0; height: var(--id-h); width: auto; max-width: min(calc(var(--id-h) * 0.75), 100%); object-fit: cover; border-radius: var(--r-sm); }
+.id-text { flex: 1; min-width: 0; }
+.id-tagline { margin: 0 0 var(--s-1); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.id-bio { margin: 0; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.card-size { display: flex; flex-shrink: 0; gap: var(--s-1); }
+.card-size .seg-item { min-height: 28px; padding: 0 var(--s-2); border: 0; background: none; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.chat-card { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.chat-card-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 32px; padding: 0 var(--s-4); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
+.chat-card-peek { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+@media (max-width: 479px) {
+  .id-card.card-s { --id-h: 120px; }
+  .id-card.card-m { --id-h: 180px; }
+  .id-card.card-l { --id-h: 240px; }
+  .id-row { flex-wrap: wrap; }
+  .id-text { flex-basis: 100%; }
+}
+/* #1629 r4 §1: the card in View (above the profile row) and its part of Edit profile. */
+.v-id { flex-shrink: 0; padding: var(--s-2) var(--s-4) 0; background: var(--bg); }
+.v-id .id-card { margin: 0; }
+.form-sub { margin: var(--s-2) 0 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }

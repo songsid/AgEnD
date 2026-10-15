@@ -70,3 +70,46 @@ export function webTerminalPatch(raw: unknown): Record<string, boolean | number 
   }
   return Object.keys(out).length ? out : null;
 }
+
+/**
+ * #1629 r4.1 Q3 (b): a PUT /api/settings/fleet/appearance body — the identity card's upload limits and the picture
+ * quota, `{ portrait?: { max_width?, max_height?, max_kib? }, banner?: {…}, instance_quota?: { files?, mib? } }`, each a
+ * whole number or null (back to the default). Read the same way by the confirmation gate and the handler. Bounds are
+ * not checked here: the loader clamps (web-appearance-limits.ts), and a value beyond a bound is stored as written and
+ * said so — Settings shows the effective value next to it.
+ */
+export const APPEARANCE_SETTINGS_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  portrait: ["max_width", "max_height", "max_kib"],
+  banner: ["max_width", "max_height", "max_kib"],
+  instance_quota: ["files", "mib"],
+};
+export type AppearanceSettingsChange = { group: string; key: string; value: number | null };
+export function parseAppearanceSettingsBody(body: unknown): AppearanceSettingsChange[] | { error: string } {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "expected an object" };
+  const changes: AppearanceSettingsChange[] = [];
+  for (const [group, raw] of Object.entries(body)) {
+    const fields = Object.hasOwn(APPEARANCE_SETTINGS_FIELDS, group) ? APPEARANCE_SETTINGS_FIELDS[group]! : null;
+    if (!fields) return { error: `unknown appearance field: ${group}` };
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { error: `${group} must be an object` };
+    for (const [key, value] of Object.entries(raw)) {
+      if (!fields.includes(key)) return { error: `unknown appearance field: ${group}.${key}` };
+      if (value !== null && !(typeof value === "number" && Number.isSafeInteger(value) && value > 0)) return { error: `${group}.${key} must be a whole number or null` };
+      changes.push({ group, key, value: value as number | null });
+    }
+  }
+  return changes;
+}
+
+/** `web.appearance` after `changes` (a copy; a key set to null leaves, an emptied group leaves; nothing left: undefined). */
+export function applyAppearanceChanges(current: unknown, changes: readonly AppearanceSettingsChange[]): Record<string, Record<string, number>> | undefined {
+  const out: Record<string, Record<string, number>> = {};
+  if (current && typeof current === "object" && !Array.isArray(current)) {
+    for (const [g, v] of Object.entries(current)) if (v && typeof v === "object" && !Array.isArray(v)) out[g] = { ...(v as Record<string, number>) };
+  }
+  for (const c of changes) {
+    const group = (out[c.group] ??= {});
+    if (c.value === null) delete group[c.key]; else group[c.key] = c.value;
+    if (!Object.keys(group).length) delete out[c.group];
+  }
+  return Object.keys(out).length ? out : undefined;
+}

@@ -476,7 +476,10 @@ export function handleViewRequest(
     const slot = m[2] as CardSlot | undefined;
     const store = cardStore(ctx);
     if (method === "GET" && !slot) {
-      json(res, 200, resolveCard(name, store.get(name), ctx.themeStore?.get(name).theme.card));
+      // The limits in force ride along, so View's editor can fit a picture before it is sent (r4.1 Q3 (b)).
+      const limits = effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits;
+      const slot = (l: { maxWidth: number; maxHeight: number; maxBytes: number }) => ({ max_width: l.maxWidth, max_height: l.maxHeight, max_bytes: l.maxBytes });
+      json(res, 200, { ...resolveCard(name, store.get(name), ctx.themeStore?.get(name).theme.card), limits: { portrait: slot(limits.portrait), banner: slot(limits.banner) } });
       return true;
     }
     if (method === "GET" && slot) {

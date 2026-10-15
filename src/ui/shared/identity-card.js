@@ -112,8 +112,8 @@ export function useCard(name, v) {
 
 /** The S / M / L control (a segmented one): sets this card's size. */
 function SizeControl({ name, size }) {
-  return html`<div class="seg card-size" role="group" aria-label=${t("card.size")}>
-    ${CARD_SIZES.map((s) => html`<button key=${s} type="button" class=${`seg-btn${s === size ? " on" : ""}`} aria-pressed=${s === size ? "true" : "false"}
+  return html`<div class="card-size" role="group" aria-label=${t("card.size")}>
+    ${CARD_SIZES.map((s) => html`<button key=${s} type="button" class=${`seg-item${s === size ? " active" : ""}`} aria-pressed=${s === size ? "true" : "false"}
       title=${t(`card.size${s.toUpperCase()}Name`)} onClick=${() => setCardSize(name, s)}>${t(`card.size${s.toUpperCase()}`)}</button>`)}
   </div>`;
 }
@@ -142,3 +142,45 @@ export function IdentityCard({ name, card, compact = false, sizeControl = !compa
     </div>
   </section>`;
 }
+
+// ── A person's picture for the card (View's Edit profile), fitted before it is sent (r4.1 Q3 (b)) ──
+/**
+ * `file` fitted to `limit` ({ max_width, max_height, max_bytes }): as it is when it already fits; otherwise, once the
+ * person agrees (`ask(w, h, nw, nh)`), drawn smaller and re-encoded as WebP (which also drops its metadata). The server
+ * checks whatever is sent like any upload — this is a convenience, never the check. Returns the Blob to send, null when
+ * the person declined, or throws when the picture cannot be read or made small enough.
+ */
+export async function fitPicture(file, limit, ask, io = browserImageIo) {
+  const okType = /^image\/(png|jpeg|webp)$/.test(file.type);
+  const bitmap = await io.decode(file);
+  const w = bitmap.width, h = bitmap.height;
+  if (okType && w <= limit.max_width && h <= limit.max_height && file.size <= limit.max_bytes) return file;
+  let scale = Math.min(1, limit.max_width / w, limit.max_height / h);
+  let nw = Math.max(1, Math.floor(w * scale)), nh = Math.max(1, Math.floor(h * scale));
+  if (!(await ask(w, h, nw, nh))) return null;
+  for (let tries = 0; tries < 6; tries++) {
+    for (const quality of [0.9, 0.8, 0.7]) {
+      const out = await io.encode(bitmap, nw, nh, quality);
+      if (out && out.size <= limit.max_bytes) return out;
+    }
+    scale *= 0.8;
+    nw = Math.max(1, Math.floor(w * scale)); nh = Math.max(1, Math.floor(h * scale));
+  }
+  throw new Error("too_large");
+}
+/** The browser's decoder and encoder: createImageBitmap (no URL, so img-src stays 'self') and a canvas to WebP (or JPEG). */
+export const browserImageIo = {
+  decode: (file) => createImageBitmap(file),
+  encode: (bitmap, w, h, quality) => new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) { resolve(null); return; }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    // WebP where the browser encodes it; JPEG where it does not (it answers PNG then) — either drops the metadata.
+    canvas.toBlob((b) => {
+      if (b && b.type === "image/webp") { resolve(b); return; }
+      canvas.toBlob((j) => resolve(j && j.type === "image/jpeg" ? j : null), "image/jpeg", quality);
+    }, "image/webp", quality);
+  }),
+};
