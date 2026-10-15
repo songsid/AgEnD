@@ -41,6 +41,8 @@ export class SettingsHttpConfirmation {
     // #1620: the web settings (sessions, the browser terminal, the public link itself) are never changed over the
     // temporary public link — the same rule as tokens and secrets: refused before anything is proposed.
     if (path === "/api/settings/fleet/web" && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
+    // #1629 r4.1 Q3 (b): the card's upload limits too (absent from the public link's manifest as well).
+    if (path === "/api/settings/fleet/appearance" && gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
     void this.prepare(req, res, url, next).catch(err => json(res, err instanceof SettingsConfirmationError ? err.status : 409,
       { error: err instanceof SettingsConfirmationError ? err.code : "settings_confirmation_unavailable" }));
     return true;
