@@ -37,6 +37,7 @@ describe("durable outbox dispatcher", () => {
         content,
         delivery_id: row.deliveryId,
         delivery_attempt: "1",
+        silent_schedule: true,
       });
       expect(payload).not.toHaveProperty("meta");
       expect(outbox.begin(row.deliveryId, "worker-boot", 1, {
