@@ -6273,6 +6273,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const fleet = this.loadConfig(configPath);
     this.slimFleetConfigAtStartup();
+    this.logConfigWarningsAtStartup();
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
     // #1737 review: the marker this boot adopts — the startup clear may only ever clear this one.
     const bootUpdateMarker = updateMarkerIdentity(this.dataDir);
@@ -10395,6 +10396,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return introduced.length
       ? `Refusing to save fleet.yaml: it would be invalid (${introduced.map(e => `${e.path}: ${e.message}`).join("; ")})`
       : null;
+  }
+
+  /**
+   * #1874 follow-up: the validator's warnings, once per start, in daemon.log — a setting fleet.yaml has that AgEnD
+   * ignores (e.g. `web.access`) is otherwise silent unless someone runs `agend validate`.
+   */
+  private logConfigWarningsAtStartup(): void {
+    let warnings: Array<{ path: string; message: string }> = [];
+    try { warnings = validateFleetConfig(this.rawFleetConfig).warnings; } catch (err) { this.logger.debug({ err }, "fleet.yaml validation failed (startup warnings)"); }
+    for (const w of warnings) this.logger.warn({ path: w.path }, `fleet.yaml: ${w.path ? `${w.path}: ` : ""}${w.message}`);
   }
 
   /** One-time upgrade migration; invalid YAML is never rewritten. */

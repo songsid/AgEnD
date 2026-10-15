@@ -201,7 +201,7 @@ describe("fleet host memory wiring", () => {
   it("starts monitoring before any CLI startup even if startup is subsequently held", async () => {
     const { fm, logger, read, internal } = make(memory(100, 0));
     // Exercise only the pre-spawn prefix; every IO/lifecycle entry is stubbed.
-    for (const name of ["loadEnvFile", "ensureDeliveryOutbox", "rotateFleetLogs", "slimFleetConfigAtStartup", "initializeWebAuthTokens"]) {
+    for (const name of ["loadEnvFile", "ensureDeliveryOutbox", "rotateFleetLogs", "slimFleetConfigAtStartup", "logConfigWarningsAtStartup", "initializeWebAuthTokens"]) {
       vi.spyOn(internal, name).mockImplementation(() => undefined);
     }
     vi.spyOn(fm, "loadConfig").mockReturnValue(internal.fleetConfig);
