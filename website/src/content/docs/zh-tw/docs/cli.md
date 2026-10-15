@@ -235,7 +235,7 @@ agend schedule delete <id>
 agend schedule history <id>
 ```
 
-\`agend schedule trigger <id>\` 目前只會印出指引，不會執行排程。
+`agend schedule trigger <id>` 目前只會印出指引，不會執行排程。
 
 ## 設定確認
 

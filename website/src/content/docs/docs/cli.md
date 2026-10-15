@@ -235,7 +235,7 @@ See when a schedule last ran:
 agend schedule history <id>
 ```
 
-\`agend schedule trigger <id>\` currently prints guidance only — it does not execute a schedule.
+`agend schedule trigger <id>` currently prints guidance only — it does not execute a schedule.
 
 ## Settings confirmation
 
