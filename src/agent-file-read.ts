@@ -51,3 +51,44 @@ export async function readAgentFile(file: unknown, opts: { workspace: string | u
     await fh?.close().catch(() => {});
   }
 }
+
+/**
+ * #1629 r4 §1: write a file the fleet produced for the agent (preview_web_appearance's SVGs) into its own working
+ * directory, on the agent's side — the daemon or the CLI; the fleet never names a path. `dir` is a fixed relative path
+ * (".agend/appearance"); each of its folders is created if missing and must not be a symlink; the result must be in
+ * the working directory and not in the AgEnD state directory (a working directory that is $HOME holds ~/.agend). The
+ * file goes to a new temporary name (O_EXCL | O_NOFOLLOW) and is renamed over `name`, so a planted symlink is replaced,
+ * never followed.
+ */
+export async function writeAgentFile(dir: string, name: string, bytes: Uint8Array, opts: { workspace: string | undefined; stateDir: string }): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
+  if (!opts.workspace) return { ok: false, reason: "this instance has no working directory" };
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name.startsWith(".") || dir.split("/").some(p => !/^[A-Za-z0-9._-]+$/.test(p) || p === "..")) return { ok: false, reason: "not a plain name" };
+  const { mkdir, rename, unlink } = await import("node:fs/promises");
+  const { randomBytes } = await import("node:crypto");
+  try {
+    const ws = await realpath(opts.workspace);
+    const state = [resolve(opts.stateDir)];
+    try { state.push(await realpath(opts.stateDir)); } catch { /* not there */ }
+    // Refused before anything is created (#1890 review: a $HOME working directory got ~/.agend/appearance first).
+    if (state.some(root => under(resolve(ws, dir), root))) return { ok: false, reason: "inside the AgEnD state directory" };
+    let at = ws;
+    for (const part of dir.split("/")) {
+      at = resolve(at, part);
+      try {
+        const st = await lstat(at);
+        if (st.isSymbolicLink() || !st.isDirectory()) return { ok: false, reason: `${part} is not a plain folder` };
+      } catch { await mkdir(at, { mode: 0o700 }); }
+    }
+    const real = await realpath(at);
+    if (!under(real, ws)) return { ok: false, reason: "outside your working directory" };
+    if (state.some(root => under(real, root))) return { ok: false, reason: "inside the AgEnD state directory" };
+    const tmp = resolve(real, `.${name}.${randomBytes(6).toString("hex")}.tmp`);
+    const fh = await open(tmp, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
+    try { await fh.writeFile(bytes); } finally { await fh.close(); }
+    const final = resolve(real, name);
+    try { await rename(tmp, final); } catch (err) { await unlink(tmp).catch(() => {}); throw err; }
+    return { ok: true, path: final };
+  } catch {
+    return { ok: false, reason: "cannot be written" };
+  }
+}

@@ -222,6 +222,11 @@ export const SetWebThemeAssetArgs = z.object({
   file: NonEmptyString.describe("A picture in your working directory: png, jpeg, webp or gif for background (≤ 512 KiB) and avatar (≤ 256 KiB), ≤ 4096 px a side; png, jpeg or webp for portrait and banner (limits set by the fleet — get_web_theme's limits.asset_slots says the ones in force)"),
 });
 export const ResetWebThemeArgs = z.object({});
+// #1629 r4 §1: how you appear on the dashboard — read-only, always yours.
+export const GetWebAppearanceArgs = z.object({});
+export const PreviewWebAppearanceArgs = z.object({
+  modes: z.array(z.enum(["light", "dark"])).min(1).max(2).optional().describe("Which modes to draw (default both)"),
+});
 
 export const SetDescriptionArgs = z.object({
   description: NonEmptyString.describe(
