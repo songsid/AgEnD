@@ -12,6 +12,8 @@ import { APPEARANCE_DEFAULTS } from "../src/web-appearance-limits.js";
 import { APPEARANCE_LIMITS } from "../src/web-appearance-policy.js";
 import { CONTRAST_PAIRS, TAGLINE_MAX_GRAPHEMES, BIO_MAX_GRAPHEMES, BIO_MAX_BREAKS } from "../src/web-theme.js";
 import { AGENT_WHATS_NEW, compareVersions, planWhatsNew } from "../src/agent-whats-new.js";
+import { PREVIEW_FILE as VIEW_PREVIEW_FILE } from "../src/web-appearance-view.js";
+import { PREVIEW_FILE as PARTS_PREVIEW_FILE } from "../src/web-asset-parts.js";
 
 const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8");
 
@@ -49,5 +51,12 @@ describe("what's new for 2.3 (#1633)", () => {
     }
     const all = AGENT_WHATS_NEW.map(e => e.id);
     expect(planWhatsNew({ record: { announced: all }, fresh: false, version: "2.3.0" })).toBeNull();
+  });
+});
+
+describe("one preview file rule in two places (#1890 review)", () => {
+  it("web-appearance-view's and web-asset-parts' PREVIEW_FILE are the same (the second keeps agend-agent small)", () => {
+    expect(PARTS_PREVIEW_FILE.source).toBe(VIEW_PREVIEW_FILE.source);
+    expect(PARTS_PREVIEW_FILE.flags).toBe(VIEW_PREVIEW_FILE.flags);
   });
 });
