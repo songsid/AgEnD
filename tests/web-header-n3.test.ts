@@ -107,18 +107,38 @@ describe("the same controls, in the same order, on every page", () => {
 });
 
 describe("one text size, across pages and page loads", () => {
-  it("chosen on Chat (L): the root says L; Details, Fleet and View show L; a reload keeps it", async () => {
+  it("chosen on Chat (L): the root says L; Details and Fleet show L; View stays on Fit (#1869); a reload keeps both", async () => {
     const pg = await app("/ui/chat/web-dev");
     pg.root.querySelector(".panel-head .hd-text").click(); await settle();   // M → L
     expect([pg.document.documentElement.dataset.textSize, pg.storage.get("agend_text_size"), textSize(pg)]).toEqual(["l", "l", "Text size: L"]);
+    const { textSizeStore } = await import("/assets/header-tools.js");
+    expect([textSizeStore.get().viewFit, pg.storage.get("agend_view_fit")], "a size chosen on Chat keeps View's Fit").toEqual([true, "1"]);
     await go("/ui/fleet/agent/web-dev"); expect(textSize(pg)).toBe("Text size: L");
     await go("/ui/fleet/org"); expect(textSize(pg)).toBe("Text size: L");
-    await go("/view/web-dev"); expect(textSize(pg), "the last choice wins on View too").toBe("Text size: L");
+    await go("/view/web-dev"); expect(textSize(pg), "View is still on Fit").toBe("Text size: Fit");
     const again = await reload(pg, "/ui/fleet/agent/web-dev");
     expect([again.document.documentElement.dataset.textSize, textSize(again)]).toEqual(["l", "Text size: L"]);
+    await go("/view/web-dev"); expect(textSize(again)).toBe("Text size: Fit");
+  });
+  it("#1869: View's own S / M / L still leave Fit, and a size chosen elsewhere afterwards keeps View on it", async () => {
+    const pg = await app("/view/web-dev");
+    pg.root.querySelector(".panel-head .hd-text").click(); await settle();   // Fit → S
+    expect([textSize(pg), pg.storage.get("agend_view_fit"), pg.storage.get("agend_text_size")]).toEqual(["Text size: S", "0", "s"]);
+    await go("/ui/chat/web-dev");
+    pg.root.querySelector(".panel-head .hd-text").click(); await settle();   // S → M on Chat
+    await go("/view/web-dev");
+    expect([textSize(pg), pg.storage.get("agend_view_fit")]).toEqual(["Text size: M", "0"]);
+  });
+  it("#1869: a device whose Fit was turned off before the fix gets it back once; a later View choice is kept", async () => {
+    const pg = await app("/ui/chat/web-dev", { agend_text_size: "l", agend_view_fit: "0" });
+    expect([pg.storage.get("agend_view_fit"), pg.storage.get("agend_view_fit_1869"), pg.storage.get("agend_text_size")]).toEqual(["1", "1", "l"]);
+    await go("/view/web-dev"); expect(textSize(pg)).toBe("Text size: Fit");
+    pg.root.querySelector(".panel-head .hd-text").click(); await settle();   // Fit → S, in View
+    const again = await reload(pg, "/view/web-dev");
+    expect([textSize(again), again.storage.get("agend_view_fit")], "only once").toEqual(["Text size: S", "0"]);
   });
   it("View's Fit is View's own: chosen there, the others keep the shared size", async () => {
-    const pg = await app("/view/web-dev", { agend_text_size: "s", agend_view_fit: "0" });
+    const pg = await app("/view/web-dev", { agend_text_size: "s", agend_view_fit: "0", agend_view_fit_1869: "1" });
     expect(textSize(pg)).toBe("Text size: S");
     for (let i = 0; i < 3; i++) { pg.root.querySelector(".panel-head .hd-text").click(); await settle(); }   // S → M → L → Fit
     expect([textSize(pg), pg.storage.get("agend_view_fit"), pg.storage.get("agend_text_size")]).toEqual(["Text size: Fit", "1", "l"]);
@@ -130,7 +150,7 @@ describe("one text size, across pages and page loads", () => {
     ["compact", { agend_view_density: "compact" }, ["s", "0"]],
     ["fit", { agend_view_density: "fit" }, ["m", "1"]],
     ["nothing", {}, ["m", "1"]],
-    ["a newer choice already there", { agend_view_density: "compact", agend_text_size: "l", agend_view_fit: "0" }, ["l", "0"]],
+    ["a newer choice already there", { agend_view_density: "compact", agend_text_size: "l", agend_view_fit: "0", agend_view_fit_1869: "1" }, ["l", "0"]],
   ])("taken over from View's old setting (%s), once", async (_n, storage, want) => {
     const pg = await app("/ui/fleet/tasks", storage as Record<string, string>);
     expect([pg.storage.get("agend_text_size"), pg.storage.get("agend_view_fit")]).toEqual(want);

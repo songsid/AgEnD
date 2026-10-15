@@ -114,7 +114,9 @@ export { viewStore };
 // ── The panel ──
 
 // readStream: one stream of reads under a lease (read-stream.js; View's pane and roster use it).
-const MIN_PX = 12, MAX_PX = 22;
+// S / M / L: the fitted size kept within 12–22 px, then scaled. Fit (#1869): never larger than what fits — only a 6 px
+// floor for legibility (a grid too wide for the box even at 6 px, e.g. 200 columns on a phone, still scrolls).
+const MIN_PX = 12, MAX_PX = 22, FIT_FLOOR_PX = 6;
 
 export function ViewPanel({ route, navKey }) {
   const lease = useLease(navKey);
@@ -219,10 +221,11 @@ function Terminal({ name, lease, density }) {
     const lh = parseFloat(pcs.lineHeight) / parseFloat(pcs.fontSize);
     const lineH = Number.isFinite(lh) && lh > 0 ? lh : 1.2;
     let size = Math.min(innerW / (g.cols * glyphRatio(p)), innerH / (g.rows * lineH)) * 0.995;
-    size = Math.max(MIN_PX, Math.min(size, MAX_PX)) * (density === "fit" ? 1 : VIEW_SCALE[density] || 1);
-    size = Math.max(8, Math.min(size, 32));
+    if (density === "fit") size = Math.max(FIT_FLOOR_PX, Math.min(size, MAX_PX));
+    else size = Math.max(8, Math.min(Math.max(MIN_PX, Math.min(size, MAX_PX)) * (VIEW_SCALE[density] || 1), 32));
     g.key = key;
-    if (Math.abs(size - g.applied) < 0.75) return;
+    // A small change is skipped only when growing (the size applied still fits); a smaller box always shrinks it.
+    if (size >= g.applied && size - g.applied < 0.75) return;
     g.applied = size;
     p.style.fontSize = `${size.toFixed(2)}px`;          // CSSOM, never a style attribute (#1300)
   };

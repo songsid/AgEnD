@@ -115,8 +115,8 @@ describe("the terminal's font fits the pane's cell grid", () => {
     expect(fontPx()).toBe("16.58px");
     await resizeBox(1012, 1010, "window");              // inner 1000 x 1000: the width still limits
     expect(fontPx()).toBe("16.58px");
-    await resizeBox(612, 610, "window");                // inner 600 x 600: 600 / 60 * 0.995 = 9.95, clamped up to 12
-    expect(fontPx()).toBe("12.00px");
+    await resizeBox(612, 610, "window");                // inner 600 x 600: 600 / 60 * 0.995 = 9.95 (#1869: Fit is not raised to 12)
+    expect(fontPx()).toBe("9.95px");
   });
 
   it("refits when the terminal's own box changes (ResizeObserver), not only on window resize", async () => {
@@ -126,11 +126,32 @@ describe("the terminal's font fits the pane's cell grid", () => {
     expect(fontPx()).toBe("16.58px");
   });
 
-  it("clamps to one desktop range: 12 px at the least, 22 px at the most", async () => {
+  it("#1869: a wide grid in a small box fits in width and height under Fit — never raised to a 12 px floor", async () => {
+    paneCols = 200; paneRows = 50;
     await mount();
-    paneCols = 200;                                      // a very wide grid in a small box: the floor
+    await resizeBox(1012, 610, "window");               // inner 1000 x 600: min(1000 / 120, 600 / 60) * 0.995 = 8.29
+    const size = parseFloat(fontPx());
+    expect(fontPx()).toBe("8.29px");
+    expect([size * 200 * 0.6 <= 1000, size * 50 * 1.2 <= 600]).toEqual([true, true]);
+    await resizeBox(812, 610, "window");                // narrower: 800 / 120 * 0.995 = 6.63
+    expect(fontPx()).toBe("6.63px");
+  });
+
+  it("#1869: a box that shrinks a little shrinks the font (only a small growth is skipped)", async () => {
+    await mount();
+    await resizeBox(1012, 610);
+    expect(fontPx()).toBe("16.58px");
+    await resizeBox(982, 610);                          // inner 970: 970 / 60 * 0.995 = 16.09 (0.49 smaller)
+    expect(fontPx()).toBe("16.09px");
+    await resizeBox(1012, 610);                         // 0.49 larger again: kept (it still fits)
+    expect(fontPx()).toBe("16.09px");
+  });
+
+  it("Fit stays within 6 px (a legibility floor) and 22 px", async () => {
+    await mount();
+    paneCols = 200;                                      // a very wide grid in a tiny box: the 6 px floor
     await resizeBox(212, 610, "window");
-    expect(fontPx()).toBe("12.00px");
+    expect(fontPx()).toBe("6.00px");
     paneCols = 10; paneRows = 5;                         // a tiny grid in a big box: the ceiling
     await resizeBox(2012, 1010, "window");
     expect(fontPx()).toBe("22.00px");

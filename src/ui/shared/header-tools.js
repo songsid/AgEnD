@@ -13,6 +13,8 @@ import { UsageBody, UsageDialog } from "./usage-dialog.js";
 
 export const TEXT_SIZE_KEY = "agend_text_size";
 export const VIEW_FIT_KEY = "agend_view_fit";
+/** #1869: set once this device's View Fit was put back (a size chosen on another page used to turn it off). */
+export const VIEW_FIT_RESTORED_KEY = "agend_view_fit_1869";
 const LEGACY_DENSITY_KEY = "agend_view_density";
 export const TEXT_SIZES = ["s", "m", "l"];
 /** View's terminal: its fitted size times this (S / M / L are View's old compact / – / comfortable). */
@@ -24,6 +26,7 @@ const write = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this pa
 /**
  * This device's choice: `agend_text_size` (+ View's Fit), else — once — from View's `agend_view_density`:
  * comfortable → L, compact → S (Fit off); fit, or nothing → M with View on Fit (View's default, as before).
+ * #1869: until then any page's S / M / L also turned View's Fit off, so a Fit off from before is put back once.
  */
 export function loadTextSize() {
   let size = read(TEXT_SIZE_KEY), fit = read(VIEW_FIT_KEY);
@@ -31,7 +34,11 @@ export function loadTextSize() {
     const legacy = read(LEGACY_DENSITY_KEY);
     size = legacy === "comfortable" ? "l" : legacy === "compact" ? "s" : "m";
     fit = legacy === "comfortable" || legacy === "compact" ? "0" : "1";
-    write(TEXT_SIZE_KEY, size); write(VIEW_FIT_KEY, fit);
+    write(TEXT_SIZE_KEY, size); write(VIEW_FIT_KEY, fit); write(VIEW_FIT_RESTORED_KEY, "1");
+  }
+  if (read(VIEW_FIT_RESTORED_KEY) !== "1") {
+    if (fit === "0") { fit = "1"; write(VIEW_FIT_KEY, fit); }
+    write(VIEW_FIT_RESTORED_KEY, "1");
   }
   return { size, viewFit: fit !== "0" };
 }
@@ -50,11 +57,15 @@ export function initTextSize() {
     window.addEventListener("storage", (e) => { if (!e || e.key === TEXT_SIZE_KEY || e.key === VIEW_FIT_KEY || e.key === null) textSizeStore.set(loadTextSize()); });
   }
 }
-/** A size chosen anywhere is the size everywhere (View's Fit included: the last choice wins). */
-export function setTextSize(size) {
+/**
+ * A size chosen anywhere is the size everywhere. View's Fit is left only from View's own Aa (`view`): a size chosen on
+ * another page keeps View on Fit (#1869).
+ */
+export function setTextSize(size, { view = false } = {}) {
   if (!TEXT_SIZES.includes(size)) return;
-  write(TEXT_SIZE_KEY, size); write(VIEW_FIT_KEY, "0");
-  textSizeStore.set({ size, viewFit: false });
+  write(TEXT_SIZE_KEY, size);
+  if (view) write(VIEW_FIT_KEY, "0");
+  textSizeStore.set((s) => ({ size, viewFit: view ? false : s.viewFit }));
 }
 export function setViewFit() { write(VIEW_FIT_KEY, "1"); textSizeStore.set((s) => ({ ...s, viewFit: true })); }
 
@@ -69,7 +80,7 @@ export function TextSizeButton({ view = false }) {
   const next = order[(order.indexOf(cur) + 1) % order.length];
   const name = t(`app.textSize_${cur}`);
   const label = t("app.textSize", name);
-  return html`<button type="button" class="btn btn-ghost btn-sm hd-text" onClick=${() => (next === "fit" ? setViewFit() : setTextSize(next))}
+  return html`<button type="button" class="btn btn-ghost btn-sm hd-text" onClick=${() => (next === "fit" ? setViewFit() : setTextSize(next, { view }))}
     title=${label} aria-label=${label}><${Icon} name="type" size=${16} /><span class="hide-narrow" aria-hidden="true"><span class="hd-text-names">${
       ["fit", ...TEXT_SIZES].map(k => html`<span key=${k} class=${k === cur ? "on" : undefined}>${t(`app.textSize_${k}`)}</span>`)}</span></span></button>`;
 }

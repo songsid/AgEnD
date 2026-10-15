@@ -227,7 +227,7 @@ Everything waiting on you, from every bot's world, in one list: a fleet prompt (
 `/view` shows every agent: the live terminal capture, the roster with each one's state and context, and AI subscription usage. Each agent has its own address, `/view/<name>`; `/view` alone opens the one this browser looked at last.
 
 - **The roster is the sidebar** while View is open (on a phone, the drawer): grouped by tag, with the filter at the bottom (**/** jumps to it) and your own order (drag a group or an instance). Rows show the context in use and the backend's colour; hover for the rest.
-- **The header** has **Text size**, **Usage** and **Help**. On View the size goes Fit → S → M → L: **Fit** sizes the terminal to its box, and S / M / L are the size every page shares. The terminal stays dark in both themes.
+- **The header** has **Text size**, **Usage** and **Help**. On View the size goes Fit → S → M → L: **Fit** (the default) sizes the terminal to fit its box, never larger, down to a 6 px floor. S / M / L are the size every page shares. Choosing a size on another page keeps View on Fit; only View's own Text size leaves it. The terminal stays dark in both themes.
 - **The card under the terminal** shows the agent's name, role and model; its arrow opens the whole profile. **Edit profile** changes the display name, role, description and avatar.
 
 - **Reading `/view` needs no sign-in by default** (`web.view_access: open`). That includes the live terminal, so anyone who can reach the port can watch your agents. On a machine only you can reach, that is fine. Otherwise set:
