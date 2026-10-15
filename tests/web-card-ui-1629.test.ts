@@ -106,7 +106,7 @@ describe("loadCard: the version this page wants now (#1889 review)", () => {
     const one = card.loadCard("a", "v1", h.fetcher("old")), two = card.loadCard("a", "v2", h.fetcher("new"));
     h.pending[1]!.resolve(); await two;
     h.pending[0]!.resolve(); await one;
-    expect(card.cardsStore.get().a).toEqual({ v: "v2", card: { tagline: { text: "new", by: "agent" } } });
+    expect(card.cardsStore.get().a).toMatchObject({ v: "v2", card: { tagline: { text: "new", by: "agent" } } });
     void id;
   });
   it("a held answer after the card was cleared does not bring it back", async () => {
@@ -117,13 +117,49 @@ describe("loadCard: the version this page wants now (#1889 review)", () => {
     h.pending[0]!.resolve(); await one;
     expect(Object.hasOwn(card.cardsStore.get(), "a")).toBe(false);
   });
+  it("A → B → A: the first A's read (its body held, holding B) is not reused or applied; the second A reads afresh (#1889 review r2)", async () => {
+    const { card } = await load();
+    let releaseFirst!: () => void;
+    const firstBody = new Promise<void>(r => { releaseFirst = r; });
+    const calls: string[] = [];
+    const first = card.loadCard("a", "A", async () => { calls.push("first"); return { ok: true, json: async () => { await firstBody; return body("B served under A"); } }; });
+    await new Promise(r => setTimeout(r, 0));
+    await card.loadCard("a", "B", async () => { calls.push("b"); return { ok: true, json: async () => body("B") }; });
+    expect(card.cardsStore.get().a).toMatchObject({ v: "B", card: { tagline: { text: "B" } } });
+    const fresh = card.loadCard("a", "A", async () => { calls.push("fresh"); return { ok: true, json: async () => body("A again") }; });
+    releaseFirst(); await Promise.all([first, fresh]);
+    expect([calls, card.cardsStore.get().a]).toEqual([["first", "b", "fresh"], expect.objectContaining({ v: "A", card: { tagline: { text: "A again", by: "agent" } } })]);
+    await card.loadCard("a", "A", async () => { calls.push("again"); return { ok: true, json: async () => body("x") }; });
+    expect(calls.at(-1)).toBe("fresh");                                       // read in this epoch: no second read
+  });
+  it("A read in an earlier epoch does not count for A wanted again: B's failed read in between, then A reads afresh", async () => {
+    const { card } = await load();
+    const calls: string[] = [];
+    await card.loadCard("a", "A", async () => { calls.push("a1"); return { ok: true, json: async () => body("A1") }; });
+    await card.loadCard("a", "B", async () => { calls.push("b"); return { ok: false, json: async () => ({}) }; });
+    await card.loadCard("a", "A", async () => { calls.push("a2"); return { ok: true, json: async () => body("A2") }; });
+    expect([calls, card.cardsStore.get().a.card]).toEqual([["a1", "b", "a2"], { tagline: { text: "A2", by: "agent" } }]);
+  });
+  it("an older read ending never removes its replacement: the current epoch's read is still shared", async () => {
+    const { card } = await load();
+    const h = held();
+    const old = card.loadCard("a", "A", h.fetcher("A"));
+    const calls: string[] = [];
+    let releaseB!: () => void;
+    const bHeld = new Promise<void>(r => { releaseB = r; });
+    const b = card.loadCard("a", "B", async () => { calls.push("b1"); await bHeld; return { ok: true, json: async () => body("B") }; });
+    h.pending[0]!.resolve(); await old;
+    const again = card.loadCard("a", "B", async () => { calls.push("b2"); return { ok: true, json: async () => body("B2") }; });
+    releaseB(); await Promise.all([b, again]);
+    expect([calls, card.cardsStore.get().a.card]).toEqual([["b1"], { tagline: { text: "B", by: "agent" } }]);
+  });
   it("control: the same version asked twice while out is read once, and applied", async () => {
     const { card } = await load();
     const h = held();
     const one = card.loadCard("a", "v1", h.fetcher("one")), again = card.loadCard("a", "v1", h.fetcher("again"));
     expect(h.pending.length).toBe(1);
     h.pending[0]!.resolve(); await Promise.all([one, again]);
-    expect(card.cardsStore.get().a).toEqual({ v: "v1", card: { tagline: { text: "one", by: "agent" } } });
+    expect(card.cardsStore.get().a).toMatchObject({ v: "v1", card: { tagline: { text: "one", by: "agent" } } });
   });
 });
 
