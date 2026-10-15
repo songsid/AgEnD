@@ -23,6 +23,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
+import { applyTheme, isThemeLocked, resolvedMode, themeFor, themeImageUrl, themesStore } from "/assets/app-themes.js";
 import "./chat-strings.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
@@ -171,11 +172,53 @@ function NotFound({ name }) {
       action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} /></div></div>`;
 }
 
+/**
+ * #1629: the mode the page is drawn in, followed live (the chosen theme, or the system's for "system"), so an agent's
+ * light and dark palettes swap with it.
+ */
+function useResolvedMode(lease) {
+  const [mode, setMode] = useState(resolvedMode);
+  useEffect(() => {
+    const T = globalThis.AgendTheme;
+    const update = () => setMode(resolvedMode());
+    const off = T && typeof T.onChange === "function" ? T.onChange(update) : null;
+    let mq = null;
+    try { mq = globalThis.matchMedia ? globalThis.matchMedia("(prefers-color-scheme: light)") : null; } catch { mq = null; }
+    if (mq && typeof mq.addEventListener === "function") lease.on(mq, "change", update);
+    return () => { if (typeof off === "function") off(); };
+  }, [lease]);
+  return mode;
+}
+
+const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
+
+/** #1629: a person's Reset or Lock of an agent's theme (an admin session; never over the public link). */
+async function themeAction(name, what, body) {
+  let r;
+  try {
+    const res = await fetch(`/ui/themes/${encodeURIComponent(name)}/${what}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) r = { error: r && r.error ? r.error : `HTTP ${res.status}` };
+  } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
+  if (r && r.error) toast(t("chat.themeFailed", r.error), false);
+  else toast(t(what === "reset" ? "chat.themeResetDone" : body && body.locked ? "chat.themeLocked" : "chat.themeUnlocked", name));
+}
+
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const names = useStore(namesStore);   // #1722: which name leads (the title)
+  // #1629: this agent's theme, on this surface only; redrawn when the themes, the viewer's switch or the mode move.
+  useStore(themesStore);
+  const mode = useResolvedMode(lease);
+  const theme = themeFor(name);
+  const themeKey = JSON.stringify(theme);
   const [dialog, setDialog] = useState(null);       // "delete" | null
   const [wrap, setWrap] = useState(codeWrap);
-  const view = useRef(null), split = useRef(null), thread = useRef(null);
+  const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null);
+  useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
+  useLayoutEffect(() => {
+    const img = bg.current;
+    if (img && img.style && theme && theme.background) img.style.setProperty("--th-bg-opacity", String(theme.background.opacity));
+  }, [themeKey]);
   useEffect(() => { wrapListeners.add(setWrap); return () => wrapListeners.delete(setWrap); }, []);
   // First visit to this instance's chat on this page: its history (a navigation — it counts as use). Back again: nothing.
   useEffect(() => { store.openHistory(name, lease); }, [name]);
@@ -217,6 +260,12 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
     running ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
+    // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
+    publicLink() ? null : { key: "theme-lock", label: t(isThemeLocked(name) ? "chat.themeUnlock" : "chat.themeLock"), icon: "key",
+      onSelect: () => themeAction(name, "lock", { locked: !isThemeLocked(name) }) },
+    publicLink() ? null : { key: "theme-reset", label: t("chat.themeReset"), icon: "restart", onSelect: async () => {
+      if (await confirmDialog(t("chat.themeResetConfirm", name), { confirmLabel: t("chat.themeResetGo"), danger: true })) themeAction(name, "reset");
+    } },
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
@@ -228,9 +277,10 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
     <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <div class="chat-split" ref=${split}>
-      <div class="chat-main">
+      <div class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
+        ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
         <${Thread} name=${name} th=${thread} />
-        <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />
+        <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
       </div>
       <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
         keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
@@ -295,12 +345,12 @@ function Thread({ name, th }) {
 }
 
 /** Everything under the thread: prompts, the working line, a failed send, files waiting, and the composer. */
-function Dock({ name, inst, lease, exec, awaiting }) {
+function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   useChatTick(name, ["state"]);
   const s = store.state;
   return html`<div class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
-    <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} />
+    <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.failedSends[name] ? html`<div class="failed-send" role="alert"><span>${t("chat.notSent")}</span><span class="txt">${s.failedSends[name]}</span>
@@ -351,7 +401,7 @@ function Prompts({ name }) {
 }
 
 /** "<name> is working… 0:42", "looks stuck", "Stopping…", or what it waits on at its terminal. Text only. */
-function WorkBar({ name, lease, exec, awaiting }) {
+function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const s = store.state;
   const busy = R().isBusy(exec) ? exec : "";
   const kind = awaiting != null ? "awaiting" : s.stopping[name] && busy ? "stopping" : busy;
@@ -362,7 +412,9 @@ function WorkBar({ name, lease, exec, awaiting }) {
     return () => lease.clear(h);
   }, [kind, lease]);
   if (!kind) return null;
-  const label = t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
+  // #1629: the agent's own working label (its theme), shown as text — only for "working", never for the other states.
+  const label = kind === "working" && workingLabel ? workingLabel
+    : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
   const since = s.workingSince[name];
   return html`<div class=${`work-bar ${kind}`}><span class="pulse" aria-hidden="true"></span><span class="lbl">${label}</span>
     ${kind === "awaiting" ? html`<span class="note" title=${t("chat.approxNote")}>${awaiting || t("chat.approxNote")}</span>`
