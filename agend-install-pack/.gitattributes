@@ -1,0 +1,10 @@
+# 確保 Windows .bat 檔案保持 CRLF 換行
+*.bat text eol=crlf
+
+# Shell 腳本保持 LF 換行
+*.sh text eol=lf
+*.command text eol=lf
+
+# 文件檔保持系統原生換行
+*.md text
+*.txt text
