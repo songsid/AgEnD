@@ -92,7 +92,50 @@ describe("fitPicture", () => {
   });
 });
 
+describe("loadCard: the version this page wants now (#1889 review)", () => {
+  const id = "a".repeat(32);
+  const body = (tag: string) => ({ tagline: { text: tag, by: "agent" } });
+  function held() {
+    const pending: Array<{ resolve: () => void; tag: string }> = [];
+    const fetcher = (tag: string) => () => new Promise<any>(r => pending.push({ tag, resolve: () => r({ ok: true, json: async () => body(tag) }) }));
+    return { pending, fetcher };
+  }
+  it("an older answer released after a newer one is dropped; the newer one stays", async () => {
+    const { card } = await load();
+    const h = held();
+    const one = card.loadCard("a", "v1", h.fetcher("old")), two = card.loadCard("a", "v2", h.fetcher("new"));
+    h.pending[1]!.resolve(); await two;
+    h.pending[0]!.resolve(); await one;
+    expect(card.cardsStore.get().a).toEqual({ v: "v2", card: { tagline: { text: "new", by: "agent" } } });
+    void id;
+  });
+  it("a held answer after the card was cleared does not bring it back", async () => {
+    const { card } = await load();
+    const h = held();
+    const one = card.loadCard("a", "v1", h.fetcher("old"));
+    await card.loadCard("a", null);
+    h.pending[0]!.resolve(); await one;
+    expect(Object.hasOwn(card.cardsStore.get(), "a")).toBe(false);
+  });
+  it("control: the same version asked twice while out is read once, and applied", async () => {
+    const { card } = await load();
+    const h = held();
+    const one = card.loadCard("a", "v1", h.fetcher("one")), again = card.loadCard("a", "v1", h.fetcher("again"));
+    expect(h.pending.length).toBe(1);
+    h.pending[0]!.resolve(); await Promise.all([one, again]);
+    expect(card.cardsStore.get().a).toEqual({ v: "v1", card: { tagline: { text: "one", by: "agent" } } });
+  });
+});
+
 describe("checkCard", () => {
+  it("the host's bounds: 280 emoji families are shown; past the units bound, dropped (#1889 review)", async () => {
+    const { card } = await load();
+    const family = "👨‍👩‍👧".repeat(280);
+    expect(card.checkCard("a", { bio: { text: family, by: "human" } })).toEqual({ bio: { text: family, by: "human" } });
+    expect(card.checkCard("a", { bio: { text: "x".repeat(2801), by: "human" } })).toBeNull();
+    expect(card.checkCard("a", { tagline: { text: "x".repeat(600), by: "human" } })).not.toBeNull();
+    expect(card.checkCard("a", { tagline: { text: "x".repeat(601), by: "human" } })).toBeNull();
+  });
   it("keeps this card's own picture paths and text; drops another card's, a remote one, and anything malformed", async () => {
     const { card } = await load();
     const id = "a".repeat(32);

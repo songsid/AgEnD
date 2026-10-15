@@ -75,11 +75,22 @@ const VISIBLE = /[^\p{M}\p{C}\p{Z}\u115f\u1160\u3164\uffa0\u2800]/u;
 export const BIO_MAX_GRAPHEMES = 280;
 export const BIO_MAX_BREAKS = 3;
 export const TAGLINE_MAX_GRAPHEMES = 60;
+/**
+ * #1889 review: one explicit bound in UTF-16 units too, for the host and the page alike — a grapheme may be many units
+ * (an emoji family is 8), so 10 per grapheme keeps every ordinary text and still bounds what is stored.
+ */
+export const TAGLINE_MAX_UNITS = TAGLINE_MAX_GRAPHEMES * 10;
+export const BIO_MAX_UNITS = 2800;
+/** A card's tagline: one line of 1..60 graphemes, at most TAGLINE_MAX_UNITS units. */
+export function canonicalTagline(v: unknown): string | null {
+  const t = canonicalText(v, 1, TAGLINE_MAX_GRAPHEMES);
+  return t !== null && t.length <= TAGLINE_MAX_UNITS ? t : null;
+}
 export function canonicalBio(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.normalize("NFC");
   const lines = s.split("\n");
-  if (lines.length > BIO_MAX_BREAKS + 1 || s.trim() !== s || !VISIBLE.test(s)) return null;
+  if (s.length > BIO_MAX_UNITS || lines.length > BIO_MAX_BREAKS + 1 || s.trim() !== s || !VISIBLE.test(s)) return null;
   if (lines.some(l => FORBIDDEN_TEXT.test(l))) return null;
   const n = [...GRAPHEMES.segment(s)].length;
   return n >= 1 && n <= BIO_MAX_GRAPHEMES ? s : null;
@@ -207,7 +218,7 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
         else card[slot] = id;
       }
       if (c.tagline !== undefined) {
-        const t = canonicalText(c.tagline, 1, TAGLINE_MAX_GRAPHEMES);
+        const t = canonicalTagline(c.tagline);
         if (t === null) bad("card.tagline", `1..${TAGLINE_MAX_GRAPHEMES} characters on one line, no control or direction characters`); else card.tagline = t;
       }
       if (c.bio !== undefined) {
