@@ -123,3 +123,17 @@ export function admitPlan(plan: ServicePlan, o: { target: string; expected: Expe
   }
   return { ok: true };
 }
+
+/**
+ * #1871: `agend start` just bootstrapped `plistPath`. A plan whose proven plist is exactly that file has now happened.
+ * An update that died between bootout and bootstrap leaves such a plan behind, and kept, it would make every later
+ * `agend restart` refuse, because the job that is now loaded is not the planned-from job. True when the plan was dropped.
+ */
+export function dropConsumedPlan(agendHome: string, plistPath: string, deps: Pick<PlanDeps, "readFile" | "removeFile">): boolean {
+  const plan = readPlan(agendHome, deps);
+  if (!plan || plan.plistPath !== plistPath) return false;
+  const onDisk = deps.readFile(plistPath);
+  if (onDisk === null || sha256(onDisk) !== plan.sha256) return false;
+  deps.removeFile(planPath(agendHome));
+  return true;
+}
