@@ -71,6 +71,35 @@ describe("a login shell that never finishes", () => {
   }, 10_000);
 });
 
+describe("output is bounded, as spawnSync's maxBuffer bounded it (#1877 review)", () => {
+  it("more than the budget ends the lookup: no answer, never a truncated path passed off as one", async () => {
+    profile("");
+    const r = await runOnLoginShell("head -c 2097152 /dev/zero; printf '\\n/usr/bin/sh\\n'", { env: env() });
+    expect(r).toEqual({ status: null, stdout: "", timedOut: false, overflow: true });
+  }, 10_000);
+
+  it("the budget's edge: exactly at it is an answer, one byte over is not — and the overflow takes the group down", async () => {
+    profile(`sleep 20 &\necho $! > "$HOME/holder.pid"\n`);
+    expect(await runOnLoginShell("printf abcd", { env: env(), maxOutputBytes: 4 })).toMatchObject({ status: 0, stdout: "abcd", overflow: false });
+    const over = await runOnLoginShell("printf abcde; sleep 20", { env: env(), maxOutputBytes: 4 });
+    expect(over).toMatchObject({ status: null, overflow: true, timedOut: false });
+    const holder = Number(readFileSync(join(home, "holder.pid"), "utf8"));
+    expect(await eventually(() => gone(holder))).toBe(true);
+  }, 10_000);
+});
+
+describe("what the lookup does not touch", () => {
+  it("a background child that let go of the shell's output is left running, as before", async () => {
+    profile(`sleep 20 >/dev/null 2>&1 &\necho $! > "$HOME/quiet.pid"\n`);
+    const r = await runOnLoginShell("command -v sh", { env: env() });
+    const quiet = Number(readFileSync(join(home, "quiet.pid"), "utf8"));
+    try {
+      expect(r).toMatchObject({ status: 0, overflow: false });
+      expect(gone(quiet), "not this lookup's to stop: it holds nothing of ours").toBe(false);
+    } finally { try { process.kill(quiet, "SIGKILL"); } catch { /* gone */ } }
+  });
+});
+
 describe("an ordinary login shell", () => {
   it("returns all of its output and its exit status", async () => {
     profile("");
