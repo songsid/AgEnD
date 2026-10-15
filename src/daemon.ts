@@ -794,6 +794,8 @@ type DurableDeliveryAttempt = {
   deliveryId: string;
   attemptNo: number;
   submissionMode?: "raw_paste";
+  /** Admission-owned attribution, independent of the later submission proof (#1843). */
+  silentSchedule?: boolean;
   /** sha256 of the text as this daemon received it, before formatting (#856). */
   contentSha256?: string;
 };
@@ -4130,7 +4132,7 @@ export class Daemon extends EventEmitter {
       msg.content as string,
       this.captureDeliveryEpoch(msg.delivery_epoch),
       msg.confirm_clear === true,
-      durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste" } : undefined,
+      durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste", silentSchedule: msg.silent_schedule === true } : undefined,
       ownSwitch,
     );
   }
@@ -8662,7 +8664,17 @@ export class Daemon extends EventEmitter {
           }
         }
       }
-      if (rawPaste) verdict.paneWriteStarted = true;
+      if (rawPaste) {
+        verdict.paneWriteStarted = true;
+        // #1843: this write starts silent work even if its submission proof later stays uncertain.
+        // Retire an older human turn before the first write, not after proof: its idle callback must never
+        // turn a silent heartbeat into a channel reply or a reply-required recovery prompt.
+        if (durableAttempt?.silentSchedule) {
+          this.clearReplyGuardConfirm();
+          const previous = this.turnReplyGuard.snapshot();
+          if (previous) this.turnReplyGuard.complete(previous.generation);
+        }
+      }
       // For raw commands the paste itself may alter the live composer. Treat a
       // failed/throwing write as uncertain rather than retrying bytes into the
       // same pane; the write-ahead Enter marker later separates safe pre-Enter

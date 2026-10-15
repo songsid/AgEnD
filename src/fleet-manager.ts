@@ -2037,6 +2037,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           content: payload.content,
           delivery_id: claimed.deliveryId,
           delivery_attempt: String(claimed.attemptNo),
+          ...(isSilentScheduleDelivery(claimed) ? { silent_schedule: true } : {}),
         }, { waitForIdle: false, noInlineWake: this.deliveryWorkerMode(target) !== "off" });
       } else {
         payload.meta = {
