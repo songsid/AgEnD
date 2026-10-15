@@ -69,7 +69,9 @@ const PANELS = () => new Map([
 async function app(path: string, opts: { wide?: boolean; storage?: Record<string, string>; usagePanel?: string; scr?: ReturnType<typeof screen> } = {}) {
   await unmountAll();
   usageReads = 0;
-  const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1", ...(opts.storage ?? {}) } });
+  // #1854: an unset choice is hidden now; these tests are about a device that shows the rail ("1") unless they say otherwise.
+  const pg = page({ url: `http://127.0.0.1:19280${path}`, storage: { agend_tour_done: "1", agend_usage_rail: "1", ...(opts.storage ?? {}) } });
+  for (const [k, v] of Object.entries(opts.storage ?? {})) if (v === UNSET) pg.storage.delete(k);
   mounted.push(pg);
   const scr = opts.scr ?? screen(opts.wide ?? true);
   (globalThis as any).matchMedia = scr.matchMedia;
@@ -87,6 +89,8 @@ async function app(path: string, opts: { wide?: boolean; storage?: Record<string
   await settle(8);
   return { pg, scr };
 }
+/** A storage value that means "never chosen": the key is removed before the page loads. */
+const UNSET = "\u0000unset";
 const go = async (path: string) => { const { navigate } = await import("/assets/app-nav.js"); navigate(path); await settle(8); };
 const rail = (pg: AppPage) => pg.root.querySelector("aside.u-rail") !== null;
 const hasDialog = (pg: AppPage) => pg.root.querySelector("dialog") !== null;
@@ -113,12 +117,12 @@ describe("#1673: a wide screen shows usage as a rail beside the page", () => {
   // was not shown — back on Chat it was gone.
   it("one frame on every tab: switching Chat → View → Log → Details → Chat keeps the rail as this device chose it; ◔ on Log hides the rail it shows", async () => {
     const TABS = ["/ui/chat/web-dev", "/view/web-dev", "/ui/log/web-dev", "/ui/fleet/agent/web-dev", "/ui/chat/web-dev"];
-    for (const stored of [undefined, "0"]) {
-      const { pg } = await app("/ui/chat/web-dev", { storage: stored ? { agend_usage_rail: stored } : {} });
+    for (const stored of ["1", "0", UNSET]) {
+      const { pg } = await app("/ui/chat/web-dev", { storage: { agend_usage_rail: stored } });
       for (const path of TABS) {
         if (path !== TABS[0] || pg.window.location.pathname !== path) await go(path);
         expect([rail(pg), usageBtn(pg)?.getAttribute("aria-pressed"), pg.storage.get("agend_usage_rail") ?? null], `${stored} ${path}`)
-          .toEqual([stored !== "0", stored === "0" ? "false" : "true", stored ?? null]);
+          .toEqual([stored === "1", stored === "1" ? "true" : "false", stored === UNSET ? null : stored]);
       }
     }
     const { pg } = await app("/ui/log/web-dev");
@@ -221,7 +225,7 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     expect(hasDialog(pg)).toBe(true);
     pg.root.querySelector("dialog .dlg-x").click(); await settle(4);
     scr.set(true); await settle(8);
-    expect([rail(pg), hasDialog(pg), pg.storage.get("agend_usage_rail") ?? null]).toEqual([true, false, null]);
+    expect([rail(pg), hasDialog(pg), pg.storage.get("agend_usage_rail") ?? null]).toEqual([true, false, "1"]);
   });
 
   it("a dialog opened on a narrower screen gives way to the rail when the screen widens (never both)", async () => {
@@ -242,6 +246,13 @@ describe("#1673: no rail where there is no usage, and the dialog on a narrower s
     expect([hasDialog(pg), rail(pg)]).toEqual([false, false]);
     scr.set(false); await settle(8);
     expect([hasDialog(pg), rail(pg), usageReads]).toEqual([false, false, 2]);
+  });
+
+  it("#1854: a device that never chose starts hidden on every page (a quiet first page); ◔ shows it and remembers \"1\"", async () => {
+    const { pg } = await app("/ui/chat/web-dev", { storage: { agend_usage_rail: UNSET } });
+    expect([rail(pg), usageBtn(pg)?.getAttribute("aria-pressed"), pg.storage.get("agend_usage_rail") ?? null, usageReads]).toEqual([false, "false", null, 0]);
+    usageBtn(pg).click(); await settle(8);
+    expect([rail(pg), pg.storage.get("agend_usage_rail")]).toEqual([true, "1"]);
   });
 
   it("this device's hidden choice is kept: dialog → wide shows neither, and the choice stays \"0\"", async () => {

@@ -80,14 +80,15 @@ export function usageOffered() {
 }
 
 // #1673: the rail. Wide enough for it beside the sidebar and the page: RAIL_MEDIA (followed as it changes). Shown or
-// hidden is this device's choice (agend_usage_rail; "0" = hidden, else shown) — a layout choice, not synced (#1665).
+// hidden is this device's choice (agend_usage_rail; "1" = shown, "0" = hidden) — a layout choice, not synced (#1665).
+// #1854 (rank 7): a device that never chose starts with it hidden — a quiet first page; ◔ shows it (and remembers).
 export const RAIL_MEDIA = "(min-width: 1200px)";
 export const RAIL_KEY = "agend_usage_rail";
 /** The pages whose header has ◔ — the rail is theirs (Log's too: one frame on every tab of an instance). */
 export const RAIL_PANELS = ["chat", "view", "log", "details", "fleet"];
-export const usageRailStore = createStore({ open: true });
-/** A page load: this device's choice. */
-export function initUsageRail() { usageRailStore.set({ open: read(RAIL_KEY) !== "0" }); }
+export const usageRailStore = createStore({ open: false });
+/** A page load: this device's choice; none made yet = hidden. */
+export function initUsageRail() { usageRailStore.set({ open: read(RAIL_KEY) === "1" }); }
 export function setUsageRail(open) { write(RAIL_KEY, open ? "1" : "0"); usageRailStore.set({ open: !!open }); }
 const railQuery = () => { try { return typeof matchMedia === "function" ? matchMedia(RAIL_MEDIA) : null; } catch { return null; } };
 /** Whether the screen is wide enough for the rail, now and as it changes. */

@@ -291,17 +291,25 @@ beforeEach(async () => {
 });
 
 describe("the first-run card", () => {
-  it("only on a known web-only fleet: 0 connections shows it; 1, or a frame that does not say, does not", async () => {
+  it("only on a known web-only fleet: 0 connections shows it in Settings; 1, or a frame that does not say, does not", async () => {
     for (const [n, shown] of [[0, true], [1, false], [undefined, false]] as const) {
-      status(n); await mountChat();
+      status(n); await mountSettings("agents"); await settle(6);
       expect([n, cardTitle()]).toEqual([n, shown ? "Connect a chat app" : null]);
       await p.unmount();
     }
     expect(app.appStore.get().connections, "a frame without the count is unknown, not 0").toBeNull();
   });
 
-  it("Use the web only hides it here and in Settings, and stays hidden after a reload (stored)", async () => {
-    status(0); await mountChat();
+  it("#1854: never on Chat — the empty Chat has one instruction, with or without agents", async () => {
+    for (const agents of [true, false]) {
+      status(0, agents ? undefined : []); await mountChat();
+      expect([agents, cardTitle(), (p.root.querySelectorAll(".empty") as any[]).length]).toEqual([agents, null, 1]);
+      await p.unmount();
+    }
+  });
+
+  it("Use the web only hides it, and it stays hidden after a reload (stored)", async () => {
+    status(0); await mountSettings("agents"); await settle(6);
     btn(card(), "Use the web only").click(); await settle(2);
     expect(cardTitle()).toBeNull();
     expect(p.storage.get(first.DISMISS_KEY)).toBe("1");
@@ -317,21 +325,19 @@ describe("the first-run card", () => {
     const real = Object.getOwnPropertyDescriptor(globalThis, "localStorage")!;
     Object.defineProperty(globalThis, "localStorage", { configurable: true, get() { throw new Error("SecurityError"); } });
     try {
-      status(0); await mountChat();
+      status(0); await mountSettings("agents"); await settle(6);
       expect(cardTitle()).toBe("Connect a chat app");
       btn(card(), "Use the web only").click(); await settle(2);
       expect(cardTitle()).toBeNull();
     } finally { Object.defineProperty(globalThis, "localStorage", real); }
   });
 
-  it("Connect a chat app (from Chat) goes to Settings › Connections, which opens the setup wizard once", async () => {
-    status(0); await mountChat();
-    btn(card(), "Connect a chat app").click(); await settle(2);
-    expect(p.window.location.pathname).toBe("/settings/bots");
-    await mountSettings("bots"); await settle(8);
+  it("Connect a chat app from Settings › Connections opens the setup wizard once", async () => {
+    status(0); await mountSettings("bots"); await settle(6);
+    btn(card(), "Connect a chat app").click(); await settle(8);
     expect(dialogTitle()).toBe("Set up AgEnD");
     await mountSettings("bots"); await settle(8);
-    expect(dialogTitle(), "asked once: coming back does not open it again").toBeNull();
+    expect(dialogTitle(), "in place: coming back does not open it again").toBeNull();
   });
 
   it("in Settings it heads Agents and Connections (not General), and opens the wizard in place", async () => {
@@ -346,15 +352,15 @@ describe("the first-run card", () => {
 });
 
 describe("Chat with no agent", () => {
-  it("says so, and New instance opens what the sidebar's + opens", async () => {
+  it("says so in one instruction, and New agent opens what the sidebar's + opens (#1854 wording)", async () => {
     const opened = vi.fn();
     shell.setNewInstanceOpener(opened);
     status(2, []); await mountChat();
-    expect(p.root.querySelector(".empty-title")?.textContent ?? null).toBe("No instances yet");
-    btn(p.root, "New instance").click();
+    expect([p.root.querySelector(".empty-title")?.textContent ?? null, p.root.querySelector(".empty-hint")]).toEqual(["Create an agent to start chatting.", null]);
+    btn(p.root, "New agent").click();
     expect(opened).toHaveBeenCalledOnce();
     status(2); await mountChat();
-    expect(p.root.querySelector(".empty-title")?.textContent ?? null, "with agents: pick one").not.toBe("No instances yet");
+    expect([p.root.querySelector(".empty-title")?.textContent ?? null, p.root.querySelector(".empty-hint")], "with agents: pick one").toEqual(["Choose an agent to start chatting.", null]);
   });
 });
 

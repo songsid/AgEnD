@@ -144,7 +144,7 @@ describe("review r1: the room beside the usage rail; a drag's own lifecycle", ()
   const ptr = (s: any, type: string, x: number, id = 1) => { const e = new (globalThis as any).Event(type, { bubbles: true, cancelable: true }); Object.assign(e, { button: 0, pointerId: id, clientX: x }); s.dispatchEvent(e); };
 
   it("at 1200 px with the rail open: End is 400 (main keeps 480); the rail closed, the kept choice (480) comes back; the separator's maximum follows", async () => {
-    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide });
+    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide, storage: { agend_usage_rail: "1" } });   // #1854: shown by choice
     expect(pg.root.querySelector(".u-rail"), "the rail is on screen").not.toBeNull();
     await key(sep(pg), "End");
     const squeezed = [width(pg), sep(pg).getAttribute("aria-valuemax"), pg.storage.get("agend_sidebar_w")];
@@ -156,7 +156,7 @@ describe("review r1: the room beside the usage rail; a drag's own lifecycle", ()
   });
 
   it("r2: a drag past the room beside the rail shows the squeeze (400) but keeps where it went (480) — it comes back when the rail closes", async () => {
-    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide });
+    const pg = await app("/ui/chat/web-dev", { width: 1200, media: wide, storage: { agend_usage_rail: "1" } });   // #1854: shown by choice
     expect(pg.root.querySelector(".u-rail"), "the rail is on screen").not.toBeNull();
     ptr(sep(pg), "pointerdown", 260); ptr(sep(pg), "pointermove", 480); await settle();
     const during = width(pg);

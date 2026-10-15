@@ -33,7 +33,6 @@ import { createMentionIndex } from "./chat-mentions.js";
 import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
-import { FirstRunCard } from "./first-run.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 
 const R = () => globalThis.AgendChatRender;
@@ -148,14 +147,15 @@ export function ChatPanel({ route, navKey }) {
   }, [name, !!inst]);
   useEffect(() => { setTitle(name || t("app.chat")); }, [name, navKey]);
   if (!name) {
-    // #1519 P7: a web-only fleet starts here with the first-run card; with no agent at all, the way to make one.
+    // #1854 (rank 7): one instruction — pick an agent, or with none at all, the one way to make one. Connecting a chat
+    // app (the first-run card, #1519 P7) is offered in Settings, not here: it competed with the first agent.
     const none = app.ready && !app.instances.length;
     return html`<div class="panel p-chat"><${PanelHeader} title=${t("app.chat")} />
-      <div class="panel-body center"><div class="first-run-stack"><${FirstRunCard} />
-        ${none ? html`<${Empty} icon="bot" title=${t("app.noInstances")} hint=${t("app.noInstancesHint")}
-          action=${html`<button type="button" class="btn btn-primary" onClick=${requestNewInstance}><${Icon} name="plus" size=${16} />${t("app.newInstance")}</button>`} />`
-        : html`<${Empty} icon="chat" title=${t("chat.pick")} hint=${t("chat.pickHint")}
-          action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} />`}</div></div></div>`;
+      <div class="panel-body center">
+        ${none ? html`<${Empty} icon="bot" title=${t("chat.noAgents")}
+          action=${html`<button type="button" class="btn btn-primary" onClick=${requestNewInstance}><${Icon} name="plus" size=${16} />${t("chat.newAgent")}</button>`} />`
+        : html`<${Empty} icon="chat" title=${t("chat.pick")}
+          action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} />`}</div></div>`;
   }
   if (!app.ready) return html`<div class="panel p-chat"><${PanelHeader} title=${name} /><div class="panel-body"><${Skeleton} lines=${5} /></div></div>`;
   if (!inst) return html`<${NotFound} name=${name} />`;
@@ -288,7 +288,7 @@ function Thread({ name, th }) {
   }, [name]);
   return html`<div class="scroller" ref=${scroller}>
     <div class="thread" ref=${list} role="log" aria-live="off" aria-label=${t("chat.conversationWith", name)}></div>
-    ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} hint=${t("chat.sendFirst")} />` : null}
+    ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
     ${jump.show ? html`<button type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}
   </div>`;
@@ -307,7 +307,7 @@ function Dock({ name, inst, lease, exec, awaiting }) {
       <button type="button" class="btn btn-primary btn-sm" onClick=${() => store.putBack(name)}>${t("chat.putBack")}</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.discardFailed(name)}>${t("chat.discard")}</button></div>` : null}
     <${Composer} name=${name} lease=${lease} busy=${R().isBusy(exec)} />
-    <p class="hint">${t("chat.composerHint")}</p>
+    <p class="hint" title=${t("chat.composerMore")}>${t("chat.composerHint")}</p>
   </div></div>`;
 }
 
