@@ -14,7 +14,7 @@ import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { MEDIA_EXT, MEDIA_MIME, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
-import { checkOwnerCss, OWNER_CSS_ASSET_ID, serializeOwnerCss } from "./web-owner-css.js";
+import { checkOwnerCss, OWNER_CSS_ASSET_ID, ownerCssAssetRefs, serializeOwnerCss } from "./web-owner-css.js";
 
 export const OWNER_CSS_VERSIONS = 5;
 /** How long a saved version waits to be kept (the page asks for 15 s; the host allows a little more for the round trip). */
@@ -24,9 +24,14 @@ export const OWNER_CSS_MAX_ASSET_BYTES = 1024 * 1024;   // all of a person's ass
 const ASSET_KINDS: ReadonlySet<MediaKind> = new Set(["png", "webp", "jpeg", "gif", "woff2"]);
 const SHA = /^[0-9a-f]{32}$/;
 
+/**
+ * The person's synced pointers (web-prefs internal keys): `css.active`, the version in force, and `css.trial`, the
+ * version on trial (or none). One write moves both and bumps the person's revision, so every device of theirs asks
+ * again — a save, a keep and a revert alike.
+ */
 export interface OwnerCssPointer {
   ownerCssActive(person: string): string | null;
-  setOwnerCssActive(person: string, sha: string | null): { ok: true } | { ok: false; status: 400 | 503; error: string };
+  setOwnerCss(person: string, change: { active?: string | null; trial?: string | null }): { ok: true } | { ok: false; status: 400 | 503; error: string };
 }
 interface Pending { sha: string; previous: string | null; at: number; until: number }
 interface Index { versions: Array<{ sha: string; at: number }>; assets: Array<{ id: string; kind: MediaKind; bytes: number }>; pending?: Pending }
@@ -84,13 +89,24 @@ export class OwnerCssStore {
     if (!p) return;
     const now = this.now();
     if (now <= p.until && now >= p.at) return;
-    if (this.pointer.ownerCssActive(person) === p.sha) {
-      const back = this.pointer.setOwnerCssActive(person, p.previous && index.versions.some(v => v.sha === p.previous) ? p.previous : null);
-      if (!back.ok) return;                                              // the pointer cannot be written: try at the next read
+    this.endTrial(person, index, "revert");
+  }
+  /**
+   * End the trial in `index`: "keep" leaves its version in force; "revert" puts back the one before it (if that one is
+   * still kept, else none). Either way `css.trial` is cleared in the same write, so every device hears of it.
+   */
+  private endTrial(person: string, index: Index, how: "keep" | "revert"): boolean {
+    const p = index.pending;
+    if (!p) return false;
+    const change: { active?: string | null; trial: null } = { trial: null };
+    if (how === "revert" && this.pointer.ownerCssActive(person) === p.sha) {
+      change.active = p.previous && index.versions.some(v => v.sha === p.previous) ? p.previous : null;
     }
+    if (!this.pointer.setOwnerCss(person, change).ok) return false;    // the pointer cannot be written: try at the next read
     const { pending: _done, ...rest } = index;
     void _done;
     this.writeIndex(person, rest);
+    return true;
   }
 
   /** The version in force (a kept one), or null — what the page links at load. */
@@ -138,7 +154,7 @@ export class OwnerCssStore {
     const dropped = versions.filter(v => !keepList.includes(v));
     const at = this.now();
     this.writeIndex(person, { ...index, versions: keepList, pending: { sha, previous, at, until: at + OWNER_CSS_KEEP_MS } });
-    const set = this.pointer.setOwnerCssActive(person, sha);
+    const set = this.pointer.setOwnerCss(person, { active: sha, trial: sha });
     if (!set.ok) return set;
     for (const v of dropped) { try { unlinkSync(join(this.dir(person), `${v.sha}.css`)); } catch { /* already gone */ } }
     return { ok: true, sha, previous };
@@ -150,10 +166,21 @@ export class OwnerCssStore {
     this.settle(person);
     const index = this.readIndex(person);
     if (!index.pending || index.pending.sha !== sha || this.pointer.ownerCssActive(person) !== sha) return { ok: false, status: 409, error: "not_on_trial" };
-    const { pending: _done, ...rest } = index;
-    void _done;
-    this.writeIndex(person, rest);
+    if (!this.endTrial(person, index, "keep")) return { ok: false, status: 503, error: "prefs_unwritable" };
     return { ok: true, active: sha };
+  }
+
+  /**
+   * Revert exactly this trial — the page's Revert, or its timer. Only while `sha` is still the version on trial: a trial
+   * kept (or reverted, or replaced) meanwhile, on any device, is left alone (409). Never a history restore.
+   */
+  revertTrial(person: string, sha: unknown): OwnerCssResult<{ active: string | null }> {
+    if (typeof sha !== "string" || !SHA.test(sha)) return { ok: false, status: 400, error: "sha" };
+    this.settle(person);
+    const index = this.readIndex(person);
+    if (!index.pending || index.pending.sha !== sha || this.pointer.ownerCssActive(person) !== sha) return { ok: false, status: 409, error: "not_on_trial" };
+    if (!this.endTrial(person, index, "revert")) return { ok: false, status: 503, error: "prefs_unwritable" };
+    return { ok: true, active: this.pointer.ownerCssActive(person) };
   }
 
   /** Put a kept version back in force, or (null) none: their screens go stock. Ends any trial. */
@@ -161,7 +188,7 @@ export class OwnerCssStore {
     if (sha !== null && (typeof sha !== "string" || !SHA.test(sha))) return { ok: false, status: 400, error: "sha" };
     const index = this.readIndex(person);
     if (sha !== null && !index.versions.some(v => v.sha === sha)) return { ok: false, status: 404, error: "no_such_version" };
-    const set = this.pointer.setOwnerCssActive(person, sha);
+    const set = this.pointer.setOwnerCss(person, { active: sha, trial: null });
     if (!set.ok) return set;
     if (index.pending) { const { pending: _done, ...rest } = index; void _done; this.writeIndex(person, rest); }
     return { ok: true, active: sha };
@@ -191,8 +218,13 @@ export class OwnerCssStore {
     const index = this.readIndex(person);
     const entry = index.assets.find(a => a.id === id);
     if (!entry) return { ok: false, status: 404, error: "no_such_asset" };
-    const ref = `asset:${id}`;
-    if (index.versions.some(v => (this.readText(person, v.sha) ?? "").includes(ref))) return { ok: false, status: 409, error: "asset_in_use" };
+    // What a kept version names, read from its decoded tokens: url("\\61sset:<id>") names the asset as well.
+    const names = (text: string | null) => {
+      if (text === null) return false;
+      const checked = checkOwnerCss(text, this.assetIds(index));
+      return checked.ok && ownerCssAssetRefs(checked.tokens).has(id);
+    };
+    if (index.versions.some(v => names(this.readText(person, v.sha)))) return { ok: false, status: 409, error: "asset_in_use" };
     try { unlinkSync(join(this.dir(person), "assets", `${id}.${MEDIA_EXT[entry.kind]}`)); } catch { /* already gone */ }
     this.writeIndex(person, { ...index, assets: index.assets.filter(a => a.id !== id) });
     return { ok: true, removed: id };

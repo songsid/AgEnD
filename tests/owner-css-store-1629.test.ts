@@ -15,12 +15,13 @@ afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, f
 function store() {
   const dir = mkdtempSync(join(tmpdir(), "agend-oc-store-")); dirs.push(dir);
   const pointers = new Map<string, string | null>();
+  const trials = new Map<string, string | null>();
   let now = 1_000_000;
   const s = new OwnerCssStore(dir, {
     ownerCssActive: (p) => pointers.get(p) ?? null,
-    setOwnerCssActive: (p, sha) => { pointers.set(p, sha); return { ok: true }; },
+    setOwnerCss: (p, c) => { if (c.active !== undefined) pointers.set(p, c.active); if (c.trial !== undefined) trials.set(p, c.trial); return { ok: true }; },
   }, () => now);
-  return { s, dir, pointers, tick: (ms: number) => { now += ms; }, setNow: (t: number) => { now = t; } };
+  return { s, dir, pointers, trials, tick: (ms: number) => { now += ms; }, setNow: (t: number) => { now = t; } };
 }
 const keepSaved = (s: OwnerCssStore, person: string, text: string) => {
   const r = s.save(person, text);
@@ -112,5 +113,42 @@ describe("assets", () => {
   it("a CSS naming an asset this person does not have is refused", () => {
     const { s } = store();
     expect(s.save("p", `a{background:url("asset:${"a".repeat(32)}")}`)).toMatchObject({ ok: false, error: "unknown_asset" });
+  });
+});
+
+describe("review r1 (#1883)", () => {
+  it("P2-1: commented CSS saves and serves", () => {
+    const { s } = store();
+    const r = s.save("p", "a{color:red; /* comment */ margin:0}");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(s.served("p", r.sha)).toBe("a{color:red; margin:0}");
+  });
+  it("P2-3: an escaped reference to an asset still holds it — it cannot be removed while a kept version names it", () => {
+    const cases = (id: string) => [`a{background:url("\\61sset:${id}")}`, `a{background:url("asset:\\${id.charCodeAt(0).toString(16)} ${id.slice(1)}")}`];
+    for (const pick of [0, 1]) {
+      const { s } = store();
+      const add = s.addAsset("p", png(pick));
+      if (!add.ok) throw new Error(add.error);
+      const css = cases(add.id)[pick]!;
+      keepSaved(s, "p", css);
+      expect(s.served("p", s.active("p")!), css).toContain(`/ui/owner-css/asset/${add.id}`);
+      expect(s.removeAsset("p", add.id), css).toMatchObject({ ok: false, status: 409, error: "asset_in_use" });
+    }
+  });
+  it("P2-2: a revert names its trial — once kept (on any device) it stays kept; a pending one goes back", () => {
+    const { s, trials } = store();
+    const a = keepSaved(s, "p", ".a{}");
+    const b = s.save("p", ".b{}");
+    if (!b.ok) throw new Error(b.error);
+    expect(trials.get("p"), "the trial is announced").toBe(b.sha);
+    expect(s.keep("p", b.sha)).toMatchObject({ ok: true });
+    expect(trials.get("p"), "keeping it is announced too").toBeNull();
+    expect(s.revertTrial("p", b.sha), "a stale page's revert").toMatchObject({ ok: false, status: 409, error: "not_on_trial" });
+    expect(s.active("p")).toBe(b.sha);
+    const c = s.save("p", ".c{}");
+    if (!c.ok) throw new Error(c.error);
+    expect(s.revertTrial("p", a), "not the trial").toMatchObject({ ok: false, status: 409 });
+    expect(s.revertTrial("p", c.sha)).toMatchObject({ ok: true, active: b.sha });
+    expect([s.active("p"), trials.get("p")]).toEqual([b.sha, null]);
   });
 });

@@ -26,6 +26,8 @@ export interface CssToken {
   value: string;
   /** dimension: its unit, decoded. */
   unit?: string;
+  /** hash: "id" when its name would start an identifier (Syntax §4.3.1) — what makes it an ID selector. */
+  hashType?: "id" | "unrestricted";
   /** ws: whether it held a newline (kept so the served text keeps its lines). */
   newline?: boolean;
 }
@@ -173,12 +175,18 @@ export function tokenizeCss(text: string): CssToken[] {
     if (isWs(c)) {
       let newline = false;
       while (isWs(at(i))) { if (cp[i] === 0x0a) newline = true; i++; }
-      tokens.push({ type: "ws", value: " ", newline });
+      // A comment between two runs of whitespace leaves them adjacent: one whitespace token, as the text reads.
+      const prev = tokens[tokens.length - 1];
+      if (prev?.type === "ws") prev.newline = prev.newline || newline;
+      else tokens.push({ type: "ws", value: " ", newline });
       continue;
     }
     if (c === 0x22 || c === 0x27) { i++; tokens.push(consumeString(c)); continue; }
     if (c === 0x23) {
-      if (isName(at(i + 1)) || validEscape(at(i + 1), at(i + 2))) { i++; tokens.push({ type: "hash", value: consumeName() }); continue; }
+      if (isName(at(i + 1)) || validEscape(at(i + 1), at(i + 2))) {
+        const hashType = startsIdent(at(i + 1), at(i + 2), at(i + 3)) ? "id" : "unrestricted";
+        i++; tokens.push({ type: "hash", value: consumeName(), hashType }); continue;
+      }
       i++; tokens.push({ type: "delim", value: "#" }); continue;
     }
     if (c === 0x28 || c === 0x29 || c === 0x2c || c === 0x3a || c === 0x3b || c === 0x5b || c === 0x5d || c === 0x7b || c === 0x7d) {
@@ -267,6 +275,13 @@ export function checkOwnerCss(text: string, assets: ReadonlySet<string>): { ok: 
   return { ok: true, tokens };
 }
 
+/** The asset ids a checked text names (decoded: url("\\61sset:<id>") counts as asset:<id>). */
+export function ownerCssAssetRefs(tokens: readonly CssToken[]): Set<string> {
+  const out = new Set<string>();
+  for (const t of tokens) if (t.type === "url" || t.type === "string") { const id = assetIdOf(t.value); if (id) out.add(id); }
+  return out;
+}
+
 // ── Serialising: canonical text the route serves ──
 
 const hex = (c: number) => `\\${c.toString(16)} `;
@@ -283,6 +298,18 @@ function escapeIdent(name: string): string {
     else if (c >= 0x80 || c === 0x2d || c === 0x5f || isDigit(c) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a)) out += String.fromCodePoint(c);
     else out += `\\${String.fromCodePoint(c)}`;
   });
+  return out;
+}
+/** A name sequence (no identifier-start rule): only what is not a name character is escaped. */
+function escapeName(name: string): string {
+  let out = "";
+  for (const ch of name) {
+    const c = ch.codePointAt(0)!;
+    if (c === 0) out += "\ufffd";
+    else if ((c >= 1 && c <= 0x1f) || c === 0x7f) out += hex(c);
+    else if (isName(c)) out += ch;
+    else out += `\\${ch}`;
+  }
   return out;
 }
 function escapeString(value: string): string {
@@ -313,7 +340,9 @@ function serializeToken(t: CssToken): string {
     case "ident": return escapeIdent(t.value);
     case "function": return `${escapeIdent(t.value)}(`;
     case "at": return `@${escapeIdent(t.value)}`;
-    case "hash": return `#${escapeIdent(t.value).replace(/^\\3(\d) /, "$1")}`;
+    // An "id" hash keeps its identifier spelling (#\31 23 stays an ID selector); an unrestricted one is a name
+    // sequence, where a leading digit or "-" needs no escape.
+    case "hash": return `#${t.hashType === "id" ? escapeIdent(t.value) : escapeName(t.value)}`;
     case "string": return escapeString(t.value);
     case "url": return `url(${escapeUrl(t.value)})`;
     case "number": return t.value;
@@ -367,7 +396,7 @@ export function serializeOwnerCss(tokens: readonly CssToken[]): string {
   const again = tokenizeCss(text);
   const same = again.length === rewritten.length && again.every((t, k) => {
     const o = rewritten[k]!;
-    return t.type === o.type && (t.type === "ws" || (t.value === o.value && (t.unit ?? "") === (o.unit ?? "")));
+    return t.type === o.type && (t.type === "ws" || (t.value === o.value && (t.unit ?? "") === (o.unit ?? "") && (t.hashType ?? "") === (o.hashType ?? "")));
   });
   if (!same) throw new Error("owner CSS did not re-serialise to the same tokens");
   return text;

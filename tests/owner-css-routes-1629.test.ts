@@ -102,7 +102,7 @@ describe("who may use it", () => {
 
   it("the public link: absent from its manifest — every route, read or write — and refused by the handler on its own", async () => {
     for (const [m, p] of [["GET", "/ui/owner-css.css"], ["GET", "/ui/owner-css/state"], ["GET", `/ui/owner-css/asset/${"a".repeat(32)}`], ["POST", "/ui/owner-css"],
-      ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"], ["DELETE", `/ui/owner-css/asset/${"a".repeat(32)}`]] as const) {
+      ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/revert"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"], ["DELETE", `/ui/owner-css/asset/${"a".repeat(32)}`]] as const) {
       expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
     }
     const f = await fleet();
@@ -205,6 +205,26 @@ describe("keep or revert", () => {
   }, 30_000);
 });
 
+describe("#1883 r1 (P2-2): a revert names its trial", () => {
+  it("kept on one page, a stale page's timed revert of the same trial changes nothing (409); a pending one reverts", async () => {
+    const f = await fleet();
+    try {
+      const a = f.session({ owner: A });
+      const post = (path: string, body: unknown) => raw(f.port, "POST", path, { ...a.write, ...JSON_H }, JSON.stringify(body));
+      const first = JSON.parse((await post("/ui/owner-css", { text: ".a{}" })).body).sha;
+      await post("/ui/owner-css/keep", { sha: first });
+      const second = JSON.parse((await post("/ui/owner-css", { text: ".b{}" })).body).sha;
+      expect((await post("/ui/owner-css/keep", { sha: second })).status).toBe(200);
+      const stale = await post("/ui/owner-css/revert", { sha: second });
+      expect([stale.status, JSON.parse(stale.body).error]).toEqual([409, "not_on_trial"]);
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body).active).toBe(second);
+      const third = JSON.parse((await post("/ui/owner-css", { text: ".c{}" })).body).sha;
+      const back = await post("/ui/owner-css/revert", { sha: third });
+      expect([back.status, JSON.parse(back.body).active]).toEqual([200, second]);
+    } finally { await f.stop(); }
+  }, 30_000);
+});
+
 describe("the page names the version in force only where it may be linked (data-owner-css)", () => {
   const bodyTag = (html: string) => /<body[^>]*>/.exec(html)![0];
   it("the signed-in person's full app: yes; the operator's session with none, the CLI token, the anonymous View reader: no", async () => {
@@ -228,7 +248,8 @@ describe("no agent path reaches it", () => {
     for (const f of readdirSync(src).filter(n => n.endsWith(".ts"))) {
       // The web routes, the store and its gate; the prefs key; the image module (shared, a comment); the asset list (the
       // static owner-css.js the page loads) — none is an agent's tool or route.
-      if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts"].includes(f)) continue;
+      // web-auth.ts: the passive-read classification of the page's own owner-CSS reads.
+      if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);

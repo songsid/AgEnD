@@ -3,9 +3,12 @@
  * from the bytes, never decoding an image. Used by owner-CSS assets (r4 §3) and the identity card (r4 §1).
  *
  * Metadata is removed by byte surgery:
- * - JPEG: the APP1–APP15 and COM segments go (EXIF, GPS, XMP, ICC, comments); APP0 (JFIF) and the image stay.
+ * - JPEG: the APP1–APP15 and COM segments go (EXIF, GPS, XMP, ICC, comments) wherever they are — before the first
+ *   scan or between the scans of a progressive file; APP0 (JFIF) and the image stay. Every scan's entropy-coded data
+ *   is walked to its end, and the file must end with EOI (what follows it is dropped).
  * - PNG: the tEXt, zTXt, iTXt, eXIf and tIME chunks go.
- * - WebP: the EXIF and "XMP " chunks go, and VP8X's EXIF/XMP flags are cleared to match.
+ * - WebP: the EXIF and "XMP " chunks go, and VP8X's EXIF/XMP flags are cleared to match. A file shorter than its
+ *   RIFF header says is refused; bytes after the RIFF end are dropped.
  * A file this module cannot walk to its end is refused, never passed through.
  */
 
@@ -83,23 +86,40 @@ export function stripMetadata(b: Uint8Array, kind: MediaKind): Uint8Array | null
   if (kind === "jpeg") {
     const parts: Uint8Array[] = [b.subarray(0, 2)];
     let k = 2;
-    while (k + 4 <= b.length) {
-      if (b[k] !== 0xff) return null;
+    for (;;) {
+      if (k + 2 > b.length || b[k] !== 0xff) return null;              // no EOI: truncated, or not a marker
       const m = b[k + 1]!;
-      if (m === 0xd9) { parts.push(b.subarray(k)); return concat(parts); }
-      if (m === 0xda) { parts.push(b.subarray(k)); return concat(parts); }   // start of scan: the rest is image data
+      if (m === 0xff) { k++; continue; }                                 // fill byte before a marker
+      if (m === 0xd9) { parts.push(b.subarray(k, k + 2)); return concat(parts); }
+      if (m === 0x01 || (m >= 0xd0 && m <= 0xd7)) { parts.push(b.subarray(k, k + 2)); k += 2; continue; }   // standalone
+      if (k + 4 > b.length) return null;
       const len = u16be(b, k + 2), end = k + 2 + len;
       if (len < 2 || end > b.length) return null;
       const drop = (m >= 0xe1 && m <= 0xef) || m === 0xfe;
       if (!drop) parts.push(b.subarray(k, end));
       k = end;
+      if (m !== 0xda) continue;
+      // A scan: its entropy-coded data runs to the next marker that is neither a stuffed 0xFF00 nor a restart marker.
+      let j = k;
+      for (;;) {
+        if (j + 1 >= b.length) return null;                              // the data never ends: truncated
+        if (b[j] === 0xff) {
+          const n = b[j + 1]!;
+          if (n === 0x00 || (n >= 0xd0 && n <= 0xd7)) { j += 2; continue; }
+          if (n === 0xff) { j++; continue; }
+          break;
+        }
+        j++;
+      }
+      parts.push(b.subarray(k, j));
+      k = j;
     }
-    return null;
   }
   if (kind === "webp") {
     const parts: Uint8Array[] = [];
     let k = 12;
-    const riffEnd = Math.min(b.length, 8 + u32le(b, 4));
+    const riffEnd = 8 + u32le(b, 4);
+    if (riffEnd > b.length || riffEnd < 12) return null;                  // shorter than it says: truncated
     while (k + 8 <= riffEnd) {
       const type = String.fromCharCode(...b.subarray(k, k + 4)), len = u32le(b, k + 4), end = k + 8 + len + (len & 1);
       if (k + 8 + len > riffEnd) return null;

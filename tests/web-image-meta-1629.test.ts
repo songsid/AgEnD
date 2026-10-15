@@ -50,6 +50,21 @@ describe("JPEG", () => {
   it("a segment running past the end is refused", () => {
     expect(stripMetadata(b([0xff, 0xd8, 0xff, 0xe1, 0x40, 0x00, 1, 2]), "jpeg")).toBeNull();
   });
+  // #1883 review r1 (P2-4): a progressive file has several scans, with tables (and possibly comments) between them.
+  const SOF2 = seg(0xc2, [8, ...[0x00, 0x04], ...[0x00, 0x04], 1, 1, 0x11, 0]);
+  const DHT = seg(0xc4, [0, ...new Array(16).fill(0)]);
+  const scan = (data: number[]) => [...seg(0xda, [1, 1, 0, 0, 63, 0]), ...data];
+  it("metadata BETWEEN scans goes too; the scans' data (stuffed FF00, restart markers) is kept byte for byte", () => {
+    const first = scan([0x12, 0xff, 0x00, 0x34, 0xff, 0xd0, 0x56]), second = scan([0x78, 0x9a]);
+    const file = b([0xff, 0xd8], seg(0xe0, "JFIF\0"), SOF2, DHT, first, seg(0xfe, "GPSLatitude 24.1"), DHT, seg(0xe1, "Exif\0\0x"), second, [0xff, 0xd9]);
+    const out = stripMetadata(file, "jpeg")!;
+    expect([has(out, "GPS"), has(out, "Exif")]).toEqual([false, false]);
+    expect(out).toEqual(b([0xff, 0xd8], seg(0xe0, "JFIF\0"), SOF2, DHT, first, DHT, second, [0xff, 0xd9]));
+  });
+  it("a scan that never ends (no EOI) is refused; bytes after EOI are dropped", () => {
+    expect(stripMetadata(b([0xff, 0xd8], SOF2, DHT, scan([1, 2, 3])), "jpeg")).toBeNull();
+    expect(stripMetadata(b([0xff, 0xd8], SOF2, DHT, scan([1, 2, 3]), [0xff, 0xd9, 0x41, 0x42]), "jpeg")).toEqual(b([0xff, 0xd8], SOF2, DHT, scan([1, 2, 3]), [0xff, 0xd9]));
+  });
 });
 
 describe("WebP", () => {
@@ -65,5 +80,11 @@ describe("WebP", () => {
   });
   it("a chunk longer than the file is refused", () => {
     expect(stripMetadata(b("RIFF", le32(40), "WEBP", "EXIF", le32(1000), [1, 2]), "webp")).toBeNull();
+  });
+  it("#1883 r1 (P2-4): a file shorter than its RIFF size says is refused, not cut to fit", () => {
+    const whole = riff(VP8X(0x10), chunk("VP8L", [0x2f, 1, 2, 3, 4]));
+    expect(stripMetadata(whole, "webp")).toEqual(whole);
+    const claims = Uint8Array.from(whole); claims.set(le32(whole.length - 8 + 64), 4);   // says 64 bytes more than it has
+    expect(stripMetadata(claims, "webp")).toBeNull();
   });
 });

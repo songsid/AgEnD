@@ -370,7 +370,7 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
     json(res, removed.ok ? 200 : removed.status, removed.ok ? { ok: true } : { error: removed.error });
     return true;
   }
-  if (method !== "POST" || !["/ui/owner-css", "/ui/owner-css/keep", "/ui/owner-css/restore", "/ui/owner-css/asset"].includes(path)) {
+  if (method !== "POST" || !["/ui/owner-css", "/ui/owner-css/keep", "/ui/owner-css/revert", "/ui/owner-css/restore", "/ui/owner-css/asset"].includes(path)) {
     json(res, 404, { error: "not found" });
     return true;
   }
@@ -398,7 +398,14 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
     } else if (path === "/ui/owner-css/keep") {
       const kept = store.keep(person, body.sha);
       if (!kept.ok) { json(res, kept.status, { error: kept.error }); return; }
+      announce();                                                         // the person's other devices drop their bar
       json(res, 200, { active: kept.active });
+    } else if (path === "/ui/owner-css/revert") {
+      // Exactly this trial, while it still is one: a trial kept (or ended) on another device meanwhile stays (409).
+      const reverted = store.revertTrial(person, body.sha);
+      if (!reverted.ok) { json(res, reverted.status, { error: reverted.error }); return; }
+      announce();
+      json(res, 200, { active: reverted.active });
     } else {
       const restored = store.restore(person, body.sha);
       if (!restored.ok) { json(res, restored.status, { error: restored.error }); return; }

@@ -28,7 +28,9 @@ afterEach(async () => {
 
 describe("which reads are passive: an explicit list of method + path", () => {
   it("the timer reads of /ui and /view, GET only", () => {
-    for (const path of ["/ui/poll", "/ui/events", "/api/pane/alpha", "/api/pane/a%20b", "/api/profiles", "/api/ai-usage"]) {
+    for (const path of ["/ui/poll", "/ui/events", "/api/pane/alpha", "/api/pane/a%20b", "/api/profiles", "/api/ai-usage",
+      // #1629 (#1883 r1): owner CSS the page loads, and re-reads when the person's preferences moved.
+      "/ui/owner-css.css", "/ui/owner-css/state", `/ui/owner-css/asset/${"a".repeat(32)}`]) {
       expect(isPassiveWebRead("GET", path), path).toBe(true);
       for (const method of ["POST", "PUT", "DELETE", "HEAD", "PATCH"]) expect(isPassiveWebRead(method, path), `${method} ${path}`).toBe(false);
     }
@@ -37,7 +39,7 @@ describe("which reads are passive: an explicit list of method + path", () => {
   it("everything else counts as the person: pages, history, profile and avatar reads, near-miss paths", () => {
     for (const path of ["/ui", "/view", "/settings", "/ui/history", "/ui/status", "/api/profile/alpha", "/api/avatar/alpha",
       "/api/sort-order", "/api/pane", "/api/pane/", "/api/pane/a/b", "/ui/poll/x", "/ui/events/", "/api/profiles/x", "/api/ai-usage/x",
-      "/UI/POLL", "/auth/session", "/status"]) {
+      "/UI/POLL", "/auth/session", "/status", "/ui/owner-css", "/ui/owner-css/asset/x", "/ui/owner-css/state/x", "/ui/owner-css.cssx"]) {
       expect(isPassiveWebRead("GET", path), path).toBe(false);
     }
   });
@@ -102,6 +104,9 @@ const PASSIVE: Array<[string, string]> = [
   ["/api/pane/<instance>", "/api/pane/ghost"],
   ["/api/profiles", "/api/profiles"],
   ["/api/ai-usage", "/api/ai-usage"],
+  // #1629 (#1883 r1): re-read on every preference change of the person (another device's included).
+  ["/ui/owner-css/state", "/ui/owner-css/state"],
+  ["/ui/owner-css.css", "/ui/owner-css.css"],
 ];
 
 describe("a session with only passive traffic ends at the 2-hour idle limit (#1373)", () => {

@@ -42,8 +42,10 @@ const PROFILE_NAME = "profile.name";
 const PROFILE_PLATFORM_NAME = "profile.platformName";
 /** #1629 r4 §3: the person's active owner-CSS version (a sha), internal too: set only by the owner-CSS routes. */
 const OWNER_CSS_ACTIVE = "css.active";
+/** #1629 r4 §3: the version on trial (keep or revert), internal too — its changes are what other devices hear. */
+const OWNER_CSS_TRIAL = "css.trial";
 /** Keys kept in a person's bucket that /ui/prefs neither shows nor sets. */
-const PROFILE_KEYS: ReadonlySet<string> = new Set([PROFILE_NAME, PROFILE_PLATFORM_NAME, OWNER_CSS_ACTIVE]);
+const PROFILE_KEYS: ReadonlySet<string> = new Set([PROFILE_NAME, PROFILE_PLATFORM_NAME, OWNER_CSS_ACTIVE, OWNER_CSS_TRIAL]);
 
 /** #1664: at most this many favorites. */
 export const MAX_FAVORITES = 50;
@@ -93,6 +95,7 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   [PROFILE_NAME, (v) => (typeof v === "string" && v.length >= 1 && v.length <= 256 ? v : bad("profile.name"))],
   [PROFILE_PLATFORM_NAME, (v) => (typeof v === "string" && v.length >= 1 && v.length <= 256 ? v : bad("profile.platformName"))],
   [OWNER_CSS_ACTIVE, (v) => (typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : bad("css.active"))],
+  [OWNER_CSS_TRIAL, (v) => (typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : bad("css.trial"))],
 ]);
 export const WEB_PREF_KEYS: readonly string[] = [...REGISTRY.keys()].filter((k) => !PROFILE_KEYS.has(k));
 export function isWebPrefKey(key: string): boolean { return REGISTRY.has(key) && !PROFILE_KEYS.has(key); }
@@ -273,10 +276,19 @@ export class WebPrefsStore {
     const v = state.buckets.get(identity)?.values.get(OWNER_CSS_ACTIVE);
     return typeof v === "string" ? v : null;
   }
-  /** #1629 r4 §3: select (or, with null, turn off) the person's owner CSS — a new rev, so their other devices follow. */
-  setOwnerCssActive(identity: string, sha: string | null): { ok: true } | { ok: false; status: 400 | 503; error: string } {
-    if (sha !== null && !/^[0-9a-f]{32}$/.test(sha)) return { ok: false, status: 400, error: "css.active" };
-    const w = this.write(identity, new Map([[OWNER_CSS_ACTIVE, sha]]));
+  /**
+   * #1629 r4 §3: move the person's owner-CSS pointers in one write — `active` (null: none in force) and `trial` (null:
+   * none on trial). A change is a new rev, so their other devices follow.
+   */
+  setOwnerCss(identity: string, change: { active?: string | null; trial?: string | null }): { ok: true } | { ok: false; status: 400 | 503; error: string } {
+    const patch = new Map<string, unknown>();
+    for (const [key, v] of [[OWNER_CSS_ACTIVE, change.active], [OWNER_CSS_TRIAL, change.trial]] as const) {
+      if (v === undefined) continue;
+      if (v !== null && !/^[0-9a-f]{32}$/.test(v)) return { ok: false, status: 400, error: key };
+      patch.set(key, v);
+    }
+    if (!patch.size) return { ok: true };
+    const w = this.write(identity, patch);
     return w.ok ? { ok: true } : w;
   }
 

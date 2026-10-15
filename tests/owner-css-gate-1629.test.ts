@@ -114,3 +114,23 @@ describe("fuzz: whatever the gate accepts serialises, and re-tokenizes to the sa
     expect(accepted).toBeGreaterThan(5_000);
   });
 });
+
+describe("review r1 (#1883)", () => {
+  it("P2-1: comments between whitespace — ordinary commented CSS is accepted and served", () => {
+    for (const css of ["a{color:red; /* comment */ margin:0}", "a{}\n/* comment */\nb{}", "a{} /* one */ /* two */ b{}"]) {
+      const r = check(css);
+      expect(r.ok, css).toBe(true);
+      if (r.ok) expect(() => serializeOwnerCss(r.tokens), css).not.toThrow();
+    }
+    expect(served("a{color:red; /* comment */ margin:0}")).toBe("a{color:red; margin:0}");
+    expect(served("a{}\n/* comment */\nb{}")).toBe("a{}\nb{}");
+  });
+  it("P3: an ID selector keeps its identifier spelling (#\\31 23 stays an ID); an unrestricted hash needs no escape", () => {
+    expect(served("#\\31 23{color:red}")).toBe("#\\31 23{color:red}");
+    expect(served("#\\61 bc{color:red}")).toBe("#abc{color:red}");
+    expect(served("#-\\31 2{color:red}")).toBe("#-\\31 2{color:red}");
+    expect(served("a{color:#123}")).toBe("a{color:#123}");
+    expect(tokenizeCss("#\\31 23")[0]).toMatchObject({ type: "hash", value: "123", hashType: "id" });
+    expect(tokenizeCss("#123")[0]).toMatchObject({ type: "hash", value: "123", hashType: "unrestricted" });
+  });
+});
