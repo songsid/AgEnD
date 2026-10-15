@@ -2,7 +2,8 @@ name: Data downgrade compatibility
 
 on:
   pull_request:
-    branches: [main]
+    # feat/2.3-web-mod: the 2.3.0 web-mod feature branch (#1629) — its PRs get the full gates before the branch lands.
+    branches: [main, 'feat/2.3-web-mod']
   push:
     branches: [main]
 
