@@ -176,7 +176,7 @@ describe("the service: switch, then lock, then limit — only what is accepted c
 
 describe("no target: the tools' schemas name no instance", () => {
   it.each(["GetWebThemeArgs", "SetWebThemeArgs", "SetWebThemeAssetArgs", "ResetWebThemeArgs"] as const)("%s", (name) => {
-    const props = Object.keys((z.toJSONSchema((schemas as Record<string, z.ZodType>)[name]) as { properties?: object }).properties ?? {});
+    const props = Object.keys((z.toJSONSchema((schemas as unknown as Record<string, z.ZodType>)[name]!) as { properties?: object }).properties ?? {});
     expect(props.filter(p => /instance|name|target|chat|thread/.test(p))).toEqual([]);
   });
 });
@@ -217,7 +217,7 @@ describe("the doors", () => {
     const { Daemon } = await import("../src/daemon.js");
     const daemon = new Daemon("worker", { working_directory: ws, log_level: "error", restart_policy: { max_retries: 1, backoff: "exponential", reset_after: 300 },
       context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 } } as never, join(ws, ".instance"), true, undefined, undefined, pino({ level: "silent" }) as never) as any;
-    const broadcast = vi.fn(), send = vi.fn(() => true);
+    const broadcast = vi.fn(), send = vi.fn((_socket: unknown, _msg: unknown) => true);
     daemon.ipcServer = { send, broadcast };
     const socket = {} as never;
     daemon.handleToolCall({ tool: "set_web_theme_asset", args: { slot: "avatar", file: "me.png" }, requestId: 7 }, socket);
@@ -227,7 +227,7 @@ describe("the doors", () => {
       .toEqual(["fleet_set_web_theme_asset", "worker", ["data_b64", "slot"], true]);
     daemon.handleToolCall({ tool: "set_web_theme_asset", args: { slot: "avatar", file: "/etc/hostname" }, requestId: 8 }, socket);
     await vi.waitFor(() => expect(send).toHaveBeenCalled());
-    expect(send.mock.calls.at(-1)![1]).toMatchObject({ requestId: 8, error: expect.stringContaining("outside your working directory") });
+    expect(send.mock.calls.at(-1)![1] as Record<string, unknown>).toMatchObject({ requestId: 8, error: expect.stringContaining("outside your working directory") });
     expect(broadcast).toHaveBeenCalledOnce();
   });
 });
