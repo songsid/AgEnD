@@ -100,9 +100,9 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     // a dispatcher can choose its own status stamp like any worker.
     "list_emojis", "preview_emojis", "set_persona_emoji",
     "list_stickers", "preview_stickers",
-    // Its own web theme (#1629), like its own status stamp.
+    // Its own web theme (#1629), like its own status stamp. (The read-only appearance tools stay out: this profile is
+    // the lean one — a dispatcher reads its theme with get_web_theme.)
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    "get_web_appearance", "preview_web_appearance",
   ],
   standard: [
     "reply", "react", "edit_message", "close_poll",
