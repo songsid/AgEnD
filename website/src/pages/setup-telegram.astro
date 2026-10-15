@@ -22,8 +22,8 @@ const discordHref = `${base}setup-discord/`;
       <p class="mt-4 text-lg text-text-secondary leading-relaxed">
         AgEnD talks to you through a Telegram bot in a Forum-mode group: each agent instance gets
         its own Topic. This guide walks you through creating the bot, preparing the group, and
-        collecting the two values <code class="font-mono text-accent">agend quickstart</code> asks for —
-        your <b class="text-text-primary">Bot Token</b> and your <b class="text-text-primary">User ID</b>.
+        getting the <b class="text-text-primary">Bot Token</b> <code class="font-mono text-accent">agend quickstart</code> asks for.
+        Quickstart finds the group and your <b class="text-text-primary">User ID</b> itself when you send <code class="font-mono text-accent">/start</code> in the group.
         Takes about 5 minutes.
       </p>
     </div>
@@ -34,7 +34,7 @@ const discordHref = `${base}setup-discord/`;
       <ul class="space-y-2 text-sm text-text-secondary">
         <li>• A bot token like <code class="font-mono text-accent">123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code></li>
         <li>• A private group with <b class="text-text-primary">Topics</b> enabled, with your bot as an admin</li>
-        <li>• Your numeric Telegram User ID (used to lock the bot to you)</li>
+        <li>• Your numeric Telegram User ID, which quickstart reads from your <code class="font-mono text-accent">/start</code> and uses to lock the bot to you</li>
       </ul>
     </div>
 
@@ -56,7 +56,7 @@ const discordHref = `${base}setup-discord/`;
         <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-4">AGEND_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz</pre>
         <p class="text-sm text-text-secondary mt-3">
           You don't need to set this by hand — <code class="font-mono text-accent">agend quickstart</code> prompts for it
-          and writes it to your config. Treat the token like a password: anyone who has it controls your bot.
+          and writes it to <code class="font-mono text-accent">~/.agend/.env</code>. Treat the token like a password: anyone who has it controls your bot.
         </p>
       </div>
 
@@ -147,8 +147,10 @@ const discordHref = `${base}setup-discord/`;
           <h3 class="font-semibold text-text-primary">Get your User ID</h3>
         </div>
         <p class="text-sm text-text-secondary mb-3">
-          Your User ID is what locks the bot down to you — it goes into <code class="font-mono text-accent">fleet.yaml</code> under
-          access control. Without it, anyone who finds your bot could drive your agents.
+          Your User ID is what locks the bot down to you. It goes into <code class="font-mono text-accent">fleet.yaml</code> under
+          access control: without an access list, anyone who finds your bot could drive your agents. Quickstart takes yours
+          from the <code class="font-mono text-accent">/start</code> you send in the group, so you only need to look it up to
+          check it, or to add a teammate later.
         </p>
         <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
           <li>Search for <a href="https://t.me/userinfobot" class="text-accent hover:underline">@userinfobot</a> in Telegram.</li>
@@ -160,7 +162,7 @@ const discordHref = `${base}setup-discord/`;
           <figcaption class="mt-2 text-xs text-text-muted">Search for @userinfobot</figcaption>
         </figure>
         <p class="text-sm text-text-secondary mt-4">
-          <code class="font-mono text-accent">agend quickstart</code> asks for this and writes it out for you:
+          <code class="font-mono text-accent">agend quickstart</code> writes it out for you:
         </p>
         <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-3">channel:
   access:
@@ -174,13 +176,18 @@ const discordHref = `${base}setup-discord/`;
       <div class="rounded-xl border border-border bg-surface p-6">
         <div class="flex items-center gap-3 mb-3">
           <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">6</span>
-          <h3 class="font-semibold text-text-primary">Run quickstart and start the fleet</h3>
+          <h3 class="font-semibold text-text-primary">Run quickstart</h3>
         </div>
-        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Telegram, paste the token, paste your user ID
-agend fleet start     # launch</pre>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Telegram, paste the token, then send /start in the group</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          Quickstart waits for your <code class="font-mono text-accent">/start</code> in the group and takes the group and your User ID from it.
+          At the end it offers to install the fleet as a service and start it. If you said no, run
+          <code class="font-mono text-accent">agend fleet start</code>.
+        </p>
         <p class="text-sm text-text-secondary mt-3">
           Then send a message in the group's General topic. If the bot answers, you're done — start
-          adding project instances from there.
+          adding project instances from there. To open the web dashboard, send <code class="font-mono text-accent">/web</code> in General:
+          the bot sends you a sign-in link and a one-time code privately (open a private chat with the bot first).
         </p>
       </div>
     </div>
@@ -216,6 +223,11 @@ agend fleet start     # launch</pre>
             <td class="py-3 pr-4">Wrong group ID format</td>
             <td class="py-3 pr-4">Truncated ID</td>
             <td class="py-3">Supergroup IDs start with <span class="font-mono">-100</span>, e.g. <span class="font-mono">-1001234567890</span></td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Quickstart says another process is already reading this bot's updates</td>
+            <td class="py-3 pr-4">A running AgEnD, or a second quickstart, uses the same token</td>
+            <td class="py-3">Stop it (<span class="font-mono">agend stop</span>) and run quickstart again</td>
           </tr>
           <tr>
             <td class="py-3 pr-4">A teammate can't use the bot</td>
