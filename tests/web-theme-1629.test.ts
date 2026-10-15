@@ -43,6 +43,8 @@ describe("typed values only (§9.1)", () => {
     ["a label with a zero-width joiner trick", { workingLabel: "a​b" }, "workingLabel"],
     ["a label of 25 graphemes", { workingLabel: "x".repeat(25) }, "workingLabel"],
     ["an empty label", { workingLabel: "" }, "workingLabel"],
+    // #1887 P3: one grapheme that draws nothing is not a label.
+    ...["200d", "034f", "3164", "fe0f", "115f", "2800"].map((cp): [string, unknown, string] => [`an invisible-only label U+${cp}`, { workingLabel: String.fromCodePoint(parseInt(cp, 16)) }, "workingLabel"]),
     ["an array instead of an object", [], ""],
   ])("%s → refused at %s", (_n, input, path) => {
     expect(problems(input)).toContain(path);

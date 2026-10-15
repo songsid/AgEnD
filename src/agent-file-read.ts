@@ -3,6 +3,10 @@
  * agent's side — the daemon — so the fleet never opens a workspace path (first design §4: tool handlers neither fork
  * nor read outside their own state). The file must be in the agent's own working directory, not a symlink, a regular
  * file within the size limit, and not under the AgEnD state directory; what is read is that open file.
+ *
+ * The open never waits (#1887 review): O_NONBLOCK, so a regular file replaced by a FIFO between the lstat and the
+ * open returns at once and is refused by the descriptor's own fstat — it never holds a filesystem worker waiting for
+ * a writer. O_NOCTTY, so a terminal device swapped in is never made the controlling terminal.
  */
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, realpath, stat } from "node:fs/promises";
@@ -27,7 +31,7 @@ export async function readAgentFile(file: unknown, opts: { workspace: string | u
     const state = [resolve(opts.stateDir)];
     try { state.push(await realpath(opts.stateDir)); } catch { /* not there */ }
     if (state.some(root => under(real, root))) return { ok: false, reason: "inside the AgEnD state directory" };
-    fh = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    fh = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK | fsConstants.O_NOCTTY);
     const st = await fh.stat();
     if (!st.isFile()) return { ok: false, reason: "not a regular file" };
     if (st.size > opts.maxBytes) return { ok: false, reason: `over the size limit (${Math.floor(opts.maxBytes / 1024)} KiB)` };
