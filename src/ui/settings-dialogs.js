@@ -14,7 +14,7 @@ import { botHandle, TokenEnvNote, TokenField, verifyBotToken } from "./settings-
 import { DiscordServerPicker } from "./settings-discord.js";
 import { startOperation } from "./settings-apply.js";
 import {
-  ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
+  ACCESS_MODES, AGENT_FIELDS, AGENT_MODES, BOT_FIELDS, CH_TYPES, CLASSIC_FIELDS, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
   VISIBILITY_MODES, accessConfirmations, agentForm, agentPatch, backendOptions, changedFields, channelId, channelsOf,
   chLabel, hasOwn, impactOf, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   webEchoIsGroup, worstImpact,
@@ -242,7 +242,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
         <div class="field">${L(`${tn("hangTimeout")} (${tn("minutes")})`, "instance.hang_detector", "ag-hang")}
           <${Override} inherit=${f.inherit.hang} onInherit=${setInherit("hang")}>
             <input id="ag-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} disabled=${f.inherit.hang}
-              value=${shown("hang", f.hang, String((defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? 15))} onInput=${(e) => set("hang")(e.target.value)} /></${Override}>
+              value=${shown("hang", f.hang, String((defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES))} onInput=${(e) => set("hang")(e.target.value)} /></${Override}>
           <${Feedback} error=${errors.hang} /></div>
         ${[["agent_mode", "agentMode", AGENT_MODES, defaults.agent_mode || "mcp"], ["tool_set", "toolSet", TOOL_SETS, defaults.tool_set || "full"],
           ["tool_progress", "toolProgress", TOOL_PROGRESS, defaults.tool_progress ?? "off"],

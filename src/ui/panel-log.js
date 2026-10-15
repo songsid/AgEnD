@@ -29,7 +29,7 @@ register("log", {
   en: {
     offTitle: "The Log is off",
     offBody: "Turn it on to see each agent's work step by step: what it was asked, its replies, every tool call with its arguments and result, errors, and fleet events. It reads the agent's own transcript only while this tab is open, and masks secret values.",
-    enable: "Turn on the Log", enabling: "Waiting for a fleet admin to confirm it in General…", enabled: "The Log is on.",
+    enable: "Turn on the Log", enabling: "Waiting for a fleet admin to confirm it in chat (General topic) or on the host…", enabled: "The Log is on.",
     enableFailed: "The Log was not turned on: {0}", offPublic: "A fleet admin can turn it on in Settings → Web.",
     unsupported: "{0} has no transcript AgEnD can read, so this Log shows fleet events only. View shows its screen.",
     kiroWhy: "kiro's own steps are shown only when AgEnD can prove which conversation it is in now. {0} Fleet events are shown meanwhile.",
@@ -67,7 +67,7 @@ register("log", {
   "zh-TW": {
     offTitle: "紀錄未開啟",
     offBody: "開啟後可逐步看到每個 agent 的工作：收到的要求、回覆、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件。只在這個分頁開著時讀取 agent 自己的對話紀錄，機密值會遮蔽。",
-    enable: "開啟紀錄", enabling: "等待 fleet admin 在 General 確認…", enabled: "紀錄已開啟。",
+    enable: "開啟紀錄", enabling: "等待 fleet admin 在聊天（General topic）或主機上確認…", enabled: "紀錄已開啟。",
     enableFailed: "紀錄沒有開啟：{0}", offPublic: "fleet admin 可以在「設定 → 網頁」開啟。",
     unsupported: "{0} 沒有 AgEnD 讀得到的對話紀錄，所以這裡只顯示 fleet 事件。「檢視」可以看它的畫面。",
     kiroWhy: "只有在 AgEnD 能證明 kiro 目前所在的對話時，才會顯示它自己的步驟。{0}目前先顯示 fleet 事件。",

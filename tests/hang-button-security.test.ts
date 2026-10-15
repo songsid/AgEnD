@@ -112,6 +112,14 @@ describe("hang notification buttons", () => {
     expect(ids[1]).toMatch(/^hang:[0-9a-f]{32}:wait$/);
   });
 
+  it("#1854: with no duration and no hang_detector configured, it says the detector's own default — 10 minutes, not 15", async () => {
+    setLocale("zh-TW");
+    const { fm, notifyAlert } = setup();
+    await fm.sendHangNotification("worker");
+    const message = notifyAlert.mock.calls[0][1].message as string;
+    expect([message.includes("10 分鐘"), message.includes("15")]).toEqual([true, false]);
+  });
+
   it("admin Force-restart is consumed once and goes through restartSingleInstance", async () => {
     const { fm, notifyAlert, editMessage, restartSingleInstance } = setup();
     await fm.sendHangNotification("worker");

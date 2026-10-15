@@ -40,9 +40,10 @@ export const DEFAULT_COST_GUARD: CostGuardConfig = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 };
 
+/** #1854: matches the stuck detector's DEFAULT_STUCK_TIMEOUT_MS (src/daemon.ts, 10 min); hang-default-1854.test.ts holds them together. */
 export const DEFAULT_HANG_DETECTOR: HangDetectorConfig = {
   enabled: true,
-  timeout_minutes: 15,
+  timeout_minutes: 10,
 };
 
 export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {

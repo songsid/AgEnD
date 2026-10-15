@@ -2,6 +2,8 @@
 // Ported from settings.html with their reasons: every rule here was a fix (the review or issue named beside it).
 // No DOM, no fetch; the panel (panel-settings.js) and the tests call these directly.
 
+/** #1854: the stuck timeout when none is set — the daemon's DEFAULT_STUCK_TIMEOUT_MS (src/daemon.ts), in minutes. */
+export const HANG_TIMEOUT_DEFAULT_MINUTES = 10;
 export const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "antigravity", "grok", "muse"];
 export const CH_TYPES = ["discord", "telegram"];
 export const LOCALES = [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]];
@@ -166,7 +168,7 @@ export function agentForm(inst, defaults) {
     description: inst.description || "", systemPrompt: inst.systemPrompt || "", tags: [...(inst.tags || [])],
     general_topic: !!inst.general_topic,
     auto_pause_after: String(inst.auto_pause_after ?? defaults.auto_pause_after ?? 0),
-    hang: String(hang.timeout_minutes ?? (defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? 15),
+    hang: String(hang.timeout_minutes ?? (defaults.hang_detector && defaults.hang_detector.timeout_minutes) ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     agent_mode: inst.agent_mode || defaults.agent_mode || "mcp",
     tool_set: inst.tool_set || defaults.tool_set || "full",
     tool_progress: inst.tool_progress ?? defaults.tool_progress ?? "off",

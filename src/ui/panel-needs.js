@@ -23,25 +23,25 @@ import { notifyStore, notifySupport, reasonText, refreshNotify, setNotify } from
 
 register("needs", {
   en: {
-    title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in Discord.",
+    title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
     open: "Open chat", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
     ageNow: "just now", ageMin: "{0} min", ageHour: "{0} h", ageDay: "{0} d",
     notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
     notifyOff: "Get a desktop notification when something new needs you while this tab is in the background.",
     notifyDenied: "This browser blocked notifications for AgEnD. Allow them in the site settings to turn this on.",
-    notifyMobile: "On a phone, rely on the Discord notification: a new item is a new post in General.",
+    notifyMobile: "On a phone, rely on your chat app's notification: a new item is a new post in General.", notifyMobileWeb: "On a phone, open this page to see what needs you.",
     notifyInsecure: "Notifications need a secure address (localhost or the HTTPS public link), not a plain-HTTP LAN address.",
     notifyUnsupported: "This browser cannot show notifications.", turnOn: "Turn on", turnOff: "Turn off",
     typePrompt: "Fleet prompt", typeAwaiting: "At its terminal", typeInstance: "Instance", typeDelivery: "Delivery",
   },
   "zh-TW": {
-    title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在 Discord。",
+    title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
     open: "開啟聊天", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     ageNow: "剛剛", ageMin: "{0} 分鐘", ageHour: "{0} 小時", ageDay: "{0} 天",
     notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",
     notifyDenied: "這個瀏覽器封鎖了 AgEnD 的通知。請在網站設定中允許後再開啟。",
-    notifyMobile: "在手機上請以 Discord 通知為主：每個新項目都會在 General 發一則新訊息。",
+    notifyMobile: "在手機上請以聊天 app 的通知為主：每個新項目都會在 General 發一則新訊息。", notifyMobileWeb: "在手機上請打開這個頁面查看等你處理的事。",
     notifyInsecure: "通知需要安全的網址（localhost 或 HTTPS 公開連結），區網的一般 HTTP 網址不行。",
     notifyUnsupported: "這個瀏覽器無法顯示通知。", turnOn: "開啟", turnOff: "關閉",
     typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Instance", typeDelivery: "傳送",
@@ -108,7 +108,9 @@ export function groupNeeds(items) {
 
 export function NeedsPanel({ navKey }) {
   const lease = useLease(navKey);
-  const { needs, chatOwner: owner, instances } = useStore(appStore);
+  const { needs, chatOwner: owner, instances, connections } = useStore(appStore);
+  // #1854: a fleet with no chat connection (web only, or not known yet) has no General to point at.
+  const chatApp = connections > 0;
   const names = useStore(namesStore);
   // #1630/#1722: a group is headed by the instance's leading name (the "Names" preference), as the sidebar shows it.
   const nameFor = (instance) => { const it = (instances || []).find((i) => i && i.name === instance); return it ? namesOf(it, names.primary).primary : instance; };
@@ -124,7 +126,7 @@ export function NeedsPanel({ navKey }) {
   return html`<div class="panel p-needs">
     <${PanelHeader} title=${tn("title")} sub=${items.length ? t("app.needsCount", items.length) : null} />
     <div class="panel-body"><div class="col">
-      ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn("emptyHint")} />`
+      ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${g.instance} class="n-group" aria-label=${g.instance}>
           <h2 class="n-group-head"><a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a></h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
@@ -196,7 +198,8 @@ function NotifyToggle() {
   useEffect(() => { refreshNotify(); }, []);
   const on = state === "on";
   const toggle = () => { setNotify(!on); };
-  const note = support === "mobile" ? tn("notifyMobile") : support === "insecure" ? tn("notifyInsecure")
+  const { connections } = useStore(appStore);
+  const note = support === "mobile" ? tn(connections > 0 ? "notifyMobile" : "notifyMobileWeb") : support === "insecure" ? tn("notifyInsecure")
     : support !== "ok" ? tn("notifyUnsupported") : state === "denied" ? tn("notifyDenied") : on ? tn("notifyOn") : tn("notifyOff");
   return html`<section class="card n-notify"><h3>${tn("notifyTitle")}</h3>
     <p class="note">${note}</p>

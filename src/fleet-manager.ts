@@ -231,7 +231,7 @@ import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { InstanceState, InstanceStateSnapshot, InteractionOwner, InteractionSnapshot } from "./backend/types.js";
-import { readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
+import { DEFAULT_STUCK_TIMEOUT_MS, readLastInboundAt, type Daemon, type OwnSwitchOutcome } from "./daemon.js";
 import { clearPausedMarker, readPausedAt, readPauseReason, writePausedMarker } from "./pause-marker.js";
 import { readBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { DEFAULT_WARM_OVERFLOW, WakeCoordinator } from "./wake-coordinator.js";
@@ -15123,7 +15123,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }) | undefined)?.hang_detector;
     const configuredMinutes = instanceHangConfig?.timeout_minutes
       ?? this.fleetConfig?.defaults?.hang_detector?.timeout_minutes
-      ?? 15;
+      ?? DEFAULT_STUCK_TIMEOUT_MS / 60_000; // #1854: the detector's own default (10 min), not a stale 15
     const unchangedMinutes = unchangedForMs == null
       ? configuredMinutes
       : Math.max(1, Math.floor(unchangedForMs / 60_000));
