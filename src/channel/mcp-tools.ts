@@ -138,7 +138,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_persona_emoji", schemas.SetPersonaEmojiArgs,
     "Set your persona emoji: the status stamp (default: delivered) your bot puts on messages it handles, so people can tell you apart from other bots. Other statuses: received, queued, processing, failed, progress_prefix, and photo / attachment (the stamp on a photo / file your bot saved). Validated the way Settings validates it; takes effect on your next stamp."],
   ["get_web_theme", schemas.GetWebThemeArgs,
-    "Your own web theme (how your chat looks in the web dashboard): the current theme, the token defaults it is drawn over, your uploaded pictures, and your limits (changes and uploads left). No target: always yours."],
+    "Your own web theme (how your chat looks in the web dashboard): the current theme, the token defaults it is drawn over, your uploaded pictures, and your limits (changes and uploads left, each picture slot's size limits and your picture quota). No target: always yours."],
   ["set_web_theme", schemas.SetWebThemeArgs,
     "Change your own web theme, all or nothing: typed values only (colours #rrggbb, choices from fixed lists, numbers in range), contrast checked per light/dark mode. Returns { theme, rev } or { errors: [{ path, problem }] }. Rate-limited (30 s apart, 10 an hour); refused while a person has locked your theme."],
   ["set_web_theme_asset", schemas.SetWebThemeAssetArgs,
