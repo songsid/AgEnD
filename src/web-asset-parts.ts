@@ -48,3 +48,38 @@ export async function sendAssetInParts(
   }
   return answer;
 }
+
+/**
+ * #1629 r4 §1: preview_web_appearance's answer on the agent's side (the daemon, agend-agent): its files whole, or —
+ * larger than one message — fetched part by part with `send({ part: { preview, mode, index } })`, each checked against
+ * the declared bytes and sha256. Returns the files, or the first error.
+ */
+export async function receivePreview(
+  first: Record<string, unknown>,
+  send: (args: Record<string, unknown>) => Promise<Record<string, unknown>>,
+): Promise<{ files: Array<{ mode: string; data: Buffer }> } | { error: string; message?: string }> {
+  if (typeof first.error === "string") return first as { error: string };
+  const files = Array.isArray(first.files) ? first.files as Array<Record<string, unknown>> : [];
+  const MODE = /^(light|dark)$/;
+  if (!files.length || !files.every(f => typeof f.mode === "string" && MODE.test(f.mode))) return { error: "preview", message: "The fleet sent no preview." };
+  if (typeof first.preview !== "string") {
+    if (!files.every(f => typeof f.data_b64 === "string")) return { error: "preview", message: "The fleet sent no preview." };
+    return { files: files.map(f => ({ mode: f.mode as string, data: Buffer.from(f.data_b64 as string, "base64") })) };
+  }
+  const out: Array<{ mode: string; data: Buffer }> = [];
+  for (const f of files) {
+    const bytes = f.bytes, count = f.parts;
+    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(count) || (count as number) < 1 || (count as number) > 64 || typeof f.sha256 !== "string") return { error: "preview", message: "The fleet sent an unreadable preview." };
+    const chunks: Buffer[] = [];
+    for (let index = 0; index < (count as number); index++) {
+      const a = await send({ part: { preview: first.preview, mode: f.mode, index } });
+      if (typeof a.error === "string") return a as { error: string };
+      if (typeof a.data_b64 !== "string") return { error: "preview", message: "A part of the preview is missing." };
+      chunks.push(Buffer.from(a.data_b64, "base64"));
+    }
+    const data = Buffer.concat(chunks);
+    if (data.length !== bytes || createHash("sha256").update(data).digest("hex") !== f.sha256) return { error: "preview", message: "The preview's parts do not add up." };
+    out.push({ mode: f.mode as string, data });
+  }
+  return { files: out };
+}

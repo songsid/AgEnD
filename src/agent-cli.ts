@@ -13,8 +13,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
-import { readAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, sendAssetInParts, THEME_ASSET_SLOTS } from "./web-asset-parts.js";
+import { readAgentFile, writeAgentFile } from "./agent-file-read.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS } from "./web-asset-parts.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -88,8 +88,9 @@ async function main(): Promise<void> {
   const [,, first, ...given] = process.argv;
   if (!first) die("Usage: agend-agent <op> [args...]");
   // #1629: `theme <get|set|clear|asset|reset> …` is sent as its own op each (theme-get, …): one op, one tool.
-  const op = first === "theme" ? `theme-${given[0] ?? ""}` : first;
-  const rest = first === "theme" ? given.slice(1) : given;
+  // #1629 r4 §1: `appearance` (get) and `appearance preview [light|dark]`.
+  const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get") : first;
+  const rest = first === "theme" || (first === "appearance" && given.length) ? given.slice(1) : given;
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
   let args: Record<string, unknown> = {};
@@ -220,6 +221,25 @@ async function main(): Promise<void> {
     }
     case "theme-reset":
       break;
+    case "appearance-get":
+      break;
+    case "appearance-preview": {
+      if (rest.some(m => m !== "light" && m !== "dark")) die("Usage: agend-agent appearance preview [light|dark]");
+      // The fleet sends the SVGs (whole, or in parts); they are written here, in this working directory.
+      const ask = async (a: Record<string, unknown>) => { const text = await post(op, a); try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; } };
+      try {
+        const got = await receivePreview(await ask(rest.length ? { modes: rest } : {}), ask);
+        if ("error" in got) { console.log(JSON.stringify(got)); process.exit(1); }
+        const files: Array<{ mode: string; path: string }> = [];
+        for (const f of got.files) {
+          const w = await writeAgentFile(".agend/appearance", `${f.mode}.svg`, f.data, { workspace: process.cwd(), stateDir: DATA_DIR });
+          if (!w.ok) die(`appearance preview: .agend/appearance/${f.mode}.svg — ${w.reason}`);
+          files.push({ mode: f.mode, path: w.path });
+        }
+        console.log(JSON.stringify({ files }));
+      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
+      return;
+    }
 
     // Task board
     case "task": {

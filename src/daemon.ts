@@ -20,8 +20,8 @@ import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-tur
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
-import { readAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, sendAssetInParts } from "./web-asset-parts.js";
+import { readAgentFile, writeAgentFile } from "./agent-file-read.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
@@ -91,6 +91,8 @@ const __dirname = dirname(__filename);
 const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   get_web_theme: "fleet_get_web_theme", set_web_theme: "fleet_set_web_theme",
   set_web_theme_asset: "fleet_set_web_theme_asset", reset_web_theme: "fleet_reset_web_theme",
+  // r4 §1: how it appears — read-only; a preview's files are written here, on the agent's side.
+  get_web_appearance: "fleet_get_web_appearance", preview_web_appearance: "fleet_preview_web_appearance",
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
@@ -9925,6 +9927,27 @@ export class Daemon extends EventEmitter {
         this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
       void (async () => {
+        if (tool === "preview_web_appearance") {
+          // The fleet builds the SVGs (whole, or in parts); they are written here, in the working directory.
+          const first = await ask({ ...(args.modes !== undefined ? { modes: args.modes } : {}) });
+          if (first.error) { reply(null, first.error); return; }
+          let failed: string | undefined;
+          const got = await receivePreview((first.result && typeof first.result === "object" ? first.result : {}) as Record<string, unknown>, async (payload) => {
+            const r = await ask(payload);
+            if (r.error) { failed = r.error; return { error: r.error }; }
+            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
+          });
+          if (failed) { reply(null, failed); return; }
+          if ("error" in got) { reply(got, undefined); return; }
+          const files: Array<{ mode: string; path: string }> = [];
+          for (const f of got.files) {
+            const w = await writeAgentFile(".agend/appearance", `${f.mode}.svg`, f.data, { workspace: this.config.working_directory, stateDir: getAgendHome() });
+            if (!w.ok) { reply(null, `preview_web_appearance: .agend/appearance/${f.mode}.svg — ${w.reason}`); return; }
+            files.push({ mode: f.mode, path: w.path });
+          }
+          reply({ files }, undefined);
+          return;
+        }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }
         const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: WEB_THEME_ASSET_MAX_BYTES });
         // The path as the agent gave it — only a string is shown (an object from raw JSON args is never coerced).

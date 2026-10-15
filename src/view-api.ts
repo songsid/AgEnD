@@ -124,6 +124,13 @@ function cardStore(ctx: { dataDir: string }): HumanCardStore {
   if (_cards?.dir !== ctx.dataDir) _cards = { dir: ctx.dataDir, store: new HumanCardStore(ctx.dataDir, () => profileDb(ctx.dataDir)) };
   return _cards.store;
 }
+/** The card picture drawn for `slot`: the person's, else the agent's (the same rule as the card's JSON). */
+export function cardPicture(ctx: { dataDir: string; themeStore?: ViewApiContext["themeStore"] }, name: string, slot: CardSlot): { bytes: Buffer; mime: string } | null {
+  const own = cardStore(ctx).picture(name, slot);
+  if (own) return { bytes: own.bytes, mime: own.mime };
+  const agentId = ctx.themeStore?.get(name).theme.card?.[slot];
+  return agentId ? ctx.themeStore?.asset(name, agentId) ?? null : null;
+}
 /** Every person-set card, for a status read (never creates profiles.db or its table). */
 export function humanCards(dataDir: string): ReturnType<typeof HumanCardStore.all> {
   return HumanCardStore.all(dataDir, () => profileDb(dataDir));
@@ -483,10 +490,7 @@ export function handleViewRequest(
       return true;
     }
     if (method === "GET" && slot) {
-      // The picture drawn: the person's, else the agent's (the same rule as the card's JSON).
-      const own = store.picture(name, slot);
-      const agentId = own ? null : ctx.themeStore?.get(name).theme.card?.[slot];
-      const pic = own ?? (agentId ? ctx.themeStore?.asset(name, agentId) ?? null : null);
+      const pic = cardPicture(ctx, name, slot);
       if (!pic) { json(res, 404, { error: "no picture" }); return true; }
       res.writeHead(200, { "Content-Type": pic.mime, "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-cache" });
       res.end(pic.bytes);

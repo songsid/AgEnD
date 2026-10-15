@@ -202,7 +202,9 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { handleViewRequest, humanCards, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { cardPicture, handleViewRequest, humanCards, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { AppearanceTools } from "./web-appearance-tools.js";
+import type { FrameEntry } from "./web-appearance-view.js";
 import { cardVersion, resolveCard } from "./web-card.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
@@ -1309,6 +1311,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get webAppearance(): WebAppearance {
     return (this.webAppearanceService ??= new WebAppearance(this.themeStore, () => this.fleetConfig?.web ?? null,
       () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries the rev */ } }));
+  }
+
+  private appearanceToolsService?: AppearanceTools;
+  /** #1629 r4 §1: get_web_appearance / preview_web_appearance — the caller's own look, resolved as the page resolves it. */
+  get appearanceTools(): AppearanceTools {
+    return (this.appearanceToolsService ??= new AppearanceTools({
+      frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
+      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked }; },
+      card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
+      cardPicture: (name, slot) => cardPicture(this as unknown as { dataDir: string; themeStore: ThemeStore }, name, slot),
+      themeAsset: (name, id) => this.themeStore.asset(name, id),
+      profileAvatar: (name) => this.webImage("avatar", name),
+      botAvatar: (_name, key) => this.webImage("bot", key),
+      themeAnswer: (name) => this.webAppearance.getTheme(name) as { agent_edit?: unknown; limits?: unknown },
+    }));
   }
 
   /** A fleet.yaml instance (own key) or a ClassicBot room, now (#1629: a person's reset/lock names one). */
@@ -9460,7 +9477,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
     if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis"
       || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { this.handlePersonaEmoji(name, msg); return; }
-    if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme") {
+    if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme"
+      || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance") {
       this.handleWebTheme(name, msg); return;
     }
   }
@@ -9476,7 +9494,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!ipc) return;
     const tool = String(msg.type).replace(/^fleet_/, "");
     try {
-      const result = this.webAppearance.handleTool(instanceName, tool, (msg.payload ?? {}) as Record<string, unknown>);
+      const args = (msg.payload ?? {}) as Record<string, unknown>;
+      const result = tool === "get_web_appearance" || tool === "preview_web_appearance"
+        ? this.appearanceTools.handle(instanceName, tool, args)
+        : this.webAppearance.handleTool(instanceName, tool, args);
       ipc.send({ type: "fleet_web_theme_response", fleetRequestId, result });
     } catch (err) {
       ipc.send({ type: "fleet_web_theme_response", fleetRequestId, error: (err as Error).message });
@@ -9905,6 +9926,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
   async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+    if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
     return this.webAppearance.handleTool(instance, tool, args);
   }
 
@@ -10642,7 +10664,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
