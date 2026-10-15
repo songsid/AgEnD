@@ -60,7 +60,7 @@ async function fleet() {
   const session = (tier: "admin" | "read" = "admin") => {
     const { sessionId } = fm.webSessions.create({ tier, surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken) });
     const cookie = `agend_session=${sessionId}`;
-    return { read: { cookie }, write: { cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" } };
+    return { id: sessionId, read: { cookie }, write: { cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" } };
   };
   const stop = () => new Promise<void>(r => (fm.healthServer as Server).close(() => r()));
   return { fm, dir, port, session, stop };
@@ -106,6 +106,20 @@ describe("the theme routes", () => {
       f.fm.themeStore.setLocked("alpha", true);
       expect((await post("/ui/themes/alpha/reset", admin)).status).toBe(200);
       expect([f.fm.themeStore.get("alpha").theme, f.fm.themeStore.get("alpha").locked]).toEqual([{ v: 1 }, true]);
+    } finally { await f.stop(); }
+  }, 30_000);
+  it("reset/lock ask again once the body is in: a session revoked while it was on its way changes nothing (#1888 review)", async () => {
+    const f = await fleet();
+    try {
+      const s = f.session("admin");
+      const body = JSON.stringify({ locked: true });
+      const status = await new Promise<number>((resolve, reject) => {
+        const r = request({ host: "127.0.0.1", port: f.port, method: "POST", path: "/ui/themes/alpha/lock", headers: { ...s.write, "content-length": String(Buffer.byteLength(body)) } }, res => { res.resume(); resolve(res.statusCode ?? 0); });
+        r.on("error", reject);
+        r.flushHeaders();
+        setTimeout(() => { f.fm.webSessions.revokeById(s.id); r.end(body); }, 150);
+      });
+      expect([status, f.fm.themeStore.get("alpha").locked]).toEqual([401, false]);
     } finally { await f.stop(); }
   }, 30_000);
   it("the public link: reads on its manifest, reset and lock absent — and refused by the handler on its own", async () => {
@@ -183,6 +197,55 @@ describe("the page", () => {
     themes.themesStore.set({ themes: { alpha: { v: 1, accent: "red; background:url(x)", colors: { dark: { bg: "var(--x)", text: "#ffffff" } }, font: "comic", bubble: { radius: 99 },
       background: { image: "https://evil/x.png", fit: "cover", opacity: 1 } } }, shown: true });
     expect(themes.themeFor("alpha")).toEqual({ colors: { light: {}, dark: { text: "#ffffff" } }, bubble: {} });
+  });
+  it("the label, colours and opacity are checked as the host checks them (#1888 review)", async () => {
+    const { themes } = await load();
+    const check = (t: Record<string, unknown>) => { themes.themesStore.set({ themes: { alpha: { v: 1, ...t } }, shown: true }); return themes.themeFor("alpha"); };
+    expect(check({ accent: "#ffffff; x" }).accent).toBeUndefined();
+    expect(check({ accent: "#FFFFFF" }).accent).toBeUndefined();                 // the host sends lowercase only
+    const bg = (opacity: number) => check({ background: { image: "a".repeat(32), fit: "cover", opacity } }).background;
+    expect([bg(0.04), bg(0.05), bg(1), bg(1.01)]).toEqual([undefined, { image: "a".repeat(32), fit: "cover", opacity: 0.05 }, { image: "a".repeat(32), fit: "cover", opacity: 1 }, undefined]);
+    const label = (s: string) => check({ workingLabel: s }).workingLabel;
+    expect([label("x".repeat(24)), label("x".repeat(25)), label("👨‍👩‍👧".repeat(24)), label("Think\u202eing"), label("\u200d"), label(" pad"), label("a\nb")])
+      .toEqual(["x".repeat(24), undefined, "👨‍👩‍👧".repeat(24), undefined, undefined, undefined, undefined]);
+  });
+  it("another device's fx.show is followed at once; the switch is cached as \"off\" only (#1888 review)", async () => {
+    vi.resetModules();
+    pg = page({ url: "http://127.0.0.1:19280/ui/chat/alpha", storage: { agend_prefs_synced: "1" } });
+    pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {} }));
+    let host: Record<string, unknown> = {}, rev = 1;
+    vi.stubGlobal("fetch", async (url: string, init: { method?: string; body?: string } = {}) => {
+      if (url === "/ui/prefs" && (init.method ?? "GET") === "POST") { const set = JSON.parse(init.body!).set; host = { ...host, ...set }; for (const k of Object.keys(host)) if (host[k] === null) delete host[k]; }
+      return { ok: true, status: 200, json: async () => (url === "/ui/prefs" ? { rev: ++rev, values: host } : { rev: 0, themes: {}, locked: [] }) };
+    });
+    const themes = await import("/assets/app-themes.js");
+    const prefs = await import("/assets/app-prefs.js");
+    themes.startThemes();
+    expect(themes.themesStore.get().shown).toBe(true);
+    host = { "fx.show": false };
+    await prefs.refresh(); await settle(2);
+    expect([themes.themesStore.get().shown, pg.storage.get("agend_fx_show")]).toEqual([false, "off"]);
+    host = {};
+    await prefs.refresh(); await settle(2);
+    expect([themes.themesStore.get().shown, pg.storage.get("agend_fx_show") ?? null]).toEqual([true, null]);
+    themes.setThemesShown(false);
+    expect(pg.storage.get("agend_fx_show")).toBe("off");
+    themes.setThemesShown(true);
+    expect(pg.storage.get("agend_fx_show") ?? null).toBeNull();
+  });
+  it("the themes are read when themes_rev moves — once per revision (#1888 review)", async () => {
+    vi.resetModules();
+    pg = page({ url: "http://127.0.0.1:19280/ui/chat/alpha" });
+    const reads: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => { reads.push(url); return { ok: true, status: 200, json: async () => ({ rev: reads.length, themes: { alpha: { v: 1, font: "mono" } }, locked: [] }) }; });
+    const themes = await import("/assets/app-themes.js");
+    const { appStore } = await import("/assets/app-store.js");
+    themes.startThemes();
+    appStore.set({ themesRev: 1 }); await settle(2);
+    appStore.set({ themesRev: 1, connection: "live" }); await settle(2);
+    expect(reads).toEqual(["/ui/themes"]);
+    appStore.set({ themesRev: 2 }); await settle(2);
+    expect([reads.length, themes.themeFor("alpha")?.font]).toEqual([2, "mono"]);
   });
   it("not shown: with the viewer's switch off, or in safe mode (?safe=1)", async () => {
     let { themes } = await load({ fxShow: false });

@@ -18,6 +18,17 @@ const COLOR = /^#[0-9a-f]{6}$/;
 const ASSET = /^[0-9a-f]{32}$/;
 const PALETTE = { bg: "--bg", surface: "--surface", text: "--text", text2: "--text-2", accent: "--accent", userBubble: "--user-bubble", agentBubble: "--agent-bubble" };
 const FONTS = ["inter", "system", "mono"], BORDERS = ["none", "thin", "accent"], FITS = ["cover", "contain"];
+// The label's rule, as the host's (web-theme.ts canonicalText): 1..24 graphemes on one line, no control, format or
+// separator character but the zero-width joiner, and at least one character that draws something (#1888 review).
+const FORBIDDEN = /(?!\u200d)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const VISIBLE = /[^\p{M}\p{C}\p{Z}\u115f\u1160\u3164\uffa0\u2800]/u;
+let graphemes = null;
+function labelOk(s) {
+  if (typeof s !== "string" || FORBIDDEN.test(s) || s.trim() !== s || !VISIBLE.test(s)) return false;
+  try { graphemes ??= new Intl.Segmenter(undefined, { granularity: "grapheme" }); } catch { return false; }
+  const n = [...graphemes.segment(s)].length;
+  return n >= 1 && n <= 24;
+}
 
 /** Whether this page shows agents' themes now: the viewer's switch (default on), and never in safe mode. */
 export function themesShown() {
@@ -62,7 +73,7 @@ export function themeFor(name) {
   if (bg && typeof bg.image === "string" && ASSET.test(bg.image) && FITS.includes(bg.fit) && typeof bg.opacity === "number" && bg.opacity >= 0.05 && bg.opacity <= 1) {
     out.background = { image: bg.image, fit: bg.fit, opacity: bg.opacity };
   }
-  if (typeof t.workingLabel === "string" && t.workingLabel.length >= 1 && t.workingLabel.length <= 120) out.workingLabel = t.workingLabel;
+  if (labelOk(t.workingLabel)) out.workingLabel = t.workingLabel;
   return out;
 }
 

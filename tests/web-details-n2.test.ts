@@ -311,4 +311,16 @@ describe("#1629 r4 §1: the identity card", () => {
     toggle().click(); await settle(2);
     expect([pg.root.querySelector(".p-chat .id-card"), pg.storage.get("agend_chat_card") ?? null]).toEqual([null, null]);
   });
+  it("#1888 review: the agent's working label shows only while working; its background's opacity goes through the CSSOM", async () => {
+    const pg = await app("/ui/chat/loner");
+    const { themesStore } = await import("/assets/app-themes.js");
+    const { applyStatus } = await import("/assets/app-store.js");
+    try {
+      themesStore.set({ themes: { loner: { v: 1, workingLabel: "Brewing", background: { image: PIC, fit: "cover", opacity: 0.35 } } }, shown: true }); await settle(4);
+      const as = async (state: string) => { applyStatus({ instances: INSTANCES.map(i => (i.name === "loner" ? { ...i, execution_state: state } : i)) }); await settle(4); return pg.root.querySelector(".p-chat .work-bar .lbl")?.textContent ?? null; };
+      expect(await as("working")).toBe("Brewing");
+      expect(await as("stuck")).not.toBe("Brewing");
+      expect((pg.root.querySelector(".p-chat .th-bg") as any).style["--th-bg-opacity"]).toBe("0.35");
+    } finally { themesStore.set({ themes: {} }); applyStatus({ instances: INSTANCES }); }
+  });
 });
