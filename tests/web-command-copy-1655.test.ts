@@ -15,7 +15,7 @@ afterEach(() => setLocale("en"));
 describe("#1655 advertises /web while keeping the old alias", () => {
   it.each(["en", "zh-TW"] as const)("chat sign-in/revoke/upgrade copy uses /web (%s)", language => {
     setLocale(language);
-    for (const key of ["dashboard.public_general", "dashboard.private_link", "dashboard.menu_failed",
+    for (const key of ["dashboard.public_general", "dashboard.private_local", "dashboard.private_public", "dashboard.menu_failed",
       "dashboard.private_failed", "web.public_login_notice", "dashboard.code_help", "dashboard.revoked_not_durable",
       "web.login_notice", "web.resend_code", "upgrade.web_chat", "dashboard.disabled"] as const) webCopy(t(key));
     expect(t("slash.web")).not.toContain("/dashboard");
