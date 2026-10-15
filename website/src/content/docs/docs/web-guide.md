@@ -23,7 +23,7 @@ agend web          # prints the code and opens the sign-in page
 agend web --code   # only prints them
 ```
 
-If no browser can be opened (a server, or WSL without one), `agend web` says so; the printed page and code still work.
+If the browser does not open (a server, or WSL without one), use the page and code it printed.
 
 ## From a phone
 
@@ -41,7 +41,7 @@ The button is missing when public links are turned off (`web.public_link.allow_p
 - A sign-in on the AgEnD computer lasts **48 hours**, or until it is unused for 48 hours. **Settings → Web** can change both.
 - A sign-in through the public link lasts 4 hours (30 minutes unused), and ends when the link closes.
 - A browser that signed in with a `/web` code gets **Send me a new code** on the sign-in page next time, so you do not have to go back to chat.
-- The **Session** menu at the bottom of the sidebar lists your signed-in devices, each with **Sign out**, and **Sign out everywhere**.
+- The **Session** menu at the bottom of the sidebar lists the fleet's signed-in devices, each with **Sign out**, and **Sign out everywhere**.
 
 Saw a sign-in you did not make? Sign every browser out:
 
@@ -67,7 +67,7 @@ Editing an agent's profile always needs a sign-in, and over the public link `/vi
 
 AgEnD runs inside WSL. Open the dashboard link in your Windows browser.
 
-**Only if** the dashboard stops opening from Windows (often after an update), check which side answers. Close the dashboard tabs first, then run:
+**Only if** the dashboard stops opening from Windows (for example after an update), check which side answers. Close the dashboard tabs first, then run these with the same port: 19280 is the default `health_port`, so use yours if you changed it.
 
 ```sh
 # Inside WSL
@@ -79,7 +79,7 @@ curl --noproxy '*' --max-time 5 -sS -o /dev/null -w '%{http_code}\n' http://127.
 curl.exe --noproxy "*" --max-time 5 -sS -o NUL -w "%{http_code}\n" http://127.0.0.1:19280/health
 ```
 
-**200** inside WSL with **000** on Windows means Windows is not forwarding to WSL. AgEnD itself is fine, and restarting the fleet is not the fix. Meanwhile:
+**200** inside WSL with **000** on Windows (no response at all) points to a forwarding or connectivity problem between Windows and WSL, not to the dashboard's sign-in. Restarting the fleet again and again need not repair it. Save both results and your Windows and WSL versions for the operator. Meanwhile:
 
 - keep using chat;
 - or sign in from another device with **🌐 Other device (temporary public)**;
