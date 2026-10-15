@@ -5541,8 +5541,9 @@ export class Daemon extends EventEmitter {
    * every delivery parked behind it. It recovers when the backend sees its own live, EMPTY composer with no busy, queued
    * or dialog marker (isStableUnknownLayoutIdlePane) AND the transcript shows no open turn — or, with no transcript to
    * ask, that same composer held unchanged for UNKNOWN_LAYOUT_STABLE_MS (#978's rule). An open turn never recovers.
+   * #1865: `hold` makes the closed-turn case wait out that window too (a `working` reading, recovered before the stuck deadline).
    */
-  private recoverStuck(pane: string, snapshot: InstanceStateSnapshot, changeAt: number, turn: "open" | "closed" | "unknown"): InstanceStateSnapshot {
+  private recoverStuck(pane: string, snapshot: InstanceStateSnapshot, changeAt: number, turn: "open" | "closed" | "unknown", hold = false): InstanceStateSnapshot {
     const machine = this.instanceStateMachine;
     const idleComposer = this.backend?.isStableUnknownLayoutIdlePane?.(pane) === true;
     // The resume load (#1031: `Resuming session…` over the same composer) is input that is not open yet (#1641 R1).
@@ -5558,7 +5559,7 @@ export class Daemon extends EventEmitter {
       this.stuckRecoveryKey = key;
       this.stuckRecoverySince = mono;
     }
-    if (turn === "unknown" && mono - this.stuckRecoverySince < UNKNOWN_LAYOUT_STABLE_MS) return snapshot;
+    if ((turn === "unknown" || hold) && mono - this.stuckRecoverySince < UNKNOWN_LAYOUT_STABLE_MS) return snapshot;
     // A footer this build cannot read stays unreadable: the same still pane reads stuck again at every sweep and is
     // recovered again. Only the edge into idle is news.
     const fields = { evidence: turn === "closed" ? "transcript_no_open_turn" : "stable_empty_composer", unchangedForMs: snapshot.unchangedForMs };
@@ -6139,6 +6140,13 @@ export class Daemon extends EventEmitter {
         });
       }
       if (snapshot.state === "stuck") snapshot = this.recoverStuck(pane, snapshot, observedChangeAt, transcriptTurn);
+      // #1865: a resumed codex can paint its footer without the Context item (sol after the beta.13 restart), so its
+      // idle composer reads `working` for the whole stuck window. Its own rollout says no turn is open: the sweep needs
+      // no deadline for that — the same composer held still for UNKNOWN_LAYOUT_STABLE_MS is enough.
+      else if (snapshot.state === "working" && reason === "safety_sweep" && transcriptTurn === "closed"
+        && this.backend?.binaryName === "codex") {
+        snapshot = this.recoverStuck(pane, snapshot, observedChangeAt, transcriptTurn, true);
+      }
       this.applyInstanceStateSnapshot(snapshot, pane);
 
       // Backends without a transcript feed can still say what they are doing, if
