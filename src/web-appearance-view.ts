@@ -1,0 +1,144 @@
+/**
+ * #1629 r4 §1: the agent's read-only view of how it appears on the dashboard — `get_web_appearance` (what the page
+ * draws now, resolved exactly as the status frame resolves it) and `preview_web_appearance` (an SVG per mode, built
+ * from the page's own layout numbers). Pure: the fleet passes in what it already resolved; nothing here reads a file,
+ * a path or another instance.
+ *
+ * The SVG embeds only this instance's pictures, as data: URIs; text is XML-escaped; fonts are generic families. No
+ * browser, no live session, no other instance's content.
+ */
+import { effectivePalette, type Palette, type Theme, type ThemeMode } from "./web-theme.js";
+import type { ResolvedCard } from "./web-card.js";
+
+export type AvatarSource = "profile" | "theme" | "bot" | "emoji" | "initial";
+/** The status frame's entry for one instance (getUiStatus): the fields the page draws a face and a ring from. */
+export interface FrameEntry {
+  name: string;
+  display_name?: string;
+  avatar?: { kind: string; src?: string; text?: string; alt?: string };
+  accent?: string;
+  theme_avatar?: { kind: string; src?: string };
+  theme_accent?: string;
+}
+
+/** The face the page draws while agents' themes are shown (the default), and where it comes from. */
+export function resolvedAvatar(e: FrameEntry): { source: AvatarSource; url?: string; text?: string } {
+  if (e.theme_avatar?.kind === "image" && e.theme_avatar.src) return { source: "theme", url: e.theme_avatar.src };
+  const a = e.avatar;
+  if (a?.kind === "image" && a.src?.startsWith("/ui/img/avatar/")) return { source: "profile", url: a.src };
+  if (a?.kind === "image" && a.src?.startsWith("/ui/img/bot/")) return { source: "bot", url: a.src };
+  if (a?.kind === "emoji") return { source: "emoji", ...(a.src ? { url: a.src } : {}), ...(a.text ? { text: a.text } : {}) };
+  return { source: "initial", text: a?.text ?? (e.display_name || e.name).slice(0, 1).toUpperCase() };
+}
+/** The ring the page draws round a picture face: the theme's colour, else an own bot's; none for an emoji or initial. */
+export function resolvedRing(e: FrameEntry): { color: string; source: "theme" | "bot" } | null {
+  const pictured = e.theme_avatar?.kind === "image" || e.avatar?.kind === "image";
+  if (!pictured) return null;
+  if (e.theme_accent) return { color: e.theme_accent, source: "theme" };
+  if (e.accent) return { color: e.accent, source: "bot" };
+  return null;
+}
+
+/** The effective look per mode: the palette over the token defaults, and the fixed choices. */
+export function effectiveTheme(theme: Theme): Record<ThemeMode, Required<Palette> & { font: string; bubbleRadius: number; bubbleBorder: string }> {
+  const one = (mode: ThemeMode) => ({ ...effectivePalette(theme, mode), font: theme.font ?? "inter", bubbleRadius: theme.bubble?.radius ?? 18, bubbleBorder: theme.bubble?.border ?? "none" });
+  return { light: one("light"), dark: one("dark") };
+}
+
+export interface AppearanceInput {
+  entry: FrameEntry;
+  theme: Theme;
+  card: ResolvedCard;
+  locked: boolean;
+  agentEdit: boolean;
+  limits: Record<string, unknown>;
+}
+/** get_web_appearance's answer. Effects and widgets: none can be applied yet (r4-4 waits on the effects runtime). */
+export function appearanceView(i: AppearanceInput): Record<string, unknown> {
+  const card: Record<string, unknown> = {};
+  for (const k of ["portrait", "banner"] as const) if (i.card[k]) card[k] = { id: i.card[k]!.id, by: i.card[k]!.by, url: i.card[k]!.src };
+  for (const k of ["tagline", "bio"] as const) if (i.card[k]) card[k] = { text: i.card[k]!.text, by: i.card[k]!.by };
+  return {
+    name: i.entry.name,
+    display_name: i.entry.display_name ?? null,
+    avatar: resolvedAvatar(i.entry),
+    ring: resolvedRing(i.entry),
+    card,
+    theme: effectiveTheme(i.theme),
+    working_label: i.theme.workingLabel ?? null,
+    background: i.theme.background ? { image: i.theme.background.image, fit: i.theme.background.fit, opacity: i.theme.background.opacity } : null,
+    effects: [],
+    widgets: [],
+    shown_when: "A viewer who turned off \"Show agents' themes and effects\", or a page opened with ?safe=1, sees the default look, the bot's face and no card colours.",
+    locked: i.locked,
+    agent_edit: i.agentEdit,
+    limits: i.limits,
+  };
+}
+
+// ── The preview ── the page's numbers (app.css): a 720 px column, the M card (240 px portrait, banner half that), a
+// 56 px chat header with a 32 px face, bubbles of the theme's radius and border.
+const W = 720, PAD = 16, PORTRAIT_H = 240, BANNER_H = 120, HEADER_H = 56;
+const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+const FONT: Record<string, string> = { inter: "sans-serif", system: "sans-serif", mono: "monospace" };
+
+export interface PreviewPictures {
+  /** This instance's picture by role, as bytes and a type (null: none, or not readable). */
+  avatar: { bytes: Buffer; mime: string } | null;
+  portrait: { bytes: Buffer; mime: string } | null;
+  banner: { bytes: Buffer; mime: string } | null;
+  background: { bytes: Buffer; mime: string } | null;
+}
+const dataUri = (p: { bytes: Buffer; mime: string }) => `data:${p.mime};base64,${p.bytes.toString("base64")}`;
+const PICTURE_MIME = /^image\/(png|jpeg|webp|gif)$/;
+
+/** One mode's SVG. Every picture is one of `pics` (this instance's), inline; nothing else is referenced. */
+export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPictures): string {
+  const t = effectiveTheme(i.theme)[mode];
+  const font = FONT[t.font] ?? "sans-serif";
+  const img = (p: { bytes: Buffer; mime: string } | null, x: number, y: number, w: number, h: number, extra = "") =>
+    p && PICTURE_MIME.test(p.mime) ? `<image href="${dataUri(p)}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"${extra}/>` : "";
+  const out: string[] = [];
+  let y = 0;
+  // The card, as Details draws it at M.
+  const hasCard = Object.keys(i.card).length > 0;
+  if (hasCard) {
+    if (i.card.banner) { out.push(img(pics.banner, 0, y, W, BANNER_H)); y += BANNER_H; }
+    const top = y + PAD;
+    let textX = PAD;
+    if (i.card.portrait && pics.portrait) { out.push(img(pics.portrait, PAD, top, PORTRAIT_H * 0.75, PORTRAIT_H)); textX = PAD + PORTRAIT_H * 0.75 + PAD; }
+    let ty = top + 18;
+    if (i.card.tagline) { out.push(`<text x="${textX}" y="${ty}" font-family="${font}" font-size="15" font-weight="600" fill="${t.text}">${esc(i.card.tagline.text)}</text>`); ty += 24; }
+    if (i.card.bio) for (const line of i.card.bio.text.split("\n")) { out.push(`<text x="${textX}" y="${ty}" font-family="${font}" font-size="13" fill="${t.text2}">${esc(line)}</text>`); ty += 18; }
+    y = Math.max(top + (i.card.portrait && pics.portrait ? PORTRAIT_H : 0), ty) + PAD;
+  }
+  // The chat header: the face (and its ring) and the name.
+  const hy = y;
+  out.push(`<rect x="0" y="${hy}" width="${W}" height="${HEADER_H}" fill="${t.surface}"/>`);
+  const cx = PAD + 16, cy = hy + HEADER_H / 2;
+  const ring = resolvedRing(i.entry), face = resolvedAvatar(i.entry);
+  if (ring) out.push(`<circle cx="${cx}" cy="${cy}" r="18" fill="none" stroke="${ring.color}" stroke-width="2"/>`);
+  out.push(`<clipPath id="face"><circle cx="${cx}" cy="${cy}" r="16"/></clipPath>`);
+  if (pics.avatar && (face.source === "theme" || face.source === "profile" || face.source === "bot")) out.push(img(pics.avatar, cx - 16, cy - 16, 32, 32, ` clip-path="url(#face)"`));
+  else {
+    out.push(`<circle cx="${cx}" cy="${cy}" r="16" fill="${t.surface}" stroke="${t.text2}" stroke-width="1"/>`);
+    out.push(`<text x="${cx}" y="${cy + 5}" text-anchor="middle" font-family="${font}" font-size="14" fill="${t.text}">${esc(face.text ?? "")}</text>`);
+  }
+  out.push(`<text x="${cx + 28}" y="${cy + 5}" font-family="${font}" font-size="15" font-weight="600" fill="${t.text}">${esc(i.entry.display_name || i.entry.name)}</text>`);
+  y = hy + HEADER_H;
+  // The thread: the theme's background picture under a pair of bubbles, then the working label.
+  const threadTop = y, threadH = 200;
+  out.push(`<rect x="0" y="${threadTop}" width="${W}" height="${threadH}" fill="${t.bg}"/>`);
+  if (i.theme.background && pics.background) out.push(img(pics.background, 0, threadTop, W, threadH, ` opacity="${i.theme.background.opacity}"`));
+  const stroke = t.bubbleBorder === "thin" ? ` stroke="${t.text2}" stroke-width="1"` : t.bubbleBorder === "accent" ? ` stroke="${t.accent}" stroke-width="1.5"` : "";
+  out.push(`<rect x="${W - PAD - 300}" y="${threadTop + PAD}" width="300" height="44" rx="${t.bubbleRadius}" fill="${t.userBubble}"${stroke}/>`);
+  out.push(`<text x="${W - PAD - 286}" y="${threadTop + PAD + 27}" font-family="${font}" font-size="14" fill="${t.text}">A message from a person</text>`);
+  out.push(`<rect x="${PAD}" y="${threadTop + PAD + 60}" width="380" height="64" rx="${t.bubbleRadius}" fill="${t.agentBubble}"${stroke}/>`);
+  out.push(`<text x="${PAD + 14}" y="${threadTop + PAD + 88}" font-family="${font}" font-size="14" fill="${t.text}">Your reply, in your colours.</text>`);
+  out.push(`<text x="${PAD + 14}" y="${threadTop + PAD + 110}" font-family="${font}" font-size="13" fill="${t.accent}">A link in the accent colour</text>`);
+  out.push(`<circle cx="${PAD + 6}" cy="${threadTop + threadH - 24}" r="4" fill="${t.accent}"/>`);
+  out.push(`<text x="${PAD + 18}" y="${threadTop + threadH - 19}" font-family="${font}" font-size="13" fill="${t.text2}">${esc(i.theme.workingLabel ?? "Working")}…</text>`);
+  y = threadTop + threadH;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${y}" viewBox="0 0 ${W} ${y}">`
+    + `<title>${esc(`${i.entry.display_name || i.entry.name}: ${mode} mode`)}</title><rect width="${W}" height="${y}" fill="${t.bg}"/>${out.join("")}</svg>\n`;
+}
