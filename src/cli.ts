@@ -1881,6 +1881,21 @@ program
       console.log(`  ${outcome.message}`);
       return;
     }
+    // #1884: a legacy system unit is the service a root fleet runs under; the refresh brings its ExecStart to this
+    // install's selection too, or `agend restart` refuses it after an update (see refreshSystemUnitExecStart).
+    const systemUnit = opts.activate === false && detectPlatform() !== "macos" ? getSystemServicePath() : null;
+    if (systemUnit) {
+      const { refreshSystemUnitExecStart } = await import("./service-installer.js");
+      try {
+        const refreshed = refreshSystemUnitExecStart(systemUnit, serviceVars, dirname(dirname(execPath)));
+        if (refreshed.kind === "updated") console.log(`  ✓ ${systemUnit}: ExecStart=${refreshed.execStart}`);
+        else if (refreshed.kind === "foreign") console.log(`  ℹ ${systemUnit} left as it is: ${refreshed.reason}.`);
+        else if (refreshed.kind === "unreadable") console.log(`  ⚠ ${systemUnit} could not be read; left as it is.`);
+      } catch (err) {
+        console.error(`  ✗ ${systemUnit} could not be updated (${(err as Error).message}); \`agend restart\` will refuse until its ExecStart starts this install. Run the update as root, or: sudo agend install --no-activate`);
+        process.exitCode = 1;
+      }
+    }
     const svcPath = installService(serviceVars);
     console.log(t("install.path", svcPath));
     if (opts.activate !== false) {

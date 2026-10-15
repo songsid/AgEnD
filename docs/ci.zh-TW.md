@@ -45,3 +45,13 @@ bash <checkout>/scripts/ci/verify-published-tarball.sh ~/.cache/agend-published/
 # 每個 leg：
 npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.tgz
 ```
+
+升級流程有改動時，演練要跑下列 leg。每個 leg 都分別從已發布的 2.1.12 和上一版 beta 升到 pack 好的候選版：
+
+- **L**：使用者 unit，有使用者 bus。
+- **N**：使用者 unit，沒有使用者 bus。更新會經由 `systemd/private` 上的 peer client。
+- **S**：root fleet 用的系統 unit（`/etc/systemd/system/agend.service`）。從 2.1.12 升級時，refresh 必須把它的 `ExecStart` 改成候選版（#1884）。
+- **D**：沒有 service 的 detached fleet。
+- **Mac**：launchd。更新分別從 Agent 的工作階段、操作者的終端機，以及 `/update` 執行。
+
+每個 leg 都要記錄更新前後 fleet 的 pid 與執行的程式。

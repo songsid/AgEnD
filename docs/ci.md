@@ -68,3 +68,13 @@ bash <checkout>/scripts/ci/verify-published-tarball.sh ~/.cache/agend-published/
 # each leg:
 npm install -g --prefix "$PREFIX" ~/.cache/agend-published/songsid-agend-2.1.12.tgz
 ```
+
+A rehearsal of a change to the upgrade path runs these legs. Each one starts from the published 2.1.12 and from the previous beta, and goes to the packed candidate:
+
+- **L**: a user unit, with a user bus.
+- **N**: a user unit with no user bus. The update goes through the peer client on `systemd/private`.
+- **S**: a system unit (`/etc/systemd/system/agend.service`) for a root fleet. From 2.1.12, the refresh has to bring its `ExecStart` to the candidate (#1884).
+- **D**: a detached fleet with no service.
+- **Mac**: launchd, with the update run from an agent's session, from an operator's terminal, and through `/update`.
+
+Each leg records the fleet's pid and program before and after the update.
