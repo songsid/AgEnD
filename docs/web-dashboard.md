@@ -21,8 +21,8 @@ The server listens on **`127.0.0.1`**, on `health_port` (default **19280**). It 
 The dashboard signs in with a **one-time code**, never with a link that carries a credential.
 
 1. Get a code, either way:
-   - in General, use **`/web`** (fleet admins only; Discord native slash). Choose local sign-in or a temporary public link. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (tap it to copy: Telegram shows it as code, Discord as inline code). A public link's expiry is shown in the fleet's time zone, with its UTC offset.
-   - on Telegram, the bot can message you only after you open a chat with it. If `/web` can't reach you, tap **Start privately →** (or send `/start web` to the bot), press Start, and the same menu opens in that private chat: choose there and the code arrives right below it. Within 10 minutes of such a failure, the bot's own START button (a bare `/start`) does the same, once.
+   - in General, use **`/web`** (fleet admins only; Discord native slash). Press **💻 AgEnD computer: get a code** for the AgEnD computer, or **🌐 Other device (temporary public)** for another device (when allowed). The instruction appears first, without redundant page URLs or a closed-link countdown. The menu contains no code: the bot sends the link and code privately, then the code once more in a message of its own, so a phone can copy just the code (tap it to copy: Telegram shows it as code, Discord as inline code). A public link's expiry is shown in the fleet's time zone, with its UTC offset.
+   - on Telegram, the bot can message you only after you open a chat with it. If `/web` can't reach you, tap **Open private chat** (or send `/start web` to the bot), press Start, and the same menu opens in that private chat: choose there and the code arrives right below it. Within 10 minutes of such a failure, the bot's own START button (a bare `/start`) does the same, once.
    - on the host, run **`agend web`**. It prints the code and opens the sign-in page. `agend web --code` only prints them.
 2. Open the sign-in page and type the 8-character code (`ABCD-EFGH`, with or without the dash, in any case).
 
@@ -195,7 +195,7 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - Once the instance's context is 70% used, **Compact** and **Clear…** appear above the message box.
 
 ## Fleet (`/ui/fleet`)
-The fleet's shared work and its overview, one tab each. Every tab has its own address. **Docs** in the header opens the project's docs site (in the dashboard's language) in a new tab.
+The fleet's shared work and its overview, one tab each. Every tab has its own address. **Docs** in the header opens the docs site's short Web Guide (in the dashboard's language) in a new tab.
 
 **One instance's Details** (`/ui/fleet/agent/<name>`) is the Fleet side of that instance: its runtime (backend, model, effort, cost, context, 5-hour and 7-day limits), its recent activity, and a read-only summary of its configuration (display name, description, directory, where it is bound, tags), with **Edit in Settings** to change it. Its ⋯ menu starts, restarts, stops, pauses or wakes it, with the same calls and confirmations as the chat's ⋯ menu and Settings; deleting an instance stays in the chat's ⋯ menu and Settings. A ClassicBot room's Details shows its room instead of a directory, offers only pause and wake (as Settings does), and **Edit in Settings** opens its ClassicBot settings. An instance with no connection of its own is shown on the fleet's first connection, where it is bound by default.
 - On an instance page, the header switches between its **Chat**, **View** and **Details** (tabs under the header on a phone); the instance stays the same. Someone reading View without signing in sees no switch.

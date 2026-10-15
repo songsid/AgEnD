@@ -32,7 +32,11 @@
   #msg { min-height: 1.5em; margin-top: 14px; font-size: var(--fs-sm); color: var(--danger); }
   #msg.ok { color: var(--text-2); }
   .hint { margin-top: 18px; font-size: var(--fs-xs); color: var(--text-3); }
-  .hint code { white-space: nowrap; font-family: var(--font-mono); }
+  .hint code, .help code { white-space: nowrap; font-family: var(--font-mono); }
+  /* #1854: the operator's way in (no chat bot) — closed until asked for. */
+  .help { margin-top: 8px; font-size: var(--fs-xs); color: var(--text-3); }
+  .help summary { cursor: pointer; width: fit-content; }
+  .help p { margin: 6px 0 0; color: var(--text-3); }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -42,14 +46,15 @@
   <div id="checking" data-i18n="checking">Checking your session…</div>
   <form id="form" hidden autocomplete="off">
     <h1 data-i18n="title">Sign in to AgEnD</h1>
-    <p data-i18n="lead">Enter the one-time code from your chat channel.</p>
+    <p data-i18n="lead">Enter your sign-in code.</p>
     <label for="code" data-i18n="label">One-time code</label>
     <input id="code" name="code" inputmode="text" autocomplete="one-time-code" autocapitalize="characters"
            autocorrect="off" spellcheck="false" maxlength="12" placeholder="XXXX-XXXX" required>
     <button id="go" type="submit" data-i18n="submit">Sign in</button>
     <button id="resend" type="button" class="secondary" hidden data-i18n="resend">Send me a new code</button>
     <div id="msg" role="alert" aria-live="polite"></div>
-    <div class="hint" data-i18n="hint">Send /web to your AgEnD bot, or run “<code>agend web --code</code>” on the host. A code works once and expires in 5 minutes.</div>
+    <div class="hint" data-i18n="hint">No code? Send /web in General, then press a sign-in button to get one.</div>
+    <details class="help"><summary data-i18n="nobot">No chat bot?</summary><p data-i18n="nobot_body">Ask the operator to run <code>agend web --code</code> on the AgEnD computer.</p></details>
   </form>
   <noscript>This page needs JavaScript to sign you in.</noscript>
 </main>

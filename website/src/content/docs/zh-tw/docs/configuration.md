@@ -116,7 +116,7 @@ Telegram 吃：
 | `hang_detector.timeout_minutes` | number | `10` | 工作中的 instance 畫面幾分鐘沒變化後通知 |
 | `daily_summary.enabled` | boolean | `true` | 每日花費與狀態報告 |
 | `daily_summary.hour` / `.minute` | number | `21` / `0` | 當地時間的發送時刻 |
-| `tips` | boolean | `true` | General 的每日提示，以及更新後的提示 |
+| `tips` | boolean | `true` | General 的每日提示 |
 | `scheduler.max_schedules` | number | `100` | 排程上限 |
 | `scheduler.default_timezone` | string | `Asia/Taipei` | 沒指定時區的排程用的時區 |
 | `scheduler.retry_count` / `.retry_interval_ms` | number | `3` / `30000` | 排程投遞失敗的重試 |

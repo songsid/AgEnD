@@ -9,7 +9,7 @@ AgEnD runs your AI coding agents as a system service and puts them in your Teleg
 
 - Node.js and npm. On macOS (11 or newer) and on Linux with glibc 2.28 or newer (x64 or arm64), AgEnD installs its own Node 22 and runs on it, whatever Node runs npm. Elsewhere it needs Node 22.14+, 23.6+ or 24+.
 - tmux
-- A Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token
+- To chat from Telegram or Discord: a Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token. Without a bot, the fleet runs from the web dashboard alone: see the [Web Guide](/AgEnD/docs/web-guide/).
 - At least one AI coding CLI, installed and logged in — see [Backends](#install-a-backend)
 
 macOS and Linux are supported. Native Windows is not: run AgEnD inside WSL, which the [Windows installation guide](/AgEnD/install-windows/) sets up for you.
@@ -111,7 +111,7 @@ agend web --code   # only prints them
 
 Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts 4 hours (30 minutes idle) and ends when the link closes.
 
-The dashboard listens only on `127.0.0.1`. To reach it from elsewhere, see the [web dashboard guide](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md).
+The dashboard listens only on `127.0.0.1`. To open it from a phone, and for sessions and signing out, see the [Web Guide](/AgEnD/docs/web-guide/).
 
 If nothing answers, check the fleet first:
 
@@ -131,6 +131,7 @@ It stays on the channel you installed from (a beta stays on beta), installs the 
 
 ## Next steps
 
+- [Web Guide](/AgEnD/docs/web-guide/) — sign in, use it from a phone, sign out
 - [Features](/AgEnD/docs/features/) — what the fleet can do
 - [CLI Reference](/AgEnD/docs/cli/) — every command
 - [Configuration](/AgEnD/docs/configuration/) — the `fleet.yaml` reference

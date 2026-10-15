@@ -176,7 +176,7 @@ describe("Telegram failure texts: the DM, step by step — never a bare /start",
     const texts = [];
     for (const lang of ["en", "zh-TW"] as const) {
       setLocale(lang);
-      texts.push(t("dashboard.private_failed_tg"), t("dashboard.private_failed_tg_nolink"), t("dashboard.menu_tg_hint", LINK));
+      texts.push(t("dashboard.private_failed_tg"), t("dashboard.private_failed_tg_nolink"));
     }
     expect(texts.filter((x) => BARE_START.test(x) || CODE.test(x))).toEqual([]);
     expect(texts.filter((x) => x.includes("/start web")).length, "the no-link text names the exact command").toBe(2);
@@ -209,10 +209,11 @@ describe("Telegram failure texts: the DM, step by step — never a bare /start",
     expect([posted?.[0], posted?.[2]?.urlButtons]).toEqual(["G", [{ label: t("dashboard.start_web_label"), url: LINK }]]);
   });
 
-  it("the General menu's hint walks the same steps", async () => {
+  it("#1854 the General menu has no DM-start steps before a refusal", async () => {
     const h = rig();
     await h.typed();
-    expect(String(h.adapter.notifyAlert.mock.calls[0]?.[1]?.message)).toContain(t("dashboard.menu_tg_hint", LINK));
+    expect(String(h.adapter.notifyAlert.mock.calls[0]?.[1]?.message)).not.toContain(LINK);
+    expect(h.adapter.sendDirect).not.toHaveBeenCalled();
   });
 });
 

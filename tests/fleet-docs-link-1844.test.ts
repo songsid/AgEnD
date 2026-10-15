@@ -9,8 +9,9 @@ import { readFileSync } from "node:fs";
 import { fire } from "./helpers/mini-dom.js";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
-const EN = "https://songsid.github.io/AgEnD/docs/getting-started/";
-const ZH = "https://songsid.github.io/AgEnD/zh-tw/docs/getting-started/";
+// #1854: the short Web Guide, not Getting Started.
+const EN = "https://songsid.github.io/AgEnD/docs/web-guide/";
+const ZH = "https://songsid.github.io/AgEnD/zh-tw/docs/web-guide/";
 
 const mounted: AppPage[] = [];
 const realFetch = (globalThis as { fetch?: unknown }).fetch;
@@ -86,6 +87,12 @@ describe("Fleet overview → Docs", () => {
     // @ts-expect-error — a JS module of the app, with no types
     const { docsUrl } = await import("../src/ui/panel-fleet.js");
     expect([docsUrl("en"), docsUrl("zh-TW")]).toEqual([EN, ZH]);
+  });
+  it("#1854: the page it opens exists in both languages and is in the site's sidebar", () => {
+    const site = (path: string) => readFileSync(new URL(`../website/${path}`, import.meta.url), "utf8");
+    const page = { en: site("src/content/docs/docs/web-guide.md"), zh: site("src/content/docs/zh-tw/docs/web-guide.md") };
+    expect([page.en.match(/^title: (.+)$/m)?.[1], page.zh.match(/^title: (.+)$/m)?.[1]]).toEqual(["Web Guide", "網頁使用說明"]);
+    expect(site("astro.config.mjs")).toContain("{ label: 'Web Guide', translations: { 'zh-TW': '網頁使用說明' }, slug: 'docs/web-guide' }");
   });
   it("it is a header btn-sm, so #1842's one header row applies to it (36 px)", () => {
     const css = readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
