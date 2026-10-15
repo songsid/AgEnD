@@ -91,7 +91,8 @@ describe("what an instance is told", () => {
     expect(notice).not.toContain("forwards");
     // A new instance on beta.11 starts with the current schemas: told nothing, both recorded.
     const fresh = planWhatsNew({ record: null, fresh: true, version: "2.2.0-beta.11" });
-    expect(fresh && "silent" in fresh ? fresh.silent : fresh).toEqual(EVERY);
+    // (Entries of later versions are not there yet: #1629's 2.3 entries.)
+    expect(fresh && "silent" in fresh ? fresh.silent : fresh).toEqual(AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0-beta.11")! <= 0).map(e => e.id));
   });
   it("the poll entry names the schema's exact parameters and limits", async () => {
     const { ReplyArgs, ClosePollArgs } = await import("../src/outbound-schemas.js");
