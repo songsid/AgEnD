@@ -191,6 +191,7 @@ import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, typ
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { WebPrefsStore } from "./web-prefs.js";
+import { OwnerCssStore } from "./web-owner-css-store.js";
 import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
 import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
@@ -1291,6 +1292,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ch of this.classicChannels?.getAll() ?? []) if (low(ch.instanceName) === lowered || low(ch.displayName) === lowered) return true;
     for (const w of this.worlds.values()) if (w.botUsername && low(w.botUsername) === lowered) return true;
     return false;
+  }
+
+  private ownerCssStore?: OwnerCssStore;
+  /** #1629 r4 §3: each person's own CSS; which version is in force is their `css.active` in the web preferences. */
+  get ownerCss(): OwnerCssStore {
+    return (this.ownerCssStore ??= new OwnerCssStore(this.dataDir, this.webPrefs));
   }
 
   get webPrefs(): WebPrefsStore {

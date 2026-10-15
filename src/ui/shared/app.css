@@ -346,6 +346,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .seg-item { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 34px; padding: 0 var(--s-3); border-radius: var(--r-full); color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; }
 .seg-item:hover { background: var(--surface); color: var(--text); }
 .seg-item.active { background: var(--surface-2); color: var(--text); font-weight: var(--fw-semibold); }
+/* #1629: Settings has eight sections (Appearance added): they wrap to a second row rather than hide behind a scroll. */
+.p-settings .seg { flex-wrap: wrap; row-gap: var(--s-1); overflow-x: visible; }
 .list-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); margin: var(--s-2) 0 var(--s-3); color: var(--text-2); font-size: var(--fs-sm); }
 .rows { display: flex; flex-direction: column; gap: var(--s-1); }
 .row-item { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-sm); }
@@ -603,6 +605,26 @@ html.lb-open .scroller { overflow: hidden; }
 .drop-card { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); color: var(--accent); font-weight: var(--fw-semibold); }
 
 /* ── Toasts ── */
+/* #1629 r4 §3: Settings → Appearance (owner CSS). */
+.s-css-text { font-family: var(--font-mono); font-size: var(--fs-sm); width: 100%; min-height: 12rem; resize: vertical; tab-size: 2; }
+.s-css-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.s-css-status { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.s-css-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.s-css-list li { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-width: 0; }
+.s-css-list code { overflow-wrap: anywhere; }
+.s-owner-css h4 { margin: var(--s-2) 0 0; font-size: var(--fs-sm); }
+/* #1629 r4 §3: keep-or-revert after saving custom CSS — on every page, above everything but dialogs' scrim. */
+.oc-keep { position: fixed; top: var(--s-3); left: 50%; transform: translateX(-50%); z-index: 120; display: flex; align-items: center; gap: var(--s-2);
+  flex-wrap: wrap; max-width: calc(100vw - 32px); padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--surface);
+  color: var(--text-1); border: 1px solid var(--border); box-shadow: var(--shadow-2); font-size: var(--fs-sm); }
+.oc-keep-text { display: inline-flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
+.oc-keep-q { font-weight: var(--fw-medium); }
+.oc-keep-left { color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* A phone: one row across the top — the question over the seconds left, then Keep and Revert. */
+@media (max-width: 479px) {
+  .oc-keep { left: var(--s-2); right: var(--s-2); transform: none; max-width: none; flex-wrap: nowrap; }
+  .oc-keep-text { flex: 1; flex-direction: column; align-items: flex-start; gap: 0; }
+}
 .toasts { position: fixed; bottom: var(--s-6); right: var(--s-6); z-index: 100; display: flex; flex-direction: column; align-items: flex-end; gap: var(--s-2); pointer-events: none; }
 .toast { padding: 10px var(--s-4); max-width: min(420px, calc(100vw - 32px)); border-radius: var(--r-md); font-size: var(--fs-sm); font-weight: var(--fw-medium); box-shadow: var(--shadow-2); background: var(--accent-fill); color: var(--on-accent); animation: toast-in var(--t-med) var(--ease); }
 .toast.err { background: var(--danger-fill); color: var(--on-danger); }

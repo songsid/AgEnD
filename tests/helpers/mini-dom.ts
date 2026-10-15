@@ -148,6 +148,7 @@ export class MiniElement extends MiniNode {
   setAttribute(k: string, v: any) { this.attrs.set(k, String(v)); }
   removeAttribute(k: string) { this.attrs.delete(k); }
   hasAttribute(k: string) { return this.attrs.has(k); }
+  getAttributeNames() { return [...this.attrs.keys()]; }
   toggleAttribute(k: string, on?: boolean) { const want = on ?? !this.attrs.has(k); if (want) this.attrs.set(k, ""); else this.attrs.delete(k); return want; }
   get attributes() { return [...this.attrs].map(([name, value]) => ({ name, value })); }
   get id() { return this.getAttribute("id") ?? ""; } set id(v: string) { this.setAttribute("id", v); }

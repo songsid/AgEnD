@@ -62,6 +62,18 @@ describe("no style attribute, anywhere a panel could write one", () => {
       expect(src, f).not.toMatch(/setAttribute\(\s*["'`]style["'`]|createElement\(\s*["'`]style["'`]/);
     }
   });
+
+  // #1629 r4 §3: owner CSS is a same-origin <link> only. A constructed stylesheet (new CSSStyleSheet, replace /
+  // replaceSync, adoptedStyleSheets) is a second path for CSS text that style-src does not describe: none, anywhere.
+  it("#1629: no constructed stylesheet in any module — no CSSStyleSheet, replace/replaceSync on a sheet, adoptedStyleSheets", () => {
+    for (const f of SHARED) {
+      const src = readFileSync(join(UI, f), "utf8");
+      expect(src, f).not.toMatch(/\bCSSStyleSheet\b|\breplaceSync\s*\(|adoptedStyleSheets|\b(?:sheet|styleSheet|stylesheet)\.replace\s*\(/);
+    }
+  });
+  it("#1629: owner-css.js and the Appearance section are in that scan", () => {
+    expect(SHARED).toEqual(expect.arrayContaining([join("shared", "owner-css.js"), "settings-appearance.js"]));
+  });
 });
 
 describe("the policy", () => {

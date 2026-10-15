@@ -63,7 +63,7 @@ async function open(extra: Record<string, unknown> = {}, section = "web") {
 describe("Settings → Web, as rendered", () => {
   it("is a section of its own; the web chat card moved here from General", async () => {
     const { SETTINGS_SECTIONS } = await import("/assets/app-route.js");
-    expect(SETTINGS_SECTIONS).toEqual(["device", "agents", "bots", "classic", "general", "web", "advanced"]);
+    expect(SETTINGS_SECTIONS).toEqual(["device", "appearance", "agents", "bots", "classic", "general", "web", "advanced"]);   // #1629: Appearance
     const w = await open();
     expect([!!w.$("webEchoToChannel"), !!w.$("publicWebLink"), !!w.$("webSessionAbsolute"), !!w.$("webTerminalEnabled")]).toEqual([true, true, true, true]);
     const g = await open({}, "general");
