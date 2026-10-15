@@ -5,6 +5,7 @@
  * read-only allowlist. Fake adapters and a stubbed fetch for Discord's CDN — no platform is called; nothing forks.
  */
 import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
@@ -241,6 +242,29 @@ describe("removing an uploaded picture (DELETE /api/avatar/:instance, #1630 foll
     expect(frame.solo).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord-2\?v=/) }, accent: "#e91e63" });
     expect(frame.a).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord\?v=/) }, accent: undefined });
     expect(frame.p1).toEqual({ avatar: { kind: "emoji", text: "🐙" }, accent: undefined });
+  });
+  it("an upload replaces only this instance's own files — never a.b's when a uploads (names may hold a dot)", async () => {
+    const f = fleet();
+    f.fm.fleetConfig.instances["a.b"] = { working_directory: f.dir };
+    const post = (name: string, type: string, bytes: Buffer) => new Promise<number>(resolve => {
+      let status = 0;
+      const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { status = c; res.headersSent = true; return res; }, end() { resolve(status); } };
+      const req = Object.assign(Readable.from([bytes]), { method: "POST", url: `/api/avatar/${name}`, headers: { "x-agend-token": TOKEN, "content-type": type } });
+      const ctx = { webToken: TOKEN, dataDir: f.dir, fleetConfig: f.fm.fleetConfig, classicChannels: null, logger: { debug() {}, info() {}, warn() {}, error() {} },
+        getInstanceStatus: () => "running", getUiStatus: () => ({ instances: [] }) };
+      handleViewRequest(req as never, res, new URL(`http://127.0.0.1${req.url}`), ctx as never);
+    });
+    const files = () => readdirSync(join(f.dir, "avatars")).sort();
+    expect(await post("a.b", "image/png", Buffer.alloc(4, 1))).toBe(200);
+    expect(await post("a", "image/png", Buffer.alloc(4, 2))).toBe(200);
+    expect(files(), "a's upload left a.b's").toEqual(["a.b.png", "a.png"]);
+    expect(await post("a", "image/webp", Buffer.alloc(4, 3))).toBe(200);
+    expect(files(), "a's old picture (another extension) replaced; a.b's kept").toEqual(["a.b.png", "a.webp"]);
+    // A row recording an older name (an upload from before filenames were stored bare) is replaced too.
+    uploadProfile(f.dir, "solo", "legacy-solo.gif", Buffer.alloc(4, 4));
+    expect(await post("solo", "image/png", Buffer.alloc(4, 5))).toBe(200);
+    expect(files()).toEqual(["a.b.png", "a.webp", "solo.png"]);
+    expect([avatarPath(f.dir, "a"), avatarPath(f.dir, "a.b"), avatarPath(f.dir, "solo")]).toEqual(["a.webp", "a.b.png", "solo.png"]);
   });
   it("only this instance's recorded file goes; nothing uploaded: 200, removed false; an unknown instance: 404", async () => {
     const f = fleet();

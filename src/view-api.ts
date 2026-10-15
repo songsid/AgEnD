@@ -28,7 +28,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
  */
 import { isViewPage, shellRoute } from "./web-shell-routes.js";
 import { serveAppShell, type AppShellContext } from "./web-api.js";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -465,13 +465,14 @@ export function handleViewRequest(
         if (buf.length === 0) { json(res, 400, { error: "empty body" }); return; }
         const dir = join(ctx.dataDir, "avatars");
         mkdirSync(dir, { recursive: true });
-        // Remove any prior avatar for this instance (incl. a different extension).
-        for (const f of (existsSync(dir) ? readdirSync(dir) : [])) {
-          if (f.startsWith(`${name}.`)) { try { unlinkSync(join(dir, f)); } catch { /* best effort */ } }
-        }
+        // Replace this instance's prior avatar (incl. a different extension): the file its row records, and the one
+        // written below — never a prefix match, which took "a.b.png" along with "a"'s (names may hold a ".": the
+        // quickstart wizard and hand-edited fleet.yaml allow it; #1630 follow-up).
+        const db = profileDb(ctx.dataDir);
+        const prior = (db.prepare("SELECT avatar_path FROM instance_profile WHERE instance_name = ?").get(name) as { avatar_path: string | null } | undefined)?.avatar_path;
+        if (prior) { try { unlinkSync(join(dir, basename(prior))); } catch { /* already gone */ } }
         const filename = `${name}${ext}`;
         writeFileSync(join(dir, filename), buf, { mode: 0o600 });
-        const db = profileDb(ctx.dataDir);
         // Store the FILENAME only (not an absolute path) so it resolves against
         // whatever dataDir the fleet runs under after a restart.
         db.prepare(`INSERT INTO instance_profile (instance_name, avatar_path, updated_at)
