@@ -159,14 +159,16 @@ describe("Details (Q1 = B)", () => {
   it("the actions are the state's, through the existing calls: running → restart / stop / pause; stopped → start; paused → wake", async () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     // Carried over, none new (leader 2026-10-10): no Delete on Details — it stays in Chat's ⋯ and Settings.
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Restart instance", "Stop instance", "Pause"]);
+    // #1629: then a person's Lock and Reset of the agent's web theme.
+    const THEME = ["Lock theme", "Reset theme…"];
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Restart instance", "Stop instance", "Pause", ...THEME]);
     await choose(pg, "Stop instance");
     await choose(pg, "Pause");
     expect(calls.filter(c => c.startsWith("POST"))).toEqual(["POST /ui/stop/web-dev", "POST /api/settings/instances/web-dev/pause"]);
     await go("/ui/fleet/agent/api-server");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Start instance"]);
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Start instance", ...THEME]);
     await go("/ui/fleet/agent/qa-bot");
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Wake"]);
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Wake", ...THEME]);
     await choose(pg, "Wake");
     expect(calls.filter(c => c.startsWith("POST")).at(-1)).toBe("POST /api/settings/instances/qa-bot/wake");
   });
@@ -231,7 +233,7 @@ describe("#1561 review", () => {
   it("a ClassicBot room: its own summary (no directory), Classic's actions only (pause), and Edit in Settings → its ClassicBot dialog", async () => {
     const pg = await app("/ui/fleet/agent/classic-ops-1");
     expect(rowsOf(pg)).toEqual({ "Display name": "Ops", Description: "the ops room", "Bound to": "ClassicBot room #ops (discord)", Tags: "classic" });
-    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause"]);
+    expect(await menuItems(pg)).toEqual(["Edit in Settings", "Pause", "Lock theme", "Reset theme…"]);   // #1629: a Classic room's agent has a theme too
     pg.root.querySelector(".p-details .d-edit-settings").click(); await settle(4);
     expect([await route(), req.takeAgentRequest()]).toEqual([{ panel: "settings", section: "classic" }, { name: "classic-ops-1", kind: "classic" }]);
   });

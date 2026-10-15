@@ -392,11 +392,13 @@ const PASSIVE_GET_IMAGES = /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|me
  * state it re-reads when the person's preferences moved (another device saved, kept or reverted) — not the person.
  */
 const PASSIVE_GET_OWNER_CSS = /^\/ui\/(?:owner-css\.css|owner-css\/state|owner-css\/asset\/[0-9a-f]{32})$/;
+/** #1629: agents' themes the page re-reads when themes_rev moves, and the pictures they name. */
+const PASSIVE_GET_THEMES = /^\/ui\/(?:themes|img\/theme\/[^/]+\/[0-9a-f]{32})$/;
 const PASSIVE_APPLY_STATUS = /^\/api\/settings\/(?:apply\/[A-Za-z0-9-]+|(?:provider-secrets|secrets)\/[^/]+\/apply\/[A-Za-z0-9_-]+|connections\/[^/]+\/(?:secret|binding)\/apply\/[A-Za-z0-9_-]+)$/;
 
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
   if ((method ?? "GET") !== "GET") return false;
-  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path)
+  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path)
     || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)
     // #1490: a page polls an Apply job (and a secret or binding apply) for up to ten minutes while the person waits;
     // that polling is not their activity and must not slide the session's idle expiry (#1373).

@@ -125,6 +125,12 @@ export class ThemeStore {
     return out;
   }
 
+  /** The instances a person locked (the page's chat menu says Unlock for them). */
+  lockedNames(): string[] {
+    const s = this.load();
+    return s === "unreadable" ? [] : [...s.records].filter(([, r]) => r.locked).map(([name]) => name);
+  }
+
   /**
    * Replace an instance's theme (already checked, web-theme.ts). An asset the old theme named and the new one no
    * longer does is deleted once the change is on disk (first design §4); one uploaded but not named yet stays.

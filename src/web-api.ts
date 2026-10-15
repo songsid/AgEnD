@@ -7,6 +7,8 @@ import type { PaneContextSource } from "./pane-context-cache.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
+import type { ThemeStore } from "./web-theme-store.js";
+import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { permitWebContinuation } from "./web-continuation.js";
 /**
@@ -225,6 +227,11 @@ export interface WebApiContext {
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: each person's own CSS (human sessions only; never the public link, never an agent). */
   readonly ownerCss?: OwnerCssStore;
+  /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
+  readonly themeStore?: ThemeStore;
+  readonly webAppearance?: WebAppearance;
+  /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
+  isKnownInstance?(name: string): boolean;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   /** The fleet prompts open on the dashboard (web track C4); absent: none are offered. */
@@ -724,6 +731,63 @@ export function handleWebRequest(
     res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
     res.writeHead(200);
     res.end(bytes);
+    return true;
+  }
+
+  // ── #1629: agents' themes — read by every page (the public link included: it views them), changed by a person ──
+  // GET /ui/themes: { rev, themes, locked } when the status frame's themes_rev moves (passive, web-auth.ts).
+  // GET /ui/img/theme/<instance>/<id>: a theme's picture (same headers as #1630's images; the id is the content hash).
+  // POST /ui/themes/<instance>/reset | lock: a person's, from an admin session — never the CLI token, never the public
+  // link (absent from its manifest, and refused here too).
+  if (method === "GET" && path === "/ui/themes") {
+    const store = ctx.themeStore;
+    if (!store) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
+    json(res, 200, { rev: store.rev(), themes: store.themes(), locked: store.lockedNames() });
+    return true;
+  }
+  const themeImage = path.match(/^\/ui\/img\/theme\/([^/]+)\/([0-9a-f]{32})$/);
+  if (method === "GET" && themeImage) {
+    let name: string;
+    try { name = decodeURIComponent(themeImage[1]!); } catch { json(res, 404, { error: "No such image" }); return true; }
+    const image = ctx.themeStore?.asset(name, themeImage[2]!) ?? null;
+    if (!image) { json(res, 404, { error: "No such image" }); return true; }
+    res.setHeader("Content-Type", image.mime);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    res.writeHead(200);
+    res.end(image.bytes);
+    return true;
+  }
+  const themeWrite = path.match(/^\/ui\/themes\/([^/]+)\/(reset|lock)$/);
+  if (method === "POST" && themeWrite) {
+    const service = ctx.webAppearance;
+    if (!service) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "theme_not_over_public_link" }); return true; }
+    let name: string;
+    try { name = decodeURIComponent(themeWrite[1]!); } catch { json(res, 400, { error: "instance" }); return true; }
+    const who = (): number => {
+      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      if (verdict.kind !== "allow") return 401;
+      return verdict.via === "session" && verdict.session?.tier === "admin" ? 200 : 403;
+    };
+    const first = who();
+    if (first !== 200) { json(res, first, { error: first === 401 ? WEB_TOKEN_INVALID_MESSAGE : "theme_needs_an_admin_session" }); return true; }
+    (async () => {
+      let body: Record<string, unknown> = {};
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const now = who();
+      if (now !== 200) { json(res, now, { error: now === 401 ? WEB_TOKEN_INVALID_MESSAGE : "theme_needs_an_admin_session" }); return; }
+      if (!ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return; }
+      const r = themeWrite[2] === "reset" ? service.humanReset(name)
+        : typeof body.locked === "boolean" ? service.humanLock(name, body.locked) : { error: "locked: true or false", status: 400 };
+      if (typeof r.error === "string") { json(res, typeof r.status === "number" ? r.status : 503, { error: r.error }); return; }
+      json(res, 200, r);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Theme reset/lock failed");
+      try { json(res, 500, { error: "Theme change failed" }); } catch { /* already answered */ }
+    });
     return true;
   }
 

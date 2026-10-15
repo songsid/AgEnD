@@ -180,8 +180,9 @@ describe("the chat's states", () => {
       await p.unmount();
       return labels;
     };
-    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Delete instance…"]);
-    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Delete instance…"]);
+    // #1629: a person's Lock and Reset of the agent's web theme, before Delete (still last).
+    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Lock theme", "Reset theme…", "Delete instance…"]);
+    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Lock theme", "Reset theme…", "Delete instance…"]);
   });
 
   it("the composer's control is 'Stop reply', shown only while the agent works; Send hides then unless there is something to send", async () => {

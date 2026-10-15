@@ -496,6 +496,20 @@ html.lb-open .scroller { overflow: hidden; }
    CSSOM), a full-screen sheet on a narrow one. The frame is the card's (preview.js), sized by the panel here. */
 .chat-split { flex: 1; min-height: 0; display: flex; }
 .chat-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* #1629: an agent's theme on its own chat surface — custom properties set on .p-chat through the CSSOM, choices as
+   these tokens. The surface paints its own background (the page's body is not its). */
+.p-chat.th { background: var(--bg); color: var(--text); }
+.p-chat.th .msg.user .body { border-radius: var(--bubble-radius, var(--r-xl)); }
+.p-chat.th-font-system .thread, .p-chat.th-font-system .composer textarea { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.p-chat.th-font-mono .thread, .p-chat.th-font-mono .composer textarea { font-family: var(--font-mono); }
+.p-chat.th-bubble-thin .msg.user .body { box-shadow: inset 0 0 0 1px var(--border); }
+.p-chat.th-bubble-accent .msg.user .body { box-shadow: inset 0 0 0 1px var(--accent); }
+.p-chat.th-agent-bubble .msg.agent .body { background: var(--agent-bubble); border-radius: var(--bubble-radius, var(--r-xl)); padding: 10px var(--s-4); }
+.chat-main.has-th-bg { position: relative; }
+.chat-main.has-th-bg > :not(.th-bg) { position: relative; z-index: 1; }
+.th-bg { position: absolute; inset: 0; width: 100%; height: 100%; opacity: var(--th-bg-opacity, 1); pointer-events: none; z-index: 0; user-select: none; }
+.th-bg-cover { object-fit: cover; }
+.th-bg-contain { object-fit: contain; }
 .pv-divider { flex: 0 0 8px; cursor: col-resize; background: var(--bg); border-left: 1px solid var(--border); touch-action: none; position: relative; }
 .pv-divider::after { content: ""; position: absolute; top: 50%; left: 2px; width: 3px; height: 32px; margin-top: -16px; border-radius: 2px; background: var(--border-strong); }
 .pv-divider:hover::after, .pv-divider:focus-visible::after, .chat-split.resizing .pv-divider::after { background: var(--accent); }

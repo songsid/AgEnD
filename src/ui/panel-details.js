@@ -16,6 +16,7 @@ import { settingsPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
+import { themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
@@ -38,6 +39,7 @@ export function DetailsPanel({ route, navKey }) {
 }
 
 function DetailsView({ name, inst, navKey, exec, awaiting }) {
+  useStore(themesStore);   // #1629: Lock / Unlock follows the themes as read
   const lease = useLease(`details:${name}`);
   const [d, setD] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -92,6 +94,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
     st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
     st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
+    ...themeMenuItems(name),   // #1629
   ] : [
     { key: "edit", label: t("chat.dEditInSettings"), icon: "settings", onSelect: editInSettings },
     st === "running" ? null : st === "paused" ? null : { key: "start", label: t("chat.start"), icon: "play", disabled: !!busy, onSelect: () => lifecycle("start") },
@@ -99,6 +102,8 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
     st === "running" ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", disabled: !!busy, onSelect: () => lifecycle("stop") } : null,
     st === "running" ? { key: "pause", label: t("chat.dPause"), icon: "pause", disabled: !!busy, onSelect: () => pauseWake("pause") } : null,
     st === "paused" ? { key: "wake", label: t("chat.dWake"), icon: "play", disabled: !!busy, onSelect: () => pauseWake("wake") } : null,
+    // #1629: a person's Lock and Reset of this agent's own web theme (not over the public link).
+    ...themeMenuItems(name),
   ];
 
   const cls = statusClass(inst, exec, awaiting);
