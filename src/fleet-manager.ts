@@ -243,7 +243,7 @@ import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
 import type { InstanceInput, PromptInput } from "./needs-you.js";
-import { WEB_CHAT_NOTICE, WEB_REMOTE_DOCS_URL, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
+import { WEB_CHAT_NOTICE, claimNotice, hasWebChat, releaseNotice, upgradeNoticesPath } from "./upgrade-notices.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
@@ -1188,7 +1188,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
-  private updateCompletionTipText: string | null = null;
   /**
    * #1660: an adopted update whose retire outcome is still owed. The
    * completion summary was (or will be) posted; this watch appends the
@@ -5937,7 +5936,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       messageId,
     });
     this.lastUpdateProgressText = null;
-    this.updateCompletionTipText = null;
     this.startUpdateProgressMonitor(adapter);
   }
 
@@ -5976,7 +5974,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     this.lastUpdateProgressText = null;
-    this.updateCompletionTipText = null;
     this.startUpdateProgressMonitor(adapter);
     await this.waitForFullRestartIdleGrace();
 
@@ -6213,16 +6210,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const target = marker.progress.target;
       const adapter = this.adapters.get(target.adapterId) ?? (initialAdapter?.id === target.adapterId ? initialAdapter : undefined);
       if (!adapter) return;
-      let text = formatUpdateProgress(marker);
-      // No-restart updates complete in the old fleet process, so they never
-      // reach RestartProgress.finish(). Append the same optional tip here.
-      if (marker.progress.stage === "complete" && this.tipsEnabled()) {
-        if (this.updateCompletionTipText === null) {
-          const tip = this.pickAvailableTip();
-          this.updateCompletionTipText = tip ? this.formatTip(tip) : "";
-        }
-        if (this.updateCompletionTipText) text += `\n\n${this.updateCompletionTipText}`;
-      }
+      // #1854: no tip on an update's completion (either path); tips come on their own schedule and from /tips.
+      const text = formatUpdateProgress(marker);
       if (text === this.lastUpdateProgressText) return;
       this.updateProgressEditRunning = true;
       try {
@@ -6770,12 +6759,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         pausedNames,
         failedNames,
         backgroundWorkEndedNames,
-        tipText: pendingProgressOperation === "update" && this.tipsEnabled()
-          ? (() => {
-              const tip = this.pickAvailableTip();
-              return tip ? this.formatTip(tip) : undefined;
-            })()
-          : undefined,
         ...(cleanupOutcome && "render" in cleanupOutcome
           ? { warningText: cleanupOutcome.render.warning, warningCommand: cleanupOutcome.render.cleanupCommand }
           : {}),
@@ -8763,7 +8746,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!target) continue;
       if (!claimNotice(path, WEB_CHAT_NOTICE, adapterId)) continue;
       try {
-        await world.adapter.sendText(target.chatId, t("upgrade.web_chat", WEB_REMOTE_DOCS_URL), target.opts);
+        await world.adapter.sendText(target.chatId, t("upgrade.web_chat"), target.opts);
         this.logger.info({ adapterId, notice: WEB_CHAT_NOTICE }, "Announced web chat in General");
       } catch (err) {
         const released = releaseNotice(path, WEB_CHAT_NOTICE, adapterId);
