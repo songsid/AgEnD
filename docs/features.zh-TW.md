@@ -1133,7 +1133,7 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 
 ## 網頁儀表板的 instance 身份識別（#1630）
 
-側欄、聊天標題和「需要你處理」清單都會顯示每個 instance 是誰。代表每個 instance 的圖示依序為：在 **View** 上傳的圖片 → 它自己的 bot 頭像（只有擁有專屬 bot 時才用；共用 bot 的 instance 略過這一步）→ persona emoji → 顯示名稱的第一個字。在 Discord 伺服器裡有顏色的 bot，會以該顏色作為圖片外框。狀態圓點在圖片上，除了顏色，也會把狀態（閒置、工作中、似乎卡住、已暫停、已停止、已當掉、等你處理）讀給螢幕閱讀器。聊天標題和「需要你處理」清單同樣使用顯示名稱。在側欄，兩個 instance 顯示名稱相同時，instance 名稱會顯示在名稱下方。
+側欄、聊天標題和「需要你處理」清單都會顯示每個 instance 是誰。代表每個 instance 的圖示依序為：在 **View** 上傳的圖片 → 它自己的 bot 頭像（擁有專屬 bot 時）→ 它說話用的 bot 頭像（通常是 General bot；沒有自己連線的 instance 用主要 bot）→ persona emoji → 顯示名稱的第一個字。沒設頭像的 bot 會略過。instance 自己的 bot 在 Discord 伺服器裡有顏色時，會以該顏色作為圖片外框。狀態圓點在圖片上，除了顏色，也會把狀態（閒置、工作中、似乎卡住、已暫停、已停止、已當掉、等你處理）讀給螢幕閱讀器。聊天標題和「需要你處理」清單同樣使用顯示名稱。在側欄，兩個 instance 顯示名稱相同時，instance 名稱會顯示在名稱下方。
 
 bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用 bot 自己的 token 取得，存在 `~/.agend/cache/`（每天最多更新一次；更新失敗時保留上一份），只提供給已登入的 session（包括臨時公開連結，僅限讀取）。頁面不會從 Discord 或 Telegram 載入圖片。網頁聊天中的 Discord 伺服器表情也透過同一條路徑以圖片呈現。Settings 的狀態表情編輯器同樣使用這條快取路徑；面板的內容安全政策不再允許任何遠端圖片來源。在 Settings 的編輯器中，不在 fleet bot 所在伺服器的表情會以 `:名稱:` 顯示。
 

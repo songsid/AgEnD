@@ -2,11 +2,14 @@
  * #1630 (design: the comment on #1630): what stands for an instance in the web app — decided here, on the server,
  * once; the page only draws it. In order:
  *   0. the picture uploaded for it in View (its profile avatar);
- *   1. its own bot's avatar — only when it has a bot of its own: an instance on the shared bot skips this, the same
- *      face for everyone tells nobody apart; so does a bot with no avatar set (a default avatar says nothing);
- *   2. its persona emoji (`status_emojis.delivered`, what set_persona_emoji sets): unicode as text, a Discord server
+ *   1. its own bot's avatar, when it has a bot of its own (a persona bot);
+ *   2. (#1867) else the avatar of the bot it speaks through on Telegram/Discord — the General (primary) bot, or a bot it
+ *      shares — so the web shows the face the chat shows; with no connection of its own (web-only), the primary's.
+ *      A bot with no avatar set falls through at 1 and 2 (a default avatar says nothing);
+ *   3. its persona emoji (`status_emojis.delivered`, what set_persona_emoji sets): unicode as text, a Discord server
  *      emoji through the emoji route (a Telegram custom emoji has no picture here and falls through);
- *   3. the first character of its display name, or of its name.
+ *   4. the first character of its display name, or of its name.
+ * The accent ring (a Discord role colour) goes with an own bot's face only: a shared bot's would ring everyone alike.
  * Images are same-origin `/ui/img/…` URLs only; the version makes a changed picture a new URL.
  */
 import { normalizeEmoji } from "./status-emojis.js";
@@ -29,7 +32,7 @@ export function avatarFor(input: {
   displayName?: string | null;
   /** The profile picture's version, when one is uploaded (step 0). */
   profileVersion?: string | null;
-  /** The bot's avatar: its connection id and cached version, when the instance has its own bot and the avatar is on disk. */
+  /** The bot's avatar (step 1 or 2): its connection id and cached version, when the avatar is on disk. */
   bot?: { connection: string; version: string } | null;
   /** The instance's own `status_emojis.delivered`, as configured. */
   personaEmoji?: unknown;

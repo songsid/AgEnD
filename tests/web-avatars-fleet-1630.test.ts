@@ -1,7 +1,7 @@
 /**
  * #1630 (design: the comment on #1630), through the real FleetManager: the status frame's `avatar` / `accent` (the
- * fallback order, the shared-bot skip, the ring only on the bot's own face), the same-origin image routes (only an own
- * bot, a known instance's upload, an emoji of the fleet's servers), session-gated, passive, and on the public link's
+ * fallback order, #1867's speaking bot after an own bot, the ring only on an own bot's face), the same-origin image routes
+ * (only a bot some instance speaks through, a known instance's upload, an emoji of the fleet's servers), session-gated, passive, and on the public link's
  * read-only allowlist. Fake adapters and a stubbed fetch for Discord's CDN — no platform is called; nothing forks.
  */
 import { EventEmitter } from "node:events";
@@ -30,7 +30,7 @@ const flush = async () => { for (let i = 0; i < 6; i++) await new Promise(r => s
 const PNG = (n: number) => ({ bytes: Buffer.alloc(12, n), ext: "png" as const });
 
 /** A fleet: discord (primary, shared by a and b), discord-2 (solo's own bot), telegram-2 (shared by p1 and p2). */
-function fleet(opts: { soloAvatar?: () => Promise<{ bytes: Buffer; ext: "png" } | null>; accent?: string | null; persona?: Record<string, unknown> } = {}) {
+function fleet(opts: { soloAvatar?: () => Promise<{ bytes: Buffer; ext: "png" } | null>; sharedAvatar?: null; accent?: string | null; persona?: Record<string, unknown> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "agend-1630-fm-")); dirs.push(dir);
   const fm = new FleetManager(dir) as any;
   fm.fleetConfig = {
@@ -44,13 +44,14 @@ function fleet(opts: { soloAvatar?: () => Promise<{ bytes: Buffer; ext: "png" } 
     },
   };
   const calls = { avatar: 0, accent: [] as Array<string | undefined>, primaryAvatar: 0 };
-  fm.adapters.set("discord", { getBotUserId: () => "100000000000000001", fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(1); }, botAccentColor: async () => "#ff0000" });
+  const shared = (n: number) => async () => { calls.primaryAvatar++; return opts.sharedAvatar === null ? null : PNG(n); };
+  fm.adapters.set("discord", { getBotUserId: () => "100000000000000001", fetchBotAvatar: shared(1), botAccentColor: async () => { calls.accent.push("shared"); return "#ff0000"; } });
   fm.adapters.set("discord-2", {
     getBotUserId: () => "111111111111111111",
     fetchBotAvatar: async () => { calls.avatar++; return opts.soloAvatar ? opts.soloAvatar() : PNG(2); },
     botAccentColor: async (channel?: string) => { calls.accent.push(channel); return opts.accent === undefined ? "#E91E63" : opts.accent; },
   });
-  fm.adapters.set("telegram-2", { getBotUserId: () => "300000000", fetchBotAvatar: async () => { calls.primaryAvatar++; return PNG(3); } });
+  fm.adapters.set("telegram-2", { getBotUserId: () => "300000000", fetchBotAvatar: shared(3) });
   fm.classicChannels = { getAll: () => [], getChannelIdByInstance: () => undefined, getBackendByInstance: () => "claude-code", getModel: () => undefined, getAdapterIdByInstance: () => undefined, getDefaults: () => ({}), isGuildAllowed: () => true };
   vi.spyOn(fm, "getInstanceStatus").mockReturnValue("running");
   const frame = () => Object.fromEntries((fm.getUiStatus() as { instances: Array<{ name: string; avatar: unknown; accent?: string }> }).instances.map(i => [i.name, { avatar: i.avatar, accent: i.accent }]));
@@ -88,13 +89,39 @@ describe("the status frame: what stands for each instance", () => {
     expect(second.solo!.avatar).toEqual({ kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord-2\?v=[0-9a-z]+$/) });
     expect(f.calls.avatar).toBe(1);
   });
-  it("the shared bot is skipped — the primary's and a bot two instances share are never fetched or shown", async () => {
+  it("#1867: an instance without its own bot shows the bot it speaks through — the primary, or one it shares — with no ring", async () => {
+    const f = fleet();
+    f.frame(); await flush(); f.frame(); await flush();
+    const frame = f.frame();
+    const bot = (c: string) => ({ avatar: { kind: "image", src: expect.stringMatching(new RegExp(`^/ui/img/bot/${c}\\?v=[0-9a-z]+$`)) }, accent: undefined });
+    expect([frame.a, frame.b, frame.p1, frame.p2]).toEqual([bot("discord"), bot("discord"), bot("telegram-2"), bot("telegram-2")]);
+    expect(f.calls.primaryAvatar, "one fetch per shared bot, whoever is on it").toBe(2);
+    expect(f.calls.accent, "a shared bot's colour is never read").toEqual(["555"]);
+  });
+  it("#1867: the own bot still wins over the bot everyone shares", async () => {
     const f = fleet();
     f.frame(); await flush();
+    expect(f.frame().solo!.avatar).toEqual({ kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord-2\?v=/) });
+  });
+  it("#1867: a web-only instance (no connection configured for it) gets the primary's face", async () => {
+    const f = fleet();
+    f.fm.fleetConfig.instances.web = { working_directory: f.dir, channel_id: "gone" };
+    f.frame(); await flush();
+    expect(f.frame().web!.avatar).toEqual({ kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord\?v=/) });
+  });
+  it("#1867: a ClassicBot room shows its room's bot, the same rule", async () => {
+    const f = fleet();
+    Object.assign(f.fm.classicChannels, { getAll: () => [{ instanceName: "room" }], getChannelIdByInstance: (n: string) => (n === "room" ? "777" : undefined),
+      getAdapterIdByInstance: (n: string) => (n === "room" ? "telegram-2" : undefined) });
+    f.frame(); await flush();
+    expect(f.frame().room).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/telegram-2\?v=/) }, accent: undefined });
+  });
+  it("#1867: a shared bot with no avatar set falls through — to the persona emoji, then the first character", async () => {
+    const f = fleet({ sharedAvatar: null, persona: { a: "🦊" } });
+    f.frame(); await flush();
     const frame = f.frame();
-    expect([frame.a!.avatar, frame.b!.avatar, frame.p1!.avatar, frame.p2!.avatar]).toEqual([
-      { kind: "initial", text: "A" }, { kind: "initial", text: "B" }, { kind: "initial", text: "P" }, { kind: "initial", text: "P" }]);
-    expect(f.calls.primaryAvatar).toBe(0);
+    expect([frame.a!.avatar, frame.b!.avatar, frame.p1!.avatar]).toEqual([{ kind: "emoji", text: "🦊" }, { kind: "initial", text: "B" }, { kind: "initial", text: "P" }]);
+    expect(f.calls.primaryAvatar).toBe(2);
   });
   it("a bot with no avatar set falls through (to the persona emoji or the first character)", async () => {
     const f = fleet({ soloAvatar: async () => null });
@@ -112,11 +139,14 @@ describe("the status frame: what stands for each instance", () => {
     const g = fleet({ persona: { a: "<:blob:123456789012345678>" } });
     expect(g.frame().a!.avatar).toEqual({ kind: "emoji", src: "/ui/img/emoji/123456789012345678", alt: ":blob:" });
   });
-  it("the picture uploaded in View comes first, before even the own bot", async () => {
+  it("the picture uploaded in View comes first, before even the own bot or the shared one", async () => {
     const f = fleet();
     uploadProfile(f.dir, "solo", "solo.png", Buffer.alloc(9, 4));
+    uploadProfile(f.dir, "a", "a.png", Buffer.alloc(9, 5));
     f.frame(); await flush();
-    expect(f.frame().solo).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/avatar\/solo\?v=/) }, accent: undefined });
+    const frame = f.frame();
+    expect(frame.solo).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/avatar\/solo\?v=/) }, accent: undefined });
+    expect(frame.a).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/avatar\/a\?v=/) }, accent: undefined });
   });
   it("the ring: the bot's colour in the instance's own channel, only on the bot's own face; none when Discord has none", async () => {
     const f = fleet();
@@ -130,14 +160,14 @@ describe("the status frame: what stands for each instance", () => {
   });
   it("an avatar is decorative: whatever fails deciding it, the frame is still served (every instance its first character)", () => {
     const f = fleet();
-    vi.spyOn(f.fm, "ownBots").mockImplementation(() => { throw new Error("broken connection table"); });
+    vi.spyOn(f.fm, "webBots").mockImplementation(() => { throw new Error("broken connection table"); });
     vi.spyOn(f.fm, "webIdentityImage").mockImplementation(() => { throw new Error("broken avatar"); });
     let frame: Record<string, { avatar: unknown }> | string;
     try { frame = f.frame(); } catch (err) { frame = `the frame failed: ${(err as Error).message}`; }
     expect(typeof frame === "string" ? frame : Object.values(frame).map(i => i.avatar)).toEqual(["A", "B", "S", "P", "P"].map(text => ({ kind: "initial", text })));
   });
   it("every image in the frame is a same-origin /ui/img URL", async () => {
-    const f = fleet({ persona: { a: "<:blob:123456789012345678>" } });
+    const f = fleet({ sharedAvatar: null, persona: { a: "<:blob:123456789012345678>" } });
     uploadProfile(f.dir, "b", "b.webp", Buffer.alloc(9, 4));
     f.frame(); await flush();
     const srcs = Object.values(f.frame()).map(i => (i.avatar as { src?: string }).src).filter(Boolean);
@@ -147,21 +177,30 @@ describe("the status frame: what stands for each instance", () => {
 });
 
 describe("the image routes", () => {
-  it("an own bot's cached avatar is served, typed, nosniff, private; the primary, a shared bot or an unknown name: 404", async () => {
+  it("a speaking bot's cached avatar is served, typed, nosniff, private — own, primary or shared (#1867); a connection nobody speaks through or an unknown name: 404", async () => {
     const f = fleet();
+    f.fm.fleetConfig.channels.push({ id: "discord-3", type: "discord" });
+    f.fm.adapters.set("discord-3", { getBotUserId: () => "400000000000000004", fetchBotAvatar: async () => PNG(4) });
     f.frame(); await flush();
     const own = await get(f.fm, "/ui/img/bot/discord-2");
     expect([own.status, own.type, own.body.equals(Buffer.alloc(12, 2)), own.headers["x-content-type-options"], own.headers["cache-control"]])
       .toEqual([200, "image/png", true, "nosniff", "private, max-age=86400"]);
-    for (const k of ["discord", "telegram-2", "nope", "__proto__", "..%2F..%2Fetc"]) expect((await get(f.fm, `/ui/img/bot/${k}`)).status, k).toBe(404);
+    for (const [k, n] of [["discord", 1], ["telegram-2", 3]] as const) {
+      const r = await get(f.fm, `/ui/img/bot/${k}`);
+      expect([r.status, r.body.equals(Buffer.alloc(12, n))], k).toEqual([200, true]);
+    }
+    for (const k of ["discord-3", "nope", "__proto__", "..%2F..%2Fetc"]) expect((await get(f.fm, `/ui/img/bot/${k}`)).status, k).toBe(404);
   });
-  it("an own bot that stops being one (a second instance joins its connection) is no longer served, cached or not", async () => {
+  it("an own bot that becomes shared (a second instance joins its connection): its face stays, on both, and loses the ring", async () => {
     const f = fleet();
-    f.frame(); await flush();
-    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(200);
+    f.frame(); await flush(); f.frame(); await flush();
+    expect(f.frame().solo!.accent).toBe("#e91e63");
     f.fm.fleetConfig.instances.duo = { working_directory: f.dir, channel_id: "discord-2" };
-    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(404);
-    expect(f.frame().solo!.avatar).toEqual({ kind: "initial", text: "S" });
+    expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(200);
+    const frame = f.frame();
+    const face = { avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord-2\?v=/) }, accent: undefined };
+    expect([frame.solo, frame.duo]).toEqual([face, face]);
+    expect(f.calls.avatar, "the same cache entry").toBe(1);
   });
   it("the route never fetches: before the frame asked, there is nothing to serve", async () => {
     const f = fleet();
@@ -217,13 +256,13 @@ const B_ID = "222222222222222222";
 const held = <T,>() => { let release!: (v: T) => void; const promise = new Promise<T>(r => { release = r; }); return { promise, release }; };
 
 describe("an own bot is a configured connection, and the bot that is there now (#1635 review)", () => {
-  it("a connection removed from fleet.yaml is nobody's own bot — even if an instance still names it", async () => {
+  it("a connection removed from fleet.yaml is nobody's bot — even if an instance still names it (it falls back to the primary, #1867)", async () => {
     const f = fleet();
     f.frame(); await flush();
     expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(200);
     f.fm.fleetConfig.channels = f.fm.fleetConfig.channels.filter((c: { id: string }) => c.id !== "discord-2");
     expect((await get(f.fm, "/ui/img/bot/discord-2")).status).toBe(404);
-    expect(f.frame().solo!.avatar).toEqual({ kind: "initial", text: "S" });
+    expect(f.frame().solo).toEqual({ avatar: { kind: "image", src: expect.stringMatching(/^\/ui\/img\/bot\/discord\?v=/) }, accent: undefined });
   });
   it("a bot put in its place (a replaced token, same connection id) gets its own picture, never the old one's", async () => {
     const f = fleet();
@@ -238,7 +277,7 @@ describe("an own bot is a configured connection, and the bot that is there now (
   });
   it("the old bot's late answer is not the new bot's: A's fetch released after B took over changes nothing", async () => {
     const a = held<{ bytes: Buffer; ext: "png" }>();
-    const f = fleet({ soloAvatar: () => a.promise });
+    const f = fleet({ soloAvatar: () => a.promise, sharedAvatar: null });   // only discord-2 can put a file in the cache
     f.frame(); await flush();                                     // A's fetch is out
     f.fm.adapters.set("discord-2", { getBotUserId: () => B_ID, fetchBotAvatar: async () => PNG(9) });
     f.frame(); await flush();                                     // B's picture cached

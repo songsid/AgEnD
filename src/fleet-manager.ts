@@ -10761,10 +10761,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.webImageCaches[kind];
   }
   /**
-   * instance → the connection that is its own bot: configured now (a connection removed from fleet.yaml is nobody's,
-   * whatever an instance still names — #1635 review), not the primary, and answering for it alone.
+   * The bots instances and ClassicBot rooms speak through, by connections configured now (a connection removed from
+   * fleet.yaml is nobody's, whatever an instance still names — #1635 review). `own`: instance → its own bot (not the
+   * primary, answering for it alone). `speaking` (#1867): instance → the bot it speaks through — its own, a shared one,
+   * or, with none configured for it, the primary.
    */
-  private ownBots(): Map<string, string> {
+  private webBots(): { own: Map<string, string>; speaking: Map<string, string> } {
     const instances = this.fleetConfig?.instances ?? {};
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
     const configured = new Set(channels.map(ch => ch.id ?? ch.type).filter((id): id is string => typeof id === "string"));
@@ -10773,8 +10775,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const room of this.classicChannels?.getAll() ?? []) {
       if (!Object.hasOwn(instances, room.instanceName)) assignments.push([room.instanceName, assigned(room.instanceName)]);
     }
-    return ownBotConnections(this.getPrimaryAdapterId(), assignments);
+    const primary = this.getPrimaryAdapterId(), fallback = primary && configured.has(primary) ? primary : undefined;
+    const speaking = new Map<string, string>();
+    for (const [instance, connection] of assignments) { const c = connection ?? fallback; if (c) speaking.set(instance, c); }
+    return { own: ownBotConnections(primary, assignments), speaking };
   }
+  /** instance → the connection that is its own bot (see webBots). */
+  private ownBots(): Map<string, string> { return this.webBots().own; }
   /**
    * The bot a connection is now: its running adapter and that bot's own user id. Everything cached for an own bot is
    * keyed by both, so a bot put in its place (a token replaced under the same connection id) never shows the old one's
@@ -10815,28 +10822,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     };
   }
-  /** One instance's avatar and ring for the status frame. Synchronous: what is cached now; fetches run behind. */
-  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, own: Map<string, string>): { avatar: AvatarDescriptor; accent?: string } {
+  /**
+   * One instance's avatar and ring for the status frame. Synchronous: what is cached now; fetches run behind. The bot
+   * is its own, else the one it speaks through (#1867) — one cache entry per bot, so a shared bot is fetched once.
+   */
+  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string } {
     let profileVersion: string | null = null;
     if (profileAvatar && imageMimeForFile(profileAvatar)) {
       try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileAvatar))).mtimeMs).toString(36); } catch { /* removed */ }
     }
-    const connection = own.get(name), owner = connection ? this.botOwner(connection) : null;
+    const ownConnection = bots.own.get(name), connection = ownConnection ?? bots.speaking.get(name);
+    const owner = connection ? this.botOwner(connection) : null;
     const source = connection && owner?.adapter.fetchBotAvatar ? this.botAvatarSource(connection, owner) : null;
     const bot = source ? this.webImageCache("avatars").peek(source.key, source.load) : null;
     const cfg = this.ownInstanceConfig(name);
     const avatar = avatarFor({ name, displayName, profileVersion, bot: bot && connection ? { connection, version: bot.version } : null,
       personaEmoji: (cfg?.status_emojis as Record<string, unknown> | undefined)?.delivered });
-    // The ring belongs to the bot's own face: only when that is what is shown.
-    const accent = !profileVersion && bot && connection && owner
-      ? this.webAccent(connection, owner, cfg ? (cfg.topic_id == null ? undefined : String(cfg.topic_id)) : this.classicChannels?.getChannelIdByInstance(name))
+    // The ring belongs to an own bot's face: only when that is what is shown (a shared bot's would ring everyone alike).
+    const accent = !profileVersion && bot && ownConnection && owner
+      ? this.webAccent(ownConnection, owner, cfg ? (cfg.topic_id == null ? undefined : String(cfg.topic_id)) : this.classicChannels?.getChannelIdByInstance(name))
       : null;
     return accent ? { avatar, accent } : { avatar };
   }
-  /** GET /ui/img/bot|avatar/<key>: what is cached, never a fetch. Only an own-bot connection, or a known instance's upload. */
+  /**
+   * GET /ui/img/bot|avatar/<key>: what is cached, never a fetch. Only a connection some instance or room speaks
+   * through (#1867), or a known instance's upload.
+   */
   webImage(kind: "bot" | "avatar", key: string): CachedImage | null {
     if (kind === "bot") {
-      if (![...this.ownBots().values()].includes(key)) return null;
+      if (![...this.webBots().speaking.values()].includes(key)) return null;
       const owner = this.botOwner(key);
       return owner ? this.webImageCache("avatars").read(this.botAvatarSource(key, owner).key) : null;
     }
@@ -20349,8 +20363,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const classicRooms = new Map((this.classicChannels?.getAll() ?? []).map(ch => [ch.instanceName, ch]));
     const profiles = profileIdentities(this.dataDir);
     // #1630: decorative — whatever goes wrong deciding an avatar never costs the frame (every instance gets its first character).
-    let ownBots = new Map<string, string>();
-    try { ownBots = this.ownBots(); } catch (err) { this.logger.debug({ err }, "own bots unreadable (getUiStatus)"); }
+    let bots = { own: new Map<string, string>(), speaking: new Map<string, string>() };
+    try { bots = this.webBots(); } catch (err) { this.logger.debug({ err }, "bots unreadable (getUiStatus)"); }
 
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
@@ -20389,7 +20403,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
       let image: { avatar: AvatarDescriptor; accent?: string };
-      try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, ownBots); }
+      try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, bots); }
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
         name,
