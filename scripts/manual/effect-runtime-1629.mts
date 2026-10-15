@@ -8,6 +8,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { createRequire } from "node:module";
 import { createPreviewListener } from "../../src/web-preview.js";
+import { effectTemplateProblem } from "../../src/web-effect-template.js";
 // Run with PW_DIR pointing to a private Playwright prefix and PLAYWRIGHT_BROWSERS_PATH to its private browser cache.
 const root = resolve(process.env.OUT_DIR || ".artifacts/effect-1629-browser");
 mkdirSync(root, { recursive: true });
@@ -27,6 +28,7 @@ const boot = "c".repeat(32),
   receipts: any[] = [];
 const actions: Record<string, string> = {
   normal: "",
+  noscript: "",
   location: "location.href='about:blank#effect-test';",
   meta: "const m=document.createElement('meta');m.httpEquiv='refresh';m.content='0;url=about:blank#effect-test';document.head.append(m);",
   form: "const f=document.createElement('form');f.action='about:blank';f.method='GET';document.body.append(f);f.submit();",
@@ -39,7 +41,9 @@ const parent = createServer((req, res) => {
   }
   const kind = new URL(req.url!, "http://fixture").searchParams.get("kind")!;
   const payload = `<script>window.ORDER=['head'];window.LIFE=[];window.THEME=null;window.RENDER_PORT=!!window.event?.ports?.length;window.CALLBACK_PORT=false;window.GETTER_CALLS=0;window.LATER=setTimeout.bind(window);agend.on('theme',e=>{THEME=e.mode;CALLBACK_PORT=window.event?.currentTarget instanceof MessagePort;});if(${JSON.stringify(kind)}==='normal'){const dataGetter=Object.getOwnPropertyDescriptor(MessageEvent.prototype,'data').get;Object.defineProperty(MessageEvent.prototype,'data',{configurable:true,get(){GETTER_CALLS++;return dataGetter.call(this);}});window.setTimeout=function(fn){fn();return 0;};}document.addEventListener('DOMContentLoaded',()=>LIFE.push('dom'));addEventListener('load',()=>LIFE.push('load'));<\/script><canvas></canvas><script>ORDER.push('body');agend.ready();agend.ready();LATER(async()=>{if(${JSON.stringify(kind)}==='normal'){const r={renderPortVisible:RENDER_PORT,callbackPortVisible:CALLBACK_PORT,dataGetterCalls:GETTER_CALLS};try{r.parentDom=parent.document.body.textContent;}catch(e){r.parentDom='blocked';}try{r.cookie=document.cookie;}catch(e){r.cookie='blocked';}try{r.storage=localStorage.length;}catch(e){r.storage='blocked';}r.frozen=Object.isFrozen(agend);r.keys=Object.keys(agend).sort().join(',');r.descriptor=!Object.getOwnPropertyDescriptor(window,'agend').writable&&!Object.getOwnPropertyDescriptor(window,'agend').configurable;try{await fetch('/trap');r.fetch='allowed';}catch(e){r.fetch='blocked';}r.theme=THEME;parent.postMessage({type:'TEST_ISOLATION',r},'*');}parent.postMessage({type:'TEST_LIFECYCLE',order:ORDER,life:LIFE},'*');${actions[kind] || ""}},100);<\/script>`;
-  const html = JSON.stringify(payload).replace(
+  const template = kind === "noscript" ? `<body><noscript><canvas id="fallback"></canvas></noscript>${payload}` : payload;
+  assert.equal(effectTemplateProblem(template), null);
+  const html = JSON.stringify(template).replace(
     /</g,
     String.fromCharCode(92) + "u003c",
   );
@@ -95,6 +99,12 @@ try {
     page.on("pageerror", (e: any) => errors.push(e.message));
     page.on("console", (m: any) => consoleMessages.push(m.text()));
     await page.goto(`http://127.0.0.1:${port}/?kind=${kind}`);
+    if (kind === "noscript") {
+      const probe = '<noscript><iframe srcdoc="x"></iframe></noscript><script>agend.ready()</script>';
+      assert.equal(await page.evaluate((s: string) => !!new DOMParser().parseFromString(s, "text/html").querySelector("iframe"), probe), true);
+      assert.equal(effectTemplateProblem(probe), "unsupported_element");
+      assert.equal(effectTemplateProblem('<iframe srcdoc="x"></iframe>'), "unsupported_element");
+    }
     await page.waitForFunction(
       () => !!(window as any).R?.lifecycle,
       undefined,
@@ -112,6 +122,11 @@ try {
       });
     else await page.waitForTimeout(250);
     const observed = await page.evaluate(() => (window as any).R);
+    if (kind === "noscript") {
+      const frame = page.frames().find((f: any) => f.url().endsWith("/effect"));
+      assert.ok(frame);
+      assert.equal(await frame.evaluate(() => !!document.querySelector("noscript #fallback")), true);
+    }
     if (kind === "normal")
       assert.deepEqual(observed.isolation, {
         renderPortVisible: false,

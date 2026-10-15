@@ -15,7 +15,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { allowedHostNames, hostnameOf, LOOPBACK_HOST_NAMES, type HostGuardConfig } from "./web-host-guard.js";
-import { EFFECT_DOCUMENT_WRITE_PATTERN, EFFECT_HTML_NAMESPACE, EFFECT_SCRIPT_TYPES, EFFECT_UNSUPPORTED_TAGS } from "./web-effect-template.js";
+import { EFFECT_DOCUMENT_WRITE_PATTERN, EFFECT_HTML_NAMESPACE, EFFECT_MAX_ELEMENT_DEPTH, EFFECT_SCRIPT_TYPES, EFFECT_UNSUPPORTED_TAGS } from "./web-effect-template.js";
 
 /** The most HTML a preview takes (UTF-8 bytes): the parent refuses more before sending, the shim refuses it too. */
 export const PREVIEW_HTML_MAX_BYTES = 1024 * 1024;
@@ -220,6 +220,7 @@ export function buildEffectShim(bootId: string, origins: readonly string[]): str
   var BOOT = ${literal(bootId)}, ORIGINS = ${literal([...origins])}, MAX = ${PREVIEW_HTML_MAX_BYTES};
   var SCRIPT_TYPES = ${literal(EFFECT_SCRIPT_TYPES)}, BLOCKED_TAGS = ${literal(EFFECT_UNSUPPORTED_TAGS)};
   var HTML_NS = ${literal(EFFECT_HTML_NAMESPACE)}, WRITE_PATTERN = ${literal(EFFECT_DOCUMENT_WRITE_PATTERN)};
+  var MAX_DEPTH = ${EFFECT_MAX_ELEMENT_DEPTH};
   // No effect code runs inside a port-bearing event, including through a poisoned data getter.
   var defer = window.setTimeout.bind(window);
   var readData = Function.prototype.call.bind(Object.getOwnPropertyDescriptor(MessageEvent.prototype, "data").get);
@@ -238,7 +239,14 @@ export function buildEffectShim(bootId: string, origins: readonly string[]): str
     var parsed, scripts;
     try {
       parsed = new DOMParser().parseFromString(d.html, "text/html");
-      var elements = Array.from(parsed.querySelectorAll("*"));
+      var elements = [], pending = [{ node: parsed.documentElement, depth: 1 }];
+      while (pending.length) {
+        var item = pending.pop();
+        if (item.depth > MAX_DEPTH) return;
+        elements.push(item.node);
+        var children = item.node.children;
+        for (var i = children.length - 1; i >= 0; i--) pending.push({ node: children[i], depth: item.depth + 1 });
+      }
       if (elements.some(function (el) {
         if (BLOCKED_TAGS.indexOf(el.localName.toLowerCase()) >= 0) return true;
         if (el.localName === "meta" && el.hasAttribute("http-equiv")) return true;

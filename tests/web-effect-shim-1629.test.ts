@@ -4,7 +4,7 @@ import { request } from "node:http";
 import type { Server } from "node:http";
 import { parse, type DefaultTreeAdapterMap } from "parse5";
 import { buildEffectShim, createPreviewListener, PREVIEW_HTML_MAX_BYTES, previewEffectResponse, previewFrameResponse } from "../src/web-preview.js";
-import { effectTemplateProblem } from "../src/web-effect-template.js";
+import { EFFECT_MAX_ELEMENT_DEPTH, effectTemplateProblem } from "../src/web-effect-template.js";
 
 // These tests may bind scratch loopback HTTP servers, never launch a fleet, tunnel or CLI.
 vi.mock("node:child_process", () => {
@@ -27,12 +27,13 @@ function harness(options: { writeThrows?: boolean; encoderThrows?: boolean } = {
   const executed: string[] = [];
   type Element = {
     localName: string; namespaceURI: string; attributes: Array<{ name: string; value: string }>;
+    children: Element[];
     parentNode: object | null; textContent: string; type: string;
     getAttribute(name: string): string | null; hasAttribute(name: string): boolean;
     setAttribute(name: string, value: string): void; replaceWith(element: Element): void;
   };
   const element = (localName: string, attrs: Array<{ name: string; value: string }> = [], textContent = "", namespaceURI = "http://www.w3.org/1999/xhtml"): Element => ({
-    localName, namespaceURI, attributes: attrs, parentNode: {}, textContent, type: "",
+    localName, namespaceURI, attributes: attrs, children: [], parentNode: {}, textContent, type: "",
     getAttribute(name) { return this.attributes.find(a => a.name === name)?.value ?? null; },
     hasAttribute(name) { return this.attributes.some(a => a.name === name); },
     setAttribute(name, value) { this.attributes.push({ name, value }); },
@@ -56,12 +57,17 @@ function harness(options: { writeThrows?: boolean; encoderThrows?: boolean } = {
     parseFromString(value: string) {
       originalHtml = value;
       const elements: Element[] = [];
-      const text = (node: DefaultTreeAdapterMap["node"]): string => "value" in node ? node.value : "childNodes" in node ? node.childNodes.map(text).join("") : "";
-      const walk = (node: DefaultTreeAdapterMap["node"]) => {
-        if ("tagName" in node) elements.push(element(node.tagName, node.attrs, text(node), node.namespaceURI));
-        if ("childNodes" in node) node.childNodes.forEach(walk);
-      };
-      walk(parse(value));
+      const pending: Array<{ node: DefaultTreeAdapterMap["node"]; parent?: Element }> = [{ node: parse(value, { scriptingEnabled: false }) }];
+      while (pending.length) {
+        const { node, parent } = pending.pop()!;
+        let current = parent;
+        if ("tagName" in node) {
+          const text = node.childNodes.map(child => "value" in child ? child.value : "").join("");
+          current = element(node.tagName, node.attrs, text, node.namespaceURI);
+          elements.push(current); parent?.children.push(current);
+        }
+        if ("childNodes" in node) for (let i = node.childNodes.length - 1; i >= 0; i--) pending.push({ node: node.childNodes[i]!, parent: current });
+      }
       return {
         head: elements.find(e => e.localName === "head")!, body: elements.find(e => e.localName === "body")!, documentElement: elements.find(e => e.localName === "html")!,
         querySelectorAll: (selector: string) => selector === "*" ? elements : elements.filter(e => e.localName === selector),
@@ -235,6 +241,7 @@ describe("#1629 fixed effect template: upload and native parser agree", () => {
     ['<svg><script>x()</script></svg>', "unsupported_script"],
     ['<meta http-equiv="refresh" content="0;url=about:blank">', "unsupported_meta"],
     ['<iframe srcdoc="x"></iframe>', "unsupported_element"],
+    ['<noscript><iframe srcdoc="x"></iframe></noscript><script>agend.ready()</script>', "unsupported_element"],
     ['<template><script>x()</script></template>', "unsupported_element"],
     ['<link rel="stylesheet" href="x">', "unsupported_element"],
     ['<base href="https://example.test">', "unsupported_element"],
@@ -251,10 +258,39 @@ describe("#1629 fixed effect template: upload and native parser agree", () => {
   });
 
   it("accepts fragments/full documents with inline styles, canvas and ordered classic scripts", () => {
-    for (const html of ['<style>canvas{opacity:.5}</style><canvas></canvas><script>init()</script>', '<!doctype html><html><head><script type=" TEXT/JAVASCRIPT ">init()</script></head><body><p>effect</p></body></html>']) {
+    for (const html of ['<style>canvas{opacity:.5}</style><canvas></canvas><script>init()</script>', '<noscript>JavaScript needed</noscript><canvas></canvas><script>agend.ready()</script>', '<!doctype html><html><head><script type=" TEXT/JAVASCRIPT ">init()</script></head><body><p>effect</p></body></html>']) {
       expect(effectTemplateProblem(html)).toBeNull();
       const h = harness(); h.send(render(html)); expect(h.written).toEqual([html]);
     }
+  });
+
+  it("uses DOMParser's disabled-scripting mode, independently of the VM adapter", () => {
+    const html = '<noscript><iframe srcdoc="x"></iframe></noscript><script>agend.ready()</script>';
+    const containsFrame = (scriptingEnabled: boolean) => {
+      const pending: DefaultTreeAdapterMap["node"][] = [parse(html, { scriptingEnabled })];
+      while (pending.length) {
+        const node = pending.pop()!;
+        if ("tagName" in node && node.tagName === "iframe") return true;
+        if ("childNodes" in node) pending.push(...node.childNodes);
+      }
+      return false;
+    };
+    expect(containsFrame(true)).toBe(false);
+    expect(containsFrame(false)).toBe(true);
+    expect(effectTemplateProblem(html)).toBe("unsupported_element");
+  });
+
+  it("bounds element depth iteratively without overflowing on legal-byte-sized HTML", () => {
+    const html = "<div>".repeat(10_000) + "x" + "</div>".repeat(10_000);
+    expect(Buffer.byteLength(html)).toBe(110_001);
+    expect(() => effectTemplateProblem(html)).not.toThrow();
+    expect(effectTemplateProblem(html)).toBe("unsupported_depth");
+    const h = harness(); h.send(render(html)); expect(h.written).toEqual([]);
+    const accepted = "<div>".repeat(EFFECT_MAX_ELEMENT_DEPTH - 2) + "x" + "</div>".repeat(EFFECT_MAX_ELEMENT_DEPTH - 2);
+    expect(effectTemplateProblem(accepted)).toBeNull();
+    const ok = harness(); ok.send(render(accepted)); expect(ok.written).toEqual([accepted]);
+    const hundred = "<div>".repeat(100) + "x" + "</div>".repeat(100);
+    expect(effectTemplateProblem(hundred)).toBeNull();
   });
 });
 

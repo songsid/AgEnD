@@ -46,8 +46,11 @@ ready-only protocol independently of the facade.
   Native async/defer timing is not reproduced; those attributes are refused rather
   than silently ignored. Ordered execution after DOM preparation is the approximation.
 - Base/link/nested frame/object/embed/portal/template elements and `meta http-equiv`
-  are refused. The reusable upload validator uses `parse5`'s HTML5 parser; the shim
-  validates the native parsed document too, including script namespaces and attributes.
+  are refused. The reusable upload validator uses `parse5`'s HTML5 parser in
+  scripting-disabled mode to match native `DOMParser(text/html)`, including
+  markup inside `noscript`. The shim validates the native parsed document too,
+  including script namespaces and attributes. Both reject element nesting deeper
+  than 256 (including html/head/body), using iterative traversal rather than recursion.
 - `document.open/write/writeln/close` are unsupported. Recognizable uses are refused,
   and the shim guards its document methods. This is a compatibility check, not static
   proof about arbitrary JavaScript. Sandbox/CSP and navigation removal still apply to
