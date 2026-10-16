@@ -614,15 +614,7 @@ export function handleWebRequest(
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
-    if (big) {
-      res.setHeader("Content-Length", String(file.size));
-      res.writeHead(200);
-      const stream = createReadStream("", { fd: big.fd, start: 0, end: Math.max(0, file.size - 1), autoClose: true });
-      stream.on("error", () => res.destroy());
-      res.on("close", () => stream.destroy());
-      stream.pipe(res);
-      return true;
-    }
+    if (big) { streamWhole(res, big); return true; }
     res.writeHead(200);
     res.end(got!.bytes);
     return true;
@@ -1608,6 +1600,8 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
     if (!deliverable()) { gone(); return; }
     out.end(() => {
       if (over) return;
+      // The write's finish is another wait (Prism #1941 P2-1): the session or the public link may have ended in it.
+      if (!permitWebContinuation(req, res, ctx)) { drop(); return; }
       if (!deliverable()) { gone(); return; }
       over = true;
       try {
@@ -1661,6 +1655,16 @@ function shellPreview(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
  * No Range, several, or one not in that form → 200 with the whole file, as every file is served (the Download link).
  * Inline, nosniff, no caching, and the route's own sandbox policy, as for every file.
  */
+/** #1937: a whole file (headers already set) streamed from the descriptor its checks were made on: 200, its length. */
+function streamWhole(res: ServerResponse, opened: { file: ServedFile; fd: number }): void {
+  res.setHeader("Content-Length", String(opened.file.size));
+  res.writeHead(200);
+  const stream = createReadStream("", { fd: opened.fd, start: 0, end: Math.max(0, opened.file.size - 1), autoClose: true });
+  stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
+  stream.pipe(res);
+}
+
 function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFileLedger, id: string, file: ServedFile): void {
   const total = file.size;
   const header = typeof req.headers.range === "string" ? req.headers.range.trim() : "";
@@ -1677,16 +1681,27 @@ function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFi
     }
   }
   end = ranged ? Math.min(end, total - 1, start + MEDIA_RANGE_MAX - 1) : total - 1;
+  const mediaHeaders = () => {
+    res.setHeader("Content-Type", file.mime);
+    res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+  };
+  // #1937 (Prism #1941 P3-2): the whole of a file over MEDIA_RANGE_MAX (no Range asked) streams, as /ui/file's do.
+  if (!ranged && total > MEDIA_RANGE_MAX) {
+    const opened = files.open(id);
+    if (!opened) { json(res, 404, { error: "No such file" }); return; }
+    mediaHeaders();
+    streamWhole(res, opened);
+    return;
+  }
   const got = files.readSlice(id, start, end);
   if (!got || (!ranged && got.bytes.length !== total)) { json(res, 404, { error: "No such file" }); return; }
-  res.setHeader("Content-Type", file.mime);
-  res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(wellFormed(file.name))}`);
-  res.setHeader("Accept-Ranges", "bytes");
+  mediaHeaders();
   if (ranged) res.setHeader("Content-Range", `bytes ${got.start}-${got.end}/${total}`);
   res.setHeader("Content-Length", String(got.bytes.length));
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
   res.writeHead(ranged ? 206 : 200);
   res.end(got.bytes);
 }

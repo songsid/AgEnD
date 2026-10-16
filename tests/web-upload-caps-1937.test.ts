@@ -5,7 +5,7 @@
  * every other request keeping its old bound on arriving.
  */
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer, request, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -243,6 +243,33 @@ describe("POST /ui/upload: streamed to disk, counted by the bytes that came", ()
     } finally { await s.close(); }
   }, 30_000);
 
+  it("Prism #1941 P3-2: a video over MEDIA_RANGE_MAX asked whole (no Range) streams too; a Range still answers one slice", async () => {
+    const c = make(), s = await serve(c);
+    try {
+      const body = Buffer.concat(pieces(U.MEDIA_RANGE_MAX + 1_000, Buffer.from([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70])));
+      mkdirSync(inbox(), { recursive: true });
+      const at = join(inbox(), "clip.mp4"); writeFileSync(at, body);
+      const served = c.webFiles!.registerServed({ path: at, instance: "w" })!;
+      expect(served.mime).toBe("video/mp4");
+      const slices = vi.spyOn(c.webFiles!, "readSlice");
+      const get = (headers: Record<string, string> = {}) => new Promise<{ status: number; length: unknown; bytes: Buffer }>((resolve, reject) => {
+        const r = request({ host: "127.0.0.1", port: s.port, path: `/ui/file/${served.id}`, headers: { "x-agend-token": TOKEN, ...headers } }, res => {
+          const parts: Buffer[] = []; res.on("data", (b: Buffer) => parts.push(b)); res.on("end", () => resolve({ status: res.statusCode ?? 0, length: res.headers["content-length"], bytes: Buffer.concat(parts) }));
+        });
+        r.on("error", reject); r.end();
+      });
+      const whole = await get();
+      expect(whole.status).toBe(200);
+      expect(whole.length).toBe(String(body.length));
+      expect(Buffer.compare(whole.bytes, body)).toBe(0);
+      expect(slices, "never read whole into memory").not.toHaveBeenCalled();
+      const ranged = await get({ range: "bytes=0-" });
+      expect(ranged.status).toBe(206);
+      expect(ranged.bytes.length).toBe(U.MEDIA_RANGE_MAX);
+      expect(slices).toHaveBeenCalledTimes(1);
+    } finally { await s.close(); }
+  }, 30_000);
+
   it("a file larger than 50 MB may be served when uploads that large are allowed (the served cap follows the upload cap)", () => {
     const ledger = new U.WebFileLedger({ limits: () => U.uploadLimits({ upload_max_file_mb: 120, upload_max_total_mb: 200 }) });
     expect(ledger.maxServedBytes()).toBe(120 * MB);
@@ -253,7 +280,7 @@ describe("POST /ui/upload: streamed to disk, counted by the bytes that came", ()
 
 // ── the route's own clocks, and what a request says about itself (a request driven by hand) ─────────────────────
 
-function fakeUpload(c: WebApiContext, headers: Record<string, string> = {}, opts: { publicLink?: { cookie: string; csrf: string } } = {}) {
+function fakeUpload(c: WebApiContext, headers: Record<string, string> = {}, opts: { publicLink?: { cookie: string; csrf: string; isCurrent?: () => boolean } } = {}) {
   const req = Object.assign(new EventEmitter(), {
     method: "POST", url: "/ui/upload?instance=w", complete: false, destroyed: 0,
     headers: opts.publicLink
@@ -261,7 +288,7 @@ function fakeUpload(c: WebApiContext, headers: Record<string, string> = {}, opts
       : { "x-agend-token": TOKEN, "x-agend-filename": "f.bin", ...headers },
     destroy() { req.destroyed++; }, resume() {}, pause() {},
   });
-  if (opts.publicLink) bindGatewayRequest(req as never, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://sample.trycloudflare.com", isCurrent: () => true });
+  if (opts.publicLink) bindGatewayRequest(req as never, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://sample.trycloudflare.com", isCurrent: opts.publicLink.isCurrent ?? (() => true) });
   const res = Object.assign(new EventEmitter(), { status: 0, body: null as any, headersSent: false, destroyed: false, setHeader() {},
     writeHead(st: number) { res.status = st; return res; }, end(b?: unknown) { res.body = b ? JSON.parse(String(b)) : null; return res; } });
   handleWebRequest(req as never, res as never, new URL(`${opts.publicLink ? "https://sample.trycloudflare.com" : "http://localhost"}/ui/upload?instance=w`), c);
@@ -338,6 +365,18 @@ describe("POST /ui/upload: its clocks and its counting", () => {
     u.req.emit("end");                                              // anything after is ignored
     expect(u.res.status).toBe(0);
   });
+  it("Prism #1941 P3-1: a part file whose open fails takes back the directories made for it — never one that was there", () => {
+    const fail = (() => { throw Object.assign(new Error("too many open files"), { code: "EMFILE" }); }) as unknown as typeof import("node:fs").openSync;
+    expect(() => U.createPartFile(inbox(), fail)).toThrow("too many open files");
+    expect(existsSync(join(dir, "workspaces")), "all made here: all gone").toBe(false);
+    mkdirSync(join(dir, "workspaces", "w"), { recursive: true });
+    expect(() => U.createPartFile(inbox(), fail)).toThrow();
+    expect(existsSync(inbox())).toBe(false);
+    expect(existsSync(join(dir, "workspaces", "w")), "the workspace was there already").toBe(true);
+    const ok = U.createPartFile(inbox());
+    expect(existsSync(ok.path)).toBe(true);
+    closeSync(ok.fd);
+  });
   it("an empty body: 415, and nothing left (not even the inbox made for it)", async () => {
     const c = make();
     const u = fakeUpload(c);
@@ -351,8 +390,35 @@ describe("POST /ui/upload: its clocks and its counting", () => {
     const sessions = new WebSessionStore();
     const s = sessions.create({ tier: "admin", surface: "gateway", exposureId: "a".repeat(32), label: "t", tokenEpoch: tokenEpoch(TOKEN) } as never);
     (c as unknown as { webSessions: unknown }).webSessions = sessions;
-    return { cookie: `__Host-agend_session=${s.sessionId}`, csrf: csrfTokenFor(s.sessionId) };
+    return { cookie: `__Host-agend_session=${s.sessionId}`, csrf: csrfTokenFor(s.sessionId), revoke: () => sessions.revokeById(s.sessionId) };
   }
+  it("Prism #1941 P2-1: the session revoked, or the public link closed, while the write finishes: nothing is stored", async () => {
+    const c = make();
+    const stored = () => inboxFiles().filter(f => !f.endsWith(U.PART_SUFFIX));
+    // Unchanged: stored.
+    const ok = fakeUpload(c, {}, { publicLink: publicSession(c) });
+    ok.req.emit("data", PNG); ok.end();
+    await vi.waitFor(() => expect(ok.res.status).toBe(200));
+    expect(stored()).toHaveLength(1);
+    // Revoked after the body ended, before the write's finish (which is asynchronous): refused, nothing more stored.
+    const pub = publicSession(c);
+    const revoked = fakeUpload(c, {}, { publicLink: pub });
+    revoked.req.emit("data", PNG); revoked.end();
+    expect(revoked.res.status, "the end-of-body check passed").toBe(0);
+    pub.revoke();
+    await vi.waitFor(() => expect(revoked.res.status).toBe(401));
+    // The public link closed in the same wait.
+    let open = true;
+    const closing = fakeUpload(c, {}, { publicLink: { ...publicSession(c), isCurrent: () => open } });
+    closing.req.emit("data", PNG); closing.end();
+    expect(closing.res.status).toBe(0);
+    open = false;
+    await vi.waitFor(() => expect(closing.res.status).not.toBe(0));
+    expect(closing.res.status).not.toBe(200);
+    await settleIo();
+    expect(stored(), "only the unchanged one").toHaveLength(1);
+    expect(inboxFiles().filter(f => f.endsWith(U.PART_SUFFIX)), "their part files went too").toEqual([]);
+  });
   it("over the public link a file is at most 95 MB whatever the config says — and the 413 says why", async () => {
     const c = make({ upload_max_file_mb: 200, upload_max_total_mb: 300 });
     const pub = publicSession(c);

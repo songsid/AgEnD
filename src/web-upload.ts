@@ -99,16 +99,18 @@ export const PART_SUFFIX = ".part";
  * and the directories made for it, when they are still empty — an upload that ends in nothing leaves nothing behind
  * (an instance deleted while its body was arriving gets no inbox made back, #1252 review P2-3).
  */
-export function createPartFile(inboxDir: string): { path: string; fd: number; discard(): void } {
+export function createPartFile(inboxDir: string, open: typeof openSync = openSync): { path: string; fd: number; discard(): void } {
   const made = mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
   const path = join(inboxDir, `${PENDING_PREFIX}${Date.now()}-${randomBytes(6).toString("hex")}${PART_SUFFIX}`);
-  const fd = openSync(path, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
   const discard = () => {
     removeQuietly(path);
     if (!made) return;
-    // From the inbox up to the first directory made here; rmdir only removes an empty one.
+    // From the inbox up to the first directory made here; rmdir only removes an empty one (never one that was there).
     for (let d = inboxDir; d.length >= made.length; d = dirname(d)) { try { rmdirSync(d); } catch { return; } if (d === made) return; }
   };
+  // Prism #1941 P3-1: an open that fails (EMFILE, ENOSPC …) still takes back the directories made for it.
+  let fd: number;
+  try { fd = open(path, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600); } catch (err) { discard(); throw err; }
   return { path, fd, discard };
 }
 /** Remove a file of ours, if it is still there; never throws. */
