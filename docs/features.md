@@ -1124,8 +1124,8 @@ or a stable of a later minor, never about a beta.
 A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
 → `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is
 built, and a stable older than the current `@latest` is refused. When a minor goes stable (2.2.0), point
-`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): alpha installs are not told about a stable
-of their own version.
+`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): an alpha install's `/update` then installs it, and the
+notice says to run `/update`.
 
 ## PSS memory reporting
 

@@ -19854,6 +19854,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
       const latest = await npmVersion("@songsid/agend");
       let target = latest;
+      let fromChannel = false;
       // The same channel rule as `agend update` (#1259): an alpha follows @alpha, any other prerelease @beta.
       const channel = installedChannel(currentVersion);
       if (channel !== "latest") {
@@ -19865,12 +19866,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // @latest is not their target. Taking the higher of the two made a same-core stable (2.2.0 over beta.16) the
         // target, which the same-core guard then dropped, so the newer beta.17 was never announced.
         target = pre;
+        fromChannel = true;
         // An alpha is still told about a stable that passed its own minor (with --stable, #1259): only a stable of
-        // another core that is newer than its channel's release. A same-core stable (2.2.0 for 2.2.0-alpha.3) is not
-        // offered — the release points @alpha at it — and no longer hides a newer alpha either.
+        // another core that is newer than its channel's release. A same-core @latest (2.2.0 for 2.2.0-alpha.3) is not
+        // taken from @latest and no longer hides a newer alpha; once the release points @alpha at it, it comes from
+        // @alpha like any channel release.
         const core = (v: string) => v.replace(/^v/, "").split("-")[0];
         if (channel === "alpha" && latest && core(latest) !== core(currentVersion) && (!pre || this.semverGt(latest, pre))) {
           target = latest;
+          fromChannel = false;
         }
       }
       // Only notify when target is genuinely newer (semver), so a beta user on
@@ -19880,7 +19884,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
           // link preview looked bad. Version + /update instruction is enough.
-          this.notifyInstanceTopic(generalId, t(updateNoticeKey(currentVersion, target), `v${target}`, `v${currentVersion}`));
+          // From the install's own channel tag, this is what /update installs — even a stable the release pointed the
+          // tag at (2.2.0 on @alpha / @beta): the plain /update text, never "/update stays on … use --stable" (#1928).
+          const key = fromChannel ? "update.available_current" : updateNoticeKey(currentVersion, target);
+          this.notifyInstanceTopic(generalId, t(key, `v${target}`, `v${currentVersion}`));
         }
       }
     } catch { /* silent — network issues */ }

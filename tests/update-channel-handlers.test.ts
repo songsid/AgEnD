@@ -227,6 +227,18 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     });
   });
 
+  // #1928 review: once the release points the install's own channel tag at the new stable, /update installs it — the
+  // notice says "Run: /update", not "/update stays on … use --stable".
+  it.each([
+    ["an alpha, after the release points @alpha at 2.2.0", "2.2.0-alpha.4", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0" }],
+    ["a beta, if @beta is pointed at 2.2.0", "2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0" }],
+  ])("%s: told to run /update, not --stable", async (_n, version, tags) => {
+    const { posted } = await notice(version, tags);
+    expect(posted).toEqual([expect.stringContaining("v2.2.0")]);
+    expect(posted[0]).toContain("Run: /update");
+    expect(posted[0]).not.toContain("--stable");
+  });
+
   it("an alpha install is not left silent by a same-core stable: it still hears about the newer alpha (#1926)", async () => {
     const { posted } = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.4" });
     expect(posted).toEqual([expect.stringContaining("v2.2.0-alpha.4")]);
