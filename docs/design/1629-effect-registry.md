@@ -36,6 +36,8 @@ A concrete participant must implement durable history/probation and the three-pa
 
 When a budget pause frees a slot, another eligible queued effect may enter according to the reviewed allocation policy. A per-effect pause is not a global fleet/effect shutdown. The native budget scenario deliberately isolates the observed effect before applying host load so it checks that effect's pause and non-revival, rather than miscounting a queue replacement.
 
+The mount observation/revalidation extension is documented in [frame lifecycle](1629-effect-mount-lifecycle.md). It does not enable product playback.
+
 ## Host observations and signals
 
 The real `EffectBudget` observes host rAF cadence and, where supported, host long tasks. Only a matching host-generated frame container id can establish task attribution. No container URL/name, child timing, pong or private Worker CPU/GPU/memory data is read. Unknown attribution stays unknown. The frame load is a host DOM observation. A ready signal proves initial readiness, not ongoing Worker health.

@@ -12,6 +12,19 @@ function rig() {
   return { data, storage, crypto, create, begin, pause, at(n: number) { now = n; }, records: () => [...data.values()].map(s => JSON.parse(s)) };
 }
 describe("#1629 browser effect safety participant (unmounted)", () => {
+  it.each(["delete", "edit", "foreign-resume"])("%s of a live owned probation fails closed on the next read", mode => {
+    const h = rig(), a = h.create(), token = h.begin(a), [key, text] = [...h.data][0]!;
+    if (mode === "delete") h.data.delete(key);
+    else if (mode === "edit") { const row = JSON.parse(text); row.at++; h.data.set(key, JSON.stringify(row)); }
+    else { const b = h.create(); expect(b.resume(A, "standard")).toBe(true); expect(b.allowed(A, "standard")).toBe(true); }
+    expect(a.status(A, "standard").state).toBe("unknown"); expect(a.allowed(A, "standard")).toBe(false); expect(a.finish(token, "healthy")).toBe(false);
+    h.data.set(key, text); expect(a.allowed(B, "standard")).toBe(false); expect(a.resume(A, "standard")).toBe(false);
+  });
+  it("healthy own cleanup and unrelated storage changes do not revoke a live participant", () => {
+    const h = rig(), s = h.create(), token = h.begin(s); h.data.set("unrelated", "anything");
+    expect(s.allowed(A, "standard")).toBe(true); expect(s.finish(token, "healthy")).toBe(true); expect(s.allowed(A, "standard")).toBe(true);
+    expect(s.allowed(B, "constrained")).toBe(true); expect(h.data.size).toBe(1);
+  });
   it("construction/status write nothing, and probation is persisted before a positive receipt", () => {
     const h = rig(), s = h.create(); expect(s.allowed(A, "standard")).toBe(true); expect(h.storage.setItem).not.toHaveBeenCalled();
     const token = h.begin(s); expect(token).toMatch(/^[a-f0-9]{32}$/); expect(h.records()).toEqual([{ v: 1, kind: "probation", id: A, device: "standard", token, owner: "0".repeat(31) + "1", at: 1000 }]);
