@@ -1,15 +1,13 @@
-// #1629: actual Chat surface adapter; no global/Fleet/Settings mount, public code or idle polling.
+// #1629: Chat contributes a committed lease to the one app owner; no private pool or server polling.
 import { html, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
-import { onPrefsChanged, prefInForce } from "/assets/app-prefs.js";
-import { resolvedMode, themesStore } from "/assets/app-themes.js";
-import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
-import { constrainedDevice } from "/assets/effect-policy.js";
-import { createChatEffectRuntime, chatEffectState, chatEffectIdentity } from "/assets/effect-chat-runtime.js";
+import { ownerCssLifecycle } from "/assets/owner-css.js";
+import { chatEffectState, chatEffectIdentity } from "/assets/effect-chat-runtime.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { navigate } from "/assets/app-nav.js";
 import { toast } from "/assets/ui-toast.js";
+import { getAppEffects } from "./app-effects.js";
 
 register("chatFx", {
   en: { title: "Effects", loading: "Checking effects…", empty: "No effects in this chat.", failed: "Effects stopped because their resources could not be verified. Reload the page to try again.", reload: "Reload page", pause: "Pause", resume: "Resume", remove: "Remove from chat", removeFailed: "Could not remove this effect. Reload the page to check its state.", css: "Agent foreground effects are paused while your custom CSS is on or cannot be verified.", setting: "Open Appearance settings", running: "Running", starting: "Starting", off: "Stopped", resumeFailed: "This effect cannot resume: the page or its safety history is not ready. Reload the page or choose another effect.", queued: "Waiting for a slot", unknown: "Playback is off or unavailable here.", budget: "Paused to protect page responsiveness. Resume keeps the three-pauses safety limit.", paused: "Paused", low: "Reduced quality" },
@@ -36,56 +34,21 @@ export function ChatEffects({ name, lease, element, store, open, onClose }) {
     lease.hold(cleanup);
     try {
       setBusy(false); onClose(); setCanWrite(false); setState(null);
-      const host = window, preview = host.AgendPreview;
+      const host = window, owner = getAppEffects(host);
       const current = () => live && lease.current();
-      const media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true }, coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
-      const context = () => {
-        let ready = false; try { ready = preview?.availability().ok === true; } catch { /* unavailable */ }
-        return { safe: safeMode(), publicLink: document.body.dataset.publicLink === "1", reducedMotion: media.matches, saveData: host.navigator?.connection?.saveData === true,
-          hidden: document.visibilityState !== "visible", enabled: typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function", show: prefInForce("fx.show")?.value !== false, previewReady: ready,
-          optIn: prefInForce("preview.optIn")?.value === true && preview?.optedIn() === true && preview?.never() !== true,
-          constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse.matches, width: host.innerWidth }),
-          modal: !!document.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: name };
-      };
-      api = createChatEffectRuntime({ window: host, name, element: element.current, current,
-        observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, state: chatEffectState(appStore.get(), name), mode: resolvedMode() }),
-        onChange: value => {
-          if (!current()) return;
-          const g = context();
-          setState({ ...value, unavailable: !g.enabled || !g.show || !g.previewReady || !g.optIn || g.safe || g.publicLink || g.reducedMotion || g.saveData });
-        },
-      });
-      runtime.current = api;
-      if (!api.ok) {
-        setState(api.snapshot ? api.snapshot() : { error: null, rows: [], effects: [], unavailable: true });
-        return cleanup; // No identity/unsupported pool: do not install browser/runtime observations.
-      }
-      const sync = () => { if (current() && api.ok) api.sync(); };
-      let revision = appStore.get().themesRev;
-      releases.push(appStore.subscribe(s => {
+      if (!owner) { setState({ error: null, rows: [], effects: [], unavailable: true }); return cleanup; }
+      releases.push(owner.onEnd(() => { if (current()) setState({ error: "resource_unavailable", rows: [], effects: [], unavailable: true }); }));
+      const changed = value => {
         if (!current()) return;
-        if (s.connection === "ended") { api.dispose(); setState({ error: "resource_unavailable", rows: [], effects: [] }); return; }
-        if (s.themesRev !== revision) { revision = s.themesRev; api.changed?.(); } else sync();
-      }));
-      releases.push(ownerCssLifecycle.subscribe(sync));
-      releases.push(themesStore.subscribe(sync));
-      releases.push(onPrefsChanged(sync));
-      releases.push(store.onAgentReply(e => api.reply?.(e)));
-      if (typeof preview?.onChange === "function") releases.push(preview.onChange(sync));
-      if (typeof host.AgendTheme?.onChange === "function") releases.push(host.AgendTheme.onChange(sync));
-      for (const [target, type] of [[media, "change"], [coarse, "change"], [document, "visibilitychange"], [host, "resize"], [host.navigator?.connection, "change"]]) {
-        if (target?.addEventListener) { target.addEventListener(type, sync); releases.push(() => target.removeEventListener(type, sync)); }
-      }
-      // A BFCache restoration gets a fresh lease when the person reloads. Never resume an old session episode.
-      // Stock proof hides immediately; this updates the stored modal gate when the real portal changes.
-      let modal = context().modal;
-      const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(() => { const value = context().modal; if (value === modal) return; modal = value; sync(); }) : null;
-      releases.push(() => barriers?.disconnect());
-      barriers?.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "open", "hidden", "role"] });
-      const pagehide = () => { api.dispose(); if (current()) setState({ error: "resource_unavailable", rows: [], effects: [] }); };
-      host.addEventListener("pagehide", pagehide); releases.push(() => host.removeEventListener("pagehide", pagehide));
+        const g = owner.gates();
+        setState({ ...value, unavailable: !g.enabled || !g.show || !g.previewReady || !g.optIn || g.safe || g.publicLink || g.reducedMotion || g.saveData });
+      };
+      api = owner.attachChat({ name, element: element.current, current,
+        observe: () => ({ state: chatEffectState(appStore.get(), name) }), onChange: changed });
+      runtime.current = api;
+      if (!api?.ok) { setState({ error: null, rows: [], effects: [], unavailable: true }); return cleanup; }
       host.AgendAuth?.canWrite?.().then(value => { if (current()) setCanWrite(value === true); }).catch(() => {});
-      sync();
+      api.sync();
       return cleanup;
     } catch {
       cleanup();

@@ -29,7 +29,7 @@ function rig(prepare: (h: any) => void = () => {}) {
   return h;
 }
 describe("#1629 one unmounted app-owned effect pool", () => {
-  it("has no served asset or product mount", () => expect(isServedAsset("effect-app-runtime.js")).toBe(false));
+  it("serves the static core for the session-only app bridge", () => expect(isServedAsset("effect-app-runtime.js")).toBe(true));
   it.each(["public", "poll", "view", "header", "epoch", "auth", "ended"])("%s cannot create participants", fault => {
     const h = rig(h => {
       if (fault === "public") h.host.document.body.dataset.publicLink = "1"; if (fault === "poll") h.host.document.body.dataset.webTransport = "poll";
