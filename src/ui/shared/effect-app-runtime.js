@@ -1,4 +1,4 @@
-/** #1629: unmounted app-owned pool; Chat contributes a lease, never another registry/loader. */
+/** #1629: app-owned pool; Chat contributes a lease, never another registry/loader. */
 import { createEffectRuntimeLoader } from "./effect-runtime-loader.js";
 import { createEffectRegistry } from "./effect-registry.js";
 import { createEffectSafety } from "./effect-safety.js";
@@ -9,7 +9,7 @@ import { chatEffectIdentity, createEffectWriter } from "./effect-chat-runtime.js
 const episodes = new WeakSet();
 
 /** `current` belongs to the page/session episode. Route cleanup only releases its contribution. */
-export function createAppEffectRuntime({ window: host, current, observe, onChange = () => {}, factories = {} }) {
+export function createAppEffectRuntime({ window: host, current, observe, onChange = () => {}, onDispose = () => {}, factories = {} }) {
   let dead = false, error = null, loader = null, registry = null, writer = null, source = null, pending = null, serial = 0, revision = 0, stamp = null, syncing = false, queued = false;
   const bindings = new Map(), profiles = new Map();
   const identity = chatEffectIdentity(host), auth = host?.AgendAuth;
@@ -41,7 +41,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     if (dead) return; dead = true; discard(source);
     safe(() => pending?.controller.abort()); safe(() => registry?.dispose?.()); safe(() => loader?.dispose?.()); safe(() => writer?.dispose()); safe(() => offAuth?.());
     safe(() => host?.removeEventListener?.("pagehide", dispose));
-    for (const row of profiles.values()) safe(() => row.collector.dispose()); profiles.clear(); bindings.clear();
+    for (const row of profiles.values()) safe(() => row.collector.dispose()); profiles.clear(); bindings.clear(); safe(() => onDispose({ error }));
   }
   function fail(reason) { if (dead) return; error = reason; dispose(); safe(() => onChange({ error, rows: [], effects: [], loading: false })); }
   const unavailable = { ok: false, sync() {}, changedChat() {}, reply() {}, detachChat() {}, attachChat() { return null; }, snapshot: () => snapshot(null), dispose };

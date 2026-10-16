@@ -55,6 +55,7 @@ import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
 import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
 import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
+import { startAppEffects } from "./app-effects.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -114,6 +115,7 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   }
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
+  startAppEffects({ store });
   return store;
 }
 
