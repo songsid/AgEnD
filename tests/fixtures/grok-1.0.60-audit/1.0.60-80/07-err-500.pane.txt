@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.60-80/repo                      1.5K / 256K │ [Dashboard]
+
+
+     ❯ error turn f                                                  1:13 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+    ⠋ Server error (500) | Retrying (attempt 3)... 0.0s     7.0s ⇣1.45k [stop]
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+x:shortcuts
+

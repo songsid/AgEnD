@@ -1,0 +1,40 @@
+
+  master /t/work-1.0.52-80/repo                        13 / 256K │ [Dashboard]
+
+
+     ❯ use tool please                                               1:13 PM
+
+
+     ◆ Ran print a marker for the audit
+
+     tool done r4                                                    1:13 PM
+
+     Worked for 0.1s
+
+
+
+
+
+
+
+
+
+
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+                                                                               █
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰───────────────────────────────────────────── grok-mock · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts
+
