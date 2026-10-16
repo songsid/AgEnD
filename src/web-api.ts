@@ -2150,7 +2150,8 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const mediaSrc = own ? `${own}/ui/file/` : "'none'";
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
-    const frameSrc = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
+    const frameSrc = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin
+      ? `${p.previewOrigin}/frame${mode === "full" && !gatewayRequestContext(req) ? ` ${p.previewOrigin}/effect` : ""}` : null;
     sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

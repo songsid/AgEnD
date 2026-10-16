@@ -9,8 +9,8 @@ const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status 
 const held = () => { let release!: (r: any) => void; const p = new Promise<any>(r => { release = r; }); return { p, release }; };
 const ticks = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 describe("owner-effect client", () => {
-  it("serves the static client through the real fixed asset map, without publishing runtime primitives", () => {
-    expect(isServedAsset("owner-effect-prefs.js")).toBe(true); expect(isServedAsset("effect-registry.js")).toBe(false);
+  it("serves the static client and reviewed host runtime through the fixed asset map", () => {
+    expect(isServedAsset("owner-effect-prefs.js")).toBe(true); expect(isServedAsset("effect-registry.js")).toBe(true);
     let status = 0, text = ""; const headers: Record<string, string> = {};
     const res = { setHeader(k: string, v: string) { headers[k] = v; }, writeHead(n: number) { status = n; }, end(s: string) { text = String(s); } };
     const url = new URL("http://127.0.0.1:19280/assets/owner-effect-prefs.js");

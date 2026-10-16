@@ -1,4 +1,4 @@
-/** #1629: unmounted stock shell inventory/paint prerequisite. No frame creation, effect code, content or network reads. */
+/** #1629: stock shell inventory/paint prerequisite. No frame creation, effect code, content or network reads. */
 const SPECS = [
   ["composer", ".shell .p-chat .chat-main > .dock"],
   ["reply", ".shell .thread .rb-row, .shell .thread .poll-voters"],
@@ -130,6 +130,6 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
     const active = doc.activeElement;
     if (doc.fullscreenElement || doc.pictureInPictureElement) barrier = true;
     if (active && active !== doc.body && active !== doc.documentElement && (active.matches("input,select,textarea,[contenteditable]") || active.isContentEditable)) barrier = true;
-    return { ok: true, rects, front: !barrier, reason: barrier ? "stock_overlay" : "stock", agentFront: !barrier && ownerCss === "off", agentReason: barrier ? "stock_overlay" : ownerCss === "off" ? "stock" : "owner_css", settingsHref: "/ui/settings/appearance" };
+    return { ok: true, rects, front: !barrier, reason: barrier ? "stock_overlay" : "stock", agentFront: !barrier && ownerCss === "off", agentReason: barrier ? "stock_overlay" : ownerCss === "off" ? "stock" : "owner_css", settingsHref: "/settings/appearance" };
   } catch { return fail("stock_trust_unknown"); }
 }
