@@ -7,12 +7,12 @@ const manifest = () => ({ v: 1, kind: "effect", runtime: "canvas-worker-v1", wor
 const resource = (patch: Record<string, unknown> = {}): any => ({ id: ID, manifest: manifest(), params: {}, wants: ["state"], code: "agend.ready()", assets: [], ...patch });
 const placements = (patch = {}) => ({ rev: 1, effects: [{ id: ID, by: "agent", at: 1234, manifest: manifest(), params: {}, ...patch }] });
 const copy = (x: any) => JSON.parse(JSON.stringify(x));
-function fixture() {
+function fixture(onRevoke?: any) {
   let time = 0, current = true, serial = 0;
   const timers = new Map<number, () => void>();
   const host = { performance: { now: () => time }, AbortController, fetch: vi.fn(async (_path?: any, _options?: any): Promise<any> => new Response(JSON.stringify(resource()), { headers: { "content-type": "application/json" } })),
     setTimeout: vi.fn((fn: () => void, _delay: number) => { timers.set(++serial, fn); return serial; }), clearTimeout: vi.fn((id: number) => timers.delete(id)) };
-  const api = createEffectRuntimeLoader({ window: host, ownerEpoch: EPOCH, current: () => current });
+  const api = createEffectRuntimeLoader({ window: host, ownerEpoch: EPOCH, current: () => current, onRevoke });
   return { host, api, timers, at(t: number) { time = t; }, revoke() { current = false; }, restore() { current = true; }, timeout() { for (const fn of [...timers.values()]) fn(); } };
 }
 async function flush() { for (let n = 0; n < 12; n++) await Promise.resolve(); }
@@ -99,6 +99,51 @@ describe("#1629 bounded runtime HTTP projection (unmounted)", () => {
     const h = fixture(), getter = vi.fn(() => ID); expect(await h.api.resource({ get id() { return getter(); }, instance: "a" })).toBeNull(); expect(getter).not.toHaveBeenCalled(); expect(h.host.fetch).not.toHaveBeenCalled();
   });
   it.each([401, 403, 409])("a %s response permanently revokes the old loader", async status => { const h = fixture(); h.host.fetch.mockResolvedValueOnce(response({}, { ok: false, status })); expect(await h.api.resource({ id: ID, instance: "a" })).toBeNull(); expect(await h.api.resource({ id: ID, instance: "a" })).toBeNull(); expect(h.host.fetch).toHaveBeenCalledOnce(); });
+  it.each([401, 403, 409])("%i notifies once before a held response body finishes and fences reentrant reads", async status => {
+    const cancel = held<any>(), finished = vi.fn(), seen: any[] = []; let h: any;
+    h = fixture((episode: any) => { seen.push(episode); void h.api.resource({ id: ID, instance: "a" }); throw Error("listener"); });
+    const bodyCancel = vi.fn(() => cancel.promise); h.host.fetch.mockResolvedValueOnce(response({}, { ok: false, status, body: { cancel: bodyCancel } }));
+    const job = h.api.resourceSettled({ id: ID, instance: "a" }).then(finished); await flush();
+    expect(seen).toEqual([{ reason: "authorization_rejected" }]); expect(Object.isFrozen(seen[0])).toBe(true); expect(finished).not.toHaveBeenCalled(); expect(bodyCancel).toHaveBeenCalledOnce(); expect(h.host.fetch).toHaveBeenCalledOnce();
+    expect(await h.api.owner()).toBeNull(); h.api.dispose(); expect(seen).toHaveLength(1); cancel.resolve(undefined); await job; expect(finished).toHaveBeenCalledExactlyOnceWith(null);
+  });
+  it("terminal revocation aborts concurrent logical callers but retains a held physical reservation", async () => {
+    const pending = held<any>(), cancel = held<any>(), revoked = vi.fn(), h = fixture(revoked), first = vi.fn();
+    h.host.fetch.mockImplementationOnce(() => pending.promise); const a = h.api.resource({ id: ID, instance: "a" }).then(first); await flush();
+    h.host.fetch.mockResolvedValueOnce(response({}, { ok: false, status: 409 })); expect(await h.api.resource({ id: ID, slot: "fx.page" })).toBeNull(); await flush(); expect(first).toHaveBeenCalledWith(null); await a;
+    expect(first).toHaveBeenCalledWith(null); expect(revoked).toHaveBeenCalledOnce(); h.api.dispose();
+    const construct = () => createEffectRuntimeLoader({ window: h.host, ownerEpoch: EPOCH, current: () => true }); expect(construct().ok).toBe(false);
+    pending.resolve(response({}, { body: { cancel: () => cancel.promise } })); await flush(); expect(construct().ok).toBe(false); cancel.resolve(undefined); await flush(); const next = construct(); expect(next.ok).toBe(true); next.dispose();
+  });
+  it.each(["clock", "current"])("%s loss reports one closed terminal reason and cannot be repaired", async how => {
+    const ended = vi.fn(), h = fixture(ended); if (how === "clock") h.at(-1); else h.revoke(); expect(await h.api.owner()).toBeNull();
+    expect(ended).toHaveBeenCalledExactlyOnceWith({ reason: how === "clock" ? "clock_unavailable" : "owner_unavailable" }); h.at(1); h.restore(); expect(await h.api.placements("a")).toBeNull(); expect(ended).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("ordinary unavailable metadata/resources and manual disposal do not fabricate revocation", async () => {
+    const ended = vi.fn(), h = fixture(ended); h.host.fetch.mockResolvedValueOnce(response({}, { ok: false, status: 404 })); expect(await h.api.resource({ id: ID, slot: "fx.page" })).toBeNull();
+    h.host.fetch.mockResolvedValueOnce(response({}, { ok: false, status: 503 })); expect(await h.api.owner()).toBeNull(); expect(await h.api.resource({ id: ID, instance: "a" })).not.toBeNull(); h.api.dispose(); expect(ended).not.toHaveBeenCalled();
+  });
+  it("ownerSettled shares the existing metadata lane through late-body cancellation", async () => {
+    const h = fixture(), fetch = held<any>(), cancel = held<any>(), done = vi.fn(), controller = new AbortController(); h.host.fetch.mockImplementationOnce(() => fetch.promise);
+    const job = h.api.ownerSettled(controller.signal).then(done); await flush(); controller.abort(); await flush(); expect(done).not.toHaveBeenCalled();
+    expect(await h.api.placementsSettled("a")).toBeNull(); expect(h.host.fetch).toHaveBeenCalledOnce();
+    const bodyCancel = vi.fn(() => cancel.promise); fetch.resolve(response({}, { body: { cancel: bodyCancel } })); await flush(); expect(bodyCancel).toHaveBeenCalledOnce(); expect(done).not.toHaveBeenCalled();
+    expect(await h.api.placements("a")).toBeNull(); cancel.resolve(undefined); await job; h.host.fetch.mockResolvedValueOnce(response(placements())); expect(await h.api.placementsSettled("a")).not.toBeNull();
+    expect(h.host.fetch.mock.calls[0][0]).toBe(`/ui/effects/owner?ownerEpoch=${EPOCH}`); h.api.dispose();
+  });
+  it("Chat metadata also excludes owner reads until its physical cleanup finishes", async () => {
+    const h = fixture(), fetch = held<any>(), controller = new AbortController(); h.host.fetch.mockImplementationOnce(() => fetch.promise);
+    const job = h.api.placementsSettled("a", controller.signal); await flush(); controller.abort(); expect(await h.api.ownerSettled()).toBeNull(); expect(h.host.fetch).toHaveBeenCalledOnce(); fetch.resolve(response(placements())); expect(await job).toBeNull(); h.api.dispose();
+  });
+  it("ownerSettled retains the 256-KiB streamed metadata bound", async () => {
+    const slots = { rev: 1, slots: Object.fromEntries(["fx.page", "fx.header", "fx.sidebar", "fx.box", "fx.cursor"].map(k => [k, { status: "none", id: null }])) };
+    const h = fixture(); h.host.fetch.mockResolvedValueOnce(response(null, { body: new Response(" ".repeat(256 * 1024) + JSON.stringify(slots)).body })); expect(await h.api.ownerSettled()).toBeNull(); h.api.dispose();
+  });
+  it("ownerSettled projects the same closed slots and monotonic deadline as owner", async () => {
+    const slots = { rev: 1, slots: Object.fromEntries(["fx.page", "fx.header", "fx.sidebar", "fx.box", "fx.cursor"].map(k => [k, { status: "none", id: null }])) };
+    const h = fixture(); h.host.fetch.mockResolvedValueOnce(response(slots)); expect(await h.api.ownerSettled()).toEqual(slots);
+    const delayed = held<any>(); h.host.fetch.mockImplementationOnce(() => delayed.promise); const job = h.api.ownerSettled(); await flush(); h.at(10000); delayed.resolve(response(slots)); expect(await job).toBeNull(); h.api.dispose();
+  });
   it("a private 404 is unavailable, not a fabricated global session verdict or automatic retry", async () => {
     const h = fixture(); h.host.fetch.mockResolvedValueOnce(response({}, { ok: false, status: 404 })); expect(await h.api.resource({ id: ID, instance: "a" })).toBeNull(); expect(h.host.fetch).toHaveBeenCalledOnce(); expect(await h.api.resource({ id: ID, instance: "a" })).not.toBeNull();
   });

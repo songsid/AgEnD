@@ -57,7 +57,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
   function bindingAlive(b) { return !!b && sourceAlive(b.source) && b.source.generation === b.generation && bindings.get(b.key) === b && b.source.bindings.get(b.id) === b; }
   try {
     writer = createEffectWriter(host, alive);
-    loader = make("loader", createEffectRuntimeLoader)({ window: host, ownerEpoch: identity.epoch, current: alive });
+    loader = make("loader", createEffectRuntimeLoader)({ window: host, ownerEpoch: identity.epoch, current: alive, onRevoke: () => fail("runtime_unavailable") });
     if (!loader.ok || typeof loader.placementsSettled !== "function" || typeof loader.resourceSettled !== "function") throw Error("runtime_unavailable");
     registry = make("registry", createEffectRegistry)({ window: host, origin: host.document.body.dataset.previewOrigin, boot: host.document.body.dataset.previewBoot,
       load: async (descriptor, signal) => {

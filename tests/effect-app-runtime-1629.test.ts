@@ -23,7 +23,7 @@ function rig(prepare: (h: any) => void = () => {}) {
   const observation: any = { context, ownerCss: "off", mode: "light" }, globalChange = vi.fn();
   const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
-  h.factories = { loader: vi.fn((o: any) => h.realLoader ? createEffectRuntimeLoader(o) : loader), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true })), collector: collect };
+  h.factories = { loader: vi.fn((o: any) => { h.loaderOptions = o; return h.realLoader ? createEffectRuntimeLoader(o) : loader; }), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true })), collector: collect };
   h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, factories: h.factories });
   h.chat = (name = "own", patch: any = {}) => { const part: any = { element: { isConnected: true }, current: () => true, observe: () => ({ state: "working" }), onChange: vi.fn(), ...patch }; part.api = h.api.attachChat({ name, ...part }); return part; };
   return h;
@@ -37,6 +37,14 @@ describe("#1629 one unmounted app-owned effect pool", () => {
       if (fault === "auth") delete h.host.AgendAuth.onSessionEnd; if (fault === "ended") h.host.AgendAuth.onSessionEnd = (fn: () => void) => { fn(); return () => {}; };
     });
     expect(h.api.ok).toBe(false); expect(h.factories.loader).not.toHaveBeenCalled(); expect(h.factories.registry).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("a loader revocation ends the entire app episode rather than only a Chat source", async () => {
+    const h = rig(), a = h.chat("a"); await flush(); h.loaderOptions.onRevoke({ reason: "authorization_rejected" });
+    expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce(); expect(h.api.attachChat({ name: "b", ...a })).toBeNull(); h.api.dispose(); expect(h.registry.dispose).toHaveBeenCalledOnce();
+  });
+  it("a real loader authorization rejection closes the app even without a global auth notification", async () => {
+    const h = rig(h => { h.realLoader = true; }); h.host.fetch.mockResolvedValueOnce(new Response('{"error":"owner_changed"}', { status: 409, headers: { "content-type": "application/json" } }));
+    const a = h.chat("a"); await flush(); expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.api.snapshot().error).toBe("runtime_unavailable"); expect(h.api.attachChat({ name: "b", ...a })).toBeNull(); h.api.dispose();
   });
   it("creates exactly one pool across route detach/replace and never reads with no Chat contributor", async () => {
     const h = rig(); h.api.sync(); expect(h.loader.placementsSettled).not.toHaveBeenCalled();
