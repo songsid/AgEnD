@@ -12,17 +12,77 @@
  * label, and a file can be fetched back only by an id this process issued for it — never by a path.
  */
 import { randomBytes } from "node:crypto";
-import { constants as fsConstants, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, sep } from "node:path";
 
+const MB = 1024 * 1024;
+/** #1937: the defaults; `web.upload_max_file_mb` / `web.upload_max_total_mb` change the two sizes (uploadLimits()). */
 export const UPLOAD_LIMITS = {
   /** One file. */
-  maxFileBytes: 10 * 1024 * 1024,
+  maxFileBytes: 50 * MB,
   /** Files on one message. */
   maxFiles: 5,
   /** All files on one message together. */
-  maxTotalBytes: 25 * 1024 * 1024,
+  maxTotalBytes: 100 * MB,
 } as const;
+/** #1937: what `web.upload_max_file_mb` and `web.upload_max_total_mb` may be — whole MB (MiB). */
+export const UPLOAD_MB_RANGE = { min: 1, max: 500 } as const;
+/**
+ * #1937: one file over the public link. A Cloudflare quick tunnel carries a request body of about 100 MB at most, and
+ * one upload is one request, so whatever the config says, a file through the tunnel stays under that.
+ */
+export const PUBLIC_LINK_MAX_FILE_BYTES = 95 * MB;
+
+export interface UploadLimits {
+  maxFileBytes: number;
+  maxFiles: number;
+  maxTotalBytes: number;
+  /** The public link lowered the per-file cap below the configured one (its 413 says why). */
+  publicLinkCapped?: true;
+}
+/** A configured size in MB, or the default when it is absent or not a whole number in UPLOAD_MB_RANGE (the validator says so). */
+function configuredMb(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= UPLOAD_MB_RANGE.min && v <= UPLOAD_MB_RANGE.max ? v * MB : fallback;
+}
+/**
+ * #1937: the limits in force — the one source the upload route, the send, the served-file cap, the page's own check
+ * and its words all read. A file is never allowed more than a whole message is; over the public link a file is at most
+ * PUBLIC_LINK_MAX_FILE_BYTES. Read on every request, so `agend reload` applies a change to the next upload.
+ */
+export function uploadLimits(web: { upload_max_file_mb?: unknown; upload_max_total_mb?: unknown } | null | undefined, opts: { publicLink?: boolean } = {}): UploadLimits {
+  const total = configuredMb(web?.upload_max_total_mb, UPLOAD_LIMITS.maxTotalBytes);
+  const file = Math.min(configuredMb(web?.upload_max_file_mb, UPLOAD_LIMITS.maxFileBytes), total);
+  const capped = opts.publicLink === true && file > PUBLIC_LINK_MAX_FILE_BYTES;
+  return { maxFileBytes: capped ? PUBLIC_LINK_MAX_FILE_BYTES : file, maxFiles: UPLOAD_LIMITS.maxFiles, maxTotalBytes: total, ...(capped ? { publicLinkCapped: true as const } : {}) };
+}
+/** A size in MB as the limits are worded ("50", "2.5"). */
+export function mbText(bytes: number): string { return String(Math.round((bytes / MB) * 10) / 10); }
+/** #1937: the 413 for one file, from the limits in force (never a constant's number). */
+export function fileTooLargeText(limits: UploadLimits): string {
+  return limits.publicLinkCapped
+    ? `a file can be at most ${mbText(limits.maxFileBytes)} MB over the public link (its Cloudflare tunnel carries about 100 MB per request)`
+    : `a file can be at most ${mbText(limits.maxFileBytes)} MB`;
+}
+/** #1937: how long an upload may go without a byte before it is dropped (its partial file with it). */
+export const UPLOAD_STALL_MS = 60_000;
+/** #1937: the longest one upload may take, start to end (at 95 MB, about 54 KB/s on average). */
+export const UPLOAD_MAX_MS = 30 * 60 * 1000;
+/** #1937: what a listener allows for receiving one request — above UPLOAD_MAX_MS, so an upload's own clocks decide. */
+export const UPLOAD_REQUEST_TIMEOUT_MS = UPLOAD_MAX_MS + 60_000;
+/** #1937: the one route whose body may take long to arrive (its own clocks bound it). */
+export function isUploadRequest(req: { method?: string; url?: string }): boolean {
+  return req.method === "POST" && (req.url ?? "").split("?")[0] === "/ui/upload";
+}
+/**
+ * #1937: every other request keeps the listener's old bound on receiving it — not whole within `ms`, its connection is
+ * dropped (what `server.requestTimeout` did before it was raised for uploads).
+ */
+export function limitRequestReceive(req: { complete?: boolean; socket?: { destroy(): void } | null; once?(event: "close", fn: () => void): unknown }, ms: number): void {
+  if (req.complete !== false) return;                         // whole already (a request object always says)
+  const t = setTimeout(() => { if (req.complete === false) req.socket?.destroy(); }, ms);
+  t.unref?.();
+  req.once?.("close", () => clearTimeout(t));
+}
 
 /** How long an uploaded file waits to be sent with a message before its id stops working. */
 export const UPLOAD_TTL_MS = 30 * 60 * 1000;
@@ -31,6 +91,28 @@ export const UPLOAD_TTL_MS = 30 * 60 * 1000;
 export const PENDING_PREFIX = "web-pending-";
 function sentPath(p: string): string { const b = basename(p); return b.startsWith(PENDING_PREFIX) ? join(dirname(p), "web-" + b.slice(PENDING_PREFIX.length)) : p; }
 function pendingPath(p: string): string { const b = basename(p); return b.startsWith("web-") && !b.startsWith(PENDING_PREFIX) ? join(dirname(p), PENDING_PREFIX + b.slice(4)) : p; }
+/** #1937: an upload's bytes stream into this file first (pending prefix: a restart's sweep removes one left behind). */
+export const PART_SUFFIX = ".part";
+/**
+ * #1937: a new, empty part file in `inboxDir` (made private, 0700), created exclusively, 0600, never through a link.
+ * Its bytes are written through `fd` (never by reopening the name); the caller closes it. `discard()` removes the part
+ * and the directories made for it, when they are still empty — an upload that ends in nothing leaves nothing behind
+ * (an instance deleted while its body was arriving gets no inbox made back, #1252 review P2-3).
+ */
+export function createPartFile(inboxDir: string): { path: string; fd: number; discard(): void } {
+  const made = mkdirSync(inboxDir, { recursive: true, mode: 0o700 });
+  const path = join(inboxDir, `${PENDING_PREFIX}${Date.now()}-${randomBytes(6).toString("hex")}${PART_SUFFIX}`);
+  const fd = openSync(path, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW, 0o600);
+  const discard = () => {
+    removeQuietly(path);
+    if (!made) return;
+    // From the inbox up to the first directory made here; rmdir only removes an empty one.
+    for (let d = inboxDir; d.length >= made.length; d = dirname(d)) { try { rmdirSync(d); } catch { return; } if (d === made) return; }
+  };
+  return { path, fd, discard };
+}
+/** Remove a file of ours, if it is still there; never throws. */
+export function removeQuietly(path: string): void { try { unlinkSync(path); } catch { /* already gone */ } }
 /** The largest file the dashboard will serve back (a reply attachment can be anything the agent made). */
 export const MAX_SERVED_BYTES = 50 * 1024 * 1024;
 
@@ -69,21 +151,50 @@ const startsWith = (b: Uint8Array, sig: number[], at = 0) => sig.every((v, i) =>
  * is taken too, as a document the dashboard only offers as a download. Null only for an empty file.
  */
 export function sniffUpload(bytes: Uint8Array, name: string): SniffedType | null {
-  if (bytes.length === 0) return null;
-  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { kind: "photo", mime: "image/png", ext: ".png" };
-  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return { kind: "photo", mime: "image/jpeg", ext: ".jpg" };
-  if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return { kind: "photo", mime: "image/gif", ext: ".gif" };
-  if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)) return { kind: "photo", mime: "image/webp", ext: ".webp" };
-  if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) return { kind: "document", mime: "application/pdf", ext: ".pdf" };
-  const other: SniffedType = { kind: "document", mime: OTHER_FILE_MIME, ext: storedExtension(name) };
-  const ext = extname(name).toLowerCase();
-  if (MARKUP_EXTENSIONS.has(ext) || bytes.includes(0)) return other;
-  try {
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return other;
+  return new UploadSniffer().push(bytes).result(name);
+}
+
+/**
+ * #1937: sniffUpload() as the bytes stream in — the upload is written to disk chunk by chunk, never held whole. Keeps
+ * the first bytes (every signature is in the first 12), whether a NUL was seen, and whether everything so far is
+ * valid UTF-8 (a streaming decoder: a character split across two chunks is still one character).
+ */
+export class UploadSniffer {
+  private head = Buffer.alloc(0);
+  private size = 0;
+  private nul = false;
+  private utf8 = true;
+  private readonly decoder = new TextDecoder("utf-8", { fatal: true });
+
+  push(chunk: Uint8Array): this {
+    if (chunk.length === 0) return this;
+    this.size += chunk.length;
+    if (this.head.length < 16) this.head = Buffer.concat([this.head, Buffer.from(chunk.subarray(0, 16 - this.head.length))]);
+    if (!this.nul && chunk.includes(0)) this.nul = true;
+    if (this.utf8 && !this.nul) {
+      try { this.decoder.decode(chunk, { stream: true }); } catch { this.utf8 = false; }
+    }
+    return this;
   }
-  return { kind: "document", mime: "text/plain; charset=utf-8", ext: TEXT_EXTENSIONS.has(ext) ? ext : ".txt" };
+
+  /** The type of everything pushed (call once, at the end); null for an empty file. */
+  result(name: string): SniffedType | null {
+    if (this.size === 0) return null;
+    const b = this.head;
+    if (startsWith(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return { kind: "photo", mime: "image/png", ext: ".png" };
+    if (startsWith(b, [0xff, 0xd8, 0xff])) return { kind: "photo", mime: "image/jpeg", ext: ".jpg" };
+    if (startsWith(b, [0x47, 0x49, 0x46, 0x38])) return { kind: "photo", mime: "image/gif", ext: ".gif" };
+    if (startsWith(b, [0x52, 0x49, 0x46, 0x46]) && startsWith(b, [0x57, 0x45, 0x42, 0x50], 8)) return { kind: "photo", mime: "image/webp", ext: ".webp" };
+    if (startsWith(b, [0x25, 0x50, 0x44, 0x46, 0x2d])) return { kind: "document", mime: "application/pdf", ext: ".pdf" };
+    const other: SniffedType = { kind: "document", mime: OTHER_FILE_MIME, ext: storedExtension(name) };
+    const ext = extname(name).toLowerCase();
+    if (MARKUP_EXTENSIONS.has(ext) || this.nul) return other;
+    if (this.utf8) {
+      try { this.decoder.decode(); } catch { this.utf8 = false; }      // a character cut off at the very end
+    }
+    if (!this.utf8) return other;
+    return { kind: "document", mime: "text/plain; charset=utf-8", ext: TEXT_EXTENSIONS.has(ext) ? ext : ".txt" };
+  }
 }
 
 /** A file name as a label only: no directory, no control characters, no leading dots, bounded. */
@@ -175,30 +286,49 @@ export class WebFileLedger {
   private readonly served = new Map<string, ServedFile>();
   private readonly now: () => number;
   private readonly maxServed: number;
+  /** #1937: the limits in force (the fleet's config, read each time): the send's count and total, the served-file cap. */
+  readonly limits: () => UploadLimits;
 
-  constructor(opts: { now?: () => number; maxServed?: number } = {}) {
+  constructor(opts: { now?: () => number; maxServed?: number; limits?: () => UploadLimits } = {}) {
     // Elapsed time, like the sweep timer below: a wall-clock jump must neither expire an upload early nor keep
     // one past the timer that was meant to remove it (#1252 review).
     this.now = opts.now ?? (() => performance.now());
     this.maxServed = opts.maxServed ?? 2000;
+    this.limits = opts.limits ?? (() => uploadLimits(null));
   }
+
+  /** #1937: the largest file served back — MAX_SERVED_BYTES, or more when a file that large may be uploaded. */
+  maxServedBytes(): number { return Math.max(MAX_SERVED_BYTES, this.limits().maxFileBytes); }
 
   /**
    * Store an upload in `inboxDir` under a name chosen here and register it. The directory is made
    * private (0700), the file 0600, written exclusively (never over an existing file).
    */
   storeUpload(input: { instance: string; inboxDir: string; bytes: Uint8Array; name: string; type: SniffedType }): UploadEntry {
-    mkdirSync(input.inboxDir, { recursive: true, mode: 0o700 });
+    const part = createPartFile(input.inboxDir);
+    try { writeFileSync(part.fd, input.bytes); } catch (err) { removeQuietly(part.path); throw err; } finally { closeSync(part.fd); }
+    return this.storeUploadedFile({ instance: input.instance, partPath: part.path, name: input.name, type: input.type });
+  }
+
+  /**
+   * #1937: register an upload that was streamed to `partPath` (createPartFile(), in the inbox it belongs to): it is
+   * linked under its stored name — never over an existing file — and the part goes. The part is removed on failure too.
+   */
+  storeUploadedFile(input: { instance: string; partPath: string; name: string; type: SniffedType }): UploadEntry {
     const id = randomBytes(16).toString("hex");
     // Stored as web-pending-…: the name says on disk that no message has taken it yet, so a sweep after a restart
     // (which loses this ledger) can still tell an abandoned upload from one an agent got (#1273).
-    const path = join(input.inboxDir, `${PENDING_PREFIX}${Date.now()}-${id.slice(0, 8)}${input.type.ext}`);
-    writeFileSync(path, input.bytes, { mode: 0o600, flag: "wx" });
+    const path = join(dirname(input.partPath), `${PENDING_PREFIX}${Date.now()}-${id.slice(0, 8)}${input.type.ext}`);
+    try {
+      const part = lstatSync(input.partPath);
+      if (!part.isFile()) throw new Error("the upload's part file is not a regular file");
+      linkSync(input.partPath, path);
+    } finally { removeQuietly(input.partPath); }
+    const st = lstatSync(path);
     const entry: UploadEntry = {
       id, instance: input.instance, path, kind: input.type.kind, mime: input.type.mime,
-      name: displayName(input.name, "file"), size: input.bytes.length, expiresAt: this.now() + UPLOAD_TTL_MS, state: "pending",
+      name: displayName(input.name, "file"), size: st.size, expiresAt: this.now() + UPLOAD_TTL_MS, state: "pending",
     };
-    const st = lstatSync(path);
     this.written.set(entry, { dev: st.dev, ino: st.ino });
     this.prune();
     this.uploads.set(id, entry);
@@ -216,7 +346,8 @@ export class WebFileLedger {
    * says how the delivery went: commit() when it was delivered, release() when it definitely was not.
    */
   takeForMessage(instance: string, ids: readonly string[]): { ok: true; entries: UploadEntry[] } | { ok: false; error: string } {
-    if (ids.length > UPLOAD_LIMITS.maxFiles) return { ok: false, error: `at most ${UPLOAD_LIMITS.maxFiles} files per message` };
+    const limits = this.limits();
+    if (ids.length > limits.maxFiles) return { ok: false, error: `at most ${limits.maxFiles} files per message` };
     if (new Set(ids).size !== ids.length) return { ok: false, error: "the same file twice" };
     const entries: UploadEntry[] = [];
     let total = 0;
@@ -228,7 +359,7 @@ export class WebFileLedger {
       total += e.size;
       entries.push(e);
     }
-    if (total > UPLOAD_LIMITS.maxTotalBytes) return { ok: false, error: `the files together are over ${UPLOAD_LIMITS.maxTotalBytes / 1024 / 1024} MB` };
+    if (total > limits.maxTotalBytes) return { ok: false, error: `the files together are over ${mbText(limits.maxTotalBytes)} MB` };
     // Each file gets its sent name now, before the delivery names it to the agent; all or nothing.
     const moved: UploadEntry[] = [];
     for (const e of entries) {
@@ -311,7 +442,7 @@ export class WebFileLedger {
     try {
       realPath = realpathSync(input.path);
       const st = statSync(realPath);
-      if (!st.isFile() || st.size > MAX_SERVED_BYTES) return null;
+      if (!st.isFile() || st.size > this.maxServedBytes()) return null;
       ({ size, dev, ino } = st);
     } catch {
       return null;
@@ -345,6 +476,31 @@ export class WebFileLedger {
   read(id: string): { file: ServedFile; bytes: Buffer } | null {
     const got = this.readSlice(id, 0, Number.MAX_SAFE_INTEGER);
     return got && got.start === 0 && got.bytes.length === got.file.size ? { file: got.file, bytes: got.bytes } : null;
+  }
+
+  /**
+   * #1937: a served file opened for streaming whole, with read()'s checks on the open descriptor (no symlink followed,
+   * a regular file, the device + inode and size it was registered with). The caller closes `fd`. Null when any fails.
+   */
+  open(id: string): { file: ServedFile; fd: number } | null {
+    const file = isFileId(id) ? this.served.get(id) : undefined;
+    if (!file) return null;
+    let fd: number | null = null;
+    try {
+      fd = openSync(file.realPath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+      const st = fstatSync(fd);
+      if (st.isFile() && st.size === file.size && st.dev === file.dev && st.ino === file.ino) { const out = { file, fd }; fd = null; return out; }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      if (fd !== null) try { closeSync(fd); } catch { /* closed */ }
+    }
+  }
+
+  /** #1937: what is served under an id (no file is opened: open() and read() check the file itself). */
+  servedFile(id: string): ServedFile | null {
+    return (isFileId(id) ? this.served.get(id) : undefined) ?? null;
   }
 
   /** #1589: a served file that is audio or video (MEDIA_MIME), or null — the file route plays those by range. */
@@ -423,7 +579,7 @@ export class WebFileLedger {
    * symlink, and a regular file within MAX_SERVED_BYTES; its real path inside this instance's inbox
    * (`workspaces/<instance>/inbox`, itself not a link elsewhere) — or (#1770) inside its reply snapshots
    * (`webFilesDir`, `workspaces/<instance>/web-files`, the same checks), then served as a snapshot again. Null when any
-   * check fails (the message then shows the name as unavailable). Fetched by id only, as ever: the stored path is the
+   * check fails (the message then shows the name as unavailable). (Within maxServedBytes(): #1937.) Fetched by id only, as ever: the stored path is the
    * fleet's own file, never a request's.
    */
   restoreServed(entry: { id: unknown; path: unknown; name?: unknown; mime?: unknown; kind?: unknown }, instance: string, inboxDir: string, webFilesDir?: string): ServedFile | null {
@@ -434,7 +590,7 @@ export class WebFileLedger {
     let snapshot = false;
     try {
       own = lstatSync(entry.path);
-      if (own.isSymbolicLink() || !own.isFile() || own.size > MAX_SERVED_BYTES) return null;
+      if (own.isSymbolicLink() || !own.isFile() || own.size > this.maxServedBytes()) return null;
       real = realpathSync(entry.path);
       // The directory, resolved, must be itself (not a link elsewhere); the file's real path directly under one of them.
       const within = (dir: string | undefined): boolean => {

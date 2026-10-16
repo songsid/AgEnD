@@ -5,6 +5,10 @@ import { applyWebSecurityHeaders } from "./web-host-guard.js";
 import { isServedAsset } from "./auth-api.js";
 import { shellRoute } from "./web-shell-routes.js";
 import { isWebIconPath } from "./web-icons.js";
+import { UPLOAD_REQUEST_TIMEOUT_MS } from "./web-upload.js";
+
+/** #1937: how long a public-link request other than an upload may take to arrive whole (the gateway's old requestTimeout). */
+export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
 
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
@@ -97,7 +101,9 @@ export function createPublicWebGateway(opts: {
   });
   server.maxHeadersCount = 64;
   server.headersTimeout = 5_000;
-  server.requestTimeout = 10_000;
+  // #1937: an upload may take long on a slow link (its own clocks bound it); every other request is still dropped if it
+  // has not arrived whole in PUBLIC_GATEWAY_RECEIVE_MS (limitRequestReceive, where the request is dispatched).
+  server.requestTimeout = UPLOAD_REQUEST_TIMEOUT_MS;
   server.keepAliveTimeout = 5_000;
   server.setTimeout(15_000, socket => socket.destroy());
   server.on("connection", socket => { if (sockets.size >= 32) { socket.destroy(); return; } sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });

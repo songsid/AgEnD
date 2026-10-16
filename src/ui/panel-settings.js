@@ -761,7 +761,7 @@ function General({ ctx }) {
  */
 export const WEB_READ_ONLY = [
   "web.allowed_hosts", "web.view_access", "web.notify_login", "web.preview", "web.preview_port", "web.preview_origin", "web.preview_on_public_link",
-  "web.usage_panel", "web.provider_secrets", "web_terminal.bind", "web_terminal.tunnel",
+  "web.usage_panel", "web.provider_secrets", "web.upload_max_file_mb", "web.upload_max_total_mb", "web_terminal.bind", "web_terminal.tunnel",
 ];
 function WebSection({ ctx, staged }) {
   const { schema } = ctx;

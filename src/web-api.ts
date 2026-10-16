@@ -20,7 +20,7 @@ import { MAX_COMMAND_ARGS } from "./web-commands.js";
 import { sendPanelHtml } from "./web-host-guard.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readFileSync } from "node:fs";
+import { createReadStream, createWriteStream, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
@@ -33,7 +33,7 @@ import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
-import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
+import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
 import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
@@ -167,7 +167,7 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
-    web?: { echo_to_channel?: boolean; usage_panel?: boolean };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -602,9 +602,11 @@ export function handleWebRequest(
     // memory. Every other type is answered exactly as before.
     const media = isFileId(id) ? ctx.webFiles?.mediaOf?.(id) ?? null : null;
     if (media) { serveMediaRange(req, res, ctx.webFiles!, id, media); return true; }
-    const got = isFileId(id) ? ctx.webFiles?.read(id) : null;
-    if (!got) { json(res, 404, { error: "No such file" }); return true; }
-    const { file, bytes } = got;
+    // #1937: a file over MEDIA_RANGE_MAX streams from the descriptor its checks were made on — never whole in memory.
+    const big = isFileId(id) && (ctx.webFiles?.servedFile?.(id)?.size ?? 0) > MEDIA_RANGE_MAX ? ctx.webFiles?.open?.(id) ?? null : null;
+    const got = big ? null : isFileId(id) ? ctx.webFiles?.read(id) : null;
+    const file = big?.file ?? got?.file;
+    if (!file) { json(res, 404, { error: "No such file" }); return true; }
     const inline = INLINE_MIME.has(file.mime);
     // Only the four image types are shown in the page; anything else is a download, never rendered.
     res.setHeader("Content-Type", inline ? file.mime : (file.mime.startsWith("text/") ? "text/plain; charset=utf-8" : "application/octet-stream"));
@@ -612,8 +614,17 @@ export function handleWebRequest(
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    if (big) {
+      res.setHeader("Content-Length", String(file.size));
+      res.writeHead(200);
+      const stream = createReadStream("", { fd: big.fd, start: 0, end: Math.max(0, file.size - 1), autoClose: true });
+      stream.on("error", () => res.destroy());
+      res.on("close", () => stream.destroy());
+      stream.pipe(res);
+      return true;
+    }
     res.writeHead(200);
-    res.end(bytes);
+    res.end(got!.bytes);
     return true;
   }
 
@@ -1521,6 +1532,11 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
  * One file for one instance's chat. The body is the file itself (Content-Type is ignored: the type is
  * read from the bytes), `X-Agend-Filename` its name for the label only. Stored in the instance's
  * workspace inbox under a name chosen here; answered with the id the message will name.
+ *
+ * #1937: streamed to a part file in that inbox (web-pending-….part) as it arrives — never held whole in memory — and
+ * counted by the bytes that came, whatever Content-Length said. The limits are the ones in force for this request
+ * (uploadLimits(): the config, and the public link's own cap). An upload that goes UPLOAD_STALL_MS without a byte, or
+ * runs past UPLOAD_MAX_MS, is dropped; any upload that does not end in a stored file takes its part file with it.
  */
 function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): void {
   const instance = url.searchParams.get("instance") ?? "";
@@ -1529,50 +1545,80 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
     json(res, 404, { error: `Instance not found: ${instance}` });
     return;
   }
+  const limits = uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined });
+  const tooLarge = () => json(res, 413, { error: fileTooLargeText(limits), max_bytes: limits.maxFileBytes, ...(limits.publicLinkCapped ? { public_link: true } : {}) });
   const declared = Number(req.headers["content-length"] ?? NaN);
-  if (Number.isFinite(declared) && declared > UPLOAD_LIMITS.maxFileBytes) {
-    json(res, 413, { error: `a file can be at most ${UPLOAD_LIMITS.maxFileBytes / 1024 / 1024} MB` });
+  if (Number.isFinite(declared) && declared > limits.maxFileBytes) {
+    tooLarge();
     req.resume();
     return;
   }
-  const chunks: Buffer[] = [];
+  let part: string, fd: number, discard: () => void;
+  try { ({ path: part, fd, discard } = createPartFile(join(getAgendHome(), "workspaces", instance, "inbox"))); } catch (err) {
+    ctx.logger.error({ err: (err as Error).message, instance }, "Web upload could not be stored");
+    json(res, 500, { error: "the file could not be stored" });
+    req.resume();
+    return;
+  }
+  const out = createWriteStream(part, { fd, autoClose: true });
+  const sniffer = new UploadSniffer();
   let size = 0;
-  let refused = false;
+  let over = false;              // ended without a stored file: no further write, and the part file goes
+  let stall: ReturnType<typeof setTimeout> | undefined;
+  const clocks = () => { clearTimeout(stall); clearTimeout(deadline); };
+  /** Stop here: answer (when the client is still there), remove the part file, and stop a body still arriving. */
+  const drop = (answer?: () => void) => {
+    if (over) return;
+    over = true;
+    clocks();
+    answer?.();
+    out.destroy();
+    discard();
+    if (!req.complete) req.destroy();
+  };
+  const armStall = () => { clearTimeout(stall); stall = setTimeout(() => drop(() => json(res, 408, { error: "the upload stalled — attach the file again" })), UPLOAD_STALL_MS); stall.unref?.(); };
+  const deadline = setTimeout(() => drop(() => json(res, 408, { error: "the upload took too long — attach the file again" })), UPLOAD_MAX_MS);
+  deadline.unref?.();
+  armStall();
+  out.on("error", (err) => { ctx.logger.error({ err: err.message, instance }, "Web upload could not be stored"); drop(() => json(res, 500, { error: "the file could not be stored" })); });
+  out.on("drain", () => { if (!over) req.resume?.(); });
   req.on("data", (c: Buffer) => {
-    if (refused) return;
+    if (over) return;
     size += c.length;
-    if (size > UPLOAD_LIMITS.maxFileBytes) {
-      refused = true;
-      json(res, 413, { error: `a file can be at most ${UPLOAD_LIMITS.maxFileBytes / 1024 / 1024} MB` });
-      req.destroy();
-      return;
-    }
-    chunks.push(c);
+    if (size > limits.maxFileBytes) { drop(tooLarge); return; }
+    armStall();
+    sniffer.push(c);
+    if (!out.write(c)) req.pause?.();
   });
-  req.on("error", () => { /* the client went away */ });
+  req.on("error", () => drop());                              // the client went away
+  req.on("close", () => { if (!over && req.complete === false) drop(); });
+  // The instance is checked again now the whole body is here: it may have been deleted (and its files
+  // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
+  // Still deliverable means: its IPC is up (a paused one is woken by the send) and it is still registered —
+  // in fleet.yaml, or as a ClassicBot room in classicBot.yaml. Asked when the body ends and again just before storing.
+  const deliverable = () => ctx.instanceIpcClients.has(instance) && (!!ctx.fleetConfig?.instances?.[instance] || ctx.isClassicInstance?.(instance) === true);
+  const gone = () => drop(() => json(res, 404, { error: `Instance not found: ${instance}` }));
   req.on("end", () => {
-      if (!permitWebContinuation(req, res, ctx)) return;
-    if (refused) return;
-    const bytes = Buffer.concat(chunks);
+    if (over) return;
+    clocks();
+    if (!permitWebContinuation(req, res, ctx)) { drop(); return; }
     const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");
-    const type = sniffUpload(bytes, name);
-    if (!type) { json(res, 415, { error: "the file is empty" }); return; }
-    // The instance is checked again now the whole body is here: it may have been deleted (and its files
-    // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
-    // Still deliverable means: its IPC is up (a paused one is woken by the send) and it is still registered —
-    // in fleet.yaml, or as a ClassicBot room in classicBot.yaml.
-    const registered = !!ctx.fleetConfig?.instances?.[instance] || ctx.isClassicInstance?.(instance) === true;
-    if (!ctx.instanceIpcClients.has(instance) || !registered) {
-      json(res, 404, { error: `Instance not found: ${instance}` });
-      return;
-    }
-    try {
-      const entry = ctx.webFiles!.storeUpload({ instance, inboxDir: join(getAgendHome(), "workspaces", instance, "inbox"), bytes, name, type });
-      json(res, 200, publicAttachment(entry));
-    } catch (err) {
-      ctx.logger.error({ err: (err as Error).message, instance }, "Web upload could not be stored");
-      json(res, 500, { error: "the file could not be stored" });
-    }
+    const type = sniffer.result(name);
+    if (!type) { drop(() => json(res, 415, { error: "the file is empty" })); return; }
+    if (!deliverable()) { gone(); return; }
+    out.end(() => {
+      if (over) return;
+      if (!deliverable()) { gone(); return; }
+      over = true;
+      try {
+        const entry = ctx.webFiles!.storeUploadedFile({ instance, partPath: part, name, type });
+        json(res, 200, publicAttachment(entry));
+      } catch (err) {
+        discard();
+        ctx.logger.error({ err: (err as Error).message, instance }, "Web upload could not be stored");
+        json(res, 500, { error: "the file could not be stored" });
+      }
+    });
   });
 }
 
@@ -1596,7 +1642,7 @@ export interface AppShellContext {
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
 }
@@ -1673,6 +1719,9 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
+    // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
+    // checks before sending a file, and the numbers its words say. The server checks again on every upload.
+    + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`
     // #1770: the fleet's zone (chat-logs' and fleet.log's), in which the chat reads its message times and days.
     + ` data-fleet-tz="${attr(resolveTz())}"`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.

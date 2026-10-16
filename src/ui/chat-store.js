@@ -269,7 +269,7 @@ export function createChatStore(deps) {
     const inFlight = s.inFlightFiles[target] || [];
     const res = R().checkFiles(inFlight.concat(s.pendingFiles[target] || []), [...(list || [])]);
     s.pendingFiles[target] = res.kept.slice(inFlight.length);
-    for (const x of res.rejected) deps.toast(`${x.name}: ${t(`chat.file_${x.reason.replace(/-/g, "_")}`)}`, false);
+    for (const x of res.rejected) { const why = R().fileRejection(x.reason); deps.toast(`${x.name}: ${t(why.key, ...why.values)}`, false); }
     changed(target);
   }
   function removeFile(target, index) { (s.pendingFiles[target] || []).splice(index, 1); changed(target); }

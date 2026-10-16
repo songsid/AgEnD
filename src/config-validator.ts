@@ -4,6 +4,7 @@ import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
 import { hostnameOf } from "./web-host-guard.js";
+import { mbText, PUBLIC_LINK_MAX_FILE_BYTES, UPLOAD_LIMITS, UPLOAD_MB_RANGE } from "./web-upload.js";
 import { previewOriginProblem } from "./web-preview.js";
 import { DEFAULT_SESSION_POLICY, LOCAL_SESSION_HOURS } from "./web-session.js";
 import { existsSync } from "node:fs";
@@ -26,7 +27,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["public_link", "echo_to_channel", "usage_panel", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "upload_max_file_mb", "upload_max_total_mb"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -415,6 +416,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if (problem) err("web.preview_origin", problem);
     }
     if (config.web.session !== undefined) validateWebSession(config.web.session, err);
+    validateUploadLimits(config.web, warn);
     if (config.web.allowed_hosts !== undefined) {
       if (!Array.isArray(config.web.allowed_hosts)) {
         err("web.allowed_hosts", "must be a list of host names");
@@ -582,6 +584,27 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
  * as the store applies it (localSessionPolicy cuts it) — so only an idle_hours that is SET can exceed the limit (#1670:
  * with a 48 h idle default, `absolute_hours: 24` alone must stay valid).
  */
+/**
+ * #1937: the web chat's upload sizes — whole MB in UPLOAD_MB_RANGE. Warnings (so `agend doctor` and the fleet's start
+ * show them, #1879), each saying what applies: a value it cannot use (the default then), a per-file size above the
+ * per-message one (a file is held to the message's), and one above what the public link carries (it stays at that).
+ */
+function validateUploadLimits(web: Record<string, unknown>, warn: (path: string, message: string) => void): void {
+  const range = `a whole number of MB, ${UPLOAD_MB_RANGE.min}–${UPLOAD_MB_RANGE.max}`;
+  const ok = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= UPLOAD_MB_RANGE.min && v <= UPLOAD_MB_RANGE.max;
+  const file = web.upload_max_file_mb, total = web.upload_max_total_mb;
+  if (file !== undefined && !ok(file)) warn("web.upload_max_file_mb", `must be ${range} — ignored, the default ${mbText(UPLOAD_LIMITS.maxFileBytes)} MB applies`);
+  if (total !== undefined && !ok(total)) warn("web.upload_max_total_mb", `must be ${range} — ignored, the default ${mbText(UPLOAD_LIMITS.maxTotalBytes)} MB applies`);
+  // What applies (a value it cannot use is the default), as uploadLimits() reads it.
+  const fileMb = ok(file) ? file : UPLOAD_LIMITS.maxFileBytes / 1024 / 1024;
+  const totalMb = ok(total) ? total : UPLOAD_LIMITS.maxTotalBytes / 1024 / 1024;
+  if (fileMb > totalMb) warn("web.upload_max_file_mb", `is above web.upload_max_total_mb (${fileMb} > ${totalMb}): one file can be at most ${totalMb} MB`);
+  const publicMb = PUBLIC_LINK_MAX_FILE_BYTES / 1024 / 1024;
+  if (Math.min(fileMb, totalMb) > publicMb) {
+    warn("web.upload_max_file_mb", `over the public link a file stays at ${publicMb} MB (a Cloudflare quick tunnel carries about 100 MB per request)`);
+  }
+}
+
 function validateWebSession(session: unknown, err: (path: string, message: string) => void): void {
   if (!isObj(session)) { err("web.session", "must be a mapping"); return; }
   for (const key of Object.keys(session)) {

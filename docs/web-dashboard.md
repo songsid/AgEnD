@@ -113,7 +113,12 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 ### Files and images
 - Attach with **📎**, by pasting, or by dropping files onto the chat (it shows where they will go while you drag). Each file waits above the composer as a chip with its name and size, and **✕** removes it.
 - A paste longer than **4,000 characters** is attached as a text file instead of filling the composer. **As text** on its chip puts it back into the composer.
-- Limits: up to **5 files per message**, **10 MB each**, **25 MB together**.
+- Limits: up to **5 files per message**, **50 MB each**, **100 MB together** by default.
+  - Change the two sizes with `web.upload_max_file_mb` and `web.upload_max_total_mb` in `fleet.yaml`: whole MB, 1–500. One file is never allowed more than a whole message. `agend reload` applies a change to the next upload; a page that is already open uses the new numbers after it reloads. `agend doctor` and the fleet's start warn about a value it cannot use.
+  - **Over the public link** a file is at most **95 MB**, whatever the config says: a Cloudflare quick tunnel carries about 100 MB per request, and each file is one upload. The refusal says so.
+  - The chat checks a file against these limits before sending it, and the server checks every upload again, by the bytes that actually arrive.
+  - A file uploads as it streams to disk, so big files do not use much memory. An upload that goes a minute without any data, or takes over 30 minutes, is dropped, and its partial file with it. Through the public link, the tunnel drops a connection that is silent for 15 seconds.
+  - The agent gets a path, so a file's size does not matter to AgEnD. Some agent CLIs may still refuse to read a very large text file.
 - Types: **any file**, as in Discord and Telegram. The type is read from the file itself, not from its name. PNG, JPEG, GIF and WebP are images; PDF and UTF-8 text are kept as such. Anything else (an archive, an office file, a program, HTML, SVG …) is stored under its own extension (lower-case letters and digits, else `.bin`), and in the chat it is only ever a download, never opened in the page.
 - The agent receives files exactly as from Telegram: the file lands in the instance's workspace inbox (`<AGEND_HOME>/workspaces/<instance>/inbox`), with an `[📷 Image: …]` / `[📎 File: …]` line.
 - Files the agent attaches to its reply show in the chat. Images show inline; anything else is a download, never opened in the page.

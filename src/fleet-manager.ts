@@ -7,7 +7,7 @@ import { SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileRes
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { gatewayRequestContext } from "./web-request-context.js";
-import { createPublicWebGateway } from "./public-web-gateway.js";
+import { createPublicWebGateway, PUBLIC_GATEWAY_RECEIVE_MS } from "./public-web-gateway.js";
 import { handleWebIconRequest } from "./web-icons.js";
 import { trackWebServer, type WebServerDrain } from "./web-server-drain.js";
 import { renderPublicLinkProgress, ThrottledMessageEditor, type PublicLinkProgress } from "./public-link-progress.js";
@@ -196,7 +196,7 @@ import type { WebPerson as WebPersonView } from "./web-api.js";
 import { ReplyButtonStore, parseReplyButtons, replyButtonClickText, replyButtonsFallbackText, REPLY_BUTTON_PREFIX } from "./reply-buttons.js";
 import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-controller.js";
 import { parsePoll, type PollRender } from "./reply-polls.js";
-import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
+import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUploads, UPLOAD_REQUEST_TIMEOUT_MS, uploadLimits, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
 import { handleViewRequest, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
@@ -1230,7 +1230,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1565: the web chat history's files (set at fleet start, once the home and the instances are known). */
   private webChatStore: WebChatDiskStore | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
-  readonly webFiles = new WebFileLedger();
+  // #1937: the upload limits are the config's, read on each use (agend reload applies a change to the next upload).
+  readonly webFiles = new WebFileLedger({ limits: () => uploadLimits(this.fleetConfig?.web) });
   /** #1770: per instance, its last web reply still copying its files — the next one is shown after it, in order. */
   private readonly webReplyOrder = new Map<string, Promise<void>>();
   /** #1770: an instance's web-files byte cap (a field, so a test can make it small). */
@@ -19941,6 +19942,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** Shared handler dispatcher; gateway admission is enforced by its separate listener. */
   private dispatchWebHttp(req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse, port: number, closing = false): void {
     try {
+      // #1937: the listeners allow an upload long enough for a slow link; every other request keeps its old bound on
+      // arriving whole — 10 s through the public link's gateway, Node's 300 s here.
+      if (!isUploadRequest(req)) limitRequestReceive(req, gatewayRequestContext(req) ? PUBLIC_GATEWAY_RECEIVE_MS : 300_000);
       res.setHeader("Content-Type", "application/json");
       // No Referer to a tunnel host, an upstream proxy, or any page linked from
       // the panel — the dashboard URL is itself a credential-bearing address.
@@ -20265,6 +20269,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!this.webToken || !this.webSessions) this.initializeWebAuthTokens();
 
     const server = createServer((req, res) => this.dispatchWebHttp(req, res, port, drain.closing));
+    // #1937: Node's default (300 s to receive a request) would cut a large upload on a slow link. The listener allows
+    // more; the upload route keeps its own clocks (no byte for a minute, or 30 minutes in all), and every other request
+    // keeps the old 300 s (limitRequestReceive in dispatchWebHttp).
+    server.requestTimeout = UPLOAD_REQUEST_TIMEOUT_MS;
     const drain = trackWebServer(server);
     this.healthServer = server;
     this.healthServerDrain = drain;
