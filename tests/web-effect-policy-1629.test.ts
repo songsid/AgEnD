@@ -19,7 +19,7 @@ describe("#1629 effect signals", () => {
     expect(event).toEqual({v:1,type,ts:now,...(["state","reply","mention"].includes(type)?{instance:"own"}:{}),...values});
     expect(P.validEffectEvent(event,"own")).toBe(true);
     expect(workerSignal(event,"own")).toBe(true);
-    expect(P.maySendEffectEvent(event,{instance:"own",wants:[type]})).toBe(true);
+    expect(P.maySendEffectEvent(event,{instance:"own",wants:[type]})).toBe(type!=="mention");
     expect(P.maySendEffectEvent({...event,text:"secret"},{instance:"own",wants:[type]})).toBe(false);
   });
   it("binds the exact current instance before sending and doesn't read message content",()=>{
@@ -136,8 +136,8 @@ describe("#1629 final independent scope and boundary controls",()=>{
   const unbound=P.effectEvent(type,fields,null,now),bound=P.effectEvent(type,fields,"own",now);
   expect(P.maySendEffectEvent(unbound,{instance:"own",wants:[type]})).toBe(false);
   expect(P.maySendEffectEvent(bound,{instance:null,wants:[type]})).toBe(false);
-  expect(P.maySendEffectEvent(unbound,{instance:null,wants:[type]})).toBe(true);
-  expect(P.maySendEffectEvent(bound,{instance:"own",wants:[type]})).toBe(true);
+  expect(P.maySendEffectEvent(unbound,{instance:null,wants:[type]})).toBe(type!=="mention");
+  expect(P.maySendEffectEvent(bound,{instance:"own",wants:[type]})).toBe(type!=="mention");
  });
  it("rounds right and bottom outward even below a half pixel",()=>{
   expect(P.effectTrustClip(frame,[{x:119.1,y:229.1,width:10.1,height:20.1}]).holes).toEqual([{x:11,y:21,width:27,height:37}]);

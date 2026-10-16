@@ -27,6 +27,11 @@ function rig(options = {}, raw = render()) {
   return { api, host, root, frame, channels, timers, ready, removed, hello, port, raw, at(t: number) { now = t; } };
 }
 describe("#1629 owned parent effect frame", () => {
+  it("never sends reserved mention even when the manifest wants it", () => {
+    const raw = render(); raw.wants = ["mention", "reply"]; const h = rig({}, raw); h.hello(); h.port({ type: "ready" });
+    expect(h.api.send({ v: 1, type: "mention", ts: 1, instance: "own" })).toBe(false);
+    expect(h.api.send({ v: 1, type: "reply", ts: 1, instance: "own" })).toBe(true);
+  });
   it("mounts only the trusted effect path with sandbox and no inline styles", () => {
     const h = rig(); expect(h.api.ok).toBe(true);
     expect(h.frame.src).toBe("https://preview.example/effect");

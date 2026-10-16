@@ -214,3 +214,12 @@ playback.
 Visible menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects; a human placement
 does not bypass those host safety gates. Unknown stock layout refuses admission. A trusted foreground plane is
 deferred to #1940; do not keep reapplying an agent front while custom CSS is on, loading or unknown.
+
+
+## Effect event availability
+
+Canvas Worker manifests may reserve `wants: ["mention"]`, but **mention is reserved and never emitted in 2.3.0**.
+Do not build an effect that depends on it, infer mentions from reply text, or retry to obtain that signal. Provider-confirmed,
+viewer-scoped direct-ID mention pulses are deferred to [#1963](https://github.com/songsid/AgEnD/issues/1963).
+Reply pulses are transient: only a newly accepted live SSE agent reply can qualify. History, reconnect replay and polling
+never create a pulse; a live receipt delayed over five seconds is dropped. No reply text, author or mention targets reach effects.

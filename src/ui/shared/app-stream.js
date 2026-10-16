@@ -30,7 +30,7 @@
 // - suspend()/resume(): the page is leaving (pagehide) / came back from the back-forward cache.
 
 // #1218: steps_tick — an instance's transcript moved while a Log watches it (SSE only: a poll page asks the Log itself).
-const EVENTS = ["status", "message", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "steps_tick", "clock"];
+const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "steps_tick", "clock"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed
@@ -68,17 +68,20 @@ export function createStream(opts) {
     const set = listeners.get(name);
     if (set) for (const fn of [...set]) { try { fn(data, extra); } catch (e) { if (env.console) env.console.error(e); } }
   }
+  function sseIngress() {
+    try { return Object.freeze({ source: "sse", receivedAt: now() }); } catch { return undefined; }
+  }
   function setConnection(c) { if (state.connection !== c) { state.connection = c; emit("connection", c); } }
   function setHydration(h) { if (state.hydration !== h) { state.hydration = h; emit("hydration", h); } }
 
   /** A live event: delivered now, or held (in order) while a catch-up snapshot is on its way. */
-  function live(name, data, cursor) {
+  function live(name, data, cursor, extra) {
     if (held) {
-      if (held.length < MAX_HELD) held.push([name, data, cursor]); else held.overflow = true;
+      if (held.length < MAX_HELD) held.push([name, data, cursor, extra]); else held.overflow = true;
       return;
     }
     if (cursor) state.cursor = cursor;
-    emit(name, data);
+    emit(name, data, extra);
     // A full set of open prompts arrives on every (re)connect: whatever a failed catch-up missed is current again.
     if (name === "prompts" && (state.hydration === "failed" || state.hydration === "retrying") && !catching) setHydration("ok");
   }
@@ -86,7 +89,7 @@ export function createStream(opts) {
     const list = held;
     held = null;
     if (!list) return false;
-    for (const [name, data, cursor] of list) { if (cursor) state.cursor = cursor; emit(name, data); }
+    for (const [name, data, cursor, extra] of list) { if (cursor) state.cursor = cursor; emit(name, data, extra); }
     return !!list.overflow;
   }
 
@@ -116,7 +119,7 @@ export function createStream(opts) {
         if (closed || mine !== pollSeq) return false;
         if (typeof d.now === "number") emit("clock", { now: d.now });   // #1823: read just now, handed over at once
         if (d.status) emit("status", d.status);
-        for (const m of d.messages || []) emit("message", m);
+        for (const m of d.messages || []) emit("message", m, { source: "poll" });
         if (typeof d.cursor === "string") state.cursor = d.cursor;
         if (Array.isArray(d.deliveries)) emit("deliveries", d.deliveries);
         if (Array.isArray(d.prompts)) emit("prompts", d.prompts);
@@ -206,13 +209,15 @@ export function createStream(opts) {
     for (const name of EVENTS) {
       es.addEventListener(name, (e) => {
         if (es !== sse) return;                          // a stream this page already let go of
+        // Snapshot before parsing or any synchronous connection/hydration observer can consume time.
+        const ingress = name === "message" || name === "agent_reply_live" ? sseIngress() : undefined;
         let data;
         try { data = JSON.parse(e.data); } catch { return; }
         if (!spoke) { spoke = true; alive(); if (again) catchUp(); }
         else alive();
         // #1823: a clock reading is about now, not about order: it is never held behind a catch-up (it would be stale).
         if (name === "clock") { emit(name, data); return; }
-        live(name, data, name === "message" ? e.lastEventId : null);
+        live(name, data, name === "message" ? e.lastEventId : null, ingress);
       });
     }
     es.onerror = () => {

@@ -60,6 +60,12 @@ function rig(options: any = {}) {
 }
 afterEach(() => { for (const a of M.APIs) a.dispose?.(); M.APIs.length = 0; M.frames.length = 0; M.calibrations.length = 0; M.geometries.length = 0; });
 describe("#1629 shared Canvas Worker registry", () => {
+  it("keeps mention reserved without consulting fields or sending to a ready frame", async () => {
+    const h = rig(); await h.admit(); const frame = h.frames()[0]; frame.ready(); frame.send.mockClear();
+    const getter = vi.fn(() => { throw Error("content"); }), fields = {}; Object.defineProperty(fields, "targets", { get: getter });
+    expect(h.api.publish("mention", fields, "own")).toBe(0); expect(frame.send).not.toHaveBeenCalled(); expect(getter).not.toHaveBeenCalled();
+    expect(h.api.publish("reply", {}, "own")).toBe(1);
+  });
   it("publishes one frozen live mount receipt after marker, factory and successful geometry", async () => {
     const h = rig(); await h.admit(); const owner = h.mount.mock.calls[0]![0];
     expect(h.mount).toHaveBeenCalledOnce(); expect(Object.isFrozen(owner)).toBe(true);

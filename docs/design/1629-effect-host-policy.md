@@ -27,3 +27,8 @@ Unknown, sparse, non-finite or excessive rectangles return failure. There are at
 Tests execute the real exported browser module, pair generated signals with the independent Worker validator, poison content getters, exercise both frame caps and deterministic queue ordering, and independently compare the padded rectangle union against pixel coverage. Mutation controls cover the changed contracts. These tests do not claim native CSS rendering, observer timing or a product registry; those remain integration smoke work.
 
 Rollback is reverting this unmounted module. There is no persistent state or migration.
+
+
+## Reserved mention trigger
+
+The `mention` codec/manifest kind remains reserved for compatibility, but the registry and independent final-send gate never emit it in 2.3.0. No text parsing or inferred target is permitted. Provider-confirmed direct-ID, viewer-scoped boolean pulses are deferred to [#1963](https://github.com/songsid/AgEnD/issues/1963). Worker subscriptions may name the reserved kind without receiving events.

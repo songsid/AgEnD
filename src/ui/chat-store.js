@@ -8,6 +8,7 @@
 // Requests and #1374: the history of an instance is read once per page, when a person first opens its chat (a
 // navigation — it counts as use, as the old click did). Coming back to it reads nothing; the stream keeps it current.
 import "./chat-render.js";
+import { createLiveAgentReplies } from "./chat-live-replies.js";
 
 const R = () => globalThis.AgendChatRender;
 
@@ -49,6 +50,7 @@ export function createChatStore(deps) {
   const pastedTexts = new WeakMap();
   const now = deps.now || (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const t = deps.t, tf = deps.t;
+  const liveReplies = createLiveAgentReplies(now);
 
   /** Tell subscribers what changed: `kind` "msgs" (the thread redraws) or "state" (everything else). */
   function changed(instance, kind = "state") { for (const fn of [...subs]) fn(instance, kind); }
@@ -91,8 +93,9 @@ export function createChatStore(deps) {
   function noteServerClock(c) {
     if (c && typeof c.now === "number" && Number.isFinite(c.now)) s.clockSkew = c.now - Date.now();
   }
-  function ingest(m) {
+  function ingest(m, extra) {
     if (!m || typeof m.instance !== "string") return;
+    liveReplies.message(m, extra);
     const before = s.msgs[m.instance];
     s.msgs[m.instance] = R().mergeMessages(before, [m], 500);
     if (m.instance === s.current && s.msgs[m.instance] !== before && m.role !== "status" && !isUser(m, m.instance) && (s.msgs[m.instance] || []).length > (before || []).length) deps.announce(tf("chat.a11yReplied", m.sender));
@@ -139,6 +142,7 @@ export function createChatStore(deps) {
       const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=200`);
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
+      for (const m of r.messages) liveReplies.message(m);
       s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
       changed(name, "msgs");
     } catch { s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
@@ -350,6 +354,7 @@ export function createChatStore(deps) {
     stream.on("status", applyStatus);
     stream.on("activity", applyActivity);
     stream.on("message", ingest);
+    stream.on("agent_reply_live", liveReplies.receipt);
     stream.on("delivery", (d) => applyDeliveries([d]));
     stream.on("deliveries", applyDeliveries);
     stream.on("prompt", onPrompt);
@@ -363,6 +368,7 @@ export function createChatStore(deps) {
     state: s,
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     setCurrent(name) { s.current = name; },
+    onAgentReply: liveReplies.subscribe,
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
