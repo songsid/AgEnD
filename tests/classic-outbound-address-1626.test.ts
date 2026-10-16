@@ -82,6 +82,9 @@ const samples: Record<string, Record<string, unknown>> = {
   get_web_theme: {}, set_web_theme: { set: { font: "mono" } }, set_web_theme_asset: { slot: "avatar", file: "a.png" }, reset_web_theme: {},
   get_web_appearance: {}, preview_web_appearance: { modes: ["dark"] },
   set_web_widget: { slot: "details", data: { prs: 1 } }, remove_web_widget: { slot: "details" },
+  upload_web_effect: { dir: "./effect" }, list_web_effects: {},
+  preview_web_effect: { id: "a".repeat(32) }, profile_web_effect: { id: "a".repeat(32) },
+  apply_web_effect: { id: "a".repeat(32), params: { density: 2 } }, remove_web_effect: {}, delete_web_effect: { id: "a".repeat(32) },
   release_repo: { path: "/fixture/worktree" }, deploy_template: { template: "test", directory: "/fixture/repo" },
   teardown_deployment: { name: "test" }, list_deployments: {},
 };
