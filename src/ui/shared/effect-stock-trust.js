@@ -8,16 +8,42 @@ const SPECS = [
   ["menu", ".shell .menu-list[role=menu]"], ["session", ".shell .side-foot .pop[role=dialog]"],
   ["popover", ".shell .prefs-pop > .pop"], ["dialog", ".shell dialog.dlg"], ["lightbox", ".shell dialog.lb"],
   ["tour", "body > #tour.tour[role=dialog]"], ["keep", ".shell > .oc-keep"], ["toast", ".shell > .toasts"],
-  ["confirmation", ".shell > .pending-stack"], ["preview", ".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider"],
+  ["confirmation", ".shell > .pending-stack, .shell .p-settings > .panel-body > .col > .pending-stack.inline"], ["preview", ".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider"],
   ["preview-menu", ".shell .thread details.pv-menu"], ["palette", ".shell .dock .cmd-palette"],
   ["drop", ".shell .p-chat > .drop-overlay"],
   ["thread-control", ".shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner"],
   ["link", ".shell .thread .md a"], ["attachment", ".shell .thread .atts"], ["media", ".shell .thread .att-media"],
+  ["panel-navigation", ".shell .p-fleet > .seg, .shell .p-settings > .seg"],
+  ["panel-content", ".shell .p-fleet > .panel-body, .shell .p-needs > .panel-body, .shell .p-settings > .panel-body, .shell .p-log > .panel-body, .shell .p-details > .panel-body, .shell .p-view > .panel-body, .shell .p-view > .v-term, .shell .p-view > .v-id, .shell .p-view > .v-card"],
+  ["panel-controls", ".shell .p-log > .log-bar, .shell .p-settings > .s-pending"],
   ["session-ended", "body > .agend-session-ended[role=alert]"],
 ];
 export const STOCK_TRUST_INVENTORY = Object.freeze(SPECS.map(([kind, selector]) => Object.freeze({ kind, selector })));
 const STRUCTURAL = ["html", "body", "#app", "#app > .shell", ".shell > .main", ".main > .p-chat", ".p-chat > .chat-split", ".chat-split > .chat-main"];
 const CONTENT = [".main > .conn", ".p-chat > .panel-head", ".p-chat > .chat-card", ".p-chat > .aw-chat_header", ".chat-main > .scroller", ".chat-main > .dock", ".sidebar > .side-head", ".sidebar > .side-nav", ".sidebar > .side-section", ".sidebar > .side-widget", ".sidebar > .side-foot", ".u-rail > .u-rail-head", ".u-rail > .u-rail-body"];
+// Closed producer/topology inventory. Bare Outlet loading/error panels never become an effect surface.
+const PANELS = Object.freeze({
+  fleet: { required: [".panel-head", ".seg", ".panel-body"], optional: [] },
+  needs: { required: [".panel-head", ".panel-body"], optional: [] },
+  settings: { required: [".panel-head", ".seg", ".panel-body"], optional: [".s-pending"] },
+  log: { required: [".panel-head", ".panel-body"], optional: [".log-bar"] },
+  details: { required: [".panel-head", ".panel-body"], optional: [] },
+  view: { required: [".panel-head"], optional: [".panel-body", ".v-term", ".v-id", ".v-card"] },
+});
+function panelSurface(doc, chat) {
+  if (chat) return { panel: chat, structural: STRUCTURAL, content: CONTENT, kind: "chat" };
+  const panel = doc.querySelector(".main > .panel"), kind = panel?.getAttribute("data-effect-panel"), spec = Object.hasOwn(PANELS, kind) ? PANELS[kind] : null;
+  if (!spec || panel.className !== `panel p-${kind}` || [...panel.childNodes].some(node => node.nodeType === 3 && node.textContent.trim())) return null;
+  const children = [...panel.children], count = selector => children.filter(el => el.matches(selector)).length;
+  if (spec.required.some(selector => count(selector) !== 1) || spec.optional.some(selector => count(selector) > 1)
+    || children.some(el => !el.matches([...spec.required, ...spec.optional, "dialog.dlg", "dialog.lb"].join(",")))) return null;
+  if (kind === "view" && !(count(".panel-body") === 1 && !count(".v-term") && !count(".v-id") && !count(".v-card")
+    || !count(".panel-body") && count(".v-term") === 1 && count(".v-card") === 1)) return null;
+  const prefix = `.p-${kind} > `;
+  return { panel, kind, structural: [...STRUCTURAL.slice(0, 5), `.main > .p-${kind}`],
+    content: [...CONTENT.filter(selector => !selector.startsWith(".p-chat") && !selector.startsWith(".chat-main")),
+      ...[...spec.required, ...spec.optional].map(selector => prefix + selector)] };
+}
 const BARRIERS = '[role=menu],[role=dialog],[role=alertdialog],[role=listbox],dialog[open],details[open],.toast,.pending-stack:not(.inline),.oc-keep,.shell.sb-open,.p-chat.dragging,.agend-session-ended,audio[controls],video[controls]';
 const finite = n => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 1e7;
 const none = x => x === "" || x === undefined || x === "none";
@@ -86,16 +112,18 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
   const fail = reason => ({ ok: false, reason, rects: [], front: false });
   try {
     const doc = host.document, app = doc.getElementById("app"), shell = doc.querySelector("#app > .shell"), chat = doc.querySelector(".main > .p-chat");
-    if (!app || app.parentElement !== doc.body || !shell || !chat || doc.querySelectorAll("#app > .shell").length !== 1 || doc.querySelectorAll(".main > .panel").length !== 1) return fail("stock_route_unknown");
+    if (!app || app.parentElement !== doc.body || !shell || doc.querySelectorAll("#app > .shell").length !== 1 || doc.querySelectorAll(".main > .panel").length !== 1) return fail("stock_route_unknown");
+    const surface = panelSurface(doc, chat);
+    if (!surface) return fail("stock_route_unknown");
     if (frameRoot && (frameRoot.ownerDocument !== doc || frameRoot.parentElement !== doc.body || !frameRoot.classList.contains("agend-effect-layer") || !neutral(host.getComputedStyle(frameRoot)) || !["static", "relative"].includes(host.getComputedStyle(frameRoot).position) || host.getComputedStyle(frameRoot).zIndex !== "auto")) return fail("stock_frame_root_unknown");
-    for (const selector of STRUCTURAL) {
+    for (const selector of surface.structural) {
       const el = doc.querySelector(selector), s = el && host.getComputedStyle(el);
       if (!el || el.isConnected !== true || !neutral(s) || s.zIndex !== "auto" || !["static", "relative"].includes(s.position)) return fail("stock_order_unknown");
     }
-    for (const selector of CONTENT) for (const el of doc.querySelectorAll(selector)) {
+    for (const selector of surface.content) for (const el of doc.querySelectorAll(selector)) {
       if (!visible(host, el)) { const children = [...el.querySelectorAll("*")]; if (children.length > 4096 || children.some(child => visible(host, child))) return fail("stock_order_unknown"); continue; }
       const s = host.getComputedStyle(el);
-      if (s.position !== "relative" || s.zIndex !== (selector === ".p-chat > .panel-head" ? "2" : "1") || !neutral(s, stockWidgetMask(host, selector, s))) return fail("stock_order_unknown");
+      if (s.position !== (selector === ".p-settings > .s-pending" ? "sticky" : "relative") || s.zIndex !== (selector.endsWith(" > .panel-head") ? "2" : "1") || !neutral(s, stockWidgetMask(host, selector, s))) return fail("stock_order_unknown");
     }
     // The resize separator has no bounded content parent; prove its own level and neutral sidebar/usage ancestors.
     for (const el of doc.querySelectorAll(".shell > .sidebar, .shell > .u-rail")) {
@@ -119,7 +147,7 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
       if (el.ownerDocument !== doc || el.isConnected !== true || el.getAttribute("data-trust") !== kind) return fail("stock_trust_unknown");
       expected.add(el);
     }
-    if (marked.some(el => !expected.has(el)) || !chat.querySelector('.dock[data-trust="composer"]') || !chat.querySelector('.panel-head[data-trust="header"]')) return fail("stock_trust_unknown");
+    if (marked.some(el => !expected.has(el)) || surface.kind === "chat" && !chat.querySelector('.dock[data-trust="composer"]') || !surface.panel.querySelector('.panel-head[data-trust="header"]')) return fail("stock_trust_unknown");
     for (const el of marked) {
       const bounds = protectedPaint(host, el, budget); if (!bounds) return fail("stock_paint_unknown");
       if (bounds.width && bounds.height) rects.push(bounds);

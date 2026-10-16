@@ -200,10 +200,10 @@ export function LogPanel({ route, navKey }) {
   const name = route.instance;
   const inst = app.instances.find((i) => i.name === name) || null;
   useEffect(() => { setTitle(`${name} · ${t("app.log")}`); }, [name, navKey]);
-  if (!app.ready) return html`<div class="panel p-log"><${PanelHeader} title=${name} /><div class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
+  if (!app.ready) return html`<div data-effect-panel="log" class="panel p-log"><${PanelHeader} title=${name} /><div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
   if (!inst) {
-    return html`<div class="panel p-log"><${PanelHeader} title=${name} />
-      <div class="panel-body center"><${Empty} icon="alert" title=${t("chat.notFound", name)} hint=${t("chat.notFoundHint")}
+    return html`<div data-effect-panel="log" class="panel p-log"><${PanelHeader} title=${name} />
+      <div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${t("chat.notFound", name)} hint=${t("chat.notFoundHint")}
         action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} /></div></div>`;
   }
   return html`<${LogView} key=${name} name=${name} inst=${inst} navKey=${navKey} exec=${app.exec[name]}
@@ -372,13 +372,13 @@ function LogView({ name, inst, navKey, exec, awaiting }) {
       ${items.length ? html`<ol class="log-list" role="log" aria-label=${t("app.log")}>${items.map((x, i) => html`<${Row} key=${`${x.kind}:${x.id}`} x=${x} prev=${items[i - 1]} />`)}</ol>`
         : html`<p class="note log-empty">${tl("empty")}</p>`}`;
   }
-  const tools = state.phase === "on" ? html`<div class="log-bar" role="group" aria-label=${tl("filter")}>
+  const tools = state.phase === "on" ? html`<div data-trust="panel-controls" class="log-bar" role="group" aria-label=${tl("filter")}>
       ${["all", "tools", "errors"].map((k) => html`<button key=${k} type="button" class=${`chip-btn${filter === k ? " on" : ""}`} aria-pressed=${filter === k ? "true" : "false"} onClick=${() => setFilter(k)}>${tl(k)}</button>`)}
       <span class="grow"></span><span class="log-live" title=${tl("live")}><span class="dot running" aria-hidden="true"></span>${tl("live")}</span></div>` : null;
-  return html`<div class="panel p-log">
+  return html`<div data-effect-panel="log" class="panel p-log">
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="log" />`}><${HeaderTools} navKey=${navKey} /><${HeaderSlot} /></${PanelHeader}>
     ${tools}
-    <div class="panel-body log-body" ref=${scroller} onScroll=${onScroll}><div class="col log-col">${content}</div></div>
+    <div data-trust="panel-content" class="panel-body log-body" ref=${scroller} onScroll=${onScroll}><div class="col log-col">${content}</div></div>
   </div>`;
 }
 

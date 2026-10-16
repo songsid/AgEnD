@@ -123,9 +123,9 @@ export function NeedsPanel({ navKey }) {
   useEffect(() => { if (owner) return owner.subscribe(() => tick((n) => n + 1)); return undefined; }, [owner, lease]);
   const groups = groupNeeds(items);
   const nowMs = Date.now();
-  return html`<div class="panel p-needs">
+  return html`<div data-effect-panel="needs" class="panel p-needs">
     <${PanelHeader} title=${tn("title")} sub=${items.length ? t("app.needsCount", items.length) : null} />
-    <div class="panel-body"><div class="col">
+    <div data-trust="panel-content" class="panel-body"><div class="col">
       ${!items.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
         : groups.map((g) => html`<section key=${g.instance} class="n-group" aria-label=${g.instance}>
           <h2 class="n-group-head"><a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a></h2>
