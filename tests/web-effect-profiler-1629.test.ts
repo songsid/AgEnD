@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 const P = await import(new URL("../src/ui/shared/effect-profiler.js", import.meta.url).href);
 const effectId = "a".repeat(32);
 const page = { hidden: false, reducedMotion: false, saveData: false, show: true };
-function rig(device = "standard", longTasksSupported = true) {
+function rig(device = "standard", longTasksSupported = true, baselineFps = 120) {
   let now = 0;
-  const budget = new P.EffectBudget({ device, longTasksSupported, clock: () => now });
+  const budget = new P.EffectBudget({ device, baselineFps, longTasksSupported, clock: () => now });
   return { budget, at(t: number) { now = t; }, frames(from: number, to: number, fps: number) {
     for (let i = 1; i <= Math.floor((to - from) / 1000 * fps); i++) { now = from + i * 1000 / fps; budget.frame(); }
     now = to;
@@ -22,8 +22,20 @@ describe("#1629 host-only effect profiler", () => {
     expect(P.EFFECT_BUDGETS).toEqual({ standard: { fps: 55, longTaskMsPerSecond: 50 }, constrained: { fps: 50, longTaskMsPerSecond: 25 } });
     expect(Object.isFrozen(P.EFFECT_BUDGETS.standard)).toBe(true);
     expect(() => new P.EffectBudget({ device: "fast" })).toThrow(TypeError);
-    expect(() => new P.EffectBudget({ device: "standard", longTasksSupported: "yes" })).toThrow(TypeError);
-    expect(() => new P.EffectBudget({ device: "standard", clock: 1 })).toThrow(TypeError);
+    expect(() => new P.EffectBudget({ device: "standard", baselineFps: 120, longTasksSupported: "yes" })).toThrow(TypeError);
+    expect(() => new P.EffectBudget({ device: "standard", baselineFps: 120, clock: 1 })).toThrow(TypeError);
+  });
+  it.each([["standard", 60, 54], ["standard", 50, 45], ["standard", 30, 27], ["constrained", 60, 50], ["constrained", 50, 45], ["constrained", 30, 27]])("keeps an idle %s host at %sHz running using its measured floor %s", (device, hz, floor) => {
+    const h = rig(device as string, true, hz as number); h.frames(1000, 3000, hz as number);
+    for (let t = 3000; t <= 8000; t += 1000) {
+      if (t > 3000) h.frames(t - 1000, t, hz as number);
+      expect(h.budget.poll()).toMatchObject({ verdict: "ok", remove: false, metrics: { fpsFloor: floor } });
+    }
+    const bad = rig(device as string, true, hz as number); bad.frames(1000, 3000, (floor as number) - 0.5);
+    expect(bad.budget.poll()).toMatchObject({ verdict: "degraded", metrics: { fpsFloor: floor } });
+  });
+  it.each([undefined, null, 0, -1, NaN, Infinity, "60", 1001])("refuses unknown host calibration %s instead of falling back to a fixed floor", baselineFps => {
+    expect(() => new P.EffectBudget({ device: "standard", baselineFps })).toThrow(TypeError);
   });
   it("ignores startup, waits for a full window, degrades then pauses at 3/4/5 seconds", () => {
     const h = rig("constrained");
@@ -104,6 +116,46 @@ describe("#1629 host-only effect profiler", () => {
     const late = rig(); late.budget.gates({ ...page, hidden: true }); late.at(10000);
     expect(late.budget.gates(page).remove).toBe(true);
   });
+  it("does not renew hidden time on repeated hidden reports and removes exactly at ten seconds", () => {
+    const h = rig(); h.budget.gates({ ...page, hidden: true });
+    for (let t = 1000; t < 10000; t += 1000) { h.at(t); expect(h.budget.gates({ ...page, hidden: true }).remove).toBe(false); }
+    h.at(10000); expect(h.budget.gates({ ...page, hidden: true })).toMatchObject({ remove: true, reason: "hidden" });
+  });
+  it("clears bad streak, overflow and frames when returning visible", () => {
+    const bad = rig(); bad.at(3000); bad.budget.poll(); bad.at(4000); bad.budget.poll();
+    bad.budget.gates({ ...page, hidden: true }); bad.at(5000);
+    expect(bad.budget.gates(page).badWindows).toBe(0);
+    const full = rig(); full.frames(1000, 3000, 1100);
+    expect(full.budget.frames.length).toBe(2048); expect(full.budget.overflow).toBe(true);
+    full.budget.gates({ ...page, hidden: true }); full.at(3001); full.budget.gates(page);
+    expect(full.budget.frames).toEqual([]); expect(full.budget.overflow).toBe(false);
+    full.frames(4001, 6001, 60); expect(full.budget.poll().verdict).toBe("ok");
+  });
+  it("retires task intervals over a long healthy run without hitting the retained-task cap", () => {
+    const h = rig(); h.frames(1000, 3000, 60);
+    for (let t = 3000; t < 603000; t += 2000) {
+      if (t > 3000) h.frames(t - 2000, t, 60);
+      expect(h.budget.longTask(t - 100, 50)).toBe(true);
+      expect(h.budget.poll().verdict).toBe("ok"); expect(h.budget.tasks.length).toBeLessThanOrEqual(1);
+    }
+  });
+  it("deduplicates one rAF timestamp and excludes the exact left window boundary", () => {
+    const h = rig();
+    for (let t = 1000; t <= 3000; t += 20) { h.at(t); h.budget.frame(); h.budget.frame(); }
+    expect(h.budget.poll()).toMatchObject({ verdict: "degraded", metrics: { hostFps: 50 } });
+  });
+  it("accepts exactly the long-task duration boundaries and clears overflow after evaluation", () => {
+    const h = rig(); h.at(61000); expect(h.budget.longTask(1000, 60000)).toBe(true);
+    const low = rig(); low.at(2000); expect(low.budget.longTask(1900, 50)).toBe(true);
+    const overflow = rig(); overflow.frames(1000, 3000, 1100);
+    expect(overflow.budget.poll().verdict).toBe("degraded"); expect(overflow.budget.overflow).toBe(false);
+    overflow.frames(3000, 5000, 60); expect(overflow.budget.poll()).toMatchObject({ badWindows: 0, remove: false });
+  });
+  it("keeps the original pause cause even after an unrelated late gate or clock failure", () => {
+    const h = rig(); for (const t of [3000, 4000, 5000]) { h.at(t); h.budget.poll(); }
+    expect(h.budget.gates({})).toMatchObject({ reason: "host_budget", remove: true });
+    h.at(NaN); expect(h.budget.poll().reason).toBe("host_budget");
+  });
   it("restarts sampling after a short background stay rather than treating throttling as jank", () => {
     const h = rig(); h.at(3000); h.budget.poll();
     h.at(4000); h.budget.gates({ ...page, hidden: true });
@@ -128,10 +180,10 @@ describe("#1629 host-only effect profiler", () => {
   });
   it.each([NaN, Infinity, -1])("fails closed on unavailable clock %s", now => {
     const h = rig(); h.at(now); expect(h.budget.poll()).toMatchObject({ remove: true, reason: "clock_unavailable" });
-    expect(new P.EffectBudget({ device: "standard", clock: () => now }).snapshot().remove).toBe(true);
+    expect(new P.EffectBudget({ device: "standard", baselineFps: 120, clock: () => now }).snapshot().remove).toBe(true);
   });
   it("fails closed when the clock throws", () => {
-    expect(new P.EffectBudget({ device: "standard", clock: () => { throw Error("no clock"); } }).snapshot().remove).toBe(true);
+    expect(new P.EffectBudget({ device: "standard", baselineFps: 120, clock: () => { throw Error("no clock"); } }).snapshot().remove).toBe(true);
   });
   it("records load from the host clock only and returns independent snapshots", () => {
     const h = rig(); h.at(100); expect(h.budget.loaded().loadMs).toBe(100);
@@ -165,6 +217,11 @@ describe("#1629 per-content device pause history", () => {
     expect(P.recordEffectPause(h, 86400000).history).toMatchObject({ pauses: [1, 86400000], off: false });
     expect(h.pauses).toEqual([0, 1]);
     expect(P.recordEffectPause(h, 86399999).history.off).toBe(true);
+  });
+  it("bounds an already-full pause history when another pause is recorded", () => {
+    const h = { ...P.newEffectPauseHistory(effectId, "standard", 3), pauses: [1, 2, 3], off: true };
+    const r = P.recordEffectPause(h, 4); expect(r.history.pauses).toEqual([2, 3, 4]);
+    expect(P.recordEffectPause(r.history, 5).ok).toBe(true);
   });
   it("does not let a wall rollback expire pauses", () => {
     const h = { ...P.newEffectPauseHistory(effectId, "standard", 100000000), pauses: [99999999, 100000000] };

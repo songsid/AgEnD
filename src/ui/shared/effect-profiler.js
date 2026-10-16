@@ -11,9 +11,11 @@ const id = v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v);
 
 /** One host-owned mount. The registry must remove the frame when remove is true, never merely hide it. */
 export class EffectBudget {
-  constructor({ device, clock = () => performance.now(), longTasksSupported = false } = {}) {
-    if (!deviceClass(device) || typeof clock !== "function" || typeof longTasksSupported !== "boolean") throw new TypeError("effect budget options");
+  constructor({ device, baselineFps, clock = () => performance.now(), longTasksSupported = false } = {}) {
+    if (!deviceClass(device) || !finite(baselineFps) || baselineFps <= 0 || baselineFps > 1000 || typeof clock !== "function" || typeof longTasksSupported !== "boolean") throw new TypeError("effect budget options");
     this.device = device;
+    // Measured by the host while NO effects are mounted; never author-supplied or learned from a running effect.
+    this.fpsFloor = Math.min(EFFECT_BUDGETS[device].fps, baselineFps * 0.9);
     this.clock = clock;
     this.longTasksSupported = longTasksSupported;
     this.last = null;
@@ -38,6 +40,7 @@ export class EffectBudget {
     return now;
   }
   stop(reason = "stopped") {
+    if (this.verdict === "paused") return this.snapshot();
     this.verdict = "paused";
     this.reason = reason;
     this.frames = [];
@@ -120,9 +123,9 @@ export class EffectBudget {
     const hostMs = this.longTasksSupported ? sum(null) : null;
     const ownMs = this.longTasksSupported && this.tasks.some(t => t.attributed) ? sum(true) : null;
     const limits = EFFECT_BUDGETS[this.device];
-    const bad = this.overflow || fps < limits.fps || hostMs !== null && hostMs > limits.longTaskMsPerSecond;
+    const bad = this.overflow || fps < this.fpsFloor || hostMs !== null && hostMs > limits.longTaskMsPerSecond;
     this.metrics = { hostFps: fps, hostLongTaskMsPerSecond: hostMs, attributedLongTaskMsPerSecond: ownMs,
-      attribution: ownMs === null ? "unknown" : "observed", windowMs: 2000 };
+      attribution: ownMs === null ? "unknown" : "observed", fpsFloor: this.fpsFloor, windowMs: 2000 };
     this.overflow = false;
     if (bad) {
       this.badWindows++;
