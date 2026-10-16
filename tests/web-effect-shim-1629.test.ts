@@ -2,298 +2,152 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import vm from "node:vm";
 import { request } from "node:http";
 import type { Server } from "node:http";
-import { parse, type DefaultTreeAdapterMap } from "parse5";
-import { buildEffectShim, createPreviewListener, PREVIEW_HTML_MAX_BYTES, previewEffectResponse, previewFrameResponse } from "../src/web-preview.js";
-import { EFFECT_MAX_ELEMENT_DEPTH, effectTemplateProblem } from "../src/web-effect-template.js";
+import { buildEffectShim, createPreviewListener, previewEffectResponse, previewFrameResponse } from "../src/web-preview.js";
+import { EFFECT_MAX_BYTES, effectWorkerSource } from "../src/web-effect-worker.js";
 
-// These tests may bind scratch loopback HTTP servers, never launch a fleet, tunnel or CLI.
 vi.mock("node:child_process", () => {
   const denied = () => { throw new Error("process launch forbidden in effect tests"); };
   return { spawn: denied, spawnSync: denied, exec: denied, execSync: denied, execFile: denied, execFileSync: denied };
 });
-
-const BOOT = "a".repeat(32);
-const ORIGINS = ["http://127.0.0.1:19280", "https://dashboard.example"];
-const render = (html = "<p>effect</p>") => ({ v: 1, type: "render", ch: "0123456789abcdef", html });
-
-function harness(options: { writeThrows?: boolean; encoderThrows?: boolean } = {}) {
-  const html = buildEffectShim(BOOT, ORIGINS);
-  const script = html.slice(html.indexOf("<script>") + 8, html.lastIndexOf("</script>"));
-  const parent = { postMessage: vi.fn() };
-  const written: string[] = [];
-  const listeners = new Map<string, Set<(event: unknown) => void>>();
-  const tasks: Array<() => void> = [];
-  let duringWrite = () => {};
-  const executed: string[] = [];
-  type Element = {
-    localName: string; namespaceURI: string; attributes: Array<{ name: string; value: string }>;
-    children: Element[];
-    parentNode: object | null; textContent: string; type: string;
-    getAttribute(name: string): string | null; hasAttribute(name: string): boolean;
-    setAttribute(name: string, value: string): void; replaceWith(element: Element): void;
+const BOOT = "a".repeat(32), ORIGINS = ["http://127.0.0.1:19280", "https://dashboard.example"];
+const render = () => ({v:1,type:"render",ch:"0123456789abcdef",code:"agend.ready()",params:{},instance:"fixture",width:64,height:64,dpr:1,assets:[] as unknown[]});
+function documentHarness(options: { unsupported?: boolean; bitmap?: () => Promise<unknown> } = {}) {
+  const body = buildEffectShim(BOOT,ORIGINS), script=body.slice(body.indexOf("<script>")+8,body.lastIndexOf("</script>"));
+  class DataEvent { constructor(readonly value: unknown) {} get data() {return this.value;} }
+  const listeners=new Map<string,Set<(e:any)=>unknown>>(), timers=new Map<number,()=>void>(), channels:any[]=[], workers:any[]=[], urls:any[]=[], revoked:string[]=[];
+  const bitmap={width:1,height:1,close:vi.fn()}, canvas={width:0,height:0,transferControlToOffscreen:vi.fn(()=>({offscreen:true}))};
+  function port() {const callbacks:Array<(e:any)=>unknown>=[];return {postMessage:vi.fn(),start:vi.fn(),close:vi.fn(),addEventListener:vi.fn((_t:string,fn:(e:any)=>unknown)=>callbacks.push(fn)),callbacks};}
+  class Channel {port1=port();port2=port();constructor(){channels.push(this);}}
+  class Worker {postMessage=vi.fn();terminate=vi.fn();callbacks=new Map();constructor(readonly url:string){workers.push(this);}addEventListener(t:string,fn:()=>void){this.callbacks.set(t,fn);}}
+  const parent={postMessage:vi.fn()}, host=port(), doc={querySelector:vi.fn(()=>canvas),createElement:vi.fn(()=>{throw Error("no DOM effect nodes allowed");})};
+  let timer=0,clock=0;
+  const win:any={parent,document:doc,MessageEvent:DataEvent,TextEncoder,Blob,Uint8Array,performance:{now:()=>clock},HTMLCanvasElement:class{},OffscreenCanvas:class{},Worker:options.unsupported?undefined:Worker,MessageChannel:Channel,
+    URL:{createObjectURL:(b:Blob)=>{urls.push(b);return "blob:fixture/"+urls.length;},revokeObjectURL:(s:string)=>revoked.push(s)},
+    createImageBitmap:options.bitmap??(async()=>bitmap),
+    setTimeout:(fn:()=>void)=>{timers.set(++timer,fn);return timer;},clearTimeout:(id:number)=>timers.delete(id),
+    addEventListener:(t:string,fn:(e:any)=>unknown)=>{if(!listeners.has(t))listeners.set(t,new Set());listeners.get(t)!.add(fn);},removeEventListener:(t:string,fn:(e:any)=>unknown)=>listeners.get(t)?.delete(fn)};
+  win.HTMLCanvasElement.prototype.transferControlToOffscreen=()=>{};win.window=win;
+  const context=vm.createContext(win);vm.runInContext(script,context);
+  const value=(d:unknown)=>vm.runInContext(`(${JSON.stringify(d)})`,context);
+  const send=async(d:unknown=render(),opts:{source?:unknown;origin?:string;ports?:unknown[];transform?:(d:any)=>void}={})=>{
+    const payload=value(d);opts.transform?.(payload);for(const a of payload.assets??[])if(Array.isArray(a.bytes))a.bytes=new Uint8Array(a.bytes);
+    const event=new DataEvent(payload) as any;event.source="source" in opts?opts.source:parent;event.origin=opts.origin??ORIGINS[0];event.ports=opts.ports??[host];
+    for(const fn of [...listeners.get("message")??[]])await fn(event);
   };
-  const element = (localName: string, attrs: Array<{ name: string; value: string }> = [], textContent = "", namespaceURI = "http://www.w3.org/1999/xhtml"): Element => ({
-    localName, namespaceURI, attributes: attrs, children: [], parentNode: {}, textContent, type: "",
-    getAttribute(name) { return this.attributes.find(a => a.name === name)?.value ?? null; },
-    hasAttribute(name) { return this.attributes.some(a => a.name === name); },
-    setAttribute(name, value) { this.attributes.push({ name, value }); },
-    replaceWith(fresh) { if (localName === "script") executed.push(fresh.textContent); },
-  });
-  let originalHtml = "";
-  const body = element("body");
-  body.replaceWith = () => {
-    written.push(originalHtml); duringWrite();
-    if (options.writeThrows) throw new Error("inert DOM replacement failure");
-  };
-  const doc = {
-    open: vi.fn(() => { listeners.clear(); }),
-    write: vi.fn(), close: vi.fn(),
-    head: element("head"), body, documentElement: element("html"),
-    adoptNode: (node: Element) => node,
-    createElement: (tag: string) => element(tag),
-    addEventListener: vi.fn(), dispatchEvent: vi.fn(),
-  };
-  class Parser {
-    parseFromString(value: string) {
-      originalHtml = value;
-      const elements: Element[] = [];
-      const pending: Array<{ node: DefaultTreeAdapterMap["node"]; parent?: Element }> = [{ node: parse(value, { scriptingEnabled: false }) }];
-      while (pending.length) {
-        const { node, parent } = pending.pop()!;
-        let current = parent;
-        if ("tagName" in node) {
-          const text = node.childNodes.map(child => "value" in child ? child.value : "").join("");
-          current = element(node.tagName, node.attrs, text, node.namespaceURI);
-          elements.push(current); parent?.children.push(current);
-        }
-        if ("childNodes" in node) for (let i = node.childNodes.length - 1; i >= 0; i--) pending.push({ node: node.childNodes[i]!, parent: current });
-      }
-      return {
-        head: elements.find(e => e.localName === "head")!, body: elements.find(e => e.localName === "body")!, documentElement: elements.find(e => e.localName === "html")!,
-        querySelectorAll: (selector: string) => selector === "*" ? elements : elements.filter(e => e.localName === selector),
-      };
-    }
-  }
-  const win: Record<string, unknown> = {
-    parent, document: doc, DOMParser: Parser, Event, MessageEvent,
-    setTimeout: (fn: () => void) => { tasks.push(fn); return tasks.length; },
-    TextEncoder: options.encoderThrows ? class { encode() { throw new Error("encoder unavailable"); } } : TextEncoder,
-    addEventListener: (type: string, fn: (event: unknown) => void) => {
-      if (!listeners.has(type)) listeners.set(type, new Set());
-      listeners.get(type)!.add(fn);
-    },
-    removeEventListener: (type: string, fn: (event: unknown) => void) => { listeners.get(type)?.delete(fn); },
-    dispatchEvent: vi.fn(),
-  };
-  for (const key of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "RTCIceTransport", "RTCSctpTransport"]) win[key] = function forbidden() {};
-  win.window = win;
-  const context = vm.createContext(win);
-  vm.runInContext(script, context);
-  const flush = () => { for (let i = 0; tasks.length && i < 100; i++) tasks.shift()!(); };
-  const portListeners: Array<(event: { data: unknown }) => void> = [];
-  const port = {
-    postMessage: vi.fn(), close: vi.fn(), start: vi.fn(),
-    addEventListener: vi.fn((type: string, fn: (event: { data: unknown }) => void) => { if (type === "message") portListeners.push(fn); }),
-  };
-  const send = (data: unknown, opts: { source?: unknown; origin?: string; ports?: unknown[] } = {}) => {
-    const event = {
-      source: "source" in opts ? opts.source : parent, origin: opts.origin ?? ORIGINS[0],
-      data: vm.runInContext(`(${JSON.stringify(data)})`, context), ports: opts.ports ?? [port],
-    };
-    win.event = event;
-    for (const fn of [...listeners.get("message") ?? []]) fn(event);
-    delete win.event;
-    flush();
-  };
-  const api = () => win.agend as { on(kind: string, callback: (event: unknown) => void): void; ready(): void };
-  return { html, context, win, doc, written, executed, parent, port, api, send,
-    duringWrite: (fn: () => void) => { duringWrite = fn; },
-    event: (data: unknown) => {
-      const event = new MessageEvent("message", { data });
-      win.event = event;
-      for (const fn of portListeners) fn(event);
-      delete win.event;
-      flush();
-    },
-  };
+  const emit=(p:ReturnType<typeof port>,d:unknown)=>{for(const fn of p.callbacks)fn(new DataEvent(value(d)));};
+  return {body,win,context,parent,host,canvas,doc,channels,workers,urls,revoked,bitmap,timers,send,emit,value,
+    tick:(ms:number)=>{clock+=ms;},stop:()=>{for(const fn of listeners.get("pagehide")??[])fn({});}};
 }
 
-describe("#1629 effect shim: one render and a private read-only port facade", () => {
-  it("announces only the exact boot-bound window ready", () => {
-    const h = harness();
-    expect(h.parent.postMessage.mock.calls).toEqual([[{ v: 1, type: "ready", ch: null, boot: BOOT }, "*"]]);
-    expect(h.win.agend).toBeUndefined();
+describe("#1629 Canvas Worker document boundary",()=>{
+  it("announces one exact boot ready and contains only trusted script + canvas",()=>{
+    const h=documentHarness();expect(h.parent.postMessage.mock.calls).toEqual([[{v:1,type:"ready",ch:null,boot:BOOT},"*"]]);
+    expect(h.body.match(/<canvas/g)).toHaveLength(1);expect(h.body).not.toContain("DOMParser");expect(h.body).not.toContain("document.write");expect(h.win.agend).toBeUndefined();
   });
-
   it.each([
-    ["wrong window", (h: ReturnType<typeof harness>) => h.send(render(), { source: {} })],
-    ["opaque parent", (h: ReturnType<typeof harness>) => h.send(render(), { origin: "null" })],
-    ["unlisted origin", (h: ReturnType<typeof harness>) => h.send(render(), { origin: "https://other.example" })],
-    ["origin suffix", (h: ReturnType<typeof harness>) => h.send(render(), { origin: `${ORIGINS[1]}.evil.example` })],
-    ["extra field", (h: ReturnType<typeof harness>) => h.send({ ...render(), commands: [] })],
-    ["wrong version", (h: ReturnType<typeof harness>) => h.send({ ...render(), v: 2 })],
-    ["wrong type", (h: ReturnType<typeof harness>) => h.send({ ...render(), type: "ready" })],
-    ["missing field", (h: ReturnType<typeof harness>) => h.send({ v: 1, type: "render", html: "" })],
-    ["invalid channel", (h: ReturnType<typeof harness>) => h.send({ ...render(), ch: "x".repeat(16) })],
-    ["non-object", (h: ReturnType<typeof harness>) => h.send(JSON.stringify(render()))],
-    ["array", (h: ReturnType<typeof harness>) => h.send([])],
-    ["null", (h: ReturnType<typeof harness>) => h.send(null)],
-    ["non-string html", (h: ReturnType<typeof harness>) => h.send({ ...render(), html: {} })],
-    ["no port", (h: ReturnType<typeof harness>) => h.send(render(), { ports: [] })],
-    ["two ports", (h: ReturnType<typeof harness>) => h.send(render(), { ports: [h.port, h.port] })],
-    ["malformed port", (h: ReturnType<typeof harness>) => h.send(render(), { ports: [{}] })],
-    ["UTF-8 byte overflow", (h: ReturnType<typeof harness>) => h.send(render("界".repeat(Math.floor(PREVIEW_HTML_MAX_BYTES / 3) + 1)))],
-  ])("drops %s without changing state; a later valid render still works", (_why, action) => {
-    const h = harness();
-    action(h);
-    expect(h.written).toEqual([]);
-    expect(h.port.start).not.toHaveBeenCalled();
-    expect(h.port.postMessage).not.toHaveBeenCalled();
-    expect(h.win.agend).toBeUndefined();
-    expect(h.parent.postMessage).toHaveBeenCalledTimes(1);
-    h.send(render());
-    expect(h.written).toEqual(["<p>effect</p>"]);
+    ["other window",{source:{}}],["opaque parent",{origin:"null"}],["other origin",{origin:"https://evil.example"}],["suffix origin",{origin:ORIGINS[1]+".evil"}],["no port",{ports:[]}],["two ports",{ports:[{},{}]}],
+  ])("refuses %s without Worker or DOM effects",async(_n,opts)=>{
+    const h=documentHarness();await h.send(render(),opts);expect(h.workers).toHaveLength(0);expect(h.doc.createElement).not.toHaveBeenCalled();expect(h.host.start).not.toHaveBeenCalled();
   });
-
-  it("defines the frozen facade before HTML executes, hides the port, and permits exactly one ready", () => {
-    const h = harness();
-    const renderEvents: unknown[] = [];
-    h.duringWrite(() => {
-      renderEvents.push(h.win.event);
-      expect(Object.keys(h.api()).sort()).toEqual(["on", "ready"]);
-      expect(Object.isFrozen(h.api())).toBe(true);
-      expect(Object.getOwnPropertyDescriptor(h.win, "agend")).toMatchObject({ configurable: false, writable: false });
-      expect(h.port.start).toHaveBeenCalledTimes(1);
-      h.api().ready(); h.api().ready();
-    });
-    h.send(render());
-    h.send(render("<p>second</p>"));
-    expect(renderEvents).toEqual([undefined]);
-    expect(h.written).toEqual(["<p>effect</p>"]);
-    expect(h.port.postMessage.mock.calls).toEqual([[{ type: "ready" }]]);
-    expect(h.parent.postMessage).toHaveBeenCalledTimes(1);
-    for (const key of ["RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel", "RTCIceTransport", "RTCSctpTransport"]) expect(h.win[key]).toBeUndefined();
+  it.each([
+    ["HTML",{v:1,type:"render",ch:"0123456789abcdef",html:"<input autofocus>"}],
+    ["extra field",{...render(),html:"x"}],["version",{...render(),v:2}],["channel",{...render(),ch:"bad"}],
+    ["oversize code",{...render(),code:"x".repeat(EFFECT_MAX_BYTES+1)}],["multibyte",{...render(),code:"界".repeat(350000)}],
+    ["oversize geometry",{...render(),width:4096,height:4096}],["NaN-like geometry",{...render(),height:null}],
+    ["params object",{...render(),params:{x:{bad:true}}}],["params key",{...render(),params:{Constructor:true}}],
+    ["too many params",{...render(),params:Object.fromEntries(Array.from({length:17},(_,i)=>["p"+i,true]))}],
+    ["asset path",{...render(),assets:[{name:"../x.png",mime:"image/png",bytes:[1]}]}],
+    ["asset MIME",{...render(),assets:[{name:"assets/x.png",mime:"image/svg+xml",bytes:[1]}]}],
+    ["duplicate asset",{...render(),assets:Array(2).fill({name:"assets/x.png",mime:"image/png",bytes:[1]})}],
+  ])("refuses invalid %s without consuming a later valid render",async(_n,data)=>{
+    const h=documentHarness();await h.send(data);expect(h.workers).toHaveLength(0);await h.send();expect(h.workers).toHaveLength(1);
   });
-
-  it("routes only recognized host events to subscribers, isolates callback errors and exposes no command API", () => {
-    const h = harness(); h.send(render());
-    const received = vi.fn();
-    const callbackEvents: unknown[] = [];
-    h.api().on("state", () => { callbackEvents.push(h.win.event); });
-    h.api().on("state", () => { throw new Error("untrusted callback"); });
-    h.api().on("state", received);
-    h.api().on("command", received);
-    h.api().on("__proto__", received);
-    h.event({ v: 1, type: "state", state: "working", ts: 1 });
-    h.event({ v: 1, type: "command" });
-    h.event({ v: 2, type: "state" });
-    h.event(null);
-    expect(received.mock.calls).toEqual([[{ v: 1, type: "state", state: "working", ts: 1 }]]);
-    expect(callbackEvents).toEqual([undefined]);
-    expect(h.port.postMessage).not.toHaveBeenCalled();
+  it("refuses structured-clone BigInt params before serialization, without an uncaught rejection",async()=>{
+    const h=documentHarness();await expect(h.send(render(),{transform:d=>{d.params.x=1n;}})).resolves.toBeUndefined();expect(h.workers).toHaveLength(0);await h.send();expect(h.workers).toHaveLength(1);
   });
-
-  it("fails closed if the byte counter fails", () => {
-    const h = harness({ encoderThrows: true }); h.send(render());
-    expect(h.written).toEqual([]);
+  it("transfers canvas/bitmaps and resolved params only to Worker, never document JS",async()=>{
+    const h=documentHarness();await h.send({...render(),params:{density:3},assets:[{name:"assets/x.png",mime:"image/png",bytes:[137,80]}]});
+    expect(h.workers).toHaveLength(1);expect(h.doc.createElement).not.toHaveBeenCalled();expect(h.canvas.width).toBe(64);
+    const [init,transfer]=h.workers[0].postMessage.mock.calls[0];expect(init.params).toEqual({density:3});expect(init.assets).toEqual([{name:"assets/x.png",bitmap:h.bitmap}]);expect(transfer).toHaveLength(3);
+    expect(await h.urls[0].text()).toBe(render().code);expect(await h.urls[1].text()).toBe(effectWorkerSource());expect(init).not.toHaveProperty("html");
+    await h.send({...render(),code:"evil()"});expect(h.workers).toHaveLength(1);
   });
-
-  it("closes a failed render's port and never retries the consumed render", () => {
-    const h = harness({ writeThrows: true }); h.send(render());
-    h.api().ready(); h.send(render());
-    expect(h.port.close).toHaveBeenCalledTimes(1);
-    expect(h.port.postMessage).not.toHaveBeenCalled();
-    expect(h.written).toHaveLength(1);
+  it("the host sees exactly one ready; all other inbound messages have zero effects",async()=>{
+    const h=documentHarness();await h.send();const link=h.channels[0].port1;
+    const ignored=[null,{},[],{type:"focus"},{type:"ready",extra:true},{type:"frame-time",ms:0},{type:"pong"},{type:"resize",height:9}];
+    for(const d of ignored)h.emit(link,d);expect(h.host.postMessage).not.toHaveBeenCalled();expect(h.workers[0].terminate).not.toHaveBeenCalled();expect(h.timers.size).toBe(1);
+    h.emit(link,{type:"ready"});h.emit(link,{type:"ready"});for(const d of ignored)h.emit(link,d);
+    expect(h.host.postMessage.mock.calls).toEqual([[{type:"ready"}]]);expect(h.timers.size).toBe(0);expect(h.workers[0].callbacks.has("message")).toBe(false);
   });
-
-  it("rebuilds classic scripts in source order after the DOM and frozen API are installed", () => {
-    const h = harness();
-    h.send(render('<html lang="en"><head><script>first()</script></head><body><canvas></canvas><script type="text/javascript">second()</script></body></html>'));
-    expect(h.executed).toEqual(["first()", "second()"]);
-    expect(h.doc.documentElement.getAttribute("lang")).toBe("en");
-    expect(() => h.doc.open()).toThrow("Unsupported effect document method");
-    expect(() => h.doc.write()).toThrow("Unsupported effect document method");
-    expect(h.doc.dispatchEvent).toHaveBeenCalledTimes(1);
-    expect(h.win.dispatchEvent).toHaveBeenCalledTimes(1);
+  it("filters content-bearing and sibling signals on the trusted send path",async()=>{
+    const h=documentHarness();await h.send();const link=h.channels[0].port1;
+    h.emit(h.host,{v:1,type:"state",ts:1,instance:"fixture",state:"working"});
+    for(const d of [{v:1,type:"state",ts:1,instance:"other",state:"working"},{v:1,type:"reply",ts:1,text:"secret"},{v:1,type:"fleet",ts:1,counts:{}}])h.emit(h.host,d);
+    expect(link.postMessage.mock.calls).toEqual([[{v:1,type:"state",ts:1,instance:"fixture",state:"working"}]]);
   });
-
-  it("accepts the exact 1 MiB limit", () => {
-    const h = harness(); h.send(render("a".repeat(PREVIEW_HTML_MAX_BYTES)));
-    expect(h.written[0]).toHaveLength(PREVIEW_HTML_MAX_BYTES);
+  it.each(["deadline","pagehide","error","messageerror"])("%s tears down the Worker, port and blob URLs",async(reason)=>{
+    const h=documentHarness();await h.send();if(reason==="deadline")for(const fn of [...h.timers.values()])fn();else if(reason==="pagehide")h.stop();else h.workers[0].callbacks.get(reason)();
+    expect(h.workers[0].terminate).toHaveBeenCalledOnce();expect(h.host.close).toHaveBeenCalledOnce();expect(h.channels[0].port1.close).toHaveBeenCalledOnce();expect(h.revoked).toHaveLength(2);
+    h.emit(h.channels[0].port1,{type:"ready"});expect(h.host.postMessage).not.toHaveBeenCalled();h.stop();expect(h.workers[0].terminate).toHaveBeenCalledOnce();
   });
-
-  it("escapes server-supplied script delimiters without adding executable markup", () => {
-    const html = buildEffectShim("</script><script>bad()</script>", ["https://example.test/</script>"]);
-    expect(html.match(/<script>/g)).toHaveLength(1);
-    expect(html.match(/<\/script>/g)).toHaveLength(1);
-    expect(html).toContain("\\u003c/script>");
+  it("unsupported Worker fails closed without evaluating source",async()=>{
+    const h=documentHarness({unsupported:true});await h.send();expect(h.workers).toHaveLength(0);expect(h.host.close).toHaveBeenCalledOnce();expect(h.doc.createElement).not.toHaveBeenCalled();
+  });
+  it.each([[0,1],[4097,1],[4096,4096]])("refuses a decoded bitmap outside the size bound (%s × %s)",async(width,height)=>{
+    const h=documentHarness();Object.assign(h.bitmap,{width,height});await h.send({...render(),assets:[{name:"assets/x.png",mime:"image/png",bytes:[1]}]});
+    expect(h.workers).toHaveLength(0);expect(h.bitmap.close).toHaveBeenCalledOnce();expect(h.host.close).toHaveBeenCalledOnce();
+  });
+  it("decoder failure never falls back to document code",async()=>{
+    const h=documentHarness({bitmap:async()=>{throw Error("bad image");}});await h.send({...render(),assets:[{name:"assets/x.png",mime:"image/png",bytes:[1]}]});expect(h.workers).toHaveLength(0);expect(h.host.close).toHaveBeenCalledOnce();expect(h.doc.createElement).not.toHaveBeenCalled();
+  });
+  it("late bitmap decode after disposal never creates a Worker",async()=>{
+    let finish!:(value:unknown)=>void;const pending=new Promise(resolve=>finish=resolve);const h=documentHarness({bitmap:()=>pending});
+    const sent=h.send({...render(),assets:[{name:"assets/x.png",mime:"image/png",bytes:[1]}]});await Promise.resolve();h.stop();finish(h.bitmap);await sent;
+    expect(h.bitmap.close).toHaveBeenCalledOnce();expect(h.workers).toHaveLength(0);
+  });
+  it("late decode cannot beat an overdue but undelivered startup timer",async()=>{
+    let finish!:(value:unknown)=>void;const pending=new Promise(resolve=>finish=resolve);const h=documentHarness({bitmap:()=>pending});
+    const sent=h.send({...render(),assets:[{name:"assets/x.png",mime:"image/png",bytes:[1]}]});await Promise.resolve();h.tick(10001);finish(h.bitmap);await sent;
+    expect(h.bitmap.close).toHaveBeenCalledOnce();expect(h.workers).toHaveLength(0);expect(h.host.close).toHaveBeenCalledOnce();
+  });
+  it("overdue ready cannot beat the startup timer",async()=>{
+    const h=documentHarness();await h.send();h.tick(10001);h.emit(h.channels[0].port1,{type:"ready"});
+    expect(h.host.postMessage).not.toHaveBeenCalled();expect(h.workers[0].terminate).toHaveBeenCalledOnce();
+  });
+  it("escapes boot/origin source delimiters",()=>{
+    const html=buildEffectShim("</script><script>evil()</script>",["https://example/</script>"]);
+    expect(html.match(/<script>/g)).toHaveLength(1);expect(html.match(/<\/script>/g)).toHaveLength(1);
   });
 });
 
-describe("#1629 fixed effect template: upload and native parser agree", () => {
-  it.each([
-    ['<script type="module">x()</script>', "unsupported_script"],
-    ['<script src="data:text/javascript,x()"></script>', "unsupported_script"],
-    ['<script s&#114;c="x"></script>', "unsupported_script"],
-    ['<script async>x()</script>', "unsupported_script"],
-    ['<script defer>x()</script>', "unsupported_script"],
-    ['<script type="application/json">{}</script>', "unsupported_script"],
-    ['<svg><script>x()</script></svg>', "unsupported_script"],
-    ['<meta http-equiv="refresh" content="0;url=about:blank">', "unsupported_meta"],
-    ['<iframe srcdoc="x"></iframe>', "unsupported_element"],
-    ['<noscript><iframe srcdoc="x"></iframe></noscript><script>agend.ready()</script>', "unsupported_element"],
-    ['<template><script>x()</script></template>', "unsupported_element"],
-    ['<link rel="stylesheet" href="x">', "unsupported_element"],
-    ['<base href="https://example.test">', "unsupported_element"],
-    ['<script>document.write("x")</script>', "document_write"],
-    ['<script>document["open"]()</script>', "document_write"],
-  ])("refuses unsupported template %s before render", (html, problem) => {
-    expect(effectTemplateProblem(html)).toBe(problem);
-    const h = harness(); h.send(render(html));
-    expect(h.written).toEqual([]);
-    expect(h.port.start).not.toHaveBeenCalled();
-    expect(h.win.agend).toBeUndefined();
-    h.send(render());
-    expect(h.written).toEqual(["<p>effect</p>"]);
+function workerHarness() {
+  class DataEvent {constructor(readonly value:unknown){}get data(){return this.value;}}
+  const listeners=new Set<(e:unknown)=>void>(), tasks:Array<()=>void>=[], callbacks:Array<(e:unknown)=>void>=[], post=vi.fn(), close=vi.fn();
+  const port={postMessage:post,start:vi.fn(),addEventListener:(_t:string,fn:(e:unknown)=>void)=>callbacks.push(fn)};
+  const win:any={performance:{now:()=>0},MessageEvent:DataEvent,Worker:function(){},SharedWorker:function(){},setTimeout:(fn:()=>void)=>{tasks.push(fn);return tasks.length;},importScripts:vi.fn(),close,addEventListener:(_t:string,fn:(e:unknown)=>void)=>listeners.add(fn),removeEventListener:(_t:string,fn:(e:unknown)=>void)=>listeners.delete(fn)};
+  win.self=win;const load=win.importScripts;const context=vm.createContext(win);vm.runInContext(effectWorkerSource(),context);
+  const value=(d:unknown)=>vm.runInContext(`(${JSON.stringify(d)})`,context);
+  const d={port,canvas:{kind:"offscreen"},codeUrl:"blob:code",assets:[],params:value({density:2}),instance:"fixture"};
+  for(const fn of [...listeners])fn(new DataEvent(d));
+  const flush=()=>{while(tasks.length)tasks.shift()!();};
+  return {win,context,post,close,load,tasks,flush,callbacks,event:(d:unknown)=>callbacks.forEach(fn=>fn(new DataEvent(value(d))))};
+}
+describe("#1629 trusted Worker bootstrap",()=>{
+  it("exposes a frozen Canvas facade, no port, and imports source only in a later task",()=>{
+    const h=workerHarness();expect(h.load).not.toHaveBeenCalled();expect(Object.keys(h.win.agend).sort()).toEqual(["asset","canvas","frame","on","params","ready"]);expect(Object.isFrozen(h.win.agend)).toBe(true);expect(Object.isFrozen(h.win.agend.params)).toBe(true);expect(h.win.agend.asset("__proto__")).toBeUndefined();
+    expect(h.win.document).toBeUndefined();expect(h.win.Worker).toBeUndefined();expect(h.win.SharedWorker).toBeUndefined();h.flush();expect(h.load.mock.calls).toEqual([["blob:code"]]);
+    h.win.agend.ready();h.win.agend.ready();expect(h.post.mock.calls).toEqual([[{type:"ready"}]]);
   });
-
-  it("accepts fragments/full documents with inline styles, canvas and ordered classic scripts", () => {
-    for (const html of ['<style>canvas{opacity:.5}</style><canvas></canvas><script>init()</script>', '<noscript>JavaScript needed</noscript><canvas></canvas><script>agend.ready()</script>', '<!doctype html><html><head><script type=" TEXT/JAVASCRIPT ">init()</script></head><body><p>effect</p></body></html>']) {
-      expect(effectTemplateProblem(html)).toBeNull();
-      const h = harness(); h.send(render(html)); expect(h.written).toEqual([html]);
-    }
+  it("native getter and scheduler are captured before effect code; callbacks run outside the port event",()=>{
+    const h=workerHarness();h.flush();h.win.calls=0;h.win.received=[];
+    vm.runInContext(`Object.defineProperty(MessageEvent.prototype,'data',{get(){calls++;return {v:1,type:'reply',ts:1,text:'secret'}}});self.setTimeout=function(fn){fn()};agend.on('reply',e=>received.push(e));`,h.context);
+    h.event({v:1,type:"reply",ts:1,instance:"fixture"});expect(h.win.received).toHaveLength(0);h.flush();expect(h.win.received).toEqual([{v:1,type:"reply",ts:1,instance:"fixture"}]);expect(h.win.calls).toBe(0);
+    h.event({v:1,type:"reply",ts:1,text:"secret"});h.flush();expect(h.win.received).toHaveLength(1);
   });
-
-  it("uses DOMParser's disabled-scripting mode, independently of the VM adapter", () => {
-    const html = '<noscript><iframe srcdoc="x"></iframe></noscript><script>agend.ready()</script>';
-    const containsFrame = (scriptingEnabled: boolean) => {
-      const pending: DefaultTreeAdapterMap["node"][] = [parse(html, { scriptingEnabled })];
-      while (pending.length) {
-        const node = pending.pop()!;
-        if ("tagName" in node && node.tagName === "iframe") return true;
-        if ("childNodes" in node) pending.push(...node.childNodes);
-      }
-      return false;
-    };
-    expect(containsFrame(true)).toBe(false);
-    expect(containsFrame(false)).toBe(true);
-    expect(effectTemplateProblem(html)).toBe("unsupported_element");
-  });
-
-  it("bounds element depth iteratively without overflowing on legal-byte-sized HTML", () => {
-    const html = "<div>".repeat(10_000) + "x" + "</div>".repeat(10_000);
-    expect(Buffer.byteLength(html)).toBe(110_001);
-    expect(() => effectTemplateProblem(html)).not.toThrow();
-    expect(effectTemplateProblem(html)).toBe("unsupported_depth");
-    const h = harness(); h.send(render(html)); expect(h.written).toEqual([]);
-    const accepted = "<div>".repeat(EFFECT_MAX_ELEMENT_DEPTH - 2) + "x" + "</div>".repeat(EFFECT_MAX_ELEMENT_DEPTH - 2);
-    expect(effectTemplateProblem(accepted)).toBeNull();
-    const ok = harness(); ok.send(render(accepted)); expect(ok.written).toEqual([accepted]);
-    const hundred = "<div>".repeat(100) + "x" + "</div>".repeat(100);
-    expect(effectTemplateProblem(hundred)).toBeNull();
+  it("failed user script closes the Worker with no extra host protocol",()=>{
+    const h=workerHarness();h.load.mockImplementation(()=>{h.win.close=()=>{};throw Error("bad script");});h.flush();expect(h.close).toHaveBeenCalledOnce();expect(h.post).not.toHaveBeenCalled();
   });
 });
-
 const servers: Server[] = [];
 afterEach(async () => {
   for (const server of servers.splice(0)) {
@@ -320,13 +174,14 @@ function get(port: number, path: string, host = `127.0.0.1:${port}`, method = "G
 }
 
 describe("#1629 local-only /effect route", () => {
-  it("shares every /frame security header, with the effect's own length", () => {
+  it("changes only the blob Worker/script directives; keeps all other preview headers", () => {
     const effect = previewEffectResponse(BOOT, ORIGINS), frame = previewFrameResponse(BOOT, ORIGINS);
-    expect({ ...effect.headers, "Content-Length": "ignored" }).toEqual({ ...frame.headers, "Content-Length": "ignored" });
+    expect({ ...effect.headers, "Content-Length": "ignored", "Content-Security-Policy": "checked below" }).toEqual({ ...frame.headers, "Content-Length": "ignored", "Content-Security-Policy": "checked below" });
+    expect(effect.headers["Content-Security-Policy"]).toBe(frame.headers["Content-Security-Policy"]!.replace("script-src 'unsafe-inline'", "script-src 'unsafe-inline' blob:").replace("worker-src 'none'", "worker-src blob:"));
     expect(Number(effect.headers["Content-Length"])).toBe(effect.body.length);
     expect(effect.headers["Content-Security-Policy"]).toContain("sandbox allow-scripts");
     expect(effect.headers["Content-Security-Policy"]).not.toContain("allow-same-origin");
-    for (const directive of ["connect-src 'none'", "worker-src 'none'", "frame-src 'none'", "form-action 'none'", "base-uri 'none'"]) expect(effect.headers["Content-Security-Policy"]).toContain(directive);
+    for (const directive of ["connect-src 'none'", "frame-src 'none'", "form-action 'none'", "base-uri 'none'"]) expect(effect.headers["Content-Security-Policy"]).toContain(directive);
   });
 
   it("serves exact GET only after Host admission; public extraOrigins widen /frame alone", async () => {

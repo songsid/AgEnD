@@ -1,99 +1,45 @@
-# Effects runtime implementation boundaries
+# Canvas Worker effects (#1629, user choice A)
 
-The approved design is [#1629 r2](https://github.com/songsid/AgEnD/issues/1629#issuecomment-6127484841),
-amended by [r3](https://github.com/songsid/AgEnD/issues/1629#issuecomment-6128007808)
-and the widget/event deltas in r4 and r4.1. The [runtime delta](https://github.com/songsid/AgEnD/issues/1629#issuecomment-6197309471)
-keeps ready-only inbound messages and renders inside one document. This document
-records implementation scope, not permission to widen those boundaries.
+The effect entry is a UTF-8 classic Worker script. **No mod HTML or CSS is executed in a document.** Widgets are drawn by the host; they use no effect Worker or iframe. This replaces the unshipped HTML effect primitive from #1885. Ordinary HTML previews at `/frame` retain their existing policy.
 
-## First slice: the local effect shim
+## Execution boundary
 
-`web-preview.ts` serves exact `GET /effect` on the existing separate preview listener.
-The Host guard runs first. Its response uses the same CSP, Permissions Policy,
-no-referrer, no-store, nosniff and CORP headers as `/frame`. Neither route reads cookies.
-`/frame` keeps its existing protocol and public-preview behavior. Public-link origins
-may widen `/frame` only; they are not added to `/effect`'s accepted parents or CSP.
-The public-preview gateway does not serve `/effect`.
+`GET /effect` serves a static trusted document containing a canvas and bootstrap only, on the preview listener. It retains its exact Host/ancestor admission, opaque `sandbox allow-scripts` (no `allow-same-origin`), no cookies, no per-request logging and local-dashboard origins only. The public preview gateway still exposes `/frame` alone.
 
-The effect shim announces `{v:1,type:"ready",ch:null,boot}` to its parent. It accepts
-one exact `{v:1,type:"render",ch,html}` from an explicitly listed, non-opaque parent
-origin and the actual parent window, with one transferred port and at most 1 MiB of
-UTF-8 HTML. Invalid messages leave it waiting. The document installs a frozen,
-non-replaceable `agend.on(kind, fn)` / `agend.ready()` API before executing that HTML.
-It parses the HTML, adopts head/body and rebuilds supported scripts in document order;
-it never calls `document.open/write/close`. Ordinary render has only one iframe load,
-so the parent's second-load navigation fence needs no exception.
+The effect CSP adds `blob:` to `script-src` and permits only `worker-src blob:`. `frame-src 'none'`, `child-src 'none'`, `connect-src 'none'`, form/object/base restrictions and the other preview headers remain. No `unsafe-eval`, remote script or same-origin permission is added. The current dashboard CSP is unchanged; a future mounting PR must admit only the preview effect origin and retain the local-only/public-link gate.
 
-The port stays in a closure. `ready()` can send only one `{type:"ready"}`; there is no
-command, heartbeat, resize, ping or pong API. A render failure closes the port and
-does not permit another render.
+A single render from the exact dashboard parent transfers one private MessagePort. Its closed payload contains code, resolved primitive params, a scoped instance name (or null), host-chosen dimensions/DPR and bounded raster asset bytes. There is no HTML field. The shim decodes assets to ImageBitmaps, transfers its canvas to an OffscreenCanvas, and loads a trusted Worker bootstrap. That bootstrap imports the user's separate Blob script in a later task, outside any port-bearing event. It never concatenates user source into a trusted lexical scope.
 
-Effect scripts and subscription callbacks run in separate tasks, outside the
-port-bearing event dispatch. The shim captures its native scheduler and MessageEvent
-data getter before effect code executes. This avoids exposing the port through
-legacy `window.event` or a poisoned data getter; the browser controls cover those
-specific routes. The parent must still treat the effect as hostile and enforce its
-ready-only protocol independently of the facade.
+The Worker receives a frozen `agend` facade:
 
-### Supported template
+- `canvas`: OffscreenCanvas, no DOM/ownerDocument/focus capability;
+- `params`: frozen, already validated values;
+- `asset(name)`: a transferred ImageBitmap;
+- `on(kind, callback)`: closed content-free signal subscriptions;
+- `frame(callback)`: captured Worker rAF, with a timer fallback;
+- `ready()`: at most one readiness signal.
 
-- HTML fragments or documents, inline styles, visual HTML/canvas and inline classic
-  JavaScript. Images/fonts are data URLs after bundle inlining.
-- Scripts execute in document order after DOM preparation: even a head script sees
-  the completed body. Only absent/empty, `text/javascript` or `application/javascript`
-  types are accepted. JavaScript assets are not part of the bundle asset format.
-- Modules, external scripts and script attributes other than `type` are refused.
-  Native async/defer timing is not reproduced; those attributes are refused rather
-  than silently ignored. Ordered execution after DOM preparation is the approximation.
-- Base/link/nested frame/object/embed/portal/template elements and `meta http-equiv`
-  are refused. The reusable upload validator uses `parse5`'s HTML5 parser in
-  scripting-disabled mode to match native `DOMParser(text/html)`, including
-  markup inside `noscript`. The shim validates the native parsed document too,
-  including script namespaces and attributes. Both reject element nesting deeper
-  than 256 (including html/head/body), using iterative traversal rather than recursion.
-- `document.open/write/writeln/close` are unsupported. Recognizable uses are refused,
-  and the shim guards its document methods. This is a compatibility check, not static
-  proof about arbitrary JavaScript. Sandbox/CSP and navigation removal still apply to
-  obfuscated or dynamically constructed code.
-- Synthetic DOMContentLoaded/load events run author convenience callbacks once.
-  They are not security or health evidence. Native bootstrap lifecycle events are
-  suppressed from effect listeners without suppressing the parent's iframe load.
+Nested Worker constructors and `importScripts` are neutralized before user code runs. The trusted loader retains its captured import function. This is defence in depth; the opaque origin/CSP and absence of DOM are the boundaries. A single classic entry is supported, with no supplied helper/module files. JS lints are not a confinement proof.
 
-A supported starting `effect.html` (the manifest and asset inliner are a later slice):
+The frame ignores the Worker's global messages. Its private link forwards exactly one `{type:'ready'}`. No errors, diagnostics, health/timing, commands or pong reach the dashboard. The host-facing protocol remains ready-only. Native data getters and asynchronous schedulers are captured before user code; callbacks cannot receive the private init event or port. Signals are checked both in the document and Worker and reject sibling instance/content fields.
 
-```html
-<!doctype html>
-<html><head><meta charset="utf-8"><style>
-  html, body { margin: 0; overflow: hidden; background: transparent; }
-</style></head><body><canvas id="fx"></canvas><script>
-  const canvas = document.getElementById("fx");
-  agend.on("env", ({ width, height }) => {
-    canvas.width = width;
-    canvas.height = height;
-  });
-  agend.ready();
-</script></body></html>
+The shim terminates an unready Worker after ten seconds. Unsupported capability, asset decode failure, Worker error or pagehide closes ports, terminates the Worker and releases Blob URLs/bitmaps. A decode finishing after disposal cannot start another Worker. The product factory must supply its own boot/source/origin/second-load fence, registry/caps, trust clipping and profiler before mounting anything; this PR does not implement or bypass those prerequisites.
+
+## Format agreed with r4-5
+
+An effect uses `effect.json`, fixed `worker.js`, runtime `canvas-worker-v1`, optional sanitized raster `assets/` (at most 16), and the r2 poster/cursor. No HTML/CSS/WOFF2. Closed params descriptors support bounded numbers/integers, booleans, colors and enums; no arbitrary JSON Schema, URL or executable strings. The whole normalized entry is at most 1 MiB. The library/manifest validation and upload tools land separately; a runtime render is not upload authorization.
+
+## Browser controls and limits
+
+Run `npm run build`, then the checked-in scratch recipe:
+
+```
+PW_DIR=<private Playwright prefix> PLAYWRIGHT_BROWSERS_PATH=<private cache> \
+  PROBE_ENGINES=chromium,firefox,webkit node scripts/manual/effect-runtime-1629.mts
 ```
 
-This slice does not create dashboard frames, expand the dashboard's `frame-src`,
-read bundles, expose tools, or enable placements. Subsequent slices must supply
-the exact-window/boot handshake on the parent, closed event validation before send,
-registry caps, host-owned geometry, trust-area clipping and the profiler before
-effects can be mounted. The parent's inbound port policy must accept only one
-exact `ready` and drop all other messages without state changes, logs or counters.
+It uses the built production shim on scratch HTTP listeners, private HOME/TMPDIR/browser contexts, and cleans up in finally. It never starts a fleet, backend, adapter, account session or tmux. WebKit may run in an official pinned Playwright container with network disabled, read-only own sources and an own output mount; no `/tmp` bind or host package installation is needed.
 
-## Evidence limits
+Controls cover real Worker DOM/focus absence, keyboard injection, Chromium CDP IME (not physical IME), content-free events, PNG/ImageBitmap/canvas pixels, one ready/load, nested-frame CSP denial, pagehide termination and a nonresponsive Worker killed at the startup deadline. Actual Safari/OS IME/mobile installation is a later rehearsal, not implied by Linux WebKit. Unsupported startup leaves the future product poster; it must never fall back to DOM execution.
 
-The focused shim tests execute the generated script in an inert VM. Scratch HTTP
-tests exercise the real local listener and public gateway with process creation
-denied. They verify routing and response headers, not native browser enforcement
-or process isolation. A separate scratch Chromium 156 control verifies one normal
-load, ordered classic scripts, one synthetic lifecycle, opaque DOM/cookie/storage
-denial, CSP-blocked fetch, one port ready and event reception. Its diagnostic parent
-removes frames on real location/meta navigation (second load); form submission is
-prevented by the unchanged sandbox, so no navigation occurs. It is not the product
-registry, which must repeat these controls before mounting.
-
-As with the existing preview design, sandbox/CSP do not guarantee zero outbound
-bytes: self-navigation and browser-specific residual behavior remain limitations.
-No effect receives message content, authentication material or dashboard commands.
+Dedicated Worker CPU/GPU cost is not measurable from ready-only messages. The future profiler uses host-observed load/cadence/long tasks/hidden state only, with conservative degradation while effects are active when attribution is unavailable. Callback-reported cost is not trusted. Registry caps, hard resource exhaustion limits and browser engine vulnerabilities remain separate concerns.
