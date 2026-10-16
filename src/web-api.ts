@@ -47,7 +47,7 @@ import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-ch
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore } from "./web-session.js";
-import { OPERATOR, type WebPrefsStore } from "./web-prefs.js";
+import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
 import { parseMentionQuery, type MentionNames, type MentionQuery } from "./web-mentions.js";
@@ -445,30 +445,35 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
   if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
-  const who = (): { person: string; canWrite: boolean } | { status: number; error: string } => {
+  const who = (): { person: string; canWrite: boolean; epoch: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
     if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
-    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin" };
+    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin", epoch: verdict.session.handle };
   };
   const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
   const service = ctx.effectService; if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
-  const unavailable = new Set(["themes_unreadable", "profiles_unreadable", "library_unreadable", "references_unreadable", "library_busy", "profiles_busy", "profiles_write_failed", "library_write_failed"]);
+  const unavailable = new Set(["themes_unreadable", "profiles_unreadable", "library_unreadable", "references_unreadable", "library_busy", "profiles_busy", "profiles_write_failed", "library_write_failed", "prefs_unreadable"]);
   const answer = (result: Record<string, unknown>) => json(res, typeof result.error === "string" ? result.error === "not_found" ? 404 : result.error === "profile_rate_limited" ? 429 : unavailable.has(result.error) ? 503 : 400 : 200, result);
   const idPath = /^\/ui\/effects\/(resource|profile)\/([0-9a-f]{32})$/.exec(path);
-  const instance = url.searchParams.get("instance") ?? undefined;
+  const instance = url.searchParams.get("instance") ?? undefined, slot = url.searchParams.get("slot");
+  if (slot !== null && instance !== undefined) { json(res, 404, { error: "not_found" }); return true; }
+  if (reading && (slot !== null || path === "/ui/effects/owner") && url.searchParams.get("ownerEpoch") !== first.epoch) {
+    json(res, slot !== null ? 404 : 409, { error: slot !== null ? "not_found" : "effects_person_changed" }); return true;
+  }
   if (reading) {
     const image = /^\/ui\/effects\/image\/([0-9a-f]{32})\/(poster|cursor)\.png$/.exec(path);
     if (image) {
-      const r = service.image(first.person, image[1]!, image[2] as "poster" | "cursor", instance);
+      const r = slot === null ? service.image(first.person, image[1]!, image[2] as "poster" | "cursor", instance) : service.ownerImage(first.person, image[1]!, image[2] as "poster" | "cursor", slot);
       if (!r.ok) json(res, 404, { error: "not_found" });
       else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
       return true;
     }
     if (path === "/ui/effects") answer({ ...service.list(first.person), canWrite: first.canWrite });
+    else if (path === "/ui/effects/owner" && instance === undefined && slot === null) answer(service.ownerSelections(first.person));
     else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance));
-    else if (idPath?.[1] === "resource") answer(service.resource(first.person, idPath[2]!, instance));
+    else if (idPath?.[1] === "resource") answer(slot === null ? service.resource(first.person, idPath[2]!, instance) : service.ownerResource(first.person, idPath[2]!, slot));
     else if (idPath?.[1] === "profile" && instance === undefined) answer(service.profile(first.person, idPath[2]!));
     else json(res, 404, { error: "not_found" });
     return true;
@@ -1161,28 +1166,20 @@ export function handleWebRequest(
     return true;
   }
 
-  // #1665: the web preferences that follow the person between devices. Read by any page of the panel, the public link
-  // included (it reads what is in force); written only by a signed-in admin session or the CLI's header token — never
-  // over the public link (absent from its route manifest, and refused here too), never by a read-only session.
+  // Host preferences preserve their scope; only five declared owner slots use the current human session bucket.
   if (path === "/ui/prefs" && method === "GET") {
     if (!ctx.webPrefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
-    json(res, 200, ctx.webPrefs.read(OPERATOR));
-    return true;
+    const viewer = prefsViewer(req, url, ctx); if (!viewer) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
+    res.setHeader("Cache-Control", "private, no-store");
+    json(res, 200, prefsView(ctx.webPrefs, viewer)); return true;
   }
   if (path === "/ui/prefs" && method === "POST") {
     const prefs = ctx.webPrefs;
     if (!prefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
     if (gatewayRequestContext(req)) { json(res, 403, { error: "prefs_not_over_public_link" }); return true; }
-    // Who may write, asked now and again once the body is in: a session revoked or expired, or a token rotated, while
-    // the body was on its way writes nothing and announces nothing.
-    const writer = (): number => {
-      const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      if (verdict.kind !== "allow") return 401;
-      return verdict.via === "session" && verdict.session?.tier !== "admin" ? 403 : 200;
-    };
-    const refuse = (code: number) => json(res, code, code === 401 ? { error: WEB_TOKEN_INVALID_MESSAGE } : { error: "prefs_read_only" });
-    const first = writer();
-    if (first !== 200) { refuse(first); return true; }
+    const refuse = (viewer: PrefsViewer | null) => json(res, viewer ? 403 : 401, { error: viewer ? "prefs_read_only" : WEB_TOKEN_INVALID_MESSAGE });
+    const first = prefsViewer(req, url, ctx);
+    if (!first?.canWrite) { refuse(first); return true; }
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
@@ -1190,14 +1187,22 @@ export function handleWebRequest(
       if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "set required" }); return; }
       const parsed = prefs.parsePatch(body.set);
       if (!parsed.ok) { json(res, 400, { error: parsed.error }); return; }
-      const now = writer();
-      if (now !== 200) { refuse(now); return; }
-      const onlyIfUnset = body.onlyIfUnset === true;
-      const written = prefs.write(OPERATOR, parsed.patch, { onlyIfUnset });
+      const now = prefsViewer(req, url, ctx);
+      if (!now?.canWrite) { refuse(now); return; }
+      if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "prefs_person_changed" }); return; }
+      const personal = [...parsed.patch.keys()].some(isOwnerEffectKey);
+      if (personal && now.person === null) { json(res, 403, { error: "prefs_need_a_signed_in_person" }); return; }
+      // A scope marker rejects a queued old page after a different login, including the same person's new session.
+      // It supplies neither identity nor authority; the current verified session still chooses the bucket.
+      if (personal && body.ownerEpoch !== now.epoch) { json(res, 409, { error: "prefs_person_changed" }); return; }
+      const before = prefs.readForViewer(now.person);
+      const written = prefs.writeForViewer(now.person, parsed.patch, { onlyIfUnset: body.onlyIfUnset === true,
+        validateEffect: (person, key, id) => ctx.effectService ? ctx.effectService.validateOwnerSelection(person, key, id) : "effects_unavailable" });
       if (!written.ok) { json(res, written.status, { error: written.error }); return; }
-      // Another device sees the new rev in the next status frame — at once on the live stream.
+      const dropped = written.changed.filter(isOwnerEffectKey).flatMap(key => typeof before.values[key] === "string" && before.values[key] !== written.view.values[key] ? [before.values[key] as string] : []);
+      if (dropped.length) ctx.effectService?.collectOwnerReplaced(dropped);
       if (written.changed.length) ctx.emitSseEvent("status", ctx.getUiStatus());
-      json(res, 200, { ...written.view, changed: written.changed });
+      json(res, 200, { ...written.view, ...prefsScope(now), changed: written.changed });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Saving web preferences failed");
       try { json(res, 500, { error: "Saving preferences failed" }); } catch { /* already answered */ }
@@ -2073,30 +2078,37 @@ function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFi
  * or replays a tour already seen, a new device included. Only for the signed-in app (the public link reads what is in
  * force too); the anonymous View reader and the sign-in page keep the browser's own.
  */
-function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode): string {
+type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string };
+function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): PrefsViewer | null {
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  if (v.kind !== "allow") return null;
+  if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
+    const person = webPersonKey(v.session.owner);
+    return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session" };
+  }
+  return { person: null, epoch: null, scope: "none", canWrite: v.via !== "session" || v.session?.tier === "admin", via: v.via };
+}
+const prefsScope = (v: PrefsViewer | null) => ({ ownerScope: v?.scope ?? "none", ownerEpoch: v?.epoch ?? null });
+const prefsView = (prefs: WebPrefsStore, v: PrefsViewer | null) => ({ ...prefs.readForViewer(v?.person ?? null), ...prefsScope(v) });
+function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   if (mode !== "full" || !ctx.webPrefs) return '<html lang="en">';
-  const view = ctx.webPrefs.read(OPERATOR);
+  const view = prefsView(ctx.webPrefs, viewer);
   const lang = view.values.lang === "zh-TW" ? "zh-Hant" : "en";
   const attr = (v: string) => v.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-  return `<html lang="${lang}" data-prefs="${attr(JSON.stringify({ rev: view.rev, values: view.values }))}">`;
+  return `<html lang="${lang}" data-prefs="${attr(JSON.stringify(view))}">`;
 }
 
 /**
  * #1629 r4 §3: the owner CSS this load links (its sha), or null. Only the full app of a signed-in human session — never
  * the public link, the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels).
  */
-function shellOwnerCss(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string | null {
-  if (mode !== "full" || gatewayRequestContext(req) || !ctx.ownerCss) return null;
-  try {
-    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
-    if (verdict.kind !== "allow" || verdict.via !== "session" || !verdict.session) return null;
-    return ctx.ownerCss.active(webPersonKey(verdict.session.owner));
-  } catch { return null; }
+function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string | null {
+  return mode === "full" && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
 }
 
-function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): string {
+function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
-  const ownerCss = shellOwnerCss(req, ctx, mode);
+  const ownerCss = shellOwnerCss(ctx, mode, viewer);
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
@@ -2120,6 +2132,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
 export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: AppShellContext, mode: AppShellMode): void {
   try {
     const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
+    const viewer = mode === "full" ? prefsViewer(req, new URL(req.url ?? "/", "http://localhost"), ctx) : null;
     const p = shellPreview(req, ctx, mode);
     // #1589: media plays only from this listener's own file route (path-scoped, like frame-src), at the address this page
     // was loaded from (a Host the host guard accepted); never on the public link, nor where no chat is shown.
@@ -2129,7 +2142,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const frameSrc = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode)).replace("<body>", shellBodyTag(req, ctx, mode)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
+    sendPanelHtml(res, html.replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

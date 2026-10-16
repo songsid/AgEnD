@@ -1186,3 +1186,18 @@ What a viewer sees is theirs to choose: **Settings → Appearance → Show agent
 A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects and custom CSS. **Settings → Appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
 
 `web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".
+
+### Owner effect preferences (2.3 development)
+
+The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `fx.page`, `fx.box`, `fx.cursor`) for
+the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
+`agend web --code` sign-in uses a **host-wide operator** bucket shared by everyone signing in as that operator.
+Header tokens cannot read or write these five keys. Existing visible preferences remain host-wide, without migration;
+profile and custom-CSS internal identity rules are unchanged. Owner selectors and effect playback are a later step.
+
+Unsharing an effect revokes subsequent resource authorization for someone else's personal selection, including its
+cursor image. The saved choice remains as unavailable until cleared, retaining its blob reference. This is stricter
+than chat placements' retained-runtime policy: personal choices follow current sharing, while a chat keeps the exact
+effect placed there. A reference never grants sharing or export authority. Unreadable preferences authorize no
+personal effect and prevent collection. Before playback can be mounted, stock trust/paint ordering must be reviewed;
+agent front effects stay paused while custom CSS is active, loading or unknown (human placements keep their exemption).
