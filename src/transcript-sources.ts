@@ -49,11 +49,6 @@ export interface TranscriptEvents {
   assistantTexts: string[];
   /** #1510: turn boundaries, from a source that records them (codex). */
   turns?: TranscriptTurnEvent[];
-  /**
-   * Board 003648ac: the conversation was compacted this many times in what was read (kiro: the TUI's `Compaction`
-   * record, or the classic store's new summary). The web chat's /compact is told it finished.
-   */
-  compacted?: number;
 }
 
 export interface TranscriptCheckpoint {
@@ -1004,12 +999,6 @@ export class KiroSessionSource implements TranscriptSource {
         if (!("line" in record)) continue;
         let entry: unknown;
         try { entry = JSON.parse(record.line); } catch { continue; }
-        // Board 003648ac: kiro's TUI writes a top-level Compaction record (summary + a snapshot of the old messages,
-        // kiro-cli 2.30.0). It says the conversation was compacted; its snapshot is history, not new tool activity.
-        if (entry && typeof entry === "object" && !Array.isArray(entry) && (entry as { kind?: unknown }).kind === "Compaction") {
-          events.compacted = (events.compacted ?? 0) + 1;
-          continue;
-        }
         collectKiroEvents(entry, events);
       }
       if (!moved || !read.more) break;

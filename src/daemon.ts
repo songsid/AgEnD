@@ -2,6 +2,7 @@ import type { PaneContextSource } from "./pane-context-cache.js";
 import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
+import { launchIdentity } from "./compact-watch.js";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -2570,10 +2571,6 @@ export class Daemon extends EventEmitter {
         ackIfPending();
         this.recordRecentEvent({ type: "assistant_text", preview: text.slice(0, 100) });
       });
-      // Board 003648ac: the CLI recorded a compaction (kiro): the fleet tells a web /compact waiting on it, and the Log.
-      this.transcriptMonitor.on("compacted", () => {
-        this.ipcServer?.broadcast({ type: "transcript_compacted", instanceName: this.name });
-      });
       this.transcriptMonitor.startPolling();
 
       // HangDetector is the notification bridge to the fleet manager; pane state
@@ -4046,13 +4043,21 @@ export class Daemon extends EventEmitter {
       if (!ownSwitch) return;
       this.ipcServer?.broadcast({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
-    // Board 003648ac: the fleet follows a web /compact from the moment its paste is written, so it is told that moment
-    // (or that the write never began) — once.
+    // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
+    // (taken here, under this launch, before the write) and the launch it was written under ride with the notice — once.
     let told = false;
+    let checkpoint: { path: string; ino: number; size: number } | null = null;
     const tellWritten = (written: boolean) => {
       if (!notifyWritten || told) return;
       told = true;
-      this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written" });
+      this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
+        ...(written ? { owner: launchIdentity(this.interactionOwner()), checkpoint } : {}) });
+    };
+    const takeCheckpoint = () => {
+      const path = this.logTranscriptPath();
+      checkpoint = null;
+      if (!path) return;
+      try { const st = statSync(path); checkpoint = { path, ino: st.ino, size: st.size }; } catch { checkpoint = null; }
     };
     if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) {
       if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste target unavailable before pane queue");
@@ -4085,6 +4090,7 @@ export class Daemon extends EventEmitter {
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
           ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) this.ownSwitch = ownSwitch; tellWritten(true); } } : {}),
+          ...(notifyWritten ? { beforePaneWrite: takeCheckpoint } : {}),
         });
         tellWritten(false);                                                // never written (once told, this says nothing)
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
@@ -7000,6 +7006,8 @@ export class Daemon extends EventEmitter {
       preserveExactBytes?: boolean;
       /** Called under the pane write lock the moment this delivery's write has begun (#1690: our switch's hold). */
       onPaneWritten?: () => void;
+      /** Board 003648ac: just before this message's own pane write (after readiness and residue), each attempt. */
+      beforePaneWrite?: () => void;
     },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -7171,6 +7179,8 @@ export class Daemon extends EventEmitter {
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
         if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
+        // Board 003648ac: the last moment before this message's own write (a retried attempt takes it again).
+        opts?.beforePaneWrite?.();
         const written = await this.writeMessageToPane(
           formatted,
           windowId,

@@ -63,8 +63,6 @@ export const LOG_EVENT_TYPES: ReadonlySet<string> = new Set([
   "backend_unreachable", "startup_backend_unreachable", "backend_launch_warning", "clear_action", "normal_exit_action",
   "reply_drop_detected", "reply_drop_recovered", "reply_drop_unrecovered", "supervision_ended", "tmux_server_crash",
   "malformed_tool_call", "health_check_error",
-  // Board 003648ac: the CLI recorded a compaction its daemon reports (kiro).
-  "conversation_compacted",
 ]);
 
 export type LogAnswer =

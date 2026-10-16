@@ -8,7 +8,7 @@
  *   short, starts again at its end); the same daemon and format throughout, else lost; done, or timed out.
  * - The wiring: a write the IPC refuses is not sent (and its watch dropped); the status frame carries the watch.
  */
-import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -25,7 +25,7 @@ vi.mock("../src/transcript-jsonl.js", async (importOriginal) => {
 });
 
 const {
-  COMPACT_WATCH_KEEP_MS, COMPACT_WATCH_POLL_MS, COMPACT_WATCH_TIMEOUT_MS, CompactWatch, isCompactionRecord,
+  COMPACT_WATCH_KEEP_MS, COMPACT_WATCH_POLL_MS, COMPACT_WATCH_TIMEOUT_MS, CompactWatch, isCompactionRecord, launchIdentity,
 } = await import("../src/compact-watch.js");
 const { TopicCommands } = await import("../src/topic-commands.js");
 const { FleetManager } = await import("../src/fleet-manager.js");
@@ -69,13 +69,14 @@ describe("the record that says a conversation was compacted", () => {
   });
 });
 
+const OWNER = launchIdentity({ bootId: "boot-1", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 1 });
 function rig(format: "claude" | "codex" | null = "claude") {
   const dir = tmp();
   const file = join(dir, "session.jsonl");
   writeFileSync(file, `${CLAUDE_TURN}\n${CLAUDE_BOUNDARY}\n`);       // a boundary from before: never counts
   let clock = 1000;
   const src = { path: file as string | null, format };
-  const daemon = { current: {} as unknown };
+  const daemon = { current: OWNER as string | null };
   const timers = new Map<number, { fn: () => void; ms: number }>();
   let n = 0;
   const changed = vi.fn();
@@ -84,9 +85,12 @@ function rig(format: "claude" | "codex" | null = "claude") {
     setInterval: (fn, ms) => { timers.set(++n, { fn, ms }); return n; },
     clearInterval: (h) => { timers.delete(h as number); },
   });
-  /** begin, and the daemon's word that the paste was written. */
-  const start = () => { const id = watch.begin("w")!; watch.pasted("w", id, true); return id; };
-  return { dir, file, src, daemon, watch, changed, timers, start, tick: (ms: number) => { clock += ms; } };
+  /** Where the transcript ends now: the daemon's checkpoint just before its write. */
+  const cp = () => { const st = statSync(src.path!); return { path: src.path!, ino: st.ino, size: st.size }; };
+  /** The daemon's word that the paste was written, under the launch running now, from `at`. */
+  const written = (id: string, at = cp()) => watch.pasted("w", id, true, { owner: daemon.current, checkpoint: at });
+  const start = () => { const id = watch.begin("w")!; written(id); return id; };
+  return { dir, file, src, daemon, watch, changed, timers, start, written, cp, tick: (ms: number) => { clock += ms; } };
 }
 
 describe("following one /compact", () => {
@@ -107,7 +111,7 @@ describe("following one /compact", () => {
     appendFileSync(r.file, `${CLAUDE_BOUNDARY}\n`);
     await r.watch.poll("w", id);
     expect(r.watch.view("w")).toEqual({ id, state: "running" });
-    r.watch.pasted("w", id, true);
+    r.written(id);
     await r.watch.poll("w", id);
     expect(r.watch.view("w")).toEqual({ id, state: "running" });
     appendFileSync(r.file, `${CLAUDE_TURN}\n`);
@@ -133,8 +137,8 @@ describe("following one /compact", () => {
   it("a paste that never reached the pane: lost; a word about another watch changes nothing", async () => {
     const r = rig();
     const id = r.watch.begin("w")!;
-    r.watch.pasted("w", "0".repeat(16), true);
-    r.watch.pasted("v", id, true);
+    r.watch.pasted("w", "0".repeat(16), true, { owner: OWNER, checkpoint: r.cp() });
+    r.watch.pasted("v", id, true, { owner: OWNER, checkpoint: r.cp() });
     appendFileSync(r.file, `${CLAUDE_BOUNDARY}\n`);
     await r.watch.poll("w", id);
     expect(r.watch.view("w")!.state).toBe("running");
@@ -231,7 +235,7 @@ describe("following one /compact", () => {
     const r = rig();
     const id = r.start();
     appendFileSync(r.file, `${CLAUDE_BOUNDARY}\n`);
-    r.watch.pasted("w", id, true);
+    r.written(id);
     await r.watch.poll("w", id);
     expect(r.watch.view("w")!.state).toBe("done");
   });
@@ -273,7 +277,7 @@ describe("following one /compact", () => {
     for (const change of ["relaunch", "stopped", "backend", "no_transcript"] as const) {
       const r = rig();
       const id = r.start();
-      if (change === "relaunch") r.daemon.current = {};
+      if (change === "relaunch") r.daemon.current = launchIdentity({ bootId: "boot-1", spawnGeneration: 2, launchAttempt: 1, launchFenceEpoch: 1 });
       if (change === "stopped") r.daemon.current = null;
       if (change === "backend") r.src.format = null;
       if (change === "no_transcript") r.src.path = null;
@@ -284,8 +288,75 @@ describe("following one /compact", () => {
     const later = rig();
     const lid = later.watch.begin("w")!;
     later.daemon.current = null;
-    later.watch.pasted("w", lid, true);
+    later.written(lid);
     expect(later.watch.view("w")!.state).toBe("lost");
+  });
+
+  it("round-2 P2-1: a compaction that ends between the checkpoint and the notice still counts; one before it does not", async () => {
+    const r = rig();
+    const id = r.watch.begin("w")!;
+    const at = r.cp();                                                     // the daemon, just before its write
+    appendFileSync(r.file, `${CLAUDE_BOUNDARY}\n`);                        // the CLI is fast: written before the notice arrives
+    r.written(id, at);
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("done");
+  });
+
+  it("round-2 P2-2: the notice must name the launch running now, and the transcript the watch reads; else lost", () => {
+    for (const bad of [
+      { owner: launchIdentity({ bootId: "boot-1", spawnGeneration: 2, launchAttempt: 1, launchFenceEpoch: 1 }) },
+      { owner: undefined }, { checkpoint: null }, { checkpoint: { path: "/elsewhere.jsonl", ino: 1, size: 0 } },
+      { checkpoint: { path: "x", ino: "1", size: 0 } }, { checkpoint: { size: -1 } },
+    ]) {
+      const r = rig();
+      const id = r.watch.begin("w")!;
+      const report = { owner: OWNER, checkpoint: r.cp(), ...bad } as Record<string, unknown>;
+      if (bad.checkpoint && typeof bad.checkpoint === "object" && !("path" in bad.checkpoint)) report.checkpoint = { ...r.cp(), ...bad.checkpoint };
+      r.watch.pasted("w", id, true, report);
+      expect(r.watch.view("w")!.state, JSON.stringify(bad)).toBe("lost");
+    }
+  });
+
+  it("round-2 P2-2: the same daemon respawned (another generation) during a read: lost, never done", async () => {
+    const r = rig();
+    const id = r.start();
+    appendFileSync(r.file, `${CLAUDE_BOUNDARY}\n`);
+    hooks.beforeRead = () => { r.daemon.current = launchIdentity({ bootId: "boot-1", spawnGeneration: 2, launchAttempt: 1, launchFenceEpoch: 1 }); };
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("lost");
+  });
+
+  it("round-2 P2-2: the launch changing while a long boundary is read whole: lost, never done", async () => {
+    const r = rig();
+    const id = r.start();
+    const long = JSON.stringify({ parentUuid: null, isSidechain: false, type: "system", subtype: "compact_boundary", content: "Conversation compacted",
+      compactMetadata: { preservedMessages: { uuids: Array.from({ length: 12000 }, (_, i) => `uuid-${i}-${"x".repeat(20)}`) } } });
+    appendFileSync(r.file, `${long}\n`);
+    hooks.beforeWhole = () => { r.daemon.current = null; };
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("lost");
+  });
+
+  it("round-2 P2-5: a whole boundary longer than one read is read whole when its end comes; unfinished or too long stays unknown", async () => {
+    const big = (n: number) => JSON.stringify({ parentUuid: null, isSidechain: false, type: "system", subtype: "compact_boundary", content: "Conversation compacted",
+      compactMetadata: { preservedMessages: { uuids: Array.from({ length: n }, (_, i) => `uuid-${i}-${"x".repeat(20)}`) } } });
+    const r = rig();
+    const id = r.start();
+    const line = big(45_000);
+    expect(line.length).toBeGreaterThan(1.1 * 1024 * 1024);
+    appendFileSync(r.file, `${line}\n`);
+    for (let i = 0; i < 4 && r.watch.view("w")!.state === "running"; i++) await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("done");
+    const open = rig();
+    const oid = open.start();
+    appendFileSync(open.file, line);                                       // no line end yet: still being written
+    for (let i = 0; i < 4; i++) await open.watch.poll("w", oid);
+    expect(open.watch.view("w")!.state).toBe("running");
+    const nested = rig();
+    const nid = nested.start();
+    appendFileSync(nested.file, `${JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", input: { type: "system", subtype: "compact_boundary", pad: "x".repeat(1_200_000) } }] } })}\n`);
+    for (let i = 0; i < 4; i++) await nested.watch.poll("w", nid);
+    expect(nested.watch.view("w")!.state).toBe("running");
   });
 
   it("one per instance: a new /compact replaces the last; a command that did not go is forgotten; stopAll ends them", async () => {
@@ -333,14 +404,24 @@ describe("review P2-5: the daemon says when the paste was written", () => {
     d.tmux = { isWindowAlive: async () => true, capturePane: async () => "", getWindowId: () => "@1" };
     const broadcast: unknown[] = [];
     const writes: string[] = [];
+    const transcript = join(dir, "session.jsonl");
+    writeFileSync(transcript, `${CLAUDE_TURN}\n`);
+    d.logTranscriptPath = () => transcript;
     d.ipcServer = { broadcast: (m: unknown) => broadcast.push(m), send: () => {} };
     d.wake = async () => {};
     d.deliverMessage = async (text: string, _x: unknown, opts: any) => {
       opts.verdict.reached = reached; opts.verdict.paneWriteStarted = reached;
-      if (reached) { writes.push(text); opts.onPaneWritten?.(); writes.push(`after ${broadcast.length}`); }
+      if (reached) {
+        opts.beforePaneWrite?.();
+        writes.push(text);
+        appendFileSync(transcript, `${CLAUDE_BOUNDARY}\n`);              // the CLI writes during the write and its wait
+        opts.onPaneWritten?.();
+        writes.push(`after ${broadcast.length}`);
+      }
       return reached;
     };
-    return { d, broadcast, writes };
+    const before = statSync(transcript);
+    return { d, broadcast, writes, transcript, checkpoint: { path: transcript, ino: before.ino, size: before.size } };
   }
   const ID = "0123456789abcdef";
 
@@ -353,9 +434,30 @@ describe("review P2-5: the daemon says when the paste was written", () => {
     expect([r.broadcast, r.writes]).toEqual([[], []]);
     release();
     await r.d.pasteLock;
-    expect(r.broadcast).toEqual([{ type: "raw_paste_written", id: ID, outcome: "written" }]);
+    // The checkpoint is the transcript's end before the write — not after what the CLI wrote meanwhile — and the launch.
+    expect(r.broadcast).toEqual([{ type: "raw_paste_written", id: ID, outcome: "written", owner: launchIdentity(r.d.interactionOwner()), checkpoint: r.checkpoint }]);
     expect(r.writes).toEqual(["/compact", "after 1"]);
   });
+
+  it("the real deliverMessage: the checkpoint is taken after readiness, just before this message's own pane write", async () => {
+    const r = daemonRig();
+    const order: string[] = [];
+    const dir = tmp();
+    mkdirSync(join(dir, "inst"));
+    writeFileSync(join(dir, "inst", "window-id"), "@1");
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger } as any;
+    const d: any = new Daemon("w2", { working_directory: dir, log_level: "silent", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 } } as any,
+      join(dir, "inst"), false, { getReadyPattern: () => /READY/, getErrorPatterns: () => [], getRuntimeDialogs: () => [] } as any, undefined, logger);
+    const pane = (what: string) => async (text: string) => { order.push(`${what}:${text}`); return true; };
+    d.tmux = { getWindowId: () => "@1", isWindowAlive: async () => true, capturePane: async () => "READY", sendSpecialKey: pane("key"), sendKeys: pane("keys"), pasteText: pane("paste"), pasteBuffer: pane("buffer") };
+    try {
+      await d.deliverMessage("/compact", undefined, { beforePaneWrite: () => order.push("checkpoint"), onPaneWritten: () => order.push("written") });
+      expect(order[0]).toBe("checkpoint");
+      expect(order.indexOf("written")).toBeGreaterThan(order.findIndex(o => o.includes("/compact")));
+    } finally { d.freezeRuntimeMonitors(); }
+    void r;
+  }, 20_000);
 
   it("never written, or cancelled while waking: 'not_written'; no id, or a malformed one: nothing said", async () => {
     const miss = daemonRig(false);

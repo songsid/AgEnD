@@ -248,7 +248,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
-import { CompactWatch } from "./compact-watch.js";
+import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
@@ -3215,14 +3215,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private get compactWatch(): CompactWatch {
     return this.compactWatchService ??= new CompactWatch({
       source: (name) => { const src = this.logSource(name); return { path: src.path, format: src.format }; },
-      owner: (name) => this.lifecycle.daemons.get(name) ?? null,
-      // kiro writes no transcript the Log reads, but its daemon reports a compaction (transcript_compacted) on the
-      // engines whose record of it is known: the classic store (v1) and the TUI's session log (v2). V3: not followed.
-      signals: (name) => {
+      // The launch that runs it now (the same value the daemon sends with raw_paste_written).
+      owner: (name) => {
         const daemon = this.lifecycle.daemons.get(name);
-        if (!daemon || this.backendNameForInstance(name) !== "kiro-cli") return false;
-        const engine = daemon.logLaunch()?.engine;
-        return engine === "v1" || engine === "v2";
+        try { return daemon ? launchIdentity(daemon.getInteractionSnapshot().owner) : null; } catch { return null; }
       },
       changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
@@ -7584,14 +7580,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                 "Could not deliver cross-instance failure status back to sender");
             });
           }
-        } else if (msg.type === "transcript_compacted") {
-          // Board 003648ac: the instance's daemon saw its CLI record a compaction (kiro): a web /compact waiting on it is
-          // done, and the Log shows it.
-          this.compactWatchService?.signal(name);
-          this.eventLog?.insert(name, "conversation_compacted", {});
         } else if (msg.type === "raw_paste_written") {
           // Board 003648ac: a web /compact's paste reached the pane (or never will): its watch starts, or ends as lost.
-          if (typeof msg.id === "string") this.compactWatchService?.pasted(name, msg.id, msg.outcome === "written");
+          if (typeof msg.id === "string") this.compactWatchService?.pasted(name, msg.id, msg.outcome === "written", { owner: msg.owner, checkpoint: msg.checkpoint });
         } else if (msg.type === "runtime_switch_result") {
           // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
           const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;

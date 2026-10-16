@@ -1,6 +1,0 @@
- ▸ Time: 1s
-2% > Reply with exactly one word: beta
-> beta
- ▸ Time: 1s
-2% > /compact
-⠧ Creating summary...

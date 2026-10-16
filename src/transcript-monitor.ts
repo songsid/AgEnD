@@ -131,8 +131,6 @@ export class TranscriptMonitor extends EventEmitter {
       for (const text of events.assistantTexts) { if (generation !== this.generation) return; this.emit("assistant_text", text); }
       // #1510: one batch, in transcript order (the reply guard's turn ledger reads them together).
       if (events.turns?.length && generation === this.generation) this.emit("turns", events.turns);
-      // Board 003648ac: the conversation was compacted (kiro's own record of it).
-      if (events.compacted && generation === this.generation) this.emit("compacted", events.compacted);
     } catch (err) {
       this.logger.debug({ err }, "TranscriptSource poll error");
     }

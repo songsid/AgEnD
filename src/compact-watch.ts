@@ -3,23 +3,24 @@
  *
  * - **Only what the CLI writes.** Claude Code appends a `system` `compact_boundary` record to the session's JSONL and
  *   Codex a `compacted` record to its rollout (the same records the Log tab shows as "compacted", log-steps.ts). Only
- *   a record's own top-level fields count: a long record is read whole (≤ WHOLE_LINE_MAX_BYTES) and parsed, never
- *   judged by text in its head; one that can't be read whole stays unknown. kiro (classic and TUI V2) writes no
- *   transcript AgEnD reads here, but its daemon reports its own record of a compaction (`signal`). Other backends, and
- *   kiro V3, record nothing AgEnD can see, so their compaction is never called finished: `begin` answers null.
- * - **Only after the command reached the pane.** The daemon queues a paste behind its lock and a wake; it says when
- *   this one was written (`raw_paste_written`). The watch takes the transcript's end then, so neither an older
- *   boundary nor one written while the command still waited counts. A command that never reached the pane is lost.
- * - **One transcript, one launch.** The watch is bound to the instance's daemon when the command was written and to
- *   the transcript's format; another daemon (a stop, a relaunch), another backend or no transcript any more ends it
- *   as lost. Each look reads through one opened file whose identity was checked; another file at the path, or this
- *   one cut short, starts again at its end: a boundary may then be missed (the watch times out), never invented.
+ *   a record's own top-level fields count: a long record is read whole (≤ WHOLE_LINE_MAX_BYTES, also when it spans
+ *   several reads) and parsed, never judged by text in its head; one that can't be read whole stays unknown. Other
+ *   backends (kiro included) record nothing AgEnD can attribute to the instance, so their compaction is never called
+ *   finished: `begin` answers null.
+ * - **From just before the command's own write.** The daemon queues a paste behind its lock and a wake; just before
+ *   it writes this one, it takes the transcript's end (`checkpoint`), and once written it sends that with the launch it
+ *   wrote under (`raw_paste_written`). So neither an older boundary nor one written while the command waited counts,
+ *   and a compaction that finishes fast is not missed.
+ * - **One transcript, one launch.** The watch is bound to that launch (boot, spawn generation, attempt, fence) and to
+ *   the transcript's format and path; it is rechecked before every read and after every await, and before it ends.
+ *   Another launch, another backend or no transcript ends it as lost. Each look reads through one opened file whose
+ *   identity was checked; another file at the path, or this one cut short, starts again at its end: a boundary may then
+ *   be missed (the watch times out), never invented.
  * - **Bounded.** One watch per instance (a new /compact replaces it), a look every COMPACT_WATCH_POLL_MS of at most
  *   LOOKS_PER_POLL bounded reads (readNewLines), and an end: done, lost, or timed out after COMPACT_WATCH_TIMEOUT_MS
  *   from the command. A finished watch stays in view for COMPACT_WATCH_KEEP_MS so a page that was away still learns it.
  */
 import { randomBytes } from "node:crypto";
-import { statSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { LOOKS_PER_POLL, readNewLines, readWholeLine, WHOLE_LINE_MAX_BYTES } from "./transcript-jsonl.js";
 
@@ -31,6 +32,13 @@ export const COMPACT_WATCH_KEEP_MS = 2 * 60_000;
 export type CompactFormat = "claude" | "codex";
 export type CompactState = "running" | "done" | "timeout" | "lost";
 export interface CompactWatchView { id: string; state: CompactState }
+/** The transcript's end just before the command was written (the daemon's). */
+export interface CompactCheckpoint { path: string; ino: number; size: number }
+
+/** One launch of an instance, as a value: a respawn, pause/wake or new fence is another. */
+export function launchIdentity(o: { bootId: unknown; spawnGeneration: unknown; launchAttempt: unknown; launchFenceEpoch: unknown }): string {
+  return JSON.stringify([o.bootId, o.spawnGeneration, o.launchAttempt, o.launchFenceEpoch]);
+}
 
 /** Whether one whole transcript record says the conversation was compacted (its own top-level fields only). */
 export function isCompactionRecord(format: CompactFormat, line: string): boolean {
@@ -46,10 +54,8 @@ const mayBeCompaction = (format: CompactFormat, head: string) => head.includes(f
 export interface CompactWatchDeps {
   /** The instance's transcript now, as the Log resolves it; format null: none AgEnD can read. */
   source(name: string): { path: string | null; format: CompactFormat | null };
-  /** Who runs the instance now (its daemon); null: nobody. Compared by identity. */
-  owner(name: string): unknown;
-  /** No transcript to read, but the instance's daemon reports a compaction (`signal`): kiro's engines that record it. */
-  signals?(name: string): boolean;
+  /** The launch that runs the instance now (launchIdentity); null: none. */
+  owner(name: string): string | null;
   /** A watch ended (done, lost or timed out): the status frame should go out again. */
   changed(name: string): void;
   now?(): number;
@@ -57,10 +63,12 @@ export interface CompactWatchDeps {
   clearInterval?(handle: unknown): void;
 }
 
-interface FileBase { kind: "file"; format: CompactFormat; path: string; ino: number; offset: number; skipping: boolean; owner: unknown }
-interface SignalBase { kind: "signal"; owner: unknown }
-type Base = FileBase | SignalBase;
-interface Watch { id: string; mode: "file" | "signal"; state: CompactState; deadline: number; endedAt: number | null; timer: unknown; reading: boolean; base: Base | null }
+interface Base {
+  format: CompactFormat; path: string; ino: number; offset: number; skipping: boolean; owner: string;
+  /** A long record that may be the one, whose end a later read will find (where it starts). */
+  pending: number | null;
+}
+interface Watch { id: string; state: CompactState; deadline: number; endedAt: number | null; timer: unknown; reading: boolean; base: Base | null }
 
 export class CompactWatch {
   private readonly watches = new Map<string, Watch>();
@@ -79,46 +87,30 @@ export class CompactWatch {
    */
   begin(name: string): string | null {
     const src = this.deps.source(name);
-    const mode = src.format && src.path ? "file" : this.deps.signals?.(name) ? "signal" : null;
-    if (!mode) return null;
+    if (!src.format || !src.path) return null;
     this.drop(name);
     const id = randomBytes(8).toString("hex");
-    const w: Watch = { id, mode, state: "running", deadline: this.now() + COMPACT_WATCH_TIMEOUT_MS, endedAt: null, timer: null, reading: false, base: null };
+    const w: Watch = { id, state: "running", deadline: this.now() + COMPACT_WATCH_TIMEOUT_MS, endedAt: null, timer: null, reading: false, base: null };
     w.timer = this.every(() => { void this.poll(name, id); }, COMPACT_WATCH_POLL_MS);
     this.watches.set(name, w);
     return id;
   }
 
   /**
-   * The daemon wrote (or gave up on) the command with this id. Written: the transcript's end now is where its record
-   * may start, under the daemon that runs the instance now. Synchronous, so nothing is read in between.
+   * The daemon wrote (or gave up on) the command with this id. Written: it says under which launch, and where the
+   * transcript ended just before the write. Both must be this instance's now — the launch running it and the transcript
+   * the watch reads — or the watch is lost.
    */
-  pasted(name: string, id: string, written: boolean): void {
+  pasted(name: string, id: string, written: boolean, report: { owner?: unknown; checkpoint?: unknown } = {}): void {
     const w = this.watches.get(name);
     if (!w || w.id !== id || w.state !== "running" || w.base) return;
     if (!written) { this.finish(name, w, "lost"); return; }
     const owner = this.deps.owner(name);
-    if (w.mode === "signal") {
-      if (owner == null) this.finish(name, w, "lost");
-      else w.base = { kind: "signal", owner };
-      return;
-    }
     const src = this.deps.source(name);
-    let st: { ino: number; size: number } | null = null;
-    if (src.format && src.path && owner != null) { try { st = statSync(src.path); } catch { st = null; } }
-    if (!st || !src.format || !src.path) { this.finish(name, w, "lost"); return; }
-    w.base = { kind: "file", format: src.format, path: src.path, ino: st.ino, offset: st.size, skipping: false, owner };
-  }
-
-  /**
-   * The instance's daemon reported that its CLI recorded a compaction (kiro). It ends a signal watch whose command was
-   * written under that same daemon; one still queued, or any other watch, is untouched.
-   */
-  signal(name: string): void {
-    const w = this.watches.get(name);
-    if (!w || w.state !== "running" || w.base?.kind !== "signal") return;
-    if (this.deps.owner(name) !== w.base.owner) { this.finish(name, w, "lost"); return; }
-    this.finish(name, w, "done");
+    const cp = report.checkpoint as Partial<CompactCheckpoint> | null | undefined;
+    const valid = !!cp && typeof cp === "object" && typeof cp.path === "string" && Number.isSafeInteger(cp.ino) && Number.isSafeInteger(cp.size) && (cp.size as number) >= 0;
+    if (owner === null || report.owner !== owner || !src.format || !src.path || !valid || cp!.path !== src.path) { this.finish(name, w, "lost"); return; }
+    w.base = { format: src.format, path: src.path, ino: cp!.ino as number, offset: cp!.size as number, skipping: false, owner, pending: null };
   }
 
   /** The command was not handed over after all: forget its watch (nothing was announced for it). */
@@ -153,6 +145,17 @@ export class CompactWatch {
     this.deps.changed(name);
   }
 
+  /**
+   * Whether the watch still stands as `base` was set: the same watch and base, running, the same launch, and the
+   * source still this format with a transcript. Another launch or source: lost (said here). Checked after every await.
+   */
+  private standing(name: string, w: Watch, base: Base): boolean {
+    if (this.watches.get(name) !== w || w.state !== "running" || w.base !== base) return false;
+    const src = this.deps.source(name);
+    if (this.deps.owner(name) !== base.owner || src.format !== base.format || !src.path) { this.finish(name, w, "lost"); return false; }
+    return true;
+  }
+
   /** One look at the transcript: the watch's timer calls it (tests call it directly). */
   async poll(name: string, id: string): Promise<void> {
     const w = this.watches.get(name);
@@ -160,37 +163,39 @@ export class CompactWatch {
     if (this.now() >= w.deadline) { this.finish(name, w, "timeout"); return; }
     const base = w.base;
     if (!base) return;                                                     // the command has not reached the pane yet
-    if (base.kind === "signal") {                                          // its end comes as a signal; only the launch is checked
-      if (this.deps.owner(name) !== base.owner) this.finish(name, w, "lost");
-      return;
-    }
-    const live = () => this.watches.get(name) === w && w.state === "running" && w.base === base;
-    const src = this.deps.source(name);
-    if (this.deps.owner(name) !== base.owner || src.format !== base.format || !src.path) { this.finish(name, w, "lost"); return; }
+    if (!this.standing(name, w, base)) return;
     w.reading = true;
     try {
-      if (src.path !== base.path) {
+      const src = this.deps.source(name);
+      if (src.path && src.path !== base.path) {
         // Another transcript of the same launch: only what is written to it from now on.
         const { size, ino } = await stat(src.path);
-        if (live()) Object.assign(base, { path: src.path, ino, offset: size, skipping: false });
+        if (this.standing(name, w, base)) Object.assign(base, { path: src.path, ino, offset: size, skipping: false, pending: null });
         return;
       }
       const fh = await open(base.path, "r");
       try {
         const st = await fh.stat();
-        if (!live()) return;
-        if (st.ino !== base.ino || st.size < base.offset) { Object.assign(base, { ino: st.ino, offset: st.size, skipping: false }); return; }
+        if (!this.standing(name, w, base)) return;
+        if (st.ino !== base.ino || st.size < base.offset) { Object.assign(base, { ino: st.ino, offset: st.size, skipping: false, pending: null }); return; }
         // Every read below goes through this handle: the file whose identity was just checked, whatever the path holds now.
+        const whole = async (offset: number, bytes: number) =>
+          (await readWholeLine(base.path, offset, bytes, WHOLE_LINE_MAX_BYTES, fh).catch(() => null)) ?? "";
         for (let look = 0; look < LOOKS_PER_POLL; look++) {
           const read = await readNewLines(base.path, base.offset, { skipping: base.skipping, handle: fh });
-          if (!live()) return;
+          if (!this.standing(name, w, base)) return;
           let found = read.lines.some(l => isCompactionRecord(base.format, l));
-          for (const l of read.long) {
-            if (found || !l.complete || !mayBeCompaction(base.format, l.head)) continue;
-            const whole = await readWholeLine(base.path, l.offset, l.bytes, WHOLE_LINE_MAX_BYTES, fh).catch(() => null);
-            if (whole !== null && isCompactionRecord(base.format, whole)) found = true;
+          // A long record that began in an earlier read ends in this one: read it whole now.
+          if (base.pending !== null && read.longEnd !== undefined) {
+            if (!found && isCompactionRecord(base.format, await whole(base.pending, read.longEnd - 1 - base.pending))) found = true;
+            base.pending = null;
           }
-          if (!live()) return;
+          for (const l of read.long) {
+            if (found || !mayBeCompaction(base.format, l.head)) continue;
+            if (!l.complete) { base.pending = l.offset; continue; }
+            if (isCompactionRecord(base.format, await whole(l.offset, l.bytes))) found = true;
+          }
+          if (!this.standing(name, w, base)) return;
           const moved = read.newOffset !== base.offset;
           base.offset = read.newOffset; base.skipping = read.skipping;
           if (found) { this.finish(name, w, "done"); return; }
