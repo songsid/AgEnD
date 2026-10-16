@@ -1425,9 +1425,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame */ } },
     }));
   }
-  /** #1629 r4-5c: an effect placed on an instance (the library's reference check), for a person's export. */
-  modPlacedEffect(name: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null {
-    const r = this.effectLibrary.readReferenced(id, `instance:${name}`);
+  /**
+   * #1629 r4-5c: an effect as this person may carry it away in an export — their own claim, or one a person shared —
+   * read with their principal (Sol's ACL). Being able to view or run a placed effect never grants packaging someone
+   * else's private claim: the library's reference read is runtime access, not an export path. Null: not theirs.
+   */
+  modPlacedEffect(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null {
+    const r = this.effectLibrary.read(id, { kind: "human", id: person });
     return r.ok ? { name: r.entry.manifest.name, files: r.entry.files } : null;
   }
   /** #1629 r4-5: an instance's card text as every viewer sees it (a person's fields over the agent's). */

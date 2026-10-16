@@ -250,6 +250,22 @@ export class ModStore {
     if (!MOD_ID.test(id) || idx === "unreadable" || !idx.mods.has(id)) return null;
     try { return readFileSync(this.file(id), "utf8"); } catch { return null; }
   }
+  /**
+   * The effects an installed bundle's file carries, as library content ids — what downloading that file hands over,
+   * whether or not its import installed them (an import that left effects out still keeps the whole file). "unknown":
+   * the file no longer checks here and lists effects, so what they are can't be said; null: no such mod.
+   */
+  bundleEffects(id: string): string[] | "unknown" | null {
+    const text = this.bundleText(id);
+    if (text === null) return null;
+    const checked = checkModBundle(text, this.deps.context());
+    if (checked.ok) return checked.mod.effects.map(e => e.summary.id);
+    try {
+      const listed = (JSON.parse(text) as { manifest?: { contents?: { effects?: unknown } } })?.manifest?.contents?.effects;
+      if (listed === undefined || (Array.isArray(listed) && listed.length === 0)) return [];
+    } catch { /* unknown */ }
+    return "unknown";
+  }
 
   /** Stages left idle past their time go (their effect stage is aborted). */
   private sweep(): void {
