@@ -212,7 +212,7 @@ function fakeLibrary() {
       for (const id of ids) claims.add(`${holder}/${id}`);
       return { ok: true as const, ids, created: ids, undo: () => { calls.push(`undo ${stageId}`); for (const id of ids) claims.delete(`${holder}/${id}`); return true; } };
     },
-    abort(stageId: string) { calls.push(`abort ${stageId}`); return true; },
+    abort(stageId: string) { calls.push(`abort ${stageId}`); },
     collectUnreferenced(ids: readonly string[]) { calls.push(`collect ${ids.join(",")}`); },
     releaseHolder(holder: string, principal: { kind: string; id: string }) {
       calls.push(`release ${holder} ${principal.kind}:${principal.id}`);
@@ -416,6 +416,22 @@ describe("effects, replace and uninstall (the library under the mod's own holder
     expect(s.lib.calls).toContain(`release ${modHolder(oldId)} human:p`);
     expect(s.lib.calls.at(-1)).toBe(`collect ${s.lib.staged.get("s0")!.join(",")}`);
     expect(s.store.bundleText(oldId)).toBeNull();
+  });
+  it("replace: the old holder is released last; refused, every store is restored first and then the new commit undone", () => {
+    const s = setup({ effects: true });
+    const a = s.store.stage("p", text(fx("1.0.0")));
+    if (!a.ok) throw new Error("stage");
+    s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { theme: true, effects: true }, target: "alpha" });
+    const before = { theme: s.themes.get("alpha"), list: s.store.list().mods };
+    const b = s.store.stage("p", text(fx("1.1.0", "agend.ready();")));
+    if (!b.ok) throw new Error("stage");
+    s.lib.failRelease = true;
+    s.lib.calls.length = 0;
+    expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { theme: true, effects: true, replace: true }, target: "alpha" })).toMatchObject({ ok: false, status: 409, error: "effects_release_refused" });
+    expect(s.lib.calls, "commit first, release last, then the commit undone").toEqual(["commit s1", `release ${modHolder(a.plan.mod.id)} human:p`, "undo s1"]);
+    expect([s.themes.get("alpha"), s.store.list().mods]).toEqual([before.theme, before.list]);
+    expect(s.store.bundleText(b.plan.mod.id), "the new file is gone").toBeNull();
+    expect(s.store.bundleText(a.plan.mod.id), "the old one stays").not.toBeNull();
   });
   it("uninstall releases only this mod's holder, removes its file and entry, and leaves what it applied", () => {
     const s = setup({ effects: true });
