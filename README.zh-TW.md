@@ -11,10 +11,10 @@
   </p>
 </p>
 
-AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI coding agent 的指揮中心。一個 bot，多種 CLI 後端，無限專案 — 每個都是獨立 session，crash 自動恢復，不用顧。
+AgEnD（**Agent Engineering Daemon**）把你的 Telegram、Discord 或瀏覽器變成 AI coding agent 的指揮中心。一個 bot，多種 CLI 後端，無限專案 — 每個都是獨立 session，crash 自動恢復，不用顧。
 
 <p align="center">
-  <code>你 → Telegram/Discord → AgEnD → AI Agent 團隊 → 結果回到你的手機</code>
+  <code>你 → Telegram/Discord/網頁 → AgEnD → AI Agent 團隊 → 結果回到你手上</code>
 </p>
 
 [English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.2 新功能](docs/release-notes/2.2.0.zh-TW.md)
@@ -36,7 +36,11 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram forum topic 或 Discord 頻道，就是一個獨立的 agent session。
 
-🔄 **多後端支援** — Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code，自由切換或混用。
+🔄 **多後端支援** — Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code，自由切換或混用，也可以在聊天裡用 `/backend` 把 agent 換到另一個 CLI。
+
+💬 **網頁聊天與儀表板** — 傳 `/web`，用一次性登入碼登入：在這台電腦上，或透過臨時公開連結從手機登入。每個 agent 的網頁聊天和它的頻道是同一段對話，可以傳檔案、預覽圖片與 HTML、按 Stop 中止，也支援回覆按鈕和投票。旁邊還有每個終端機的即時 **View**、fleet 頁面和設定；fleet 也可以只靠瀏覽器運作。詳見[網頁 dashboard 指南](docs/web-dashboard.zh-TW.md)。
+
+🙋 **等你處理** — 所有 bot 的提示、權限請求、登入和卡住的 agent，集中在一個即時更新的清單，在 General 和網頁上都看得到。在任何地方處理過，就會從每個清單消失。
 
 🤝 **Agent 協作** — Agent 之間透過 MCP tools 互相發現、喚醒、傳訊。General Topic 用自然語言把任務路由到對的 agent。
 
@@ -58,8 +62,6 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 🎨 **狀態表情可自訂** — 每個送達狀態的表情都能用 `status_emojis` 依頻道或依 instance 更換，Discord 伺服器的自訂表情也可以。詳見 [Configuration](docs/configuration.zh-TW.md#instancesname) 的 `status_emojis`。
 
-🖥️ **Web Dashboard** — 瀏覽器即時 fleet 監控，SSE 更新 + 整合聊天介面。
-
 🔌 **可擴充** — 轉接器外掛、webhook 通知、health endpoint、外部 session 透過 IPC 連入。
 
 👥 **團隊與任務看板** — 用具名群組做定向廣播；共用的任務看板讓多個 instance 一起追蹤多步驟的工作。
@@ -80,7 +82,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 ## 使用情境
 
-AgEnD 是住在 Discord 和 Telegram 裡的 AI 個人助理，用的是你已經有的 AI 訂閱。
+AgEnD 是住在 Discord、Telegram 和你的瀏覽器裡的 AI 個人助理，用的是你已經有的 AI 訂閱。
 
 - **工作**：一個專案一個頻道。在手機上傳訊息，助理就在你的電腦上動手做事、做完回報。General 頻道負責派工，助理之間會互相委派。
 - **生活**：私訊你的助理，請它查資料、看照片、定時提醒。
