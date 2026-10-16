@@ -74,11 +74,11 @@ describe("what's new for 2.3 (#1633)", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   const OLD = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0")! <= 0).map(e => e.id);
-  it("an instance told everything of 2.2 hears the five 2.3 entries once on 2.3 — never on a 2.2.x", () => {
+  it("an instance told everything of 2.2 hears the six 2.3 entries once on 2.3 — never on a 2.2.x", () => {
     expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.2.5" })).toBeNull();
     for (const version of ["2.3.0-alpha.1", "2.3.0-beta.1", "2.3.0"]) {
       const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-mod", "2.3-web-widget"]);
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-owner-effect-policy", "2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-mod", "2.3-web-widget"]);
     }
     const all = AGENT_WHATS_NEW.map(e => e.id);
     expect(planWhatsNew({ record: { announced: all }, fresh: false, version: "2.3.0" })).toBeNull();

@@ -43,3 +43,13 @@ Automatic effect reads **and profile POSTs** are passive for session-idle touchi
 Tests use private FS components and owned scratch HTTP listeners. They cover human/agent/public/read-only boundaries, explicit sharing, no body-controlled authority, session revocation during a held body, private retention without export/claim promotion, params/provenance, collection, PNG separation/headers, diagnostic validation/rate/clock bounds and passive session expiry. No real fleet, provider, account, tmux, tunnel or preview is started.
 
 Reports are forgeable host metadata and may reflect unrelated jank. Retained runtime code is inspectable by its viewer. Multi-store/filesystem crash atomicity is unchanged from the reviewed participants; this service does not claim a cross-store transaction. Revert the adapter/routes/agent reader and the human API becomes unavailable again; existing library/placements/reports stay intact. No migration, restart or active browser mount needs rollback.
+
+## Personal owner slots
+
+The separate [owner preference contract](1629-owner-effect-preferences.md) adds
+`GET /ui/effects/owner?ownerEpoch=<boot-handle>` and the closed `?slot=fx.sidebar|fx.header|fx.page|fx.box|fx.cursor`
+resource/image authorization (also requiring `ownerEpoch`). Cursor slots do not grant Worker source, and slot
+plus instance is refused. Unlike retained chat runtime, personal slots always
+recheck current own/shared access; an unshare makes the stored choice unavailable
+until cleared, while its reference still protects the blob. This is backend only;
+owner selectors and runtime mounting remain separate.

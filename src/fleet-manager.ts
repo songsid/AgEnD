@@ -1332,16 +1332,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.themeStore.readable()) throw new Error("themes_unreadable");
         return this.themeStore.placedEffects().flatMap(row => row.ids.map(id => ({ id, holder: `instance:${row.name}` })));
       });
-      library.registerReferenceSource("prefs", () => {
-        const prefs = this.webPrefs.read(OPERATOR);
-        if (prefs.unreadable) throw new Error("prefs_unreadable");
-        return ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"].flatMap(key => {
-          const id = prefs.values[key];
-          if (id === undefined || id === null) return [];
-          if (typeof id !== "string" || !/^[0-9a-f]{32}$/.test(id)) throw new Error("prefs_unreadable");
-          return [{ id, holder: `prefs:${OPERATOR}:${key}` }];
-        });
-      });
+      library.registerReferenceSource("prefs", () => this.webPrefs.ownerEffectReferences());
       library.registerReferenceSource("mods", () => {
         const mods = this.mods.list();
         if (mods.unreadable) throw new Error("mods_unreadable");
@@ -1356,7 +1347,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get effectProfiles(): WebEffectProfiles { return (this.effectProfilesInstance ??= new WebEffectProfiles(this.dataDir)); }
   private effectServiceInstance?: WebEffectService;
   get effectService(): WebEffectService {
-    return (this.effectServiceInstance ??= new WebEffectService({ library: this.effectLibrary, themes: this.themeStore, profiles: this.effectProfiles,
+    return (this.effectServiceInstance ??= new WebEffectService({ library: this.effectLibrary, themes: this.themeStore, profiles: this.effectProfiles, prefs: this.webPrefs,
       known: name => this.isKnownInstance(name), changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* next status carries revision */ } } }));
   }
 

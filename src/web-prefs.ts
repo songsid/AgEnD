@@ -3,8 +3,9 @@
  * the HTML-preview opt-in), kept on the host — design: the comment on #1665.
  *
  * - The tour and the first-run card stay per device (the user's call on #1665): they are not keys here.
- * - One bucket per web identity. There is one today: every web session is the operator's (SessionRecord has no
- *   owner), so the file is keyed by identity and holds "operator" only; a per-owner key can come later unmigrated.
+ * - Existing visible preferences remain in the host operator bucket. Five new owner-effect keys have fixed personal
+ *   scope: a platform-bound web identity, or explicit host operator for an ownerless signed-in session. No migration.
+ *   Raw internal profile/CSS callers retain their existing bucket API; web reads/writes use the scoped projection.
  * - A fixed registry of keys, each with its own validator. Anything else is refused — "__proto__" and "constructor"
  *   are just unknown keys: every lookup is a Map, never an object's prototype chain.
  * - The file (<home>/web-prefs.json, 0600) is replaced atomically. One that cannot be read or parsed is never
@@ -12,12 +13,22 @@
  * - `rev` rises with every change; the status frame carries it, so another device re-reads at its next poll.
  */
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 
 export const WEB_PREFS_FILE = "web-prefs.json";
 export const OPERATOR = "operator";
+/** Fixed scope, never supplied by a request. Existing public keys remain host-wide. */
+export const OWNER_EFFECT_KEYS = ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"] as const;
+export type OwnerEffectKey = typeof OWNER_EFFECT_KEYS[number];
+const OWNER_KEYS: ReadonlySet<string> = new Set(OWNER_EFFECT_KEYS);
+export function isOwnerEffectKey(key: string): key is OwnerEffectKey { return OWNER_KEYS.has(key); }
+/** Library holders are bounded even for the longest platform identity. They confer no runtime read authority. */
+export function ownerEffectHolder(identity: string, key: OwnerEffectKey): string {
+  return `prefs:${createHash("sha256").update(identity).digest("hex")}:${key}`;
+}
 
 type Invalid = { readonly invalid: string };
 const bad = (invalid: string): Invalid => ({ invalid });
@@ -58,7 +69,7 @@ const FAVORITES = "nav.favorites";
 const STATUS_FACETS = new Set(["working", "needs", "idle", "stopped", "crashed"]);
 
 /** Each key's validator: the value to store, or why it is refused. `null` (clear) never reaches one. */
-const REGISTRY = new Map<string, (v: unknown) => unknown>([
+const VALIDATORS = new Map<string, (v: unknown) => unknown>([
   ["theme", (v) => (v === "light" || v === "dark" || v === "system" ? v : bad("theme: light, dark or system"))],
   ["lang", (v) => (v === "en" || v === "zh-TW" ? v : bad("lang: en or zh-TW"))],
   // The sidebar's drag order: the rows instance-nav.js keeps (group rows have no group_name).
@@ -122,6 +133,9 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
   [OWNER_CSS_ACTIVE, (v) => (typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : bad("css.active"))],
   [OWNER_CSS_TRIAL, (v) => (typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : bad("css.trial"))],
 ]);
+for (const key of OWNER_EFFECT_KEYS) VALIDATORS.set(key, v => typeof v === "string" && /^[0-9a-f]{32}$/.test(v) ? v : bad(`${key}: an effect id`));
+const REGISTRY = new Map([...VALIDATORS].map(([key, validate]) => [key, { validate, scope: (OWNER_KEYS.has(key) ? "person" : PROFILE_KEYS.has(key) ? "internal" : "host") as "person" | "host" | "internal" }]));
+export function webPrefScope(key: string): "person" | "host" | "internal" | null { return REGISTRY.get(key)?.scope ?? null; }
 export const WEB_PREF_KEYS: readonly string[] = [...REGISTRY.keys()].filter((k) => !PROFILE_KEYS.has(k));
 export function isWebPrefKey(key: string): boolean { return REGISTRY.has(key) && !PROFILE_KEYS.has(key); }
 
@@ -146,7 +160,7 @@ export function parseWebPrefsPatch(set: unknown, exists?: (name: string) => bool
   const keys = Object.keys(set);
   if (!keys.length) return { ok: false, error: "set: at least one preference" };
   for (const key of keys) {
-    const validate = PROFILE_KEYS.has(key) ? undefined : REGISTRY.get(key);
+    const validate = PROFILE_KEYS.has(key) ? undefined : REGISTRY.get(key)?.validate;
     if (!validate) return { ok: false, error: `unknown_pref: ${key.slice(0, 64)}` };
     const raw = set[key];
     if (raw === null) { patch.set(key, null); continue; }
@@ -200,10 +214,10 @@ export class WebPrefsStore {
         const bucket: Bucket = { values: new Map(), updated: new Map() };
         // A key this version no longer knows, or a value it would refuse now, is left out (never served).
         for (const key of Object.keys(raw.values)) {
-          const validate = REGISTRY.get(key);
+          const validate = REGISTRY.get(key)?.validate;
           if (!validate) continue;
           const value = validate(raw.values[key]);
-          if (isInvalid(value)) continue;
+          if (isInvalid(value)) { if (OWNER_KEYS.has(key)) return (this.state = "unreadable"); continue; }
           bucket.values.set(key, value);
           const at = raw.updated[key];
           bucket.updated.set(key, typeof at === "number" && Number.isFinite(at) ? at : 0);
@@ -220,6 +234,29 @@ export class WebPrefsStore {
     const state = this.load();
     if (state === "unreadable") return { values: {}, rev: 0, unreadable: true };
     return this.viewOf(state, identity);
+  }
+
+  /** null is explicitly host-only, including when OPERATOR physically holds personal choices. */
+  readForViewer(person: string | null): WebPrefsView {
+    const state = this.load();
+    return state === "unreadable" ? { values: {}, rev: 0, unreadable: true } : this.scopedView(state, person);
+  }
+  private scopedView(state: State, person: string | null): WebPrefsView {
+    const host = this.viewOf(state, OPERATOR), values: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(host.values)) if (REGISTRY.get(key)?.scope === "host") values[key] = value;
+    if (person !== null) for (const [key, value] of state.buckets.get(person)?.values ?? []) if (REGISTRY.get(key)?.scope === "person") values[key] = value;
+    return { values, rev: state.rev };
+  }
+  /** All identities retain their stored references after sharing is withdrawn; unknown state refuses collection. */
+  ownerEffectReferences(): Array<{ id: string; holder: string }> {
+    const state = this.load(); if (state === "unreadable") throw Error("prefs_unreadable");
+    const refs: Array<{ id: string; holder: string }> = [];
+    for (const [identity, bucket] of state.buckets) for (const key of OWNER_EFFECT_KEYS) {
+      const id = bucket.values.get(key); if (id === undefined) continue;
+      if (typeof id !== "string" || !/^[0-9a-f]{32}$/.test(id)) throw Error("prefs_unreadable");
+      refs.push({ id, holder: ownerEffectHolder(identity, key) });
+    }
+    return refs;
   }
 
   rev(): number { const s = this.load(); return s === "unreadable" ? 0 : s.rev; }
@@ -251,31 +288,53 @@ export class WebPrefsStore {
    * the keys the host does not have yet are taken, so the first device to arrive wins and the host wins from then on.
    */
   write(identity: string, patch: Map<string, unknown>, opts: { onlyIfUnset?: boolean } = {}): WebPrefsWrite {
+    const result = this.writeBuckets([{ identity, patch }], opts);
+    return result.ok ? { ok: true, view: this.viewOf(result.state, identity), changed: result.changed } : result;
+  }
+
+  /** One candidate/index write/revision for mixed host+person patches. No migration or cross-bucket shadowing. */
+  writeForViewer(person: string | null, patch: Map<string, unknown>, opts: {
+    onlyIfUnset?: boolean;
+    validateEffect?: (person: string, key: OwnerEffectKey, id: string) => string | null;
+  } = {}): WebPrefsWrite {
+    const parsed = this.parsePatch(Object.fromEntries(patch)); if (!parsed.ok) return { ok: false, status: 400, error: parsed.error };
+    const host = new Map<string, unknown>(), own = new Map<string, unknown>();
+    for (const [key, value] of parsed.patch) {
+      if (REGISTRY.get(key)?.scope !== "person") { host.set(key, value); continue; }
+      if (person === null) return { ok: false, status: 400, error: "prefs_need_a_signed_in_person" };
+      if (value !== null) {
+        const error = opts.validateEffect ? opts.validateEffect(person, key as OwnerEffectKey, value as string) : "effects_unavailable";
+        if (error) return { ok: false, status: 400, error };
+      }
+      own.set(key, value);
+    }
+    const targets = person === OPERATOR ? [{ identity: OPERATOR, patch: new Map([...host, ...own]) }]
+      : [{ identity: OPERATOR, patch: host }, ...(person === null ? [] : [{ identity: person, patch: own }])];
+    const result = this.writeBuckets(targets, opts);
+    return result.ok ? { ok: true, view: this.scopedView(result.state, person), changed: result.changed } : result;
+  }
+
+  private writeBuckets(targets: Array<{ identity: string; patch: Map<string, unknown> }>, opts: { onlyIfUnset?: boolean }):
+    { ok: true; state: State; changed: string[] } | { ok: false; status: 503; error: string } {
     const state = this.load();
     if (state === "unreadable") return { ok: false, status: 503, error: "prefs_unreadable" };
-    const prior = state.buckets.get(identity);
-    const next: Bucket = { values: new Map(prior?.values), updated: new Map(prior?.updated) };
-    const at = (this.opts.now ?? Date.now)();
-    const changed: string[] = [];
-    for (const [key, value] of patch) {
-      if (opts.onlyIfUnset && next.values.has(key)) continue;
-      if (value === null) {
-        if (!next.values.has(key)) continue;
-        next.values.delete(key); next.updated.delete(key);
-      } else {
-        if (next.values.has(key) && JSON.stringify(next.values.get(key)) === JSON.stringify(value)) continue;
-        next.values.set(key, value); next.updated.set(key, at);
+    const buckets = new Map(state.buckets), changed: string[] = [], at = (this.opts.now ?? Date.now)();
+    for (const { identity, patch } of targets) {
+      const prior = buckets.get(identity), next: Bucket = { values: new Map(prior?.values), updated: new Map(prior?.updated) };
+      let touched = false;
+      for (const [key, value] of patch) {
+        if (opts.onlyIfUnset && next.values.has(key)) continue;
+        if (value === null) { if (!next.values.has(key)) continue; next.values.delete(key); next.updated.delete(key); }
+        else { if (next.values.has(key) && JSON.stringify(next.values.get(key)) === JSON.stringify(value)) continue; next.values.set(key, value); next.updated.set(key, at); }
+        changed.push(key); touched = true;
       }
-      changed.push(key);
+      if (touched) buckets.set(identity, next);
     }
-    if (!changed.length) return { ok: true, view: this.viewOf(state, identity), changed };
-    const buckets = new Map(state.buckets);
-    buckets.set(identity, next);
+    if (!changed.length) return { ok: true, state, changed };
     const candidate: State = { buckets, rev: state.rev + 1 };
     (this.opts.write ?? ((path, data) => atomicWriteFileSync(path, data, { mode: 0o600 })))(this.path, serialize(candidate));
-    // Only once it is on disk: a failed write leaves memory as the file is.
     this.state = candidate;
-    return { ok: true, view: this.viewOf(candidate, identity), changed };
+    return { ok: true, state: candidate, changed };
   }
 
   /** #1827: a web person's profile as kept (checked again where it is used); null while the file cannot be read. */
@@ -339,11 +398,11 @@ export interface WebProfile {
 }
 
 function serialize(state: State): string {
-  const identities: Record<string, unknown> = {};
+  const identities: Record<string, unknown> = Object.create(null);
   for (const [id, b] of state.buckets) {
     identities[id] = { values: Object.fromEntries(b.values), updated: Object.fromEntries(b.updated) };
   }
-  // Object.fromEntries with a "__proto__" entry defines an own property, but no such key ever gets in: ids are ours, keys
-  // are the registry's.
+  // A raw identity named "__proto__" remains data in the null-prototype container.
+  // Bucket values use Object.fromEntries, which also defines own data properties.
   return JSON.stringify({ version: 1, rev: state.rev, identities }, null, 2) + "\n";
 }
