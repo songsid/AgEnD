@@ -402,7 +402,7 @@ export function isPassiveWebRead(method: string | undefined, path: string): bool
   // #1629: automatic diagnostic reports are not human activity. This affects touch only: POST still needs CSRF; only the bounded diagnostic route accepts a read-tier session.
   if (method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path)) return true;
   if ((method ?? "GET") !== "GET") return false;
-  return /^\/ui\/effects(?:\/(?:placements|(?:resource|profile)\/[0-9a-f]{32}|image\/[0-9a-f]{32}\/(?:poster|cursor)\.png))?$/.test(path) || PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path) || PASSIVE_GET_CARD.test(path)
+  return /^\/ui\/effect-posters(?:\/[0-9a-f]{32}\.png)?$/.test(path) || /^\/ui\/effects(?:\/(?:placements|(?:resource|profile)\/[0-9a-f]{32}|image\/[0-9a-f]{32}\/(?:poster|cursor)\.png))?$/.test(path) || PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path) || PASSIVE_GET_CARD.test(path)
     || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)
     // #1490: a page polls an Apply job (and a secret or binding apply) for up to ten minutes while the person waits;
     // that polling is not their activity and must not slide the session's idle expiry (#1373).

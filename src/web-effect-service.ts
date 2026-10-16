@@ -3,6 +3,7 @@ import { WebEffectLibrary } from "./web-effect-library.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WEB_EFFECT_ID, resolveEffectParams } from "./web-effect.js";
 import { effectRasterAssets } from "./web-effect-bundle.js";
+import { staticEffectPoster } from "./web-effect-poster.js";
 import { decodeEffectFiles } from "./web-effect-upload.js";
 import type { WebEffectProfiles } from "./web-effect-profiles.js";
 import { isOwnerEffectKey, OWNER_EFFECT_KEYS, type OwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
@@ -147,6 +148,22 @@ export class WebEffectService {
     const r = this.deps.library.readReferenced(id, `instance:${instance}`); if (!r.ok) return r;
     const params = resolveEffectParams(r.entry.manifest, placement.params ?? {}); if (!params.ok) return { ok: false as const, error: "effect_params" };
     return { ...r, placement, params: params.values };
+  }
+  /** Public/local visual projection: current chat placements only, no principal, code, params or claim grant. */
+  posterPlacements(instance: string): Answer {
+    if (!this.deps.known(instance)) return fail("not_found");
+    if (!this.deps.themes.readable()) return fail("themes_unreadable");
+    return { rev: this.deps.themes.rev(), posters: this.deps.themes.get(instance).placements.effects.flatMap(p => {
+      const r = this.retained(p.id, instance), bytes = r.ok ? r.entry.files.get("poster.png") : undefined;
+      return r.ok && r.entry.manifest.regions.includes("chat") && bytes && staticEffectPoster(bytes)
+        ? [{ id: p.id, title: r.entry.manifest.title }] : [];
+    }) };
+  }
+  placedPoster(id: string, instance: string): { ok: true; bytes: Uint8Array } | { ok: false; error: "not_found" } {
+    const r = this.retained(id, instance);
+    const source = r.ok && r.entry.manifest.regions.includes("chat") ? r.entry.files.get("poster.png") : undefined;
+    const bytes = source ? staticEffectPoster(source) : null;
+    return bytes ? { ok: true, bytes } : { ok: false, error: "not_found" };
   }
   resource(person: string, id: string, instance?: string): Answer {
     if (!this.validPerson(person)) return fail("not_found");
