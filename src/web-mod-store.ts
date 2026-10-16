@@ -39,7 +39,7 @@ export interface EffectPrincipal { kind: "agent" | "human"; id: string }
 export interface ModEffectLibrary {
   stage(entries: readonly EffectFiles[], principal: EffectPrincipal, opts: { holder: string }): { ok: true; stageId: string; ids: string[] } | { ok: false; error: string };
   commit(stageId: string): { ok: true; ids: string[]; created: string[]; undo: () => boolean } | { ok: false; error: string };
-  abort(stageId: string): boolean;
+  abort(stageId: string): void;
   releaseHolder(holder: string, principal: EffectPrincipal): { ok: true; released: string[]; undo: () => boolean } | { ok: false; error: string };
   /** A guarded, deferred collector: rechecks every claim and reference before deleting (never synchronously). */
   collectUnreferenced?(ids: readonly string[]): void;
@@ -390,19 +390,11 @@ export class ModStore {
       applied.push("ownerCss");
     }
 
-    // The index: this mod in, the one it replaces out (its effect claim released in the same stretch).
+    // The index: this mod in, the one it replaces out. The old mod's effect claim is released LAST (below): one library
+    // write per rollback chain, so the new commit's undo always meets the exact state it left (CW1, agreed with Sol).
     const mods = new Map(idx.mods);
-    let releasedOld: string[] = [];
-    if (replaces) {
-      const old = mods.get(replaces.id);
-      if (old && old.effects.length && this.deps.effects) {
-        const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.installedBy });
-        if (!r.ok) return rollback(409, "effects_release_refused", r.error);
-        undo.push(() => { r.undo(); });
-        releasedOld = r.released;
-      }
-      mods.delete(replaces.id);
-    }
+    const old = replaces ? mods.get(replaces.id) : undefined;
+    if (replaces) mods.delete(replaces.id);
     const prev = mods.get(mod.id);
     mods.set(mod.id, {
       name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes,
@@ -422,6 +414,15 @@ export class ModStore {
     if (s.proposal !== undefined && idx.proposals.get(s.proposal)?.id === mod.id) { proposals = new Map(idx.proposals); proposals.delete(s.proposal); }
     const w = this.commitIndex(mods, proposals);
     if (!w.ok) return rollback(w.status, w.error, w.detail);
+    undo.push(() => { this.commitIndex(idx.mods, idx.proposals); });
+    // The last fallible step: the replaced mod's effect claim. Refused: every store above is restored first, then the
+    // new library commit is undone (rollback runs in reverse). Released: nothing fallible follows.
+    let releasedOld: string[] = [];
+    if (replaces && old && old.effects.length && this.deps.effects) {
+      const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.installedBy });
+      if (!r.ok) return rollback(409, "effects_release_refused", r.error);
+      releasedOld = r.released;
+    }
     if (proposals) { try { unlinkSync(this.proposalFile(s.proposal!)); } catch { /* already gone */ } }
     // Held: what the import replaced may go now, and the stage is done.
     finalize?.();
