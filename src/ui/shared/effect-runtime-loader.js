@@ -119,13 +119,20 @@ export function checkEffectResource(input, expectedId) {
 }
 
 /** The host freezes ownerEpoch/current at page creation; neither is taken from a response or an effect. */
-export function createEffectRuntimeLoader({ window: host, ownerEpoch, current } = {}) {
-  if (!host || typeof host !== "object" || loaders.has(host) || typeof host.fetch !== "function" || typeof host.AbortController !== "function" || typeof host.setTimeout !== "function" || typeof host.clearTimeout !== "function" || typeof ownerEpoch !== "string" || !EPOCH.test(ownerEpoch) || typeof current !== "function") return { ok: false };
+export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, onRevoke = () => {} } = {}) {
+  if (!host || typeof host !== "object" || loaders.has(host) || typeof host.fetch !== "function" || typeof host.AbortController !== "function" || typeof host.setTimeout !== "function" || typeof host.clearTimeout !== "function" || typeof ownerEpoch !== "string" || !EPOCH.test(ownerEpoch) || typeof current !== "function" || typeof onRevoke !== "function") return { ok: false };
   const reservation = {}; loaders.set(host, reservation);
   let dead = false, revoked = false, previous = null; const pending = new Set();
   const releaseWindow = () => { if (dead && pending.size === 0 && loaders.get(host) === reservation) loaders.delete(host); };
-  const now = () => { let t; try { t = host.performance.now(); } catch { revoked = true; return null; } if (!finite(t) || t < 0 || previous !== null && t < previous) { revoked = true; return null; } previous = t; return t; };
-  const alive = () => { try { if (!dead && !revoked && current() === true) return true; } catch { /* unknown */ } revoked = true; return false; };
+  // Terminal state is latched before callbacks. Abort releases logical callers, never physical reservations.
+  function revoke(reason) {
+    if (dead || revoked) return;
+    revoked = true;
+    try { onRevoke(Object.freeze({ reason })); } catch { /* host notification cannot preserve authority */ }
+    for (const p of [...pending]) { try { p.abort?.(); } catch { /* cancel the other operations */ } }
+  }
+  const now = () => { let t; try { t = host.performance.now(); } catch { revoke("clock_unavailable"); return null; } if (!finite(t) || t < 0 || previous !== null && t < previous) { revoke("clock_unavailable"); return null; } previous = t; return t; };
+  const alive = () => { if (dead || revoked) return false; try { if (current() === true) return !dead && !revoked; } catch { /* unknown */ } revoke("owner_unavailable"); return false; };
   if (!alive() || now() === null) { dead = true; releaseWindow(); return { ok: false }; }
   function run(kind, path, project, signal, settled = false) {
     if (dead || revoked) return Promise.resolve(null);
@@ -148,7 +155,7 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current } 
       const response = await host.fetch(path, { credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
       body = response.body;
       if (!valid()) return null;
-      if ([401, 403, 409].includes(response.status)) { revoked = true; return null; }
+      if ([401, 403, 409].includes(response.status)) { revoke("authorization_rejected"); return null; }
       if (!response.ok || response.redirected || !/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") || "")) return null;
       const length = response.headers.get("content-length");
       if (length !== null && (!/^(0|[1-9][0-9]*)$/.test(length) || !integer(Number(length), 0, limit))) return null;
@@ -179,11 +186,13 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current } 
     const id = spec.id, scope = spec.instance !== undefined ? `instance=${encodeURIComponent(spec.instance)}` : `slot=${encodeURIComponent(spec.slot)}`;
     return run("resource", `/ui/effects/resource/${id}?${scope}&ownerEpoch=${ownerEpoch}`, value => checkEffectResource(value, id), signal, settled);
   }
+  const ownerRead = (signal, settled = false) => run("placements", `/ui/effects/owner?ownerEpoch=${ownerEpoch}`, checkEffectOwnerSlots, signal, settled);
   return { ok: true,
-    owner(signal) { return run("placements", `/ui/effects/owner?ownerEpoch=${ownerEpoch}`, checkEffectOwnerSlots, signal); },
+    owner(signal) { return ownerRead(signal); },
     placements(instance, signal) { return placementRead(instance, signal); },
     resource(input, signal) { return resourceRead(input, signal); },
     // Host scheduler seams: logical abort is prompt; these promises retain ownership until physical cleanup.
+    ownerSettled(signal) { return ownerRead(signal, true); },
     placementsSettled(instance, signal) { return placementRead(instance, signal, true); },
     resourceSettled(input, signal) { return resourceRead(input, signal, true); },
     dispose() { if (dead) return; dead = true; for (const p of pending) p.abort(); releaseWindow(); },
