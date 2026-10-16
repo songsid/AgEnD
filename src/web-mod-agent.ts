@@ -19,6 +19,7 @@ import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
 import type { ModStore } from "./web-mod-store.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import { AGENT_WIDGET_SLOTS } from "./web-widget.js";
+import { canonicalText } from "./web-theme.js";
 
 /** An exported mod that fits one message is sent whole; a larger one is fetched in parts (as a preview is). */
 export const MOD_INLINE_BYTES = 600 * 1024;
@@ -61,8 +62,9 @@ export class AgentMods {
   private exportMod(instance: string, args: Answer, now: number): Answer {
     if (typeof args.name !== "string" || !SLUG.test(args.name)) return { error: "name", message: "name: a-z, 0-9 and - (1..64)" };
     if (typeof args.version !== "string" || !SEMVER.test(args.version)) return { error: "version", message: "version: MAJOR.MINOR.PATCH" };
-    const title = args.title === undefined ? args.name : args.title;
-    if (typeof title !== "string" || !title.trim() || title.length > 60) return { error: "title", message: "title: 1..60 characters" };
+    // The importer's own rule (#1897 review): what is exported always imports.
+    const title = canonicalText(args.title === undefined ? args.name : args.title, 1, 60);
+    if (title === null) return { error: "title", message: "title: 1..60 characters on one line" };
     const rec = this.deps.themes.get(instance);
     const parts: ModExportParts = {};
     const { card, ...look } = rec.theme;
@@ -75,7 +77,7 @@ export class AgentMods {
       const w = rec.placements.widgets[slot];
       if (w && w.by === "agent") (parts.widgets ??= {})[slot] = { spec: w.spec, data: w.data };
     }
-    const built = buildModBundle({ name: args.name, version: args.version, title: title.trim() }, parts);
+    const built = buildModBundle({ name: args.name, version: args.version, title }, parts);
     if (!built.ok) return { error: built.error, message: built.error === "nothing_to_export" ? "You have no theme, card text or widgets of your own to export." : "A picture your theme names is missing." };
     const data = Buffer.from(built.text, "utf8");
     const sha256 = createHash("sha256").update(data).digest("hex");

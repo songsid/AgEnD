@@ -103,6 +103,7 @@ describe("export_web_mod", () => {
     expect(s.agent.handle("alpha", "export_web_mod", { name: "Bad!", version: "1.0.0" })).toMatchObject({ error: "name" });
     expect(s.agent.handle("alpha", "export_web_mod", { name: "x", version: "1" })).toMatchObject({ error: "version" });
     expect(s.agent.handle("alpha", "export_web_mod", { name: "x", version: "1.0.0", title: "t".repeat(61) })).toMatchObject({ error: "title" });
+    expect(s.agent.handle("alpha", "export_web_mod", { name: "x", version: "1.0.0", title: "\u034f" }), "the importer's title rule").toMatchObject({ error: "title" });
   });
   it("a large one comes in parts: its own transfer only, indices in range, gone when idle (monotonic)", () => {
     const s = setup();
@@ -115,6 +116,8 @@ describe("export_web_mod", () => {
     const data = Buffer.concat(parts.map(p => Buffer.from(p.data_b64, "base64")));
     expect([data.length, sha(data)]).toEqual([f.bytes, f.sha256]);
     expect(s.agent.handle("beta", "export_web_mod", { part: { transfer: first.transfer, name: f.name, index: 0 } })).toMatchObject({ error: "export" });
+    expect(s.agent.handle("alpha", "export_web_mod", { part: { transfer: "0".repeat(16), name: f.name, index: 0 } }), "its own, by id").toMatchObject({ error: "export" });
+    expect(s.agent.handle("alpha", "export_web_mod", { part: { transfer: first.transfer, name: "other-1.0.0.agendmod.json", index: 0 } }), "and by name").toMatchObject({ error: "export" });
     expect(s.agent.handle("alpha", "export_web_mod", { part: { transfer: first.transfer, name: f.name, index: f.parts } })).toMatchObject({ error: "part" });
     s.tick(60_001);
     expect(s.agent.handle("alpha", "export_web_mod", { part: { transfer: first.transfer, name: f.name, index: 0 } })).toMatchObject({ error: "export" });
@@ -160,6 +163,8 @@ describe("propose_web_mod", () => {
     for (let i = 0; i < 3; i++) expect(propose(s, bundle({ name: `p${i}` }))).toHaveProperty("proposed");
     expect(propose(s, bundle({ name: "p3" }))).toMatchObject({ error: "rate_limited" });
     expect(s.mods.proposals().map(p => p.name), "one per agent: the newest").toEqual(["p2"]);
+    expect(propose(s, bundle({ name: "theirs" }), "beta")).toHaveProperty("proposed");
+    expect(s.mods.proposals().map(p => [p.instance, p.name]), "another agent's stays").toEqual([["alpha", "p2"], ["beta", "theirs"]]);
   });
   it("in parts: the same checks, at the first part and at the end", () => {
     const s = setup();
@@ -176,6 +181,11 @@ describe("propose_web_mod", () => {
     }
     expect(last).toMatchObject({ proposed: { name: "proposed" } });
     expect(s.agent.handle("beta", "propose_web_mod", { data_b64: "AA==", part: { index: 1, count: 2, bytes: 2, sha256: sha("xx"), upload } })).toMatchObject({ error: "upload" });
+    // The same agent, a part naming another upload: refused, and its own upload starts over.
+    const two = Buffer.alloc(400 * 1024, 1);
+    const first = s.agent.handle("alpha", "propose_web_mod", { data_b64: two.subarray(0, 360 * 1024).toString("base64"), part: { index: 0, count: 2, bytes: two.length, sha256: sha(two) } }) as any;
+    expect(typeof first.upload).toBe("string");
+    expect(s.agent.handle("alpha", "propose_web_mod", { data_b64: two.subarray(360 * 1024).toString("base64"), part: { index: 1, count: 2, bytes: two.length, sha256: sha(two), upload: "f".repeat(16) } })).toMatchObject({ error: "upload" });
   });
   it("a person opens it into the usual review; once installed it is gone; a dismissed one too", () => {
     const s = setup();
@@ -290,5 +300,19 @@ describe("the page: proposals", () => {
       expect(calls.at(-1)).toEqual(["/ui/mods/proposal/stage", JSON.stringify({ instance: "alpha" })]);
       expect(pg.root.querySelector(".s-mod-plan h4")!.textContent).toContain("Proposed look");
     } finally { vi.unstubAllGlobals(); pg.restore(); }
+  });
+});
+
+describe("the agent's side of a transfer", () => {
+  it("a part that doesn't add up is refused; only the mod file name is written, nothing else", async () => {
+    const { receiveFiles, writeModFile, MOD_FILE } = await import("../src/web-asset-parts.js");
+    const data = Buffer.from("x".repeat(1000));
+    const first = { transfer: "t1", files: [{ name: "a-1.0.0.agendmod.json", bytes: data.length, sha256: sha(data), parts: 1 }] };
+    expect(await receiveFiles(first, async () => ({ data_b64: Buffer.from("y".repeat(1000)).toString("base64") }), { name: MOD_FILE, idKey: "transfer", what: "export" })).toMatchObject({ error: "export", message: "The export's parts do not add up." });
+    expect(await receiveFiles(first, async () => ({ data_b64: data.toString("base64") }), { name: MOD_FILE, idKey: "transfer", what: "export" })).toEqual({ files: [{ name: "a-1.0.0.agendmod.json", data }] });
+    const ws = tmp();
+    for (const name of ["../x-1.0.0.agendmod.json", "x.json", "X-1.0.0.agendmod.json"]) expect(await writeModFile([{ name, data }], { workspace: ws, stateDir: tmp() }), name).toHaveProperty("error");
+    expect(require("node:fs").existsSync(join(ws, ".agend"))).toBe(false);
+    expect(await writeModFile([{ name: "ok-1.0.0.agendmod.json", data }], { workspace: ws, stateDir: tmp() })).toEqual({ path: join(ws, ".agend", "mods", "ok-1.0.0.agendmod.json"), bytes: data.length });
   });
 });
