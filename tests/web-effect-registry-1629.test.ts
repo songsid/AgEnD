@@ -21,6 +21,7 @@ vi.mock("../src/ui/shared/effect-frame.js", async () => {
 });
 const { createEffectRegistry } = await import(new URL("../src/ui/shared/effect-registry.js", import.meta.url).href);
 const id = (n: number) => n.toString(16).padStart(32, "0"), boot = "b".repeat(32);
+const stock = (patch = {}) => ({ ok: true, front: true, agentFront: true, rects: [], ...patch });
 const gates = (patch = {}) => ({ safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: false, openInstance: "own", ...patch });
 async function flush() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
 function rig(options: any = {}) {
@@ -45,9 +46,9 @@ function rig(options: any = {}) {
   };
   const safety = { allowed: vi.fn((_id?: string, _device?: string) => true), begin: vi.fn((_spec?: any) => `token-${++tokens}`), finish: vi.fn((_token?: string, _reason?: string) => true), pause: vi.fn((_record?: any) => true), resume: vi.fn((_id?: string, _device?: string) => true) };
   const load = vi.fn(async (d: any, _signal?: AbortSignal) => ({ id: d.id, code: "agend.ready()", params: { ...d.params }, assets: [], wants: ["state", "reply", "mention", "theme", "pointer"] }));
-  const change = vi.fn(), profile = vi.fn(), coverage = vi.fn(() => true);
+  const change = vi.fn(), profile = vi.fn(), coverage = vi.fn((_input?: any): any => stock());
   const { prepareHost, ...registryOptions } = options; prepareHost?.(host);
-  const api = createEffectRegistry({ window: host, origin: "https://preview.example", boot, load, safety, trustComplete: coverage, onChange: change, onProfile: profile, ...registryOptions }); M.APIs.push(api);
+  const api = createEffectRegistry({ window: host, origin: "https://preview.example", boot, load, safety, stockSnapshot: coverage, onChange: change, onProfile: profile, ...registryOptions }); M.APIs.push(api);
   const descriptors = (n = 1, patch: any = {}) => Array.from({ length: n }, (_, i) => { const element = node(); element.isConnected = true; return { key: `effect-${i}`, id: id(i + 1), region: "chat", layer: "behind", by: "agent", order: i, paused: false, visible: true, instance: "own", params: {}, element, ...patch }; });
   return { api, host, doc, safety, load, coverage, change, profile, rafs, timers, events, mutations, resizes, trusted, descriptors, node,
     frames: () => M.frames.filter(f => f.options.window === host), cals: () => M.calibrations.filter(c => c.options.window === host), geo: () => M.geometries.find(g => g.options.window === host),
@@ -88,7 +89,7 @@ describe("#1629 shared Canvas Worker registry", () => {
     const h = rig(); h.coverage.mockReturnValue(false); h.api.update(h.descriptors(), gates()); await flush(); expect(h.frames()).toHaveLength(0); expect(h.cals()).toHaveLength(0);
   });
   it("new instances cannot bypass this window's one pool", () => {
-    const h = rig(); expect(createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, trustComplete: h.coverage })).toMatchObject({ ok: false });
+    const h = rig(); expect(createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, stockSnapshot: h.coverage })).toMatchObject({ ok: false });
   });
   it("scope, visibility, local pause and open-chat fences precede any loader", async () => {
     const h = rig(), ds = h.descriptors(4); ds[0].region = "page"; ds[1].visible = false; ds[2].paused = true; ds[3].instance = "other"; await h.admit(ds); expect(h.load).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0);
@@ -122,7 +123,7 @@ describe("#1629 shared Canvas Worker registry", () => {
   it.each(["allowed", "begin", "coverage"])("time spent in the %s callback cannot extend a resource's deadline", async stage => {
     const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); const ds = await h.admit();
     if (stage === "allowed") h.safety.allowed.mockImplementation(() => { h.at(10000); return true; });
-    else h.safety.begin.mockImplementation(() => { if (stage === "coverage") h.coverage.mockImplementation(() => { h.at(10000); return true; }); else h.at(10000); return "deadline-token"; });
+    else h.safety.begin.mockImplementation(() => { if (stage === "coverage") h.coverage.mockImplementation(() => { h.at(10000); return stock(); }); else h.at(10000); return "deadline-token"; });
     h.at(9999); resolve({ id: ds[0]!.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush();
     expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "resource_timeout" });
     if (stage !== "allowed") expect(h.safety.finish).toHaveBeenCalledWith("deadline-token", "resource_timeout"); else expect(h.safety.begin).not.toHaveBeenCalled();
@@ -131,22 +132,22 @@ describe("#1629 shared Canvas Worker registry", () => {
     const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); const ds = await h.admit();
     let refuse = true;
     const coverage = () => {
-      if (!refuse) return true;
+      if (!refuse) return stock();
       refuse = mode === "persistent";
-      if (mode === "reentrant") { h.api.update(ds, gates()); return true; }
+      if (mode === "reentrant") { h.api.update(ds, gates()); return stock(); }
       return false;
     };
     if (mode === "after-marker") h.safety.begin.mockImplementation(() => { h.coverage.mockImplementation(coverage); return "coverage-token"; });
     else h.coverage.mockImplementation(coverage);
     resolve({ id: ds[0]!.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush();
-    h.timer(20000); expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "admission_revoked" });
+    h.timer(20000); expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: mode === "reentrant" ? "stock_reentrant" : "admission_revoked" });
     expect(h.load.mock.calls[0]![1]!.aborted).toBe(true); h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledTimes(1);
     if (mode === "after-marker") expect(h.safety.finish).toHaveBeenCalledWith("coverage-token", "admission_revoked"); else expect(h.safety.begin).not.toHaveBeenCalled();
   });
   it("no second pool is created while disposed physical loads remain unsettled", async () => {
     const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); await h.admit(); h.api.dispose();
-    expect(createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, trustComplete: h.coverage })).toMatchObject({ ok: false }); resolve(null); await flush();
-    const next = createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, trustComplete: h.coverage }); expect(next.ok).toBe(true); next.dispose();
+    expect(createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, stockSnapshot: h.coverage })).toMatchObject({ ok: false }); resolve(null); await flush();
+    const next = createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, stockSnapshot: h.coverage }); expect(next.ok).toBe(true); next.dispose();
   });
   it.each(["id", "params"])("a resource %s mismatch refuses before safety marker or factory", async field => {
     const h = rig(), ds = h.descriptors(); ds[0].params = { density: 2 } as any;
@@ -232,7 +233,7 @@ describe("#1629 shared Canvas Worker registry", () => {
     expect(h.api.snapshot().filter((r: any) => r.phase)).toHaveLength(3);
   });
   it("a coverage callback revoking the owner cannot admit a stale frame", async () => {
-    const h = rig(), ds = h.descriptors(); h.coverage.mockImplementationOnce(() => { h.api.update(ds, gates({ show: false })); return true; }); h.api.update(ds, gates()); await flush(); expect(h.frames()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled();
+    const h = rig(), ds = h.descriptors(); h.coverage.mockImplementationOnce(() => { h.api.update(ds, gates({ show: false })); return stock(); }); h.api.update(ds, gates()); await flush(); expect(h.frames()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled();
   });
   it("a profile callback changing owners cannot publish metrics for retired siblings", async () => {
     const h = rig(), ds = await h.admit(h.descriptors(3)); for (const f of h.frames()) f.ready();
@@ -304,5 +305,90 @@ describe("#1629 shared Canvas Worker registry", () => {
   it("dispose releases timers, observers, ports through the factory, and host event handlers", async () => {
     const h = rig(); await h.admit(); h.frames()[0].ready(); h.api.dispose(); h.api.dispose();
     expect(h.frames()[0].state().removed).toBe(true); expect(h.rafs.size).toBe(0); expect(h.timers.size).toBe(0); expect([...h.events.values()].every(s => s.size === 0)).toBe(true); expect(h.mutations[0].disconnect).toHaveBeenCalledOnce(); expect(h.resizes[0].disconnect).toHaveBeenCalledOnce();
+  });
+});
+
+describe("#1629 current stock admission", () => {
+  it("requires the new provider; a legacy completeness callback never substitutes", () => {
+    const h = rig({ stockSnapshot: undefined, trustComplete: () => true }); expect(h.api.ok).toBe(false);
+  });
+  it("passes the actual privately owned connected root to the observational provider", async () => {
+    const h = rig(); await h.admit(); const input = h.coverage.mock.calls[0]![0];
+    expect(Object.isFrozen(input)).toBe(true); expect(Object.keys(input)).toEqual(["frameRoot"]);
+    expect(input.frameRoot).toBe(h.frames()[0].options.root); expect(input.frameRoot.ownerDocument).toBe(h.doc); expect(input.frameRoot.isConnected).toBe(true);
+  });
+  it.each([true, Promise.resolve(stock()), stock({ rects: Array(1) }), stock({ front: undefined }), stock({ agentFront: "off" })])("weak/async/malformed evidence %j never calibrates or loads", async value => {
+    const h = rig(); h.coverage.mockReturnValue(value); await h.admit(); expect(h.cals()).toHaveLength(0); expect(h.load).not.toHaveBeenCalled(); expect(h.safety.begin).not.toHaveBeenCalled();
+  });
+  it.each([false, undefined])("owner CSS proof %s blocks agent fronts before allocation, preserving a behind slot", async css => {
+    const h = rig(), ds = h.descriptors(4); for (let i = 0; i < 3; i++) ds[i]!.layer = "front";
+    h.coverage.mockReturnValue(stock({ agentFront: css })); await h.admit(ds, gates({ constrained: true }));
+    if (css === false) { expect(h.load).toHaveBeenCalledOnce(); expect(h.load.mock.calls[0]![0].key).toBe("effect-3"); expect(h.api.snapshot()[0]).toMatchObject({ reason: "owner_css", phase: null }); }
+    else expect(h.load).not.toHaveBeenCalled();
+  });
+  it("human fronts retain the CSS exception, but a stock overlay suppresses both provenances", async () => {
+    const h = rig(), ds = h.descriptors(3, { layer: "front" }); ds[1]!.by = "human"; ds[2]!.layer = "behind";
+    h.coverage.mockReturnValue(stock({ agentFront: false })); await h.admit(ds);
+    expect(h.load.mock.calls.map(c => c[0].key)).toEqual(["effect-1", "effect-2"]);
+    h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); h.mutations[0].cb(); await flush();
+    expect(h.api.snapshot()[0]).toMatchObject({ reason: "stock_overlay", phase: null }); expect(h.api.snapshot()[1]).toMatchObject({ reason: "stock_overlay", phase: null }); expect(h.api.snapshot()[2].phase).toBe("starting");
+    expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1);
+  });
+  it("the same frozen expanded paint snapshot reaches every reveal in one host frame", async () => {
+    const h = rig(), rects = [{ x: -20, y: -30, width: 200, height: 300 }]; h.coverage.mockReturnValue(stock({ rects })); await h.admit(h.descriptors(2));
+    for (const frame of h.frames()) frame.ready();
+    h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 });
+    const a = h.geo().bindings[0], b = h.geo().bindings[1];
+    for (const binding of [a, b]) { expect(binding.sync.mock.calls[0][1].rects).toEqual(rects); expect(Object.isFrozen(binding.sync.mock.calls[0][1])).toBe(true); }
+    a.sync.mockClear(); b.sync.mockClear(); h.coverage.mockClear(); h.frame(17);
+    expect(h.coverage).toHaveBeenCalledOnce(); for (const frame of h.frames()) expect(frame.send.mock.calls.some(call => call[0].type === "pointer")).toBe(true); expect(a.sync).toHaveBeenCalledOnce(); expect(b.sync).toHaveBeenCalledOnce();
+    const proof = a.sync.mock.calls[0][1]; expect(proof).toBe(b.sync.mock.calls[0][1]); expect(proof.rects).toEqual(rects); expect(proof.rects).not.toBe(rects); expect(Object.isFrozen(proof.rects[0])).toBe(true);
+  });
+  it("a CSS denial at held completion clears the request without a marker or frame", async () => {
+    const h = rig(); let resolve: (value: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); const ds = await h.admit(h.descriptors(1, { layer: "front" }));
+    h.coverage.mockReturnValue(stock({ agentFront: false })); resolve({ id: ds[0]!.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush();
+    expect(h.safety.begin).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "admission_revoked" });
+    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledOnce();
+  });
+  it("a denial after marker creation finishes that exact marker and never allocates a frame", async () => {
+    const h = rig(); h.safety.begin.mockImplementation(() => { h.coverage.mockReturnValue(stock({ agentFront: false })); return "owned-marker"; });
+    await h.admit(h.descriptors(1, { layer: "front" })); expect(h.frames()).toHaveLength(0); expect(h.safety.finish).toHaveBeenCalledWith("owned-marker", "admission_revoked");
+  });
+  it("a denial on a new host frame stops an agent front before geometry reveal or signal delivery", async () => {
+    const h = rig(); await h.admit(h.descriptors(1, { layer: "front" })); const f = h.frames()[0]; f.ready(); f.send.mockClear(); h.geo().bindings[0].sync.mockClear();
+    h.coverage.mockReturnValue(stock({ agentFront: false })); expect(h.api.publish("state", { state: "working" }, "own")).toBe(0); h.frame(17);
+    expect(f.send).not.toHaveBeenCalled(); expect(h.geo().bindings[0].sync).not.toHaveBeenCalled(); expect(f.state().removed).toBe(true);
+  });
+  it("getter-driven reentry is not invoked; provider-driven reentry stops without scheduling a callback retry", async () => {
+    const h = rig(), ds = h.descriptors(), getter = vi.fn(() => { h.api.update(ds, gates()); return true; });
+    h.coverage.mockReturnValue(Object.defineProperty(stock(), "front", { get: getter })); await h.admit(ds); expect(getter).not.toHaveBeenCalled(); expect(h.load).not.toHaveBeenCalled();
+    h.coverage.mockImplementation(() => { h.api.update(ds, gates()); return stock(); }); h.api.update(ds, gates()); await flush(); h.timer(20000);
+    expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "stock_reentrant" }); expect(h.load).not.toHaveBeenCalled(); expect(h.coverage.mock.calls.length).toBeLessThan(5);
+  });
+  it("a provider disposing its owner cannot return reusable admission proof", async () => {
+    const h = rig(); h.coverage.mockImplementation(() => { h.api.dispose(); return stock(); }); h.api.update(h.descriptors(), gates()); await flush(); expect(h.load).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0);
+  });
+});
+
+
+describe("transient stock restrictions", () => {
+  it.each(["owner_css", "stock_overlay"])("rAF-first %s denial removes without a permanent identity failure", async reason => {
+    const h = rig(), ds = await h.admit(h.descriptors(1, { layer: "front" })); const f = h.frames()[0]; f.ready();
+    h.coverage.mockReturnValue(stock({ agentFront: false, front: reason === "owner_css" })); h.frame(17);
+    expect(f.state().removed).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush();
+    expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1); expect(h.safety.resume).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("stock focus wake-up", () => {
+  it("focusout re-evaluates a suppressed empty pool without a descriptor update or DOM mutation", async () => {
+    const h = rig(); await h.admit(h.descriptors(1, { layer: "front" })); h.frames()[0].ready();
+    h.doc.activeElement = h.node("SELECT"); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); h.emit("focusin"); await flush();
+    expect(h.api.snapshot()[0]).toMatchObject({ reason: "stock_overlay", phase: null }); expect(h.frames()[0].state().removed).toBe(true);
+    h.doc.activeElement = h.doc.body; h.coverage.mockReturnValue(stock()); h.emit("focusout");
+    expect(h.cals()).toHaveLength(2); h.cals()[1].resolve({ ok: true, baselineFps: 60 }); await flush();
+    expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1); expect(h.load).toHaveBeenCalledTimes(2);
   });
 });
