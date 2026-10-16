@@ -1,0 +1,85 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { page, type AppPage } from "./helpers/app-harness.js";
+import { isServedAsset } from "../src/auth-api.js";
+const { createEffectTrialStage, effectTrialStage, effectTrialStageIdentity } = await import("/assets/effect-trial-stage.js");
+const proof = () => ({ ok: true, front: false, agentFront: false, rects: [] });
+const own = () => ({ key: "trial:a", id: "a".repeat(32), run: "b".repeat(32), instance: "worker", generation: 1 });
+const pages: AppPage[] = [], cleanup: (() => void)[] = [];
+afterEach(async () => { for (const f of cleanup.splice(0)) f(); for (const p of pages.splice(0).reverse()) { await p.unmount(); p.restore(); } });
+function fixture(options: any = {}) {
+  const p = page(); pages.push(p); const doc: any = p.document, host: any = p.window;
+  p.root.className = "main";
+  const chat = doc.createElement("section"), split = doc.createElement("div"), panel = doc.createElement("aside"), stage = doc.createElement("div"), link = doc.createElement("link");
+  chat.className = "panel p-chat"; split.className = "chat-split"; panel.className = "pv-panel effect-trial-panel"; panel.setAttribute("data-trust", "preview"); stage.className = "effect-trial-stage";
+  p.root.append(chat); chat.append(split); split.append(panel);
+  for (const name of ["head", "controls", "body", "note"]) { const e = doc.createElement("div"); e.className = "effect-trial-" + name; panel.append(e); if (name === "body") e.append(stage); }
+  link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/app.css"); doc.body.append(link); (link as any).disabled = false;
+  const rules: any[] = [], sheet: any = { ownerNode: link, href: host.location.origin + "/assets/app.css", disabled: false, cssRules: rules,
+    insertRule(selector: string) { const declarations: any = {}; rules.push({ selectorText: selector.slice(0, -2), declarations, style: { setProperty(k: string, v: string) { declarations[k.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = v; } } }); return rules.length - 1; }, deleteRule(i: number) { rules.splice(i, 1); } };
+  (link as any).sheet = sheet;
+  const base = () => ({ position: "static", zIndex: "auto", visibility: "visible", display: "block", opacity: "1", contain: "none", isolation: "auto", mixBlendMode: "normal", willChange: "auto", contentVisibility: "visible", transform: "none", boxShadow: "none", outlineStyle: "none" });
+  const stageStyle = { position: "relative", zIndex: "0", contain: "paint", overflowX: "clip", overflowY: "clip", paddingLeft: "0px", paddingRight: "0px", paddingTop: "0px", paddingBottom: "0px", borderLeftWidth: "0px", borderRightWidth: "0px", borderTopWidth: "0px", borderBottomWidth: "0px" };
+  let current = () => true, css = () => "off", focused = true, patch: any = {}, framePatch: any = {}, otherPatch = new Map<any, any>(), r = { x: 320, y: 160, width: 399.75, height: 300.5 };
+  const bounds = (el: any) => el === stage ? r : el === panel ? { x: 300, y: 100, width: 450, height: 450 } : { x: r.x, y: r.y, width: Number.parseFloat(rules.at(-1)?.declarations.width || "399"), height: Number.parseFloat(rules.at(-1)?.declarations.height || "300") };
+  stage.getBoundingClientRect = () => bounds(stage); panel.getBoundingClientRect = () => bounds(panel);
+  Object.assign(host, { innerWidth: 800, innerHeight: 600, CSS: { supports: () => options.supports !== false }, getComputedStyle(el: any) { const matching = rules.filter(rule => el.classList.contains(rule.selectorText.slice(1))); return { ...base(), ...(el === stage ? { ...stageStyle, ...patch } : {}), ...Object.assign({}, ...matching.map(rule => rule.declarations)), ...(el.tagName === "IFRAME" ? framePatch : {}), ...otherPatch.get(el) }; } });
+  Object.defineProperty(doc, "visibilityState", { configurable: true, value: "visible" }); doc.hasFocus = () => focused;
+  const onStop = vi.fn(), api = createEffectTrialStage({ window: host, panel, stage, binding: options.binding || own(), current: (v: any) => current(), ownerCss: () => css(), onStop });
+  if (api) cleanup.push(api.dispose);
+  const frame = () => { const f = doc.createElement("iframe"); f.getBoundingClientRect = () => bounds(f); stage.append(f); return f; };
+  return { p, host, doc, panel, stage, link, rules, api, onStop, frame, patch, framePatch, otherPatch, rect(v: any) { r = v; }, css(v: string) { css = () => v; }, focus(v: boolean) { focused = v; }, current(fn: () => boolean) { current = fn; } };
+}
+describe("host-only local trial stage, not product admission or a new frame pool", () => {
+  it("is not served or imported by product modules", () => {
+    expect(isServedAsset("effect-trial-stage.js")).toBe(false);
+    for (const file of ["src/ui/panel-chat.js", "src/ui/shared/app.js", "src/ui/app-effects.js"]) expect(readFileSync(file, "utf8")).not.toContain("effect-trial-panel");
+  });
+  it("brands an immutable identity and projects only an exact current binding with ordinary foreground still suppressed", () => {
+    const h = fixture(), identity = effectTrialStageIdentity(h.api.receipt);
+    expect(Object.isFrozen(identity)).toBe(true); expect(identity).toMatchObject({ key: own().key, id: own().id, instance: own().instance, generation: 1 });
+  });
+  it("does not publish the server trial reference in paint identity", () => {
+    const h = fixture(); expect(effectTrialStageIdentity(h.api.receipt)).toEqual({ key: "trial:a", id: "a".repeat(32), instance: "worker", generation: 1, serial: expect.any(Number) });
+    expect(effectTrialStage(h.api.receipt, own(), proof())).toMatchObject({ root: h.stage, rect: { x: 320, y: 160, width: 399, height: 300 } });
+    expect(h.stage.children).toHaveLength(0); expect(h.rules).toHaveLength(0);
+  });
+  it.each(["key", "id", "instance", "generation"])("a different %s never resolves the receipt", key => { const h = fixture(); expect(effectTrialStage(h.api.receipt, { ...own(), [key]: "other" }, proof())).toBeNull(); expect(effectTrialStageIdentity({})).toBeNull(); expect(effectTrialStage({}, own(), proof())).toBeNull(); });
+  it("hides before bind succeeds, uses inward integer bounds and physically removes only its frame/rule", () => {
+    const h = fixture(), projected = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = projected.bind(f, { layer: "front" }, proof());
+    expect(b.ok).toBe(true); expect(h.host.getComputedStyle(f).visibility).toBe("hidden"); expect(b.sync(proof())).toBe(true); expect(h.host.getComputedStyle(f)).toMatchObject({ width: "399px", height: "300px", pointerEvents: "none", opacity: "0.85", visibility: "visible" });
+    h.api.hide(); expect(h.host.getComputedStyle(f).visibility).toBe("hidden"); h.api.dispose(); h.api.dispose(); expect(f.isConnected).toBe(false); expect(h.rules).toHaveLength(0); expect(h.panel.isConnected).toBe(true); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stopped"); expect(effectTrialStageIdentity(h.api.receipt)).toBeNull();
+  });
+  it.each(["on", "loading", "unknown", "other"])("owner CSS %s permanently ends a stage", css => { const h = fixture(); h.css(css); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("stage_unavailable"); h.css("off"); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+  it.each([null, { ...proof(), ok: false }, { ...proof(), front: true, agentFront: true }])("missing or globally unsuppressed proof refuses: %j", p => { const h = fixture(); expect(effectTrialStage(h.api.receipt, own(), p)).toBeNull(); });
+  it.each([{ contain: "none" }, { overflowX: "visible" }, { overflowY: "hidden" }, { position: "fixed" }, { zIndex: "20" }, { paddingLeft: "1px" }, { borderRightWidth: "1px" }, { transform: "matrix(1,0,0,1,1,0)" }, { isolation: "isolate" }, { mixBlendMode: "multiply" }, { boxShadow: "0px 0px 2px red" }, { outlineStyle: "solid" }])("clip or paint change %j refuses", patch => { const h = fixture(); Object.assign(h.patch, patch); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+  it.each(["class", "marker", "topology", "extra-child", "focusable", "editable", "offscreen", "out-of-panel", "huge", "missing-sheet", "no-focus"])("stage %s refuses", fault => {
+    const h = fixture(); if (fault === "class") h.panel.className += " other"; if (fault === "marker") h.panel.removeAttribute("data-trust"); if (fault === "topology") h.doc.body.append(h.panel); if (fault === "extra-child") h.stage.append(h.doc.createElement("div")); if (fault === "focusable") h.stage.setAttribute("tabindex", "0"); if (fault === "editable") h.stage.setAttribute("contenteditable", "false"); if (fault === "offscreen") h.rect({ x: -1, y: 0, width: 20, height: 20 }); if (fault === "out-of-panel") h.rect({ x: 0, y: 0, width: 20, height: 20 }); if (fault === "huge") h.rect({ x: 320, y: 160, width: 4097, height: 300 }); if (fault === "missing-sheet") (h.link as any).disabled = true; if (fault === "no-focus") h.focus(false);
+    expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
+  });
+  it("another menu/dialog ends a stage even if the supplied stock snapshot still says suppressed", () => { const h = fixture(), menu = h.doc.createElement("div"); menu.setAttribute("role", "dialog"); menu.getBoundingClientRect = () => ({ x: 0, y: 0, width: 10, height: 10 }); h.doc.body.append(menu); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+  it("window blur stops synchronously; element blur does not", () => { const h = fixture(); h.host._fire({ type: "blur", target: h.stage, eventPhase: 2 }, false); expect(effectTrialStageIdentity(h.api.receipt)).not.toBeNull(); h.host._fire({ type: "blur", target: h.host, eventPhase: 2 }, false); expect(effectTrialStageIdentity(h.api.receipt)).toBeNull(); expect(h.onStop).toHaveBeenCalledExactlyOnceWith("blur"); });
+  it("current callback reentry cannot revive a disposed receipt or touch a replacement", () => { const h = fixture(); h.current(() => { h.api.dispose(); return true; }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); expect(h.onStop).toHaveBeenCalledTimes(1); });
+  it("a stronger initial visible cascade is refused and removed before successful bind", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(); h.framePatch.visibility = "visible"; expect(p.bind(f, { layer: "front" }, proof()).ok).toBe(false); expect(f.isConnected).toBe(false); expect(h.rules).toHaveLength(0); });
+  it("sync paint loss removes the frame; another frame cannot share this stage", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "behind" }, proof()); expect(b.sync(proof())).toBe(true); h.framePatch.pointerEvents = "auto"; expect(b.sync(proof())).toBe(false); expect(f.isConnected).toBe(false); });
+  it("binding rejects getters without calling them", () => { const get = vi.fn(), raw = own(); Object.defineProperty(raw, "id", { get, enumerable: true }); const h = fixture({ binding: raw }); expect(h.api).toBeNull(); expect(get).not.toHaveBeenCalled(); });
+  it("expected binding accessors are refused without invocation", () => { const h = fixture(), value = own(), get = vi.fn(); Object.defineProperty(value, "id", { get }); expect(effectTrialStage(h.api.receipt, value, proof())).toBeNull(); expect(get).not.toHaveBeenCalled(); });
+  it("one stage holds only one frame, and rejection removes the extra input", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), first = h.frame(); const one = p.bind(first, { layer: "front" }, proof()); expect(one.ok).toBe(true); const second = h.frame(); expect(p.bind(second, { layer: "front" }, proof()).ok).toBe(false); expect(second.isConnected).toBe(false); expect(first.isConnected).toBe(true); });
+  it("layout reentry cannot return a newly stale or detached stage", () => { const h = fixture(), before = h.stage.getBoundingClientRect; h.stage.getBoundingClientRect = () => { h.current(() => false); return before(); }; expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+
+  it("constructor refuses unknown clip support or a duplicate owner of the same stage", () => {
+    expect(fixture({ supports: false }).api).toBeNull(); const h = fixture(); expect(createEffectTrialStage({ window: h.host, panel: h.panel, stage: h.stage, binding: own(), current: () => true, ownerCss: () => "off" })).toBeNull();
+  });
+  it("unknown ancestor containment and another visible preview refuse even with a modeled suppressed proof", () => {
+    const h = fixture(); h.otherPatch.set(h.panel, { contain: "paint" }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
+    const second = fixture(), other = second.doc.createElement("aside"); other.className = "pv-panel"; other.getBoundingClientRect = () => ({ x: 0, y: 0, width: 20, height: 20 }); second.doc.body.append(other); expect(effectTrialStage(second.api.receipt, own(), proof())).toBeNull();
+  });
+  it("viewport and total pixel bounds are independent of panel containment", () => {
+    const h = fixture(); h.panel.getBoundingClientRect = () => ({ x: 0, y: 0, width: 1000, height: 1000 }); h.rect({ x: 790, y: 20, width: 20, height: 20 }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
+    const second = fixture(); second.host.innerWidth = second.host.innerHeight = 4096; second.panel.getBoundingClientRect = () => ({ x: 0, y: 0, width: 4096, height: 4096 }); second.rect({ x: 0, y: 0, width: 3000, height: 3000 }); expect(effectTrialStage(second.api.receipt, own(), proof())).toBeNull();
+  });
+  it("only an iframe can bind the local stage", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), canvas = h.doc.createElement("canvas"); h.stage.append(canvas); expect(p.bind(canvas, { layer: "front" }, proof()).ok).toBe(false); expect(canvas.isConnected).toBe(false); });
+
+  it("sync refuses an in-bounds frame whose actual size disagrees with the host geometry", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "front" }, proof()); f.getBoundingClientRect = () => ({ x: 320, y: 160, width: 398, height: 300 }); expect(b.sync(proof())).toBe(false); expect(f.isConnected).toBe(false); });
+
+});
