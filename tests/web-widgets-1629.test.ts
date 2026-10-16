@@ -189,6 +189,8 @@ describe("set_web_widget / remove_web_widget", () => {
     t.tick(10_000);
     expect(t.app.handleTool("alpha", "set_web_widget", { slot: "details", data: { prs: [1] } }), "checked against the placed spec").toHaveProperty("errors");
     expect(t.app.handleTool("alpha", "set_web_widget", { slot: "details", data: { prs: 3 } }), "an invalid call cost nothing").toMatchObject({ widget: { data: { prs: 3 } } });
+    t.tick(10_000);
+    expect((t.app.handleTool("alpha", "set_web_widget", { slot: "details", data: { tokens: [1, 2] } }) as any).widget.data, "a key not named stays").toEqual({ prs: 3, tokens: [1, 2] });
   });
   it("a new spec keeps the values that still fit; the same spec again keeps its first placement", () => {
     const t = tools();
@@ -199,11 +201,12 @@ describe("set_web_widget / remove_web_widget", () => {
     expect((r as any).widget.data).toEqual({ prs: 4 });
     t.tick(31_000);
     t.app.handleTool("alpha", "set_web_widget", { slot: "details", spec: DETAILS });
-    const id = t.store.get("alpha").placements.widgets.details!.id;
+    const again = t.store.get("alpha").placements.widgets.details!;
+    expect(again.at, "a different spec in between: a new placement").not.toBe(at);
     t.tick(31_000);
-    t.app.handleTool("alpha", "set_web_widget", { slot: "details", spec: DETAILS });
-    expect(t.store.get("alpha").placements.widgets.details!.id).toBe(id);
-    expect(t.store.get("alpha").placements.widgets.details!.at).not.toBe(at);
+    t.app.handleTool("alpha", "set_web_widget", { slot: "details", spec: DETAILS, data: { prs: 9 } });
+    const same = t.store.get("alpha").placements.widgets.details!;
+    expect([same.id, same.at, same.data]).toEqual([again.id, again.at, { prs: 9 }]);
   });
   it("a person's placement: the agent may give it values, never replace or remove it", () => {
     const t = tools();

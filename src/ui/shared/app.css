@@ -1148,9 +1148,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 /* #1629 r4-4: widgets — the page's own components, from a declarative spec (agent-widget.js). The host draws the 1px
    frame and the ✦ chip, outside anything the spec chooses; nothing in a widget takes a click or focus. Colours are the
    theme's tokens (an agent's chat header sits inside its themed chat), so a person's own CSS can restyle them too. */
-.aw { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-2) var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; overflow: clip; user-select: text; }
+.aw { border: 1px dashed var(--border-strong); border-radius: var(--r-md); padding: var(--s-2) var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; overflow: clip; user-select: text; }
 .aw-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
-.aw-chip { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.aw-chip { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .aw-by { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
 .aw-items { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .aw-item { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-sm); }
@@ -1163,7 +1163,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .aw-bar::-webkit-progress-bar { background: var(--surface-2); border-radius: var(--r-full); }
 .aw-bar::-webkit-progress-value { background: var(--accent); border-radius: var(--r-full); }
 .aw-bar::-moz-progress-bar { background: var(--accent); border-radius: var(--r-full); }
-.aw-progress .aw-value { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+.aw-progress .aw-value { margin-left: auto; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
 .aw-list { flex-direction: column; align-items: stretch; gap: var(--s-1); }
 .aw-list ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .aw-badge { display: inline-block; padding: 1px var(--s-2); border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: var(--fw-medium); white-space: nowrap; background: var(--surface-2); color: var(--text-2); }
@@ -1174,14 +1174,20 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .aw-spark { flex: 1; min-width: 48px; height: 24px; }
 .aw-spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .aw-spark-item .aw-value { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
-/* The chat header strip: one compact row, under the card, in that agent's chat only. */
-.aw-chat_header { flex-shrink: 0; flex-direction: row; align-items: center; border-width: 0 0 1px; border-radius: 0; padding: var(--s-1) var(--s-4); min-height: 32px; max-height: 72px; }
-.aw-chat_header .aw-items { flex-direction: row; flex: 1; gap: var(--s-4); overflow: hidden; }
-.aw-chat_header .aw-item { flex: 0 1 auto; white-space: nowrap; }
-.aw-chat_header .aw-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The chat header strip: one compact row under the card, in that agent's chat only. When it is wider than the chat (a
+   phone), the row scrolls sideways inside its own box — never wraps out of it, never cuts an item. */
+.aw-chat_header { flex-shrink: 0; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: var(--s-4); border-width: 0 0 1px; border-radius: 0; padding: var(--s-1) var(--s-4); min-height: 32px; max-height: 72px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+.aw-chat_header .aw-head { flex-shrink: 0; }
+.aw-chat_header .aw-items { flex-direction: row; flex: 1 0 auto; gap: var(--s-4); }
+.aw-chat_header .aw-item { flex: 0 0 auto; white-space: nowrap; }
+.aw-chat_header .aw-value { white-space: nowrap; }
+.aw-chat_header .aw-text .aw-value { display: inline-block; max-width: 24em; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .aw-chat_header .aw-stat .aw-value { margin-left: 0; }
+.aw-chat_header .aw-bar { flex: 0 0 auto; width: 96px; }
+/* On a phone the strip may run past the edge: a fade says there is more to scroll to (the last item scrolls clear of it). */
+@media (max-width: 899px) { .aw-chat_header { padding-right: var(--s-7); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--s-7)), transparent); mask-image: linear-gradient(to right, #000 calc(100% - var(--s-7)), transparent); } }
 .aw-details { background: var(--surface); margin-bottom: var(--s-4); padding: var(--s-4) var(--s-5); }
-.side-widget { padding: 0 var(--s-2) var(--s-2); }
+.side-widget { padding: 0 var(--s-3) var(--s-2); }
 .aw-sidebar { max-height: 240px; overflow: auto; }
 
 .chat-card-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 32px; padding: 0 var(--s-4); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
