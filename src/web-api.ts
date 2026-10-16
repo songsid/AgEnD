@@ -240,6 +240,8 @@ export interface WebApiContext {
   readonly mods?: ModStore;
   /** #1629 r4-5: an instance's card text as shown (a person's fields over the agent's), for a mod's export. */
   modCardText?(name: string): { tagline?: string; bio?: string };
+  /** #1629 r4-5c: an effect placed on an instance, as the library keeps it (a person's export carries it). */
+  modPlacedEffect?(name: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
@@ -533,7 +535,7 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
 }
 
 /** A person's export: an instance's look (theme, identity, its widgets), their sidebar widget and their own CSS. */
-function exportMod(ctx: WebApiContext, person: string, body: Record<string, unknown>): { ok: true; text: string; filename: string } | { ok: false; status: number; error: string; detail?: string } {
+export function exportMod(ctx: WebApiContext, person: string, body: Record<string, unknown>): { ok: true; text: string; filename: string } | { ok: false; status: number; error: string; detail?: string } {
   const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
   const inc = isObj(body.include) ? body.include : null;
   if (!inc) return { ok: false, status: 400, error: "include" };
@@ -553,7 +555,11 @@ function exportMod(ctx: WebApiContext, person: string, body: Record<string, unkn
   if (name && ctx.themeStore) {
     const store = ctx.themeStore;
     const rec = store.get(name);
-    if (inc.theme === true) parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; } };
+    if (inc.theme === true) {
+      // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
+      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(name!, p.id); return e ? [{ name: e.name, files: e.files, params: p.params ?? {} }] : []; });
+      parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
+    }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
     for (const slot of AGENT_WIDGET_SLOTS) {
       const w = rec.placements.widgets[slot];
