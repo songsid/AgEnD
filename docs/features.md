@@ -70,7 +70,7 @@ When an instance spawns, the daemon compares the fleet instructions it just buil
 
 - First spawn (nothing recorded yet): the instructions are recorded and nothing is sent.
 - Claude Code re-reads its instructions on resume, so it is never told.
-- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, kiro's agent file or steering file, `.agents/agents.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
+- Every other backend gets a one-line notice to reload its own instruction file (`AGENTS.md`, kiro's agent file or steering file, `.agents/AGENTS.md`, …). If no message is waiting, the notice is deferred to the next real message rather than provoking an unsolicited reply; if a delivery is already queued, the daemon waits for idle and pastes the notice first.
 
 No configuration is needed.
 
@@ -806,7 +806,7 @@ When auto-creating the General topic instance, AgEnD writes the correct instruct
 - Claude Code → `CLAUDE.md`
 - Codex, OpenCode, Grok Build, Meta Muse Code → `AGENTS.md`
 - Kiro CLI → `.kiro/steering/project.md`
-- Antigravity CLI → `.agents/agents.md`
+- Antigravity CLI → `.agents/AGENTS.md`
 
 An existing file is left alone.
 
@@ -833,7 +833,7 @@ Fleet instructions are injected additively — they don't override the CLI's bui
 - Claude Code: `--append-system-prompt-file` (the file is `fleet-instructions.md` in the instance directory)
 - Kiro CLI: the `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json` (see [Kiro instances in one working directory](#kiro-instances-in-one-working-directory)). On a kiro-cli older than 2.21, and for a resumed conversation (its switch to the instance's agent is suspended, #1800), the steering file `.kiro/steering/agend-<instance>.md` instead. On a resume AgEnD writes both files. A resumed conversation that was already saved as the instance's own agent reads the agent's `prompt`.
 - Codex, Grok Build, Meta Muse Code: a marked block in `AGENTS.md` in the working directory
-- Antigravity CLI: a marked block in `.agents/agents.md` in the working directory
+- Antigravity CLI: a marked block in `.agents/AGENTS.md` in the working directory
 - OpenCode: `fleet-instructions.md` in the instance directory, added to the `instructions` list of `opencode.json` in the working directory
 
 ## Auto-dismiss interactive prompts
@@ -913,7 +913,7 @@ instances:
 
 ### Workspace handling
 
-agy 1.1.0 and later accept working directories under hidden paths such as `~/.agend/workspaces/`, so an instance runs in its configured working directory like any other backend (the old redirect to `~/agend-workspaces/<instanceName>/` is gone). Fleet instructions are written as a marked block in `.agents/agents.md` inside that directory.
+agy 1.1.0 and later accept working directories under hidden paths such as `~/.agend/workspaces/`, so an instance runs in its configured working directory like any other backend (the old redirect to `~/agend-workspaces/<instanceName>/` is gone). Fleet instructions are written as a marked block in `.agents/AGENTS.md` inside that directory.
 
 ### Trust prompt
 

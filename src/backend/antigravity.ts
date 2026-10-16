@@ -8,6 +8,8 @@ import {
   chmodSync,
   closeSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -31,6 +33,46 @@ import {
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
+import { t } from "../locale.js";
+
+/**
+ * Board 0340ec89: the instructions file agy reads, relative to the workspace. agy (verified 1.3.6) loads
+ * `.agents/AGENTS.md`, the root `AGENTS.md` and `GEMINI.md` — not the lowercase `.agents/agents.md` AgEnD wrote before,
+ * which on a case-sensitive filesystem (Linux) it never read (tests/fixtures/agy-1.3.6-audit). The root `AGENTS.md` is
+ * shared with codex, grok and muse instances in the same workspace, so agy keeps its own folder.
+ */
+export const AGY_AGENTS_FILE = join(".agents", "AGENTS.md");
+const AGY_LEGACY_AGENTS_FILE = join(".agents", "agents.md");
+
+/** Whether two paths are one file (same device and inode): on a case-insensitive filesystem the two names are. */
+function sameFile(a: string, b: string): boolean {
+  try { const x = statSync(a), y = statSync(b); return x.ino === y.ino && x.dev === y.dev; } catch { return false; }
+}
+/** The legacy lowercase file, when it is a file of its own (not the new name on a case-insensitive filesystem). */
+export function agyLegacyAgentsFile(workDir: string): string | null {
+  const lower = join(workDir, AGY_LEGACY_AGENTS_FILE);
+  return existsSync(lower) && !sameFile(lower, join(workDir, AGY_AGENTS_FILE)) ? lower : null;
+}
+/**
+ * Before anything writes agy's instructions: a legacy `.agents/agents.md` with no `.agents/AGENTS.md` beside it becomes
+ * that file (moved whole, so a person's own lines in it are kept — and now read). When anything already sits at the new
+ * name the legacy file is left as it is; each writer then moves only its own AgEnD block out of it. On a case-insensitive
+ * filesystem the two names are one file: nothing to do.
+ *
+ * The move never replaces what is at the new name (#1914 review): link(2) refuses any existing entry there — a file, a
+ * directory, a symlink even a dangling one — and one that appears meanwhile; only after it succeeds does the legacy name
+ * go. Where hard links are not possible the legacy file stays (writers move their blocks out, as when both exist).
+ */
+export function migrateAgyAgentsFile(workDir: string): void {
+  const lower = agyLegacyAgentsFile(workDir);
+  if (!lower) return;
+  try { linkSync(lower, join(workDir, AGY_AGENTS_FILE)); } catch { return; }
+  try { unlinkSync(lower); } catch { /* another instance removed it first */ }
+}
+/** A symlink whose target does not exist: writing through it would create a file wherever it points. */
+export function danglingSymlink(path: string): boolean {
+  try { return lstatSync(path).isSymbolicLink() && !existsSync(path); } catch { return false; }
+}
 
 /** Parse `agy models`, which may emit TSV slug/display pairs or legacy single-column names. */
 /**
@@ -148,6 +190,8 @@ export class AntigravityBackend implements CliBackend {
   readonly binaryName = "agy";
   private binaryPath: string;
   private readonly mcpWrapperPath: string;
+  /** Recorded by writeConfig, handed to the operator after the launch is built (consumeLaunchWarning). */
+  private pendingLaunchWarning: string | null = null;
 
   constructor(
     private instanceDir: string,
@@ -161,6 +205,12 @@ export class AntigravityBackend implements CliBackend {
   /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
+  consumeLaunchWarning(): string | null {
+    const warning = this.pendingLaunchWarning;
+    this.pendingLaunchWarning = null;
+    return warning;
+  }
 
   buildCommand(config: CliBackendConfig): string {
     // agy 1.1.17+ has no per-workspace MCP config and no --mcp-config flag. Its
@@ -193,14 +243,22 @@ export class AntigravityBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
-    // Write .agents/agents.md in the persistent configured workspace.
+    // Write .agents/AGENTS.md in the persistent configured workspace (board 0340ec89: the name agy reads).
     const cwd = this.resolveWorkingDirectory(config.workingDirectory, config.instanceName);
+    this.pendingLaunchWarning = null;
     const agentsDir = join(cwd, ".agents");
     mkdirSync(agentsDir, { recursive: true });
+    migrateAgyAgentsFile(cwd);
+    // This instance's block in a legacy file that stays (a person's own file beside the new one) moves out of it.
+    const legacy = agyLegacyAgentsFile(cwd);
+    if (legacy) { try { if (removeMarker(legacy, config.instanceName)) rmSync(legacy, { force: true }); } catch { /* best effort */ } }
 
     if (config.instructions) {
-      const agentsPath = join(agentsDir, "agents.md");
-      appendWithMarker(agentsPath, config.instanceName, config.instructions);
+      const target = join(cwd, AGY_AGENTS_FILE);
+      // A person's symlink there is theirs: a live one is written through (its file is what agy reads), a dangling one is
+      // kept and not followed — nothing is created where it points — and the launch says so.
+      if (danglingSymlink(target)) this.pendingLaunchWarning = t("agy.instructions_link_dangling", target);
+      else appendWithMarker(target, config.instanceName, config.instructions);
     }
 
     if (config.agentMode === "mcp" && Object.keys(config.mcpServers).length > 0) {
@@ -367,10 +425,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
   }
 
   cleanup(config: CliBackendConfig): void {
-    const agentsPath = join(config.workingDirectory, ".agents", "agents.md");
-    try {
-      if (removeMarker(agentsPath, config.instanceName)) rmSync(agentsPath, { force: true });
-    } catch { /* best effort */ }
+    // This instance's block, from the file agy reads and from a legacy one that is still a file of its own.
+    for (const agentsPath of [join(config.workingDirectory, AGY_AGENTS_FILE), agyLegacyAgentsFile(config.workingDirectory)]) {
+      if (!agentsPath) continue;
+      try {
+        if (removeMarker(agentsPath, config.instanceName)) rmSync(agentsPath, { force: true });
+      } catch { /* best effort */ }
+    }
     try { unlinkSync(this.mcpWrapperPath); } catch { /* absent */ }
   }
 

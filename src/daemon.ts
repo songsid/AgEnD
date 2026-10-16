@@ -136,7 +136,7 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
     : binaryName === "kiro-cli"
       ? `.kiro/steering/agend-${instanceName}.md`
       : binaryName === "agy"
-        ? ".agents/agents.md"
+        ? ".agents/AGENTS.md"
         : join(instanceDir, "fleet-instructions.md");
   return `[system] Your AgEnD instructions have been updated. Reload only ${source}; do not scan other instruction directories. Do not reply to this message.`;
 }

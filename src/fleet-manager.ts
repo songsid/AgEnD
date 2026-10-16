@@ -249,6 +249,7 @@ import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
+import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
@@ -15276,12 +15277,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "codex": "AGENTS.md",
     "opencode": "AGENTS.md",
     "kiro-cli": ".kiro/steering/project.md",
-    // Grok reads AGENTS.md project docs; agy reads .agents/agents.md — the
+    // Grok reads AGENTS.md project docs; agy reads .agents/AGENTS.md (board 0340ec89: not the lowercase name) — the
     // same files their writeConfig() appends fleet instructions to.
     "grok": "AGENTS.md",
     // muse init scaffolds AGENTS.md and the binary reads it as project rules.
     "muse": "AGENTS.md",
-    "antigravity": ".agents/agents.md",
+    "antigravity": ".agents/AGENTS.md",
     "mock": "CLAUDE.md",
   };
 
@@ -15323,10 +15324,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private ensureGeneralInstructionsSync(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
     workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
+    // Board 0340ec89: General's file from before, under the lowercase name agy never read, becomes the one it reads.
+    if (backend === "antigravity") migrateAgyAgentsFile(workDir);
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const filePath = join(workDir, filename);
     mkdirSync(dirname(filePath), { recursive: true });
-    if (!existsSync(filePath)) {
+    if (backend === "antigravity" && danglingSymlink(filePath)) {
+      // #1914 review: a person's dangling symlink there is kept and not followed (nothing created where it points).
+      this.logger.warn({ filePath }, "General's agy instructions file is a dangling symlink; left as it is, not written");
+    } else if (!existsSync(filePath)) {
       writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
       this.logger.info({ filePath }, "Created general instance instructions file");
     }
@@ -15427,6 +15433,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const instructionsPath = join(workDir, filename);
+    if (backend === "antigravity" && danglingSymlink(instructionsPath)) return;   // kept, not followed (#1914 review; logged above)
     const body = files.map(f => readFileSync(join(srcSteering, f), "utf-8").trim()).join("\n\n");
     const block = `${FleetManager.STEERING_BLOCK_BEGIN}\n${body}\n${FleetManager.STEERING_BLOCK_END}`;
 
@@ -15443,6 +15450,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (next !== existing) {
       mkdirSync(dirname(instructionsPath), { recursive: true });
       writeFileSync(instructionsPath, next);
+    }
+    // Board 0340ec89: a legacy agy file that stays beside the new one (a person's own) loses only AgEnD's block.
+    const legacy = backend === "antigravity" ? agyLegacyAgentsFile(workDir) : null;
+    if (legacy) {
+      try {
+        const old = readFileSync(legacy, "utf-8");
+        const b = old.indexOf(FleetManager.STEERING_BLOCK_BEGIN), e = old.indexOf(FleetManager.STEERING_BLOCK_END);
+        if (b !== -1 && e > b) {
+          const rest = (old.slice(0, b).trimEnd() + "\n" + old.slice(e + FleetManager.STEERING_BLOCK_END.length).trimStart()).trim();
+          if (rest) writeFileSync(legacy, rest + "\n"); else rmSync(legacy, { force: true });
+        }
+      } catch { /* best effort: the new file already has the block */ }
     }
   }
 
