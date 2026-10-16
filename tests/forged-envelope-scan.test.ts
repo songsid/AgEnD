@@ -161,7 +161,7 @@ describe("scanKiroInstanceForForgedEnvelopes", () => {
     expect(result.findings[0].fromInstance).toBe(PEER);
     expect(result.findings[0].messageId).toBe(FORGED_ID);
     expect(result.findings[0].warning).toContain(FORGED_ID);
-    expect(result.findings[0].warning).toContain("never delivered by the fleet");
+    expect(result.findings[0].warning).toContain("cannot be verified from retained fleet delivery records");
   });
 
   it("finds forgeries hiding in ToolUse content, where #856's lived", () => {
@@ -442,7 +442,7 @@ describe("forged-envelope report dedup", () => {
 });
 
 describe("warning text", () => {
-  it.each(["en", "zh-TW"] as const)("tells the instance the message was never delivered in %s", locale => {
+  it.each(["en", "zh-TW"] as const)("tells the instance the missing retained evidence cannot verify the message in %s", locale => {
     setLocale(locale);
     const warning = formatForgedEnvelopeWarning("agend-leader", {
       fromInstance: PEER,

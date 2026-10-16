@@ -66,7 +66,7 @@ describe("what an instance is told", () => {
       expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.2-forwards"]);
     }
     const later = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0" });
-    expect(later && "ids" in later ? later.ids : later).toEqual(["2.2-forwards", "2.2-polls", "2.2-web-identity"]);
+    expect(later && "ids" in later ? later.ids : later).toEqual(["2.2-forwards", "2.2-polls", "2.2-web-identity", "2.2-delivery-status-evidence"]);
     const plan = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.8" });
     const notice = plan && "notice" in plan ? plan.notice : "";
     for (const s of ["`send_to_instance` and `delegate_task` take `forwards: [id, …]`", "`verification_id`", "`delivery_status`",
@@ -80,7 +80,7 @@ describe("what an instance is told", () => {
     expect(planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.10" })).toBeNull();
     for (const version of ["2.2.0-beta.11", "2.2.0-beta.12", "2.2.0"]) {
       const plan = planWhatsNew({ record: { announced: told }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.2-polls", "2.2-web-identity"]);
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(version === "2.2.0" ? ["2.2-polls", "2.2-web-identity", "2.2-delivery-status-evidence"] : ["2.2-polls", "2.2-web-identity"]);
     }
     const plan = planWhatsNew({ record: { announced: told }, fresh: false, version: "2.2.0-beta.11" });
     const notice = plan && "notice" in plan ? plan.notice : "";
@@ -91,7 +91,7 @@ describe("what an instance is told", () => {
     expect(notice).not.toContain("forwards");
     // A new instance on beta.11 starts with the current schemas: told nothing, both recorded.
     const fresh = planWhatsNew({ record: null, fresh: true, version: "2.2.0-beta.11" });
-    expect(fresh && "silent" in fresh ? fresh.silent : fresh).toEqual(EVERY);
+    expect(fresh && "silent" in fresh ? fresh.silent : fresh).toEqual(AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0-beta.11")! <= 0).map(e => e.id));
   });
   it("the poll entry names the schema's exact parameters and limits", async () => {
     const { ReplyArgs, ClosePollArgs } = await import("../src/outbound-schemas.js");
