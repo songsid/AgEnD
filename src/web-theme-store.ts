@@ -94,7 +94,15 @@ type State = { rev: number; records: Map<string, ThemeRecord> } | "unreadable";
 export class ThemeStore {
   private state: State | null = null;
   readonly path: string;
-  constructor(private readonly dataDir: string, private readonly opts: { now?: () => number; limits?: () => AppearanceLimits } = {}) {
+  constructor(private readonly dataDir: string, private readonly opts: {
+    now?: () => number; limits?: () => AppearanceLimits;
+    /**
+     * Effect ids no longer placed on an instance after a write that held (B2's library: collectUnreferenced, a guarded
+     * collector that rechecks every reference before it deletes anything). Every write path reaches it: setPlacements,
+     * applyLook and its undo, reset, forget.
+     */
+    effectsDropped?: (ids: string[]) => void;
+  } = {}) {
     this.path = join(dataDir, "web-themes.json");
   }
   /** The limits in force now (`web.appearance`, clamped); checked at each upload, never against what is stored. */
@@ -138,10 +146,14 @@ export class ThemeStore {
     const state = this.load();
     if (state === "unreadable") return { ok: false, status: 503, error: "themes_unreadable" };
     const records = new Map(state.records);
+    const before = state.records.get(name)?.placements.effects.map(e => e.id) ?? [];
     if (next) records.set(name, next); else records.delete(name);
     const rev = state.rev + 1;
     try { this.save(records, rev); } catch (err) { return { ok: false, status: 503, error: "themes_write_failed", detail: (err as Error).message }; }
     this.state = { rev, records };
+    const after = new Set(next?.placements.effects.map(e => e.id) ?? []);
+    const dropped = before.filter(id => !after.has(id));
+    if (dropped.length && this.opts.effectsDropped) { try { this.opts.effectsDropped(dropped); } catch { /* the collector's own business */ } }
     return { ok: true, rev };
   }
 
@@ -235,18 +247,35 @@ export class ThemeStore {
   }
 
   /**
-   * Where effects are placed (B2's apply/remove tools, a person's choices). `validate` is the caller's synchronous
-   * check of each id (kind, scope, wanted events), run before anything is written. Widgets have their own calls below.
+   * Where effects are placed (B2's apply/remove tools, a person's choices). Each entry is either an id — a placement
+   * kept as it is (its `by`, `at` and params; a new id is placed plainly) — or `{ id, params? }`, an explicit apply that
+   * always takes this call's `by` and `at` and its params (the effect's non-default overrides, already resolved), even
+   * for an id already placed: so an agent re-applying a person's placement never keeps `by: "human"`. `validate` is
+   * the caller's synchronous check of each (kind, scope, params), run before anything is written. Widgets have their
+   * own calls below.
    */
-  setPlacements(name: string, patch: { effects?: string[] }, by: AppearanceActor,
-    validate: (what: { kind: "effect"; id: string }) => string | null): StoreWrite<{ placements: Placements }> {
+  setPlacements(name: string, patch: { effects?: Array<string | { id: string; params?: Record<string, unknown> }> }, by: AppearanceActor,
+    validate: (what: { kind: "effect"; id: string; params?: Record<string, unknown> }) => string | null): StoreWrite<{ placements: Placements }> {
     const prev = this.get(name);
     const placements = clone(prev.placements);
     const at = this.now();
     if (patch.effects !== undefined) {
-      if (!Array.isArray(patch.effects) || patch.effects.length > 2 || new Set(patch.effects).size !== patch.effects.length) return { ok: false, status: 400, error: "effects", detail: "at most 2, no repeats" };
-      for (const id of patch.effects) { const p = typeof id === "string" && ASSET_ID.test(id) ? validate({ kind: "effect", id }) : "id"; if (p) return { ok: false, status: 400, error: p, detail: String(id).slice(0, 40) }; }
-      placements.effects = patch.effects.map(id => prev.placements.effects.find(e => e.id === id) ?? { id, by, at });
+      const list = Array.isArray(patch.effects) ? patch.effects : null;
+      const idOf = (e: unknown) => (typeof e === "string" ? e : e && typeof e === "object" && !Array.isArray(e) ? (e as { id?: unknown }).id : undefined);
+      if (!list || list.length > 2 || new Set(list.map(idOf)).size !== list.length) return { ok: false, status: 400, error: "effects", detail: "at most 2, no repeats" };
+      const next: Placement[] = [];
+      for (const e of list) {
+        const id = idOf(e);
+        const explicit = typeof e !== "string";
+        const params = explicit ? (e as { params?: unknown }).params : undefined;
+        const shapeOk = typeof id === "string" && ASSET_ID.test(id) && (!explicit || (Object.keys(e as object).every(k => k === "id" || k === "params")
+          && (params === undefined || (!!params && typeof params === "object" && !Array.isArray(params)))));
+        const p = shapeOk ? validate({ kind: "effect", id: id as string, ...(params ? { params: params as Record<string, unknown> } : {}) }) : "id";
+        if (p) return { ok: false, status: 400, error: p, detail: String(id).slice(0, 40) };
+        const kept = !explicit ? prev.placements.effects.find(x => x.id === id) : undefined;
+        next.push(kept ?? { id: id as string, by, at, ...(params && Object.keys(params as object).length ? { params: clone(params as Record<string, unknown>) } : {}) });
+      }
+      placements.effects = next;
     }
     const w = this.commit(name, { ...prev, placements, by, updated: at });
     return w.ok ? { ...w, placements } : w;

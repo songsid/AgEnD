@@ -12,7 +12,7 @@
  * - The page: text nodes only, no style or handler attribute, the ✦ chip always, a failing value shows "—".
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -344,6 +344,47 @@ describe("placedEffects (the effect library's reference source, for B2)", () => 
     t.store.setPlacements("alpha", { effects: [a, b] }, "agent", () => null);
     t.store.setPlacements("beta", { effects: [] }, "agent", () => null);
     expect(t.store.placedEffects()).toEqual([{ name: "alpha", ids: [a, b] }]);
+  });
+});
+
+describe("setPlacements: an id keeps its placement, { id, params } is an explicit apply (for B2, agreed with Sol)", () => {
+  const A = "a".repeat(32), Bid = "b".repeat(32);
+  it("an id keeps its entry as it was; an object stamps this call's by/at and its params, even for an id already placed", () => {
+    const t = tools();
+    t.store.setPlacements("alpha", { effects: [{ id: A, params: { count: 4 } }] }, "human", () => null);
+    const human = t.store.get("alpha").placements.effects[0]!;
+    expect(human).toMatchObject({ id: A, by: "human", params: { count: 4 } });
+    t.tick(1000);
+    t.store.setPlacements("alpha", { effects: [A, { id: Bid }] }, "agent", () => null);
+    const [kept, added] = t.store.get("alpha").placements.effects;
+    expect([kept, added]).toEqual([human, { id: Bid, by: "agent", at: expect.any(Number) }]);
+    t.tick(1000);
+    t.store.setPlacements("alpha", { effects: [{ id: A }] }, "agent", () => null);
+    expect(t.store.get("alpha").placements.effects, "an agent re-applying a person's placement never keeps by: human").toEqual([{ id: A, by: "agent", at: expect.any(Number) }]);
+  });
+  it("effects no longer placed after a write that held go to effectsDropped (B2's collector); a failed write reports none", () => {
+    const dir = tmp();
+    const dropped: string[][] = [];
+    const store = new ThemeStore(dir, { effectsDropped: ids => dropped.push(ids) });
+    store.setPlacements("alpha", { effects: [A, Bid] }, "agent", () => null);
+    store.setPlacements("alpha", { effects: [Bid] }, "agent", () => null);
+    store.setTheme("alpha", { v: 1, font: "mono" }, "agent");
+    store.reset("alpha", "human");
+    expect(dropped).toEqual([[A], [Bid]]);
+    store.setPlacements("alpha", { effects: [A] }, "agent", () => null);
+    rmSync(join(dir, "web-themes.json")); mkdirSync(join(dir, "web-themes.json"));
+    const fresh = new ThemeStore(dir, { effectsDropped: ids => dropped.push(ids) });
+    expect(fresh.setPlacements("alpha", { effects: [] }, "agent", () => null).ok).toBe(false);
+    expect(dropped).toHaveLength(2);
+  });
+  it("validate sees the params; a refusal, a bad shape or a repeat writes nothing", () => {
+    const t = tools();
+    const seen: unknown[] = [];
+    expect(t.store.setPlacements("alpha", { effects: [{ id: A, params: { n: 99 } }] }, "agent", w => { seen.push(w); return "invalid_params"; })).toMatchObject({ ok: false, error: "invalid_params" });
+    expect(seen).toEqual([{ kind: "effect", id: A, params: { n: 99 } }]);
+    const bad: unknown[] = [[{ id: A, params: [1] }], [{ id: A, extra: 1 }], [{ id: "x" }], [A, { id: A }], [A, Bid, "c".repeat(32)]];
+    for (const effects of bad) expect(t.store.setPlacements("alpha", { effects } as never, "agent", () => null).ok, JSON.stringify(effects)).toBe(false);
+    expect(t.store.get("alpha").placements.effects).toEqual([]);
   });
 });
 

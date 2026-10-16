@@ -213,6 +213,7 @@ function fakeLibrary() {
       return { ok: true as const, ids, created: ids, undo: () => { calls.push(`undo ${stageId}`); for (const id of ids) claims.delete(`${holder}/${id}`); return true; } };
     },
     abort(stageId: string) { calls.push(`abort ${stageId}`); return true; },
+    collectUnreferenced(ids: readonly string[]) { calls.push(`collect ${ids.join(",")}`); },
     releaseHolder(holder: string, principal: { kind: string; id: string }) {
       calls.push(`release ${holder} ${principal.kind}:${principal.id}`);
       if (lib.failRelease) return { ok: false as const, error: "reference_provider_failed" };
@@ -344,6 +345,16 @@ describe("stage, then commit", () => {
     expect([s.themes.get("alpha").theme, s.prefs.read(OPERATOR).values["widget.sidebar"], s.css.state("p").active]).toEqual([{ v: 1 }, undefined, null]);
     expect(readdirSync(join(s.dir, "web-mods"))).toEqual([]);
   });
+  it("card text from a mod keeps the card's pictures (identity is text only)", () => {
+    const s = setup();
+    const portrait = s.themes.addAsset("alpha", "portrait", png(6, 9, [1, 1, 1]));
+    if (!portrait.ok) throw new Error("asset");
+    s.themes.setTheme("alpha", { v: 1, card: { portrait: portrait.id, tagline: "Old" } }, "agent");
+    const st = s.store.stage("p", text(bundle()));
+    if (!st.ok) throw new Error("stage");
+    s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { identity: true }, target: "alpha" });
+    expect(s.themes.get("alpha").theme.card).toEqual({ portrait: portrait.id, tagline: "Reviews fast", bio: "Line one\nLine two" });
+  });
   it("pictures the import replaced go only once all of it held", () => {
     const s = setup();
     const old = s.themes.addAsset("alpha", "background", png(3, 3, [9, 9, 9]));
@@ -351,8 +362,11 @@ describe("stage, then commit", () => {
     s.themes.setTheme("alpha", { v: 1, background: { image: old.id, fit: "cover", opacity: 1 } }, "agent");
     const st = s.store.stage("p", text(bundle()));
     if (!st.ok) throw new Error("stage");
+    const files = () => readdirSync(join(s.dir, "web-themes")).flatMap(d => readdirSync(join(s.dir, "web-themes", d)));
+    expect(files()).toContain(`${old.id}.png`);
     expect(s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { theme: true }, target: "alpha" })).toMatchObject({ ok: true });
     expect([s.themes.asset("alpha", old.id), s.themes.get("alpha").assets.some(a => a.id === old.id)]).toEqual([null, false]);
+    expect(files(), "the replaced picture's file is deleted once the import held").not.toContain(`${old.id}.png`);
   });
   it("custom CSS and the sidebar widget are never applied unless ticked (a plan without them: nothing of the person changes)", () => {
     const s = setup();
@@ -400,6 +414,7 @@ describe("effects, replace and uninstall (the library under the mod's own holder
     expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { effects: true, replace: true } })).toMatchObject({ ok: true });
     expect(s.store.list().mods.map(m => m.version)).toEqual(["1.1.0"]);
     expect(s.lib.calls).toContain(`release ${modHolder(oldId)} human:p`);
+    expect(s.lib.calls.at(-1)).toBe(`collect ${s.lib.staged.get("s0")!.join(",")}`);
     expect(s.store.bundleText(oldId)).toBeNull();
   });
   it("uninstall releases only this mod's holder, removes its file and entry, and leaves what it applied", () => {
@@ -410,6 +425,7 @@ describe("effects, replace and uninstall (the library under the mod's own holder
     const id = st.plan.mod.id;
     const r = s.store.uninstall(id);
     expect(r).toMatchObject({ ok: true, released: s.lib.staged.get("s0") });
+    expect(s.lib.calls.at(-1), "the released ids go to the guarded collector, after the write").toBe(`collect ${s.lib.staged.get("s0")!.join(",")}`);
     expect([s.store.list().mods, s.store.bundleText(id), s.themes.get("alpha").theme.accent]).toEqual([[], null, "#8b5cf6"]);
     expect(s.store.uninstall(id)).toMatchObject({ status: 404 });
   });
@@ -421,6 +437,7 @@ describe("effects, replace and uninstall (the library under the mod's own holder
     s.lib.failRelease = true;
     expect(s.store.uninstall(st.plan.mod.id)).toMatchObject({ ok: false, status: 409, error: "effects_release_refused" });
     expect(s.store.list().mods).toHaveLength(1);
+    expect(s.lib.calls.some(c => c.startsWith("collect")), "nothing collected when nothing was released").toBe(false);
   });
   it("an index write that fails after a release puts the release back", () => {
     const s = setup({ effects: true });

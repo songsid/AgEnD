@@ -41,6 +41,8 @@ export interface ModEffectLibrary {
   commit(stageId: string): { ok: true; ids: string[]; created: string[]; undo: () => boolean } | { ok: false; error: string };
   abort(stageId: string): boolean;
   releaseHolder(holder: string, principal: EffectPrincipal): { ok: true; released: string[]; undo: () => boolean } | { ok: false; error: string };
+  /** A guarded, deferred collector: rechecks every claim and reference before deleting (never synchronously). */
+  collectUnreferenced?(ids: readonly string[]): void;
 }
 /** A person's preferences, as the import writes their sidebar widget (web-prefs.ts). */
 export interface ModPrefs {
@@ -341,12 +343,14 @@ export class ModStore {
 
     // The index: this mod in, the one it replaces out (its effect claim released in the same stretch).
     const mods = new Map(idx.mods);
+    let releasedOld: string[] = [];
     if (replaces) {
       const old = mods.get(replaces.id);
       if (old && old.effects.length && this.deps.effects) {
         const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.installedBy });
         if (!r.ok) return rollback(409, "effects_release_refused", r.error);
         undo.push(() => { r.undo(); });
+        releasedOld = r.released;
       }
       mods.delete(replaces.id);
     }
@@ -369,6 +373,7 @@ export class ModStore {
     // Held: what the import replaced may go now, and the stage is done.
     finalize?.();
     if (replaces) { try { unlinkSync(this.file(replaces.id)); } catch { /* already gone */ } }
+    if (releasedOld.length) this.deps.effects?.collectUnreferenced?.(releasedOld);
     if (s.effects && !want.effects) this.deps.effects?.abort(s.effects.stageId);   // staged, not chosen: let it go
     this.stages.delete(person);
     return { ok: true, id: mod.id, applied, ...(css ? { css } : {}) };
@@ -393,6 +398,7 @@ export class ModStore {
     const w = this.commitIndex(mods);
     if (!w.ok) { undo?.(); return w; }
     try { unlinkSync(this.file(id)); } catch { /* already gone */ }
+    if (released.length) this.deps.effects?.collectUnreferenced?.(released);
     return { ok: true, released };
   }
 
