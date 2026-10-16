@@ -439,6 +439,28 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
   return true;
 }
 
+/** #1629: static current-placement posters, separate from the local human-only runtime API. */
+function handleEffectPosters(res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const image = /^\/ui\/effect-posters\/([0-9a-f]{32})\.png$/.exec(path);
+  const names = [...url.searchParams.keys()], instance = url.searchParams.get("instance");
+  if (method !== "GET" || path !== "/ui/effect-posters" && !image || names.length !== 1 || names[0] !== "instance" || !instance || instance.length > 128) {
+    json(res, 404, { error: "not_found" }); return true;
+  }
+  const service = ctx.effectService;
+  if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
+  if (image) {
+    const r = service.placedPoster(image[1]!, instance);
+    if (!r.ok) json(res, 404, { error: "not_found" });
+    else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
+  } else {
+    const result = service.posterPlacements(instance);
+    json(res, result.error === "themes_unreadable" ? 503 : result.error ? 404 : 200, result);
+  }
+  return true;
+}
+
 /** #1629 B2: effect routes require a human session; route bodies never supply an actor or reference holder. */
 function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
@@ -1224,6 +1246,9 @@ export function handleWebRequest(
 
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
+
+  // Posters remain behind the common session gate, with a closed GET-only public manifest.
+  if (path === "/ui/effect-posters" || path.startsWith("/ui/effect-posters/")) return handleEffectPosters(res, url, ctx, path, method);
 
   // Canvas effects are absent from the public gateway manifest and independently refused above.
   if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
