@@ -34,8 +34,8 @@ function snapshotDescriptor(d) { try { return unsafeSnapshotDescriptor(d); } cat
  * stockSnapshot({frameRoot}) supplies current closed stock paint evidence synchronously; it must not reenter a mutation API.
  * Unknown receipts, roots, trust coverage or gates mount nothing. No storage, network, content or product imports here.
  */
-export function createEffectRegistry({ window: host, origin, boot, load, safety, stockSnapshot, onChange = () => {}, onProfile = () => {}, clock = () => host.performance.now() } = {}) {
-  try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
+export function createEffectRegistry({ window: host, origin, boot, load, safety, stockSnapshot, onChange = () => {}, onProfile = () => {}, onMount = () => {}, onRetire = () => {}, clock = () => host.performance.now() } = {}) {
+  try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof onMount !== "function" || typeof onRetire !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
   let dead = false, blocked = null, revision = 0, last = null, lastView = null, frameSerial = 0, context = null, descriptors = [], calibration = null, baseline = null, baselineDevice = null, serial = 0, raf = null, timer = null;
   const slots = new Map(), loads = new Set(), paused = new Map(), offs = [], observed = new Set(), failures = new Map(), results = new Map();
   let readingStock = false;
@@ -47,6 +47,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   };
   const nativeClock = () => { const n = time(); if (n === null) throw Error("clock unavailable"); return n; };
   const device = () => context?.constrained === true ? "constrained" : "standard";
+  const dpr = device => Math.min(device === "constrained" ? 1.5 : 3, Math.max(0.5, host.devicePixelRatio || 1));
   // The provider is synchronous and observational. Reentrant mutation revokes this pool, rather than
   // allowing an old admission to act on newer descriptors or scheduling unbounded callback retries.
   const coverage = (d = null) => {
@@ -85,11 +86,17 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (receipt(safety.pause, { id: s.d.id, device: s.device, reason: why, metrics: s.budget?.snapshot().metrics ?? null }) !== true) blocked = "safety_unknown";
     }
     clearMarker(s, why);
+    if (s.owner) { try { onRetire(s.owner, why); } catch { /* an observation cannot prevent physical cleanup */ } }
     if (blocked) for (const other of [...slots.values()]) retire(other, blocked);
   }
   function stopAll(why) {
-    for (const s of [...slots.values()]) retire(s, why);
+    const proposed = revision, wasDead = dead;
+    for (const s of [...slots.values()]) {
+      retire(s, why);
+      if (revision !== proposed || dead !== wasDead) return false;
+    }
     if (calibration) { calibration.cancel(); calibration = null; }
+    return true;
   }
   function gatesKnown() { return context && FLAGS.every(k => typeof context[k] === "boolean") && (context.openInstance === null || typeof context.openInstance === "string" && context.openInstance.length >= 1 && context.openInstance.length <= 128); }
   function eligible() { return gatesKnown() && !context.safe && !context.publicLink && !context.reducedMotion && !context.saveData && context.enabled && context.show && context.previewReady && context.optIn; }
@@ -132,7 +139,8 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     const hidden = context?.hidden === true || host.document.visibilityState !== "visible";
     const stock = eligible() ? coverage() : null;
     if (blocked || !eligible() || !stock) {
-      stopAll(blocked ?? "gates_unknown"); results.clear(); tell(); return;
+      if (!stopAll(blocked ?? "gates_unknown")) return;
+      results.clear(); tell(); return;
     }
     // Hidden frames already owned may survive for <=10 s, but no new frame or load is admitted while hidden.
     const ctx = { ...context, hidden: false };
@@ -147,6 +155,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     for (const s of [...slots.values()]) {
       const d = descriptors.find(x => x.key === s.d.key);
       if (!chosen.has(s.d.key) || !d || signature(d) !== signature(s.d) || d.element !== s.d.element || s.device !== device()) retire(s, "superseded");
+      if (dead || proposal !== revision) return;
     }
     if (chosen.size === 0) { if (calibration) { calibration.cancel(); calibration = null; } baseline = null; baselineDevice = null; tell(); return; }
     if (hidden) {
@@ -155,15 +164,19 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       for (const s of [...slots.values()]) {
         if (!s.frame) retire(s, "hidden");
         else { if (s.hiddenSince === null) { s.hiddenSince = last; s.healthySince = null; } if (s.budget.gates({ hidden: true, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
+        if (dead || proposal !== revision) return;
       }
       schedule(); tell(); return;
     }
     if (!globalAllowed()) { stopAll("gates_unknown"); tell(); return; }
-    for (const s of slots.values()) if (s.frame && s.hiddenSince !== null) { s.hiddenSince = null; s.healthySince = last; if (s.budget.gates({ hidden: false, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
+    for (const s of [...slots.values()]) {
+      if (s.frame && s.hiddenSince !== null) { s.hiddenSince = null; s.healthySince = last; if (s.budget.gates({ hidden: false, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
+      if (dead || proposal !== revision) return;
+    }
     try { observe(); } catch { stopAll("trust_geometry_unknown"); tell(); return; }
     if (baseline === null || baselineDevice !== device()) {
       if (calibration && baselineDevice === device()) { tell(); return; }
-      stopAll("calibrating");
+      if (!stopAll("calibrating") || dead || proposal !== revision) return;
       const epoch = ++serial;
       const job = captureEffectBaseline({ window: host, empty: () => !dead && slots.size === 0 && host.document.querySelectorAll("iframe.agend-effect-frame").length === 0 && globalAllowed() && !context.hidden && !!coverage(), clock: nativeClock });
       calibration = job; baselineDevice = device();
@@ -185,7 +198,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed() || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
       const rect = hostEffectRect(d.element);
       if (!rect || d.element.ownerDocument !== host.document) { results.set(d.key, { verdict: "off", reason: "geometry_unknown", queuePos: null }); continue; }
-      const s = { d, device: device(), live: true, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
+      const s = { d, device: device(), owner: null, live: true, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
       slots.set(d.key, s);
       const request = { controller: new host.AbortController(), slot: s, timer: null, began: time() }; s.request = request; loads.add(request);
       const withinDeadline = () => {
@@ -226,7 +239,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         s.rect = fresh;
         s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
         const frame = createEffectFrame({ window: host, root, origin, boot, clock: nativeClock,
-          render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: Math.min(3, Math.max(0.5, host.devicePixelRatio || 1)) },
+          render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: dpr(s.device) },
           onReady() { if (!current(s)) return; if (!globalAllowed() || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
           onRemove(why) { if (current(s)) { retire(s, why); tell(); } },
         });
@@ -238,7 +251,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         const loaded = () => { if (current(s)) s.budget.loaded(); };
         frame.element.addEventListener("load", loaded); s.loadOff = () => frame.element.removeEventListener("load", loaded);
         const paint = coverage(d);
-        if (!current(s) || !paint || !s.geometry.sync(fresh, paint)) retire(s, "geometry_unknown");
+        if (!current(s) || !paint || !s.geometry.sync(fresh, paint)) { retire(s, "geometry_unknown"); return; }
+        // One non-serializable host receipt per actual admitted frame. Never append it to a Worker event.
+        const owner = Object.freeze({ key: d.key, id: d.id, device: s.device, current: () => current(s) && s.owner === owner });
+        s.owner = owner;
+        try { onMount(owner); } catch { /* diagnostics/display failure cannot authorize or mutate a mount */ }
         schedule();
       }).catch(() => { if (current(s)) retire(s, "resource_unavailable"); }).finally(() => {
         if (request.timer !== null) host.clearTimeout(request.timer);
@@ -250,7 +267,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   }
   function publishEnv(s, proof = coverage(s.d)) {
     if (!s.ready || !current(s) || context.hidden || !globalAllowed() || !effectStockAllows(proof, s.d)) return;
-    const e = effectEvent("env", { width: s.rect.width, height: s.rect.height, dpr: Math.min(3, Math.max(0.5, host.devicePixelRatio || 1)), quality: s.budget.snapshot().quality }, null, time());
+    const e = effectEvent("env", { width: s.rect.width, height: s.rect.height, dpr: dpr(s.device), quality: s.budget.snapshot().quality }, null, time());
     if (e) s.frame.send(e);
   }
   function tick() {
@@ -258,8 +275,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (dead) return;
     const paint = coverage();
     if (!globalAllowed() || context.hidden || !paint) { invalidate(); return; }
-    let policyChanged = false;
+    const proposal = revision; let policyChanged = false;
     for (const s of [...slots.values()]) {
+      if (dead || proposal !== revision) return;
       if (!s.frame) continue;
       if (!effectStockAllows(paint, s.d)) { retire(s, "superseded"); policyChanged = true; continue; }
       const rect = hostEffectRect(s.d.element);
@@ -278,26 +296,51 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         }
       }
     }
+    if (dead || proposal !== revision) return;
     if (policyChanged) reconcile(); else schedule();
   }
   function heartbeat() {
     timer = null;
     if (dead) return;
     if (time() === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; }
+    const proposal = revision, activeBeforeSafety = slots.size;
+    if (!checkSafety()) { tell(); return; }
+    if (slots.size !== activeBeforeSafety) reconcile();
+    if (dead || proposal !== revision) return;
     if (!globalAllowed() || context.hidden || !coverage()) { invalidate(); return; }
     const budgetPauses = new Set();
     for (const s of [...slots.values()]) {
+      if (dead || proposal !== revision) return;
       if (!current(s) || !s.frame || !s.ready) continue;
       const r = s.budget.gates({ hidden: false, reducedMotion: context.reducedMotion, saveData: context.saveData, show: context.show });
       const state = r.remove ? r : s.readyAt !== null && last - s.readyAt >= 3000 ? s.budget.poll() : r;
-      try { onProfile({ key: s.d.key, id: s.d.id, device: s.device, ...state }); } catch { /* metrics never authorize a mount */ }
+      try { onProfile({ key: s.d.key, id: s.d.id, device: s.device, ...state }, s.owner); } catch { /* metrics never authorize a mount */ }
+      if (dead || proposal !== revision) return;
       if (!current(s)) continue;
       if (state.remove) { const key = s.d.id + ":" + s.device; const count = state.reason === "host_budget" && !budgetPauses.has(key); if (count) budgetPauses.add(key); retire(s, state.reason, count); continue; }
       if (state.badWindows > 0) s.healthySince = null; else if (s.healthySince === null) s.healthySince = last;
       if (s.token && s.healthySince !== null && last - s.healthySince >= 5000 && state.badWindows === 0 && state.metrics !== null && !clearMarker(s, "healthy")) { stopAll("safety_unknown"); break; }
       publishEnv(s);
     }
+    if (dead || proposal !== revision) return;
     schedule(); tell();
+  }
+  function checkSafety() {
+    if (dead || blocked) return false;
+    const proposed = revision;
+    for (const s of [...slots.values()]) {
+      if (!current(s)) continue;
+      const allowed = receipt(safety.allowed, s.d.id, s.device);
+      if (dead || proposed !== revision) return false;
+      if (current(s) && allowed !== true) retire(s, "safety_revoked");
+      if (dead || blocked || proposed !== revision) return false;
+    }
+    return !dead && !blocked;
+  }
+  function revalidateSafety() {
+    if (dead || reentrantStock()) return view();
+    if (checkSafety()) reconcile(); else tell();
+    return view();
   }
   function pointerGate(proof = coverage()) {
     if (!globalAllowed() || context.hidden || context.modal || !proof) return false;
@@ -330,7 +373,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     resize = new host.ResizeObserver(invalidate);
     for (const type of ["scroll", "resize", "orientationchange", "focusin", "focusout"]) { host.addEventListener(type, invalidate, true); offs.push(() => host.removeEventListener(type, invalidate, true)); }
     for (const type of ["pointermove", "pointerdown", "pointerup", "click", "wheel"]) { host.addEventListener(type, pointer, { passive: true }); offs.push(() => host.removeEventListener(type, pointer)); }
-    host.document.addEventListener("visibilitychange", invalidate); offs.push(() => host.document.removeEventListener("visibilitychange", invalidate));
+    host.addEventListener("storage", revalidateSafety); offs.push(() => host.removeEventListener("storage", revalidateSafety));
+    const visibility = () => { revalidateSafety(); invalidate(); };
+    host.document.addEventListener("visibilitychange", visibility); offs.push(() => host.document.removeEventListener("visibilitychange", visibility));
     if (typeof host.PerformanceObserver === "function" && host.PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
       try {
         longTasks = new host.PerformanceObserver(list => {
@@ -360,19 +405,23 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       reconcile(); return view();
     },
     snapshot: view,
+    /** Host storage/foreground observation only, never called from a frame message. */
+    revalidateSafety,
     /** Called only by the host's explicit human Resume UI. A descriptor update never clears this latch. */
     resume(key) {
       if (dead || reentrantStock() || blocked && !blocked.startsWith("baseline_") || typeof key !== "string") return false;
       const proposed = revision, d = descriptors.find(d => d.key === key); if (!d || receipt(safety.resume, d.id, device()) !== true || revision !== proposed) return false;
       revision++;
-      stopAll("human_resume"); if (blocked && !blocked.startsWith("baseline_")) return false; blocked = null; paused.delete(key); failures.delete(key); baseline = null; serial++; reconcile(); return true;
+      if (!stopAll("human_resume")) return false;
+      if (blocked && !blocked.startsWith("baseline_")) return false; blocked = null; paused.delete(key); failures.delete(key); baseline = null; serial++; reconcile(); return true;
     },
     /** Host-only content-free signal API. Raw pointer publishing is refused; native pointer metadata is coalesced here. */
     publish(type, fields, instance = null) {
       if (dead || blocked || !globalAllowed() || context.hidden || !coverage() || !TYPES.includes(type)) return 0;
       const ts = time(); if (ts === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return 0; }
-      let sent = 0;
-      for (const s of slots.values()) {
+      let sent = 0; const proposal = revision;
+      for (const s of [...slots.values()]) {
+        if (dead || proposal !== revision) return sent;
         if (!s.ready || !s.frame || !s.budget.snapshot().forward || !coverage(s.d) || !current(s)) continue;
         if (["state", "reply", "mention"].includes(type) && (s.d.instance !== null ? instance !== s.d.instance : instance !== context.openInstance)) continue;
         const e = effectEvent(type, fields, s.d.instance, ts); if (e && s.frame.send(e)) sent++;

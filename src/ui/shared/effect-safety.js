@@ -54,6 +54,9 @@ export function createEffectSafety({ storage, crypto, wall = () => Date.now() } 
         rows.set(key, { value, text });
       }
       if (storage.length !== length) return fail();
+      // A still-owned probation receipt cannot disappear or change beneath a live page. Another tab's
+      // explicit Resume may remove it; that page must stop rather than silently treating the loss as healthy.
+      for (const item of owned.values()) if (rows.get(item.key)?.text !== item.text) return fail();
       for (const { value: r } of rows.values()) if (r.kind === "resume" && !rows.has(keyFor({ ...r, kind: "pause" }))) return fail();
       return rows;
     } catch { return fail(); }
