@@ -1249,3 +1249,14 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .s-fx-chat { margin: var(--s-2) 0; }
 .s-fx-params { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0; max-width: 100%; }
 .s-fx-target, .s-fx-params input:not([type=checkbox]), .s-fx-params select { min-height: 36px; min-width: 0; max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); }
+
+/* #1629: stock paint bands. Structural ancestors remain neutral; only bounded content owns level 1.
+   The viewport effect root is a direct body sibling: behind 0 / stock content 1 (header 2) / front 20.
+   Nested menus cannot cross a content stacking context: the unmounted trust guard suspends fronts for overlays. */
+.app-root { z-index: auto; }
+.conn, .panel-head, .chat-card, .aw-chat_header, .chat-main > .scroller, .chat-main > .dock,
+.sidebar > .side-head, .sidebar > .side-nav, .sidebar > .side-section, .sidebar > .side-widget, .sidebar > .side-foot,
+.u-rail > .u-rail-head, .u-rail > .u-rail-body { position: relative; z-index: 1; }
+/* Header menus must stay above the later scroller stacking context. */
+.panel-head { z-index: 2; }
+@media (min-width: 900px) { .chat-split > .pv-divider, .chat-split > .pv-panel { position: relative; z-index: 1; } }

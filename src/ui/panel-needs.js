@@ -175,7 +175,7 @@ function NeedsItem({ item, nowMs, owner }) {
     setClaim("acks", item.id, res && res.ok ? "done" : null);
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
   };
-  return html`<article class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
+  return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
       <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>

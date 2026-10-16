@@ -49,7 +49,7 @@ export function SessionMenu() {
     <button ref=${btn} type="button" class="side-row" aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
       onClick=${() => { const next = !open; setOpen(next); if (next) refresh(); }}>
       <span class=${`dot${me ? " ok" : ""}`} aria-hidden="true"></span><span class="grow">${label}</span>${me ? html`<span class="meta">${me.label}</span>` : null}</button>
-    ${open ? html`<div ref=${pop} class="pop" role="dialog" aria-label=${t("app.session")} onKeyDown=${onKey}>
+    ${open ? html`<div data-trust="session" ref=${pop} class="pop" role="dialog" aria-label=${t("app.session")} onKeyDown=${onKey}>
       ${!me ? html`<h3>${t("app.signedOut")}</h3><a class="btn" href=${`/signin?next=${encodeURIComponent(location.pathname)}`}>${t("app.signIn")}</a>` : html`
         <h3>${t("app.signedIn")} · ${me.label}</h3>
         <p class="sub">${t("app.expires", clock(me.expiresAt), span(me.idleMs))}</p>

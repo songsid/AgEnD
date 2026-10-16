@@ -1,0 +1,119 @@
+/** #1629: unmounted stock shell inventory/paint prerequisite. No frame creation, effect code, content or network reads. */
+const SPECS = [
+  ["composer", ".shell .p-chat .chat-main > .dock"],
+  ["reply", ".shell .thread .rb-row, .shell .thread .poll-voters"],
+  ["navigation", ".shell .side-head, .shell .side-nav, .shell .side-section, .shell .side-foot, .shell .tabs, .shell .skip"],
+  ["header", ".shell .panel-head"], ["status", ".shell .main > .conn"], ["usage", ".shell > .u-rail"],
+  ["widget", ".shell .aw, .shell .side-widget"], ["permission", ".shell .n-item, .shell .dock .prompts"],
+  ["menu", ".shell .menu-list[role=menu]"], ["session", ".shell .side-foot .pop[role=dialog]"],
+  ["popover", ".shell .prefs-pop > .pop"], ["dialog", ".shell dialog.dlg"], ["lightbox", ".shell dialog.lb"],
+  ["tour", "body > #tour.tour[role=dialog]"], ["keep", ".shell > .oc-keep"], ["toast", ".shell > .toasts"],
+  ["confirmation", ".shell > .pending-stack"], ["preview", ".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider"],
+  ["preview-menu", ".shell .thread details.pv-menu"], ["palette", ".shell .dock .cmd-palette"],
+  ["drop", ".shell .p-chat > .drop-overlay"],
+  ["thread-control", ".shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner"],
+  ["link", ".shell .thread .md a"], ["attachment", ".shell .thread .atts"], ["media", ".shell .thread .att-media"],
+  ["session-ended", "body > .agend-session-ended[role=alert]"],
+];
+export const STOCK_TRUST_INVENTORY = Object.freeze(SPECS.map(([kind, selector]) => Object.freeze({ kind, selector })));
+const STRUCTURAL = ["html", "body", "#app", "#app > .shell", ".shell > .main", ".main > .p-chat", ".p-chat > .chat-split", ".chat-split > .chat-main"];
+const CONTENT = [".main > .conn", ".p-chat > .panel-head", ".p-chat > .chat-card", ".p-chat > .aw-chat_header", ".chat-main > .scroller", ".chat-main > .dock", ".sidebar > .side-head", ".sidebar > .side-nav", ".sidebar > .side-section", ".sidebar > .side-widget", ".sidebar > .side-foot", ".u-rail > .u-rail-head", ".u-rail > .u-rail-body"];
+const BARRIERS = '[role=menu],[role=dialog],[role=alertdialog],[role=listbox],dialog[open],details[open],.toast,.pending-stack:not(.inline),.oc-keep,.shell.sb-open,.p-chat.dragging,.agend-session-ended,audio[controls],video[controls]';
+const finite = n => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 1e7;
+const none = x => x === "" || x === undefined || x === "none";
+// The stock narrow header fades its own pixels inside its already bounded content context.
+// This exception is never applied to an ancestor or another content surface.
+function stockWidgetMask(host, selector, style) {
+  return selector === ".p-chat > .aw-chat_header" && host.innerWidth < 900
+    && typeof style.maskImage === "string"
+    && /^linear-gradient\(to right, (?:rgb\(0, 0, 0\)|rgb\(0 0 0\)) calc\(100% - 32px\), (?:rgba\(0, 0, 0, 0\)|rgb\(0 0 0 \/ 0\))\)$/.test(style.maskImage);
+}
+function neutral(style, allowStockMask = false) {
+  return !!style && ["transform", "perspective", "filter", "backdropFilter", "rotate", "scale", "translate", "offsetPath", "clipPath"].every(k => none(style[k])) && (none(style.maskImage) || allowStockMask)
+    && style.opacity === "1" && style.isolation === "auto" && style.mixBlendMode === "normal" && style.contain === "none" && style.willChange === "auto"
+    && (style.contentVisibility === undefined || ["", "visible"].includes(style.contentVisibility)) && (style.zoom === undefined || ["", "1", "normal"].includes(style.zoom));
+}
+function rect(el) {
+  const r = el.getBoundingClientRect();
+  return [r.x, r.y, r.width, r.height].every(finite) && r.width >= 0 && r.height >= 0 ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+}
+function visible(host, el) {
+  if (!el || el.isConnected !== true) return false;
+  // A descendant of a closed details/dialog may have a styled box but no painted client rect.
+  const s = host.getComputedStyle(el);
+  return s.display !== "none" && s.visibility === "visible" && s.opacity !== "0" && el.getClientRects().length > 0;
+}
+/** Conservatively include stock outer shadows and focus outlines, not only the border box. Unknown paint refuses. */
+function outset(style) {
+  let pad = 0;
+  if (!none(style.textShadow)) return null;
+  if (style.outlineStyle !== "none") {
+    const width = parseFloat(style.outlineWidth), offset = parseFloat(style.outlineOffset);
+    if (![width, offset].every(Number.isFinite)) return null;
+    pad = Math.max(pad, width + Math.max(0, offset));
+  }
+  if (!none(style.boxShadow)) {
+    // Computed colors may contain commas; remove closed color functions before splitting the shadow list.
+    const shadow = style.boxShadow.replace(/(?:rgba?|color|color-mix)\([^()]*\)/g, "color");
+    for (const part of shadow.split(",")) {
+      if (/\binset\b/.test(part)) continue;
+      const lengths = [...part.matchAll(/(-?\d+(?:\.\d+)?)px\b/g)].map(m => Number(m[1]));
+      if (lengths.length < 2 || lengths.length > 4 || !lengths.every(Number.isFinite)) return null;
+      const [x, y, blur = 0, spread = 0] = lengths;
+      if (blur < 0) return null;
+      // Stock blur support is bounded generously; no arbitrary constant padding is the security argument.
+      pad = Math.max(pad, Math.abs(x) + 3 * blur + Math.max(0, spread), Math.abs(y) + 3 * blur + Math.max(0, spread));
+    }
+  }
+  return pad <= 256 ? Math.ceil(pad) : null;
+}
+function protectedPaint(host, root, budget) {
+  const nodes = [root, ...root.querySelectorAll("*")]; budget.n += nodes.length;
+  if (budget.n > 4096) return null;
+  let union = null;
+  for (const el of nodes) {
+    if (!visible(host, el)) continue;
+    const style = host.getComputedStyle(el), r = rect(el), pad = outset(style);
+    if (!r || pad === null || !none(style.filter) || !none(style.backdropFilter)) return null;
+    const a = { x: r.x - pad, y: r.y - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
+    if (!union) union = a;
+    else { const x = Math.min(union.x, a.x), y = Math.min(union.y, a.y); union = { x, y, width: Math.max(union.x + union.width, a.x + a.width) - x, height: Math.max(union.y + union.height, a.y + a.height) - y }; }
+  }
+  return union || { x: 0, y: 0, width: 0, height: 0 };
+}
+/** Snapshot immediately before reveal; callers must hide first on mutations/scroll/resize. No observer is installed here. */
+export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" } = {}) {
+  const fail = reason => ({ ok: false, reason, rects: [], front: false });
+  try {
+    const doc = host.document, app = doc.getElementById("app"), shell = doc.querySelector("#app > .shell"), chat = doc.querySelector(".main > .p-chat");
+    if (!app || app.parentElement !== doc.body || !shell || !chat || doc.querySelectorAll("#app > .shell").length !== 1 || doc.querySelectorAll(".main > .panel").length !== 1) return fail("stock_route_unknown");
+    if (frameRoot && (frameRoot.ownerDocument !== doc || frameRoot.parentElement !== doc.body || !frameRoot.classList.contains("agend-effect-layer") || !neutral(host.getComputedStyle(frameRoot)) || !["static", "relative"].includes(host.getComputedStyle(frameRoot).position) || host.getComputedStyle(frameRoot).zIndex !== "auto")) return fail("stock_frame_root_unknown");
+    for (const selector of STRUCTURAL) {
+      const el = doc.querySelector(selector), s = el && host.getComputedStyle(el);
+      if (!el || el.isConnected !== true || !neutral(s) || s.zIndex !== "auto" || !["static", "relative"].includes(s.position)) return fail("stock_order_unknown");
+    }
+    for (const selector of CONTENT) for (const el of doc.querySelectorAll(selector)) {
+      if (!visible(host, el)) { const children = [...el.querySelectorAll("*")]; if (children.length > 4096 || children.some(child => visible(host, child))) return fail("stock_order_unknown"); continue; }
+      const s = host.getComputedStyle(el);
+      if (s.position !== "relative" || s.zIndex !== (selector === ".p-chat > .panel-head" ? "2" : "1") || !neutral(s, stockWidgetMask(host, selector, s))) return fail("stock_order_unknown");
+    }
+    const marked = [...doc.querySelectorAll("[data-trust]")], expected = new Set(), rects = [], budget = { n: 0 };
+    if (marked.length > 128) return fail("stock_trust_unknown");
+    for (const { kind, selector } of STOCK_TRUST_INVENTORY) for (const el of doc.querySelectorAll(selector)) {
+      if (el.ownerDocument !== doc || el.isConnected !== true || el.getAttribute("data-trust") !== kind) return fail("stock_trust_unknown");
+      expected.add(el);
+    }
+    if (marked.some(el => !expected.has(el)) || !chat.querySelector('.dock[data-trust="composer"]') || !chat.querySelector('.panel-head[data-trust="header"]')) return fail("stock_trust_unknown");
+    for (const el of marked) {
+      const bounds = protectedPaint(host, el, budget); if (!bounds) return fail("stock_paint_unknown");
+      if (bounds.width && bounds.height) rects.push(bounds);
+    }
+    if (doc.querySelector(".agend-session-ended")) return fail("session_ended");
+    let barrier = [...doc.querySelectorAll(BARRIERS)].some(el => visible(host, el));
+    if (host.innerWidth < 900 && [...doc.querySelectorAll(".pv-panel")].some(el => visible(host, el))) barrier = true;
+    const active = doc.activeElement;
+    if (doc.fullscreenElement || doc.pictureInPictureElement) barrier = true;
+    if (active && active !== doc.body && active !== doc.documentElement && (active.matches("input,select,textarea,[contenteditable]") || active.isContentEditable)) barrier = true;
+    return { ok: true, rects, front: !barrier, reason: barrier ? "stock_overlay" : "stock", agentFront: !barrier && ownerCss === "off", agentReason: barrier ? "stock_overlay" : ownerCss === "off" ? "stock" : "owner_css", settingsHref: "/ui/settings/appearance" };
+  } catch { return fail("stock_trust_unknown"); }
+}

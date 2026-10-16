@@ -31,7 +31,7 @@ export function Menu({ items, label, icon = "more", cls = "" }) {
   return html`<div class=${`menu ${cls}`}>
     <button ref=${btn} type="button" class="icon-btn" aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
       aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => setOpen(!open)}><${Icon} name=${icon} /></button>
-    ${open ? html`<div ref=${list} class="menu-list" role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
+    ${open ? html`<div data-trust="menu" ref=${list} class="menu-list" role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
       ${shown.map(item => html`<button key=${item.key} type="button" role="menuitem" class=${`menu-item${item.danger ? " danger" : ""}`}
         disabled=${!!item.disabled} onClick=${() => choose(item)}>${item.icon ? html`<${Icon} name=${item.icon} size=${16} />` : null}<span>${item.label}</span></button>`)}
     </div>` : null}

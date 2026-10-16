@@ -289,7 +289,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
     </div>
     <${LightboxHost} />
-    <div class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
+    <div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>
     ${dialog === "delete" ? html`<${DeleteDialog} name=${name} onClose=${() => setDialog(null)} />` : null}
   </div>`;
 }
@@ -351,7 +351,7 @@ function Thread({ name, th }) {
 function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   useChatTick(name, ["state"]);
   const s = store.state;
-  return html`<div class="dock"><div class="dock-col">
+  return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
@@ -397,7 +397,7 @@ function QuickActions({ name, inst, lease }) {
 function Prompts({ name }) {
   const list = store.promptsFor(name);
   if (!list.length) return null;
-  return html`<div class="prompts" aria-live="polite">${list.map(p => html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
+  return html`<div data-trust="permission" class="prompts" aria-live="polite">${list.map(p => html`<div key=${p.nonce} class=${`prompt${p.resolved ? " done" : ""}`} role="group" aria-label=${p.text}>
     <div class="txt">${p.resolved ? (p.outcome || t("chat.promptGone")) : p.text}</div>
     ${p.resolved ? null : html`<div class="acts">${p.actions.map(a => html`<button key=${a.id} type="button" class="btn" disabled=${!!p.busy} onClick=${() => store.answerPrompt(p, a.id)}>${a.label}</button>`)}
       ${p.busy ? html`<span class="wait">${t("chat.promptAnswering")}</span>` : null}</div>`}</div>`)}</div>`;
@@ -480,7 +480,7 @@ function Composer({ name, lease, busy }) {
   };
   const optId = (c) => `cmd-${c.name}`;
   return html`<div class="composer-box">
-    ${palette ? html`<ul class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
+    ${palette ? html`<ul data-trust="palette" class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
           <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)

@@ -35,7 +35,7 @@ export function Dialog({ title, onClose, actions, children, busy = false, wide =
     d.addEventListener("click", onClick);
     return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("click", onClick); };
   }, [onClose]);
-  return html`<dialog ref=${ref} class=${`dlg${wide ? " dlg-wide" : ""}`} aria-label=${label || title}>
+  return html`<dialog data-trust="dialog" ref=${ref} class=${`dlg${wide ? " dlg-wide" : ""}`} aria-label=${label || title}>
     <div class="dlg-box">
       <div class="dlg-head"><h2 class="dlg-title">${title}</h2>
         <button type="button" class="icon-btn dlg-x" aria-label=${t("app.close")} title=${t("app.close")} onClick=${() => { if (!busyRef.current) onClose(); }}><${Icon} name="close" /></button></div>
