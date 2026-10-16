@@ -4,6 +4,9 @@ import { isServedAsset } from "../src/auth-api.js";
 const { createAppEffectRuntime } = await import(new URL("../src/ui/shared/effect-app-runtime.js", import.meta.url).href);
 const { createEffectRuntimeLoader } = await import(new URL("../src/ui/shared/effect-runtime-loader.js", import.meta.url).href);
 const id = "a".repeat(32), epoch = "b".repeat(16);
+const ownerSlots = ["fx.page", "fx.header", "fx.sidebar", "fx.box"];
+const ownerBody = (selected = id, rev = 1) => ({ rev, slots: { ...Object.fromEntries(ownerSlots.map(slot => [slot, { id: selected, status: "available", manifest: { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "test", title: "Test", regions: ["chat", "page", "header", "sidebar", "box"], layer: "front", wants: [], box: { anchor: "center", width: 100, height: 80, offset: 0 } } }])), "fx.cursor": { id: null, status: "none" } } });
+const personal = (h: any) => { h.targets = Object.fromEntries(ownerSlots.map(slot => [slot, { isConnected: true }])); h.resolveOwnerTarget = vi.fn((slot: string) => h.targets[slot]); h.onOwnerUnavailable = vi.fn(); };
 const held = () => { let resolve: (v?: any) => void = () => {}; const promise = new Promise<any>(r => { resolve = r; }); return { promise, resolve }; };
 const flush = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 function rig(prepare: (h: any) => void = () => {}) {
@@ -16,15 +19,15 @@ function rig(prepare: (h: any) => void = () => {}) {
     addEventListener: vi.fn((type: string, fn: () => void) => events.set(type, fn)), removeEventListener: vi.fn((type: string) => events.delete(type)),
   };
   const placement = { id, by: "agent", at: 1, manifest: { title: "Effect", regions: ["chat"], layer: "front" }, params: { n: 1 } };
-  const loader = { ok: true, placementsSettled: vi.fn(async () => ({ rev: 1, effects: [placement] })), resourceSettled: vi.fn(async () => ({ id, params: { n: 1 } })), dispose: vi.fn() };
-  const registry = { ok: true, update: vi.fn((ds: any[]) => { rows = ds.map(d => ({ ...d, verdict: "active", phase: "running" })); }), snapshot: () => rows, resume: vi.fn(() => true), publish: vi.fn(), dispose: vi.fn() };
+  const loader = { ok: true, ownerSettled: vi.fn(async (): Promise<any> => ownerBody()), placementsSettled: vi.fn(async () => ({ rev: 1, effects: [placement] })), resourceSettled: vi.fn(async () => ({ id, params: { n: 1 } })), dispose: vi.fn() };
+  const registry = { ok: true, frameRoot: { isConnected: true }, update: vi.fn((ds: any[]) => { rows = ds.map(d => ({ ...d, verdict: "active", phase: "running" })); }), snapshot: () => rows, resume: vi.fn(() => true), publish: vi.fn(), dispose: vi.fn() };
   const collectors: any[] = [], collect = () => { const c = { ok: true, add: vi.fn(), report: vi.fn(() => ({ profile: { v: 1, device: "standard" } })), dispose: vi.fn() }; collectors.push(c); return c; };
   const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
   const observation: any = { context, ownerCss: "off", mode: "light" }, globalChange = vi.fn();
   const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
-  h.factories = { loader: vi.fn((o: any) => { h.loaderOptions = o; return h.realLoader ? createEffectRuntimeLoader(o) : loader; }), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true })), collector: collect };
-  h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, onDispose: h.onDispose, factories: h.factories });
+  h.factories = { loader: vi.fn((o: any) => { h.loaderOptions = o; return h.realLoader ? createEffectRuntimeLoader(o) : loader; }), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true, front: true, agentFront: true, rects: [] })), collector: collect };
+  h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, onDispose: h.onDispose, resolveOwnerTarget: h.resolveOwnerTarget, onOwnerUnavailable: h.onOwnerUnavailable, factories: h.factories });
   h.chat = (name = "own", patch: any = {}) => { const part: any = { element: { isConnected: true }, current: () => true, observe: () => ({ state: "working" }), onChange: vi.fn(), ...patch }; part.api = h.api.attachChat({ name, ...part }); return part; };
   return h;
 }
@@ -181,4 +184,86 @@ describe("#1629 one app-owned effect pool", () => {
     a.api.dispose(); expect(nested.api.snapshot().rows[0].instance).toBe("b"); expect(h.factories.registry).toHaveBeenCalledOnce(); expect(h.factories.loader).toHaveBeenCalledOnce(); h.api.dispose();
   });
 
+});
+
+describe("#1629 optional personal sources share the app pool", () => {
+  it("real loader retains a cancelled personal body through cleanup before Chat and a fresh owner read", async () => {
+    const first = held(), cancelled = held(), cancel = vi.fn(() => cancelled.promise);
+    const h = rig(h => { personal(h); h.realLoader = true;
+      h.host.fetch.mockImplementation(async (url: string) => new Response(JSON.stringify(url.includes("/owner?") ? ownerBody() : { rev: 1, effects: [{ id, by: "agent", at: 1, manifest: { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "test", title: "Test", regions: ["chat"], layer: "behind", wants: [] }, params: {} }] }), { headers: { "content-type": "application/json" } }));
+      h.host.fetch.mockImplementationOnce(() => first.promise);
+    });
+    h.api.sync(); const a = h.chat("a"); await flush(); h.api.changedOwner(); first.resolve({ ok: true, status: 200, body: { cancel } }); await flush();
+    expect(cancel).toHaveBeenCalledOnce(); expect(h.host.fetch).toHaveBeenCalledOnce(); expect(a.api.snapshot().loading).toBe(true); expect(h.api.ownerSnapshot().rows).toEqual([]);
+    cancelled.resolve(); await flush(); expect(h.host.fetch.mock.calls.map((c: any) => c[0])).toEqual([`/ui/effects/owner?ownerEpoch=${epoch}`, `/ui/effects/placements?instance=a&ownerEpoch=${epoch}`, `/ui/effects/owner?ownerEpoch=${epoch}`]);
+    expect(a.api.snapshot().rows).toHaveLength(1); expect(h.api.ownerSnapshot().rows).toHaveLength(4); h.api.dispose();
+  });
+  it("keeps the product driver opt-out: a plain app core never reads personal metadata", async () => {
+    const h = rig(); h.api.sync(); h.chat(); await flush(); expect(h.loader.ownerSettled).not.toHaveBeenCalled(); expect(h.api.ownerSnapshot().slots).toEqual({}); h.api.dispose();
+  });
+  it("aggregates four personal slots and same-id Chat in one registry with distinct scopes", async () => {
+    const h = rig(personal); h.api.sync(); await flush(); const a = h.chat("a"); await flush(); const ds = h.registry.update.mock.calls.at(-1)[0];
+    expect(ds.map((d: any) => d.region)).toEqual(["page", "header", "sidebar", "box", "chat"]); expect(new Set(ds.map((d: any) => d.key)).size).toBe(5);
+    expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(a.api.snapshot().rows).toHaveLength(1); expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce();
+    for (const row of ds) { expect(await h.options().load(row, new AbortController().signal)).toMatchObject({ id }); }
+    expect(h.loader.resourceSettled.mock.calls.slice(0, 4).map((c: any) => c[0])).toEqual(ownerSlots.map(slot => ({ id, slot })));
+    expect(h.loader.resourceSettled.mock.calls[4][0]).toEqual({ id, instance: "a" }); expect(await h.options().load({ id }, new AbortController().signal)).toBeNull();
+    h.api.detachChat(); expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(h.registry.dispose).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("holds a personal metadata operation until settlement and fairly admits waiting Chat before a reread", async () => {
+    const h = rig(personal), first = held(), order: string[] = []; h.loader.ownerSettled.mockImplementationOnce(() => { order.push("owner-old"); return first.promise; });
+    h.loader.ownerSettled.mockImplementation(async () => { order.push("owner-new"); return ownerBody(id, 2); }); h.loader.placementsSettled.mockImplementation(async () => { order.push("chat"); return { rev: 1, effects: [h.placement] }; });
+    h.api.sync(); const a = h.chat(); await flush(); h.api.changedOwner(); const admission = [...order]; if (admission.length !== 1) h.api.dispose(); expect(admission).toEqual(["owner-old"]); await flush(); expect(h.loader.ownerSettled.mock.calls[0][0].aborted).toBe(true); expect(order).toEqual(["owner-old"]);
+    first.resolve(ownerBody("e".repeat(32))); await flush(); expect(order).toEqual(["owner-old", "chat", "owner-new"]); expect(a.api.snapshot().rows).toHaveLength(1); expect(h.api.ownerSnapshot().rows.every((r: any) => r.id === id)).toBe(true); h.api.dispose();
+  });
+  it("an in-flight Chat read excludes personal metadata without sharing its instance scope", async () => {
+    const h = rig(personal), first = held(); h.context.enabled = false; const a = h.chat(); h.context.enabled = true;
+    // Both need metadata; the first read is personal, then the held Chat read.
+    h.loader.placementsSettled.mockImplementationOnce(() => first.promise); h.api.sync(); await flush(); expect(h.loader.placementsSettled).toHaveBeenCalledOnce(); h.api.changedOwner(); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledOnce();
+    first.resolve({ rev: 1, effects: [h.placement] }); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledTimes(2); expect(a.api.snapshot().rows[0].instance).toBe("own"); h.api.dispose();
+  });
+  it("ordinary personal metadata failure latches until explicit invalidation and does not kill Chat", async () => {
+    const h = rig(personal); h.loader.ownerSettled.mockResolvedValueOnce(null); const a = h.chat(); await flush(); expect(a.api.snapshot().rows).toHaveLength(1); expect(h.api.ownerSnapshot().error).toBe("unreadable");
+    for (let i = 0; i < 3; i++) h.api.sync(); await flush(); expect(h.loader.ownerSettled).toHaveBeenCalledOnce(); h.api.changedOwner(); await flush(); expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(h.factories.registry).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("personal refusal is slot-local even with the identical effect in another slot and Chat", async () => {
+    const h = rig(personal), a = h.chat(); await flush(); const row = h.api.ownerSnapshot().rows[0]; h.loader.resourceSettled.mockResolvedValueOnce(null);
+    expect(await h.options().load(row, new AbortController().signal)).toBeNull(); expect(h.api.ownerSnapshot().slots["fx.page"]).toEqual({ id, status: "unavailable" }); expect(h.api.ownerSnapshot().rows).toHaveLength(3);
+    expect(a.api.snapshot().rows).toHaveLength(1); expect(a.api.snapshot().error).toBeNull(); expect(h.onOwnerUnavailable).toHaveBeenCalledExactlyOnceWith("fx.page", id); h.api.dispose();
+  });
+  it.each([null, { id }])("same-id personal target replacement fences an old held resource (%s)", async result => {
+    const h = rig(personal); h.api.sync(); await flush(); const old = h.api.ownerSnapshot().rows[0], first = held(); h.loader.resourceSettled.mockImplementationOnce(() => first.promise);
+    const job = h.options().load(old, new AbortController().signal); h.targets["fx.page"] = { isConnected: true }; h.api.sync(); const next = h.api.ownerSnapshot().rows[0]; expect(next.key).not.toBe(old.key);
+    first.resolve(result); expect(await job).toBeNull(); expect(h.onOwnerUnavailable).not.toHaveBeenCalled(); expect(h.api.ownerSnapshot().rows[0].key).toBe(next.key); h.api.dispose();
+  });
+  it("unknown paint proof/registry root admits no personal descriptor, and recovery needs no new metadata", async () => {
+    const h = rig(personal); h.registry.frameRoot = null; h.api.sync(); await flush(); expect(h.api.ownerSnapshot().rows).toEqual([]); expect(h.resolveOwnerTarget).not.toHaveBeenCalled();
+    h.registry.frameRoot = {}; h.api.sync(); expect(h.api.ownerSnapshot().rows).toHaveLength(4); h.factories.stock.mockReturnValue({ ok: false }); h.api.sync(); expect(h.api.ownerSnapshot().rows).toEqual([]);
+    h.factories.stock.mockReturnValue({ ok: true, front: true, agentFront: true, rects: [] }); h.api.sync(); expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(h.loader.ownerSettled).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("a late appearing target is reprojected without changing metadata or replacing the pool", async () => {
+    const h = rig(personal); h.targets["fx.header"] = null; h.api.sync(); await flush(); expect(h.api.ownerSnapshot().rows).toHaveLength(3); h.targets["fx.header"] = { isConnected: true }; h.api.sync();
+    expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(h.loader.ownerSettled).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("personal Pause/Resume is slot-scoped and uses the registry's existing human safety resume", async () => {
+    const h = rig(personal), a = h.chat(); await flush(); const page = h.api.ownerSnapshot().rows[0]; expect(h.api.pauseOwner("fx.page")).toBe(true);
+    expect(h.api.ownerSnapshot().rows.filter((r: any) => r.paused).map((r: any) => r.region)).toEqual(["page"]); expect(a.api.snapshot().rows[0].paused).toBe(false);
+    expect(h.api.resumeOwner("fx.page")).toBe(true); expect(h.registry.resume).toHaveBeenCalledExactlyOnceWith(page.key); expect(h.api.pauseOwner("fx.cursor")).toBe(false); h.api.dispose();
+  });
+  it("personal profile reports carry only the epoch; replaced targets cannot send a stale profile", async () => {
+    const h = rig(personal); h.api.sync(); await flush(); const row = h.api.ownerSnapshot().rows[0], owner = { ...row, device: "standard", current: () => true }; h.options().onMount(owner); h.at(10000);
+    h.options().onProfile({ verdict: "ok" }, owner); await flush(); expect(h.host.fetch).toHaveBeenCalledWith(`/ui/effects/profile/${id}?ownerEpoch=${epoch}`, expect.objectContaining({ method: "POST" }));
+    h.targets["fx.page"] = { isConnected: true }; h.api.sync(); h.at(20000); h.options().onProfile({ verdict: "paused" }, owner); await flush(); expect(h.host.fetch).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("global loader revocation closes both kinds of contribution and fences a held personal resource", async () => {
+    const h = rig(personal), a = h.chat(); await flush(); const first = held(); h.loader.resourceSettled.mockImplementationOnce(() => first.promise); const job = h.options().load(h.api.ownerSnapshot().rows[0], new AbortController().signal);
+    h.loaderOptions.onRevoke({ reason: "authorization_rejected" }); first.resolve({ id }); expect(await job).toBeNull(); expect(h.api.ownerSnapshot().rows).toEqual([]); expect(a.api.snapshot().rows).toEqual([]); expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce();
+  });
+  it.each(["enabled", "show", "previewReady", "optIn", "safe", "publicLink", "reducedMotion", "saveData", "hidden"])("the %s global gate applies before any personal read", async gate => {
+    const h = rig(personal); h.context[gate] = ["enabled", "show", "previewReady", "optIn"].includes(gate) ? false : true; h.api.sync(); await flush(); expect(h.loader.ownerSettled).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("resolver reentry attaching a new Chat abandons the old aggregate pass", async () => {
+    const h = rig(personal); let b: any; h.api.sync(); await flush(); h.resolveOwnerTarget.mockImplementationOnce((slot: string) => { b = h.chat("b"); return h.targets[slot]; }); h.api.sync(); await flush();
+    expect(b.api.snapshot().rows[0].instance).toBe("b"); expect(h.registry.update.mock.calls.at(-1)[1].openInstance).toBe("b"); expect(h.factories.registry).toHaveBeenCalledOnce(); h.api.dispose();
+  });
 });

@@ -60,6 +60,12 @@ function rig(options: any = {}) {
 }
 afterEach(() => { for (const a of M.APIs) a.dispose?.(); M.APIs.length = 0; M.frames.length = 0; M.calibrations.length = 0; M.geometries.length = 0; });
 describe("#1629 shared Canvas Worker registry", () => {
+  it("exposes exactly its connected host root read-only, and nothing after disposal", () => {
+    const h = rig(), root = h.api.frameRoot, descriptor = Object.getOwnPropertyDescriptor(h.api, "frameRoot");
+    expect(root).toBe(h.doc.body.children[0]); expect(root.isConnected).toBe(true); expect(root.className).toBe("agend-effect-layer");
+    expect(descriptor?.set).toBeUndefined(); expect(descriptor?.configurable).toBe(false); expect(descriptor?.enumerable).toBe(false); expect(() => { h.api.frameRoot = {}; }).toThrow();
+    h.api.dispose(); expect(h.api.frameRoot).toBeNull(); expect(root.isConnected).toBe(false);
+  });
   it("keeps mention reserved without consulting fields or sending to a ready frame", async () => {
     const h = rig(); await h.admit(); const frame = h.frames()[0]; frame.ready(); frame.send.mockClear();
     const getter = vi.fn(() => { throw Error("content"); }), fields = {}; Object.defineProperty(fields, "targets", { get: getter });

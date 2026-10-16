@@ -435,5 +435,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       geometry.dispose(); root.remove(); observed.clear(); if (loads.size === 0 && registries.get(host) === api) registries.delete(host);
     },
   };
+  // Read-only host geometry seam; no selector guessing among poster and live roots.
+  Object.defineProperty(api, "frameRoot", { get: () => dead ? null : root });
   registries.set(host, api); return api;
 }
