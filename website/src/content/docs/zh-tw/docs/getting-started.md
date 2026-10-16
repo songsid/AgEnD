@@ -67,7 +67,7 @@ agend quickstart
 
 1. 找出你已安裝的 AI coding CLI，有好幾個時讓你選。
 2. 問你要用 Telegram、Discord 還是兩者都要。Discord 是內建的，不用另外裝東西。
-3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組和你的 user ID。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著會問你的 user ID 和 General 頻道的 ID（Discord 的開發者模式 → 複製 ID），並詢問要不要設定 ClassicBot。
+3. 檢查你的 bot token。Telegram 會在你到群組裡傳 `/start` 後找出那個群組和你的 user ID。Discord 會列出 bot 所在的伺服器；如果它還不在任何伺服器，就請你貼上伺服器 ID。接著最多等 30 秒，從你在該伺服器或 bot 私訊送出的訊息偵測帳號，再請你確認顯示的 username 與 ID。偵測失敗或拒絕採用時，必須手動輸入有效的 17–20 位 user ID。另需 General 頻道 ID（開發者模式 → 複製 ID），並可選擇設定 ClassicBot。
 4. 問你的專案放在哪裡。
 
 它會寫好 `~/.agend/fleet.yaml`（存取權鎖定給你的 user ID），bot token 則寫進 `~/.agend/.env`。最後它會提議把 fleet 裝成系統服務並啟動，接著告訴你網頁儀表板在哪裡。

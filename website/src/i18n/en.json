@@ -75,7 +75,7 @@
       {
         "icon": "shield",
         "name": "Cost Guard",
-        "desc": "Per-instance daily spending limits. Auto-pause and alerts before bill shock."
+        "desc": "Per-instance daily spending limits stop the instance at its limit and notify you."
       },
       {
         "icon": "clock",
@@ -250,7 +250,7 @@
       },
       {
         "q": "Does it need a server?",
-        "a": "No. Runs on any macOS, Linux, or Windows (WSL) machine with tmux. Install as a system service for auto-start on boot."
+        "a": "No. Supports macOS 11+ with launchd, or glibc 2.28+ Linux with systemd, including WSL with systemd. Requires tmux. Alpine/musl, non-systemd Linux and native Windows are unsupported."
       },
       {
         "q": "How do agents collaborate?",

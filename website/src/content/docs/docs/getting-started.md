@@ -67,7 +67,7 @@ It runs in four steps:
 
 1. It finds the AI coding CLI you have, and asks which one if there are several.
 2. It asks for Telegram, Discord, or both. Discord is built in, so there is nothing extra to install.
-3. It checks your bot token. On Telegram it then finds your group and your user ID once you send `/start` in the group. On Discord it lists the servers the bot is in, or asks for the server ID if it is in none. It then asks for your user ID and the General channel's ID (Discord's Developer Mode → Copy ID), and offers to set up ClassicBot.
+3. It checks your bot token. On Telegram it then finds your group and your user ID once you send `/start` in the group. On Discord it lists the servers the bot is in, or asks for the server ID if it is in none. It waits up to 30 seconds for your message in that server or a DM to the bot, then asks you to confirm the displayed username and ID. If detection fails or you decline, enter a required 17–20-digit user ID manually. It also asks for the General channel ID (Developer Mode → Copy ID), and offers ClassicBot.
 4. It asks where your projects live.
 
 It writes `~/.agend/fleet.yaml`, with access locked to your user ID, and the bot token to `~/.agend/.env`. At the end it offers to install the fleet as a service and start it, then shows where the web dashboard is.

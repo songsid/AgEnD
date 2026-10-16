@@ -144,7 +144,7 @@ AgEnD 把每個工作變成聊天室裡的一個頻道。在手機上就找得�
 - **附件**：照片、文件、影片都能直接傳。
 - **一般群組**：在群組裡打 `/start@你的bot`，之後要 @它才會回應；其他對話只做紀錄，觸發時附上最近 5 行當上下文。
 - **加入新群組要核准**：要把 bot 加進新群組時，主人會在 General 收到核准按鈕，避免 bot 被拉進陌生的群組。
-- **pairing 模式**：想把 bot 分享給朋友時，對方打 `/pair` 取得配對碼，主人再用 `agend access pair` 核准，不需要事先收集對方的 user ID。
+- **分享存取權**：主人將可信任的 user ID 明確加入該 bot 的存取名單。Pairing 模式的 `/pair` 可申請配對碼，但 `agend access pair <instance> <user-id>` 是產生碼，不是主人核准碼的指令。
 
 ## 同一個 fleet，同時接兩個平台
 
@@ -158,12 +158,12 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
 ## 日常使用技巧
 
 - **開一個專門做事的 instance**：對 General 說「幫我開一個 instance，專門準備下週的分享簡報，這次用 Codex」。建好之後，到那個頻道繼續工作就好。
-- **它還在跑嗎？先開 `/web`**：會回傳管理頁的連結。
+- **它還在跑嗎？先開 `/web`**：會私送登入資訊；在 General 則先按選單上的登入按鈕。
   - View：看各 instance 的狀態、最近的輸出，以及 AI 訂閱還剩多少用量。
   - Settings：調整 instance 設定，例如閒置多久自動暫停。
   - 這是管理員指令，預設的 localhost 網址只能在主機上打開。Telegram 請在 General 使用。
 - **沒在工作的 instance，讓它休眠**：Auto Pause 會在閒置一段時間後暫停 instance，有新訊息再喚醒，記憶會保留。General 不會被暫停。instance 超過 20 個左右可能會影響主機效能。
-- **怕壓縮後忘記，先留交接**：對話很長時，先請助理把目前進度、已經決定的事、下一步寫進 `soul.md`，再送 `/compact`，接著請它讀交接檔繼續做。注意：不同後端的壓縮行為不一樣，**Antigravity 的 `/compact` 等同 `/clear`，會把對話完全清空**。
+- **怕壓縮後忘記，先留交接**：對話很長時，先請助理把目前進度、已經決定的事、下一步寫進 `soul.md`，再送 `/compact`，接著請它讀交接檔繼續做。注意：不同後端的壓縮行為不一樣，**Antigravity 1.3.6 以上（或版本未知時）使用原生 `/compact`；已知舊版會被拒絕，絕不改用 `/clear`**。
 - **用 `/model`、`/effort` 控制用量**：每個 instance 可以依工作需要挑模型和推理強度。設定完到 CLI 確認有沒有真的套用。
 - **遇到 bug 請 General 幫忙**：請它查 log，整理版本、平台、後端、重現步驟，並先移除 token、帳密和公司資料，產出 issue 草稿，確認後再送到 GitHub。
 
@@ -173,7 +173,7 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
 |---|---|
 | 讓助理加入頻道／群組 | `/start [backend]`（Telegram 群組用 `/start@bot`） |
 | 移除 | `/stop` |
-| 工作進行中補充方向 | `/steer <內容>`（claude-code、codex、grok、muse、kiro TUI） |
+| 工作進行中補充方向 | `/steer <內容>`（claude-code、codex、grok、muse、經驗證的 kiro TUI；不支援的啟動模式會拒絕 `/steer`，請另送一般訊息） |
 | 插一句話但不打斷它 | `/btw <內容>`（僅 Claude Code） |
 | 中斷目前的動作 | `/cancel` 或取消按鈕 |
 | 查看／壓縮／清空上下文 | `/ctx`、`/compact`、`/clear` |
@@ -181,7 +181,7 @@ Discord 和 Telegram 可以接到同一個 fleet（用 `agend quickstart` 設定
 | 手動暫停／喚醒 | `/pause`、`/wake`（暫停中的 instance 收到訊息也會自動喚醒） |
 | 看狀態、用量、設定 | `/web`（管理員）、`/usage`、`/sysinfo` |
 
-斜線指令由 AgEnD 程式先處理，不是丟給模型猜。例如 `/web` 是程式直接回連結；`/chat`、`/steer` 則會把內容送進助理。Telegram 在群組中請用 `/指令@bot名`。
+斜線指令由 AgEnD 程式先處理，不是丟給模型猜。例如 `/web` 會私送登入資訊（General 會先顯示登入選單）；`/chat`、`/steer` 則會把內容送進助理。Telegram 在群組中請用 `/指令@bot名`。
 
 ---
 

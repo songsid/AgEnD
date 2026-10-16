@@ -144,7 +144,7 @@ One group of players built a separate social feed where their assistants post:
 - **Attachments**: photos, documents and videos go straight through.
 - **Ordinary groups**: type `/start@yourbot` in the group. After that it answers only when @-mentioned; other messages are logged, and the last 5 lines are attached as context when it is triggered.
 - **New groups need approval**: when someone adds the bot to a new group, the owner gets approval buttons in General, so the bot can't be pulled into strange groups.
-- **Pairing mode**: to share the bot with a friend, they send `/pair` to get a code and the owner approves it with `agend access pair`. No need to collect user IDs in advance.
+- **Sharing access**: the owner explicitly adds a trusted user ID to the bot’s access list. `/pair` can request a code in pairing mode, but `agend access pair <instance> <user-id>` creates a code rather than approving one; do not treat it as an owner-approval command.
 
 ## One fleet, both platforms
 
@@ -158,12 +158,12 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
 ## Everyday tips
 
 - **Open an instance for one job**: tell General "open an instance just for next week's presentation, use Codex this time". Once it exists, keep working in that channel.
-- **Is it still running? Open `/web`**: it replies with links to the management pages.
+- **Is it still running? Open `/web`**: it sends private sign-in details; in General, press a login button in the menu.
   - View: each instance's state, recent output, and how much of your AI subscription is left.
   - Settings: instance settings, such as how long before an idle instance auto-pauses.
   - It is an admin command, and the default localhost URL only opens on the host. On Telegram, use it in General.
 - **Let idle instances sleep**: Auto Pause pauses an instance after it has been idle for a while and wakes it on the next message, with its memory kept. General is never paused. More than about 20 instances can start to slow the host.
-- **Leave a handover before compacting**: when a conversation gets long, ask the assistant to write its progress, decisions made and next steps into `soul.md`, then send `/compact` and ask it to read the handover and carry on. Compaction differs by backend: **on Antigravity, `/compact` is the same as `/clear` and wipes the conversation**.
+- **Leave a handover before compacting**: when a conversation gets long, ask the assistant to write its progress, decisions made and next steps into `soul.md`, then send `/compact` and ask it to read the handover and carry on. Compaction differs by backend: **Antigravity uses native `/compact` on 1.3.6+ (or when its version is unknown); a known older version is refused, never replaced with `/clear`**.
 - **Control usage with `/model` and `/effort`**: pick a model and reasoning level per instance, then check in the CLI that it actually applied.
 - **Hit a bug? Ask General**: have it check the logs, collect version, platform, backend and repro steps, strip tokens, passwords and company data, and draft an issue for you to review before it goes to GitHub.
 
@@ -173,7 +173,7 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
 |---|---|
 | Add an assistant to a channel or group | `/start [backend]` (`/start@bot` in Telegram groups) |
 | Remove it | `/stop` |
-| Steer work in progress | `/steer <text>` (claude-code, codex, grok, muse, kiro TUI) |
+| Steer work in progress | `/steer <text>` (claude-code, codex, grok, muse, verified kiro TUI; unsupported launches refuse `/steer`; send a normal message instead) |
 | Ask a side question without interrupting | `/btw <text>` (Claude Code only) |
 | Interrupt the current action | `/cancel` or the cancel button |
 | View, compact or clear context | `/ctx`, `/compact`, `/clear` |
@@ -181,7 +181,7 @@ Discord and Telegram can connect to the same fleet (set up with `agend quickstar
 | Pause or wake manually | `/pause`, `/wake` (a paused instance also wakes on a new message) |
 | Status, usage and settings | `/web` (admin), `/usage`, `/sysinfo` |
 
-Slash commands are handled by AgEnD itself, not guessed by a model. `/web` (also available as `/dashboard`) is answered directly with links, while `/chat` and `/steer` pass their text to the assistant. In Telegram groups, use `/command@botname`.
+Slash commands are handled by AgEnD itself, not guessed by a model. `/web` (also available as `/dashboard`) sends private sign-in details (General first shows a login menu), while `/chat` and `/steer` pass their text to the assistant. In Telegram groups, use `/command@botname`.
 
 ---
 
