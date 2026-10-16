@@ -467,7 +467,7 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     try { json(res, 500, { error: "Mod request failed" }); } catch { /* already answered */ }
   };
 
-  if (path === "/ui/mods" && method === "GET") { json(res, 200, { ...mods.list(), staged: mods.staged(first.person) }); return true; }
+  if (path === "/ui/mods" && method === "GET") { json(res, 200, { ...mods.list(), staged: mods.staged(first.person), proposals: mods.proposals() }); return true; }
   const fileMatch = /^\/ui\/mods\/file\/([0-9a-f]{32})$/.exec(path);
   if (fileMatch && method === "GET") {
     const text = mods.bundleText(fileMatch[1]!);
@@ -478,7 +478,7 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     res.end(text);
     return true;
   }
-  if (method !== "POST" || !["/ui/mods/stage", "/ui/mods/abort", "/ui/mods/commit", "/ui/mods/uninstall", "/ui/mods/export"].includes(path)) {
+  if (method !== "POST" || !["/ui/mods/stage", "/ui/mods/abort", "/ui/mods/commit", "/ui/mods/uninstall", "/ui/mods/export", "/ui/mods/proposal/stage", "/ui/mods/proposal/dismiss"].includes(path)) {
     json(res, 404, { error: "not found" });
     return true;
   }
@@ -502,6 +502,9 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     if (!person) return;
     if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "an object" }); return; }
     if (path === "/ui/mods/abort") { const r = mods.abort(person, body.stage); answer(r, { ok: true }); return; }
+    // r4-5b: an agent's proposal, opened into the usual review (staged as this person's), or dismissed.
+    if (path === "/ui/mods/proposal/stage") { const r = mods.stageProposal(person, body.instance); answer(r, r.ok ? { stage: r.stage, plan: r.plan, plan_hash: r.plan_hash } : null); return; }
+    if (path === "/ui/mods/proposal/dismiss") { const r = mods.dismiss(body.instance); answer(r, { ok: true }); return; }
     if (path === "/ui/mods/commit") {
       const r = mods.commit(person, body);
       if (r.ok) ctx.emitSseEvent("status", ctx.getUiStatus());   // themes_rev and prefs_rev moved: every page re-reads

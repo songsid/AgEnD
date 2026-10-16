@@ -638,6 +638,8 @@ html.lb-open .scroller { overflow: hidden; }
 .s-mod-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-mod-list li { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-width: 0; }
 .s-mod-list .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.s-mod-proposals { display: flex; flex-direction: column; gap: var(--s-2); }
+.s-mod-proposals h4 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-2); }
 .s-mod-export summary { cursor: pointer; font-weight: var(--fw-medium); }
 .s-mod-export[open] { display: flex; flex-direction: column; gap: var(--s-2); }
 .s-mod-boxes { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); }

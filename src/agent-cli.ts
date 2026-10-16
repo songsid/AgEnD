@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
 import { readAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writePreview } from "./web-asset-parts.js";
+import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writeModFile, writePreview } from "./web-asset-parts.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -91,8 +91,9 @@ async function main(): Promise<void> {
   // #1629 r4 §1: `appearance` (get) and `appearance preview [light|dark]`.
   // r4-4: `widget set|data <slot> …` and `widget remove [slot]` (data is set_web_widget with values only).
   const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get")
-    : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`) : first;
-  const rest = first === "theme" || first === "widget" || (first === "appearance" && given.length) ? given.slice(1) : given;
+    : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`)
+    : first === "mod" ? `mod-${given[0] ?? ""}` : first;
+  const rest = first === "theme" || first === "widget" || first === "mod" || (first === "appearance" && given.length) ? given.slice(1) : given;
   const widgetData = first === "widget" && given[0] === "data";
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
@@ -242,6 +243,33 @@ async function main(): Promise<void> {
     case "widget-remove":
       args = rest[0] ? { slot: rest[0] } : {};
       break;
+    // #1629 r4-5b: `mod export <name> <version> [title]` (written to .agend/mods/ here) and `mod propose <file>`.
+    case "mod-export": {
+      if (!rest[0] || !rest[1]) die("Usage: agend-agent mod export <name> <version> [title]");
+      const ask = async (a: Record<string, unknown>) => { const text = await post(op, a); try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; } };
+      try {
+        const first = await ask({ name: rest[0], version: rest[1], ...(rest[2] ? { title: rest.slice(2).join(" ") } : {}) });
+        const got = await receiveFiles(first, ask, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
+        if ("error" in got) { console.log(JSON.stringify(got)); process.exit(1); }
+        const written = await writeModFile(got.files, { workspace: process.cwd(), stateDir: DATA_DIR });
+        if ("error" in written) die(`mod export: ${written.error}`);
+        console.log(JSON.stringify({ ...written, ...(first.effects_omitted ? { effects_omitted: first.effects_omitted } : {}) }));
+      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
+      return;
+    }
+    case "mod-propose": {
+      if (!rest[0]) die("Usage: agend-agent mod propose <file>");
+      const read = await readAgentFile(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR, maxBytes: MOD_UPLOAD_MAX_BYTES });
+      if (!read.ok) die(`mod propose: ${rest[0]} — ${read.reason}`);
+      try {
+        const answer = await sendAssetInParts("mod", read.bytes, async (part) => {
+          const text = await post(op, part);
+          try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; }
+        });
+        console.log(JSON.stringify(answer));
+      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
+      return;
+    }
     case "appearance-preview": {
       if (rest.some(m => m !== "light" && m !== "dark")) die("Usage: agend-agent appearance preview [light|dark]");
       // The fleet sends the SVGs (whole, or in parts); they are written here, in this working directory.

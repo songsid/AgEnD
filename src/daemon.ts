@@ -21,7 +21,7 @@ import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { readAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
+import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, writeModFile, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
@@ -95,6 +95,8 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   get_web_appearance: "fleet_get_web_appearance", preview_web_appearance: "fleet_preview_web_appearance",
   // r4-4: its own declarative widgets.
   set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
+  // r4-5b: mods — an export's file is written here, a proposal's file read here (on the agent's side).
+  export_web_mod: "fleet_export_web_mod", propose_web_mod: "fleet_propose_web_mod",
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
@@ -9944,6 +9946,37 @@ export class Daemon extends EventEmitter {
           const written = await writePreview(got.files, { workspace: this.config.working_directory, stateDir: getAgendHome() });
           if ("error" in written) { reply(null, `preview_web_appearance: ${written.error}`); return; }
           reply(written, undefined);
+          return;
+        }
+        if (tool === "export_web_mod") {
+          // The fleet builds the file (whole, or in parts); it is written here, in the working directory.
+          const first = await ask(args);
+          if (first.error) { reply(null, first.error); return; }
+          let failed: string | undefined;
+          const firstResult = (first.result && typeof first.result === "object" ? first.result : {}) as Record<string, unknown>;
+          const got = await receiveFiles(firstResult, async (payload) => {
+            const r = await ask(payload);
+            if (r.error) { failed = r.error; return { error: r.error }; }
+            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
+          }, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
+          if (failed) { reply(null, failed); return; }
+          if ("error" in got) { reply(got, undefined); return; }
+          const written = await writeModFile(got.files, { workspace: this.config.working_directory, stateDir: getAgendHome() });
+          if ("error" in written) { reply(null, `export_web_mod: ${written.error}`); return; }
+          reply({ ...written, ...(firstResult.effects_omitted ? { effects_omitted: firstResult.effects_omitted } : {}) }, undefined);
+          return;
+        }
+        if (tool === "propose_web_mod") {
+          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, stateDir: getAgendHome(), maxBytes: MOD_UPLOAD_MAX_BYTES });
+          const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
+          if (!read.ok) { reply(null, `propose_web_mod: ${named} — ${read.reason}`); return; }
+          let failed: string | undefined;
+          const answer = await sendAssetInParts("mod", read.bytes, async (payload) => {
+            const r = await ask(payload);
+            if (r.error) { failed = r.error; return { error: r.error }; }
+            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
+          });
+          reply(failed ? null : answer, failed);
           return;
         }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }

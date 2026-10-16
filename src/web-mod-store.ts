@@ -88,8 +88,10 @@ export interface ModInclude {
   replace?: boolean;
 }
 
-interface Stage { id: string; person: string; mod: CheckedMod; text: string; plan: ModPlan; planHash: string; at: number; effects?: { stageId: string; ids: string[] } }
-type Index = { rev: number; mods: Map<string, ModRecord> } | "unreadable";
+interface Stage { id: string; person: string; mod: CheckedMod; text: string; plan: ModPlan; planHash: string; at: number; effects?: { stageId: string; ids: string[] }; proposal?: string }
+/** r4-5b: a mod an agent proposed (propose_web_mod), waiting for a person to review it — one per agent. */
+export interface ModProposal { name: string; version: string; title: string; bytes: number; at: number; id: string }
+type Index = { rev: number; mods: Map<string, ModRecord>; proposals: Map<string, ModProposal> } | "unreadable";
 
 const sha32 = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 32);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -155,28 +157,73 @@ export class ModStore {
     if (this.index) return this.index;
     let text: string;
     try { text = readFileSync(this.path, "utf8"); }
-    catch (err) { return (this.index = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, mods: new Map() } : "unreadable"); }
+    catch (err) { return (this.index = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, mods: new Map(), proposals: new Map() } : "unreadable"); }
     try {
-      const doc = JSON.parse(text) as { version?: unknown; rev?: unknown; mods?: unknown };
+      const doc = JSON.parse(text) as { version?: unknown; rev?: unknown; mods?: unknown; proposals?: unknown };
       if (doc.version !== 1 || !Number.isSafeInteger(doc.rev) || !isObj(doc.mods)) return (this.index = "unreadable");
       const mods = new Map<string, ModRecord>();
       for (const [id, r] of Object.entries(doc.mods)) if (MOD_ID.test(id) && isObj(r) && typeof r.name === "string") mods.set(id, r as unknown as ModRecord);
-      return (this.index = { rev: doc.rev as number, mods });
+      const proposals = new Map<string, ModProposal>();
+      if (isObj(doc.proposals)) for (const [name, r] of Object.entries(doc.proposals)) if (isObj(r) && typeof r.id === "string" && MOD_ID.test(r.id)) proposals.set(name, r as unknown as ModProposal);
+      return (this.index = { rev: doc.rev as number, mods, proposals });
     } catch { return (this.index = "unreadable"); }
   }
-  private save(mods: Map<string, ModRecord>, rev: number): void {
-    const out: Record<string, ModRecord> = Object.create(null);
-    for (const [id, r] of mods) Object.defineProperty(out, id, { value: r, enumerable: true });
-    atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, mods: out }, null, 2) + "\n", { mode: 0o600 });
+  private save(mods: Map<string, ModRecord>, proposals: Map<string, ModProposal>, rev: number): void {
+    const own = <T>(m: Map<string, T>) => { const out: Record<string, T> = Object.create(null); for (const [k, v] of m) Object.defineProperty(out, k, { value: v, enumerable: true }); return out; };
+    atomicWriteFileSync(this.path, JSON.stringify({ version: 1, rev, mods: own(mods), proposals: own(proposals) }, null, 2) + "\n", { mode: 0o600 });
   }
-  /** Write the index (disk first, then memory). */
-  private commitIndex(mods: Map<string, ModRecord>): ModWrite<{ rev: number }> {
+  /** Write the index (disk first, then memory). `proposals`: unchanged unless given. */
+  private commitIndex(mods: Map<string, ModRecord>, proposals?: Map<string, ModProposal>): ModWrite<{ rev: number }> {
     const idx = this.load();
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     const rev = idx.rev + 1;
-    try { this.save(mods, rev); } catch (err) { return { ok: false, status: 503, error: "mods_write_failed", detail: (err as Error).message }; }
-    this.index = { rev, mods };
+    const props = proposals ?? idx.proposals;
+    try { this.save(mods, props, rev); } catch (err) { return { ok: false, status: 503, error: "mods_write_failed", detail: (err as Error).message }; }
+    this.index = { rev, mods, proposals: props };
     return { ok: true, rev };
+  }
+  private proposalFile(instance: string): string { return join(this.dataDir, "web-mods", "proposals", `${sha32(`instance\0${instance}`)}.agendmod.json`); }
+
+  /**
+   * r4-5b: keep an agent's proposed mod (checked already, and never carrying custom CSS — the caller refuses that by
+   * the path the bytes came in by) until a person reviews or dismisses it. One per agent: a new one replaces it.
+   */
+  propose(instance: string, text: string, mod: CheckedMod): ModWrite<{ proposal: ModProposal }> {
+    const idx = this.load();
+    if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
+    const file = this.proposalFile(instance);
+    try { mkdirSync(join(this.dataDir, "web-mods", "proposals"), { recursive: true, mode: 0o700 }); atomicWriteFileSync(file, text, { mode: 0o600 }); }
+    catch (err) { return { ok: false, status: 503, error: "mods_write_failed", detail: (err as Error).message }; }
+    const proposal: ModProposal = { id: mod.id, name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes, at: this.now() };
+    const proposals = new Map(idx.proposals); proposals.set(instance, proposal);
+    const w = this.commitIndex(idx.mods, proposals);
+    if (!w.ok) { if (!idx.proposals.has(instance)) { try { unlinkSync(file); } catch { /* none */ } } return w; }
+    return { ok: true, proposal };
+  }
+  /** Proposals waiting for a person, by agent. */
+  proposals(): Array<ModProposal & { instance: string }> {
+    const idx = this.load();
+    return idx === "unreadable" ? [] : [...idx.proposals].map(([instance, p]) => ({ instance, ...p }));
+  }
+  /** A person opens an agent's proposal into the usual review: staged as theirs, its plan shown in full. */
+  stageProposal(person: string, instance: unknown): ModWrite<{ stage: string; plan: ModPlan; plan_hash: string }> {
+    const idx = this.load();
+    if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
+    if (typeof instance !== "string" || !idx.proposals.has(instance)) return { ok: false, status: 404, error: "no_such_proposal" };
+    let text: string;
+    try { text = readFileSync(this.proposalFile(instance), "utf8"); } catch { return { ok: false, status: 404, error: "no_such_proposal" }; }
+    return this.stage(person, text, { proposal: instance });
+  }
+  /** A person dismisses an agent's proposal. */
+  dismiss(instance: unknown): ModWrite {
+    const idx = this.load();
+    if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
+    if (typeof instance !== "string" || !idx.proposals.has(instance)) return { ok: false, status: 404, error: "no_such_proposal" };
+    const proposals = new Map(idx.proposals); proposals.delete(instance);
+    const w = this.commitIndex(idx.mods, proposals);
+    if (!w.ok) return w;
+    try { unlinkSync(this.proposalFile(instance)); } catch { /* already gone */ }
+    return { ok: true };
   }
 
   /** Installed mods, for the page. */
@@ -220,13 +267,15 @@ export class ModStore {
    * Step 1: check the uploaded file whole and keep it, with its plan, for this person (one stage each: a new one
    * replaces theirs). Nothing is applied.
    */
-  stage(person: string, text: string): ModWrite<{ stage: string; plan: ModPlan; plan_hash: string }> {
+  stage(person: string, text: string, from: { proposal?: string } = {}): ModWrite<{ stage: string; plan: ModPlan; plan_hash: string }> {
     this.sweep();
     const idx = this.load();
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     const checked = checkModBundle(text, this.deps.context());
     if (!checked.ok) return { ok: false, status: 400, error: "mod_invalid", problems: checked.problems };
     const mod = checked.mod;
+    // Provenance is the path the bytes came in by: what an agent proposed never carries custom CSS (r4 §4).
+    if (from.proposal !== undefined && mod.ownerCss) return { ok: false, status: 400, error: "owner_css_not_from_agent" };
     const plan = modPlan(mod, idx.mods);
     if (!plan.mod.installed && !plan.mod.replaces) {
       if (idx.mods.size >= MODS_MAX_INSTALLED) return { ok: false, status: 409, error: "mods_quota", detail: `at most ${MODS_MAX_INSTALLED} installed` };
@@ -242,7 +291,7 @@ export class ModStore {
       effects = { stageId: r.stageId, ids: r.ids };
     }
     const planHash = sha32(canonicalJson(plan));
-    const s: Stage = { id: randomBytes(16).toString("hex"), person, mod, text, plan, planHash, at: this.clock(), ...(effects ? { effects } : {}) };
+    const s: Stage = { id: randomBytes(16).toString("hex"), person, mod, text, plan, planHash, at: this.clock(), ...(effects ? { effects } : {}), ...(from.proposal !== undefined ? { proposal: from.proposal } : {}) };
     this.stages.set(person, s);
     return { ok: true, stage: s.id, plan, plan_hash: planHash };
   }
@@ -368,8 +417,12 @@ export class ModStore {
       if (!prev) atomicWriteFileSync(this.file(mod.id), s.text, { mode: 0o600 });
     } catch (err) { return rollback(503, "mods_write_failed", (err as Error).message); }
     if (!prev) undo.push(() => { try { unlinkSync(this.file(mod.id)); } catch { /* none */ } });
-    const w = this.commitIndex(mods);
+    // A reviewed proposal is done once installed (the same write).
+    let proposals: Map<string, ModProposal> | undefined;
+    if (s.proposal !== undefined && idx.proposals.get(s.proposal)?.id === mod.id) { proposals = new Map(idx.proposals); proposals.delete(s.proposal); }
+    const w = this.commitIndex(mods, proposals);
     if (!w.ok) return rollback(w.status, w.error, w.detail);
+    if (proposals) { try { unlinkSync(this.proposalFile(s.proposal!)); } catch { /* already gone */ } }
     // Held: what the import replaced may go now, and the stage is done.
     finalize?.();
     if (replaces) { try { unlinkSync(this.file(replaces.id)); } catch { /* already gone */ } }
@@ -405,9 +458,10 @@ export class ModStore {
   /** An instance was removed: its name leaves the records that named it as their target. */
   forgetInstance(name: string): void {
     const idx = this.load();
-    if (idx === "unreadable" || ![...idx.mods.values()].some(r => r.target === name)) return;
+    if (idx === "unreadable" || (![...idx.mods.values()].some(r => r.target === name) && !idx.proposals.has(name))) return;
     const mods = new Map([...idx.mods].map(([id, r]) => { if (r.target !== name) return [id, r]; const { target: _t, ...rest } = r; void _t; return [id, rest as ModRecord]; }));
-    this.commitIndex(mods);
+    const proposals = new Map(idx.proposals); proposals.delete(name);
+    if (this.commitIndex(mods, proposals).ok) { try { unlinkSync(this.proposalFile(name)); } catch { /* none */ } }
   }
   /** Tests: the folder bundles live in. */
   get folder(): string { return join(this.dataDir, "web-mods"); }
