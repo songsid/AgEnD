@@ -4,7 +4,7 @@ const finite = x => typeof x === "number" && Number.isFinite(x);
 const bounded = (x, max) => finite(x) && x >= 0 && x <= max;
 const reasons = [null, "host_budget", "clock_unavailable", "gates_unknown", "hidden", "reduced_motion", "save_data", "viewer_off"];
 const keys = ["key", "id", "device", "verdict", "reason", "remove", "forward", "quality", "pointerHz", "badWindows", "loadMs", "metrics"];
-const metricKeys = ["hostFps", "hostLongTaskMsPerSecond", "attributedLongTaskMsPerSecond", "attribution", "fpsFloor", "windowMs"];
+const metricKeys = ["at", "hostFps", "hostLongTaskMsPerSecond", "attributedLongTaskMsPerSecond", "attribution", "fpsFloor", "windowMs"];
 const exact = (o, allowed) => plain(o) && Object.keys(o).sort().join(",") === [...allowed].sort().join(",");
 const quantile = (values, q) => { if (!values.length) return null; const a = [...values].sort((x, y) => x - y); return a[Math.max(0, Math.ceil(q * a.length) - 1)]; };
 
@@ -34,12 +34,15 @@ export function createEffectProfileCollector(options = {}) {
         // Warmup is not an observed window and never turns missing measurements into zero cost.
         if (raw.metrics === null) return false;
         const m = raw.metrics;
-        if (!exact(m, metricKeys) || !bounded(m.hostFps, 1000) || !finite(m.fpsFloor) || m.fpsFloor <= 0 || m.fpsFloor > 1000 || m.windowMs !== 2000
+        if (!exact(m, metricKeys) || !finite(m.at) || m.at < 0 || m.at > n || !bounded(m.hostFps, 1000) || !finite(m.fpsFloor) || m.fpsFloor <= 0 || m.fpsFloor > 1000 || m.windowMs !== 2000
           || m.hostLongTaskMsPerSecond !== null && !bounded(m.hostLongTaskMsPerSecond, 256000)
           || m.attributedLongTaskMsPerSecond !== null && (!bounded(m.attributedLongTaskMsPerSecond, 256000) || m.hostLongTaskMsPerSecond === null || m.attributedLongTaskMsPerSecond > m.hostLongTaskMsPerSecond)
           || m.attribution !== (m.attributedLongTaskMsPerSecond === null ? "unknown" : "observed") || floor !== null && m.fpsFloor !== floor) { dead = true; return false; }
-        if (lastSample !== null && n - lastSample < 1000) return false;
-        floor = m.fpsFloor; lastSample = n;
+        // Only poll() creates a window. rAF/gates/load/stop snapshots retain its immutable host timestamp.
+        // A paused duplicate may describe the last verdict, but cannot renew the observation or add a sample.
+        if (lastSample !== null && m.at === lastSample && last) last = { verdict: raw.verdict, reason: raw.reason, loadMs: raw.loadMs };
+        if (n - m.at > 5000 || lastSample !== null && m.at - lastSample < 1000) return false;
+        floor = m.fpsFloor; lastSample = m.at;
         samples.push({ fps: m.hostFps, task: m.hostLongTaskMsPerSecond, own: m.attributedLongTaskMsPerSecond });
         if (samples.length > 120) samples.shift();
         last = { verdict: raw.verdict, reason: raw.reason, loadMs: raw.loadMs };

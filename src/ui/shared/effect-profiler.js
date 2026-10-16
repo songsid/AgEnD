@@ -124,7 +124,7 @@ export class EffectBudget {
     const ownMs = this.longTasksSupported && this.tasks.some(t => t.attributed) ? sum(true) : null;
     const limits = EFFECT_BUDGETS[this.device];
     const bad = this.overflow || fps < this.fpsFloor || hostMs !== null && hostMs > limits.longTaskMsPerSecond;
-    this.metrics = { hostFps: fps, hostLongTaskMsPerSecond: hostMs, attributedLongTaskMsPerSecond: ownMs,
+    this.metrics = { at: now, hostFps: fps, hostLongTaskMsPerSecond: hostMs, attributedLongTaskMsPerSecond: ownMs,
       attribution: ownMs === null ? "unknown" : "observed", fpsFloor: this.fpsFloor, windowMs: 2000 };
     this.overflow = false;
     if (bad) {

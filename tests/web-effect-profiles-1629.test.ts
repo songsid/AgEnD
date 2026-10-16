@@ -17,8 +17,8 @@ const A = "a".repeat(32), B = "b".repeat(32), paths: string[] = [];
 const profile = (patch: Record<string, unknown> = {}) => ({ v: 1, device: "standard", verdict: "ok", reason: null, samples: 1, fps_p50: 60, fps_p10: 60, fps_floor: 54,
   long_task_p95: null, long_task_samples: 0, attributed_long_task_p95: null, attributed_samples: 0, attribution: "unknown", load_ms: null, ...patch });
 const snapshot = (patch: Record<string, unknown> = {}) => ({ key: "slot", id: A, device: "standard", verdict: "ok", reason: null, remove: false, forward: true, quality: "normal", pointerHz: 60, badWindows: 0, loadMs: 7,
-  metrics: { hostFps: 60, hostLongTaskMsPerSecond: null, attributedLongTaskMsPerSecond: null, attribution: "unknown", fpsFloor: 54, windowMs: 2000 }, ...patch });
-function collector(patch = {}) { let n = 0; return { at: (t: number) => { n = t; }, c: createEffectProfileCollector({ key: "slot", id: A, device: "standard", clock: () => n, ...patch }) }; }
+  metrics: { at: 0, hostFps: 60, hostLongTaskMsPerSecond: null, attributedLongTaskMsPerSecond: null, attribution: "unknown", fpsFloor: 54, windowMs: 2000 }, ...patch });
+function collector(patch = {}) { let n = 0; const c = createEffectProfileCollector({ key: "slot", id: A, device: "standard", clock: () => n, ...patch }); return { at: (t: number) => { n = t; }, c, sample: (raw: any = snapshot()) => c.add({ ...raw, metrics: raw.metrics ? { ...raw.metrics, at: n } : null }) }; }
 function fixture() {
   mkdirSync(join(process.cwd(), ".artifacts"), { recursive: true }); const root = mkdtempSync(join(process.cwd(), ".artifacts/profiles-test-")); paths.push(root); let now = 1000;
   return { root, dir: join(root, "data"), at: (t: number) => { now = t; }, s: new WebEffectProfiles(join(root, "data"), { now: () => now }) };
@@ -109,22 +109,46 @@ describe("#1629 per-owned-mount host profile collector", () => {
     expect(h.c.report()).toBeNull(); for (let i = 1; i <= 300; i++) { n = i * 1000 / 60; budget.frame(); if (i % 60 === 0) { h.at(n); h.c.add({ key: "slot", id: A, device: "standard", ...budget.poll() }); } }
     const report = h.c.report(); expect(report.id).toBe(A); expect(report.profile).toMatchObject({ samples: 3, verdict: "ok", attribution: "unknown", long_task_p95: null, attributed_long_task_p95: null, long_task_samples: 0, attributed_samples: 0 }); expect(checkEffectProfile(report.profile).ok).toBe(true); expect(JSON.stringify(report)).not.toContain("worker");
   });
+  it("real budget frame/gates/stop snapshots never resample or refresh a frozen poll window", () => {
+    let now=0;const h=collector(), budget=new EffectBudget({device:"standard",baselineFps:60,clock:()=>now,longTasksSupported:false});
+    const add=(value:Record<string,unknown>)=>{h.at(now);return h.c.add({key:"slot",id:A,device:"standard",...value});};
+    for(let i=1;i<=300;i++){now=i*1000/60;budget.frame();if(i%60===0)add(budget.poll());}
+    expect(h.c.report().profile.samples).toBe(3);const stamp=budget.snapshot().metrics.at;
+    for(let i=1;i<=30;i++){now=5000+i*1000;expect(add(budget.frame())).toBe(false);expect(add(budget.gates({hidden:false,reducedMotion:false,saveData:false,show:true}))).toBe(false);}
+    expect(budget.snapshot().metrics.at).toBe(stamp);expect(h.c.report()).toBeNull();
+    // A genuinely new poll may recover freshness once. stop()/gates() cannot add windows afterward.
+    expect(add(budget.poll())).toBe(true);expect(h.c.report().profile.samples).toBe(4);
+    expect(add(budget.stop("host_budget"))).toBe(false);expect(h.c.report().profile).toMatchObject({samples:4,verdict:"paused",reason:"host_budget"});
+    for(let i=1;i<=20;i++){now+=1000;expect(add(budget.gates({hidden:false,reducedMotion:false,saveData:false,show:true}))).toBe(false);}
+    expect(h.c.report()).toBeNull();expect(budget.snapshot().metrics.at).toBe(35000);
+  });
+  it("delayed first receipt and replayed windows cannot forge observation time", () => {
+    const h=collector();h.at(5001);expect(h.c.add(snapshot())).toBe(false);expect(h.c.report()).toBeNull();
+    h.at(6000);expect(h.c.add(snapshot({metrics:{...snapshot().metrics,at:6000}}))).toBe(true);
+    h.at(7000);expect(h.c.add(snapshot({metrics:{...snapshot().metrics,at:5999}}))).toBe(false);expect(h.c.report().profile.samples).toBe(1);
+    h.at(11001);expect(h.c.add(snapshot({metrics:{...snapshot().metrics,at:6000}}))).toBe(false);expect(h.c.report()).toBeNull();
+    const future=collector();expect(future.c.add(snapshot({metrics:{...snapshot().metrics,at:1}}))).toBe(false);expect(future.c.report()).toBeNull();
+    const delayed=collector();delayed.at(1000);expect(delayed.c.add(snapshot())).toBe(true);delayed.at(5000);expect(delayed.c.report()).not.toBeNull();delayed.at(5001);expect(delayed.c.report()).toBeNull();
+  });
+  it.each([undefined, -1, NaN, Infinity, "0"])("invalid observation stamp %s fails closed", at => {
+    const h=collector();expect(h.c.add(snapshot({metrics:{...snapshot().metrics,at}}))).toBe(false);expect(h.c.report()).toBeNull();
+  });
   it("nearest-rank quantiles use observed windows and explicit attribution coverage", () => {
     const h = collector();
-    for (let i = 1; i <= 10; i++) { h.at(i * 1000); h.c.add(snapshot({ metrics: { hostFps: i * 10, hostLongTaskMsPerSecond: i % 2 ? null : i, attributedLongTaskMsPerSecond: i === 10 ? 8 : null, attribution: i === 10 ? "observed" : "unknown", fpsFloor: 54, windowMs: 2000 } })); }
+    for (let i = 1; i <= 10; i++) { h.at(i * 1000); h.sample(snapshot({ metrics: { at: i * 1000, hostFps: i * 10, hostLongTaskMsPerSecond: i % 2 ? null : i, attributedLongTaskMsPerSecond: i === 10 ? 8 : null, attribution: i === 10 ? "observed" : "unknown", fpsFloor: 54, windowMs: 2000 } })); }
     expect(h.c.report().profile).toMatchObject({ samples: 10, fps_p50: 50, fps_p10: 10, long_task_p95: 10, long_task_samples: 5, attributed_long_task_p95: 8, attributed_samples: 1, attribution: "observed" });
     const p = h.c.report(); p.profile.fps_p50 = 999; expect(h.c.report().profile.fps_p50).toBe(50); expect(h.c.report({ off: true }).profile.verdict).toBe("off");
   });
   it("sample cadence and retention are bounded independently of callback count", () => {
-    const h = collector(); expect(h.c.add(snapshot())).toBe(true); h.at(999); expect(h.c.add(snapshot())).toBe(false); h.at(1000); expect(h.c.add(snapshot())).toBe(true);
-    for (let n = 2; n < 125; n++) { h.at(n * 1000); expect(h.c.add(snapshot({ metrics: { ...snapshot().metrics, hostFps: n } }))).toBe(true); }
+    const h = collector(); expect(h.sample(snapshot())).toBe(true); h.at(999); expect(h.sample(snapshot())).toBe(false); h.at(1000); expect(h.sample(snapshot())).toBe(true);
+    for (let n = 2; n < 125; n++) { h.at(n * 1000); expect(h.sample(snapshot({ metrics: { ...snapshot().metrics, hostFps: n } }))).toBe(true); }
     expect(h.c.report().profile).toMatchObject({ samples: 120, fps_p50: 64, fps_p10: 16 });
   });
   it("warmup and stale observations yield no new report; a fresh observed window can recover staleness", () => {
-    const h = collector(); expect(h.c.add(snapshot({ metrics: null }))).toBe(false); expect(h.c.report()).toBeNull(); expect(h.c.add(snapshot())).toBe(true); h.at(5000); expect(h.c.report()).not.toBeNull(); h.at(5001); expect(h.c.report()).toBeNull(); expect(h.c.add(snapshot())).toBe(true); expect(h.c.report()).not.toBeNull();
+    const h = collector(); expect(h.sample(snapshot({ metrics: null }))).toBe(false); expect(h.c.report()).toBeNull(); expect(h.sample(snapshot())).toBe(true); h.at(5000); expect(h.c.report()).not.toBeNull(); h.at(5001); expect(h.c.report()).toBeNull(); expect(h.sample(snapshot())).toBe(true); expect(h.c.report()).not.toBeNull();
   });
   it.each(["key", "id", "device"])("wrong %s ownership cannot refresh or report old metrics", field => {
-    const h = collector(); h.c.add(snapshot()); expect(h.c.add(snapshot({ [field]: "other" }))).toBe(false); expect(h.c.report()).toBeNull();
+    const h = collector(); h.sample(snapshot()); expect(h.sample(snapshot({ [field]: "other" }))).toBe(false); expect(h.c.report()).toBeNull();
   });
   it("unknown fields are refused without reading their content getter", () => {
     const h = collector(), raw = snapshot(); Object.defineProperty(raw, "content", { enumerable: true, get() { throw Error("content getter read"); } }); expect(h.c.add(raw)).toBe(false); expect(h.c.report()).toBeNull();
@@ -133,16 +157,16 @@ describe("#1629 per-owned-mount host profile collector", () => {
     { verdict: "paused", reason: "host_budget", quality: "low", pointerHz: 30, remove: false, forward: false, badWindows: 3 }, { verdict: "paused", reason: "host_budget", quality: "low", pointerHz: 30, remove: true, forward: true, badWindows: 3 },
     { metrics: { ...snapshot().metrics, content: "not an observed field" } }, { metrics: { ...snapshot().metrics, hostFps: -1 } }, { metrics: { ...snapshot().metrics, fpsFloor: 0 } }, { metrics: { ...snapshot().metrics, windowMs: 1000 } }, { metrics: { ...snapshot().metrics, attribution: "verified" } }, { metrics: { ...snapshot().metrics, hostLongTaskMsPerSecond: -1 } },
     { metrics: { ...snapshot().metrics, hostLongTaskMsPerSecond: 1, attributedLongTaskMsPerSecond: 2, attribution: "observed" } }, { metrics: { ...snapshot().metrics, attributedLongTaskMsPerSecond: 1 } }])("malformed host snapshot %j fails closed", patch => {
-    const h = collector(); expect(h.c.add(snapshot(patch))).toBe(false); expect(h.c.report()).toBeNull();
+    const h = collector(); expect(h.sample(snapshot(patch))).toBe(false); expect(h.c.report()).toBeNull();
   });
-  it("the pre-effect floor cannot change within an owned collector", () => { const h = collector(); h.c.add(snapshot()); h.at(1000); expect(h.c.add(snapshot({ metrics: { ...snapshot().metrics, fpsFloor: 20 } }))).toBe(false); expect(h.c.report()).toBeNull(); });
+  it("the pre-effect floor cannot change within an owned collector", () => { const h = collector(); h.sample(snapshot()); h.at(1000); expect(h.sample(snapshot({ metrics: { ...snapshot().metrics, fpsFloor: 20 } }))).toBe(false); expect(h.c.report()).toBeNull(); });
   it("clock failure or rollback revokes a collector permanently", () => {
-    const h = collector(); h.at(1000); h.c.add(snapshot()); h.at(999); expect(h.c.report()).toBeNull(); h.at(2000); expect(h.c.add(snapshot())).toBe(false); expect(h.c.report()).toBeNull();
+    const h = collector(); h.at(1000); h.sample(snapshot()); h.at(999); expect(h.c.report()).toBeNull(); h.at(2000); expect(h.sample(snapshot())).toBe(false); expect(h.c.report()).toBeNull();
     expect(collector({ clock: () => NaN }).c.ok).toBe(false);
   });
-  it("disposal prevents stale reports and future samples", () => { const h = collector(); h.c.add(snapshot()); h.c.dispose(); expect(h.c.report()).toBeNull(); h.at(1000); expect(h.c.add(snapshot())).toBe(false); });
+  it("disposal prevents stale reports and future samples", () => { const h = collector(); h.sample(snapshot()); h.c.dispose(); expect(h.c.report()).toBeNull(); h.at(1000); expect(h.sample(snapshot())).toBe(false); });
   it("unknown constructor/report options refuse without reading their extra getters", () => {
-    expect(createEffectProfileCollector(null).ok).toBe(false); expect(createEffectProfileCollector().ok).toBe(false); const h = collector(); h.c.add(snapshot());
+    expect(createEffectProfileCollector(null).ok).toBe(false); expect(createEffectProfileCollector().ok).toBe(false); const h = collector(); h.sample(snapshot());
     const extra = Object.defineProperty({}, "content", { enumerable: true, get() { throw Error("private content read"); } }); expect(h.c.report(extra)).toBeNull(); expect(h.c.report(null)).toBeNull(); expect(h.c.report({ off: "yes" })).toBeNull(); expect(h.c.report()).not.toBeNull();
   });
 });
