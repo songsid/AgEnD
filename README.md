@@ -21,6 +21,17 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 ---
 
+<p align="center"><strong>Your AI agents, in the chat apps you already use.</strong></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp">
+    <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-light.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
+  </picture>
+</p>
+
+<p align="center"><em>Every agent gets its own chat: in Telegram, in Discord, or in the built-in web dashboard. The phone is an illustration.</em></p>
+
 ## Why AgEnD?
 
 | Without AgEnD | With AgEnD |

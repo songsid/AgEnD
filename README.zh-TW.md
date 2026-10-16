@@ -21,6 +21,17 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 ---
 
+<p align="center"><strong>你的 AI agent，就在你本來在用的聊天軟體裡。</strong></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp">
+    <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-light.webp" width="880" alt="AgEnD 的網頁儀表板（示範資料）：側欄有六個 agent 和各自的狀態；與 agent Pixel 的對話裡有一張 bundle 大小的表格、一段程式碼、已選的「Ship it」回覆按鈕、一份附件報告，以及列出五個 AI 服務的用量面板。旁邊是一支手機的示意圖，呈現同一段對話，並附上 Discord 與 Telegram 的標誌。">
+  </picture>
+</p>
+
+<p align="center"><em>每個 agent 都有自己的對話：在 Telegram、在 Discord，或在內建的網頁儀表板。手機畫面為示意圖。</em></p>
+
 ## 為什麼用 AgEnD？
 
 | 沒有 AgEnD | 有 AgEnD |
