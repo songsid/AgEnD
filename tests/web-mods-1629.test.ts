@@ -621,6 +621,19 @@ describe("the routes", () => {
       expect([ok.status, B.checkModBundle(ok.body, ctx()).ok]).toEqual([200, true]);
     } finally { await f.stop(); }
   }, 30_000);
+  it("an agent's proposal over HTTP: listed, opened into a plan as this person's, dismissed (#1906 review)", async () => {
+    const f = await fleet();
+    try {
+      const agentFile = (() => { const d = bundle() as any; delete d.manifest.contents.ownerCss; delete d.files["css/custom.css"]; return text(d); })();
+      expect(f.fm.agentMods.handle("alpha", "propose_web_mod", { data_b64: Buffer.from(agentFile).toString("base64") })).toHaveProperty("proposed");
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/mods", f.session().read)).body).proposals).toMatchObject([{ instance: "alpha", name: "violet" }]);
+      const st = await raw(f.port, "POST", "/ui/mods/proposal/stage", f.session().write, JSON.stringify({ instance: "alpha" }));
+      expect([st.status, JSON.parse(st.body).plan.mod.name]).toEqual([200, "violet"]);
+      expect((await raw(f.port, "POST", "/ui/mods/proposal/dismiss", f.session("read").write, JSON.stringify({ instance: "alpha" }))).status, "read-only").toBe(403);
+      expect((await raw(f.port, "POST", "/ui/mods/proposal/dismiss", f.session().write, JSON.stringify({ instance: "alpha" }))).status).toBe(200);
+      expect(f.fm.mods.proposals()).toEqual([]);
+    } finally { await f.stop(); }
+  }, 30_000);
   it("a read-only session can't write; the CLI's header token can't reach mods at all; anonymous 401", async () => {
     const f = await fleet();
     try {

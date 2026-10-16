@@ -209,6 +209,123 @@ describe("propose_web_mod", () => {
   });
 });
 
+describe("propose in parts: every bound on what an agent sends (#1906 review)", () => {
+  const PART = 360 * 1024;
+  /** A valid bundle of more than one part (a ~470 KB picture that doesn't compress). */
+  function payload(): Buffer {
+    const bg = png(400, 390, () => randomBytes(1200));
+    const text = bundle({ contents: { theme: "theme.json" }, files: { "theme.json": file(JSON.stringify({ v: 1, background: { image: "bg.png", fit: "cover", opacity: 0.5 } })), "bg.png": file(bg) } });
+    return Buffer.from(text);
+  }
+  const send = (s: ReturnType<typeof setup>, bytes: Buffer, index: number, over: Record<string, unknown> = {}, chunk?: Buffer, upload?: string) =>
+    s.agent.handle("alpha", "propose_web_mod", { data_b64: (chunk ?? bytes.subarray(index * PART, (index + 1) * PART)).toString("base64"),
+      part: { index, count: Math.ceil(bytes.length / PART), bytes: bytes.length, sha256: sha(bytes), ...(upload ? { upload } : {}), ...over } }) as any;
+  it("control: the parts in order make one proposal", () => {
+    const s = setup(); const b = payload();
+    const first = send(s, b, 0);
+    let last = first;
+    for (let i = 1; i < Math.ceil(b.length / PART); i++) last = send(s, b, i, {}, undefined, first.upload);
+    expect(last).toHaveProperty("proposed");
+  });
+  it("out of order, or a part of another shape (count, bytes, sha) mid-upload: refused, and the upload starts over", () => {
+    for (const over of [{ index: 2 }, { count: 4 }, { bytes: 1 }, { sha256: "0".repeat(64) }]) {
+      const s = setup(); const b = payload();
+      const first = send(s, b, 0);
+      const i = (over as { index?: number }).index ?? 1;
+      expect(send(s, b, i, over, b.subarray(PART, 2 * PART), first.upload), JSON.stringify(over)).toMatchObject({ error: "part" });
+      expect(send(s, b, 1, {}, undefined, first.upload), "the upload is gone").toMatchObject({ error: "upload" });
+      expect(s.mods.proposals()).toEqual([]);
+    }
+  });
+  it("parts that don't add up to the declared sha256: refused, nothing kept, nothing counted", () => {
+    const s = setup(); const b = payload();
+    const wrong = Buffer.from(b); wrong[wrong.length - 10] ^= 0xff;
+    const first = s.agent.handle("alpha", "propose_web_mod", { data_b64: wrong.subarray(0, PART).toString("base64"), part: { index: 0, count: Math.ceil(b.length / PART), bytes: b.length, sha256: sha(b) } }) as any;
+    let last: any = first;
+    for (let i = 1; i < Math.ceil(b.length / PART); i++) last = s.agent.handle("alpha", "propose_web_mod", { data_b64: wrong.subarray(i * PART, (i + 1) * PART).toString("base64"), part: { index: i, count: Math.ceil(b.length / PART), bytes: b.length, sha256: sha(b), upload: first.upload } });
+    expect(last).toMatchObject({ error: "part", message: "The parts do not add up to the declared file." });
+    expect([s.mods.proposals(), s.limiter.remaining("alpha").uploads]).toEqual([[], 3]);
+  });
+  it("more bytes than declared, a count that doesn't match the bytes, or over 8 MiB: refused", () => {
+    const t = setup(); const b = payload();
+    expect(Math.ceil(b.length / PART)).toBeGreaterThan(1);
+    const f2 = send(t, b, 0);
+    for (let i = 1; i < Math.ceil(b.length / PART) - 1; i++) send(t, b, i, {}, undefined, f2.upload);
+    expect(send(t, b, Math.ceil(b.length / PART) - 1, {}, Buffer.alloc(PART, 1), f2.upload)).toMatchObject({ error: "part", message: "more bytes than declared" });
+    const u = setup();
+    expect(send(u, b, 0, { count: 7 })).toMatchObject({ error: "part", message: "count does not match bytes" });
+    const huge = 8 * 1024 * 1024 + 1;
+    expect(send(u, b, 0, { bytes: huge, count: Math.ceil(huge / PART) })).toMatchObject({ error: "mod_too_large" });
+    expect(u.agent.handle("alpha", "propose_web_mod", { data_b64: Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64") })).toMatchObject({ error: "mod_too_large" });
+  });
+  it("an upload idle over 60 s (monotonic) is gone: start again", () => {
+    const s = setup(); const b = payload();
+    const first = send(s, b, 0);
+    s.tick(60_001);
+    expect(send(s, b, 1, {}, undefined, first.upload)).toMatchObject({ error: "upload" });
+    const t = setup();
+    const f2 = send(t, b, 0);
+    t.tick(59_000);
+    expect(send(t, b, 1, {}, undefined, f2.upload).error, "control: within 60 s").toBeUndefined();
+  });
+  it("locked (or the switch turned off) while the parts arrive: the last part is refused; the first part refuses on its own", () => {
+    const s = setup(); const b = payload();
+    const first = send(s, b, 0);
+    for (let i = 1; i < Math.ceil(b.length / PART) - 1; i++) send(s, b, i, {}, undefined, first.upload);
+    s.themes.setLocked("alpha", true);
+    expect(send(s, b, Math.ceil(b.length / PART) - 1, {}, undefined, first.upload)).toMatchObject({ error: "locked" });
+    expect([s.mods.proposals(), s.limiter.remaining("alpha").uploads]).toEqual([[], 3]);
+    expect(send(s, b, 0), "and a new first part").toMatchObject({ error: "locked" });
+    s.themes.setLocked("alpha", false);
+    s.web.themes.agent_edit = false;
+    expect(send(s, b, 0)).toMatchObject({ error: "theme_editing_off" });
+  });
+});
+
+describe("proposals: leftovers and bookkeeping (#1906 review)", () => {
+  it("installing removes the proposal only when it is that very mod (a file swapped on disk stays proposed)", () => {
+    const s = setup();
+    propose(s, bundle());
+    const dir = join(s.dir, "web-mods", "proposals");
+    const [name] = require("node:fs").readdirSync(dir) as string[];
+    writeFileSync(join(dir, name!), bundle({ name: "swapped" }));            // another valid mod
+    const st = s.mods.stageProposal("p", "alpha");
+    if (!st.ok) throw new Error("stage");
+    expect(s.mods.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { identity: true }, target: "alpha" }).ok).toBe(true);
+    expect(s.mods.proposals().map(p => p.name), "the proposal named another mod: it stays").toEqual(["proposed"]);
+  });
+  it("dismiss deletes the file; a failed index write removes the file just written; removing an instance drops its proposal", () => {
+    const s = setup();
+    propose(s, bundle());
+    const dir = join(s.dir, "web-mods", "proposals");
+    expect(require("node:fs").readdirSync(dir)).toHaveLength(1);
+    s.mods.dismiss("alpha");
+    expect(require("node:fs").readdirSync(dir)).toEqual([]);
+    rmSync(join(s.dir, "web-mods.json")); mkdirSync(join(s.dir, "web-mods.json"));
+    const t = setup();
+    rmSync(join(t.dir, "web-mods.json"), { force: true }); mkdirSync(join(t.dir, "web-mods.json"));
+    expect(propose(t, bundle())).toMatchObject({ error: "mods_unreadable" });
+    const u = setup();
+    propose(u, bundle());
+    rmSync(join(u.dir, "web-mods.json")); mkdirSync(join(u.dir, "web-mods.json"));
+    expect(propose(u, bundle({ name: "second" })).error).toBe("mods_write_failed");
+    expect(require("node:fs").readdirSync(join(u.dir, "web-mods", "proposals")), "the first proposal's file is kept, nothing new").toHaveLength(1);
+    const v = setup();
+    propose(v, bundle());
+    v.mods.forgetInstance("alpha");
+    expect([v.mods.proposals(), require("node:fs").readdirSync(join(v.dir, "web-mods", "proposals"))]).toEqual([[], []]);
+  });
+  it("a stored proposal whose id isn't an id is not loaded", () => {
+    const s = setup();
+    propose(s, bundle());
+    const doc = JSON.parse(readFileSync(join(s.dir, "web-mods.json"), "utf8"));
+    doc.proposals.alpha.id = "../../x";
+    writeFileSync(join(s.dir, "web-mods.json"), JSON.stringify(doc));
+    const fresh = new ModStore(s.dir, { themes: s.themes, prefs: s.prefs, ownerCss: s.css, effects: null, context: ctx, isKnownInstance: () => true, prefsIdentity: OPERATOR });
+    expect(fresh.proposals()).toEqual([]);
+  });
+});
+
 describe("wiring", () => {
   it("no target in either schema; worker and standard profiles only; IPC and endpoint ops", async () => {
     const schemas = await import("../src/outbound-schemas.js");
