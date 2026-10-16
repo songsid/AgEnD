@@ -19,6 +19,7 @@
  * after it.
  */
 import { randomBytes } from "node:crypto";
+import { effectTrialOffer, type EffectTrialOffer } from "./web-effect-trials.js";
 
 /** A file shown with a message: an id the dashboard can fetch, never a path. */
 export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string }
@@ -99,6 +100,8 @@ export interface WebChatMessage {
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
   buttons?: WebChatButtons;
+  /** #1629: host display metadata only; volatile and never restored from disk. */
+  effectTrial?: Readonly<EffectTrialOffer>;
   /** The fleet process generation the id belongs to. */
   boot: string;
   /** Where a web user's message has got (absent: nothing reported yet, or not the web user's). */
@@ -295,7 +298,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; effectTrial?: unknown }): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
@@ -310,6 +313,10 @@ export class WebChatHistory {
     };
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
+    // Internal host publication only. Text, agent replies and user input never become trial offers.
+    const trial = msg.role === "status" && msg.sender === "agend" && entry.instance.length >= 1 && entry.instance.length <= 128
+      ? effectTrialOffer(msg.effectTrial) : null;
+    if (trial) entry.effectTrial = trial;
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
     slot.messages.push(entry);
