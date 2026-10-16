@@ -47,7 +47,7 @@ export function OwnerEffects({ catalog, busy = false }) {
     setMessage(text(result.ok ? "saved" : result.saved ? "savedRefresh" : "failed"));
   };
   return html`<section class="s-fx-owner" aria-label=${text(state.scope === "operator" ? "operatorTitle" : "title")}><h4>${text(state.scope === "operator" ? "operatorTitle" : "title")}</h4><p class="sub">${text(state.scope === "operator" ? "operator" : "person")}</p>
-    <p class="sub">${text("deferred")}</p>${!catalog?.canWrite ? html`<p class="sub">${text("readOnly")}</p>` : null}
+    <p class="sub">${text("deferred")}</p>${catalog && !catalog.canWrite ? html`<p class="sub">${text("readOnly")}</p>` : null}
     <button class="btn" type="button" disabled=${busy || state.busy || state.revoked} onClick=${() => refreshOwnerEffects()}>${text("reload")}</button>
     ${state.status !== "known" ? html`<p class="sub" role="status">${text(state.revoked ? "changed" : "unknown")}</p>` : OWNER_EFFECT_PREF_KEYS.map(key => {
       const row = state.slots[key], options = (catalog?.effects || []).filter(e => ownerEffectFits(e.manifest, key));
