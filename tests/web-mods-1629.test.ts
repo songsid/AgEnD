@@ -560,6 +560,24 @@ describe("the routes", () => {
   }, 30_000);
 });
 
+describe("the page: the Mods card", () => {
+  it("an answer of another shape is \"couldn't load\", never a crash (#1897 CI: a {} answer)", async () => {
+    const { page, settle } = await import("./helpers/app-harness.js");
+    vi.resetModules();
+    const pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+    try {
+      const answers: unknown[] = [{}, { mods: "x" }, null, { mods: [], staged: { stage: 1 } }];
+      vi.stubGlobal("fetch", async () => { const body = answers.shift(); return { ok: true, status: 200, json: async () => body }; });
+      const P = await import("/assets/app-html.js");
+      const { ModsCard } = await import("/ui/js/settings-mods.js");
+      for (const expected of ["Couldn't load", "Couldn't load", "Couldn't load", "No mods installed."]) {
+        P.render(null, pg.root); P.render(P.h(ModsCard, {}), pg.root); await settle(); await settle();
+        expect(pg.root.textContent, expected).toContain(expected);
+      }
+    } finally { vi.unstubAllGlobals(); pg.restore(); }
+  });
+});
+
 describe("the page", () => {
   it("custom CSS is never ticked by default; everything else the plan offers is", async () => {
     const { page } = await import("./helpers/app-harness.js");
