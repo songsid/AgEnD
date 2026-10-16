@@ -12,7 +12,7 @@
 | `npm-rollback-proof.yml` | Ubuntu × npm 9.9.4、10.8.2、11.6.2（Node 20.19.0）；PR 的路徑篩選保留 | 同樣的 Ubuntu 格 + macOS × 全部三個 npm 版本 |
 | `data-downgrade.yml` | Ubuntu current → published 2.1.12 → current | 不加其他觸發；僅 Linux |
 
-CI workflow 仍執行 CHANGELOG guards、typecheck/build、四個 unit shards、integration tests，以及 Node 20 preinstall rollback smoke。既有 docs-only 步驟判斷保留。所有 `v*` tag（包含預發版）都執行 macOS 格。CI 每週一 03:17 UTC 執行，npm proof 在 03:37 UTC 執行。每週失敗仍需調查，但不是 PR 或 branch push 的前置條件。
+CI workflow 仍執行 CHANGELOG guards、typecheck/build、四個 unit shards、integration tests，以及 Node 20 preinstall rollback smoke。只有僅改動 `changes/` 片段的 PR 會跳過 typecheck/build 與測試（CHANGELOG guards 仍會檢查）；改到 `docs/` 或根目錄 `*.md` 的 PR 會全部執行，因為測試會讀這些檔案（#1932）。所有 `v*` tag（包含預發版）都執行 macOS 格。CI 每週一 03:17 UTC 執行，npm proof 在 03:37 UTC 執行。每週失敗仍需調查，但不是 PR 或 branch push 的前置條件。
 
 Runtime acceptance 與 runtime publishing 使用獨立 workflow，覆蓋依其定義；參見[私有 runtime 設計](design/1450-private-node-runtime.md)。
 

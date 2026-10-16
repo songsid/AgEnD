@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   # ── docs-only guard ──────────────────────────────────────────────────────────
-  # Detect whether this run touches only docs/changes/markdown. The result is
+  # Detect whether this run touches only changelog fragments (#1932). The result is
   # consumed by every downstream job so none of them repeat the diff. Running
   # as its own job avoids a checkout + diff in each parallel shard.
   #
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Detect whether this is a docs-only change
+      - name: Detect whether this is a changelog-fragment-only change
         id: check
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -74,8 +74,13 @@ jobs:
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Any file outside docs/, changes/, or a root *.md triggers full CI.
-          if grep -qvE '^(docs|changes)/|^[^/]+\.md$' "$_diff_f"; then
+          # Only changelog fragments skip the suite: the changelog job (always run) checks them. docs/ and the root
+          # *.md files are read by tests (docs/cli.zh-TW.md's command table, the READMEs, docs/web-guide …), so a
+          # change there runs the full suite too — #1929 changed a row a test pins, and merged with the shards skipped
+          # (#1932). A fragment is a file the assembler takes (scripts/changelog-assemble.mjs FRAGMENT_NAME):
+          # changes/README.md and anything else under changes/ is not one, and a test pins the README (#1933 review).
+          # The output keeps its name: setup and the shards key on it.
+          if grep -qvE '^changes/[0-9]+(-[a-z0-9][a-z0-9-]*)?(\.zh-TW)?\.md$' "$_diff_f"; then
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
           else
             echo "docs-only=true" >> "$GITHUB_OUTPUT"
