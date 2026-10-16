@@ -111,6 +111,7 @@ function Plan({ staged, onDone }) {
     <ul class="s-mod-items">${plan.items.map((it, i) => html`<${PlanItem} key=${i} it=${it} choice=${choice} setChoice=${setChoice} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} />`)}</ul>
     ${toInstance ? html`<label class="field"><span>${tn("modTarget")}</span>
       <select value=${target} onChange=${(e) => setTarget(e.target.value)}><option value="">${tn("modTargetPick")}</option>${names.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}</select></label>` : null}
+    ${toInstance && !target ? html`<p class="sub">${tn("modTargetNeeded")}</p>` : null}
     ${error ? html`<p class="err s-mod-err" role="alert">${error}</p>` : null}
     <div class="s-widget-actions">
       <button type="button" class="btn btn-primary" disabled=${busy || (toInstance && !target) || (m.replaces && !choice.replace)} onClick=${install}><${Icon} name="check" size=${16} />${tn("modInstall")}</button>
@@ -185,9 +186,9 @@ export function ModsCard() {
         <input ref=${file} type="file" accept=".json,application/json" class="sr-only" disabled=${busy} onChange=${stage} /></label></div>`}
     ${error ? html`<p class="err s-mod-err" role="alert">${error}</p>` : null}
     ${state.mods.length ? html`<ul class="s-mod-list">${state.mods.map((m) => html`<li key=${m.id}>
-      <span class="grow"><strong>${m.title}</strong> <span class="muted">${m.name} ${m.version}${m.target ? ` · ${m.target}` : ""}</span></span>
+      <span class="grow"><strong>${m.title}</strong> <span class="muted">${m.name} ${m.version}${m.target ? ` · ${tn("modAppliedTo", m.target)}` : ""}</span></span>
       <button type="button" class="btn btn-sm" onClick=${() => fetchFile(m)}>${tn("modDownload")}</button>
-      <button type="button" class="btn btn-sm" onClick=${() => uninstall(m)}>${tn("modUninstall")}</button></li>`)}</ul>` : html`<p class="sub">${tn("modsNone")}</p>`}
+      <button type="button" class="btn btn-sm danger" onClick=${() => uninstall(m)}>${tn("modUninstall")}</button></li>`)}</ul>` : html`<p class="sub">${tn("modsNone")}</p>`}
     <${ExportForm} />
   </section>`;
 }

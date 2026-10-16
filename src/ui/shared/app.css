@@ -624,11 +624,13 @@ html.lb-open .scroller { overflow: hidden; }
 .s-widget-preview { max-width: 320px; }
 /* #1629 r4-5: Settings → Appearance → Mods — the plan is shown in full before anything is applied. */
 .s-mod-plan { display: flex; flex-direction: column; gap: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3); }
-.s-mod-plan h4 { font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.s-mod-plan h4 { font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.s-mod-plan h4 .muted { font-size: var(--fs-sm); font-weight: var(--fw-regular); }
 .s-mod-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
 .s-mod-item { display: flex; flex-direction: column; gap: var(--s-1); }
 .s-mod-detail { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); padding-left: 1.75rem; color: var(--text-2); font-size: var(--fs-sm); min-width: 0; }
-.s-mod-widget { max-width: 360px; }
+.s-mod-widget { display: block; max-width: min(360px, 100%); }
+.s-mod-widget .aw-chat_header { border-width: 1px; border-radius: var(--r-md); }
 .s-mod-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .s-mod-warn { color: var(--warn); font-size: var(--fs-sm); padding-left: 1.75rem; }
 .s-mod-css-text { margin: 0 0 0 1.75rem; max-height: 240px; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); background: var(--code-bg); font-family: var(--font-mono); font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; }

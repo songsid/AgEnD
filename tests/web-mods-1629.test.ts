@@ -269,6 +269,17 @@ describe("stage, then commit", () => {
     expect(s.store.bundleText(list[0]!.id)).toBe(text(bundle()));
     expect(s.store.staged("p"), "the stage is done").toBeNull();
   });
+  it("a widget a mod placed is a person's: the agent may give it values, never replace or remove it (#1894 review)", async () => {
+    const s = setup();
+    const st = s.store.stage("p", text(bundle()));
+    if (!st.ok) throw new Error("stage");
+    s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { widgets: { chat_header: true } }, target: "alpha" });
+    const { WebAppearance } = await import("../src/web-appearance.js");
+    const app = new WebAppearance(s.themes, () => null);
+    expect(app.handleTool("alpha", "set_web_widget", { slot: "chat_header", spec: HEADER.spec })).toMatchObject({ error: "person_placed" });
+    expect(app.handleTool("alpha", "remove_web_widget", { slot: "chat_header" })).toMatchObject({ error: "person_placed" });
+    expect(app.handleTool("alpha", "set_web_widget", { slot: "chat_header", data: { tests: 90 } })).toMatchObject({ widget: { by: "human", data: { tests: 90 } } });
+  });
   it("the sidebar widget goes to the page's preferences; custom CSS to the person, as a trial", () => {
     const s = setup();
     const st = s.store.stage("p", text(bundle()));
