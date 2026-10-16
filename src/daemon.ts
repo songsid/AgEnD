@@ -93,6 +93,8 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   set_web_theme_asset: "fleet_set_web_theme_asset", reset_web_theme: "fleet_reset_web_theme",
   // r4 §1: how it appears — read-only; a preview's files are written here, on the agent's side.
   get_web_appearance: "fleet_get_web_appearance", preview_web_appearance: "fleet_preview_web_appearance",
+  // r4-4: its own declarative widgets.
+  set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;

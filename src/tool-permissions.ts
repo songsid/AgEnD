@@ -51,6 +51,8 @@ const WORKER: readonly string[] = [
   "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
   // How it appears on the dashboard (#1629 r4 §1): read-only, its own.
   "get_web_appearance", "preview_web_appearance",
+  // Its own declarative widgets (#1629 r4-4): no target, the same lock and limits.
+  "set_web_widget", "remove_web_widget",
   // Its own schedules. Present here, but not a free hand: scheduleOpRefusal
   // limits a non-coordinator to schedules that target itself and that it
   // created (#895). The target is the control, not whether the tool is listed.
@@ -110,7 +112,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "list_stickers", "preview_stickers",
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    "get_web_appearance", "preview_web_appearance",
+    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status",
     // Self-scheduling, same scope as worker (#895).
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
@@ -232,6 +234,8 @@ export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_reset_web_theme: "reset_web_theme",
   fleet_get_web_appearance: "get_web_appearance",
   fleet_preview_web_appearance: "preview_web_appearance",
+  fleet_set_web_widget: "set_web_widget",
+  fleet_remove_web_widget: "remove_web_widget",
 };
 
 /**
@@ -267,6 +271,8 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   "theme-reset": "reset_web_theme",
   "appearance-get": "get_web_appearance",
   "appearance-preview": "preview_web_appearance",
+  "widget-set": "set_web_widget",
+  "widget-remove": "remove_web_widget",
 };
 
 /**

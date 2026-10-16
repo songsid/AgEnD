@@ -620,8 +620,9 @@ html.lb-open .scroller { overflow: hidden; }
 
 /* ── Toasts ── */
 /* #1629 r4 §3: Settings → Appearance (owner CSS). */
-.s-css-text { font-family: var(--font-mono); font-size: var(--fs-sm); width: 100%; min-height: 12rem; resize: vertical; tab-size: 2; }
-.s-css-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.s-css-text, .s-widget-text { font-family: var(--font-mono); font-size: var(--fs-sm); width: 100%; min-height: 12rem; resize: vertical; tab-size: 2; }
+.s-widget-preview { max-width: 320px; }
+.s-css-actions, .s-widget-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .s-css-status { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
 .s-css-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .s-css-list li { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-width: 0; }
@@ -1144,6 +1145,45 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .card-size .seg-item { min-height: 28px; padding: 0 var(--s-2); border: 1px solid transparent; background: none; font: inherit; font-size: var(--fs-xs); cursor: pointer; }
 .card-size .seg-item.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
 .chat-card { flex-shrink: 0; border-bottom: 1px solid var(--border); }
+/* #1629 r4-4: widgets — the page's own components, from a declarative spec (agent-widget.js). The host draws the 1px
+   frame and the ✦ chip, outside anything the spec chooses; nothing in a widget takes a click or focus. Colours are the
+   theme's tokens (an agent's chat header sits inside its themed chat), so a person's own CSS can restyle them too. */
+.aw { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-2) var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; overflow: clip; user-select: text; }
+.aw-head { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.aw-chip { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.aw-by { font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.aw-items { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.aw-item { display: flex; align-items: center; gap: var(--s-2); min-width: 0; font-size: var(--fs-sm); }
+.aw-label { color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
+.aw-value { color: var(--text); font-weight: var(--fw-medium); overflow-wrap: anywhere; min-width: 0; }
+.aw-stat .aw-value { margin-left: auto; font-variant-numeric: tabular-nums; }
+.aw-unit { margin-left: 2px; color: var(--text-2); font-weight: var(--fw-regular); }
+.aw-text .aw-value { font-weight: var(--fw-regular); }
+.aw-bar { flex: 1; min-width: 48px; height: 6px; appearance: none; border: 0; border-radius: var(--r-full); background: var(--surface-2); overflow: hidden; }
+.aw-bar::-webkit-progress-bar { background: var(--surface-2); border-radius: var(--r-full); }
+.aw-bar::-webkit-progress-value { background: var(--accent); border-radius: var(--r-full); }
+.aw-bar::-moz-progress-bar { background: var(--accent); border-radius: var(--r-full); }
+.aw-progress .aw-value { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; min-width: 3.5em; text-align: right; }
+.aw-list { flex-direction: column; align-items: stretch; gap: var(--s-1); }
+.aw-list ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.aw-badge { display: inline-block; padding: 1px var(--s-2); border-radius: var(--r-full); font-size: var(--fs-xs); font-weight: var(--fw-medium); white-space: nowrap; background: var(--surface-2); color: var(--text-2); }
+.aw-tone-ok { background: var(--ok-bg); color: var(--ok); }
+.aw-tone-warn { background: var(--warn-bg); color: var(--warn); }
+.aw-tone-bad { background: var(--danger-bg); color: var(--danger); }
+.aw-tone-info { background: var(--accent-dim); color: var(--accent); }
+.aw-spark { flex: 1; min-width: 48px; height: 24px; }
+.aw-spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.aw-spark-item .aw-value { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* The chat header strip: one compact row, under the card, in that agent's chat only. */
+.aw-chat_header { flex-shrink: 0; flex-direction: row; align-items: center; border-width: 0 0 1px; border-radius: 0; padding: var(--s-1) var(--s-4); min-height: 32px; max-height: 72px; }
+.aw-chat_header .aw-items { flex-direction: row; flex: 1; gap: var(--s-4); overflow: hidden; }
+.aw-chat_header .aw-item { flex: 0 1 auto; white-space: nowrap; }
+.aw-chat_header .aw-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw-chat_header .aw-stat .aw-value { margin-left: 0; }
+.aw-details { background: var(--surface); margin-bottom: var(--s-4); padding: var(--s-4) var(--s-5); }
+.side-widget { padding: 0 var(--s-2) var(--s-2); }
+.aw-sidebar { max-height: 240px; overflow: auto; }
+
 .chat-card-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 32px; padding: 0 var(--s-4); border: 0; background: none; color: var(--text-2); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
 .chat-card-peek { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
 @media (max-width: 479px) {

@@ -38,6 +38,8 @@ export const SYNCED = {
   // #1629 r4.1 Q3 (a): the identity card's size — every card's default (M unless chosen), and the cards set apart.
   "card.size": { ls: "agend_card_size", toLocal: (v) => (v === "s" || v === "l" ? v : null), fromLocal: (s) => (s === "s" || s === "l" ? s : undefined) },
   "card.sizeByInstance": { ls: "agend_card_sizes", ...json },
+  // #1629 r4-4: the person's own sidebar widget ({ spec, data }), drawn by the page's own components.
+  "widget.sidebar": { ls: "agend_widget_sidebar", ...json },
 };
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());

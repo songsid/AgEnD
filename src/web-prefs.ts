@@ -14,6 +14,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 
 export const WEB_PREFS_FILE = "web-prefs.json";
 export const OPERATOR = "operator";
@@ -99,6 +100,16 @@ const REGISTRY = new Map<string, (v: unknown) => unknown>([
     if (keys.length > MAX_CARD_SIZES) return bad(`card.sizeByInstance: at most ${MAX_CARD_SIZES} instances`);
     for (const k of keys) if (!name(k) || !["s", "m", "l"].includes(v[k] as string)) return bad("card.sizeByInstance: { <instance>: s | m | l }");
     return v;
+  }],
+  // #1629 r4-4: the person's own sidebar widget — a declarative spec and its values (web-widget.ts), checked as an
+  // agent's is, with the fleet's counts as the only binds. Never an agent's: no tool or agent path writes a person's keys.
+  ["widget.sidebar", (v) => {
+    if (!plain(v) || !exactly(v, ["spec", "data"])) return bad("widget.sidebar: { spec, data }");
+    const spec = checkWidgetSpec(v.spec, "sidebar");
+    if (!spec.ok) return bad(`widget.sidebar: ${spec.errors[0]!.path} — ${spec.errors[0]!.problem}`);
+    const data = checkWidgetData(v.data, spec.value);
+    if (!data.ok) return bad(`widget.sidebar: ${data.errors[0]!.path} — ${data.errors[0]!.problem}`);
+    return { spec: spec.value, data: { ...data.value } };
   }],
   // #1722: which name leads where the web shows an instance — its nickname (display name) or its real instance name.
   ["names.primary", (v) => (v === "nickname" || v === "instance" ? v : bad("names.primary: nickname or instance"))],

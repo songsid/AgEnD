@@ -106,6 +106,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-themes.js",
     // #1629 r4 §1: the identity card (Details, the chat header, and View — whose anonymous reader sees cards too).
     "identity-card.js", "card-strings.js",
+    // #1629 r4-4: widgets drawn by the page's own components (static code; the widgets are read behind the gate).
+    "agent-widget.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },

@@ -48,6 +48,8 @@ const BEFORE: Record<string, string[]> = {
     // #1629: its own web theme (no target; the caller's own), and how it appears (read-only).
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
     "get_web_appearance", "preview_web_appearance",
+    // #1629 r4-4: its own declarative widgets (no target).
+    "set_web_widget", "remove_web_widget",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",

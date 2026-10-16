@@ -227,6 +227,17 @@ export const GetWebAppearanceArgs = z.object({});
 export const PreviewWebAppearanceArgs = z.object({
   modes: z.array(z.enum(["light", "dark"])).min(1).max(2).optional().describe("Which modes to draw (default both)"),
 });
+// #1629 r4-4: your own widgets — declarative (a spec of host components and the values they show), always yours.
+export const SetWebWidgetArgs = z.object({
+  slot: z.enum(["chat_header", "details"]).describe("chat_header: a strip under your chat header (at most 4 of stat, progress, text, badge); details: a card on your Details page (at most 8 items, any type)"),
+  spec: z.record(z.string(), z.unknown()).optional()
+    .describe("Place or replace the widget: { v: 1, title (1..24 characters), items: [{ type: stat|progress|text|list|badge|spark, label?, key (a name in your data) or bind (state, context_pct, cost_usd), unit? (stat), max? (progress, default 100), tone?/tones? (badge: ok|warn|bad|info|muted) }] }. A change for the rate limit. See the web-appearance skill."),
+  data: z.record(z.string(), z.unknown()).optional()
+    .describe("Values by key: a number, a line of text, a list of lines (list) or numbers (spark). With spec: the widget's values. Alone: merged into the placed widget's values (null removes a key) — its own budget, 10 s apart."),
+});
+export const RemoveWebWidgetArgs = z.object({
+  slot: z.enum(["chat_header", "details"]).optional().describe("The slot to empty (default both). A widget a person placed stays."),
+});
 
 export const SetDescriptionArgs = z.object({
   description: NonEmptyString.describe(

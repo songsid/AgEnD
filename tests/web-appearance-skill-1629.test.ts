@@ -14,6 +14,7 @@ import { CONTRAST_PAIRS, TAGLINE_MAX_GRAPHEMES, BIO_MAX_GRAPHEMES, BIO_MAX_BREAK
 import { AGENT_WHATS_NEW, compareVersions, planWhatsNew } from "../src/agent-whats-new.js";
 import { PREVIEW_FILE as VIEW_PREVIEW_FILE } from "../src/web-appearance-view.js";
 import { PREVIEW_FILE as PARTS_PREVIEW_FILE } from "../src/web-asset-parts.js";
+import * as W from "../src/web-widget.js";
 
 const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8");
 
@@ -22,7 +23,7 @@ describe("the web-appearance skill", () => {
     const names = new Set(TOOLS.map((t: { name: string }) => t.name));
     const named = [...SKILL.matchAll(/`([a-z_]+)`/g)].map(m => m[1]!).filter(n => /^(get|set|reset|preview)_/.test(n));
     expect(named.filter(n => !names.has(n))).toEqual([]);
-    for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance"]) expect(SKILL, t).toContain(`\`${t}\``);
+    for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget"]) expect(SKILL, t).toContain(`\`${t}\``);
   });
   it("its numbers are the code's: slots, sizes, rate limits, text limits, contrast", () => {
     for (const slot of THEME_ASSET_SLOTS) expect(SKILL, slot).toContain(`| \`${slot}\` |`);
@@ -38,6 +39,22 @@ describe("the web-appearance skill", () => {
     expect(pairs("accent")).toEqual([["accent", "bg", 3]]);
     expect(SKILL).toContain("`text` at least 4.5:1 on `bg`, `surface` and both bubbles");
     expect(SKILL).toContain("`text2` at least 4.5:1 on `bg` and `surface`; `accent` at least 3:1 on `bg`");
+  });
+  it("its widget rules are the code's: slots, types, binds, sizes, the data budget (r4-4)", () => {
+    expect(SKILL).toContain(`\`chat_header\` (a strip under your chat header: at most **${W.SLOT_RULES.chat_header.maxItems}** items, of ${W.SLOT_RULES.chat_header.types.map(t => `\`${t}\``).join(", ")})`);
+    expect(SKILL).toContain(`\`details\` (a card on your Details page: at most **${W.SLOT_RULES.details.maxItems}** items, any type)`);
+    for (const t of W.WIDGET_ITEM_TYPES) expect(SKILL, t).toContain(`| \`${t}\` |`);
+    for (const tone of W.WIDGET_TONES) expect(SKILL, tone).toContain(`\`${tone}\``);
+    for (const b of W.INSTANCE_BINDS) expect(SKILL, b).toContain(`\`${b}\``);
+    expect(SKILL).toContain(`\`{ v: 1, title: 1..${W.WIDGET_TITLE_MAX} characters, items: [item, …] }\``);
+    expect(SKILL).toContain(`| \`text\` | one line | 1..${W.WIDGET_TEXT_MAX} characters | |`);
+    expect(SKILL).toContain(`| \`list\` | a short list | 1..${W.WIDGET_LIST_ITEMS} lines of 1..${W.WIDGET_LIST_TEXT_MAX} characters | |`);
+    expect(SKILL).toContain(`| \`spark\` | a sparkline and its last number | 2..${W.WIDGET_SPARK_POINTS} numbers | |`);
+    expect(SKILL).toContain(`The spec is at most ${W.WIDGET_SPEC_MAX_BYTES} bytes and the data at most ${W.WIDGET_DATA_MAX_BYTES}.`);
+    expect(SKILL).toContain(`at least **${APPEARANCE_LIMITS.dataGapMs / 1000} s**\n  apart, at most **${APPEARANCE_LIMITS.dataPerHour} an hour**`);
+    const example = JSON.parse(/```json\n(\{ "slot"[\s\S]*?)\n```/.exec(SKILL)![1]!);
+    expect(W.checkWidgetSpec(example.spec, example.slot).ok, "the skill's example is a valid spec").toBe(true);
+    expect(W.checkWidgetData(example.data, (W.checkWidgetSpec(example.spec, example.slot) as { value: any }).value).ok).toBe(true);
   });
 });
 
@@ -57,11 +74,11 @@ describe("what's new for 2.3 (#1633)", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   const OLD = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0")! <= 0).map(e => e.id);
-  it("an instance told everything of 2.2 hears the three 2.3 entries once on 2.3 — never on a 2.2.x", () => {
+  it("an instance told everything of 2.2 hears the four 2.3 entries once on 2.3 — never on a 2.2.x", () => {
     expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.2.5" })).toBeNull();
     for (const version of ["2.3.0-alpha.1", "2.3.0-beta.1", "2.3.0"]) {
       const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-theme", "2.3-web-card", "2.3-web-appearance"]);
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-widget"]);
     }
     const all = AGENT_WHATS_NEW.map(e => e.id);
     expect(planWhatsNew({ record: { announced: all }, fresh: false, version: "2.3.0" })).toBeNull();

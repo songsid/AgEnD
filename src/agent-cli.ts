@@ -89,8 +89,11 @@ async function main(): Promise<void> {
   if (!first) die("Usage: agend-agent <op> [args...]");
   // #1629: `theme <get|set|clear|asset|reset> …` is sent as its own op each (theme-get, …): one op, one tool.
   // #1629 r4 §1: `appearance` (get) and `appearance preview [light|dark]`.
-  const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get") : first;
-  const rest = first === "theme" || (first === "appearance" && given.length) ? given.slice(1) : given;
+  // r4-4: `widget set|data <slot> …` and `widget remove [slot]` (data is set_web_widget with values only).
+  const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get")
+    : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`) : first;
+  const rest = first === "theme" || first === "widget" || (first === "appearance" && given.length) ? given.slice(1) : given;
+  const widgetData = first === "widget" && given[0] === "data";
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
   let args: Record<string, unknown> = {};
@@ -222,6 +225,22 @@ async function main(): Promise<void> {
     case "theme-reset":
       break;
     case "appearance-get":
+      break;
+    case "widget-set": {
+      const usage = widgetData ? "Usage: agend-agent widget data <chat_header|details> '<json values>'" : "Usage: agend-agent widget set <chat_header|details> '<json spec>' ['<json data>']";
+      const json = (text: string | undefined, what: string): Record<string, unknown> => {
+        if (!text) die(usage);
+        let v: unknown;
+        try { v = JSON.parse(text); } catch { die(`widget: ${what} is not JSON`); }
+        if (!v || typeof v !== "object" || Array.isArray(v)) die(`widget: ${what} must be a JSON object`);
+        return v as Record<string, unknown>;
+      };
+      if (!rest[0]) die(usage);
+      args = widgetData ? { slot: rest[0], data: json(rest[1], "data") } : { slot: rest[0], spec: json(rest[1], "spec"), ...(rest[2] !== undefined ? { data: json(rest[2], "data") } : {}) };
+      break;
+    }
+    case "widget-remove":
+      args = rest[0] ? { slot: rest[0] } : {};
       break;
     case "appearance-preview": {
       if (rest.some(m => m !== "light" && m !== "dark")) die("Usage: agend-agent appearance preview [light|dark]");

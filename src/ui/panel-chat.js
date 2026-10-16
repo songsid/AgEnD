@@ -25,6 +25,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { IdentityCard, useCard } from "/assets/identity-card.js";
+import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 
 // #1629 r4 §1: the identity card folded into the chat's header — folded by default; open or not is this device's choice.
 const CHAT_CARD_KEY = "agend_chat_card";
@@ -277,6 +278,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
     <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
+    <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
       <div class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
