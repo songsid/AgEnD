@@ -1,7 +1,7 @@
 # #1629 host cursor read foundation
 
-Target: `feat/2.3-web-mod`. This slice does not mount a cursor, add a preference,
-create another loader, or complete B2. The next controller must independently
+Target: `feat/2.3-web-mod`. This read foundation itself does not mount a cursor, add a preference,
+create another loader, or complete B2. The later [controller and adapter](1629-effect-cursor-mount.md) independently
 verify native image dimensions/hotspot, own its decode and CSSOM lifecycle, retain
 physical decode capacity across cancellation, and restore the normal cursor on
 unknown state, failed cascade, preference invalidation or session end.
@@ -38,7 +38,7 @@ canceled, even when abort happened before headers. A disposed Window's loader
 reservation remains until every owned operation finishes. A hung body/cancellation
 therefore intentionally makes the lane unavailable; it is not replaced or retried.
 
-## Next mount requirements
+## Mount requirements
 
 No author Worker/DOM/HTML/CSS is needed for a host cursor. The controller must take
 only the authoritative fifth owner slot from the existing app metadata lane, bind

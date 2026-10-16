@@ -58,3 +58,35 @@ describe("#1629 optional personal effect source model", () => {
     if (kind === "stale") h.stale(); if (kind === "dispose") h.api.dispose(); if (kind === "abort") controller.abort(); pending.resolve(null); expect(await job).toBeNull(); expect(h.unavailable).not.toHaveBeenCalled(); h.api.dispose();
   });
 });
+
+describe("fifth personal cursor receipt without a frame descriptor", () => {
+  const cursorBody = (id = A, rev = 1) => { const b: any = body(id, rev); b.slots["fx.cursor"] = { status: "available", id, manifest: { ...manifest(), cursor: { hotspot: [2, 3] } } }; return b; };
+  it("returns a frozen exact cursor generation from the same authoritative metadata, never a descriptor/resource or pause target", async () => {
+    const h = rig(); h.data.value = cursorBody(); await h.api.read(); const c = h.api.cursorSelection(); expect(c).toEqual({ id: A, generation: 0, hotspot: [2, 3] }); expect(Object.isFrozen(c)).toBe(true); expect(Object.isFrozen(c.hotspot)).toBe(true);
+    expect(h.api.cursorSelection()).toBe(c); expect(h.api.cursorCurrent({ ...c, hotspot: [2, 3] })).toBe(true); expect(h.api.snapshot().slots["fx.cursor"]).toMatchObject({ id: A, status: "available" }); expect(h.api.descriptors()).toHaveLength(4); expect(h.api.pause("fx.cursor")).toBe(false); expect(h.options.readResource).not.toHaveBeenCalled();
+    h.api.invalidate(); expect(h.api.cursorCurrent(c)).toBe(false); expect(h.api.cursorSelection()).toBeNull(); h.data.value = cursorBody(A, 2); await h.api.read(); expect(h.api.cursorSelection()).toEqual({ ...c, generation: 1 }); h.api.dispose();
+  });
+  it("refuses wrong id/generation/hotspot, extra/accessor/sparse values without invoking a getter", async () => {
+    const h = rig(); h.data.value = cursorBody(); await h.api.read(); const c = h.api.cursorSelection(), getter = vi.fn(() => A);
+    for (const bad of [{ ...c, id: B }, { ...c, generation: 9 }, { ...c, hotspot: [3, 2] }, { ...c, extra: true }, { ...c, hotspot: Array(2) }, { ...c, get id() { return getter(); } }]) expect(h.api.cursorCurrent(bad)).toBe(false);
+    expect(getter).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("a local cursor read refusal preserves its saved id, keeps four frame slots and latches without metadata retries", async () => {
+    const h = rig(); h.data.value = cursorBody(); await h.api.read(); const c = h.api.cursorSelection(); h.api.refuseCursor(c);
+    expect(h.api.cursorSelection()).toBeNull(); expect(h.api.cursorCurrent(c)).toBe(false); expect(h.api.snapshot().slots["fx.cursor"]).toEqual({ status: "unavailable", id: A }); expect(h.api.descriptors()).toHaveLength(4); expect(h.unavailable).toHaveBeenCalledExactlyOnceWith("fx.cursor", A); expect(h.options.readMetadata).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it("stale or reentrant cursor refusal cannot mark the next generation unavailable", async () => {
+    const h = rig(); h.data.value = cursorBody(); await h.api.read(); const old = h.api.cursorSelection(); h.api.invalidate(); h.data.value = cursorBody(A, 2); await h.api.read(); h.api.refuseCursor(old); expect(h.api.cursorSelection()).not.toBeNull(); expect(h.unavailable).not.toHaveBeenCalled();
+    h.change.mockImplementationOnce(() => h.api.invalidate()); h.api.refuseCursor(h.api.cursorSelection()); expect(h.unavailable).not.toHaveBeenCalled(); expect(h.api.needsMetadata()).toBe(true); h.api.dispose();
+  });
+  it("cursor metadata is independent of frame paint proof/targets but still dies with its source", async () => {
+    const h = rig(); h.data.value = cursorBody(); await h.api.read(); const c = h.api.cursorSelection(); h.data.proof = null; expect(h.api.descriptors()).toEqual([]); expect(h.api.cursorCurrent(c)).toBe(true); h.stale(); expect(h.api.cursorSelection()).toBeNull(); expect(h.api.cursorCurrent(c)).toBe(false); h.api.dispose();
+  });
+});
+
+it("reflective receipt reentry cannot certify a pre-invalidation cursor generation", async () => {
+  const h = rig(), b: any = body(); b.slots["fx.cursor"] = { id: A, status: "available", manifest: { ...manifest(), cursor: { hotspot: [0, 0] } } }; h.data.value = b; await h.api.read();
+  const own = h.api.cursorSelection(); let hit = false;
+  const value = new Proxy({ ...own, hotspot: [...own.hotspot] }, { ownKeys(target) { if (!hit) { hit = true; h.api.invalidate(); } return Reflect.ownKeys(target); } });
+  expect(h.api.cursorCurrent(value)).toBe(false); expect(h.api.cursorSelection()).toBeNull(); h.api.dispose();
+});

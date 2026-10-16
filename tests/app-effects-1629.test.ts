@@ -28,9 +28,11 @@ async function rig(prepare: (h: any) => void = () => {}) {
   const replies = new Set<any>(), store = { onAgentReply: vi.fn((fn: any) => { replies.add(fn); return () => replies.delete(fn); }) };
   let options: any;
   const parts: any[] = [], api: any = { ok: true, sync: vi.fn(), detachChat: vi.fn(), changedChat: vi.fn(), changedOwner: vi.fn(), reply: vi.fn(), dispose: vi.fn(() => options.onDispose()), attachChat: vi.fn((o: any) => { parts.push(o); return { ok: true, dispose: vi.fn() }; }) };
+  api.cursorSelection = vi.fn(() => ({ id: "a".repeat(32), generation: 1, hotspot: [0, 0] })); api.cursorImageSettled = vi.fn(async () => new Uint8Array([1]));
+  const cursor = { ok: true, update: vi.fn(), snapshot: vi.fn(() => ({ id: "a".repeat(32), status: "running" })), dispose: vi.fn() }, cursorFactory = vi.fn(() => cursor);
   const runtime = vi.fn((o: any) => { options = o; return api; }), regions = { ok: true, resolve: vi.fn(() => ({})), dispose: vi.fn() }, regionFactory = vi.fn(() => regions);
-  const h: any = { host, doc, media, coarse, preview, observer, replies, store, parts, api, runtime, regions, regionFactory, options: () => options, startAppEffects, getAppEffects };
-  prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime, regions: regionFactory } }); return h;
+  const h: any = { host, doc, media, coarse, preview, observer, replies, store, parts, api, runtime, regions, regionFactory, cursor, cursorFactory, options: () => options, startAppEffects, getAppEffects };
+  prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime, regions: regionFactory, cursor: cursorFactory } }); return h;
 }
 beforeEach(() => { vi.resetModules(); env.app.reset({ themesRev: 1, prefsRev: 1, connection: "live" }); env.nav.reset({ seq: 1, route: { panel: "fleet" } }); env.css.reset({ state: "off" }); env.themes.reset({}); env.prefs.clear(); env.values = { "fx.show": true, "preview.optIn": true }; env.safe = false; env.mode = "light"; });
 describe("#1629 app lifetime effect bridge", () => {
@@ -134,4 +136,30 @@ describe("#1629 app lifetime effect bridge", () => {
     const panel = readFileSync(new URL("../src/ui/panel-chat.js", import.meta.url), "utf8"), app = readFileSync(new URL("../src/ui/shared/app.js", import.meta.url), "utf8");
     expect(panel.indexOf("startAppEffects({ store })")).toBeGreaterThan(panel.indexOf("P().init(bootData")); expect(app).not.toContain('from "/ui/js/app-effects.js"'); expect(app).not.toContain('from "/ui/js/panel-chat.js"');
   });
+});
+
+
+describe("actual app cursor ownership", () => {
+  it("constructs one controller with exact source snapshot/shared read and current consent gates", async () => {
+    const h = await rig(); expect(h.cursorFactory).toHaveBeenCalledOnce(); const options = h.cursorFactory.mock.calls[0][0], c = h.api.cursorSelection(); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); const signal = new AbortController().signal; expect(await options.readImage(c, signal)).toEqual(new Uint8Array([1])); expect(h.api.cursorImageSettled).toHaveBeenCalledExactlyOnceWith(c, signal);
+    h.media.matches = true; h.media.emit("change"); expect(h.cursor.update).toHaveBeenLastCalledWith(c, false); h.media.matches = false; h.media.emit("change"); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); h.entry.dispose(); expect(h.cursor.dispose).toHaveBeenCalledOnce(); expect(options.current()).toBe(false);
+  });
+  it("unsupported or throwing cursor setup leaves the shared Chat/owner runtime intact", async () => {
+    for (const kind of ["unsupported", "throw"]) { const h = await rig(h => { if (kind === "unsupported") h.cursor.ok = false; else h.cursorFactory.mockImplementation(() => { throw Error("unsupported"); }); }); expect(h.entry).not.toBeNull(); expect(h.entry.cursorSnapshot().status).toBe("unavailable"); expect(h.api.dispose).not.toHaveBeenCalled(); h.entry.dispose(); }
+  });
+  it("late cursor helper after synchronous termination is disposed without observers", async () => {
+    const h = await rig(h => h.cursorFactory.mockImplementation(() => { h.options().onDispose(); return h.cursor; })); expect(h.entry).toBeNull(); expect(h.cursor.dispose).toHaveBeenCalledOnce(); expect(h.observer.observe).not.toHaveBeenCalled();
+  });
+  it("cursor status notification is deduplicated and does not re-read metadata or re-enter controller updates", async () => {
+    const h = await rig(), changed = vi.fn(), notify = h.cursorFactory.mock.calls[0][0].onChange; h.entry.subscribe(changed); const prior = h.cursor.update.mock.calls.length; notify({ status: "running", id: "a".repeat(32) }); notify({ status: "running", id: "a".repeat(32) }); expect(changed).toHaveBeenCalledOnce(); expect(h.cursor.update).toHaveBeenCalledTimes(prior); expect(h.api.changedOwner).not.toHaveBeenCalled(); h.entry.dispose();
+  });
+});
+
+it("stock sidebar dragging closes only the cursor gate and restores it on the observed end", async () => {
+  let dragging = false; const h = await rig(h => { h.doc.body.classList = { contains: (key: string) => key === "side-resizing" && dragging }; });
+  const c = h.api.cursorSelection(); dragging = true; h.observer.fn([{ target: h.doc.body }]); expect(h.cursor.update).toHaveBeenLastCalledWith(c, false); dragging = false; h.observer.fn([{ target: h.doc.body }]); expect(h.cursor.update).toHaveBeenLastCalledWith(c, true); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
+});
+it.each(["safe", "hidden", "consent", "show", "modal", "saveData", "unsupported"])("cursor follows existing %s gate without another metadata reader", async fault => {
+  const h = await rig(); if (fault === "safe") env.safe = true; if (fault === "hidden") h.doc.visibilityState = "hidden"; if (fault === "consent") env.values["preview.optIn"] = false; if (fault === "show") env.values["fx.show"] = false; if (fault === "modal") h.doc.querySelector = () => ({}); if (fault === "saveData") h.host.navigator.connection.saveData = true; if (fault === "unsupported") delete h.host.Worker;
+  h.host.emit("resize"); expect(h.cursor.update).toHaveBeenLastCalledWith(h.api.cursorSelection(), false); expect(h.api.changedOwner).not.toHaveBeenCalled(); expect(h.cursorFactory).toHaveBeenCalledOnce(); h.entry.dispose();
 });

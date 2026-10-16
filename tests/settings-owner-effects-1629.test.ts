@@ -78,7 +78,7 @@ describe("owner effect selectors", () => {
   });
   it("shows five choices, platform scope and playback gates; saves only exact id and epoch", async () => {
     await mount(); expect(p!.root.querySelectorAll("[data-owner-slot]")).toHaveLength(5);
-    expect(text()).toContain("Discord and Telegram accounts stay separate."); expect(text()).toContain("Playback requires Effects and preview consent. Cursor playback is not enabled yet.");
+    expect(text()).toContain("Discord and Telegram accounts stay separate."); expect(text()).toContain("Playback requires Effects and preview consent. The cursor follows the same consent and falls back to stock cursors when unavailable.");
     await change("fx.page", A);
     const posts = calls.filter(c => c.init.method === "POST"); expect(posts).toHaveLength(1);
     expect(JSON.parse(posts[0]!.init.body)).toEqual({ set: { "fx.page": A }, ownerEpoch: E });
@@ -114,5 +114,15 @@ describe("owner effect selectors", () => {
     await change("fx.page", A); await change("fx.header", A); expect(calls.filter(c => c.init.method === "POST")).toHaveLength(1);
     await p!.unmount(); release(response(200, { rev: 2, ownerEpoch: E, ownerScope: "person", values: { "fx.page": A } })); await ticks();
     expect(p!.root.textContent).toBe(""); expect(calls.filter(c => c.init.method === "POST")).toHaveLength(1);
+  });
+});
+
+
+describe("cursor status remains a selector, never another runtime", () => {
+  it("shows current cursor status and Clear without Worker Pause/Resume or a code read", async () => {
+    const live = runtime(), state = { id: A, status: "running" }; live.entry.cursorSnapshot = () => state;
+    await mount({ slots: { ...empty(), "fx.cursor": { id: A, status: "available", manifest } } }); expect($('[data-owner-runtime="fx.cursor"]').textContent).toBe("Running"); expect($('[data-owner-pause="fx.cursor"]')).toBeNull(); expect($('[data-owner-resume="fx.cursor"]')).toBeNull();
+    state.status = "unavailable"; live.changed(); await ticks(); expect(text()).toContain("The cursor could not be applied here"); expect($('[data-owner-clear="fx.cursor"]')).not.toBeNull(); expect(calls.every(c => !c.url.includes("/resource/") && !c.url.includes("/image/"))).toBe(true);
+    $('[data-owner-clear="fx.cursor"]').click(); await ticks(); expect($('[data-owner-slot="fx.cursor"]').value).toBe(""); expect(calls.filter(c => c.init.method === "POST").map(c => JSON.parse(c.init.body))).toContainEqual({ set: { "fx.cursor": null }, ownerEpoch: E });
   });
 });

@@ -1,6 +1,6 @@
 # Optional personal contribution model (#1629 B2)
 
-This model adds an optional personal source to the existing app-owned pool. The reviewed product bridge now supplies its fixed stock target adapter; see [1629-owner-effect-mount.md](1629-owner-effect-mount.md). The helper still starts no I/O, timer, DOM creation or playback merely by being imported. Cursor and Try remain separate work.
+This model adds an optional personal source to the existing app-owned pool. The reviewed product bridge now supplies its fixed stock target adapter; see [1629-owner-effect-mount.md](1629-owner-effect-mount.md). The helper still starts no I/O, timer, DOM creation or playback merely by being imported. The fifth slot now supplies an exact id/generation/hotspot receipt for the host cursor; see [1629-effect-cursor-mount.md](1629-effect-cursor-mount.md). Try remains separate work.
 
 ## Shared ownership
 

@@ -1,11 +1,11 @@
 /** #1629: host-only personal contribution model. No fetch, timer, DOM creation, registry or playback. */
 import { checkEffectOwnerSlots } from "./effect-runtime-loader.js";
 import { effectStockSnapshot } from "./effect-stock-snapshot.js";
-const SLOTS = ["fx.page", "fx.header", "fx.sidebar", "fx.box"];
+const SLOTS = ["fx.page", "fx.header", "fx.sidebar", "fx.box"], ALL_SLOTS = [...SLOTS, "fx.cursor"];
 
 /** The app supplies its one loader/metadata scheduler, lifetime and fixed stock target resolver. */
 export function createOwnerEffectSource({ current, readMetadata, readResource, resolveTarget, stock, onChange = () => {}, onUnavailable = () => {} } = {}) {
-  let dead = false, generation = 0, serial = 0, metadata = null, error = null, active = null, rev = -1, checking = false;
+  let dead = false, generation = 0, serial = 0, metadata = null, error = null, active = null, rev = -1, checking = false, cursor = null;
   const bySlot = new Map(), byKey = new Map(), paused = new Map(), failed = new Map();
   const safe = fn => { try { return fn(); } catch { return null; } };
   function alive() {
@@ -18,7 +18,7 @@ export function createOwnerEffectSource({ current, readMetadata, readResource, r
   function drop(slot) { const b = bySlot.get(slot); if (b) byKey.delete(b.key); bySlot.delete(slot); }
   function clear() { bySlot.clear(); byKey.clear(); }
   const notify = () => { if (alive()) safe(onChange); };
-  function dispose() { if (dead) return; dead = true; generation++; metadata = null; clear(); paused.clear(); failed.clear(); }
+  function dispose() { if (dead) return; dead = true; generation++; metadata = null; cursor = null; clear(); paused.clear(); failed.clear(); }
   const unavailable = { ok: false, dispose };
   if (![current, readMetadata, readResource, resolveTarget, stock, onChange, onUnavailable].every(x => typeof x === "function")) return unavailable;
   function row(slot) { return alive() && SLOTS.includes(slot) ? metadata?.slots[slot] ?? null : null; }
@@ -27,14 +27,37 @@ export function createOwnerEffectSource({ current, readMetadata, readResource, r
     const selected = metadata?.slots[b.slot];
     return selected?.status === "available" && selected.id === b.id && b.element.isConnected === true && !dead && generation === b.generation;
   }
+  function cursorSelection() {
+    const body = metadata, gen = generation;
+    if (!alive() || !body || error) return null;
+    const selected = body.slots["fx.cursor"];
+    if (selected.status !== "available" || failed.get("fx.cursor") === selected.id || !selected.manifest.cursor) return null;
+    if (!cursor || cursor.id !== selected.id || cursor.generation !== gen) cursor = Object.freeze({ id: selected.id, generation: gen, hotspot: Object.freeze([...selected.manifest.cursor.hotspot]) });
+    return fresh(body, gen) && failed.get("fx.cursor") !== selected.id ? cursor : null;
+  }
+  function cursorCurrent(value) {
+    try {
+      const expected = cursorSelection(); if (!expected || !value || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) return false;
+      const d = Object.getOwnPropertyDescriptors(value);
+      if (Reflect.ownKeys(d).length !== 3 || !["id", "generation", "hotspot"].every(k => d[k] && Object.hasOwn(d[k], "value")) || d.id.value !== expected.id || d.generation.value !== expected.generation) return false;
+      const a = d.hotspot.value; if (!Array.isArray(a) || Object.getPrototypeOf(a) !== Array.prototype) return false;
+      const h = Object.getOwnPropertyDescriptors(a);
+      return Reflect.ownKeys(h).length === 3 && h.length.value === 2 && [0, 1].every(k => h[k] && Object.hasOwn(h[k], "value") && h[k].value === expected.hotspot[k]) && cursorSelection() === expected;
+    } catch { return false; }
+  }
   function refuse(b) {
     if (!bindingCurrent(b)) return;
     failed.set(b.slot, b.id); drop(b.slot); notify();
     if (!dead && generation === b.generation && failed.get(b.slot) === b.id && metadata?.slots[b.slot]?.id === b.id) safe(() => onUnavailable(b.slot, b.id));
   }
-  return { ok: true,
+  return { ok: true, cursorSelection, cursorCurrent,
+    refuseCursor(value) {
+      const own = cursorSelection(); if (!own || !cursorCurrent(value)) return;
+      failed.set("fx.cursor", own.id); notify();
+      if (!dead && generation === own.generation && failed.get("fx.cursor") === own.id && metadata?.slots["fx.cursor"]?.id === own.id) safe(() => onUnavailable("fx.cursor", own.id));
+    },
     needsMetadata() { return alive() && metadata === null && error === null; },
-    invalidate() { if (dead) return; generation++; metadata = null; error = null; clear(); failed.clear(); notify(); },
+    invalidate() { if (dead) return; generation++; metadata = null; cursor = null; error = null; clear(); failed.clear(); notify(); },
     async read(signal) {
       if (!alive() || metadata !== null || error !== null || active || signal?.aborted) return false;
       const op = { generation }; active = op;
@@ -85,7 +108,7 @@ export function createOwnerEffectSource({ current, readMetadata, readResource, r
     snapshot() {
       const live = alive();
       return { error: live ? error : null, rev, loading: live && metadata === null && error === null,
-        slots: Object.fromEntries(SLOTS.map(slot => { const selected = live ? metadata?.slots[slot] : null; return [slot, selected ? failed.get(slot) === selected.id ? { status: "unavailable", id: selected.id } : selected : { status: "unknown", id: null }]; })) };
+        slots: Object.fromEntries(ALL_SLOTS.map(slot => { const selected = live ? metadata?.slots[slot] : null; return [slot, selected ? failed.get(slot) === selected.id ? { status: "unavailable", id: selected.id } : selected : { status: "unknown", id: null }]; })) };
     },
     dispose,
   };
