@@ -1,4 +1,5 @@
 /** #1629: app-owned pool; Chat contributes a lease, never another registry/loader. */
+import { createOwnerEffectSource } from "./effect-owner-source.js";
 import { createEffectRuntimeLoader } from "./effect-runtime-loader.js";
 import { createEffectRegistry } from "./effect-registry.js";
 import { createEffectSafety } from "./effect-safety.js";
@@ -9,8 +10,8 @@ import { chatEffectIdentity, createEffectWriter } from "./effect-chat-runtime.js
 const episodes = new WeakSet();
 
 /** `current` belongs to the page/session episode. Route cleanup only releases its contribution. */
-export function createAppEffectRuntime({ window: host, current, observe, onChange = () => {}, onDispose = () => {}, factories = {} }) {
-  let dead = false, error = null, loader = null, registry = null, writer = null, source = null, pending = null, serial = 0, revision = 0, stamp = null, syncing = false, queued = false;
+export function createAppEffectRuntime({ window: host, current, observe, onChange = () => {}, onDispose = () => {}, resolveOwnerTarget = null, onOwnerUnavailable = () => {}, factories = {} }) {
+  let dead = false, error = null, loader = null, registry = null, writer = null, source = null, personal = null, pending = null, lastMetadata = null, serial = 0, revision = 0, stamp = null, syncing = false, queued = false;
   const bindings = new Map(), profiles = new Map();
   const identity = chatEffectIdentity(host), auth = host?.AgendAuth;
   const safe = fn => { try { return fn(); } catch { return null; } };
@@ -39,7 +40,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
   }
   function dispose() {
     if (dead) return; dead = true; discard(source);
-    safe(() => pending?.controller.abort()); safe(() => registry?.dispose?.()); safe(() => loader?.dispose?.()); safe(() => writer?.dispose()); safe(() => offAuth?.());
+    safe(() => pending?.controller.abort()); safe(() => registry?.dispose?.()); safe(() => loader?.dispose?.()); safe(() => personal?.dispose()); safe(() => writer?.dispose()); safe(() => offAuth?.());
     safe(() => host?.removeEventListener?.("pagehide", dispose));
     for (const row of profiles.values()) safe(() => row.collector.dispose()); profiles.clear(); bindings.clear(); safe(() => onDispose({ error }));
   }
@@ -54,15 +55,17 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     host.addEventListener?.("pagehide", dispose);
   } catch { fail("runtime_unavailable"); return unavailable; }
   const make = (key, fn) => factories[key] ?? fn;
-  function bindingAlive(b) { return !!b && sourceAlive(b.source) && b.source.generation === b.generation && bindings.get(b.key) === b && b.source.bindings.get(b.id) === b; }
+  function bindingAlive(b) { if (b?.kind === "owner") return personal?.current(b) === true; return !!b && sourceAlive(b.source) && b.source.generation === b.generation && bindings.get(b.key) === b && b.source.bindings.get(b.id) === b; }
+  const bindingFor = (key, id) => { const b = bindings.get(key) ?? personal?.binding(key, id); return b?.id === id && bindingAlive(b) ? b : null; };
   try {
     writer = createEffectWriter(host, alive);
     loader = make("loader", createEffectRuntimeLoader)({ window: host, ownerEpoch: identity.epoch, current: alive, onRevoke: () => fail("runtime_unavailable") });
     if (!loader.ok || typeof loader.placementsSettled !== "function" || typeof loader.resourceSettled !== "function") throw Error("runtime_unavailable");
     registry = make("registry", createEffectRegistry)({ window: host, origin: host.document.body.dataset.previewOrigin, boot: host.document.body.dataset.previewBoot,
       load: async (descriptor, signal) => {
-        const b = bindings.get(descriptor.key);
+        const b = bindingFor(descriptor.key, descriptor.id);
         if (!bindingAlive(b) || descriptor.id !== b.id || signal.aborted) return null;
+        if (b.kind === "owner") return personal.load(b, signal);
         const value = await loader.resourceSettled({ id: b.id, instance: b.source.name }, signal);
         if (!bindingAlive(b) || signal.aborted) return null;
         if (!value) { refuseSource(b.source); return null; }
@@ -72,7 +75,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
       stockSnapshot: ({ frameRoot }) => make("stock", stockEffectTrust)(host, { frameRoot, ownerCss: observe().ownerCss }),
       onChange() { try { tell(); emit(); } catch { fail("runtime_unavailable"); } },
       onMount(owner) {
-        const b = bindings.get(owner.key); if (!bindingAlive(b) || b.id !== owner.id || !owner.current()) return;
+        const b = bindingFor(owner.key, owner.id); if (!bindingAlive(b) || b.id !== owner.id || !owner.current()) return;
         const collector = make("collector", createEffectProfileCollector)({ key: owner.key, id: owner.id, device: owner.device, clock });
         const began = safe(clock);
         if (collector.ok && Number.isFinite(began) && began >= 0 && bindingAlive(b) && owner.current()) profiles.set(owner, { binding: b, collector, began, attempted: null }); else collector.dispose?.();
@@ -84,10 +87,20 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
         if (!Number.isFinite(now) || now < row.began || now - row.began < 10000 && raw.verdict !== "paused" || row.attempted !== null && now - row.attempted < 10000) return;
         const report = row.collector.report(); if (!report || !bindingAlive(row.binding) || !owner.current()) return;
         row.attempted = now;
-        void writer.post(`/ui/effects/profile/${owner.id}?instance=${encodeURIComponent(row.binding.source.name)}&ownerEpoch=${identity.epoch}`, report.profile);
+        const query = row.binding.kind === "owner" ? "" : `instance=${encodeURIComponent(row.binding.source.name)}&`;
+        void writer.post(`/ui/effects/profile/${owner.id}?${query}ownerEpoch=${identity.epoch}`, report.profile);
       }, clock,
     });
     if (!registry.ok) throw Error("runtime_unavailable");
+    if (typeof resolveOwnerTarget === "function") {
+      if (typeof loader.ownerSettled !== "function") throw Error("runtime_unavailable");
+      personal = createOwnerEffectSource({ current: alive,
+        readMetadata: signal => loader.ownerSettled(signal), readResource: (spec, signal) => loader.resourceSettled(spec, signal), resolveTarget: resolveOwnerTarget,
+        stock: () => registry.frameRoot ? make("stock", stockEffectTrust)(host, { frameRoot: registry.frameRoot, ownerCss: observe().ownerCss }) : null,
+        onChange() { revision++; stamp = null; sync(); tell(); }, onUnavailable: (slot, id) => safe(() => onOwnerUnavailable(slot, id)),
+      });
+      if (!personal.ok) throw Error("runtime_unavailable");
+    }
   } catch { fail("runtime_unavailable"); return unavailable; }
   function descriptors(s) {
     if (!sourceAlive(s) || s.error) return [];
@@ -128,22 +141,44 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
       if (candidate && !sourceAlive(candidate)) discard(candidate);
       const before = revision, value = observation(), s = source;
       if (!alive() || revision !== before || s !== source) { if (alive()) queueSync(); return; }
-      const next = JSON.stringify([revision, value.context]);
+      const entries = [...(personal?.descriptors() ?? []), ...descriptors(s)];
+      if (!alive() || revision !== before || s !== source) { stamp = null; if (alive()) queueSync(); return; }
+      const next = JSON.stringify([revision, value.context, entries.map(d => [d.key, d.paused])]);
       if (stamp !== next) {
-        const entries = descriptors(s);
         if (!alive() || revision !== before || s !== source) { stamp = null; if (alive()) queueSync(); return; }
         stamp = next; registry.update(entries, value.context);
       }
       if (!alive() || revision !== before || s !== source) { stamp = null; if (alive()) queueSync(); return; }
       emit();
       const c = value.context;
-      if (sourceAlive(s) && !s.error && !s.metadata && !pending && c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden) void read(s);
+      if (!pending && c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden) {
+        const ownerNeeds = personal?.needsMetadata() === true, chatNeeds = sourceAlive(s) && !s.error && !s.metadata;
+        if (!alive() || revision !== before || s !== source) { if (alive()) queueSync(); return; }
+        if (ownerNeeds && (!chatNeeds || lastMetadata !== "owner")) void readPersonal();
+        else if (chatNeeds) void read(s);
+      }
     } catch { fail("runtime_unavailable"); }
     finally { syncing = false; }
   }
+  async function readPersonal() {
+    if (!personal || pending || !personal.needsMetadata() || !alive()) return;
+    const op = { source: personal, controller: new host.AbortController() }; pending = op; lastMetadata = "owner";
+    try { await personal.read(op.controller.signal); }
+    catch { fail("runtime_unavailable"); }
+    finally { if (pending === op) { pending = null; if (alive()) sync(); } }
+  }
+  function changedOwner() {
+    if (!personal || !alive()) return;
+    if (pending?.source === personal) safe(() => pending.controller.abort());
+    personal.invalidate();
+  }
+  function ownerSnapshot() {
+    return { ...(personal?.snapshot() ?? { error: null, rev: -1, loading: false, slots: {} }),
+      rows: registry?.snapshot().filter(row => personal?.binding(row.key, row.id)) ?? [] };
+  }
   async function read(s) {
     if (!sourceAlive(s) || pending || s.error) return;
-    const op = { source: s, generation: s.generation, controller: new host.AbortController() }; pending = op;
+    const op = { source: s, generation: s.generation, controller: new host.AbortController() }; pending = op; lastMetadata = "chat";
     try {
       const answer = await loader.placementsSettled(s.name, op.controller.signal);
       if (!sourceAlive(s) || op.generation !== s.generation || pending !== op || op.controller.signal.aborted) return;
@@ -181,5 +216,8 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     };
     sync(); tell(); return sourceAlive(s) ? api : null;
   }
-  return { ok: true, sync, attachChat, changedChat() { changedSource(source); }, reply(event) { publishReply(source, event); }, detachChat() { discard(source); sync(); }, snapshot: () => snapshot(source), dispose };
+  return { ok: true, sync, attachChat, changedOwner, ownerSnapshot,
+    pauseOwner(slot) { return personal?.pause(slot) === true; },
+    resumeOwner(slot) { if (!personal?.unpause(slot)) return false; const b = personal.slotBinding(slot); return bindingAlive(b) && registry.resume(b.key); },
+    changedChat() { changedSource(source); }, reply(event) { publishReply(source, event); }, detachChat() { discard(source); sync(); }, snapshot: () => snapshot(source), dispose };
 }
