@@ -46,7 +46,11 @@ export function validEffectEvent(d, instance) {
 
 /** Least privilege at the final send; the instance is the host's binding, never taken from event data. */
 export function maySendEffectEvent(event, binding) {
-  return plain(binding) && validEffectEvent(event, binding.instance) && Array.isArray(binding.wants) && (event.type === "env" || binding.wants.includes(event.type));
+  if (!plain(binding) || !validEffectEvent(event, binding.instance) || !Array.isArray(binding.wants)) return false;
+  if (["state", "reply", "mention"].includes(event.type)) {
+    if (binding.instance === null ? OWN(event, "instance") : !OWN(event, "instance") || event.instance !== binding.instance) return false;
+  }
+  return event.type === "env" || binding.wants.includes(event.type);
 }
 
 export function constrainedDevice(signals) {

@@ -129,3 +129,33 @@ it("requires a known host binding and every current page gate",()=>{
   }
   expect(P.allocateEffectFrames([descriptor("a",{paused:undefined})],ctx())[0]).toMatchObject({verdict:"off",reason:"unknown"});
 });
+
+describe("#1629 final independent scope and boundary controls",()=>{
+ it.each(["state","reply","mention"])("requires exact or absent scope on final %s send",type=>{
+  const fields=type==="state"?{state:"working"}:{};
+  const unbound=P.effectEvent(type,fields,null,now),bound=P.effectEvent(type,fields,"own",now);
+  expect(P.maySendEffectEvent(unbound,{instance:"own",wants:[type]})).toBe(false);
+  expect(P.maySendEffectEvent(bound,{instance:null,wants:[type]})).toBe(false);
+  expect(P.maySendEffectEvent(unbound,{instance:null,wants:[type]})).toBe(true);
+  expect(P.maySendEffectEvent(bound,{instance:"own",wants:[type]})).toBe(true);
+ });
+ it("rounds right and bottom outward even below a half pixel",()=>{
+  expect(P.effectTrustClip(frame,[{x:119.1,y:229.1,width:10.1,height:20.1}]).holes).toEqual([{x:11,y:21,width:27,height:37}]);
+ });
+ it.each([{visible:undefined},{layer:"dialog"},{region:"dialog"},{order:-1},{order:0.5},{key:"x".repeat(257)}])("keeps unknown descriptor %o off",patch=>{
+  expect(P.allocateEffectFrames([descriptor("a",patch)],ctx())[0].verdict).toBe("off");
+ });
+ it("refuses invalid current instances and admits one constrained front",()=>{
+  expect(P.allocateEffectFrames([descriptor("a")],ctx({openInstance:{}}))[0].verdict).toBe("off");
+  expect(P.allocateEffectFrames([descriptor("a",{layer:"front"})],ctx({constrained:true}))[0].verdict).toBe("active");
+  expect(P.constrainedDevice({coarse:false,width:900,cores:8,memory:8})).toBe(false);
+  expect(P.constrainedDevice({cores:0})).toBe(false);
+ });
+ it("bounds coordinates/clamps height and drops empty intersections",()=>{
+  expect(P.effectTrustClip(frame,[{x:1e7+1,y:0,width:1,height:1}]).ok).toBe(false);
+  expect(P.effectTrustClip(frame,[{x:100,y:590,width:10,height:50}]).holes).toEqual([{x:0,y:382,width:18,height:18}]);
+  expect(P.effectTrustClip(frame,[{x:2000,y:2000,width:1,height:1}]).holes).toEqual([]);
+  class Rect { x=0;y=0;width=10;height=10; }
+  expect(P.effectTrustClip(frame,[new Rect()]).ok).toBe(false);
+ });
+});

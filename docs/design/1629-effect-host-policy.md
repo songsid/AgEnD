@@ -4,7 +4,7 @@
 
 ## Signals
 
-`effectEvent(type, fields, instance, monotonicTimestamp)` makes a fresh object from the r3 closed allowlist. It never reads or copies text, people, attachment metadata, IDs, URLs or arbitrary extra fields. State/reply/mention use the region's host-owned current instance, or omit it when there is none; an explicitly conflicting source instance refuses the event. `validEffectEvent` independently checks exact keys and numeric/enum bounds immediately before sending. `maySendEffectEvent` also checks the frame's own instance and its manifest wants; env is implicit.
+`effectEvent(type, fields, instance, monotonicTimestamp)` makes a fresh object from the r3 closed allowlist. It never reads or copies text, people, attachment metadata, IDs, URLs or arbitrary extra fields. State/reply/mention use the region's host-owned current instance, or omit it when there is none; an explicitly conflicting source instance refuses the event. `validEffectEvent` independently checks exact keys and numeric/enum bounds immediately before sending. `maySendEffectEvent` also checks the frame's own instance and its manifest wants; env is implicit. For state/reply/mention a bound chat frame requires an exact instance field, and an unbound owner frame requires it absent. An event missing its source cannot cross into a bound chat.
 
 The reserved status/usage/fleet kinds are for host-drawn widgets. They cannot be built or sent to an effect Worker. Key events have no kind. Pointer collection/coalescing and suppression during inputs/dialogs/hidden state belong to the later DOM adapter, which must use these functions for its final send.
 
@@ -18,7 +18,7 @@ Constrained means positive deviceMemory <=4, positive hardwareConcurrency <=4, o
 
 ## Trust holes
 
-`effectTrustClip` takes the frame's viewport rectangle and the host's measured trust rectangles. Each hole is padded eight pixels, rounded outward, converted to frame coordinates and clamped. Before building an evenodd path, a bounded sweep unions overlapping holes into disjoint horizontal slabs. Adding overlapping holes directly to an evenodd path would repaint their intersection, exposing precisely the pixels that need protection.
+`effectTrustClip` takes the frame's viewport rectangle and the host's measured trust rectangles. The DOM adapter must copy DOMRect fields into plain `{x,y,width,height}` objects; native DOMRect instances are deliberately refused as unknown. Each hole is padded eight pixels, rounded outward, converted to frame coordinates and clamped. Before building an evenodd path, a bounded sweep unions overlapping holes into disjoint horizontal slabs. Adding overlapping holes directly to an evenodd path would repaint their intersection, exposing precisely the pixels that need protection.
 
 Unknown, sparse, non-finite or excessive rectangles return failure. There are at most 128 input rectangles and 512 union pieces; overflow hides the effect rather than supplying an unclipped fallback. No model-supplied CSS/path/text enters the CSS value. These are geometry decisions only: the future adapter must hide an affected agent front frame in the same task as a trust mutation or movement, coalesce recomputation to rAF, apply the path through CSSOM, and reveal only after successful recomputation. Missing CSS path support must hide. Human placements retain the approved clipping exception; caller provenance must come from the host store.
 
