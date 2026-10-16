@@ -10,6 +10,7 @@
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
+// @ts-expect-error — a JS module of the app, with no types (as web-preview-card-1306 imports it)
 import { createThread, THREAD_CHUNK, THREAD_TAIL } from "../src/ui/chat-thread.js";
 
 beforeAll(async () => {
