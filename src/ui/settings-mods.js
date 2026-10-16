@@ -173,6 +173,9 @@ function ExportForm() {
     catch { setError(tn("modFailed", "network")); return; }
     if (!res.ok) { let b = null; try { b = await res.json(); } catch { /* none */ } setError(why(b)); return; }
     download(await res.text(), `${f.name}-${f.version}.agendmod.json`);
+    // Effects that aren't this person's to carry stay out of the file (their own claims and shared ones travel).
+    const omitted = Number(res.headers && res.headers.get ? res.headers.get("X-AgEnD-Effects-Omitted") : 0);
+    if (omitted > 0) toast(tn("modExportOmitted", omitted), false);
   };
   const box = (k, label) => html`<label class="check"><input type="checkbox" checked=${f[k]} onChange=${set(k)} /><span>${label}</span></label>`;
   return html`<details class="s-mod-export"><summary>${tn("modExport")}</summary>

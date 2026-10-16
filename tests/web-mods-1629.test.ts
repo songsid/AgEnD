@@ -24,6 +24,11 @@ vi.mock("node:child_process", async importOriginal => {
   return { ...real, spawn: refuse("spawn"), spawnSync: refuse("spawnSync"), exec: refuse("exec"), execSync: refuse("execSync"),
     execFile: refuse("execFile"), execFileSync: refuse("execFileSync"), fork: refuse("fork") };
 });
+// #1778 shape: a real FleetManager's pino transport opens <AGEND_HOME>/daemon.log late, racing the scratch home's removal (ENOTEMPTY).
+vi.mock("../src/logger.js", async original => {
+  const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
+  return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
+});
 
 const B = await import("../src/web-mod-bundle.js");
 const { buildModBundle } = await import("../src/web-mod-export.js");

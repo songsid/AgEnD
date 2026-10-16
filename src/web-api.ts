@@ -244,8 +244,8 @@ export interface WebApiContext {
   readonly effectService?: WebEffectService;
   /** #1629 r4-5: an instance's card text as shown (a person's fields over the agent's), for a mod's export. */
   modCardText?(name: string): { tagline?: string; bio?: string };
-  /** #1629 r4-5c: an effect placed on an instance, as the library keeps it (a person's export carries it). */
-  modPlacedEffect?(name: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
+  /** #1629 r4-5c: an effect this person may export (their own claim, or human-shared); null for anyone else's. */
+  modPlacedEffect?(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
@@ -542,6 +542,11 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     const text = mods.bundleText(fileMatch[1]!);
     const rec = mods.list().mods.find(m => m.id === fileMatch[1]);
     if (text === null || !rec) { json(res, 404, { error: "no_such_mod" }); return true; }
+    // The file is the installed bundle, effects and all — also effects its import left out, which nobody installed.
+    // So the export ACL judges what the file carries, not what was installed: it downloads only when this person may
+    // read every effect in it (their own claim on that content, or a shared one). A file without effects is any admin's.
+    const fx = mods.bundleEffects(fileMatch[1]!);
+    if (fx === "unknown" || (fx ?? []).some(id => !ctx.modPlacedEffect?.(first.person, id))) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod's file carries effects that are not yours to share: export your own look instead" }); return true; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
     res.end(text);
@@ -585,14 +590,14 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     const r = exportMod(ctx, person, body);
     if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
-      "Content-Disposition": `attachment; filename="${r.filename}"` });
+      "Content-Disposition": `attachment; filename="${r.filename}"`, "X-AgEnD-Effects-Omitted": String(r.omitted) });
     res.end(r.text);
   })().catch(fail);
   return true;
 }
 
 /** A person's export: an instance's look (theme, identity, its widgets), their sidebar widget and their own CSS. */
-export function exportMod(ctx: WebApiContext, person: string, body: Record<string, unknown>): { ok: true; text: string; filename: string } | { ok: false; status: number; error: string; detail?: string } {
+export function exportMod(ctx: WebApiContext, person: string, body: Record<string, unknown>): { ok: true; text: string; filename: string; omitted: number } | { ok: false; status: number; error: string; detail?: string } {
   const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
   const inc = isObj(body.include) ? body.include : null;
   if (!inc) return { ok: false, status: 400, error: "include" };
@@ -603,6 +608,7 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
   const title = canonicalText(meta.title, 1, 60);
   if (title === null) return { ok: false, status: 400, error: "title", detail: "1..60 characters on one line" };
   const parts: ModExportParts = {};
+  let omitted = 0;
   const wantsInstance = inc.theme === true || inc.identity === true || (isObj(inc.widgets) && AGENT_WIDGET_SLOTS.some(s => (inc.widgets as Record<string, unknown>)[s] === true));
   let name: string | null = null;
   if (wantsInstance) {
@@ -614,7 +620,8 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
     const rec = store.get(name);
     if (inc.theme === true) {
       // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
-      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(name!, p.id); return e ? [{ name: e.name, files: e.files, params: p.params ?? {} }] : []; });
+      // Only effects this person may carry away travel (Sol's ACL); the rest are counted, never packaged.
+      const effects = rec.placements.effects.flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
       parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
@@ -640,7 +647,7 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
     }
   }
   const built = buildModBundle({ name: meta.name, version: meta.version, title }, parts);
-  return built.ok ? built : { ok: false, status: built.error === "nothing_to_export" ? 400 : 409, error: built.error };
+  return built.ok ? { ...built, omitted } : { ok: false, status: built.error === "nothing_to_export" ? 400 : 409, error: built.error };
 }
 
 /** #1827: a web person as the web chat shows them to agents and chats. */
