@@ -17,7 +17,9 @@ this signal does not identify or privilege the person who prompted the reply.
 ## Client acceptance
 
 The transport labels message ingress as SSE or poll and records the host monotonic
-SSE arrival time. Catch-up preserves that original metadata and ordering. Receipt
+SSE arrival time at callback entry, after stale-source rejection and before JSON
+parsing or synchronous connection/hydration observers. Catch-up preserves that
+original metadata and ordering. Receipt
 frames never advance the message cursor. A receipt-like JSON field in a poll is
 ignored. Old/disposed EventSources retain the existing generation rejection.
 

@@ -209,13 +209,15 @@ export function createStream(opts) {
     for (const name of EVENTS) {
       es.addEventListener(name, (e) => {
         if (es !== sse) return;                          // a stream this page already let go of
+        // Snapshot before parsing or any synchronous connection/hydration observer can consume time.
+        const ingress = name === "message" || name === "agent_reply_live" ? sseIngress() : undefined;
         let data;
         try { data = JSON.parse(e.data); } catch { return; }
         if (!spoke) { spoke = true; alive(); if (again) catchUp(); }
         else alive();
         // #1823: a clock reading is about now, not about order: it is never held behind a catch-up (it would be stale).
         if (name === "clock") { emit(name, data); return; }
-        live(name, data, name === "message" ? e.lastEventId : null, name === "message" || name === "agent_reply_live" ? sseIngress() : undefined);
+        live(name, data, name === "message" ? e.lastEventId : null, ingress);
       });
     }
     es.onerror = () => {

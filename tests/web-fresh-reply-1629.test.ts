@@ -99,7 +99,7 @@ describe("#1629 fresh reply collector", () => {
   });
 });
 
-async function browser() {
+async function browser({ prime = true } = {}) {
   let time = 0, answer: any = { messages: [], cursor: "", status: { instances: [] } }, release: ((value: any) => void) | null = null, held = false;
   const sources: any[] = [];
   const fetch = vi.fn(async (url: string) => {
@@ -115,11 +115,26 @@ async function browser() {
   const stream = createStream({ mode: "full", env });
   const { createChatStore } = await import("/ui/js/chat-store.js") as any;
   const store = createChatStore({ fetch, toast() {}, announce() {}, t: (key: string) => key, now: () => time }); store.attach(stream); store.setCurrent(INSTANCE); stream.start();
-  const fn = vi.fn(); store.onAgentReply(fn); sources[0].frame("status", { instances: [] });
+  const fn = vi.fn(); store.onAgentReply(fn); if (prime) sources[0].frame("status", { instances: [] });
   return { stream, store, fn, sources, set time(value: number) { time = value; }, set answer(value: any) { answer = value; }, set held(value: boolean) { held = value; }, release(value: any) { release!(value); } };
 }
 describe("#1629 actual stream → chat-store live receipt wiring", () => {
   afterEach(() => vi.useRealTimers());
+  it.each([0, 5000, 5001, 6000])("captures first message before a slow connection observer (%sms)", async age => {
+    vi.useFakeTimers(); const h = await browser({ prime: false }), delivered: any[] = [];
+    h.stream.on("connection", (state: string) => { if (state === "live") h.time = age; });
+    h.stream.on("message", (_m: any, extra: any) => delivered.push(extra));
+    h.sources[0].frame("message", message(), `${BOOT}-1`); h.sources[0].frame("agent_reply_live", receipt());
+    expect(h.fn).toHaveBeenCalledTimes(age <= 5000 ? 1 : 0); expect(delivered).toEqual([{ source: "sse", receivedAt: 0 }]); expect(h.stream.cursor()).toBe(`${BOOT}-1`); h.stream.close();
+  });
+  it.each([5000, 5001, 6000])("captures reconnect message before a slow hydration observer (%sms)", async age => {
+    vi.useFakeTimers(); const h = await browser(), delivered: any[] = [];
+    h.sources[0].onerror(); h.time = 1000; await vi.advanceTimersByTimeAsync(1000); expect(h.sources).toHaveLength(2);
+    h.stream.on("hydration", (state: string) => { if (state === "catching") h.time = 1000 + age; });
+    h.stream.on("message", (_m: any, extra: any) => delivered.push(extra));
+    h.sources[1].frame("message", message(), `${BOOT}-1`); h.sources[1].frame("agent_reply_live", receipt()); await vi.advanceTimersByTimeAsync(0);
+    expect(h.fn).toHaveBeenCalledTimes(age <= 5000 ? 1 : 0); expect(delivered).toEqual([{ source: "sse", receivedAt: 1000 }]); expect(h.stream.cursor()).toBe(`${BOOT}-1`); h.stream.close();
+  });
   it("a fresh accepted SSE pair pulses once; replayed/duplicate pairs and evicted identities do not", async () => {
     vi.useFakeTimers(); const h = await browser();
     for (let id = 1; id <= 501; id++) { h.sources[0].frame("message", message(id), `${BOOT}-${id}`); h.sources[0].frame("agent_reply_live", receipt(id)); }
