@@ -79,14 +79,15 @@ describe("grok 1.0.60: what the precheck flagged", () => {
     },
   );
 
-  it("the approval card's 'Yes, proceed' is option 2, now the default; AgEnD's net presses '1' and never Enter", () => {
+  it("the approval card's 'Yes, proceed' is option 2, now the default; the runtime net matches neither card", () => {
     const before = pane("1.0.52-approval", "20-approval"), after = pane("1.0.60-approval", "20-approval");
     expect(before).toContain("1 (●) Yes, and don't ask again for anything (always-approve mode)");
     expect(before).toContain("2 (○) Yes, proceed");
     expect(after).toContain("1 (○) Yes, and don't ask again for anything (always-approve mode)");
     expect(after).toContain("2 (●) Yes, proceed");
-    // AgEnD launches with --always-approve, so the card is not on its path. Its runtime net ("Yes, always") matches
-    // neither version's card — unchanged (#1792 follow-up).
+    // AgEnD's default launch passes --always-approve, so the card does not come up; with skipPermissions: false it can.
+    // The runtime net ("Yes, always") matches neither version's card — unchanged (#1792 follow-up), so the new default
+    // (option 2) adds no regression.
     for (const screen of [before, after]) expect(verdict(screen).runtime).toEqual([]);
   });
 

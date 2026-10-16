@@ -16,7 +16,7 @@ The baseline is 1.0.52, the last audited version (`tests/fixtures/grok-1.0.52-au
 **MAJOR, hard=2, hinted=1.** No item is on AgEnD's path:
 - **"Yes, proceed / No, cancel / Do you trust the contents".** There are two copies:
   - The Agent Dashboard's folder picker, whose neighbouring strings moved. AgEnD never opens the dashboard.
-  - The tool-approval card's option 2, "Yes, proceed". It is now the card's **default** selection, where 1.0.52 defaulted to option 1, "always-approve mode" (`*-approval/20-approval`). AgEnD launches with `--always-approve`, so the card is not on its path, and its runtime net presses `1` explicitly, never Enter on the default.
+  - The tool-approval card's option 2, "Yes, proceed". It is now the card's **default** selection, where 1.0.52 defaulted to option 1, "always-approve mode" (`*-approval/20-approval`). With its default launch (`skipPermissions` unset or true) AgEnD passes `--always-approve`, so the card does not come up. An instance configured with `skipPermissions: false` launches without that flag (`src/backend/grok.ts`), and there the card can come up. AgEnD's runtime net presses `1` explicitly, never Enter on the default. It matches neither version's card, though (below), so the default moving from 1 to 2 is no new regression, and it was not run live here.
   - The launch-path trust prompt is byte-identical: `y  Yes, proceed / n  No, quit / Enter or y to trust · n or Esc to quit` (`*/01-trust`).
 - **"subagent rate limit cannot clear by waiting; failing the turn".** This is a tracing event for grok's own subagents (`shell.turn.subagent_rate_limit_vetoed`, next to "disabling the subagent rate-limit wait loop because the sampler owns 429 retries"). It is not painted for a main-turn 429. Both versions paint `Retry failed: rate_limit_error: …`, which reads as `rate_limit` (`*/07-err-429*`).
 - **"usage limit reached … status 401 … unauthorized".** This is the same compaction-error classifier list as 1.0.52 (`session/compaction.rs`), unchanged except for its neighbours. A 403 whose body says "usage limit reached" paints `Request denied (403): invalid_request_error: usage limit reached` on both versions (`*/07-err-403-usage`).
@@ -66,4 +66,4 @@ At 120 columns only:
 - Grok's own 401 text has no status code and matches no auth pattern (`07-err-401`).
 - The 500 retry line ends in ASCII `...` and does not read busy (`07-err-500`).
 - A 403 "usage limit" body is not classified (`07-err-403-usage`).
-- The runtime "Yes, always" net matches neither version's approval card (`20-approval`). It is a net only: AgEnD launches with `--always-approve`.
+- The runtime "Yes, always" net matches neither version's approval card (`20-approval`). It is a net only: AgEnD's default launch passes `--always-approve`; with `skipPermissions: false` the card is reachable and the person answers it.
