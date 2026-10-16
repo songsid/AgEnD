@@ -6,7 +6,7 @@ import { onPrefsChanged, prefInForce } from "/assets/app-prefs.js";
 import { resolvedMode, themesStore } from "/assets/app-themes.js";
 import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
 import { constrainedDevice } from "/assets/effect-policy.js";
-import { createChatEffectRuntime, chatEffectState } from "/assets/effect-chat-runtime.js";
+import { createChatEffectRuntime, chatEffectState, chatEffectIdentity } from "/assets/effect-chat-runtime.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { navigate } from "/assets/app-nav.js";
 import { toast } from "/assets/ui-toast.js";
@@ -15,6 +15,9 @@ register("chatFx", {
   en: { title: "Effects", loading: "Checking effects…", empty: "No effects in this chat.", failed: "Effects stopped because their resources could not be verified. Reload the page to try again.", reload: "Reload page", pause: "Pause", resume: "Resume", remove: "Remove from chat", removeFailed: "Could not remove this effect. Reload the page to check its state.", css: "Agent foreground effects are paused while your custom CSS is on or cannot be verified.", setting: "Open Appearance settings", running: "Running", starting: "Starting", off: "Stopped", resumeFailed: "This effect cannot resume: the page or its safety history is not ready. Reload the page or choose another effect.", queued: "Waiting for a slot", unknown: "Playback is off or unavailable here.", budget: "Paused to protect page responsiveness. Resume keeps the three-pauses safety limit.", paused: "Paused", low: "Reduced quality" },
   "zh-TW": { title: "效果", loading: "正在確認效果…", empty: "這個聊天沒有放置效果。", failed: "無法確認效果資源，已停止播放。重新載入頁面後再試。", reload: "重新載入頁面", pause: "暫停", resume: "恢復", remove: "從聊天移除", removeFailed: "無法移除效果。請重新載入頁面確認狀態。", css: "自訂 CSS 開啟或無法確認時，代理的前景效果會暫停。", setting: "開啟外觀設定", running: "播放中", starting: "啟動中", off: "已停止", resumeFailed: "頁面或安全紀錄尚未就緒，無法恢復此效果。請重新載入頁面，或選擇其他效果。", queued: "等待空位", unknown: "這裡已關閉播放，或無法播放效果。", budget: "為維持頁面順暢，已暫停效果。恢復仍保留三次暫停的安全上限。", paused: "已暫停", low: "降低畫質" },
 });
+
+/** Local read/admin sessions keep controls; public, View, poll and header-only pages have no runtime identity. */
+export function chatEffectsMenuAvailable() { return chatEffectIdentity(window) !== null; }
 
 export function ChatEffects({ name, lease, element, store, open, onClose }) {
   const cssLife = useStore(ownerCssLifecycle);

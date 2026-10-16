@@ -204,8 +204,9 @@ from being collected until cleared. This is deliberately stricter than chat plac
 a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
 placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
 
-Owner selectors are available in Settings → Appearance; saving does not start playback. Product playback is still
-being connected separately. Before mounting, the host must prove stock content
+Owner selectors are available in Settings → Appearance; saving a personal choice does not start playback.
+Local signed-in Chat can play its placed effects after preview opt-in; personal regions/cursor and Try are still
+being connected separately. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of
@@ -215,6 +216,19 @@ Visible menus, dialogs, Keep/tour notices and focused inputs suppress all foregr
 does not bypass those host safety gates. Unknown stock layout refuses admission. A trusted foreground plane is
 deferred to #1940; do not keep reapplying an agent front while custom CSS is on, loading or unknown.
 
+
+## Static Chat fallback
+
+When preview is unavailable, consent is missing, motion/data settings prevent playback, or the page is a public link,
+a current chat placement with a poster can show its static PNG **behind** the content; a front declaration does not
+make its poster foreground. No poster means nothing is drawn. Safe mode and the viewer's show switch hide posters
+too; unknown stock ordering refuses paint. Explicit Pause, queued effects and a failed live read are not replaced by
+this surface fallback. A failed static read/decode stops its poster pool until a changed revision or page reload;
+there is no automatic network retry. The public link offers no Effects playback controls or Worker code.
+
+The public-link show switch is this browser's choice, kept separately from boot-cached host defaults; it never writes
+a host preference. The ordinary signed-in switch keeps its existing host preference. Do not depend on decoration to
+carry an important message.
 
 ## Effect event availability
 

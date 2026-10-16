@@ -181,8 +181,25 @@ describe("the chat's states", () => {
       return labels;
     };
     // #1629: a person's Lock and Reset of the agent's web theme, before Delete (still last).
-    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Lock theme", "Reset theme…", "Effects", "Delete instance…"]);
-    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Lock theme", "Reset theme…", "Effects", "Delete instance…"]);
+    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Lock theme", "Reset theme…", "Delete instance…"]);
+    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Lock theme", "Reset theme…", "Delete instance…"]);
+  });
+
+  it.each(["person", "operator", "public", "poll", "header", "bad-epoch", "view"])("Effects controls follow the actual local runtime identity: %s", async kind => {
+    const before = p.document.documentElement.getAttribute("data-prefs"), old = { ...p.document.body.dataset };
+    try {
+      p.document.body.dataset.mode = kind === "view" ? "view-only" : "full";
+      p.document.body.dataset.publicLink = kind === "public" ? "1" : "0";
+      p.document.body.dataset.webTransport = kind === "poll" ? "poll" : "sse";
+      p.document.documentElement.setAttribute("data-prefs", JSON.stringify({ ownerScope: kind === "operator" ? "operator" : kind === "header" ? "none" : "person", ownerEpoch: kind === "bad-epoch" ? "bad" : "a".repeat(16) }));
+      await mountChat("alpha"); p.root.querySelector(".panel-head .menu > button").click(); await settle();
+      const labels = p.root.querySelectorAll(".menu-item").map((b: any) => b.textContent);
+      expect(labels.includes("Effects")).toBe(["person", "operator"].includes(kind));
+    } finally {
+      await p.unmount();
+      for (const key of Object.keys(p.document.body.dataset)) delete p.document.body.dataset[key]; Object.assign(p.document.body.dataset, old);
+      if (before === null) p.document.documentElement.removeAttribute("data-prefs"); else p.document.documentElement.setAttribute("data-prefs", before);
+    }
   });
 
   it("the composer's control is 'Stop reply', shown only while the agent works; Send hides then unless there is something to send", async () => {
