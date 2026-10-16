@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -377,6 +377,61 @@ describe("stage, then commit", () => {
   });
 });
 
+describe("#1897 review: commit checks the state it was consented for, and undoes everything", () => {
+  it("the 20-mod cap holds at commit, not only at stage (21 people stage 21 mods first)", () => {
+    const s = setup();
+    const staged = Array.from({ length: 21 }, (_, i) => { const r = s.store.stage(`p${i}`, text(bundle({ manifest: { name: `m${i}` } }))); if (!r.ok) throw new Error("stage"); return r; });
+    staged.slice(0, 20).forEach((st, i) => expect(s.store.commit(`p${i}`, { stage: st.stage, plan_hash: st.plan_hash, include: { identity: true }, target: "alpha" }).ok, `#${i}`).toBe(true));
+    expect(s.store.commit("p20", { stage: staged[20]!.stage, plan_hash: staged[20]!.plan_hash, include: { identity: true }, target: "alpha" })).toMatchObject({ ok: false, status: 409, error: "mods_quota" });
+    expect(s.store.list().mods).toHaveLength(20);
+  });
+  it("two people replacing the same version: the second finds the plan changed (it would replace another version now)", () => {
+    const s = setup();
+    const v1 = s.store.stage("p", text(bundle()));
+    if (!v1.ok) throw new Error("stage");
+    s.store.commit("p", { stage: v1.stage, plan_hash: v1.plan_hash, include: { identity: true }, target: "alpha" });
+    const v2 = s.store.stage("P", text(bundle({ manifest: { version: "2.0.0" } }))), v3 = s.store.stage("Q", text(bundle({ manifest: { version: "3.0.0" } })));
+    if (!v2.ok || !v3.ok) throw new Error("stage");
+    expect(s.store.commit("P", { stage: v2.stage, plan_hash: v2.plan_hash, include: { identity: true, replace: true }, target: "alpha" })).toMatchObject({ ok: true });
+    expect(s.store.commit("Q", { stage: v3.stage, plan_hash: v3.plan_hash, include: { identity: true, replace: true }, target: "alpha" })).toMatchObject({ ok: false, status: 409, error: "plan_changed" });
+    expect(s.store.list().mods.map(m => m.version)).toEqual(["2.0.0"]);
+  });
+  it("two people installing two versions of a new name: the second must review it as a replacement", () => {
+    const s = setup();
+    const a = s.store.stage("P", text(bundle({ manifest: { version: "1.0.0" } }))), b = s.store.stage("Q", text(bundle({ manifest: { version: "1.1.0" } })));
+    if (!a.ok || !b.ok) throw new Error("stage");
+    expect(s.store.commit("P", { stage: a.stage, plan_hash: a.plan_hash, include: { identity: true }, target: "alpha" }).ok).toBe(true);
+    expect(s.store.commit("Q", { stage: b.stage, plan_hash: b.plan_hash, include: { identity: true }, target: "alpha" })).toMatchObject({ ok: false, status: 409, error: "plan_changed" });
+    const again = s.store.stage("Q", text(bundle({ manifest: { version: "1.1.0" } })));
+    expect(again.ok && again.plan.mod.replaces?.version).toBe("1.0.0");
+  });
+  it("a participant that throws (a real filesystem failure) is undone like one that answers an error", () => {
+    const s = setup();
+    s.themes.setTheme("alpha", { v: 1, card: { tagline: "Before" } }, "agent");
+    writeFileSync(join(s.dir, "web-owner-css"), "not a directory");                 // the CSS store can't write: ENOTDIR
+    const st = s.store.stage("p", text(bundle()));
+    if (!st.ok) throw new Error("stage");
+    const r = s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { identity: true, ownerCss: true }, target: "alpha" });
+    expect(r).toMatchObject({ ok: false, status: 503, error: "mod_apply_failed" });
+    expect([s.themes.get("alpha").theme.card, s.store.list().mods]).toEqual([{ tagline: "Before" }, []]);
+  });
+  it("custom CSS undo restores what was there: a trial already running, and a kept version (controls)", () => {
+    for (const keptBefore of [false, true]) {
+      const s = setup();
+      const blue = s.css.save("p", "a { color: blue }");
+      if (!blue.ok) throw new Error("save");
+      if (keptBefore) expect(s.css.keep("p", blue.trial).ok).toBe(true);
+      const before = s.css.state("p");
+      const st = s.store.stage("p", text(bundle({ files: { "css/custom.css": file("a { color: red }") } })));
+      if (!st.ok) throw new Error("stage");
+      mkdirSync(join(s.dir, "web-mods.json"));                                        // the final index write fails
+      expect(s.store.commit("p", { stage: st.stage, plan_hash: st.plan_hash, include: { ownerCss: true } })).toMatchObject({ ok: false, status: 503 });
+      const after = s.css.state("p");
+      expect([after.active, after.text, after.pending?.id ?? null, after.versions.map(v => v.sha)], keptBefore ? "kept" : "on trial").toEqual([before.active, "a { color: blue }", before.pending?.id ?? null, before.versions.map(v => v.sha)]);
+    }
+  });
+});
+
 describe("effects, replace and uninstall (the library under the mod's own holder)", () => {
   const fx = (version = "1.0.0", worker = "agend.ready()") => bundle({ manifest: { version }, files: { "effects/snow/effect.json": file(JSON.stringify(EFFECT)), "effects/snow/worker.js": file(worker),
     "theme.json": file(JSON.stringify({ v: 1, accent: "#8b5cf6", background: { image: "pictures/bg.png", fit: "cover", opacity: 0.4 }, avatar: "pictures/me.png", effects: [{ effect: "effects/snow", params: { count: 4 } }] })) },
@@ -555,6 +610,17 @@ describe("the routes", () => {
       expect([un.status, f.fm.mods.list().mods]).toEqual([200, []]);
     } finally { await f.stop(); }
   }, 30_000);
+  it("export uses the importer's title rule: U+034F alone is refused (400), a plain title round-trips (#1897 review)", async () => {
+    const f = await fleet();
+    try {
+      f.fm.themeStore.setTheme("alpha", { v: 1, accent: "#8b5cf6" }, "agent");
+      const go = (title: string) => raw(f.port, "POST", "/ui/mods/export", f.session().write, JSON.stringify({ instance: "alpha", name: "t", version: "1.0.0", title, include: { theme: true } }));
+      const bad = await go("\u034f");
+      expect([bad.status, JSON.parse(bad.body).error]).toEqual([400, "title"]);
+      const ok = await go("Night");
+      expect([ok.status, B.checkModBundle(ok.body, ctx()).ok]).toEqual([200, true]);
+    } finally { await f.stop(); }
+  }, 30_000);
   it("a read-only session can't write; the CLI's header token can't reach mods at all; anonymous 401", async () => {
     const f = await fleet();
     try {
@@ -607,6 +673,86 @@ describe("the page: the Mods card", () => {
         expect(pg.root.textContent, expected).toContain(expected);
       }
     } finally { vi.unstubAllGlobals(); pg.restore(); }
+  });
+});
+
+describe("the page: a plan's choices belong to its stage (#1897 review)", () => {
+  const planOf = (stage: string, css = true) => ({ stage, plan_hash: `h-${stage}`, plan: { mod: { id: stage.repeat(32).slice(0, 32), name: `m-${stage}`, version: "1.0.0", title: `Mod ${stage}`, bytes: 10, installed: false },
+    items: [{ part: "identity", tagline: "x" }, ...(css ? [{ part: "ownerCss", text: `/* ${stage} */`, assets: [] }] : [])], needs_target: true, warnings: [] } });
+  async function mountCard(script: (url: string, body: string) => { status?: number; body: unknown }) {
+    const { page, settle } = await import("./helpers/app-harness.js");
+    vi.resetModules();
+    const pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+    const calls: Array<[string, string]> = [];
+    vi.stubGlobal("fetch", async (url: string, init: { body?: string } = {}) => { calls.push([url, init.body ?? ""]); const r = script(url, init.body ?? ""); return { ok: (r.status ?? 200) < 400, status: r.status ?? 200, json: async () => r.body }; });
+    const P = await import("/assets/app-html.js");
+    const { appStore } = await import("/assets/app-store.js");
+    appStore.set({ instances: [{ name: "alpha", status: "running" }], exec: { alpha: "working" }, awaiting: {} });
+    const { ModsCard } = await import("/ui/js/settings-mods.js");
+    const { Toasts } = await import("/assets/ui-toast.js");
+    P.render(P.h("div", null, P.h(ModsCard, {}), P.h(Toasts, {})), pg.root); await settle(); await settle();
+    const tickCss = () => { const box = [...pg.root.querySelectorAll(".s-mod-tick")].find((l: any) => l.textContent.includes("Custom CSS"))!.querySelector("input") as any; box.checked = true; box.dispatchEvent(new (globalThis as any).Event("change", { bubbles: true })); };
+    const cssTicked = () => ([...pg.root.querySelectorAll(".s-mod-tick")].find((l: any) => l.textContent.includes("Custom CSS"))!.querySelector("input") as any).checked;
+    return { pg, settle, calls, tickCss, cssTicked };
+  }
+  it("a stage replaced on another device: a failed Cancel says so; the new stage starts unticked, and Install never carries the old consent", async () => {
+    let staged = planOf("a");
+    const t = await mountCard((url) => url === "/ui/mods" ? { body: { mods: [], staged, proposals: [] } } : url === "/ui/mods/abort" ? { status: 404, body: { error: "unknown_stage" } } : { body: { id: "x", applied: [] } });
+    try {
+      t.tickCss(); await t.settle();
+      expect(t.cssTicked()).toBe(true);
+      staged = planOf("b");                                                    // device B staged another file meanwhile
+      (t.pg.root.querySelector(".s-mod-plan .btn:not(.btn-primary)") as any).click(); await t.settle(); await t.settle();
+      expect(t.pg.root.querySelector(".s-mod-plan h4")!.textContent).toContain("Mod b");
+      expect(t.cssTicked(), "B's custom CSS is not ticked").toBe(false);
+      expect(t.pg.root.textContent).toContain("That import was replaced");
+      const sel = t.pg.root.querySelector(".s-mod-plan select") as any; sel.value = "alpha"; sel.dispatchEvent(new (globalThis as any).Event("change", { bubbles: true })); await t.settle();
+      (t.pg.root.querySelector(".s-mod-plan .btn-primary") as any).click(); await t.settle();
+      const commit = t.calls.find(([u]) => u === "/ui/mods/commit")!;
+      expect(JSON.parse(commit[1])).toMatchObject({ stage: "b", include: { ownerCss: false } });
+    } finally { vi.unstubAllGlobals(); t.pg.restore(); }
+  });
+  it("control: an Install the host refuses for another reason keeps this stage's choices", async () => {
+    const t = await mountCard((url) => url === "/ui/mods" ? { body: { mods: [], staged: planOf("a"), proposals: [] } } : { status: 400, body: { error: "target" } });
+    try {
+      t.tickCss(); await t.settle();
+      const sel = t.pg.root.querySelector(".s-mod-plan select") as any; sel.value = "alpha"; sel.dispatchEvent(new (globalThis as any).Event("change", { bubbles: true })); await t.settle();
+      (t.pg.root.querySelector(".s-mod-plan .btn-primary") as any).click(); await t.settle(); await t.settle();
+      expect([t.cssTicked(), t.calls.filter(([u]) => u === "/ui/mods").length]).toEqual([true, 1]);
+    } finally { vi.unstubAllGlobals(); t.pg.restore(); }
+  });
+  it("the theme is shown whole: both palettes, bubbles, label, background fit and opacity, the pictures themselves, effect placements", async () => {
+    const { page, settle } = await import("./helpers/app-harness.js");
+    vi.resetModules();
+    const pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+    try {
+      const P = await import("/assets/app-html.js");
+      await import("/ui/js/settings-strings.js");
+      const { ThemeDetail } = await import("/ui/js/settings-mods.js");
+      const BG = "b".repeat(32), AV = "c".repeat(32);
+      P.render(P.h(ThemeDetail, { theme: { v: 1, colors: { light: { bg: "#fafafa" }, dark: { text: "#eeeeee", agentBubble: "#222222" } }, bubble: { radius: 6, border: "accent" }, workingLabel: "Pondering",
+        background: { image: BG, fit: "contain", opacity: 0.35 }, avatar: AV }, pictures: [{ path: "p/bg.png", slot: "background", id: BG, bytes: 2048 }, { path: "p/me.png", slot: "avatar", id: AV, bytes: 1024 }],
+        effects: [{ effect: "effects/snow", id: "d".repeat(32), params: { count: 4 } }] }), pg.root); await settle();
+      // Each field in its own labelled row (the raw view below repeats them, so it can't stand in for a row).
+      const rows = [...pg.root.querySelectorAll(".s-mod-kv")].map((r: any) => r.textContent.replace(/\s+/g, " ").trim());
+      for (const v of ["Light coloursbg #fafafa", "Dark colourstext #eeeeeeagentBubble #222222", "Bubbles6px · accent", "Working labelPondering", "Background fit and opacitycontain · 35%",
+        "Background picturep/bg.png · 2 KiB", "Picture (face)p/me.png · 1 KiB", 'Places effecteffects/snow dddddddd · {"count":4}']) expect(rows, v).toContain(v);
+      expect([...pg.root.querySelectorAll(".s-mod-pic img")].map((i: any) => i.getAttribute("src"))).toEqual([`/ui/mods/staged/${BG}`, `/ui/mods/staged/${AV}`]);
+      expect(pg.root.querySelector("[style]"), "colours through the CSSOM (#1300), never a style= in the markup").toBeNull();
+    } finally { pg.restore(); }
+  });
+  it("an agent widget previews with the chosen agent's values; the sidebar keeps the fleet's", async () => {
+    const st = planOf("a", false);
+    (st.plan.items as unknown[]).push({ part: "widget", slot: "chat_header", spec: { v: 1, title: "S", items: [{ type: "badge", label: "State", bind: "state" }] }, data: {} },
+      { part: "widget", slot: "sidebar", spec: { v: 1, title: "F", items: [{ type: "stat", label: "Working", bind: "fleet.working" }] }, data: {} });
+    const t = await mountCard((url) => url === "/ui/mods" ? { body: { mods: [], staged: st, proposals: [] } } : { body: {} });
+    try {
+      const badge = () => t.pg.root.querySelector(".aw-chat_header .aw-badge")!.textContent;
+      expect(badge(), "no agent chosen yet").toBe("—");
+      const sel = t.pg.root.querySelector(".s-mod-plan select") as any; sel.value = "alpha"; sel.dispatchEvent(new (globalThis as any).Event("change", { bubbles: true })); await t.settle();
+      expect(badge()).toBe("working");
+      expect(t.pg.root.querySelector(".aw-sidebar .aw-value")!.textContent).toBe("1");
+    } finally { vi.unstubAllGlobals(); t.pg.restore(); }
   });
 });
 

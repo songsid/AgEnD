@@ -21,8 +21,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { MEDIA_MIME } from "./web-image-meta.js";
 import { canonicalJson, type CheckedMod, checkModBundle, type EffectFiles, type ModContext, type ModProblem } from "./web-mod-bundle.js";
 import type { ThemeStore } from "./web-theme-store.js";
+import type { OwnerCssSnapshot } from "./web-owner-css-store.js";
 import { AGENT_WIDGET_SLOTS, type AgentWidgetSlot } from "./web-widget.js";
 
 export const MOD_STAGE_MS = 10 * 60 * 1000;
@@ -51,11 +53,10 @@ export interface ModPrefs {
 }
 /** A person's own CSS (web-owner-css-store.ts), as the import adds its assets and tries its text. */
 export interface ModOwnerCss {
-  state(person: string): { assets: Array<{ id: string }> };
+  snapshot(person: string): OwnerCssSnapshot;
+  restoreSnapshot(person: string, snap: OwnerCssSnapshot): { ok: boolean };
   addAsset(person: string, bytes: Uint8Array): { ok: true; id: string } | { ok: false; status: number; error: string; detail?: string };
-  removeAsset(person: string, id: string): { ok: true } | { ok: false };
   save(person: string, text: unknown): { ok: true; sha: string; previous: string | null; trial: string } | { ok: false; status: number; error: string; detail?: string };
-  revertTrial(person: string, trial: unknown): { ok: true } | { ok: false };
 }
 
 export interface ModRecord {
@@ -256,6 +257,12 @@ export class ModStore {
     const s = this.stages.get(person);
     return s ? { stage: s.id, plan: s.plan, plan_hash: s.planHash, expires_in_s: Math.max(0, Math.ceil((MOD_STAGE_MS - (this.clock() - s.at)) / 1000)) } : null;
   }
+  /** A picture of this person's staged mod (its theme's), so the plan can show it before anything is applied. */
+  stagedPicture(person: string, id: string): { bytes: Uint8Array; mime: string } | null {
+    this.sweep();
+    const p = this.stages.get(person)?.mod.theme?.pictures.find(x => x.id === id);
+    return p ? { bytes: p.kept, mime: MEDIA_MIME[p.kind] } : null;
+  }
   abort(person: string, stage: unknown): ModWrite {
     const s = this.stages.get(person);
     if (!s || s.id !== stage) return { ok: false, status: 404, error: "unknown_stage" };
@@ -328,109 +335,125 @@ export class ModStore {
     const idx = this.load();
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     const replaces = s.plan.mod.replaces;
+    // What was installed may have moved since this plan was staged (another person's import, an uninstall): the plan
+    // — and so the consent — is for the state it showed. Checked again here, before anything is changed.
+    const sameName = [...idx.mods].find(([id, r]) => r.name === mod.manifest.name && id !== mod.id);
+    if ((sameName?.[0] ?? null) !== (replaces?.id ?? null) || idx.mods.has(mod.id) !== s.plan.mod.installed) {
+      return { ok: false, status: 409, error: "plan_changed", detail: "the installed mods changed since this file was checked: import it again" };
+    }
     if (replaces && !include.replace) return { ok: false, status: 409, error: "replaces", detail: `version ${replaces.version} of ${mod.manifest.name} is installed: confirm replace` };
+    if (!idx.mods.has(mod.id)) {
+      const others = [...idx.mods].filter(([id]) => id !== replaces?.id).map(([, r]) => r);
+      if (others.length + 1 > MODS_MAX_INSTALLED) return { ok: false, status: 409, error: "mods_quota", detail: `at most ${MODS_MAX_INSTALLED} installed` };
+      if (others.reduce((n, r) => n + r.bytes, 0) + mod.bytes > MODS_MAX_BYTES) return { ok: false, status: 409, error: "mods_quota", detail: `at most ${MODS_MAX_BYTES / 1024 / 1024} MiB installed` };
+    }
 
     const undo: Array<() => void> = [];
     const rollback = (status: number, error: string, detail?: string): ModWrite<never> => {
       for (const u of undo.reverse()) { try { u(); } catch { /* best effort: each step undoes its own */ } }
       return { ok: false, status, error, ...(detail ? { detail } : {}) };
     };
-    const applied: string[] = [];
-    let created: string[] = [];
-    let effectIds = new Map<string, string>();
-    if (want.effects && s.effects && this.deps.effects) {
-      const r = this.deps.effects.commit(s.effects.stageId);
-      if (!r.ok) return rollback(409, "effects_refused", r.error);
-      undo.push(() => { r.undo(); });
-      created = r.created;
-      effectIds = new Map(mod.effects.map((e, i) => [e.path, r.ids[i]!]));
-      applied.push("effects");
-    }
-    let finalize: (() => void) | null = null;
-    if (target) {
-      const t = mod.theme;
-      const w = this.deps.themes.applyLook(target, {
-        ...(want.theme && t ? { theme: t.theme } : {}),
-        ...(want.identity && mod.identity ? { identity: mod.identity } : {}),
-        pictures: want.theme && t ? t.pictures.map(p => ({ slot: p.slot, id: p.id, kind: p.kind, kept: p.kept })) : [],
-        widgets: Object.fromEntries(want.widgets.map(slot => [slot, mod.widgets[slot]!])),
-        ...(want.theme && t && t.effects.length ? { effects: t.effects.map(e => ({ id: effectIds.get(e.effect)!, params: e.params })) } : {}),
-      }, "human");
-      if (!w.ok) return rollback(w.status, w.error, w.detail);
-      undo.push(() => { w.undo(); });
-      finalize = w.finalize;
-      if (want.theme) applied.push("theme");
-      if (want.identity) applied.push("identity");
-      for (const slot of want.widgets) applied.push(`widget:${slot}`);
-    }
-    if (want.sidebar) {
-      const who = this.deps.prefsIdentity;
-      const before = this.deps.prefs.read(who);
-      if (before.unreadable) return rollback(503, "prefs_unreadable");
-      const had = Object.hasOwn(before.values, "widget.sidebar") ? before.values["widget.sidebar"] : null;
-      const w = this.deps.prefs.write(who, new Map([["widget.sidebar", mod.widgets.sidebar]]));
-      if (!w.ok) return rollback(w.status, w.error);
-      undo.push(() => { this.deps.prefs.write(who, new Map([["widget.sidebar", had]])); });
-      applied.push("widget:sidebar");
-    }
-    let css: { trial: string; sha: string; previous: string | null } | undefined;
-    if (want.ownerCss && mod.ownerCss && this.deps.ownerCss) {
-      const store = this.deps.ownerCss;
-      const had = new Set(store.state(person).assets.map(a => a.id));
-      for (const a of mod.ownerCss.assets) {
-        const r = store.addAsset(person, a.kept);
-        if (!r.ok) return rollback(r.status, r.error, r.detail);
-        if (r.id !== a.id) return rollback(500, "owner_css_asset_id", `${a.path}: ${r.id} ≠ ${a.id}`);
-        if (!had.has(r.id)) { had.add(r.id); undo.push(() => { store.removeAsset(person, r.id); }); }
-      }
-      const saved = store.save(person, mod.ownerCss.text);
-      if (!saved.ok) return rollback(saved.status, saved.error, saved.detail);
-      undo.push(() => { store.revertTrial(person, saved.trial); });
-      css = { trial: saved.trial, sha: saved.sha, previous: saved.previous };
-      applied.push("ownerCss");
-    }
-
-    // The index: this mod in, the one it replaces out. The old mod's effect claim is released LAST (below): one library
-    // write per rollback chain, so the new commit's undo always meets the exact state it left (CW1, agreed with Sol).
-    const mods = new Map(idx.mods);
-    const old = replaces ? mods.get(replaces.id) : undefined;
-    if (replaces) mods.delete(replaces.id);
-    const prev = mods.get(mod.id);
-    mods.set(mod.id, {
-      name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes,
-      installedBy: prev?.installedBy ?? person, installedAt: prev?.installedAt ?? this.now(),
-      ...(target ? { target } : prev?.target ? { target: prev.target } : {}),
-      parts: [...new Set([...(prev?.parts ?? []), ...applied])],
-      effects: mod.effects.map(e => ({ path: e.path, id: effectIds.get(e.path) ?? prev?.effects.find(x => x.path === e.path)?.id ?? "" })).filter(e => e.id),
-      created: [...new Set([...(prev?.created ?? []), ...created])],
-    });
+    // Everything below either completes or is undone: a participant that throws (a real filesystem failure) is caught
+    // here, inside the rollback boundary, as one that answers with an error.
     try {
-      mkdirSync(join(this.dataDir, "web-mods"), { recursive: true, mode: 0o700 });
-      if (!prev) atomicWriteFileSync(this.file(mod.id), s.text, { mode: 0o600 });
-    } catch (err) { return rollback(503, "mods_write_failed", (err as Error).message); }
-    if (!prev) undo.push(() => { try { unlinkSync(this.file(mod.id)); } catch { /* none */ } });
-    // A reviewed proposal is done once installed (the same write).
-    let proposals: Map<string, ModProposal> | undefined;
-    if (s.proposal !== undefined && idx.proposals.get(s.proposal)?.id === mod.id) { proposals = new Map(idx.proposals); proposals.delete(s.proposal); }
-    const w = this.commitIndex(mods, proposals);
-    if (!w.ok) return rollback(w.status, w.error, w.detail);
-    undo.push(() => { this.commitIndex(idx.mods, idx.proposals); });
-    // The last fallible step: the replaced mod's effect claim. Refused: every store above is restored first, then the
-    // new library commit is undone (rollback runs in reverse). Released: nothing fallible follows.
-    let releasedOld: string[] = [];
-    if (replaces && old && old.effects.length && this.deps.effects) {
-      const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.installedBy });
-      if (!r.ok) return rollback(409, "effects_release_refused", r.error);
-      releasedOld = r.released;
-    }
-    if (proposals) { try { unlinkSync(this.proposalFile(s.proposal!)); } catch { /* already gone */ } }
-    // Held: what the import replaced may go now, and the stage is done.
-    finalize?.();
-    if (replaces) { try { unlinkSync(this.file(replaces.id)); } catch { /* already gone */ } }
-    if (releasedOld.length) this.deps.effects?.collectUnreferenced?.(releasedOld);
-    if (s.effects && !want.effects) this.deps.effects?.abort(s.effects.stageId);   // staged, not chosen: let it go
-    this.stages.delete(person);
-    return { ok: true, id: mod.id, applied, ...(css ? { css } : {}) };
+      const applied: string[] = [];
+      let created: string[] = [];
+      let effectIds = new Map<string, string>();
+      if (want.effects && s.effects && this.deps.effects) {
+        const r = this.deps.effects.commit(s.effects.stageId);
+        if (!r.ok) return rollback(409, "effects_refused", r.error);
+        undo.push(() => { r.undo(); });
+        created = r.created;
+        effectIds = new Map(mod.effects.map((e, i) => [e.path, r.ids[i]!]));
+        applied.push("effects");
+      }
+      let finalize: (() => void) | null = null;
+      if (target) {
+        const t = mod.theme;
+        const w = this.deps.themes.applyLook(target, {
+          ...(want.theme && t ? { theme: t.theme } : {}),
+          ...(want.identity && mod.identity ? { identity: mod.identity } : {}),
+          pictures: want.theme && t ? t.pictures.map(p => ({ slot: p.slot, id: p.id, kind: p.kind, kept: p.kept })) : [],
+          widgets: Object.fromEntries(want.widgets.map(slot => [slot, mod.widgets[slot]!])),
+          ...(want.theme && t && t.effects.length ? { effects: t.effects.map(e => ({ id: effectIds.get(e.effect)!, params: e.params })) } : {}),
+        }, "human");
+        if (!w.ok) return rollback(w.status, w.error, w.detail);
+        undo.push(() => { w.undo(); });
+        finalize = w.finalize;
+        if (want.theme) applied.push("theme");
+        if (want.identity) applied.push("identity");
+        for (const slot of want.widgets) applied.push(`widget:${slot}`);
+      }
+      if (want.sidebar) {
+        const who = this.deps.prefsIdentity;
+        const before = this.deps.prefs.read(who);
+        if (before.unreadable) return rollback(503, "prefs_unreadable");
+        const had = Object.hasOwn(before.values, "widget.sidebar") ? before.values["widget.sidebar"] : null;
+        const w = this.deps.prefs.write(who, new Map([["widget.sidebar", mod.widgets.sidebar]]));
+        if (!w.ok) return rollback(w.status, w.error);
+        undo.push(() => { this.deps.prefs.write(who, new Map([["widget.sidebar", had]])); });
+        applied.push("widget:sidebar");
+      }
+      let css: { trial: string; sha: string; previous: string | null } | undefined;
+      if (want.ownerCss && mod.ownerCss && this.deps.ownerCss) {
+        const store = this.deps.ownerCss;
+        // Undo puts back exactly what was there — the version in force, a trial already running, history and assets —
+        // never just "revert the trial this import started" (#1897 review).
+        const snap = store.snapshot(person);
+        undo.push(() => { store.restoreSnapshot(person, snap); });
+        for (const a of mod.ownerCss.assets) {
+          const r = store.addAsset(person, a.kept);
+          if (!r.ok) return rollback(r.status, r.error, r.detail);
+          if (r.id !== a.id) return rollback(500, "owner_css_asset_id", `${a.path}: ${r.id} ≠ ${a.id}`);
+        }
+        const saved = store.save(person, mod.ownerCss.text);
+        if (!saved.ok) return rollback(saved.status, saved.error, saved.detail);
+        css = { trial: saved.trial, sha: saved.sha, previous: saved.previous };
+        applied.push("ownerCss");
+      }
+
+      // The index: this mod in, the one it replaces out. The old mod's effect claim is released LAST (below): one library
+      // write per rollback chain, so the new commit's undo always meets the exact state it left (CW1, agreed with Sol).
+      const mods = new Map(idx.mods);
+      const old = replaces ? mods.get(replaces.id) : undefined;
+      if (replaces) mods.delete(replaces.id);
+      const prev = mods.get(mod.id);
+      mods.set(mod.id, {
+        name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes,
+        installedBy: prev?.installedBy ?? person, installedAt: prev?.installedAt ?? this.now(),
+        ...(target ? { target } : prev?.target ? { target: prev.target } : {}),
+        parts: [...new Set([...(prev?.parts ?? []), ...applied])],
+        effects: mod.effects.map(e => ({ path: e.path, id: effectIds.get(e.path) ?? prev?.effects.find(x => x.path === e.path)?.id ?? "" })).filter(e => e.id),
+        created: [...new Set([...(prev?.created ?? []), ...created])],
+      });
+      try {
+        mkdirSync(join(this.dataDir, "web-mods"), { recursive: true, mode: 0o700 });
+        if (!prev) atomicWriteFileSync(this.file(mod.id), s.text, { mode: 0o600 });
+      } catch (err) { return rollback(503, "mods_write_failed", (err as Error).message); }
+      if (!prev) undo.push(() => { try { unlinkSync(this.file(mod.id)); } catch { /* none */ } });
+      // A reviewed proposal is done once installed (the same write).
+      let proposals: Map<string, ModProposal> | undefined;
+      if (s.proposal !== undefined && idx.proposals.get(s.proposal)?.id === mod.id) { proposals = new Map(idx.proposals); proposals.delete(s.proposal); }
+      const w = this.commitIndex(mods, proposals);
+      if (!w.ok) return rollback(w.status, w.error, w.detail);
+      undo.push(() => { this.commitIndex(idx.mods, idx.proposals); });
+      // The last fallible step: the replaced mod's effect claim. Refused: every store above is restored first, then the
+      // new library commit is undone (rollback runs in reverse). Released: nothing fallible follows.
+      let releasedOld: string[] = [];
+      if (replaces && old && old.effects.length && this.deps.effects) {
+        const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.installedBy });
+        if (!r.ok) return rollback(409, "effects_release_refused", r.error);
+        releasedOld = r.released;
+      }
+      if (proposals) { try { unlinkSync(this.proposalFile(s.proposal!)); } catch { /* already gone */ } }
+      // Held: what the import replaced may go now, and the stage is done.
+      finalize?.();
+      if (replaces) { try { unlinkSync(this.file(replaces.id)); } catch { /* already gone */ } }
+      if (releasedOld.length) this.deps.effects?.collectUnreferenced?.(releasedOld);
+      if (s.effects && !want.effects) this.deps.effects?.abort(s.effects.stageId);   // staged, not chosen: let it go
+      this.stages.delete(person);
+      return { ok: true, id: mod.id, applied, ...(css ? { css } : {}) };
+    } catch (err) { return rollback(503, "mod_apply_failed", (err as Error).message); }
   }
 
   /** Remove an installed mod from the library: its effect claim, its file and its entry. What it applied stays. */
