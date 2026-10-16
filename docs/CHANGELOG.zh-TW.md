@@ -6,6 +6,792 @@
 
 ## [未發佈] (Unreleased)
 
+## [2.2.0] - 2026-10-16
+
+### 升級注意事項 (Upgrade Notes)
+- **Kiro 升級恢復（#906、#1624、#1800）。** 恢復對話維持存檔時的 agent；AgEnD 不會自動輸入 /agent swap，也不會在後續啟動重試這項已暫停的切換。沒有身分或啟動紀錄的新 instance，只有在同伴目錄歸屬可確認安全時，才可能接手未認領的最新對話；衝突或歸屬不明會開新對話。對話認領會阻止其他 instance 使用同一 ID。未帶 fleet 標記的舊 steering 檔會保留並警告；請協調共用目錄的所有 fleet 後才手動移除。詳見 Kiro 升級恢復指南。
+- **[行為變更] `/view` 不再接受網址或文字框裡的 web token。** 以前儲存個人檔案、頭像與側欄順序，可以用整個 fleet 共用的 `web.token` 以 `?token=` 送出：`/dashboard` 的「View (edit)」連結會把它放進網址列，而 `view.html` 還會把它附加到**每一個** API 請求並存進 `localStorage`。現在寫入需要已登入的 session（與其他面板相同的 CSRF 檢查），或腳本使用 `X-Agend-Token`；`?token=` 不再被當成寫入憑證，token 輸入框已移除，Edit 會把未登入的訪客帶到登入頁再回來。**預設仍可公開讀取 `/view`**（包含即時終端畫面）；新增的 `web.view_access: session` 可要求讀取也要登入。沒有任何程式接受過的唯讀 `view.token` 檔不再寫入，舊檔會在啟動時刪除。
+- **[行為變更] 網頁面板改用一次性登入碼登入，dashboard 連結不再帶憑證。** `/dashboard` 以前會把整個 fleet 共用的 `web.token` 貼進 `/view?token=`、`/settings?token=`、`/ui?token=`：它會留在聊天紀錄、瀏覽器歷史與截圖裡，直到執行 `agend web-token rotate` 才失效。現在改給登入頁位址與一組 8 字元登入碼，只能用一次、5 分鐘過期；在登入頁輸入後會建立**伺服器端 session**（不透明的隨機 id，伺服器可以讓它過期、列出、撤銷；不再是 `sha256(web.token)` 那種每台裝置都相同、要到 rotate 才失效的 cookie）。**升級後每個人都要重新登入一次**，舊 cookie 不再被接受。Session 自登入起最多 12 小時、閒置 2 小時即結束，fleet 重啟後仍在，頁面上每個寫入動作也都需要每個 session 專屬的 `X-Agend-CSRF` 標頭與相符的 `Origin`。`/dashboard revoke`（Discord：`/dashboard` 選 `action: revoke`）讓所有瀏覽器登出；`agend web --code` 在主機上印出登入碼；`agend web-token rotate` 仍會一次殺掉所有 session。標頭 token（`X-Agend-Token`）維持不變，給 CLI 與腳本使用。**URL 裡的 `?token=` 在 `/ui` 與 `/settings` 上不再是憑證**：舊的 `?token=` 連結或書籤會開到登入頁——在那裡用 `agend web` 或 `/dashboard` 給的一次性登入碼登入一次即可。`agend web` 改為印出登入碼並開啟 `/signin`，不再開 token 連結。新的登入會通知 General topic（`web.notify_login: false` 可關閉）。
+- **第一次以 2.2 啟動時，會在 General 介紹網頁聊天一次（#1366）。** 每個聊天平台的 General 會收到一則簡短訊息：網頁聊天
+  是什麼、它和 topic 是同一段對話，以及用 `/dashboard` 登入。這會記在 `~/.agend/upgrade-notices.json`，之後不再重複；
+  還沒有地方張貼 fleet 通知的平台，等有了之後才會收到。傳送失敗的訊息會在下次啟動時再試。
+- **ClassicBot 允許清單空白時，改向 General 申請核准（#1418）。** 原本依賴省略或空白 `allowed_users`、`allowed_groups`、`allowed_guilds` 全開的 fleet，須透過 General 的「允許／允許＋設為管理員／忽略」按鈕核准新啟動，或明確加入授權。ClassicBot 管理員可直接啟動，既有已註冊頻道繼續運作。Telegram 私訊申請現在也有與群組相同的核准按鈕，並向申請者回報結果。「允許＋設為管理員」授予 ClassicBot 管理權限，不是 fleet admin。核准不會自動啟動 Agent，請再次 `/start`（Telegram 群組須由 ClassicBot 管理員使用 `/start@OurBot`）。Discord DM 仍不支援。請在 General 所屬 adapter 設定 fleet admin，以核准申請。
+- **AgEnD 執行時需 Node.js ^22.14.0 || ^23.6.0 || >=24**，才能使用 better-sqlite3 v13 的 Node-API 10。支援 bundled runtime 的平台通常不用更新 PATH Node，AgEnD 會使用私有 Node；沒有可用 bundled runtime 時，請先準備合格的系統 Node 再安裝。依來源版本遵循 2.2 升級指南；舊 updater 有先移除舊套件的失敗窗口。
+- **`better-sqlite3` 升級至 v13（N-API，`^13.0.3`）。** 原生 SQLite 綁定現在直接在 npm 套件中附帶各平台的預建 N-API 二進位檔案；安裝時不再需要另外從 GitHub 下載，也不需要編譯器。預建檔案在各 Node 版本之間保持 ABI 穩定，因此在 macOS 上安裝時不再需要 Xcode Command Line Tools。
+- 敏感 Settings 的 web Apply 現在是提案，不是已完成的寫入（#1423）。本機與公開 session 都需要 General 的 fleet admin，或 host 上的 `agend settings confirm <id>`。Header-token 自動化不能授權敏感修改。請處理 `202 pending_confirmation`，遺失回應時沿用 idempotency key，等待終態結果。拒絕／到期後須重新輸入 secret。Pending 只留在記憶體，重啟後需重提。首次 Setup 須經 host 確認，再明確按 Start；沒有可確認的 chat 路徑就要求 host 確認，絕不自動套用。
+- **從任何 2.1.x 升級，請用 `npm install -g @songsid/agend@<2.2 版本>`，再執行 `agend install`；不要用 `agend update` 或 `/update`（#1487）。**
+  - 2.1 的更新程式會*先*移除已安裝的 AgEnD，再安裝新版。之後的安裝只要因為任何原因失敗（AgEnD 2.2 拒絕安裝在你的主機，或網路、registry、proxy 出問題），就什麼都不剩，沒有 `agend` 指令。正在跑的 fleet 只能撐到下一次重啟或登入，之後服務就無法啟動。這在真的 Mac 上重現過，launchd 回報 `EX_CONFIG`。
+  - 直接用 `npm install -g` 沒有移除這一步；被拒絕時會保留你目前的版本。
+  - **如果已經發生了：** 執行 `npm install -g @songsid/agend@2.1.12`（或者等你的主機可以安裝時改裝 2.2 版本），再執行 `agend install`。你的資料目錄沒有被動到。
+  - 當安裝是由 2.1 的更新程式啟動時，AgEnD 2.2 的安裝拒絕訊息現在會用白話說明這件事，並附上這些指令。詳見 [升級到 2.2](upgrade-2.2.zh-TW.md)。
+- **沒有 bundled Node 的主機與舊 updater（#1488）。** 私有 runtime 涵蓋 Linux glibc 2.28+ 與 macOS 11+ 的 x64／arm64。其他平台缺少私有 runtime 時，需先準備合格的 PATH Node（^22.14.0、^23.6.0 或 >=24），再依 2.2 升級指南手動升級；直接 npm 安裝不會免除 runtime 要求。Alpine／musl 與非 systemd Linux 仍不支援。2.1.12 updater 先 unlink，後續安裝若被拒仍可能沒有 agend 指令。
+- **不支援 musl Linux（例如 Alpine）與沒有 systemd 的 Linux 主機。** 在 Node 22.14+ 上 AgEnD 也許還裝得起來，但沒有測試過，也不保證能用。如果還是要在這些環境上跑，[升級指南](upgrade-2.2.zh-TW.md#1-升級前)列了兩個處理方式：從 2.1.x 更新後，刪掉 `~/.config/systemd/user/com.agend.fleet.service` 再執行 `agend start`；以及 `apk add procps`，讓 `agend update` 讀得到行程啟動時間。(#1912)
+
+### 新增 (Added)
+- **`delivery_status` 現在會顯示 CLI 真正取用 steer 的時間，而不只是「已收下」（#1201）。** steer，或交給忙碌中 CLI 自己佇列的訊息，早在模型讀到之前就被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。AgEnD 現在從投遞開始的位置追蹤 CLI 的 transcript（claude-code、codex）：
+  - 這則投遞自己的 marker 出現為「已取用」時，紀錄會加上 `consumed_at` 與 `consumed_via`：`turn` 表示作為自己的回合，`mid_turn` 表示併入進行中的回合。
+  - 此時 `uncertain` 的紀錄會變成 `delivered`；尚未寄出的失敗通知會被撤回。
+  - 只有完全相符的 marker 才算數，找不到不會改變任何紀錄。
+  - 追蹤以有上限的區塊讀取；transcript 不再成長時會越看越少，30 分鐘後結束，並有全 fleet 的數量上限。
+  - `delivery_status` 另外顯示 `delivery_mode`（`steer` / `idle_queue`）與 `submission_mode`。
+- **Claude Code 在回合中途取用的 steer，重啟後也會算成已取用（#1201）。** Claude Code 把這種情況記成被併入的佇列指令，而不是使用者訊息；重啟對帳以前只把它當成「已排入佇列」，投遞因此停在 `uncertain` 並出現 ⚠️。
+- **每個 instance 新增「紀錄」分頁，逐步顯示它在做什麼（#1218）。**
+  - 新的「紀錄」分頁位在「檢視」與「詳細資訊」之間。它顯示每一則提示、agent 的回覆（不含思考過程）、每次工具呼叫的參數與結果、錯誤、每個回合在哪裡結束，以及 fleet 事件，例如當機、重新啟動或等待中的提示。
+  - 分頁開著時才會從 agent 自己的對話紀錄讀取，有人在看時即時更新。機密值（金鑰、token、密碼、長串隨機字元）會遮蔽，很長的文字會截斷並提供「顯示更多」。
+  - 預設關閉（`web.log_tab`），關閉時完全不做任何事。由 fleet admin 在「設定 → 網頁」開啟，這項變更跟其他存取變更一樣需要確認。開啟後，公開連結也看得到。
+  - 目前支援 claude-code 與 codex；其他 backend 的分頁只顯示 fleet 事件。kiro 會另外說明原因：要等 AgEnD 能證明 instance 目前所在的對話，才會顯示它自己的步驟，目前還沒有任何 kiro 啟動方式能做到。
+- **沒有設定任何聊天平台的 fleet，只靠 web dashboard 也能運作。** 沒有設定 `channel` / `channels` 時，agent 的回覆現在會送到 web 聊天（並告訴 agent 已送出），不再永遠被「Channel adapters are not ready — retry shortly」拒絕。
+- **Web 聊天：可以在 dashboard 上回答 fleet 的提示。** instance 看起來卡住、自行結束，或卡在互動式提示時，Telegram 上的按鈕（*強制重啟* / *繼續等待*、*重啟* / *忽略*、*確認* / *取消*）也會出現在該 instance 的 web 聊天中。兩邊是同一個提示，不是複製品：只算一次回答，哪一邊先按就算哪一邊；另一邊的按鈕會收成結果；過期也是兩邊同時。只有這幾種與 instance 健康有關的提示會出現在 web——`/clear` 確認、登入、Classic 群組核准、tips 與 `/model` / `/effort` 選單仍只留在原本發問的地方。從 dashboard 回答需要已登入的 session 與它的 CSRF token、必須指明 instance，而且必須是該提示自己的按鈕之一。
+- **Web 聊天：Markdown、多行輸入、重新整理不再清空。** 儀表板聊天的訊息現在會渲染 Markdown（粗體、斜體、`code`、程式碼區塊、清單、引用、連結——只接受 http/https/mailto、在新分頁開啟），
+  而訊息內容無法產生任何自己的標記（先跳脫整段文字再套格式）。輸入框可多行（Enter 送出、Shift+Enter 換行），送出失敗會把文字還給你。重新整理不再清空聊天：fleet 會保留每個 instance 最近的訊息
+  （`GET /ui/history`，存在記憶體、有上限），SSE 斷線重連時會補送漏掉的訊息。Agent 的長回覆在 web 聊天中不再於 2,000 字截斷（現在 16,000）。
+- **Web 聊天：看得到訊息送到哪一步、看得到 agent 正在處理，也能中止它。** 從 web 聊天送出的每則訊息都有送達勾，和 Telegram 訊息上的表情回應是同一套流程：◷ 排在前一則之後、✓ 已交給 agent、✓✓ agent 已收到、! 未送達（每個都有給螢幕閱讀器的標籤，重新整理後仍保留）。目前開著的聊天，其 agent 正在處理時，輸入框上方會顯示「*名稱* 處理中…」與 **中止** 按鈕，作用和 Telegram 的取消按鈕與 `/cancel` 相同：對 CLI 送 Esc，並取消還在排隊的訊息——它們的勾會變成 ⊘。（中止是 `POST /ui/cancel/<instance>`，和 dashboard 其他寫入一樣需要 session 與 CSRF 檢查；它不是 instance 的 Stop，後者會結束整個程序。）Web 訊息的送達回報也不再拿一個從來不是 Telegram 訊息的 id 去 Telegram 上加表情。
+- **Web 聊天：可以傳檔案與圖片，也看得到 agent 回傳的檔案。** 輸入框有 📎 按鈕，也可以把檔案貼上或拖進聊天區（每則訊息最多 5 個、每個 10 MB、合計 25 MB；PNG、JPEG、GIF、WebP、PDF 與文字檔）。Agent 收到的方式和 Telegram 完全相同——檔案放在該 instance 工作區的 inbox、一行 `[📷 Image: …]` / `[📎 File: … → …]`，以及 `image_path` / `attachment_path`；agent 在回覆裡附的檔案也會顯示在 web 聊天中（圖片直接顯示，其他是下載連結）。檔案型別由內容判斷，不看檔名或瀏覽器的說法；存檔名由 fleet 決定；而且只能用 fleet 發出的 id 取回檔案（`/ui/file/<id>`），絕不能用路徑。四種圖片以外的檔案一律以下載方式提供，不會在頁面上渲染。附加了但 30 分鐘內沒送出的檔案會被刪除，fleet 中途重啟也一樣：上傳在被訊息帶走前存成 `web-pending-…`，重啟時會掃掉放超過 30 分鐘的（#1273）。已送出的檔案跟 Telegram 的一樣，依 inbox 的 7 天輪替處理。
+- **回覆按鈕：agent 可以提供讓人點選的選項（#1266）。**
+  - `reply` 接受 `buttons`（最多 10 個，`{ label, value? }`），會出現在網頁聊天、Telegram（inline keyboard）與 Discord（components）。
+  - 點擊會以點擊者的訊息送給 agent（`[button] <label>`）。第一個有權限的點擊代表所有人，之後各處都會顯示選了什麼、誰選的。
+  - 能在那裡對該 instance 發訊息的人都可以點。按鈕 24 小時後過期，重啟後仍有效，且無法重放。
+  - 無法顯示按鈕的地方，選項會附在文字後。
+- **網頁聊天：指令與快速動作（#1269）。** 在 instance 的聊天輸入框打 `/`，會列出它自己的聊天指令，和它的 Telegram/Discord topic 接受的指令相同，透過相同的處理程式與指令表（#754/#1148）執行。
+  - 可用的指令有 `/ctx`、`/compact`、`/clear`（會先確認）、`/model`、`/effort`（不加參數時列出可選項目）、`/cancel`、`/btw`、`/steer`、`/pause`、`/wake` 和 `/save`。
+  - 其他以 `/` 開頭的內容仍照舊當成訊息送出；fleet 層級的指令仍在 General 使用。
+  - 快速動作：點聊天標題列上的模型或推理強度，會開啟可選清單；instance 的 context 用到 70% 時，會出現 **壓縮** 和 **清空…**。
+  - 透過臨時公開連結時，以 `/raw ` 開頭的訊息會被拒絕，因為它會繞過 `[user:]` 包裝直接進入 CLI；`/save` 在公開連結上也會被拒絕。
+- **Web 聊天：表格、巢狀清單、程式碼上色（#1269）。** agent 回覆裡的 Markdown 表格會以表格顯示（標題列、`:--`/`--:`/`:-:` 對齊，儲存格裡的粗體、連結、`code` 照常生效；儲存格內的直線請寫 `\|`）；清單會依縮排巢狀（項目符號與數字可混用，最多六層）；js/ts/json/python/sh 的程式碼區塊會上色。沒有用任何外部函式庫、也不從 CDN 載入：仍是先跳脫再套格式的同一個 renderer，只多了固定的標籤與 class，訊息內容依然無法產生自己的標記。
+- **Web 聊天：預覽 agent 的 HTML（#1306）。** agent 回覆裡的 ` ```html ` 區塊下方會出現一張卡片：**預覽** 會在一個由另一個本機 listener（`web.preview_port`，預設 `health_port + 1`）提供的沙箱框架裡執行 HTML，因此它無法使用 dashboard 的登入，也無法操作 dashboard；**停止** 會關閉它；**下載** 會存成 `reply.html`。每台裝置的預覽**預設都是關閉的，要那台裝置自己允許**（在側欄或卡片選單），而且每次都要按下才會執行，並附上說明：預覽可能把資料傳出去，也可能讓分頁變慢或卡住。只有 fleet 標記為 agent 的回覆才會有卡片——來自人的 HTML 一律只顯示成程式碼。透過 tunnel 或 proxy 時需要 `web.preview_origin`（另一個主機名稱），否則卡片會說明預覽為什麼關閉。
+- **Web 聊天：以聊天為主的版面，支援淺色與深色（#1307 版面部分）。** 對話是置中的一欄：你的訊息是靠右的泡泡，agent 的回覆佔滿整欄（每則都能複製）；程式碼區塊標出語言、有複製與換行，超過 30 行時先收合；只有停在最底部時畫面才跟著新訊息捲動，不在底部時會出現「↓ N 則新訊息」；agent 工作時輸入框的送出鈕會變成 Stop（開始打字後送出鈕會回來）。側欄可以隱藏（會被記住），在手機上是抽屜。dashboard 會跟隨裝置的淺色／深色設定，也可以在各瀏覽器自選（`/assets/theme.js` 在頁面繪製前就套用），改用系統字型，並且不再有任何行內 `style` 屬性（#1300）。
+- **Web 聊天：手機、鍵盤與螢幕閱讀器（#1307 行動版與無障礙部分）。** 在手機上，螢幕鍵盤出現時會縮小頁面而不是蓋住輸入框（`interactive-widget=resizes-content`），版面會避開瀏海與 home bar（safe-area insets），輸入框文字改為 16px，iOS 不會因此放大頁面。agent 工作時按 Esc 會中止回覆（表單或選單開著時、輸入法選字時都不會）。側欄每一列都能用 Tab 移到、用 Enter／空白鍵打開；手機抽屜打開時焦點留在抽屜內，關上後回到 ☰。訊息清單是不會逐則朗讀的紀錄，另有一行 polite 狀態區播報粗略事件（開始工作、完成、已回覆、等你回應）。
+- **Web 聊天：agent 的這一輪與附件（#1307 狀態部分）。** 工作列會顯示 agent 已工作多久（從頁面看到它開始起算）；按下 Stop 後顯示「正在中止…」直到 agent 停下；agent 停在終端機上等待（權限詢問、登入、對話框）時會註明，側欄也會出現「等你回應」標記，並說明這是從終端畫面判讀的。把檔案拖到聊天區時會顯示放置位置；每個檔案以標籤顯示檔名與大小；貼上超過 10,000 個字元時會改成文字檔附加（可以再改回文字）。沒有聊天平台的 fleet，卡住、程序自行結束與互動式提示這幾種提示現在會出現在 dashboard 上（之前哪裡都不會出現）；互動式提示只在有 General 可以協助時才會出現。
+- **Web chat → ClassicBot 頻道同步（#1320 part B）。** 成功送到 classic instance 的 web 訊息，會同步到該 instance 開了 `web_echo: true` 的 ClassicBot 頻道（預設關、逐 entry）。同步走該頻道自己的 adapter 並關閉 mention，排序與 part A 同一條 before-reply lane，失敗不阻擋 web 投遞。防重入直接沿用 part A 的共用 helper（`neutralizeWebEchoText`、`formatWebChannelEcho`、`isWebChannelEcho`、固定 `WEB_ECHO_PREFIX`）：預覽與附件名稱的 mention 換成可見 ASCII 標籤，ingress 核對 fleet bot 作者加固定前綴。開關在 classicBot.yaml 與 Settings（非 boolean 拒絕、改了重啟該頻道、群組頻道在頁面二次確認）。
+- **Web chat → fleet 主題同步（#1320 part A）。** 成功的 web 訊息同步至綁定的 Telegram 或 Discord 主題，排序等待總共最多五秒，之後 Agent 回覆繼續。逾時丟棄尚未開始的副本；已在飛的副本可能晚到，結果另記日誌。`web.echo_to_channel` 預設開啟，可在 Settings 切換，未變更的選項不寫入設定。同步失敗不阻擋 web 投遞；mention／command 改成可見標籤，ingress 核對 fleet bot 作者與固定前綴，避免自己、同 fleet 的其他 bot 或重播副本觸發新回合；同平台任一已設定 bot 身分未知時暫時隔離 bot 前綴候選，人類不受影響。不包含 ClassicBot 或純 web fleet。
+- **delivery-outbox.db 與 Task Board 加入保留期限機制（#1335）。** 兩個資料庫以往無限成長：`delivery-outbox.db` 每天累積約 2.5 MB，Task Board 已有 1,099 筆歷史記錄。terminal 投遞（`delivered`/`failed`）與已完成/已取消的任務，若超過 `defaults.retention_days`（預設 30 天），將在 fleet 啟動時清除一次，之後每天清一次。`uncertain` 與非終態的投遞永遠不清除。有尚未關閉的 reply obligation 的投遞會等 obligation 關閉後才清除。還有活著任務在使用的已取消前提條件也會保留。每次最多刪 500 筆並在批次間讓出 event loop。`delivery_status` 查詢一個不存在的 `delivery_id` 時，若該 row 曾被清除，現在會回傳「早於保留期限，已清除」——但只對該投遞的原始寄件方或收件方——而非「找不到」。其他查詢仍可能因紀錄被隱藏、過期或不存在而回傳「Delivery not found」；不能據此認定從未投遞。未篩選的 `task list` 現在上限 100 筆（最近更新優先），並附說明幾筆被省略及如何使用篩選器；有篩選時沒有上限。
+- **Task Board 工具現在不再燒 context（#1336）。** 未加篩選器的 `task list` 預設只回傳活躍任務（open/claimed/blocked）——done/cancelled 只有在 `filter_status` 明確列出時才出現。`filter_status` 支援陣列，一次篩多個狀態。清單的每筆資料變成精簡格式（`id`、`title`、`status`、`assignee`、`priority`、`updated_at`）；傳 `verbose: true` 可取得完整欄位，或用新的 `get` 動作查單筆完整記錄。寫入操作（`create`、`update`、`claim`、`done`）回傳小型 ack `{id, status, updated_at}`，不再傳回整個 Task 物件。Task ID 可以縮寫成唯一的 8 位 hex 前綴。`done` 現在也可以直接從 open 狀態使用，不一定要先 claim。
+- **選擇性錄製 fleet CPU profile，追查尚未歸因的 event-loop 阻塞（#1338，#1235 的一部分）。** 主機操作者可在冷啟動 `agend fleet start` 時設定 `AGEND_CPU_PROFILE_SECONDS=60`，省略即關閉。行程內以 100 Hz 錄製，最長 30 分鐘後停止（主執行緒能處理期限時），不開 inspector 監聽埠。`AGEND_HOME/profiles` 下的私有檔案每份最多 20 MiB、保留五份；檔案上限不等於 V8 錄製記憶體上限。Agent session 不能透過繼承的環境啟用；未增加聊天、web 或 MCP 觸發入口。
+- 可用 `agend profile [秒數]`，或 General 管理員限定的 `/profile`（Discord 原生 slash、Telegram 文字指令）在運行中的 Fleet 錄製有時限的 CPU profile。與既有啟動錄製共用單一 owner，拒絕重複錄製，沿用時限、檔案及關機清理限制。CLI 使用同一使用者的私有 Unix socket，拒絕 agent 環境；不需重啟，也不新增 web/MCP 控制或 inspector port。
+- **網頁聊天：在瀏覽器裡跟 Agent 對話（#1366）。** 儀表板的 `/ui` 可以跟任何一個 instance 聊天：在側欄選它，直接打字。
+  這和那個 instance 在 Telegram 或 Discord 上的是同一段對話——從網頁送出的訊息會以 `🌐 web-user: …` 出現在 topic，
+  Agent 的回覆兩邊都看得到，聊到一半也能在手機和電腦之間切換。傳檔案和圖片、Stop、顯示訊息送到哪一步的勾勾，以及回答
+  fleet 的提示，在這裡都能用（見下方各項網頁聊天條目）。用 `/dashboard`（fleet 管理員）或 `agend web` 取得一次性登入碼
+  登入。儀表板只聽 `127.0.0.1`；要用手機，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。
+- **網頁聊天：第一次登入時的簡短導覽（#1366）。** 在某個裝置上第一次打開 `/ui` 時，會有一張小卡片依序介紹五件事——選一個
+  instance、它和 Telegram/Discord 是同一段對話、附加檔案、Stop，以及「等你回應」標記——並在頁面上框出對應的位置。按
+  知道了、略過或 Esc 後，這個裝置就不再出現；側欄的**導覽**可以再看一次。它不會擋住任何操作，樣式完全來自頁面自己的樣式表
+  （沒有 inline style，#1300）。
+- General 管理員可從 `/dashboard` 主動開臨時公開 dashboard：私送連結與碼、固定兩小時期限（1–480 分鐘）、固定版 cloudflared、單次入口登入隔離與必要公開登入通知。公開 View 需登入、preview 不暴露，到期／revoke／shutdown 關入口。Cloudflare 終止 TLS；登入授予完整 web-admin，平台故障時拒絕公開登入。
+- **「等你處理」：一份列出所有等你處理的事的清單，在 General 即時更新（#1386）。** 每個 bot 在自己的 General 維持一則
+  訊息，列出它負責的 instance 正在等什麼：fleet 的提示（沒有回應、已結束、在終端機上等待）、權限／危險指令／登入或其他
+  對話框、因需要登入而暫停或已崩潰的 instance，以及 fleet 無法確認或無法送達的傳遞（最近 24 小時）。每一行都連到該提示
+  自己的按鈕或 instance 的討論串。不論在哪裡處理掉，訊息都會跟著編輯；有新的事時會重新發一則（因此會通知），最多每分鐘
+  一次。傳遞項目有**已確認**按鈕，限該 bot 的管理員使用，並記錄在該筆傳遞上。`needs_you.dm: true` 也會私訊該 bot 的
+  管理員。網頁儀表板會透過既有的即時串流收到所有 bot 的同一份清單。`needs_you.live_message: false` 可關閉 General
+  的訊息。
+- **網頁上的 fleet 組織圖（#1389）。** Fleet → 組織圖：最上方是 General，下面是 `fleet.yaml` 的各個 team 與其成員，最後是未加入 team 的 instance。每個 instance 顯示名稱、它負責的工作、backend 與模型，以及即時狀態（工作中、閒置、等你回應、似乎卡住、已暫停、已停止、已當掉），並附上它的 Discord 討論串或 Telegram topic 連結與聊天連結。組織圖唯讀，操作仍在 Discord 進行。它只讀取 fleet 既有的資料，即時狀態跟著現有的更新串流，不另外輪詢，在手機寬度下也能正常顯示。
+- **跑 kiro TUI 的 kiro instance 現在可以在回合中插話（steer）了（#1405）。** `/steer` 與帶 `steer: true` 的 `send_to_instance`，現在能送進工作中的 kiro instance：條件是它用 `kiro_ui: tui` 或 `v3` 啟動，且 kiro-cli 版本已經過 AgEnD 實機驗證：2.27.1（TUI 與 v3）、2.28.0（TUI）。插話會在同一回合的下一個工具邊界被納入。訊息怎麼處理由 kiro 自己的插話模式決定。AgEnD 每次插話前都會從 kiro 的輸入列讀出這個模式，而且從不切換它：只有輸入列顯示 `Type to steer` 時才貼上；輸入框顯示的確實是這次投遞的訊息時才按 Enter；輸入框重新變空後才確認送達。如果顯示的是 `Type to queue`（使用者用 Ctrl+S 選了排隊模式），訊息就照舊在回合結束後送出。legacy UI 與其他版本也是一樣；在這些 instance 上用 `/steer` 會說明為什麼無法使用。
+- **網頁 app 的「等你處理」（#1386，#1408 第 4 步）。** `/ui/needs` 列出所有等你處理的事，來自每個 bot 的世界：附自身按鈕的 fleet 提示、停在對話框、暫停或崩潰的 agent，以及附 **確認** 的傳送。這和 General 的即時訊息是同一份清單，在任何地方處理過就會消失。側欄會顯示數量，分頁標題以 `(N)` 開頭，桌面瀏覽器可在分頁位於背景時為新項目跳出通知（每台裝置自行開啟）。
+- **Bot Token 步驟新增設定教學連結。** `agend quickstart` 和 `agend init` 設定精靈在要求輸入 Bot Token 時，現在都會顯示 📖 連結前往網站設定教學 —— Telegram：[songsid.github.io/AgEnD/zh-tw/setup-telegram/](https://songsid.github.io/AgEnD/zh-tw/setup-telegram/)，Discord：[songsid.github.io/AgEnD/zh-tw/setup-discord/](https://songsid.github.io/AgEnD/zh-tw/setup-discord/)。語系為 `zh-TW` 時自動使用繁體中文頁面。網址統一定義於 `src/setup-guide.ts`，兩個檔案都從該模組匯入（無循環引用）。
+- 新增純資料降版相容性檢查：Node 22 上的新版 store → Node 20 上已發布的 2.1.12 → Node 22 新版 store。報告區分 additive DB 相容性與 web 政策、待核准操作、排程重試、Kiro ownership 保護的退化；不保證可安全 live 降版（#1441，Part C）。
+- **Node 相容性檢查（#1441）。** 沒有支援的 bundled runtime 時，preinstall 會拒絕不相容的系統 Node；bundled-runtime 平台可在 npm 本身使用舊 Node 時安裝。略過 lifecycle scripts 不會讓不相容 runtime 變安全：launcher 仍須找到私有 runtime 或明確允許且合格的系統 fallback。舊 updater 若已先 unlink，安裝失敗仍可能沒有已安裝的指令；請見 2.2 升級指南。
+- **AgEnD 在 Linux 與 macOS 上自帶 Node 22.23.3（#1450）。** 在 glibc 2.28 以上的 Linux 與 macOS 11 以上（x64、arm64），安裝 AgEnD 會一併安裝它的 runtime 套件 `@songsid/agend-node-<os>-<cpu>`（官方 Node 22.23.3，附 provenance 發佈）。不論 PATH 上是哪個 Node，AgEnD 都用它執行；你自己的 Node 以及使用它的 CLI（codex、claude…）都不受影響。
+- **網頁上的提示快取過期分析（#1468）。** Fleet → 快取會針對每個 Claude Code 與 Codex instance，在最近 24 小時、7 天或 30 天內顯示：
+  - 請求之間閒置了多久，並以快取時效為準線（Claude Code 為 1 小時；Codex 在 GPT-5.6 以上為 30 分鐘）；
+  - 有多少次請求遇到已過期的快取，以及重寫快取的成本；
+  - 保溫 ping 是否划算，連之後沒人讀的 ping 也計入；
+  - 是否建議保溫，並附上理由。
+
+  ClassicBot 頻道也包含在內。兩個共用工作目錄的 instance 無法從 transcript 分辨，因此兩者都不分析，面板上會註明原因。fleet 總計列會加總以上所有數字。成本以單一價目表的牌價計算，面板上會顯示查證日期。Codex 不記錄快取寫入，其數字會標示為「估算」。Kiro 與其他 CLI 顯示「不提供」。
+
+  此面板唯讀。AgEnD 以有上限的分段方式逐步讀取 transcript，每個 instance 只保存一份小摘要（`cache-ledger.json`），從不呼叫任何供應商 API。
+- **網頁聊天：agent 的 HTML 預覽可以在對話旁的面板中開啟。**
+  - 預覽卡片上的 **在面板中開啟** 會給它更大的空間：寬螢幕是左右分割、可拖曳分隔線（可用鍵盤調整，寬度記在這台裝置），手機則是全螢幕頁面。
+  - 面板有頁面／程式碼、重新載入、停止、下載，以及回到區塊所在訊息的連結。
+  - 之後的回覆有同一區塊的較新版本時，面板會提示，而不會自己換掉。
+  - 關閉面板或打開別的對話會停止預覽。預覽的隔離方式不變：同樣是預覽位址上的沙箱框架、同樣需要每台裝置各自允許、同樣要按一下才執行。
+- **Codex 也有回覆完成守衛了（#1510）。**
+  - Codex agent 回覆人類訊息時若只印在終端機、沒有呼叫 `reply`，現在會像 Claude Code 與 Kiro 一樣被提醒一次，請它送出結論。
+  - 前提是 Codex 自己的 session 紀錄顯示：裝著你這則訊息的那一輪已經結束，而且之後沒有新的一輪開始。終端機畫面在一輪途中可能看起來閒置，但紀錄只有在一輪真正結束時才會結束它：長時間的工具執行、或併進這一輪的 steer，都會讓它保持未結束。
+  - 被中斷的一輪（Esc）或因 provider 錯誤結束的一輪不會提醒；在 instance 跟隨的紀錄裡找不到的一輪也照舊不提醒，例如兩個 Codex instance 共用同一個目錄時。
+- **Muse 也有回覆完成守衛了（#1510）。**
+  - Muse agent 回覆人類訊息時若只印在終端機、沒有呼叫 `reply`，現在也會像 Claude Code、Kiro 與 Codex 一樣被提醒一次，請它送出結論。
+  - 前提是 Muse 自己的 session 紀錄顯示：裝著你這則訊息的那個 run 已經結束，而且之後沒有新的 run 開始。在 run 執行中送來的訊息，會讓 Muse 在第一個 run 結束後再跑一次；兩個 run 之間終端機會短暫顯示閒置，但紀錄會讓第二個 run 一直保持未結束，直到它真的結束。
+  - 被取消或失敗的 run 不會提醒；在這個目錄的 Muse 紀錄裡找不到的訊息也照舊不提醒。
+- **網頁聊天：agent 附上的 `.html` 檔可以預覽（#1522）。** agent 在回覆中附上的 `.html` 或 `.htm` 檔，現在和 ` ```html ` 區塊一樣有預覽卡片：預覽、在面板中開啟，並沿用同樣的每裝置允許設定與沙箱框架。只有在你點擊時才會讀取檔案，上限 1 MiB。使用者上傳的檔案仍然只是一般下載。agent 也會被告知：完整頁面請優先附 `.html` 檔，而不是貼一大段 ` ```html ` 區塊（Discord 與 Telegram 會把它切開）。
+- **設定：在瀏覽器輸入 bot token（#1529）。** 新增連線和設定精靈用密碼欄位接收 bot 的 token，並先向 Telegram 或 Discord 確認（「這是 @your_bot。」）。token 存在這台電腦，名稱自動產生，例如 `AGEND_DISCORD_2_TOKEN`（顯示在「進階」），不需要編輯 `.env`，也不需要自己取變數名稱。連線會顯示「已設定 token」並提供「更換」。
+- **設定：在瀏覽器邀請 Discord bot（#1533）。** Discord token 驗證通過後，「新增連線」和設定精靈會顯示「邀請 @your_bot 加入你的伺服器」，邀請只要求 AgEnD 會用到的權限，絕不含系統管理員。邀請後會自動選好 bot 加入的伺服器，並把該伺服器的文字頻道列成清單（#general 優先）。表單也會說明到哪裡開啟 Message Content Intent；Discord 因這個 intent 拒絕的連線，現在會直接說明，而不是只顯示「有問題」。
+- **設定：新增連線不必重新啟動 AgEnD（#1539）。** 當 AgEnD 已經在執行某條連線時，從設定新增的連線（新增連線或設定精靈）會在套用後立刻啟動；替沒有在執行的連線更換 token 也會直接啟動它。fleet 的第一條連線，以及修改既有連線，仍需要重新啟動。
+- **網頁：只用網頁的 fleet 會顯示首次使用卡片，設定精靈也能接上既有的 agent（#1549）。** 沒有任何 Telegram 或 Discord 連線時，聊天頁和設定 › Agent／連線會顯示一張卡片：**連接聊天應用程式** 會開啟設定精靈，**只用網頁** 會在這個瀏覽器裡隱藏卡片。設定精靈的第一步可以選 **既有的 agent** 或 **新的 agent**。既有的 agent 會保留它的目錄、backend 和設定，只有聊天連線改成新的機器人。新的 agent 也不能再沿用既有 agent 的名稱，把它覆蓋掉。完全沒有 agent 時，聊天頁會提供 **新增 instance**，側欄的新增 instance 按鈕也改成 **+**。開發者分頁的下載按鈕改為 **下載 fleet.yaml**，新增 instance 對話框裡的「Topic 名稱」欄位改為 **名稱**。
+- Web dashboard 新增銀色 **Ag** 分頁圖示與 apple-touch 圖示，包含登入頁、View 與臨時公開連結。圖示不需登入即可載入，Host 檢查與既有 Content Security Policy 維持不變（#1557）。
+- **網頁：每個 instance 的詳細資訊頁，以及「聊天 / View / 詳細資訊」切換（#1561）。** 每個 instance 現在都有自己的詳細資訊頁，網址是 `/ui/fleet/agent/<name>`。頁面上有它的執行環境和最近活動，以及唯讀的設定摘要：目錄、綁定在哪裡、標籤和說明。按 **到設定編輯** 會開啟那個 agent 的設定。⋯ 選單可以啟動、重新啟動、停止、暫停或喚醒它，確認步驟與以前相同；刪除 instance 仍在聊天頁的 ⋯ 選單和設定裡。在 instance 的頁面上，標題列可以切換它的 **聊天**、**View** 和 **詳細資訊**；手機上則是標題列下方的分頁。開著某個 instance 時，按 **Fleet** 會進到那個 instance 的詳細資訊，不再總是落在 Tasks。在詳細資訊或 Fleet 分頁上，點側欄的 instance 會開它的詳細資訊。
+- **網頁：所有頁面共用一個字級，標題列的控制也都一樣（#1563）。** 聊天、View、instance 的詳細資訊和 Fleet 的標題列，現在都有同樣兩個控制，順序也相同：**字級** 和 **用量**。字級有 **小／中／大**，這台瀏覽器只有一個設定：在任何頁面選了，每個頁面都會套用，重新載入後也一樣。View 保留 **剛好填滿**，讓終端畫面符合框的大小。之前在 View 的設定會沿用：舒適變成大，精簡變成小。fleet 關閉用量面板時，**用量** 不會顯示。
+- **網頁聊天：AgEnD 重新啟動後，對話還在（#1565）。** 每個 agent 最新的 500 則訊息會保存在這台電腦上，放在該 agent 工作區中的私人檔案（`workspaces/<名稱>/web-chat.json`），艦隊再次啟動時會載回。重新啟動期間一直開著的頁面，每則訊息只會出現一次。這些訊息裡的檔案在重新啟動後仍可開啟——前提是檔案還在 agent 的收件匣裡且沒有變動；否則只顯示檔名並標示為無法取得。按鈕與送達勾勾不會保存。刪除 agent 時會一併刪除這個檔案。
+- **`/web` 是 `/dashboard` 的短名稱（#1569）。** 在 Discord 和 Telegram 上的行為完全一樣：同樣只限管理員、沒有設定管理員時同樣回覆「已停用」、同樣的拒絕訊息，也同樣有 `/web revoke`。Discord 把它註冊成獨立的 slash 指令，Telegram 選單把它列在 `/dashboard` 旁邊。
+- **登入頁可以幫你要一組新的登入碼（#1570）。** 曾用 `/dashboard` 的碼登入過的瀏覽器會出現「傳一組新的登入碼給我」按鈕，session 過期後不必再回聊天室。新的碼只會私訊給收到上一組碼的人，而且對方必須仍是 fleet 管理員；私訊會寫出是哪個瀏覽器要求的，並提醒可以用 `/dashboard revoke`。每個瀏覽器與整個 fleet 都有頻率限制，登入暫停期間一律拒絕。公開連結上只有在該連結開著時才有效，登入照常公告。`/dashboard revoke` 與 `agend web-token rotate` 會讓所有瀏覽器失去這個按鈕。
+- **網頁聊天的附件現在可以直接預覽（#1589）。** 音訊和影片檔（mp4、webm、mov、mp3、m4a、wav、ogg）會在訊息裡用瀏覽器內建的播放控制播放，依檔案 id 分段串流，每段最多 4 MiB。文字檔會顯示成一張卡片，附有「顯示」和「下載」，先顯示前 200 行，再提供「顯示全部 N 行」。Markdown 交給聊天本身會先跳脫的渲染器處理，JSON 會排版並上色，程式碼會上色，CSV 和 TSV 顯示成表格，其他一律當純文字。檔案裡的內容絕對不會被執行，超過 1 MiB 的檔案仍然只能下載。每張卡片的排版最多建立 4,000 個元素（表格儲存格、上色的語彙單元、Markdown 元素），CSV 最多 50 欄，按下「顯示全部」也一樣；超過時改以純文字顯示。頁面只允許從自己的 `/ui/file/` 路徑載入媒體。已經不存在的檔案照舊顯示，不提供預覽。公開連結維持原樣：在那裡附件只能下載，頁面也不允許任何媒體。
+- **手機網頁：用滑動開關側欄（#1605）。** 在對話上往右滑會打開側欄，往左滑就關上——效果和按 ☰、點旁邊一樣。從螢幕最左邊開始的滑動留給瀏覽器（在 iPhone 上是「上一頁」）；在程式碼、表格、終端畫面和輸入框上的滑動，以及對話框或圖片檢視器開著時，也一樣不會觸發。上下捲動永遠不會被攔下。另外：**設定 → 這台裝置** 的**導覽**現在會等聊天畫面畫好才開始，結束後游標回到輸入框。
+- **網頁：可以設定 dashboard 登入維持多久（#1620）。** 直接連到 dashboard 時（本機、區網或 tailnet），`fleet.yaml` 的 `web.session.local.absolute_hours` 和 `web.session.local.idle_hours` 可設定登入維持多久、以及可閒置多久——1 到 720 小時（預設仍是 12 和 2）。公開連結的登入維持固定的 4 小時／30 分鐘。變更不需重啟即生效；改短時，已超過新期限的 session 也會被登出。
+- **網頁：新增「設定 → 網頁」分頁（#1620）。** 可編輯從 dashboard 本身網址登入後可維持多久、閒置多久登出（`web.session.local.*`）、`/login` 開啟的瀏覽器終端機（開或關，以及分鐘數）、web 同步和公開連結選單；web 同步和公開連結從「一般」移到這裡。放寬存取的變更（延長 session 或閒置時間、重新開啟瀏覽器終端機或增加分鐘數）要等 fleet admin 在 General 或用 `agend settings confirm <id>` 確認；收緊存取的變更立即套用。其他網頁設定只列出，請在 `fleet.yaml` 編輯。透過臨時公開連結無法變更任何一項。
+- **網頁：session 期限設錯時不會變得更長（#1620）。** 驗證器會拒絕的值，不再一律退回 12 小時的預設值（那可能比設定的還長）：閒置時間超過 session 時長時會縮短成 session 時長，低於 1 小時的值視為 1 小時。
+- **網頁：頭像與 Discord 伺服器表情改由 dashboard 自己提供（#1630 第一部分）。** 網頁收到的狀態現在會說明每個 instance 用什麼代表，依序為：在 View 上傳的圖片、它自己的 bot 頭像（只有擁有專屬 bot 時才用；共用 bot 的 instance 略過這一步）、persona emoji，或名稱的第一個字。在 Discord 伺服器裡有自己顏色的 bot，也會以該顏色作為強調色。bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用 bot 自己的 token 取得，存在 `~/.agend/cache/`（每天最多更新一次；更新失敗時保留上一份），只提供給已登入的 session（臨時公開連結也可以讀取，僅限讀取）。頁面不會從 Discord 或 Telegram 載入圖片。側欄會在下一個變更開始顯示它們。
+- **網頁聊天：Discord 伺服器表情會顯示為圖片（#1630 第三部分）。** 訊息中的 `<:名稱:id>` 或 `<a:名稱:id>`（Discord 自訂表情的文字形式），若屬於 fleet 的 Discord bot 所在的伺服器，會顯示為表情圖片。圖片由 dashboard 自己提供，頁面不會從 Discord 載入；已知表情清單每個頁面只讀取一次，而且只在訊息中有表情時才讀。其他的照原文顯示。側欄的圖片檢查也更嚴格：只接受 dashboard 圖片路徑下的單一檔案，絕不接受跳出該路徑的位址。
+- **網頁：側欄會顯示每個 instance 是誰（#1630 第二部分）。** 每個 instance 以顯示名稱呈現，滑鼠停留時顯示 instance 名稱（兩個顯示名稱相同時會寫在名稱下方）。名稱旁是它的圖片：在 View 上傳的圖片、它自己的 bot 頭像、persona emoji，或名稱的第一個字。在 Discord 伺服器裡有顏色的 bot 會以該顏色作為外框。狀態圓點在圖片上，除了顏色，也會把狀態（閒置、工作中、似乎卡住、已暫停、已停止、已當掉、等你處理）讀給螢幕閱讀器。聊天標題與「等你處理」清單也使用顯示名稱。
+- **Agent：升級後，每個 agent 會收到一次「對你而言有什麼新功能」的通知（#1633）。** 在舊版 AgEnD 時開始的 session 可能不知道新的工具參數：Claude Code 會沿用對話中先前載入的工具說明，因此看不到 `reply` 的 `buttons` 或 `stickers`。現在每個既有 instance 會在收到下一則訊息前收到一則簡短通知（不會在 turn 進行中插入，也不會發給沒人傳訊息的 instance），列出與 agent 相關的變更與確切參數名稱，並提醒重新載入看起來較舊的工具說明。每一項每個 instance 只會收到一次，紀錄在重啟後仍保留。新 instance 不會收到，因為它們一開始就是最新的工具。沒有 agent 相關變更的版本不會發送任何通知。
+- **網頁：最愛（#1664）。** 為 instance 加上星號，就會釘選在側欄最上方的**最愛**群組，依加入的順序排列。在電腦上，滑鼠移到某一列或聚焦時會出現 ☆，已加入最愛的列會一直顯示。在手機上，請點清單上方的**編輯**。**編輯**也會顯示 ↑ ↓ 讓你調整最愛的順序。最愛屬於會同步的偏好設定（#1665），所以手機和電腦看到的是同一份清單。已刪除的 instance 會從清單移除；暫停或停止的仍會保留。公開連結看得到最愛，但無法變更。最多 50 個。
+- **網頁：偏好設定在你的所有裝置同步（#1665）。** 主題、語言、側欄的排序、收合的群組與篩選、以及 HTML 預覽的允許設定，現在都存在主機上，手機和電腦會保持一致。每個瀏覽器都留有一份副本，而且頁面會帶著主機上的主題送出，所以載入時不會閃爍，新裝置也一樣。更新後第一次載入時，裝置會把主機還沒有的設定上傳一次；之後以主機上的值為準。「設定 → **偏好設定**」會列出哪些會同步、哪些留在各裝置（導覽、文字大小、視圖寬度、側欄顯示或隱藏、面板寬度、桌面通知）。公開連結可以讀取這些偏好設定，但無法變更，也永遠無法開啟預覽。
+- **Agent 之間的訊息也會出現在 web chat（#1672）。** 一個 instance 傳給另一個的訊息（`send_to_instance`、`delegate_task`、`request_information`、`report_result`）現在會顯示在雙方的 web chat，規則與主題相同，依 `cross_instance_visibility`：`full` 完整訊息、`summary` 一行、`hidden` 不顯示。接收方不顯示 report 與 update，General instance 一律略過。沒有聊天平台的 fleet、或沒有主題的 instance 也會顯示。每則都是淡色、唯讀的狀態列（純文字，絕不當成 agent 的回覆，過長會收合），計入聊天紀錄，重啟後仍在。
+- **網頁聊天：提及的顯示方式和 Discord、Telegram 一樣（#1682）。** 使用者提及 `<@id>`（或 `<@!id>`）現在顯示為 **@名稱** 標籤，不再是原始代碼。角色提及 `<@&id>` 與頻道提及 `<#id>` 也以相同方式顯示，分別是 **@角色名稱** 與 **#頻道**，每個標籤在滑鼠停留時都會顯示 id。名稱來自 AgEnD 已經知道的資訊：fleet 自己的 bot（以它所屬 instance 的名稱顯示）、傳過訊息給 fleet 的人，以及它的 bot 所在的 Discord 伺服器。AgEnD 不會為此多送任何 Discord 請求，頁面也只會取得它正在顯示的提及名稱。不知道名稱時顯示 **@user**、**@role** 或 **#channel**，絕不顯示原始代碼。Telegram 的 **@使用者名稱** 也有相同外觀。程式碼片段與程式碼區塊維持原樣。
+- **Telegram /web 失敗時提供 bot 私訊連結（#1686）。** 當使用者還沒與 bot 開啟私訊而導致登入碼無法送達時，失敗訊息現在會附上一個「**先開私訊 →**」URL 按鈕，直接深連結到 bot 的私訊，並預填 `/start web`（需要 Telegram 7.7 以上）。按鈕只有在已知 bot 的 username 且格式符合 Telegram 規範（`[A-Za-z0-9_]{5,32}`）時才顯示；未知或格式不符時，退回原本的純文字說明。登入碼不會貼到群組中。Discord 行為不變。
+
+  /web 選單也會多一行含有相同連結的提示，讓使用者在點按鈕之前就知道要先做什麼。
+
+  當你是 fleet 管理員，從私訊傳 `/start web` 時，現在會收到「你現在可以在群組裡使用 /web 了」的確認，而不是試圖啟動一個叫 `web` 的後端。
+- **網頁：可以編輯 team（#1689）。** 「Fleet → Teams」的每個 team 現在都有 **編輯**，會打開已填好目前成員和描述的 team 表單；已不在 fleet 裡的成員仍會列出，方便移除。儲存時使用與 agent 的 `update_team` 工具相同的更新：成員必須是這個 fleet 的 instance，只要有一個不是就不會儲存。team 無法重新命名，表單上會說明（請建立新的 team 再刪除舊的）。組織圖下次打開時就會反映變更。`update_team` 現在也可以修改 team 的描述（留空即清除）。`agend-agent team-update <名稱> [新增,…] [移除,…] [描述]` 現在可以正常使用了：它原本把成員清單當成純文字送出，會被 `update_team` 拒絕。儲存失敗時，team 會維持原狀。`update_team` 和 `create_team` 現在只接受 fleet.yaml 確實定義的名稱，`constructor` 或 `__proto__` 不再會被當成 instance 或 team。
+- **停在 AgEnD 不認得的提示上的 pane，現在會被發現（#1691）。** CLI 顯示一個沒有已知對話框能解釋的選擇提示（游標停在編號選項上，或 `[y/n]` 問題）、CLI 自己的輸入框不見了，而且 pane 一分鐘沒變時，AgEnD 會：
+  - 暫停送訊息給這個 instance；
+  - 把它標成等待輸入；
+  - 發出一個「需要你處理」項目和一則通知，說明提示在問什麼（例如「Switch model?」）。
+
+  AgEnD 絕不替它按任何鍵。pane 一改變就解除；同一個提示停好幾個小時也只回報一次。agent 回覆裡只是帶了編號清單，不算提示。起因是 claude 新的「Switch model?」對話框（#1690），它曾讓 pane 無聲無息地卡住。
+- **Claude Code instance 可以使用不同的 claude.ai 帳號（#1699）。**
+  - 設定 `backend_options.claude-code.credential_profile: work`，再用
+    `CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login` 為這個 profile 登入一次。
+  - 每個 profile 有自己的登入、帳號、信任設定與對話，`settings.json` 一開始複製你的設定。你的 `CLAUDE.md`、agents、
+    commands、skills、output styles 與 plugins 所有 profile 共用。
+  - macOS 上每個 profile 有自己的鑰匙圈項目，不會互相登出。
+  - 用 `update_instance_config` 切換 profile 會重啟 instance 並開新對話，同時交接近期工作。切到尚未登入的 profile 會被拒絕，並告訴你要執行的指令。
+  - 沒有設定 profile 的 instance 啟動方式與以前完全相同。
+- **每個 Claude Code profile 各自的用量（#1699 第 3 部分）。** 使用中的每個 Claude Code credential profile 現在在 `/usage`、`get_usage` 以及 dashboard 的用量側欄與對話框中都有自己的一列（`Claude (work)`、`claude:work`），與預設的 `Claude` 列並列。每一列只讀該 profile 自己的登入（macOS 上是 claude 為該 profile 目錄保存的鑰匙圈項目），不會讀預設登入。用量 API 無法回應時，該列只會改用自己 instance 寫下的額度。尚未登入的 profile 會顯示「尚未登入」、`/login claude-code <profile>`（#1699 第 2 部分）與在主機上登入用的完整指令，不會顯示其他帳號的數字。在此之前，使用 Claude profile 的 instance 完全沒有用量列。沒有 Claude profile 的 fleet 與以前完全相同。
+- **在聊天室為 Claude Code profile 登入：`/login claude-code <profile>`（#1699）。**
+  - 它會在 `/login claude-code` 用的同一個瀏覽器終端裡，為該 profile 執行 `claude auth login`，所以用手機也能完成。
+    Discord 的 `/login` 多了 `profile` 選項。
+  - 登入後只喚醒或重啟使用該 profile 的 agent。為預設登入重新登入時，也不再重啟使用其他 profile 的 agent。
+  - agent 的 profile 登入過期時，警示會附上為該 profile 登入的按鈕。
+  - Kiro 與 Codex 的 profile 仍要在主機上登入；`/login kiro-cli <profile>` 會回覆要執行的指令。
+- **臨時公開連結也能看 HTML 預覽了（#1723），用手機也可以。**
+  - 連結會在背景為預覽另開一條自己的 quick tunnel，連結不等它。
+  - 還沒好時卡片會顯示「預覽啟動中…」；開不起來時連結照常可用，卡片會說明原因。
+  - 它隨連結一起關閉。預覽網址和儀表板是不同的站點，框架比在主機上更隔離。
+  - 你這台裝置的 **允許 HTML 預覽** 照樣適用。
+  - `web.preview_on_public_link: false` 可以關閉；若設定了 `web.preview_origin`，就改用它。
+- `send_to_instance`、`delegate_task` 支援明確的 `forwards` 引用，讓下游 agent 用 `delivery_status` 讀取已送達的原始訊息，包括新記錄的使用者授權收據。每次轉交都須由能讀取該列的寄件者授權，只提 ID 不會取得權限。使用者收據分開保存原始身份／adapter／內容與實際格式化投遞內容，缺乏 owner 綁定的正向證據時維持 uncertain。平台回覆 ID 不變；`/raw`、歷史轉交與 Web 未知的平台身份不能證明原生人類授權。協作指引也說明隱藏／過期查詢與 CLI 轉交用法。
+- **`/backend`：從聊天把 instance 換到另一個 CLI backend（#1806）。**
+  - Discord、Telegram 和 web chat 都能用，權限和 `/model` 完全相同：頻道管理員。
+  - 先選 backend（只列這台主機已安裝的 CLI），再選模型（`/model` 的清單，或預設），再選推理強度（`/effort` 的等級；backend 沒有推理強度就跳過），最後確認。`/backend <backend> [模型] [推理強度]` 會直接跳到確認。
+  - 確認之前不會有任何變更。確認後，backend、模型和推理強度一次寫入，instance 只**重新啟動一次**，並開**全新的 session**：對話不會跨 backend 延續。正在進行的一輪會被中斷。停止或暫停中的 instance 只儲存、不會啟動。
+  - 走的是 `update_instance_config` 的 backend 切換：套用新 backend 自己的選項；若憑證 profile 沒有新 backend 的登入，會被拒絕，並附上登入指令。被拒絕時不會留下只改了一半的設定。
+  - 未安裝的 backend，或新 backend 沒有的模型、推理強度，會被拒絕並列出可選項目。選到目前已在用的 backend 不會有變更，並提示改用 `/model` 和 `/effort`。
+  - 只適用 fleet instance：ClassicBot agent 的 backend 在 `classicBot.yaml` 或設定頁裡設定，`/backend` 在那裡會說明這點。
+- **`close_poll` 可以提前截止投票（#1823）。** agent 可以在截止前關閉自己的一個進行中投票，例如所有人都答完時。效果和到期截止相同：顯示統計，結果只送一次，並註明是提前截止。
+- **回覆按鈕可以變成投票（#1823）。** `reply({ buttons, poll: { seconds } })` 會把按鈕變成有時限、Kahoot 式的投票，可用於 Discord、Telegram 與網頁聊天。
+  - 能在那裡點按鈕的人都能投票，每人一票，可以改票，自己的選擇只會私下告訴本人。
+  - 開放期間只顯示「已有 N 人作答」和剩餘時間；`reveal: "live"` 會即時顯示票數。
+  - 截止時按鈕顯示統計。agent 會收到一則 `[poll results]` 訊息，列出各選項的投票者，以及每人在投票開始後幾毫秒作答，讓 agent 自己公布答案和計分。
+  - 截止時間和結果在重啟後仍然有效，結果只會送達一次。
+- **網頁：Fleet 概覽多了「文件」連結（#1844）。** Fleet 頁的標題列有 **文件**，會在新分頁開啟專案的文件網站——dashboard 是中文時開繁體中文版，否則開英文版。手機上是一個書本圖示。
+
+### 變更 (Changed)
+- **送給忙碌中 Claude Code instance 的訊息，現在交給 Claude 自己的佇列，不再等目前回合結束（#1169），與 Codex 相同。** 已在真的 Claude Code 2.1.293 TUI 上驗證：
+  - Claude 工作中送來的訊息會排進佇列，回合結束後送出；進行中的回合不會被打斷，訊息只送一次。
+  - 工具執行中時，Claude 在該工具結束的時候接收訊息。
+  - 只有讀得到 Claude 的輸入框時才會交接；AgEnD 認不得的對話框、或讀不到的畫面，一律先等。
+  - AgEnD 從 Claude 畫面確認交接：佇列中看得到這則訊息的 id，或貼上前沒有、貼上後才出現的佇列——輸入框顯示「Press up to edit queued messages」，上方緊接「ctrl+x ctrl+s to send now」那一列。回覆裡只是印出這幾個字，不算證據。
+  - TUI 吞掉的 Enter 會在回合結束後再補按一次，絕不重貼。
+- **AgEnD 現在看得出送給 Claude Code 的訊息是否真的離開了輸入框（#1200）。** 它把 Claude 的輸入框當成兩條框線之間的區域來讀（依 Claude Code 2.1.293 的實際畫面），以前只能看到「Enter 之後 pane 有輸出」。現在：
+  - 訊息出現在輸入框外，並且畫面上看得到這則訊息自己的 id，就算送出：閒置時回顯在輸入框上方，忙碌時出現在 spinner 上方的佇列區。一般訊息與送進忙碌回合的 steer 都適用；steer 以前記為 `steer-accepted-marker-on-pane; input-row-unreadable`，現在記為 `positive submission proof`。
+  - Enter 之後訊息還留在輸入框（長的貼上會被 Claude 收合成 `[Pasted text #1 +11 lines]`）：再按一次 Enter，絕不重貼。
+  - 兩者都無法證明時，投遞維持 👀，不會被當成遺失。
+  - Claude 畫面無法顯示結果的 steer，不會再被貼第二次；以前可能因此送出兩次。
+- **由許多小步驟累積出來的整個 fleet 卡頓，現在會寫出是哪些步驟，不再只記「slow sync work: unknown」（#1235）。** 以前只有單一步驟花 50 ms 以上，卡頓 log 才會寫出原因；每分鐘對所有 instance 同時做一點事的檢查，加起來卡了一秒卻沒有名字。現在連續執行的短步驟會加總，並附上次數，例如 `daemon.stateEvaluate:safety_sweep=1100ms (20 calls)`。
+  - 現在會計時的步驟包括：啟動每個 `tmux` 指令、fleet 每分鐘檢查所有 pane、各 instance 評估自己的 pane、每 30 秒的健康與回覆檢查、投遞佇列、儀表板的狀態更新，以及確認投遞時讀取的對話紀錄。
+- **「Event loop stalled」警告現在會在能證明時，說明當時 fleet 是在忙還是在等（#1235）。** 警告會描述該次回報中，每 100 ms 一次的探針看到的最長間隔：它的時間點，以及 event loop 執行緒在其中拿到的 CPU 時間，另附主機的負載平均。執行緒在間隔中一直在跑，代表是 fleet 自己的工作卡住；幾乎沒跑，代表 fleet 在等：主機被其他工作佔滿（例如同一台機器上的大型測試），或卡在緩慢的系統呼叫。數字分辨不出兩者時，警告會直接說分辨不出。`docs/diagnostics.md` 說明如何解讀這則警告。
+- **網頁聊天：長段貼上，以及停留在最新訊息（#1269）。**
+  - 貼上超過 4,000 個字元的文字時，會改成文字檔附加，不再塞滿輸入框；先前的門檻是 10,000。檔案上的 **改為文字** 一樣可以放回輸入框。
+  - 你停在最新訊息時，即使上方的內容事後才繪製完成（例如圖片或預覽卡片），聊天仍會維持在最底部。你往上捲閱讀時，畫面不會被拉走；按 **最新**（或 **N 則新訊息**）即可回到底部。
+- **`/dashboard` 和 tips 說明的是現在的儀表板（#1366）。** 斜線選單改為「登入網頁儀表板與網頁聊天」；儀表板在 `localhost`
+  時，`/dashboard` 的回覆會補一行說明手機怎麼連進來；關於儀表板連結和 web token 的 tips 改為說明一次性登入碼與讓瀏覽器
+  登出；新增四則介紹網頁聊天的入門 tips；Settings 的「更新重點」改列 2.2，有英文與繁中。
+- **`/ui` 現在是一個有側欄的 app，外觀也全面更新（#1408 第一步）。**
+  - **版面：** 側欄放 instance 清單、Fleet、檢視、設定、主題、語言和 Session 選單。對話置中成一欄，下方是圓角輸入框。字型是隨 AgEnD 附帶的 Inter。手機上側欄是抽屜，下方另有分頁列。
+  - **網址：** 每個聊天都有自己的網址（`/ui/chat/<name>`），每個 Fleet 分頁也是（`/ui/fleet/teams`）。在裡面切換不會重新載入頁面，上一頁／下一頁可以用；舊的 `/ui#instance=<name>` 連結仍會開到正確的聊天，登入後也一樣。
+  - **操作更清楚：**
+    - 輸入框裡的按鈕現在叫 **中止回覆**，只在 agent 工作時出現。
+    - instance 本身的操作移到標題列的 **⋯** 選單，而且只列出適用的：已停止時是啟動；執行中時是重新啟動和停止 instance；刪除放在最後。
+  - **小修正：**
+    - 很長的 instance 名稱不會再被「等你回應」標記擠掉，標記改到第二行。
+    - 手機上的程式碼會自動換行。
+    - 兩種主題的文字顏色都符合 WCAG AA。
+  - `/view` 和 `/settings` 會在接下來的步驟併入同一個 app。
+  - 以 Preact 和 htm 製作，直接包含在 AgEnD 裡（固定版本並驗證 checksum，附授權條款）。不從其他網站載入任何東西，頁面的安全政策不變。
+- **網頁 app 最後的收尾（#1408 第 5 步）。**
+  - 所有「確定嗎？」都改用 app 自己的對話框，按鈕會寫明要做什麼：帶著未套用的變更離開設定、變更存取、重新啟動 AgEnD、刪除 agent、排程或 team、移除連線、改綁連線，以及允許 HTML 預覽。伺服器無法儲存的登出，改在登入頁說明，不再跳出瀏覽器警告框。
+  - 登入頁採用 app 的外觀，有淺色與深色。
+  - 設定裡的連線在桌面上一行就能放下；手機上細節會放在下一行。
+  - 開發者 → 套用並儲存，只會寫入你在 `fleet.yaml` 中改過的部分。
+  - 在手機上，導覽會指向 ☰ 來說明 instance 清單。
+  - 舊的共用頁面腳本與樣式表（`/assets/shell.js`、`/assets/shell.css`）已移除：每個頁面都是 app 或登入頁。
+- **`/settings` 現在是 app 的一部分（#1408，第 3 步）。**
+  - 設定和聊天共用同一個側欄、外觀與主題；在兩者之間切換不再重新載入頁面。
+  - Agent、連線、ClassicBot、一般和開發者是分頁，各有自己的網址（`/settings/<section>`）。每個 agent 和連線的設定會在對話框中開啟（手機上是底部面板），**新增 agent** 就是側欄的新增 instance。
+  - 變更和以前一樣先暫存再一起套用。按下 **套用變更** 後，即使離開設定也會繼續，進度會在任何面板顯示。帶著暫存變更離開設定時會先詢問。
+  - 需要 fleet 管理員確認的變更（#1423）會在任何面板顯示一張卡片，列出變更內容、剩餘時間和 **撤回**。需要確認的新增 instance、刪除或 Fleet 設定儲存也一樣。
+  - 尚未得知的 agent 模型現在顯示「default (detected when it starts)」，取代「default (not probed yet)」。
+- **`/view` 現在是 app 的一部分（#1408 第二步）。**
+  - 和 `/ui` 共用側欄、外觀與主題；在聊天和檢視之間切換不再重新載入頁面。
+  - 每個 agent 的終端畫面都有自己的網址 `/view/<name>`。
+  - 名單移到側欄（手機上在抽屜裡），保留分組、篩選和拖曳排序。標題列有 **字級**、**用量** 和 **說明**，個人資料改在對話框裡編輯。
+  - 未登入時（`web.view_access: open`），`/view` 只顯示檢視和 **登入**，不會讀取任何需要登入的內容。
+- **instance 等待人工輸入時的提示按鈕，現在直接寫出會做什麼（#1414）。** instance 在終端機等待輸入（權限、密碼、對話框）時，General 的提示原本是「確認」／「取消」，現在改成「請 General 協助」（和以前一樣，請 General 去看它的終端機）與「我自己處理」（交給你自己處理）。提問和結果訊息也一併對齊。文字是共用的，Telegram、Discord 和網頁聊天會一起改變。
+- **`agend update` 會先確認新版本能在這台電腦上執行，才動手更新（#1441）。** 它會用之後實際負責安裝的那個 npm 讀取新版本自己的 Node 需求，並判斷新版本實際會用哪個 Node：新版本有為這台電腦附帶 AgEnD 的 Node 時就用它，否則用 PATH 上的 `node`；如果更新是透過 nvm 安裝，則用 nvm 實際選到的那個 Node 22。如果那個 Node 不符合，更新會停下來並顯示「AgEnD 沒有被變更」，說明新版本需要哪個 Node、為什麼用不了附帶的 Node（例如 musl Linux），並請你安裝符合該範圍的 Node。它不會動到系統的 Node。走 nvm 時，這項檢查會在 nvm 選好 Node 之後進行，但仍在 npm 安裝任何東西之前。從聊天室下的 `/update` 也會回報同樣的原因。如果讀不到需求，或需求用了這項檢查看不懂的範圍寫法，更新照舊進行，新版本自己的安裝檢查仍會把關。
+- **`agend` 與 `agend-agent` 改由 launcher 啟動，由它決定 AgEnD 用哪個 Node 執行（#1450）。** 這兩個指令是很小的 POSIX `sh` 腳本，所以 PATH 上沒有 `node`（例如沒載入 nvm 的 shell）也能啟動。當版本為此平台釘選了 AgEnD 自帶的 Node（Linux glibc ≥ 2.28 x64/arm64、macOS 11 以上 x64/arm64），安裝時會驗證這個 Node（確切版本、N-API 10、在主執行緒與 worker 各開一次資料庫）並留下紀錄；之後 AgEnD 一律用它執行，不受 PATH 上的 Node 影響。系統的 Node、PATH 與 npm 都維持原樣。
+  - 有自帶 Node 的平台上，系統 Node 的版本永遠不會擋下安裝或更新：Node 20、18、16，只要它的 npm 能跑安裝都可以，AgEnD 不會用它執行。只有兩種情況會拒絕安裝，此時 npm 會保留你原本的版本：
+    - 此平台沒有自帶 Node（musl Linux、32 位元、其他作業系統、glibc 低於 2.28、macOS 11 以前），而系統 Node 又低於 AgEnD 的需求（`^22.14.0 || ^23.6.0 || >=24`），裝了也無法啟動；
+    - 安裝過程中自帶 Node 沒通過驗證。
+    npm 8 與 9（Node 16 附的是 npm 8）還會替 better-sqlite3 跑 `node-gyp`（已有預建檔時什麼也不編），所以需要 node-gyp 的條件：Python 3（3.11 以下，或裝了 setuptools）與 `make`（macOS 為 Command Line Tools）。缺少時 npm 會中止安裝並保留原本的版本。npm 10 以上不跑這一步；npm 10 需要 Node 18.17 以上。
+  - 自帶的 Node 缺少、不完整，或驗證後被更動，會直接拒絕並印出修復指令；絕不默默改用別的 Node。
+  - 安裝時跳過了自帶 Node（`--omit=optional`、`--ignore-scripts`）時，若系統 Node 符合需求就用它，並明確提示。
+  - 可用 `AGEND_NODE=/絕對路徑/node` 指定；該 Node 必須符合需求，否則拒絕執行，不會退回其他 Node。
+  - AgEnD 自己啟動的程式都用它正在執行的 Node 與它自己的 CLI 檔案，不再從 PATH 找 `node` 或 `agend`：各 CLI 啟動的 MCP server、沒有 service 時的 `agend start` 與 `agend restart`、quickstart 的重新載入、`/doctor`，以及 Antigravity 的狀態列。kiro、grok、muse 產生的 wrapper 中，路徑與參數都加上引號，含空白、`$` 或反引號的路徑會照原樣使用。
+  - 不支援原生 Windows：請在 WSL 內執行 AgEnD。
+- **服務會寫明 AgEnD 自己的 Node，而 `agend restart` 會拒絕無法證明的服務（#1450）。**
+  - systemd unit 與 launchd plist 現在啟動的是 `<AgEnD 的 Node> <套件>/dist/cli.js fleet start`，不再交給 `#!/usr/bin/env node` 和服務的 PATH 決定 Node。
+  - 沒有自帶 Node 的平台，服務改為啟動 AgEnD 的 launcher，每次啟動時從服務的 PATH 找 Node，所以用 nvm 或 Homebrew 升級 Node 不會讓服務壞掉。
+  - `agend restart` 在停止任何東西之前，會確認 systemd 或 launchd 已載入的定義正好是這樣，且沒有待重新載入的變更；否則拒絕，什麼都不停止。舊的服務請執行 `agend install` 重寫。`--force` 是給管理者用的。
+  - macOS：`agend install --no-activate` 不再把新的 plist 留給 launchd 在不確定的時間點載入。它會驗證 plist 並記錄一次預定的啟用，由下一次 `agend restart` 只做一次 `bootout`/`bootstrap`；新的 job 沒有跑起來就回復到先前的 job。AgEnD 使用的 launchd domain（`gui/<uid>`）及原因，請見 `docs/cli.zh-TW.md`。
+  - macOS：`agend install` 與更新會等 launchd 把先前的 job 完全卸載後才載入新的 job。launchd 在 `bootout` 完成前就先返回，立刻載入曾因此失敗（錯誤 5）。
+- **`agend update` 執行期間獨佔 npm prefix，並用新版本實際會使用的 Node 驗證新版本（#1450）。**
+  - npm 執行前，更新會在已安裝的套件旁建立鎖（`<npm prefix>/.agend-install.lock`）。同一個 prefix 上若有第二個 `agend update`（不論來自哪個 fleet）會直接拒絕，不會互相衝突。已中斷的更新留下的鎖會被回收。
+  - 鎖存在期間只有該次更新自己的 npm 子程序可以安裝：套件的安裝腳本會拒絕其他安裝到該 prefix 的動作，npm 會把它還原。請一次只執行一個安裝。
+  - 自帶 Node 的版本，會用它自己的 Node 驗證：更新會詢問已安裝的版本選了哪個 Node，再用那個 Node 在主執行緒與 worker 各開一次資料庫；執行更新的 Node 不算數。
+  - 聊天室的 `/update` 會執行 npm 安裝的那個 `agend`：透過 npm 找到並確認是該套件後，以完整路徑執行。無法確認時，`/update` 會拒絕並提示改從 shell 執行 `agend update`；絕不會改用 PATH 上第一個找到的 `agend`。
+- **文件更新：** `docs/features.md` 新增「需要你處理」收件匣（#1386/#1398）和全新網頁應用程式外殼（#1408 步驟 1）的章節。`docs/commands.md` 中 `kiro-cli` `/steer` 支援的說明已正確反映 #1432。README 中的 Node.js 版本需求已反映 #1420（`^22.14.0 || ^23.6.0 || >=24`）。
+- **Codex session resume 文件：`$CODEX_HOME` 優先於 `~/.codex`。** `docs/features.zh-TW.md` 中兩處提到 `~/.codex/state_5.sqlite` 和共用 home 的地方，現在改為 `$CODEX_HOME/state_5.sqlite`（預設值：`~/.codex`）和 `$CODEX_HOME`（預設值：`~/.codex`）。程式碼（`src/backend/codex.ts:904`）一直都是用 `process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")`；文件現在與程式碼一致。
+- **測試：`ENGINES` 常數必須在 `package.json`、`scripts/preinstall-guard.cjs` 和 `src/node-version-guard.ts` 之間保持同步。** 新測試以 `package.json` 的 engines.node 為唯一真實來源，並斷言：(a) `preinstall-guard.cjs` 的 `ENGINES` 字串與其完全相同，(b) `isNodeCompatible()` 對每個選擇項的最低版本都回傳 true。任何一處有變動而其他處未更新時，測試就會變紅。(#1490 P3)
+- **Telegram forum 根層指令固定所屬 bot：** 不帶後綴的指令使用 primary
+  連線在該群的 General；primary 沒有同群 General 時，依配置順序選第一個。
+  不論 sibling 的接收順序，都使用目標 bot 的管理員名單；目標停止或無法判定
+  時不會轉交其他 bot。對特定 bot 下指令請用 `/restart@ThatBot full`、
+  `/update@ThatBot` 或該 bot 自己的 General topic。普通訊息與既有 Classic
+  指令沿用原路由。 (#1490)
+- **開啟臨時公開連結時會逐步顯示進度（#1512）。**
+  - 你按的 `/dashboard` 選單會逐步顯示啟動過程，每個階段都附經過秒數：
+    1. 檢查 cloudflared；
+    2. 下載（已下載 / 總共 MB）；
+    3. 驗證檔案（固定版本與 SHA256）；
+    4. 啟動 tunnel；
+    5. 等待公開網址可以連上；
+    6. 私送連結給你。
+  - 只有需要下載 AgEnD 自己的 cloudflared 時才會出現第 1–3 步；第一次之後只會看到第 4–6 步。
+  - 失敗的那一步會標出原因，例如「檔案與固定的 SHA256 不符」或「還有另一個 tunnel 在執行」。再執行一次 `/dashboard` 即可重試。
+  - 選單最多每 2 秒更新一次（Telegram 為 3 秒，會直接編輯 General 裡的選單訊息），且絕不顯示連結或登入碼。
+- **網頁 app：每一頁的側欄都是同一份 instance 清單（#1526）。** 聊天、檢視、Fleet、設定與「需要你」現在顯示同一份清單：即時狀態點、檢視原有的標籤分組、收合與拖曳排序，以及在搜尋框旁新增的「狀態」與「CLI」篩選。篩選條件在每一頁都相同，並由這個瀏覽器記住。點一列會開啟你目前所在的視圖（在檢視頁開檢視，其他頁開聊天），切換頁面時清單也不再跳動。在檢視頁替 instance 個人資料設定的別名或說明，現在各處都會顯示，聊天標題也一樣。
+- **CLI：persona bot 邀請改用與設定相同的權限組（#1533）。** 新增 bot 實際需要的「管理頻道」、「附加檔案」與「使用外部表情符號」，移除 bot 用不到的「管理訊息」與「使用應用程式命令」（斜線命令由邀請的 applications.commands 範圍授權）。
+- **AgEnD 各處都用同一種方式讀取 `~/.agend/.env`（#1545）。** 啟動時、新連線不重啟直接啟動時，以及替新 token 取變數名稱時，都套用相同規則：`export KEY=value` 的寫法、加引號的值、重複的鍵以最後一個為準。因此同一個 token 不會在啟動時和之後讀成不同的值。
+- **CLI：設定完成後指向網頁儀表板（#1550）。** `agend quickstart`、`agend setup` 和 `agend init` 結束時會顯示儀表板的網址（`http://localhost:19280/`，或 fleet 設定的 `health_port`），並說明登入方式：執行 `agend web --code`，或傳 `/dashboard` 給你的 bot。quickstart 的步驟改為 1/4 到 4/4。`agend init` 安裝系統服務時現在會一併啟動它；以前它建議的 `systemctl` 服務名稱並不存在。「安裝 Discord plugin」那一行也拿掉了，因為 Discord 已經內建。`npm install` 成功時，最後一行會是「Next: run `agend quickstart`」。README 和網站的快速開始頁面也更正了 Node 版本需求，並加上儀表板的說明。
+- **公開連結的 cloudflared 下載在慢速網路上也能完成（#1554）。**
+  - 不再固定 5 分鐘就失敗。只有連續 60 秒沒有收到資料才算失敗，整體上限 30 分鐘，所以慢但持續在動的下載會完成。
+  - **Linux 現在先從 Cloudflare 自己的套件庫下載**（pkg.cloudflare.com）；套件不存在、停滯、太慢或不符時，再改用 GitHub release。套件的大小也只有一半。
+  - 兩種來源都比對同一個固定的 SHA256。套件裡的執行檔由 AgEnD 自行解出，不會安裝任何其他東西。
+  - macOS 仍從 GitHub 下載，因為 Cloudflare 沒有提供 macOS 套件。
+  - 在 `/dashboard` 上，第 ② 步會標出何時改用 GitHub 以及原因。
+- **網頁聊天：圖片直接在頁面裡放大檢視（#1558）。** 以前點聊天裡的圖片會開新的瀏覽器分頁。現在會在聊天上方以深色背景顯示，並縮放到符合畫面。要關閉，按 ✕、點深色區域，或按 Esc。一則訊息有多張圖片時，可以用箭頭或 ← → 鍵切換。**開啟原圖** 仍會在新分頁開啟圖片；按住 Ctrl 點擊或用滑鼠中鍵點擊圖片，也和以前一樣會開新分頁。
+- **網頁聊天：HTML 預覽的提醒可以先關掉，直到下次登入（#1568）。** 執行中預覽上方的提醒多了 **我知道了** 按鈕。按下後，這次登入的所有分頁、所有預覽都不再顯示這則提醒；下次登入會再出現。沒有登入工作階段時，只在那個分頁裡隱藏。每個預覽外圍的黃色框線一律保留。預覽仍然預設關閉、要你允許，而且每次都要你按下才會執行。
+- **網頁：開著的 dashboard 分頁會安靜地等艦隊重新啟動完（#1580）。** 以前 AgEnD 重新啟動時，每個開著的分頁會同時約每 3 秒重連、每 5 秒輪詢，而且永不停止、隱藏時也照樣——透過 WSL2 的轉送或 tunnel，每個分頁每分鐘就是幾十條連線。現在分頁每次重試會等得更久（約 1、2、4、8、16 秒，之後 30 秒），分頁隱藏時暫停，最多只保留一條連線，關閉分頁時也會一併關掉。頁面會顯示「連不上 AgEnD——可能正在重新啟動」以及下次重試的時間。AgEnD 回來後，期間說過的訊息會出現，而且只出現一次——以前分頁可能會漏掉這些訊息。
+- **網頁用量面板（◔）現在會立刻打開（#1585）。** 上一份快照過期時，面板會先直接顯示它，並標示「N 分鐘前更新 · 更新中…」，同時在背景跑這次過期本來就會觸發的那一次更新，幾秒後由新數字取代。以前面板要等所有供應商回應，常常要好幾秒。呼叫供應商的頻率和以前完全一樣。聊天的 `/usage` 指令、`get_usage` 工具和 Discord 狀態仍然會等新的數字。超過 60 分鐘的快照不會這樣顯示。不論快照是否過期，都只會在它當初抓取時的那份艦隊設定下顯示：憑證 profile 或綁定一旦變更，下一次讀取會等它自己的那次抓取，而這次抓取會排在已經在跑的抓取之後，不會同時進行。如果讀不到設定檔的中繼資料，就不顯示任何快取內容；在快取期間內，這種讀取會直接失敗，不會再去呼叫供應商。`/api/ai-usage` 回應會帶 `Cache-Control: no-store`。
+- **手機上更容易複製登入碼，連結期限改用你的時區（#1586）。** `/dashboard`（或 `/web`）的登入訊息之後，以及登入頁「傳一組新的登入碼給我」的訊息之後，bot 會再把登入碼單獨傳一則：Telegram 點一下即可複製，Discord 長按 → 複製文字。第一則訊息仍然含有登入碼，所以多傳的那則失敗也不影響。公開連結的期限與選單的狀態列，現在會以 fleet 的時區（`TZ`，否則用系統時區）顯示成 `2026-10-11 01:30 (UTC+8)` 這種格式，不再是 UTC 時間戳。
+- **網頁：側欄底部變短，也不再顯示「每 5 秒重新整理」（#1603、#1604）。** 側欄底部從五列變成一列——**設定**與**登入狀態**。這個瀏覽器自己的選擇（主題、語言、允許預覽 HTML、重看導覽）移到 **設定 → 這台裝置**；未登入看 `/view` 時，主題與語言在**登入**旁的 ☀ 按鈕。「即時更新暫停中——每 5 秒重新整理」不再出現：輪詢本來就是正常的更新方式（公開連結一律輪詢），所以不再當成問題顯示。真的連不上 AgEnD 時，仍會顯示「連不上 AgEnD——可能正在重新啟動」。
+- **Discord 上單獨重傳登入碼的那則訊息改用行內程式碼（#1606）。** 單獨重傳登入碼的訊息（#1586）在 Discord 上現在顯示為 `` `ABCD-EFGH` ``，手機點一下就能複製，和 Telegram 一樣。那則訊息仍然只有登入碼。
+- **關閉公開連結要按兩下（#1610）。** 在手機上，「關閉公開連結」按鈕就在要點一下複製的登入碼正上方，誤觸就會把正要用來登入的連結關掉。現在第一下只會把同一則訊息上的按鈕換成「確定關閉（公開連結的登入都會登出）」／「取消」，訊息內容不變；只有按確定才會關閉，按取消會恢復原本的按鈕。擁有者檢查不變。`/dashboard revoke` 與 `/web revoke` 仍然立即生效。
+- **網頁：General 可以顯示自己的 Bot，上傳的圖片也能移除（#1630 後續）。**
+  - 主要 Bot 只有一個 instance 在用時（例如 fleet 只把主要 Bot 留給 General），會算是那個 instance 自己的 Bot，顯示 Bot 的頭像和 Discord 顏色外框。多個 instance 或聊天室共用的主要 Bot，照樣顯示但沒有外框。
+  - View 的**編輯個人資料**在已上傳圖片時有**移除圖片**。儲存後刪除圖片，改回 Bot 的頭像、persona emoji 或名稱第一個字。
+  - 路由是 `DELETE /api/avatar/<instance>`，和上傳一樣需要登入。
+- **設定：狀態表情圖片改由 dashboard 自己提供（#1630）。** 狀態表情編輯器的伺服器表情清單與預覽，以前會在瀏覽器中從 Discord 的 CDN 載入，dashboard 的內容政策也因此允許 `cdn.discordapp.com/emojis/`。現在改用 dashboard 自己快取的路徑（與網頁聊天相同），內容政策不再允許任何遠端圖片：開著編輯器時，Discord 不會看到你的位址。不在 fleet bot 所在伺服器的表情會以 `:名稱:` 顯示。agent 的 `list_emojis` 圖片連結不變。
+- **網頁登入指引改為建議使用 `/web`（#1655）。** 升級與首次設定訊息也使用 `/web`，包含 `/web revoke`。`/dashboard` 仍是別名，權限與選項相同；指令文件列出兩個名稱。
+- **Agent：在 Telegram 上，`format: markdown` 現在就是 markdown；原始 HTML 標籤會以文字顯示（#1658）。** 以 `format: "markdown"` 呼叫 `reply` 時，文字會未經轉換就當作 HTML 送到 Telegram，因此含有 `<` 或 `&` 的文字（`a<b`、`x && y`）會被拒絕、回覆失敗，`**粗體**` 也會原樣顯示。現在會先全部跳脫再從 markdown 轉換：`<`、`&`、`>` 照原樣顯示，**粗體**、*斜體*、~~刪除線~~、`code` 與 http(s) 連結會套用格式。「markdown」模式下的 HTML 標籤從未列入文件，現在會以文字顯示。若 Telegram 仍拒絕該格式，會改以純文字再送一次。含有表格、程式碼區塊或標題的回覆，仍照舊以 Telegram rich message 送出。
+- **網頁儀表板預設兩天內都不用重新登入（#1670）。** 直接連到 dashboard（本機、區網、tailnet）登入後，現在可維持 48 小時、閒置 48 小時才會登出，原本是 12 小時／閒置 2 小時。公開連結的 session 仍是 4 小時／閒置 30 分鐘。在 `web.session.local.*` 或 **設定 → 網頁** 自己設定的值仍然優先，範圍仍是 1 到 720 小時。更新前就已登入的 session 仍在登入時給定的期限到期（舊預設是 12 小時，自己設定過的則依當時設定），已經閒置逾時的也不會復活；只有在原本的閒置期限之前有實際操作，閒置時間才會依新的設定延長，而且不會超過原本記錄的期限。只設定較短的 session 時長（例如 `absolute_hours: 24`）仍然有效，閒置時間會跟著它；只有在沒設定 session 時長的情況下把閒置時間設超過 48 小時才會被拒絕。
+- **寬螢幕上，AI 用量又回到右側的面板（#1673）。** 在 Chat、View、詳細資訊與 Fleet，1200 px 以上的螢幕會把 AI 訂閱用量顯示在頁面旁的面板，切換頁面時仍保持開啟，如同舊版 `/view`。標題列的 **用量**（或面板的 ✕）可隱藏或顯示它，這台裝置會記住選擇。較窄的螢幕（例如手機）仍使用 **用量** 對話框。面板的內容與更新方式和對話框相同，隱藏時不會讀取，`web.usage_panel` 為 `false` 時不會出現。
+- **網頁：可收合的篩選群組（#1700）。** 側欄篩選中的**狀態**和 **CLI** 群組各有一個附箭頭的標題列，點標題列任一處即可展開或收合該群組的勾選框。群組收合時若有勾選項目，標題會顯示目前的選擇，例如「狀態 · idle」或「狀態 · 已選 3 個」。各群組展開與否只記在這台裝置上，不會同步。兩個群組預設為收合。
+- **網頁：「在面板中開啟」一次點擊就會執行 HTML 預覽（#1704）。** 在 HTML 卡片上按**在面板中開啟**，現在會開啟面板並直接在面板中開始預覽，不必再按一次**預覽**。如果這台裝置還沒允許預覽，面板會顯示**允許預覽**，允許之後就會立刻開始預覽。無法執行預覽的地方（`web.preview: false` 或公開連結）面板開啟後一樣不會執行任何東西。之後回覆中的較新版本仍然只會提示，頁面載入時也不會自行執行任何預覽。
+- 主機記憶體壓力不再發聊天廣播，恢復時也不發；所有平台仍保留啟動放慢／暫停、log、health 與 Fleet 儀表板指標。使用者的操作被延後時，該次操作的回覆會說明原因。
+- **網頁：側欄可以拉寬、同時顯示兩個名稱，CLI 標在頭像上（#1722）。**
+  - **調整寬度：** 拖曳側欄右緣即可調整寬度（200–480 px），也可以在右緣用方向鍵、Home、End 調整，按兩下或 Enter 恢復預設。寬度只記在這台裝置上；手機仍維持抽屜式側欄。
+  - **兩個名稱：** 每一列會顯示暱稱，下方以較小字體顯示實際的 instance 名稱；兩者相同時只顯示一行。在「設定 → **名稱**」可選擇哪一個優先顯示。這是會同步的偏好設定，也套用到聊天標題與「等你處理」。
+  - **CLI 標示：** agent 使用的 CLI 改為頭像左上角的一個字母（C Claude Code、X Codex、K Kiro、G Grok、A Antigravity、O OpenCode、M Muse），不再是彩色圓點，螢幕閱讀器也會唸出 CLI 名稱。
+  - **☆：** 改放在原本彩色圓點的位置，不會再蓋住名稱。狀態點維持原位。
+- **網頁：「Fleet → 排程」更易讀，排程也能編輯了（#1724）。**
+  - **每一列：** 顯示標籤（或訊息開頭），接著用文字寫出何時執行（「每週一到五 18:00」、「每 15 分鐘」、「一次 · 2026-10-13 14:00 (UTC+8)」），以及依 fleet 時區顯示的下次執行時間和目標的顯示名稱；原始 cron 改放在提示文字中。
+  - **一次性排程：** 會顯示執行時間，先前這個位置是空白的。
+  - **已停用的排程：** 一看就知道已停用。
+  - **編輯：** 新增的「**編輯**」按鈕會開啟已填好內容的排程表單，可切換「**重複 / 一次**」，儲存時與 `update_schedule` 工具使用相同的驗證。
+  - **新增：** 「**新增排程**」現在也能建立一次性排程，從網頁建立排程也恢復正常。
+- **Telegram `/web`：不用離開 bot 的私訊就能完成登入（#1742）。**
+  - fleet 管理員透過「先開私訊 →」連結（`/start web`）打開 bot 的私訊後，會直接在私訊裡看到 /web 選單。選擇區網或公開連結後，登入碼就送到同一個私訊，不必再回 General。這個選單屬於同一個 General，管理員檢查與在 General 用 `/web` 時相同，按鈕也只對那位管理員、在那個私訊裡有效。
+  - `/web` 無法私送時，訊息會一步一步說明：① 開啟私訊（知道 bot 名稱時附按鈕）② 按「開始」③ 在那裡選擇連結。訊息不再叫你傳單獨的 `/start`，那會另外啟動一個 ClassicBot agent。不知道 bot 名稱時，會請你傳送 `/start web`。
+  - 收到那則訊息後 10 分鐘內，你在 bot 私訊裡傳的下一個單獨 `/start`（Telegram 的「開始」按鈕）會被當成 `/start web`，只限一次。其他 `/start` 照舊。
+  - 訊息上的按鈕無法更新時，結果會改用新訊息貼出，並附上「先開私訊 →」按鈕，不再缺少按鈕。
+  - Discord 不變。
+- **切換 Claude Code agent 的 credential profile 時會保留原本的對話（#1753）。** 以前切換會開新對話，只給新 session 一段簡短的交接。現在 AgEnD 會在 agent 重啟期間，把這個 session 的對話紀錄、它的資料夾和檔案歷史複製到新 profile，agent 在那裡接續原本的對話。
+  - 舊 profile 保留自己的那一份，所以切回去會回到同一段對話。
+  - 切換後的第一次回覆會在快取為空的狀態下重讀整段對話，所以會比較慢，並以完整價格計費。
+  - 這適用於 `update_instance_config` 和 ClassicBot 頻道。
+  - 無法複製時，切換會像以前一樣開新對話並附上交接，回覆的 `carry_failed` 會說明原因。可能的原因有：還沒有 session、新 profile 已有這段對話的另一個版本、磁碟空間不足，或複製失敗。
+  - Kiro 仍會開新對話；Codex 本來就不會失去對話。
+- **Skill：credential-profiles 已更新，涵蓋 Claude Code profile 用量列（#1753）。** 過時的「Claude Code profile 尚未有獨立用量列」說明已改為正確行為：每個具名的 Claude Code profile 現在都有自己的 `Claude (<profile>)` 列，從該 profile 自己的登入讀取配額；從未登入的 profile 顯示「Not logged in — run `/login claude-code <profile>` to sign in」。「已登出」提醒列現在明確說明僅適用於 Kiro。
+- **側欄的 instance 數量改放在篩選標題那一列（#1776）。**
+  - 數量（例如 `71 / 71`）以前在「狀態」和「CLI」標題下方獨佔一列，現在放在那一列的最右邊，篩選區少了一列。
+  - 展開某個群組或設定篩選時，數量仍留在那一列；側欄很窄時，會先把標題換到下一列，數量不動。數量的內容與以前相同，有篩選時一樣會顯示「顯示中」。
+- **Kiro agent 切換通知（#1794，最終行為由 #1800 取代）。** 恢復對話的自動 swap 已暫停，不會嘗試切換或重試，也不發送切換失敗的主題通知；繼續使用存檔時的 agent 與共用檔案。共用 .kiro 讀寫失敗仍需處理，也仍會顯示。
+- **CI 不再灌高 `@songsid/agend` 的 npm 下載數（#1819）。** 會安裝已發布 2.1.12 的 job（Node 20 rollback smoke、data-downgrade 檢查、runtime-acceptance 的 hop、Mac GUI rehearsal）只抓一次 tarball，存在 Actions cache，每次安裝前都比對 registry 的 `dist.integrity`，不符就讓 job 失敗。如果 npm 仍然抓了我們的 tarball，安裝步驟也會失敗。
+- **網頁聊天會標出是誰在發言（#1827）。** 用 `/web` 的驗證碼登入後，agent 會把你認成收到驗證碼的那個 Discord 或 Telegram 帳號：你的訊息以 `[user:<名字> via web, id:<你在那裡的使用者 id>]` 送達，不再是 `web-user`。這只用來辨認，網頁訊息不帶任何權限。
+  - 名字預設是帳號的顯示名稱，也可以在 **設定 → 偏好設定 → 你的名字** 另取一個。名字會跟著你到每一台裝置，也會經過檢查，不能冒充其他平台、使用者、agent 或 bot。
+  - 同樣的名字和 id 也用在 topic 同步、ClassicBot 房間紀錄、回覆按鈕和投票（每個帳號一張選票，不論在網頁或平台上投），以及任務。
+  - 用 `agend web` 的驗證碼登入：和以前一樣是 `web-user`。
+- **網頁：聊天導覽只在你要看時才出現（#1854）。** 第一次開啟時不再在空白頁上跳出五個步驟。**設定 → 偏好設定 → 聊天導覽**會在你上次開的 Agent 聊天上開啟；沒有可開的 Agent 時會顯示「請先選一個 Agent，再開啟聊天導覽。」。頁面上沒有的控制項，導覽會略過。導覽也不再保證網頁訊息一定會出現在 Telegram 或 Discord，是否同步由網頁轉發決定。
+- **網頁：第一次進聊天頁更清爽（#1854）。**
+  - 還沒選 Agent 的聊天頁只說一件事：「選一個 Agent 開始聊天。」；完全沒有 Agent 時說「先建立一個 Agent，再開始聊天。」並提供「新增 Agent」。
+  - 「連接聊天 app」的卡片不再出現在聊天頁，保留在「設定 → Agent／連線」。
+  - Agent 的空白聊天顯示「直接在下方輸入任務。」。
+  - 輸入框下的提示只留兩個：Enter 送出、Shift+Enter 換行；「/ 叫出指令」和「Esc 中止回覆」放在它的提示框裡。
+  - 從沒設定過的瀏覽器，右側用量面板預設隱藏；按「用量」即可打開，之後會記住。
+- **網頁：登入頁會說明怎麼拿到登入碼（#1854）。** 以前寫「在 AgEnD bot 傳 /web」，已經傳過的人又被帶回 /web，卻沒說要在那裡按登入按鈕才會產生登入碼。現在改成「沒收到？在 General 傳 /web，再按登入按鈕取碼。」；`agend web --code` 放在收合的「沒有聊天 bot？」裡。登入碼錯誤時會說怎麼取新碼；伺服器無法確認登入時（例如公開連結的通知沒送出），不再說成是登入碼錯誤。
+- 聊天 `/update` 失敗時，固定說明與修復指引會使用艦隊語言。下一步和完整日誌位置移到原始診斷前，讓既有 300 字進度紀錄保留可用的指引。更新執行、階段、日誌與重試行為不變；工具原始錯誤可能維持原文。
+- **文件網站新增簡短的網頁使用說明，「文件」按鈕改開這一頁（#1854）。**
+  - 新頁面（EN 與 zh-TW）：用 `/web` 和按鈕登入、用手機開啟（臨時公開連結代表什麼）、登入期限與登出、`/view` 預設公開，以及 Windows 瀏覽器連不到 WSL 裡的 AgEnD 時要確認什麼。
+  - Fleet 總覽的**文件**現在開這份說明，不再開快速開始。
+  - 快速開始不再把 bot token 列為必要條件：只有要從 Telegram 或 Discord 聊天才需要；沒有 bot 的 fleet 可以只用網頁儀表板。
+- `/web` 先說明要按登入按鈕取得私送的登入碼，並清楚區分 AgEnD 電腦與其他裝置。移除重複頁面網址與已關閉連結的倒數；Telegram 僅在私送被拒時顯示開啟私訊的步驟。保留公開連結的風險揭露及管理員檢查。
+- **更新完成訊息與 2.2 歡迎訊息變短了（#1854）。**
+  - 正常的更新現在只用一行收尾：`✅ AgEnD 已更新至 v2.2.0；3/3 個 Agent 運行中（42s）。` 暫停或失敗的 Agent、被結束的背景工作和清理警告仍會列在下面。
+  - General 裡只出現一次的 2.2 歡迎訊息改成兩行：新增了網頁聊天；管理員在 General 傳 `/web`，再按登入按鈕取碼。
+  - 更新完成訊息不再附提示。每日提示和 `/tips` 不變。
+- **網頁：Agent 的頭像預設跟它說話用的 Bot 一致（#1867）。** 沒有上傳圖片時，有自己 persona Bot 的 Agent 顯示那個 Bot 的頭像；其他的則顯示它在 Telegram／Discord 說話用的 Bot（通常是 General Bot）的頭像，沒有自己連線的也用 General Bot。Bot 沒設頭像時，仍依序改用 persona emoji、名稱第一個字。彩色外框只給有自己 Bot 的 Agent。
+- **`agend doctor` 與 fleet 啟動時會顯示 fleet.yaml 的警告（#1874 後續）。** 以前驗證器的警告只出現在 `agend validate`，手動編輯 fleet.yaml 的人很少會去跑它。例如 AgEnD 會忽略的設定（像 `web.access`），或鎖定的 channel 沒有 `allowed_users`。現在 `agend doctor` 會在 **Fleet** 底下逐條列成 ⚠，fleet 啟動時也會在 `daemon.log` 以 warn 等級各記一次。沒有新增檢查。
+- **Web 聊天可以傳任何類型的檔案，跟 Discord、Telegram 一樣。** 壓縮檔、Office 檔、程式、HTML、SVG 等等現在都能附加，限制不變（5 個檔案、每個 10 MB、合計 25 MB）。agent 會在 inbox 收到，跟其他文件一樣。在聊天裡這些檔案一律只能下載（`application/octet-stream`、attachment），絕不會在頁面上顯示或執行。圖片、PDF 與文字檔照舊。(#1900)
+- **在網頁儀表板切換聊天會立即顯示（#1908）。** 聊天開啟時先畫出最新的訊息，較舊的訊息隨後補上，不會移動你正在看的位置。回到歷史很長的聊天，現在約 40–50 毫秒就會顯示，原本約要四分之一秒。
+- **網頁聊天中，回覆按鈕的點選會顯示為它的標籤（#1919）。** 有人點選按鈕時，他的對話泡泡現在顯示「🔘 <標籤>」，而不是 agent 收到的那一行（`[button] … (value: …)`），也永遠不會顯示 value。即時的情況下，點這個標籤會顯示按鈕所在的訊息。重新載入後仍會保留，在 Discord 或 Telegram 上的點選也以同樣方式顯示。agent 收到的內容不變。
+- **網頁聊天可以傳更大的檔案，上限也可以自己設定（#1937）。**
+  - **預設：** 每個檔案 50 MB、每則訊息 100 MB（原本是 10 MB 和 25 MB），仍最多 5 個檔案。
+  - **設定：** 用 `web.upload_max_file_mb` 和 `web.upload_max_total_mb` 改這兩個大小（整數 MB，1–500）。`agend reload` 後，下一次上傳就套用。
+  - **公開連結：** 單一檔案最多 95 MB，這是 Cloudflare 臨時通道單一請求能傳的上限。
+  - **記憶體：** 上傳改為邊收邊寫入磁碟，不再整個放在記憶體裡，大檔案下載也一樣。上傳停滯一分鐘或超過 30 分鐘就會中止，並刪掉已收到的部分。
+
+### 修正 (Fixed)
+- **`update_instance_config` 現在明確拒絕 `tool_set`（權限邊界 #804/#814）。** 在 config patch 中傳入 `tool_set` 會立即回傳明確的錯誤訊息——`"tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)"`——且不會寫入任何內容。先前此欄位會被靜默忽略。如需將 instance 標記為 coordinator：在 `fleet.yaml` 中加入 `tool_set: coordinator`，或使用網頁 UI 的 **Settings** 面板。
+- Kiro 原生 TUI 的 trust-all-tools 確認畫面改為 startup/runtime 共用結構式 selector（#849，A 部分）。AgEnD 從「No, exit」只送一次 Down，重新觀察游標確實位於單次 session 的「Yes, I accept」後才送 Enter。未知布局、游標未移動與「Yes, and don't ask again」保留給人處理；歷史引用不會收到同意按鍵。既有 model-picker hold 與 engine/session 身分鎖定不變。本次不開放 `kiro_ui: v3`；v3 startup/enablement 與後續 steering 驗證等有原生證據及使用者需求再議。
+
+- 每個 consent phase 的單次 claim 跨 startup／runtime 保留，包含按鍵 ACK 不明的情況；stop 與 tmux replacement 會淘汰舊 runtime 按鍵。原生 column-zero TUI composer 會排除被複製的 trust 畫面。
+- **Kiro 對話歸屬（#906、#1410；隔離受 #1800 限制）。** 鎖定啟動模式會依 ID 恢復 instance 已認領的對話；新對話使用自己的 agent、指示與 AgEnD MCP server。恢復對話的自動 agent swap 已暫停，仍保留存檔時的 agent 與共用 .kiro 項目，因此共用目錄的恢復中 instance 並非完全隔離。使用者自己的 MCP server 照常載入；缺少 per-instance agent 支援的舊版 CLI 仍使用共用 MCP／steering 設定；不支援的 UI／engine 組合仍拒絕啟動。
+- **資料遺失修正：在 Settings 儲存連線，不再毀掉 fleet.yaml 裡舊式 `channel:` 的連線設定（#1056）。**
+  - 使用舊的單一 `channel:` 鍵時，在 Settings 儲存連線的狀態 emoji（或存取設定）會刪掉 `channel:` 區塊，只寫出一個只有改動欄位的 `channels[0]`，下次啟動時設定會被拒絕（「type / bot_token_env 必填」）。
+  - 現在會把完整的連線寫成 `channels[0]`。在 2.1.x 上，升級前請先把 `channel:` 改寫成 `channels:` 清單（或不要用 Settings 儲存連線）；已經壞掉的檔案需從備份還原或手動重寫。
+- **設定存檔不會再寫出無法載入的 fleet.yaml（#1056）。**
+  - 每次存檔都會先載入並驗證即將寫入的檔案；會無法載入、或會新增設定錯誤的結果不會寫入，存檔會說明原因（Settings 會顯示錯誤並保留原本的值）。
+- **連線的狀態 emoji 不需重啟即可生效（#1056）。**
+  - 修改 `channels[].options.status_emojis` 會在 bot 下一次蓋戳記時生效（與 agent 自己的 `status_emojis` 相同），Settings 也標示為「立即生效」。連線的其他設定仍需重啟 AgEnD。
+- **`list_emojis` 會自我說明（#1056）。**
+  - 新增 `platform_note`，例如說明 Telegram 沒有伺服器 emoji、`standard.reactions` 就是完整清單。
+  - 每個狀態附 `kind`，說明 `progress_prefix` 是訊息文字而不是反應；Settings 與 `set_persona_emoji` 也有同樣說明。
+- Fleet 重啟給逐批 busy Kiro 停機五分鐘，取代 detached 10 秒與 systemd 60 秒上限（#1071）。Restart 會遷移舊 unit 預設並核對已載入值；自訂期限／drop-in 保留並提示，但 `agend restart` 拒絕所有讀不到或小於 300 秒的已載入期限。Detached 等待改為非同步、monotonic，送訊號前重驗行程 identity，確認退出後才啟動 replacement。讀不到或仍活著的 owner 會拒絕 replacement。這仍是有限外部期限，不保證任意大小 fleet 或卡住的 transport；launchd 政策不變。
+- **過期的命令確認（#1148／#754）：**`/clear` 在平台訊息更新等待後、破壞性指令送出前，重驗當下授權、來源／target 與確切 daemon／IPC、cached launch 與 lifecycle generation。Model／effort 選單亦拒絕同一 bot 內已搬移到另一 target 的來源 channel、已變更的 Telegram group，或有歧義的 topic 對應。F／C 角色不變；clear 維持不提供 web prompt。
+- **在 Telegram 的 instance topic 下只能在 General 使用的指令，現在會直接說明，不再送到 agent（#1148）。** 論壇群組的指令選單在每個 topic 都一樣，所以 `/status`、`/sysinfo`、`/dashboard`、`/restart`、`/update`、`/profile`、`/doctor`、`/login`、`/usage`、`/visibility` 在 instance topic 也看得到。以前在那裡選了，會被當成一般文字交給 agent：沒有任何動作，也沒有說明。現在會回覆「要在 General topic 使用，請到那裡執行」；在 General 照常運作。
+- **Telegram General bot 定址（#1148／#754）：**forum 根層的明列命令 suffix 在 shared dedup 前驗證，即使沒有 message ID 也一樣。錯誤或不明的 receiving username 不會消費 intended bot 的訊息或執行其 General 命令。Bare 命令、Classic／有-thread 行為與精確別名形式不變。
+- **AgEnD 不再一次讀完很大的對話紀錄（#1218）。**
+  - 以前 agent 在兩次讀取之間寫了很多內容時（長指令的輸出、數 MB 的工具結果、追趕中的 300 MB codex session），AgEnD 會在主迴圈上一次把整段差異讀進記憶體。
+  - 現在 claude-code、codex、kiro 與 muse 的 session 檔每次最多讀 1 MiB，每輪讀幾次。
+  - 超過 256 KiB 的單行，如果是回合紀錄或回覆，仍會在 16 MiB 以內整行讀取：最終回覆很長的 codex 回合結束、貼上的長提示、很長的 claude 回覆、kiro 的每一筆紀錄。所以不會漏掉回合的結束。
+  - 其他長行（例如數 MB 的工具輸出）只看開頭 8 KiB，用來判斷它屬於哪一個工具步驟，所以進度訊息不會漏掉這一步。
+- View 與狀態的 context 更新共用各 instance 的 tmux control 讀取路徑，連線正常時不再逐 instance 建立 capture 子程序。停機、respawn、pane 替換或取消後，尚未返回的舊結果不會套用。
+- 快取目前使用者已驗證的 OS home，避免 tmux namespace getter 反覆查詢帳號資料庫。讀取失敗仍是 unknown，絕不以 `$HOME` 代替。
+- macOS 記憶體保護現在只採 kernel 壓力等級（1／2／4），以警告與 critical 控制啟動 admission，不再因可用／空閒 RAM 或動態配置的 swap 比例誤觸（#1256）。缺值或格式錯誤保持 unknown：不降速、不通知，每個 sampler 生命週期記錄一次有界原始輸出。pressure probe 由既有有界非同步 sampler 執行；admission 與 tool handler 不會另外啟動。Linux policy 不變。比例 fallback 等另有真 Mac 校準資料才處理。
+- **網頁聊天的 `/compact` 現在會告訴你何時完成（#1269）。** 以前那張卡片會一直停在「已送出壓縮指令」。
+  - 從指令送到代理的那一刻起顯示「壓縮中…」，等代理的對話紀錄寫下壓縮完成後顯示「對話已壓縮」，然後自己消失。適用於 Claude Code 和 Codex。
+  - 其他後端（包括 kiro）沒有 AgEnD 能對應到這個 instance 的紀錄，所以會說明無法偵測壓縮何時完成並自己消失，而不是宣稱已完成或一直留著。
+  - 10 分鐘內都沒有紀錄時，會說明這件事，不會一直等下去。如果指令沒有送到代理，或代理在這期間停止、重新啟動或換了後端，會說明已無法追蹤這次壓縮。
+  - `/clear` 和 `/cancel` 只說明已送出的結果現在會自己消失；拒絕的原因會留著。
+- 網站安裝腳本現在會偵測 Muse，不再列出已移除的 Gemini CLI backend。安裝與 quickstart 行為不變。
+- **文字指令改走擁有者閘門（#1346）。** 多機器人共用群組時，每個機器人都會收到同一則訊息的副本，過去誰先收到誰就執行 `/cmd`，形同競速。現在會在佔用共用去重 key 之前先判斷話題擁有權：非擁有者的副本直接丟棄、不消耗 key，權限檢查也一律走擁有者那台的 admin 名單（只在別台有 admin 身份的人無法借道授權）。各平台行為：Discord fleet 話題中手打 `/xxx` 永遠不執行——擁有者回一則系統訊息導向 `/` 斜線選單並吃掉訊息，其他機器人保持安靜；Discord ClassicBot 頻道中 `/xxx` 會被所有機器人靜默忽略（也不會轉成 `/chat`）。Telegram fleet 話題中裸 `/cmd` 只由擁有者執行，`/cmd@otherbot` 忽略；Telegram ClassicBot 群組忽略裸 `/cmd`（只有 `/cmd@ourbot` 會跑）；Telegram 私聊不變。詳見 `docs/commands.md`（"Text Commands by Platform"）。
+- **Service unit 的 `Environment=PATH=` 不再累積 `node_modules/.bin` 項目（#1348）。** `buildServicePath()` 現在會移除所有包含 `/node_modules/` 路徑段的 PATH 項目（工作目錄的 `.bin` 資料夾及 npm 自己的 `node-gyp-bin` runner），並在保留首次出現順序的前提下去除重複項目。nvm bin 目錄（`agend` 和 `node` 所在之處）會明確保留。這個污染具有自我延續性：每次 `agend install`/`/update` 都會把呼叫端的 PATH（繼承自舊 unit 的 `Environment=PATH=`）直接寫進新的 unit。套用此修正後，下一次 `/update` 會自動用乾淨的 PATH 重寫 unit。
+- Codex recovery 不再把 paste 前讀不到的 input／footer pair 當成空 composer（#1359）。以本文辨識的殘留文字必須在 paste 前後都讀得到 input 才可歸屬；structured-input recovery 也會在 retry delay 與 Enter availability wait 都結束後、實際 recovery key 前重新驗證歸屬。未知 input 讓系統通知保持未確認，避免送出舊 draft；新的正面 echo／queue 證據則完成確認而不再補鍵。唯一 delivery ID 與 row-only retries 沿用原行為。隔離原生取證涵蓋關閉 warning viewer／縮小 pane 的競態；warmup 測試改用真實的空 composer fixture。
+- 將 Kiro 對話讀取與大型歷史解析移出 Fleet 主執行緒，避免更新進度時卡住 Discord 指令確認。使用共用、有時限的 worker，保留唯讀連線、工作區專屬查詢及舊結果防護；不修改 Kiro 的資料庫。
+- **回覆守衛誤報修正（#1377）：即使在回覆已成功投遞的情況下，也不再錯誤觸發「回合結束未收到回覆」的復原流程。**
+
+  `#1241` 閒置確認路徑中有兩個競態條件，導致 kiro 及其他啟用 `replyCompletionGuard` 的後端出現假陽性的回覆遺失警報：
+
+  - **情況一（IPC 回應延遲）：** agent 的 `reply` 工具呼叫已被處理並投遞至頻道，但 `fleet_outbound_response` IPC 訊息在 daemon 已執行 busy→idle 邊緣並啟動 60 秒確認視窗「之後」才抵達。由於 `settleToolAttempt` 沒有路徑通往 `clearReplyGuardConfirm`，計時器仍會觸發並啟動復原流程，即使回覆早已到達使用者。
+
+  - **情況二（跨 instance 的 busy/idle 復活）：** 即使確認視窗已被提前到達的 settle 清除，世代（generation）本身仍維持活躍狀態。同一個 instance 幾分鐘後處理跨 instance 訊息時更新了 `busyObservedAt`，導致舊的（已回答的）人類世代被重新掛上確認視窗，最終觸發復原流程。
+
+  **修正內容：**
+
+  - 將 `replyAttempted` 的判斷移到 `busyObserved` 與確認視窗關卡「之後」（#1241），使傳輸中的回覆（IPC 回應尚未返回）得到與無回覆回合相同的 60 秒延遲，而非在第一個閒置邊緣就被當成「不明」立即回報。
+
+  - 在 `TurnReplyGuard` 新增 `replyAttemptFailed` 旗標，在 `respond(null, error)` 被呼叫時（配接器明確回傳錯誤）設定。確定失敗的回覆仍會立即觸發 `reportReplyDropWithoutRetry`，繞過 `busyObserved` 關卡和確認視窗。
+
+  - `settleToolAttempt` 在確認 `completionAction` 工具（reply/react/edit_message）以目前義務等級成功完成，且回合處於 `awaiting` 階段（非已取消、非復原中）時，現在同時呼叫 `clearReplyGuardConfirm`，取消待執行的確認計時器。`maybeConfirmReplyGuardIdle`（穩定閒置監控路徑）也會在無待確認視窗且 `completionDelivered=true` 時，於下一個監控刻度完成該世代。
+- **Claude Code 立刻收下的訊息，不會再被標成「無法確認」並對使用者發出 ⚠️（#1379）。** 按下 Enter 後，Claude
+  的輸入框會再顯示一下剛貼上的內容。AgEnD 把這當成「Enter 被吞掉」，並等最多 30 秒讓提示符回來；但 CLI 已經在處理這則訊息，提示符不會出現，回覆也早把訊息擠出畫面，結果明明送達了卻被標成無法確認。
+  - 貼上的內容要在 Claude 的輸入框裡停留超過 3 秒，才算 Enter 被吞掉。
+  - 能讀到 CLI 自己的對話紀錄（Claude Code、Codex）時，紀錄裡出現這則投遞的 id，就算確認已收下，不論畫面顯示什麼。
+  - 「無法確認」的 log 會寫出實際的 CLI，以前不論哪個後端都寫「Codex」。
+- **fleet 的頻繁畫面與視窗檢查改用已連線的 tmux control client（#1401，屬於 #1235）。** 錯誤監測、狀態擷取與 pane 健康檢查在正常連線時不再每次啟動子行程。查詢保留新鮮畫面與原有期限，重連時使用有界 fallback，並限制輸出大小、丟棄舊生命週期的結果。畫面寫入和分散執行的安全巡檢排程不變。
+- **每 60 秒一次的安全巡檢，不再一次卡住整個 fleet（#1402）。** 以前每個 instance 的畫面檢查都在同一個 tick 開始、各自 spawn 一個 `tmux capture-pane`；實測這個 tick 會讓 fleet 的 event loop 卡住 150–860 ms，主機忙時達 1–2.5 秒，訊息、按鈕和 web UI 每分鐘停頓一次。現在每個 instance 的檢查各有自己的 tick，平均分散在每分鐘的前 30 秒內。
+- **網頁：側邊欄的品牌列與每一頁的標題列對齊成同一列（#1408）。**
+  - 品牌列（AgEnD、隱藏側邊欄、＋）原本比頁面標題列高 4 px，中線也低 4 px，所以「設定」這類頁面標題看起來比 AgEnD 高。
+  - 標題旁的狀態、版本標籤與模型標籤比標題低 1–2 px；標題列的小按鈕和 instance 分頁是 30 px，旁邊的圖示按鈕卻是 36 px。
+  - 現在在 Fleet、等你處理、檢視、instance 的四個分頁與設定頁，不論桌面或手機寬度，兩段都是 52 px、同一條中線，標題列的控制項都是 36 px。
+  - 手機上 instance 分頁仍在標題下方自成一列。
+- Kiro TUI 啟動時的 session 探索不再於 fleet event loop 讀取與解析使用者全部 history（#1417）。單一有界 worker 驗證完整 JSON，依檔案 identity、size、mtime、ctime 快取 metadata（4,096 筆／約 4 MiB）；15 秒總期限包含排隊。Adoption、已持有的精確 resume ID、只依建立證據 take-up 的語意維持，寫入 identity／config 前會重驗 launch admission，已持有的 resume ID 不探索 store。冷掃描仍在 worker 讀完整檔案；worker 失敗／過期沿用既有 unreadable-store 政策。
+- **因 5 小時額度延後的排程，現在會在額度重置後補跑一次，不再直接跳過（#1426）。** 以前「延後」等於那一次直接作廢：在 100% 時觸發的每日檢查，那天就沒有執行。
+  - **什麼時候跑。** 在 statusline 給的重置時間補跑；不知道重置時間時，每 15 分鐘檢查一次。
+  - **同一次，有標示。** 補跑沿用原本那次的 run id，agent 收到的訊息開頭是 `[retry] originally due 21:00 (Asia/Taipei), deferred by the 5h rate limit at 100%`。
+  - **絕不跑兩次。** 絕不會在下一次排程的時間點或之後執行，fleet 重啟後也會保留。
+  - **`last_status`。** 會顯示 `deferred → delivered (retry)` 或 `deferred → skipped (…)`。
+  - **補跑不成時。** 被下一次取代、又被延後，或 5 小時 15 分內都沒有重置，排程所在的聊天會說明並 @ 管理員。
+  - **過時的讀數。** 額度視窗已經重置的讀數不再造成延後；閒置 instance 的 statusline 可能在重置後很久還顯示 100%。
+- **Claude Code 2.1.295 新增的「Resume this conversation?」提示，現在會自動回應並保留對話（#1434）。** 這個提示可能在 context 很大的 instance 閒置、prompt cache 過期後跳出，也可能在恢復對話時出現。提示開著時，投遞的文字只會進到輸入草稿，Enter 也會被擋下。AgEnD 現在比照舊的 resume 選單處理：只在畫面完全符合時按 Esc（提示本身標示為「resume」），並確認它已關閉。其他形狀一律保留給人處理。AgEnD 絕不會選「Start a new conversation」，那會清空 context。
+- **codex instance 用完額度時，又會自動改用 Luna Reserve 繼續，不再停下來等人處理（#1439）。**
+  - codex 切到 Luna Reserve 時會跳出選單：上面是伺服器提供的選項（Upgrade、Reset usage、Add Credits……），最後一列是
+    「Continue with Luna Reserve」。AgEnD 會按 Escape 回應，也就是改用 Luna Reserve 繼續。
+  - 伺服器改了選項、第一項變成「Upgrade」之後，AgEnD 就認不出這個選單，instance 一直停在選單上，直到有人手動按 Escape。
+  - 現在改用 codex 自己畫的部分來辨認選單，伺服器在上面放什麼選項都不影響。
+- **codex 0.162：AgEnD 仍能認出「這段對話已在另一個 app 開啟」畫面與續接時的工作目錄選單（#1443）。**
+  - codex 0.162 在 Linux 上把 Control 鍵寫成 `^c`（macOS 上是 `⌃c`），以前寫的是 `ctrl+c`。
+  - AgEnD 是靠這段文字辨認這兩個畫面。在 0.162 上，「在另一個 app 開啟」畫面不再被擋下來等人處理，工作目錄選單也只被當成
+    不認得的選單回報。
+  - 現在兩種寫法都認得，所有 codex 版本上這兩個畫面都會再擋下來等人處理。
+- **`agend update` 不會在新版本裝好之前就先移除 AgEnD（#1446）。**
+  - 它會把一般的全域安裝誤認成本機的 `npm link`、先 unlink 再安裝，所以安裝一旦失敗（網路、Node 版本不相容、磁碟滿），
+    `agend` 就整個不見了。現在要等 npm 換上新版本，現有的安裝才會被取代。
+  - 安裝完成後，會先確認 PATH 上的 `agend` 是新版本，而且能在它實際使用的 Node 上開啟資料庫，確認無誤才會重新啟動。
+    在 nvm 的 Node 上執行的安裝，檢查、更新服務設定與重新啟動也都在那個 Node 上進行。
+  - `systemctl restart` 失敗時會回報失敗，不再回報成功。更新停止等待時 systemd 仍在重新啟動的話，會回報「仍在進行」，
+    不會說已完成。
+  - 檢查失敗後再執行一次 `agend update`，不會再把 fleet 重新啟動到那個沒通過檢查的版本上。
+  - 只會透過通過檢查的那份安裝重新啟動 fleet，而且服務設定必須啟動的正是那份安裝。服務若仍指向別的安裝，update 會
+    說明原因，正在執行的 fleet 不受影響。
+- **網頁 app：alpha.2 回歸檢查的版面後續修正。**
+  - 在 Settings 中，等待 admin 確認的變更會顯示在頁面裡、緊接在操作下方，不再以卡片蓋住它。其他面板仍在角落顯示卡片。
+  - 在手機上：
+    - Settings → Developer 的工具列維持一列圖示按鈕；
+    - YAML 編輯器改為橫向捲動而不折行，邊緣的陰影提示還有內容；
+    - View 中 agent 的設定行會折成兩行，而不是被截斷；
+    - Settings 中每一列 agent 的標籤都以相同方式換行；
+    - **Needs you** 與 Teams 的按鈕會與上方文字對齊。
+  - 文件說明了為什麼登入頁在登入前會記錄一次 401。
+- **網頁 app：alpha.2 回歸檢查的修正。**
+  - Fleet 清單載入失敗時，會顯示錯誤狀態與 **再試一次**，而不是「還沒有 task」。
+  - fleet 沒有 provider 密鑰時，設定頁不再去讀取，每次開設定頁都會出現的 404 也就消失了。
+  - 數量為 1 時改用單數，例如「1 task」、「1 connection」、「1 room」。
+  - 在手機上：
+    - 連線名稱自成一行，不再被擠掉；
+    - 設定頁的分頁能完整放進畫面；
+    - 設定列與 **等你處理** 裡的按鈕都是足夠大的點按目標；
+    - 指令清單的說明會換行，不再被截斷；
+    - 空間不夠時，**中止回覆** 只顯示圖示，讓輸入框保留提示文字。
+  - 在桌面的聊天中，通知會出現在標題列下方，不再蓋住輸入框的按鈕。
+  - 登入提示不會再把 `agend web --code` 斷成兩行。
+  - 深色背景上，「工作中」圓點的閃動不會再淡到看不見。
+  - 文件已補上 Fleet → 組織圖、Fleet → 快取，以及聊天指令的說明。
+- **過大的 agent 請求現在會收到真正的「413 Request body too large」（#1489）。** `POST /agent` 原本就會在讀取內容前拒絕沒有有效 instance token 的請求，也從不暫存超過 512 KiB 的內容。但帶著有效 token、宣告的內容又超過上限的請求，只會看到連線被切斷。現在會在讀取任何內容之前直接回 413。
+- 更新會採用實際重啟結果：pending 回傳 exit 75 並保留修復備份；啟用失敗回傳 exit 1，不再回報成功（#1490）。Systemd 啟動失敗時，只有載入／磁碟 ownership 未變且確認服務已停止，才可還原本次更新的套件與 unit 備份；啟動前會核對舊的載入目標，回復成功仍回報本次更新失敗。Unknown／變更的 owner 與 detached 失敗需要管理者檢查。System-source Node 不符時會說明 user unit、system unit 與 launchd 的修復方法，並保留既有 restart 核對。
+- **atomic 寫檔現在包含 fsync。** 三個使用 write+rename 但缺少 fsync 的檔案已修正：`fleet.yaml`（`FleetManager` 的儲存路徑）、`web-sessions.json`（`WebSessionStore.persistNow`）和 `update-marker.json`。三者現在都遵循 write → fsync(temp fd) → rename → fsync(dir，盡力而為) 的流程。`src/atomic-write.ts` 新增了共用的 `atomicWriteFileSync` helper，供 update-marker 和 session 路徑使用；`FleetManager` 則以相同流程內聯實作，以保留預寫入驗證步驟。(#1490 P3)
+- **偵測後端不再卡住艦隊（#1490）：** `/ui/backends` 每次請求最多會在艦隊的事件迴圈上同步執行七次 `which`，每次逾時 2 秒。現在改成以非同步子行程執行 `which`，必須在 2 秒內回答，逾時的子行程會被終止，那個後端照舊顯示為未安裝。答案沿用 30 秒，同時進來的請求共用同一次查詢。卡住的查詢（例如 PATH 上有失效的網路掛載點）在子行程真正結束前，每個後端最多只佔一個行程，不會每次請求再多開一個。`/login` 仍然每次重新探測，剛裝好的 CLI 立刻看得到。
+- Linux 服務內的聊天更新會使用獨立的同使用者 systemd scope，避免 fleet 停止時把 updater 一併清除（#1490）。Cgroup 狀態不明或 scope 啟動不可用時會拒絕並提示從主機 shell 恢復。保留安裝路徑驗證、環境、工作目錄與兩秒延遲；憑證不會放進命令參數。
+- **`create_instance`：`tool_set` 和 `skipPermissions` 現在會以權限邊界錯誤拒絕。** 被誘導的 General 可以用 `create_instance` 建立有 `full` 設定檔、免確認的 worker。這兩個欄位現在在 Zod 的 `passthrough()` 把它們轉送給 instance-lifecycle 之前就被拒絕。錯誤訊息與 #804/#814 已有的 `update_instance_config` 拒絕訊息一致。(#1490 P3 #13)
+- **`update_instance_config`：`saveFleetConfig` 拋出例外時，記憶體中的 patch 現在會被還原。** 先前，instance config 會先在記憶體中修改再儲存。若儲存失敗，記憶體和磁碟的狀態會不一致。處理器現在會在儲存失敗時還原記憶體狀態。(#1490 P3 #48)
+- **只是被鎖住或打不開的歷史檔不會再被丟掉（#1490）：**以前 `events.db` 開啟失敗時，不管原因為何，fleet 都會把它改名為 `events.db.corrupt-<時間>` 並另開一個空檔。現在只有 SQLite 證實不是可用資料庫的檔案（`SQLITE_NOTADB`、`SQLITE_CORRUPT`）才會被移開。若是鎖定超過 5 秒的 busy timeout、SQLite 驅動在這個 Node.js 上載入失敗（為其他版本或架構編譯），或是權限、磁碟問題，檔案都會原封不動：fleet 在重新啟動前不記錄事件，並把原因發到 General topic（驅動問題會附上 `npm rebuild better-sqlite3`）。
+- **Kiro transcript 能從單一 worker 卡住後恢復：** 讀取逾時後撤掉舊 worker 的
+  讀取權，由替代 worker 沿用來源已接受的游標，不必重啟 fleet。舊回覆與 exit
+  事件不會影響替代 worker。舊 worker 在真正退出前仍佔用實體名額，最多兩個；
+  若兩個 native call 都卡住，讀取維持 15 秒期限與 legacy fallback，等其中
+  一個退出才恢復。Kiro 共用資料庫仍只讀取。 (#1490)
+- **Kiro 的工作階段查找不再佔用事件迴圈（#1490）：** Kiro 的資料庫裡還沒有某個 instance 的對話時，它的逐字稿來源會退回去讀 Kiro 的工作階段檔案。原本每 2 秒輪詢一次，每次都同步列出整個工作階段目錄並逐一檢查每個檔案，5,000 個工作階段時每個 instance 每次要 16 到 18 毫秒。現在改成非同步：每次輪詢只檢查目錄本身和最近有活動的工作階段，目錄有變動時才重新列出，每 30 秒才完整掃描一次，同時最多檢查 16 個檔案。
+- **`/model`：拒絕含換行或控制字元的模型名稱。** 含有 `\n`、`\r` 或其他控制字元的模型名稱原本會被寫入 `fleet.yaml` 並原樣貼入 CLI session。指令現在會回傳錯誤，不寫入也不貼出。(#1490 P3a)
+- **暫停/喚醒處理器：以 own-key 檢查防止繼承的原型鍵匹配 instance。** 使用者提供的 instance 名稱（如 `__proto__`、`constructor`）現在先用 `Object.hasOwn` 確認是否為自有屬性，再進行 instance 查詢，若非自有屬性則正確回傳「找不到 instance」，不會執行 `runPauseWake`。(#1490 P3b)
+- **使用者 profile 處理器：在 general_topic 查詢前先執行 own-key 成員檢查。** `handleGeneralProfile` 現在在讀取 `instances[general]` 之前先確認 `Object.hasOwn`，使帶有 `general_topic` 的繼承原型項目無法冒充真實的 General——將以「僅限 General 使用」拒絕。(#1490 P3b)
+- Fleet 啟動會區分持久投遞佇列的鎖定、毀損、SQLite 原生驅動不相容與其他開檔失敗，並提供修復提示。AgEnD 不會隔離或重設佇列；啟動及新投遞仍被拒絕，不會丟棄待送訊息或提交證據。初始化／recovery 失敗會關閉其資料庫 owner，不發布未完成 recovery 的 store。 (#1490)
+- **Quickstart「新增允許使用者」：支援 `channels:` 陣列形狀的設定檔。** 抽取為可匯出的 `addAllowedUsersToConfig()`。有多個連線時，提示會顯示連線的 `id` 和 `group_id` 以便區分，且不會在檔案中寫入幽靈 `channel:` 鍵。(#1490 P2)
+- **Quickstart「覆寫（重新開始）」：備份改為 fail-closed。** 抽取為可匯出的非同步函式 `backupFleetConfig()`（失敗時拋出例外）。若備份無法寫入，覆蓋動作會中止並印出錯誤——使用者不會在以為有備份的情況下遺失唯一的設定。(#1490 P2)
+- **排程器：`recordRun` 現在是原子操作。** `INSERT INTO schedule_runs` 和 `UPDATE schedules SET last_status` 已包在同一個 transaction 中。先前若兩個語句之間發生錯誤或崩潰，可能留下孤立的 run 記錄，而排程上的 `last_triggered_at` / `last_status` 未更新。(#1490 P3)
+- **補送的 Enter 只會送到原本那個視窗（#1490）：** 投遞的 Enter 沒有送出時，AgEnD 會等提示列回來，再補送一次 Enter。如果等待期間視窗被重建，補送的 Enter 會打到新視窗，後面的確認也會去讀新視窗的畫面。現在這些補送的 Enter 一路到真正送出按鍵之前，都會確認還是原本那個視窗、那次啟動；視窗換了，也不會從新視窗讀取證據。
+- **`retireSystemCopy`：nvm 安裝時所有 npm 操作改用 `join(nvmBin, "npm")`。** npm 二進位路徑固定為 `join(plan.nvmBin, "npm")`——與 `inInstallEnv` 透過修改 PATH 後實際呼叫的 npm 相同。此路徑用於 prefix 鎖定、rollback root、install、verification 和 retirement，確保 `outcome.npmPath` 與實際執行的二進位一致。`retireSystemCopy` 接受明確路徑並回傳 `{ ok: boolean }`；呼叫端在失敗時設定 `process.exitCode = 1`。非 nvm 安裝不需要 retirement，也不進行任何查詢。(#1490 P3)
+- **`saveCpuProfile`：大型 profile 在 `JSON.stringify` 之前就被拒絕。** 大小估算現在涵蓋每個 node 的所有可變欄位：callFrame URL 與 functionName（使用 `Buffer.byteLength(JSON.stringify(str), 'utf8') - 2` 取得精確的 UTF-8 加跳脫位元組數）、positionTicks 陣列（V8 真實欄位；80 萬筆項目單獨就可能超過 16 MiB）和 children 陣列。估算迴圈在達到上限時提前中止，避免超大 profile 繼續逐 node 計算。(#1490 P3)
+- **`CacheService.stop()` 回傳 `Promise<void>`，設定 closing 旗標，並以一次有界 save 完成 flush。** `closing` 旗標立即阻擋新的 `kick()`/`start()` 呼叫。進行中的 pass 迴圈在下一次迭代邊界離開（而非掃完整個 backlog），然後執行一次有界的 `save()` 再設定 `stopped = true`。`FleetManager.doStopAll()` 現在也會 await `cacheService.stop()`。(#1490 P3)
+- **`TmuxControlClient`：觀察時間改用單調時鐘。** `observationResetAt`、`inObservationGrace`、`lastOutputAt` 和 `isIdle` 現在全部使用 `this.mono()`（由 `performance.now` 支撐）而非 `Date.now()`。時鐘跳動（NTP、日光節約時間）不再導致 pane 在靜默視窗到期前就被視為閒置，也不再讓 grace 期比預期長。(#1490 P3)
+- **`TmuxControlClient.waitUntilIdle`：用戶端停止時改為解析 `false`。** 原本解析 `true`，等於告訴呼叫端 pane 已閒置，可能觸發對已停止用戶端的投遞。(#1490 P3)
+- **fleet 查不到的視窗不再被當成閒置（#1490）：**已註冊的視窗連續三次 `tmux list-panes` 失敗後，control client 以前會直接忘掉它，而未知的視窗在重連寬限期過後一律算閒置。訊息因此可能貼進還在生成的 CLI，Enter 等於打斷它。現在這種視窗會被記為「遺失」並回報為忙碌；有人詢問它的狀態時，最多每 5 秒重查一次，查到後重新註冊，並且要觀察到 2 秒沒有輸出才算閒置。重連後 pane 還沒查到的已註冊視窗，也會在查到之前一律視為忙碌。從未註冊的視窗行為不變。
+- **tmux 重新連線後的觀察，以及單一次慢讀取（#1490）：** tmux 控制連線重新連上後，一個視窗要等它自己的 pane 被重新找到、並且安靜 2 秒之後，才算閒置。原本 2 秒的寬限是從重新連線那一刻起算，視窗多或 tmux 在高負載下變慢時，最後幾個視窗會立刻被當成閒置，訊息就可能被貼進正在工作的 CLI。單一次控制讀取超過 2 秒時，現在改由一次性的讀取回答，並把那次讀取的回應排掉，不再拆掉整條控制連線、連帶丟失所有 pane 的觀察；只有那次回應 10 秒內都沒有回來，才會重設連線。
+- **網頁 app：整個頁面不再捲動（#1509）。** instance 清單很長時，聊天頁會出現兩條捲軸（聊天串一條、整頁一條），標題列也可能被捲出畫面。現在只有各個窗格會捲動。
+- **Discord 的 `/dashboard` 會在你按的地方回應（#1512）。**
+  - 選單是指令只有你看得到的回覆。按下之後，選單本身會先改成「正在私送…」或「正在開啟公開連結…」，再改成登入資訊送去哪裡：私訊；或在 bot 無法私訊你時，直接貼在原處、只有你看得到。
+  - 以前 AgEnD 會到頻道裡找這則私人訊息，但 Discord 永遠找不到（`10008 Unknown Message`）。結果選單一直沒變，再按一次也看不到任何反應，而結果反而公開貼在 General。
+  - 逾時或失效的選單現在也會在原處收起。
+  - `/dashboard` 一定會回覆。選單顯示不出來時會直接說明，不再讓 Discord 顯示「應用程式沒有回應」。
+  - 私訊送不出去時，log 會記下原因（例如 Discord 代碼 50007：使用者不接受伺服器成員的私訊）。
+- **網頁 app：純網頁艦隊裡，沒回覆就結束的回合現在會被抓到（#1515）。** 在沒有連 Discord／Telegram 的艦隊中，從網頁聊天送出的訊息從未啟動「回覆完成守衛」，agent 若直接用文字回答，聊天就一片沉默。現在會和平台訊息一樣收到一次提醒。
+- **網頁 app：點其他 instance 時，側欄維持原本的捲動位置（#1515）。** 在檢視頁，每點一次 instance 清單就跳回最上面；現在檢視與聊天都只會把目前的 instance 保持在畫面內，清單其他部分不動。
+- **網頁 app：狀態 emoji 編輯器裡的 Discord 自訂 emoji 重新顯示（#1520）。** 在「設定 → 連線 → Discord → 狀態 emoji」中，所有伺服器 emoji 都顯示成破圖，原因是頁面的安全政策擋掉了 Discord 的 emoji CDN。現在面板只允許載入 `https://cdn.discordapp.com/emojis/` 底下的圖片，Discord 其他來源仍然擋住。
+- **`/usage`：供應商用量端點的 429 不再顯示紅色錯誤。** 查詢端點被限流，不代表使用者的訂閱有問題。若有快取的快照，繼續顯示舊數值（既有行為）；若無快取，顯示中性提示（「暫時查不到用量，不影響你的 agent」），而非警示紅燈。429 回應中的 Retry-After 標頭現在也受到尊重：退避期間的強制重新整理直接回傳快取值，不會重複打供應商端點。
+- **公開連結的進度把每個失敗畫在它所屬的步驟上（#1525）。** 通道被佔用（`lease-held`）以前畫在①「檢查 cloudflared」，看起來像 cloudflared 出問題；現在畫在④「啟動 tunnel」，沿用原本「還有另一個 tunnel 在執行」的說明。在自己的⑥開始前就結束的請求（共用啟動完成後失去資格）以前會把成功的⑤標成失敗；現在失敗畫在⑥，⑤維持✅。
+- **設定：新增連線絕不會取代既有連線（#1529）。** 設定精靈過去會用 token 變數比對既有連線並覆蓋它，所以在 Telegram 之後新增 Discord bot 時，可能無聲地取代掉 Telegram 連線。現在每條新連線都有自己的 id（`discord`、`discord-2`…）和自己的 token 變數，會佔用別條連線的請求會被拒絕。
+- **設定：每條連線顯示自己的狀態（#1537）。** 過去只要 AgEnD 在執行，每條連線都顯示「已連線」，即使它沒有啟動或 token 被拒。現在每一列顯示該連線自己的狀態：已連線 · @your_bot、重新連線中、啟動中、未執行、缺少 token、token 被拒，或開啟 Message Content Intent 的指示。
+- **精靈建立的 Discord 連線現在能正確綁定 General 頻道。** `planQuickstart` 原本將 `general_channel_id` 寫在連線頂層（c25045b0 引入的 bug），但 runtime 讀的是 `channel.options.general_channel_id`。精靈現在寫入正確位置。含舊頂層欄位的既有 fleet.yaml 檔案仍透過 `discordGeneralChannelId()` 的 fallback 繼續支援。(#1552)
+- **網頁：HTML 預覽的提示改用你的語言，預覽面板也能直接允許預覽（#1556）。** 以前即使頁面是繁體中文，預覽卡片和側邊面板的提示仍是英文，例如「Previews are off on this device…」、無法預覽的原因，以及預覽執行時的提醒橫幅。現在它們會跟著頁面語言顯示。在還沒允許預覽的裝置上，面板會提供 **允許預覽**，確認對話框和卡片選單、側欄的一樣。確認後「預覽」就能按，但仍要你按下才會執行。允許預覽仍是以瀏覽器和網址為單位，在別的網址開啟儀表板時會再問一次。
+- **網頁聊天：圖片檢視器關閉時一定會收尾（#1564）。** 以前如果瀏覽器自己關掉圖片檢視器，後面的聊天可能會一直無法捲動。現在不論用哪種方式關閉，結果都一樣：頁面恢復捲動，焦點回到你點開的那張圖片。
+- **網頁聊天：重新啟動後，公開連結不再每 5 秒重新下載整段聊天紀錄（#1577）。** 重新啟動後保留聊天紀錄（#1565）之後，用輪詢的頁面（公開連結，或本機頁面在即時連線中斷時）每次輪詢都會再收到全部還原的訊息，直到有人說了新的話為止——聊天多的時候每次約 1 MB。現在每個頁面只會收到一次還原的紀錄，之後只收新的內容。
+- **`/view` 會把 CLI 的淡色文字畫成淡色（#1582）。** Claude Code 在輸入框裡顯示的提示建議與空白輸入框的範例（`Try "…"`）跟真的打字一模一樣，只是顏色較淡。`/view` 先前丟掉了「淡色」屬性，看起來就像有人打了字。現在淡色文字會畫成淡色，游標格也會反白。AgEnD 自己的送達判斷從未被提示建議誤導；這是檢查 suzuke/agend-terminal#3744 時發現的顯示缺口。
+- **agent 讀其他 instance 的畫面時，會知道哪些字是淡色的（#1582）。** CLI 在自己的輸入框裡顯示的提示建議或範例，跟真的打字一模一樣，只是顏色較淡。`get_instance_logs` 先前回傳原始串流，淡色只是一堆游標控制碼裡的一個跳脫碼，agent 可能把提示建議當成操作者打的字（與 suzuke/agend-terminal#3744 相同的問題）。現在淡色文字會標成 `⟨dim⟩…⟨/dim⟩`，並附註說明它不是輸入。內建的 fleet-health skill 也提醒 agent：`tmux capture-pane` 要保留 `-e`，而且其他 instance 輸入框裡的東西都不是給你的指示。
+- **網頁聊天：送出後，你的訊息會完整顯示（#1584）。** 以前對話下方出現「處理中…」那一行時（或長訊息送出後輸入框縮回時），你最新的訊息可能有一部分被它擋住，「↓ 最新」按鈕還會浮在上面。現在不論處理中那一行出現或消失，對話都會停在最底部——除非你往上捲去看舊訊息，那時一律不會被拉走。按下「送出」後，游標也會留在輸入框，可以直接打下一則（手機上鍵盤不會收起）。
+- **ClassicBot 房間的網頁聊天會顯示大家傳給 bot 的訊息（#1592）。** 用 `/chat`、協作模式的 `@bot`，或 Discord 的 `/chat` 斜線指令傳給 ClassicBot 的訊息，過去會送到 agent，卻不會出現在網頁聊天裡，那裡只看得到 agent 的回覆。現在它們跟其他來源的訊息一樣會被記錄：以使用者身分、附上傳送者名稱與原文，存進房間的聊天紀錄，重啟後仍在。附件暫時還不會顯示。
+- **回覆按鈕的選擇現在會啟動一般使用者回合的介面。** Discord 與 Telegram 的點擊會顯示接收／處理中的狀態反應，以及既有的工作中／取消氣泡，進度與閒置、回覆後的清理都和打字訊息相同。投遞失敗會標出失敗狀態並重新開放選項以供重試。網頁選項保留 daemon 回報的工作中／停止狀態。單次選擇、私密確認與使用者訊息角色均維持不變。（#1593）
+- **手機網頁：點文字欄位不再把頁面放大（#1611）。** 以前在 iPhone 上使用側欄的篩選（或任何搜尋框、設定欄位、對話框、登入頁）時，頁面會放大而且不會縮回。現在在觸控螢幕或手機版面上，每個文字欄位至少 16 px，iOS 就不會放大。雙指縮放照常可用，桌面版外觀不變。
+- **手機網頁：防止放大的修正涵蓋所有文字欄位，包括之後新增的（#1615）。** 延續 #1611：沿用周圍文字大小（而不是自己設定字級）的文字欄位，在觸控螢幕或手機版面上也至少 16 px，iOS 點到時不會再放大頁面。較大的欄位維持原本大小，桌面版外觀不變。
+- **一個 bot 上過期的按鈕，不會再因為另一個 bot 的提示而保留（#1617）。** 自 #1610 起，在已顯示下一步（公開連結的確定／取消）的訊息上點到過期按鈕時，只會回應而不改動訊息。現在這個判斷也要求是同一個 bot，所以兩個 bot 的訊息編號剛好相同時，一個 bot 的進行中提示不會擋住另一個 bot 清掉它過期的按鈕。
+- **從啟動紀錄引入前的版本升級時，Kiro 可延續原對話（#1624）。** 首次使用支援 `--agent` 與 `--resume-id` 的
+  kiro-cli 2.21+ 啟動時，若 instance 沒有身份或啟動紀錄，只有在沒有其他已設定的 Kiro instance 共用同一實際
+  工作目錄、且該對話尚未被認領時，才會認領相同引擎儲存區中最新的對話。Fleet 與 ClassicBot 都計入，包含已停止
+  的 instance。無法判定歸屬時會開新對話並通知一次，原對話保持原樣。舊版 Kiro 的啟動行為不變；Kiro 日後升至
+  2.21 時，仍可依原本的啟動紀錄認領對話。刻意開新對話或已記錄為 fresh 的身份不會自動重新認領。已在 beta.1
+  開新對話的 instance 需手動復原，見 [Kiro 對話復原](kiro-upgrade-recovery.zh-TW.md)。
+- **ClassicBot 代理可查證訊息投遞狀態（#1626）。** `delivery_status` 不再因為 `Unrecognized key: "chat_id"`
+  而失敗。ClassicBot 的聊天室覆寫只套用到需要頻道位址的工具，其他工具的參數保持原樣。回覆、反應與編輯
+  仍送到該 ClassicBot 的聊天室，並保留原本的 Telegram forum 主題。投遞狀態查詢仍嚴格驗證參數。
+- **網頁：在 View 上傳圖片，不會再刪到別的 instance 的圖片（#1630 後續）。** 以前上傳時會刪除所有以「名稱加句點」開頭的頭像檔，所以替 `a` 上傳也會刪掉 `a.b` 的圖片；instance 名稱可以含句點（設定的快速設定和手動編輯的 `fleet.yaml` 都允許）。現在只取代這個 instance 個人資料記錄的那個檔案。
+- **View：只儲存一個個人資料欄位時，不再清掉其他欄位（#1630）。** 儲存個人資料時，現在只會變更請求中帶的欄位（顯示名稱、角色、說明）。沒帶的欄位維持原樣，空白的欄位則會清除。View 自己的編輯器一律三欄一起送，所以那邊沒有變化；其他只送一個欄位的呼叫端不會再清掉其他欄位。
+- **View：清除顯示名稱後會恢復 agent 自己的名稱（#1630）。** 以前在 View 的**編輯個人資料**清除顯示名稱時，會存成空名稱，仍然蓋過 agent 自己設定的名稱（`set_display_name`），結果顯示的是 instance 名稱。現在清除會移除覆寫，再次顯示 agent 自己的名稱（或 instance 名稱）。這次更新前清除過的顯示名稱也會恢復。
+- **在沒有可用服務管理器的主機上，手動啟動的 fleet 可以持續更新（#1631）。** 在沒有 user systemd 的 Linux（容器、未啟用 systemd 的 WSL、未開 linger 的 SSH），或沒有 GUI 工作階段的 Mac 上，`agend update` 以前會替原本沒有服務的 fleet 建立 systemd unit 或 launchd plist，之後每次更新都會回滾並顯示「The previous package is back in place」。現在更新只會更新已存在的服務檔。新版本的 `agend install --no-activate` 在能確定是舊版更新器呼叫時也不會寫入任何檔案，因此從 2.2.0-beta.1 更新時同樣不會留下服務檔。手動執行 `agend install` 仍會建立服務，已存在的服務照舊更新。如果先前的更新已在這類主機上留下服務檔，請刪除它（`~/.config/systemd/user/com.agend.fleet.service` 或 `~/Library/LaunchAgents/com.agend.fleet.plist`），再執行一次 `agend update`。
+- 修正給 agent 的投遞驗證說明：「Delivery not found」可能是 ACL 隱藏、紀錄保留期限已過，或沒有投遞。Agent 必須先取得對方明確 forward 的可驗證參照才能行動，也不能重送狀態不確定的投遞。既有 instance 升至 2.2.0 時會收到一次更正；投遞查詢與掃描器行為不變。
+- **Agent：AgEnD 告訴 agent 的內容再次與實際行為一致（#1634）。** fleet 指示、agent CLI 參考、General 的核心規則、工具說明與十五個內建 skill 都已對照程式碼檢查。現在會說明 `reply` 的按鈕與貼圖、來自網頁聊天的訊息、實際的圖片／檔案／引用標記、遞送狀態（已接受不等於已送達；`uncertain` 不要重送）、`get_fleet_status`（只有數量；個別狀態在 `list_instances`）、`agend fleet restart` 的行為（graceful；要載入新程式碼用 `--reload`）、在 fleet session 中需要 `--yes`、各 backend 如何續接自己的 session、各 backend 分別登入、Codex 與 Muse 的回覆保護、被拒絕的 `kiro_ui: v3`，以及目前的模型列表指令。MCP server 現在回報實際的 AgEnD 版本（原本寫 0.3.0），並在指示中寫出版本，讓 agent 能判斷先前載入的工具說明是否較舊。
+- **設定：回覆保護的說明對 Codex 與 Muse 正確了。** 從 2.2 起，回覆保護也適用於 Codex 與 Muse，但設定仍顯示「設定會保留，但不會生效：codex 的 mcp 模式不支援回覆遺失補救」。現在會說明 Claude Code、Codex、Muse 與 Kiro legacy/TUI 的 MCP 模式可用。
+- **kiro 被限流或達到每月上限時，現在會通知（#1636）。** kiro 被限流時會印出 `⚠️  Kiro rate limit reached:` 和 `Request quota exceeded. Please wait a moment and try again.`；達到每月上限時會印出 `Monthly request limit reached`（單獨一行，或後面接著額度重置的日期）。這兩種訊息都不帶「Kiro is having trouble responding right now」標頭，也不帶例外名稱，所以 AgEnD 的 kiro 規則都比對不到：這個 instance 不會被標記，也不會有人收到通知。現在兩者都歸為會通知的速率限制，和 kiro 其他的限流訊息一樣處理。同一畫面上如果還有登入過期，仍然會先暫停；只是引用這幾行文字的訊息不會觸發任何動作。上游版本預檢遇到「新」字串可能只是舊字串換了存放順序時，會提醒稽核者；但它仍然算作新字串，由稽核者判斷。
+- **被誤判為 `stuck` 的 codex instance 會自己恢復，卡住目標的待送訊息也看得到了（#1641）。** 重新啟動後，續接的 codex 在第一個回合之前，頁尾只有 `⚠ N warnings · f2 to view`，沒有 Context 用量。AgEnD 會把這個畫面判為工作中（這是 #1031 的刻意設計），畫面靜止一段時間後就變成 `stuck`，而且再也出不來：pump 不會把工作交給卡住的目標，排隊的訊息就在第 0 次嘗試停了好幾個小時。現在，只要畫面顯示 CLI 自己的空白輸入框，而且 codex 的 rollout 顯示沒有回合在跑，卡住的 instance 就會回到 idle；沒有 rollout 可查時，同一個輸入框要靜止 10 秒才算。還在跑的回合永遠不算；而且只要 codex 的 rollout 顯示有回合在跑，畫面怎麼看都不會判為 idle，AgEnD 開始追蹤 rollout 之前就已開始的回合也一樣。`delivery_status` 現在會說明排隊中的訊息在等什麼（`waiting_reason`）；常駐的 instance 若有排隊中的訊息因為這類原因等了 30 分鐘，會在它的主題通知一次。
+- **已送達的靜默排程不再被回報為「無法確認」，也不會出現在「需要你」（#1647）。** 靜默排程（或其他 raw paste）貼上後，若按下 Enter 後無法立即從畫面確認，AgEnD 會改為尋找它所開始的那一輪：
+  - **Claude Code：** 尋找 CLI 自己 transcript 中原始訊息只有一段文字、去掉 Claude 的貼上包裝、正規化空白後與貼上內容相符的紀錄（write checkpoint 之後）。transcript 路徑來自這個 instance 自己的 statusline.json。
+  - **Codex：** 不涵蓋——其 rollout 是依工作目錄決定的，無法綁定到這次啟動，因此 Codex 的 raw paste 在畫面無法確認時維持「無法確認」。
+  - **kiro：** 以輸入列判斷——貼上文字必須已從輸入列消失，或 kiro 的 busy marker 出現在原處，且 Enter 後有輸出才算確認。
+
+  找到就算已送達；找不到則維持「無法確認」並記錄真正原因，絕不重貼、也不會再按一次 Enter。未確認或失敗的靜默排程現在只會以寫明原因的通知送給 leader，不會列入「需要你」，下一次排程照常執行；人送出的訊息仍和以前一樣會列入「需要你」。紀錄中現在會寫出「送訊息時發生錯誤」背後的原因，`delivery_status` 也會把這類紀錄描述為「無法確認」。
+- **CLI 模式的 agent 會被告知它實際可用的指令（#1650）。** `agent_mode: cli` 的 instance 沒有 MCP 工具，但它收到的每則訊息結尾仍寫著「用 reply tool 回覆」或「用 send_to_instance／report_result」。現在這些結尾會寫出 `agend-agent` 指令：回覆使用者用 `agend-agent reply "…"`，回覆其他 instance 用 `agend-agent report <寄件者> "…" <correlation_id>` 或 `agend-agent send <寄件者> "…"`。預設 MCP 模式的 instance 看到的內容完全不變。
+- **Agent：Telegram 上以 `format: "markdown"` 呼叫 `edit_message`，不會再因 `<` 或 `&` 而失敗（#1651）。** 自 #1654 起，這類編輯會把文字原樣當作 Telegram HTML 送出，因此像 `a<b` 或 `x & y` 這樣的文字會被拒絕（「can't parse entities」），而以前它們會以純文字送出成功。現在編輯文字會先全部跳脫再從 markdown 轉換：`<`、`&`、`>` 照原樣顯示，**粗體**、*斜體*、~~刪除線~~、`code` 與 http(s) 連結會套用格式。若 Telegram 仍拒絕該格式，會改以純文字重試一次。表格與程式碼區塊在編輯時不會重新呈現。
+- **Agent：`edit_message` 會保留訊息格式（#1651）。** `edit_message` 有 `format` 參數卻會忽略它，因此在 Telegram 上，編輯一則以 `format: "markdown"` 送出的訊息，結果會變成純文字。現在編輯的呈現方式與 `reply` 相同：Telegram 會套用 `format: "markdown"`；Discord 本來就一律呈現 Markdown，維持不變。
+- **nvm 更新流程：舊 root 副本 sudo 移除失敗不再導致更新失敗（#1660）。** 退役舊系統副本只是清理工作：新版本已安裝、驗證並運行後，被拒絕的 `sudo -n npm uninstall` 只會變成警告，不再 exit 1。聊天室 `/update` 回報成功，待退役結果確定後，再把警告與一字不差、經 shell 引用的手動指令追加到同一則更新訊息（updater 要等重啟返回才會退役，因此完成通知與清理通知是兩段生命週期，以 update receipt 守門）。`sudo -n` 維持非互動——永遠不會要求輸入密碼。真正的安裝或驗證失敗仍照舊失敗。
+- **從網頁聊天送出的訊息，現在也會在該 instance 的 Discord/Telegram 主題顯示 🛑 取消／進度泡泡（#1666）。** 以前只有在 Discord 或 Telegram 裡輸入的訊息才會出現；網頁訊息那一輪要等 agent 第一次回覆後才會出現泡泡。泡泡會緊接在網頁訊息的轉貼之後出現，規則和以前一樣：agent 工作時持續更新，agent 閒置時回覆或按下取消就會消失，只有該主題允許的人能按。純網頁 fleet、沒有送達的訊息、關閉網頁轉貼的 fleet，以及 ClassicBot instance 都不會出現泡泡。
+- **在聊天、檢視、紀錄、詳細資訊之間切換時，instance 標頭與用量側欄不再跳動（#1673、#1218）。**
+  - 紀錄頁原本不顯示用量側欄，所以在寬螢幕上切到紀錄時，頁面和標頭會跳動 320 px。在紀錄頁按 ◔ 還會關掉一個看不見的側欄，回到聊天時它就不見了。
+  - 紀錄頁現在和其他分頁一樣顯示側欄。顯示或隱藏仍是這台裝置的設定，在每個分頁都相同。
+  - 分頁列和標頭按鈕在每個分頁的大小與位置都相同：字級按鈕的寬度固定為最長名稱（View 的「剛好填滿」縮短為「填滿」），目前分頁的粗體字不再改變分頁列寬度，紀錄頁也保留其他分頁放 ⋯ 或 ⓘ 的空間。
+- **View 的字級（Aa）會立即套用（#1674）。** 在 View 頁面切換 剛好填滿／小／中／大 時，新字級原本只出現不到一秒，下一次畫面更新又變回舊字級，要離開頁面再回來才會生效。現在終端機在每次更新與調整大小時都會維持你選的字級。Chat、Details 與 Fleet 本來就會立即改變。
+- **網頁：又能找到 Fleet 組織圖了（#1675）。** 開著某個 instance 時，側欄的 **Fleet**（以及手機的 Fleet 分頁）會進到那個 instance 的詳細資料，因此到不了 Fleet 面板和它的**組織圖**。現在從任何頁面點側欄最上方（手機上是抽屜最上方）的 **Fleet 概覽**，就會打開 Fleet 面板的組織圖，Tasks、排程、Teams、快取和設定也都只差一下點擊。`/ui/fleet/org` 照舊可用。
+- **不再重複發送主機記憶體聊天通知（#1685，最終行為由 #1712 取代）。** 2.2 在所有平台移除壓力與恢復廣播。啟動放慢／暫緩、日誌、儀表板狀態與 health 降級保留；人手動啟動、重啟或喚醒而被暫緩時會收到原因。
+- **在 Claude Code instance 上用 `/model`，不會再卡在 Claude 的「Switch model?」確認畫面（#1690）。**
+  - Claude 2.1.296 在對話已用先前的 Model 快取時，會要求確認切換，但先前沒有人回答它，pane 會一直等，訊息也全部卡在後面。
+  - **你的切換會自動確認**，但只有在確認畫面寫的正是你要的 Model 時才會。回覆會說明 Claude 的下一則回答會重新讀取完整對話紀錄。
+  - **畫面寫的是別的 Model 時**，AgEnD 會回答「否」並告訴你。
+  - **不認得的名稱**（例如打錯成 `opsu`）在送出任何指令前就會被拒絕；Claude 本身什麼名稱都接受，還會真的切過去。
+  - **確認畫面在時，訊息會先保留。** AgEnD 沒有要求的確認畫面絕不會被自動回答，會先保留並顯示在「需要你處理」。
+  - 適用於 Discord、Telegram、網頁與 Model 選單的 `/model`。
+- **網頁：建立 team 時不會再覆蓋現有的 team，也不會儲存不存在的成員（#1692）。** dashboard 的 **新增 team** 原本直接寫入 fleet.yaml：給什麼成員名稱就存什麼，遇到同名的 team 也會直接覆蓋，原有的成員和描述就此遺失。現在它與 agent 的 `create_team` 使用相同的流程：
+  - 成員必須是這個 fleet 的 instance；
+  - 已存在的 team 會被拒絕（「Team already exists」），並維持原狀；
+  - 像 `constructor` 這樣的名稱會被拒絕。
+
+  如果 fleet.yaml 儲存失敗，就不會建立 team。
+- **限制重啟後的回覆提醒數量**（#1694）：每次重啟只發一則提醒，最多列十筆尚未回答的請求，其餘顯示數量。回覆義務預設在上次詢問的 24 小時後到期（`defaults.reply_obligation_ttl_hours`）；若尚未通知過逾期，會通知寄件者一次。新請求與回合結束的提醒照常運作。回答仍須帶原請求的 correlation ID，一般訊息不會關閉無關的請求。
+- **使用 credential profile 的 agent 登入過期時，現在會回報，不再被忽略（#1699）。**
+  - AgEnD 暫停任何東西之前會再確認一次登入錯誤。以前確認的是 backend 的預設登入，所以只要預設登入正常，用其他 profile
+    的 agent 看起來也正常，它的錯誤會被當成對話內容略過。
+  - 現在確認的是 agent 自己的 profile，Claude Code、Kiro 與 Codex 都一樣。
+  - 警示會寫出 profile 名稱、只列出用該 profile 的 agent，並附上為該 profile 登入的完整指令。
+- **網頁：該關閉拼字檢查的地方確實關閉了（#1700 後續）。** 側欄篩選框、Bot token 欄位、fleet.yaml 編輯器和刪除確認框原本應該關閉拼字檢查，實際上卻是開啟的。在開啟「加強型拼字檢查」的 Chrome 中，token 欄位顯示出來的 bot token 文字可能會被送到 Google 的拼字服務。現在這四處都確實關閉了拼字檢查。
+- Linux 在可用 RAM 充足、只有冷頁佔滿 swap 時，不再誤報記憶體壓力或放慢新 agent。PSI 停滯量搭配 RAM 安全門檻決定警告與暫停；PSI 不可用時安全退回 RAM 判定。日誌與儀表板保留實際壓力訊號；#1712 已移除所有記憶體壓力聊天廣播。
+- **muse：`skip_permissions: false` 時的批准提示是等人處理的 permission 互動（#1715）。** 開著 approval 時，muse 會停在「Would you like to run the following command?」提示（escalated 兩選項或 `--approval-mode untrusted` 三選項）而沒有任何 dialog 認得它，instance 看起來只是在忙、沒人被問。現在整塊提示都會被認出來——兩種選項、staged 的 `Stage N/M`／`Current argv` 列、1.4.4 的 `›` 游標與缺省的 footer——顯示期間投遞暫停（Enter 會選到預設的允許選項），並以 `awaiting_input` 加一個 permission Needs-you 回報，絕不代答。prod 的 `skip_permissions` 路徑不變（escalation 由 muse 自己拒絕、不跳提示）。
+- **muse：背景任務執行中下 `/quit` 不再卡在確認選單，改由 AgEnD 明確處理（#1716）。** 有背景任務時，muse 會以「Local work is still active」確認選單（`1. Exit anyway` / `2. Stay`）回應 `/quit`，過去沒有任何 dialog 能辨識它，stop/restart 只能等超時再靠盲按 Ctrl-C。現在 AgEnD 會整組辨識該選單、選單出現時暫停投遞（避免某次投遞的 Enter 誤選 "Exit anyway"），stop 流程以 Escape 取消選單（絕不代選任何選項）再自行停止行程，沿用 #1217 的路徑。被結束的背景工作會留下記錄並如實回報、絕不靜默：stop 會發到該實例的 topic，Classic /stop 回覆會加註，fleet restart/update 完成訊息會列出受影響的實例（各自限定在當次操作範圍，舊的 stop 不會誤報）。idle 自動暫停則在背景工作執行中順延（見 #1717），不會靜默砍掉使用者的背景工作。
+- **muse：背景任務執行中不再擋住 idle 偵測——composer 是空的，實例視為 idle（#1717）。** 背景任務執行時，muse 會在輸入框與狀態列之間畫出 terminals 面板（`main · ↓ to select` / `└ ◆ … running 11s`），過去它讓 idle 證明失敗，整個任務期間實例既非 busy 亦非 idle，idle-edge 動作（投遞、cancel 收尾、readiness gate）全部等待。現在 footer 檢查只接受這種面板形狀——標頭加 `running` 任務列、狀態列仍在最後；真正 busy 的 turn（輸入框上方有 interrupt 提示，含任務執行中新開的 turn）依然判 busy，未知形狀一律 fail closed。因此背景任務算「local work still active」而非 busy：投遞用的 idle 照常通過，idle 自動暫停則在面板顯示 running 時順延而非砍掉任務。
+- **網頁聊天：長的狀態行時間恢復成一行（#1726）。** 其他 agent 傳來的訊息（`send_to_instance` 那一行）在長文字旁邊，時間被拆成一個字一行。原因是它和標題的狀態徽章用了同一個 class 名稱，套到了徽章的版面。
+- **臨時公開連結的 HTML 預覽通道連不上時，會再開一次（#1732）。** quick tunnel 偶爾無法在啟動的一分鐘內連上；這時預覽通道會在背景換一個新網址再開一次（只重試一次）。期間卡片仍顯示「預覽啟動中…」，連結本身完全不受影響。
+- **kiro legacy UI：shell 工具輸出沒有結尾換行時，turn 結束後 instance 不再卡住（#1734）。** kiro 有時會把 `- Completed in …` 直接接在最後一個輸出字元的後面，而不換行。原本的完成偵測器用行首錨點，因此看不到這種情況，導致工具（與 instance）一直顯示為執行中。排隊中或排程的訊息會停擺，約十分鐘後送後確認也會出現「無法確認」的警告。偵測器現在改為比對前面跟著任意空白的 ` - Completed in`，正常換行和同行兩種情況都能偵測到。
+- **聊天室的 `/update` 在各種重啟方式下都會顯示「舊的系統安裝沒有移除」提示（#1735）。** 更新把 AgEnD 從 root 擁有的安裝移到 nvm、卻沒能移除舊的那份時，提示和手動移除指令只出現在終端機；只要 fleet 的重啟不會等待（手動啟動的 fleet，或 macOS 的 launchd），聊天室的更新摘要就少了它們。現在兩種情況摘要都會帶上，提示也會寫出舊安裝所在的資料夾。
+- **更新後的 fleet 完成啟動時，不會再清掉別的操作的進度記錄（#1735）。** 它只清自己接手的那次更新；在這期間開始的 `/restart full` 或新的 `/update` 會保有自己的記錄。清理提示只在舊安裝的資料夾路徑不含控制字元或不可見字元時才寫出路徑。
+- **Telegram：`setMyCommands` 現在會套用 `telegram_api_root`（#1736）。** 即使設定了自訂的 Telegram Bot API 伺服器，Bot 指令選單的註冊一直都打到 `api.telegram.org`。現在 URL 改為與 adapter 使用相同的根路徑。
+- Dashboard 停機時會結束 SSE，最多等一秒讓自己持有的 HTTP socket 完成，再強制關閉剩餘連線。新版頁面收到停機提示後延後重連；Windows／WSL 文件補上安全替代連線及操作者自行選擇 mirrored networking 的說明。這能減少連線反覆建立，不宣稱能修復卡住的 WSL relay。
+- **Telegram `/web` 會正確說明公開連結失敗的原因（#1742 後續）。** 在 bot 還沒嘗試私訊你之前登入連結就失敗時（例如公開連結無法啟動），訊息現在會說明連結無法啟動，並請你再執行一次 `/web`，不再請你開啟私訊（那樣也沒有用）。開啟私訊的步驟、「先開私訊 →」按鈕，以及 10 分鐘的 `/start` 時間窗，現在只會在實際嘗試私訊卻送不到之後出現。
+- **從自訂 `AGEND_HOME` 安裝的 fleet，在服務重啟或更新後仍使用同一個 home（#1743）。** 當 home 不是預設的 `~/.agend` 時，`agend install`（以及更新時的重新產生）現在會把 `AGEND_HOME` 寫進 launchd job 與 systemd 使用者單元。以前服務管理器會讓這種 fleet 改用 `~/.agend` 啟動。預設 home 的服務定義維持不變。
+- **用量面板的方案標籤維持一行（#1749）。** 用量側欄和對話框裡，較長的方案名稱（例如「TEAM PREMIUM (6.25X)」）原本會在服務名稱旁折成兩行，現在改為顯示 **TEAM ×6.25**（TEAM ×1.25、MAX ×20 同理）。完整方案名稱會在滑鼠停留時顯示，螢幕閱讀器也會讀出。空間不足時，服務名稱會先以省略號縮短，↑↓ 按鈕也維持在同一行。`/usage` 和 `get_usage` 仍顯示完整方案名稱。
+- Telegram 的「等你處理」即時訊息不再每十分鐘重複發送沒有變化的清單。文字與按鈕相同時會略過編輯，Telegram 回覆「訊息未變更」也視為成功，適用於文字與按鈕編輯。只有確認訊息或目的地不存在、或失去權限才會重新發送，仍最多每分鐘一次。若曾為此將 `needs_you.live_message` 關掉，更新後可以重新開啟。
+- **fleet 的多個 bot 在同一個 Discord 伺服器時，instance 的通知由它自己的 bot 發出，其他 bot 的貼文也不會再被當成輸入（#1752）。** 以前用量警告（以及因記憶體延後的通知）是由「最先收到使用者訊息的那個 bot」發出，可能是另一個 bot；instance 自己的 bot 接著把那則貼文當成使用者訊息。現在這些通知一律由 instance 自己的 bot 發在它的主題裡；fleet 主題中由本 fleet 任何 bot 發的訊息一律忽略，就算開了 `/collab` 或 open 存取也一樣。`/collab` 與 open 存取仍會放行其他 bot 和 webhook；ClassicBot 房間裡本 fleet 的 bot 仍可用 @mention 互相對話。
+- **Claude profile 切換剛好碰上另一次重啟時，對話仍會帶過去（#1753 後續）。** 切換所觸發的重啟如果併入一個已在進行中的重啟（例如 MCP 恢復），以前不會複製對話，回覆也沒有說明。現在只要那次重啟還沒啟動新的 CLI，複製就會在那次重啟裡執行。如果已經啟動，切換的回覆會以 `carry_failed` 說明原因，並照常送出交接內容。
+- **Claude profile 切換時，如果 CLI 實際啟動的是另一個登入，就不會再回報對話已帶過去（#1753 後續）。** 如果 profile 切換併入了一個在切換存檔之前就讀取設定的重啟，那次重啟會用舊的登入啟動，但切換仍可能把對話複製到新 profile，並回覆「已帶過去」。現在只有在即將啟動的登入正是切換的目標時才會複製。否則回覆會以 `carry_failed` 說明實際啟動的登入，並照常送出交接內容。如果啟動的是舊的登入，CLI 會直接接續它自己的對話；如果是第三個登入，則重新開始。
+- **使用 Claude credential profile 的 instance 保有共用的自動記憶（#1754）。** 具名 profile 有自己的 `projects/`，所以 Claude Code 對該 repository 的記憶在那裡原本是空的，和其他 instance 的記憶分開。現在每次以 profile 啟動時，都會把 profile 裡該 instance 所在 repository 的記憶資料夾連到 `~/.claude`（或你自己設定的 `CLAUDE_CONFIG_DIR`）底下的共用記憶。對應的 key 是 repository 根目錄，git worktree 以主 checkout 為準，和 Claude 自己決定記憶位置的方式一致。對話仍然各 profile 分開。profile 裡已經有筆記的記憶資料夾絕不會被取代：會保持原樣並記錄警告。沒有使用 profile 的 instance 啟動方式完全不變。
+- **Cloudflare 拒絕建立臨時公開連結時，現在會直接說明（#1767）。** trycloudflare 限制這台機器建立新的 quick tunnel（HTTP 429）時，步驟會顯示「Cloudflare 正在限制這台機器建立新的臨時連結 — 請過一陣子再試；區網連結仍可使用」，不會在 0 秒時說成逾時。cloudflared 其他提早停止的情況也會照實寫出，daemon.log 會記下原因。HTML 預覽的通道改成在連結自己的通道拿到網址之後才要求，不會再用掉連結需要的那一次。
+- **網頁聊天的訊息時間，不是今天的會顯示日期（#1770）。**
+  - 今天的訊息照舊只顯示時間；昨天的顯示「昨天 17:38」，更早的顯示「10/11 17:38」，其他年份的顯示「2025/10/11 17:38」。滑鼠移到時間上可看到完整日期與時區。
+  - 時間與日期以 fleet 的時區判斷（與聊天紀錄、fleet.log 相同），不是瀏覽器的時區。訊息、狀態行與預覽面板都用同樣的標示；過了午夜標示會自動更新，不會重新載入任何預覽。
+- **agent 回覆附加的檔案，在 fleet 重新啟動後仍可在網頁聊天中開啟（#1770）。**
+  - 以前回覆附的 .html 或 .png 在更新或重新啟動後，通常會顯示「無法取得」：網頁聊天只保留放在 instance inbox 裡的檔案，但 agent 通常從 /tmp 或自己的工作資料夾傳檔。agent 之後改寫或刪除檔案，或 /tmp 被清掉，也會讓檔案失效。
+  - 現在網頁聊天會把每個回覆檔案另存一份到 `workspaces/<instance>/web-files/`，並顯示這份副本。符號連結、超過 50 MB 的檔案，以及 AgEnD 狀態資料夾內（inbox/ 以外）的檔案不會顯示。
+  - 訊息離開網頁聊天紀錄時，副本會一併刪除。每個 instance 最多保留 1 GiB，超過時先刪最舊的副本。副本不在時，訊息照舊把檔案標為無法取得。Telegram 與 Discord 不受影響。
+- **在網頁聊天送出的短訊息，泡泡會貼合文字寬度（#1773）。**
+  - 以前泡泡會撐到上方那一行（你的名稱、時間與送達標記）的寬度，所以像「目前進度」這樣的短訊息，泡泡寬度是文字的兩倍；#1770 加長的時間（「昨天 下午03:58」）讓情況更明顯。
+  - 現在泡泡貼合文字並靠右，位在名稱與時間下方。長訊息仍在原本的寬度換行，附件仍在泡泡裡，agent 的回覆外觀不變。
+- **跨升級續用的 agent 又能傳 `forwards` 了（#1780）。**
+  - 跨 beta.7 升級續用的 Claude Code session 仍看到舊版 `send_to_instance`，沒有 `forwards`。它改把 verification ID 寫進訊息內文，但這不會授權，所以收件者的 `delivery_status` 回「Delivery not found」。
+  - Claude Code 會沿用 session 第一次載入時的工具 schema，重新載入也不會更新。AgEnD 伺服器仍接受新參數。
+  - 現在執行中的 instance 會收到一次 what's-new 通知：`send_to_instance` 和 `delegate_task` 接受 `forwards`，而內文提到的 ID 不會授權。通知不再建議重新載入工具，而是請 agent 照樣使用新參數。
+  - 轉交指引（skill、工具說明與文件）寫明了這種失敗情況。
+- **網頁：簡體中文字形現在來自與繁體相同的字型家族（#1781）。** `--font-ui` 字型堆疊只列出繁體中文字型（`PingFang TC`、`Noto Sans TC`、`Microsoft JhengHei`）。订、实、结、论、讲、认、档、还、众、数、验等簡體專用字形各自退回系統提供的字型（通常是 SimSun 宋體或其他設計），使混排句子顯得粗細不一。對應的簡體字型（`PingFang SC`、`Noto Sans SC`、Linux 上常見的 `Noto Sans CJK TC`、`Noto Sans CJK SC`、`Microsoft YaHei`）現在緊接在各繁體字型後面加入堆疊。繁體文字渲染方式與先前相同；不下載任何網路字型。
+- **kiro-cli 2.30.0：AgEnD 重新會回答改了措辭的 Classic 提示（#1784）。**
+  - 2.30.0 把 kiro 啟動提示裡的「3.0」改成「V3」。AgEnD 因此認不得 legacy（Classic）instance 啟動時遇到的 Classic 停用提示：既不回答也不擋住，instance 收不到訊息，直到有人手動回答。
+  - 現在 AgEnD 照舊回答：先從「Switch to V3」往下移一格，再選「Remind me later」，每次按鍵前都確認游標位置。不會改動你的引擎設定。
+  - 改了措辭的 V3 提示（「You're using Kiro CLI V2. Switch to V3 today.」）和 agent 設定提示（「still in the V2 format」）也一樣，分別回答「Remind me later」和「Not now」。「Don't ask again」或 AgEnD 讀不懂的游標，仍留給你決定。
+- **kiro：2.28.0–2.30.0 啟動不再跳警告；警告文字不再重複「kiro-cli」；「紀錄」分頁顯示純文字而非 JSON（#1785）。** 三個獨立原因：`KIRO_TESTED_MAX` 卡在 2.27.0，儘管 2.28.0、2.29.0（#1576）和 2.30.0（#1785）已經過實機驗證；版本警告把原始 `--version` 輸出（「kiro-cli 2.30.0」）傳進本身已含「kiro-cli {0}」的訊息模板，導致「kiro-cli kiro-cli 2.30.0」；「紀錄」分頁的事件列在 payload 只含 `message` 欄位時，把整個 payload 序列化成 JSON，使「啟動警告」列顯示 `{"message":"…"}` 而非訊息文字。三項已全部修正：最大版本提升至 2.30.0，警告模板改接裸 semver，`detail` 在 `message` 欄位存在時使用其文字。
+- **grok 實例在停止、暫停、重啟時都能正常結束（#1792）。**
+  - grok 要在一秒內按第二次 Ctrl+Q 才會結束；AgEnD 只送一次，grok 只顯示「再按一次以結束」，每次停止都要等三秒再被強制終止。
+  - 現在 AgEnD 會送兩次 Ctrl+Q（間隔 250 毫秒）。這是 grok 1.0.52 稽核時發現的；除此之外，1.0.52 對 AgEnD 沒有影響。
+- **muse 的 /model 從本機 provider catalog 讀取新模型（#1796）。** 之前寫死四個 id，新模型（muse-wonder-1.0）重啟加重新整理也不出現。現在 `listModels()` 讀跟 live picker 同一份 `model-catalog/*.json` 快取——只收有列出（`visible`）的，也就是 1.4.7 picker 顯示的那三個（沒有 `-contributor`），保持檔案順序；快取缺失或讀不到時退回同一組可見清單。
+- **又能認出 muse 1.4.7 的核准提示和「Local work is still active」退出選單（#1798）。**
+  - muse 1.4.7 把這兩個畫面的選取游標改畫成 `⟩`，AgEnD 只認 `›` 和 `❯`。所以在 `skip_permissions: false` 時，核准提示會被當成一般工作，而不是等人回應的提示；退出選單也不會擋下訊息遞送，而遞送時送出的 Enter 會選到「Exit anyway」，結束背景工作。
+  - 現在 AgEnD 也認得 `⟩`。這是 muse 1.4.7 稽核時發現的；除此之外，1.4.7 對 AgEnD 沒有影響。
+- **kiro：恢復的對話不再切換成 instance 自己的 agent，因為有 instance 切換後失去了 AgEnD 的工具（#1800）。**
+  - 自 #906 起，AgEnD 會在恢復的 kiro 對話中輸入 `/agent swap`，把它切換成 instance 自己的 agent。有位使用者的 instance 切換後失去了 AgEnD 的工具：無法 `reply`，改用 subagent 繞過也沒有送出任何訊息。
+  - 現已暫停這個切換。恢復的對話維持原本儲存時的 agent，並和 #906 之前一樣，從共用的 `.kiro` 檔案取得 AgEnD 的 server 與指示。
+  - 已記錄過切換的 instance 會在下次啟動時拿回這些共用設定項目。重啟後請確認 instance 會呼叫 `reply`；預期這樣能讓工具恢復，但 kiro 本身的工具載入沒有經過實機驗證。
+  - 新的對話仍以 instance 自己的 agent 啟動。
+- **在沒有 D-Bus user bus 的 Linux 主機上，`agend update` 不再一律回滾（#1804）。**
+  - 在沒有安裝 `dbus-user-session` 的主機上，`systemctl --user` 可以用，但 `busctl --user` 連不上。過去在這種主機上每次更新都會回滾，訊息是「systemd does not know com.agend.fleet.service」，即使服務其實已載入且正在執行。
+  - 現在連不上 bus 時，更新改經由 systemd 的 private socket 詢問——也就是 `systemctl --user` 在這類主機上使用的同一個連線。它讀到的定義和經由 bus 讀到的完全相同，因此重啟前做的檢查也完全一樣，之後照常透過 systemd 重啟。`agend restart` 也一樣。
+  - 仍無法證明的情況照樣回滾，訊息會寫出真正的原因：完全連不到 systemd、systemd 不認得這個 unit、systemd 拒絕了請求，或是 unit 啟動的不是新安裝的版本。回滾訊息也不再在只是讀不到的時候，聲稱還原的 unit 沒有載入。
+  - user bus 正常的主機行為不變。
+  - **這類主機需要手動一次。** 更新到這個版本時，檢查仍由正在執行的舊版本進行，所以從 2.2.0-beta.9 或更早版本更新會再回滾一次。請自行執行 `npm i -g @songsid/agend@beta` 安裝這個版本，再執行 `agend restart`；重啟會使用新的檢查。之後的更新就會正常進行。
+- **agent 切換 instance 的 backend 後，不會再留在舊 backend 的模型上（#1808）。**
+  - 以前 `update_instance_config` 給了新的 `backend` 卻沒給 `model` 時，會保留 instance 原本的模型。agent 把 instance 從 claude-code 換到 codex，codex 就會以 `--model opus` 重新啟動，之後每一輪都失敗。
+  - 現在切換 backend 時，除非有指定，否則會拿掉 instance 自己的模型和推理強度，新的 backend 用它自己的預設（或繼承的 fleet 預設）。
+  - 新 backend 不接受的模型會在寫入任何東西之前被拒絕，並列出它可選的模型。它沒有的推理強度也一樣。
+  - 「接受」的判斷和 `/backend` 用的是同一條規則：backend 提供的清單（以及 claude-code 認得的名稱）；還沒有清單時，看它常見的模型名稱格式。
+- **`agend attach` 現在接受 `agend ls` 顯示的顯示名稱（#1809）。** `agend ls` 顯示易讀的標籤——例如 `稜鏡 Prism`、`Fable 焚穹` 這類 `display_name`，或 `agend-reviewer-t996543` 這類縮短後的真實名稱——但 `agend attach <name>` 只對真實 instance 名稱做比對，因此把表格裡的標籤複製貼上到 attach 時會失敗。`agend attach` 現在會在模糊比對之前，先把標籤解析回真實名稱。真實名稱永遠優先；`稜鏡`（`稜鏡 Prism` 的一部分）這種部分比對仍需輸入完整標籤。
+- **設定好的 `effort` 現在會在啟動時傳給 codex、claude-code、grok 和 antigravity（#1811）。**
+  - 以前只有 kiro-cli 和 muse 啟動時會帶上它；其他 backend 只是存起來，啟動時沒有傳：在 codex 上用 `/effort` 會重新啟動 instance 卻什麼都沒變，在 claude-code、grok 和 antigravity 上則只維持到下次重新啟動。
+  - 現在每次啟動（包括接續對話的啟動）都會傳入：`-c model_reasoning_effort`（codex）、`--effort`（claude-code、antigravity）、`--reasoning-effort`（grok）。
+  - 存好的推理強度絕不會讓啟動失敗。只有在已安裝版本的 `--help` 列出這個參數（antigravity 1.0.x 沒有），且等級是那個 CLI 接受的時才會傳。codex 本身不檢查，所以要是模型目錄列出的等級。否則 instance 用 CLI 自己的設定啟動，並在 daemon.log 和紀錄分頁說明原因（不會發聊天通知）。
+  - 已經設定 `effort` 的 instance，下次重新啟動後就會用那個等級執行。執行中的 `/effort` 不變。
+- **網頁聊天：Markdown 表格不再貼著捲軸，也不再把單字從中間斷開（#1812）。**
+  - `.md` 附件預覽中的表格左右兩側留白相同，捲軸不再貼著表格。
+  - 表格儲存格內的單字保持完整：「director」不會再被拆成「directo」/「r」。比訊息寬的表格會在自己的框內左右捲動，而不是擠壓欄寬。
+  - 表格儲存格裡較長的檔案路徑會在 `/` 之後換行，不會從檔名中間斷開。
+  - 聊天訊息、`.md` 預覽與 CSV 預覽中的表格都一樣。
+- **聊天 `/update` 失敗時現在會顯示簡短原因並記錄完整輸出（#1818）。** 以前 updater 失敗只會回報「updater exited 1」，沒有其他資訊。現在：(1) updater 的 stdout 與 stderr 透過檔案描述符（非 pipe）直接寫入 `$AGEND_HOME/update.log`，即使啟動 updater 的 fleet 行程已停止，updater 仍可繼續寫入，避免 SIGPIPE 打斷 `agend restart` 或服務安裝等孫行程；若記錄檔無法開啟則照舊靜默執行；(2) `update.log` 超過約 200 KB 時會保留最後 200 KB，模式強制為 0600（僅擁有者可讀，內容為原始輸出，不遮蔽機密）；(3) 失敗訊息包含只從本次執行輸出提取的簡短原因——若有 `npm error code` 行，顯示該行與下一行；否則取最後一個有意義的 `npm ERR!`/`npm error` 行（略過「A complete log of this run can be found in」結尾行）、最後一行 `✗`，或最後一個非空白行——截短至約 300 字元，並遮蔽機密後才顯示於聊天；(4) 訊息結尾附上「Full log: `<路徑>`」。成功、等待中（exit 75）與中斷的路徑不受影響。
+- **更新到 beta.11 以上後，agent 會收到投票與網頁身分的通知（#1823、#1827）。**
+  - what's-new 通知只在有新的 agent 項目時才送出，而 beta.7 之後就沒有新增項目。所以 `/update` 到 beta.10 或 beta.11 後，執行中的 agent 什麼也沒收到，可能繼續說舊的 AgEnD 版本，續用的 session 也不知道 `reply` 的 `poll` 和 `close_poll`。
+  - 現在執行中的 instance 會收到一次通知：`reply` 接受 `poll`（附確切參數）、結果會以一則 `[poll results]` 訊息送來、`close_poll` 可提前結束投票。也會告知網頁聊天的使用者現在帶著他們的 Discord 或 Telegram 使用者 id，僅供辨識。
+- **antigravity：設定的推理強度會傳給 agy，而且用的是對的模型；在 AgEnD 的狀態列下也會回答 agy 的信任提示（#1825）。**
+  - agy 把 `--help` 印在 stderr，AgEnD 卻只讀 stdout。所以 #1811 的啟動檢查一直找不到 `--effort`：設定的推理強度永遠被略過，探測也沒有快取到任何等級。現在 stdout 是空的時候兩者都會改讀 stderr。
+  - agy 的模型清單是每個等級各一個模型（`gemini-3.8-flash-medium`、`…-high`）。當 `--model` 和 `--effort` 對不上、像 "Gemini 3.8 Flash (High)" 這樣的名稱帶任何 `--effort`、或等級不存在時，agy 會改用別的模型，只在畫面上顯示一行警告。所以現在由推理強度選出那個等級的模型（`gemini-3.8-flash-medium` 加 `high` 會以 `gemini-3.8-flash-high` 啟動），`--effort` 不會和 `--model` 一起傳。模型沒有的等級、或 AgEnD 在 agy 清單裡找不到的模型，就用設定的模型啟動、不帶推理強度。daemon.log 和紀錄分頁會說明實際用了哪個模型。fleet.yaml 不會被修改。只要探測時的那個 agy 執行檔還裝著，agy 的模型清單就算超過探測快取的一天也照樣有效，所以跑了好幾天的 fleet 一樣會選對模型。
+  - `/effort` 和 `/backend` 列出的是 instance 實際執行的 agy 模型的等級（`gpt-oss-120b-medium` 只有 `medium`）。
+  - 在 AgEnD 的狀態列下，agy 的信任提示又會被回答了：狀態列的 `Context 0% used` 會取代 agy 原本那一列的模型名稱。沒有等級的模型（靠右的 `GPT-OSS 120B (Medium)`）也一樣。以前新的工作區會停在這個提示。
+  - agy 1.3.5 本身不需要修改：它的行為和 1.3.4 一樣。現有設定裡的模型名稱，不論是代號還是 "(High)" 這類名稱，都照樣用那個模型啟動。
+- **fleet 沒在跑時，`agend update` 不再說「已是最新」；聊天的 `/update` 失敗時，已知的幾種原因會附上修法（#1829）。**
+  - 目標版本已經裝好、但沒有 fleet 在跑時，更新會先檢查已安裝的套件，再明說：`AgEnD vX is installed but the fleet is not running — run: agend start`，結束碼為 1。例如重新啟動沒做完，或服務停了。以前它會回報成功。已安裝的套件檢查沒過時，改為提示重新安裝。更新本身絕不會自己啟動 fleet。
+  - 聊天的 `/update` 失敗時，下列三種已知原因會在最後附上一行 `Fix:`：
+    - 安裝被中斷後 npm 無法改名的目錄（`ENOTEMPTY`）：只列出 npm 指名的那個目錄，而且必須是 AgEnD 自己的。
+    - 沒有 user bus 的主機上讀不到 systemd 的啟用檢查：`npm i -g @songsid/agend@<目標版本> && agend restart`。
+    - 失敗的安裝把 `agend` 移除了：`npm install -g @songsid/agend@<目標版本>`。
+- **install.sh 不再安裝已廢棄的 `@songsid/agend-plugin-discord`（#1831）。** Discord 自 PR #134 起已內建於核心套件。提交 81ce9fcb 引入的迴歸意外地將 `@songsid/agend-plugin-discord` 重新加入安裝指令。此指令碼現在只安裝 `@songsid/agend`，若之前的安裝留下了該外掛程式，則會先印出警告再予以移除。
+- 靜默排程寫入前會結束上一輪聊天回覆守衛，避免心跳觸發漏回覆通知或要求回覆的提示；結果不確定的投遞仍不會重送。若先前的人類訊息確實漏回覆、且仍在確認視窗或補救階段，也會在靜默排程寫入時結束守衛，留下 info 日誌供追查，不新增聊天通知。
+- **codex instance 的 agent 開了 subagent 之後，回覆完不再一直停在 `working`（#1849）。**
+  - AgEnD 原本會跟到 subagent 的 transcript；它和 instance 用同一個工作目錄。
+  - 結果把 subagent 的工作當成 instance 自己還沒結束的回合：工作中 emoji 不會清掉，10 分鐘後還跳出卡住警告。
+  - 現在只跟 instance 自己的 transcript。codex 開 subagent 後 footer 顯示的 `Main [default]`，本來就判讀為閒置。
+- **網頁：設定與「等你處理」的說明改成正確的內容（#1854）。**
+  - 沒有設定卡住逾時時，設定頁與卡住通知顯示 10 分鐘（偵測器實際的預設），不再是 15。
+  - 設定說明把儀表板自己的設定歸在「網頁」，不是「一般」。
+  - 存取提示指向「連線」。
+  - 需要 fleet 管理員確認的變更，改說在聊天（General topic）或主機上確認。
+  - 公開連結的提示不再說「不公開 preview」：除非 `web.preview_on_public_link` 設為 false，預覽會另開一條臨時通道。
+  - 「等你處理」空白時不再保證會出現在 Discord；沒有聊天 app 的 fleet 只會說會出現在這裡。
+- `/web` 的本機登入私訊不再顯示「連結期限：本機網路」。本機私訊縮為三行，公開私訊另列出以 fleet 時區顯示的實際到期時間；兩者都保留五分鐘內單次使用的登入碼、獨立登入碼訊息與撤銷提醒。
+- **在沒有瀏覽器開啟程式的機器上，`agend web` 和 `agend view` 不再當掉（#1854）。**
+  - 在沒有 `xdg-open` 的伺服器或 WSL 上，這兩個指令以前會在印出連結後立刻當掉。
+  - 現在只會多印一行說明無法開啟瀏覽器；已印出的登入頁和登入碼照常可用。
+- **codex：恢復的閒置 session 不會再整段 hang 期間都顯示「處理中」。** 恢復後的 codex 有時畫出不含 Context 項目的底列。如果它自己的 rollout 沒有進行中的回合，空的輸入框也一直沒變，下一次安全巡檢約一分鐘內就會判為閒置；以前要等 15 分鐘的 stuck 期限，訊息也會排隊等到那時。(#1865)
+- **網頁：View 的終端畫面重新貼合視窗（#1869）。**
+  - 在填滿（預設）模式下，寬的窗格不再被 12 px 的下限撐到超出視窗；字級不會大於放得下的大小，最小 6 px。
+  - 視窗稍微縮小時，字也一定跟著縮小。
+  - 在聊天或其他頁面選小／中／大，不再關掉 View 的填滿；只有 View 自己的**字級**按鈕會。
+  - 先前因此被關掉填滿的裝置，會恢復一次填滿。
+- **macOS：從 Agent 工作階段裡執行更新，不會再讓 fleet 停住。** 在 launchd 上，`agend restart` 和 `agend update` 會先停掉 fleet，再重新啟動。如果指令是在 Agent 的工作階段裡執行，fleet 停下時會連同那個 Agent 一起被結束，第二步就沒有執行：fleet 一直停著，也沒有任何訊息。現在這類指令會改在背景繼續執行，輸出寫到 `~/.agend/service-activation.log`。中斷的更新用 `agend start` 救回之後，`agend restart` 以前每次都會拒絕；現在會重新啟動 launchd 正在執行的那個工作。(#1871)
+- **設定：`web.access` 會有警告，「/web 已停用」會說 Fleet 管理員要設在哪裡（#1874）。**
+  - 誰能用 `/web`、`/update`、`/doctor`，看的是 Fleet 管理員名單：bot 的 channel 底下的 `access.allowed_users`。沒有 `web.access` 這個設定。
+  - `agend validate` 現在會對 `web.access` 提出警告，說明名單實際要設在哪裡；`web` 底下其他不認得的鍵也會警告。以前這些鍵都被默默忽略。
+  - 名單空白時，`/web` 與 `/update` 的回覆會指出確切的鍵，例如 `channel.access.allowed_users` 或 `channels[id: main].access.allowed_users`。
+- **`/login` 安裝完成後的檢查不再讓整個 fleet 停住（#1877）。** 安裝後，AgEnD 會開一個登入 shell 查新 CLI 的位置。如果登入設定檔在背景啟動了程式，這個檢查可能卡住 10 秒，整個 fleet 也跟著停：收不到訊息、無法投遞、也不送 systemd 看門狗訊號。現在檢查改在背景執行，shell 一結束就收尾。如果 shell 超過時限、輸出過多，或結束後還有程式佔著它的輸出，這次檢查啟動的程式會一併停止。
+- **漏送的 systemd 看門狗訊號現在會記錄下來。** 如果 AgEnD 因為 `fleet.pid` 記的是別的行程而沒送，或 `systemd-notify` 執行失敗，fleet 日誌會寫明（每 10 分鐘最多一次）。以前訊號只是默默停掉，systemd 重啟時看不出原因。
+- Discord quickstart 現在會從新的伺服器訊息或 bot 私訊偵測帳號，請你確認使用者名稱與 ID。偵測最多 30 秒，手動備用輸入也必填並驗證。網頁設定與新增連線同樣必須填入有效管理員 ID，避免設定完成卻留下空白或格式錯誤的第一個存取名單項目。既有名單不變；網頁 Discord 偵測留待後續處理。
+- **Linux：用系統 unit 執行的 root fleet，從 2.1 更新後會真的換成 2.2。** 有 `/etc/systemd/system/agend.service` 的主機，以前會裝好 2.2 卻繼續執行 2.1，因為 `agend restart` 拒絕了 unit 裡舊的啟動指令。現在更新會像處理使用者 unit 一樣，把那個 unit 的 `ExecStart` 指向新安裝，其他每一行都不動。(#1884)
+- **用量面板：Antigravity（agy）那列重新顯示 Gemini 額度。** agy 改成以具名群組（「Gemini models」、「Claude and GPT models」）回報額度，各有五小時與每週上限，面板卻只剩 Claude 與其他模型那兩項。現在依群組彙整，顯示 Gemini 與 Claude 與其他模型的 Session 和每週額度；舊的回應格式顯示不變。(#1898)
+- **Linux 上的 agy instance 重新拿到 fleet 指令（#1914）。** AgEnD 原本把指令寫到 `.agents/agents.md`，但 agy 讀的是 `.agents/AGENTS.md`；在區分大小寫的檔案系統上它從來沒讀到（macOS 預設不分大小寫，兩個檔名是同一個檔，所以在 Mac 上沒有問題）。
+  - 現在改寫到 `.agents/AGENTS.md`。只有舊的 `.agents/agents.md` 時，會改名成新檔名，你自己加的內容都會保留。
+  - 如果你已經有自己的 `.agents/AGENTS.md`，會原封不動；只有 AgEnD 自己的區塊會從舊檔移出。改名時絕不覆蓋新檔名上已有的任何東西，包括同一時間剛建立的檔案。
+  - 如果 `.agents/AGENTS.md` 是指向不存在檔案的符號連結，AgEnD 會保留它、不寫入指令，並在啟動時告訴你。
+- **壓縮不會再清空 agy 的對話（#1915）。** 在 agy 上，AgEnD 的壓縮（網頁聊天的「壓縮」按鈕和 `/compact`）送出的是 `/clear`，會把整段對話清掉，而不是壓縮。
+  - 現在改送 agy 自己的 `/compact`，會在原地摘要對話（已在 agy 1.3.6 驗證）。
+  - 已知版本低於 1.3.6 的 agy 會被拒絕，什麼都不送出，並提示更新 agy。
+- **從網頁對話送給 kiro 的 `/compact` 現在會說明何時結束（#1925）。** 在 kiro 的 classic 介面與 TUI 的 V2 引擎上，卡片會跟著 instance 自己的窗格：顯示**對話已壓縮**，或說明 kiro 沒有壓縮對話，原因是對話太短或壓縮被中止。在 TUI 上，「已壓縮」的意思是 kiro 的「Compacting conversation...」那一行出現後又消失了；除了「太短」之外的失敗分辨不出來。kiro 的 V3 引擎仍然會說明無法偵測壓縮何時完成。
+- **kiro 文件不再說 instance 的 agent 不載入 steering（#1925）。** kiro 會替每個 agent 載入 `.kiro/steering`，即使 agent 設成 `resources: []` 也一樣，所以新對話也會讀到目錄裡的 steering 檔案。
+- **穩定版推出後，beta 使用者又能收到較新 beta 的通知。** 2.2.0 推出、beta 線是 beta.17 時，beta.16 的安裝完全收不到更新通知：較新的穩定版成了通知的目標，又因為「同一版號線」被略過，連帶 beta.17 也沒有通知。現在 beta 安裝的通知只看 beta 線，beta 使用者會留在 beta 線。已有同版號線穩定版時，alpha 安裝仍會收到較新 alpha 的通知。(#1926)
+- 依實作更新英文與繁體中文的 2.2 升級／功能指南、README、指令／設定參考及目前版本重點，釐清網頁私送登入、ClassicBot 准入、私有 Node、投遞證據、記憶體保護、credential profile 與 Kiro 恢復。較早的 2.2 fragment 也改為最終行為；版本 changelog 另由發布流程彙整。
+- npm 套件描述與搜尋關鍵字改為列出 Muse，不再宣傳已移除的 Gemini 後端。
+- 修正英文／繁體中文網站的設定、安裝與功能頁，使其符合目前 2.2 行為，包括 Discord 管理員偵測、支援主機與網頁私送登入；同步修正 repo 安全及外掛／開發參考，對齊目前 API 與授權檢查。
+- 將繁體中文 CLI 參考的 `/web` 別名列恢復為文件文案檢查要求的表格格式。指令名稱、別名與行為不變。
+- **CI：改到文件的 PR 現在會跑測試。** 測試會讀 `docs/` 裡的檔案和根目錄的 README，所以只改文件、卻動到測試釘住的那一列的 PR，可能在 test shards 被跳過的情況下合併（#1929 就這樣讓 main 變紅）。現在只有僅改動 `changes/` 片段的 PR 才會跳過測試。(#1932)
+
+### 安全 (Security)
+- **補上幾個沒有足夠權限也能操作 instance 的漏洞（#754、#1148）。** 逐一稽核每個頻道上「誰能執行什麼」，找到並修好以下幾項：
+  - **⏹ 取消按鈕**：以前任何人點都能中斷 instance；現在只有該 instance 的 bot 允許在這個 topic 發言的人、而且只能按該 instance 自己的按鈕。
+  - **Telegram `/raw <文字>`**（直接打進 CLI）：以前 topic 裡能發言的人都能用；現在需要該 topic 所屬 bot 的 fleet 管理員。
+  - **Telegram fleet topic 的 `/collab`、`/compact`、`/save`**：以前沒有管理員檢查；現在和 Discord 一樣需要 fleet 管理員。
+  - **進階小提示解鎖按鈕**：以前任何人點都會改掉整個 fleet 的設定；現在和 `/tips advanced on` 一樣需要 fleet 管理員。
+  - **`/model`、`/effort` 選單**：點選時會再確認你仍是管理員、而且是透過同一個 bot 點的。
+  - **從 General 下 `/pause`、`/wake`**：以前能動到別的 bot 的 instance；現在只能動到該 bot 自己的。
+  - **需要 fleet 管理員的 slash 指令**（例如 `/update`、`/restart`）：以前能從別的 Discord 伺服器裡的 ClassicBot 頻道執行；現在只能在 fleet 自己的伺服器執行。
+- `docs/commands.md` 補充說明：ClassicBot 的 `admin_users` 是所有 bot 共用的一份名單。
+- **「誰是 fleet 管理員」在每個平台都由同一條規則決定（#754、#1148）。**
+  - 以指令所作用對象的擁有 bot 判斷（該 instance 或 General 所屬的 bot），而不是指令從哪個 bot 進來。在同一個 fleet 裡另一個 bot 擁有的頻道下 Discord slash 指令，現在會被拒絕，請改用那個 bot 的指令。
+  - `allowed_users` 為空代表沒有人；對應不到任何已設定頻道的 bot id 也代表沒有人，以前會退回去用第一個頻道的名單。
+  - Telegram 的文字指令現在和 Discord slash 指令依同一張指令表判斷，同一個指令在兩個平台需要相同的權限。
+  - 在 Telegram ClassicBot 對話中，該 bot 的 fleet 管理員現在也能用 `/pause`、`/wake`、`/compact`、`/save`，和 Discord 一樣；`/stop`、`/raw`、群組 `/start` 仍只限 ClassicBot 管理員。
+- **Dashboard 不再依賴 Server-Sent Events。** 即時串流 15 秒沒有任何訊息或一直失敗時，頁面改為每 5 秒用 `GET /ui/poll` 取得相同的狀態與聊天訊息，串流恢復後再切回去。輪詢與串流使用同一個 `<boot>-<id>` 游標，所以兩者交替時不會重複也不會漏訊息，fleet 重啟後也一樣。（Cloudflare Quick Tunnel 不支援 SSE，會緩衝串流的 proxy 看起來就像從不送資料的伺服器。）
+- **Dashboard 不再從 Google 載入字型，每個面板都帶 `Content-Security-Policy`**，把 script、樣式、圖片、字型與連線都限制在本站（`connect-src 'self'`），即使頁面上真的跑了不該跑的 script，也無法把讀到的內容送到別的伺服器。
+- **三個網頁面板共用同一條導覽列與 Session 選單，`/` 直接開 dashboard。** `/ui`、`/view`、`/settings` 都有相同的「Dashboard · View · Settings」連結與 Session 按鈕：顯示目前以哪個瀏覽器登入、session 何時結束、其他已登入的裝置（各自可登出）以及「全部登出」。只是一支小 script 與樣式表（`/assets/shell.js`、`/assets/shell.css`），不是重寫面板。
+- **網頁面板上只會執行頁面自己的 inline script（#1268）。** `script-src` 不再允許 `'unsafe-inline'`：每個面板自己的 script 會帶一個每次回應都不同的 nonce，dashboard 的按鈕也不再使用 `onclick=` 屬性（改由一個 listener 執行 `data-act` 指定、而且在固定清單裡的動作）。被注入到頁面的標記（例如 `onerror=` 或 `<script>`）不會再執行。
+- **……也只會套用頁面自己的 inline 樣式（#1300）。** `style-src` 也不再允許 `'unsafe-inline'`：每個面板的 `<style>` 區塊帶著同一個每次回應都不同的 nonce，而且所有面板都不再有 `style="…"` 屬性（dashboard 的已在 #1307 移除，/view 與 /settings 的在這次移除；即時終端的顏色與用量條改用 style 物件設定）。被注入的標記無法加上自己的 inline 樣式（但仍可能套用頁面既有的 class）。web terminal 維持它自己的政策。
+- **沒人操作的頁面不再讓網頁 session 一直有效（#1373）。** Session 在 2 小時沒有使用後結束；頁面自己定時發出的讀取不再
+  算作使用。在 `web.view_access: session` 時，開著的 `/view`（終端每 0.8 秒、名單每 5 秒、用量面板每分鐘）過去會讓
+  session 一直有效到 12 小時上限，dashboard 的即時串流每次被瀏覽器重新連線也會算一次。這些讀取仍會完整檢查授權；只有
+  打開頁面、讀取聊天紀錄，以及你做的任何變更才算使用。這份清單固定在伺服器端，頁面無法自行宣稱。
+- 敏感 web Settings 變更現在需要所屬 General 的 fleet admin 以綁定 nonce 的按鈕確認；chat 不可用時，須由同使用者的 host 明確確認（#1423）。存取名單、憑證、channel 目的地／順序及控制類設定最多 pending 五分鐘；遮蔽 diff 會列出實際 IDs 與角色。一般設定仍可直接套用。實際 job／啟動延續帶有授權與快照 fence、共用資源 lease 及條件式 rollback。SetupHost 也必須先取得 host consent 才寫入，並在交接前另行確認 finish。
+- **POST /agent：instance token 現在在讀取請求 body 之前就先驗證。** 之前端點會先完整讀取 body 再檢查認證，讓任何本機 process 都能用一個大型未認證請求耗盡 daemon 記憶體。現在 `X-Agend-Instance-Token` header 攜帶 `<instance>:<token>`，在呼叫 `readBoundedWebBody` 之前就驗證；缺少或錯誤的 token 直接回傳 401，不碰 body。超過 512 KiB 的 body 回傳 413（與 web API 相同的限制）。`agend-agent` 已更新為傳送新的 header 格式。(#1489)
+- 設定頁不再把 fleet.yaml 裡手寫的 inline 憑證讀出來（#1490）：`GET /api/settings/fleet` 與 `/api/settings/fleet/raw` 會把手寫的 `bot_token`（以及任何名為 `token`、`secret`、`password`、`api_key`、`web_token` 的鍵）顯示為 `[configured - redacted]`，表示已設定。依這份讀取結果送出的儲存會帶回這個佔位值，伺服器會保留原本存的值：連線依 id 對應，instance 與 defaults 依路徑對應。只有在憑證類鍵下才會把它當成佔位值，其他欄位裡的同樣文字一律視為一般字串。若佔位值背後沒有已存的憑證，或對應的連線 id 有兩條連線共用，請求會以 400 拒絕，fleet.yaml 不會被改動。
+- **Settings 確認依受影響 bot 的權限判定：** chat 確認需要每個既有目標連線的
+  admin 資格；按鈕出現在另一個 General，不會讓該 bot 的 admin 取得確認權限。
+  Fleet 層級與新增連線維持設定中 primary General 的 admin 授權；混合變更需要
+  同時滿足兩者，共用 token 也包含所有使用它的連線。跨平台或目標不明時，
+  在 host 執行 `agend settings confirm <id>`。網頁 pending／重試與首次 Setup
+  的 host 確認流程仍可使用。 (#1490)
+- **Settings 的確認流程不再能透過「立即生效」設定的子欄位繞過（#1490）。**
+  - 把敏感欄位放進立即生效設定的物件裡（例如 `persona: { bot_token: … }` 或 `persona: { allowed_users: … }`），原本會跳過管理員確認。
+  - 現在這類欄位與其他密鑰或存取變更一樣需要確認；未知欄位會被拒絕。
+  - 只有 `status_emojis` 與 `hang_detector` 的已知子欄位仍可不經確認立即生效。
+- **在 Settings 儲存連線時只會寫入連線欄位（#1490）。**
+  - `PUT /api/settings/fleet/channels` 會拒絕 Settings 不負責的欄位，例如內嵌的 `bot_token`、未知的 option 或未知的 access 欄位。
+  - 手動加在 fleet.yaml 裡的欄位仍會原樣保留。
+- **網頁登入與設定頁的強化（#1490）：**
+  - 在本機自己的 dashboard 上，過期的 `__Host-agend_session` cookie 不會再遮住有效的 `agend_session`：之前一個已結束的安全 session，會讓已登入的瀏覽器看起來像是登出了。寫入動作會以實際登入的那個 session 來檢查。公開連結仍然只接受它自己的 `__Host-` cookie。
+  - 頁面在你等待時會輪詢套用進度（包括 token 和綁定的套用），最多 10 分鐘；這種輪詢不再算作活動，所以不會讓閒置的 session 一直延長（#1373）。
+  - `agend setup` 的頁面現在會送出 Content-Security-Policy，只允許它自己的 inline script 和 style（每次回應都用新的 nonce），並加上 `X-Frame-Options: DENY`，其他網站無法用 frame 嵌入它。
+- **Settings 密鑰端點：公開連結（gateway）session 一律回傳 403。** 六個負責寫入或驗證連線 token/密鑰的端點（`/secrets/:id/verify`、`/secrets/:id/apply`、`/connections/:id/secret/verify`、`/connections/:id/secret/apply`、`/connections/:id/binding/verify`、`/connections/:id/binding/apply`），以及接收原始 bot token 的 quickstart probe 端點，現在在公開連結 session（`surface: "gateway"`）呼叫時回傳 403。本機 dashboard session 不受影響。(#1519)
+- **文件：`create_instance` 和 `update_instance_config` 的權限邊界分開描述。** `tool_set` 和 `skipPermissions` 只能透過 Settings 或 `fleet.yaml` 設定。`update_instance_config` 明確拒絕 `tool_set`；`skipPermissions` 不是接受的欄位（Zod 會剝除它）。`create_instance` 明確拒絕這兩個欄位。(#1519)
+- **網頁 app：面板的安全政策不會再無聲地少掉 script nonce 或圖片來源（#1527）。** 每個面板送出的政策現在是延伸基礎政策中的完整指令；若缺少其中一條，AgEnD 會拒絕啟動，而不是送出 script 或 Discord emoji 圖片都會被擋下的頁面。
+- **網頁：公開連結無法再變更整個 fleet 的側欄排序（#1665）。** 雖然頁面已不再使用 `POST /api/sort-order`，它仍可透過臨時公開連結呼叫。現在它已從公開連結的路由清單移除，處理程式在那裡也會拒絕（403）。讀取排序不受影響。
+- **網頁：無法再透過臨時公開連結建立或刪除 team（#1689）。** 與設定不同，`POST /ui/teams` 和 `DELETE /ui/teams/<name>` 原本開放給公開連結的工作階段使用。現在兩者都已從公開連結的路由清單移除，處理程式在那裡也會拒絕（403）。新的 team 編輯也同樣會被拒絕。透過公開連結仍可檢視 team。
+- **網頁：公開連結不能再新增、編輯或刪除排程（#1724）。** 排程會以訊息形式傳給 agent，因此與團隊（#1689）相同，公開連結上不提供這些路由，伺服器也會拒絕。公開連結仍可檢視排程清單。
+
 ## [2.1.12] - 2026-10-08
 
 ### Fixed

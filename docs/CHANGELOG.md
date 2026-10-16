@@ -6,6 +6,1047 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16
+
+### Upgrade Notes
+- **Kiro upgrade recovery (#906, #1624, #1800).** Resumed conversations keep their saved agent: AgEnD does not automatically type /agent swap, and does not retry that suspended switch on later launches. New instances without identity or launch history may adopt an unclaimed latest conversation only when peer-directory ownership is known safe; a conflict or unknown ownership starts fresh. Existing conversation claims prevent another instance taking the same ID. Untagged legacy steering files are retained with a warning; remove them manually only after coordinating all fleets using the directory. See the Kiro upgrade-recovery guide.
+- **[Behaviour change] `/view` no longer takes the web token in its URL or a text box.**
+  Saving a profile or avatar (and the sidebar order) used to work with the
+  fleet-wide `web.token` sent as `?token=` — which `/dashboard`'s "View (edit)" link
+  put in the address bar, and which `view.html` then appended to *every* API
+  request and kept in `localStorage`. Writes now need a signed-in session (with
+  the same CSRF checks as the other panels) or `X-Agend-Token` from a script; a
+  `?token=` is refused as a write credential, the token box is gone, and Edit sends
+  a signed-out visitor to the sign-in page and back. **Reading `/view` stays open by
+  default** (the live terminal capture included); the new `web.view_access: session`
+  requires a sign-in for reads too. The unused `view.token` file (a read-only
+  credential nothing ever accepted) is no longer written, and an old one is
+  deleted at startup.
+- **[Behaviour change] The web panels sign in with a one-time code, and a
+  dashboard link no longer carries a credential.** `/dashboard` used to paste the
+  fleet-wide `web.token` into `/view?token=`, `/settings?token=` and `/ui?token=`
+  — into chat history, browser history and screenshots, where it stayed valid
+  until `agend web-token rotate`. It now gives the sign-in page and an 8-character
+  code that works once and expires in 5 minutes; typing it there starts a
+  **server-side session** (an opaque random id the server can expire, list and
+  revoke — not the old cookie that was `sha256(web.token)`, identical on every
+  device and valid until rotation). **Everyone signs in once after upgrading:**
+  the old cookie is no longer accepted. Sessions end 12 hours after sign-in or
+  after 2 hours idle, survive a fleet restart, and every write from a page now
+  also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
+  `/dashboard revoke` (on Discord: `/dashboard` with `action: revoke`) signs every browser out; `agend web --code` prints a code on
+  the host; `agend web-token rotate` still kills every session at once. The
+  header token (`X-Agend-Token`) is unchanged for the CLI and scripts. **A
+  `?token=` in a URL is no longer a credential anywhere on `/ui` and `/settings`:**
+  an old `?token=` link or bookmark opens the sign-in page — sign in there once
+  with a one-time code from `agend web` or `/dashboard`. `agend web` now prints a
+  code and opens `/signin` instead of a token link. New sign-ins are announced in the General topic
+  (`web.notify_login: false` to silence).
+- **The first start on 2.2 tells General about web chat, once (#1366).** Each chat platform's General gets one short
+  message: what web chat is, that it is the same conversation as the topic, and that `/dashboard` signs you in. It is
+  recorded in `~/.agend/upgrade-notices.json` and never repeats; a platform with nowhere to post fleet notices is told
+  once it has one. A message that fails to send is tried again at the next start.
+- **An empty ClassicBot allowlist now asks General for approval (#1418).** Fleets that relied on omitted or empty `allowed_users`, `allowed_groups` or `allowed_guilds` being open must approve new starts with General's Allow / Allow+admin / Ignore buttons, or add explicit grants. ClassicBot admins may start directly; existing registered channels keep working. Telegram private requests now have the same approval buttons as groups, with the outcome sent back to the requester. Allow+admin grants ClassicBot admin rights, not fleet admin. Approval does not start an agent automatically: retry `/start` (Telegram groups: `/start@OurBot`, by a ClassicBot admin). Discord DMs remain unsupported. Configure a fleet admin on General's owning adapter to approve requests.
+- **The AgEnD runtime requires Node.js ^22.14.0 || ^23.6.0 || >=24** for better-sqlite3 v13’s Node-API 10. Supported bundled-runtime platforms normally do not need a PATH Node upgrade: AgEnD uses its private Node. Without an available bundled runtime, prepare a qualifying system Node before installing. Follow the 2.2 upgrade guide for your source version; older updaters have an unlink-first failure window.
+- **`better-sqlite3` upgraded to v13 (N-API, `^13.0.3`).** The native SQLite binding now ships prebuilt N-API binaries for every supported platform inside the npm package; no separate GitHub download occurs at install time, and no compiler is needed. The prebuilds are ABI-stable across Node versions, so macOS installs no longer require Xcode Command Line Tools.
+- Web Apply for sensitive Settings is now a proposal, not a completed write (#1423). Local and public sessions need a General fleet admin or `agend settings confirm <id>` on the host. Header-token automation cannot authorize sensitive edits. Handle `202 pending_confirmation`, retain the same idempotency key for lost-response retries, and wait for the terminal outcome. Secret fields must be re-entered after rejection/expiry. Pending requests are memory-only and must be resubmitted after restart. First-time Setup requires host confirmation and an explicit Start action; no confirmed chat route means host confirmation, never auto-apply.
+- **From any 2.1.x, upgrade with `npm install -g @songsid/agend@<2.2 version>`, then `agend install` — not with `agend update` or `/update` (#1487).**
+  - 2.1's updater removes the installed AgEnD *before* it installs the new one. If that install fails for any reason (AgEnD 2.2 refusing your host, a network, registry or proxy problem), nothing is left: no `agend` command. The running fleet lasts only until its next restart or login, and then the service cannot start. This was reproduced on a real Mac, where launchd reports `EX_CONFIG`.
+  - A direct `npm install -g` has no removal step; a refused install keeps your current version.
+  - **If it already happened:** run `npm install -g @songsid/agend@2.1.12` (or the 2.2 version, once your host can install it), then `agend install`. Your data directory is untouched.
+  - AgEnD 2.2's install refusals now say this in plain words, with these commands, when 2.1's updater started the install. See [Upgrading to 2.2](upgrade-2.2.md).
+- **Old-updater compatibility on hosts without bundled Node (#1488).** Bundled runtimes cover Linux glibc 2.28+ and macOS 11+, x64/arm64. On other platforms, a missing private runtime requires a qualifying PATH Node (^22.14.0, ^23.6.0 or >=24); prepare it first, then follow the manual path in the 2.2 upgrade guide. Direct npm installation alone does not remove the runtime requirement. Alpine/musl and non-systemd Linux remain unsupported. The 2.1.12 updater unlinks first, so a later install refusal can leave no agend command.
+- **musl Linux such as Alpine, and Linux hosts without systemd, are not supported.** AgEnD may still install there on a Node 22.14+, but it is not tested or promised to work. If you run it there anyway, the [upgrade guide](upgrade-2.2.md#1-before-you-upgrade) lists two workarounds: remove `~/.config/systemd/user/com.agend.fleet.service`, then run `agend start`, after updating from 2.1.x; and `apk add procps` so `agend update` can read process start times. (#1912)
+
+### Added
+- **`delivery_status` now shows when the CLI actually took a steer, not just that it accepted it (#1201).** A steer, or
+  a message handed to a busy CLI's own queue, is accepted into the CLI's input long before the model reads it. Claude
+  Code takes it at the next tool boundary or when the turn ends. AgEnD now watches the CLI's transcript (claude-code,
+  codex) from where the delivery began:
+  - When the delivery's own marker shows up taken, the row gets `consumed_at` and `consumed_via`: `turn`, as its own
+    turn, or `mid_turn`, absorbed into the running one.
+  - An `uncertain` row becomes `delivered` then. Its failure notice is withdrawn if it has not been sent yet.
+  - Only an exact match counts. A miss changes nothing.
+  - The watch reads in bounded chunks, looks less often at a transcript that stops growing, ends after 30 minutes,
+    and is capped across the fleet.
+  - `delivery_status` also shows `delivery_mode` (`steer` / `idle_queue`) and `submission_mode`.
+- **A steer Claude Code took mid-turn now counts as consumed after a restart too (#1201).** Claude Code records that
+  case as an absorbed queued command, not a user message. Restart reconciliation used to read it as merely queued and
+  left the delivery `uncertain` with a ⚠️.
+- **A Log tab for each instance shows its work step by step (#1218).**
+  - The new 「紀錄」/"Log" tab sits between View and Details. It shows each prompt, the agent's replies (never its thinking), every tool call with its arguments and result, errors, where each turn ended, and fleet events such as a crash, a restart or a waiting prompt.
+  - Steps are read on demand from the agent's own transcript when the tab is open, and update live while someone is watching. Secret values (keys, tokens, passwords, long random strings) are masked; long text is cut, with "Show more".
+  - It is off by default (`web.log_tab`). Off, it does no work at all. A fleet admin turns it on in Settings → Web, and that change is confirmed like any access change. Once on, it is also available over the public link.
+  - Supported: claude-code and codex now. For other backends the tab shows fleet events only. For kiro it also says why: its own steps are shown only once AgEnD can prove which conversation the instance is in now, which no kiro launch allows yet.
+- **A fleet with no chat platform works from the web dashboard alone.** With no `channel` / `channels` configured,
+  an agent's reply now goes to the web chat (and the agent is told it was sent) instead of being refused with
+  "Channel adapters are not ready — retry shortly" forever.
+- **Web chat: answer the fleet's prompts from the dashboard.** When an instance looks hung, exits on its own, or is
+  stuck on an interactive prompt, the buttons Telegram shows (*Force restart* / *Keep waiting*, *Restart* / *Ignore*,
+  *Confirm* / *Cancel*) also appear in that instance's web chat. They are the same prompt, not a copy: one answer counts,
+  whichever surface gives it first; the other's buttons collapse to the outcome; and the prompt expires on both at
+  once. Only these instance-health prompts are offered there — a `/clear` confirmation, login, Classic group
+  approval, tips and the `/model` / `/effort` menus stay where they were asked. A dashboard answer needs the
+  signed-in session and its CSRF token, names the instance, and must be one of that prompt's own buttons.
+- **Web chat: Markdown, several lines, and history that survives a reload.** Messages in the dashboard's chat now render
+  Markdown — bold, italics, `code`, code blocks, lists, quotes, links (http/https/mailto only, opened in a new tab) — and
+  nothing in a message can add markup of its own (the text is escaped before any formatting is applied). The composer takes
+  several lines (Enter sends, Shift+Enter adds a line) and gives the text back if sending fails. A reload no longer empties the
+  chat: the fleet keeps each instance's recent messages (`GET /ui/history`, in memory, bounded), and a stream that drops and
+  reconnects is sent what it missed. Long agent replies are no longer cut at 2,000 characters in the web chat (16,000 now).
+- **Web chat: see where your message got, see that the agent is working, and stop it.** Each message you send
+  from the web chat gets ticks, the same lifecycle a Telegram message shows as reactions: ◷ waiting behind another
+  message, ✓ handed to the agent, ✓✓ the agent has it, ! not delivered (each labelled for screen readers, and
+  kept across a reload). While the open chat's agent is working, a "*name* is working…" line shows above the
+  composer with a **Stop** button that does what Telegram's cancel button and `/cancel` do: Esc into the CLI, and
+  the messages still waiting are dropped — their ticks turn to ⊘. (Stop is `POST /ui/cancel/<instance>`, behind
+  the same session and CSRF check as every other dashboard write; it is not the instance's Stop, which ends its
+  process.) Delivery reports for web messages no longer try to react on Telegram with an id that was never a
+  Telegram message.
+- **Web chat: send files and images, and see the ones the agent sends back.** The composer has a 📎 button, and
+  files can also be pasted or dropped onto the chat (up to 5 per message, 10 MB each, 25 MB together; PNG, JPEG,
+  GIF, WebP, PDF and text files). The agent gets them exactly as from Telegram — the file in the instance's
+  workspace inbox, a `[📷 Image: …]` / `[📎 File: … → …]` line and `image_path` / `attachment_path` — and files the
+  agent attaches to a reply are shown in the web chat (images inline, others as downloads). The type is read from
+  the file's bytes, not from its name or the browser's word for it; the stored name is chosen by the fleet; and a
+  file can be fetched back only by an id the fleet issued for it (`/ui/file/<id>`), never by a path. Anything that
+  is not one of the four image types is served as a download, never rendered. A file attached but not sent within
+  30 minutes is deleted, also across a fleet restart: an upload is stored as `web-pending-…` until a message takes
+  it, and those left over are swept at startup once 30 minutes old (#1273). Sent files follow the inbox's 7-day
+  rotation, like Telegram's.
+- **Reply buttons: an agent can offer choices people click (#1266).**
+  - `reply` takes `buttons` (up to 10, `{ label, value? }`). They appear in the web chat, on Telegram (inline keyboard) and on Discord (components).
+  - A click reaches the agent as a message from whoever clicked (`[button] <label>`). The first permitted click answers for everyone, and every surface then shows the choice and who made it.
+  - Anyone who may message the instance there may click. Buttons expire after 24 hours, survive a restart, and cannot be replayed.
+  - Where buttons cannot be shown, the choices are added to the text.
+- **Web chat: commands and quick actions (#1269).** Typing `/` in an instance's chat opens its own chat commands, the same ones its Telegram/Discord topic accepts. They run through the same handlers and command table (#754/#1148).
+  - The commands: `/ctx`, `/compact`, `/clear` (asks first), `/model`, `/effort` (with nothing after them, a list to choose from), `/cancel`, `/btw`, `/steer`, `/pause`, `/wake` and `/save`.
+  - Anything else starting with `/` is still sent as a message. Fleet-wide commands stay in General.
+  - Quick actions: the model and effort in the chat's header open their lists. **Compact** and **Clear…** appear once the instance's context is 70% used.
+  - Over the temporary public link, a message starting with `/raw ` is refused: it would reach the CLI without the `[user:]` envelope. `/save` is refused there too.
+- **Web chat: tables, nested lists and highlighted code (#1269).** Agent replies with a Markdown table now show as a
+  table (header, `:--`/`--:`/`:-:` alignment, cells with their own bold/links/`code`; a pipe inside a cell is `\|`), lists
+  nest by indentation (bullets and numbers mixed, up to six levels), and fenced code in js/ts/json/python/sh is
+  highlighted. No library and nothing from a CDN: the same escape-first renderer, with only fixed tags and classes
+  added, so nothing in a message can still produce markup of its own.
+- **Web chat: preview an agent's HTML (#1306).** A ` ```html ` block in an agent's reply gets a card under it:
+  **Preview** runs the HTML in a sandboxed frame served by a separate local listener (`web.preview_port`, default
+  `health_port + 1`), so it cannot use the dashboard sign-in or act on the dashboard; **Stop** closes it; **Download**
+  saves it as `reply.html`. Previews are **off on every device until that device opts in** (sidebar or the card's menu),
+  run only on a click, and carry a banner saying they may be able to send data out and can slow or freeze the tab.
+  Only replies the fleet marks as an agent's get a card — HTML from people is only ever code. Through a tunnel or
+  proxy, previews need `web.preview_origin` (a separate host name); otherwise the card says why they are off.
+- **Web chat: a chat-first layout, light and dark (#1307, layout part).** The conversation is a centred column with
+  your messages as bubbles on the right and agent replies across it (each with Copy); code blocks show their language,
+  with Copy and Wrap, and fold when longer than 30 lines; the view follows new messages only while you are at the
+  bottom, with "↓ N new" when you are not; while the agent works the composer's Send becomes Stop (Send comes back
+  when you type). The sidebar can be hidden (remembered) and is a drawer on a phone. The dashboard follows the
+  device's light or dark setting, or a per-browser choice (`/assets/theme.js` sets it before the page paints), uses
+  the system font stack, and has no inline `style` attribute left (#1300).
+- **Web chat: phones, keyboards and screen readers (#1307, mobile + a11y part).** On a phone the on-screen keyboard
+  resizes the page instead of covering the composer (`interactive-widget=resizes-content`), the layout keeps clear of
+  the notch and home bar (safe-area insets), and the composer's text is 16px so iOS does not zoom. Esc stops the
+  agent's reply while it works (not while a form or menu is open, not mid-IME). The sidebar's rows are reachable by
+  Tab and open with Enter/Space; the phone drawer keeps focus inside and returns it to ☰ on close. The message list
+  is a log that is not read out message by message; one polite status line announces the coarse events (started,
+  finished, replied, waiting for your input).
+- **Web chat: the agent's turn, and attachments (#1307, turn-status part).** The working line counts how long the agent
+  has worked (from when the page saw it start), reads "Stopping…" after Stop until the agent is idle, and says when it is
+  waiting on its terminal (a permission question, a login, a dialog) — with a "needs you" badge in the sidebar, labelled
+  as read from the terminal. Dragging files over the chat shows where they go; each waits as a chip with its name and
+  size; a paste over 10,000 characters is attached as a text file (it can go back in as text). On a fleet with no chat
+  platform, the hang, clean-exit and interactive-prompt prompts are now asked on the dashboard (they were not asked
+  anywhere); an interactive prompt only when there is a General to help.
+- **Web chat → ClassicBot channel echo (#1320 part B).** Successful web sends to a classic instance are copied to that instance's ClassicBot channels, but only to entries with `web_echo: true` (default off, per entry). The copy goes through the channel's own adapter with mention suppression, in the same before-reply ordering lane as part A, and failures never block the web send. No-re-entry reuses part A's shared helper verbatim (`neutralizeWebEchoText`, `formatWebChannelEcho`, `isWebChannelEcho`, fixed `WEB_ECHO_PREFIX`): visible-ASCII mention neutralisation in preview and attachment names, fleet-bot-author plus prefix ingress drop. The opt-in lives in classicBot.yaml and Settings (non-boolean rejected, channel restart on change, second confirmation for group channels in the page).
+- **Web chat → fleet topic echo (#1320 part A).** Successful web sends are copied to the owning Telegram or Discord topic, with a five-second total ordering budget before replies proceed. On timeout queued copies are dropped; an already in-flight copy may arrive late, with its outcome logged. `web.echo_to_channel` defaults to true and is editable in Settings without persisting untouched defaults. Echo failures do not block web delivery. Visible mention/command labels and a fleet-bot-author/prefix ingress check prevent echoes from starting another turn, including sibling bots and replays; bot-prefix candidates are quarantined while any configured same-platform bot identity is unknown, without affecting humans. ClassicBot and web-only fleets are excluded.
+- **Retention for delivery-outbox.db and the Task Board (#1335).** Both stores grew without bound: `delivery-outbox.db` was accumulating ~2.5 MB/day and the Task Board had 1,099 rows going back to April. Terminal deliveries (`delivered`/`failed`) and `done`/`cancelled` tasks older than `defaults.retention_days` (default 30) are now pruned once at fleet startup and daily after that. `uncertain` rows and non-terminal deliveries are never pruned. Deliveries with still-open reply obligations are skipped until the obligation is closed. Cancelled task prerequisites of live tasks are also kept. Pruning runs in chunks of at most 500 rows and yields between chunks so it never stalls the event loop. When a `delivery_status` query returns no results for a `delivery_id`, the fleet now checks whether the row was pruned and responds with "older than the retention window; record pruned" — but only to the original source or target of that delivery — rather than "Delivery not found". Other lookups can still return "Delivery not found" for hidden, expired or absent rows; that result does not prove non-delivery. The unfiltered `task list` is now capped at 100 rows (most recently updated first) with a note about how many were omitted; filtered lists are uncapped.
+- **Task Board tool is now context-efficient (#1336).** The unfiltered `task list` now returns only live tasks (open/claimed/blocked) by default — done/cancelled appear only when `filter_status` includes them. `filter_status` accepts an array for multi-status filters. Each row in the list is compact (`id`, `title`, `status`, `assignee`, `priority`, `updated_at`); pass `verbose: true` for full rows, or use the new `get` action to fetch one complete record. Write operations (`create`, `update`, `claim`, `done`) return a small ack `{id, status, updated_at}` instead of the full object. Task IDs can be abbreviated to their unique 8-hex prefix. `done` now works on open tasks as well as claimed ones.
+- **Opt-in fleet CPU profiles for unexplained event-loop stalls (#1338, part of #1235).** The local operator can set `AGEND_CPU_PROFILE_SECONDS=60` for a cold `agend fleet start`; omitted means off. In-process 100 Hz recording stops after at most 30 minutes (when the main thread can service the deadline), with no inspector listening port. Private files under `AGEND_HOME/profiles` are capped at 20 MiB and rotated to five; the file cap does not cap V8's recording memory. Agent sessions cannot enable it through their inherited environment; no chat/web/MCP trigger is added.
+- Record a bounded CPU profile inside a running fleet with `agend profile [seconds]`, or the admin-only General `/profile` command (Discord native slash, Telegram typed). Both share the existing startup recording owner, refuse concurrent captures, and retain the duration/artifact/shutdown limits. CLI control uses a same-user private Unix socket; agent environments are refused. No restart, web/MCP control or inspector port is needed.
+- **Web chat: talk to your agents from the browser (#1366).** The dashboard's `/ui` is a chat with any instance: pick
+  it in the sidebar and type. It is the same conversation as that instance's Telegram or Discord chat — a message sent
+  from the web is echoed into the topic as `🌐 web-user: …`, the agent's replies show in both, and you can switch
+  between phone and computer mid-conversation. Files and images, Stop, the ticks that show how far a message got and
+  the answers to the fleet's prompts all work there (see the web chat entries below). Sign in with a one-time code
+  from `/dashboard` (fleet admin) or `agend web`. The dashboard listens on `127.0.0.1`; for a phone, see
+  [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere).
+- **Web chat: a short tour on the first sign-in (#1366).** The first time `/ui` opens on a device, a small card walks
+  through five things — pick an instance, it is the same conversation as Telegram/Discord, attach files, Stop, and the
+  *needs you* badge — outlining each on the page. Got it, Skip or Esc ends it for that device; **Tour** in the sidebar
+  shows it again. It blocks nothing, and it is styled by the page's own stylesheet (no inline style, #1300).
+- General admins can opt into a temporary public dashboard link from `/dashboard`, with link/code delivered privately, a fixed two-hour lifetime (1–480 minutes), pinned cloudflared, exposure-scoped sign-in and mandatory public login notices. Public View requires sign-in, previews stay private, and expiry/revoke/shutdown closes access. Cloudflare terminates TLS; this grants full web-admin access, and platform failures deny public sign-in.
+- **"Needs you": one list of everything waiting on you, kept live in General (#1386).** Each bot keeps a single
+  message in its own General that lists what its instances are waiting on: a fleet prompt (not responding, exited,
+  waiting at its terminal), a permission, dangerous-command, sign-in or other dialog, an instance paused for sign-in
+  or crashed, and deliveries the fleet could not confirm or deliver (the last 24 hours). Each line links to the
+  prompt's own buttons or the instance's thread. The message is edited as things are resolved, on any surface, and
+  re-posted (so it notifies) at most once a minute when something new appears. A delivery item has an
+  **Acknowledge** button for that bot's admins; it is recorded on the delivery itself. `needs_you.dm: true` also
+  DMs that bot's admins. The web dashboard receives the same list for every bot over its existing live stream.
+  `needs_you.live_message: false` turns the General message off.
+- **The fleet's org chart on the web (#1389).** Fleet → Org chart shows General at the top, then the teams from `fleet.yaml`, then their instances, and finally the instances that are in no team. Each instance shows its display name, what it does, its backend and model, and its live state: working, idle, needs you, looks stuck, paused, stopped or crashed. Each one also links to its Discord thread or Telegram topic and to its chat. The chart is read-only; you still act in Discord. It reads what the fleet already has, follows the live status without polling, and fits a phone's width.
+- **A kiro instance running kiro's TUI can now be steered mid-turn (#1405).** `/steer` and `send_to_instance` with
+  `steer: true` now reach a working kiro instance launched with `kiro_ui: tui` or `v3`, on a kiro-cli version AgEnD
+  has run live: 2.27.1 (TUI and v3) and 2.28.0 (TUI). The steer is taken in at the next tool boundary of the same turn.
+  kiro's own interrupt mode decides what happens. AgEnD reads that mode from kiro's input row before every steer and
+  never switches it: it pastes only while the row says `Type to steer`, presses Enter only once the box shows this
+  delivery's own message, and confirms only once the box is empty again. If the row says `Type to queue` (the user
+  chose queue mode, with Ctrl+S), the message is delivered after the turn as before. The same happens on the legacy
+  UI and on other versions; `/steer` there says why it is not available for that instance.
+- **Needs you in the web app (#1386, #1408 step 4).** `/ui/needs` lists everything waiting on you, from every bot's world: fleet prompts with their own buttons, agents stopped at a dialog, paused or crashed, and deliveries with **Acknowledge**. It is the same list as the live message in General, and anything handled anywhere leaves it. The sidebar shows the count, the tab title starts with `(N)`, and desktop browsers can show a notification for something new while the tab is in the background (opt-in per device).
+- **Setup guide links at the bot-token step.** Both `agend quickstart` and the `agend init` setup wizard now print a 📖 link to the website setup guide at the point where they ask for the bot token — Telegram: [songsid.github.io/AgEnD/setup-telegram/](https://songsid.github.io/AgEnD/setup-telegram/), Discord: [songsid.github.io/AgEnD/setup-discord/](https://songsid.github.io/AgEnD/setup-discord/). The link automatically uses the zh-TW page (`/zh-tw/setup-telegram/`, `/zh-tw/setup-discord/`) when the locale is `zh-TW`. The URLs live in a shared `src/setup-guide.ts` module imported by both files (no circular import).
+- Added a data-only downgrade compatibility check against published 2.1.12 on Node 20, with current stores on Node 22 before and after. The report separates additive database compatibility from lost web policies, pending approvals, scheduler retries and Kiro ownership protections; it does not promise a safe live downgrade (#1441, Part C).
+- **Node compatibility checks (#1441).** Without a supported bundled runtime, preinstall refuses an incompatible system Node. Bundled-runtime platforms can install while npm itself runs on an older Node. Skipping lifecycle scripts does not make an incompatible runtime safe: the launcher must find the private runtime or an explicitly allowed, qualifying system fallback. An old updater that already unlinked AgEnD can still leave no installed command if installation fails; see the 2.2 upgrade guide.
+- **AgEnD brings its own Node 22.23.3 on Linux and macOS (#1450).** On Linux with glibc 2.28 or newer and on macOS 11
+  or newer (x64 and arm64), installing AgEnD also installs its runtime package `@songsid/agend-node-<os>-<cpu>`, an
+  official Node 22.23.3 published with provenance. AgEnD runs on it whatever Node is on your PATH. Your own Node, and
+  the CLIs that use it (codex, claude…), are unchanged.
+- **Prompt-cache expiry analysis on the web (#1468).** Fleet → Cache shows, for each Claude Code and Codex instance over the last 24 hours, 7 days or 30 days:
+  - how long it sat idle between requests, against the cache's lifetime (1 hour for Claude Code; 30 minutes for Codex on GPT-5.6 and later);
+  - how often a request came back to an expired cache, and what rewriting it cost;
+  - whether a keep-warm ping would have paid off, counting the pings that nothing ever reads afterwards;
+  - a keep-warm recommendation, on or off, with its reason.
+
+  ClassicBot rooms are included. Two instances that share a working directory can't be told apart in their transcripts, so neither is analysed, and the panel says so. A fleet row adds it all up. Costs are list prices from one table, and the panel shows the date it was checked. Codex does not record cache writes, so its numbers are marked as estimates. Kiro and other CLIs show "not available".
+
+  The panel is read-only. AgEnD reads transcripts incrementally in bounded passes and keeps a small summary per instance (`cache-ledger.json`). It never calls a vendor API.
+- **Web chat: an agent's HTML preview can open in a panel beside the conversation.**
+  - **Open in panel** on the preview card shows it with room to use it: a split with a draggable divider (keyboard-resizable, width remembered on the device) on a wide screen, and a full-screen sheet on a phone.
+  - The panel has Page / Code, Reload, Stop, Download and a link to the message the block came from.
+  - When a later reply has a newer version of the block, the panel offers it instead of swapping it in.
+  - Closing the panel or opening another chat stops the preview. The preview's isolation is unchanged: the same sandboxed frame on the preview address, the same per-device opt-in, and a click to run.
+- **Codex gets the reply completion guard (#1510).**
+  - A Codex agent that answers a human message only in its terminal, never calling `reply`, is now asked once to send its conclusion, as Claude Code and Kiro already are.
+  - It needs Codex's own session log to show that the turn holding your message ended and that nothing started after it. The terminal alone can look idle mid-turn, but the log only ends a turn when it really ends: a long tool run, or a steer folded into the turn, keeps it open.
+  - An interrupted turn (Esc) or one that ended on a provider error gets no reminder. A turn that cannot be found in the log the instance follows also gets none, as before; for example, two Codex instances in one directory.
+- **Muse gets the reply completion guard too (#1510).**
+  - A Muse agent that answers a human message only in its terminal, never calling `reply`, is now asked once to send its conclusion, as Claude Code, Kiro and Codex already are.
+  - It needs Muse's own session log to show that the run holding your message ended and that nothing started after it. A message typed mid-run makes Muse run once more after the first run ends; the terminal shows a brief idle moment between the two runs, but the log keeps that second run open until it really ends.
+  - A cancelled run, or one that failed, gets no reminder. A message that cannot be found in this directory's Muse logs also gets none, as before.
+- **Web chat: an agent's `.html` attachment can be previewed (#1522).** A `.html` or `.htm` file an agent attaches to a reply now gets the same preview card as a ` ```html ` block: Preview, Open in panel, and the same per-device opt-in and sandboxed frame. The file is read only when you click, and it is capped at 1 MiB. Files people upload stay plain downloads. Agents are told to prefer attaching a `.html` file over a long ` ```html ` block, which Discord and Telegram split.
+- **Settings: enter bot tokens in the browser (#1529).** New connection and the setup wizard take the bot's token in a password field and check it with Telegram or Discord first ("This is @your_bot."). It is stored on this computer under a generated name such as `AGEND_DISCORD_2_TOKEN` (shown under Advanced), so there is no `.env` to edit and no variable name to choose. A connection shows "Token set" and offers Replace.
+- **Settings: invite a Discord bot from the browser (#1533).** After a Discord token verifies, New connection and the setup wizard show "Invite @your_bot to your server". The invite asks only for the permissions AgEnD uses, never Administrator. After you invite the bot, the server it joins is picked automatically, and that server's text channels become a list (with #general first). The form also says where to turn on Message Content Intent, and a connection Discord refuses for that intent now says so instead of "Problem".
+- **Settings: a new connection starts without restarting AgEnD (#1539).** When AgEnD is already running a connection, a connection added from Settings (New connection or the setup wizard) starts as soon as you apply it. Replacing the token of a connection that is not running also starts it. The first connection of a fleet, and changes to an existing connection, still ask for a restart.
+- **Web: a first-run card on a web-only fleet, and the setup wizard can connect an agent you already have (#1549).** With no Telegram or Discord connection, Chat and Settings › Agents / Connections show a card: **Connect a chat app** opens the setup wizard, **Use the web only** hides the card in this browser. The wizard's first step offers **An agent you already have** or **A new agent**. An existing agent keeps its directory, backend and settings, and only its chat connection becomes the new bot. A new agent can no longer take an existing agent's name and overwrite it. Chat with no agent at all offers **New instance**, and the sidebar's New instance button is now a **+**. The Developer download button now reads **Download fleet.yaml**, and the New instance dialog's "Topic name" field is now **Name**.
+- The web dashboard now has a Silver **Ag** tab icon and an apple-touch icon, including sign-in, View and temporary public links. Icon requests are public; Host checks and the existing Content Security Policy remain in place (#1557).
+- **Web: one instance's Details page, and a Chat / View / Details switch (#1561).** Each instance now has a Details page at `/ui/fleet/agent/<name>`. It shows the instance's runtime and recent activity, and a read-only summary of its configuration: directory, where it is bound, tags and description. **Edit in Settings** opens that agent's settings. The ⋯ menu starts, restarts, stops, pauses or wakes the instance, with the same confirmations as before; deleting an instance stays in the chat's ⋯ menu and Settings. On an instance's pages, the header switches between its **Chat**, **View** and **Details**; on a phone these appear as tabs under the header. While you have an instance open, **Fleet** now takes you to that instance's Details instead of always landing on Tasks. On Details or a Fleet tab, clicking an instance in the sidebar opens its Details.
+- **Web: one text size for every page, and the same header controls everywhere (#1563).** Chat, View, an instance's Details and Fleet now have the same two controls at the top, in the same order: **Text size** and **Usage**. Text size is **S / M / L**, and it is one setting for this browser. Choose it on any page and every page uses it, also after a reload. View keeps **Fit**, which sizes its terminal to the box. Your earlier View setting carries over: Comfortable becomes L and Compact becomes S. **Usage** is hidden when the fleet has the usage panel turned off.
+- **Web chat: the conversation is still there after AgEnD restarts (#1565).** The latest 500 messages of each agent are kept on this computer, in a private file in the agent's workspace (`workspaces/<name>/web-chat.json`), and come back when the fleet starts again. A page left open across the restart shows each message once. Files in those messages still open after the restart — as long as the file is still in the agent's inbox and unchanged; otherwise its name is shown as unavailable. Buttons and delivery ticks are not kept. Deleting an agent deletes its file.
+- **`/web` is a shorter name for `/dashboard` (#1569).** It does exactly the same thing on Discord and Telegram: the same admin-only gate, the same "disabled" reply when no admins are configured, the same refusals, and `/web revoke`. Discord registers it as its own slash command, and the Telegram menu lists it next to `/dashboard`.
+- **The sign-in page can send you a new code (#1570).** A browser that signed in before with a code from `/dashboard` gets a "Send me a new code" button, so a lapsed session no longer means going back to chat. The code goes by DM to the person who received the earlier code, and only while they are still a fleet admin. The DM says which browser asked and suggests `/dashboard revoke`. Requests are rate-limited per browser and for the whole fleet, and refused while sign-in is paused. On a public link it works only while that link is open, and the sign-in is announced as before. `/dashboard revoke` and `agend web-token rotate` remove the button everywhere.
+- **Attachments preview inline in the web chat (#1589).** Audio and video files (mp4, webm, mov, mp3, m4a, wav, ogg) play in the message with the browser's own controls, streamed by file id in byte ranges of at most 4 MiB. Text files get a card with Show, Download and the first 200 lines (then "Show all N lines"): Markdown through the chat's own escaping renderer, JSON pretty-printed and highlighted, code highlighted, CSV and TSV as a table, anything else as plain text. Nothing in a file is ever run, and files over 1 MiB stay downloads. Formatting is capped at 4,000 elements per card (table cells, highlighted tokens, Markdown elements) and 50 csv columns, "Show all" included; past that, the card shows plain text. The page allows media only from its own `/ui/file/` route. A file that is gone shows as before, with no preview. The public link is unchanged: there, attachments are downloads only and its page allows no media.
+- **Web on a phone: swipe to open and close the sidebar (#1605).** Swipe right across the conversation to open the sidebar, and swipe it left to close it — the same as ☰ and tapping outside. A swipe that starts at the very left edge of the screen is left to the browser (on an iPhone that is "back"), and so are swipes on code, tables, the terminal view and the message box, and anything while a dialog or image viewer is open. Up-and-down scrolling is never taken over. Also: **Tour** in Settings → This device now starts once the chat has drawn, and returns you to the message box when it ends.
+- **Web: choose how long a dashboard sign-in lasts (#1620).** For the dashboard reached directly (on this computer, your LAN or a tailnet), `web.session.local.absolute_hours` and `web.session.local.idle_hours` in `fleet.yaml` set how long a sign-in lasts and how long it may sit unused — anywhere from 1 to 720 hours (defaults 12 and 2, unchanged). A public-link sign-in keeps its fixed 4 hours / 30 minutes. A change applies without a restart; making it shorter also signs out sessions that are now older than the new limit.
+- **Web: a Settings → Web section (#1620).** It edits how long a dashboard sign-in lasts here and how long it may sit unused (`web.session.local.*`), the browser terminal that `/login` opens (on or off, and its minutes), web echo and the public link's menu — web echo and the public link moved here from General. A change that loosens access (a longer session or idle time, the browser terminal turned back on or given more minutes) waits for a fleet admin to confirm it in General or with `agend settings confirm <id>`; one that tightens access applies at once. The other web settings are listed read-only, to be edited in `fleet.yaml`. None of them can be changed over a temporary public link.
+- **Web: a misconfigured session limit never gives a longer sign-in (#1620).** A value the validator would refuse no longer falls back to the 12-hour default when that is longer than what was asked: an idle time above the session length is cut to it, and a value below 1 hour counts as 1 hour.
+- **Web: avatars and Discord server emoji come from the dashboard itself (#1630, part 1).** The status the web app receives now says what stands for each instance, in this order: the picture uploaded for it in View, its own bot's avatar (only when it has a bot of its own; instances on the shared bot skip this), its persona emoji, or its first letter. A bot with its own colour in its Discord server also gets that colour as an accent. Bot avatars and the custom emoji of the fleet's Discord servers are fetched on the host with the bot's own token, kept in `~/.agend/cache/` (refreshed at most once a day; a failed refresh keeps the last copy), and served by the dashboard to signed-in sessions, including the temporary public link, read-only. The page never loads images from Discord or Telegram. The sidebar starts showing them in the next change.
+- **Web chat: Discord server emoji show as pictures (#1630, part 3).** A message with `<:name:id>` or `<a:name:id>` (what a Discord custom emoji is in text) shows the emoji's picture when it belongs to a server the fleet's Discord bots are in. The picture comes from the dashboard itself, so the page never loads Discord; the list of known emoji is read once per page, and only when a message has one. Any other one stays as written. The sidebar's picture check is also stricter: one file under the dashboard's picture routes, never a path that climbs out of them.
+- **Web: the sidebar shows who each instance is (#1630, part 2).** Each instance is called by its display name, with its instance name on hover (and under the name when two share a display name). Next to the name is its picture: the one uploaded in View, its own bot's avatar, its persona emoji, or its first letter. A bot with a colour in its Discord server is ringed in that colour. The status dot sits on the picture and says its state (idle, working, looks stuck, paused, stopped, crashed, needs you) to screen readers as well as in colour. The chat header and the Needs list use the display name too.
+- **Agents: after an upgrade, each one is told once what is new for it (#1633).** An agent whose session started under an older AgEnD may not know new tool parameters: Claude Code keeps the tool descriptions it loaded earlier in its conversation, so it never saw `reply`'s `buttons` or `stickers`. Now each existing instance gets one short notice, just before the next message it receives (never in the middle of a turn, never to an instance nobody writes to). It lists the agent-facing changes with their exact parameter names, and says to reload a tool's description that looks older. Each item is sent once per instance, and the record of what was sent survives restarts. New instances get nothing, since they already start with the current tools. A version with nothing new for agents sends nothing.
+- **Web: favorites (#1664).** Star an instance to pin it in a **Favorites** group at the top of the sidebar, in the order you starred them. On a desktop the ☆ appears when you hover over or focus a row, and stays when the row is starred. On a phone, tap **Edit** at the top of the list. **Edit** also shows ↑ ↓ to reorder favorites. Favorites are one of your synced preferences (#1665), so your phone and desktop show the same list. A deleted instance drops out of the list; a paused or stopped one stays. A public link shows the favorites but cannot change them. At most 50.
+- **Web: preferences follow you across devices (#1665).** Theme, language, the sidebar's order, folded groups and filter, and the HTML-preview opt-in are now saved on the host, so a phone and a desktop stay the same. Each browser keeps a copy, and the page is served with the host's theme, so nothing flashes on load, even on a new device. On first load after the update, a device uploads what it had for anything the host doesn't have yet; after that the host's values win. Settings → **Preferences** shows what is synced and what stays on each device (the tour, text size, view fit, the sidebar shown or hidden, panel widths, desktop notifications). A public link can read these preferences but never change them, and it can never turn previews on.
+- **Bot-to-bot messages appear in the web chat too (#1672).** What an instance sends another (`send_to_instance`, `delegate_task`, `request_information`, `report_result`) now shows in both instances' web chats, by the same `cross_instance_visibility` rules as the topics: `full` the whole message, `summary` one line, `hidden` nothing. Report and update stay silent on the target's side, and General instances are skipped. A fleet with no chat platform, or an instance with no topic, still gets them. Each one is a muted, read-only status line (plain text, never an agent's reply, folded when long), counted in the chat history and kept across a restart.
+- **Web chat: mentions look the way Discord and Telegram show them (#1682).** A user mention `<@id>` (or `<@!id>`) now shows as an **@name** pill instead of the raw token. Role mentions `<@&id>` and channel mentions `<#id>` show the same way, as **@role name** and **#channel**, and every pill shows its id on hover. Names come from what AgEnD already knows: the fleet's own bots (by their instance's name), people who have written to the fleet, and the Discord servers its bots are in. AgEnD makes no extra Discord request for them, and a page only gets the names of the mentions it is showing. An unknown one reads **@user**, **@role** or **#channel**, never the raw token. A Telegram **@username** gets the same look. Code spans and code blocks are left as written.
+- **Telegram /web failure links to the bot's private chat (#1686).** When the sign-in code cannot be delivered by DM — because the user has not started the bot privately yet — the failure message now carries a URL button labelled **Start privately →** that deep-links directly to the bot's DM with `/start web` pre-filled (requires Telegram 7.7+). The button is shown only when the bot's username is known and passes Telegram's format check (`[A-Za-z0-9_]{5,32}`); an absent or invalid username falls back to the existing plain-text guidance. The sign-in code is never posted in the group. Discord is unchanged.
+
+  The /web menu also shows a one-line hint with the same link, so users know before they try the button.
+
+  Sending `/start web` from a private DM when you are a fleet admin now replies "You can now use /web in your group" instead of trying to start an agent with a backend named `web`.
+- **Web: edit a team (#1689).** Each team on Fleet → Teams now has **Edit**, which opens the team form already filled in with the current members and description. A member that is no longer in the fleet is still listed, so it can be taken out. Saving goes through the same update as the agents' `update_team` tool: members must be instances of this fleet, and nothing is saved if one isn't. A team can't be renamed; the form says so (create a new team and delete the old one). The org chart shows the change the next time it opens. `update_team` can now change a team's description too (an empty one clears it). `agend-agent team-update <name> [add,…] [remove,…] [description]` now works: it used to send the member lists as plain text, which `update_team` refused. A save that fails leaves the team as it was. Both `update_team` and `create_team` now only accept names fleet.yaml actually defines, so `constructor` or `__proto__` is no longer taken for an instance or a team.
+- **A pane stuck on a prompt AgEnD doesn't recognise is now caught (#1691).** When a CLI shows a selection prompt (a cursor on numbered options, or a `[y/n]` question) that no known dialog explains, and the pane stays unchanged for a minute while the CLI's own input box is gone, AgEnD:
+  - holds deliveries to that instance;
+  - marks it as waiting for input;
+  - raises one **Needs you** item and one notice saying what the prompt asks, for example "Switch model?".
+
+  AgEnD never presses anything for it. The notice clears when the pane changes, and a prompt held for hours is reported once. An agent's reply that merely contains a numbered list is not a prompt. Triggered by claude's new "Switch model?" dialog (#1690), which used to stall a pane silently.
+- **Claude Code instances can use different claude.ai accounts (#1699).**
+  - Set `backend_options.claude-code.credential_profile: work`, then sign that profile in once with
+    `CLAUDE_CONFIG_DIR=~/.agend/credential-profiles/claude-code/work claude auth login`.
+  - Each profile has its own login, account, trust settings and conversations, and a `settings.json` that starts as a
+    copy of yours. Your `CLAUDE.md`, agents, commands, skills, output styles and plugins are shared with every profile.
+  - On macOS each profile gets its own Keychain item, so profiles never sign each other out.
+  - Switching profile with `update_instance_config` restarts the instance on a fresh conversation, with a handover of
+    the recent work. AgEnD refuses a switch to a profile that is not signed in and tells you the command to run.
+  - An instance without a profile starts exactly as before.
+- **Usage per Claude Code profile (#1699, part 3).** Each Claude Code credential profile in use now has its own usage row (`Claude (work)`, `claude:work`) in `/usage`, `get_usage` and the dashboard's usage rail and dialog, next to the default `Claude` row. Each row reads that profile's own login (on macOS, the Keychain item claude keeps for the profile's directory), never the default one. When the usage API can't answer, a row falls back only to the rate limits its own instances wrote. A profile that isn't logged in says "Not logged in" with `/login claude-code <profile>` (#1699 part 2) and the exact command that signs it in on the host, never another account's numbers. Before this, an instance on a Claude profile had no usage row at all. A fleet without Claude profiles looks exactly as before.
+- **Sign a Claude Code profile in from chat: `/login claude-code <profile>` (#1699).**
+  - It runs `claude auth login` for that profile in the same browser terminal `/login claude-code` uses, so it works
+    from a phone. On Discord, `/login` has a new `profile` option.
+  - Only the agents on that profile are woken or restarted afterwards. Signing in the default login no longer restarts
+    agents on other profiles.
+  - When an agent's profile sign-in expires, the alert offers a button for that profile.
+  - Kiro and Codex profiles are still signed in on the host; `/login kiro-cli <profile>` replies with the command.
+- **HTML previews work on the temporary public link (#1723), from a phone too.**
+  - The link opens a second quick tunnel of its own for previews, in the background. The link never waits for it.
+  - Until it is up, a card says *Preview is starting…*; if it cannot open, the link keeps working and the card says why.
+  - It closes with the link. The preview address is a different site from the dashboard's, so the frame is isolated even more than on the host.
+  - Your device's **Allow HTML previews** still applies.
+  - `web.preview_on_public_link: false` turns it off, and a configured `web.preview_origin` is used instead.
+- `send_to_instance` and `delegate_task` accept explicit `forwards` references so a downstream agent can read an original delivered message with `delivery_status`, including a newly recorded human consent receipt. Every hop requires a grant from a sender who can read the reference; mentioning an ID grants nothing. Human receipts preserve original actor/adapter and content separately from the formatted wire payload, and remain uncertain without owned submission evidence. Platform reply IDs are unchanged; `/raw`, historical relays and Web's unknown platform identity cannot establish native human consent. Guidance now explains hidden/expired lookups and CLI forwarding.
+- **`/backend`: move an instance to another CLI backend from chat (#1806).**
+  - On Discord, Telegram and the web chat, with exactly `/model`'s permissions: a channel admin.
+  - Pick the backend (only CLIs installed on this host), then its model (`/model`'s list, or the default), then its effort (`/effort`'s levels; skipped for a backend without one), then confirm. `/backend <backend> [model] [effort]` goes straight to the confirmation.
+  - Nothing changes before the confirmation. Then backend, model and effort are saved in one write and the instance restarts **once**, in a **fresh session**: a conversation does not carry across backends. A turn in progress is interrupted. A stopped or paused instance is saved and not started.
+  - It is `update_instance_config`'s backend switch: the new backend's own options apply, and a credential profile with no login for it is refused, with the command that logs it in. Nothing is left half-changed by a refusal.
+  - An uninstalled backend, or a model or effort the new backend does not offer, is refused with the valid choices. The backend it already runs changes nothing; `/model` and `/effort` are named for that.
+  - Fleet instances only: a ClassicBot agent's backend is set in `classicBot.yaml` or Settings, and `/backend` there says so.
+- **`close_poll` ends a poll early (#1823).** An agent can close one of its own open polls before the deadline, for example once everyone has answered. It is the same close as at the deadline: the tally shows, and the results arrive once, marked as closed early.
+- **Polls on reply buttons (#1823).** `reply({ buttons, poll: { seconds } })` turns the buttons into a timed, Kahoot-style vote on Discord, Telegram and the web chat.
+  - Everyone who may click there votes once, can change their vote, and is told their own choice privately.
+  - While it is open, only "N answered" and the time left show; `reveal: "live"` shows the counts as votes come.
+  - At the deadline the buttons show the tally. The agent gets one `[poll results]` message with each option's voters and how many ms after the poll opened each voted, to post the answer and scores itself.
+  - The deadline and the results survive a restart, and the results are delivered once.
+- **Web: a Docs link on Fleet overview (#1844).** The Fleet panel's header has **Docs**, which opens the project's docs site in a new tab — the English pages, or the 繁體中文 ones when the dashboard is in Chinese. On a phone it is a book icon.
+
+### Changed
+- **A message to a busy Claude Code instance is handed to Claude's own queue instead of waiting for the turn to end
+  (#1169), as Codex already does.** Verified on the real Claude Code 2.1.293 TUI:
+  - A message sent while Claude works is queued and sent once the turn ends. The running turn is not interrupted, and
+    the message is sent exactly once.
+  - While a tool runs, Claude takes the message at that tool's boundary.
+  - AgEnD hands a message over only while it can read Claude's input box. A dialog AgEnD does not recognise, or a
+    screen it cannot read, waits.
+  - AgEnD confirms the hand-off on Claude's screen. It looks for the message's id in Claude's queue, or for a queue
+    that was not there before the paste: "Press up to edit queued messages" in the box, under the "ctrl+x ctrl+s to
+    send now" row. A reply that merely prints those words proves nothing.
+  - An Enter the TUI swallowed gets one more Enter after the turn, never a second paste.
+- **AgEnD can now tell whether a message to Claude Code actually left the input box (#1200).** It reads Claude's live
+  input box as the region between its two frame rules, captured from Claude Code 2.1.293. Until now it could only tell
+  that the pane printed something after Enter. Now:
+  - A delivery counts as submitted once Claude shows it outside the box: echoed above the box, or in Claude's queue
+    above the spinner, with the message's own id on screen. That covers ordinary messages and steers into a busy turn,
+    which used to settle as `steer-accepted-marker-on-pane; input-row-unreadable` and now settle as
+    `positive submission proof`.
+  - A message still in the box after Enter (Claude shows a long paste collapsed, as `[Pasted text #1 +11 lines]`) gets
+    one more Enter, never a second paste.
+  - When neither can be shown, the delivery stays at 👀 instead of being called lost.
+  - A steer whose outcome Claude's screen cannot show is no longer pasted a second time. Before, it could be submitted
+    twice.
+- **A fleet stall that comes from many small steps now names them, instead of logging "slow sync work: unknown"
+  (#1235).** The stall log used to name a cause only when one single step took at least 50 ms. A minute-by-minute
+  check that does a little work for every instance at once added up to a one-second stall with no name. Short steps
+  that run back to back are now added together and reported with how many there were, for example
+  `daemon.stateEvaluate:safety_sweep=1100ms (20 calls)`.
+  - The steps now timed include starting each `tmux` command, the fleet's once-a-minute check of every pane, each
+    instance's evaluation of its pane, the 30-second health and reply checks, the delivery queue, the dashboard's
+    status updates, and the transcript reads that confirm a delivery.
+- **An "Event loop stalled" warning now says, where it can prove it, whether the fleet was busy or waiting (#1235).**
+  It describes the longest gap a 100 ms probe saw in that report, with its time and the CPU the event loop's thread got
+  inside it, plus the host's load average. A thread that kept running through the gap means the fleet's own work
+  blocked it. A thread that barely ran means the fleet was waiting: for a host busy with other work (such as big test
+  runs on the same machine), or for a slow system call. When the numbers cannot tell the two apart, the warning says
+  so. `docs/diagnostics.md` explains how to read it.
+- **Web chat: long pastes and staying at the newest message (#1269).**
+  - A paste over 4,000 characters now goes in as a text file instead of filling the composer; before, the limit was 10,000. **As text** on the file still puts it back.
+  - When you are reading the newest message, the chat stays at the bottom even if something above finishes drawing afterwards, such as an image or a preview card. If you scroll up to read, nothing moves you, and **Latest** (or **N new**) brings you back.
+- **`/dashboard` and the tips say what the dashboard is now (#1366).** The slash-menu entry reads "Sign in to the web
+  dashboard and web chat"; on a `localhost` dashboard the `/dashboard` reply adds where the way in from a phone is
+  documented; the tips about dashboard links and the web token describe the one-time code and signing browsers out;
+  four new beginner tips introduce web chat; and Settings' *What's New* lists 2.2, in English and 繁中.
+- **`/ui` is now one app with a sidebar, in a new look (#1408, step 1).**
+  - **Layout:** a sidebar with your instances, Fleet, View, Settings, the theme, the language and the Session menu. The conversation sits in a centred column with a rounded composer below it. The type is Inter, bundled with AgEnD. On a phone, the sidebar is a drawer and tabs run along the bottom.
+  - **Addresses:** each chat has its own address (`/ui/chat/<name>`) and each Fleet tab too (`/ui/fleet/teams`). Moving around does not reload the page, Back and Forward work, and old `/ui#instance=<name>` links still open the right chat, also through signing in.
+  - **Clearer controls:**
+    - The composer's control is now **Stop reply**, shown only while the agent works.
+    - The instance's own actions moved into the header's **⋯** menu, which offers only what fits its state: Start when stopped; Restart and Stop instance when running; Delete last.
+  - **Smaller fixes:**
+    - A long instance name is no longer cut short by its "needs you" badge, which now sits on its own line.
+    - Code wraps on a phone.
+    - Text colours meet WCAG AA in both themes.
+  - `/view` and `/settings` move into the same app in the next steps.
+  - Built with Preact and htm, included in AgEnD itself (pinned and checksum-verified, licences included). Nothing is loaded from another site, and the page's security policy is unchanged.
+- **The web app's last rough edges (#1408 step 5).**
+  - Every "are you sure?" is the app's own dialog, with a button that says what it does: leaving Settings with changes not applied, an access change, Restart AgEnD, deleting an agent, a schedule or a team, removing a connection, rebinding it, and allowing HTML previews. A sign-out the server could not save is said on the sign-in page instead of in a browser alert.
+  - The sign-in page has the app's look, in light and dark.
+  - A connection in Settings fits on one line on a desktop; on a phone its details go under it.
+  - Developer → Apply & save writes only the parts of `fleet.yaml` you changed.
+  - On a phone, the tour points at ☰ for the instance list.
+  - The old shared page script and stylesheet (`/assets/shell.js`, `/assets/shell.css`) are gone: every page is the app or the sign-in page.
+- **`/settings` is now part of the app (#1408, step 3).**
+  - Settings has the same sidebar, look and themes as the chat; moving between them no longer reloads the page.
+  - Agents, Connections, ClassicBot, General and Developer are tabs, each with its own address (`/settings/<section>`). Each agent's and connection's settings open in a dialog (a sheet on a phone), and **New agent** is the sidebar's New instance.
+  - Changes are staged and applied together, as before. Once you press **Apply changes** it carries on even if you leave Settings; its progress shows in any panel. Leaving Settings with staged changes asks first.
+  - A change that needs a fleet admin's confirmation (#1423) shows a card in any panel, with what it changes, the time left and **Withdraw**. The same goes for a confirmation-gated New instance, delete or Fleet config save.
+  - An agent's model that is not known yet now reads "default (detected when it starts)" instead of "default (not probed yet)".
+- **`/view` is now part of the app (#1408, step 2).**
+  - The same sidebar, look and themes as `/ui`; moving between the chat and View no longer reloads the page.
+  - Each agent's terminal has its own address, `/view/<name>`.
+  - The roster lives in the sidebar (the drawer on a phone), with its groups, filter and drag order. The header offers **Text size**, **Usage** and **Help**, and the profile is edited in a dialog.
+  - Signed out (with `web.view_access: open`), `/view` shows View and **Sign in** only, and reads nothing that needs a session.
+- **The buttons on an instance's interactive-input prompt now say what they do (#1414).** When an instance waits on
+  terminal input (a permission, a password, a dialog), General's prompt offered *Confirm* / *Cancel*. It now offers
+  *Ask General to help*, which asks General to look at the terminal as before, and *I'll handle it myself*, which leaves
+  it to you. The question and the outcome line match. The text is shared, so Telegram, Discord and the web chat change
+  together.
+- **`agend update` checks the new release can run here before it changes anything (#1441).** It reads the release's own Node requirements, from the same npm that will install it, and works out which Node it would run on: AgEnD's bundled Node where the release ships one for this computer, otherwise the `node` on your PATH, or, when the update installs through nvm, the exact Node 22 nvm picked. If that Node doesn't fit, the update stops with "AgEnD was not changed". It says which Node the release needs and why the bundled one doesn't apply (for example on musl Linux), and asks you to install a Node in that range. It doesn't touch your system Node. On the nvm path the check runs once nvm has picked its Node, still before npm installs anything. A `/update` from chat reports the same reason. If the requirements can't be read, or use a range form this check doesn't understand, the update goes ahead as before, and the release's own install check still protects it.
+- **`agend` and `agend-agent` start through a launcher that picks the Node AgEnD runs on (#1450).** The commands are
+  small POSIX `sh` scripts, so they start even with no `node` on PATH, for example in a shell that has not loaded nvm.
+  When a release pins AgEnD's own Node for this platform (Linux glibc ≥ 2.28 x64/arm64, macOS 11+ x64/arm64), the
+  install verifies that Node: its exact version, N-API 10, and a database opened in the main thread and in a worker.
+  It then records it, and from then on AgEnD runs on it whatever Node is on your PATH. Your system Node, PATH and npm
+  stay as they were.
+  - Where AgEnD bundles its Node, your system Node's version never blocks an install or an update: Node 20, 18,
+    16, any Node whose npm can run the install. AgEnD does not run on it. An install is refused in only two cases,
+    and npm then keeps the version you had:
+    - this platform has no bundled Node (musl Linux, 32-bit, another OS, glibc older than 2.28, macOS older than 11)
+      and your Node is older than AgEnD needs (`^22.14.0 || ^23.6.0 || >=24`), so AgEnD could not start;
+    - the bundled Node fails its check during the install.
+    npm 8 and 9 (npm 8 is what Node 16 ships) also run `node-gyp` for better-sqlite3 (it does nothing when a prebuilt
+    binary exists), so they need what node-gyp needs: a Python 3 up to 3.11 (or with setuptools) and `make` (macOS:
+    the Command Line Tools). If that is missing, npm stops the install and keeps your previous version. npm 10 and
+    newer skip this step; they need Node 18.17 or newer.
+  - A bundled Node that is missing, incomplete or changed after it was verified is refused, with the command that
+    repairs it. AgEnD never falls back to another Node silently.
+  - If the bundled Node was skipped at install (`--omit=optional`, `--ignore-scripts`), AgEnD uses your Node when it
+    qualifies, and says so.
+  - `AGEND_NODE=/abs/path/to/node` overrides the choice. It must be a Node AgEnD supports; otherwise AgEnD refuses
+    instead of falling back.
+  - What AgEnD starts for itself runs on the Node it is running on and on its own CLI file, never a `node` or `agend`
+    found on PATH: the MCP server the coding CLIs start, `agend start` and `agend restart` without a service, the
+    quickstart reload, `/doctor`, and the Antigravity status line. Paths and arguments in the generated kiro, grok and
+    muse wrappers are quoted, so a path with spaces, `$` or backticks is used exactly as written.
+  - Native Windows is not supported: run AgEnD inside WSL.
+- **The service names AgEnD's own Node, and `agend restart` refuses a service it cannot prove (#1450).**
+  - The systemd unit and the launchd plist now start `<AgEnD's Node> <package>/dist/cli.js fleet start`, instead of
+    leaving Node to `#!/usr/bin/env node` and the service's PATH.
+  - On a platform with no bundled Node, the service starts AgEnD's launcher, which finds Node on the service's PATH at
+    each start. Upgrading Node with nvm or Homebrew therefore does not break the service.
+  - Before stopping anything, `agend restart` checks that the definition systemd or launchd has loaded starts exactly
+    that, with no reload pending. Otherwise it refuses and stops nothing; run `agend install` to rewrite an older
+    service. `--force` is for operators.
+  - macOS: `agend install --no-activate` no longer leaves a new plist for launchd to pick up at an arbitrary moment. It
+    proves the plist and records a planned activation, and the next `agend restart` performs exactly one
+    `bootout`/`bootstrap`, rolling back to the previous job if the new one does not run. See `docs/cli.md` for the
+    launchd domain AgEnD uses (`gui/<uid>`) and why.
+  - macOS: `agend install` and an update wait until launchd has finished unloading the previous job before loading the
+    new one. launchd returns from `bootout` early, and loading straight away failed with error 5.
+- **`agend update` owns the npm prefix while it runs, and verifies the new release on the Node that release will use
+  (#1450).**
+  - Before npm runs, the update takes a lock next to the installed package (`<npm prefix>/.agend-install.lock`). A
+    second `agend update` into the same prefix, from any fleet, refuses instead of colliding. A lock left by an update
+    that died is reclaimed.
+  - Only the update's own npm child may install while it holds the lock: the package's install script refuses any
+    other install into that prefix, and npm rolls it back. Run one install at a time.
+  - A release that brings its own Node is verified on that Node: the update asks the installed release which Node it
+    selected, then opens a database with it in the main thread and in a worker. Whatever Node runs the update does not
+    count.
+  - Chat `/update` runs the `agend` that npm installed, found through npm and checked to be that package, by its full
+    path. If that cannot be confirmed, `/update` refuses and says to run `agend update` from a shell. It never falls
+    back to whichever `agend` comes first on PATH.
+- **Docs updated:** `docs/features.md` gains sections for the "Needs you" inbox (#1386/#1398) and the new web app shell (#1408 step 1). `kiro-cli` `/steer` support in `docs/commands.md` already accurately reflects #1432. Node.js version requirements in README already reflect #1420 (`^22.14.0 || ^23.6.0 || >=24`).
+- **Codex session resume docs: `$CODEX_HOME` takes precedence over `~/.codex`.** The two mentions of `~/.codex/state_5.sqlite` and the shared home in `docs/features.md` now read `$CODEX_HOME/state_5.sqlite` (default: `~/.codex`) and `$CODEX_HOME` (default: `~/.codex`). The code (`src/backend/codex.ts:904`) has always used `process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")`; the docs now match.
+- **Test: `ENGINES` constant must stay in sync across `package.json`, `scripts/preinstall-guard.cjs`, and `src/node-version-guard.ts`.** A new test reads `package.json` engines.node as the source of truth and asserts: (a) the `ENGINES` string in `preinstall-guard.cjs` is byte-for-byte identical, and (b) `isNodeCompatible()` returns true for the minimum version of each disjunction. Changing any one location without the others fails the test. (#1490 P3)
+- **Telegram forum-root commands have a fixed owner:** bare commands use the
+  primary connection's General in that group, or the first configured same-group
+  General when the primary has none there. The selected bot's admin list applies
+  regardless of which sibling receives the message first; a stopped or unresolved
+  owner never falls back to another bot. Use `/restart@ThatBot full`,
+  `/update@ThatBot`, or that bot's own General topic to address a different bot.
+  Ordinary messages and existing Classic commands keep their routing. (#1490)
+- **Opening a temporary public link shows each step as it happens (#1512).**
+  - The `/dashboard` menu you clicked follows the start step by step, with seconds on each step:
+    1. check cloudflared;
+    2. download it, in MB of the total;
+    3. verify it against the pinned version and SHA256;
+    4. start the tunnel;
+    5. wait for the public address to answer;
+    6. send you the link privately.
+  - Steps 1–3 appear only when AgEnD's own cloudflared must be fetched; after the first time it is steps 4–6.
+  - A step that fails is marked with its reason, for example "the file did not match the pinned SHA256" or "another tunnel is still running". Running `/dashboard` again retries.
+  - The menu is updated at most every 2 seconds (3 on Telegram, where the menu message in General is edited). It never shows the link or the code.
+- **Web app: one instance list in the sidebar on every page (#1526).** Chat, View, Fleet, Settings and Needs now show the same list: live status dots, View's tag groups, folding and drag order, and a filter with **Status** and **CLI** chips next to the search box. The filter is the same on every page and this browser remembers it. A row opens the view you are in (View on View, Chat elsewhere), and the list no longer jumps when you navigate. An alias or description set on an instance's profile in View is now shown everywhere, including the chat header.
+- **CLI: the persona bot invite uses the same permission set as Settings (#1533).** It adds Manage Channels, Attach Files and Use External Emojis, which the bot's calls need, and drops Manage Messages and Use Application Commands, which the bot does not need (slash commands come with the invite's applications.commands scope).
+- **AgEnD reads `~/.agend/.env` the same way everywhere (#1545).** At start, when a new connection starts without a restart, and when a new token's variable name is chosen, the same rules apply: `export KEY=value` lines, quoted values, and the last of a repeated key. A token is therefore never read one way at start and another way later.
+- **CLI: setup ends by pointing to the web dashboard (#1550).** `agend quickstart`, `agend setup` and `agend init` now end with the dashboard's address (`http://localhost:19280/`, or the fleet's `health_port`). They also say how to sign in: run `agend web --code`, or send `/dashboard` to your bot. Quickstart's steps are numbered 1/4 to 4/4. When `agend init` installs the service, it now also starts it; it used to suggest a `systemctl` unit that does not exist. Its "install the Discord plugin" line is gone, because Discord is built in. A successful `npm install` ends with "Next: run `agend quickstart`". The README and the website's getting-started page now give the right Node requirement and describe the dashboard.
+- **The cloudflared download for the public link works on slow connections (#1554).**
+  - It no longer fails after a fixed 5 minutes. It fails only when no data has arrived for 60 seconds, with a 30-minute overall limit, so a slow download that keeps moving finishes.
+  - **On Linux it now comes from Cloudflare's own package repository first** (pkg.cloudflare.com), and from the GitHub release if the package is missing, stalls, is too slow or does not match. The package is also half the size.
+  - Both sources are checked against the same pinned SHA256. The package's binary is unpacked by AgEnD itself, with nothing else installed.
+  - macOS still downloads from GitHub, since Cloudflare publishes no macOS package.
+  - On `/dashboard`, step ② says when it switched to GitHub and why.
+- **Web chat: an image opens full size in the page (#1558).** Clicking an image in the chat used to open it in a new browser tab. It now shows it over the chat on a dark background, fitted to the screen. To close it, click ✕ or the dark area, or press Esc. When a message has several images, use the arrows or the ← and → keys to move between them. **Open original** still opens the image in a new tab, and Ctrl-click or a middle click on an image opens a new tab as before.
+- **Web chat: the HTML preview warning can be dismissed until you next sign in (#1568).** The banner over a running preview has an **I understand** button. Pressing it hides the banner on every preview, in every tab of this sign-in; the next sign-in shows it again. Without a sign-in session, it stays hidden only in that tab. The amber border around every preview always stays. Previews are still off until you allow them, and still run only when you click.
+- **Web: an open dashboard tab rides out a fleet restart quietly (#1580).** When AgEnD restarts, each open tab used to retry about every 3 seconds and poll every 5 seconds at the same time, forever, even when hidden — dozens of connections a minute per tab, through WSL2's port relay or a tunnel. Now a tab waits longer between tries (about 1, 2, 4, 8, 16, then 30 seconds), pauses while it is hidden, keeps one connection at most, and closes it when the tab is closed. The page says "Can't reach AgEnD — it may be restarting" with when it tries again. When AgEnD is back, what was said meanwhile appears, once — before, a tab could miss those messages.
+- **The web usage panel (◔) opens at once (#1585).** When its last snapshot has expired, the panel now shows it straight away, labelled "Updated N min ago · Refreshing…", while the one refresh that expiry starts runs behind it. The fresh numbers replace it a few seconds later. Before, the panel waited for every vendor (several seconds). Vendors are called exactly as often as before. The `/usage` chat command, the `get_usage` tool and Discord presence still wait for fresh numbers. A snapshot older than 60 minutes is never shown this way. A snapshot, fresh or stale, is shown only under the fleet config it was fetched for: after a credential profile or binding changes, the next read waits for its own fetch, which runs after any fetch already in flight and never alongside it. If the config files' metadata cannot be read, nothing cached is shown, and within the cache window such a read fails instead of calling the vendors again. `/api/ai-usage` is sent `Cache-Control: no-store`.
+- **The sign-in code is easy to copy on a phone, and the link's expiry is in your time zone (#1586).** After the `/dashboard` (or `/web`) sign-in message, and after the sign-in page's "Send me a new code" message, the bot sends the code once more in a message of its own: tap it on Telegram, or long-press → Copy Text on Discord. The first message still holds the code, so nothing is lost if the extra message fails. The public link's expiry, and the menu's status line, now read like `2026-10-11 01:30 (UTC+8)` in the fleet's time zone (`TZ`, otherwise the system's), instead of a UTC timestamp.
+- **Web: a shorter sidebar footer, and no "refreshing every 5 s" strip (#1603, #1604).** The bottom of the sidebar is now one row — **Settings** and **Session** — instead of five. What this browser chooses for itself (theme, language, allowing HTML previews, replaying the tour) is in **Settings → This device**; on `/view` without signing in, theme and language are behind the ☀ button beside **Sign in**. The strip "Live updates paused — refreshing every 5 s" is gone: polling is a normal way to stay up to date (the public link always polls), so it is no longer shown as a problem. "Can't reach AgEnD — it may be restarting" still shows when AgEnD really cannot be reached.
+- **On Discord the sign-in code's own message is inline code (#1606).** The message that repeats the code by itself (#1586) is now `` `ABCD-EFGH` `` on Discord, so a phone copies it with a tap, as it already does on Telegram. It is still the only thing in that message.
+- **Closing the public link takes two taps (#1610).** On a phone the "Close public link" button sat right above the code you tap to copy, so a slip could close the link you were about to sign in with. The first tap now only turns the button into "Close link (signs public browsers out)" / "Cancel" on the same message, which keeps its text; only the confirm closes the link, and Cancel puts the button back. The same owner check applies. `/dashboard revoke` and `/web revoke` still act at once.
+- **Web: General can show its own bot, and an uploaded picture can be removed (#1630 follow-ups).**
+  - The primary bot now counts as an instance's own bot when only that instance uses it, for example a fleet that keeps the primary for General alone. That instance then shows the bot's avatar and its Discord colour ring. A primary shared by several instances or rooms still shows without a ring.
+  - View's **Edit profile** has **Remove picture** when a picture is uploaded. On save, the picture is deleted and the bot's avatar, persona emoji or first letter shows again.
+  - The route is `DELETE /api/avatar/<instance>`, signed in like the upload.
+- **Settings: status-emoji pictures come from the dashboard itself (#1630).** The status-emoji editor's server-emoji grid and preview used to load Discord's CDN in your browser, and the dashboard's content policy allowed `cdn.discordapp.com/emojis/` for that. They now come from the dashboard's own cached route, the same one web chat uses, and the policy no longer allows any remote image: Discord never sees your address when the editor is open. An emoji from a server the fleet's bots are not in shows as its `:name:`. Agents' `list_emojis` image links are unchanged.
+- **Web sign-in instructions recommend `/web` (#1655).** Upgrade and first-run messages also use `/web`, including `/web revoke`. `/dashboard` keeps working as an alias with the same permissions and options; command references list both names.
+- **Agents: `format: markdown` on Telegram now means markdown; raw HTML tags are shown as text (#1658).** A `reply` with `format: "markdown"` was sent to Telegram as HTML without conversion, so text containing `<` or `&` (`a<b`, `x && y`) was refused and the reply failed, and `**bold**` showed literally. It is now converted from markdown with everything escaped first: `<`, `&` and `>` are shown as typed, and **bold**, *italic*, ~~strike~~, `code` and http(s) links are rendered. HTML tags were never documented under "markdown" and now appear as text. If Telegram still refuses the markup, the reply is sent once more as plain text. Replies with tables, code blocks or headings still go out as Telegram rich messages, unchanged.
+- **The web dashboard keeps you signed in for two days by default (#1670).** A sign-in on the dashboard reached directly (this computer, a LAN, a tailnet) now lasts 48 hours, and also 48 hours without use, instead of 12 hours / 2 hours idle. A public-link session stays at 4 hours / 30 minutes. A value you set in `web.session.local.*` or **Settings → Web** still wins, and the limits are still 1 to 720 hours. A session signed in before the update keeps the end it was given at sign-in (12 hours under the old default, or whatever you had set), and nothing revives one that has already timed out. Its idle time moves to the new window only when it is used before its old idle limit, and never past that recorded end. Setting only a shorter session length (for example `absolute_hours: 24`) is still valid: the idle time follows it. Only an idle time above 48 hours without a session length is refused.
+- **AI usage is a panel on the right again, on a wide screen (#1673).** On Chat, View, Details and Fleet, a screen 1200 px or wider shows AI subscription usage as a panel beside the page that stays open as you move between pages, as the old `/view` had it. **Usage** in the header (or the panel's ✕) hides or shows it, and this device remembers the choice. A narrower screen, such as a phone, keeps the **Usage** dialog. The panel shows the same rows and refreshes the same way as the dialog, reads nothing while hidden, and is absent when `web.usage_panel` is `false`.
+- **Web: collapsible filter groups (#1700).** In the sidebar filter, the **Status** and **CLI** groups each have a header with a chevron. Click anywhere on the header to show or hide that group's checkboxes. When a group is hidden but some of its checkboxes are ticked, the header shows what is selected, for example "Status · idle" or "Status · 3 selected". Whether each group is open is remembered on this device only and is not synced. Both groups start closed.
+- **Web: "Open in panel" runs the HTML preview in one click (#1704).** Clicking **Open in panel** on an HTML card now opens the panel and starts the preview there, with no second **Preview** click. If this device hasn't allowed previews yet, the panel shows the **Allow previews** offer, and allowing it starts the preview straight away. Where previews can't run (`web.preview: false` or a public link), the panel opens with nothing running, as before. A newer version of the page in a later reply is still only offered, and nothing runs on its own when a page loads.
+- Host memory pressure no longer broadcasts chat notices on any platform, including recovery. Admission protection, logs, health and the Fleet dashboard indicator remain. A held user action explains the wait in its own reply.
+- **Web: a wider sidebar, both names, and the CLI on the avatar (#1722).**
+  - **Resizing:** drag the sidebar's right edge to make it wider or narrower (200–480 px), or use the arrow keys, Home and End on the edge. Double-click or press Enter to reset. The width is kept on this device. Phones keep the drawer.
+  - **Both names:** each row shows the nickname and, under it in smaller text, the real instance name. A row shows one line when the two are the same. Settings → **Names** chooses which one leads. It's a synced preference, and it also applies to the chat header and Needs you.
+  - **CLI badge:** the CLI an agent runs is now a letter on the avatar's top-left corner (C Claude Code, X Codex, K Kiro, G Grok, A Antigravity, O OpenCode, M Muse) instead of a coloured dot, and screen readers announce it by name.
+  - **The ☆:** it takes the coloured dot's place, so it no longer covers the name. The status dot stays where it was.
+- **Web: Fleet → Schedules is readable, and schedules can be edited (#1724).**
+  - **Rows:** each one shows its label (or the start of its message), then when it runs in words ("Weekdays 18:00", "Every 15 minutes", "Once · 2026-10-13 14:00 (UTC+8)"), its next run in the fleet's timezone, and the target's display name. The raw cron moves to the tooltip.
+  - **One-time schedules:** they show their run time; before, that spot was blank.
+  - **Disabled schedules:** they look disabled.
+  - **Edit:** a new **Edit** button opens the schedule form filled in, with **Repeat / Once**. Saving goes through the same validation as the `update_schedule` tool.
+  - **Create:** **New schedule** can now create one-time schedules, and creating from the web works again.
+- **Telegram `/web`: sign in without leaving the bot's private chat (#1742).**
+  - A fleet admin who opens the bot's DM through the "Start privately →" link (`/start web`) now gets the /web menu right there. Choosing LAN or the public link sends the sign-in code to that same chat, so there is no trip back to General. The menu belongs to the same General as `/web` there, with the same admin checks, and its buttons work only in that DM for that admin.
+  - When `/web` cannot reach you privately, the message now walks through it: ① open the private chat (the button, when the bot's name is known) ② press Start ③ choose the link there. It never tells you to send a bare `/start`, which starts a separate ClassicBot agent. Without a known bot name it says to send `/start web`.
+  - Within 10 minutes of that message, your next bare `/start` in the bot's DM (Telegram's START button) is read as `/start web`, once. Every other `/start` behaves as before.
+  - If the message's buttons could not be updated, the outcome is posted with its "Start privately →" button instead of without it.
+  - Discord is unchanged.
+- **Switching a Claude Code agent's credential profile keeps its conversation (#1753).** Until now, a switch started a fresh conversation and gave the new session a short handover. Now AgEnD copies the session's transcript, its folder and its file history into the new profile while the agent restarts, and the agent picks the conversation up there.
+  - The old profile keeps its own copy, so switching back returns to the same conversation.
+  - The first reply after the switch re-reads the conversation from a cold cache, so it is slower and billed at full price.
+  - This applies to `update_instance_config` and to ClassicBot channels.
+  - If the copy can't be made, the switch starts fresh with the handover as before, and the reply gives the reason in `carry_failed`. That happens when there is no session yet, when the new profile already holds a different version of that conversation, when there isn't enough disk space, or when the copy fails.
+  - Kiro still starts fresh, and Codex never lost the conversation.
+- **Skill: credential-profiles updated for Claude Code profile usage rows (#1753).** The stale "Claude Code profiles do not have usage rows of their own yet" note is replaced with the correct behaviour: each named Claude Code profile now has its own `Claude (<profile>)` row reading quota from its own login, and a never-signed-in profile shows "Not logged in — run `/login claude-code <profile>` to sign in". The Signed-out reminder row is now documented as Kiro-only.
+- **The sidebar's instance count sits on the filter headers' row (#1776).**
+  - The count (for example `71 / 71`) used to take a row of its own under the Status and CLI headers. It is now at the right end of their row, so the filter area is one row shorter.
+  - It stays there when a group is opened or a filter is set. In a narrow sidebar, a header moves down to the next row before the count does. The count reads the same as before, including "shown" when a filter is active.
+- **Kiro agent-switch notices (#1794, superseded by #1800).** Automatic swapping on resumed conversations is suspended, so no swap or retry is attempted and no failed-switch topic notice is emitted. The saved agent and shared files stay in use. Shared .kiro read/write failures still need attention and remain visible.
+- **CI no longer adds to `@songsid/agend`'s npm download count (#1819).** The jobs that install the published 2.1.12
+  (the Node 20 rollback smoke, the data-downgrade check, the runtime-acceptance hop and the Mac GUI rehearsal) fetch
+  its tarball once, keep it in the Actions cache and check it against the registry's `dist.integrity` before every
+  install; a mismatch fails the job. The install fails if npm fetched our tarball anyway.
+- **The web chat says who is writing (#1827).** Sign in with a code from `/web` and the agent recognises you as the Discord or Telegram account it was sent to. Your messages arrive as `[user:<name> via web, id:<your user id there>]` instead of `web-user`. This is for recognition only: a web message grants no permission.
+  - The name is your account's display name, unless you choose another under **Settings → Preferences → Your name**. It follows you to every device, and is checked so it can't pose as another platform, user, agent or bot.
+  - The same name and id are used in the topic echo, ClassicBot room logs, reply buttons and polls (one ballot per account, on the web or the platform), and tasks.
+  - Signed in with an `agend web` code: `web-user`, as before.
+- **Web: the chat tour starts only when you ask for it (#1854).** A first visit no longer opens a five-step card over an empty page. **Settings → Preferences → Chat tour** opens it on the last agent's chat. With no agent to open, it says "Choose an agent before opening the chat tour." The tour skips steps whose control is not on the page. It no longer promises that every web message shows in Telegram or Discord: web echo decides that.
+- **Web: a quiet first Chat (#1854).**
+  - The chat page with no agent chosen says one thing: "Choose an agent to start chatting." With no agent at all it says "Create an agent to start chatting." and offers New agent.
+  - The connect-a-chat-app card is no longer on the chat page. It stays in Settings → Agents and Connections.
+  - An agent's empty chat says "Type a task below."
+  - The hint under the message box keeps two cues, Enter to send and Shift+Enter for a new line. The / commands and Esc cues are in its tooltip.
+  - On a browser that never chose, the usage panel on the right starts hidden. Usage opens it, and it stays as you leave it.
+- **Web: the sign-in page says how to get a code (#1854).** It used to say "Send /web to your AgEnD bot", which sent people who had already done that back to /web without mentioning that a code only exists after you press a sign-in button there. Now it reads "No code? Send /web in General, then press a sign-in button to get one." The `agend web --code` way in sits under a collapsed "No chat bot?". A wrong code says how to get a new one. A sign-in the server could not confirm (for example a public link whose notice did not go out) is no longer reported as a wrong code.
+- Chat `/update` failures now use the fleet's language for fixed explanations and recovery instructions. The next action and full-log location appear before the raw diagnostic so the existing 300-character progress marker keeps useful guidance. Update execution, stages, logs and retry behavior are unchanged; raw tool errors may remain in their original language.
+- **A short Web Guide on the docs site, and Docs opens it (#1854).**
+  - New page, EN and zh-TW: signing in with `/web` and its buttons, using it from a phone (what the temporary public link means), sessions and signing out, `/view` being open by default, and what to check when the Windows browser cannot reach AgEnD in WSL.
+  - **Docs** on Fleet overview now opens this guide instead of Getting Started.
+  - Getting Started no longer lists a bot token as a requirement: it is needed only to chat from Telegram or Discord; a fleet without one runs from the web dashboard.
+- `/web` now starts with the instruction to press a sign-in button for a private code, with clearer choices for the AgEnD computer or another device. Redundant page URLs and the closed-link countdown are removed; Telegram's private-chat setup steps appear only if private delivery is refused. Existing public-link consent and admin checks are retained.
+- **A finished update and the 2.2 welcome are short (#1854).**
+  - A healthy update now ends in one line: `✅ AgEnD updated to v2.2.0; 3/3 agents running (42s).` Paused or failed agents, ended background work and cleanup warnings are still listed under it.
+  - The once-only 2.2 welcome in General is two lines: web chat is here, and an admin sends `/web` in General, then presses a sign-in button to get a code.
+  - An update no longer adds a tip to its completion message. Daily tips and `/tips` are unchanged.
+- **Web: an instance's avatar defaults to the bot it talks through (#1867).** If you haven't uploaded a picture, the web app shows the avatar of the instance's own persona bot when it has one. Otherwise it shows the bot it speaks through on Telegram or Discord, usually the General bot. Instances with no connection of their own use the General bot too. A bot without an avatar still falls back to the persona emoji, then the name's first letter. Only an instance's own bot gets the coloured ring.
+- **`agend doctor` and fleet start show fleet.yaml warnings (#1874 follow-up).** Before, the validator's warnings only appeared in `agend validate`, which someone hand-editing fleet.yaml rarely runs. Examples are a setting AgEnD ignores, such as `web.access`, or a locked channel with no `allowed_users`. Now `agend doctor` lists each warning as a ⚠ row under **Fleet**, and each one is logged once at warn level in `daemon.log` when the fleet starts. No new checks were added.
+- **Web chat takes any file type, as Discord and Telegram do.** Archives, office files, programs, HTML, SVG and anything else can now be attached, within the same limits (5 files, 10 MB each, 25 MB together). The agent gets them in its inbox like any other document. In the chat they are only ever a download (`application/octet-stream`, attachment), never shown or run in the page. Images, PDF and text work as before. (#1900)
+- **Switching chats in the web dashboard paints at once (#1908).** A chat now opens with its newest messages drawn; the older ones follow right after, without moving what you are looking at. Coming back to a chat with a long history shows it in about 40–50 ms instead of about a quarter of a second.
+- **A reply-button click shows as its label in the web chat (#1919).** A person's click now reads "🔘 <label>" in their bubble instead of the line the agent receives (`[button] … (value: …)`), and the value is never shown. Live, the chip shows the message its buttons were on. It stays after a reload, and clicks made on Discord or Telegram show the same way. What the agent receives is unchanged.
+- **Web chat takes bigger files, and the limits are yours to set (#1937).**
+  - **Defaults:** 50 MB per file and 100 MB per message (was 10 MB and 25 MB), still up to 5 files.
+  - **Config:** `web.upload_max_file_mb` and `web.upload_max_total_mb` change the two sizes (whole MB, 1–500). `agend reload` applies a change to the next upload.
+  - **Public link:** a file is at most 95 MB, the most a Cloudflare quick tunnel carries in one request.
+  - **Memory:** uploads stream to disk instead of being held in memory, and large downloads stream too. An upload that stalls for a minute, or runs past 30 minutes, is dropped with its partial file.
+
+### Fixed
+- **`update_instance_config` explicitly refuses `tool_set` (privilege boundary #804/#814).** Passing `tool_set` in the config patch now returns a clear error — `"tool_set can only be changed by an administrator via Settings or fleet.yaml (privilege boundary, #804/#814)"` — and nothing is written. Previously the field was silently dropped. To mark an instance as coordinator: edit `fleet.yaml` and add `tool_set: coordinator`, or use the **Settings** panel in the web UI.
+- Kiro's native TUI trust-all-tools prompt now uses the same structural selector at startup and runtime (#849, part A). AgEnD sends one Down from “No, exit”, then confirms only a freshly observed cursor on the per-session “Yes, I accept”. Unknown layouts, a cursor that did not move, and “Yes, and don't ask again” stay held for human input; copied history cannot receive consent keys. Existing model-picker holds and engine/session pins remain intact. This does not enable `kiro_ui: v3`; v3 startup/enablement and further steering verification are parked pending native evidence and user demand.
+
+- Each consent phase is claimed once per launch across startup/runtime, including uncertain key ACKs; stop and tmux replacement retire stale runtime keys. Native column-zero TUI composers disqualify copied trust frames.
+- **Kiro conversation ownership (#906, #1410; isolation limited by #1800).** Pinned launches resume the instance’s claimed conversation by ID; new conversations use its own agent with its instructions and AgEnD MCP server. Automatic agent swapping on resumed conversations is suspended: they retain the saved agent and shared .kiro entries, so resumed instances sharing a directory are not fully isolated. User MCP servers remain loaded. Older CLIs lacking per-instance agent support still use shared MCP/steering settings; unsupported UI/engine combinations refuse to launch.
+- **Data-loss fix: Settings no longer destroys a legacy `channel:` connection in fleet.yaml (#1056).**
+  - With the old single `channel:` key, saving a connection's status emojis (or access) in Settings deleted the `channel:` block and wrote a `channels[0]` holding only the changed field. The next start then rejected the config ("type / bot_token_env required").
+  - The save now writes the whole connection as `channels[0]`. On 2.1.x, convert `channel:` to a `channels:` list (or do not save connections in Settings) until you upgrade; a file already damaged must be restored from a backup or rewritten by hand.
+- **A config save can no longer write a fleet.yaml that does not load (#1056).**
+  - Every save now loads and validates the file it is about to write. A result that would not load, or would add a config error, is not written, and the save reports why (Settings shows the error and keeps the previous values).
+- **A connection's status emojis apply without a restart (#1056).**
+  - Changing `channels[].options.status_emojis` takes effect at the bot's next stamp, like an agent's own `status_emojis`, and Settings labels it "Immediately". The rest of a connection still needs an AgEnD restart.
+- **`list_emojis` explains itself (#1056).**
+  - It now has a `platform_note`, for example that Telegram has no server emoji and `standard.reactions` is the complete set.
+  - Each status carries a `kind`, which says `progress_prefix` is message text, not a reaction. Settings and `set_persona_emoji` say the same.
+- Fleet restarts allow five minutes for multi-batch busy-Kiro shutdown instead of the detached 10-second and systemd 60-second cutoffs (#1071). Shipped legacy unit values migrate on restart with loaded-value verification; custom timeouts/drop-ins are preserved with a warning, while `agend restart` refuses any unreadable or shorter-than-300s loaded budget. Detached waits are asynchronous and monotonic, recheck process identity before signals, and confirm exit before launching a replacement. Unknown or still-live owners refuse replacement. This remains a finite outer grace, not an unlimited guarantee for large fleets or stuck transports; launchd policy is unchanged.
+- **Stale command confirmations (#1148/#754):** `/clear` rechecks current authority, source/target and the exact daemon/IPC, cached launch and lifecycle generations after platform retirement waits, before sending the destructive command. Model/effort menus also reject a source channel moved to another target within the same bot, a changed Telegram group, or an ambiguous topic mapping. F/C roles stay unchanged; clear remains excluded from web prompts.
+- **In a Telegram instance topic, a command that only works in General now says so, instead of reaching the agent
+  (#1148).** The forum group's command menu is the same in every topic, so `/status`, `/sysinfo`, `/dashboard`,
+  `/restart`, `/update`, `/profile`, `/doctor`, `/login`, `/usage` and `/visibility` are offered in instance topics too.
+  Chosen there, they used to be passed to the agent as ordinary text: nothing ran, and nothing said why. They now
+  answer "works in the General topic — please use it there". In General they work as before.
+- **Telegram General bot addressing (#1148/#754):** at the forum root, an explicit command suffix is checked before shared dedup, even without a message ID. A wrong or unknown receiving username cannot consume the intended bot's message or run its General command. Bare commands, Classic/present-thread behavior and exact alias forms are unchanged.
+- **AgEnD no longer reads a huge transcript all at once (#1218).**
+  - Before, when an agent wrote a lot between two reads (a long command's output, a multi-MB tool result, a 300 MB codex session catching up), AgEnD read the whole difference into memory in one go on its main loop.
+  - It now reads at most 1 MiB at a time, a few times per poll, for claude-code, codex, kiro and muse session files.
+  - A line longer than 256 KiB that holds a turn's record or a reply is still read whole, up to 16 MiB: a codex turn end with a long final reply, a pasted prompt, a long claude reply, any kiro record. So the end of a turn is never missed.
+  - Any other long line, such as a multi-MB tool output, is known by its first 8 KiB, which still say which tool step it belongs to, so the progress line does not lose that step.
+- View and status context refreshes reuse each instance's tmux control read lane, removing the per-instance capture subprocess when control is connected. Pending results are fenced across stop, respawn, pane replacement and cancellation.
+- Cache a successfully verified OS home for the current user to avoid repeated password-database lookups in tmux namespace getters. Failed lookups remain unknown and never trust `$HOME`.
+- macOS memory protection now uses only the kernel pressure alarm (1/2/4), driving warning/critical spawn admission without false triggers from available/free RAM or dynamically allocated swap ratios (#1256). Missing or malformed alarms stay unknown, do not throttle or notify, and are logged once per sampler lifecycle with bounded raw output. The existing bounded async sampler owns pressure probes; admission and tool handlers cannot start them. Linux policy is unchanged. A percentage fallback awaits separate real-Mac calibration.
+- **The web chat's `/compact` now says when it is done (#1269).** The card used to say "Compact command sent" forever.
+  - From the moment the command reaches the agent it says **Compacting…**, then **Conversation compacted** once the agent's transcript records it, and leaves. This works on Claude Code and Codex.
+  - Other backends, kiro included, write no record AgEnD can tie to the instance, so the chat says their compaction end can't be detected and leaves, instead of claiming it finished or staying forever.
+  - With no record within 10 minutes, the chat says so instead of waiting forever. If the command never reached the agent, or the agent stopped, restarted or changed backend meanwhile, it says it can't follow the compaction.
+  - `/clear` and `/cancel` answers that only say the command was sent now leave by themselves. A refusal stays.
+- The website installer now detects Muse and no longer advertises the removed Gemini CLI backend. Installation and quickstart behavior are unchanged.
+- **Owner-gated text commands (#1346).** In multi-bot groups every bot receives its own copy of each message, so a typed `/cmd` used to be a race: whichever copy arrived first acted on it. Command-like text is now judged by topic ownership *before* the shared dedup key is claimed: a non-owner copy is dropped without consuming the key, and the permission check runs against the owning adapter's admin list (a sibling-only admin can never authorize through another bot's copy). Platform behavior: on Discord fleet topics a typed `/xxx` never runs — the owner posts one system note pointing at the `/` slash menu and consumes it, others stay silent; on Discord ClassicBot channels `/xxx` is ignored silently by every bot (no `/chat` forward either). On Telegram fleet topics a bare `/cmd` runs through the owner only, `/cmd@otherbot` is ignored; Telegram ClassicBot groups ignore bare `/cmd` (only `/cmd@ourbot` runs); Telegram private chats are unchanged. See `docs/commands.md` ("Text Commands by Platform").
+- **Service unit `Environment=PATH=` no longer accumulates `node_modules/.bin` entries (#1348).** `buildServicePath()` now drops every PATH entry that contains a `/node_modules/` segment (worktree `.bin` directories and npm's own `node-gyp-bin` runner) and deduplicates the remaining entries while preserving first-appearance order. The nvm bin directory (where `agend` and `node` live) is explicitly preserved. The pollution was self-sustaining: each `agend install`/`/update` copied the calling process's PATH — which inherited the old unit's `Environment=PATH=` — straight into the new unit. The next `/update` after this fix rewrites the unit with a clean PATH automatically.
+- Codex recovery no longer treats an unreadable pre-paste input/footer pair as an empty composer (#1359). A body-derived strand requires readable input both before and after the paste; structured-input recovery also rechecks ownership after both the retry delay and the Enter availability wait, immediately before the recovery key. Unknown input leaves the system notice unconfirmed rather than submitting an older draft; new positive echo/queue evidence completes without another key. Unique delivery IDs and row-only retries retain their existing behavior. Native isolated evidence includes a warning-viewer dismissal/resize race; the warmup test now uses the real empty composer fixture.
+- Keep Kiro conversation reads and large-history parsing off the fleet event loop, so transcript updates do not block Discord acknowledgements. Reads use a shared, bounded worker with readonly connections, workspace-specific queries and stale-result fences; Kiro's database is never modified.
+- **Reply guard false positives (#1377): a successfully delivered reply no longer fires spurious "Turn ended without a
+  reply" recovery.**
+
+  Two related races in the `#1241` idle-confirmation path were causing false positive reply-drop reports for kiro and
+  other `replyCompletionGuard`-enabled backends:
+
+  - **Case 1 (in-flight IPC delay):** the agent's `reply` tool call was processed and delivered to the channel, but the
+    `fleet_outbound_response` IPC message arrived at the daemon *after* the busy→idle edge had already run and armed
+    the 60-second confirmation window. Because `settleToolAttempt` had no path to `clearReplyGuardConfirm`, the timer
+    fired and started recovery even though the reply had already reached the user.
+
+  - **Case 2 (cross-instance busy/idle revival):** the confirmation window was cleared by a settle that arrived before
+    the timer (handled by fix A), but the guard generation was still active. A cross-instance message processed by the
+    same instance minutes later updated `busyObservedAt`, and when its turn ended, a fresh confirmation window was
+    armed for the old (already-answered) human generation, eventually triggering recovery.
+
+  **Fixes applied:**
+
+  - `replyAttempted` check moved to *after* the `busyObserved` + confirmation-window gates (#1241) so that an
+    in-flight reply whose IPC response has not returned yet receives the same 60-second deferral as a no-reply turn
+    instead of being reported as "unknown" immediately at the first idle edge.
+
+  - A new `replyAttemptFailed` flag distinguishes a definitively failed reply (adapter returned an error) from an
+    in-flight one. A failed reply still fires `reportReplyDropWithoutRetry` immediately, bypassing both the
+    `busyObserved` gate and the confirmation window.
+
+  - When `settleToolAttempt` confirms a `completionAction` tool (reply/react/edit_message) at the current obligation
+    level and the turn is in the `awaiting` phase (not cancelled, not recovering), it now also calls
+    `clearReplyGuardConfirm`, cancelling any pending confirmation timer so it cannot fire spurious recovery.
+
+  - `maybeConfirmReplyGuardIdle` (the steady-idle monitor path) now checks `completionDelivered=true` when there is
+    no pending confirmation window — allowing the guard generation to complete on the next monitor tick without waiting
+    for a new busy→idle transition.
+- **A message Claude Code took at once no longer ends up "uncertain" with a ⚠️ to the user (#1379).** After the Enter,
+  Claude keeps showing the pasted text in its input box for a moment. AgEnD read that as "the Enter was swallowed" and
+  waited up to 30 seconds for the prompt to come back. A CLI already busy with the message never shows it, and by then
+  the reply had pushed the message off the screen, so the delivery was marked uncertain even though it had arrived.
+  - A pasted text still in Claude's box only counts as a swallowed Enter if it is still there after 3 seconds.
+  - When AgEnD can read the CLI's own transcript (Claude Code, Codex), this delivery's exact id there now proves the
+    message was taken, whatever the screen shows.
+  - The log line for an uncertain delivery names the actual CLI. It used to say "Codex" for every backend.
+- **Frequent fleet pane/window checks reuse the connected tmux control client (#1401, part of #1235).** Error monitors, state captures and pane health reads no longer start a subprocess for every healthy read. Queries retain fresh snapshots and caller deadlines, with bounded fallback during reconnects, output-size limits, and lifecycle checks that discard old results. Pane writes and the staggered safety-sweep schedule are unchanged.
+- **The 60-second safety sweep no longer blocks the fleet for the whole sweep at once (#1402).** Every instance's pane
+  check used to start in the same tick, each spawning a `tmux capture-pane`. Measured live, that tick blocked the
+  fleet's event loop for 150–860 ms, and for 1–2.5 s on a busy host, so messages, buttons and the web UI stalled once a
+  minute. Each instance's check now gets a tick of its own, spread evenly over the first 30 seconds of the minute.
+- **Web: the sidebar's brand row and every page's header are one row (#1408).**
+  - The brand row (AgEnD, hide sidebar, +) was 4 px taller than the page header, with its centre 4 px lower, so a page title such as 設定 looked higher than AgEnD.
+  - The title's status, version pill and model chip sat 1–2 px below it, and the header's small buttons and the instance tabs were 30 px beside 36 px icon buttons.
+  - Now, on Fleet, Needs you, View, an instance's four tabs and Settings, at desktop and phone widths, both segments are 52 px with one centre line, and the header's controls are all 36 px.
+  - On a phone the instance tabs still sit on their own row under the header.
+- Kiro TUI launch discovery no longer reads or parses the user's entire session history on the fleet event loop (#1417). One bounded worker validates complete JSON and caches metadata by file identity, size, mtime and ctime (4,096 entries / approximately 4 MiB); a 15-second total budget includes queue time. Adoption, exact owned resume IDs and creation-evidence-only take-up remain unchanged. Launch admission is rechecked before identity/config writes; owned resume IDs skip discovery. A cold scan still reads whole files off-thread, and worker failure/deadline uses the existing unreadable-store policy.
+- **A schedule deferred by the 5-hour rate limit now runs once after the window resets, instead of being skipped
+  (#1426).** "Deferred" used to mean dropped for that occurrence: a daily check that fired at 100% simply did not
+  happen that day.
+  - **When it runs.** At the statusline's reset time, or by checking every 15 minutes when no reset time is known.
+  - **Same run, labelled.** It keeps the occurrence's run id, and the agent's message starts with
+    `[retry] originally due 21:00 (Asia/Taipei), deferred by the 5h rate limit at 100%`.
+  - **Never twice.** It never runs at or after the schedule's next run, and it survives a fleet restart.
+  - **`last_status`.** It shows `deferred → delivered (retry)` or `deferred → skipped (…)`.
+  - **When it cannot run.** If it is superseded, deferred again, or the window does not reset within 5h15m, the
+    schedule's chat says so and @mentions the admins.
+  - **Stale readings.** A reading whose window has already reset no longer defers anything; an idle instance's
+    statusline can show 100% long after the reset.
+- **Claude Code 2.1.295's new "Resume this conversation?" prompt is answered, keeping the conversation (#1434).**
+  The prompt can open while an instance with a large context sits idle after its prompt cache has gone cold, and on
+  resume. While it is up, a delivery's text only goes into the input draft and Enter is refused. AgEnD now answers
+  it like the older resume menu: it presses Esc, which the prompt itself labels "resume", only on the exact shape,
+  and checks that it closed. Any other shape is held for a human. AgEnD never picks "Start a new conversation",
+  which would clear the context.
+- **A codex instance that runs out of usage continues on Luna Reserve again, instead of waiting for a human (#1439).**
+  - When codex switches to Luna Reserve it shows a picker: the server's offers (Upgrade, Reset usage, Add Credits, …),
+    then "Continue with Luna Reserve". AgEnD answers it with Escape, which continues on Luna Reserve.
+  - The server changed its offers, starting with "Upgrade", and AgEnD stopped recognising the picker. Instances were
+    parked on it until someone pressed Escape by hand.
+  - The picker is now recognised by the parts codex itself draws, whatever the server offers above them.
+- **codex 0.162: AgEnD still recognises the "conversation is open in another app" screen and the resume directory picker (#1443).**
+  - codex 0.162 writes the Control key as `^c` on Linux (`⌃c` on macOS) where it used to write `ctrl+c`.
+  - AgEnD found both screens by that text. On 0.162 the "open in another app" screen was no longer held for a human,
+    and the directory picker was reported only as an unknown menu.
+  - Both spellings are now recognised, so these screens are held for a human again on every codex version.
+- **`agend update` no longer removes AgEnD before the new version is installed (#1446).**
+  - It took every normal global install for a local `npm link` and unlinked it first, so a failed install (network,
+    an incompatible Node, a full disk) left no `agend` at all. Now the current install stays until npm has replaced it.
+  - After installing, the update checks that `agend` on your PATH is the new version and that it can open a database
+    on the Node it runs with, before restarting anything. An installation running on nvm's Node is checked, refreshed
+    and restarted on that Node.
+  - A `systemctl restart` that fails is reported as a failure, instead of as success. A restart that systemd is still
+    running when the update stops waiting is reported as still running, not as done.
+  - Running `agend update` again after a failed check no longer restarts the fleet onto the version that failed it.
+  - The fleet is restarted only through the verified install, and only when the service starts that install. If the
+    service still points at another install, the update says so and leaves the running fleet alone.
+- **Web app: layout follow-ups from the alpha.2 sweep.**
+  - In Settings, a change waiting for an admin's confirmation shows in the page, right under the operation, instead of as a card covering it. Other panels keep the card in the corner.
+  - On a phone:
+    - Settings → Developer keeps its toolbar on one row of icon buttons;
+    - the YAML editor scrolls sideways instead of wrapping lines, and a shadow at the edge shows there is more;
+    - the agent's profile line in View wraps to two lines instead of being cut;
+    - every agent row in Settings wraps its tags the same way;
+    - the buttons in **Needs you** and in Teams line up with the text above them.
+  - The docs say why the sign-in page logs one 401 before you sign in.
+- **Web app: fixes from the alpha.2 regression sweep.**
+  - A Fleet list the server fails to load shows the error state with **Try again**, instead of "No tasks yet".
+  - Settings no longer asks for provider secrets on a fleet that has none, which removes a 404 from every Settings load.
+  - Counts of one are singular: "1 task", "1 connection", "1 room".
+  - On a phone:
+    - a connection's name keeps its line;
+    - Settings' tabs fit the screen;
+    - the buttons in Settings rows and in **Needs you** are full-size tap targets;
+    - the command palette's descriptions wrap instead of being cut;
+    - **Stop reply** is icon-only when there is no room, so the message box keeps its placeholder.
+  - In a chat on a desktop, notices appear under the header instead of over the composer's buttons.
+  - The sign-in hint never breaks `agend web --code` across lines.
+  - The working dot's pulse stays visible on dark backgrounds.
+  - The docs cover Fleet → Org chart, Fleet → Cache and the chat's commands.
+- **An agent request that is too large now gets a real "413 Request body too large" (#1489).** `POST /agent` already refused requests without a valid instance token before reading them, and never buffered more than 512 KiB. But a request with a valid token and a declared body over the limit saw only a dropped connection. It is now answered with 413 before any of the body is read.
+- Updates use the actual restart outcome: pending returns exit 75 and retains repair copies, while failed activation returns exit 1 instead of success (#1490). A failed systemd start can restore this update's package and unit preimages only with unchanged loaded/disk ownership and a confirmed stopped runtime; recovery proves the old loaded target before starting it and still reports the update as failed. Unknown/changed owners and detached failures require operator inspection. System-source Node mismatches now explain user-unit, system-unit and launchd recovery without weakening restart checks.
+- **Atomic file writes now include fsync.** Three files that used write+rename without fsync are fixed: `fleet.yaml` (save path in `FleetManager`), `web-sessions.json` (`WebSessionStore.persistNow`), and `update-marker.json`. All three now follow write → fsync(temp fd) → rename → fsync(dir, best-effort). A new `atomicWriteFileSync` helper in `src/atomic-write.ts` is shared by the update-marker and session paths; `FleetManager` uses the same sequence inline to preserve its pre-write validation step. (#1490 P3)
+- **Backend detection no longer blocks the fleet (#1490):** `/ui/backends` ran `which` up to seven times per request, synchronously and with a 2 s timeout each, on the fleet's event loop. It now runs `which` as asynchronous child processes that must answer within 2 seconds (one that does not is killed and the backend shows as not installed, as before). An answer is reused for 30 seconds and concurrent requests share one lookup. A lookup that hangs, such as on a dead network mount, costs at most one process per backend until it really exits, never one per request. `/login` still probes fresh, so a CLI it just installed is seen at once.
+- Chat updates from a Linux service run in an independent same-user systemd scope, so stopping the fleet does not kill its updater (#1490). Unknown cgroup state or an unavailable scope launcher refuses with host-shell recovery instructions. Installed-path verification, environment, working directory and the two-second delay are preserved; no credentials are placed in argv.
+- **`create_instance`: `tool_set` and `skipPermissions` refused with a privilege-boundary error.** A steered General could use `create_instance` to spawn a `full`-profile, no-confirmation worker. Both fields are now refused before Zod's `passthrough()` can forward them to instance-lifecycle. The error message matches the existing `update_instance_config` refusal from #804/#814. (#1490 P3 #13)
+- **`update_instance_config`: in-memory patch is rolled back when `saveFleetConfig` throws.** Previously, the instance config was mutated in memory before saving. A failed save left memory and disk inconsistent. The handler now rolls back the in-memory state on save failure. (#1490 P3 #48)
+- **A history file that is only locked or unreadable is no longer thrown away (#1490):** when `events.db` could not be opened, the fleet renamed it to `events.db.corrupt-<time>` and started an empty one, whatever the reason. Now only a file SQLite proves is not a usable database (`SQLITE_NOTADB`, `SQLITE_CORRUPT`) is moved aside. A lock that lasts past the 5-second busy timeout, a SQLite driver that does not load on this Node.js (built for another version or architecture), or a permission or disk problem leaves the file exactly as it is: the fleet runs without event logging until it restarts, and posts the reason (with `npm rebuild better-sqlite3` for the driver case) to the General topic.
+- **Kiro transcript reads recover from one stuck worker:** after a read times
+  out, its worker loses read ownership and a replacement can resume from the
+  source's accepted cursor without restarting the fleet. Late replies and exit
+  events cannot affect the replacement. A retired worker still occupies a
+  physical slot until it exits; at most two workers can exist. If both native
+  calls remain stuck, reads retain their 15-second deadline and legacy fallback
+  until one exits. Kiro's shared database remains read-only. (#1490)
+- **Kiro session lookup no longer scans on the event loop (#1490):** while the Kiro store has no conversation for an instance yet, its transcript source falls back to Kiro's session files. On every 2-second poll it listed the sessions directory and checked every session file synchronously, which took 16–18 ms per instance with 5,000 sessions. The lookup is now asynchronous. A poll checks only the directory and recently active sessions, the directory is listed again only when it changes, and a full rescan runs every 30 seconds, at most 16 file checks at a time.
+- **`/model`: reject names with newlines or control characters.** A model name containing `\n`, `\r`, or other control characters was persisted to `fleet.yaml` and pasted raw into the CLI session. The command now returns an error and does not write or paste. (#1490 P3a)
+- **Pause/wake handler: own-key check prevents inherited prototype keys from matching instances.** User-supplied instance names like `__proto__` or `constructor` are now checked with `Object.hasOwn` before the instance lookup, so they correctly return "instance not found" and never reach `runPauseWake`. (#1490 P3b)
+- **Profile handler: own-key membership enforced before general_topic lookup.** `handleGeneralProfile` now checks `Object.hasOwn` before reading `instances[general]`, so an inherited prototype entry with `general_topic` cannot impersonate a real General — it is refused with "available only in General". (#1490 P3b)
+- Fleet startup now reports whether the durable delivery outbox is locked, corrupt, blocked by a native SQLite driver mismatch, or unavailable for another reason, with recovery instructions. AgEnD does not quarantine or reset the queue; startup and new admission remain refused instead of discarding pending messages or submission evidence. Failed initialization/recovery closes its database owner and cannot publish a partially recovered store. (#1490)
+- **Quickstart "Add allowed users": supports `channels`-shaped files.** Extracted as `addAllowedUsersToConfig()` (exported). When `fleet.yaml` uses the `channels:` array shape, correctly reads and updates the chosen connection's `access.allowed_users`, and never writes a phantom `channel:` key. Multi-connection files show the connection `id` and `group_id` for disambiguation. (#1490 P2)
+- **Quickstart "Overwrite (start fresh)": backup is fail-closed.** Extracted as `backupFleetConfig()` (exported, async, throws on failure). If the backup cannot be written, the overwrite is aborted and an error is printed — the user is never left without their config while believing a backup exists. (#1490 P2)
+- **Scheduler: `recordRun` is now atomic.** The `INSERT INTO schedule_runs` and `UPDATE schedules SET last_status` are wrapped in a single transaction. Previously a crash or error between the two statements could leave an orphaned run record without an updated `last_triggered_at` / `last_status` on the schedule. (#1490 P3)
+- **A recovery Enter goes only to the window it was for (#1490):** when a delivery's Enter did not submit, AgEnD waits for the prompt and sends one more Enter. If the window was recovered during that wait, the extra Enter went to the new window and the check that followed judged the new window's pane. These recovery Enters are now fenced to the window and spawn they were for, up to the moment the key is sent, and no proof is read from a replaced window.
+- **`retireSystemCopy`: uses `join(nvmBin, "npm")` for all npm operations.** For nvm installs, `npm` binary path is now `join(plan.nvmBin, "npm")` — the same binary npm actually invokes via the modified PATH in `inInstallEnv`. This path is used for prefix lock, rollback root, install, verification, and retirement, ensuring `outcome.npmPath` matches what was actually invoked. `retireSystemCopy` takes the explicit path and returns `{ ok: boolean }`; callers set `process.exitCode = 1` on failure. Non-nvm installs do not perform retirement and skip the lookup. (#1490 P3)
+- **`saveCpuProfile`: large profiles rejected before `JSON.stringify`.** Size estimation now accounts for all variable fields per node: callFrame URL and functionName (using `Buffer.byteLength(JSON.stringify(str), 'utf8') - 2` for exact UTF-8+escaping bytes), positionTicks arrays (V8 real field; 800k entries can exceed 16 MiB alone), and children arrays. The check exits the estimation loop early when the cap is reached, avoiding per-node work for oversized profiles. (#1490 P3)
+- **`CacheService.stop()` returns `Promise<void>`, sets a closing flag, and flushes dirty data bounded to one save.** A `closing` flag fences new `kick()`/`start()` calls immediately. The in-flight pass loop exits at its next iteration boundary (not full backlog), then one bounded `save()` runs before `stopped = true`. `FleetManager.doStopAll()` now awaits `cacheService.stop()`. (#1490 P3)
+- **`TmuxControlClient`: observation age uses monotonic clock.** `observationResetAt`, `inObservationGrace`, `lastOutputAt`, and `isIdle` now all use `this.mono()` (backed by `performance.now`) instead of `Date.now()`. A wall-clock jump (NTP, daylight saving) can no longer cause a pane to appear idle before the silence window has elapsed or to remain in grace longer than expected. (#1490 P3)
+- **`TmuxControlClient.waitUntilIdle`: resolves `false` when the client is stopped.** Previously it resolved `true`, which would have told callers the pane was idle and triggered delivery into a stopped client. (#1490 P3)
+- **A window the fleet can no longer resolve is not treated as idle (#1490):** after three failed `tmux list-panes` for a registered window, the control client used to forget the window, and an unknown window counted as idle once the reconnect grace was over. A delivery could then paste into a CLI that was still generating, where Enter interrupts it. Such a window is now kept as lost and reported busy; asking about it retries the lookup at most every 5 seconds, and once it resolves it is registered again and counts as idle only after 2 seconds of observed silence. A registered window whose pane is not resolved yet after a reconnect is also busy until it resolves. Windows that were never registered keep the previous behaviour.
+- **tmux observation after a reconnect, and one slow read (#1490):** after the tmux control connection reconnects, a window counts as idle only once it has been quiet for 2 seconds since its own pane was found again. Previously the 2-second grace started at the reconnect, so with many windows, or with tmux slow under load, the last windows read idle at once and a message could be pasted into a working CLI. A single control read slower than its 2-second budget is now answered by a one-shot read and drained, instead of tearing down the whole control connection and its view of every pane. The connection is reset only if that read's answer never arrives within 10 seconds.
+- **Web app: the page no longer scrolls as a whole (#1509).** With a long instance list, the chat page showed two scrollbars, its own and the whole page's, and could scroll the header out of view. Now only the panes scroll.
+- **Discord `/dashboard` answers where you clicked (#1512).**
+  - The menu is the command's private reply. After a click, the menu itself now changes: first to "sending…" or "opening the public link…", then to where your sign-in details went (by DM, or posted privately right there when the bot cannot DM you).
+  - Previously AgEnD looked for that private message in the channel, which Discord can never find (`10008 Unknown Message`). So the menu stayed unchanged, a second click on it did nothing visible, and the outcome was posted publicly in General instead.
+  - An expired or stale menu now collapses in place too.
+  - `/dashboard` always answers. A menu that cannot be shown says so, instead of leaving Discord to report that the application did not respond.
+  - When a DM cannot be delivered, the log says why (for example Discord code 50007: the user does not accept DMs from server members).
+- **Web app: on a web-only fleet, a turn that ends without a reply is now caught (#1515).** Messages sent from the web chat to a fleet with no Discord or Telegram connection never armed the reply-completion guard, so an agent that answered in plain text left the chat silent. They now get the same single reminder as platform messages.
+- **Web app: clicking another instance keeps the sidebar where it was (#1515).** In View, the instance list jumped back to the top on every click; in both View and Chat, the active instance is now kept in view without moving the list otherwise.
+- **Web app: Discord custom emoji show in the status-emoji editor again (#1520).** In Settings → Connections → Discord → Status emojis, every server emoji appeared as a broken image, because the page's security policy refused Discord's emoji CDN. Panels now allow images from exactly `https://cdn.discordapp.com/emojis/` and nothing else from Discord.
+- **`/usage`: 429 from vendor usage endpoint no longer shows a red error.** A rate-limit on the *query* endpoint says nothing about the user's subscription. When a cached snapshot exists, the stale numbers are shown instead (existing behaviour). When there is no cached snapshot, a neutral message is shown ("can't fetch usage right now, doesn't affect your agents") instead of a red alarm. The Retry-After header from the 429 response is now respected: force-refreshes within the backoff window return the cached value instead of hammering the vendor endpoint.
+- **Public-link progress draws each failure on the step it belongs on (#1525).** A refused tunnel lane (`lease-held`) used to fail ① "Check cloudflared", looking like a cloudflared problem; it now fails ④ "Start the tunnel" with the existing "another tunnel is still running" sentence. A request that ends before its own ⑥ begins (lost currency after a completed shared start) used to mark the successful ⑤ as failed; it now draws the failure on ⑥ and ⑤ stays ✅.
+- **Settings: adding a connection never replaces an existing one (#1529).** The setup wizard matched an existing connection by its token variable and overwrote it, so adding a Discord bot after a Telegram one could silently replace the Telegram connection. Every new connection now gets its own id (`discord`, `discord-2`, …) and its own token variable, and one that would take another's is refused.
+- **Settings: each connection shows its own state (#1537).** Every connection used to say "Connected" whenever AgEnD was running, even one that had not started or whose token was refused. Now each row shows that connection's own state: Connected · @your_bot, Reconnecting, Starting, Not running, Token missing, Token rejected, or the Message Content Intent fix.
+- **Wizard-created Discord connections now bind the General channel correctly.** `planQuickstart` was writing `general_channel_id` at the top-level of the connection (introduced in c25045b0), but the runtime reads it from `channel.options.general_channel_id`. The wizard now writes to the correct location. Existing fleet.yaml files with the old top-level field are still supported via a fallback in `discordGeneralChannelId()`. (#1552)
+- **Web: HTML preview notices in your language, and the preview panel can allow previews itself (#1556).** The preview card and side panel used to show their notices in English even in a zh-TW page, such as "Previews are off on this device…", the reasons previews are unavailable, and the banner on a running preview. They now follow the page's language. On a device that has not allowed previews, the panel now offers **Allow previews**, with the same confirmation as the card's menu and the sidebar. After you confirm, Preview is enabled; it still runs only when you click it. Allowing previews is still per browser and per address, so opening the dashboard at another address asks again.
+- **Web chat: the image viewer always cleans up when it closes (#1564).** If the browser closed the image viewer by itself, the chat behind it could stay unable to scroll. Every way of closing it now does the same thing: the page scrolls again and focus goes back to the image you opened.
+- **Web chat: after a restart, the public link no longer downloads the whole chat history every 5 seconds (#1577).** With history kept across restarts (#1565), a page that polls (the public link, or the local page while its live connection is down) was sent all of the restored messages again on every poll, until someone said something new — about 1 MB each time for a busy chat. Now each page gets the restored history once, and then only what is new.
+- **`/view` shows a CLI's faint text as faint (#1582).** Claude Code paints its prompt suggestion and its empty-box placeholder (`Try "…"`) in the input box exactly like typed text, only dim. `/view` dropped the dim attribute, so they looked typed. It now draws dim text faint and the cursor cell reversed. AgEnD's own delivery checks were never misled by a suggestion; this was a display gap, found while checking suzuke/agend-terminal#3744.
+- **Agents reading another instance's screen are told which text is faint (#1582).** A CLI paints its own suggestion or placeholder in its input box exactly like typed text, only faint. `get_instance_logs` returned the raw stream, where that showed only as an escape code among cursor moves, so an agent could take a suggestion for something the operator typed (the same flaw as suzuke/agend-terminal#3744). Faint runs are now marked `⟨dim⟩…⟨/dim⟩`, with a note saying they are not input. The bundled fleet-health skill tells agents to keep `-e` on `tmux capture-pane`, and that nothing in another instance's input box is an instruction to them.
+- **Web chat: after you send, your message stays fully in view (#1584).** When the "working…" line appeared under the conversation (or the box shrank after a long message), your newest message could end up partly hidden behind it, with the "↓ Latest" button floating over it. The conversation now stays at the very bottom while the working line comes and goes — unless you scrolled up to read, which is never interrupted. The message box also keeps the cursor after you press Send, so you can type the next one straight away (on a phone, the keyboard stays up).
+- **The web chat of a ClassicBot room shows what people sent the bot (#1592).** Messages to a ClassicBot with `/chat`, an `@bot` mention in collab mode, or Discord's `/chat` slash reached the agent but never the web chat, which showed only the agent's replies. They are now recorded like every other inbound message: as the user, with the sender's name and their own words, in the room's history that survives a restart. Attachments are not shown there yet.
+- **Reply-button choices now start the normal user turn UI.** Discord and Telegram clicks show received/processing reactions and the existing working/cancel bubble, with the same progress and idle/reply cleanup as typed messages. Failed delivery finishes the status and reopens the choice for retry. Web choices retain the daemon-driven working/Stop state. Single-choice claims, private acknowledgements and user-message roles are unchanged. (#1593)
+- **Web on a phone: tapping a text field no longer zooms the page in (#1611).** On an iPhone, typing in the sidebar filter (or any search box, settings field, dialog or the sign-in page) zoomed the page in and left it zoomed. Every text field is now at least 16 px on a touch screen or the phone layout, which iOS does not zoom for. Pinch zoom still works, and the desktop look is unchanged.
+- **Web on a phone: the no-zoom fix covers every text field, including future ones (#1615).** Follow-up to #1611: a text field that takes its size from the text around it (rather than setting its own) is now also at least 16 px on a touch screen or the phone layout, so iOS never zooms the page in on focusing it. Larger fields keep their size; the desktop look is unchanged.
+- **A stale button on one bot no longer waits on another bot's prompt (#1617).** Since #1610, a stale tap on a message that already shows the next step (the public link's confirm/cancel) is only acknowledged. That check now also requires the same bot, so when two bots' message ids collide, one bot's live prompt can't stop the other bot's stale button from being tidied away.
+- **Kiro keeps its conversation when upgrading from before the launch ledger (#1624).** On the first launch with
+  kiro-cli 2.21+ (`--agent` and `--resume-id` supported), an instance without identity or launch history adopts the
+  newest conversation in its engine's store only if no other configured Kiro instance shares its canonical working
+  directory and that conversation is unclaimed. Fleet and ClassicBot entries count even when stopped. Ambiguous
+  ownership starts a new conversation and posts a notice once; old conversations stay untouched. Older Kiro versions
+  keep their existing launch behavior, and upgrading Kiro across 2.21 still adopts from its old-style launch record.
+  Deliberate fresh starts and identity keys already recorded as fresh are never automatically re-adopted. Instances
+  that already started fresh on beta.1 need manual recovery; see [Kiro recovery](kiro-upgrade-recovery.md).
+- **ClassicBot agents can verify message delivery (#1626).** `delivery_status` no longer fails with
+  `Unrecognized key: "chat_id"`. ClassicBot's room override now applies only to channel-addressing tools;
+  other tool arguments are left intact. Replies, reactions and edits still use the ClassicBot's own room,
+  including the original Telegram forum topic. Delivery-status validation stays strict.
+- **Web: uploading a View picture no longer deletes another instance's picture (#1630 follow-up).** An upload used to delete every stored avatar whose name began with the instance's name and a dot. So uploading for `a` also removed `a.b`'s picture. Instance names may contain a dot (the Settings quickstart allows it, and so does a hand-edited `fleet.yaml`). Now an upload replaces only the file that instance's own profile records.
+- **View: saving one profile field no longer clears the others (#1630).** A profile save now changes only the fields it carries (display name, role, description). A field left out stays as it was, and a blank one clears it. View's own editor always sends all three, so nothing changed there; any other caller that sends one field no longer wipes the rest.
+- **View: clearing a display name brings back the agent's own (#1630).** Clearing the display name in View's **Edit profile** used to store an empty name, which still hid the name the agent had given itself (`set_display_name`), so the instance name showed instead. Clearing now removes the override, and the agent's own name (or the instance name) shows again. Display names cleared before this release recover too.
+- **A hand-started fleet keeps updating on hosts without a reachable service manager (#1631).** On Linux without a user systemd manager (containers, WSL without systemd, SSH without linger) or a Mac without a GUI session, `agend update` used to create a systemd unit or launchd plist for a fleet that had none. Every later update then rolled back with "The previous package is back in place". The updater now only refreshes a service that already exists. The new version's `agend install --no-activate` also writes nothing when it can tell for certain that an older updater started it, so an update from 2.2.0-beta.1 no longer leaves a file behind either. A manual `agend install` still creates the service, and an existing service is refreshed as before. If an earlier update already left a file on such a host, remove it (`~/.config/systemd/user/com.agend.fleet.service` or `~/Library/LaunchAgents/com.agend.fleet.plist`) and run `agend update` again.
+- Correct agent-facing delivery verification advice: “Delivery not found” can mean an ACL-hidden row, expired retention, or no delivery. Agents must obtain an explicitly forwarded verifiable reference before acting, and must not resend uncertain deliveries. Existing instances receive the correction once on reaching 2.2.0; delivery queries and scanner behavior are unchanged.
+- **Agents: what AgEnD tells them matches what it does again (#1634).** The fleet instructions, the agent CLI reference, General's core rules, the tool descriptions and fifteen bundled skills were checked against the code. They now describe `reply`'s buttons and stickers, messages from the web chat, the real image / file / quote markers, delivery states (accepted is not delivered; never resend on `uncertain`), `get_fleet_status` (counts only; per-instance state is on `list_instances`), what `agend fleet restart` does (graceful; `--reload` for new code), `--yes` from a fleet session, how each backend resumes its own session, per-backend logins, the reply guard on Codex and Muse, the refused `kiro_ui: v3`, and the current model-listing commands. The MCP server now reports the real AgEnD version (it said 0.3.0) and names it in its instructions, so an agent can tell that a tool description it loaded earlier is older.
+- **Settings: the reply-completion guard note is right for Codex and Muse.** Since 2.2 the guard works on Codex and Muse too, but Settings still said "Stored but inactive: codex in mcp mode does not support reply-drop recovery". It now says the guard is available for Claude Code, Codex, Muse and Kiro legacy/TUI in MCP mode.
+- **A rate-limited or monthly-capped kiro instance is reported (#1636).** When kiro is throttled it prints `⚠️  Kiro rate limit reached:` and `Request quota exceeded. Please wait a moment and try again.`, and at its monthly cap `Monthly request limit reached` (alone on its line, or with the date the limits reset). Neither comes with the "Kiro is having trouble responding right now" header or an exception name, so neither matched any of AgEnD's kiro patterns: the instance was never flagged and nobody was told. Both are now a rate limit that notifies, as kiro's other throttling messages do. An expired login on the same screen still pauses first, and a message that merely quotes these lines does not trigger anything. The upstream-release precheck now tells the auditor when a "new" string may only be an old one stored in a new order; it still counts as new, for the auditor to decide.
+- **A codex instance falsely marked `stuck` comes back on its own, and a stuck target's waiting messages are visible (#1641).** After a restart, a resumed codex shows its idle composer with only `⚠ N warnings · f2 to view` on the footer (no Context meter until its first turn). AgEnD reads that as working (by design, #1031), and a still pane then turned `stuck` with no way out: the pump never hands work to a stuck target, so its queued messages waited for hours at attempt 0. A stuck instance now returns to idle when its pane shows the CLI's own empty composer and codex's rollout shows no turn running. Without a rollout to ask, the same composer has to hold still for 10 seconds. A turn that is still running never counts, and while codex's rollout shows a turn running, no reading of the pane counts as idle, including a turn that was already running when AgEnD began following the rollout. `delivery_status` now says why a queued message waits (`waiting_reason`), and if an always-on instance's queued messages have waited 30 minutes for such a reason, its topic is told once.
+- **A silent schedule that landed is no longer reported as "could not confirm", and never shows up in Needs you (#1647).** When a paste from a silent schedule (or another raw paste) can't be proven on the pane right after Enter, AgEnD now looks for the turn it started:
+  - **Claude Code:** the transcript entry whose original message contains only one text body, which matches the pasted text after removing Claude's paste wrapper and normalizing whitespace, after the write checkpoint. The transcript path comes from its own statusline.json.
+  - **Codex:** not covered — its rollout is chosen by working directory only and can't be bound to this launch, so a Codex raw paste the pane couldn't prove stays "could not confirm".
+  - **kiro:** judged by its input row — the pasted text must be gone, or kiro's busy marker shown in its place, with output after the Enter.
+
+  If the turn shows up, the delivery counts as delivered. If not, it stays unconfirmed with the real reason, and is never pasted or sent Enter twice. An unconfirmed or failed silent schedule now goes only to the leader as a notice that names the cause, not into Needs you, and the next run goes ahead as usual. Human messages still show up in Needs you as before. The log now carries the cause behind "a delivery error was recorded", and `delivery_status` describes such a row as "could not confirm".
+- **Agents in CLI mode are told the commands they actually have (#1650).** An instance with `agent_mode: cli` has no MCP tools, but every message it received still ended with "Reply using the reply tool" or "use send_to_instance / report_result". Those footers now name the `agend-agent` commands: `agend-agent reply "…"` for a user, and `agend-agent report <sender> "…" <correlation_id>` or `agend-agent send <sender> "…"` for another instance. Instances in the default MCP mode see exactly what they saw before.
+- **Agents: a Telegram `edit_message` with `format: "markdown"` no longer fails on `<` or `&` (#1651).** Since #1654 such an edit was sent as Telegram HTML as-is, so text like `a<b` or `x & y` was refused ("can't parse entities") where it used to go through as plain text. The edit text is now converted from markdown with everything escaped first: `<`, `&` and `>` are shown as typed, and **bold**, *italic*, ~~strike~~, `code` and http(s) links are rendered. If Telegram still refuses the markup, the edit is retried once as plain text. Tables and code blocks don't re-render on edit.
+- **Agents: `edit_message` keeps a message's formatting (#1651).** `edit_message` took a `format` but ignored it, so on Telegram an edit to a message that was sent with `format: "markdown"` came back as plain text. An edit now renders like `reply`: `format: "markdown"` is rendered on Telegram, and Discord, which always renders Markdown, is unchanged.
+- **nvm-route update no longer fails when the old root copy can't be sudo-removed (#1660).** Retiring the old system copy is cleanup: once the new version is installed, verified and running, a refused `sudo -n npm uninstall` becomes a warning instead of exit 1. Chat `/update` reports success, then appends the warning plus the verbatim, shell-quoted manual command to the same update message once the retire outcome lands (the updater retires only after the restart returns, so completion and cleanup notification have separate lifecycles guarded by the update receipt). `sudo -n` stays non-interactive — it never prompts for a password. Real install or verification failures still fail exactly as before.
+- **A message sent from the web chat now shows the 🛑 Cancel/progress bubble in the instance's Discord/Telegram topic (#1666).** Until now only a message typed in Discord or Telegram started it; a web message's turn showed a bubble only after the agent's first reply. The bubble appears right after the web message's echo in the topic and follows the same rules as before: it updates while the agent works, goes away when the agent replies while idle or on Cancel, and only people allowed in that topic can press it. A web-only fleet, a message that wasn't delivered, a fleet with the web echo turned off, and ClassicBot instances show no bubble.
+- **The instance header and usage rail stay put across Chat, View, Log and Details (#1673, #1218).**
+  - The usage rail was not drawn on Log, so on a wide screen the page and its header jumped 320 px when you switched to it. ◔ on Log then turned off a rail you could not see, so it was gone when you went back to Chat.
+  - Log now shows the rail like the other tabs. Showing or hiding it is still this device's choice, and it stays the same on every tab.
+  - The tab bar and the header's buttons now have the same size and position on every tab: the text-size button is as wide as its widest name ("Fit" included; its zh-TW name is now the shorter 「填滿」), the current tab's bold label no longer resizes the bar, and Log keeps the room the other tabs use for ⋯ or ⓘ.
+- **View's text size (Aa) applies at once (#1674).** Choosing Fit, S, M or L on the View page used to show the new size for under a second; the next screen refresh put the old size back until you left the page and returned. The terminal now keeps the size you chose through every refresh and resize. Chat, Details and Fleet already changed at once.
+- **Web: the Fleet org chart can be reached again (#1675).** With an instance open, the sidebar's **Fleet** row (and the phone's Fleet tab) goes to that instance's Details, so the Fleet panel and its **Org chart** were out of reach. **Fleet overview** at the top of the sidebar, or at the top of the drawer on a phone, now opens the Fleet panel on the Org chart from any page, with Tasks, Schedules, Teams, Cache and Config a click away. `/ui/fleet/org` works as before.
+- **Repeated host-memory chat notices are gone (#1685, superseded by #1712).** The final 2.2 behavior removes all pressure and recovery broadcasts on every platform. Memory admission slowing/holding, logs, dashboard status and health degradation remain; a held human start/restart/wake action gets its reason.
+- **`/model` on a Claude Code instance no longer leaves it stuck on Claude's "Switch model?" confirmation (#1690).**
+  - Claude 2.1.296 asks to confirm a switch when the conversation is cached for the previous model, and nothing answered it. The pane waited forever with messages queued behind it.
+  - **Your switch is confirmed for you,** but only when the dialog names the model you asked for. The reply tells you Claude's next answer re-reads the full history.
+  - **If it names a different model,** AgEnD answers No and tells you.
+  - **Unknown names are refused** (for example a typo like `opsu`) before anything is typed. Claude itself accepts any name and would switch to it.
+  - **Messages are held** while the confirmation is on screen. A confirmation AgEnD didn't ask for is never answered: it is held and shown as **Needs you**.
+  - Applies to `/model` from Discord, Telegram, the web and the model menu.
+- **Web: creating a team no longer overwrites an existing one, or saves members that don't exist (#1692).** The dashboard's **New team** wrote the team directly to fleet.yaml. It saved any member names it was given, and it silently replaced an existing team of the same name, losing that team's members and description. It now goes through the same path as the agents' `create_team`:
+  - the members must be instances of this fleet;
+  - an existing team is refused ("Team already exists") and left as it was;
+  - names such as `constructor` are refused.
+
+  If saving fleet.yaml fails, no team is created.
+- **Restart reply reminders stay bounded** (#1694): each restart sends one notice with up to ten unanswered requests and a count of the rest. Reply obligations expire 24 hours after the last ask by default (`defaults.reply_obligation_ttl_hours`); the requester is told once if no overdue notice was sent. Fresh requests and turn-ended reminders remain supported. Answers still need the request's correlation ID; an unrelated plain message does not close it.
+- **An agent on a credential profile whose sign-in expired is now reported, not ignored (#1699).**
+  - AgEnD double-checks a sign-in error before pausing anything. It used to check the backend's default login, so an
+    agent on another profile looked fine whenever the default login was, and its error was dismissed as conversation
+    text.
+  - The check now uses the agent's own profile, for Claude Code, Kiro and Codex alike.
+  - The alert names the profile and only its agents, and gives the exact command that signs that profile in.
+- **Web: spell checking is off where it should be (#1700 follow-up).** The sidebar filter, the bot-token field, the fleet.yaml editor and the delete-confirmation box were meant to have spell checking off, but they rendered with it on. In Chrome with enhanced spell check, the text of a bot token shown in the token field could be sent to Google's spelling service. Spell checking is now really off in all four.
+- Linux no longer reports memory pressure or slows new agents just because cold swap is full with ample available RAM. PSI stall measurements drive warnings/holds alongside RAM safety floors; unavailable PSI falls back safely. The log and dashboard retain the pressure signal; all memory-pressure chat broadcasts are removed by #1712.
+- **muse: an approval prompt with `skip_permissions: false` is a permission interaction awaiting a human (#1715).** With approvals left on, muse stops at its "Would you like to run the following command?" prompt (escalated pair or `--approval-mode untrusted` staged triple) that no dialog matched, so the instance just read as busy and nobody was asked. AgEnD now recognises the whole prompt — both option shapes, the staged `Stage N/M` / `Current argv` rows, 1.4.4's `›` marker and missing footer line — holds deliveries while it is on screen (Enter would take the preselected allow option), and reports it as `awaiting_input` with a permission Needs-you item, never answering it. The prod `skip_permissions` path is unchanged (an escalation is denied by muse itself with no prompt).
+- **muse: `/quit` with a running background task is handled deliberately instead of hanging on the quit menu (#1716).** With a backgrounded task running, muse answers `/quit` with a "Local work is still active" confirmation (`1. Exit anyway` / `2. Stay`) that no dialog matched, so stop/restart waited out the quit timeout and fell back to blind Ctrl-C. AgEnD now recognises the whole menu, holds deliveries while it is on screen (a stray Enter would pick "Exit anyway"), and the stop flow cancels it with Escape — never answering an option — before stopping the process itself, reusing the #1217 path. The ended background work is recorded and reported, never silent: the stop posts it to the instance's topic, the Classic /stop reply appends it, and the fleet restart/update completion names the affected instances (each scoped to its own operation, so an older stop never reports). An idle auto-pause additionally defers while background work runs (see #1717) instead of silently killing it.
+- **muse: a running background task no longer blocks idle detection — the composer is free, so the instance reads as idle (#1717).** While a background task runs, muse draws a terminals panel (`main · ↓ to select` / `└ ◆ … running 11s`) between the input box and the status bar, which failed the idle proof; the instance read as neither busy nor idle for the whole task and idle-edge actions (deliveries, cancel retirement, readiness gates) waited. The footer check now accepts exactly that panel shape — header plus `running` task rows, status bar still last — while a genuinely busy turn (interrupt hint above the box, including a turn started while a task runs) still fails the proof and unknown shapes still fail closed. A background task therefore counts as "local work still active", not busy: idle-for-delivery passes, and an idle auto-pause defers while the panel shows running work instead of killing it.
+- **Web chat: a long status line's time is drawn on one line again (#1726).** A message from another agent (a `send_to_instance` line) showed its time one character per line beside a long text. The line had picked up the header badge's layout through a shared class name.
+- **A public link's HTML preview that comes up unreachable is opened once more (#1732).** Quick tunnels sometimes are not reachable within their startup minute; the preview's tunnel is then started again, once, with a new address, in the background. The card keeps saying *Preview is starting…* meanwhile, and the link itself is never affected.
+- **kiro legacy UI: a turn ending with a shell tool whose output has no trailing newline no longer leaves the instance stuck (#1734).** When kiro produces output that doesn't end with a newline, it appends `- Completed in …` on the same line as the last output byte. The completion detector was anchored to a line start and missed it, leaving the tool — and the instance — appearing busy. A queued or scheduled message would park, and the post-submit check would raise "could not confirm" alerts about 10 minutes later. The detector now matches ` - Completed in` preceded by any whitespace, covering both the normal newline case and the same-line case.
+- **Chat `/update` shows the "old system install was not removed" note on every kind of restart (#1735).** When an update moved AgEnD from a root-owned install to nvm and could not remove the old copy, the note and its manual command reached the terminal but were missing from the chat summary whenever the fleet restarts without waiting (a fleet started by hand, or macOS launchd). The summary now carries them either way. The note also names the old copy's folder.
+- **A fleet finishing its start after an update no longer clears another operation's progress marker (#1735).** It clears only the update it started from; a `/restart full` or a new `/update` begun meanwhile keeps its own. The old install's folder is named in the cleanup note only when it contains no control or invisible characters.
+- **Telegram: `setMyCommands` now honours `telegram_api_root` (#1736).** Registering the bot command menu always went to `api.telegram.org`, even when `telegram_api_root` was set to a custom Telegram Bot API server. The URL is now built from the same root the adapter itself uses.
+- Dashboard shutdown now ends SSE and drains owned HTTP sockets for up to one second before forcing leftovers closed. Updated pages receiving the shutdown hint delay reconnecting; Windows/WSL troubleshooting explains safe alternate access and operator-selected mirrored networking. This mitigates connection churn without claiming to repair a stuck WSL relay.
+- **Telegram `/web` explains a failed public link correctly (#1742 follow-up).** When the sign-in link fails before the bot has tried to message you, for example because the public link cannot start, the message now says that the link could not be started and asks you to run `/web` again. It no longer tells you to open a private chat, which wouldn't help. The private-chat steps, the "Start privately →" button and the 10-minute `/start` window now appear only after a private message was actually tried and could not be delivered.
+- **A fleet installed from a custom `AGEND_HOME` keeps that home after a service restart or an update (#1743).** `agend install` (and the refresh an update does) now writes `AGEND_HOME` into the launchd job and the systemd user unit when it is not the default `~/.agend`. Before, the service manager started such a fleet on `~/.agend`. A default-home service definition is unchanged.
+- **The usage panel's plan badge stays on one line (#1749).** In the usage rail and dialog, a long plan such as "TEAM PREMIUM (6.25X)" wrapped onto two lines beside the provider name. It now reads **TEAM ×6.25** (likewise TEAM ×1.25 and MAX ×20). The full plan name shows on hover and is read out by screen readers. When space is tight, the provider name shortens with an ellipsis first, and the ↑↓ buttons stay on the same line. `/usage` and `get_usage` still give the full plan name.
+- Telegram’s Needs-you live message no longer re-posts an unchanged list every ten minutes. Identical text and buttons skip editing, and Telegram’s “message is not modified” reply counts as success for text and button edits. Only confirmed message/destination or permission loss permits a replacement, under the existing one-post-per-minute limit. If you turned `needs_you.live_message` off as a workaround, you can turn it back on after updating.
+- **When several of the fleet's bots share a Discord server, an instance's notices come from its own bot, and the other bots' posts are never taken as input (#1752).** The usage warning (and the held-for-memory notice) used to go out from whichever bot happened to receive the user's message first, which could be a different bot. The instance's own bot then took that post as a user message. Now these notices always come from the instance's bot, in its topic. A message posted in a fleet topic by any bot this fleet runs is ignored, even with `/collab` or open access. `/collab` and open access still let other bots and webhooks in. In ClassicBot rooms, the fleet's bots can still talk to each other by @mention.
+- **A Claude profile switch that coincides with another restart still keeps the conversation (#1753 follow-up).** If the switch's restart joined one that was already under way, such as an MCP revival, the conversation was not copied and the reply did not say so. Now the copy runs inside that restart, as long as it has not yet started the new CLI. If it has, the switch reply reports `carry_failed` with the reason, and the usual handover is sent.
+- **A Claude profile switch never reports the conversation as carried when the CLI starts on another login (#1753 follow-up).** If a profile switch joined a restart that had read its configuration before the switch was saved, that restart launched the old login, yet the switch could still copy the conversation into the new profile and reply "carried". The copy now happens only when the login being started is the one the switch moves to. Otherwise the reply reports `carry_failed` with the login actually launched, and the handover goes out. When that login is the old one, the CLI simply resumes its own conversation. When it's a third one, it starts fresh.
+- **Instances on a Claude credential profile keep the shared auto-memory (#1754).** A named profile has its own `projects/`, so Claude Code's memory for the repository started empty there, apart from every other instance's. Each profile launch now links the profile's memory folder for the instance's repository to the shared one under `~/.claude` (or your own `CLAUDE_CONFIG_DIR`). The key is the repository root, and a git worktree counts as its main checkout, as Claude itself keys memory. Conversations stay per profile. A profile memory folder that already holds notes is never replaced: it is left as it is and a warning is logged. Instances without a profile launch exactly as before.
+- **A temporary public link that Cloudflare refuses now says so (#1767).** When trycloudflare is rate-limiting new quick tunnels from this machine (HTTP 429), the steps say "Cloudflare is limiting new temporary links from this machine — try again in a while; the LAN link still works", instead of a timeout after 0 seconds. Any other early stop of cloudflared is named as such, and daemon.log records the reason. The HTML-preview tunnel is now requested only after the link's own tunnel has its address, so it can never use up a request the link needed.
+- **Web chat times say the day when it is not today (#1770).**
+  - A message from today still shows only its time. One from yesterday shows "Yesterday 17:38", an older one "10/11 17:38", and one from another year "2025/10/11 17:38". Hover a time to see the full date and time zone.
+  - Times and days are read in the fleet's time zone (the one chat logs and fleet.log use), not the browser's. The same labels appear on messages, status lines and the preview panel. At midnight the labels update without reloading any preview.
+- **Files an agent attaches to a reply stay available in web chat after a fleet restart (#1770).**
+  - Before, a reply's .html or .png usually showed as "unavailable" after an update or restart, because web chat only kept files that sit in the instance's inbox, and agents usually send files from /tmp or their working folder. A file also broke if the agent later rewrote or deleted it, or /tmp was cleaned.
+  - Web chat now keeps its own copy of each reply file in `workspaces/<instance>/web-files/` and shows that copy. A symlink, a file over 50 MB, or a file inside the AgEnD state folder (other than inbox/) is not shown.
+  - Copies are deleted when their message leaves the web chat history. Each instance keeps at most 1 GiB; above that, the oldest copies go first. When a copy is gone, its message shows the file as unavailable, as before. Telegram and Discord are unchanged.
+- **A short message you send in web chat gets a bubble that fits its text (#1773).**
+  - Before, the bubble stretched to the width of the line above it (your name, the time and the delivery ticks), so a short message such as 「目前進度」 sat in a bubble twice its width. The longer times from #1770 (「昨天 下午03:58」) made this worse.
+  - The bubble now fits its text and stays on the right, under the name and time. A long message still wraps at the same width, files still sit inside the bubble, and agent replies look the same as before.
+- **An agent resumed across an upgrade can pass `forwards` again (#1780).**
+  - A Claude Code session resumed across the beta.7 upgrade still saw the old `send_to_instance`, without `forwards`. It put the verification ID in the message text instead, which grants nothing, so the receiver's `delivery_status` said "Delivery not found".
+  - Claude Code keeps a tool's schema from when the session first loaded it, and reloading it does not refresh it. AgEnD's server still accepts the new parameter.
+  - Running instances are now told once (the what's-new notice) that `send_to_instance` and `delegate_task` take `forwards`, and that an ID in the text grants nothing. The notice no longer suggests reloading the tool; it says to use the new parameters anyway.
+  - The forwarding guidance (skills, tool description and docs) names this failure.
+- **Web: Simplified Chinese glyphs now come from the same font family as Traditional Chinese (#1781).** The `--font-ui` stack listed only Traditional Chinese fonts (`PingFang TC`, `Noto Sans TC`, `Microsoft JhengHei`). Simplified-only characters — such as 订 实 结 论 讲 认 档 还 众 数 验 — fell back per glyph to whatever the OS provides (often SimSun or another design), making mixed-script sentences look uneven. Their SC counterparts (`PingFang SC`, `Noto Sans SC`, `Noto Sans CJK TC`, `Noto Sans CJK SC` for Linux, `Microsoft YaHei`) are now added immediately after each TC font in the stack. Traditional text renders as before; no webfont is downloaded.
+- **kiro-cli 2.30.0: AgEnD answers its reworded Classic nudge again (#1784).**
+  - 2.30.0 renamed "3.0" to "V3" in kiro's launch prompts. AgEnD no longer recognised the Classic deprecation nudge that a legacy (Classic) instance meets at launch: it neither answered nor held it, and the instance took no messages until someone answered it by hand.
+  - AgEnD now answers it as before: one step off "Switch to V3", then "Remind me later", with the cursor checked before each key. Nothing changes your engine.
+  - The reworded V3 prompt ("You're using Kiro CLI V2. Switch to V3 today.") and agent-config prompt ("still in the V2 format") are answered "Remind me later" and "Not now" the same way. "Don't ask again", or a cursor AgEnD can't read, is still left for you.
+- **kiro: launch no longer warns on 2.28.0–2.30.0; warning text no longer repeats "kiro-cli"; Log tab shows plain text instead of JSON (#1785).** Three independent causes: `KIRO_TESTED_MAX` was stuck at 2.27.0 even though 2.28.0 and 2.29.0 (#1576) and 2.30.0 (#1785) were audited live; the version-gate warning passed the raw `--version` line ("kiro-cli 2.30.0") to templates that already say "kiro-cli {0}", producing "kiro-cli kiro-cli 2.30.0"; and the Log tab's event rows stringified the whole payload as JSON when only a `message` field was present, so the "啟動警告" row showed `{"message":"…"}` instead of the message. All three are fixed: max bumped to 2.30.0, warning templates receive the bare semver, and `detail` is the `message` text when that field exists.
+- **A grok instance quits cleanly on stop, pause and restart (#1792).**
+  - Grok quits only on a second Ctrl+Q within one second. AgEnD sent one, so grok only showed "press again to quit". Every stop then waited three seconds and force-stopped it.
+  - AgEnD now sends Ctrl+Q twice, 250 ms apart. The grok 1.0.52 audit found this; 1.0.52 itself is otherwise unchanged for AgEnD.
+- **muse /model lists new models from the on-disk provider catalog (#1796).** The list was four hard-coded ids, so new models (muse-wonder-1.0) never appeared even after restart + refresh. `listModels()` now reads the same `model-catalog/*.json` cache the live picker reads — listed (`visible`) rows only, which is what the 1.4.7 picker shows (no `-contributor` ids), file order kept — and falls back to that visible set when the cache is missing or unreadable.
+- **muse 1.4.7's approval prompt and "Local work is still active" quit menu are recognised again (#1798).**
+  - muse 1.4.7 draws the selection cursor of both as `⟩`. AgEnD accepted only `›` and `❯`, so with `skip_permissions: false` an approval prompt read as ordinary work instead of a prompt waiting for a human. The quit menu was not held against a delivery either, whose Enter picks "Exit anyway" and ends the background work.
+  - AgEnD now accepts `⟩` too. The muse 1.4.7 audit found this; 1.4.7 is otherwise unchanged for AgEnD.
+- **kiro: a resumed conversation is no longer switched to the instance's own agent, because one lost AgEnD's tools (#1800).**
+  - Since #906, AgEnD typed `/agent swap` into a resumed kiro conversation to move it onto the instance's own agent. A user's instance then lost its AgEnD tools: it could not `reply`, and its workaround through a subagent delivered nothing.
+  - The switch is suspended. A resumed conversation keeps the agent it was saved under and gets AgEnD's server and instructions from the shared `.kiro` files again, as before #906.
+  - Instances whose switch was already recorded get those shared configuration entries back on their next launch. After a restart, check that the instance calls `reply`. That is expected to bring its tools back, but kiro's own tool loading was not verified live.
+  - New conversations still start as the instance's own agent.
+- **`agend update` no longer rolls back on a Linux host without a D-Bus user bus (#1804).**
+  - On a host without `dbus-user-session`, `systemctl --user` works but `busctl --user` cannot connect. Every update there rolled back with "systemd does not know com.agend.fleet.service", even though the service was loaded and running.
+  - When the bus cannot be reached, the update now asks systemd over its private socket instead: the same connection `systemctl --user` uses on such a host. It reads exactly the same definition it reads over the bus, so it checks exactly the same things before it restarts through systemd. `agend restart` does the same.
+  - Anything that still cannot be proven rolls back. The message now gives the real reason: systemd cannot be reached at all, systemd does not know the unit, systemd refused the request, or the unit does not start the new install. The rollback line no longer claims the restored unit is not loaded when it simply could not be read.
+  - Hosts with a working user bus behave as before.
+  - **One manual step on such a host.** The update to this version is still checked by the version that is running, so from 2.2.0-beta.9 or earlier it rolls back once more. Install this version yourself with `npm i -g @songsid/agend@beta`, then run `agend restart`; the restart uses the new check. Updates after that run normally.
+- **An agent that switches an instance's backend no longer leaves it on the old backend's model (#1808).**
+  - `update_instance_config` with a new `backend` and no `model` used to keep the instance's model. An agent moving an instance from claude-code to codex relaunched codex with `--model opus`, and every turn failed.
+  - Now a backend switch drops the instance's own model and effort unless they are given, so the new backend runs on its default (or the fleet default it inherits).
+  - A model the new backend does not take is refused before anything is written, and the refusal lists the backend's choices. The same goes for an effort level it does not have.
+  - "Takes" is the rule `/backend` applies: the backend's offered list (and claude-code's known names); with no list known yet, its usual model-name pattern.
+- **`agend attach` now accepts the display names shown by `agend ls` (#1809).** `agend ls` shows human-readable labels — a `display_name` such as `稜鏡 Prism` or `Fable 焚穹`, or a shortened real name such as `agend-reviewer-t996543` — but `agend attach <name>` only matched real instance names. Pasting a label from the table into attach failed. `agend attach` now resolves any such label to its real name before fuzzy matching runs. Real names always keep priority; a partial match such as `稜鏡` (a substring of `稜鏡 Prism`) still requires the complete label.
+- **A configured `effort` now reaches codex, claude-code, grok and antigravity at launch (#1811).**
+  - Before, only kiro-cli and muse launched with it. The others saved it and launched without: `/effort` on codex restarted the instance and changed nothing, and on claude-code, grok and antigravity it lasted until the next restart.
+  - Now every launch, a resumed one included, passes it: `-c model_reasoning_effort` (codex), `--effort` (claude-code, antigravity), `--reasoning-effort` (grok).
+  - A stored effort never breaks a launch. It is passed only when the installed version's `--help` lists the flag (antigravity 1.0.x has none) and the level is one that CLI takes. For codex, that is a level the model's catalog lists, because codex does not check it itself. Otherwise the instance launches on the CLI's own setting, and daemon.log and the Log tab say why (no chat notice).
+  - Instances that already have `effort` set run at that level from their next restart. The runtime `/effort` is unchanged.
+- **Web chat: Markdown tables no longer sit against the scrollbar or break words in the middle (#1812).**
+  - In a `.md` attachment's preview, the table now has the same space on both sides, and the scrollbar no longer touches it.
+  - Table cells keep words whole: "director" is no longer split into "directo" / "r". A table too wide for the message scrolls sideways in its own frame, instead of squeezing its columns.
+  - A long file path in a table cell wraps after its `/`, not in the middle of a name.
+  - This applies to tables in chat messages, `.md` previews and CSV previews alike.
+- **A failed chat `/update` now shows a short cause and logs the full output (#1818).** Before, a failing updater only reported `updater exited 1` with no information. Now: (1) the updater's stdout and stderr are written directly to `$AGEND_HOME/update.log` via a file descriptor (not a pipe), so the updater can keep writing even after the fleet process that spawned it has stopped, avoiding SIGPIPE killing grandchild processes such as `agend restart` or service installation commands; if the log file cannot be opened the run proceeds silently as before; (2) `update.log` is rotated to ~200 KB when it would exceed that size, and its mode is enforced to 0600 (owner-readable only; raw updater output is written directly, secrets are not masked in the file); (3) the failure message includes a short cause extracted from this run's output only — if there is an `npm error code` line, it is shown together with the following line; otherwise the last meaningful `npm ERR!`/`npm error` line (skipping the generic "A complete log of this run can be found in" footer), the last `✗` line, or the last non-blank line — truncated to ~300 characters and masked before being shown in chat; (4) the message ends with "Full log: `<path>`". The success, pending (exit 75) and interrupted paths are unchanged.
+- **After updating to beta.11 or later, agents are told about polls and web identity (#1823, #1827).**
+  - The what's-new notice is sent only when there is a new entry for agents, and none had been added since beta.7. So after `/update` to beta.10 or beta.11 a running agent heard nothing. It could keep naming an older AgEnD version, and a resumed session did not know about `reply`'s `poll` or `close_poll`.
+  - Running instances are now told once: `reply` takes `poll` (its exact parameters), the results come as one `[poll results]` message, and `close_poll` ends a poll early. They are also told that a web-chat person now carries their Discord or Telegram user id, for recognition only.
+- **antigravity: a configured effort reaches agy, as the right model; agy's trust prompt is answered under AgEnD's status line (#1825).**
+  - agy prints `--help` on stderr, and AgEnD read only stdout. So #1811's launch gate never found `--effort`: a configured effort was always left out, and the probe cached no levels. Both now read stderr when stdout is empty.
+  - agy's model list has one model per level (`gemini-3.8-flash-medium`, `…-high`). agy runs a different model, with only a warning in its pane, when `--model` and `--effort` disagree, when a label like "Gemini 3.8 Flash (High)" comes with any `--effort`, or when the level isn't offered. So the effort now picks that level's model (`gemini-3.8-flash-medium` + `high` launches `gemini-3.8-flash-high`), and `--effort` never goes out with `--model`. A level the model lacks, or a model AgEnD can't find in agy's list, launches the configured model without it. daemon.log and the Log tab say which model ran. fleet.yaml is not changed. agy's model list counts past the probe cache's one day for as long as the agy binary the probe ran is still installed, so a fleet that has run for days keeps choosing the right model.
+  - `/effort` and `/backend` offer the levels of the agy model the instance runs (`gpt-oss-120b-medium`: only `medium`).
+  - agy's trust prompt is answered again under AgEnD's status line, whose `Context 0% used` row replaces agy's model row there. It is also answered for a model without levels (a right-aligned `GPT-OSS 120B (Medium)`). Before, a new workspace waited at the prompt.
+  - agy 1.3.5 itself needs no change: it behaves the same as 1.3.4. Model names in existing configs, slugs and "(High)"-style labels alike, keep launching that exact model.
+- **`agend update` no longer says "Already up to date" when the fleet is not running, and a failed chat `/update` names the fix for the cases AgEnD knows (#1829).**
+  - When the target version is already installed but no fleet runs, the update now checks the installed package and then says so: `AgEnD vX is installed but the fleet is not running — run: agend start`, with exit code 1. Examples: a restart that never finished, or a stopped service. Before, it reported success. If the installed package does not pass the check, it says to reinstall instead. The update never starts the fleet itself.
+  - A failed chat `/update` now ends with a one-line `Fix:` for three known causes:
+    - The directory npm cannot rename (`ENOTEMPTY`) after an interrupted install: the exact directory npm names, and only AgEnD's own.
+    - The activation check that cannot read systemd on a host without a user bus: `npm i -g @songsid/agend@<target> && agend restart`.
+    - An `agend` that the failed install removed: `npm install -g @songsid/agend@<target>`.
+- **install.sh no longer installs the obsolete `@songsid/agend-plugin-discord` (#1831).** Discord has been built into the core package since PR #134. A regression introduced in commit 81ce9fcb accidentally re-added `@songsid/agend-plugin-discord` to the install command. The script now installs only `@songsid/agend`, and warns then removes the plugin if a previous install left it behind.
+- Silent schedule writes now close the preceding channel reply guard before submission proof, preventing heartbeat-triggered reply notices and reply-required prompts; uncertain deliveries are still not resent. Even the guard for a genuinely missed human reply is closed if it is still in its confirmation window or recovery when a silent schedule lands, with an info log for tracing and no new chat notice.
+- **A codex instance whose agent spawned a subagent no longer stays `working` after its reply (#1849).**
+  - AgEnD followed the subagent's transcript, which shares the instance's working directory.
+  - It read the subagent's work as the instance's own unfinished turn: the working emoji stayed, and the hang warning came after 10 minutes.
+  - It now follows only the instance's own transcript. The `Main [default]` footer that codex shows after a spawn already read as idle.
+- **Web: Settings and Needs you say what is true (#1854).**
+  - When no stuck timeout is set, Settings and the hang notice now show 10 minutes, the detector's real default, instead of 15.
+  - Settings help puts the dashboard's own settings under **Web**, not General.
+  - The access hint points to **Connections**.
+  - A change that waits for a fleet admin says it is confirmed in chat (the General topic) or on the host.
+  - The public-link hint no longer claims "No preview exposure": previews get their own temporary tunnel unless `web.preview_on_public_link` is false.
+  - An empty Needs you no longer promises Discord. A fleet with no chat app is told only that items show there.
+- `/web` local sign-in messages no longer show “Link expires: Local network.” Local packets use three lines; public packets add the real link expiry in the fleet time zone. Both retain the five-minute single-use code, the separate code-only message and the revoke reminder.
+- **`agend web` and `agend view` no longer crash on a machine without a browser opener (#1854).**
+  - On a server or WSL without `xdg-open`, the command used to crash right after printing the link.
+  - It now prints one line saying no browser could be opened; the printed sign-in page and code still work.
+- **codex: a resumed idle session no longer reads "working" for the whole hang window.** Sometimes a resumed codex draws its footer without the Context item. If its own rollout shows no open turn and its empty composer stays unchanged, the next safety sweep now marks it idle within about a minute; before, it waited for the 15-minute stuck deadline, and deliveries queued meanwhile. (#1865)
+- **Web: View's terminal fits the window again (#1869).**
+  - With Fit (the default), a wide pane is no longer held at a 12 px minimum that pushed it past the window. It is never sized larger than what fits, down to a 6 px floor.
+  - A slightly smaller window now always shrinks the text.
+  - Choosing S / M / L on Chat or any other page no longer turns View's Fit off. Only View's own **Text size** button does.
+  - Devices whose Fit was turned off that way get it back once.
+- **macOS: an update run from an agent's session no longer leaves the fleet stopped.** On launchd, `agend restart` and `agend update` stop the fleet and then start it again. Run from an agent's session, the command was killed together with that agent when the fleet stopped, so the second step never ran: the fleet stayed down and no message was shown. Such a command now continues in the background and writes its output to `~/.agend/service-activation.log`. After such an interrupted update was recovered with `agend start`, `agend restart` refused every time; it now restarts the job launchd runs. (#1871)
+- **Config: `web.access` gets a warning, and "/web disabled" says where fleet admins go (#1874).**
+  - Who may run `/web`, `/update` and `/doctor` is the fleet admin list: `access.allowed_users` under the bot's channel. There is no `web.access` setting.
+  - `agend validate` now warns about `web.access`, saying where the list really goes, and about any other unknown key under `web`. These keys were ignored silently before.
+  - When the list is empty, the `/web` and `/update` replies name the exact key, such as `channel.access.allowed_users` or `channels[id: main].access.allowed_users`.
+- **The check after a `/login` install no longer stalls the fleet (#1877).** After an install, AgEnD asks a login shell where the new CLI is. A login profile that starts something in the background could hold that check, and with it the whole fleet, for 10 seconds: no messages, no deliveries, no systemd watchdog ping. The check now runs in the background and ends when the shell does. If the shell outlives its time limit, prints too much, or leaves something holding its output, that lookup's processes are stopped.
+- **A missed systemd watchdog ping is now logged.** If AgEnD skips a ping because `fleet.pid` names another process, or `systemd-notify` fails, the fleet log says so (at most once every 10 minutes). Before, the ping just stopped and systemd's restart had no visible cause.
+- Discord quickstart now detects your account from a new server message or bot DM and asks you to confirm its username and ID. Its 30-second detection has a required, validated manual fallback. Web setup and New connection also require a valid admin ID, so setup can no longer succeed with an empty or malformed first allow-list entry. Existing access lists are unchanged; web Discord detection remains a follow-up.
+- **Linux: a root fleet under a system unit now moves to 2.2 when it is updated from 2.1.** Hosts with `/etc/systemd/system/agend.service` installed 2.2 but kept running 2.1, because `agend restart` refused the unit's old start command. The update now points that unit's `ExecStart` at the new install, as it does for the user unit, and leaves every other line alone. (#1884)
+- **Usage panel: the Antigravity (agy) row shows the Gemini quota again.** agy now reports its quota in named groups ("Gemini models", "Claude and GPT models"), each with a five-hour and a weekly limit, and the panel showed only the Claude & others pair. It now pools by group and shows Gemini and Claude & others, session and weekly; the older response shapes look as before. (#1898)
+- **An agy instance on Linux gets its fleet instructions again (#1914).** AgEnD wrote them to `.agents/agents.md`, but agy reads `.agents/AGENTS.md`; on a case-sensitive filesystem it never saw them (on macOS's default case-insensitive disk both names are one file, so it worked there).
+  - They are now written to `.agents/AGENTS.md`. An old `.agents/agents.md` on its own is renamed to the new name, keeping any lines you added to it.
+  - If you already keep your own `.agents/AGENTS.md`, it is left as it is; only AgEnD's own blocks move out of the old file. The rename never replaces anything already at the new name, including a file created at the same moment.
+  - If `.agents/AGENTS.md` is a symlink to a file that does not exist, AgEnD leaves it alone, does not write the instructions, and the launch tells you so.
+- **Compact no longer wipes an agy conversation (#1915).** On agy, AgEnD's compact (the web chat's **Compact** button and `/compact`) sent `/clear`, which erased the whole conversation instead of compacting it.
+  - It now sends agy's own `/compact`, which summarizes the conversation in place (verified on agy 1.3.6).
+  - On an agy known to be older than 1.3.6 it is refused, nothing is sent, and the reply says to update agy.
+- **A kiro `/compact` from the web chat now says when it ends (#1925).** On kiro's classic UI and the TUI's V2 engine, the card follows the instance's own pane: **Conversation compacted**, or that kiro did not compact the conversation because it was too short or the compaction was stopped. On the TUI, "compacted" means kiro's "Compacting conversation..." line came and went; a failure other than "too short" can't be told apart. kiro's V3 engine still says its compaction end can't be detected.
+- **The kiro docs no longer say an instance's agent loads no steering (#1925).** kiro loads `.kiro/steering` for every agent, even one with `resources: []`, so a new conversation also reads the steering files in its directory.
+- **Beta users are told about a newer beta again after a stable release ships.** With 2.2.0 out and beta.17 on the beta channel, a beta.16 install got no update notice at all. The newer stable became the notice's target and was then dropped as "same version line", taking beta.17 with it. A beta install's notice now follows the beta channel only, so beta users stay on the beta line. An alpha install with a same-line stable out still hears about its newer alpha. (#1926)
+- Refresh the English and Traditional Chinese 2.2 upgrade and feature guides, READMEs, command/configuration references and current release summary against the implemented behavior. Clarify private web sign-in, ClassicBot admission, bundled Node, delivery evidence, memory protection, credential profiles and Kiro recovery. Earlier 2.2 fragments now describe the final behavior; release changelog assembly remains separate.
+- The npm package description and search keywords now advertise Muse instead of the removed Gemini backend.
+- Correct the English/Traditional Chinese website setup, configuration and feature pages for current 2.2 behavior, including Discord admin detection, supported hosts and private web sign-in. Update repository security and plugin/developer references to match the current APIs and authorization checks.
+- Keep the Traditional Chinese CLI reference’s `/web` alias row in the canonical table format required by the documentation copy check. The command name, alias and behavior are unchanged.
+- **CI: a PR that changes docs now runs the tests.** Tests read `docs/` files and the root READMEs, so a docs-only PR that changed a row a test pins could merge with the test shards skipped (#1929 turned main red this way). Only a PR that changes nothing but `changes/` fragments skips the tests now. (#1932)
+
+### Security
+- **Closed several ways to act on an instance without the right permission (#754, #1148).** An audit of who may run
+  what on every channel found these, now fixed:
+  - **The ⏹ cancel button** interrupted an instance for anyone who clicked it. It now works only for someone that
+    instance's bot lets speak in the topic, and only on that instance's own button.
+  - **Telegram `/raw <text>`**, which types straight into the CLI, worked for anyone allowed to talk in the topic. It
+    now needs a fleet admin of that topic's bot.
+  - **Telegram `/collab`, `/compact` and `/save`** in fleet topics had no admin check. They now need a fleet admin, as
+    on Discord.
+  - **The advanced-tips unlock button** changed a fleet-wide setting for any clicker. It now needs a fleet admin, like
+    `/tips advanced on`.
+  - **The `/model` and `/effort` menus** now check, when you click, that you are still an admin and that the click came
+    through the same bot.
+  - **`/pause` and `/wake` from a General** could reach another bot's instances. They now reach only that bot's own.
+  - **Fleet-admin slash commands** (such as `/update` or `/restart`) could run from a ClassicBot channel in another
+    Discord server. They now run only in the fleet's own server.
+- `docs/commands.md` now says that ClassicBot `admin_users` is one list shared by every bot.
+- **One rule decides who is a fleet admin, on every platform (#754, #1148).**
+  - Admin is judged by the bot that owns what a command acts on: the instance's bot, or the General's. It is not the
+    bot the command arrived on. A Discord slash command in a channel that belongs to another bot of the same fleet is
+    now refused there: use that bot's commands.
+  - An empty `allowed_users` list means nobody, and so does a bot id that matches no configured channel. That case
+    used to fall back to the first channel's list.
+  - Telegram typed commands now follow the same command table as Discord slash commands, so a command needs the same
+    permission on both.
+  - In a Telegram ClassicBot chat, a fleet admin of that bot can now use `/pause`, `/wake`, `/compact` and `/save`, as
+    on Discord. `/stop`, `/raw` and group `/start` stay ClassicBot-admin only.
+- **The dashboard no longer depends on Server-Sent Events.** If the live stream says nothing for 15 seconds, or
+  keeps failing, the page fetches the same status and chat messages every 5 seconds (`GET /ui/poll`) and goes back
+  to the stream when it speaks again. Polling uses the very same `<boot>-<id>` cursor as the stream, so the two can
+  take turns without a message twice or a gap, also across a fleet restart. (Cloudflare Quick Tunnels do not carry
+  SSE, and a buffering proxy looks exactly like a server that never sends.)
+- **The dashboard no longer loads its fonts from Google, and every panel carries a Content-Security-Policy**
+  keeping scripts, styles, images, fonts and connections to this origin (`connect-src 'self'`), so script that
+  somehow ran on a page could not send what it read to another server.
+- **The three web panels share one navigation and one session menu, and `/` opens the dashboard.** `/ui`, `/view`
+  and `/settings` carry the same *Dashboard · View · Settings* links and a Session button: which browser you are
+  signed in as, when the session ends, every other signed-in device (with a Sign-out for each) and Sign out
+  everywhere. It is one small script and stylesheet (`/assets/shell.js`, `/assets/shell.css`), not a rewrite of
+  the panels.
+- **No inline script runs on the web panels unless it is the page's own (#1268).** `script-src` no longer allows
+  `'unsafe-inline'`: each panel's own script is served with a fresh per-response nonce, and the dashboard's buttons
+  no longer carry `onclick=` attributes (one listener runs a fixed list of actions named in `data-act`). Markup
+  injected into a page — an `onerror=` handler, a `<script>` — no longer runs.
+- **…and no inline style applies unless it is the page's own (#1300).** `style-src` no longer allows
+  `'unsafe-inline'` either: each panel's `<style>` block carries the same per-response nonce, and no panel has a
+  `style="…"` attribute any more (the dashboard's went in #1307; /view's and /settings' now — the live terminal's
+  colours and the usage meters are set through the style object). Injected markup cannot add inline styles of its own
+  (it can still use the page's existing class names). The web terminal keeps its own policy.
+- **An unattended page no longer keeps a web session alive (#1373).** A session ends after 2 hours without use; the
+  reads a page makes on its own timer no longer count as use. With `web.view_access: session`, an open `/view` (its
+  terminal every 0.8 s, its roster every 5 s, the usage panel every minute) used to keep its session until the
+  12-hour cap, and the dashboard's live stream counted each time the browser reconnected it. Those reads are still
+  fully authorized; only opening a page, reading a chat's history and anything you change count. The list is fixed
+  on the server, never something a page can claim.
+- Sensitive web Settings changes now require an owning General fleet admin's nonce-bound confirmation, or an explicit same-user host confirmation when chat is unavailable (#1423). Access lists, credentials, channel destinations/order and control-bearing settings stay pending for at most five minutes; redacted diffs identify the actual IDs and roles. Ordinary settings remain immediate. Actual jobs and startup continuations carry authorization and configuration fences, shared resource leases and conditional rollback. SetupHost also requires host consent before writing and a separate confirmed finish before handover.
+- **POST /agent: instance token is now validated before the request body is read.** Previously the endpoint consumed the entire body before checking authentication, allowing any local process to exhaust daemon memory with a large unauthenticated request. The token header (`X-Agend-Instance-Token`) now carries `<instance>:<token>` and is verified before `readBoundedWebBody` is called; missing or invalid tokens return 401 without touching the body. Bodies exceeding 512 KiB return 413 (same limit as the web API). `agend-agent` updated to send the new header format. (#1489)
+- Settings no longer reads a credential written inline in fleet.yaml back out (#1490): `GET /api/settings/fleet` and `/api/settings/fleet/raw` show a hand-written `bot_token` (or any `token`, `secret`, `password`, `api_key`, `web_token` key) as `[configured - redacted]`. A save built from that read carries the placeholder back, and the stored value is kept: connections are matched by id, instances and defaults by path. The placeholder means this only under a credential-named key; elsewhere it is ordinary text. A placeholder with no stored credential behind it, or one whose connection id has two owners, is refused with 400, and fleet.yaml is left untouched.
+- **Settings confirmation follows the affected bot's permissions:** a chat
+  confirmation requires admin membership on every existing target connection;
+  another General's admins cannot approve it just because the buttons appear
+  there. Fleet-wide changes and new connections retain the configured primary
+  General's admin authority; mixed changes require both. Shared token aliases
+  include every affected connection. Cross-platform or unknown targets require
+  `agend settings confirm <id>` on the host. Browser pending/retry behavior and
+  first-time Setup host confirmation remain available. (#1490)
+- **Settings confirmations can no longer be bypassed under an "applies now" setting (#1490).**
+  - A sensitive field placed inside an immediate setting's object (for example `persona: { bot_token: … }` or `persona: { allowed_users: … }`) skipped the admin confirmation.
+  - Such a field is now confirmed like any other secret or access change. An unknown field there is refused.
+  - Only the known parts of `status_emojis` and `hang_detector` still apply without confirmation.
+- **Saving connections in Settings writes only connection fields (#1490).**
+  - `PUT /api/settings/fleet/channels` refuses any field Settings does not own, such as an inline `bot_token`, an unknown option or an unknown access field.
+  - A field added by hand to fleet.yaml still passes through unchanged.
+- **Web sign-in and setup page hardening (#1490):**
+  - On this computer's own dashboard, a stale `__Host-agend_session` cookie no longer hides a valid `agend_session` one: an ended secure session made a signed-in browser look signed out. Writes are checked against the session that actually signed in. The public link still accepts only its `__Host-` cookie.
+  - Polling an Apply (and a token or binding apply), which a page does for up to ten minutes while you wait, no longer counts as activity, so it does not keep an idle session alive (#1373).
+  - The `agend setup` page now sends a Content-Security-Policy that runs only its own inline script and style (a fresh nonce per page), plus `X-Frame-Options: DENY`, so it cannot be framed by another site.
+- **Settings secret endpoints: 403 for public-link (gateway) sessions.** Six endpoints that write or verify connection tokens/secrets (`/secrets/:id/verify`, `/secrets/:id/apply`, `/connections/:id/secret/verify`, `/connections/:id/secret/apply`, `/connections/:id/binding/verify`, `/connections/:id/binding/apply`), plus the quickstart probe endpoint that receives raw bot tokens for verification, now return 403 for gateway (`surface: "gateway"`) sessions. Local dashboard sessions are unaffected. (#1519)
+- **Docs: `create_instance` and `update_instance_config` privilege boundaries described separately.** `tool_set` and `skipPermissions` can only be set through Settings or `fleet.yaml`. `update_instance_config` explicitly refuses `tool_set`; `skipPermissions` is not an accepted field (Zod strips it). `create_instance` refuses both fields explicitly. (#1519)
+- **Web app: the panels' security policy can no longer lose its script nonce or image source silently (#1527).** The policy each panel is served with now extends whole directives of the base policy, and AgEnD refuses to start if one is missing, instead of serving pages whose scripts or Discord emoji images would be blocked.
+- **Web: the public link can no longer change the fleet-wide sidebar order (#1665).** `POST /api/sort-order` was still allowed over a temporary public link, although the page no longer used it. It is now off the public link's route list, and the handler refuses it there as well (403). Reading the order is unchanged.
+- **Web: teams can no longer be created or deleted over a temporary public link (#1689).** `POST /ui/teams` and `DELETE /ui/teams/<name>` were open to public-link sessions, unlike settings. Both are now off the public link's route list, and the handlers refuse them there as well (403). The new team edit is refused in the same way. Teams can still be viewed over the public link.
+- **Web: a public link can no longer create, edit or delete schedules (#1724).** Schedules run as messages to agents, so they are refused over a public link in the same way as teams (#1689): the routes are not offered there, and the server refuses them. A public link still lists schedules.
+
 ## [2.1.12] - 2026-10-08
 
 ### Fixed

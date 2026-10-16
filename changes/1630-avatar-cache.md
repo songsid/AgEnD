@@ -1,4 +1,0 @@
----
-section: Added
----
-- **Web: avatars and Discord server emoji come from the dashboard itself (#1630, part 1).** The status the web app receives now says what stands for each instance, in this order: the picture uploaded for it in View, its own bot's avatar (only when it has a bot of its own; instances on the shared bot skip this), its persona emoji, or its first letter. A bot with its own colour in its Discord server also gets that colour as an accent. Bot avatars and the custom emoji of the fleet's Discord servers are fetched on the host with the bot's own token, kept in `~/.agend/cache/` (refreshed at most once a day; a failed refresh keeps the last copy), and served by the dashboard to signed-in sessions, including the temporary public link, read-only. The page never loads images from Discord or Telegram. The sidebar starts showing them in the next change.
