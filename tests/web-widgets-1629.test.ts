@@ -12,7 +12,7 @@
  * - The page: text nodes only, no style or handler attribute, the ✦ chip always, a failing value shows "—".
  */
 import { EventEmitter } from "node:events";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,6 +150,16 @@ function tools(opts: { agentEdit?: boolean } = {}) {
   return { dir, store, app, web, changed: () => changed, tick: (ms: number) => { now += ms; } };
 }
 
+async function pageLoad(opts: { url?: string; storage?: Record<string, string> } = {}) {
+  vi.resetModules();
+  if (pg) { pg.restore(); pg = null; }
+  pg = page({ url: opts.url ?? "http://127.0.0.1:19280/ui/chat/alpha", storage: opts.storage ?? {} });
+  await import("/ui/js/chat-strings.js");
+  const widget = await import("/assets/agent-widget.js");
+  const P = await import("/assets/app-html.js");
+  return { widget, P };
+}
+
 describe("set_web_widget / remove_web_widget", () => {
   it("places a spec with data in its own slot: stored, listed for the page, in get_web_theme; one change", () => {
     const t = tools();
@@ -264,6 +274,68 @@ describe("set_web_widget / remove_web_widget", () => {
   });
 });
 
+/** [type, value, fits] — run through the host's valueFits and the page's alike (#1894 review P3). */
+const VALUE_TABLE: Array<[string, unknown, boolean]> = [
+  ["stat", 3, true], ["stat", "x".repeat(24), true], ["stat", "x".repeat(25), false], ["stat", 1e15, true], ["stat", 1e15 + 2, false], ["stat", -1e15, true],
+  ["progress", 50, true], ["progress", "50", false], ["progress", Number.NaN, false],
+  ["text", "x".repeat(120), true], ["text", "x".repeat(121), false], ["text", " pad", false], ["text", "\u200b", false], ["text", "a\nb", false], ["text", "bi\u202edi", false],
+  ["badge", "ok", true], ["badge", "x".repeat(25), false],
+  ["list", ["a"], true], ["list", Array(6).fill("a"), true], ["list", Array(7).fill("a"), false], ["list", [], false], ["list", ["x".repeat(61)], false], ["list", "a", false],
+  ["spark", [1, 2], true], ["spark", [1], false], ["spark", Array(48).fill(1), true], ["spark", Array(49).fill(1), false], ["spark", [1, "2"], false],
+];
+
+describe("values: one table, the host and the page (#1894 review)", () => {
+  it.each(VALUE_TABLE)("host: %s %j → %s", (type, v, ok) => { expect(W.valueFits(type as never, v)).toBe(ok); });
+  it("a key two items show must fit both", () => {
+    const spec = (W.checkWidgetSpec({ v: 1, title: "x", items: [{ type: "stat", label: "a", key: "k" }, { type: "progress", label: "b", key: "k" }] }, "details") as { value: any }).value;
+    expect([W.checkWidgetData({ k: 5 }, spec).ok, W.checkWidgetData({ k: "five" }, spec).ok]).toEqual([true, false]);
+  });
+  it("text arriving decomposed is stored NFC — and the page, which takes NFC only, draws it", async () => {
+    const t = tools();
+    const r = t.app.handleTool("alpha", "set_web_widget", { slot: "details", spec: { v: 1, title: "Cafe\u0301", items: [{ type: "text", key: "t" }] }, data: { t: "Cafe\u0301 au lait" } }) as any;
+    expect([r.widget.spec.title, r.widget.data.t]).toEqual(["Caf\u00e9", "Caf\u00e9 au lait"]);
+    const { widget } = await pageLoad();
+    expect(widget.lineOk("Cafe\u0301", 24), "the page refuses what is not NFC").toBe(false);
+    const w = widget.checkWidget("details", t.store.widgets().alpha!.details);
+    expect([w?.title, w?.data.get("0")]).toEqual(["Caf\u00e9", "Caf\u00e9 au lait"]);
+  });
+  it.each(VALUE_TABLE)("page: %s %j → %s", async (type, v, ok) => {
+    const { widget } = await pageLoad();
+    expect(widget.valueFits(type, v)).toBe(ok);
+  });
+});
+
+describe("limits and leftovers (#1894 review)", () => {
+  it("data: at most 180 an hour; an instance removed takes its counts with it", () => {
+    let now = 0;
+    const l = new AppearanceLimiter(() => now);
+    for (let i = 0; i < 180; i++) { expect(l.check("a", ["data"]).ok, `#${i}`).toBe(true); l.record("a", ["data"]); now += 10_000; }
+    expect(l.check("a", ["data"])).toMatchObject({ ok: false, error: "rate_limited" });
+    l.forget("a");
+    expect([l.check("a", ["data"]).ok, l.remaining("a").widget_data]).toEqual([true, 180]);
+  });
+  it("load keeps only what it checked: an extra stored field is dropped", () => {
+    const t = tools();
+    t.app.handleTool("alpha", "set_web_widget", { slot: "details", spec: DETAILS, data: { prs: 1 } });
+    const path = join(t.dir, "web-themes.json");
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.instances.alpha.placements.widgets.details.evil = "<script>";
+    doc.instances.alpha.placements.widgets.details.spec.items[0].onclick = "x";
+    writeFileSync(path, JSON.stringify(doc));
+    const w = new ThemeStore(t.dir).get("alpha").placements.widgets;
+    expect(w.details, "a spec with an unknown item key is not loaded").toBeUndefined();
+    delete doc.instances.alpha.placements.widgets.details.spec.items[0].onclick;
+    writeFileSync(path, JSON.stringify(doc));
+    expect(Object.keys(new ThemeStore(t.dir).get("alpha").placements.widgets.details!).sort()).toEqual(["at", "by", "data", "id", "spec"]);
+  });
+  it("a person's removal of an empty slot writes nothing and announces nothing", () => {
+    const t = tools();
+    const rev = t.store.rev();
+    expect(t.app.humanRemoveWidget("alpha", "details")).toMatchObject({ ok: true, removed: [], rev });
+    expect([t.store.rev(), t.changed()]).toEqual([rev, 0]);
+  });
+});
+
 describe("placedEffects (the effect library's reference source, for B2)", () => {
   it("every instance's placed effect ids; none when nothing is placed", () => {
     const t = tools();
@@ -272,6 +344,47 @@ describe("placedEffects (the effect library's reference source, for B2)", () => 
     t.store.setPlacements("alpha", { effects: [a, b] }, "agent", () => null);
     t.store.setPlacements("beta", { effects: [] }, "agent", () => null);
     expect(t.store.placedEffects()).toEqual([{ name: "alpha", ids: [a, b] }]);
+  });
+});
+
+describe("setPlacements: an id keeps its placement, { id, params } is an explicit apply (for B2, agreed with Sol)", () => {
+  const A = "a".repeat(32), Bid = "b".repeat(32);
+  it("an id keeps its entry as it was; an object stamps this call's by/at and its params, even for an id already placed", () => {
+    const t = tools();
+    t.store.setPlacements("alpha", { effects: [{ id: A, params: { count: 4 } }] }, "human", () => null);
+    const human = t.store.get("alpha").placements.effects[0]!;
+    expect(human).toMatchObject({ id: A, by: "human", params: { count: 4 } });
+    t.tick(1000);
+    t.store.setPlacements("alpha", { effects: [A, { id: Bid }] }, "agent", () => null);
+    const [kept, added] = t.store.get("alpha").placements.effects;
+    expect([kept, added]).toEqual([human, { id: Bid, by: "agent", at: expect.any(Number) }]);
+    t.tick(1000);
+    t.store.setPlacements("alpha", { effects: [{ id: A }] }, "agent", () => null);
+    expect(t.store.get("alpha").placements.effects, "an agent re-applying a person's placement never keeps by: human").toEqual([{ id: A, by: "agent", at: expect.any(Number) }]);
+  });
+  it("effects no longer placed after a write that held go to effectsDropped (B2's collector); a failed write reports none", () => {
+    const dir = tmp();
+    const dropped: string[][] = [];
+    const store = new ThemeStore(dir, { effectsDropped: ids => dropped.push(ids) });
+    store.setPlacements("alpha", { effects: [A, Bid] }, "agent", () => null);
+    store.setPlacements("alpha", { effects: [Bid] }, "agent", () => null);
+    store.setTheme("alpha", { v: 1, font: "mono" }, "agent");
+    store.reset("alpha", "human");
+    expect(dropped).toEqual([[A], [Bid]]);
+    store.setPlacements("alpha", { effects: [A] }, "agent", () => null);
+    rmSync(join(dir, "web-themes.json")); mkdirSync(join(dir, "web-themes.json"));
+    const fresh = new ThemeStore(dir, { effectsDropped: ids => dropped.push(ids) });
+    expect(fresh.setPlacements("alpha", { effects: [] }, "agent", () => null).ok).toBe(false);
+    expect(dropped).toHaveLength(2);
+  });
+  it("validate sees the params; a refusal, a bad shape or a repeat writes nothing", () => {
+    const t = tools();
+    const seen: unknown[] = [];
+    expect(t.store.setPlacements("alpha", { effects: [{ id: A, params: { n: 99 } }] }, "agent", w => { seen.push(w); return "invalid_params"; })).toMatchObject({ ok: false, error: "invalid_params" });
+    expect(seen).toEqual([{ kind: "effect", id: A, params: { n: 99 } }]);
+    const bad: unknown[] = [[{ id: A, params: [1] }], [{ id: A, extra: 1 }], [{ id: "x" }], [A, { id: A }], [A, Bid, "c".repeat(32)]];
+    for (const effects of bad) expect(t.store.setPlacements("alpha", { effects } as never, "agent", () => null).ok, JSON.stringify(effects)).toBe(false);
+    expect(t.store.get("alpha").placements.effects).toEqual([]);
   });
 });
 
@@ -316,7 +429,7 @@ describe("the routes", () => {
     const session = (tier: "admin" | "read" = "admin") => {
       const { sessionId } = fm.webSessions.create({ tier, surface: "local", label: "t", tokenEpoch: tokenEpoch(fm.webToken) });
       const cookie = `agend_session=${sessionId}`;
-      return { read: { cookie }, write: { cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" } };
+      return { id: sessionId, read: { cookie }, write: { cookie, origin, "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" } };
     };
     const stop = () => new Promise<void>(r => (fm.healthServer as Server).close(() => r()));
     return { fm, port, session, stop, csrfTokenFor, tokenEpoch };
@@ -352,6 +465,21 @@ describe("the routes", () => {
         expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/themes/alpha/widget"), f.fm)).toBe(true);
       });
       expect([status, Object.keys(f.fm.themeStore.widgets().alpha ?? {})]).toEqual([403, ["details"]]);
+    } finally { await f.stop(); }
+  }, 30_000);
+  it("the removal asks again once the body is in: a session revoked meanwhile removes nothing (#1894 review)", async () => {
+    const f = await fleet();
+    try {
+      await f.fm.handleWebThemeHttp("alpha", "set_web_widget", { slot: "details", spec: DETAILS });
+      const s = f.session("admin");
+      const body = JSON.stringify({ slot: "details" });
+      const status = await new Promise<number>((resolve, reject) => {
+        const r = request({ host: "127.0.0.1", port: f.port, method: "POST", path: "/ui/themes/alpha/widget", headers: { ...s.write, "content-length": String(Buffer.byteLength(body)) } }, res => { res.resume(); resolve(res.statusCode ?? 0); });
+        r.on("error", reject);
+        r.flushHeaders();
+        setTimeout(() => { f.fm.webSessions.revokeById(s.id); r.end(body); }, 150);
+      });
+      expect([status, Object.keys(f.fm.themeStore.widgets().alpha ?? {})]).toEqual([401, ["details"]]);
     } finally { await f.stop(); }
   }, 30_000);
   it("get_web_appearance lists the placed widgets", async () => {
@@ -468,6 +596,26 @@ describe("the page", () => {
     const counts = widget.fleetBinds([{ name: "a", status: "running" }, { name: "b", status: "running" }, { name: "c", status: "stopped" }, { name: "d", status: "crashed" }, { name: "e", status: "running" }],
       { a: "working" }, { e: { kind: "permission" } });
     expect(counts).toEqual({ "fleet.idle": 1, "fleet.working": 1, "fleet.needs_you": 1, "fleet.stopped": 2 });
+  });
+  it("the page clamps what it draws: a progress past its max is 100%, context 0..100; an unknown `by` is the agent's (#1894 review)", async () => {
+    const { widget, P } = await load();
+    const w = widget.checkWidget("details", { spec: { v: 1, title: "x", items: [{ type: "progress", label: "p", key: "p", max: 50 }] }, data: { p: 75 }, by: "robot" });
+    expect(w.by).toBe("agent");
+    P.render(P.h(widget.AgentWidget, { slot: "details", widget: w, binds: {} }), pg!.root); await settle();
+    expect(pg!.root.querySelector(".aw-progress .aw-value")!.textContent).toBe("100%");
+    expect(pg!.root.querySelector(".aw-by")).toBeNull();
+    expect(widget.instanceBinds({ name: "a", status: "running", context_pct: 140 }, null, null).context_pct).toBe(100);
+    expect(widget.instanceBinds({ name: "a", status: "running", context_pct: -3 }, null, null).context_pct).toBe(0);
+    expect(widget.checkWidget("details", { spec: { v: 1, title: "x", items: [{ type: "text", key: "t" }] }, data: {}, by: "human" }).by).toBe("human");
+  });
+  it("the editor's own check: exactly { spec, data }, and the 4096-byte data bound (#1894 review)", async () => {
+    const { widget } = await load();
+    const spec = { v: 1, title: "F", items: ["l", "m", "n"].map(key => ({ type: "list", key })) };
+    expect(widget.widgetProblem("sidebar", { spec, data: {}, extra: 1 })).toBe('{ "spec": …, "data": … }');
+    const lines = Array(6).fill("🙂".repeat(60));                   // 1440 bytes a list: three are over 4096
+    expect(widget.widgetProblem("sidebar", { spec, data: { l: lines, m: lines } })).toBeNull();
+    expect(widget.widgetProblem("sidebar", { spec, data: { l: lines, m: lines, n: lines } })).toBe("data: at most 4096 bytes");
+    expect(widget.widgetProblem("sidebar", { spec, data: { l: ["ok"] } })).toBeNull();
   });
   it("an agent's widget is shown only with agents' looks shown: not with the switch off, not in safe mode", async () => {
     let { widget, themes } = await load();

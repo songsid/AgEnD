@@ -190,7 +190,8 @@ import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, type WebChatAttachment } from "./web-chat-history.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
-import { WebPrefsStore } from "./web-prefs.js";
+import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
+import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WebAppearance } from "./web-appearance.js";
@@ -206,6 +207,7 @@ import { cardPicture, handleViewRequest, humanCards, isViewPath, profileIdentiti
 import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
 import { cardVersion, resolveCard } from "./web-card.js";
+import { ModStore } from "./web-mod-store.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
 import { accentColor, avatarFor, ownBotConnections, type AvatarDescriptor } from "./instance-avatar.js";
@@ -1331,6 +1333,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** A fleet.yaml instance (own key) or a ClassicBot room, now (#1629: a person's reset/lock names one). */
   isKnownInstance(name: string): boolean {
     return Object.hasOwn(this.fleetConfig?.instances ?? {}, name) || (this.classicChannels?.getAll() ?? []).some((ch) => ch.instanceName === name);
+  }
+
+  private modStore?: ModStore;
+  /**
+   * #1629 r4-5: installed mods and each person's staged import. The effect library (Sol's B2) is not here yet: until it
+   * is, a bundle carrying effects is refused (effects_unavailable) and the rest imports as usual.
+   */
+  get mods(): ModStore {
+    return (this.modStore ??= new ModStore(this.dataDir, {
+      themes: this.themeStore,
+      prefs: this.webPrefs,
+      ownerCss: this.ownerCss,
+      effects: null,
+      context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits(), effects: null }),
+      isKnownInstance: (name) => this.isKnownInstance(name),
+      prefsIdentity: OPERATOR,
+    }));
+  }
+  /** #1629 r4-5: an instance's card text as every viewer sees it (a person's fields over the agent's). */
+  modCardText(name: string): { tagline?: string; bio?: string } {
+    const card = resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card);
+    return { ...(card.tagline ? { tagline: card.tagline.text } : {}), ...(card.bio ? { bio: card.bio.text } : {}) };
   }
 
   private ownerCssStore?: OwnerCssStore;
@@ -10665,7 +10689,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.mods.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);

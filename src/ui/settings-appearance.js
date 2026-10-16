@@ -4,6 +4,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
+import { ModsCard } from "./settings-mods.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
@@ -37,7 +38,7 @@ function refusal(body) {
 export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
-  return html`<${ThemesCard} /><${CardSizeCard} /><${SidebarWidgetCard} /><${OwnerCssCard} /><${DeviceCard} /><${CardLimitsCard} />`;
+  return html`<${ThemesCard} /><${CardSizeCard} /><${SidebarWidgetCard} /><${OwnerCssCard} /><${ModsCard} /><${DeviceCard} /><${CardLimitsCard} />`;
 }
 
 /** #1629 r4.1 Q3 (a): every identity card's size on this person's screens (a card's own control sets it apart). */

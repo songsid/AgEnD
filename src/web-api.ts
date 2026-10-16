@@ -7,6 +7,12 @@ import type { PaneContextSource } from "./pane-context-cache.js";
 import { settingsRequestExecution, settingsWrite, isSettingsReplay } from "./settings-request-capability.js";
 import { readBoundedWebBody } from "./web-body.js";
 import type { OwnerCssStore } from "./web-owner-css-store.js";
+import type { ModStore } from "./web-mod-store.js";
+import { MOD_MAX_BYTES } from "./web-mod-bundle.js";
+import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
+import { AGENT_WIDGET_SLOTS, checkWidgetData, checkWidgetSpec } from "./web-widget.js";
+import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
+import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -230,6 +236,10 @@ export interface WebApiContext {
   /** #1629: every instance's theme (web-themes.json), read by the page; a person's reset and lock. */
   readonly themeStore?: ThemeStore;
   readonly webAppearance?: WebAppearance;
+  /** #1629 r4-5: installed mods and a person's staged import. */
+  readonly mods?: ModStore;
+  /** #1629 r4-5: an instance's card text as shown (a person's fields over the agent's), for a mod's export. */
+  modCardText?(name: string): { tagline?: string; bio?: string };
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
@@ -421,6 +431,150 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
     }
   })().catch(fail);
   return true;
+}
+
+/**
+ * #1629 r4 §4 (r4-5): mods — a person's import (stage, then commit), uninstall and export. Every route is a signed-in
+ * session's, writes an admin's: never the CLI's header token (the way an agent could reach it) and never the public link
+ * (absent from its manifest, and refused here too). `who()` is asked first and again once a body is in.
+ */
+function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const mods = ctx.mods;
+  if (!mods) { json(res, 404, { error: "Mods are not kept on this fleet" }); return true; }
+  const reading = method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "mods_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "mods_need_a_signed_in_session" };
+    if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "mods_need_an_admin_session" };
+    return { person: webPersonKey(verdict.session.owner) };
+  };
+  const first = who();
+  if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  const again = (): string | null => {
+    if (!permitWebContinuation(req, res, ctx)) return null;
+    const now = who();
+    if ("status" in now) { json(res, now.status, { error: now.error }); return null; }
+    if (now.person !== first.person) { json(res, 409, { error: "mods_person_changed" }); return null; }
+    return now.person;
+  };
+  const answer = (r: { ok: boolean; status?: number; error?: string; detail?: string; problems?: unknown }, body: unknown) => {
+    if (r.ok) json(res, 200, body);
+    else json(res, r.status ?? 500, { error: r.error, ...(r.detail ? { detail: r.detail } : {}), ...(r.problems ? { problems: r.problems } : {}) });
+  };
+  const fail = (err: unknown) => {
+    ctx.logger.error({ err: (err as Error).message }, "Mod request failed");
+    try { json(res, 500, { error: "Mod request failed" }); } catch { /* already answered */ }
+  };
+
+  if (path === "/ui/mods" && method === "GET") { json(res, 200, { ...mods.list(), staged: mods.staged(first.person) }); return true; }
+  // A staged mod's picture (this session's person's stage only): the plan shows the actual pictures before install.
+  const stagedPic = /^\/ui\/mods\/staged\/([0-9a-f]{32})$/.exec(path);
+  if (stagedPic && method === "GET") {
+    const pic = mods.stagedPicture(first.person, stagedPic[1]!);
+    if (!pic) { json(res, 404, { error: "No such image" }); return true; }
+    res.writeHead(200, { "Content-Type": pic.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; sandbox" });
+    res.end(Buffer.from(pic.bytes));
+    return true;
+  }
+  const fileMatch = /^\/ui\/mods\/file\/([0-9a-f]{32})$/.exec(path);
+  if (fileMatch && method === "GET") {
+    const text = mods.bundleText(fileMatch[1]!);
+    const rec = mods.list().mods.find(m => m.id === fileMatch[1]);
+    if (text === null || !rec) { json(res, 404, { error: "no_such_mod" }); return true; }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+      "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
+    res.end(text);
+    return true;
+  }
+  if (method !== "POST" || !["/ui/mods/stage", "/ui/mods/abort", "/ui/mods/commit", "/ui/mods/uninstall", "/ui/mods/export"].includes(path)) {
+    json(res, 404, { error: "not found" });
+    return true;
+  }
+  (async () => {
+    if (path === "/ui/mods/stage") {
+      // Too large by its own declared length: answered before a byte is read (the body is drained, not cut off).
+      if (Number(req.headers["content-length"]) > MOD_MAX_BYTES) { req.resume(); json(res, 413, { error: "mod_too_large", detail: `at most ${MOD_MAX_BYTES / 1024 / 1024} MiB` }); return; }
+      let raw: Buffer;
+      try { raw = await readBoundedWebBody(req, MOD_MAX_BYTES); } catch { json(res, 413, { error: "mod_too_large", detail: `at most ${MOD_MAX_BYTES / 1024 / 1024} MiB` }); return; }
+      const person = again();
+      if (!person) return;
+      let text: string;
+      try { text = new TextDecoder("utf-8", { fatal: true }).decode(raw); } catch { json(res, 400, { error: "mod_invalid", problems: [{ path: "", problem: "not UTF-8" }] }); return; }
+      const r = mods.stage(person, text);
+      answer(r, r.ok ? { stage: r.stage, plan: r.plan, plan_hash: r.plan_hash } : null);
+      return;
+    }
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    const person = again();
+    if (!person) return;
+    if (!body || typeof body !== "object" || Array.isArray(body)) { json(res, 400, { error: "an object" }); return; }
+    if (path === "/ui/mods/abort") { const r = mods.abort(person, body.stage); answer(r, { ok: true }); return; }
+    if (path === "/ui/mods/commit") {
+      const r = mods.commit(person, body);
+      if (r.ok) ctx.emitSseEvent("status", ctx.getUiStatus());   // themes_rev and prefs_rev moved: every page re-reads
+      answer(r, r.ok ? { id: r.id, applied: r.applied, ...(r.css ? { css: r.css } : {}) } : null);
+      return;
+    }
+    if (path === "/ui/mods/uninstall") { const r = mods.uninstall(body.id); answer(r, r.ok ? { ok: true, released: r.released } : null); return; }
+    // Export: what is in force now, as a bundle file.
+    const r = exportMod(ctx, person, body);
+    if (!r.ok) { json(res, r.status, { error: r.error, ...(r.detail ? { detail: r.detail } : {}) }); return; }
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+      "Content-Disposition": `attachment; filename="${r.filename}"` });
+    res.end(r.text);
+  })().catch(fail);
+  return true;
+}
+
+/** A person's export: an instance's look (theme, identity, its widgets), their sidebar widget and their own CSS. */
+function exportMod(ctx: WebApiContext, person: string, body: Record<string, unknown>): { ok: true; text: string; filename: string } | { ok: false; status: number; error: string; detail?: string } {
+  const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+  const inc = isObj(body.include) ? body.include : null;
+  if (!inc) return { ok: false, status: 400, error: "include" };
+  const meta = { name: body.name, version: body.version, title: body.title };
+  if (typeof meta.name !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(meta.name)) return { ok: false, status: 400, error: "name", detail: "a-z, 0-9 and - (1..64)" };
+  if (typeof meta.version !== "string" || !/^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/.test(meta.version)) return { ok: false, status: 400, error: "version", detail: "MAJOR.MINOR.PATCH" };
+  // The importer's own rule (#1897 review): what is exported always imports.
+  const title = canonicalText(meta.title, 1, 60);
+  if (title === null) return { ok: false, status: 400, error: "title", detail: "1..60 characters on one line" };
+  const parts: ModExportParts = {};
+  const wantsInstance = inc.theme === true || inc.identity === true || (isObj(inc.widgets) && AGENT_WIDGET_SLOTS.some(s => (inc.widgets as Record<string, unknown>)[s] === true));
+  let name: string | null = null;
+  if (wantsInstance) {
+    if (typeof body.instance !== "string" || !ctx.isKnownInstance?.(body.instance) || !ctx.themeStore) return { ok: false, status: 400, error: "instance" };
+    name = body.instance;
+  }
+  if (name && ctx.themeStore) {
+    const store = ctx.themeStore;
+    const rec = store.get(name);
+    if (inc.theme === true) parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; } };
+    if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
+    for (const slot of AGENT_WIDGET_SLOTS) {
+      const w = rec.placements.widgets[slot];
+      if (isObj(inc.widgets) && inc.widgets[slot] === true && w) (parts.widgets ??= {})[slot] = { spec: w.spec, data: w.data };
+    }
+  }
+  if (isObj(inc.widgets) && inc.widgets.sidebar === true && ctx.webPrefs) {
+    const v = ctx.webPrefs.read(OPERATOR).values["widget.sidebar"] as { spec?: unknown; data?: unknown } | undefined;
+    const spec = v ? checkWidgetSpec(v.spec, "sidebar") : null;
+    const data = spec?.ok ? checkWidgetData(v!.data, spec.value) : null;
+    if (spec?.ok && data?.ok) (parts.widgets ??= {}).sidebar = { spec: spec.value, data: { ...data.value } };
+  }
+  if (inc.ownerCss === true && ctx.ownerCss) {
+    const state = ctx.ownerCss.state(person);
+    const checked = state.text ? checkOwnerCss(state.text, new Set(state.assets.map(a => a.id))) : null;
+    if (state.text && checked?.ok) {
+      // Only the assets this text names travel (read from its tokens: url("\\61sset:<id>") names one too).
+      const named = ownerCssAssetRefs(checked.tokens);
+      const assets = state.assets.filter(a => named.has(a.id)).flatMap(a => { const b = ctx.ownerCss!.asset(person, a.id); return b ? [{ id: a.id, bytes: b.bytes, kind: a.kind }] : []; });
+      parts.ownerCss = { text: state.text, assets };
+    }
+  }
+  const built = buildModBundle({ name: meta.name, version: meta.version, title }, parts);
+  return built.ok ? built : { ok: false, status: built.error === "nothing_to_export" ? 400 : 409, error: built.error };
 }
 
 /** #1827: a web person as the web chat shows them to agents and chats. */
@@ -984,6 +1138,9 @@ export function handleWebRequest(
   if (path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")) {
     return handleOwnerCss(req, res, url, ctx, path, method);
   }
+
+  // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
+  if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
   // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.
