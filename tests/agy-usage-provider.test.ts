@@ -136,6 +136,8 @@ describe("agy grouped quota summary (#1898)", () => {
       { bucketId: "gemini-2.5-high", displayName: "Gemini 2.5 High", remainingFraction: 0.5 },
       { bucketId: "claude-opus-4-5-haiku", remainingFraction: 0.5 },
       { bucketId: "gpt-5-high", remainingFraction: 0.5 },
+      { bucketId: "gemini-2.5h-preview", remainingFraction: 0.5 },   // 2.5 h, 15 h: not a five-hour limit
+      { bucketId: "claude-15h", remainingFraction: 0.5 },
     ]);
     expect(metrics.map(m => m.label)).toEqual(["Gemini", "Claude & others"]);
   });
