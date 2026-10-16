@@ -34,7 +34,7 @@ All other operations (create/delete/start instances, delegate tasks) are handled
 ## Service management
 
 ```bash
-agend start                     # Start AgEnD service (requires install)
+agend start                     # Start installed service; with no service, start a detached fleet
 agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
 agend update                    # Update on the installed channel (an alpha stays on alpha, a beta on beta) and restart
@@ -354,6 +354,8 @@ agend access lock <name>        # Lock instance access (whitelist only)
 agend access unlock <name>      # Unlock instance access (enable pairing)
 agend access pair <name> <uid>  # Generate pairing code
 ```
+
+`access pair` generates a code; it does not approve one. There is no CLI code-confirmation command or `access add`. An owner can grant access through the configured user list; saved and YAML lists are combined as described in [access configuration](configuration.md#channelaccess).
 
 ## Setup & installation
 

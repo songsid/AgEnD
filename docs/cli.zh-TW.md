@@ -35,7 +35,7 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 ## 服務管理 (Service Management)
 
 ```bash
-agend start                     # 啟動 AgEnD 服務（需先安裝）
+agend start                     # 啟動已安裝的服務；沒有服務時啟動背景 fleet
 agend stop                      # 停止 AgEnD 服務
 agend restart                   # 重啟 AgEnD 服務
 agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
@@ -235,7 +235,7 @@ agend access unlock <name>      # 解鎖實例存取（開啟配對模式）
 agend access pair <name> <uid>  # 產生配對碼
 ```
 
-（注意：沒有 `access add`——配對走 `access pair`。）
+`access pair` 只產生碼，不會核准。CLI 沒有確認配對碼的指令，也沒有 `access add`；主人可透過設定的使用者名單授權。保存狀態與 YAML 名單會合併，見[存取設定](configuration.zh-TW.md#channelaccess)。
 
 ## 設定與安裝 (Setup & Installation)
 
