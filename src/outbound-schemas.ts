@@ -239,6 +239,20 @@ export const RemoveWebWidgetArgs = z.object({
   slot: z.enum(["chat_header", "details"]).optional().describe("The slot to empty (default both). A widget a person placed stays."),
 });
 
+// #1629 CW1 effects: own caller only. Internal upload bytes are never public MCP args.
+export const UploadWebEffectArgs = z.object({
+  dir: z.string().min(1).max(4096).describe("A CW1 directory in your working directory: effect.json, worker.js, optional poster/cursor and at most sixteen raster assets. No HTML or CSS; normalized size <=1 MiB."),
+}).strict();
+export const ListWebEffectsArgs = z.object({}).strict();
+export const PreviewWebEffectArgs = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/) }).strict();
+export const ProfileWebEffectArgs = PreviewWebEffectArgs;
+export const ApplyWebEffectArgs = z.object({
+  id: z.string().regex(/^[0-9a-f]{32}$/),
+  params: z.record(z.string().max(32), z.union([z.string().max(128), z.number().finite(), z.boolean()])).optional().describe("Typed overrides declared by the effect; unknown keys or out-of-range values refuse the whole apply."),
+}).strict();
+export const RemoveWebEffectArgs = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/).optional() }).strict();
+export const DeleteWebEffectArgs = PreviewWebEffectArgs;
+
 export const SetDescriptionArgs = z.object({
   description: NonEmptyString.describe(
     "Your role description, e.g. 'Code reviewer focused on security and error handling'",

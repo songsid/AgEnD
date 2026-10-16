@@ -44,10 +44,14 @@ export class WebAppearance {
     return limit.ok ? null : { ...limit, message: `Too many changes; try again in ${limit.retry_after_s} s.` };
   }
 
+  /** The effect tools share this exact switch/lock/limiter policy; no parallel gate or bucket. */
+  authorizeEffect(instance: string, buckets: readonly AppearanceBucket[]): ToolAnswer | null { return this.refusal(instance, buckets); }
+
   /** get_web_theme: the caller's theme and everything an agent needs to write a good one. */
   getTheme(instance: string): ToolAnswer {
     const r = this.store.get(instance);
     return {
+      effects: r.placements.effects,
       theme: r.theme, by: r.by, locked: r.locked, agent_edit: agentAppearanceEditAllowed(this.webConfig()),
       defaults: THEME_DEFAULTS,
       assets: r.assets.map(a => ({ id: a.id, slot: a.slot, bytes: a.bytes })),
