@@ -17,6 +17,7 @@ export interface EffectToolDeps {
   preview(instance:string,id:string,title:string):Promise<Answer>;
   profiles(id:string):Answer;
   profileSummary?(id:string):Answer;
+  profileSummaries?(ids:readonly string[]):Record<string,Answer>;
   clock?:()=>number;
 }
 export const WEB_EFFECT_TOOLS: ReadonlySet<string> = new Set(["upload_web_effect","list_web_effects","preview_web_effect","profile_web_effect","apply_web_effect","remove_web_effect","delete_web_effect"]);
@@ -40,7 +41,9 @@ export class WebEffectTools {
   }
   list(instance:string):Answer {
     const result=this.deps.library.list(this.principal(instance));
-    return result.ok?{effects:result.entries.map(e=>({id:e.id,name:e.manifest.name,title:e.manifest.title,regions:e.manifest.regions,layer:e.manifest.layer,bytes:e.bytes,latest_profile:this.deps.profileSummary?this.deps.profileSummary(e.id):this.deps.profiles(e.id)}))}:{error:result.error};
+    if(!result.ok)return {error:result.error};
+    const profiles=this.deps.profileSummaries?.(result.entries.map(e=>e.id));
+    return {effects:result.entries.map(e=>({id:e.id,name:e.manifest.name,title:e.manifest.title,regions:e.manifest.regions,layer:e.manifest.layer,bytes:e.bytes,latest_profile:profiles?profiles[e.id]:this.deps.profileSummary?this.deps.profileSummary(e.id):this.deps.profiles(e.id)}))};
   }
   apply(instance:string,args:Answer):Answer {
     const refused=this.deps.authorize(instance,["change"]);if(refused)return refused;

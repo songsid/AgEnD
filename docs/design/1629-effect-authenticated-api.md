@@ -19,7 +19,7 @@ A **runtime read** with `?instance=<name>` is different from export authority. I
 | `POST /ui/effects/apply` | `{instance,id,params?}`; exact caller read, typed overrides, explicit host `by:"human"`, at most two chat placements |
 | `POST /ui/effects/remove` | `{instance,id?}`; remove specified/all chat placements and collect only unreferenced blobs |
 | `POST /ui/effects/share` | `{id,shared}`; explicit boolean on the caller's claim |
-| `DELETE /ui/effects/<id>` | Remove only the caller's unused direct claim, preserving other holders and references |
+| `DELETE /ui/effects/<id>` | Remove only the caller's unused claim; other principals and live references remain protected. Explicit deletion may collect that caller's orphan mod holders |
 | `GET /ui/effects/placements?instance=...` | Current readable chat placements with host provenance and resolved default/override params |
 | `GET /ui/effects/resource/<id>[?instance=...]` | UTF-8 Worker source, normalized manifest and only `assets/*` rasters, base64 with sniffed MIME |
 | `GET /ui/effects/image/<id>/{poster,cursor}.png[?instance=...]` | Host-only normalized PNG; never included in Worker assets |

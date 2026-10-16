@@ -445,16 +445,17 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
   if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
-  const who = (): { person: string } | { status: number; error: string } => {
+  const who = (): { person: string; canWrite: boolean } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
     if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
-    return { person: webPersonKey(verdict.session.owner) };
+    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin" };
   };
   const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
   const service = ctx.effectService; if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
-  const answer = (result: Record<string, unknown>) => json(res, typeof result.error === "string" ? result.error === "not_found" ? 404 : result.error === "profile_rate_limited" ? 429 : 400 : 200, result);
+  const unavailable = new Set(["themes_unreadable", "profiles_unreadable", "library_unreadable", "references_unreadable", "library_busy", "profiles_busy", "profiles_write_failed", "library_write_failed"]);
+  const answer = (result: Record<string, unknown>) => json(res, typeof result.error === "string" ? result.error === "not_found" ? 404 : result.error === "profile_rate_limited" ? 429 : unavailable.has(result.error) ? 503 : 400 : 200, result);
   const idPath = /^\/ui\/effects\/(resource|profile)\/([0-9a-f]{32})$/.exec(path);
   const instance = url.searchParams.get("instance") ?? undefined;
   if (reading) {
@@ -465,7 +466,7 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
       else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
       return true;
     }
-    if (path === "/ui/effects") answer(service.list(first.person));
+    if (path === "/ui/effects") answer({ ...service.list(first.person), canWrite: first.canWrite });
     else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance));
     else if (idPath?.[1] === "resource") answer(service.resource(first.person, idPath[2]!, instance));
     else if (idPath?.[1] === "profile" && instance === undefined) answer(service.profile(first.person, idPath[2]!));
