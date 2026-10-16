@@ -153,7 +153,13 @@ export function ModsCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const file = useRef(null);
-  const load = async () => { const r = await call("/ui/mods"); setState(r.ok && r.body ? r.body : { failed: true }); };
+  // Only an answer of the expected shape is shown (#1889's lesson): anything else is "couldn't load", never a crash.
+  const load = async () => {
+    const r = await call("/ui/mods");
+    const b = r.ok && r.body && typeof r.body === "object" ? r.body : null;
+    const staged = b && b.staged && typeof b.staged === "object" && typeof b.staged.stage === "string" && b.staged.plan && Array.isArray(b.staged.plan.items) ? b.staged : null;
+    setState(b && Array.isArray(b.mods) ? { mods: b.mods.filter((m) => m && typeof m.id === "string"), staged } : { failed: true });
+  };
   useEffect(() => { load(); }, []);
   if (!state) return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3><p class="sub">…</p></section>`;
   if (state.failed) return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3><p class="err">${tn("modsLoadFailed")}</p></section>`;
