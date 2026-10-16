@@ -67,8 +67,8 @@ function uiFiles(dir = UI): string[] {
   });
 }
 
-describe("mountPreview is the one frame (§5.3)", () => {
-  it("nothing else in src/ui creates an iframe or writes sandbox", () => {
+describe("preview and effect factories are the only frames (§5.3 / #1629)", () => {
+  it("only the reviewed preview and Canvas Worker factories create iframes or write sandbox", () => {
     const hits = uiFiles().flatMap(f => {
       // Code only: comments may name these words.
       // Strip until nothing changes, so a comment that removal joins up is stripped too.
@@ -79,7 +79,7 @@ describe("mountPreview is the one frame (§5.3)", () => {
       } while (src !== before);
       return [...src.matchAll(/createElement\(\s*["'`]iframe["'`]\s*\)|<iframe\b|["'`]sandbox["'`]|\.sandbox\b/gi)].map(m => `${f.slice(UI.length + 1)}: ${m[0]}`);
     });
-    expect(hits).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"']);
+    expect(hits.sort()).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"', 'shared/effect-frame.js: createElement("iframe")', 'shared/effect-frame.js: "sandbox"'].sort());
     expect(PREVIEW.indexOf('createElement("iframe")')).toBeGreaterThan(PREVIEW.indexOf("function mountPreview("));
   });
 
