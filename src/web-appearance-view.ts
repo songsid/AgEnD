@@ -8,6 +8,7 @@
  * picture inside outgrew what an agent's Read takes); text is XML-escaped; colours are checked again; fonts are generic
  * families. No browser, no live session, no other instance's content.
  */
+import { autoIdentityColor, identityColorValue, resolveIdentityColor, type IdentityColorSource, type IdentityColorTiers } from "./web-identity-color.js";
 import { effectivePalette, type Palette, type Theme, THEME_DEFAULTS, type ThemeMode } from "./web-theme.js";
 import type { ResolvedCard } from "./web-card.js";
 
@@ -20,6 +21,17 @@ export interface FrameEntry {
   accent?: string;
   theme_avatar?: { kind: string; src?: string };
   theme_accent?: string;
+  /** #1958: the identity colour's tiers (getUiStatus). */
+  color?: IdentityColorTiers;
+}
+
+/**
+ * #1958: the identity colour drawn for this instance while agents' themes are shown, where it comes from, and its value
+ * on a light and a dark page — what the agent needs to know: a person's pick wins over its theme's accent.
+ */
+export function resolvedIdentityColor(e: FrameEntry): { color: string; source: IdentityColorSource; light: string; dark: string } {
+  const r = resolveIdentityColor(e.color ?? { auto: autoIdentityColor(e.name) }, { showThemes: true });
+  return { color: r.color, source: r.source, light: identityColorValue(r.color, "light"), dark: identityColorValue(r.color, "dark") };
 }
 
 /** The face the page draws while agents' themes are shown (the default), and where it comes from. */
@@ -66,6 +78,7 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
     display_name: i.entry.display_name ?? null,
     avatar: resolvedAvatar(i.entry),
     ring: resolvedRing(i.entry),
+    identity_color: resolvedIdentityColor(i.entry),
     card,
     theme: effectiveTheme(i.theme),
     working_label: i.theme.workingLabel ?? null,

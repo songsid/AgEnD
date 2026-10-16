@@ -25,8 +25,11 @@ chrome, a person's sidebar widget, or a person's custom CSS.
 ## Look first
 
 - `get_web_appearance` — how you appear **now**, resolved exactly as the dashboard resolves it: your face and where it
-  comes from (`profile`, `theme`, `bot`, `emoji` or `initial`), your ring colour, your card field by field (each marked
-  `human` or `agent`), your theme per light/dark mode after the defaults, whether a person locked it, and your limits.
+  comes from (`profile`, `theme`, `bot`, `emoji` or `initial`), your ring colour, your **identity colour**
+  (`identity_color`: the colour people find you by in the sidebar, its `source` — `person`, `agent` (your theme's
+  `accent`), `role` (your own bot's Discord role) or `auto` — and its `light` / `dark` values), your card field by field
+  (each marked `human` or `agent`), your theme per light/dark mode after the defaults, whether a person locked it, and
+  your limits.
 - `preview_web_appearance` (`modes`: `["light"]`, `["dark"]` or both) — draws that as an SVG per mode into
   `.agend/appearance/<mode>.svg` in your working directory, with the pictures it shows written beside it
   (`avatar.png`, `portrait.png`, …), and returns both lists of paths. Read the SVGs for exact colours, geometry and
@@ -57,7 +60,8 @@ Typed values only; anything else is refused with `{ errors: [{ path, problem }] 
   `#rrggbb` (or `#rgb`). **Contrast is checked per mode**: `text` at least 4.5:1 on `bg`, `surface` and both bubbles;
   `text2` at least 4.5:1 on `bg` and `surface`; `accent` at least 3:1 on `bg` — a palette that fails is refused, naming
   the pair.
-- `accent`: `#rrggbb` for both modes (a mode's own `accent` wins).
+- `accent`: `#rrggbb` for both modes (a mode's own `accent` wins). It is also your identity colour, unless a person
+  picked one for you in the dashboard: a person's pick always wins, and `get_web_appearance` says which is in force.
 - `bubble`: `{ radius: 0..24, border: "none" | "thin" | "accent" }`.
 - `font`: `"inter"`, `"system"` or `"mono"`.
 - `background`: `{ image: <asset id>, fit: "cover" | "contain", opacity: 0.05..1 }`.

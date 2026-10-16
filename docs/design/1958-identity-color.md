@@ -21,7 +21,7 @@ Status: design note, for decision. It targets 2.3.0 on `feat/2.3-web-mod` and is
 ### 1. One colour per instance, resolved in a fixed order
 
 The order runs from the person's pick to an automatic fallback:
-1. **A person's pick**, stored with the identity card: a new `color` field in `instance_card`, set like `card_tagline`.
+1. **A person's pick**, set from the same places as the identity card (`color`, next to `card_tagline`), stored in its own table.
 2. **The agent's theme accent** (#1629 `theme.accent`), only while this device shows themes (`fx.show`, not safe mode), as today.
 3. **The own bot's Discord role colour**, under today's own-bot rule.
 4. **Automatic:** one of the 12 palette colours, chosen by a stable hash of the instance's name (FNV-1a), so it never changes between reloads. Every instance and every room gets one.
@@ -65,7 +65,7 @@ Message bubbles stay with the agent's theme (`bubble`). Colouring them by identi
 
 ### 5. Server, API and rules
 
-- **Store:** `HumanCardStore` (`instance_card` in `profiles.db`) gets a `color` field (TEXT, null when unset), added in place for existing databases. The value is either `preset:<id>` or `#rrggbb`; anything else is refused with a 400.
+- **Store:** its own table in `profiles.db`, `instance_color (instance_name, color, updated_at)`. It is kept apart from `instance_card`, so "Clear card" leaves the colour alone, and an older AgEnD reading `profiles.db` sees only what it knew. The value is either `preset:<id>` or `#rrggbb`; anything else is refused with a 400, and a status read never creates the database or the table.
 - **Write:** `POST /api/profile/<name>` takes `color` (a preset id, a hex value, or `null` to clear), next to `card_tagline`.
   - It is allowed wherever profile and card edits are, the public link included, following r4.1 Q2 ("the identity card follows the profile and avatar").
   - After a write, the server sends a status event so other devices repaint. Today's profile writes don't, so this fixes that as well.
