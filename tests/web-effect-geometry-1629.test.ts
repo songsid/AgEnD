@@ -16,7 +16,7 @@ function fixture(options = {}) {
   doc.querySelector = vi.fn(() => link);
   const trusted: any[] = [], root = { querySelectorAll: vi.fn(() => trusted) }, classes = new Set<string>();
   const values = () => sheets[0]?.cssRules[0]?.style.values ?? new Map();
-  const frame = { ownerDocument: doc, parentElement: html, isConnected: true, getBoundingClientRect: vi.fn(() => Object.fromEntries(["x", "y", "width", "height"].map(k => [k, parseFloat(values().get(k === "x" ? "left" : k === "y" ? "top" : k))]))), classList: { add: vi.fn((x: string) => classes.add(x)), remove: vi.fn((x: string) => classes.delete(x)) }, remove: vi.fn() };
+  const frame = { ownerDocument: doc, parentElement: html, isConnected: true, getBoundingClientRect: vi.fn(() => Object.fromEntries(["x", "y", "width", "height"].map(k => [k, parseFloat(values().get(k === "x" ? "left" : k === "y" ? "top" : k))]))), classList: { add: vi.fn((x: string): void => { classes.add(x); }), remove: vi.fn((x: string): void => { classes.delete(x); }) }, remove: vi.fn() };
   host.getComputedStyle.mockImplementation(() => ({ transform: "none", perspective: "none", filter: "none", contain: "none", willChange: "auto", ...Object.fromEntries(["position", "pointerEvents", "visibility", "opacity", "zIndex", "clipPath"].map(k => [k, values().get(k.replace(/[A-Z]/g, c => "-" + c.toLowerCase()))])) }));
   const api = createEffectGeometry({ window: host, trustRoot: root, ...options });
   return { api, frame, trusted, host, root, sheets, classes, link, bind(by = "agent", layer = "front") { return api.bind(frame, { by, layer }); }, style: () => sheets[0].cssRules[0].style };
