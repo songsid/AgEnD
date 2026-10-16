@@ -124,7 +124,8 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     if (!alive()) { dispose(); return; } if (syncing) { queueSync(); return; }
     syncing = true;
     try {
-      if (source && !sourceAlive(source)) discard(source);
+      const candidate = source;
+      if (candidate && !sourceAlive(candidate)) discard(candidate);
       const before = revision, value = observation(), s = source;
       if (!alive() || revision !== before || s !== source) { if (alive()) queueSync(); return; }
       const next = JSON.stringify([revision, value.context]);

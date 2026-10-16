@@ -161,4 +161,12 @@ describe("#1629 one unmounted app-owned effect pool", () => {
     h.api.detachChat(); h.registry.publish.mockClear(); h.api.reply({ instance: "b" }); h.api.changedChat(); expect(h.registry.publish).not.toHaveBeenCalled(); expect(a.api.snapshot().effects).toEqual([]); h.api.dispose();
   });
 
+  it("a current predicate attaching B cannot make the outer pass discard B instead of A", async () => {
+    const h = rig(); let replace = false, nested: any = null;
+    const a = h.chat("a", { current: () => { if (replace) { replace = false; nested = h.chat("b"); } return true; } }); await flush();
+    replace = true; a.api.sync(); await flush(); expect(nested.api).not.toBeNull();
+    expect(nested.api.snapshot().effects).toHaveLength(1); expect(nested.api.snapshot().rows[0]).toMatchObject({ instance: "b", id });
+    a.api.dispose(); expect(nested.api.snapshot().rows[0].instance).toBe("b"); expect(h.factories.registry).toHaveBeenCalledOnce(); expect(h.factories.loader).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+
 });
