@@ -343,7 +343,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     return view();
   }
   function pointerGate(proof = coverage()) {
-    if (!globalAllowed() || context.hidden || context.modal || !proof) return false;
+    if (!globalAllowed() || context.hidden || context.modal || !proof || proof.front !== true) return false;
     try {
       const focused = host.document.activeElement;
       return host.document.designMode !== "on" && !!focused && ["BODY", "BUTTON", "A"].includes(focused.tagName) && focused.isContentEditable === false && typeof focused.matches === "function" && !focused.matches("input,textarea,select,[contenteditable]:not([contenteditable='false'])");
