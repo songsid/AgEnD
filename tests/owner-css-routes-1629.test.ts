@@ -250,11 +250,16 @@ describe("no agent path reaches it", () => {
       // The web routes, the store and its gate; the prefs key; the image module (shared, a comment); the asset list (the
       // static owner-css.js the page loads) — none is an agent's tool or route.
       // web-auth.ts: the passive-read classification of the page's own owner-CSS reads.
-      if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts"].includes(f)) continue;
+      // web-mod-*.ts (#1629 r4-5): the mod format, and a person's import and export of their own CSS — reached only by
+      // the /ui/mods routes (a signed-in session; tested in web-mods-1629), never by a tool or the agent endpoint.
+      if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts",
+        "web-mod-bundle.ts", "web-mod-store.ts", "web-mod-export.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);
     const fm = readFileSync(join(src, "fleet-manager.ts"), "utf8");
-    expect(fm.match(/ownerCss/g)?.length, "fleet-manager only holds the store for the web context (field, getter, construction)").toBe(3);
+    // Field, getter, construction — and (r4-5) handing it to the mod store, whose only door is the /ui/mods routes.
+    expect(fm.match(/ownerCss/g)?.length, "fleet-manager only holds the store for the web context").toBe(5);
+    expect(fm).toContain("ownerCss: this.ownerCss,");
   });
 });

@@ -622,6 +622,35 @@ html.lb-open .scroller { overflow: hidden; }
 /* #1629 r4 §3: Settings → Appearance (owner CSS). */
 .s-css-text, .s-widget-text { font-family: var(--font-mono); font-size: var(--fs-sm); width: 100%; min-height: 12rem; resize: vertical; tab-size: 2; }
 .s-widget-preview { max-width: 320px; }
+/* #1629 r4-5: Settings → Appearance → Mods — the plan is shown in full before anything is applied. */
+.s-mod-plan { display: flex; flex-direction: column; gap: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3); }
+.s-mod-plan h4 { font-size: var(--fs-lg); font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.s-mod-plan h4 .muted { font-size: var(--fs-sm); font-weight: var(--fw-regular); }
+.s-mod-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.s-mod-item { display: flex; flex-direction: column; gap: var(--s-1); }
+.s-mod-detail { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); padding-left: 1.75rem; color: var(--text-2); font-size: var(--fs-sm); min-width: 0; }
+.s-mod-widget { display: block; max-width: min(360px, 100%); }
+.s-mod-theme { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; width: 100%; }
+.s-mod-kv { display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.s-mod-kv .k { color: var(--text-3); font-size: var(--fs-xs); min-width: 9em; }
+.s-mod-kv .v { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+.s-mod-sws { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.s-mod-sw { display: inline-flex; align-items: center; gap: var(--s-1); }
+.s-mod-sw-chip { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--border-strong); background: var(--sw, transparent); }
+.s-mod-pic { display: inline-flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.s-mod-pic img { width: 64px; height: 40px; object-fit: cover; border-radius: var(--r-sm); border: 1px solid var(--border); }
+.s-mod-raw summary { cursor: pointer; font-size: var(--fs-xs); color: var(--text-2); }
+.s-mod-widget .aw-chat_header { border-width: 1px; border-radius: var(--r-md); }
+.s-mod-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.s-mod-warn { color: var(--warn); font-size: var(--fs-sm); padding-left: 1.75rem; }
+.s-mod-css-text { margin: 0 0 0 1.75rem; max-height: 240px; overflow: auto; padding: var(--s-2); border-radius: var(--r-sm); background: var(--code-bg); font-family: var(--font-mono); font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.s-mod-err { white-space: pre-line; }
+.s-mod-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.s-mod-list li { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; min-width: 0; }
+.s-mod-list .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.s-mod-export summary { cursor: pointer; font-weight: var(--fw-medium); }
+.s-mod-export[open] { display: flex; flex-direction: column; gap: var(--s-2); }
+.s-mod-boxes { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); }
 .s-css-actions, .s-widget-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .s-css-status { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
 .s-css-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }

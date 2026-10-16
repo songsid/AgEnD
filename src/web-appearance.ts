@@ -225,7 +225,7 @@ export class WebAppearance {
     if (!(AGENT_WIDGET_SLOTS as readonly unknown[]).includes(slot)) return { error: "slot", status: 400 };
     const w = this.store.removeWidgets(instance, [slot as AgentWidgetSlot], "human");
     if (!w.ok) return { error: w.error, status: w.status };
-    this.changed();
+    if (w.removed.length) this.changed();                   // nothing placed there: nothing written, nothing announced
     return { ok: true, removed: w.removed, rev: w.rev };
   }
 

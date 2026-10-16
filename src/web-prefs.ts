@@ -301,6 +301,13 @@ export class WebPrefsStore {
     const v = state.buckets.get(identity)?.values.get(OWNER_CSS_ACTIVE);
     return typeof v === "string" ? v : null;
   }
+  /** #1629 r4-5: the person's owner-CSS trial id, or null (none, or the file cannot be read). */
+  ownerCssTrial(identity: string): string | null {
+    const state = this.load();
+    if (state === "unreadable") return null;
+    const v = state.buckets.get(identity)?.values.get(OWNER_CSS_TRIAL);
+    return typeof v === "string" ? v : null;
+  }
   /**
    * #1629 r4 §3: move the person's owner-CSS pointers in one write — `active` (null: none in force) and `trial` (null:
    * none on trial). A change is a new rev, so their other devices follow.
