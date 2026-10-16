@@ -11,7 +11,7 @@ if(!process.env.PW_DIR)throw Error('Set PW_DIR to private Playwright tools');
 const pw=createRequire(join(resolve(process.env.PW_DIR),'package.json'))('playwright'),out=resolve(process.env.OUT_DIR||'.artifacts/registry-native');mkdirSync(out,{recursive:true});
 const scratch=mkdtempSync(join(out,'private-'));mkdirSync(join(scratch,'home'));mkdirSync(join(scratch,'tmp'));const rows=[],boot='b'.repeat(32);let preview,browser;
 const literal=x=>JSON.stringify(x).replace(/</g,'\\u003c');
-const modules=['effect-registry.js','effect-baseline.js','effect-geometry.js','effect-frame.js','effect-policy.js','effect-profiler.js','effect-stock-snapshot.js'];
+const modules=['effect-registry.js','effect-baseline.js','effect-geometry.js','effect-host-style.js','effect-frame.js','effect-policy.js','effect-profiler.js','effect-stock-snapshot.js'];
 const worker=`const c=agend.canvas.getContext('2d');c.fillStyle='#ff0000';c.fillRect(0,0,agend.canvas.width,agend.canvas.height);agend.on('state',()=>{c.fillStyle='#00ff00';c.fillRect(0,0,agend.canvas.width,agend.canvas.height)});postMessage({type:'metrics',hostFps:999});agend.ready();agend.ready();`;
 const server=createServer((req,res)=>{
  const path=req.url?.slice(1);

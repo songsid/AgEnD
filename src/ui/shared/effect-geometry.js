@@ -1,4 +1,5 @@
 /** #1629: host-only fixed viewport geometry and trust holes through the already-loaded, fixed same-origin app stylesheet. No inline attributes. */
+import { effectHostStyle } from "./effect-host-style.js";
 import { effectTrustClip } from "./effect-policy.js";
 import { effectStockSnapshot, effectStockAllows } from "./effect-stock-snapshot.js";
 let serial = 0;
@@ -45,12 +46,7 @@ export function createEffectGeometry({ window: host } = {}) {
   let sheet;
   try {
     if (!host?.document || host.CSS?.supports("clip-path", 'path(evenodd, "M0 0H1V1H0Z")') !== true) return { ok: false, reason: "geometry_unsupported" };
-    // r4: the existing same-origin link is the only CSS source. No new text source or owner CSS is accepted.
-    const link = host.document.querySelector('link[rel="stylesheet"][href="/assets/app.css"]');
-    const href = new URL("/assets/app.css", host.location.origin).href;
-    if (!link || link.tagName !== "LINK" || link.ownerDocument !== host.document || link.isConnected !== true || link.disabled !== false || !link.sheet || link.sheet.ownerNode !== link || link.sheet.href !== href || link.sheet.disabled !== false) throw Error("app stylesheet unavailable");
-    sheet = link.sheet;
-    if (typeof sheet.insertRule !== "function" || typeof sheet.deleteRule !== "function" || !sheet.cssRules) throw Error("app stylesheet unreadable");
+    sheet = effectHostStyle(host); if (!sheet) throw Error("app stylesheet unavailable");
   } catch { return { ok: false, reason: "geometry_unsupported" }; }
   const bound = new Set(); let disposed = false;
   function bind(frame, { layer, by } = {}) {
