@@ -31,6 +31,7 @@ import {
 } from "./context-percent.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
+import { compareSemver } from "./update-check.js";
 import { SYSINFO_BACKEND_IDS, type BackendCliVersionSnapshot, type SysInfoBackendId } from "./backend/types.js";
 import { recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { resolveInstalledAgend } from "./update-dispatch.js";
@@ -328,9 +329,17 @@ function backendCliLines(versions?: BackendCliVersionSnapshot): string[] {
   ];
 }
 
-export function compactCommandForBackend(backend: string): string {
-  if (backend === "antigravity") return "/clear";
-  return "/compact";
+/**
+ * Board 0340ec89: agy's own `/compact` summarizes the conversation (verified on 1.3.6: "Conversation compacted · 5 steps
+ * summarized", tests/fixtures/agy-1.3.6-compact.pane.txt). AgEnD used to send `/clear` for an agy compact, which wiped
+ * the conversation instead. An agy known to be older than the version `/compact` was verified on is refused (null),
+ * never cleared; an agy whose version is not known yet gets `/compact` (a version without it ignores the line).
+ */
+export const AGY_COMPACT_MIN_VERSION = "1.3.6";
+export function compactCommandForBackend(backend: string, version?: string | null): string | null {
+  if (backend !== "antigravity") return "/compact";
+  const v = typeof version === "string" ? version.match(/\d+\.\d+\.\d+/)?.[0] : undefined;
+  return v && (compareSemver(v, AGY_COMPACT_MIN_VERSION) ?? 0) < 0 ? null : "/compact";
 }
 
 /**
@@ -343,7 +352,7 @@ export function compactCommandForBackend(backend: string): string {
  *    compact into a prompt, so it must never be appended.
  *  - grok 1.0.46: the binary answers "/compact takes no arguments."
  *  - opencode 1.18: `/compact` calls session.summarize with no text.
- *  - kiro-cli: takes none (audit); antigravity has no summarizing compact.
+ *  - kiro-cli: takes none (audit); antigravity's own /compact (1.3.6+, board 0340ec89) takes none either.
  *  - muse 1.4.2: accepts the line (empty session: "nothing to summarize") but
  *    no use of the text is verifiable — unsupported until shown otherwise.
  */
@@ -1153,7 +1162,9 @@ export class TopicCommands {
       const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
         ?? classicBackend
         ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
-      const base = compactCommandForBackend(backend);
+      const agyVersion = backend === "antigravity" ? this.ctx.getBackendCliVersionSnapshot?.()?.antigravity?.version ?? null : null;
+      const base = compactCommandForBackend(backend, agyVersion);
+      if (base === null) return { sent: false, text: t("compact.unsupported_version", backend, agyVersion ?? "?", AGY_COMPACT_MIN_VERSION) };
       const custom = normalizeCompactInstructions(instructions);
       if (custom.length > COMPACT_INSTRUCTIONS_MAX) {
         // Refuse rather than cut: a truncated instruction is a different instruction.
