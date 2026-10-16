@@ -65,7 +65,7 @@ describe("runWebCommand", () => {
     expect((await run(d, "compact")).body).toEqual({ text: "compact -", follow: { kind: "compact", id: "0123456789abcdef" } });
     expect((await run(d, "model", "opus")).body).toEqual({ text: "model opus" });
     expect((await run(d, "effort", "low")).body).toEqual({ text: "effort low" });
-    expect((await run(d, "cancel")).body).toEqual({ text: "cancel.sent|w" });
+    expect((await run(d, "cancel")).body).toEqual({ text: "cancel.sent|w", sent: true });
     expect((await run(deps({ cancel: () => false }), "cancel")).body).toEqual({ text: "cancel.not_running|w" });
     expect((await run(d, "steer", "look at main.ts")).body).toEqual({ text: "steer look at main.ts" });
     expect((await run(d, "btw", "what time is it?")).body).toEqual({ text: "btw what time is it?" });
@@ -107,6 +107,13 @@ describe("runWebCommand", () => {
     expect(await run(untracked, "compact")).toEqual({ status: 200, body: { text: "sent", follow: { kind: "compact", id: null } } });
     const offline = deps({ compact: vi.fn(async () => ({ sent: false, text: "compact.not_connected", watch: null })) });
     expect(await run(offline, "compact")).toEqual({ status: 409, body: { error: "compact.not_connected" } });
+  });
+
+  it("board 003648ac review P2-6: `sent` only for a command actually handed over — a refusal worded as text has none", async () => {
+    expect((await run(deps({ cancel: () => false }), "cancel")).body).not.toHaveProperty("sent");
+    for (const c of ["steer", "btw", "save", "pause", "wake", "ctx", "model"]) expect((await run(deps(), c, c === "save" ? "notes.md" : "x")).body, c).not.toHaveProperty("sent");
+    expect((await run(deps({ clearConfirm: async () => ({ status: 200, text: "clear.sent" }) }), "clear", undefined, { confirm: "t".repeat(32) })).body).toEqual({ text: "clear.sent" });
+    expect((await run(deps({ clearConfirm: async () => ({ status: 200, text: "clear.sent", sent: true }) }), "clear", undefined, { confirm: "t".repeat(32) })).body).toEqual({ text: "clear.sent", sent: true });
   });
 
   it("the public link: /save is refused (a file the caller names, written by the CLI); everything else runs as locally", async () => {
@@ -202,7 +209,7 @@ describe("the web's /clear: the platform's fence, a token used once", () => {
       instanceIpcClients: new Map([["w", { connected: true }]]),
       lifecycle: { epochOf: () => 3, daemons: new Map([["w", daemon]]) }, getDeliveryEpoch: () => 5, isDeliveryEpochCurrent: () => true, shuttingDown: false,
       eventLog: { insert: vi.fn() }, webClearTokens: new Map(),
-      topicCommands: { supportsClear: () => true, sendClear: vi.fn(async () => "clear sent") },
+      topicCommands: { supportsClear: () => true, clearInstance: vi.fn(() => ({ sent: true, text: "clear sent" })) },
       ...over,
     });
     return f;
@@ -216,10 +223,10 @@ describe("the web's /clear: the platform's fence, a token used once", () => {
     expect(a.status).toBe(200);
     const tok = a.body.confirm.token;
     expect(tok).toMatch(/^[0-9a-f]{32}$/);
-    expect(await confirm(f, tok)).toEqual({ status: 200, body: { text: "clear sent" } });
-    expect(f.topicCommands.sendClear).toHaveBeenCalledTimes(1);
+    expect(await confirm(f, tok)).toEqual({ status: 200, body: { text: "clear sent", sent: true } });
+    expect(f.topicCommands.clearInstance).toHaveBeenCalledTimes(1);
     expect((await confirm(f, tok)).status).toBe(409);
-    expect(f.topicCommands.sendClear).toHaveBeenCalledTimes(1);
+    expect(f.topicCommands.clearInstance).toHaveBeenCalledTimes(1);
   });
 
   it("a replaced daemon, another owner, or a moved lifecycle between the question and the yes: stale, nothing cleared", async () => {
@@ -232,7 +239,7 @@ describe("the web's /clear: the platform's fence, a token used once", () => {
       if (change === "delivery") f.isDeliveryEpochCurrent = () => false;
       const r = await confirm(f, tok);
       expect(r.status, change).toBe(409);
-      expect(f.topicCommands.sendClear, change).not.toHaveBeenCalled();
+      expect(f.topicCommands.clearInstance, change).not.toHaveBeenCalled();
     }
   });
 
@@ -249,7 +256,7 @@ describe("the web's /clear: the platform's fence, a token used once", () => {
     tok = (await ask(f)).body.confirm.token;
     f.shuttingDown = true;
     expect((await confirm(f, tok)).status).toBe(409);
-    expect(f.topicCommands.sendClear).not.toHaveBeenCalled();
+    expect(f.topicCommands.clearInstance).not.toHaveBeenCalled();
   });
 
   it("nothing to pin (no owner) or no clear for this backend: refused at the question", async () => {

@@ -189,8 +189,10 @@ Type `/` at the start of the message box for the instance's own chat commands, t
   - `/pause` and `/wake`
   - `/save <file>`
 - **Where the answer shows:** above the message box.
-  - An answer that only says the command was sent (`/clear`, `/cancel`, `/btw`, `/steer`, `/pause`, `/wake`, `/save`) leaves by itself after a few seconds. An answer to read, a list to choose from and a refusal stay until you close them.
-  - `/compact` says **Compacting…** until the instance's transcript records the compaction, then **Conversation compacted**, and leaves. This works for Claude Code and Codex, whose transcripts AgEnD reads. On other backends it says their compaction end can't be detected, and leaves. With no record after 10 minutes it says so and stays.
+  - `/clear` and `/cancel` say they were sent, and that answer leaves by itself after a few seconds. An answer to read, a list to choose from and a refusal (even one worded as plain text) stay until you close them.
+  - `/compact` says **Compacting…** from the moment the command reaches the agent until the agent's own record of the compaction appears, then **Conversation compacted**, and leaves. That record is Claude Code's and Codex's transcript, and kiro's own (Classic, and the TUI's V2 engine). The kiro Log shows it as **Conversation compacted** too.
+  - On other backends (and kiro V3) the card says their compaction end can't be detected, and leaves.
+  - With no record after 10 minutes it says so and stays. If the command never reached the agent, or the agent stopped, restarted or changed backend meanwhile, it says it can't follow the compaction any more.
 - **Not a command:** anything else starting with `/` is sent as an ordinary message, as before. So is a line typed with a file waiting beside it.
 - **Fleet-wide commands** (`/status`, `/restart`, `/update`, `/login`, …) stay in General.
 - **`/raw`** is not offered. Over the temporary public link a message starting with `/raw ` is refused, and so is `/save`.

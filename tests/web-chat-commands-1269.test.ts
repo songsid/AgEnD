@@ -298,6 +298,16 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card()).toBeNull();
   });
 
+  it("/compact the fleet can no longer follow (lost): said, and the card stays", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: "a".repeat(16) } } : {});
+    await c.type("/compact"); await c.key("Enter"); await settle();
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "lost" })); await settle();
+    expect(phase(c)).toBe("Can't follow this compaction: the command did not reach the agent, or the agent stopped or changed backend.");
+    for (const ms of [6000, 8000, 12000, 11 * 60_000]) await c.elapse(ms);
+    expect(phase(c)).toContain("Can't follow");
+  });
+
   it("/compact with no word from the fleet at all: the page's own limit says so, and the card stays", async () => {
     const c = await chatPage();
     c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: "a".repeat(16) } } : {});
@@ -326,10 +336,10 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card()).toBeNull();
   });
 
-  it.each(["cancel", "steer x", "btw x", "pause", "wake", "save notes.md"])("an answer that only says it was sent (/%s) leaves by itself", async (command) => {
+  it("an answer the server marks sent (/cancel that stopped a reply) leaves by itself", async () => {
     const c = await chatPage();
-    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent" } : {});
-    await c.type(`/${command}`); await c.key("Enter"); await settle();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "🛑 Sent cancel to w.", sent: true } : {});
+    await c.type("/cancel"); await c.key("Enter"); await settle();
     expect(!!c.card()).toBe(true);
     await c.elapse(6000);
     expect(!!c.card()).toBe(true);
@@ -337,9 +347,29 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.card()).toBeNull();
   });
 
+  it("review P2-6: the server's own refusal worded as text (/cancel with nothing running) stays", async () => {
+    // The body exactly as runWebCommand answers it.
+    const { runWebCommand } = await import("../src/web-commands.js");
+    const answer = (await runWebCommand({ scope: () => "fleet", cancel: () => false, t: (k: string) => k } as any, { instance: "w", command: "cancel" }, { publicLink: false })).body;
+    expect(answer).toEqual({ text: "cancel.not_running" });
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? answer : {});
+    await c.type("/cancel"); await c.key("Enter"); await settle();
+    for (const ms of [6000, 8000, 12000, 11 * 60_000]) await c.elapse(ms);
+    expect(c.card().querySelector(".cmd-text").textContent).toBe("cancel.not_running");
+  });
+
+  it.each(["steer x", "btw x", "pause", "wake", "save notes.md"])("an answer not marked sent (/%s) stays until dismissed", async (command) => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent" } : {});
+    await c.type(`/${command}`); await c.key("Enter"); await settle();
+    for (const ms of [6000, 8000, 12000]) await c.elapse(ms);
+    expect(!!c.card()).toBe(true);
+  });
+
   it("a card's own timer never takes the next card: /cancel, then /ctx before it would have left", async () => {
     const c = await chatPage();
-    c.fx.respond = (path: string, body: any) => (path === "/ui/command" ? { text: body.command === "ctx" ? "Context: 40%" : "sent" } : {});
+    c.fx.respond = (path: string, body: any) => (path === "/ui/command" ? (body.command === "ctx" ? { text: "Context: 40%" } : { text: "sent", sent: true }) : {});
     await c.type("/cancel"); await c.key("Enter"); await settle();
     await c.type("/ctx"); await c.key("Enter"); await settle();
     await c.elapse(8000);
@@ -348,7 +378,7 @@ describe("the chat's commands (the real page modules)", () => {
 
   it("/clear's 'sent' leaves by itself too", async () => {
     const c = await chatPage();
-    c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.confirm ? { text: "Clear sent" } : { confirm: { token: "f".repeat(32), message: "Clear?" } });
+    c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.confirm ? { text: "Clear sent", sent: true } : { confirm: { token: "f".repeat(32), message: "Clear?" } });
     (globalThis as any).confirm = () => true;
     await c.type("/clear"); await c.key("Enter"); await settle(8);
     expect(c.card().querySelector(".cmd-text").textContent).toBe("Clear sent");

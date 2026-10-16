@@ -1,17 +1,30 @@
 /** SQLite and large JSON work runs only in the transcript isolate. */
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { statSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import type { TranscriptEvents } from "./transcript-sources.js";
 const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts: [] };
 const emptyEvents = (): TranscriptEvents => ({ toolUses: [], toolResults: [], assistantTexts: [] });
-export interface KiroDbCursor { conversationId: string | null; historyCursor: number; signature: string; toolNames: Array<[string, string]>; }
+export interface KiroDbCursor { conversationId: string | null; historyCursor: number; signature: string; toolNames: Array<[string, string]>; summary?: string | null; }
+/**
+ * Board 003648ac: which summary a conversation row carries (`latest_summary`: null until a compaction, then the summary
+ * and its request's metadata — kiro-cli 2.30.0, classic). Its request id when it has one; otherwise its content's hash.
+ */
+export function kiroSummaryMarker(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const meta = Array.isArray(value) ? value[1] as { request_id?: unknown } | undefined : undefined;
+  if (meta && typeof meta === "object" && typeof meta.request_id === "string" && meta.request_id) return `r:${meta.request_id}`;
+  return `h:${createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32)}`;
+}
 export class KiroDbReader {
   private readonly createdAt: number;
   private dbConversationId: string | null = null;
   private dbHistoryCursor = 0;
   private dbSignature = "";
   private dbToolNames = new Map<string, string>();
+  /** The summary marker last seen (kiroSummaryMarker): a new one is a compaction. */
+  private dbSummary: string | null = null;
   /**
    * One read-only handle for the life of the poll loop (#1048). Kiro's store
    * is one database for every conversation — ~1 GB on a lived-in machine —
@@ -37,6 +50,7 @@ export class KiroDbReader {
     this.dbHistoryCursor = 0;
     this.dbSignature = "";
     this.dbToolNames.clear();
+    this.dbSummary = null;
     this.snapshotDbBaseline();
   }
 
@@ -108,7 +122,7 @@ export class KiroDbReader {
   }
 
   /** The whole history, read only when the signature says it changed. */
-  private readDbHistory(db: Database.Database, key: string, conversationId: string): unknown[] | null {
+  private readDbConversation(db: Database.Database, key: string, conversationId: string): { history: unknown[]; summary: string | null } | null {
     if (!this.historyStmt || this.historyStmt.database !== db) {
       this.historyStmt = db.prepare(
         "SELECT value FROM conversations_v2 WHERE key = ? AND conversation_id = ? LIMIT 1",
@@ -117,8 +131,8 @@ export class KiroDbReader {
     const row = this.historyStmt.get(key, conversationId) as { value: string } | undefined;
     if (!row) return null;
     try {
-      const parsed = JSON.parse(row.value) as { history?: unknown };
-      return Array.isArray(parsed.history) ? parsed.history : [];
+      const parsed = JSON.parse(row.value) as { history?: unknown; latest_summary?: unknown };
+      return { history: Array.isArray(parsed.history) ? parsed.history : [], summary: kiroSummaryMarker(parsed.latest_summary) };
     } catch { return null; }
   }
 
@@ -135,11 +149,12 @@ export class KiroDbReader {
       if (!db) return;
       const row = this.newestDbRow(db);
       if (!row) return;
-      const history = this.readDbHistory(db, row.key, row.conversation_id);
-      if (!history) return;
+      const conversation = this.readDbConversation(db, row.key, row.conversation_id);
+      if (!conversation) return;
       this.dbConversationId = row.conversation_id;
-      this.dbHistoryCursor = history.length;
+      this.dbHistoryCursor = conversation.history.length;
       this.dbSignature = `${row.updated_at}:${row.size}`;
+      this.dbSummary = conversation.summary;
     } catch {
       // Old Kiro schema or busy DB — legacy JSONL remains available.
       this.close();
@@ -155,24 +170,33 @@ export class KiroDbReader {
       const signature = `${row.updated_at}:${row.size}`;
       if (row.conversation_id === this.dbConversationId && signature === this.dbSignature) return EMPTY;
 
-      const history = this.readDbHistory(db, row.key, row.conversation_id);
-      if (!history) return EMPTY;
+      const conversation = this.readDbConversation(db, row.key, row.conversation_id);
+      if (!conversation) return EMPTY;
+      const { history } = conversation;
+      // Board 003648ac: a summary this monitor has not seen, on this conversation or on one created since the monitor
+      // started (kiro-cli 2.30.0's classic /compact writes a new row carrying it), is a compaction. An older
+      // conversation selected by --resume brings its own summary: not one.
+      let ownRow = true;
       if (row.conversation_id !== this.dbConversationId) {
         this.dbConversationId = row.conversation_id;
         this.dbToolNames.clear();
         // A conversation created after this monitor belongs to this daemon;
         // an older conversation selected by --resume is history to baseline.
-        this.dbHistoryCursor = this.conversationCreatedAt(db, row.key, row.conversation_id) >= this.createdAt ? 0 : history.length;
+        ownRow = this.conversationCreatedAt(db, row.key, row.conversation_id) >= this.createdAt;
+        this.dbHistoryCursor = ownRow ? 0 : history.length;
       }
+      const compacted = ownRow && conversation.summary !== null && conversation.summary !== this.dbSummary;
+      this.dbSummary = conversation.summary;
       if (history.length < this.dbHistoryCursor) {
         // Compaction can replace history with a shorter summary. Treat the new
         // compacted body as a baseline instead of waiting for it to grow past
         // the old cursor (or replaying retained history).
         this.dbHistoryCursor = history.length;
         this.dbSignature = signature;
-        return EMPTY;
+        return compacted ? { ...emptyEvents(), compacted: 1 } : EMPTY;
       }
       const events = emptyEvents();
+      if (compacted) events.compacted = 1;
       for (const entry of history.slice(this.dbHistoryCursor)) {
         collectKiroDbEvents(entry, events, this.dbToolNames);
       }
@@ -186,8 +210,8 @@ export class KiroDbReader {
     }
   }
 
-  cursor(): KiroDbCursor { return { conversationId: this.dbConversationId, historyCursor: this.dbHistoryCursor, signature: this.dbSignature, toolNames: [...this.dbToolNames] }; }
-  restore(cursor: KiroDbCursor): void { this.dbConversationId = cursor.conversationId; this.dbHistoryCursor = cursor.historyCursor; this.dbSignature = cursor.signature; this.dbToolNames = new Map(cursor.toolNames); }
+  cursor(): KiroDbCursor { return { conversationId: this.dbConversationId, historyCursor: this.dbHistoryCursor, signature: this.dbSignature, toolNames: [...this.dbToolNames], summary: this.dbSummary }; }
+  restore(cursor: KiroDbCursor): void { this.dbConversationId = cursor.conversationId; this.dbHistoryCursor = cursor.historyCursor; this.dbSignature = cursor.signature; this.dbToolNames = new Map(cursor.toolNames); this.dbSummary = cursor.summary ?? null; }
   async poll(): Promise<TranscriptEvents> { return this.read() ?? emptyEvents(); }
 }
 

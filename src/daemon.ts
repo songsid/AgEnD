@@ -2570,6 +2570,10 @@ export class Daemon extends EventEmitter {
         ackIfPending();
         this.recordRecentEvent({ type: "assistant_text", preview: text.slice(0, 100) });
       });
+      // Board 003648ac: the CLI recorded a compaction (kiro): the fleet tells a web /compact waiting on it, and the Log.
+      this.transcriptMonitor.on("compacted", () => {
+        this.ipcServer?.broadcast({ type: "transcript_compacted", instanceName: this.name });
+      });
       this.transcriptMonitor.startPolling();
 
       // HangDetector is the notification bridge to the fleet manager; pane state
@@ -4036,19 +4040,30 @@ export class Daemon extends EventEmitter {
     confirmClear = false,
     durableAttempt?: DurableDeliveryAttempt,
     ownSwitch?: { id: string; kind: "model"; requested: string },
+    notifyWritten?: string,
   ): void {
     const reportSwitch = (result: OwnSwitchOutcome) => {
       if (!ownSwitch) return;
       this.ipcServer?.broadcast({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
+    // Board 003648ac: the fleet follows a web /compact from the moment its paste is written, so it is told that moment
+    // (or that the write never began) — once.
+    let told = false;
+    const tellWritten = (written: boolean) => {
+      if (!notifyWritten || told) return;
+      told = true;
+      this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written" });
+    };
     if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) {
       if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste target unavailable before pane queue");
       reportSwitch({ outcome: "not_sent" });
+      tellWritten(false);
       return;
     }
     this.pasteLock = this.pasteLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
         reportSwitch({ outcome: "not_sent" });
+        tellWritten(false);
         this.logger.info("Pending raw delivery dropped by user cancel");
         if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while queued");
         return;
@@ -4059,6 +4074,7 @@ export class Daemon extends EventEmitter {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while waking");
           reportSwitch({ outcome: "not_sent" });   // #1690: cancelled before anything was typed — said at once, nothing saved
+          tellWritten(false);
           return;
         }
         const delivered = await this.deliverMessage(rawText, undefined, {
@@ -4068,8 +4084,9 @@ export class Daemon extends EventEmitter {
           preserveExactBytes: true,
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
-          ...(ownSwitch ? { onPaneWritten: () => { this.ownSwitch = ownSwitch; } } : {}),
+          ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) this.ownSwitch = ownSwitch; tellWritten(true); } } : {}),
         });
+        tellWritten(false);                                                // never written (once told, this says nothing)
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
         else if (durableAttempt && verdict.paneWriteStarted) {
           const unproven = `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`;
@@ -4095,6 +4112,7 @@ export class Daemon extends EventEmitter {
         else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
         this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
         if (ownSwitch) { if (this.ownSwitch === ownSwitch) this.ownSwitch = null; reportSwitch({ outcome: "not_confirmed" }); }
+        tellWritten(false);
         return;
       }
       if (confirmClear) await this.confirmBackendClearDialog();
@@ -4128,12 +4146,14 @@ export class Daemon extends EventEmitter {
     const sw = msg.runtime_switch as { id?: unknown; kind?: unknown; requested?: unknown } | undefined;
     const ownSwitch = sw && typeof sw.id === "string" && sw.kind === "model" && typeof sw.requested === "string"
       ? { id: sw.id, kind: "model" as const, requested: sw.requested } : undefined;
+    const notifyWritten = typeof msg.notify_written === "string" && /^[0-9a-f]{16}$/.test(msg.notify_written) ? msg.notify_written : undefined;
     this.queueRawPaste(
       msg.content as string,
       this.captureDeliveryEpoch(msg.delivery_epoch),
       msg.confirm_clear === true,
       durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste", silentSchedule: msg.silent_schedule === true } : undefined,
       ownSwitch,
+      notifyWritten,
     );
   }
 

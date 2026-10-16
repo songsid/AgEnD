@@ -31,8 +31,7 @@ function writePollMine(mine) {
   try { globalThis.localStorage?.setItem(POLL_MINE_KEY, JSON.stringify(mine)); } catch { /* storage unavailable */ }
 }
 
-/** Board 003648ac: commands whose answer only says they were sent — the card leaves by itself after SENT_CLEAR_MS. */
-const SENT_ONLY_COMMANDS = new Set(["clear", "cancel", "steer", "btw", "pause", "wake", "save"]);
+/** Board 003648ac: an answer the server marks `sent` (handed over, and its text says only that) leaves after this. */
 const SENT_CLEAR_MS = 8000;
 const COMPACT_DONE_CLEAR_MS = 6000;
 const COMPACT_UNKNOWN_CLEAR_MS = 12000;
@@ -349,26 +348,26 @@ export function createChatStore(deps) {
     const follow = r && r.follow && r.follow.kind === "compact" ? r.follow : null;
     showCommand(target, r && r.choices ? { command, busy: false, choices: r.choices }
       : r && r.error ? { command, busy: false, error: r.error }
-      : { command, busy: false, text: (r && r.text) || "", ...(follow ? { compact: follow.id ? "running" : "unknown", watch: follow.id } : {}) });
+      : { command, busy: false, text: (r && r.text) || "", ...(r && r.sent === true ? { sent: true } : {}), ...(follow ? { compact: follow.id ? "running" : "unknown", watch: follow.id } : {}) });
     changed(target);
   }
-  // Board 003648ac: an answer that only says a command was sent leaves by itself; a sent /compact says "compacting…"
-  // until the status frame's `compact` (same watch id) says it ended, then leaves too. A refusal, a list to choose
-  // from, an answer to read (/ctx, /model …) and a compaction that timed out stay until dismissed.
+  // Board 003648ac: an answer the server marks `sent` leaves by itself; a sent /compact says "compacting…" until the
+  // status frame's `compact` (same watch id) says it ended, then leaves when it is done. Everything else — a refusal
+  // (even one worded as text), a list to choose from, an answer to read, a compaction timed out or lost — stays.
   function showCommand(target, card) {
     s.commands[target] = card;
     const later = (ms, fn) => deps.setTimeout(() => { if (s.commands[target] === card) { fn(); changed(target); } }, ms);
     const leave = () => { delete s.commands[target]; };
-    if (card.busy || card.error || card.choices || card.compact === "timeout") return;
+    if (card.busy || card.error || card.choices || card.compact === "timeout" || card.compact === "lost") return;
     if (card.compact === "running") later(COMPACT_PAGE_LIMIT_MS, () => showCommand(target, { ...card, compact: "timeout" }));
     else if (card.compact === "done") later(COMPACT_DONE_CLEAR_MS, leave);
     else if (card.compact === "unknown") later(COMPACT_UNKNOWN_CLEAR_MS, leave);
-    else if (SENT_ONLY_COMMANDS.has(card.command)) later(SENT_CLEAR_MS, leave);
+    else if (card.sent === true) later(SENT_CLEAR_MS, leave);
   }
-  /** The status frame's word on a followed /compact: done or timed out. */
+  /** The status frame's word on a followed /compact: done, timed out, or lost. */
   function noteCompact(name, view) {
     const c = s.commands[name];
-    if (!c || c.compact !== "running" || !view || view.id !== c.watch || (view.state !== "done" && view.state !== "timeout")) return;
+    if (!c || c.compact !== "running" || !view || view.id !== c.watch || !["done", "timeout", "lost"].includes(view.state)) return;
     showCommand(name, { ...c, compact: view.state });
     changed(name);
   }

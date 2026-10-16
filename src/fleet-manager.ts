@@ -3215,6 +3215,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private get compactWatch(): CompactWatch {
     return this.compactWatchService ??= new CompactWatch({
       source: (name) => { const src = this.logSource(name); return { path: src.path, format: src.format }; },
+      owner: (name) => this.lifecycle.daemons.get(name) ?? null,
+      // kiro writes no transcript the Log reads, but its daemon reports a compaction (transcript_compacted) on the
+      // engines whose record of it is known: the classic store (v1) and the TUI's session log (v2). V3: not followed.
+      signals: (name) => {
+        const daemon = this.lifecycle.daemons.get(name);
+        if (!daemon || this.backendNameForInstance(name) !== "kiro-cli") return false;
+        const engine = daemon.logLaunch()?.engine;
+        return engine === "v1" || engine === "v2";
+      },
       changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
   }
@@ -7575,6 +7584,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
                 "Could not deliver cross-instance failure status back to sender");
             });
           }
+        } else if (msg.type === "transcript_compacted") {
+          // Board 003648ac: the instance's daemon saw its CLI record a compaction (kiro): a web /compact waiting on it is
+          // done, and the Log shows it.
+          this.compactWatchService?.signal(name);
+          this.eventLog?.insert(name, "conversation_compacted", {});
+        } else if (msg.type === "raw_paste_written") {
+          // Board 003648ac: a web /compact's paste reached the pane (or never will): its watch starts, or ends as lost.
+          if (typeof msg.id === "string") this.compactWatchService?.pasted(name, msg.id, msg.outcome === "written");
         } else if (msg.type === "runtime_switch_result") {
           // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
           const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;
@@ -13028,11 +13045,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
       },
       ctx: (instance) => this.topicCommands.getCtxText(instance),
-      // Board 003648ac: the watch starts just before the paste, so the record it waits for can't come first.
+      // Board 003648ac: a watch for the paste, armed when the daemon says it was written (raw_paste_written); one
+      // for a command that was not handed over is dropped.
       compact: async (instance, instructions) => {
         let watch: string | null = null;
         try {
-          const r = this.topicCommands.compactInstance(instance, instructions, () => { watch = this.compactWatch.begin(instance); });
+          const r = this.topicCommands.compactInstance(instance, instructions, () => (watch = this.compactWatch.begin(instance)));
+          if (!r.sent && watch) this.compactWatch.cancel(instance, watch);
           return { ...r, watch: r.sent ? watch : null };
         } catch (err) {
           if (watch) this.compactWatch.cancel(instance, watch);
@@ -13100,7 +13119,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.eventLog?.insert(instance, "clear_action", { action: "confirm", userId: "web" });
         // sendClear sends its first IPC synchronously: no await separates this check from the effect.
         if (this.shuttingDown || !entry.fence()) return { status: 409, text: t("menu.click_stale") };
-        return { status: 200, text: await this.topicCommands.sendClear(instance) };
+        const r = this.topicCommands.clearInstance(instance);
+        return r.sent ? { status: 200, text: r.text, sent: true } : { status: 409, text: r.text };
       },
       t: (key, ...args) => t(key, ...args),
     }, input, opts);
