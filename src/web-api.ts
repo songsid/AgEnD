@@ -2109,6 +2109,11 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer);
+  let ownerCssState: "off" | "on" | "unknown" = "unknown";
+  if (mode === "full" && viewer?.person != null && ctx.ownerCss) {
+    ownerCssState = ctx.ownerCss.effectState(viewer.person);
+    if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
+  }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
@@ -2123,7 +2128,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #1770: the fleet's zone (chat-logs' and fleet.log's), in which the chat reads its message times and days.
     + ` data-fleet-tz="${attr(resolveTz())}"`
     // #1629 r4 §3: the person's owner CSS in force (a sha), linked by the page unless this device or this load says not.
-    + `${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
+    + ` data-owner-css-state="${ownerCssState}"${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
     // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}>`;
 }

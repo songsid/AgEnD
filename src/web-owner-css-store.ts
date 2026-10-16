@@ -31,6 +31,8 @@ const SHA = /^[0-9a-f]{32}$/;
  */
 export interface OwnerCssPointer {
   ownerCssActive(person: string): string | null;
+  /** Optional for legacy pointer providers: no proof means unknown, never off. */
+  ownerCssSelection?(person: string): { known: true; active: string | null } | { known: false };
   /** r4-5: the trial pointer, read for a transaction's snapshot. */
   ownerCssTrial?(person: string): string | null;
   setOwnerCss(person: string, change: { active?: string | null; trial?: string | null }): { ok: true } | { ok: false; status: 400 | 503; error: string };
@@ -42,6 +44,8 @@ export interface OwnerCssPointer {
 interface Pending { id: string; sha: string; previous: string | null; at: number; until: number }
 interface Index { versions: Array<{ sha: string; at: number }>; assets: Array<{ id: string; kind: MediaKind; bytes: number }>; pending?: Pending }
 export interface OwnerCssState {
+  /** B2 admission evidence; nullable active alone cannot distinguish missing from unreadable. */
+  effectState: "off" | "on" | "unknown";
   active: string | null;
   /**
    * The active version is on trial (`id`): kept within `remaining_ms` — the host's own clock, so a device's clock never
@@ -70,15 +74,21 @@ export class OwnerCssStore {
   constructor(private readonly dataDir: string, private readonly pointer: OwnerCssPointer, private readonly now: () => number = () => Date.now()) {}
 
   private dir(person: string): string { return join(this.dataDir, "web-owner-css", hash32(`person\0${person}`)); }
-  private readIndex(person: string): Index {
+  private readIndex(person: string, evidence?: { known: boolean }): Index {
+    if (evidence) evidence.known = false;
     try {
       const raw = JSON.parse(readFileSync(join(this.dir(person), "index.json"), "utf8")) as Partial<Index>;
       const versions = Array.isArray(raw.versions) ? raw.versions.filter(v => v && SHA.test(String(v.sha)) && Number.isFinite(v.at)) : [];
       const assets = Array.isArray(raw.assets) ? raw.assets.filter(a => a && SHA.test(String(a.id)) && ASSET_KINDS.has(a.kind) && Number.isSafeInteger(a.bytes)) : [];
       const p = raw.pending;
       const pending = p && SHA.test(String(p.id)) && SHA.test(String(p.sha)) && (p.previous === null || SHA.test(String(p.previous))) && Number.isFinite(p.at) && Number.isFinite(p.until) ? p : undefined;
+      if (evidence) evidence.known = Array.isArray(raw.versions) && Array.isArray(raw.assets)
+        && versions.length === raw.versions.length && versions.every(v => typeof v.sha === "string")
+        && assets.length === raw.assets.length && assets.every(a => typeof a.id === "string" && a.bytes >= 0)
+        && (raw.pending === undefined || !!pending && typeof pending.id === "string" && typeof pending.sha === "string"
+          && (pending.previous === null || typeof pending.previous === "string"));
       return { versions, assets, ...(pending ? { pending } : {}) };
-    } catch { return { versions: [], assets: [] }; }
+    } catch (err) { if (evidence) evidence.known = (err as NodeJS.ErrnoException)?.code === "ENOENT"; return { versions: [], assets: [] }; }
   }
   private writeIndex(person: string, index: Index): void {
     mkdirSync(this.dir(person), { recursive: true, mode: 0o700 });
@@ -152,12 +162,26 @@ export class OwnerCssStore {
     return active && this.readIndex(person).versions.some(v => v.sha === active) ? active : null;
   }
 
+  /** Positive CSS evidence for the page; no identity fallback or change to legacy CSS save/serve behavior. */
+  effectState(person: string): "off" | "on" | "unknown" {
+    try {
+      this.settle(person);
+      const selection = this.pointer.ownerCssSelection?.(person);
+      if (!selection?.known) return "unknown";
+      const evidence = { known: false }, index = this.readIndex(person, evidence);
+      if (!evidence.known) return "unknown";
+      if (selection.active === null) return "off";
+      return index.versions.some(v => v.sha === selection.active) && this.served(person, selection.active) !== null ? "on" : "unknown";
+    } catch { return "unknown"; }
+  }
+
   state(person: string): OwnerCssState {
     this.settle(person);
     const index = this.readIndex(person);
     const active = this.pointer.ownerCssActive(person);
     const kept = active && index.versions.some(v => v.sha === active) ? active : null;
     return {
+      effectState: this.effectState(person),
       active: kept,
       pending: index.pending && index.pending.sha === kept
         ? { id: index.pending.id, sha: index.pending.sha, previous: index.pending.previous, remaining_ms: Math.max(0, Math.min(OWNER_CSS_KEEP_MS, index.pending.until - this.now())) }
