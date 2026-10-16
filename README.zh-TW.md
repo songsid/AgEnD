@@ -17,7 +17,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
   <code>你 → Telegram/Discord → AgEnD → AI Agent 團隊 → 結果回到你的手機</code>
 </p>
 
-[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md)
+[English](README.md) · [功能文件](docs/features.zh-TW.md) · [CLI 參考](docs/cli.zh-TW.md) · [2.2 新功能](docs/release-notes/2.2.0.zh-TW.md)
 
 ---
 
@@ -30,7 +30,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 | 長時間 session 累積過時 context | CLI 自動壓縮 context，當機後用 context 快照恢復 |
 | 不知道 agent 半夜在幹嘛 | 每日花費報告 + 卡住偵測通知 |
 | Agent 各做各的，無法協作 | 點對點協作，透過 MCP tools |
-| 無人看管時帳單暴增 | 每個 instance 每日花費上限，自動暫停 |
+| 無人看管時帳單暴增 | 每個 instance 每日花費上限，達上限時停止 |
 
 ## 功能亮點
 
@@ -64,19 +64,19 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 👥 **團隊與任務看板** — 用具名群組做定向廣播；共用的任務看板讓多個 instance 一起追蹤多步驟的工作。
 
-📋 **Fleet 範本** — 把常用的 fleet 設定存成範本，一個指令就能部署多個 instance，每個都有自己的 git worktree。
+📋 **Fleet 範本** — 把常用的 fleet 設定存成範本，一個指令就能部署多個 instance；指定 `branch` 才會為各角色建立獨立的 git worktree。
 
 😀 **貼圖與代表表情** — agent 可以在 Discord 和 Telegram 傳貼圖，每個 agent 也能挑一個代表自己的表情，同一個頻道裡有好幾個 bot 時一眼就分得出是誰。
 
 📊 **訂閱用量** — `/usage`（儀表板和 `get_usage` 工具也看得到）顯示 Claude、Codex、Kiro、Grok、Muse、Antigravity 訂閱還剩多少額度，每個訂閱各佔一列。
 
-🔑 **多組登入（credential profile）** — 用 `backend_options.<backend>.credential_profile`，讓 instance 或 ClassicBot 頻道改用同一個 backend 的第二個訂閱（目前支援 kiro-cli 和 Codex）。詳見[英文版設定參考](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
+🔑 **多組登入（credential profile）** — 用 `backend_options.<backend>.credential_profile`，讓 instance 或 ClassicBot 頻道改用同一個 backend 的第二個訂閱（目前支援 kiro-cli、Codex 和 Claude Code）。詳見[英文版設定參考](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。
 
 🌐 **用手機完成登入** — `/login`（僅限 fleet 管理員）不必 SSH 就能讓 CLI 登入：Codex、Grok 這類裝置碼登入會把網址和代碼貼在聊天室；需要終端機的登入，則會在主機上開一個有時限、要權杖才能進入的瀏覽器終端機。kiro-cli 和 Claude Code 在你確認後，還能透過 Cloudflare Quick Tunnel 開一個暫時的公開連結；主機上沒有 `cloudflared` 時，AgEnD 會自動下載。要關掉這個功能，設定 `web_terminal.tunnel.allow_public: false`。詳見 [Configuration](docs/configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
 
 💤 **自動暫停與喚醒** — 設定 `auto_pause_after`（分鐘，預設關閉）後，閒置的 instance 會被暫停，有新訊息進來時自動喚醒。也可以用 `/pause`、`/wake` 手動操作。
 
-🧠 **記憶體壓力保護** — 在 Linux 上，fleet 會監看主機記憶體：吃緊時放慢新 CLI 的啟動，到了危險程度就先暫緩啟動，並發出通知。在 macOS 上只會記錄到日誌。
+🧠 **記憶體壓力保護** — Linux 和 macOS 的主機記憶體吃緊時，fleet 會放慢新 CLI 的啟動，危急時暫緩啟動。日誌、health 和儀表板仍顯示狀態，不再發送聊天廣播；人手動啟動、重啟或喚醒而被暫緩時，會收到原因。
 
 ## 使用情境
 
@@ -144,7 +144,7 @@ graph LR
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok`（x.ai OAuth device flow）。CLI 需 1.0.13 以上，舊版會被伺服器拒絕，請執行 `grok update` |
 | Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`（launcher 會把 binary 放在自己旁邊，所以要先存檔） | `muse login` |
 
-**也可以在聊天室用 `/login <backend>` 安裝**（beta、僅限 fleet 管理員），不必 SSH 進主機：CLI 還沒安裝時，`/login` 會在 fleet 視窗執行上表的指令，到安裝程式實際放置的位置找到 CLI，把那個目錄加進 fleet 的 PATH，然後接著登入。單獨輸入 `/login` 會列出上表所有 backend。
+**也可以在聊天室用 `/login <backend>` 安裝**（beta、僅限 fleet 管理員），不必 SSH 進主機：CLI 還沒安裝時，`/login` 會在 fleet 視窗執行上表的指令，到安裝程式實際放置的位置找到 CLI，把那個目錄加進 fleet 的 PATH，並在支援時提供登入。OpenCode 與 Muse 只能安裝；Antigravity 可安裝，但沒有獨立的遠端登入流程。單獨輸入 `/login` 會列出可用的登入及缺少 CLI 的安裝操作。
 
 **已測試的 CLI 版本（AgEnD 2.1.9）**：Codex 0.155 到 0.159；Claude Code 2.1.286（首次啟動、trust、resume 畫面都從真實 CLI 擷取）；Kiro CLI 2.21 到 2.27 實際跑過；更舊的 2.x 仍可啟動，但會提醒更新；比 2.27 更新的版本，要先用它自己的 `--help` 確認 AgEnD 鎖定的參數（legacy UI 搭 kiro 的 v1 engine、terminal UI 搭 v2）還在才會啟動。若 kiro-cli 已無法這樣執行某個 instance，AgEnD 會拒絕啟動，不會換成別的 engine 執行（#1109）。`kiro_ui: v3` 尚未支援（#849）；Grok CLI 1.0.13 以上；Muse 1.3.0。Antigravity 與 OpenCode 沒有釘定版本。其他版本通常也能用，但 CLI 新版可能改動畫面，所以 AgEnD 只在實測過後才宣稱支援某個版本。
 
@@ -193,7 +193,7 @@ agend quickstart
 agend fleet start
 ```
 
-quickstart 會同時設定好 `fleet.yaml` 和 `classicBot.yaml`。之後要新增使用者或伺服器，再跑一次 `agend quickstart` 就好。
+quickstart 會設定 `fleet.yaml`，並詢問是否設定 `classicBot.yaml`。之後要新增使用者或伺服器，再跑一次 `agend quickstart` 就好。
 
 ### 用法
 
@@ -206,7 +206,7 @@ quickstart 會同時設定好 `fleet.yaml` 和 `classicBot.yaml`。之後要新�
 | `/effort`、`/collab` | 管理員 | 僅限 Discord：推理強度、collab 模式 |
 | `/stop`、`/load` | ClassicBot 管理員 | 停止目前頻道的 agent；載入已儲存的對話（`/load` 僅限 Discord） |
 
-在 Discord 上，「管理員」指 fleet 管理員或 ClassicBot 管理員（`admin_users`）。在 Telegram 上，`/pause`、`/wake`、`/compact`、`/save` 只限 ClassicBot 管理員。`/usage`、`/status` 這類全 fleet 的指令，在 Discord 的 ClassicBot 頻道裡也能用。誰能 `/start`：Discord 上是允許的伺服器裡的任何人；Telegram 上是私訊時列在 `allowed_users` 的使用者，或在允許的群組裡（`/start@你的bot`）的 ClassicBot 管理員。
+在 Discord 上，「管理員」指 fleet 管理員或 ClassicBot 管理員（`admin_users`）。在 Telegram 上，既有 agent 的 `/pause`、`/wake`、`/compact`、`/save` 接受所屬 fleet 管理員或 ClassicBot 管理員。`/usage`、`/status` 這類全 fleet 的指令，在 Discord 的 ClassicBot 頻道裡也能用。誰能 `/start`：Discord 上是 ClassicBot 管理員，或明確允許的伺服器裡的使用者；未列入的新聊天室可向 General 請求核准。Telegram 私訊可由 ClassicBot 管理員或明確列入 `allowed_users` 的使用者啟動；群組必須由 ClassicBot 管理員執行 `/start@你的bot`。
 
 在 Discord 上，`/start` 會開啟 collab 模式：@ 這個 bot 就能跟它對話。實際用法請見[使用情境](docs/use-cases.zh-TW.md)。
 
@@ -222,11 +222,11 @@ defaults:
     - "9876543210123456789"
 ```
 
-- `allowed_guilds` **留空或不寫** → 所有伺服器都允許（預設）
-- **主要伺服器**（fleet.yaml 的 `group_id`）→ 完整權限（topic 模式 + ClassicBot）
-- **白名單內的伺服器** → 只能用 ClassicBot 頻道
-- **不在名單上的伺服器打 `/start`** → 會在 General topic 貼出一則附按鈕的核准請求
-- **熱重載** — 每 30 秒偵測一次變更，不用重啟
+- `allowed_guilds` **留空或不寫**，不會讓非管理員取得在新聊天室啟動的權限。
+- **ClassicBot 管理員**略過名單；已登錄的聊天室繼續運作。主要 fleet 伺服器本身不會授予 ClassicBot 啟動權限。
+- **明確允許的伺服器**可由非管理員啟動 ClassicBot 頻道。
+- **非管理員在未列入的新聊天室執行 `/start`**，會向 General 請求核准。
+- **重新載入** — 每 30 秒偵測變更；啟動設定改變會重啟執行中的 agent，支援的執行期設定則直接套用。
 
 ### 每個頻道指定 backend
 
@@ -247,9 +247,9 @@ Backend 的決定順序：頻道 → `defaults.backend` → `fleet.yaml` 的 def
 
 ```yaml
 defaults:
-  allowed_guilds: ["123456789012345678"]   # Discord 伺服器（留空 = 全部允許）
-  allowed_groups: ["-1001234567890"]       # Telegram 群組（留空 = 全部允許）
-  allowed_users: ["123456789"]             # 可以在私訊裡 /start 的 Telegram 使用者（留空 = 全部允許）
+  allowed_guilds: ["123456789012345678"]   # Discord 伺服器（留空 = 不授權）
+  allowed_groups: ["-1001234567890"]       # Telegram 群組（留空 = 不授權）
+  allowed_users: ["123456789"]             # 可以在私訊裡 /start 的 Telegram 使用者（留空 = 不授權）
   admin_users: ["123456789"]               # ClassicBot 管理員（留空 = 沒有人）
 ```
 
@@ -268,11 +268,11 @@ channels:
         credential_profile: work   # "" = 回到共用的登入
 ```
 
-頻道的 `backend_options` 會覆蓋在 fleet.yaml defaults 的設定之上。目前 kiro-cli 和 Codex 支援 profile；profile 名稱不合法時，agent 會直接不啟動，而不是用錯的帳號跑；改了設定，執行中的 agent 會重啟。記得先讓這個 profile 登入，做法見[英文版設定參考](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。`classicBot.yaml` 的其他欄位請見 [Configuration](docs/configuration.zh-TW.md#classicbotyaml)。
+頻道的 `backend_options` 會覆蓋在 fleet.yaml defaults 的設定之上。目前 kiro-cli、Codex 和 Claude Code 支援 profile；profile 名稱不合法時，agent 會直接不啟動，而不是用錯的帳號跑；改了設定，執行中的 agent 會重啟。記得先讓這個 profile 登入，做法見[英文版設定參考](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend)。`classicBot.yaml` 的其他欄位請見 [Configuration](docs/configuration.zh-TW.md#classicbotyaml)。
 
 ## 已知限制
 
-- 支援 macOS（launchd）和 Linux（systemd）；Windows 請在 WSL 裡執行（[Windows 安裝指南](https://songsid.github.io/AgEnD/zh-tw/install-windows/)），不支援原生 Windows
+- 支援 macOS 11+（launchd）和 glibc 2.28+ Linux（systemd）；Windows 請在啟用 systemd 的 WSL 裡執行；不支援 Alpine／musl 或非 systemd Linux（[Windows 安裝指南](https://songsid.github.io/AgEnD/zh-tw/install-windows/)），不支援原生 Windows
 - 全域 `enabledPlugins` 裡有官方 Telegram plugin 會造成 409 polling 衝突
 
 ## 授權

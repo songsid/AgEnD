@@ -1,16 +1,20 @@
 # CLI 參考 (CLI Reference)
 
-## 聊天指令 (Telegram 選單 / Discord slash)
+## 聊天指令（Telegram fleet 選單／Discord slash）
 
-Telegram fleet 選單（General 主題與實例主題，`setMyCommands`）列出 19 個指令；Discord 全域註冊 25 個 slash 指令——同樣 19 個再加 `/start`、`/stop`、`/chat`、`/save`、`/load`、`cancel`。`/cancel` 與 `/save` 在 Telegram 用打字的可以執行，但刻意不放進選單。🔒 需 fleet 管理員；各選單的鎖頭由 `src/command-table.ts` 生成，不是手打的。各平台權限細節見 [commands.md](commands.md)。
+Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Discord 註冊 29 個 slash 名稱，包含 `/web` 與別名 `/dashboard`。Telegram 也處理未列入選單的 `/cancel`、`/save`。🔒 代表該範圍的管理員；所屬 fleet／ClassicBot 身分及平台差異請見[指令參考](commands.md)。選單與鎖頭由 `src/command-table.ts` 產生。
+
 
 | 指令 | 描述 | 選項 / 參數 | 權限 |
 |---------|-------------|----------------|------------|
 | `/status` | Fleet 表格：Backend、Model、Context、推理強度、花費、執行狀態 | — | 🔒 管理員 |
 | `/sysinfo` | 詳細系統診斷（版本、負載、IPC 狀態、各 backend CLI 版本）；Telegram 另可用 `/sys-info`、`/sys_info` | — | 所有人 |
-| `/web` (`/dashboard` 別名) | 登入網頁儀表板與網頁聊天：登入連結和一次性登入碼（Telegram 上登入碼會 spoiler，Discord 只有你看得到）。儀表板在 `localhost` 時，也會說明怎麼從手機連進來。`/web revoke`（Discord 上是 `action: revoke` 選項）讓所有瀏覽器登出 | `[revoke]` | 🔒 管理員 |
+| `/web`（別名 `/dashboard`） | 開啟登入選單，按登入按鈕才會私送一次性登入碼。Discord 私訊失敗可改用僅自己可見的回覆；Telegram 私送被拒時會說明如何先私訊啟動 bot。`/web revoke` 登出所有瀏覽器 | `[revoke]` | 🔒 管理員 |
+| `/backend` | 切換 fleet instance 的 backend；ClassicBot 用設定頁或 `classicBot.yaml` | 名稱或選單 | 🔒 管理員 |
+| `/visibility` | 跨 instance 訊息顯示方式 | `full\|summary\|hidden`；Telegram 限 General | 🔒 管理員 |
+| `/profile` | 在 General 錄製執行中 fleet 的 CPU profile（預設 60 秒，上限 1,800 秒） | `[seconds]` | 🔒 管理員 |
 | `/ctx` | 顯示 Agent 的 Context 使用量 | — | 所有人 |
-| `/compact` | 壓縮 Agent 的 Context | `[instructions]`——指定摘要重點，僅 Claude Code | fleet 主題所有人 |
+| `/compact` | 壓縮 Agent 的 Context | `[instructions]`——指定摘要重點，僅 Claude Code | 🔒 管理員 |
 | `/steer` | 插話到 Agent 正在進行的回合，不等閒置 | `<message>` 必填；`claude-code`／`codex`／`grok`／`muse`，以及以已驗證版本的 TUI 執行的 `kiro-cli`（[說明](commands.md#steer-btw-and-clear-backend-support)） | 所有人 |
 | `/btw` | 不中斷目前任務的旁支問題 | `<message>` 必填；僅 `claude-code` | 所有人 |
 | `/clear` | 完整重置對話（破壞性——會先問 Confirm/Cancel） | — | 🔒 管理員 |
@@ -19,7 +23,7 @@ Telegram fleet 選單（General 主題與實例主題，`setMyCommands`）列出
 | `/pause` | 手動暫停閒置的實例 | `[instance]`——在 General 需指名 | 🔒 管理員 |
 | `/wake` | 喚醒暫停的實例 | `[instance]`——在 General 需指名 | 🔒 管理員 |
 | `/restart` | 在進程內重啟所有實例（不結束進程） | `[full]`／`mode: full` 會重載整個 Fleet 進程與 adapter | 🔒 管理員 |
-| `/collab` | 開關 bot/webhook 訊息接收 | — | fleet 主題所有人（ClassicBot 對話裡不是指令） |
+| `/collab` | 切換 bot／webhook 訊息接收 | — | 🔒 管理員（Telegram ClassicBot 不處理） |
 | `/update` | 依已安裝的頻道更新到最新版 | — | 🔒 管理員 |
 | `/doctor` | 執行 fleet 健康診斷 | — | 🔒 管理員 |
 | `/login` | （beta）遠端 CLI 登入，缺 CLI 時先幫你裝好 | `[backend] [cancel]`；隨時可用 `/login cancel` | 🔒 管理員 |
@@ -31,7 +35,7 @@ Telegram fleet 選單（General 主題與實例主題，`setMyCommands`）列出
 ## 服務管理 (Service Management)
 
 ```bash
-agend start                     # 啟動 AgEnD 服務（需先安裝）
+agend start                     # 啟動已安裝的服務；沒有服務時啟動背景 fleet
 agend stop                      # 停止 AgEnD 服務
 agend restart                   # 重啟 AgEnD 服務
 agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
@@ -153,6 +157,36 @@ agend setup --tunnel            # ……並公開出去，讓手機也能開
 
 `--tunnel` 每次都要你親口確認，沒有旗標或設定可以預先答應；沒有終端的執行直接拒絕，不當作你同意了。手機設定走 Cloudflare 通道，你打進去的 bot token 會經過 Cloudflare 的邊緣——不能接受就回機器上設。
 
+### 儀表板登入與 session
+
+在 General 傳 `/web`，再按 **💻 AgEnD 電腦登入（取碼）**（其他裝置可選臨時公開）。私送內容包含頁面與登入碼；主機上的 `agend web --code` 也可取碼。只有最新的碼有效，五分鐘內限用一次。
+
+- 直接連線的 dashboard session 預設 48 小時，可用 `web.session.local.*` 設定。公開連結 session 最多四小時、閒置 30 分鐘，或連結關閉時結束。
+- `/web revoke` 登出所有瀏覽器並撤回未使用的碼；`agend web-token rotate` 另更換 header token。
+- 登入碼或 session 授予 web 管理權限，請勿轉傳；session cookie 不是經驗證的平台身分。
+- 瀏覽器寫入需 session 的 CSRF 值及符合 Host 的 Origin。腳本用 `X-Agend-Token`；有提供 Origin 時仍須符合 Host。
+- Loopback listener 的 `/view` 讀取預設開放；設 `web.view_access: session` 才需登入，個人資料寫入一律需授權。
+
+裝置、公開連結、上傳與預覽請見[網頁指南](web-dashboard.zh-TW.md)；完整憑證規則請見[安全說明](SECURITY.zh-TW.md#dashboard-登入與瀏覽器-session)。
+
+### 套用設定變更
+
+`POST /api/settings/apply` 回傳 job；`GET /api/settings/apply/:jobId` 是權威狀態。每個受影響的 agent 一列：`hot` 表示透過 IPC 直接套用，`restart` 表示須重啟 CLI。
+
+第一次嘗試前產生 `Idempotency-Key`，每次重試都沿用；相同 key 會取得原 job，不會重複套用。舊 `POST /api/settings/reload` 仍發送 SIGHUP，但不回報套用結果。
+
+Job 存在磁碟，fleet 自己重啟後由新行程接手，將重啟時仍在處理的項目標成 `settled_by: "fleet-restart"`，繼續接受 GET 查詢。超過期限會回報 `overdue` 與「仍在重啟（Ns）」訊息。
+
+同時只能有一個 reconcile。SIGHUP 與 Apply 共用名額；套用期間的 signal 合併為一次重播，第二個 Apply 回 `409` 及目前的 `running_job_id`。設定已寫入磁碟，重試不會遺失它。
+
+只有新 fleet 行程才能採用的設定會標成 `restart-required`，而非 `done`：設定有效且已儲存，但尚未生效；後續 Apply 仍會顯示，直到真正重啟。這些包括 channel 綁定、`health_port`、`defaults.locale`，以及建立 subsystem 時只讀一次的 `cost_guard`、`webhooks`、`daily_summary` 和 scheduler 設定。`defaults.backend` 不在其中，agent 自己重啟即可採用。
+
+面板可透過 `POST /api/settings/restart-fleet` 重啟，另有確認、idempotency key，以及持久化的每十分鐘一次、每小時三次上限。啟動前先記錄限制並在聊天公告；公告無法送出就拒絕重啟。
+
+`/ui/events` 的 `apply_progress` SSE 只用來加速更新，沒有 event ID；重連不能要求補發，所以收到後仍應重新查 job。
+
+**連結一直回到「No session」時**，請檢查代理的 HTTPS header：標成 Secure 的 cookie 無法在純 HTTP 儲存。
+
 ## 排程 (Schedules)
 
 ```bash
@@ -201,7 +235,7 @@ agend access unlock <name>      # 解鎖實例存取（開啟配對模式）
 agend access pair <name> <uid>  # 產生配對碼
 ```
 
-（注意：沒有 `access add`——配對走 `access pair`。）
+`access pair` 只產生碼，不會核准。CLI 沒有確認配對碼的指令，也沒有 `access add`；主人可透過設定的使用者名單授權。保存狀態與 YAML 名單會合併，見[存取設定](configuration.zh-TW.md#channelaccess)。
 
 ## 設定與安裝 (Setup & Installation)
 

@@ -17,7 +17,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
   <code>You → Telegram/Discord → AgEnD → Fleet of AI Agents → Results back to your phone</code>
 </p>
 
-[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md)
+[繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.2 what’s new](docs/release-notes/2.2.0.md)
 
 ---
 
@@ -30,7 +30,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 | Long-running sessions accumulate stale context | CLI auto-compact + crash recovery with context snapshots |
 | No idea what your agents are doing overnight | Daily cost reports + hang detection alerts |
 | Agents work in silos, can't coordinate | Peer-to-peer collaboration via MCP tools |
-| Runaway costs from unattended sessions | Per-instance daily spending limits with auto-pause |
+| Runaway costs from unattended sessions | Per-instance daily spending limits that stop the instance |
 
 ## Feature Highlights
 
@@ -64,19 +64,19 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board for multi-step work tracking across instances.
 
-📋 **Fleet Templates** — Define reusable fleet configurations. Deploy multi-instance setups with one command, each with its own git worktree.
+📋 **Fleet Templates** — Define reusable fleet configurations. Deploy multi-instance setups with one command; supply `branch` to give each role its own git worktree.
 
 😀 **Stickers & Persona Emoji** — Agents can send stickers on Discord and Telegram, and each agent can pick its own emoji so you can tell bots apart in a shared channel.
 
 📊 **Subscription Usage** — `/usage` (also the dashboard and the `get_usage` tool) shows the remaining quota of your Claude, Codex, Kiro, Grok, Muse and Antigravity subscriptions, one row per subscription.
 
-🔑 **Credential Profiles** — Run instances, or ClassicBot channels, on a second subscription of the same backend with `backend_options.<backend>.credential_profile` (kiro-cli and Codex today). See [Configuration](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
+🔑 **Credential Profiles** — Run instances, or ClassicBot channels, on a second subscription of the same backend with `backend_options.<backend>.credential_profile` (kiro-cli, Codex and Claude Code today). See [Configuration](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend).
 
 🌐 **Sign In From Your Phone** — `/login` (fleet admins) signs a CLI in without SSH: device-code logins such as Codex and Grok post their link and code in the chat, and a sign-in that needs a terminal gets a time-limited, token-protected browser terminal on the host. For kiro-cli and Claude Code it can also open a temporary public link through a Cloudflare Quick Tunnel after you confirm; AgEnD downloads `cloudflared` if it is missing. Turn it off with `web_terminal.tunnel.allow_public: false`. See [Configuration](docs/configuration.md#finishing-a-login-away-from-the-machine-public-link).
 
 💤 **Auto-Pause & Wake** — With `auto_pause_after` (minutes, off by default) an idle instance is paused and wakes by itself when a message arrives. `/pause` and `/wake` do the same by hand.
 
-🧠 **Memory Pressure Guard** — On Linux the fleet watches host memory: under pressure it slows new CLI starts, holds them while memory is critical, and posts a notice. On macOS the readings are only logged.
+🧠 **Memory Pressure Guard** — On Linux and macOS, host memory pressure slows new CLI starts and holds them while memory is critical. Status stays visible in logs, health and the dashboard; there are no chat broadcasts. A held human start, restart or wake action gets its reason.
 
 ## Use Cases
 
@@ -144,7 +144,7 @@ graph LR
 | Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (x.ai OAuth device flow). Needs CLI 1.0.13 or later; run `grok update` if the server refuses an older one |
 | Meta Muse Code | `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"` (the launcher keeps its binary beside itself, so it is saved first) | `muse login` |
 
-**Or install from chat with `/login <backend>`** (beta, fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and goes on to sign in. A bare `/login` offers every backend above.
+**Or install from chat with `/login <backend>`** (beta, fleet admins only), without SSH-ing into the host: when the CLI is not installed yet, `/login` runs the command above in a fleet window, finds the CLI where its installer put it, adds that directory to the fleet's PATH, and offers sign-in where supported. OpenCode and Muse are install-only; Antigravity can be installed but has no isolated remote sign-in. A bare `/login` offers the available sign-in and missing-CLI installation actions.
 
 **Tested CLI versions (AgEnD 2.1.9).** Codex 0.155 to 0.159. Claude Code 2.1.286 (first-run, trust and resume screens captured from the real CLI). Kiro CLI 2.21 to 2.27 run live; older 2.x versions still start, with a warning to update, and anything newer than 2.27 is launched only after its own `--help` confirms the flags AgEnD pins (the legacy UI on kiro's v1 engine, the terminal UI on v2). A kiro-cli that can no longer run an instance that way is refused, not started on another engine (#1109). `kiro_ui: v3` is not supported yet (#849). Grok CLI 1.0.13 or later. Muse 1.3.0. Antigravity and OpenCode have no pinned version. Other versions usually work, but a new CLI release can change its screens, so AgEnD only claims a version after testing against it.
 
@@ -193,7 +193,7 @@ agend quickstart
 agend fleet start
 ```
 
-The quickstart will set up both `fleet.yaml` and `classicBot.yaml`. Run `agend quickstart` again to add users or guilds to existing config.
+The quickstart sets up `fleet.yaml` and offers to configure `classicBot.yaml`. Run `agend quickstart` again to add users or guilds to existing config.
 
 ### Usage
 
@@ -206,7 +206,7 @@ The quickstart will set up both `fleet.yaml` and `classicBot.yaml`. Run `agend q
 | `/effort`, `/collab` | admin | Discord only: reasoning effort, collab mode |
 | `/stop`, `/load` | ClassicBot admin | Stop the agent in the current channel; load a saved conversation (`/load` is Discord only) |
 
-"Admin" is a fleet admin or a ClassicBot admin (`admin_users`) on Discord. On Telegram, `/pause`, `/wake`, `/compact` and `/save` take a ClassicBot admin. Fleet-wide commands such as `/usage` and `/status` also work in a ClassicBot channel on Discord. Who may `/start`: on Discord, anyone in an allowed server; on Telegram, a user in `allowed_users` in a private chat, or a ClassicBot admin in an allowed group (`/start@yourbot`).
+"Admin" is a fleet admin or a ClassicBot admin (`admin_users`) on Discord. On Telegram, existing agents’ `/pause`, `/wake`, `/compact` and `/save` accept the owning fleet admin or a ClassicBot admin. Fleet-wide commands such as `/usage` and `/status` also work in a ClassicBot channel on Discord. Who may `/start`: on Discord, a ClassicBot admin or anyone in an explicitly allowed server; an unlisted new room can ask General for approval. On Telegram, a ClassicBot admin or explicitly allowed user can start privately; a group start requires a ClassicBot admin (`/start@yourbot`).
 
 On Discord, `/start` turns on collab mode: @-mention the bot to talk to it. See [Use Cases](docs/use-cases.md) for examples.
 
@@ -222,11 +222,11 @@ defaults:
     - "9876543210123456789"
 ```
 
-- **Empty or omitted** `allowed_guilds` → all servers allowed (default)
-- **Primary guild** (fleet.yaml `group_id`) → full access (topic mode + ClassicBot)
-- **Whitelisted guilds** → ClassicBot channels only
-- **A `/start` from a server that is not listed** posts an approval request with buttons to the General topic
-- **Hot reload** — changes detected every 30 seconds, no restart needed
+- **Empty or omitted** `allowed_guilds` grants no server access to a non-admin starting a new room.
+- **ClassicBot admins** bypass the lists; already registered rooms keep working. The primary fleet guild does not itself grant ClassicBot admission.
+- **Explicitly allowed guilds** let non-admins start ClassicBot channels.
+- **A non-admin `/start` in a new unlisted room** asks General for approval.
+- **Reload** — changes are detected every 30 seconds. Launch-setting changes restart running agents; supported runtime settings update in place.
 
 ### Per-Channel Backend
 
@@ -247,9 +247,9 @@ Backend fallback: channel → `defaults.backend` → `fleet.yaml` defaults → `
 
 ```yaml
 defaults:
-  allowed_guilds: ["123456789012345678"]   # Discord servers (empty = all)
-  allowed_groups: ["-1001234567890"]       # Telegram groups (empty = all)
-  allowed_users: ["123456789"]             # Telegram users who may /start in a private chat (empty = all)
+  allowed_guilds: ["123456789012345678"]   # Discord servers (empty = no grant)
+  allowed_groups: ["-1001234567890"]       # Telegram groups (empty = no grant)
+  allowed_users: ["123456789"]             # Telegram users who may /start in a private chat (empty = no grant)
   admin_users: ["123456789"]               # ClassicBot admins (empty = nobody)
 ```
 
@@ -268,11 +268,11 @@ channels:
         credential_profile: work   # "" = back to the shared login
 ```
 
-The channel's `backend_options` are merged over the fleet.yaml defaults'. Profiles work for kiro-cli and Codex; an invalid profile name keeps the agent from starting rather than running it on the wrong account, and a change restarts a running agent. Log the profile in first: see [Credential profiles](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend). Every other `classicBot.yaml` key is in the [Configuration reference](docs/configuration.md#classicbotyaml).
+The channel's `backend_options` are merged over the fleet.yaml defaults'. Profiles work for kiro-cli, Codex and Claude Code; an invalid profile name keeps the agent from starting rather than running it on the wrong account, and a change restarts a running agent. Log the profile in first: see [Credential profiles](docs/configuration.md#credential-profiles-multiple-subscriptions-of-one-backend). Every other `classicBot.yaml` key is in the [Configuration reference](docs/configuration.md#classicbotyaml).
 
 ## Known Limitations
 
-- macOS (launchd) and Linux (systemd) supported; on Windows, run it inside WSL ([Windows install guide](https://songsid.github.io/AgEnD/install-windows/)). Native Windows is not supported
+- macOS 11+ (launchd) and glibc 2.28+ Linux (systemd) are supported; on Windows, use WSL with systemd. Alpine/musl, non-systemd Linux and native Windows are unsupported. Run AgEnD inside WSL ([Windows install guide](https://songsid.github.io/AgEnD/install-windows/)). Native Windows is not supported
 - Official Telegram plugin in global `enabledPlugins` causes 409 polling conflicts
 
 ## License

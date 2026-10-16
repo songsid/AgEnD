@@ -15,10 +15,13 @@
 > - 從 2.1.x 更新後 fleet 沒有重啟，`agend start` 也拒絕啟動（「Failed to start the installed AgEnD service」），因為更新在沒有 systemd 的主機上留下了 systemd unit 檔。刪掉它再啟動：`rm ~/.config/systemd/user/com.agend.fleet.service && agend start`。
 > - 在 Alpine 上 `agend update` 停在「this process's own start time cannot be read」：BusyBox 的 `ps` 沒有 `lstart`。先安裝完整的 `ps`：`apk add procps`。
 
-**從 2.1.12、且主機屬於內建 Node 的平台（Linux glibc 2.28 以上、macOS 11 以上的 x64 或 arm64）升級：** 在聊天室輸入 `/update`，或在主機執行 `agend update`。
-2.1.12 的更新程式會刷新服務設定並重啟 fleet，在這些平台上這樣就夠了。
+**從 2.1.12、且主機屬於內建 Node 的平台（Linux glibc 2.28 以上、macOS 11 以上的 x64 或 arm64）升級：**
+- **2.2 還是預發版時：** 在主機執行 `agend update --beta`。單獨傳 `/update` 會留在穩定頻道，不會選到 2.2 beta。
+- **2.2.0 發布為 `latest` 之後：** 在 General 傳 `/update`，或在主機執行 `agend update`。
 
-**從 2.1.0–2.1.11 升級、或從任何 2.1.x 在沒有內建 Node 的平台（32 位元、或 PATH 上的 Node 低於 22.14）升級：** 請按照以下的[手動升級](#2-進階手動升級)流程操作。這些較舊的更新程式和不支援的 Node 情況，正是「先移除後安裝失敗」最容易發生的地方。
+2.1.12 更新成功時會刷新服務設定並重啟 fleet，通常不必另跑 `agend install`。只要內建 runtime 安裝成功，就不必先升級 PATH 上的舊 Node。
+
+**從 2.1.0–2.1.11 升級：** 請按照以下的[手動升級](#2-進階手動升級)流程操作。沒有內建 runtime 的平台，則先依上方說明安裝符合版本的 PATH Node，再照手動流程操作。這些較舊的更新程式和不相容的 runtime 情況，正是「先移除後安裝失敗」最容易發生的地方。
 
 > **如果 `/update` 或 `agend update` 失敗：**
 > 2.1 的更新程式會*先*移除已安裝的 AgEnD，再安裝新版。之後的安裝只要因為任何原因失敗，就什麼都不剩。正在跑的 fleet 只能撐到下一次重啟或登入，之後服務就無法啟動。如果是 AgEnD 2.2 拒絕安裝，訊息會包含恢復指令；其他情況（網路、npm 錯誤），請自行執行——或是參閱[第 7 節](#7-如果從-21-執行-agend-update-已經失敗)的完整恢復步驟：
@@ -67,13 +70,13 @@
 cp -a "${AGEND_HOME:-$HOME/.agend}" "${AGEND_HOME:-$HOME/.agend}.bak-2.1"
 ```
 
-**2.3 安裝 2.2。**
+**2.3 安裝 2.2。** 2.2.0 尚未發布時，請把以下指令的 `@2.2.0` 換成 `@beta`。
 ```sh
 npm install -g @songsid/agend@2.2.0
 ```
 
 **2.4 重新啟動。**
-- **以服務方式執行：** 執行 `agend install`。它會把服務改寫成 2.2 的版本並啟動（2.1 的服務定義會被 2.2 的重啟檢查拒絕）。
+- **以服務方式執行：** 執行 `agend install`。它會把服務改寫成已安裝的 2.2 runtime 並啟動。
 - **自己啟動：** 照原本的方式執行 `agend fleet start`。
 
 **2.5 檢查**（第 4 節）。
@@ -83,11 +86,11 @@ npm install -g @songsid/agend@2.2.0
 **只發生一次：**
 - **Kiro：** 恢復的對話維持它存檔時的 agent，並從共用的 `.kiro` 檔案取得 AgEnD 的 server 與指示；#906 的 pane 內 `/agent swap` 已暫停（#1800），因為有 instance 切換後失去了 AgEnD 的工具。已經切換過的 instance 會在下次啟動時拿回共用項目；重啟後請確認它會呼叫 `reply`。等所有使用該目錄的 fleet 都升級後，只手動刪掉能確認是 AgEnD 在 #906 之前替同一個 instance、同一個工作目錄寫的 `.kiro/steering/agend-<instance>.md`：第一行沒有 `<!-- agend-agent:… -->`，且以舊的 `# AgEnD Fleet Context` 開頭、寫著該 instance 和該工作目錄。有標記的要保留（恢復的對話會讀它），其他同名檔案也不要動。
   - 從 2.1.11 之前升級也支援一次性的 Kiro 對話認領（#1624），會檢查共用 cwd 與 claim；見 [認領與 beta.1 復原](kiro-upgrade-recovery.zh-TW.md)。
-- **網頁登入：** 每個人都要重新登入一次。舊的 `?token=` 連結和書籤都會打開登入頁。對 bot 傳 `/web`，或在主機上執行 `agend web --code`，就能拿到一次性代碼（8 個字元，5 分鐘內有效）。
+- **網頁登入：** 每個人都要重新登入一次。舊的 `?token=` 連結和書籤都會打開登入頁。在 General 傳 `/web`，再按 **💻 AgEnD 電腦登入（取碼）**，或在主機上執行 `agend web --code`，就能拿到一次性代碼（8 個字元，5 分鐘內有效）。
 - **General 會收到一則 web chat 介紹**（#1366），每個平台只送一次，記錄在 `AGEND_HOME/upgrade-notices.json`。
 
 **從此以後的政策：**
-- **網頁登入的 session**：在本機自己的 dashboard 上預設可維持 48 小時（閒置 48 小時失效；2.2.1 之前為 12 小時／2 小時）；透過公開連結則是 4 小時（閒置 30 分鐘失效）。
+- **網頁登入的 session**：在本機自己的 dashboard 上預設可維持 48 小時（閒置 48 小時失效）；透過公開連結則是 4 小時（閒置 30 分鐘失效）。
 - **ClassicBot：** 不在允許清單上的人 `/start` 時，會請 General 核准（#1418）。`allowed_users`、`allowed_groups`、`allowed_guilds` 是空的或沒寫，不再等於「開放」。請用 General 的按鈕核准，或寫上明確的名單。已註冊的房間不受影響。
 - **網頁 Settings 的敏感變更會變成提案**（#1423）：由 General 裡的 fleet 管理員在聊天中確認，或在主機上執行 `agend settings confirm <id>`。待確認的提案在重啟後會消失，需要重新送出。
 - **停止 fleet 最多可能要 5 分鐘**（#1071），讓忙碌中的 Kiro instance 把手上的事做完；之後重新啟動另外還要花時間。如果服務已載入的停止期限少於 300 秒，`agend restart` 會拒絕執行；AgEnD 自己的 unit 會自動更新，你自訂的期限會保留並附上警告。
@@ -100,7 +103,7 @@ agend fleet status       # 每個 instance 都在執行
 agend health             # fleet 有回應
 ```
 接著：
-- 登入網頁 dashboard（在聊天裡傳 `/web`，或執行 `agend web --code`），打開一個 instance 的聊天。
+- 登入網頁 dashboard（在 General 傳 `/web` → 按登入按鈕，或執行 `agend web --code`），打開一個 instance 的聊天。
 - 分別從聊天 App 和網頁傳一則訊息給某個 instance，兩邊都要送得到。
 - 打開網頁側欄的 **Needs you**：所有等你處理的事（登入、確認）都列在那裡。
 - 有用 Kiro 的話：確認每個 Kiro instance 啟動後都回應過一次（有呼叫 `reply`）；#1800 之前已經切換過的 instance 請重啟一次。
