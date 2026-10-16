@@ -50,6 +50,8 @@ const BEFORE: Record<string, string[]> = {
     "get_web_appearance", "preview_web_appearance",
     // #1629 r4-4: its own declarative widgets (no target).
     "set_web_widget", "remove_web_widget",
+    // #1629 r4-5b: mods — its own look as a file, and a proposal for a person (agents never import).
+    "export_web_mod", "propose_web_mod",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",

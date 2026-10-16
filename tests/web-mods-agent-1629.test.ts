@@ -266,3 +266,29 @@ describe("wiring", () => {
     } finally { await new Promise(r => server.close(r)); }
   }, 120_000);
 });
+
+describe("the page: proposals", () => {
+  it("listed by agent; Review opens it into the usual plan; Dismiss drops it; a malformed entry is skipped", async () => {
+    const { page, settle } = await import("./helpers/app-harness.js");
+    vi.resetModules();
+    const pg = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+    try {
+      const calls: Array<[string, string]> = [];
+      const plan = { mod: { id: "a".repeat(32), name: "proposed", version: "1.0.0", title: "Proposed look", bytes: 10, installed: false }, items: [{ part: "identity", tagline: "Hello" }], needs_target: true, warnings: [] };
+      vi.stubGlobal("fetch", async (url: string, init: { body?: string } = {}) => {
+        calls.push([url, init.body ?? ""]);
+        const body = url === "/ui/mods" ? { mods: [], staged: null, proposals: [{ instance: "alpha", name: "proposed", version: "1.0.0", title: "Proposed look" }, { instance: 1 }] }
+          : url === "/ui/mods/proposal/stage" ? { stage: "s1", plan, plan_hash: "h" } : { ok: true };
+        return { ok: true, status: 200, json: async () => body };
+      });
+      const P = await import("/assets/app-html.js");
+      const { ModsCard } = await import("/ui/js/settings-mods.js");
+      P.render(P.h(ModsCard, {}), pg.root); await settle(); await settle();
+      const items = [...pg.root.querySelectorAll(".s-mod-proposals li")] as any[];
+      expect(items.map(li => li.textContent.replace(/\s+/g, " ").trim())).toEqual(["alpha proposes Proposed look proposed 1.0.0ReviewDismiss"]);
+      (items[0].querySelectorAll("button")[0] as any).click(); await settle(); await settle();
+      expect(calls.at(-1)).toEqual(["/ui/mods/proposal/stage", JSON.stringify({ instance: "alpha" })]);
+      expect(pg.root.querySelector(".s-mod-plan h4")!.textContent).toContain("Proposed look");
+    } finally { vi.unstubAllGlobals(); pg.restore(); }
+  });
+});

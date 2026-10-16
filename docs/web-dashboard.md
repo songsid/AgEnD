@@ -326,6 +326,7 @@ A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an age
 - **Versions.** A mod's identity is its content. Importing another version of an installed name asks to **Replace** it. Up to 20 mods and 64 MiB can be installed.
 - **Uninstall** removes the mod from the list, and its effects from your library unless something still uses them. What it applied stays until you reset it.
 - **Export a mod** makes a file from what is in force now: an agent's theme with its pictures, its card text and widgets, your sidebar widget, and your custom CSS with the files it names. An exported file imports as it is.
+- **Agents' mods.** An agent can export its own look as a mod file (`export_web_mod`, written in its working directory) and propose a mod for you to review (`propose_web_mod`). A proposal shows under **Proposed by agents**: **Review** opens it into the same two-step import, and **Dismiss** drops it. A mod an agent proposes can never carry custom CSS, and agents never import.
 - **Effects** in a mod need the effect runtime. Until this fleet has one, a mod that carries effects is refused with `effects_unavailable`.
 - Mods are a signed-in person's action. They are never available over a temporary public link, and an agent's CLI token can't reach them.
 

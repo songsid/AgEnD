@@ -23,7 +23,7 @@ describe("the web-appearance skill", () => {
     const names = new Set(TOOLS.map((t: { name: string }) => t.name));
     const named = [...SKILL.matchAll(/`([a-z_]+)`/g)].map(m => m[1]!).filter(n => /^(get|set|reset|preview)_/.test(n));
     expect(named.filter(n => !names.has(n))).toEqual([]);
-    for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget"]) expect(SKILL, t).toContain(`\`${t}\``);
+    for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "export_web_mod", "propose_web_mod"]) expect(SKILL, t).toContain(`\`${t}\``);
   });
   it("its numbers are the code's: slots, sizes, rate limits, text limits, contrast", () => {
     for (const slot of THEME_ASSET_SLOTS) expect(SKILL, slot).toContain(`| \`${slot}\` |`);
@@ -74,11 +74,11 @@ describe("what's new for 2.3 (#1633)", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
   const OLD = AGENT_WHATS_NEW.filter(e => compareVersions(e.since, "2.2.0")! <= 0).map(e => e.id);
-  it("an instance told everything of 2.2 hears the four 2.3 entries once on 2.3 — never on a 2.2.x", () => {
+  it("an instance told everything of 2.2 hears the five 2.3 entries once on 2.3 — never on a 2.2.x", () => {
     expect(planWhatsNew({ record: { announced: OLD }, fresh: false, version: "2.2.5" })).toBeNull();
     for (const version of ["2.3.0-alpha.1", "2.3.0-beta.1", "2.3.0"]) {
       const plan = planWhatsNew({ record: { announced: OLD }, fresh: false, version });
-      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-widget"]);
+      expect(plan && "ids" in plan ? plan.ids : plan, version).toEqual(["2.3-web-theme", "2.3-web-card", "2.3-web-appearance", "2.3-web-mod", "2.3-web-widget"]);
     }
     const all = AGENT_WHATS_NEW.map(e => e.id);
     expect(planWhatsNew({ record: { announced: all }, fresh: false, version: "2.3.0" })).toBeNull();

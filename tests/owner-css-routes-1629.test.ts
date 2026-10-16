@@ -253,7 +253,10 @@ describe("no agent path reaches it", () => {
       // web-mod-*.ts (#1629 r4-5): the mod format, and a person's import and export of their own CSS — reached only by
       // the /ui/mods routes (a signed-in session; tested in web-mods-1629), never by a tool or the agent endpoint.
       if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts",
-        "web-mod-bundle.ts", "web-mod-store.ts", "web-mod-export.ts"].includes(f)) continue;
+        "web-mod-bundle.ts", "web-mod-store.ts", "web-mod-export.ts",
+        // web-mod-agent.ts (r4-5b): an agent's mod path names it only to refuse it (owner_css_not_from_agent), and its
+        // export never carries it — both tested in web-mods-agent-1629.
+        "web-mod-agent.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);

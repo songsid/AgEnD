@@ -158,7 +158,8 @@ export function ModsCard() {
     const r = await call("/ui/mods");
     const b = r.ok && r.body && typeof r.body === "object" ? r.body : null;
     const staged = b && b.staged && typeof b.staged === "object" && typeof b.staged.stage === "string" && b.staged.plan && Array.isArray(b.staged.plan.items) ? b.staged : null;
-    setState(b && Array.isArray(b.mods) ? { mods: b.mods.filter((m) => m && typeof m.id === "string"), staged } : { failed: true });
+    const proposals = b && Array.isArray(b.proposals) ? b.proposals.filter((p) => p && typeof p.instance === "string" && typeof p.title === "string") : [];
+    setState(b && Array.isArray(b.mods) ? { mods: b.mods.filter((m) => m && typeof m.id === "string"), staged, proposals } : { failed: true });
   };
   useEffect(() => { load(); }, []);
   if (!state) return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3><p class="sub">…</p></section>`;
