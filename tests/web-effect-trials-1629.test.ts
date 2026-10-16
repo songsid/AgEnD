@@ -59,7 +59,12 @@ describe("#1629 volatile local-admin Try authority (unmounted)", () => {
   });
   it("a trial started just before expiry cannot extend the offer, and wall-clock changes cannot renew it", () => {
     const f = fixture(), o = f.offer().offer; f.at(599_999); f.wall(0); const t = f.start(o);
-    expect(t.offer.expiresAt).toBe(o.expiresAt); f.at(600_000); expect(f.trials.read(t.trial, "agent", viewer())).toEqual(unavailable);
+    expect(t.remainingMs).toBe(1); expect(t.offer.expiresAt).toBe(o.expiresAt); f.at(600_000); expect(f.trials.read(t.trial, "agent", viewer())).toEqual(unavailable);
+  });
+  it("returns a floored monotonic remainder for a conservative request-start deadline, never a wall-clock lease", () => {
+    const f = fixture(), o = f.offer().offer; expect(f.start(o).remainingMs).toBe(600_000);
+    f.at(10_000.25); f.wall(0); expect(f.start(o).remainingMs).toBe(589_999);
+    f.at(599_999.75); expect(f.trials.start(o.offer, "agent", viewer())).toEqual(unavailable);
   });
   it.each([
     { surface: "gateway" }, { surface: "public" }, { via: "header-token" }, { via: "agent" }, { tier: "read" }, { tier: undefined },

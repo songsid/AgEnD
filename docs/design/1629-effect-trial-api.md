@@ -24,7 +24,7 @@ or response fields. Web-only operator sessions are supported and session-bound.
 
 | Method and path | Query | Body / result |
 |---|---|---|
-| POST `/ui/effect-trials/start` | exactly one `ownerEpoch` | closed `{offer, instance}`; trial token, display offer, checked manifest and resolved default params |
+| POST `/ui/effect-trials/start` | exactly one `ownerEpoch` | closed `{offer, instance}`; trial token, display offer, monotonic `remainingMs`, checked manifest and resolved default params |
 | POST `/ui/effect-trials/<trial>/stop` | exactly one `ownerEpoch` | exactly `{}`; clears only that session's trial |
 | GET `/ui/effect-trials/<trial>/resource` | exactly one `ownerEpoch` and `instance` | checked code/default params/declared signals and raster assets, using the ordinary bounded projection |
 | GET `/ui/effect-trials/<trial>/poster.png` | same | static PNG output copy, no-store/nosniff/sandbox |
@@ -44,6 +44,14 @@ After the body settles, the route reauthenticates and compares the actual sessio
 record, session-store identity, hash, person and epoch. Revocation, expiry, token
 rotation, even a same-person cookie swap or store reload cannot continue an old
 request. No client-supplied actor object reaches the authority.
+
+Start also returns the floored **monotonic** remaining milliseconds (1..600000).
+The later client must set its deadline to **request-start performance time plus
+remainingMs**, not response time plus remainingMs, and recheck it before paint.
+This conservatively includes request/response delay and cannot renew an old
+offer. Public `expiresAt` is wall-clock display only: client/server clock skew or
+wall-time rollback must not extend playback. A sub-millisecond remainder refuses
+start. These client deadline checks remain future mount work.
 
 The server asks the current owner-CSS provider on every request. Only literal
 `off` permits start and reads; absent, thrown, loading or invalid evidence becomes

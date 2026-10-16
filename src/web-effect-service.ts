@@ -150,7 +150,7 @@ export class WebEffectService {
     const r = this.deps.trials!.read(t.trial, instance, viewer);
     const params = r.ok ? resolveEffectParams(r.entry.manifest) : null;
     if (!r.ok || !params?.ok) { this.deps.trials!.stop(t.trial, viewer); return fail("not_found"); }
-    return { trial: t.trial, offer: t.offer, manifest: r.entry.manifest, params: params.values };
+    return { trial: t.trial, offer: t.offer, remainingMs: t.remainingMs, manifest: r.entry.manifest, params: params.values };
   }
   trialStop(trial: string, viewer: unknown): Answer {
     return this.deps.trials?.stop(trial, viewer).ok ? { ok: true } : fail("not_found");

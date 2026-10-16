@@ -55,7 +55,7 @@ describe("#1629 local-admin trial API (no card or runtime mount)", () => {
   it("starts a verified session-bound sample, reads normalized resources and existing history, stops with no appearance/claim/profile write", async () => {
     const f = await fixture(), a = f.session(), before = disk(f.root), r = await f.start(a); expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ offer: f.offer, manifest: { title: "👨‍👩‍👧".repeat(10) }, params: { n: 2 }, trial: expect.stringMatching(/^[0-9a-f]{32}$/) });
-    expect(Object.keys(r.body).sort()).toEqual(["manifest", "offer", "params", "trial"]);
+    expect(Object.keys(r.body).sort()).toEqual(["manifest", "offer", "params", "remainingMs", "trial"]); expect(r.body.remainingMs).toBe(600_000);
     const resource = await f.call("GET", f.url(r.body.trial, "resource", a.epoch), a.headers);
     expect(resource.status).toBe(200); expect(resource.body).toMatchObject({ id: f.id, code: "agend.ready()", params: { n: 2 }, wants: ["theme"], assets: [{ name: "assets/star.png", mime: "image/png" }] }); expect(resource.body.assets).toHaveLength(1);
     const image = await f.call("GET", f.url(r.body.trial, "poster.png", a.epoch), a.headers); expect(image.status).toBe(200); expect(image.headers).toMatchObject({ "cache-control": "private, no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "content-type": "image/png" });
@@ -134,6 +134,10 @@ describe("#1629 local-admin trial API (no card or runtime mount)", () => {
     f.at(599_999); expect((await f.call("GET", f.url(r.body.trial, "resource", a.epoch), a.headers)).status).toBe(200);
     f.at(600_000); expect((await f.call("GET", f.url(r.body.trial, "resource", a.epoch), a.headers)).status).toBe(404); expect((await f.start(a)).status).toBe(404);
     const g = await fixture(), b = g.session(), t = await g.start(b); g.unknown(); expect((await g.call("GET", g.url(t.body.trial, "resource", b.epoch), b.headers)).status).toBe(404);
+  });
+  it("returns the original monotonic remainder despite a different client/server wall time and late admission", async () => {
+    const f = await fixture(), a = f.session(); f.at(599_999); f.wall(10_000_000);
+    const r = await f.start(a); expect(r.status).toBe(200); expect(r.body.remainingMs).toBe(1); expect(r.body.offer.expiresAt).toBe(600_000);
   });
   it("start/stop are POST-only; no GET, body field or profile POST creates trial authority", async () => {
     const f = await fixture(), a = f.session(), start = vi.spyOn(f.trials, "start");
