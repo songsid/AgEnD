@@ -235,6 +235,15 @@ export const SetWebWidgetArgs = z.object({
   data: z.record(z.string(), z.unknown()).optional()
     .describe("Values by key: a number, a line of text, a list of lines (list) or numbers (spark). With spec: the widget's values. Alone: merged into the placed widget's values (null removes a key) — its own budget, 10 s apart."),
 });
+// #1629 r4-5b: mods — your own look as a file, and proposing one for a person to review. Agents never import.
+export const ExportWebModArgs = z.object({
+  name: NonEmptyString.describe("The mod's name: a-z, 0-9 and - (1..64)"),
+  version: NonEmptyString.describe("MAJOR.MINOR.PATCH, e.g. 1.0.0"),
+  title: z.string().optional().describe("A title for people (1..60 characters; default: the name)"),
+});
+export const ProposeWebModArgs = z.object({
+  file: NonEmptyString.describe("A .agendmod.json file in your working directory (at most 8 MiB, no custom CSS)"),
+});
 export const RemoveWebWidgetArgs = z.object({
   slot: z.enum(["chat_header", "details"]).optional().describe("The slot to empty (default both). A widget a person placed stays."),
 });

@@ -64,31 +64,62 @@ export async function receivePreview(
   first: Record<string, unknown>,
   send: (args: Record<string, unknown>) => Promise<Record<string, unknown>>,
 ): Promise<{ files: Array<{ name: string; data: Buffer }> } | { error: string; message?: string }> {
+  return receiveFiles(first, send, { name: PREVIEW_FILE, idKey: "preview", what: "preview" });
+}
+
+/**
+ * Files the fleet built for the agent's side (a preview, an exported mod): sent whole, or — when larger than one
+ * message — fetched here part by part with `{ part: { <idKey>: id, name, index } }`, each file checked against its
+ * declared bytes and sha256. `name`: the only file names accepted (nothing else is ever written).
+ */
+export async function receiveFiles(
+  first: Record<string, unknown>,
+  send: (args: Record<string, unknown>) => Promise<Record<string, unknown>>,
+  opts: { name: RegExp; idKey: string; what: string; maxParts?: number },
+): Promise<{ files: Array<{ name: string; data: Buffer }> } | { error: string; message?: string }> {
+  const { what } = opts;
+  const maxParts = opts.maxParts ?? PREVIEW_MAX_PARTS;
   if (typeof first.error === "string") return first as { error: string };
   const files = Array.isArray(first.files) ? first.files as Array<Record<string, unknown>> : [];
-  if (!files.length || !files.every(f => typeof f.name === "string" && PREVIEW_FILE.test(f.name)) || new Set(files.map(f => f.name)).size !== files.length) {
-    return { error: "preview", message: "The fleet sent no preview." };
+  if (!files.length || !files.every(f => typeof f.name === "string" && opts.name.test(f.name)) || new Set(files.map(f => f.name)).size !== files.length) {
+    return { error: what, message: `The fleet sent no ${what}.` };
   }
-  if (typeof first.preview !== "string") {
-    if (!files.every(f => typeof f.data_b64 === "string")) return { error: "preview", message: "The fleet sent no preview." };
+  const id = first[opts.idKey];
+  if (typeof id !== "string") {
+    if (!files.every(f => typeof f.data_b64 === "string")) return { error: what, message: `The fleet sent no ${what}.` };
     return { files: files.map(f => ({ name: f.name as string, data: Buffer.from(f.data_b64 as string, "base64") })) };
   }
   const out: Array<{ name: string; data: Buffer }> = [];
   for (const f of files) {
     const bytes = f.bytes, count = f.parts;
-    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(count) || (count as number) < 1 || (count as number) > PREVIEW_MAX_PARTS || typeof f.sha256 !== "string") return { error: "preview", message: "The fleet sent an unreadable preview." };
+    if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(count) || (count as number) < 1 || (count as number) > maxParts || typeof f.sha256 !== "string") return { error: what, message: `The fleet sent an unreadable ${what}.` };
     const chunks: Buffer[] = [];
     for (let index = 0; index < (count as number); index++) {
-      const a = await send({ part: { preview: first.preview, name: f.name, index } });
+      const a = await send({ part: { [opts.idKey]: id, name: f.name, index } });
       if (typeof a.error === "string") return a as { error: string };
-      if (typeof a.data_b64 !== "string") return { error: "preview", message: "A part of the preview is missing." };
+      if (typeof a.data_b64 !== "string") return { error: what, message: `A part of the ${what} is missing.` };
       chunks.push(Buffer.from(a.data_b64, "base64"));
     }
     const data = Buffer.concat(chunks);
-    if (data.length !== bytes || createHash("sha256").update(data).digest("hex") !== f.sha256) return { error: "preview", message: "The preview's parts do not add up." };
+    if (data.length !== bytes || createHash("sha256").update(data).digest("hex") !== f.sha256) return { error: what, message: `The ${what}'s parts do not add up.` };
     out.push({ name: f.name as string, data });
   }
   return { files: out };
+}
+
+/** #1629 r4-5b: the one file name an exported mod is written under (in `.agend/mods/`). */
+export const MOD_FILE = /^[a-z0-9][a-z0-9-]{0,63}-(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.agendmod\.json$/;
+/** An exported mod is at most 8 MiB: 24 parts of 360 KiB. */
+export const MOD_MAX_PARTS = 24;
+/** The largest mod the agent's side reads to propose (the fleet checks it again): 8 MiB. */
+export const MOD_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
+
+/** Write a received mod into `.agend/mods/` of the working directory (on the agent's side), and say where. */
+export async function writeModFile(files: Array<{ name: string; data: Buffer }>, opts: { workspace: string | undefined; stateDir: string }): Promise<{ path: string; bytes: number } | { error: string }> {
+  const f = files.length === 1 ? files[0]! : null;
+  if (!f || !MOD_FILE.test(f.name)) return { error: ".agend/mods — not one mod file" };
+  const w = await writeAgentFile(".agend/mods", f.name, f.data, opts);
+  return w.ok ? { path: w.path, bytes: f.data.length } : { error: `.agend/mods/${f.name} — ${w.reason}` };
 }
 
 /**
