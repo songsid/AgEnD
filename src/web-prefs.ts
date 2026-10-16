@@ -175,7 +175,7 @@ export function parseWebPrefsPatch(set: unknown, exists?: (name: string) => bool
   return { ok: true, patch };
 }
 
-interface Bucket { values: Map<string, unknown>; updated: Map<string, number> }
+interface Bucket { values: Map<string, unknown>; updated: Map<string, number>; ownerCssUnknown?: true }
 type State = { buckets: Map<string, Bucket>; rev: number };
 
 export class WebPrefsStore {
@@ -217,7 +217,7 @@ export class WebPrefsStore {
           const validate = REGISTRY.get(key)?.validate;
           if (!validate) continue;
           const value = validate(raw.values[key]);
-          if (isInvalid(value)) { if (OWNER_KEYS.has(key)) return (this.state = "unreadable"); continue; }
+          if (isInvalid(value)) { if (OWNER_KEYS.has(key)) return (this.state = "unreadable"); if (key === OWNER_CSS_ACTIVE || key === OWNER_CSS_TRIAL) bucket.ownerCssUnknown = true; continue; }
           bucket.values.set(key, value);
           const at = raw.updated[key];
           bucket.updated.set(key, typeof at === "number" && Number.isFinite(at) ? at : 0);
@@ -331,6 +331,8 @@ export class WebPrefsStore {
       if (touched) buckets.set(identity, next);
     }
     if (!changed.length) return { ok: true, state, changed };
+    // A successful full rewrite drops previously filtered invalid CSS values too. Publish that proof only after write.
+    for (const [id, bucket] of buckets) if (bucket.ownerCssUnknown) buckets.set(id, { values: bucket.values, updated: bucket.updated });
     const candidate: State = { buckets, rev: state.rev + 1 };
     (this.opts.write ?? ((path, data) => atomicWriteFileSync(path, data, { mode: 0o600 })))(this.path, serialize(candidate));
     this.state = candidate;
@@ -353,6 +355,14 @@ export class WebPrefsStore {
     return w.ok ? { ok: true } : w;
   }
 
+  /** B2: unlike the legacy nullable accessor, absence is proven only from a readable, valid CSS bucket. */
+  ownerCssSelection(identity: string): { known: true; active: string | null } | { known: false } {
+    const state = this.load(); if (state === "unreadable") return { known: false };
+    const bucket = state.buckets.get(identity); if (bucket?.ownerCssUnknown) return { known: false };
+    const value = bucket?.values.get(OWNER_CSS_ACTIVE);
+    return value === undefined ? { known: true, active: null }
+      : typeof value === "string" && /^[0-9a-f]{32}$/.test(value) ? { known: true, active: value } : { known: false };
+  }
   /** #1629 r4 §3: the person's active owner-CSS version, or null (none, or the file cannot be read). */
   ownerCssActive(identity: string): string | null {
     const state = this.load();

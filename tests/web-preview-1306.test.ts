@@ -151,6 +151,8 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
         "data-preview-boot": h.any.previewListener!.bootId, "data-preview-reason": "", "data-preview-reason-code": "", "data-usage-panel": "1", "data-log-tab": "0",
         // #1770: the fleet's zone, which the chat reads its times and days in.
         "data-fleet-tz": process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // The signed-in scratch fleet has a readable, empty owner-CSS store (#1629).
+        "data-owner-css-state": "off",
       });
       const lh = await raw(h.port, "GET", "/ui", { host: `localhost:${h.port}`, cookie: h.cookie });
       expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame`);

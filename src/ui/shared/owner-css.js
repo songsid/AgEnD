@@ -18,6 +18,12 @@ const readSafe = () => { try { return new URLSearchParams(location.search).get("
 let safe = readSafe();
 let active = null;
 let installed = false;
+// B2: admission uses positive observed lifecycle, never active===null as proof of absence.
+const lifeStore = createStore(Object.freeze({ state: "unknown", generation: 0, reason: "unverified" }));
+export const ownerCssLifecycle = Object.freeze({ get: lifeStore.get, subscribe: lifeStore.subscribe });
+let lifeGeneration = 0, linkGeneration = 0, ownedLink = null, linkState = "unknown", sourceState = "unknown";
+function life(state, reason) { lifeStore.set(() => Object.freeze({ state, generation: ++lifeGeneration, reason })); }
+
 
 /** This load is in safe mode (?safe=1): no owner CSS — and, as they come, no widgets or effects and default themes. */
 export function safeMode() { return safe; }
@@ -44,17 +50,40 @@ function wanted() {
   return !(r && r.panel === "settings");
 }
 
-/** Link it, update it, or remove it — to match what this page should show now. */
+/** Revoke admission before a CSS/route mutation; a missing element alone is never an off verdict. */
 function sync() {
+  life("unknown", "changing");
   const el = document.getElementById(LINK_ID);
-  if (!wanted()) { if (el) el.remove(); return; }
+  if (!wanted()) {
+    ++linkGeneration;
+    if (el) el.remove();
+    if (ownedLink && ownedLink !== el) ownedLink.remove();
+    ownedLink = null; linkState = "unknown";
+    const absent = document.querySelectorAll(`#${LINK_ID}`).length === 0;
+    const route = navStore.get().route;
+    const disabled = !eligiblePage() || safe || ownerCssOffHere() || route?.panel === "settings";
+    life(absent && (disabled || sourceState === "off") ? "off" : "unknown", absent ? disabled ? "disabled_here" : sourceState === "off" ? "host_off" : "unverified" : "removal_failed");
+    return;
+  }
   const href = `/ui/owner-css.css?v=${encodeURIComponent(active)}`;
-  if (el) { if (el.getAttribute("href") !== href) el.setAttribute("href", href); return; }
-  const link = document.createElement("link");
-  link.setAttribute("rel", "stylesheet");
-  link.setAttribute("id", LINK_ID);
-  link.setAttribute("href", href);
-  document.head.appendChild(link);                     // last in <head>: after app.css in the cascade
+  if (el && el !== ownedLink) { life("unknown", "unowned_link"); return; }
+  if (ownedLink && el === ownedLink && el.getAttribute("href") === href) { life(linkState, linkState === "on" ? "loaded" : linkState === "loading" ? "loading" : "load_failed"); return; }
+  // A new owned element fences late events from the previous version, including href changes.
+  const epoch = ++linkGeneration, sha = active;
+  if (ownedLink) ownedLink.remove();
+  const link = document.createElement("link"); ownedLink = link; linkState = "loading";
+  link.setAttribute("rel", "stylesheet"); link.setAttribute("id", LINK_ID); link.setAttribute("href", href);
+  const current = () => ownedLink === link && epoch === linkGeneration && active === sha && wanted()
+    && link.isConnected === true && document.getElementById(LINK_ID) === link && link.getAttribute("href") === href;
+  link.addEventListener("load", () => {
+    if (!current()) return;
+    let valid = false;
+    try { valid = link.disabled !== true && !!link.sheet && link.sheet.ownerNode === link && link.sheet.disabled !== true && link.sheet.href === new URL(href, location.href).href; } catch { /* unknown stylesheet */ }
+    linkState = valid ? "on" : "unknown"; life(linkState, valid ? "loaded" : "load_unverified");
+  });
+  link.addEventListener("error", () => { if (!current()) return; linkState = "unknown"; life("unknown", "load_failed"); });
+  life("loading", "loading");
+  document.head.appendChild(link); // last in head; no style text, inline attribute or constructed stylesheet
 }
 
 // #1883 r2: every change this page makes, and every read it starts, moves `gen`. A host answer is taken only if nothing
@@ -65,10 +94,11 @@ const local = () => ++gen;
 /** This page saved, restored or turned off a version: show it at once (null: none). */
 export function setOwnerCssActive(sha) {
   local();
-  showActive(sha);
+  showActive(sha, sha === null ? "off" : "on");
 }
-function showActive(sha) {
+function showActive(sha, evidence = "unknown") {
   active = typeof sha === "string" && /^[0-9a-f]{32}$/.test(sha) ? sha : null;
+  sourceState = evidence === "off" && sha === null ? "off" : evidence === "on" && active ? "on" : "unknown";
   sync();
 }
 
@@ -101,7 +131,7 @@ async function post(path, body) {
 export function startOwnerCssTrial(id, sha, previous, seconds = KEEP_SECONDS, isLocal = true) {
   local();
   if (trialTimer) clearTimeout(trialTimer);
-  showActive(sha);
+  showActive(sha, "on");
   const s = Math.max(0, Math.min(isLocal ? KEEP_SECONDS : HOST_TRIAL_SECONDS, Number.isFinite(seconds) ? seconds : 0));
   const trial = { id, sha, previous: previous || null, deadline: performance.now() + s * 1000, local: isLocal };
   ownerCssTrial.set(() => trial);
@@ -151,6 +181,7 @@ export function OwnerCssKeepBar() {
 async function reread() {
   if (!eligiblePage()) return;
   const mine = local();
+  sourceState = "unknown"; life("unknown", "refreshing");
   try {
     const res = await fetch("/ui/owner-css/state", { credentials: "same-origin" });
     if (!res.ok) return;
@@ -162,7 +193,7 @@ async function reread() {
 function reconcile(state) {
   const pending = state.pending && state.pending.sha === state.active && typeof state.pending.id === "string" ? state.pending : null;
   const trial = ownerCssTrial.get();
-  if (!pending) { if (trial) dropTrial(); showActive(state.active); return; }
+  if (!pending) { if (trial) dropTrial(); showActive(state.active, state.effectState); return; }
   if (trial && trial.id === pending.id) return;                        // already asking about this one
   // The host's own remaining time and a second (never this device's clock): it has settled the trial by then.
   const remaining = typeof pending.remaining_ms === "number" && Number.isFinite(pending.remaining_ms) ? pending.remaining_ms : 0;
@@ -175,7 +206,7 @@ export function installOwnerCss() {
   installed = true;
   safe = readSafe();
   const b = document.body && document.body.dataset;
-  showActive(b && b.ownerCss);
+  showActive(b?.ownerCss ?? null, b?.ownerCssState);
   navStore.subscribe(sync);
   // What the host says now: a trial in progress (this page reloaded during one, or another device's) shows the bar;
   // one the host has settled since the page was served shows its outcome.

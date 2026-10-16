@@ -235,8 +235,15 @@ describe("the page names the version in force only where it may be linked (data-
       const { sha } = JSON.parse((await raw(f.port, "POST", "/ui/owner-css", { ...a.write, ...JSON_H }, JSON.stringify({ text: ".x{}" }))).body);
       expect(bodyTag((await raw(f.port, "GET", "/ui/fleet", a.read)).body)).toContain(`data-owner-css="${sha}"`);
       expect(bodyTag((await raw(f.port, "GET", "/settings/appearance", a.read)).body), "the page carries it; the client never links it on Settings").toContain(`data-owner-css="${sha}"`);
-      expect(bodyTag((await raw(f.port, "GET", "/ui/fleet", f.session().read)).body)).not.toContain("data-owner-css");
-      expect(bodyTag((await raw(f.port, "GET", "/view", {})).body)).not.toContain("data-owner-css");
+      expect(bodyTag((await raw(f.port, "GET", "/ui/fleet", f.session().read)).body)).not.toContain(" data-owner-css=");
+      expect(bodyTag((await raw(f.port, "GET", "/view", {})).body)).not.toContain(" data-owner-css=");
+      expect(bodyTag((await raw(f.port, "GET", "/ui/fleet", a.read)).body)).toContain(' data-owner-css-state="on"');
+      expect(bodyTag((await raw(f.port, "GET", "/ui/fleet", f.session().read)).body)).toContain(' data-owner-css-state="off"');
+      expect(bodyTag((await raw(f.port, "GET", "/view", {})).body)).toContain(' data-owner-css-state="unknown"');
+      const header = { "x-agend-token": f.fm.getDashboardAccess().token };
+      const headerBody = bodyTag((await raw(f.port, "GET", "/ui/fleet", header)).body);
+      expect(headerBody).not.toContain(" data-owner-css="); expect(headerBody).toContain(' data-owner-css-state="unknown"');
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/owner-css/state", a.read)).body)).toMatchObject({ active: sha, effectState: "on" });
     } finally { await f.stop(); }
   }, 30_000);
 });
