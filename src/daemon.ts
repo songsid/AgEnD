@@ -20,6 +20,7 @@ import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-tur
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
+import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
@@ -95,6 +96,13 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   get_web_appearance: "fleet_get_web_appearance", preview_web_appearance: "fleet_preview_web_appearance",
   // r4-4: its own declarative widgets.
   set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
+  upload_web_effect: "fleet_upload_web_effect",
+  list_web_effects: "fleet_list_web_effects",
+  preview_web_effect: "fleet_preview_web_effect",
+  profile_web_effect: "fleet_profile_web_effect",
+  apply_web_effect: "fleet_apply_web_effect",
+  remove_web_effect: "fleet_remove_web_effect",
+  delete_web_effect: "fleet_delete_web_effect",
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
@@ -9944,6 +9952,23 @@ export class Daemon extends EventEmitter {
           const written = await writePreview(got.files, { workspace: this.config.working_directory, stateDir: getAgendHome() });
           if ("error" in written) { reply(null, `preview_web_appearance: ${written.error}`); return; }
           reply(written, undefined);
+          return;
+        }
+        if (tool === "upload_web_effect") {
+          const owner = { fence:this.launchFenceEpoch, spawn:this.spawnGeneration, boot:this.bootId, ipc:this.ipcServer };
+          const current = () => !!owner.ipc && owner.ipc === this.ipcServer && owner.fence === this.launchFenceEpoch && owner.spawn === this.spawnGeneration && owner.boot === this.bootId && !this.deliveryWritesStopping && !this.startupAborted;
+          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
+          const read = await readAgentEffect(args.dir, { workspace: this.config.working_directory, stateDir: getAgendHome() });
+          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
+          if (!read.ok) { reply(null, `upload_web_effect: ${read.reason}`); return; }
+          let failed: string | undefined;
+          const answer = await sendEffectInParts(read.files, async payload => {
+            if (!current()) { failed="upload_web_effect: launch no longer current"; return {error:failed}; }
+            const r = await ask(payload);
+            if (r.error) { failed = r.error; return { error:r.error }; }
+            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string,unknown>;
+          });
+          reply(failed ? null : answer, failed);
           return;
         }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }
