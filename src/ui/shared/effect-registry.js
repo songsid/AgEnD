@@ -90,8 +90,13 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (blocked) for (const other of [...slots.values()]) retire(other, blocked);
   }
   function stopAll(why) {
-    for (const s of [...slots.values()]) retire(s, why);
+    const proposed = revision, wasDead = dead;
+    for (const s of [...slots.values()]) {
+      retire(s, why);
+      if (revision !== proposed || dead !== wasDead) return false;
+    }
     if (calibration) { calibration.cancel(); calibration = null; }
+    return true;
   }
   function gatesKnown() { return context && FLAGS.every(k => typeof context[k] === "boolean") && (context.openInstance === null || typeof context.openInstance === "string" && context.openInstance.length >= 1 && context.openInstance.length <= 128); }
   function eligible() { return gatesKnown() && !context.safe && !context.publicLink && !context.reducedMotion && !context.saveData && context.enabled && context.show && context.previewReady && context.optIn; }
@@ -134,7 +139,8 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     const hidden = context?.hidden === true || host.document.visibilityState !== "visible";
     const stock = eligible() ? coverage() : null;
     if (blocked || !eligible() || !stock) {
-      stopAll(blocked ?? "gates_unknown"); results.clear(); tell(); return;
+      if (!stopAll(blocked ?? "gates_unknown")) return;
+      results.clear(); tell(); return;
     }
     // Hidden frames already owned may survive for <=10 s, but no new frame or load is admitted while hidden.
     const ctx = { ...context, hidden: false };
@@ -149,6 +155,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     for (const s of [...slots.values()]) {
       const d = descriptors.find(x => x.key === s.d.key);
       if (!chosen.has(s.d.key) || !d || signature(d) !== signature(s.d) || d.element !== s.d.element || s.device !== device()) retire(s, "superseded");
+      if (dead || proposal !== revision) return;
     }
     if (chosen.size === 0) { if (calibration) { calibration.cancel(); calibration = null; } baseline = null; baselineDevice = null; tell(); return; }
     if (hidden) {
@@ -157,15 +164,19 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       for (const s of [...slots.values()]) {
         if (!s.frame) retire(s, "hidden");
         else { if (s.hiddenSince === null) { s.hiddenSince = last; s.healthySince = null; } if (s.budget.gates({ hidden: true, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
+        if (dead || proposal !== revision) return;
       }
       schedule(); tell(); return;
     }
     if (!globalAllowed()) { stopAll("gates_unknown"); tell(); return; }
-    for (const s of slots.values()) if (s.frame && s.hiddenSince !== null) { s.hiddenSince = null; s.healthySince = last; if (s.budget.gates({ hidden: false, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
+    for (const s of [...slots.values()]) {
+      if (s.frame && s.hiddenSince !== null) { s.hiddenSince = null; s.healthySince = last; if (s.budget.gates({ hidden: false, reducedMotion: false, saveData: false, show: true }).remove) retire(s, "hidden"); }
+      if (dead || proposal !== revision) return;
+    }
     try { observe(); } catch { stopAll("trust_geometry_unknown"); tell(); return; }
     if (baseline === null || baselineDevice !== device()) {
       if (calibration && baselineDevice === device()) { tell(); return; }
-      stopAll("calibrating");
+      if (!stopAll("calibrating") || dead || proposal !== revision) return;
       const epoch = ++serial;
       const job = captureEffectBaseline({ window: host, empty: () => !dead && slots.size === 0 && host.document.querySelectorAll("iframe.agend-effect-frame").length === 0 && globalAllowed() && !context.hidden && !!coverage(), clock: nativeClock });
       calibration = job; baselineDevice = device();
@@ -264,8 +275,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (dead) return;
     const paint = coverage();
     if (!globalAllowed() || context.hidden || !paint) { invalidate(); return; }
-    let policyChanged = false;
+    const proposal = revision; let policyChanged = false;
     for (const s of [...slots.values()]) {
+      if (dead || proposal !== revision) return;
       if (!s.frame) continue;
       if (!effectStockAllows(paint, s.d)) { retire(s, "superseded"); policyChanged = true; continue; }
       const rect = hostEffectRect(s.d.element);
@@ -284,28 +296,33 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         }
       }
     }
+    if (dead || proposal !== revision) return;
     if (policyChanged) reconcile(); else schedule();
   }
   function heartbeat() {
     timer = null;
     if (dead) return;
     if (time() === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; }
-    const activeBeforeSafety = slots.size;
+    const proposal = revision, activeBeforeSafety = slots.size;
     if (!checkSafety()) { tell(); return; }
     if (slots.size !== activeBeforeSafety) reconcile();
+    if (dead || proposal !== revision) return;
     if (!globalAllowed() || context.hidden || !coverage()) { invalidate(); return; }
     const budgetPauses = new Set();
     for (const s of [...slots.values()]) {
+      if (dead || proposal !== revision) return;
       if (!current(s) || !s.frame || !s.ready) continue;
       const r = s.budget.gates({ hidden: false, reducedMotion: context.reducedMotion, saveData: context.saveData, show: context.show });
       const state = r.remove ? r : s.readyAt !== null && last - s.readyAt >= 3000 ? s.budget.poll() : r;
       try { onProfile({ key: s.d.key, id: s.d.id, device: s.device, ...state }, s.owner); } catch { /* metrics never authorize a mount */ }
+      if (dead || proposal !== revision) return;
       if (!current(s)) continue;
       if (state.remove) { const key = s.d.id + ":" + s.device; const count = state.reason === "host_budget" && !budgetPauses.has(key); if (count) budgetPauses.add(key); retire(s, state.reason, count); continue; }
       if (state.badWindows > 0) s.healthySince = null; else if (s.healthySince === null) s.healthySince = last;
       if (s.token && s.healthySince !== null && last - s.healthySince >= 5000 && state.badWindows === 0 && state.metrics !== null && !clearMarker(s, "healthy")) { stopAll("safety_unknown"); break; }
       publishEnv(s);
     }
+    if (dead || proposal !== revision) return;
     schedule(); tell();
   }
   function checkSafety() {
@@ -395,14 +412,16 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (dead || reentrantStock() || blocked && !blocked.startsWith("baseline_") || typeof key !== "string") return false;
       const proposed = revision, d = descriptors.find(d => d.key === key); if (!d || receipt(safety.resume, d.id, device()) !== true || revision !== proposed) return false;
       revision++;
-      stopAll("human_resume"); if (blocked && !blocked.startsWith("baseline_")) return false; blocked = null; paused.delete(key); failures.delete(key); baseline = null; serial++; reconcile(); return true;
+      if (!stopAll("human_resume")) return false;
+      if (blocked && !blocked.startsWith("baseline_")) return false; blocked = null; paused.delete(key); failures.delete(key); baseline = null; serial++; reconcile(); return true;
     },
     /** Host-only content-free signal API. Raw pointer publishing is refused; native pointer metadata is coalesced here. */
     publish(type, fields, instance = null) {
       if (dead || blocked || !globalAllowed() || context.hidden || !coverage() || !TYPES.includes(type)) return 0;
       const ts = time(); if (ts === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return 0; }
-      let sent = 0;
-      for (const s of slots.values()) {
+      let sent = 0; const proposal = revision;
+      for (const s of [...slots.values()]) {
+        if (dead || proposal !== revision) return sent;
         if (!s.ready || !s.frame || !s.budget.snapshot().forward || !coverage(s.d) || !current(s)) continue;
         if (["state", "reply", "mention"].includes(type) && (s.d.instance !== null ? instance !== s.d.instance : instance !== context.openInstance)) continue;
         const e = effectEvent(type, fields, s.d.instance, ts); if (e && s.frame.send(e)) sent++;

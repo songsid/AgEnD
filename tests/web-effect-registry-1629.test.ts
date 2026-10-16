@@ -78,6 +78,23 @@ describe("#1629 shared Canvas Worker registry", () => {
     h.api.update([], gates()); await h.admit(ds); const second = h.mount.mock.calls[1]![0]; expect(second).not.toBe(first); expect(second.current()).toBe(true); expect(first.current()).toBe(false);
     h.api.dispose(); h.api.dispose(); expect(second.current()).toBe(false); expect(h.retire).toHaveBeenCalledTimes(2);
   });
+  it.each(["empty", "ineligible", "resume"])("a newer identical B survives onRetire reentry during outer %s retirement", async outer => {
+    const h = rig(), ds = await h.admit(h.descriptors(2)), b = h.frames()[1], ownerB = h.mount.mock.calls[1]![0], cals = h.cals().length;
+    h.retire.mockImplementationOnce((owner: any) => { expect(owner.key).toBe(ds[0].key); h.api.update([ds[1]], gates()); });
+    if (outer === "empty") h.api.update([], gates()); else if (outer === "ineligible") h.api.update(ds, gates({ show: false })); else expect(h.api.resume(ds[0].key)).toBe(false);
+    await flush(); expect(b.state().removed).toBe(false); expect(ownerB.current()).toBe(true); expect(h.retire.mock.calls.map(([o]: any) => o.key)).toEqual([ds[0].key]);
+    expect(h.mount).toHaveBeenCalledTimes(2); expect(h.load).toHaveBeenCalledTimes(2); expect(h.cals()).toHaveLength(cals); expect(h.api.snapshot()).toEqual([expect.objectContaining({ key: ds[1].key, phase: "starting" })]);
+  });
+  it("tick retirement callbacks cannot apply the old stock proof to a newer retained sibling", async () => {
+    const h = rig(), ds = await h.admit(h.descriptors(2)), b = h.frames()[1], ownerB = h.mount.mock.calls[1]![0];
+    h.geo().bindings[0].sync.mockReturnValueOnce(false); h.retire.mockImplementationOnce(() => h.api.update([ds[1]], gates())); h.frame(100);
+    expect(b.state().removed).toBe(false); expect(ownerB.current()).toBe(true); expect(h.geo().bindings[1].sync).toHaveBeenCalledTimes(1); expect(h.retire).toHaveBeenCalledOnce();
+  });
+  it("heartbeat abandons its old sibling measurements after retirement reentry", async () => {
+    const h = rig(), ds = await h.admit(h.descriptors(2)); for (const f of h.frames()) f.ready();
+    h.retire.mockImplementationOnce(() => h.api.update([ds[1]], gates())); h.profile.mockImplementationOnce(() => h.frames()[0].remove("navigation")); h.timer(1000);
+    expect(h.profile).toHaveBeenCalledOnce(); expect(h.frames()[1].state().removed).toBe(false); expect(h.mount.mock.calls[1]![0].current()).toBe(true);
+  });
   it("a failed geometry admission has no mount receipt or invented retire notification", async () => {
     const h = rig(); h.geo().bind.mockImplementation(() => ({ ok: true, sync: () => false, remove: vi.fn() })); await h.admit();
     expect(h.mount).not.toHaveBeenCalled(); expect(h.retire).not.toHaveBeenCalled(); expect(h.frames()[0].state().removed).toBe(true); expect(h.safety.finish).toHaveBeenCalledOnce();

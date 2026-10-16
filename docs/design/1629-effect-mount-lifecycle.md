@@ -25,7 +25,7 @@ cannot be recalled by a later local teardown.
 geometry removal, and attempted probation cleanup. `owner.current()` is already
 false. Display/diagnostic exceptions cannot prevent cleanup or authorize code.
 Observers may cause host updates/disposal; existing revision/current-slot fences
-still apply. A failed pre-mount admission has no invented retire notification.
+still apply. Every retirement pass abandons its stale continuation if a callback changes the revision or disposal state: an outer empty selection cannot retire a sibling retained by a newer nested update, reset its baseline or measure it using the old pass. Bulk cleanup, resume, hidden transitions, rAF, heartbeat and publish loops follow the same fence. A failed pre-mount admission has no invented retire notification.
 
 ## Storage changes and foreground recovery
 
