@@ -130,7 +130,7 @@
       {
         "icon": "users",
         "name": "多組登入",
-        "desc": "讓 agent 改用第二個 Claude、Codex 或 Kiro 訂閱，在聊天裡完成登入，Claude 的用量依帳號分開顯示。"
+        "desc": "讓 agent 改用第二個 Claude、Codex 或 Kiro 訂閱。Claude 的 profile 可以在聊天裡完成登入，用量也依帳號分開顯示。"
       }
     ]
   },

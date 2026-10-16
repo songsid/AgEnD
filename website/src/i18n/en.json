@@ -130,7 +130,7 @@
       {
         "icon": "users",
         "name": "Credential Profiles",
-        "desc": "Run agents on a second Claude, Codex or Kiro subscription, sign it in from chat, and see Claude usage per account."
+        "desc": "Run agents on a second Claude, Codex or Kiro subscription. Sign a Claude profile in from chat, and see Claude usage per account."
       }
     ]
   },
