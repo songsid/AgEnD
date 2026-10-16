@@ -64,7 +64,9 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       for (const tag of tags) expect(["p", "br", "pre", "code", "a", "strong", "em", "del", "ul", "ol", "li", "blockquote", "h3", "h4", "h5", "h6", "hr", "div", "table", "thead", "tbody", "tr", "th", "td", "span"]).toContain(tag);
       // The only attributes ever written are the renderer's own fixed ones.
       const attrs = [...md(nasty).matchAll(/<[a-z0-9]+ ([^>]*)>/g)].map(m => m[1]!.replace(/="[^"]*"/g, "")).join(" ").split(/\s+/).filter(Boolean);
-      for (const a of attrs) expect(["href", "target", "rel", "class", "data-lang"]).toContain(a);
+      for (const a of attrs) expect(["href", "target", "rel", "class", "data-lang", "data-trust"]).toContain(a);
+      for (const m of md(nasty).matchAll(/<([a-z0-9]+)\b[^>]*\bdata-trust="([^"]*)"/g)) expect([m[1], m[2]]).toEqual(["a", "link"]);
+      expect(md('<div data-trust="composer">fake</div>')).not.toContain('data-trust="composer"');
     });
 
     it("the placeholder character cannot be used to pull in another link's markup", () => {
@@ -87,9 +89,9 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       ["> quoted\n> more", "<blockquote>quoted<br>more</blockquote>"],
       ["# Title", "<h3>Title</h3>"],
       ["---", "<hr>"],
-      ["[docs](https://agend.example/docs?a=1&b=2)", '<p><a href="https://agend.example/docs?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">docs</a></p>'],
-      ["see https://agend.example/x.", '<p>see <a href="https://agend.example/x" target="_blank" rel="noopener noreferrer">https://agend.example/x</a>.</p>'],
-      ["mail [me](mailto:a@b.example)", '<p>mail <a href="mailto:a@b.example" target="_blank" rel="noopener noreferrer">me</a></p>'],
+      ["[docs](https://agend.example/docs?a=1&b=2)", '<p><a href="https://agend.example/docs?a=1&amp;b=2" target="_blank" rel="noopener noreferrer" data-trust="link">docs</a></p>'],
+      ["see https://agend.example/x.", '<p>see <a href="https://agend.example/x" target="_blank" rel="noopener noreferrer" data-trust="link">https://agend.example/x</a>.</p>'],
+      ["mail [me](mailto:a@b.example)", '<p>mail <a href="mailto:a@b.example" target="_blank" rel="noopener noreferrer" data-trust="link">me</a></p>'],
     ])("%j", (input, html) => {
       expect(md(input)).toBe(html);
     });
@@ -105,7 +107,7 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
 
     it("a `code` span inside a link label keeps its text (a placeholder inside a placeholder is expanded)", () => {
       expect(md("[`src/foo.ts`](https://agend.example/foo)")).toBe(
-        '<p><a href="https://agend.example/foo" target="_blank" rel="noopener noreferrer"><code>src/foo.ts</code></a></p>');
+        '<p><a href="https://agend.example/foo" target="_blank" rel="noopener noreferrer" data-trust="link"><code>src/foo.ts</code></a></p>');
       expect(md("see [**`x`** and `y`](https://a.example)")).toContain("<strong><code>x</code></strong> and <code>y</code></a>");
       expect(md("[a](https://a.example)")).not.toContain("\u0000");
     });
@@ -130,7 +132,7 @@ describe.each([["a classic script", asScript], ["a CommonJS module", asModule]])
       expect(md("- a\n\t- tab-indented")).toBe("<ul><li>a<ul><li>tab-indented</li></ul></li></ul>");
       expect(md("- a\n- b\n1. c")).toBe("<ul><li>a</li><li>b</li></ul><ol><li>c</li></ol>");
       expect(md("- **bold** item\n  - [link](https://a.example)")).toBe(
-        '<ul><li><strong>bold</strong> item<ul><li><a href="https://a.example" target="_blank" rel="noopener noreferrer">link</a></li></ul></li></ul>');
+        '<ul><li><strong>bold</strong> item<ul><li><a href="https://a.example" target="_blank" rel="noopener noreferrer" data-trust="link">link</a></li></ul></li></ul>');
     });
 
     it("nesting is capped: an item deeper than six levels stays at the sixth, and every list is closed", () => {

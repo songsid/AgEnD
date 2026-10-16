@@ -36,7 +36,7 @@
   }
 
   function link(href, label) {
-    return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + label + "</a>";
+    return '<a href="' + href + '" target="_blank" rel="noopener noreferrer" data-trust="link">' + label + "</a>";
   }
 
   // Placeholders survive the later passes untouched (they contain no Markdown characters).
@@ -569,8 +569,8 @@
       if (cards && isHtmlAttachment(a)) after.push('<div class="html-card" data-att="' + a.id + '"></div>');
       var url = "/ui/file/" + a.id;
       var kind = inline ? attachmentPreviewType(a) : null;
-      if (kind === "video") after.push('<div class="att-media"><video class="att-video" controls preload="metadata" src="' + url + '"></video></div>');
-      else if (kind === "audio") after.push('<div class="att-media"><audio class="att-audio" controls preload="metadata" src="' + url + '"></audio></div>');
+      if (kind === "video") after.push('<div data-trust="media" class="att-media"><video class="att-video" controls preload="metadata" src="' + url + '"></video></div>');
+      else if (kind === "audio") after.push('<div data-trust="media" class="att-media"><audio class="att-audio" controls preload="metadata" src="' + url + '"></audio></div>');
       else if (kind) after.push('<div class="text-card" data-att="' + a.id + '" data-type="' + kind + '"></div>');
       var name = escapeHtml(a.name || "file");
       if (a.kind === "photo") {
@@ -579,7 +579,7 @@
         out.push('<a class="att-file" href="' + url + '" download="' + name + '">📎 ' + name + ' <span class="att-size">' + escapeHtml(formatSize(a.size)) + "</span></a>");
       }
     });
-    return (out.length ? '<div class="atts">' + out.join("") + "</div>" : "") + after.join("");
+    return (out.length ? '<div data-trust="attachment" class="atts">' + out.join("") + "</div>" : "") + after.join("");
   }
 
   return {

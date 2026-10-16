@@ -121,7 +121,7 @@ describe("keep or revert", () => {
     await settle();
     const bar = p!.root.querySelector(".oc-keep");
     expect([bar?.getAttribute("data-trust"), bar?.getAttribute("role"), bar?.querySelectorAll("button").map((b: any) => b.textContent)])
-      .toEqual(["", "alertdialog", ["Keep", "Revert"]]);
+      .toEqual(["keep", "alertdialog", ["Keep", "Revert"]]);
     expect(bar.textContent).toContain("Reverts in 15 s");
     bar.querySelectorAll("button")[1].click();
     await settle(); await settle();

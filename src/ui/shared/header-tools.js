@@ -125,7 +125,7 @@ export function UsageRail({ route }) {
   const wide = useRailWidth();
   const { open } = useStore(usageRailStore);
   if (!wide || !open || !route || !RAIL_PANELS.includes(route.panel) || !usageOffered()) return null;
-  return html`<aside class="u-rail" aria-label=${t("view.usage.title_plain")}>
+  return html`<aside data-trust="usage" class="u-rail" aria-label=${t("view.usage.title_plain")}>
     <div class="u-rail-head"><h2>${t("view.usage.title")}</h2>
       <button type="button" class="icon-btn" onClick=${() => setUsageRail(false)} aria-label=${t("app.usageHide")} title=${t("app.usageHide")}><${Icon} name="close" size=${16} /></button></div>
     <div class="u-rail-body"><${UsageBody} owner="usage-rail" /></div>

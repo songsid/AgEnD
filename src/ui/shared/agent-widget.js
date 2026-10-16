@@ -213,7 +213,7 @@ function Item({ item, v }) {
 /** One widget, checked (checkWidget's result), in `slot`. `binds`: instanceBinds or fleetBinds. */
 export function AgentWidget({ slot, widget, binds, tools = null }) {
   if (!widget) return null;
-  return html`<section class=${`aw aw-${slot}`} aria-label=${t("widget.label", widget.title)} data-widget-slot=${slot}>
+  return html`<section data-trust="widget" class=${`aw aw-${slot}`} aria-label=${t("widget.label", widget.title)} data-widget-slot=${slot}>
     <div class="aw-head"><span class="aw-chip" title=${t("widget.chip")}>✦ ${widget.title}</span>
       ${widget.by === "human" ? html`<span class="aw-by">${t("widget.byHuman")}</span>` : null}${tools}</div>
     <div class="aw-items">${widget.items.map((item, i) => html`<${Item} key=${i} item=${item} v=${valueOf(item, i, widget, binds)} />`)}</div>

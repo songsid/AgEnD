@@ -200,8 +200,13 @@ from being collected until cleared. This is deliberately stricter than chat plac
 a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
 placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
 
-Product playback/owner selectors are being connected separately. Before mounting, the host must prove stock content
+Owner selectors are available in Settings → Appearance; saving does not start playback. Product playback is still
+being connected separately. Before mounting, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of
 playback.
+
+Visible menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects; a human placement
+does not bypass those host safety gates. Unknown stock layout refuses admission. A trusted foreground plane is
+deferred to #1940; do not keep reapplying an agent front while custom CSS is on, loading or unknown.
