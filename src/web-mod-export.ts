@@ -10,7 +10,11 @@ import type { Theme } from "./web-theme.js";
 import type { WidgetData, WidgetSlot, WidgetSpec } from "./web-widget.js";
 
 export interface ModExportParts {
-  theme?: { theme: Theme; picture: (id: string) => { bytes: Uint8Array; kind: MediaKind } | null };
+  /**
+   * The theme, and (r4-5c) the effects it places: each a CW1 entry's files as the library keeps them, written under
+   * `effects/<name>/`, with the placement's non-default params. Effects travel only with the theme that places them.
+   */
+  theme?: { theme: Theme; picture: (id: string) => { bytes: Uint8Array; kind: MediaKind } | null; effects?: Array<{ name: string; files: ReadonlyMap<string, Uint8Array>; params: Record<string, unknown> }> };
   identity?: { tagline?: string; bio?: string };
   widgets?: Partial<Record<WidgetSlot, { spec: WidgetSpec; data: WidgetData }>>;
   ownerCss?: { text: string; assets: Array<{ id: string; bytes: Uint8Array; kind: MediaKind }> };
@@ -38,6 +42,19 @@ export function buildModBundle(meta: ModExportMeta, parts: ModExportParts): { ok
     };
     if (look.background) { const path = picture(look.background.image, "background"); if (!path) return { ok: false, error: "picture_missing" }; out.background = { ...look.background, image: path }; }
     if (look.avatar) { const path = picture(look.avatar, "avatar"); if (!path) return { ok: false, error: "picture_missing" }; out.avatar = path; }
+    const placed: Array<{ effect: string; params?: Record<string, unknown> }> = [];
+    const taken = new Set<string>();
+    for (const e of parts.theme.effects ?? []) {
+      const base = /^[a-z0-9][a-z0-9-]{0,47}$/.test(e.name) ? e.name : "effect";
+      let slug = base;
+      for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
+      taken.add(slug);
+      const dir = `effects/${slug}`;
+      for (const [rel, bytes] of e.files) put(`${dir}/${rel}`, bytes);
+      (contents.effects ??= []).push(dir);
+      placed.push({ effect: dir, ...(Object.keys(e.params).length ? { params: e.params } : {}) });
+    }
+    if (placed.length) out.effects = placed;
     put("theme.json", jsonBytes(out));
     contents.theme = "theme.json";
   }
