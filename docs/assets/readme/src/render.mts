@@ -92,125 +92,127 @@ const USAGE = {
 // ── the dashboard, on a scratch home ─────────────────────────────────────────────────────────────────────────────
 
 const home = mkdtempSync(join(tmpdir(), "agend-readme-hero-"));
-process.env.AGEND_HOME = home;
-const yaml = [
-  `health_port: ${PORT}`,
-  "instances:",
-  ...AGENTS.flatMap(a => [
-    `  ${a.name}:`,
-    `    working_directory: ${home}`,
-    `    backend: ${a.backend}`,
-    `    model: ${a.model}`,
-    `    description: ${a.about}`,
-    `    tags: [${a.tags.join(", ")}]`,
-    `    status_emojis:`,
-    `      delivered: "${a.emoji}"`,
-  ]),
-  "web:",
-  `  preview_port: ${PORT + 1}`,
-].join("\n") + "\n";
-writeFileSync(join(home, "fleet.yaml"), yaml);
-
-const { FleetManager } = await import(join(REPO, "src/fleet-manager.ts"));
-const { tokenEpoch } = await import(join(REPO, "src/web-session.ts"));
-const { OPERATOR } = await import(join(REPO, "src/web-prefs.ts"));
-const { setUsageFetcherForTests } = await import(join(REPO, "src/usage/usage-api.ts"));
-const fm: any = new FleetManager(home);
-const quiet = () => {};
-fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger };
-fm.notifyFleetError = () => true;
-fm.loadConfig(join(home, "fleet.yaml"));
-fm.lifecycle = { isPaused: () => false, hasWorkLease: () => false, daemons: new Map() };
-const byName = new Map<string, (typeof AGENTS)[number]>(AGENTS.map(a => [a.name, a]));
-fm.getInstanceStatus = (n: string) => byName.get(n)?.status ?? "stopped";
-fm.getInstanceExecutionState = (n: string) => byName.get(n)?.exec ?? null;
-fm.getActiveUsageProviderIds = () => new Set(["claude", "codex", "antigravity", "grok", "kiro"]);
-setUsageFetcherForTests(async () => USAGE as never);
-
-// The thread: recorded before the page loads (the page reads it from the history).
-mkdirSync(join(home, "demo"), { recursive: true });
-for (const m of HISTORY) {
-  const base = { instance: CHAT, ts: minutesAgo(m.at), text: m.text };
-  if (m.role === "user") { fm.webChatHistory.record({ ...base, sender: "web-user", role: "user", ...("click" in m ? { click: m.click } : {}) }); continue; }
-  const attachments = "file" in m ? [{ id: "f".repeat(32), kind: "document", name: m.file.name, size: m.file.size, mime: "application/pdf" }] : undefined;
-  fm.webChatHistory.record({ ...base, sender: CHAT, role: "agent", ...("buttons" in m ? { buttons: m.buttons } : {}), ...(attachments ? { attachments } : {}) });
-}
-
-fm.initializeWebAuthTokens();
-fm.startHealthServer(PORT);
-await new Promise(r => setTimeout(r, 600));
-const signinCode = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display; };
-
-// ── Chromium: the dashboard, then the composite ──────────────────────────────────────────────────────────────────
-
-const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox"] });
-const base = `http://127.0.0.1:${PORT}`;
-const DASH = { width: Number(process.env.DASH_W ?? 1240), height: Number(process.env.DASH_H ?? 1000) };
 const errors: string[] = [];
-mkdirSync(OUT, { recursive: true });
-const work = mkdtempSync(join(tmpdir(), "agend-readme-hero-out-"));
-
-async function dashboard(theme: "light" | "dark"): Promise<string> {
-  // The host's synced theme decides what the page paints (#1665): set it for this render.
-  fm.webPrefs.write(OPERATOR, new Map([["theme", theme]]));
-  const ctx = await browser.newContext({ viewport: DASH, deviceScaleFactor: 2, colorScheme: theme, locale: "en-US" });
-  await ctx.addInitScript({ content: `try {
-    localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1");
-    localStorage.setItem("agend_usage_rail", "1"); localStorage.setItem("agend_theme", ${JSON.stringify(theme)});
-    localStorage.setItem("agend_text_size", process.env.TEXT_SIZE || "m");
-  } catch {}` });
-  const page = await ctx.newPage();
-  page.on("pageerror", (e: Error) => errors.push(`${theme}: ${String(e).slice(0, 200)}`));
-  await page.goto(`${base}/signin`); await page.waitForSelector("#code");
-  await page.fill("#code", signinCode()); await page.click("#go"); await page.waitForURL(`${base}/ui`);
-  await page.goto(`${base}/ui/chat/${CHAT}`);
-  await page.waitForFunction((n: number) => document.querySelectorAll(".p-chat .msg").length >= n, HISTORY.length, { timeout: 20_000 });
-  await page.waitForTimeout(1500);                                      // avatars, the usage rail, fonts
-  // MEASURE=1: where things are (viewport CSS px), for laying out hero.html. A string: tsx would rename helpers.
-  if (process.env.MEASURE) console.log(theme, await page.evaluate(`JSON.stringify((() => {
-    const r = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)]; };
-    const rail = document.querySelector(".u-rail"), body = rail && rail.querySelector(".u-rail-body");
-    const kids = body ? [...body.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().height > 0) : [];
-    const bottom = kids.reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), 0);
-    return { rail: r(rail), railContentBottom: Math.round(bottom), firstMsg: r(document.querySelector(".p-chat .msg")), table: r(document.querySelector(".p-chat table")), composer: r(document.querySelector("#msgIn")) };
-  })())`));
-  const file = join(work, `dash-${theme}.png`);
-  await page.screenshot({ path: file });
-  await ctx.close();
-  return file;
-}
-
-async function composite(theme: "light" | "dark", shot: string): Promise<void> {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2, colorScheme: theme });
-  const page = await ctx.newPage();
-  page.on("pageerror", (e: Error) => errors.push(`hero ${theme}: ${String(e).slice(0, 200)}`));
-  const url = pathToFileURL(join(HERE, "hero.html"));
-  url.searchParams.set("theme", theme);
-  url.searchParams.set("shot", pathToFileURL(shot).href);
-  await page.goto(url.href);
-  await page.waitForFunction(() => (window as any).heroReady === true, null, { timeout: 20_000 });
-  if (process.env.MEASURE) console.log(`hero ${theme}`, await page.evaluate(`JSON.stringify([".screen", ".msgs", ".typing", ".chip", ".b.bot"].map((s) => { const b = document.querySelector(s).getBoundingClientRect(); return [s, Math.round(b.top), Math.round(b.bottom)]; }))`));
-  const png = await page.screenshot({ type: "png" });
-  // WebP, encoded by the browser: no image tool needed beyond Chromium.
-  const b64: string = await page.evaluate(async ({ data, q }: { data: string; q: number }) => {
-    const img = new Image(); img.src = `data:image/png;base64,${data}`; await img.decode();
-    const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
-    c.getContext("2d")!.drawImage(img, 0, 0);
-    return c.toDataURL("image/webp", q).split(",")[1]!;
-  }, { data: Buffer.from(png).toString("base64"), q: QUALITY });
-  const out = join(OUT, `hero-${theme}.webp`);
-  writeFileSync(out, Buffer.from(b64, "base64"));
-  console.log(`${out}: ${Math.round(readFileSync(out).length / 1024)} KB`);
-  await ctx.close();
-}
-
+// What this run acquired, released in `finally` whatever failed (a bad CHROME path, an import, a render): each on its
+// own, so one that fails to close never keeps the others — above all the scratch home — from going.
+let fm: any = null, browser: any = null, work: string | null = null;
 try {
+  process.env.AGEND_HOME = home;
+  const yaml = [
+    `health_port: ${PORT}`,
+    "instances:",
+    ...AGENTS.flatMap(a => [
+      `  ${a.name}:`,
+      `    working_directory: ${home}`,
+      `    backend: ${a.backend}`,
+      `    model: ${a.model}`,
+      `    description: ${a.about}`,
+      `    tags: [${a.tags.join(", ")}]`,
+      `    status_emojis:`,
+      `      delivered: "${a.emoji}"`,
+    ]),
+    "web:",
+    `  preview_port: ${PORT + 1}`,
+  ].join("\n") + "\n";
+  writeFileSync(join(home, "fleet.yaml"), yaml);
+
+  const { FleetManager } = await import(join(REPO, "src/fleet-manager.ts"));
+  const { tokenEpoch } = await import(join(REPO, "src/web-session.ts"));
+  const { OPERATOR } = await import(join(REPO, "src/web-prefs.ts"));
+  const { setUsageFetcherForTests } = await import(join(REPO, "src/usage/usage-api.ts"));
+  fm = new FleetManager(home);
+  const quiet = () => {};
+  fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger };
+  fm.notifyFleetError = () => true;
+  fm.loadConfig(join(home, "fleet.yaml"));
+  fm.lifecycle = { isPaused: () => false, hasWorkLease: () => false, daemons: new Map() };
+  const byName = new Map<string, (typeof AGENTS)[number]>(AGENTS.map(a => [a.name, a]));
+  fm.getInstanceStatus = (n: string) => byName.get(n)?.status ?? "stopped";
+  fm.getInstanceExecutionState = (n: string) => byName.get(n)?.exec ?? null;
+  fm.getActiveUsageProviderIds = () => new Set(["claude", "codex", "antigravity", "grok", "kiro"]);
+  setUsageFetcherForTests(async () => USAGE as never);
+
+  // The thread: recorded before the page loads (the page reads it from the history).
+  for (const m of HISTORY) {
+    const base = { instance: CHAT, ts: minutesAgo(m.at), text: m.text };
+    if (m.role === "user") { fm.webChatHistory.record({ ...base, sender: "web-user", role: "user", ...("click" in m ? { click: m.click } : {}) }); continue; }
+    const attachments = "file" in m ? [{ id: "f".repeat(32), kind: "document", name: m.file.name, size: m.file.size, mime: "application/pdf" }] : undefined;
+    fm.webChatHistory.record({ ...base, sender: CHAT, role: "agent", ...("buttons" in m ? { buttons: m.buttons } : {}), ...(attachments ? { attachments } : {}) });
+  }
+
+  fm.initializeWebAuthTokens();
+  fm.startHealthServer(PORT);
+  await new Promise(r => setTimeout(r, 600));
+  const signinCode = () => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display; };
+
+  // ── Chromium: the dashboard, then the composite ──────────────────────────────────────────────────────────────────
+
+  browser = await chromium.launch({ executablePath: process.env.CHROME, args: ["--no-sandbox"] });
+  const base = `http://127.0.0.1:${PORT}`;
+  const DASH = { width: Number(process.env.DASH_W ?? 1240), height: Number(process.env.DASH_H ?? 1000) };
+  mkdirSync(OUT, { recursive: true });
+  work = mkdtempSync(join(tmpdir(), "agend-readme-hero-out-"));
+
+  async function dashboard(theme: "light" | "dark"): Promise<string> {
+    // The host's synced theme decides what the page paints (#1665): set it for this render.
+    fm.webPrefs.write(OPERATOR, new Map([["theme", theme]]));
+    const ctx = await browser.newContext({ viewport: DASH, deviceScaleFactor: 2, colorScheme: theme, locale: "en-US" });
+    await ctx.addInitScript({ content: `try {
+      localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1");
+      localStorage.setItem("agend_usage_rail", "1"); localStorage.setItem("agend_theme", ${JSON.stringify(theme)});
+      localStorage.setItem("agend_text_size", ${JSON.stringify(process.env.TEXT_SIZE || "m")});
+    } catch {}` });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e: Error) => errors.push(`${theme}: ${String(e).slice(0, 200)}`));
+    await page.goto(`${base}/signin`); await page.waitForSelector("#code");
+    await page.fill("#code", signinCode()); await page.click("#go"); await page.waitForURL(`${base}/ui`);
+    await page.goto(`${base}/ui/chat/${CHAT}`);
+    await page.waitForFunction((n: number) => document.querySelectorAll(".p-chat .msg").length >= n, HISTORY.length, { timeout: 20_000 });
+    await page.waitForTimeout(1500);                                      // avatars, the usage rail, fonts
+    // MEASURE=1: where things are (viewport CSS px), for laying out hero.html. A string: tsx would rename helpers.
+    if (process.env.MEASURE) console.log(theme, await page.evaluate(`JSON.stringify((() => {
+      const r = (e) => { if (!e) return null; const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)]; };
+      const rail = document.querySelector(".u-rail"), body = rail && rail.querySelector(".u-rail-body");
+      const kids = body ? [...body.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().height > 0) : [];
+      const bottom = kids.reduce((m, e) => Math.max(m, e.getBoundingClientRect().bottom), 0);
+      return { rail: r(rail), railContentBottom: Math.round(bottom), firstMsg: r(document.querySelector(".p-chat .msg")), table: r(document.querySelector(".p-chat table")), composer: r(document.querySelector("#msgIn")) };
+    })())`));
+    const file = join(work!, `dash-${theme}.png`);
+    await page.screenshot({ path: file });
+    await ctx.close();
+    return file;
+  }
+
+  async function composite(theme: "light" | "dark", shot: string): Promise<void> {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2, colorScheme: theme });
+    const page = await ctx.newPage();
+    page.on("pageerror", (e: Error) => errors.push(`hero ${theme}: ${String(e).slice(0, 200)}`));
+    const url = pathToFileURL(join(HERE, "hero.html"));
+    url.searchParams.set("theme", theme);
+    url.searchParams.set("shot", pathToFileURL(shot).href);
+    await page.goto(url.href);
+    await page.waitForFunction(() => (window as any).heroReady === true, null, { timeout: 20_000 });
+    if (process.env.MEASURE) console.log(`hero ${theme}`, await page.evaluate(`JSON.stringify([".screen", ".msgs", ".typing", ".chip", ".b.bot"].map((s) => { const b = document.querySelector(s).getBoundingClientRect(); return [s, Math.round(b.top), Math.round(b.bottom)]; }))`));
+    const png = await page.screenshot({ type: "png" });
+    // WebP, encoded by the browser: no image tool needed beyond Chromium.
+    const b64: string = await page.evaluate(async ({ data, q }: { data: string; q: number }) => {
+      const img = new Image(); img.src = `data:image/png;base64,${data}`; await img.decode();
+      const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext("2d")!.drawImage(img, 0, 0);
+      return c.toDataURL("image/webp", q).split(",")[1]!;
+    }, { data: Buffer.from(png).toString("base64"), q: QUALITY });
+    const out = join(OUT, `hero-${theme}.webp`);
+    writeFileSync(out, Buffer.from(b64, "base64"));
+    console.log(`${out}: ${Math.round(readFileSync(out).length / 1024)} KB`);
+    await ctx.close();
+  }
+
   for (const theme of ["light", "dark"] as const) await composite(theme, await dashboard(theme));
 } finally {
-  await browser.close();
-  fm.healthServer?.close?.();
+  try { await browser?.close(); } catch { /* already gone */ }
+  try { fm?.healthServer?.close?.(); } catch { /* already closed */ }
   rmSync(home, { recursive: true, force: true });
-  rmSync(work, { recursive: true, force: true });
+  if (work) rmSync(work, { recursive: true, force: true });
 }
 if (errors.length) { console.error(errors.join("\n")); process.exit(1); }
 process.exit(0);
