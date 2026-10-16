@@ -73,7 +73,7 @@ describe("module admission (#1408 §4)", () => {
       // The vendored files are part of it.
       for (const v of ["/assets/preact.module.js", "/assets/preact-hooks.module.js", "/assets/htm.module.js"]) expect(seen.has(v), v).toBe(true);
       // What needs a session stays behind the gate.
-      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
+      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/js/chat-effects.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
         expect((await get(h.port, p)).status, p).toBe(401);
       }
     } finally { await h.stop(); }

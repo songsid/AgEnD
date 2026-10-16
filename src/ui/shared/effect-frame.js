@@ -1,4 +1,4 @@
-/** #1629: parent-owned Canvas Worker transport. Not imported or mounted by the product yet. */
+/** #1629: parent-owned Canvas Worker transport; the Chat adapter owns product admission. */
 import { maySendEffectEvent } from "./effect-policy.js";
 const plain = v => !!v && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 const exact = (v, keys) => plain(v) && Object.keys(v).sort().join(",") === keys.slice().sort().join(",");

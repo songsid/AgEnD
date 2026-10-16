@@ -296,6 +296,14 @@ describe("#1629 shared Canvas Worker registry", () => {
   it("a sticky safety off refuses a human Resume", async () => {
     const h = rig(), ds = await h.admit(); h.safety.resume.mockReturnValue(false); expect(h.api.resume(ds[0]!.key)).toBe(false); expect(h.cals()).toHaveLength(1);
   });
+  it("behind effects receive no pointer while a fresh stock barrier denies front interaction", async () => {
+    const h = rig(); await h.admit(); const frame = h.frames()[0]; frame.ready(); frame.send.mockClear();
+    h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(17);
+    expect(frame.state().removed).toBe(false); expect(frame.send).not.toHaveBeenCalled();
+    h.coverage.mockReturnValue(stock()); h.at(20); h.emit("pointermove", { isTrusted: true, clientX: 10, clientY: 20, buttons: 0 }); h.frame(37);
+    expect(frame.send).toHaveBeenCalledWith(expect.objectContaining({ type: "pointer" }));
+  });
   it("degraded pointer delivery is capped at thirty Hz by the registry itself", async () => {
     const h = rig(); await h.admit(); const f = h.frames()[0]; f.ready();
     for (const t of [1000, 2000, 3000]) { h.frame(t); h.timer(t); } f.send.mockClear();

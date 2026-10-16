@@ -20,6 +20,11 @@ describe("#1629 synchronous auth revocation observations", () => {
     const h = fixture(), fn = vi.fn(), off = h.auth.onSessionEnd(fn); expect(h.auth.sessionEnded()).toBe(false); expect(h.nativeFetch).not.toHaveBeenCalled(); expect(fn).not.toHaveBeenCalled(); off(); off();
     expect(h.auth.onSessionEnd(null)).toBeTypeOf("function"); expect(h.auth.onSessionEnd({})).toBeTypeOf("function"); expect(h.nativeFetch).not.toHaveBeenCalled();
   });
+  it.each(["admin", "read", undefined, "unknown"])("canWrite is only a display hint for the explicit %s tier, sharing the session read", async tier => {
+    const h = fixture(); h.nativeFetch.mockResolvedValueOnce(reply(200, { csrf: "private-csrf", handle: "b".repeat(16), tier }));
+    expect(await h.auth.canWrite()).toBe(tier === "admin"); expect(await h.auth.sessionHandle()).toBe("b".repeat(16)); expect(await h.auth.csrf()).toBe("private-csrf"); expect(h.nativeFetch).toHaveBeenCalledOnce();
+    await h.auth.signOut(); expect(await h.auth.canWrite()).toBe(false);
+  });
   it("sign-out notifies synchronously before its first await or native request", async () => {
     const h = fixture(), pending = held<any>(), fn = vi.fn((_event: any) => { h.order.push("revoked"); });
     h.auth.onSessionEnd(fn); h.nativeFetch.mockImplementationOnce(() => { h.order.push("csrf-request"); return pending.promise; });
