@@ -4035,9 +4035,10 @@ export class Daemon extends EventEmitter {
   private async followCompactPane(id: string, owner: string | null, follower: KiroCompactPaneFollower): Promise<void> {
     const tmux = this.tmux;
     if (!tmux || owner === null) return;
-    const standing = () => this.tmux === tmux && launchIdentity(this.interactionOwner()) === owner;
-    const deadline = Date.now() + COMPACT_WATCH_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+    // Monotonic, and asked after every await: a result past the deadline is not said (the fleet's watch has timed out).
+    const deadline = performance.now() + COMPACT_WATCH_TIMEOUT_MS;
+    const standing = () => this.tmux === tmux && launchIdentity(this.interactionOwner()) === owner && performance.now() < deadline;
+    while (standing()) {
       await new Promise<void>(resolve => { setTimeout(resolve, KIRO_COMPACT_PANE_POLL_MS).unref?.(); });
       if (!standing()) return;
       let pane: string;
@@ -4118,12 +4119,13 @@ export class Daemon extends EventEmitter {
           tellWritten(false);
           return;
         }
-        if (notifyWritten) {
-          // Under the paste lock: no other input reaches the pane between this look and the write.
+        // Board 907c7899: the pane just before this attempt's paste — after its readiness wait, last capture and fence,
+        // under the paste lock (no other input lands in between). Each attempt looks again.
+        const lookBefore = async () => {
           const ui = this.backend?.compactPaneUi?.() ?? null;
           const before = ui ? await this.tmux?.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES).catch(() => null) : null;
           paneFollower = ui && typeof before === "string" ? new KiroCompactPaneFollower(ui, before) : null;
-        }
+        };
         const delivered = await this.deliverMessage(rawText, undefined, {
           deliveryEpoch,
           verdict,
@@ -4132,7 +4134,7 @@ export class Daemon extends EventEmitter {
           // #1690: our own /model holds every other delivery from its write on — before the lock is released, so a steer
           // or /btw waiting on it cannot type into the gap before claude paints "Switch model?" (default cursor: Yes).
           ...(ownSwitch || notifyWritten ? { onPaneWritten: () => { if (ownSwitch) this.ownSwitch = ownSwitch; tellWritten(true); } } : {}),
-          ...(notifyWritten ? { beforePaneWrite: takeCheckpoint } : {}),
+          ...(notifyWritten ? { beforePaneWrite: takeCheckpoint, ...(this.backend?.compactPaneUi?.() ? { lookBeforePaneWrite: lookBefore } : {}) } : {}),
         });
         tellWritten(false);                                                // never written (once told, this says nothing)
         if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
@@ -7050,6 +7052,11 @@ export class Daemon extends EventEmitter {
       onPaneWritten?: () => void;
       /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
       beforePaneWrite?: () => void;
+      /**
+       * Board 907c7899: each attempt's own look at the pane, awaited after that attempt's last capture and fence (a
+       * retry looks again); the fence is asked again after it, and only then is the paste written.
+       */
+      lookBeforePaneWrite?: () => Promise<void>;
     },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -7233,6 +7240,7 @@ export class Daemon extends EventEmitter {
           writeCurrent,
           opts?.humanVerificationId,
           opts?.beforePaneWrite,
+          opts?.lookBeforePaneWrite,
         );
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
@@ -8643,6 +8651,8 @@ export class Daemon extends EventEmitter {
     humanVerificationId?: string,
     // Board 003648ac: called synchronously right before each paste — after the last await and fence of that attempt.
     beforePaste?: () => void,
+    // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
+    lookBeforePaste?: () => Promise<void>,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
   ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
     const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
@@ -8744,6 +8754,11 @@ export class Daemon extends EventEmitter {
               stillCurrent, kind => { verdict.transcriptProof = kind; });
           }
         }
+      }
+      if (lookBeforePaste) {
+        await lookBeforePaste();
+        // The look awaited: this attempt is still this write's — the same fence, tmux and launch — or nothing is written.
+        if (!steerCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
       }
       if (rawPaste) {
         verdict.paneWriteStarted = true;

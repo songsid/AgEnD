@@ -3,13 +3,12 @@
  * real kiro-cli 2.30.0 captures in tests/fixtures/kiro-2.30.0-compact-pane.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KiroCompactPaneFollower } from "../src/kiro-compact-pane.js";
 import { COMPACT_WATCH_TIMEOUT_MS, CompactWatch, launchIdentity } from "../src/compact-watch.js";
 import { Daemon } from "../src/daemon.js";
-import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 import { TEST_KIRO_COMPAT } from "./helpers/kiro-compat.js";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -76,6 +75,30 @@ describe("TUI (--tui, V2)", () => {
 
   it("a running line already on the pane before the write is not this one's", () => {
     expect(follow("tui", "tui-compacting", "tui-compacting", "tui-compacted")).toEqual([null, null]);
+  });
+
+  it("review P2-1: the running line wrapped by a narrower pane is not an ending; the real ending still is", () => {
+    const f = new KiroCompactPaneFollower("tui", pane("tui-idle"));
+    expect(f.look(pane("tui-compacting"))).toBeNull();
+    const wrapped = pane("tui-compacting").replace("• Compacting conversation...", "• Compacting\nconversation...");
+    expect(f.look(wrapped)).toBeNull();
+    expect(f.look(pane("tui-compacting").replace("• Compacting conversation...", "• Compacting conversa\ntion..."))).toBeNull();
+    expect(f.look(pane("tui-compacted"))).toBe("done");
+  });
+
+  it("review P2-1: a piece of an older running line already on the pane does not hold this one's ending forever", () => {
+    const old = "\nconversation...";                                    // left over from an earlier, wrapped one
+    const f = new KiroCompactPaneFollower("tui", pane("tui-idle") + old);
+    expect(f.look(pane("tui-compacting") + old)).toBeNull();
+    expect(f.look(pane("tui-compacted") + old)).toBe("done");
+  });
+
+  it("review P2-1: without kiro's idle composer in view (a dialog over it, another layout): unknown, not done", () => {
+    const f = new KiroCompactPaneFollower("tui", pane("tui-idle"));
+    expect(f.look(pane("tui-compacting"))).toBeNull();
+    const covered = pane("tui-compacted").split("\n").filter(l => !l.includes("ask a question or describe a task")).join("\n");
+    expect(f.look(covered)).toBeNull();
+    expect(f.look(pane("tui-compacted"))).toBe("done");
   });
 
   it("an earlier \"too short\" still showing when this one is written is not this one's", () => {
@@ -151,6 +174,15 @@ describe("the fleet's watch for a kiro /compact (CompactWatch)", () => {
     expect(s.watch.view("k")!.state).toBe("lost");
   });
 
+  it("review P3-1: a result at or after the deadline is too late, even before the timer has looked", () => {
+    for (const [late, want] of [[COMPACT_WATCH_TIMEOUT_MS - 1, "done"], [COMPACT_WATCH_TIMEOUT_MS, "timeout"], [COMPACT_WATCH_TIMEOUT_MS + 1, "timeout"]] as const) {
+      const r = rig(); const id = r.start();
+      r.tick(late);
+      r.watch.paneResult("k", id, OWNER, "done");
+      expect(r.watch.view("k")!.state, String(late)).toBe(want);
+    }
+  });
+
   it("no word within the deadline: timed out", async () => {
     const r = rig(); const id = r.start();
     r.tick(COMPACT_WATCH_TIMEOUT_MS);
@@ -159,90 +191,146 @@ describe("the fleet's watch for a kiro /compact (CompactWatch)", () => {
   });
 });
 
-describe("the daemon reads its own pane from just before the write", () => {
+describe("the daemon reads its own pane just before this attempt's paste (the real deliverMessage)", () => {
   const ID = "0123456789abcdef";
-  function daemonRig(ui: "legacy" | "tui" | null, panes: string[]) {
+  const OLD_ENDING = "1% > /compact\nThe conversation history has been replaced with this summary.\n1% >";
+  /** A real daemon on an inert pane: handleRawPasteIpcMessage → queueRawPaste → deliverMessage → writeMessageToPane. */
+  function realDaemon(ui: "legacy" | "tui" | null, hooks: { capture?: () => void; paste?: () => void; enter?: () => void } = {}) {
     const dir = mkdtempSync(join(tmpdir(), "agend-kiro-compact-")); dirs.push(dir);
     mkdirSync(join(dir, "inst"));
+    writeFileSync(join(dir, "inst", "window-id"), "@1");
     const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger } as any;
-    const backend: any = new ClaudeCodeBackend(join(dir, "inst"));
+    const backend: any = { getReadyPattern: () => /READY/, getErrorPatterns: () => [], getRuntimeDialogs: () => [] };
     if (ui) backend.compactPaneUi = () => ui;
-    const d: any = new Daemon("k", {
-      working_directory: dir, backend: "kiro-cli", log_level: "silent",
-      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
-      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
-    } as any, join(dir, "inst"), false, backend, undefined, logger);
-    const order: string[] = [];
-    let at = 0;
-    d.tmux = {
-      isWindowAlive: async () => true, capturePane: async () => "", getWindowId: () => "@1",
-      capturePaneWithHistory: async (lines: number) => { order.push(`capture:${lines}`); return panes[Math.min(at++, panes.length - 1)]!; },
-    };
-    const broadcast: any[] = [];
+    const d: any = new Daemon("k", { working_directory: dir, log_level: "silent", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 } } as any,
+      join(dir, "inst"), false, backend, undefined, logger);
     d.logTranscriptPath = () => null;
+    const broadcast: any[] = [];
     d.ipcServer = { broadcast: (m: unknown) => broadcast.push(m), send: () => {} };
     d.wake = async () => {};
-    d.deliverMessage = async (text: string, _x: unknown, opts: any) => {
-      opts.verdict.reached = true; opts.verdict.paneWriteStarted = true;
-      opts.beforePaneWrite?.(); order.push(`write:${text}`); opts.onPaneWritten?.();
-      return true;
+    const r = { d, broadcast, order: [] as string[], screen: "" };
+    d.tmux = {
+      getWindowId: () => "@1", isWindowAlive: async () => true,
+      capturePane: async () => { hooks.capture?.(); return "READY"; },
+      capturePaneWithHistory: async (lines: number) => { r.order.push(`look:${lines}`); return r.screen; },
+      sendSpecialKey: async (k: string) => { if (k === "Enter") hooks.enter?.(); return true; },
+      sendKeys: async () => true, pasteText: async () => true,
+      pasteBuffer: async (text: string) => { r.order.push(`paste:${text}`); hooks.paste?.(); return true; },
     };
-    return { d, broadcast, order };
+    return r;
   }
+  const written = (r: { broadcast: any[] }) => vi.waitFor(() => expect(r.broadcast.some(m => m.type === "raw_paste_written")).toBe(true), { timeout: 15_000 });
 
-  it("classic: the look before the write, then one result when kiro's line shows", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const r = daemonRig("legacy", [pane("classic-idle"), pane("classic-compacting"), pane("classic-compacted")]);
-    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
-    await vi.waitFor(() => expect(r.broadcast.length).toBe(1));
+  it("classic: looked at just before the paste; one result when kiro's line for THIS /compact shows", async () => {
+    const r: any = realDaemon("legacy", { enter: () => { r.screen = pane("classic-compacting"); } });
+    r.screen = pane("classic-idle");
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await written(r);
+      const owner = launchIdentity(r.d.interactionOwner());
+      expect(r.broadcast[0]).toEqual({ type: "raw_paste_written", id: ID, outcome: "written", owner, checkpoint: null, pane: true });
+      expect(r.order.slice(0, 2)).toEqual(["look:1000", "paste:/compact"]);
+      await new Promise(resolve => setTimeout(resolve, 1300));
+      expect(r.broadcast).toHaveLength(1);                                     // still compacting
+      r.screen = pane("classic-compacted");
+      await vi.waitFor(() => expect(r.broadcast[1]).toEqual({ type: "compact_pane_result", id: ID, owner, outcome: "done" }), { timeout: 5_000 });
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 30_000);
+
+  it("review P2-2: an older /compact that ends while this one waits for the pane is not this one's ending", async () => {
+    let pasted = false;
+    const r: any = realDaemon("legacy", {
+      // While this write waits (readiness, last capture), an earlier /compact's echo and ending land on the pane.
+      capture: () => { if (!pasted) r.screen = `${pane("classic-idle")}\n${OLD_ENDING}`; },
+      paste: () => { pasted = true; },
+    });
+    r.screen = pane("classic-idle");
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await written(r);
+      await new Promise(resolve => setTimeout(resolve, 2300));
+      expect(r.broadcast).toHaveLength(1);                                     // this one has not shown yet: unknown
+      r.screen = `${pane("classic-idle")}\n${OLD_ENDING}\n${OLD_ENDING}`;    // control: this one's own ending
+      await vi.waitFor(() => expect(r.broadcast[1]).toMatchObject({ type: "compact_pane_result", id: ID, outcome: "done" }), { timeout: 5_000 });
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 30_000);
+
+  it("review P2-2: the look is fenced too — another launch during it: nothing is written", async () => {
+    const r: any = realDaemon("legacy");
+    r.screen = pane("classic-idle");
+    const look = r.d.tmux.capturePaneWithHistory;
+    r.d.tmux.capturePaneWithHistory = async (lines: number) => { r.d.spawnGeneration += 1; return look(lines); };
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await written(r);
+      expect(r.broadcast[0]).toMatchObject({ type: "raw_paste_written", outcome: "not_written" });
+      expect(r.order.filter((o: string) => o.startsWith("paste"))).toEqual([]);
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 30_000);
+
+  it("review P3-1: the daemon's follow says nothing once its deadline has passed (monotonic, asked after each await)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "performance"] });
+    const r: any = realDaemon("legacy");
+    r.screen = pane("classic-compacting");
     const owner = launchIdentity(r.d.interactionOwner());
-    expect(r.broadcast[0]).toEqual({ type: "raw_paste_written", id: ID, outcome: "written", owner, checkpoint: null, pane: true });
-    expect(r.order).toEqual(["capture:1000", "write:/compact"]);
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(r.broadcast.length).toBe(1);                                       // still compacting
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(r.broadcast[1]).toEqual({ type: "compact_pane_result", id: ID, owner, outcome: "done" });
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(r.broadcast.length).toBe(2);
+    let late = false;
+    const look = r.d.tmux.capturePaneWithHistory;
+    // The look that would see the ending returns only after the deadline.
+    r.d.tmux.capturePaneWithHistory = async (lines: number) => { if (late) vi.advanceTimersByTime(COMPACT_WATCH_TIMEOUT_MS); return look(lines); };
+    try {
+      const follow = r.d.followCompactPane(ID, owner, new KiroCompactPaneFollower("legacy", pane("classic-idle")));
+      await vi.advanceTimersByTimeAsync(3000);
+      r.screen = pane("classic-compacted"); late = true;
+      await vi.advanceTimersByTimeAsync(1000);
+      await follow;
+      expect(r.broadcast).toEqual([]);
+    } finally { r.d.freezeRuntimeMonitors(); }
   });
 
   it("TUI: \"too short\" is said as not compacted", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const r = daemonRig("tui", [pane("tui-too-short-gone"), pane("tui-too-short")]);
-    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
-    await vi.waitFor(() => expect(r.broadcast.length).toBe(1));
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(r.broadcast[1]).toMatchObject({ type: "compact_pane_result", id: ID, outcome: "not_compacted" });
-  });
+    const r: any = realDaemon("tui", { enter: () => { r.screen = pane("tui-too-short"); } });
+    r.screen = pane("tui-too-short-gone");
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await written(r);
+      await vi.waitFor(() => expect(r.broadcast[1]).toMatchObject({ type: "compact_pane_result", id: ID, outcome: "not_compacted" }), { timeout: 5_000 });
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 30_000);
 
-  it("another launch while it runs: nothing more is said (the fleet calls it lost)", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout"] });
-    const r = daemonRig("legacy", [pane("classic-idle"), pane("classic-compacted")]);
-    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
-    await vi.waitFor(() => expect(r.broadcast.length).toBe(1));
-    r.d.interactionOwner = () => ({ bootId: "other", spawnGeneration: 9, launchAttempt: 1, launchFenceEpoch: 0 });
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(r.broadcast.length).toBe(1);
-  });
+  it("another launch after the write: nothing more is said (the fleet calls it lost)", async () => {
+    const r: any = realDaemon("legacy", { enter: () => { r.screen = pane("classic-compacted"); r.d.spawnGeneration += 1; } });
+    r.screen = pane("classic-idle");
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await written(r);
+      await new Promise(resolve => setTimeout(resolve, 2300));
+      expect(r.broadcast).toHaveLength(1);
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 30_000);
 
-  it("a backend that does not read its pane, or a pane that can't be read before the write: no pane follow", async () => {
-    const a = daemonRig(null, [pane("classic-idle")]);
-    a.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
-    await vi.waitFor(() => expect(a.broadcast.length).toBe(1));
-    expect(a.broadcast[0]).not.toHaveProperty("pane");
-    expect(a.order).toEqual(["write:/compact"]);
-    const b = daemonRig("legacy", []);
+  it("a backend that does not read its pane, or a pane that can't be read: no look, no pane follow", async () => {
+    const a: any = realDaemon(null);
+    const b: any = realDaemon("legacy");
     b.d.tmux.capturePaneWithHistory = async () => { throw new Error("no pane"); };
-    b.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
-    await vi.waitFor(() => expect(b.broadcast.length).toBe(1));
-    expect(b.broadcast[0]).not.toHaveProperty("pane");
-  });
+    try {
+      for (const r of [a, b]) {
+        r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+        await written(r);
+        expect(r.broadcast[0]).not.toHaveProperty("pane");
+      }
+      expect(a.order.filter((o: string) => o.startsWith("look"))).toEqual([]);
+    } finally { a.d.freezeRuntimeMonitors(); b.d.freezeRuntimeMonitors(); }
+  }, 30_000);
 
-  it("a paste with no watch id (not a web /compact): the pane is not read", async () => {
-    const r = daemonRig("legacy", [pane("classic-idle")]);
-    r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact" });
-    await vi.waitFor(() => expect(r.order).toEqual(["write:/compact"]));
-  });
+  it("a paste with no watch id (not a web /compact): the pane is not looked at", async () => {
+    const r: any = realDaemon("legacy");
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact" });
+      await vi.waitFor(() => expect(r.order).toContain("paste:/compact"), { timeout: 15_000 });
+      expect(r.order.filter((o: string) => o.startsWith("look"))).toEqual([]);
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 30_000);
 });
 
 describe("kiro's layouts", () => {

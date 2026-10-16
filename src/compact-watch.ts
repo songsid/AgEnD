@@ -138,6 +138,8 @@ export class CompactWatch {
   paneResult(name: string, id: string, owner: unknown, outcome: unknown): void {
     const w = this.watches.get(name);
     if (!w || !w.pane || w.id !== id || w.state !== "running" || w.paneOwner === null) return;
+    // A word that comes at or after the deadline is too late, whether or not the timer has run yet (#1925 review).
+    if (this.now() >= w.deadline) { this.finish(name, w, "timeout"); return; }
     if (owner !== w.paneOwner || this.deps.owner(name) !== w.paneOwner) { this.finish(name, w, "lost"); return; }
     if (outcome === "done" || outcome === "not_compacted") this.finish(name, w, outcome);
   }

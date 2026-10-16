@@ -11,7 +11,8 @@
  * - **TUI (`--tui`, V2).** The command is not echoed. `• Compacting conversation...` shows while it runs and is replaced
  *   by the summary when it ends; "• Conversation too short to compact." shows for about ten seconds, then goes. Esc
  *   and Ctrl-C do not stop it (each such compaction still finished). A failure other than "too short" was not seen,
- *   so "done" here means the running line came and went.
+ *   so "done" here means the running line came and went — and only on a screen read as kiro's: no piece of that line
+ *   left (a narrower pane wraps it, #1925 review) and the idle composer in view. Anything else stays unknown.
  * - **Anything else** (kiro V3, another layout) is not read: no follower is made for it.
  *
  * The follower starts from the pane just before the command's own write (the daemon holds its paste lock, so no other
@@ -30,6 +31,10 @@ const CLASSIC_DONE = "The conversation history has been replaced with this summa
 const TOO_SHORT = "Conversation too short to compact.";
 const TUI_RUNNING = /^\s*•\s+Compacting conversation\.\.\.\s*$/;
 const TUI_TOO_SHORT = /^\s*•\s+Conversation too short to compact\.\s*$/;
+/** Any piece of the running line: its start, or its wrapped end on a row of its own. */
+const TUI_RUNNING_PART = /^\s*(?:•\s+)?Compacting\b|^\s*conversation\.\.\.\s*$/;
+/** The TUI's empty composer: the screen is kiro's own, not a dialog or another layout over it. */
+const TUI_IDLE_COMPOSER = /ask a question or describe a task/;
 
 const lines = (pane: string) => pane.split("\n");
 const count = (all: string[], re: RegExp) => all.reduce((n, l) => n + (re.test(l) ? 1 : 0), 0);
@@ -38,6 +43,7 @@ export class KiroCompactPaneFollower {
   private readonly echoes: number;
   private readonly running: number;
   private readonly tooShort: number;
+  private readonly runningParts: number;
   private seenRunning = false;
 
   /** `before`: the pane (with KIRO_COMPACT_PANE_LINES of history) just before the command was written. */
@@ -46,6 +52,7 @@ export class KiroCompactPaneFollower {
     this.echoes = count(all, CLASSIC_ECHO);
     this.running = count(all, TUI_RUNNING);
     this.tooShort = count(all, TUI_TOO_SHORT);
+    this.runningParts = count(all, TUI_RUNNING_PART);
   }
 
   /** One look at the pane (same history depth): how the command ended, or null while it runs or can't be told. */
@@ -63,6 +70,7 @@ export class KiroCompactPaneFollower {
     if (count(all, TUI_TOO_SHORT) > this.tooShort) return "not_compacted";
     const running = count(all, TUI_RUNNING) > this.running;
     if (running) { this.seenRunning = true; return null; }
-    return this.seenRunning ? "done" : null;
+    if (!this.seenRunning || count(all, TUI_RUNNING_PART) > this.runningParts) return null;   // may still be running, wrapped
+    return all.some(l => TUI_IDLE_COMPOSER.test(l)) ? "done" : null;
   }
 }
