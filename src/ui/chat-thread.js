@@ -86,7 +86,20 @@ export function createThread(list, scroller, opts) {
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
-    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+    // A person's click on a reply button shows as the button's label, never the line the agent was given (its value).
+    const clicked = x.role === "user" && x.click && typeof x.click.label === "string";
+    return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
+  }
+  /**
+   * A button click as a chip: 🔘 and the label (escaped: the label is the agent's text). With `of` (live, while its
+   * reply is in this thread) it is a button that shows that reply; restored from disk, plain.
+   */
+  function clickHtml(click) {
+    const inner = `<span class="click-mark" aria-hidden="true">🔘</span><span class="sr-only">${escAttr(tr("chat.clicked"))} </span>${escAttr(click.label)}`;
+    const of = typeof click.of === "string" && /^[0-9a-f]{32}$/.test(click.of) ? click.of : null;
+    return `<div class="click-chip">${of
+      ? `<button type="button" class="click-link" data-act="showButtons" data-arg="${escAttr(of)}" title="${escAttr(tr("chat.clickShow"))}">${inner}</button>`
+      : `<span class="click-text">${inner}</span>`}</div>`;
   }
   /**
    * #1672: a status line (another instance's message, a daemon notice) is muted, read-only plain text — never Markdown,
@@ -592,7 +605,7 @@ export function createThread(list, scroller, opts) {
     else if (act === "replyButton") {
       const m = /^([0-9a-f]{32}):(\d{1,2})$/.exec(el.dataset.arg || "");
       if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
-    }
+    } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
   }
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */

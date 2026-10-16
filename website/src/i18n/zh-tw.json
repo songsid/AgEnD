@@ -75,7 +75,7 @@
       {
         "icon": "shield",
         "name": "花費守衛",
-        "desc": "每個 instance 每日限額，超過自動暫停並通知。"
+        "desc": "每個 instance 每日限額，達上限時停止並通知。"
       },
       {
         "icon": "clock",
@@ -250,7 +250,7 @@
       },
       {
         "q": "需要伺服器嗎？",
-        "a": "不需要，任何有 tmux 的 macOS、Linux 或 Windows（WSL）機器都能跑。可裝成系統服務開機自動啟動。"
+        "a": "不需要。支援 macOS 11+（launchd）、glibc 2.28+ Linux（systemd），包括啟用 systemd 的 WSL；需要 tmux。不支援 Alpine／musl、非 systemd Linux 或原生 Windows。"
       },
       {
         "q": "Agent 怎麼協作？",

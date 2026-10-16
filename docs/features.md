@@ -219,12 +219,12 @@ Other backends do not have it.
 
 ## Peer-to-peer agent collaboration
 
-Every instance is an equal peer that can discover, wake, create, and message other instances. No dispatcher needed — collaboration emerges from the tools available to each agent.
+Instances collaborate through the tools their profiles allow. Ordinary workers can discover and message peers; creating, starting or waking instances requires the appropriate orchestration permission. See [tool profiles](features.md#tool-profiles).
 
 **Core MCP tools:**
 
 - `list_instances` — discover all configured instances (running or stopped) with status, working directory, and last activity
-- `send_to_instance` — send a message to another instance or external session; supports structured metadata (`request_kind`, `requires_reply`, `correlation_id`, `task_summary`)
+- `send_to_instance` — send a message to another fleet instance; supports structured metadata (`request_kind`, `requires_reply`, `correlation_id`, `task_summary`)
 - `start_instance` — wake a stopped instance so you can message it
 - `create_instance` — create a new instance with a topic (directory optional; auto-created at `~/.agend/workspaces/<name>` if omitted); supports `branch` for git worktree isolation
 - `delete_instance` — remove an instance and its topic
@@ -261,7 +261,7 @@ Each row also says how it was routed and what became of it after it reached the 
 - `consumed_at` / `consumed_via`: a steer or a native-queue hand-off is accepted into the CLI's input long before the model reads it. Claude Code takes it at the next tool boundary or when the turn ends. When the CLI's transcript (claude-code, codex) shows the delivery's own marker taken, the row records when, and whether it came as its own turn (`turn`) or inside the running one (`mid_turn`). That is also the one thing that turns an `uncertain` row into `delivered`; a failure notice not yet sent to the sender is then withdrawn. No match never changes a row.
 - `waiting_reason` (#1641): on a `queued` or `retry_wait` row, why the target is not taking it, in words ("The CLI appears stuck.", paused, a dialog, a login failure), or null when it is simply next in line. If an always-on target's queued work has waited 30 minutes for such a reason, its topic is told once.
 
-An instance only sees rows it sent or received (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` is how an agent checks that a peer message really came through the fleet: "Delivery not found" means it did not. Every tool profile has `delivery_status`, `minimal` included.
+An instance sees rows it sent, received, or was explicitly granted through `forwards` (its identity comes from its own socket or token, never from an argument). Looking up an inbound message's `message_id` helps verify retained delivery evidence. "Delivery not found" can mean ACL-hidden, expired retention, or no delivery; it is not proof of non-delivery. Do not act on an unverifiable reference: ask the sender to explicitly forward one you can verify. Every tool profile has `delivery_status`, `minimal` included.
 
 `send_to_instance` and `delegate_task` accept an optional `forwards` list of up to 16 delivered message IDs the sender can already read. The receiver may then call `delivery_status` on those IDs — including a human consent receipt (`verification_id` / `agend-human-id`). Every hop in a relay chain must include `forwards` explicitly; writing an ID in the message text grants nothing. Human receipts preserve the original actor, adapter, platform and content separately from the formatted wire payload, and remain uncertain without owned submission evidence. See [cross-instance-messaging.md](cross-instance-messaging.md) and [delivery-verification.md](delivery-verification.md) for the full guidance.
 
@@ -339,7 +339,7 @@ The daemon automatically isolates external sessions from internal ones using env
 
 Internal sessions get `AGEND_INSTANCE_NAME` injected by the daemon into the tmux shell environment. External sessions don't have this, so they fall through to `AGEND_SESSION_NAME` (if set) or an auto-generated name from the working directory plus the MCP server's PID, so two sessions in the same project do not collide. This means the same `.mcp.json` produces different identities for internal vs external sessions — no configuration conflicts.
 
-External sessions appear in `list_instances` and can be targeted by `send_to_instance`.
+External sessions can register an identity, appear in `list_instances`, and call permitted fleet tools. Registration does not establish a proven inbound channel into the external CLI’s own conversation; do not rely on `send_to_instance` to submit a turn there.
 
 ## Tool profiles
 
@@ -348,18 +348,18 @@ fleet rather than by what the model was shown. Three profiles matter:
 
 | profile | how you get it | what it is |
 |---|---|---|
-| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `broadcast`, `report_result`, `request_information`, `delegate_task`, `delivery_status`, `task`, `post_decision`, `checkout_repo` / `release_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. Since 2.1.6 it may also create and change schedules that target itself (#896), and it can list, preview and set its own persona emoji and list and preview stickers. 38 tools. |
+| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `broadcast`, `report_result`, `request_information`, `delegate_task`, `delivery_status`, `task`, `post_decision`, `checkout_repo` / `release_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. Since 2.1.6 it may also create and change schedules that target itself (#896), and it can list, preview and set its own persona emoji and list and preview stickers. 39 tools. |
 | `coordinator` | `tool_set: coordinator` | Everything a worker has, plus the verbs that run the fleet: create/delete/replace/start/stop/restart/wake instances, deploy and tear down templates, team CRUD, creating and changing schedules, `update_instance_config`, `update_fleet_defaults`, `update_decision`. |
 | `full` | `tool_set: full` | Every tool AgEnD has. |
 
-**`coordinator` and `full` are the same 54 tools today** — the difference is what
+**`coordinator` and `full` are the same 55 tools today** — the difference is what
 they mean, not what they contain. `coordinator` says "this agent runs the fleet",
 and will be narrowed if a verb turns out not to belong there; `full` says "give
 this one everything regardless", and is the name the old default had. If you want
 an agent to coordinate, write `coordinator` — reaching for `full` to get *more*
 gets you nothing extra and opts you out of every future refinement.
 
-`standard` (29 tools) and `minimal` (9) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9, and `list_stickers` and `preview_stickers` in 2.1.12.
+`standard` (30 tools) and `minimal` (9) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9, and `list_stickers` and `preview_stickers` in 2.1.12.
 **`general` is an identity, not a profile you can pick**: it is assigned to
 instances with `general_topic: true`, and writing it by hand fails validation —
 two ways of being a General would eventually disagree.
@@ -647,11 +647,11 @@ The resume budget, resume retry and outage short-circuit are kiro-only (they are
 
 ## agend quickstart
 
-Simplified 4-question setup wizard for new users. Auto-detects installed backends, auto-discovers Telegram group ID via `getUpdates` polling, and generates a minimal `fleet.yaml` with sensible defaults. Replaces the 9-step `agend init` as the recommended onboarding path.
+The recommended setup wizard detects installed backends and generates a minimal `fleet.yaml`. Telegram discovers the group and user from a `/start` message. Discord detects the account from a guild message or DM, asks for explicit confirmation, and falls back to required snowflake-validated manual entry. The web wizard also requires a valid admin ID.
 
 ## Web Dashboard
 
-The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 <your name>: …`, and the agent's replies show in both. Signed in with a `/web` code, you are your Discord or Telegram account to the agent (its user id, `via web`, for recognition only — see [web-dashboard.md](web-dashboard.md#who-the-agent-sees-1827)). Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
+The fleet serves a web dashboard on `127.0.0.1` (`health_port`, default 19280). Its `/ui` is **web chat**: pick an instance and talk to it from the browser. It is the same conversation as that instance's Telegram or Discord chat: what you send from the web is echoed into the topic as `🌐 web · <your name>: …`, and the agent's replies show in both. Signed in with a `/web` code, you are your Discord or Telegram account to the agent (its user id, `via web`, for recognition only — see [web-dashboard.md](web-dashboard.md#who-the-agent-sees-1827)). Files and images (📎, paste or drop), Stop, and ticks showing how far each message got all work there, and a fleet with no chat platform can be run from the dashboard alone. `/view` is the read-mostly overview and `/settings` the fleet settings.
 
 Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on the host. To use it from a phone or another computer, see [Reaching it from elsewhere](web-dashboard.md#reaching-it-from-elsewhere). The full guide is [web-dashboard.md](web-dashboard.md).
 
@@ -871,7 +871,7 @@ instances:
     systemPrompt: "file:prompts/role.md"
 ```
 
-A relative path is resolved against the **instance's `working_directory`** (#1314); `~/` and absolute paths are used as given. That directory is where a relative path *starts*, not a boundary: `../` and symlinks can lead out of it, just as an absolute path can name any file the fleet's user can read. `~name/` (another user's home) is not supported; it is refused with a warning, never read as a directory called `~name`. Before 2.1.13 it was the fleet process's current directory (`~/.agend` under the installed service, the shell's directory after a manual `agend fleet start`). For one release, a relative path whose file is missing under the working directory still falls back to the old fleet-directory file: the log names both paths and the instance's topic is told once. The fallback is removed in 2.2.
+A relative path is resolved against the **instance's `working_directory`** (#1314); `~/` and absolute paths are used as given. That directory is where a relative path *starts*, not a boundary: `../` and symlinks can lead out of it, just as an absolute path can name any file the fleet's user can read. `~name/` (another user's home) is not supported; it is refused with a warning, never read as a directory called `~name`. Before this change it was the fleet process's current directory (`~/.agend` under the installed service, the shell's directory after a manual `agend fleet start`). For compatibility, a relative path whose file is missing under the working directory still falls back to the old fleet-directory file: the log names both paths and the instance's topic is told once. This fallback is still implemented in 2.2; move the file under the instance’s working directory to remove the warning.
 
 Several parts can be combined with commas (`"file:a.md, file:b.md"`, inline text allowed between them); they are joined with blank lines. The value is split on commas **only when at least one part is a `file:` reference**, so an inline prompt such as `"You are Kuro, a careful reviewer"` stays one paragraph. A file that cannot be read, is larger than 256 KiB, or is not a regular file (a FIFO or a device — opened without blocking) contributes nothing; the log names its path and the error (never its contents), and config validation warns about a reference that names no file. The `workflow: "file:…"` setting reads its file the same way.
 
@@ -931,7 +931,7 @@ instances:
 
 Install with `/login muse`, or in a shell: `mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`. The launcher keeps its binary next to itself, so it is saved as `~/.local/bin/muse` first; piped straight into `bash` it would download into the current directory instead and sign in with `muse login`. `/login` does not cover muse yet. Muse steers rather than queues: a message sent while a turn is running is taken into that turn, so `/steer` works (verified on muse 1.3.0). `/clear` starts a new conversation. Subscription usage is relayed from muse's response stream into `/usage`.
 
-With `skip_permissions: false`, the "Would you like to run the following command?" approval prompt is recognised as a permission interaction awaiting a human (#1715): deliveries are held while it is on screen, it appears in Needs-you, and AgEnD never auto-answers it. When a backgrounded task is running and `/quit` is issued, the "Local work is still active" confirmation menu is recognised and handled deliberately (#1716): deliveries are held, stop cancels the menu with Escape rather than answering an option, and the ended background work is reported to the instance's topic instead of being discarded silently. `/model` lists models from muse's own on-disk provider catalog, so newly released models appear after a restart without requiring a hard-coded update (#1796).
+With `skipPermissions: false`, the "Would you like to run the following command?" approval prompt is recognised as a permission interaction awaiting a human (#1715): deliveries are held while it is on screen, it appears in Needs-you, and AgEnD never auto-answers it. When a backgrounded task is running and `/quit` is issued, the "Local work is still active" confirmation menu is recognised and handled deliberately (#1716): deliveries are held, stop cancels the menu with Escape rather than answering an option, and the ended background work is reported to the instance's topic instead of being discarded silently. `/model` lists models from muse's own on-disk provider catalog, so newly released models appear after a restart without requiring a hard-coded update (#1796).
 
 ## Grok Build backend
 

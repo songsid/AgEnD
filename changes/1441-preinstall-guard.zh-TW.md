@@ -1,4 +1,4 @@
 ---
 section: Added
 ---
-- **預裝安裝守衛（#1441 Part A）：在不相容的 Node 版本上 npm 中止安裝。** `preinstall` 生命週期腳本在執行中的 Node 不支援 N-API 10（`^22.14.0 || ^23.6.0 || >=24`）時以退出碼 1 中止。直接執行 `npm install -g @songsid/agend` 的情況下，安裝在更動任何檔案前就會失敗，保留現有版本不變。注意：2.1.x 更新器流程在安裝前會執行 `npm unlink`；若解除連結已完成後 preinstall 才失敗，則不會有版本殘留——詳見升級說明。`--ignore-scripts` 可繞過 preinstall 鉤子，但 CLI 本身的啟動守衛在首次執行時仍會以退出碼 1 中止，因此舊更新器的 `agend --version` 驗證步驟仍然會中止重啟。
+- **Node 相容性檢查（#1441）。** 沒有支援的 bundled runtime 時，preinstall 會拒絕不相容的系統 Node；bundled-runtime 平台可在 npm 本身使用舊 Node 時安裝。略過 lifecycle scripts 不會讓不相容 runtime 變安全：launcher 仍須找到私有 runtime 或明確允許且合格的系統 fallback。舊 updater 若已先 unlink，安裝失敗仍可能沒有已安裝的指令；請見 2.2 升級指南。

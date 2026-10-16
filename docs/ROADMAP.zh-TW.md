@@ -1,6 +1,6 @@
 # AgEnD 發展藍圖
 
-> 最後更新：2026-10-07（2.2 主線）
+> 最後更新：2026-10-16（2.2 正式版前）
 > 短小、面向使用者：已上線什麼、接下來是什麼。
 
 ## 已上線 (v1.x)
@@ -26,26 +26,27 @@ quickstart、Mirror Topic、完整繁體中文文件。細節見 CHANGELOG 各�
 - 2.1.11：Codex capacity 改用 keep-going nudge、更新頻道釘選、cancel 同時
   停止回覆補救、重啟不再重送、capacity／卡住偵測修正、Discord slash 表格
   與授權門。
-- 2.1.12（beta 中）：kiro 2.28 Classic 提示處理、bot 對 bot 可見度設定、
+- 2.1.12：kiro 2.28 Classic 提示處理、bot 對 bot 可見度設定、
   移除 gemini-cli、macOS 記憶體警報關閉、alpha 發布頻道、反應擁有權修正、
   文件大整理。短的唯一 instance 名稱在 2.1.12-beta.4 上線。
 
-## 接下來：2.2.0 — web 主線
+## 2.2.0 — 目前預發版已實作
 
-儀表板成為與 fleet 對話的第一等公民：
+詳見[目前 2.2 重點](release-notes/2.2.0.zh-TW.md)及[升級指南](upgrade-2.2.zh-TW.md)。儀表板包含：
 
 - 一次性 code 登入，session 可撤銷。
 - 聊天優先 UI：輸入框置中、Markdown、上傳檔案、投遞 tick、Stop。
 - 健康 prompt 在 Telegram 與 web 雙向鏡像、只回答一次。
 - Echo 同步：web 打的字出現在 instance 的頻道 topic（fleet topic 預設開，
   ClassicBot 逐頻道 opt-in——見
-  `docs/design/1320-classicbot-web-echo.md`）。
+  [設計](design/1320-classicbot-web-echo.md)）。
 
-## 2.2.1 — 聊天深度（規劃方向，可能變動）
+- 選用的行內 HTML 預覽與可留存的每 instance 聊天紀錄。
+- 選用的 Log：Claude Code／Codex 目前對話步驟；其他 backend 只顯示 fleet 事件。
 
-- 行內 HTML 預覽。
-- 可留存、可搜尋的每 instance 聊天紀錄。
-- 步驟清單：agent 正在做什麼，一步一步列出來。
+## 後續聊天深度（規劃方向，可能變動）
+
+- 可搜尋的聊天紀錄。這是規劃，不是 2.2 已提供的功能承諾。
 
 ## 2.2.2 — 審閱流程（規劃方向，可能變動）
 

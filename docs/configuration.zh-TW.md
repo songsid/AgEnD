@@ -52,13 +52,13 @@ health_port: 19280
 | `channel` | object | — | 單一通訊平台設定；多 bot 請改用 `channels[]` |
 | `channels` | ChannelConfig[] | — | 多連線設定陣列。舊的單一 `channel` 會自動轉成一筆連線 |
 | `defaults` | object | `{}` | 所有 instance 的預設設定 |
-| `instances` | object | **必填** | Instance 定義（key = instance 名稱） |
+| `instances` | object | `{}` | Instance 定義（key = instance 名稱） |
 | `teams` | object | `{}` | 具名 instance 群組，用於精準廣播 |
 | `templates` | object | — | 可重複部署的 fleet 模板 |
 | `profiles` | object | — | 可供模板引用的 backend/model 預設組合 |
 | `health_port` | number | `19280` | HTTP 健康檢查/API 伺服器埠 |
 | `fleet_label` | string | 主機名稱 | 這個 fleet 在 `/login` 裡的名稱：附加在 Discord slash 指令說明後面，並顯示在每個 backend 選單下方（`🖥 Fleet：…`）。同一個 guild 裡每個 AgEnD bot 都會註冊自己的 `/login`，而且只控制執行它的那個 fleet——這個標籤用來分辨它們。預設：本機主機名稱；AgEnD home 不是 `~/.agend` 時再加上該目錄名稱 |
-| `web` | object | — | `usage_panel: false` 隱藏所有 AI 額度顯示（標題列的 **用量**、右側面板與對話框）並停用 `/api/ai-usage`（預設 `true`）；`log_tab: true` 開啟每個 instance 的 **紀錄** 分頁：從 agent 自己的對話紀錄即時讀出提示、回覆、工具呼叫與結果、錯誤和 fleet 事件，機密值會遮蔽，公開連結也看得到（預設 `false`：關閉時完全不做任何事；也可在 **設定 → 網頁** 開啟，開啟需 fleet admin 確認；支援 claude-code 與 codex——kiro 目前只顯示 fleet 事件並說明原因，直到 AgEnD 能證明 kiro instance 所在的對話）；`allowed_hosts: [name, …]` 加入反向代理或轉送使用的 Host 名稱。內建允許 `localhost`、`127.0.0.1`、`[::1]` 與設定的 `hostname`；其餘 Host 回 403，`/login` 瀏覽器終端也使用此清單；`session.local.absolute_hours`／`session.local.idle_hours` 設定直接連到 dashboard（本機、區網、tailnet）時登入可維持多久——登入後幾小時、未使用幾小時（預設 `48`／`48`；`1 ≤ idle_hours ≤ absolute_hours ≤ 720`，可用小數；公開連結的 4 小時／閒置 30 分鐘固定、不可設定；變更不需重啟即生效，改短也會結束已超過新期限的 session；也可在 **設定 → 網頁** 修改，延長時需 fleet admin 確認） |
+| `web` | object | — | `usage_panel: false` 隱藏所有 AI 額度顯示（標題列的 **用量**、右側面板與對話框）並停用 `/api/ai-usage`（預設 `true`）；`log_tab: true` 開啟每個 instance 的 **紀錄** 分頁：從 agent 自己的對話紀錄即時讀出提示、回覆、工具呼叫與結果、錯誤和 fleet 事件，機密值會遮蔽，公開連結也看得到（預設 `false`：關閉時完全不做任何事；也可在 **設定 → 網頁** 開啟，開啟需 fleet admin 確認；支援 claude-code 與 codex——kiro 目前只顯示 fleet 事件並說明原因，直到 AgEnD 能證明 kiro instance 所在的對話）；`allowed_hosts: [name, …]` 加入反向代理或轉送使用的 Host 名稱。內建允許 `localhost`、`127.0.0.1`、`[::1]` 與設定的 `hostname`；其餘 Host 回 403，`/login` 瀏覽器終端也使用此清單；`session.local.absolute_hours`／`session.local.idle_hours` 設定直接連到 dashboard（本機、區網、tailnet）時登入可維持多久——登入後幾小時、未使用幾小時（預設 `48`／`48`；`1 ≤ idle_hours ≤ absolute_hours ≤ 720`，可用小數；公開連結的 4 小時／閒置 30 分鐘固定、不可設定；變更不需重啟即生效，改短也會結束已超過新期限的 session；也可在 **設定 → 網頁** 修改，延長時需 fleet admin 確認）；`web.view_access: session` 讓 `/view` 也必須登入（預設 `open`；儲存個人資料一律需登入）；`web.notify_login: false` 關閉本機登入通知（預設 `true`；公開登入仍須確認通知送達）；`web.preview: false` 關閉 HTML 預覽（預設 `true`，各裝置仍須自行同意執行）；`web.preview_port` 是 loopback 預覽埠（預設 `health_port + 1`，即 19281）；`web.preview_origin` 是代理到預覽 listener 的獨立來源，須與 dashboard 使用不同主機名稱 |
 | `needs_you` | object | — | **「等你處理」**（#1386）：一份列出所有在等人處理的事的清單——fleet 的提示（沒有回應／已結束／在終端機上等待）、instance 停在權限、危險指令、登入或其他對話框、因需要登入而暫停或已崩潰的 instance，以及 fleet 無法確認或無法送達的傳遞（最近 24 小時）。`needs_you.live_message`（預設 `true`）：每個 bot 在**自己的** General 維持一則即時訊息，只列出它負責的 instance——處理掉就編輯更新，有新的事就重新發一則（最多每分鐘一次）；每一行都連到該提示自己的按鈕或 instance 的討論串，無法確認或送達的傳遞會有**已確認**按鈕，限該 bot 的管理員使用。`needs_you.dm`（預設 `false`）：有新的事時也私訊該 bot 的管理員（終端機等待需持續 5 秒才通知；最多每分鐘一則）。網頁儀表板會顯示所有 bot 的項目。兩個設定都不需重啟即生效。文字與按鈕沒有變化時不再編輯，「已確認」按鈕仍會更新有效期限。編輯失敗時，只有確認訊息或目的地不存在、或失去權限才會重新發送，同樣最多每分鐘一次；網路、速率限制與內容錯誤會保留原訊息的位置。若曾為避免 Telegram 訊息重複而關掉 `live_message`，更新後可將它設回 `true`。 |
 | `web_terminal` | object | — | `/login`（登入與安裝）背後的瀏覽器終端：`enabled`（預設 `true`）、`bind`（預設 `127.0.0.1`）、`ttl_minutes`（1–20，預設 10；`enabled` 與 `ttl_minutes` 也可在 **設定 → 網頁** 修改，開啟終端機或增加分鐘數需 fleet admin 確認），以及 `tunnel` —— `/login` 的公開連結，每次登入都會提供，除非設 `allow_public: false`；見下方「人不在機器旁完成 /login」 |
 
@@ -300,7 +300,7 @@ templates:
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | 所有 backend（含 Antigravity）的預設通訊模式為 MCP；`"cli"` 改用 `agend-agent` HTTP 指令，不啟動 MCP server |
 | `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（30 個）、`minimal`（9 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | 頻道進度泡泡中的工具活動：`standard` 只列語意標籤、不含 shell 參數；`verbose` 加上截短的命令預覽。預設關閉，啟用後會向頻道顯示活動 |
-| `effort` | string | — | 預設推理強度（`low`／`medium`／`high`／`xhigh`／`max`，依 backend 限制）。每次啟動（包括接續對話的啟動）都會在 CLI 接受時傳入：`--effort`（claude-code、kiro-cli、antigravity）、`--reasoning-effort`（grok、muse）、`-c model_reasoning_effort`（codex）。codex、claude-code、grok 和 antigravity 只有在已安裝版本的 `--help` 列出這個參數、且等級是它接受的（codex：模型目錄列出的等級）時才會傳；否則 instance 用 CLI 自己的設定啟動，並在紀錄分頁說明原因。antigravity 的模型清單是每個等級各一個模型，所以推理強度會選那個等級的模型（`gemini-3.8-flash-medium` 加 `high` 會以 `gemini-3.8-flash-high` 啟動），`--effort` 不會和 `--model` 一起傳；模型沒有的等級就用設定的模型啟動、不帶推理強度。執行中可用 `/effort` 覆寫 |
+| `effort` | string | — | 預設推理強度（`low`／`medium`／`high`／`xhigh`／`max`，依 backend 限制）。每次啟動（包括接續對話的啟動）都會在 CLI 接受時傳入：`--effort`（claude-code、kiro-cli、antigravity）、`--reasoning-effort`（grok、muse）、`-c model_reasoning_effort`（codex）。claude-code、grok 和 antigravity 需由已安裝版本的 `--help` 列出這個參數；kiro-cli 依版本判斷，codex 則要求模型目錄列出的等級。各 backend 只接受支援的等級；否則 instance 用 CLI 自己的設定啟動，並在紀錄分頁說明原因。antigravity 的模型清單是每個等級各一個模型，所以推理強度會選那個等級的模型（`gemini-3.8-flash-medium` 加 `high` 會以 `gemini-3.8-flash-high` 啟動），`--effort` 不會和 `--model` 一起傳；模型沒有的等級就用設定的模型啟動、不帶推理強度。執行中可用 `/effort` 覆寫 |
 | `backend_options` | object | — | 以 backend 名稱為鍵的選項，如 `{ codex: { provider: "glm" } }`；`credential_profile` 見下方帳號隔離章節 |
 | `terminal.enabled` | boolean | `true` | 啟用邏輯終端大小；`false` 固定為相容用的 80×24 |
 | `terminal.columns` | number | `120` | 啟用時的寬度；整數 `80`–`300` |
@@ -315,7 +315,7 @@ templates:
 | `lightweight` | boolean | `false` | 跳過 transcript monitor、context guardian 等非必要子系統 |
 | `pre_task_command` | string | — | 每次使用者訊息之前貼入的原始命令 |
 | `startup_timeout_ms` | number | `25000` | CLI 啟動預算（毫秒） |
-| `log_level` | string | `"info"` | `debug`、`info`、`warn`、`error` |
+| `log_level` | string | `"info"` | `trace`、`debug`、`info`、`warn`、`error` |
 | `restart_policy` | object | 見下方 | 崩潰恢復設定 |
 | `context_guardian` | object | 見下方 | Context 監控設定 |
 | `cost_guard` | object | — | 每 instance 花費守衛（覆蓋預設值） |
@@ -364,7 +364,7 @@ CLI 是否讀取 MCP `instructions`；Codex 的專案文件大小限制仍可能
 fleet.yaml 頂層**。預設 `"builtin"`，也可用內嵌內容、`file:path` 或 `false`。
 `systemPrompt` 同樣走上述原生路徑：可寫內嵌字串或 `file:path`，並非只透過 MCP 傳入。
 `workflow` 與 `systemPrompt` 的相對檔案路徑以 instance 的 `working_directory`
-解析（#1314；2.2 之前，只在舊的 fleet 目錄位置找得到的檔案仍會使用，並發出警告）。
+解析（#1314；只在舊的 fleet 目錄位置找得到的檔案目前仍會使用，並發出棄用警告）。
 
 ### Active Decisions
 
@@ -421,7 +421,7 @@ channels:
 
 - **Backend 優先順序**：channel `backend` → `defaults.backend` → `fleet.yaml` `defaults.backend` → `claude-code`
 - **自動更新**：`/start` 新增 channel，`/stop` 移除 channel
-- **熱載入**：每 30 秒偵測檔案變更 — 修改 backend 後下一次 `/chat` 即生效
+- **重新載入**：每 30 秒偵測變更；backend、model、自動暫停或 profile 等啟動設定改變時，會重啟執行中的 agent；支援的執行期設定則直接套用。
 - **Instance 命名**：`classic-<sanitized-channel-name>-<channelId末4碼>`；非主要連線加上經清理的 adapter 後綴。已保存的 `instanceName` 優先，否則由 `name`（未填時為 channel ID）推導，不直接取自任意 YAML key
 - **Discord auto-collab**：`/start` 自動開啟 collab；訊息會記錄為脈絡，但觸發回合仍需 @ bot
 - **Fleet `/collab`**：逐 instance 的記憶體開關，fleet 重啟後重置；讓 bot／webhook 訊息通過 fleet topic 的 bot 篩選，不取代存取控制
@@ -432,6 +432,8 @@ channels:
 | 欄位 | 類型 | 說明 |
 |------|------|------|
 | `defaults.model` | string | 所有 classic channel 的預設模型 |
+| `defaults.auto_pause_after` | number | 閒置幾分鐘後暫停；`0` 停用，未設時繼承 |
+| `defaults.tool_progress` | `off` \| `standard` \| `verbose` | 處理中氣泡的詳細程度，未設時繼承 |
 | `defaults.context_lines` | number | 每次訊息前注入的聊天記錄行數（預設 5，設 0 停用） |
 | `defaults.allowed_guilds` | string[] | 獲准新啟動 ClassicBot 的 Discord 伺服器 ID（空白／省略會申請核准） |
 | `defaults.allowed_groups` | string[] | 獲准存取的 Telegram 群組 ID（空白／省略會申請核准） |
@@ -444,6 +446,11 @@ channels:
 | `channels.<key>.instanceName` | string | 已保存的明確 instance 名稱，優先於自動命名 |
 | `channels.<key>.model` | string | 個別 channel 模型覆蓋 |
 | `channels.<key>.context_lines` | number | 個別 channel 聊天記錄行數 |
+| `channels.<key>.auto_pause_after` | number | 閒置幾分鐘後暫停；`0` 停用，未設時繼承 |
+| `channels.<key>.tool_progress` | `off` \| `standard` \| `verbose` | 處理中氣泡的詳細程度，未設時繼承 |
+| `channels.<key>.backend_options` | object | 與預設合併的 backend 選項，包括 credential profile |
+| `channels.<key>.display_name` / `description` | string | Agent 顯示名稱與說明 |
+| `channels.<key>.web_echo` | boolean | 此 ClassicBot 聊天室的 web chat 同步；預設 `false` |
 | `channels.<key>.reply_completion_guard` | boolean | 個別 channel 的人類回覆 guard 覆寫 |
 | `channels.<key>.collab` | boolean | @mention 觸發的協作模式（預設 `false`） |
 | `channels.<key>.pre_task_command` | string | 每次訊息前貼入的原始命令 |
@@ -597,7 +604,7 @@ session 的對話紀錄（`projects/<目錄>/<session>.jsonl`）、它的資料�
 - 舊 profile 保留自己那份，所以切回去會回到同一段對話（含期間新增的部分）。
 - 下一次回覆會在快取為空的狀態下重讀整段對話：這一輪會比較慢，並以完整價格計費。
 - 回覆會帶 `conversation_carried_over: true`。
-- 其他東西都不會搬動：記憶、設定與登入仍各屬各的 profile，兩邊其他的對話紀錄也維持原狀。
+- 設定與登入仍各屬各的 profile，兩邊其他對話紀錄維持原狀。專案自動記憶依上文共用；profile 已有非空記憶目錄時會保留。
 
 無法複製時，切換會開新對話，交接方式與 Kiro 相同，回覆的 `carry_failed` 會說明原因。可能的原因有：還沒有 session、
 新 profile 已有這段對話的另一個版本、空間不足，或複製失敗。
@@ -642,6 +649,6 @@ instance 的 statusline 寫下的額度。尚未登入的 profile 會顯示「�
 
 ### Web chat 主題同步（2.2 web 線）
 
-fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 網頁 → 網頁聊天** 切換。同步文字使用 `🌐 web · <名字>: …`（網頁使用者的名字，沒有時是 `web-user`，#1827），附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 與 ClassicBot 群組不做同步。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
+fleet-topic instance 預設會將 web chat 訊息同步至自己綁定的 Telegram 或 Discord 主題。可設定 `web.echo_to_channel: false` 關閉，或在 **Settings → 網頁 → 網頁聊天** 切換。同步文字使用 `🌐 web · <名字>: …`（網頁使用者的名字，沒有時是 `web-user`，#1827），附件只顯示檔名，長文字會附上請看 web chat 的提示。這只是顯示副本：bot 自己的訊息不會觸發 Agent 新回合。純 web fleet 不做同步。ClassicBot 聊天室另以 `classicBot.yaml` 的 `channels.<key>.web_echo: true` 逐一開啟（預設 `false`），與 `web.echo_to_channel` 無關。同步失敗只記錄日誌，不會使 web 投遞失敗或延遲。每筆副本的排序等待總共最多五秒，包含排隊與 admission；平台請求結束或期限到達後，Agent 回覆就繼續。逾時會丟棄尚未開始的副本並記 warn；已在飛的副本可能晚於回覆出現，其晚到結果另記日誌。不自動重送副本。
 
 同步本文與附件名稱的 mention／command token 改成可見 ASCII 標籤，例如 `[mention: 200]`、`[at: botname]`、`[command: cmd at bot]`。先做相容正規化與 format-character 移除；URL、email local part 與一般路徑斜線保留。Discord 另設定 `allowedMentions: { parse: [] }`；Telegram 傳送不含 mention entities 的純文字。共用 ingress 在作者是該平台已設定的 fleet bot 帳號、且本文以固定 `🌐 web · ` 開頭時丟棄副本，不依賴 echo 開關或 send ACK。同平台只要還有任一已設定 world 的 bot 身分未知，也會在 trigger 判斷前丟棄帶平台 bot 作者旗標的前綴候選並記 debug。這段暫時隔離不影響人類貼上的前綴；身分全部就緒後，非 fleet bot 維持原 admission／collab 規則。不將未知作者當成 fleet bot，也不使用近期 message-ID cache。
