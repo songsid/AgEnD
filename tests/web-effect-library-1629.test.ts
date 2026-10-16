@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, statSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { checkEffectEntry } from "../src/web-effect-bundle.js";
 import { WebEffectLibrary, type EffectPrincipal } from "../src/web-effect-library.js";
@@ -9,8 +9,9 @@ const M1 = "mod:" + "1".repeat(32), M2 = "mod:" + "2".repeat(32);
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0))
   rmSync(root, { recursive: true, force: true }); });
-function fixture(options: ConstructorParameters<typeof WebEffectLibrary>[1] = {}) {
-  const dir = mkdtempSync(join(process.cwd(), ".artifacts/library-test-"));
+function fixture(options: ConstructorParameters<typeof WebEffectLibrary>[1] = {}, parent = join(process.cwd(), ".artifacts")) {
+  mkdirSync(parent, {recursive:true});
+  const dir = mkdtempSync(join(parent, "library-test-"));
   roots.push(dir);
   return { dir, lib: new WebEffectLibrary(dir, options) };
 }
@@ -517,4 +518,11 @@ describe("#1629 explicit unused claim cleanup", () => {
     expect(existsSync(join(dir,"web-effects",id,"worker.js"))).toBe(true);
     expect(()=>lib.collectUnreferenced(["../bad"])).toThrow("Invalid collection ids");
   });
+});
+
+it("creates a missing scratch parent on a fresh checkout",()=>{
+  const outer=fixture(), parent=join(outer.dir,"previously-absent");
+  expect(existsSync(parent)).toBe(false);
+  expect(()=>fixture({},parent)).not.toThrow();
+  expect(existsSync(parent)).toBe(true);
 });
