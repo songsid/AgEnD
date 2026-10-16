@@ -3,6 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { OwnerEffects } from "./settings-owner-effects.js";
 
 register("effectSettings", {
   en: {
@@ -186,6 +187,7 @@ export function EffectsCard() {
     ${view ? html`<p class="sub">${tn(view.effects.length === 1 ? "one" : "count", view.effects.length)}${!view.canWrite ? ` · ${tn("readOnly")}` : ""}</p>` : null}
     ${view?.canWrite ? html`<p class="sub">${tn("files")}</p><label class="s-fx-chat">${tn("chat")}<select class="s-fx-target" value=${selected} disabled=${busy} onChange=${e => setTarget(e.target.value)}><option value="">${tn("chooseChat")}</option>${names.map(n => html`<option key=${n} value=${n}>${n}</option>`)}</select></label>` : null}
     ${view && !view.effects.length ? html`<p class="sub">${tn("empty")}</p>` : null}
+    <${OwnerEffects} catalog=${view} busy=${busy} />
     <div class="s-fx-list">${(view?.effects || []).slice(0, limit).map(e => html`<article class="s-fx-item" key=${e.id} data-effect-id=${e.id}><h4>${e.manifest.title}</h4><p class="sub"><code>${e.id.slice(0, 8)}</code> · ${Math.ceil(e.bytes / 1024)} KiB · ${tn(e.ownClaim ? "yours" : "shared")}</p>
       ${e.manifest.poster === "poster.png" ? html`<img class="s-fx-poster" src=${`/ui/effects/image/${e.id}/poster.png`} alt="" loading="lazy" />` : null}
       <${Profile} value=${history[e.id] || e.profiles} />
