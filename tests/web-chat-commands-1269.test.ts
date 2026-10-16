@@ -63,7 +63,8 @@ describe("the chat's commands (the real page modules)", () => {
     fx.respond = (path: string) => (path.startsWith("/ui/history") ? { messages: [] } : {});
     const stream = fakeStream();
     stream.on("status", app.applyStatus);
-    panel.boot({ stream, boot: null, deps: { fetch: fx.fn, toast() {}, setTimeout: () => 1 } });
+    const timers: Array<{ fn: () => void; ms: number }> = [];
+    panel.boot({ stream, boot: null, deps: { fetch: fx.fn, toast() {}, setTimeout: (fn: () => void, ms: number) => { timers.push({ fn, ms }); return timers.length; } } });
     stream.emit("status", { uptime: 1, instances: [inst("w", instOver)] });
     await p.mount(harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "w" }, navKey: "chat|w" })));
     await settle();
@@ -72,7 +73,9 @@ describe("the chat's commands (the real page modules)", () => {
     const key = async (k: string, init: Record<string, unknown> = {}) => { const e = fire(box(), "keydown", { key: k, ...init }); await settle(); return e; };
     const commands = () => fx.calls.filter((c) => c.path === "/ui/command");
     const sends = () => fx.calls.filter((c) => c.path === "/ui/send");
-    return { p, fx, box, type, key, commands, sends, panel, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
+    /** Run the timers set for `ms` so far (each once). */
+    const elapse = async (ms: number) => { for (const t of timers.splice(0).filter((x) => { const due = x.ms === ms; if (!due) timers.push(x); return due; })) t.fn(); await settle(); };
+    return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
   }
 
   it("'/' opens the palette; typing filters; ↑/↓ moves; Tab completes; Esc closes it (and is not a Stop)", async () => {
@@ -260,4 +263,106 @@ describe("the chat's commands (the real page modules)", () => {
     fire(qa.querySelectorAll(".btn")[0], "click"); await settle();
     expect(c.commands().map((x) => x.body)).toEqual([{ instance: "w", command: "compact" }]);
   });
+
+  // ── Board 003648ac: a sent /compact is followed to its end; an answer that only says "sent" leaves by itself ──
+  const phase = (c: { card: () => any }) => c.card()?.querySelector(".cmd-phase")?.textContent ?? null;
+  const frame = (compact?: unknown) => ({ uptime: 2, instances: [inst("w", compact ? { compact } : {}), inst("v", { compact: { id: "a".repeat(16), state: "done" } })] });
+
+  it("/compact followed: Compacting…, then compacted when the status frame says so (its own watch only), then it leaves", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "🗜️ Compact command sent (`/compact`).", follow: { kind: "compact", id: "a".repeat(16) } } : {});
+    await c.type("/compact"); await c.key("Enter"); await settle();
+    expect(c.card().querySelector("pre.cmd-text").textContent).toBe("🗜️ Compact command sent (`/compact`).");
+    expect(phase(c)).toBe("Compacting…");
+    c.stream.emit("status", frame({ id: "b".repeat(16), state: "done" })); await settle();
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "running" })); await settle();
+    await c.elapse(8000); await c.elapse(12000);
+    expect(phase(c)).toBe("Compacting…");
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "done" })); await settle();
+    expect(phase(c)).toBe("✅ Conversation compacted");
+    await c.elapse(6000);
+    expect(c.card()).toBeNull();
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "done" })); await settle();
+    expect(c.card()).toBeNull();
+  });
+
+  it("/compact that never ends: the fleet's timeout is said, and the card stays until dismissed", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: "a".repeat(16) } } : {});
+    await c.type("/compact"); await c.key("Enter"); await settle();
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "timeout" })); await settle();
+    expect(phase(c)).toBe("No sign that compaction finished within 10 minutes — check the agent's own chat.");
+    for (const ms of [6000, 8000, 12000, 11 * 60_000]) await c.elapse(ms);
+    expect(phase(c)).toContain("No sign");
+    fire(c.card().querySelector(".icon-btn"), "click"); await settle();
+    expect(c.card()).toBeNull();
+  });
+
+  it("/compact with no word from the fleet at all: the page's own limit says so, and the card stays", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: "a".repeat(16) } } : {});
+    await c.type("/compact"); await c.key("Enter"); await settle();
+    const armed = c.timers.length;
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "running" })); await settle();     // no new deadline per frame
+    expect(c.timers.length).toBe(armed);
+    await c.elapse(11 * 60_000 - 1);
+    expect(phase(c)).toBe("Compacting…");
+    await c.elapse(11 * 60_000);
+    expect(phase(c)).toContain("No sign");
+    await c.elapse(6000);
+    expect(phase(c)).toContain("No sign");
+  });
+
+  it("/compact on a backend whose end can't be seen: never called done — said so, and the card leaves", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: null } } : {});
+    await c.type("/compact"); await c.key("Enter"); await settle();
+    expect(phase(c)).toBe("This backend does not report when compaction ends.");
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "done" })); await settle();
+    expect(phase(c)).toBe("This backend does not report when compaction ends.");
+    await c.elapse(8000);
+    expect(!!c.card()).toBe(true);
+    await c.elapse(12000);
+    expect(c.card()).toBeNull();
+  });
+
+  it.each(["cancel", "steer x", "btw x", "pause", "wake", "save notes.md"])("an answer that only says it was sent (/%s) leaves by itself", async (command) => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent" } : {});
+    await c.type(`/${command}`); await c.key("Enter"); await settle();
+    expect(!!c.card()).toBe(true);
+    await c.elapse(6000);
+    expect(!!c.card()).toBe(true);
+    await c.elapse(8000);
+    expect(c.card()).toBeNull();
+  });
+
+  it("a card's own timer never takes the next card: /cancel, then /ctx before it would have left", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string, body: any) => (path === "/ui/command" ? { text: body.command === "ctx" ? "Context: 40%" : "sent" } : {});
+    await c.type("/cancel"); await c.key("Enter"); await settle();
+    await c.type("/ctx"); await c.key("Enter"); await settle();
+    await c.elapse(8000);
+    expect(c.card().querySelector(".cmd-text").textContent).toBe("Context: 40%");
+  });
+
+  it("/clear's 'sent' leaves by itself too", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string, body: any) => (path !== "/ui/command" ? {} : body.confirm ? { text: "Clear sent" } : { confirm: { token: "f".repeat(32), message: "Clear?" } });
+    (globalThis as any).confirm = () => true;
+    await c.type("/clear"); await c.key("Enter"); await settle(8);
+    expect(c.card().querySelector(".cmd-text").textContent).toBe("Clear sent");
+    await c.elapse(8000);
+    expect(c.card()).toBeNull();
+  });
+
+  it.each([["ctx", { text: "Context: 40%" }], ["compact", { error: "Instance not connected" }], ["model", { choices: { current: "a", options: [{ id: "a", label: "A" }] } }], ["model opus", { text: "Model set" }], ["cancel", { error: "Not running" }]] as const)(
+    "an answer to read, a refusal or a list stays (/%s)", async (command, answer) => {
+      const c = await chatPage();
+      c.fx.respond = (path: string) => (path === "/ui/command" ? answer : {});
+      await c.type(`/${command}`); await c.key("Enter"); await settle();
+      for (const ms of [6000, 8000, 12000, 11 * 60_000]) await c.elapse(ms);
+      expect(!!c.card()).toBe(true);
+      expect(phase(c)).toBeNull();
+    });
 });

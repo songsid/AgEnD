@@ -1075,6 +1075,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .cmd-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .cmd-name { font-weight: var(--fw-semibold); }
 .cmd-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-ui); color: var(--text-2); }
+.cmd-phase { color: var(--text); font-weight: var(--fw-semibold); }
 .cmd-choices { display: flex; flex-wrap: wrap; gap: var(--s-1); max-height: 180px; overflow-y: auto; }
 .cmd-choices .btn.current { border-color: var(--accent); color: var(--accent); }
 .quick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--fs-xs); color: var(--text-2); }

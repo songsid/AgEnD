@@ -4,6 +4,8 @@ import { register } from "/assets/app-i18n.js";
 register("chat", {
   en: {
     cmdConfirm: "Clear", cmdConfirmBackend: "Switch and restart", cmdRunning: "Running /{0}…", cmdNotCommand: "Not a command here — Enter sends it as a message.", cmdDismiss: "Dismiss", cmdCommands: "Commands",
+    compactRunning: "Compacting…", compactDone: "✅ Conversation compacted", compactUnknown: "This backend does not report when compaction ends.",
+    compactTimeout: "No sign that compaction finished within {0} minutes — check the agent's own chat.",
     cmdChoose: "Choose", cmdCurrent: "current", chipCompact: "Compact", chipClear: "Clear…", chipContext: "Context {0}% used",
     chipModel: "Model: {0} — choose another", chipEffort: "Effort: {0} — choose another",
     cmd_ctx: "Context use, model and effort", cmd_compact: "Compact the conversation", cmd_clear: "Clear the conversation (asks first)",
@@ -89,6 +91,8 @@ register("chat", {
   },
   "zh-TW": {
     cmdConfirm: "清空", cmdConfirmBackend: "切換並重新啟動", cmdRunning: "執行 /{0} 中…", cmdNotCommand: "這裡沒有這個指令——按 Enter 會當成一般訊息送出。", cmdDismiss: "關閉", cmdCommands: "指令",
+    compactRunning: "壓縮中…", compactDone: "✅ 對話已壓縮", compactUnknown: "這個後端不會回報壓縮何時完成。",
+    compactTimeout: "{0} 分鐘內沒有看到壓縮完成的紀錄，請到代理自己的對話確認。",
     cmdChoose: "選擇", cmdCurrent: "目前", chipCompact: "壓縮", chipClear: "清空…", chipContext: "已用 {0}% 的 context",
     chipModel: "模型：{0}——選擇其他", chipEffort: "推理強度：{0}——選擇其他",
     cmd_ctx: "context 用量、模型與推理強度", cmd_compact: "壓縮對話", cmd_clear: "清空對話（會先確認）",

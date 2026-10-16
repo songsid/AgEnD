@@ -21,7 +21,7 @@ function deps(over: Partial<WebCommandDeps> = {}): WebCommandDeps & Record<strin
   const d: any = {
     scope: vi.fn(() => "fleet"),
     ctx: vi.fn(async () => "ctx text"),
-    compact: vi.fn(async (_i: string, x?: string) => `compact ${x ?? "-"}`),
+    compact: vi.fn(async (_i: string, x?: string) => ({ sent: true, text: `compact ${x ?? "-"}`, watch: "0123456789abcdef" })),
     applyModel: vi.fn(async (_i: string, m: string) => `model ${m}`),
     modelChoices: vi.fn(() => ({ current: "a", options: [{ id: "a", label: "✓ A" }, { id: "b", label: "B" }] })),
     applyEffort: vi.fn(async (_i: string, l: string) => `effort ${l}`),
@@ -61,8 +61,8 @@ describe("runWebCommand", () => {
   it("each command reaches its handler with the arguments the topic would give it", async () => {
     const d = deps();
     expect((await run(d, "ctx")).body).toEqual({ text: "ctx text" });
-    expect((await run(d, "/compact", "  keep the API notes ")).body).toEqual({ text: "compact keep the API notes" });
-    expect((await run(d, "compact")).body).toEqual({ text: "compact -" });
+    expect((await run(d, "/compact", "  keep the API notes ")).body).toEqual({ text: "compact keep the API notes", follow: { kind: "compact", id: "0123456789abcdef" } });
+    expect((await run(d, "compact")).body).toEqual({ text: "compact -", follow: { kind: "compact", id: "0123456789abcdef" } });
     expect((await run(d, "model", "opus")).body).toEqual({ text: "model opus" });
     expect((await run(d, "effort", "low")).body).toEqual({ text: "effort low" });
     expect((await run(d, "cancel")).body).toEqual({ text: "cancel.sent|w" });
@@ -100,6 +100,13 @@ describe("runWebCommand", () => {
     expect(await run(deps({ clearAsk: () => ({ refused: "clear.unsupported" }) }), "clear")).toEqual({ status: 409, body: { error: "clear.unsupported" } });
     expect(await run(deps({ clearConfirm: async () => ({ status: 409, text: "menu.click_stale" }) }), "clear", undefined, { confirm: "t".repeat(32) }))
       .toEqual({ status: 409, body: { error: "menu.click_stale" } });
+  });
+
+  it("board 003648ac: a sent /compact says how its end is followed (null: it can't be); one that did not go is a refusal", async () => {
+    const untracked = deps({ compact: vi.fn(async () => ({ sent: true, text: "sent", watch: null })) });
+    expect(await run(untracked, "compact")).toEqual({ status: 200, body: { text: "sent", follow: { kind: "compact", id: null } } });
+    const offline = deps({ compact: vi.fn(async () => ({ sent: false, text: "compact.not_connected", watch: null })) });
+    expect(await run(offline, "compact")).toEqual({ status: 409, body: { error: "compact.not_connected" } });
   });
 
   it("the public link: /save is refused (a file the caller names, written by the CLI); everything else runs as locally", async () => {

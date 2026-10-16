@@ -248,6 +248,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
+import { CompactWatch } from "./compact-watch.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
@@ -3206,6 +3207,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       source: (name) => this.logSource(name),
       events: (name, limit) => (this.eventLog?.query({ instance: name, limit }) ?? []) as Array<{ id: number; event_type: string; payload: unknown; created_at: string }>,
       emit: (event, data) => this.emitSseEvent(event, data),
+    });
+  }
+
+  /** Board 003648ac: a web /compact followed to its end, from the transcript the Log reads (none: nothing to follow). */
+  private compactWatchService: CompactWatch | null = null;
+  private get compactWatch(): CompactWatch {
+    return this.compactWatchService ??= new CompactWatch({
+      source: (name) => { const src = this.logSource(name); return { path: src.path, format: src.format }; },
+      changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
   }
 
@@ -10585,6 +10595,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // must not be shown the old one's conversation, and deleted names must not pile up.
     this.webChatHistory.forget(name);
     this.webFiles.forget(name);
+    this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
 
@@ -13017,7 +13028,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return this.classicChannels?.getChannelIdByInstance(instance) !== undefined ? "classic" : null;
       },
       ctx: (instance) => this.topicCommands.getCtxText(instance),
-      compact: (instance, instructions) => this.topicCommands.sendCompact(instance, instructions),
+      // Board 003648ac: the watch starts just before the paste, so the record it waits for can't come first.
+      compact: async (instance, instructions) => {
+        let watch: string | null = null;
+        try {
+          const r = this.topicCommands.compactInstance(instance, instructions, () => { watch = this.compactWatch.begin(instance); });
+          return { ...r, watch: r.sent ? watch : null };
+        } catch (err) {
+          if (watch) this.compactWatch.cancel(instance, watch);
+          throw err;
+        }
+      },
       applyModel: (instance, name) => this.applyModel(instance, name),
       modelChoices: choicesFromCache,
       applyEffort: (instance, level) => this.applyEffort(instance, level),
@@ -17902,6 +17923,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     this.logService?.unwatchAll();   // #1218: a Log's watch timers end with the fleet
+    this.compactWatchService?.stopAll();
     if (this.outboxPruneTimer) { clearInterval(this.outboxPruneTimer); this.outboxPruneTimer = null; }
     if (this.replyObligationTimer) { clearInterval(this.replyObligationTimer); this.replyObligationTimer = null; }
     this.wakeCoordinator?.stop();
@@ -20431,6 +20453,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
+      const compact = this.compactWatchService?.view(name) ?? null;
       let image: { avatar: AvatarDescriptor; accent?: string };
       try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, bots); }
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
@@ -20453,6 +20476,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         effort,
         effort_source,
         ...this.instancePresentation(name),
+        // Board 003648ac: the last web /compact, while it runs and briefly after (the chat's card follows it).
+        ...(compact ? { compact } : {}),
       };
     });
     return {

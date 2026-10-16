@@ -37,7 +37,8 @@ export interface WebCommandDeps {
   /** The instance is one the web chat may command (a fleet instance or a ClassicBot room), and in which scope. */
   scope(instance: string): CommandScope | null;
   ctx(instance: string): Promise<string>;
-  compact(instance: string, instructions: string | undefined): Promise<string>;
+  /** Board 003648ac: `sent` — the command went; `watch` — the id its end is followed by (null: this backend's can't be seen). */
+  compact(instance: string, instructions: string | undefined): Promise<{ sent: boolean; text: string; watch: string | null }>;
   applyModel(instance: string, name: string): Promise<string>;
   /** The model menu from the cached catalog only (never a live probe on this path); null: no list to offer. */
   modelChoices(instance: string): WebChoices | null;
@@ -61,7 +62,11 @@ export interface WebCommandDeps {
 export interface WebCommandInput { instance: string; command: string; args?: string; confirm?: string }
 export interface WebCommandResult {
   status: number;
-  body: { text?: string; error?: string; choices?: WebChoices; confirm?: { token: string; message: string } };
+  body: {
+    text?: string; error?: string; choices?: WebChoices; confirm?: { token: string; message: string };
+    /** A sent /compact: the status frame's `compact` with this id says when it ends; id null: its end can't be seen. */
+    follow?: { kind: "compact"; id: string | null };
+  };
 }
 
 const isWebCommand = (c: string): c is WebCommand => (WEB_COMMANDS as readonly string[]).includes(c);
@@ -83,7 +88,10 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
   const ok = (text: string) => ({ status: 200, body: { text } });
   switch (command) {
     case "ctx": return ok(await deps.ctx(instance));
-    case "compact": return ok(await deps.compact(instance, args || undefined));
+    case "compact": {
+      const r = await deps.compact(instance, args || undefined);
+      return r.sent ? { status: 200, body: { text: r.text, follow: { kind: "compact", id: r.watch } } } : { status: 409, body: { error: r.text } };
+    }
     case "model": {
       if (args) return ok(await deps.applyModel(instance, args));
       const choices = deps.modelChoices(instance);

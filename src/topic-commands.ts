@@ -1136,6 +1136,14 @@ export class TopicCommands {
 
   /** Send the backend-appropriate compact command to an instance's tmux pane */
   async sendCompact(instanceName: string, instructions?: string): Promise<string> {
+    return this.compactInstance(instanceName, instructions).text;
+  }
+
+  /**
+   * sendCompact, saying whether the command went (the web chat follows a sent one to its end, board 003648ac).
+   * `beforeSend` runs just before the paste, only when it is going to be sent.
+   */
+  compactInstance(instanceName: string, instructions?: string, beforeSend?: () => void): { sent: boolean; text: string } {
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
       const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
@@ -1148,22 +1156,23 @@ export class TopicCommands {
       const custom = normalizeCompactInstructions(instructions);
       if (custom.length > COMPACT_INSTRUCTIONS_MAX) {
         // Refuse rather than cut: a truncated instruction is a different instruction.
-        return t("compact.instructions_too_long", String(COMPACT_INSTRUCTIONS_MAX));
+        return { sent: false, text: t("compact.instructions_too_long", String(COMPACT_INSTRUCTIONS_MAX)) };
       }
+      beforeSend?.();
       if (!custom) {
         ipc.send({ type: "raw_paste", content: base });
-        return t("compact.sent", base);
+        return { sent: true, text: t("compact.sent", base) };
       }
       if (backendSupportsCompactInstructions(backend)) {
         ipc.send({ type: "raw_paste", content: `${base} ${custom}` });
-        return t("compact.sent_with_instructions", base);
+        return { sent: true, text: t("compact.sent_with_instructions", base) };
       }
       // Compact as asked, without the text, and say so — never send it (codex
       // would take it for a chat message) and never drop it unannounced.
       ipc.send({ type: "raw_paste", content: base });
-      return `${t("compact.sent", base)}\n${t("compact.instructions_ignored", backend)}`;
+      return { sent: true, text: `${t("compact.sent", base)}\n${t("compact.instructions_ignored", backend)}` };
     }
-    return t("compact.not_connected");
+    return { sent: false, text: t("compact.not_connected") };
   }
 
   /** Whether the instance backend exposes a verified full-reset command. */
