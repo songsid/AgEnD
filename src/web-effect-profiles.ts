@@ -33,6 +33,7 @@ const inputSchema = z.object(shape).strict().refine(coherent);
 const storedSchema = z.object({ ...shape, at: integer, source: z.literal("reported_host") }).strict().refine(coherent);
 export type EffectProfileInput = z.infer<typeof inputSchema>;
 export type StoredEffectProfile = z.infer<typeof storedSchema>;
+export interface EffectProfileSummary { status: "unmeasured" | "reported"; records: StoredEffectProfile[] }
 export function checkEffectProfile(input: unknown): { ok: true; profile: EffectProfileInput } | { ok: false; error: "profile_args" } {
   try { if (!plain(input)) return { ok: false, error: "profile_args" }; const p = inputSchema.safeParse(input); return p.success ? { ok: true, profile: p.data } : { ok: false, error: "profile_args" }; }
   catch { return { ok: false, error: "profile_args" }; }
@@ -90,6 +91,14 @@ export class WebEffectProfiles {
     const state = this.load(); if ("ok" in state) return state;
     const entry = state.entries.get(id), records = entry ? [...entry.standard, ...entry.constrained].sort((a, b) => a.at - b.at) : [];
     return { ok: true, status: records.length ? "reported" : "unmeasured", records };
+  }
+  /** One bounded parse for a library listing; callers still project only their authorized ids. */
+  readSummaries(): { ok: true; summaries: Record<string, EffectProfileSummary> } | Failure {
+    const state = this.load(); if ("ok" in state) return state;
+    return { ok: true, summaries: Object.fromEntries([...state.entries].map(([id, buckets]) => {
+      const records = [buckets.standard.at(-1), buckets.constrained.at(-1)].filter((p): p is StoredEffectProfile => p !== undefined);
+      return [id, { status: records.length ? "reported" : "unmeasured", records }];
+    })) };
   }
   record(id: string, input: unknown): { ok: true; profile: StoredEffectProfile } | Failure {
     if (writes.has(this.path)) return fail("profiles_busy");

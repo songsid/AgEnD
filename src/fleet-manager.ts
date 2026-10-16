@@ -1385,6 +1385,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       preview: async () => ({ error: "effects_unavailable", message: "Effect previews are not available in this build." }),
       profiles: id => this.effectProfiles.read(id),
       profileSummary: id => this.effectService.profileSummary(id),
+      profileSummaries: ids => this.effectService.profileSummaries(ids),
     }));
   }
 

@@ -30,8 +30,19 @@ export class WebEffectService {
   }
   list(person: string): Answer {
     if (!this.validPerson(person)) return fail("not_found");
-    const result = this.deps.library.list(this.principal(person));
-    return result.ok ? { effects: result.entries.map(e => ({ ...e, profiles: this.profileSummary(e.id) })) } : fail(result.error);
+    const result = this.deps.library.managementList(this.principal(person));
+    if (!result.ok) return fail(result.error);
+    const profiles = this.profileSummaries(result.entries.map(e => e.id));
+    return { effects: result.entries.map(e => ({ ...e, profiles: profiles[e.id] })) };
+  }
+  profileSummaries(ids: readonly string[]): Record<string, Answer> {
+    if (!ids.length) return {};
+    const r = this.deps.profiles.readSummaries();
+    return Object.fromEntries(ids.map(id => {
+      if (!r.ok) return [id, fail(r.error)];
+      const summary = r.summaries[id];
+      return [id, { status: summary?.status ?? "unmeasured", records: summary?.records ?? [] }];
+    }));
   }
   profileSummary(id: string): Answer {
     const r = this.deps.profiles.read(id);

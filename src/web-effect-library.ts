@@ -22,6 +22,11 @@ export interface EffectSummary {
   manifest: WebEffectManifest;
   bytes: number;
 }
+/** Caller-scoped controls; never includes another principal or any holder. */
+export interface EffectManagementSummary extends EffectSummary {
+  ownClaim: boolean;
+  sharedByYou: boolean;
+}
 export type EffectFiles = ReadonlyMap<string, Uint8Array>;
 type Failure = {
   ok: false;
@@ -454,6 +459,15 @@ export class WebEffectLibrary {
     catch (error) {
       return this.error(error);
     }
+  }
+  managementList(principal: EffectPrincipal): { ok: true; entries: EffectManagementSummary[] } | Failure {
+    try {
+      if (!principalSchema.safeParse(principal).success || principal.kind !== "human") return fail("invalid_principal");
+      return { ok: true, entries: Object.entries(this.load().document.entries).filter(([, row]) => this.visible(row, principal)).map(([id, row]) => {
+        const own = this.claim(row, principal);
+        return { ...this.summary(id, row), ownClaim: !!own, sharedByYou: own?.shared === true };
+      }) };
+    } catch (error) { return this.error(error); }
   }
   read(id: string, principal: EffectPrincipal): {
     ok: true;

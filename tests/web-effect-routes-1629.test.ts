@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, request, type Server } from "node:http";
 import { EventEmitter } from "node:events";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { WebEffectLibrary } from "../src/web-effect-library.js";
 import { WebEffectProfiles } from "../src/web-effect-profiles.js";
@@ -34,7 +34,7 @@ async function fixture(idleMs?:number){
 describe("#1629 human-only effects routes",()=>{
  it("real session upload/list/apply/resource/report/remove/delete, with no implicit claim or export grant",async()=>{
   const f=await fixture(),a=f.session(),b=f.session("bob");const upload=await f.call("POST","/ui/effects/upload",a.headers,input());expect(upload.status).toBe(200);const id=upload.body.id;
-  expect((await f.call("GET","/ui/effects",a.headers)).body).toMatchObject({effects:[{id}]});expect((await f.call("GET","/ui/effects",b.headers)).body).toEqual({effects:[]});
+  expect((await f.call("GET","/ui/effects",a.headers)).body).toMatchObject({effects:[{id}]});expect((await f.call("GET","/ui/effects",b.headers)).body).toEqual({effects:[],canWrite:true});
   expect((await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id}))).status).toBe(200);
   expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own`,b.headers)).body).toMatchObject({id,code:"agend.ready()"});expect((await f.call("GET",`/ui/effects/resource/${id}`,b.headers)).status).toBe(404);
   expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own`,b.headers,JSON.stringify(profile()))).status).toBe(200);expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own`,b.headers,JSON.stringify(profile()))).status).toBe(429);
@@ -65,7 +65,7 @@ describe("#1629 human-only effects routes",()=>{
  it("invalid UTF-8 cannot be hidden behind a duplicate JSON field",async()=>{
   const f=await fixture(),a=f.session(),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
   const bytes=Buffer.concat([Buffer.from('{"id":"'),Buffer.from([0xff]),Buffer.from(`","id":"${id}","shared":true}`)]);
-  expect((await f.call("POST","/ui/effects/share",a.headers,bytes)).status).toBe(400);expect((await f.call("GET","/ui/effects",f.session("bob").headers)).body).toEqual({effects:[]});
+  expect((await f.call("POST","/ui/effects/share",a.headers,bytes)).status).toBe(400);expect((await f.call("GET","/ui/effects",f.session("bob").headers)).body).toEqual({effects:[],canWrite:true});
  });
  it("a revoked session while the body is held cannot publish or mutate",async()=>{
   const f=await fixture(),a=f.session();const spy=vi.spyOn(f.service,"upload");
@@ -91,4 +91,25 @@ describe("#1629 human-only effects routes",()=>{
  it("malformed and excessive request bodies refuse without reaching a store",async()=>{
   const f=await fixture(),a=f.session(),spy=vi.spyOn(f.service,"apply");expect((await f.call("POST","/ui/effects/apply",a.headers,"{" )).status).toBe(400);const oversized=await f.call("POST","/ui/effects/apply",a.headers," ".repeat(16385)).then(()=>"accepted",error=>error.code);expect(oversized).toBe("ECONNRESET");expect(spy).not.toHaveBeenCalled();
  });
+ it("listing capabilities reflect the session tier without granting a write",async()=>{
+  const f=await fixture(),admin=f.session(),reader=f.session("reader","read");
+  expect((await f.call("GET","/ui/effects",admin.headers)).body).toMatchObject({canWrite:true});
+  expect((await f.call("GET","/ui/effects",reader.headers)).body).toMatchObject({canWrite:false});
+  expect((await f.call("POST","/ui/effects/upload",reader.headers,input())).status).toBe(403);
+ });
+ it("temporary storage refusal is 503 while argument and visibility errors keep their statuses",async()=>{
+  const f=await fixture(),a=f.session(),apply=vi.spyOn(f.service,"apply");
+  for(const error of ["themes_unreadable","profiles_unreadable","library_unreadable","references_unreadable","library_busy","profiles_busy","profiles_write_failed","library_write_failed"]){
+   apply.mockReturnValueOnce({error});const r=await f.call("POST","/ui/effects/apply",a.headers,"{}");expect([r.status,r.body]).toEqual([503,{error}]);
+  }
+  for(const [error,status] of [["effect_params",400],["not_found",404],["profile_rate_limited",429]] as const){apply.mockReturnValueOnce({error});expect((await f.call("POST","/ui/effects/apply",a.headers,"{}")).status).toBe(status);}
+ });
+
+ it("an unreadable profile store is 503 only after the ordinary effect ACL passes",async()=>{
+  const f=await fixture(),a=f.session(),b=f.session("bob"),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
+  writeFileSync(f.profiles.path,"{");
+  expect((await f.call("GET",`/ui/effects/profile/${id}`,a.headers)).status).toBe(503);
+  expect((await f.call("GET",`/ui/effects/profile/${id}`,b.headers)).status).toBe(404);
+ });
+
 });
