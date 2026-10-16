@@ -31,6 +31,12 @@ const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill=
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
 export function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 export const msgKey = (x) => `${x.boot}-${x.id}`;
+/**
+ * Board 00ef2430: a thread opens with only its newest messages drawn — enough for a screen — so switching chats paints
+ * at once; the older ones are drawn after that, a chunk at a time between frames, the reader's place kept.
+ */
+export const THREAD_TAIL = 24;
+export const THREAD_CHUNK = 40;
 
 /**
  * Bind a renderer to `list` (the thread element) inside `scroller`. opts: { t, tf, isUser(x), onJump({show, unseen}),
@@ -47,6 +53,10 @@ export function createThread(list, scroller, opts) {
   // moves down or stays), and those must not count as the reader leaving the bottom. Reaching the bottom pins again.
   let pinned = true;
   let lastTop = 0;
+  // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
+  // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
+  let firstKey = null;
+  let growTimer = null, growFrame = null;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
@@ -428,6 +438,43 @@ export function createThread(list, scroller, opts) {
   const ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
 
+  /** Where drawing starts in `msgs`: at the oldest drawn message, or (none yet) the newest THREAD_TAIL. */
+  function startIndex() {
+    const i = firstKey === null ? -1 : msgs.findIndex((x) => msgKey(x) === firstKey);
+    // Whatever is drawn stays drawn: the list may have reordered (merged across fleet restarts) or lost its oldest to
+    // the cap — so the window starts at the earlier of the oldest drawn key and the first message still drawn.
+    const still = nodes.size ? msgs.findIndex((x) => nodes.has(msgKey(x))) : -1;
+    const at = [i, still].filter((n) => n >= 0);
+    return at.length ? Math.min(...at) : Math.max(0, msgs.length - THREAD_TAIL);
+  }
+  /** Draw the next chunk of older messages, keeping the reader where they were; then the next, until all are drawn. */
+  function grow() {
+    growTimer = growFrame = null;
+    const at = startIndex();
+    if (at <= 0) return;
+    firstKey = msgKey(msgs[Math.max(0, at - THREAD_CHUNK)]);
+    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    draw({ older: true });
+    if (pinned) toBottom();
+    else { scroller.scrollTop = scroller.scrollHeight - fromBottom; lastTop = scroller.scrollTop; }
+    scheduleGrow();
+  }
+  /** After the next frame has painted (the click's own frame stays light), draw a chunk more. */
+  function scheduleGrow() {
+    if (growTimer !== null || growFrame !== null || startIndex() <= 0) return;
+    const later = () => { growFrame = null; growTimer = setTimeout(grow, 0); };
+    if (typeof requestAnimationFrame === "function") growFrame = requestAnimationFrame(later); else later();
+  }
+  /** Everything drawn now (a remembered scroll position, a message to show that is not drawn yet). */
+  function growAll() {
+    if (startIndex() <= 0) return;
+    if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
+    if (growTimer !== null) clearTimeout(growTimer);
+    growTimer = growFrame = null;
+    firstKey = msgs.length ? msgKey(msgs[0]) : null;
+    draw({ older: true });
+  }
+
   /** Draw `next` (this instance's messages). `restore`: the scroll position to return to (null = the bottom). */
   function render(next, renderOpts = {}) {
     const stick = pinned || nearBottom();
@@ -435,31 +482,17 @@ export function createThread(list, scroller, opts) {
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
       nodes.clear();
+      firstKey = null;
       armDay();
       list.textContent = "";
       opts.onEmpty(true);
       return;
     }
     opts.onEmpty(false);
-    const keep = new Set(msgs.map(msgKey));
-    for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
-    let prev = null, added = 0;
-    for (const x of msgs) {
-      const key = msgKey(x), html = msgHtml(x);
-      let have = nodes.get(key);
-      if (!have || have.html !== html) {
-        const stopped = have ? stopIn(have.node) : [];
-        const node = msgNode(html, x, stopped);
-        if (have) have.node.replaceWith(node); else added++;
-        have = { html, node }; nodes.set(key, have);
-      } else timeLabel(have.node);
-      const want = prev ? prev.nextSibling : list.firstChild;
-      // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
-      if (have.node !== want) { if (have.node.parentNode === list) stopIn(have.node); list.insertBefore(have.node, want); }
-      prev = have.node;
-    }
-    armDay();
-    armPolls();
+    // A position to return to that is not the bottom needs the messages above it: all of them, at once (as before).
+    if ("restore" in renderOpts && renderOpts.restore != null) firstKey = msgKey(msgs[0]);
+    const added = draw({});
+    if (firstKey === null || startIndex() > 0) { firstKey = msgKey(msgs[startIndex()]); scheduleGrow(); }
     if ("restore" in renderOpts) {
       unseen = 0;
       if (renderOpts.restore == null) toBottom();
@@ -467,6 +500,34 @@ export function createThread(list, scroller, opts) {
     } else if (stick) toBottom();
     else unseen += added;
     reportJump();
+  }
+  /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
+  function draw(drawOpts) {
+    const shown = msgs.slice(startIndex());
+    const keep = new Set(shown.map(msgKey));
+    for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
+    let prev = null, added = 0;
+    for (const x of shown) {
+      const key = msgKey(x);
+      let have = nodes.get(key);
+      // Filling in older messages: a node drawn from this very message object is current — not drawn again.
+      if (drawOpts.older && have && have.x === x) { prev = have.node; continue; }
+      const html = msgHtml(x);
+      if (!have || have.html !== html) {
+        const stopped = have ? stopIn(have.node) : [];
+        const node = msgNode(html, x, stopped);
+        if (have) have.node.replaceWith(node); else added++;
+        have = { html, node, x }; nodes.set(key, have);
+      } else { have.x = x; timeLabel(have.node); }
+      const want = prev ? prev.nextSibling : list.firstChild;
+      // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
+      if (have.node !== want) { if (have.node.parentNode === list) stopIn(have.node); list.insertBefore(have.node, want); }
+      prev = have.node;
+    }
+    armDay();
+    armPolls();
+    // Older messages drawn later are not "new below": they never count as unseen.
+    return drawOpts.older ? 0 : added;
   }
 
   function onScroll() {
@@ -481,6 +542,7 @@ export function createThread(list, scroller, opts) {
   function jumpLatest() { toBottom(); unseen = 0; reportJump(); }
   /** Show one message (the panel's "from …" link, #1481): scrolled into view and briefly marked. */
   function reveal(key) {
+    if (!nodes.has(key) && msgs.some((x) => msgKey(x) === key)) growAll();     // an older message not drawn yet
     const have = nodes.get(key); if (!have) return false;
     if (typeof have.node.scrollIntoView === "function") have.node.scrollIntoView({ block: "center" });
     have.node.classList.add("flash");
@@ -535,6 +597,9 @@ export function createThread(list, scroller, opts) {
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   function dispose() {
+    if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
+    if (growTimer !== null) clearTimeout(growTimer);
+    growTimer = growFrame = null;
     if (ro) ro.disconnect();
     if (P()) P().stopAll("leave");
     nodes.clear();
