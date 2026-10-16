@@ -1264,3 +1264,6 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .s-fx-owner{margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--border)}
 .s-fx-owner-row{display:flex;align-items:end;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-2)}
 .s-fx-owner-row>label{display:flex;flex-direction:column;gap:var(--s-1);min-width:0;flex:1}
+
+/* #1629: host-created static poster IMG; geometry and visibility belong to the trusted CSSOM binding. */
+.agend-effect-poster { object-fit: cover !important; object-position: center !important; user-select: none; }

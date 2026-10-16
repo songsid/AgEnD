@@ -1193,7 +1193,7 @@ The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `
 the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
 `agend web --code` sign-in uses a **host-wide operator** bucket shared by everyone signing in as that operator.
 Header tokens cannot read or write these five keys. Existing visible preferences remain host-wide, without migration;
-profile and custom-CSS internal identity rules are unchanged. Settings → Appearance now offers the five selectors; saving does not start playback. Effect playback is a later step.
+profile and custom-CSS internal identity rules are unchanged. Settings → Appearance now offers the five selectors; saving does not start playback. Personal-region/cursor playback remains a later step.
 
 Unsharing an effect revokes subsequent resource authorization for someone else's personal selection, including its
 cursor image. The saved choice remains as unavailable until cleared, retaining its blob reference. This is stricter
@@ -1203,6 +1203,16 @@ personal effect and prevent collection. Before playback can be mounted, stock tr
 agent front effects stay paused while custom CSS is active, loading or unknown (human placements keep their exemption).
 
 Menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects. Behind effects still require
-proven stock ordering; human placements do not bypass those gates. The foreground status will link to Appearance
+proven stock ordering; human placements do not bypass those gates. The Chat foreground status links to Appearance
 to show the custom-CSS setting. See the [2.3 development preview](whats-new-2.3.md); a trusted foreground plane is
 a later 2.3.x follow-up (#1940).
+
+### Chat effects and static posters (2.3 development)
+
+Local signed-in Chat plays its placed Canvas Worker effects only after preview opt-in and current safety/stock checks;
+More → Effects offers Pause, Resume and authorized Remove. If preview is unavailable, consent is missing, motion/data
+settings prevent playback or the page is a public link, a placement's static poster can appear behind content instead.
+No poster means no image; safe mode, the show switch and unknown stock ordering refuse poster paint. Public links
+receive no Worker code or playback controls. Their explicit show choice stays in this browser and survives a reload,
+without changing the host default. Explicit Pause/queued effects and failed live reads are not replaced by this fallback.
+Personal regions/cursor and Try previews remain separate work.

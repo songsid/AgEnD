@@ -53,7 +53,8 @@ import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVers
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
-import { ChatEffects } from "./chat-effects.js";
+import { ChatEffectPosters } from "/ui/js/chat-effect-posters.js";
+import { ChatEffects, chatEffectsMenuAvailable } from "./chat-effects.js";
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -268,7 +269,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
-    { key: "effects", label: t("chatFx.title"), onSelect: () => setDialog("effects") },
+    chatEffectsMenuAvailable() ? { key: "effects", label: t("chatFx.title"), onSelect: () => setDialog("effects") } : null,
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
@@ -278,7 +279,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", inst.model)} aria-label=${t("chat.chipModel", inst.model)} onClick=${() => pick("model")}>${inst.model}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} /><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="chat" />`}><${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} /><${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onClose=${() => setDialog(null)} /><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>

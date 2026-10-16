@@ -103,6 +103,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1629: static session-bound owner preference client; every data route remains session-gated.
     "owner-effect-prefs.js",
     // #1629: static host runtime closure; effect data stays behind session/epoch routes.
+    "effect-posters.js", "effect-poster-reader.js",
     "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
     "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-profiles.js", "effect-profiler.js",
     "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-policy.js",
