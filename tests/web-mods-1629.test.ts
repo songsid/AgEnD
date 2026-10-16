@@ -717,10 +717,12 @@ describe("the page: a plan's choices belong to its stage (#1897 review)", () => 
       P.render(P.h(ThemeDetail, { theme: { v: 1, colors: { light: { bg: "#fafafa" }, dark: { text: "#eeeeee", agentBubble: "#222222" } }, bubble: { radius: 6, border: "accent" }, workingLabel: "Pondering",
         background: { image: BG, fit: "contain", opacity: 0.35 }, avatar: AV }, pictures: [{ path: "p/bg.png", slot: "background", id: BG, bytes: 2048 }, { path: "p/me.png", slot: "avatar", id: AV, bytes: 1024 }],
         effects: [{ effect: "effects/snow", id: "d".repeat(32), params: { count: 4 } }] }), pg.root); await settle();
-      const txt = pg.root.textContent;
-      for (const v of ["#fafafa", "#eeeeee", "agentBubble", "#222222", "6px", "accent", "Pondering", "contain · 35%", "p/bg.png", "p/me.png", "effects/snow", '{"count":4}']) expect(txt, v).toContain(v);
+      // Each field in its own labelled row (the raw view below repeats them, so it can't stand in for a row).
+      const rows = [...pg.root.querySelectorAll(".s-mod-kv")].map((r: any) => r.textContent.replace(/\s+/g, " ").trim());
+      for (const v of ["Light coloursbg #fafafa", "Dark colourstext #eeeeeeagentBubble #222222", "Bubbles6px · accent", "Working labelPondering", "Background fit and opacitycontain · 35%",
+        "Background picturep/bg.png · 2 KiB", "Picture (face)p/me.png · 1 KiB", 'Places effecteffects/snow dddddddd · {"count":4}']) expect(rows, v).toContain(v);
       expect([...pg.root.querySelectorAll(".s-mod-pic img")].map((i: any) => i.getAttribute("src"))).toEqual([`/ui/mods/staged/${BG}`, `/ui/mods/staged/${AV}`]);
-      expect(pg.root.querySelector("[style]"), "colours through the CSSOM, never a style attribute").toBeNull();
+      expect(pg.root.querySelector("[style]"), "colours through the CSSOM (#1300), never a style= in the markup").toBeNull();
     } finally { pg.restore(); }
   });
   it("an agent widget previews with the chosen agent's values; the sidebar keeps the fleet's", async () => {
