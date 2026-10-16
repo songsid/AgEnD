@@ -12,7 +12,9 @@
  *   by the summary when it ends; "• Conversation too short to compact." shows for about ten seconds, then goes. Esc
  *   and Ctrl-C do not stop it (each such compaction still finished). A failure other than "too short" was not seen,
  *   so "done" here means the running line came and went — and only on a screen read as kiro's: no piece of that line
- *   left (a narrower pane wraps it, #1925 review) and the idle composer in view. Anything else stays unknown.
+ *   anywhere in the look (a narrower pane wraps it, #1925 review) and the idle composer in view. Not "fewer than
+ *   before": a piece from before can leave the bounded look while this one's stays, so a piece in view keeps it
+ *   unknown — even an old one, until it scrolls away or the deadline ends the watch.
  * - **Anything else** (kiro V3, another layout) is not read: no follower is made for it.
  *
  * The follower starts from the pane just before the command's own write (the daemon holds its paste lock, so no other
@@ -43,7 +45,6 @@ export class KiroCompactPaneFollower {
   private readonly echoes: number;
   private readonly running: number;
   private readonly tooShort: number;
-  private readonly runningParts: number;
   private seenRunning = false;
 
   /** `before`: the pane (with KIRO_COMPACT_PANE_LINES of history) just before the command was written. */
@@ -52,7 +53,6 @@ export class KiroCompactPaneFollower {
     this.echoes = count(all, CLASSIC_ECHO);
     this.running = count(all, TUI_RUNNING);
     this.tooShort = count(all, TUI_TOO_SHORT);
-    this.runningParts = count(all, TUI_RUNNING_PART);
   }
 
   /** One look at the pane (same history depth): how the command ended, or null while it runs or can't be told. */
@@ -70,7 +70,7 @@ export class KiroCompactPaneFollower {
     if (count(all, TUI_TOO_SHORT) > this.tooShort) return "not_compacted";
     const running = count(all, TUI_RUNNING) > this.running;
     if (running) { this.seenRunning = true; return null; }
-    if (!this.seenRunning || count(all, TUI_RUNNING_PART) > this.runningParts) return null;   // may still be running, wrapped
+    if (!this.seenRunning || all.some(l => TUI_RUNNING_PART.test(l))) return null;   // may still be running, wrapped
     return all.some(l => TUI_IDLE_COMPOSER.test(l)) ? "done" : null;
   }
 }

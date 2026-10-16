@@ -86,11 +86,16 @@ describe("TUI (--tui, V2)", () => {
     expect(f.look(pane("tui-compacted"))).toBe("done");
   });
 
-  it("review P2-1: a piece of an older running line already on the pane does not hold this one's ending forever", () => {
-    const old = "\nconversation...";                                    // left over from an earlier, wrapped one
-    const f = new KiroCompactPaneFollower("tui", pane("tui-idle") + old);
-    expect(f.look(pane("tui-compacting") + old)).toBeNull();
-    expect(f.look(pane("tui-compacted") + old)).toBe("done");
+  it("review r2 P2-1: an older piece leaving the bounded look cannot stand in for this one's: any piece in view is unknown", () => {
+    // Prism's replay: the old piece at the top of the history, gone from the next look; this one still running, wrapped.
+    const f = new KiroCompactPaneFollower("tui", `conversation...\n${pane("tui-idle")}`);
+    expect(f.look(pane("tui-compacting"))).toBeNull();
+    expect(f.look(pane("tui-compacting").replace("• Compacting conversation...", "• Compacting conversa\ntion..."))).toBeNull();
+    expect(f.look(pane("tui-compacted"))).toBe("done");                        // control: this one's real ending
+    // An old piece still in view is not told apart from this one's: unknown (the deadline ends it), never done.
+    const g = new KiroCompactPaneFollower("tui", `${pane("tui-idle")}\nconversation...`);
+    expect(g.look(`${pane("tui-compacting")}\nconversation...`)).toBeNull();
+    expect(g.look(`${pane("tui-compacted")}\nconversation...`)).toBeNull();
   });
 
   it("review P2-1: without kiro's idle composer in view (a dialog over it, another layout): unknown, not done", () => {
