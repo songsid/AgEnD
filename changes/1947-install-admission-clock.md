@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **`/update` no longer fails because the clock was adjusted during the install.** The install check that lets only the running update's own npm install proceed compared the updater's start time as wall-clock text. A clock adjustment while npm ran (NTP, a VM or WSL resyncing its clock) could make the update look gone, so the install was refused with only "npm error code 1" in chat, and a retry usually worked. On Linux it now uses the process start time the kernel keeps, which a clock change cannot move. Elsewhere, and for locks written by earlier 2.2 betas, a difference of up to 2 seconds counts as the same process. The process check also gets more time on a busy host. When the install is refused, the chat now shows AgEnD's own reason ("AgEnD cannot be installed here: …") instead of npm's exit code. Hops whose updater is already this version or newer show it. (#1947)

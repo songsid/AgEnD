@@ -1767,7 +1767,7 @@ program
     const { acquireInstallLock } = await import("./install-lock.js");
     const { randomBytes } = await import("node:crypto");
     const { createRequire } = await import("node:module");
-    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null };
+    const admission = createRequire(import.meta.url)("../launcher/install-admission.cjs") as { processStart(pid: number): string | null; startTicks(pid: number): string | null };
     let releaseLock = (): void => {};
     process.once("exit", () => releaseLock());
     const installed = runUpdateInstall(
@@ -1778,7 +1778,7 @@ program
           : {}),
         lock: prefix => {
           const lock = acquireInstallLock(prefix, { spec: pkg, agendHome: DATA_DIR }, {
-            pid: process.pid, processStart: admission.processStart, newToken: () => randomBytes(16).toString("hex"),
+            pid: process.pid, processStart: admission.processStart, startTicks: admission.startTicks, newToken: () => randomBytes(16).toString("hex"),
             now: () => new Date(), log: message => console.log(message),
           });
           if (!lock.ok) return lock;

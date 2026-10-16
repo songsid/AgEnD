@@ -22,6 +22,11 @@ export interface InstallLockRecord {
   pid: number;
   /** The holder's start time as `ps -o lstart=` prints it: with the pid, the process's identity. */
   processStart: string;
+  /**
+   * #1947 (Linux): the holder's start in clock ticks since boot (/proc/<pid>/stat field 22), immune to a clock step.
+   * Absent from every 2.2 beta's lock and on macOS: those are judged by `processStart`, within a tolerance.
+   */
+  startTicks?: string;
   prefix: string;
   targetSpec: string;
   agendHome: string;
@@ -33,6 +38,8 @@ export interface InstallLockDeps {
   pid: number;
   /** `ps -o lstart= -p <pid>`, trimmed; null when the process does not exist or cannot be read. */
   processStart(pid: number): string | null;
+  /** #1947: /proc/<pid>/stat start ticks (Linux), or null; omitted: none recorded and the lstart text decides. */
+  startTicks?(pid: number): string | null;
   /** Does the pid exist (false only for a definite "no such process")? Default: process.kill(pid, 0). */
   exists?(pid: number): boolean;
   /** Test seams (another updater's turn): after a lock was judged stale; after it was moved aside. */
@@ -55,6 +62,7 @@ export function parseInstallLock(text: string): InstallLockRecord | null {
   return r && Number.isSafeInteger(r.pid) && (r.pid as number) > 0 && typeof r.processStart === "string" && r.processStart
     && typeof r.prefix === "string" && typeof r.token === "string" && /^[0-9a-f]{32,}$/.test(r.token)
     && typeof r.targetSpec === "string" && typeof r.agendHome === "string" && typeof r.createdAt === "string"
+    && (r.startTicks === undefined || (typeof r.startTicks === "string" && /^\d+$/.test(r.startTicks)))
     ? r as InstallLockRecord : null;
 }
 
@@ -66,11 +74,27 @@ const pidExists = (pid: number): boolean => {
  * The recorded holder: "live" (that very process), "stale" (PROVEN gone: no such pid, or the pid now belongs to a
  * process that started at another time), or "unknown" (it exists, but its start time cannot be read) — which blocks.
  */
-export function holderState(record: { pid: number; processStart: string }, deps: Pick<InstallLockDeps, "processStart" | "exists">): "live" | "stale" | "unknown" {
+export function holderState(record: { pid: number; processStart: string; startTicks?: string }, deps: Pick<InstallLockDeps, "processStart" | "exists" | "startTicks">): "live" | "stale" | "unknown" {
   if (!(deps.exists ?? pidExists)(record.pid)) return "stale";
+  // #1947: recorded start ticks decide exactly (a clock step cannot move them); otherwise the lstart text, within a
+  // tolerance — the same rule as the postinstall (launcher/install-admission.cjs holderState).
+  if (record.startTicks !== undefined && deps.startTicks) {
+    const ticks = deps.startTicks(record.pid);
+    if (ticks !== null) return ticks === record.startTicks ? "live" : "stale";
+  }
   const seen = deps.processStart(record.pid);
   if (seen === null) return "unknown";
-  return seen === record.processStart ? "live" : "stale";
+  return sameStartText(record.processStart, seen) ? "live" : "stale";
+}
+
+/** #1947: how far two lstart texts of one process may differ (a clock step between the two reads); 1 s resolution. */
+export const START_TOLERANCE_MS = 2_000;
+
+/** The same start, as `ps -o lstart=` printed it (LC_ALL=C, TZ=UTC): identical, or both times at most 2 s apart. */
+export function sameStartText(recorded: string, seen: string): boolean {
+  if (recorded === seen) return true;
+  const a = Date.parse(`${recorded} UTC`), b = Date.parse(`${seen} UTC`);
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= START_TOLERANCE_MS;
 }
 
 const readOrNull = (path: string): string | null => { try { return readFileSync(path, "utf8"); } catch { return null; } };
@@ -81,9 +105,10 @@ export function acquireInstallLock(prefix: string, target: { spec: string; agend
   const path = join(canonical, INSTALL_LOCK_FILE);
   const ownStart = deps.processStart(deps.pid);
   if (!ownStart) return { ok: false, path, reason: "this process's own start time cannot be read, so its lock could not be told from a stale one" };
+  const ownTicks = deps.startTicks?.(deps.pid) ?? null;
   const record: InstallLockRecord = {
-    pid: deps.pid, processStart: ownStart, prefix: canonical, targetSpec: target.spec, agendHome: target.agendHome,
-    token: deps.newToken(), createdAt: deps.now().toISOString(),
+    pid: deps.pid, processStart: ownStart, ...(ownTicks !== null ? { startTicks: ownTicks } : {}), prefix: canonical,
+    targetSpec: target.spec, agendHome: target.agendHome, token: deps.newToken(), createdAt: deps.now().toISOString(),
   };
   const serialized = JSON.stringify(record) + "\n";
   const claim = (): boolean => {
