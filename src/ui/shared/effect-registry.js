@@ -34,8 +34,8 @@ function snapshotDescriptor(d) { try { return unsafeSnapshotDescriptor(d); } cat
  * stockSnapshot({frameRoot}) supplies current closed stock paint evidence synchronously; it must not reenter a mutation API.
  * Unknown receipts, roots, trust coverage or gates mount nothing. No storage, network, content or product imports here.
  */
-export function createEffectRegistry({ window: host, origin, boot, load, safety, stockSnapshot, onChange = () => {}, onProfile = () => {}, clock = () => host.performance.now() } = {}) {
-  try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
+export function createEffectRegistry({ window: host, origin, boot, load, safety, stockSnapshot, onChange = () => {}, onProfile = () => {}, onMount = () => {}, onRetire = () => {}, clock = () => host.performance.now() } = {}) {
+  try { if (!host?.document || !host.document.body || registries.has(host) || typeof load !== "function" || typeof stockSnapshot !== "function" || typeof onChange !== "function" || typeof onProfile !== "function" || typeof onMount !== "function" || typeof onRetire !== "function" || typeof clock !== "function" || !safety || ["allowed", "begin", "finish", "pause", "resume"].some(k => typeof safety[k] !== "function") || ["requestAnimationFrame", "cancelAnimationFrame", "setTimeout", "clearTimeout", "MutationObserver", "ResizeObserver", "AbortController"].some(k => typeof host[k] !== "function")) return { ok: false, reason: "registry_unsupported" }; } catch { return { ok: false, reason: "registry_unsupported" }; }
   let dead = false, blocked = null, revision = 0, last = null, lastView = null, frameSerial = 0, context = null, descriptors = [], calibration = null, baseline = null, baselineDevice = null, serial = 0, raf = null, timer = null;
   const slots = new Map(), loads = new Set(), paused = new Map(), offs = [], observed = new Set(), failures = new Map(), results = new Map();
   let readingStock = false;
@@ -47,6 +47,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   };
   const nativeClock = () => { const n = time(); if (n === null) throw Error("clock unavailable"); return n; };
   const device = () => context?.constrained === true ? "constrained" : "standard";
+  const dpr = device => Math.min(device === "constrained" ? 1.5 : 3, Math.max(0.5, host.devicePixelRatio || 1));
   // The provider is synchronous and observational. Reentrant mutation revokes this pool, rather than
   // allowing an old admission to act on newer descriptors or scheduling unbounded callback retries.
   const coverage = (d = null) => {
@@ -85,6 +86,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (receipt(safety.pause, { id: s.d.id, device: s.device, reason: why, metrics: s.budget?.snapshot().metrics ?? null }) !== true) blocked = "safety_unknown";
     }
     clearMarker(s, why);
+    if (s.owner) { try { onRetire(s.owner, why); } catch { /* an observation cannot prevent physical cleanup */ } }
     if (blocked) for (const other of [...slots.values()]) retire(other, blocked);
   }
   function stopAll(why) {
@@ -185,7 +187,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed() || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
       const rect = hostEffectRect(d.element);
       if (!rect || d.element.ownerDocument !== host.document) { results.set(d.key, { verdict: "off", reason: "geometry_unknown", queuePos: null }); continue; }
-      const s = { d, device: device(), live: true, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
+      const s = { d, device: device(), owner: null, live: true, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
       slots.set(d.key, s);
       const request = { controller: new host.AbortController(), slot: s, timer: null, began: time() }; s.request = request; loads.add(request);
       const withinDeadline = () => {
@@ -226,7 +228,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         s.rect = fresh;
         s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
         const frame = createEffectFrame({ window: host, root, origin, boot, clock: nativeClock,
-          render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: Math.min(3, Math.max(0.5, host.devicePixelRatio || 1)) },
+          render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: dpr(s.device) },
           onReady() { if (!current(s)) return; if (!globalAllowed() || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
           onRemove(why) { if (current(s)) { retire(s, why); tell(); } },
         });
@@ -238,7 +240,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         const loaded = () => { if (current(s)) s.budget.loaded(); };
         frame.element.addEventListener("load", loaded); s.loadOff = () => frame.element.removeEventListener("load", loaded);
         const paint = coverage(d);
-        if (!current(s) || !paint || !s.geometry.sync(fresh, paint)) retire(s, "geometry_unknown");
+        if (!current(s) || !paint || !s.geometry.sync(fresh, paint)) { retire(s, "geometry_unknown"); return; }
+        // One non-serializable host receipt per actual admitted frame. Never append it to a Worker event.
+        const owner = Object.freeze({ key: d.key, id: d.id, device: s.device, current: () => current(s) && s.owner === owner });
+        s.owner = owner;
+        try { onMount(owner); } catch { /* diagnostics/display failure cannot authorize or mutate a mount */ }
         schedule();
       }).catch(() => { if (current(s)) retire(s, "resource_unavailable"); }).finally(() => {
         if (request.timer !== null) host.clearTimeout(request.timer);
@@ -250,7 +256,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   }
   function publishEnv(s, proof = coverage(s.d)) {
     if (!s.ready || !current(s) || context.hidden || !globalAllowed() || !effectStockAllows(proof, s.d)) return;
-    const e = effectEvent("env", { width: s.rect.width, height: s.rect.height, dpr: Math.min(3, Math.max(0.5, host.devicePixelRatio || 1)), quality: s.budget.snapshot().quality }, null, time());
+    const e = effectEvent("env", { width: s.rect.width, height: s.rect.height, dpr: dpr(s.device), quality: s.budget.snapshot().quality }, null, time());
     if (e) s.frame.send(e);
   }
   function tick() {
@@ -284,13 +290,16 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     timer = null;
     if (dead) return;
     if (time() === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; }
+    const activeBeforeSafety = slots.size;
+    if (!checkSafety()) { tell(); return; }
+    if (slots.size !== activeBeforeSafety) reconcile();
     if (!globalAllowed() || context.hidden || !coverage()) { invalidate(); return; }
     const budgetPauses = new Set();
     for (const s of [...slots.values()]) {
       if (!current(s) || !s.frame || !s.ready) continue;
       const r = s.budget.gates({ hidden: false, reducedMotion: context.reducedMotion, saveData: context.saveData, show: context.show });
       const state = r.remove ? r : s.readyAt !== null && last - s.readyAt >= 3000 ? s.budget.poll() : r;
-      try { onProfile({ key: s.d.key, id: s.d.id, device: s.device, ...state }); } catch { /* metrics never authorize a mount */ }
+      try { onProfile({ key: s.d.key, id: s.d.id, device: s.device, ...state }, s.owner); } catch { /* metrics never authorize a mount */ }
       if (!current(s)) continue;
       if (state.remove) { const key = s.d.id + ":" + s.device; const count = state.reason === "host_budget" && !budgetPauses.has(key); if (count) budgetPauses.add(key); retire(s, state.reason, count); continue; }
       if (state.badWindows > 0) s.healthySince = null; else if (s.healthySince === null) s.healthySince = last;
@@ -298,6 +307,23 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       publishEnv(s);
     }
     schedule(); tell();
+  }
+  function checkSafety() {
+    if (dead || blocked) return false;
+    const proposed = revision;
+    for (const s of [...slots.values()]) {
+      if (!current(s)) continue;
+      const allowed = receipt(safety.allowed, s.d.id, s.device);
+      if (dead || proposed !== revision) return false;
+      if (current(s) && allowed !== true) retire(s, "safety_revoked");
+      if (dead || blocked || proposed !== revision) return false;
+    }
+    return !dead && !blocked;
+  }
+  function revalidateSafety() {
+    if (dead || reentrantStock()) return view();
+    if (checkSafety()) reconcile(); else tell();
+    return view();
   }
   function pointerGate(proof = coverage()) {
     if (!globalAllowed() || context.hidden || context.modal || !proof) return false;
@@ -330,7 +356,9 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     resize = new host.ResizeObserver(invalidate);
     for (const type of ["scroll", "resize", "orientationchange", "focusin", "focusout"]) { host.addEventListener(type, invalidate, true); offs.push(() => host.removeEventListener(type, invalidate, true)); }
     for (const type of ["pointermove", "pointerdown", "pointerup", "click", "wheel"]) { host.addEventListener(type, pointer, { passive: true }); offs.push(() => host.removeEventListener(type, pointer)); }
-    host.document.addEventListener("visibilitychange", invalidate); offs.push(() => host.document.removeEventListener("visibilitychange", invalidate));
+    host.addEventListener("storage", revalidateSafety); offs.push(() => host.removeEventListener("storage", revalidateSafety));
+    const visibility = () => { revalidateSafety(); invalidate(); };
+    host.document.addEventListener("visibilitychange", visibility); offs.push(() => host.document.removeEventListener("visibilitychange", visibility));
     if (typeof host.PerformanceObserver === "function" && host.PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
       try {
         longTasks = new host.PerformanceObserver(list => {
@@ -360,6 +388,8 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       reconcile(); return view();
     },
     snapshot: view,
+    /** Host storage/foreground observation only, never called from a frame message. */
+    revalidateSafety,
     /** Called only by the host's explicit human Resume UI. A descriptor update never clears this latch. */
     resume(key) {
       if (dead || reentrantStock() || blocked && !blocked.startsWith("baseline_") || typeof key !== "string") return false;

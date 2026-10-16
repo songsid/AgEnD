@@ -46,11 +46,11 @@ function rig(options: any = {}) {
   };
   const safety = { allowed: vi.fn((_id?: string, _device?: string) => true), begin: vi.fn((_spec?: any) => `token-${++tokens}`), finish: vi.fn((_token?: string, _reason?: string) => true), pause: vi.fn((_record?: any) => true), resume: vi.fn((_id?: string, _device?: string) => true) };
   const load = vi.fn(async (d: any, _signal?: AbortSignal) => ({ id: d.id, code: "agend.ready()", params: { ...d.params }, assets: [], wants: ["state", "reply", "mention", "theme", "pointer"] }));
-  const change = vi.fn(), profile = vi.fn(), coverage = vi.fn((_input?: any): any => stock());
+  const change = vi.fn(), profile = vi.fn(), mount = vi.fn(), retire = vi.fn(), coverage = vi.fn((_input?: any): any => stock());
   const { prepareHost, ...registryOptions } = options; prepareHost?.(host);
-  const api = createEffectRegistry({ window: host, origin: "https://preview.example", boot, load, safety, stockSnapshot: coverage, onChange: change, onProfile: profile, ...registryOptions }); M.APIs.push(api);
+  const api = createEffectRegistry({ window: host, origin: "https://preview.example", boot, load, safety, stockSnapshot: coverage, onChange: change, onProfile: profile, onMount: mount, onRetire: retire, ...registryOptions }); M.APIs.push(api);
   const descriptors = (n = 1, patch: any = {}) => Array.from({ length: n }, (_, i) => { const element = node(); element.isConnected = true; return { key: `effect-${i}`, id: id(i + 1), region: "chat", layer: "behind", by: "agent", order: i, paused: false, visible: true, instance: "own", params: {}, element, ...patch }; });
-  return { api, host, doc, safety, load, coverage, change, profile, rafs, timers, events, mutations, resizes, trusted, descriptors, node,
+  return { api, host, doc, safety, load, coverage, change, profile, mount, retire, rafs, timers, events, mutations, resizes, trusted, descriptors, node,
     frames: () => M.frames.filter(f => f.options.window === host), cals: () => M.calibrations.filter(c => c.options.window === host), geo: () => M.geometries.find(g => g.options.window === host),
     at(t: number) { now = t; }, frame(t: number) { now = t; const callbacks = [...rafs.values()]; rafs.clear(); for (const fn of callbacks) fn(); },
     timer(t: number) { now = t; const due = [...timers].filter(([, v]) => v.at <= now); for (const [k, v] of due) { timers.delete(k); v.fn(); } },
@@ -60,6 +60,70 @@ function rig(options: any = {}) {
 }
 afterEach(() => { for (const a of M.APIs) a.dispose?.(); M.APIs.length = 0; M.frames.length = 0; M.calibrations.length = 0; M.geometries.length = 0; });
 describe("#1629 shared Canvas Worker registry", () => {
+  it("publishes one frozen live mount receipt after marker, factory and successful geometry", async () => {
+    const h = rig(); await h.admit(); const owner = h.mount.mock.calls[0]![0];
+    expect(h.mount).toHaveBeenCalledOnce(); expect(Object.isFrozen(owner)).toBe(true);
+    expect(Object.keys(owner).sort()).toEqual(["current", "device", "id", "key"]);
+    expect(owner).toMatchObject({ key: "effect-0", id: id(1), device: "standard" }); expect(owner.current()).toBe(true);
+    expect(h.safety.begin.mock.invocationCallOrder[0]).toBeLessThan(h.mount.mock.invocationCallOrder[0]!);
+    expect(h.geo().bindings[0].sync.mock.invocationCallOrder[0]).toBeLessThan(h.mount.mock.invocationCallOrder[0]!);
+    h.frames()[0].ready(); h.timer(1000); expect(h.profile.mock.calls[0]![1]).toBe(owner);
+    expect(h.profile.mock.calls[0]![0]).not.toHaveProperty("current");
+  });
+  it("identical descriptors preserve a receipt, but a remount never reuses it", async () => {
+    const h = rig(), ds = await h.admit(), first = h.mount.mock.calls[0]![0];
+    h.api.update(ds, gates()); await flush(); expect(h.mount).toHaveBeenCalledOnce(); expect(first.current()).toBe(true);
+    h.retire.mockImplementation((owner: any) => { expect(owner.current()).toBe(false); expect(h.frames().at(-1).state().removed).toBe(true); expect(h.geo().bindings.at(-1).remove).toHaveBeenCalledOnce(); expect(h.safety.finish).toHaveBeenCalled(); });
+    h.api.update(ds, gates({ show: false })); expect(first.current()).toBe(false); expect(h.retire).toHaveBeenCalledExactlyOnceWith(first, "gates_unknown");
+    h.api.update([], gates()); await h.admit(ds); const second = h.mount.mock.calls[1]![0]; expect(second).not.toBe(first); expect(second.current()).toBe(true); expect(first.current()).toBe(false);
+    h.api.dispose(); h.api.dispose(); expect(second.current()).toBe(false); expect(h.retire).toHaveBeenCalledTimes(2);
+  });
+  it("a failed geometry admission has no mount receipt or invented retire notification", async () => {
+    const h = rig(); h.geo().bind.mockImplementation(() => ({ ok: true, sync: () => false, remove: vi.fn() })); await h.admit();
+    expect(h.mount).not.toHaveBeenCalled(); expect(h.retire).not.toHaveBeenCalled(); expect(h.frames()[0].state().removed).toBe(true); expect(h.safety.finish).toHaveBeenCalledOnce();
+  });
+  it("mount and retire observer exceptions cannot prevent physical cleanup", async () => {
+    const h = rig(); h.mount.mockImplementation(() => { throw Error("display unavailable"); }); h.retire.mockImplementation(() => { throw Error("display unavailable"); });
+    await h.admit(); const f = h.frames()[0]; expect(f.state().removed).toBe(false); const owner = h.mount.mock.calls[0]![0];
+    h.api.dispose(); expect(f.state().removed).toBe(true); expect(owner.current()).toBe(false); expect(h.safety.finish).toHaveBeenCalledOnce(); expect(h.retire).toHaveBeenCalledOnce();
+  });
+  it("a mount observer may revoke its own owner without reviving the old frame", async () => {
+    const h = rig(); h.mount.mockImplementation(() => h.api.dispose()); await h.admit();
+    expect(h.frames()[0].state().removed).toBe(true); expect(h.mount.mock.calls[0]![0].current()).toBe(false); expect(h.retire).toHaveBeenCalledOnce();
+  });
+  it.each(["event", "explicit", "heartbeat", "foreground"])("%s revalidates safety for an already running frame", async via => {
+    const h = rig(), ds = await h.admit(); h.frames()[0].ready(); const owner = h.mount.mock.calls[0]![0]; h.safety.allowed.mockReturnValue(false);
+    if (via === "event") h.emit("storage"); else if (via === "explicit") h.api.revalidateSafety(); else if (via === "heartbeat") h.timer(1000); else h.emit("visibilitychange");
+    expect(h.frames()[0].state().removed).toBe(true); expect(owner.current()).toBe(false); expect(h.retire).toHaveBeenCalledExactlyOnceWith(owner, "safety_revoked");
+    h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledOnce(); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "safety_revoked" });
+  });
+  it("heartbeat revocation frees capacity for a different queued eligible id", async () => {
+    const h = rig(), ds = await h.admit(h.descriptors(4)); for (const f of h.frames()) f.ready();
+    h.safety.allowed.mockImplementation((effectId?: string) => effectId !== ds[0].id); h.timer(1000); await flush();
+    expect(h.frames()[0].state().removed).toBe(true); expect(h.load).toHaveBeenCalledTimes(4); expect(h.frames().at(-1).state().removed).toBe(false);
+    expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "safety_revoked" });
+  });
+  it("a retire observer replacing the descriptors abandons that safety pass", async () => {
+    const h = rig(), ds = await h.admit(h.descriptors(2)); const next = h.descriptors(1, { key: "next", id: id(99) });
+    h.retire.mockImplementationOnce(() => h.api.update(next, gates())); h.safety.allowed.mockImplementationOnce(() => false); h.api.revalidateSafety(); await flush();
+    expect(h.api.snapshot()).toHaveLength(1); expect(h.api.snapshot()[0]).toMatchObject({ key: "next", phase: "starting" }); expect(h.mount.mock.calls.at(-1)![0].current()).toBe(true);
+  });
+  it("unknown safety receipts stop all mounts and storage listeners are released", async () => {
+    const h = rig(); await h.admit(h.descriptors(2)); h.safety.allowed.mockImplementation(() => { throw Error("unreadable"); }); h.emit("storage");
+    expect(h.frames().every(f => f.state().removed)).toBe(true); expect(h.retire).toHaveBeenCalledTimes(2);
+    h.api.dispose(); const calls = h.safety.allowed.mock.calls.length; h.emit("storage"); expect(h.safety.allowed).toHaveBeenCalledTimes(calls);
+  });
+  it("a reentrant safety read cannot retire a replacement owner's slot", async () => {
+    const h = rig(), ds = await h.admit(); h.safety.allowed.mockImplementationOnce(() => { h.api.update(ds, gates({ show: false })); return false; });
+    h.api.revalidateSafety(); expect(h.frames()[0].state().removed).toBe(true); expect(h.retire.mock.calls[0]![1]).toBe("gates_unknown");
+    h.api.update([], gates()); await h.admit(ds); expect(h.frames().at(-1).state().removed).toBe(false); expect(h.mount.mock.calls.at(-1)![0].current()).toBe(true);
+  });
+  it.each([[true, 4, 1.5], [true, 1, 1], [false, 2.5, 2.5], [false, 4, 3]])("constrained=%s clamps native DPR %s to %s in render and env", async (constrained, native, expected) => {
+    const h = rig({ prepareHost: (host: any) => { host.devicePixelRatio = native; } }), ds = await h.admit(undefined, gates({ constrained }));
+    const f = h.frames()[0]; expect(f.options.render.dpr).toBe(expected); f.ready();
+    expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0].dpr).toBe(expected);
+    ds[0].element.rect.width++; h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0].dpr).toBe(expected);
+  });
   it("mounts nothing before a proven empty host baseline, retaining one calibration across notifications", async () => {
     const h = rig(), ds = h.descriptors(); h.api.update(ds, gates()); expect(h.load).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0); expect(h.cals()).toHaveLength(1);
     expect(h.cals()[0].options.empty()).toBe(true); h.api.update(ds, gates()); h.mutations[0].cb(); h.resizes[0].cb(); expect(h.cals()).toHaveLength(1);
