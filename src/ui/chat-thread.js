@@ -56,7 +56,7 @@ export function createThread(list, scroller, opts) {
   // The oldest message drawn (by key): everything after it is drawn, so new messages never push the window. Null: none
   // drawn yet — the next render draws the newest THREAD_TAIL and the rest follows (grow).
   let firstKey = null;
-  let growTimer = null, growFrame = null;
+  let growTimer = null, growFrame = null, disposed = false;
   const cardRefresh = new WeakMap(); // card node → re-read availability (weak: a card that left takes its source with it)
   const tr = opts.t, trf = opts.tf;
   const stopIn = (node) => (P() ? P().stopIn(node) : []);
@@ -450,11 +450,12 @@ export function createThread(list, scroller, opts) {
   /** Draw the next chunk of older messages, keeping the reader where they were; then the next, until all are drawn. */
   function grow() {
     growTimer = growFrame = null;
+    if (disposed) return;                 // the chat left: nothing more is drawn
     const at = startIndex();
     if (at <= 0) return;
     firstKey = msgKey(msgs[Math.max(0, at - THREAD_CHUNK)]);
     const fromBottom = scroller.scrollHeight - scroller.scrollTop;
-    draw({ older: true });
+    draw({ older: true });                // drawn above the reader: never "new below" (render alone counts those)
     if (pinned) toBottom();
     else { scroller.scrollTop = scroller.scrollHeight - fromBottom; lastTop = scroller.scrollTop; }
     scheduleGrow();
@@ -526,8 +527,7 @@ export function createThread(list, scroller, opts) {
     }
     armDay();
     armPolls();
-    // Older messages drawn later are not "new below": they never count as unseen.
-    return drawOpts.older ? 0 : added;
+    return added;
   }
 
   function onScroll() {
@@ -597,9 +597,7 @@ export function createThread(list, scroller, opts) {
 
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   function dispose() {
-    if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
-    if (growTimer !== null) clearTimeout(growTimer);
-    growTimer = growFrame = null;
+    disposed = true;
     if (ro) ro.disconnect();
     if (P()) P().stopAll("leave");
     nodes.clear();
