@@ -313,6 +313,22 @@ A widget is a small panel of facts drawn by the dashboard itself: numbers, progr
 - **Your sidebar widget.** **Settings → Appearance → Your sidebar widget** takes the spec and values as JSON. It shows a preview and says what's wrong before saving. **Start from an example** fills in the fleet's counts. It is kept with your preferences on all your devices, and is never shown over a temporary public link or with `?safe=1`.
 - **Your switch** hides agents' widgets along with their themes. The public link shows agents' widgets, like their cards.
 
+### Mods
+
+A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: an agent's theme with its pictures, its card text (tagline and bio, never card pictures), widgets, effects, and custom CSS. It is plain JSON of at most 8 MiB, with no zip and nothing to unpack. **Settings → Appearance → Mods** imports, lists, downloads, uninstalls and exports them.
+
+- **Import is two steps.**
+  - **Import a mod file…** checks the whole file and shows everything in it before anything changes: the theme's colours and pictures, the card text, each widget as it will look, each effect with where it draws and what it hears, and **the custom CSS in full**. The author is shown as unverified.
+  - Tick what you want, choose the agent it goes to, then **Install**. Only the ticked parts are applied, all at once. If any part fails, nothing changes.
+- **Custom CSS is never ticked for you.** It reads "Custom CSS from this file — read it before turning it on". If you tick it, it becomes your own CSS on trial: **Keep** it, or it reverts after 15 seconds.
+- **Where things go.** The theme, card text and agent widgets go to the agent you choose, as a person's choice (**Lock theme** and **Reset theme…** work on it as usual). A sidebar widget becomes yours. Custom CSS becomes yours only, as always.
+- **The check is strict.** Every file must be listed with its SHA-256 and used by exactly one part. Paths are lowercase with no `..`. Each part is checked as its own feature checks it: theme contrast, picture types and sizes, widget specs, the custom-CSS rules, and effects.
+- **Versions.** A mod's identity is its content. Importing another version of an installed name asks to **Replace** it. Up to 20 mods and 64 MiB can be installed.
+- **Uninstall** removes the mod from the list, and its effects from your library unless something still uses them. What it applied stays until you reset it.
+- **Export a mod** makes a file from what is in force now: an agent's theme with its pictures, its card text and widgets, your sidebar widget, and your custom CSS with the files it names. An exported file imports as it is.
+- **Effects** in a mod need the effect runtime. Until this fleet has one, a mod that carries effects is refused with `effects_unavailable`.
+- Mods are a signed-in person's action. They are never available over a temporary public link, and an agent's CLI token can't reach them.
+
 ## Reaching it from elsewhere
 
 ### Temporary public link from a phone

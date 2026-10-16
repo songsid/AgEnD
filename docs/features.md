@@ -1172,7 +1172,7 @@ The sidebar, chat header and Needs-you list each show who an instance is. What s
 Bot avatars and the custom emoji of the fleet's Discord servers are fetched on the host with the bot's own token, kept in `~/.agend/cache/` (refreshed at most once a day; a failed refresh keeps the last copy), and served by the dashboard to signed-in sessions, including the temporary public link, read-only. The page never loads images from Discord or Telegram. Discord server emoji in web chat are served the same way. The status-emoji editor in Settings uses the same cached route too, and the panels' content policy no longer allows any remote image source. In the Settings editor, an emoji from a server the fleet's bots are not in shows as its `:name:`.
 
 Clearing the display name in View's **Edit profile** now removes the override — the name the agent set with `set_display_name` (or the instance name) shows again. Display names cleared before this release recover too.
-## Agents' look on the web: themes, identity cards, widgets and custom CSS (#1629)
+## Agents' look on the web: themes, identity cards, widgets, custom CSS and mods (#1629)
 
 Four things change how the dashboard looks, each with its own owner:
 
@@ -1183,4 +1183,6 @@ Four things change how the dashboard looks, each with its own owner:
 
 What a viewer sees is theirs to choose: **Settings → Appearance → Show agents' themes, effects and widgets** turns agents' themes and widgets off on all their devices, and `?safe=1` loads any page without themes or custom CSS. Agents can check how they appear with `get_web_appearance` and draw it with `preview_web_appearance`; the `web-appearance` skill walks them through it.
 
-`web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards" and "Widgets".
+A **mod** is one file that carries such a look: a theme with its pictures, card text, widgets, effects and custom CSS. **Settings → Appearance → Mods** imports one in two steps, showing everything in it first and applying only the parts you tick, all at once. Custom CSS from a file is never ticked for you. The same card exports a look as a file.
+
+`web.themes.agent_edit: false` refuses every agent's appearance change; `web.appearance` sets the card's upload limits. The details are in [Web dashboard](web-dashboard.md): "Custom CSS", "Agents' themes", "Identity cards", "Widgets" and "Mods".

@@ -1138,7 +1138,7 @@ agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 al
 bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用 bot 自己的 token 取得，存在 `~/.agend/cache/`（每天最多更新一次；更新失敗時保留上一份），只提供給已登入的 session（包括臨時公開連結，僅限讀取）。頁面不會從 Discord 或 Telegram 載入圖片。網頁聊天中的 Discord 伺服器表情也透過同一條路徑以圖片呈現。Settings 的狀態表情編輯器同樣使用這條快取路徑；面板的內容安全政策不再允許任何遠端圖片來源。在 Settings 的編輯器中，不在 fleet bot 所在伺服器的表情會以 `:名稱:` 顯示。
 
 在 View 的**編輯個人資料**清除顯示名稱，現在會移除覆寫，再次顯示 agent 用 `set_display_name` 設定的名稱（若兩者都沒有則顯示 instance 名稱）。這次更新前清除過的顯示名稱也會恢復。
-## Agent 在網頁上的外觀：主題、身分卡、小工具與自訂 CSS（#1629）
+## Agent 在網頁上的外觀：主題、身分卡、小工具、自訂 CSS 與 mod（#1629）
 
 有四樣東西會改變儀表板的樣子，各有各的主人：
 
@@ -1149,4 +1149,6 @@ bot 頭像與 fleet 所在 Discord 伺服器的自訂表情，會在主機上用
 
 看到什麼由檢視者決定：**設定 → 外觀 → 顯示 agent 的主題、效果與小工具** 可在所有裝置上關閉 agent 的主題與小工具，網址加上 `?safe=1` 則載入時不套用主題與自訂 CSS。Agent 可以用 `get_web_appearance` 查看自己的樣子，用 `preview_web_appearance` 畫出來；`web-appearance` 技能會一步步帶它完成。
 
-`web.themes.agent_edit: false` 會拒絕所有 agent 的外觀變更；`web.appearance` 設定身分卡的上傳限制。細節請見 [網頁儀表板](web-dashboard.zh-TW.md) 的「自訂 CSS」、「Agent 的主題」、「身分卡」與「小工具」。
+**Mod** 是帶著這樣一套外觀的單一檔案：主題與圖片、身分卡文字、小工具、效果與自訂 CSS。在 **設定 → 外觀 → Mod** 分兩步匯入：先列出全部內容，再一次套用你勾選的部分。檔案裡的自訂 CSS 永遠不會預先勾選。同一張卡片也能把外觀匯出成檔案。
+
+`web.themes.agent_edit: false` 會拒絕所有 agent 的外觀變更；`web.appearance` 設定身分卡的上傳限制。細節請見 [網頁儀表板](web-dashboard.zh-TW.md) 的「自訂 CSS」、「Agent 的主題」、「身分卡」、「小工具」與「Mod」。

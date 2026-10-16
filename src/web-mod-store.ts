@@ -52,7 +52,7 @@ export interface ModOwnerCss {
   state(person: string): { assets: Array<{ id: string }> };
   addAsset(person: string, bytes: Uint8Array): { ok: true; id: string } | { ok: false; status: number; error: string; detail?: string };
   removeAsset(person: string, id: string): { ok: true } | { ok: false };
-  save(person: string, text: unknown): { ok: true; sha: string; trial: string } | { ok: false; status: number; error: string; detail?: string };
+  save(person: string, text: unknown): { ok: true; sha: string; previous: string | null; trial: string } | { ok: false; status: number; error: string; detail?: string };
   revertTrial(person: string, trial: unknown): { ok: true } | { ok: false };
 }
 
@@ -250,7 +250,7 @@ export class ModStore {
    * own CSS goes to them); the sidebar widget is a preference of the page's one bucket. A changed plan hash is 409; an
    * unknown or expired stage is 404.
    */
-  commit(person: string, body: { stage?: unknown; plan_hash?: unknown; include?: unknown; target?: unknown }): ModWrite<{ id: string; applied: string[]; trial?: string }> {
+  commit(person: string, body: { stage?: unknown; plan_hash?: unknown; include?: unknown; target?: unknown }): ModWrite<{ id: string; applied: string[]; css?: { trial: string; sha: string; previous: string | null } }> {
     this.sweep();
     const s = this.stages.get(person);
     if (!s || s.id !== body.stage) return { ok: false, status: 404, error: "unknown_stage" };
@@ -322,20 +322,20 @@ export class ModStore {
       undo.push(() => { this.deps.prefs.write(who, new Map([["widget.sidebar", had]])); });
       applied.push("widget:sidebar");
     }
-    let trial: string | undefined;
+    let css: { trial: string; sha: string; previous: string | null } | undefined;
     if (want.ownerCss && mod.ownerCss && this.deps.ownerCss) {
-      const css = this.deps.ownerCss;
-      const had = new Set(css.state(person).assets.map(a => a.id));
+      const store = this.deps.ownerCss;
+      const had = new Set(store.state(person).assets.map(a => a.id));
       for (const a of mod.ownerCss.assets) {
-        const r = css.addAsset(person, a.kept);
+        const r = store.addAsset(person, a.kept);
         if (!r.ok) return rollback(r.status, r.error, r.detail);
         if (r.id !== a.id) return rollback(500, "owner_css_asset_id", `${a.path}: ${r.id} ≠ ${a.id}`);
-        if (!had.has(r.id)) { had.add(r.id); undo.push(() => { css.removeAsset(person, r.id); }); }
+        if (!had.has(r.id)) { had.add(r.id); undo.push(() => { store.removeAsset(person, r.id); }); }
       }
-      const saved = css.save(person, mod.ownerCss.text);
+      const saved = store.save(person, mod.ownerCss.text);
       if (!saved.ok) return rollback(saved.status, saved.error, saved.detail);
-      undo.push(() => { css.revertTrial(person, saved.trial); });
-      trial = saved.trial;
+      undo.push(() => { store.revertTrial(person, saved.trial); });
+      css = { trial: saved.trial, sha: saved.sha, previous: saved.previous };
       applied.push("ownerCss");
     }
 
@@ -371,7 +371,7 @@ export class ModStore {
     if (replaces) { try { unlinkSync(this.file(replaces.id)); } catch { /* already gone */ } }
     if (s.effects && !want.effects) this.deps.effects?.abort(s.effects.stageId);   // staged, not chosen: let it go
     this.stages.delete(person);
-    return { ok: true, id: mod.id, applied, ...(trial ? { trial } : {}) };
+    return { ok: true, id: mod.id, applied, ...(css ? { css } : {}) };
   }
 
   /** Remove an installed mod from the library: its effect claim, its file and its entry. What it applied stays. */

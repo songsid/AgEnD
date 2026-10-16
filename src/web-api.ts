@@ -484,6 +484,8 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
   }
   (async () => {
     if (path === "/ui/mods/stage") {
+      // Too large by its own declared length: answered before a byte is read (the body is drained, not cut off).
+      if (Number(req.headers["content-length"]) > MOD_MAX_BYTES) { req.resume(); json(res, 413, { error: "mod_too_large", detail: `at most ${MOD_MAX_BYTES / 1024 / 1024} MiB` }); return; }
       let raw: Buffer;
       try { raw = await readBoundedWebBody(req, MOD_MAX_BYTES); } catch { json(res, 413, { error: "mod_too_large", detail: `at most ${MOD_MAX_BYTES / 1024 / 1024} MiB` }); return; }
       const person = again();
@@ -503,7 +505,7 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     if (path === "/ui/mods/commit") {
       const r = mods.commit(person, body);
       if (r.ok) ctx.emitSseEvent("status", ctx.getUiStatus());   // themes_rev and prefs_rev moved: every page re-reads
-      answer(r, r.ok ? { id: r.id, applied: r.applied, ...(r.trial ? { trial: r.trial } : {}) } : null);
+      answer(r, r.ok ? { id: r.id, applied: r.applied, ...(r.css ? { css: r.css } : {}) } : null);
       return;
     }
     if (path === "/ui/mods/uninstall") { const r = mods.uninstall(body.id); answer(r, r.ok ? { ok: true, released: r.released } : null); return; }

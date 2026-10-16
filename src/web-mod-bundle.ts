@@ -11,6 +11,8 @@
  */
 import { createHash } from "node:crypto";
 import { compareVersions } from "./agent-whats-new.js";
+import { checkEffectEntry } from "./web-effect-bundle.js";
+import { resolveEffectParams } from "./web-effect.js";
 import type { AppearanceLimits } from "./web-appearance-limits.js";
 import { checkOwnerCss, OWNER_CSS_MAX_BYTES } from "./web-owner-css.js";
 import { MEDIA_EXT, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
@@ -327,3 +329,22 @@ export function modFile(bytes: Uint8Array): { sha256: string; b64: string } {
 }
 /** The extension a picture or CSS asset is exported under. */
 export function modAssetName(base: string, kind: MediaKind): string { return `${base}.${MEDIA_EXT[kind]}`; }
+
+/**
+ * The effect runtime's checker (CW1: Sol's src/web-effect-bundle.ts and src/web-effect.ts) as a bundle uses it. Used
+ * once the fleet has an effect library to install into; until then the fleet passes null and effects are refused.
+ */
+export function cw1EffectChecker(): ModEffectChecker {
+  return {
+    check(files) {
+      const r = checkEffectEntry(files);
+      if (!r.ok) return { ok: false, problems: r.problems };
+      const m = r.manifest;
+      return { ok: true, manifest: m, summary: { id: r.id, title: m.title, bytes: r.bytes, regions: [...m.regions], wants: [...m.wants], params: Object.keys(m.params ?? {}) } };
+    },
+    params(manifest, overrides) {
+      const r = resolveEffectParams(manifest as Parameters<typeof resolveEffectParams>[0], overrides);
+      return r.ok ? { ok: true, overrides: { ...r.overrides } } : { ok: false, error: r.error };
+    },
+  };
+}
