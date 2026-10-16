@@ -127,26 +127,33 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current } 
   const now = () => { let t; try { t = host.performance.now(); } catch { revoked = true; return null; } if (!finite(t) || t < 0 || previous !== null && t < previous) { revoked = true; return null; } previous = t; return t; };
   const alive = () => { try { if (!dead && !revoked && current() === true) return true; } catch { /* unknown */ } revoked = true; return false; };
   if (!alive() || now() === null) { dead = true; releaseWindow(); return { ok: false }; }
-  function run(kind, path, project, signal) {
+  function run(kind, path, project, signal, settled = false) {
     if (dead || revoked) return Promise.resolve(null);
     const began = now(); if (began === null) return Promise.resolve(null);
     if (!alive() || signal?.aborted || [...pending].filter(p => p.kind === kind).length >= (kind === "resource" ? 3 : 1)) return Promise.resolve(null);
     const controller = new host.AbortController(), op = { kind, controller, abort: null }, limit = kind === "placements" ? 256 * 1024 : WIRE; pending.add(op);
-    let release, reader = null, timer = null;
+    let release, reader = null, body = null, cancellation = null, timer = null, wasAborted = false;
+    // Cache the actual cancellation, but not a pre-response no-op: a late response still owns its body.
+    const cancelBody = () => {
+      if (!reader && !body) return Promise.resolve();
+      if (!cancellation) { try { cancellation = Promise.resolve(reader ? reader.cancel() : body.cancel()).catch(() => {}); } catch { cancellation = Promise.resolve(); } }
+      return cancellation;
+    };
     const cancelled = new Promise(resolve => { release = resolve; });
-    const abort = () => { controller.abort(); try { const result = reader?.cancel(); result?.catch?.(() => {}); } catch { /* no retry */ } release(null); };
+    const abort = () => { wasAborted = true; controller.abort(); void cancelBody(); release(null); };
     op.abort = abort;
     const valid = () => { if (!alive() || controller.signal.aborted) { abort(); return false; } const t = now(); if (t === null || t < began || t - began >= 10000) { abort(); return false; } return true; };
     const work = Promise.resolve().then(async () => {
       if (!valid()) return null;
       const response = await host.fetch(path, { credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal });
+      body = response.body;
       if (!valid()) return null;
       if ([401, 403, 409].includes(response.status)) { revoked = true; return null; }
       if (!response.ok || response.redirected || !/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") || "")) return null;
       const length = response.headers.get("content-length");
       if (length !== null && (!/^(0|[1-9][0-9]*)$/.test(length) || !integer(Number(length), 0, limit))) return null;
-      if (!response.body || typeof response.body.getReader !== "function") return null;
-      reader = response.body.getReader(); const chunks = []; let size = 0;
+      if (!body || typeof body.getReader !== "function") return null;
+      reader = body.getReader(); const chunks = []; let size = 0;
       for (;;) {
         const part = await reader.read(); if (!valid()) return null;
         if (part.done) break;
@@ -157,19 +164,28 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current } 
       let value; try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return null; }
       if (!valid()) return null;
       const answer = project(value); return valid() ? answer : null;
-    }).catch(() => null).finally(() => { controller.abort(); pending.delete(op); releaseWindow(); host.clearTimeout(timer); signal?.removeEventListener("abort", abort); try { const r = reader?.cancel(); r?.catch?.(() => {}); } catch { /* no retry */ } });
+    }).catch(() => null).finally(async () => { controller.abort(); await cancelBody(); pending.delete(op); releaseWindow(); host.clearTimeout(timer); signal?.removeEventListener("abort", abort); }).then(value => {
+      // Cleanup aborts the controller even on success; only an actual abort or stale completion revokes the result.
+      if (!alive() || wasAborted || signal?.aborted) return null;
+      const t = now(); return t !== null && t >= began && t - began < 10000 ? value : null;
+    });
     timer = host.setTimeout(abort, 10000); signal?.addEventListener("abort", abort, { once: true });
-    return Promise.race([work, cancelled]);
+    return settled ? work : Promise.race([work, cancelled]);
+  }
+  const placementRead = (instance, signal, settled = false) => instanceOK(instance) ? run("placements", `/ui/effects/placements?instance=${encodeURIComponent(instance)}&ownerEpoch=${ownerEpoch}`, checkEffectPlacements, signal, settled) : Promise.resolve(null);
+  function resourceRead(input, signal, settled = false) {
+    const spec = data(input);
+    if (!subset(spec, ["id", "instance", "slot"]) || typeof spec.id !== "string" || !ID.test(spec.id) || (spec.instance !== undefined) === (spec.slot !== undefined) || spec.instance !== undefined && !instanceOK(spec.instance) || spec.slot !== undefined && !SLOTS.includes(spec.slot)) return Promise.resolve(null);
+    const id = spec.id, scope = spec.instance !== undefined ? `instance=${encodeURIComponent(spec.instance)}` : `slot=${encodeURIComponent(spec.slot)}`;
+    return run("resource", `/ui/effects/resource/${id}?${scope}&ownerEpoch=${ownerEpoch}`, value => checkEffectResource(value, id), signal, settled);
   }
   return { ok: true,
     owner(signal) { return run("placements", `/ui/effects/owner?ownerEpoch=${ownerEpoch}`, checkEffectOwnerSlots, signal); },
-    placements(instance, signal) { return instanceOK(instance) ? run("placements", `/ui/effects/placements?instance=${encodeURIComponent(instance)}&ownerEpoch=${ownerEpoch}`, checkEffectPlacements, signal) : Promise.resolve(null); },
-    resource(input, signal) {
-      const spec = data(input);
-      if (!subset(spec, ["id", "instance", "slot"]) || typeof spec.id !== "string" || !ID.test(spec.id) || (spec.instance !== undefined) === (spec.slot !== undefined) || spec.instance !== undefined && !instanceOK(spec.instance) || spec.slot !== undefined && !SLOTS.includes(spec.slot)) return Promise.resolve(null);
-      const id = spec.id, scope = spec.instance !== undefined ? `instance=${encodeURIComponent(spec.instance)}` : `slot=${encodeURIComponent(spec.slot)}`;
-      return run("resource", `/ui/effects/resource/${id}?${scope}&ownerEpoch=${ownerEpoch}`, value => checkEffectResource(value, id), signal);
-    },
+    placements(instance, signal) { return placementRead(instance, signal); },
+    resource(input, signal) { return resourceRead(input, signal); },
+    // Host scheduler seams: logical abort is prompt; these promises retain ownership until physical cleanup.
+    placementsSettled(instance, signal) { return placementRead(instance, signal, true); },
+    resourceSettled(input, signal) { return resourceRead(input, signal, true); },
     dispose() { if (dead) return; dead = true; for (const p of pending) p.abort(); releaseWindow(); },
   };
 }
