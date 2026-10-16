@@ -19,9 +19,10 @@ let safe = readSafe();
 let active = null;
 let installed = false;
 // B2: admission uses positive observed lifecycle, never active===null as proof of absence.
-export const ownerCssLifecycle = createStore(Object.freeze({ state: "unknown", generation: 0, reason: "unverified" }));
+const lifeStore = createStore(Object.freeze({ state: "unknown", generation: 0, reason: "unverified" }));
+export const ownerCssLifecycle = Object.freeze({ get: lifeStore.get, subscribe: lifeStore.subscribe });
 let lifeGeneration = 0, linkGeneration = 0, ownedLink = null, linkState = "unknown", sourceState = "unknown";
-function life(state, reason) { ownerCssLifecycle.set(() => Object.freeze({ state, generation: ++lifeGeneration, reason })); }
+function life(state, reason) { lifeStore.set(() => Object.freeze({ state, generation: ++lifeGeneration, reason })); }
 
 
 /** This load is in safe mode (?safe=1): no owner CSS — and, as they come, no widgets or effects and default themes. */

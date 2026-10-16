@@ -32,7 +32,7 @@ describe("owner CSS lifecycle admission", () => {
     const f=await boot({ evidence }); expect(f.link()).toBeNull(); expect(f.css.ownerCssLifecycle.get()).toMatchObject({ state:"unknown" });
   });
   it("only explicit host-off plus physical absence proves off; snapshots are immutable", async () => {
-    const f=await boot({ evidence:"off" }); const state=f.css.ownerCssLifecycle.get(); expect(state).toMatchObject({state:"off",reason:"host_off"}); expect(Object.isFrozen(state)).toBe(true); expect(f.link()).toBeNull();
+    const f=await boot({ evidence:"off" }); const state=f.css.ownerCssLifecycle.get(); expect(state).toMatchObject({state:"off",reason:"host_off"}); expect(Object.isFrozen(state)).toBe(true); expect(Object.isFrozen(f.css.ownerCssLifecycle)).toBe(true); expect(f.css.ownerCssLifecycle.set).toBeUndefined(); expect(f.link()).toBeNull();
   });
   it("boot off is revoked before a held refresh; a stale/unknown reply cannot restore it", async () => {
     const f=await boot({ evidence:"off",hold:true }); expect(f.css.ownerCssLifecycle.get().state).toBe("unknown");
@@ -55,6 +55,10 @@ describe("owner CSS lifecycle admission", () => {
     const unsub=f.css.ownerCssLifecycle.subscribe((s:any)=>observed.push({state:s.state,href:f.link()?.getAttribute('href')}));
     f.css.setOwnerCssActive(B); const next=f.link();expect(next).not.toBe(old);expect(old.isConnected).toBe(false);expect(observed[0]).toEqual({state:'unknown',href:`/ui/owner-css.css?v=${A}`});
     f.loaded(old);old.dispatchEvent(new g.Event('error'));expect(f.css.ownerCssLifecycle.get().state).toBe('loading');f.loaded(next);expect(f.css.ownerCssLifecycle.get().state).toBe('on');unsub();
+  });
+  it("a failing pre-change consumer cannot let a new stylesheet reach the document", async () => {
+    const f=await boot({active:A,evidence:'on'});f.loaded();const old=f.link(),unsub=f.css.ownerCssLifecycle.subscribe(()=>{throw Error('consumer failed')});
+    try{expect(()=>f.css.setOwnerCssActive(B)).toThrow('consumer failed');expect(f.link()).toBe(old);expect(old.isConnected).toBe(true);expect(old.getAttribute('href')).toBe(`/ui/owner-css.css?v=${A}`);expect(f.css.ownerCssLifecycle.get().state).toBe('unknown');}finally{unsub();}
   });
   it("switch off is observed only after physical removal; late loads cannot turn it on", async () => {
     const f=await boot({active:A,evidence:'on'});const old=f.link();f.loaded();f.css.setOwnerCssOffHere(true);expect(f.css.ownerCssLifecycle.get().state).toBe('off');expect(f.link()).toBeNull();f.loaded(old);expect(f.css.ownerCssLifecycle.get().state).toBe('off');
