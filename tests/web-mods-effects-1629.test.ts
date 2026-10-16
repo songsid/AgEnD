@@ -103,6 +103,6 @@ describe("effects in an agent's export", () => {
     const checked = B.checkModBundle(text, ctx());
     expect(checked.ok, JSON.stringify(!checked.ok && checked.problems)).toBe(true);
     if (checked.ok) expect(checked.mod.effects.map(e => e.summary.id)).toEqual([own]);
-    expect(Object.keys(JSON.parse(text).files).filter((p: string) => p.startsWith("effects/")), "only its own entry's files").toEqual(["effects/fixture/effect.json", "effects/fixture/worker.js"]);
+    expect(Object.keys(JSON.parse(text).files).filter((p: string) => p.startsWith("effects/")).sort(), "only its own entry's files").toEqual(["effects/fixture/effect.json", "effects/fixture/worker.js"]);
   });
 });
