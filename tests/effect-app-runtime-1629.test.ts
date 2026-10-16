@@ -1,4 +1,4 @@
-/** Unmounted host owner/contribution tests. Registry/loader are mocked here; their physical/cap suites are separate. */
+/** Host owner/contribution tests. Registry/loader are mocked here; their physical/cap suites are separate. */
 import { describe, expect, it, vi } from "vitest";
 import { isServedAsset } from "../src/auth-api.js";
 const { createAppEffectRuntime } = await import(new URL("../src/ui/shared/effect-app-runtime.js", import.meta.url).href);
@@ -24,11 +24,11 @@ function rig(prepare: (h: any) => void = () => {}) {
   const h: any = { host, values, loader, registry, collectors, context, observation, globalChange, placement, listeners, events, at(t: number) { now = t; }, stale() { live = false; }, signOut() { ended = true; for (const fn of [...listeners]) fn(); }, options: () => options };
   prepare(h);
   h.factories = { loader: vi.fn((o: any) => h.realLoader ? createEffectRuntimeLoader(o) : loader), registry: vi.fn((o: any) => { options = o; return registry; }), safety: vi.fn(), stock: vi.fn(() => ({ ok: true })), collector: collect };
-  h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, factories: h.factories });
+  h.api = createAppEffectRuntime({ window: host, current: () => h.current ? h.current() : live, observe: () => h.observe ? h.observe() : observation, onChange: globalChange, onDispose: h.onDispose, factories: h.factories });
   h.chat = (name = "own", patch: any = {}) => { const part: any = { element: { isConnected: true }, current: () => true, observe: () => ({ state: "working" }), onChange: vi.fn(), ...patch }; part.api = h.api.attachChat({ name, ...part }); return part; };
   return h;
 }
-describe("#1629 one unmounted app-owned effect pool", () => {
+describe("#1629 one app-owned effect pool", () => {
   it("serves the static core for the session-only app bridge", () => expect(isServedAsset("effect-app-runtime.js")).toBe(true));
   it.each(["public", "poll", "view", "header", "epoch", "auth", "ended"])("%s cannot create participants", fault => {
     const h = rig(h => {
@@ -161,6 +161,10 @@ describe("#1629 one unmounted app-owned effect pool", () => {
     h.api.detachChat(); h.registry.publish.mockClear(); h.api.reply({ instance: "b" }); h.api.changedChat(); expect(h.registry.publish).not.toHaveBeenCalled(); expect(a.api.snapshot().effects).toEqual([]); h.api.dispose();
   });
 
+  it("the app driver is notified exactly once after all participant cleanup, even if it throws", () => {
+    const done = vi.fn(); const h = rig(h => { h.onDispose = () => { expect(h.registry.dispose).toHaveBeenCalledOnce(); expect(h.loader.dispose).toHaveBeenCalledOnce(); done(); throw Error("driver"); }; });
+    h.api.dispose(); h.api.dispose(); expect(done).toHaveBeenCalledOnce();
+  });
   it("a current predicate attaching B cannot make the outer pass discard B instead of A", async () => {
     const h = rig(); let replace = false, nested: any = null;
     const a = h.chat("a", { current: () => { if (replace) { replace = false; nested = h.chat("b"); } return true; } }); await flush();

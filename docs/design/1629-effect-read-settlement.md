@@ -13,7 +13,7 @@ A successful projection is checked again against the original monotonic deadline
 
 ## Integration boundary
 
-These seams have **no product caller yet**. The next app-owned controller will keep one metadata operation while retiring a Chat contribution, then start the next current contribution after physical settlement; all resources must use the same registry/loader capacity. Route/UI cleanup must not await this promise or create a second pool. Never retry a failed authorization using a different scope.
+The app-owned controller now uses these seams: it keeps one metadata operation while retiring a Chat contribution, then starts the next current contribution after physical settlement; all resources use the same registry/loader capacity. Route/UI cleanup must not await this promise or create a second pool. Never retry a failed authorization using a different scope.
 
 If a broken fetch/read/cancel ignores abort and never settles, a settled promise deliberately remains pending and retains capacity. The UI still uses prompt logical cancellation; the scheduler must not pretend physical work ended. Reload is the existing recovery. No retry, polling, timeout extension or unbounded new request is introduced.
 

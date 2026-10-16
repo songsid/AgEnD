@@ -1,4 +1,4 @@
-/** #1629: unmounted app-owned pool; Chat contributes a lease, never another registry/loader. */
+/** #1629: app-owned pool; Chat contributes a lease, never another registry/loader. */
 import { createEffectRuntimeLoader } from "./effect-runtime-loader.js";
 import { createEffectRegistry } from "./effect-registry.js";
 import { createEffectSafety } from "./effect-safety.js";

@@ -17,6 +17,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   if (!chatEffectIdentity(host) || typeof host.AgendAuth?.onSessionEnd !== "function" || typeof host.AgendAuth?.sessionEnded !== "function") return null;
   const doc = host.document, releases = [], ended = new Set(); let replyOff = null, replyStore = null;
   const safe = fn => { try { return fn(); } catch { return null; } };
+  const hold = off => { if (entry.dead) safe(() => off?.()); else releases.push(off); };
   const entry = { dead: false, api: null,
     gates: () => context(),
     onEnd(fn) { if (typeof fn !== "function") return () => {}; if (entry.dead) { safe(fn); return () => {}; } ended.add(fn); return () => ended.delete(fn); },
@@ -24,7 +25,10 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (entry.dead || value === replyStore) return;
       safe(() => replyOff?.()); replyOff = null; replyStore = value;
       entry.api?.detachChat();
-      if (typeof value?.onAgentReply === "function") replyOff = value.onAgentReply(event => { if (!entry.dead && replyStore === value) entry.api?.reply(event); });
+      if (typeof value?.onAgentReply === "function") {
+        const off = value.onAgentReply(event => { if (!entry.dead && replyStore === value) entry.api?.reply(event); });
+        if (entry.dead || replyStore !== value) safe(() => off?.()); else replyOff = off;
+      }
     },
     attachChat(options) {
       const nav = navStore.get(), name = options?.name;
@@ -50,6 +54,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       modal: !!doc.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: null };
   }
   try {
+    if (appStore.get().connection === "ended") { entry.dispose(); return null; }
     preview = host.AgendPreview;
     media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true };
     coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
@@ -58,21 +63,23 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     if (entry.dead || !entry.api.ok) { entry.dispose(); return null; }
     const sync = () => { if (!entry.dead) entry.api.sync(); };
     let revision = appStore.get().themesRev, navSeq = navStore.get().seq;
-    releases.push(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; entry.api.detachChat(); }));
-    releases.push(appStore.subscribe(value => {
+    hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; entry.api.detachChat(); }));
+    hold(appStore.subscribe(value => {
       if (entry.dead) return;
       if (value.connection === "ended") { entry.dispose(); return; }
       if (value.themesRev !== revision) { revision = value.themesRev; entry.api.changedChat(); } else sync();
     }));
-    releases.push(ownerCssLifecycle.subscribe(sync), themesStore.subscribe(sync), onPrefsChanged(sync));
-    if (typeof preview?.onChange === "function") releases.push(preview.onChange(sync));
-    if (typeof host.AgendTheme?.onChange === "function") releases.push(host.AgendTheme.onChange(sync));
+    hold(ownerCssLifecycle.subscribe(sync)); hold(themesStore.subscribe(sync)); hold(onPrefsChanged(sync));
+    if (typeof preview?.onChange === "function") hold(preview.onChange(sync));
+    if (typeof host.AgendTheme?.onChange === "function") hold(host.AgendTheme.onChange(sync));
     for (const [target, type] of [[media, "change"], [coarse, "change"], [doc, "visibilitychange"], [host, "resize"], [host.navigator?.connection, "change"]]) {
-      if (target?.addEventListener) { target.addEventListener(type, sync); releases.push(() => target.removeEventListener(type, sync)); }
+      if (target?.addEventListener) { target.addEventListener(type, sync); hold(() => target.removeEventListener(type, sync)); }
     }
+    if (entry.dead) return null;
     let modal = context().modal;
     const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(() => { if (entry.dead) return; const value = context().modal; if (value === modal) return; modal = value; sync(); }) : null;
-    releases.push(() => barriers?.disconnect());
+    hold(() => barriers?.disconnect());
+    if (entry.dead) return null;
     barriers?.observe(doc.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "open", "hidden", "role"] });
     entry.bindStore(store); sync();
     return getAppEffects(host);
