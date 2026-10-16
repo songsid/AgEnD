@@ -196,6 +196,7 @@ import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WebAppearance } from "./web-appearance.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
+import { WebEffectTrials } from "./web-effect-trials.js";
 import { WebEffectService } from "./web-effect-service.js";
 import { WebEffectProfiles } from "./web-effect-profiles.js";
 import { WebEffectTools, WEB_EFFECT_TOOLS } from "./web-effect-tools.js";
@@ -1324,11 +1325,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private effectLibraryInstance?: WebEffectLibrary;
+  private effectTrialsInstance?: WebEffectTrials;
   /** Lazy, single-owner storage. Register every host reference source before any operation can collect. */
   get effectLibrary(): WebEffectLibrary {
     if (!this.effectLibraryInstance) {
       const library = new WebEffectLibrary(this.dataDir);
-      // Providers are lazy; publish only after all three registrations succeed.
+      // Providers are lazy; publish only after every registration succeeds.
       library.registerReferenceSource("themes", () => {
         if (!this.themeStore.readable()) throw new Error("themes_unreadable");
         return this.themeStore.placedEffects().flatMap(row => row.ids.map(id => ({ id, holder: `instance:${row.name}` })));
@@ -1339,16 +1341,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (mods.unreadable) throw new Error("mods_unreadable");
         return mods.mods.flatMap(mod => mod.effects.map(effect => ({ id: effect.id, holder: `mod:${mod.id}` })));
       });
+      this.effectTrialsInstance = new WebEffectTrials({ library, known: name => this.isKnownInstance(name) });
       this.effectLibraryInstance = library;
     }
     return this.effectLibraryInstance;
   }
+  /** Volatile Try owner shares this library; no tool emits offers until the card adapter lands. */
+  get effectTrials(): WebEffectTrials { if (!this.effectTrialsInstance) void this.effectLibrary; return this.effectTrialsInstance!; }
 
   private effectProfilesInstance?: WebEffectProfiles;
   get effectProfiles(): WebEffectProfiles { return (this.effectProfilesInstance ??= new WebEffectProfiles(this.dataDir)); }
   private effectServiceInstance?: WebEffectService;
   get effectService(): WebEffectService {
-    return (this.effectServiceInstance ??= new WebEffectService({ library: this.effectLibrary, themes: this.themeStore, profiles: this.effectProfiles, prefs: this.webPrefs,
+    return (this.effectServiceInstance ??= new WebEffectService({ library: this.effectLibrary, themes: this.themeStore, profiles: this.effectProfiles, prefs: this.webPrefs, trials: this.effectTrials,
       known: name => this.isKnownInstance(name), changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* next status carries revision */ } } }));
   }
 

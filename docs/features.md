@@ -1222,6 +1222,6 @@ explicit click by a signed-in local admin may start it, with a visible Trial lab
 agents and header tokens cannot start it. Closing the panel, navigating, window blur or another menu/dialog stops
 it. Custom CSS must be off; the usual caps, profiler and safety stops remain, and ordinary foreground effects stay
 suppressed. Offers last at most ten minutes, trials are session/epoch-bound, and each read rechecks the origin
-agent's current own/shared access. No saved placement, claim, share or export is created. Only the volatile server
-authority foundation is present; the card and clipped stage still require integration. See the
+agent's current own/shared access. No saved placement, claim, share or export is created. The volatile server
+authority and local-admin API are present; the card and clipped stage still require integration. Try writes no saved profile record. See the
 [Try boundary](design/1629-effect-trial-authority.md).

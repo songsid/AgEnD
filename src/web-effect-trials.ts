@@ -1,4 +1,4 @@
-/** #1629: volatile Try authority. Unmounted: no tool, route, card or frame starts a trial yet. */
+/** #1629: volatile Try authority. Local-admin API exists; offer cards and playback remain disconnected. */
 import { randomBytes } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { canonicalText } from "./web-theme.js";
@@ -151,17 +151,18 @@ export class WebEffectTrials {
     });
   }
   /** Future CSRF-protected POST only, after an explicit local-admin click. Never a tool or GET. */
-  start(offer: string, instance: string, viewer: unknown): { ok: true; trial: string; offer: Readonly<EffectTrialOffer> } | Failure {
+  start(offer: string, instance: string, viewer: unknown): { ok: true; trial: string; offer: Readonly<EffectTrialOffer>; remainingMs: number } | Failure {
     return this.run(() => {
       const a = actor(viewer), o = this.offers.get(offer);
       if (!a || !o || o.instance !== instance || !this.readable(o)) return denied();
       const old = [...this.trials.values()].find(t => t.actor.sessionHash === a.sessionHash);
       if (!old && this.trials.size >= LIMIT) return { ok: false as const, error: "trial_capacity" as const };
       const token = randomBytes(16).toString("hex");
-      if (this.trials.has(token) || this.clock() >= o.until || this.dead) return denied();
+      const remainingMs = Math.floor(o.until - this.clock());
+      if (this.trials.has(token) || remainingMs <= 0 || this.dead) return denied();
       if (old) this.trials.delete(old.token);
       this.trials.set(token, Object.freeze({ token, offer: o, actor: a }));
-      return { ok: true as const, trial: token, offer: o.public };
+      return { ok: true as const, trial: token, offer: o.public, remainingMs };
     });
   }
   /** Each image/code/profile authorization supplies a FRESH verified viewer. Knowing a token is insufficient. */

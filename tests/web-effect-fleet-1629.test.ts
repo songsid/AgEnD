@@ -141,6 +141,29 @@ describe("#1629 real Fleet effect tool integration", () => {
     expect(() => f.fm.effectLibrary).toThrow("registration failed"); expect(f.fm.effectLibraryInstance).toBeUndefined(); spy.mockRestore();
     expect(await upload(f)).toEqual(expect.any(String));
   });
+  it("registers the single volatile trial owner before publishing the library and leaves the tool unavailable", async () => {
+    const f = await fixture(), names: string[] = [], original = WebEffectLibrary.prototype.registerReferenceSource;
+    const registration = vi.spyOn(WebEffectLibrary.prototype, "registerReferenceSource").mockImplementation(function (this: WebEffectLibrary, name, source) {
+      expect(f.fm.effectLibraryInstance).toBeUndefined(); names.push(name); return original.call(this, name, source);
+    });
+    const library = f.fm.effectLibrary; expect(names).toEqual(["themes", "prefs", "mods", "effect-trials"]); registration.mockRestore();
+    expect(f.fm.effectTrials).toBe(f.fm.effectTrials); expect(f.fm.effectLibrary).toBe(library);
+    const id = await upload(f), offered = f.fm.effectTrials.offer("own", id); expect(offered.ok).toBe(true);
+    expect(f.fm.effectTrials.offer("other", id)).toEqual({ ok: false, error: "trial_unavailable" });
+    expect(library.deleteClaim(id, { kind: "agent", id: "own" })).toMatchObject({ error: "effect_in_use" });
+    expect(await f.op("own", "effect-preview", { id })).toMatchObject({ error: "effects_unavailable" });
+    const viewer = { via: "session", surface: "local", tier: "admin", sessionHash: "a".repeat(64), epoch: "b".repeat(16), person: OPERATOR, ownerCss: "off" };
+    const started = f.fm.effectService.trialStart(offered.offer.offer, "own", viewer); expect(started).toMatchObject({ trial: expect.stringMatching(/^[0-9a-f]{32}$/) });
+    expect(f.fm.effectService.trialResource(started.trial, "own", viewer)).toMatchObject({ id, code: "agend.ready()" });
+  });
+  it("a failed fourth provider publishes neither library nor trial owner; retry starts a fresh complete owner", async () => {
+    const f = await fixture(), original = WebEffectLibrary.prototype.registerReferenceSource;
+    const registration = vi.spyOn(WebEffectLibrary.prototype, "registerReferenceSource").mockImplementation(function (this: WebEffectLibrary, name, source) {
+      if (name === "effect-trials") throw Error("trial registration failed"); return original.call(this, name, source);
+    });
+    expect(() => f.fm.effectLibrary).toThrow("trial registration failed"); expect(f.fm.effectLibraryInstance).toBeUndefined(); expect(f.fm.effectTrialsInstance).toBeUndefined();
+    registration.mockRestore(); const owner = f.fm.effectTrials; expect(owner).toBe(f.fm.effectTrials); expect(await upload(f)).toEqual(expect.any(String));
+  });
 });
 describe("#1629 actual mod participant and collection", () => {
   it("installs using the real checker/library, releases only its holder and collects after the last placement drops", async () => {

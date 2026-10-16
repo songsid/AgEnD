@@ -1,9 +1,10 @@
 # #1629 volatile Try authority
 
-This is an **unmounted foundation**. `WebEffectTrials` and its independent display
-codec are not imported by product code. No new tool result, HTTP route, chat card,
-preview panel or frame starts a trial in this PR. The existing preview tool remains
-unavailable until the following adapters and physical stage have separate review.
+This records the authority foundation introduced without product imports in #1984.
+The [server adapter](1629-effect-trial-api.md) now connects it to the Fleet library
+and local-admin HTTP routes. No tool issues an offer, no card starts a trial and
+no frame is mounted yet. The preview tool remains unavailable until the card and
+physical stage have separate integration and review.
 
 ## Approved exception and required future mount
 
@@ -36,8 +37,8 @@ behavior. A Try is not Apply and creates no saved placement.
 
 - One `WebEffectTrials` owner registers `effect-trials` with the library **before**
   that library is published or collected. A duplicate registry is refused. The
-  future Fleet owner is responsible for construction, disposal and reference
-  provider ordering; that wiring is not in this PR.
+  Fleet owner is responsible for construction, disposal and reference provider
+  ordering, implemented by the separate server adapter.
 - `offer(instance, id)` verifies a known origin and the agent's current own/shared
   library access. On future tool wiring, appearance locks and agent-edit policy
   must be checked first. At most one live offer per instance and 128 globally;
