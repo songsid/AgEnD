@@ -1248,4 +1248,4 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .s-fx-chat, .s-fx-params label:not(.check) { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
 .s-fx-chat { margin: var(--s-2) 0; }
 .s-fx-params { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0; max-width: 100%; }
-.s-fx-target, .s-fx-params input:not([type=checkbox]), .s-fx-params select { min-height: 36px; min-width: 0; max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-family: inherit; font-size: var(--fs-sm); }
+.s-fx-target, .s-fx-params input:not([type=checkbox]), .s-fx-params select { min-height: 36px; min-width: 0; max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); }

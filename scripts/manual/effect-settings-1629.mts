@@ -41,8 +41,8 @@ try {
   server.listen(0, "127.0.0.1"); await once(server, "listening"); const port = (server.address() as any).port;
   for (const engine of (process.env.PROBE_ENGINES || "chromium,firefox,webkit").split(",")) {
     browser = await pw[engine].launch({ headless: true, env: { HOME: join(scratch, "home"), TMPDIR: join(scratch, "tmp"), PATH: "/usr/bin:/bin", LANG: "C.UTF-8" } });
-    for (const [lang, width, dark] of [["en", 1366, false], ["zh-TW", 390, true]] as const) {
-      const context = await browser.newContext({ viewport: { width, height: 900 } }), page = await context.newPage(), errors: string[] = [], outside: string[] = [], resources: string[] = [];
+    for (const [lang, width, dark, touch] of [["en", 1366, false, false], ["zh-TW", 390, true, false], ["en", 1366, false, true]] as const) {
+      const context = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: touch }), page = await context.newPage(), errors: string[] = [], outside: string[] = [], resources: string[] = [];
       page.on("pageerror", (e: Error) => errors.push(e.message));
       await page.route("**/*", (r: any) => { const u = new URL(r.request().url()); resources.push(u.pathname); if (u.hostname === "127.0.0.1" && u.port === String(port)) return r.continue(); outside.push(u.origin); return r.abort(); });
       const start = calls.length;
@@ -57,12 +57,14 @@ try {
         await page.locator(".s-fx-target").selectOption("worker"); await page.locator('[data-param="count"]').fill("3");
         await page.locator(".s-fx-apply").click(); await page.waitForFunction(() => !document.querySelector<HTMLButtonElement>('.s-fx-apply')?.disabled);
         assert.deepEqual(calls.slice(start).find(c => c.path === "/ui/effects/apply")?.body, { instance: "worker", id, params: { count: 3 } });
-        const bounds = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, frames: document.querySelectorAll('iframe').length, inline: document.querySelectorAll('[style]').length, fieldFonts: [...document.querySelectorAll('input,select,textarea')].map(el => parseFloat(getComputedStyle(el).fontSize)) }));
+        const bounds = await page.evaluate(() => ({ coarse: matchMedia("(pointer:coarse)").matches, bodyFont: parseFloat(getComputedStyle(document.body).fontSize), width: innerWidth, scroll: document.documentElement.scrollWidth, frames: document.querySelectorAll('iframe').length, inline: document.querySelectorAll('[style]').length, fieldFonts: [...document.querySelectorAll('.s-fx-target,.s-fx-params input:not([type=checkbox]),.s-fx-params select')].map(el => parseFloat(getComputedStyle(el).fontSize)) }));
         assert.ok(bounds.scroll <= bounds.width, JSON.stringify(bounds)); assert.equal(bounds.frames, 0); assert.equal(bounds.inline, 0);
-        if (width < 900) assert.ok(bounds.fieldFonts.every((size: number) => size >= 16), JSON.stringify(bounds.fieldFonts));
+        if (touch) assert.equal(bounds.coarse, true);
+        if (width < 900 || bounds.coarse) assert.ok(bounds.fieldFonts.every((size: number) => size >= 16), JSON.stringify(bounds.fieldFonts));
+        else assert.ok(bounds.fieldFonts.every((size: number) => size === bounds.bodyFont), JSON.stringify(bounds));
         assert.ok(!resources.some(p => p.startsWith("/ui/effects/resource/"))); assert.deepEqual(errors, []); assert.deepEqual(outside, []);
-        await page.screenshot({ path: join(out, `${engine}-${lang}-${width}.png`), fullPage: true });
-        rows.push({ engine, lang, width, dark, passed: true, uploadFiles: upload.body.map((f: any) => f.path), bounds });
+        await page.screenshot({ path: join(out, `${engine}-${lang}-${width}${touch ? "-touch" : ""}.png`), fullPage: true });
+        rows.push({ engine, lang, width, dark, touch, passed: true, uploadFiles: upload.body.map((f: any) => f.path), bounds });
       } finally { await context.close(); }
     }
     await browser.close(); browser = null;

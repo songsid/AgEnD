@@ -57,7 +57,7 @@ PW_DIR=/path/to/private-tools OUT_DIR=.artifacts/settings-native \
 The recipe serves the real source module/styles from a scratch loopback server,
 uses mocked catalog/write responses (not real authentication), and checks native
 directory selection, exact Worker bytes without execution, typed apply, zero
-frames/resource fetches, horizontal bounds, and the phone controls’ computed 16 px font floor. It records Chromium, Firefox and
-Linux WebKit at EN/1366/light and zh-TW/390/dark. Linux WebKit is not real Safari;
+frames/resource fetches, horizontal bounds, and the phone/coarse-pointer controls’ computed 16 px font floor while desktop sizing stays inherited. It records Chromium, Firefox and
+Linux WebKit at EN/1366/light, zh-TW/390/dark, and EN/1366/coarse-pointer. Linux WebKit is not real Safari;
 this is a card-level smoke, not a full-shell or product-runtime proof. It leaves
 screenshots/receipts under the chosen output and removes its private browser HOME.
