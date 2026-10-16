@@ -1,4 +1,5 @@
 /** #1629: bounded host HTTP projection. No product startup, frame, content event or retry. */
+import { checkStaticEffectPoster } from "./effect-poster-reader.js";
 const loaders = new WeakMap();
 const ID = /^[a-f0-9]{32}$/, EPOCH = /^[a-f0-9]{16}$/, PARAM = /^[a-z][a-z0-9_]{0,31}$/;
 const REGIONS = ["chat", "sidebar", "header", "page", "box"], WANTS = ["pointer", "state", "reply", "mention", "theme"];
@@ -118,6 +119,14 @@ export function checkEffectResource(input, expectedId) {
   return { id: x.id, manifest: x.manifest, params: x.params, wants: x.wants, code: x.code, assets };
 }
 
+/** Static host cursor only. Native decode/hotspot checks remain the mount controller's responsibility. */
+export function checkStaticEffectCursor(bytes) {
+  if (!(bytes instanceof Uint8Array) || bytes.length > 32768) return null;
+  const image = checkStaticEffectPoster(bytes); if (!image) return null;
+  const view = new DataView(image.buffer, image.byteOffset, image.byteLength), width = view.getUint32(16), height = view.getUint32(20);
+  return width >= 1 && width <= 64 && height === width ? image : null;
+}
+
 /** The host freezes ownerEpoch/current at page creation; neither is taken from a response or an effect. */
 export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, onRevoke = () => {} } = {}) {
   if (!host || typeof host !== "object" || loaders.has(host) || typeof host.fetch !== "function" || typeof host.AbortController !== "function" || typeof host.setTimeout !== "function" || typeof host.clearTimeout !== "function" || typeof ownerEpoch !== "string" || !EPOCH.test(ownerEpoch) || typeof current !== "function" || typeof onRevoke !== "function") return { ok: false };
@@ -134,11 +143,11 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
   const now = () => { let t; try { t = host.performance.now(); } catch { revoke("clock_unavailable"); return null; } if (!finite(t) || t < 0 || previous !== null && t < previous) { revoke("clock_unavailable"); return null; } previous = t; return t; };
   const alive = () => { if (dead || revoked) return false; try { if (current() === true) return !dead && !revoked; } catch { /* unknown */ } revoke("owner_unavailable"); return false; };
   if (!alive() || now() === null) { dead = true; releaseWindow(); return { ok: false }; }
-  function run(kind, path, project, signal, settled = false) {
+  function run(kind, path, project, signal, settled = false, binary = false) {
     if (dead || revoked) return Promise.resolve(null);
     const began = now(); if (began === null) return Promise.resolve(null);
     if (!alive() || signal?.aborted || [...pending].filter(p => p.kind === kind).length >= (kind === "resource" ? 3 : 1)) return Promise.resolve(null);
-    const controller = new host.AbortController(), op = { kind, controller, abort: null }, limit = kind === "placements" ? 256 * 1024 : WIRE; pending.add(op);
+    const controller = new host.AbortController(), op = { kind, controller, abort: null }, limit = binary ? 32768 : kind === "placements" ? 256 * 1024 : WIRE; pending.add(op);
     let release, reader = null, body = null, cancellation = null, timer = null, wasAborted = false;
     // Cache the actual cancellation, but not a pre-response no-op: a late response still owns its body.
     const cancelBody = () => {
@@ -156,7 +165,7 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
       body = response.body;
       if (!valid()) return null;
       if ([401, 403, 409].includes(response.status)) { revoke("authorization_rejected"); return null; }
-      if (!response.ok || response.redirected || !/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") || "")) return null;
+      if (!response.ok || response.redirected || !((binary ? /^image\/png(?:\s*;|$)/i : /^application\/json(?:\s*;|$)/i).test(response.headers.get("content-type") || ""))) return null;
       const length = response.headers.get("content-length");
       if (length !== null && (!/^(0|[1-9][0-9]*)$/.test(length) || !integer(Number(length), 0, limit))) return null;
       if (!body || typeof body.getReader !== "function") return null;
@@ -168,7 +177,7 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
         chunks.push(part.value.slice());
       }
       const bytes = new Uint8Array(size); let offset = 0; for (const part of chunks) { bytes.set(part, offset); offset += part.length; }
-      let value; try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return null; }
+      let value = bytes; if (!binary) { try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { return null; } }
       if (!valid()) return null;
       const answer = project(value); return valid() ? answer : null;
     }).catch(() => null).finally(async () => { controller.abort(); await cancelBody(); pending.delete(op); releaseWindow(); host.clearTimeout(timer); signal?.removeEventListener("abort", abort); }).then(value => {
@@ -195,6 +204,12 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
     ownerSettled(signal) { return ownerRead(signal, true); },
     placementsSettled(instance, signal) { return placementRead(instance, signal, true); },
     resourceSettled(input, signal) { return resourceRead(input, signal, true); },
+    // One binary physical lane in the same loader: no response-derived URL, code, metadata or ACL fallback.
+    cursorImageSettled(id, signal) {
+      return typeof id === "string" && ID.test(id)
+        ? run("cursor", `/ui/effects/image/${id}/cursor.png?slot=fx.cursor&ownerEpoch=${ownerEpoch}`, checkStaticEffectCursor, signal, true, true)
+        : Promise.resolve(null);
+    },
     dispose() { if (dead) return; dead = true; for (const p of pending) p.abort(); releaseWindow(); },
   };
 }

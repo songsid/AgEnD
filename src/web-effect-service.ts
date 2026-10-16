@@ -3,7 +3,7 @@ import { WebEffectLibrary } from "./web-effect-library.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WEB_EFFECT_ID, resolveEffectParams } from "./web-effect.js";
 import { effectRasterAssets } from "./web-effect-bundle.js";
-import { staticEffectPoster } from "./web-effect-poster.js";
+import { staticEffectPoster, staticEffectCursor } from "./web-effect-poster.js";
 import { decodeEffectFiles } from "./web-effect-upload.js";
 import type { WebEffectProfiles } from "./web-effect-profiles.js";
 import { isOwnerEffectKey, OWNER_EFFECT_KEYS, type OwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
@@ -134,7 +134,9 @@ export class WebEffectService {
   }
   ownerImage(person: string, id: string, kind: "poster" | "cursor", slot: unknown): { ok: true; bytes: Uint8Array } | { ok: false; error: "not_found" } {
     const r = this.ownerSelected(person, id, slot), bytes = r.ok ? r.entry.files.get(`${kind}.png`) : undefined;
-    return bytes ? { ok: true, bytes } : { ok: false, error: "not_found" };
+    // Runtime images are output copies; stripping animation must not rewrite the stored content id.
+    const image = bytes && (kind === "cursor" ? staticEffectCursor(bytes) : bytes);
+    return image ? { ok: true, bytes: image } : { ok: false, error: "not_found" };
   }
   private resourceAnswer(id: string, entry: import("./web-effect-bundle.js").CheckedWebEffect, params: Record<string, unknown>): Answer {
     return { id, manifest: entry.manifest, params, wants: entry.manifest.wants, code: new TextDecoder("utf-8", { fatal: true }).decode(entry.files.get("worker.js")!),

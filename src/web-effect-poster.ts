@@ -32,3 +32,10 @@ export function staticEffectPoster(bytes: Uint8Array): Uint8Array | null {
   }
   return null;
 }
+
+/** Cursor output keeps the default PNG image and the CW1 32-KiB / square 64-pixel limit. */
+export function staticEffectCursor(bytes: Uint8Array): Uint8Array | null {
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength > 32768) return null;
+  const size = imageSize(bytes, "png");
+  return size && size.width >= 1 && size.width <= 64 && size.height === size.width ? staticEffectPoster(bytes) : null;
+}
