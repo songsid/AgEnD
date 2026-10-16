@@ -6,6 +6,7 @@ import { effectRasterAssets } from "./web-effect-bundle.js";
 import { staticEffectPoster, staticEffectCursor } from "./web-effect-poster.js";
 import { decodeEffectFiles } from "./web-effect-upload.js";
 import type { WebEffectProfiles } from "./web-effect-profiles.js";
+import type { WebEffectTrials } from "./web-effect-trials.js";
 import { isOwnerEffectKey, OWNER_EFFECT_KEYS, type OwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 
 type Answer = Record<string, unknown>;
@@ -17,6 +18,7 @@ export interface EffectServiceDeps {
   themes: ThemeStore;
   profiles: WebEffectProfiles;
   prefs?: WebPrefsStore;
+  trials?: WebEffectTrials;
   known(name: string): boolean;
   changed(): void;
   monotonic?: () => number;
@@ -141,6 +143,30 @@ export class WebEffectService {
   private resourceAnswer(id: string, entry: import("./web-effect-bundle.js").CheckedWebEffect, params: Record<string, unknown>): Answer {
     return { id, manifest: entry.manifest, params, wants: entry.manifest.wants, code: new TextDecoder("utf-8", { fatal: true }).decode(entry.files.get("worker.js")!),
       assets: effectRasterAssets(entry).map(({ name, mime, bytes }) => ({ name, mime, data_b64: Buffer.from(bytes).toString("base64") })) };
+  }
+  /** Host-only trial routes supply a fresh verified actor, never a JSON body actor. No placement/claim writes. */
+  trialStart(offer: string, instance: string, viewer: unknown): Answer {
+    const t = this.deps.trials?.start(offer, instance, viewer); if (!t?.ok) return fail("not_found");
+    const r = this.deps.trials!.read(t.trial, instance, viewer);
+    const params = r.ok ? resolveEffectParams(r.entry.manifest) : null;
+    if (!r.ok || !params?.ok) { this.deps.trials!.stop(t.trial, viewer); return fail("not_found"); }
+    return { trial: t.trial, offer: t.offer, manifest: r.entry.manifest, params: params.values };
+  }
+  trialStop(trial: string, viewer: unknown): Answer {
+    return this.deps.trials?.stop(trial, viewer).ok ? { ok: true } : fail("not_found");
+  }
+  trialResource(trial: string, instance: string, viewer: unknown): Answer {
+    const r = this.deps.trials?.read(trial, instance, viewer); if (!r?.ok) return fail("not_found");
+    const params = resolveEffectParams(r.entry.manifest); if (!params.ok) return fail("not_found");
+    return this.resourceAnswer(r.id, r.entry, params.values);
+  }
+  trialPoster(trial: string, instance: string, viewer: unknown): { ok: true; bytes: Uint8Array } | { ok: false } {
+    const r = this.deps.trials?.read(trial, instance, viewer), source = r?.ok ? r.entry.files.get("poster.png") : undefined;
+    const bytes = source ? staticEffectPoster(source) : null;
+    return bytes ? { ok: true, bytes } : { ok: false };
+  }
+  trialProfile(trial: string, instance: string, viewer: unknown): Answer {
+    const r = this.deps.trials?.read(trial, instance, viewer); return r?.ok ? this.deps.profiles.read(r.id) : fail("not_found");
   }
   /** A runtime resource is not an export grant. An exact currently retained placement is independently required. */
   private retained(id: string, instance: string) {

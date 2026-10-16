@@ -224,8 +224,8 @@ The host owns a visible Trial label and Stop control. Closing the panel/sheet, n
 menu/dialog stops it. Custom CSS must be off (on/loading/unknown denies), and the same caps, profiler and safety
 stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes; every read
 rechecks the originating agent's current own/shared access, with the trial bound to the admin's session and epoch.
-There is no saved placement, claim, share or export side effect. The server authority foundation is unmounted:
-the chat card and clipped stage still need separate integration. Do not treat an offer id or ordinary reply button
+There is no saved placement, claim, share, export or new saved profile record. The server authority and local-admin
+API are present, but the chat card and clipped stage still need separate integration. Do not treat an offer id or ordinary reply button
 as permission to run or fetch an effect, and do not keep retrying an unavailable Try.
 
 

@@ -14,6 +14,7 @@ import { AGENT_WIDGET_SLOTS, checkWidgetData, checkWidgetSpec } from "./web-widg
 import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
 import { canonicalText } from "./web-theme.js";
 import type { WebEffectService } from "./web-effect-service.js";
+import type { EffectTrialActor } from "./web-effect-trials.js";
 import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { WebAppearance } from "./web-appearance.js";
@@ -46,7 +47,7 @@ import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
 import { newWebMessageId, parseLastEventId, type WebChatHistory } from "./web-chat-history.js";
 import { attachmentDelivery, displayName, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, sniffUpload, UPLOAD_LIMITS, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
-import type { WebSessionStore } from "./web-session.js";
+import type { WebSessionStore, SessionRecord } from "./web-session.js";
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
@@ -458,6 +459,65 @@ function handleEffectPosters(res: ServerResponse, url: URL, ctx: WebApiContext, 
     const result = service.posterPlacements(instance);
     json(res, result.error === "themes_unreadable" ? 503 : result.error ? 404 : 200, result);
   }
+  return true;
+}
+
+/** #1629 Try: separate local-admin routes. These never borrow ordinary read-tier/placement authority. */
+function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const reading = method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "trials_not_over_public_link" }); return true; }
+  const who = (): { actor: Omit<EffectTrialActor, "ownerCss"> & { ownerCss: "off" | "on" | "unknown" }; record: SessionRecord; sessions: WebSessionStore | null | undefined } | { error: string; status: number } => {
+    const sessions = ctx.webSessions;
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, sessions, { touch: false });
+    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 } as const;
+    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "trials_need_a_local_admin", status: 403 } as const;
+    const person = webPersonKey(v.session.owner);
+    let css: "off" | "on" | "unknown" = "unknown";
+    try { const value = ctx.ownerCss?.effectState(person); if (value === "off" || value === "on") css = value; } catch { /* unavailable is never off */ }
+    // CSS remains a checked runtime value. The authority refuses anything except off on start/read.
+    const actor = Object.freeze({ via: "session" as const, surface: "local" as const, tier: "admin" as const, sessionHash: v.session.idHash, epoch: v.session.handle, person, ownerCss: css });
+    return { actor, record: v.session, sessions };
+  };
+  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
+  const service = ctx.effectService; if (!service) { json(res, 404, { error: "trials_unavailable" }); return true; }
+  const start = path === "/ui/effect-trials/start";
+  const route = /^\/ui\/effect-trials\/([0-9a-f]{32})\/(resource|poster\.png|profile|stop)$/.exec(path);
+  const resource = reading && route && ["resource", "poster.png", "profile"].includes(route[2]!);
+  const stop = method === "POST" && route?.[2] === "stop";
+  if (!(resource || stop || method === "POST" && start)) { json(res, 404, { error: "not_found" }); return true; }
+  const allowed = resource ? ["ownerEpoch", "instance"] : ["ownerEpoch"];
+  if ([...url.searchParams.keys()].some(k => !allowed.includes(k)) || allowed.some(k => url.searchParams.getAll(k).length !== 1)
+    || url.searchParams.get("ownerEpoch") !== first.actor.epoch) { json(res, reading ? 404 : 409, { error: reading ? "not_found" : "trials_person_changed" }); return true; }
+  const instance = url.searchParams.get("instance") ?? "";
+  const answer = (result: Record<string, unknown>) => json(res, result.error ? result.error === "not_found" ? 404
+    : ["profiles_unreadable", "profiles_busy", "profiles_write_failed"].includes(String(result.error)) ? 503 : 400 : 200, result);
+  if (resource) {
+    if (route[2] === "poster.png") {
+      const result = service.trialPoster(route[1]!, instance, first.actor);
+      if (!result.ok) json(res, 404, { error: "not_found" });
+      else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(result.bytes); }
+    } else answer(route[2] === "profile" ? service.trialProfile(route[1]!, instance, first.actor) : service.trialResource(route[1]!, instance, first.actor));
+    return true;
+  }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, 16 * 1024); } catch { json(res, 413, { error: "trial_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.record !== first.record || now.sessions !== first.sessions || now.actor.sessionHash !== first.actor.sessionHash
+      || now.actor.person !== first.actor.person || now.actor.epoch !== first.actor.epoch) { json(res, 409, { error: "trials_person_changed" }); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "trial_json" }); return; }
+    if (start) {
+      const parsed = z.strictObject({ offer: z.string().regex(/^[0-9a-f]{32}$/), instance: z.string().min(1).max(128) }).safeParse(body);
+      if (!parsed.success) { json(res, 400, { error: "trial_args" }); return; }
+      answer(service.trialStart(parsed.data.offer, parsed.data.instance, now.actor));
+    } else {
+      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "trial_args" }); return; }
+      answer(service.trialStop(route![1]!, now.actor));
+    }
+  })().catch(() => { try { json(res, 500, { error: "trial_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
 
@@ -1251,6 +1311,7 @@ export function handleWebRequest(
   if (path === "/ui/effect-posters" || path.startsWith("/ui/effect-posters/")) return handleEffectPosters(res, url, ctx, path, method);
 
   // Canvas effects are absent from the public gateway manifest and independently refused above.
+  if (path === "/ui/effect-trials" || path.startsWith("/ui/effect-trials/")) return handleEffectTrials(req, res, url, ctx, path, method);
   if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
