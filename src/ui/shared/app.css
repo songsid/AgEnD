@@ -1275,3 +1275,10 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-card { position: relative; z-index: 1; }
 /* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
 .p-settings > .s-pending { z-index: 1; }
+
+/* #1629: host-owned local Trial panel. Only its canvas frame lives inside the paint-contained stage. */
+.effect-trial-head, .effect-trial-controls, .effect-trial-note { position: relative; z-index: 1; background: var(--bg); padding: var(--s-3); margin: 0; }
+.effect-trial-head { display: flex; align-items: center; gap: var(--s-2); border-bottom: 1px solid var(--border); }
+.effect-trial-head > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.effect-trial-body { flex: 1; min-height: 0; display: flex; padding: var(--s-3); }
+.effect-trial-stage { position: relative; z-index: 0; flex: 1; min-width: 0; min-height: 0; contain: paint; overflow: clip; padding: 0; border: 0; outline: none; box-shadow: none; }

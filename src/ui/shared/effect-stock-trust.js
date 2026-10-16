@@ -44,7 +44,9 @@ function panelSurface(doc, chat) {
     content: [...CONTENT.filter(selector => !selector.startsWith(".p-chat") && !selector.startsWith(".chat-main")),
       ...[...spec.required, ...spec.optional].map(selector => prefix + selector)] };
 }
-const BARRIERS = '[role=menu],[role=dialog],[role=alertdialog],[role=listbox],dialog[open],details[open],.toast,.pending-stack:not(.inline),.oc-keep,.shell.sb-open,.p-chat.dragging,.agend-session-ended,audio[controls],video[controls]';
+const BARRIERS = '[role=menu],[role=dialog],[role=alertdialog],[role=listbox],dialog[open],details[open],.toast,.pending-stack:not(.inline),.oc-keep,.shell.sb-open,.p-chat.dragging,.agend-session-ended,audio[controls],video[controls],.effect-trial-panel';
+/** Shared closed overlay list; a trial may exclude only its own positively identified panel. */
+export const STOCK_EFFECT_BARRIERS = BARRIERS;
 const finite = n => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= 1e7;
 const none = x => x === "" || x === undefined || x === "none";
 // The stock narrow header fades its own pixels inside its already bounded content context.
