@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
 vi.mock("node:child_process", async original => {
@@ -155,5 +155,109 @@ describe("#1629 actual mod participant and collection", () => {
     const r = install(f, "2.0.0", "// next", true); expect(r).toMatchObject({ ok: false });
     expect(f.fm.themeStore.get("own")).toEqual(before); expect(f.fm.mods.list().mods.map((x: { id: string }) => x.id)).toEqual([old.id]);
     expect(f.fm.effectLibrary.list({ kind: "human", id: OPERATOR }).entries.map((x: { id: string }) => x.id)).toEqual([oldId]);
+  });
+});
+
+describe("#1905 one mod effect-holder owner across people", () => {
+  function stageFor(f: Awaited<ReturnType<typeof fixture>>, person: string, version = "1.0.0", code = "agend.ready()") {
+    const r = f.fm.mods.stage(person, mod(version, code)); expect(r.ok, JSON.stringify(r)).toBe(true); return r;
+  }
+  function commitFor(f: Awaited<ReturnType<typeof fixture>>, person: string, s: any, include = { effects: true, replace: false }) {
+    return f.fm.mods.commit(person, { stage: s.stage, plan_hash: s.plan_hash, include });
+  }
+  function read(f: Awaited<ReturnType<typeof fixture>>, person: string, id: string) { return f.fm.effectLibrary.read(id, { kind: "human", id: person }).ok; }
+  function identityBundle() {
+    const source = JSON.parse(mod()); source.manifest.contents.identity = "identity.json";
+    const text = JSON.stringify({ tagline: "Fixture" }); source.files["identity.json"] = { sha256: createHash("sha256").update(text).digest("hex"), b64: Buffer.from(text).toString("base64") };
+    return JSON.stringify(source);
+  }
+  function installIdentity(f: Awaited<ReturnType<typeof fixture>>, person: string, bundle: string) {
+    const s = f.fm.mods.stage(person, bundle); expect(s.ok, JSON.stringify(s)).toBe(true);
+    const r = f.fm.mods.commit(person, { stage: s.stage, plan_hash: s.plan_hash, target: "own", include: { identity: true } }); expect(r.ok, JSON.stringify(r)).toBe(true); return r;
+  }
+  it("another person's same-bundle reapply creates no orphan and uninstall releases its only holder", async () => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    const id = f.fm.mods.list().mods[0].effects[0].id;
+    expect(commitFor(f, "bob", stageFor(f, "bob"))).toMatchObject({ ok: true, id: a.id });
+    expect(f.fm.themeStore.get("own").placements.effects).toEqual([]);
+    expect(f.fm.mods.list().mods[0]).toMatchObject({ installedBy: "alice", effectsBy: "alice" });
+    expect(read(f, "alice", id)).toBe(true); expect(read(f, "bob", id)).toBe(false);
+    expect(f.fm.mods.uninstall(a.id)).toMatchObject({ ok: true, released: [id] });
+    expect(read(f, "alice", id)).toBe(false); expect(read(f, "bob", id)).toBe(false);
+    expect(f.fm.effectLibrary.list({ kind: "human", id: "bob" })).toMatchObject({ entries: [] });
+  });
+  it("a different person's replacement releases the original holder and owns only the new version", async () => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    const old = f.fm.mods.list().mods[0].effects[0].id;
+    expect(commitFor(f, "bob", stageFor(f, "bob"))).toMatchObject({ ok: true });
+    const next = commitFor(f, "bob", stageFor(f, "bob", "2.0.0", "// next"), { effects: true, replace: true }); expect(next.ok).toBe(true);
+    const id = f.fm.mods.list().mods[0].effects[0].id;
+    expect(read(f, "alice", old)).toBe(false); expect(read(f, "bob", old)).toBe(false); expect(read(f, "bob", id)).toBe(true);
+    expect(f.fm.mods.uninstall(next.id)).toMatchObject({ ok: true }); expect(read(f, "bob", id)).toBe(false);
+  });
+  it("the first effects selection can belong to someone other than the bundle installer", async () => {
+    const f = await fixture(), bundle = identityBundle(); installIdentity(f, "alice", bundle);
+    const bob = f.fm.mods.stage("bob", bundle); expect(bob.ok).toBe(true);
+    expect(commitFor(f, "bob", bob)).toMatchObject({ ok: true });
+    const rec = f.fm.mods.list().mods[0], id = rec.effects[0].id;
+    expect(rec).toMatchObject({ installedBy: "alice", effectsBy: "bob" }); expect(read(f, "alice", id)).toBe(false); expect(read(f, "bob", id)).toBe(true);
+    const carol = f.fm.mods.stage("carol", bundle); expect(carol.ok).toBe(true); expect(commitFor(f, "carol", carol).ok).toBe(true); expect(read(f, "carol", id)).toBe(false);
+    expect(f.fm.mods.uninstall(rec.id)).toMatchObject({ ok: true, released: [id] }); expect(read(f, "bob", id)).toBe(false);
+  });
+  it("reopens older records without effectsBy using their original installedBy owner", async () => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    const file = join(f.dir, "web-mods.json"), document = JSON.parse(readFileSync(file, "utf8"));
+    const id = document.mods[a.id].effects[0].id; delete document.mods[a.id].effectsBy; writeFileSync(file, JSON.stringify(document)); f.fm.modStore = undefined;
+    expect(commitFor(f, "bob", stageFor(f, "bob"))).toMatchObject({ ok: true }); expect(read(f, "bob", id)).toBe(false);
+    expect(f.fm.mods.uninstall(a.id)).toMatchObject({ ok: true }); expect(read(f, "alice", id)).toBe(false);
+  });
+  it.each(["uninstall", "replace"])("older records release installedBy directly on %s", async action => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    const file = join(f.dir, "web-mods.json"), document = JSON.parse(readFileSync(file, "utf8")), id = document.mods[a.id].effects[0].id;
+    delete document.mods[a.id].effectsBy; writeFileSync(file, JSON.stringify(document)); f.fm.modStore = undefined;
+    const r = action === "uninstall" ? f.fm.mods.uninstall(a.id) : commitFor(f, "bob", stageFor(f, "bob", "2.0.0", "// next"), { effects: true, replace: true });
+    expect(r.ok, JSON.stringify(r)).toBe(true); expect(read(f, "alice", id)).toBe(false);
+  });
+  it("a concurrent first effects selection invalidates another person's staged ownership", async () => {
+    const f = await fixture(), bundle = identityBundle(); installIdentity(f, "alice", bundle);
+    const a = f.fm.mods.stage("carol", bundle), b = f.fm.mods.stage("bob", bundle); expect(a.ok).toBe(true); expect(b.ok).toBe(true);
+    expect(commitFor(f, "carol", a).ok).toBe(true);
+    // The installed boolean and immutable bundle id still match; only ownership changed during the staged wait.
+    expect(commitFor(f, "bob", b)).toMatchObject({ ok: false, error: "plan_changed" });
+    const rec = f.fm.mods.list().mods[0]; expect(rec.effectsBy).toBe("carol"); expect(read(f, "bob", rec.effects[0].id)).toBe(false);
+  });
+  it("replacement uses the effect owner even when another person originally installed the non-effect parts", async () => {
+    const f = await fixture(), bundle = identityBundle(); installIdentity(f, "alice", bundle);
+    const b = f.fm.mods.stage("bob", bundle); expect(b.ok).toBe(true); expect(commitFor(f, "bob", b).ok).toBe(true);
+    const id = f.fm.mods.list().mods[0].effects[0].id;
+    expect(commitFor(f, "carol", stageFor(f, "carol", "2.0.0", "// new"), { effects: true, replace: true }).ok).toBe(true);
+    expect(read(f, "bob", id)).toBe(false); expect(read(f, "alice", id)).toBe(false);
+  });
+  it("a failed cross-person replacement index write undoes only the new claims", async () => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    expect(commitFor(f, "bob", stageFor(f, "bob"))).toMatchObject({ ok: true });
+    const before = f.fm.mods.list().mods;
+    vi.spyOn(f.fm.mods, "commitIndex").mockReturnValue({ ok: false, status: 503, error: "index_failure" });
+    expect(commitFor(f, "bob", stageFor(f, "bob", "2.0.0", "// next"), { effects: true, replace: true })).toMatchObject({ ok: false, error: "index_failure" });
+    expect(f.fm.mods.list().mods).toEqual(before); expect(read(f, "alice", before[0].effects[0].id)).toBe(true); expect(f.fm.effectLibrary.list({ kind: "human", id: "bob" })).toMatchObject({ entries: [] });
+  });
+  it("a refused final release rolls back the new person's replacement and preserves the old owner", async () => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    expect(commitFor(f, "bob", stageFor(f, "bob"))).toMatchObject({ ok: true });
+    const before = f.fm.mods.list().mods;
+    vi.spyOn(f.fm.effectLibrary, "releaseHolder").mockReturnValue({ ok: false, error: "refused" });
+    expect(commitFor(f, "bob", stageFor(f, "bob", "2.0.0", "// next"), { effects: true, replace: true })).toMatchObject({ ok: false, error: "effects_release_refused" });
+    expect(f.fm.mods.list().mods).toEqual(before); expect(f.fm.effectLibrary.list({ kind: "human", id: "bob" })).toMatchObject({ entries: [] }); expect(read(f, "alice", before[0].effects[0].id)).toBe(true);
+  });
+  it("index-write failure restores released ownership and independent upload holders survive uninstall", async () => {
+    const f = await fixture(), a = commitFor(f, "alice", stageFor(f, "alice")); expect(a.ok).toBe(true);
+    const id = f.fm.mods.list().mods[0].effects[0].id;
+    const direct = f.fm.effectLibrary.stage(files(), { kind: "human", id: "bob" }); expect(direct.ok).toBe(true); expect(f.fm.effectLibrary.commit(direct.stageId).ok).toBe(true);
+    expect(commitFor(f, "bob", stageFor(f, "bob"))).toMatchObject({ ok: true });
+    const write = vi.spyOn(f.fm.mods, "commitIndex").mockReturnValue({ ok: false, status: 503, error: "index_failure" });
+    expect(f.fm.mods.uninstall(a.id)).toMatchObject({ ok: false, error: "index_failure" }); expect(read(f, "alice", id)).toBe(true); expect(read(f, "bob", id)).toBe(true); write.mockRestore();
+    expect(f.fm.mods.uninstall(a.id)).toMatchObject({ ok: true }); expect(read(f, "alice", id)).toBe(false); expect(read(f, "bob", id)).toBe(true);
+    const row = JSON.parse(readFileSync(join(f.dir, "web-effects.json"), "utf8")).entries[id];
+    expect(row.claims).toEqual([expect.objectContaining({ principal: { kind: "human", id: "bob" }, holders: ["upload"] })]);
   });
 });
