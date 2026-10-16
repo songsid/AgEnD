@@ -34,6 +34,8 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 ## 功能亮點
 
+✨ **2.2 新功能：** 在瀏覽器和 agent 聊天、集中列出所有等你處理的事、第二個 Claude 帳號，以及自帶的 Node。詳見 [2.2 更新重點](docs/release-notes/2.2.0.zh-TW.md) 與[升級指南](docs/upgrade-2.2.zh-TW.md)。
+
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram forum topic 或 Discord 頻道，就是一個獨立的 agent session。
 
 🔄 **多後端支援** — Claude Code、Codex、OpenCode、Kiro CLI、Antigravity CLI、Grok Build、Meta Muse Code，自由切換或混用。

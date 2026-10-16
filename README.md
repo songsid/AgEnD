@@ -34,6 +34,8 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 ## Feature Highlights
 
+✨ **New in 2.2:** chat with your agents in the browser, one list of everything that needs you, a second Claude account, and a bundled Node. See [What's new in 2.2](docs/release-notes/2.2.0.md) and the [upgrade guide](docs/upgrade-2.2.md).
+
 🚀 **Fleet Management** — One bot, N projects. Each Telegram forum topic or Discord channel is an isolated agent session.
 
 🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code. Switch or mix freely.
