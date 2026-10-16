@@ -26,12 +26,13 @@ async function fixture() {
 describe("stock trust/paint prerequisite", () => {
   it("is not a product import or served runtime asset; closed categories include the actual portal exceptions", async () => {
     const { m } = await fixture(); expect(isServedAsset("effect-stock-trust.js")).toBe(false);
-    expect(m.STOCK_TRUST_INVENTORY.map((s: any) => s.kind)).toEqual(["composer", "reply", "navigation", "header", "status", "usage", "widget", "permission", "menu", "session", "popover", "dialog", "lightbox", "tour", "keep", "toast", "confirmation", "preview", "preview-menu", "palette", "drop", "thread-control", "link", "attachment", "media", "session-ended"]);
+    expect(m.STOCK_TRUST_INVENTORY.map((s: any) => s.kind)).toEqual(["composer", "reply", "navigation", "header", "status", "usage", "widget", "card", "permission", "menu", "session", "popover", "dialog", "lightbox", "tour", "keep", "toast", "confirmation", "preview", "preview-menu", "palette", "drop", "thread-control", "link", "attachment", "media", "session-ended"]);
     expect(Object.isFrozen(m.STOCK_TRUST_INVENTORY)).toBe(true);
     expect(read("shared/app.js")).not.toContain("effect-stock-trust");
   });
   it("matches the actual fixed marker producers, including generated reply/poll HTML and direct-body portals", () => {
     for (const [file, kind] of [["panel-chat.js", "composer"], ["chat-thread.js", "reply"], ["shared/ui-menu.js", "menu"], ["shared/ui-dialog.js", "dialog"], ["image-lightbox.js", "lightbox"], ["shared/app-session.js", "session"], ["shared/owner-css.js", "keep"], ["shared/ui-toast.js", "toast"], ["shared/agent-widget.js", "widget"], ["panel-needs.js", "permission"], ["preview-panel.js", "preview"], ["shared/header-tools.js", "usage"]]) expect(read(file!), `${file}:${kind}`).toContain(`data-trust="${kind}"`);
+    expect(read("panel-chat.js")).toContain('<div data-trust="card"'); expect(read("panel-chat.js")).toContain('<button data-trust="thread-control" type="button" class="jump-latest"'); expect(read("shared/app-shell.js")).toContain('<div data-trust="navigation" class="side-resize"');
     expect(read("chat-thread.js")).toContain('<ul data-trust="reply" class="poll-voters"');
     expect(read("chat-render.js")).toContain('data-trust="link"'); expect(read("chat-render.js")).toContain('data-trust="attachment"'); expect(read("chat-render.js")).toContain('data-trust="media"');
     for(const cls of ["cb-head","cb-more","tc-head","tc-more","pv-head","pv-banner","pv-note"]) expect(read("chat-thread.js")).toMatch(new RegExp(cls+'.*setAttribute\\("data-trust", "thread-control"\\)'));
@@ -76,6 +77,25 @@ describe("stock trust/paint prerequisite", () => {
   });
   it.each(["url(x)", "linear-gradient(to right, rgb(0, 0, 0) calc(100% - 31px), rgba(0, 0, 0, 0))", "linear-gradient(to left, rgb(0, 0, 0) calc(100% - 32px), rgba(0, 0, 0, 0))"])("unknown widget masks fail closed: %s", async maskImage => {
     const f = await fixture(); f.host.innerWidth = 390; f.extra.set(".p-chat > .aw-chat_header", [f.node({ position: "relative", zIndex: "1", maskImage })]); expect(f.snapshot().ok).toBe(false);
+  });
+  it("new controls are in independent expected selectors, not discovered only through their marker", async () => {
+    const {m}=await fixture();const selectors=Object.fromEntries(m.STOCK_TRUST_INVENTORY.map((s:any)=>[s.kind,s.selector]));
+    expect(selectors.navigation).toContain(".shell .side-resize");expect(selectors["thread-control"]).toContain(".shell .p-chat .jump-latest");expect(selectors.card).toBe(".shell .p-chat > .chat-card");
+  });
+  it.each(["card", "jump", "resize"])("independently expects %s even with a missing/wrong marker", async which => {
+    const f = await fixture(), spec = f.m.STOCK_TRUST_INVENTORY.find((s:any) => s.kind === (which === "card" ? "card" : which === "resize" ? "navigation" : "thread-control"));
+    const el=f.node();el.kind=spec.kind;f.extra.set(spec.selector,[el]);f.marked.push(el);expect(f.snapshot().ok).toBe(true);
+    el.kind="";expect(f.snapshot().ok).toBe(false);el.kind="wrong";expect(f.snapshot().ok).toBe(false);
+  });
+  it.each([{zIndex:"-1"},{transform:"matrix(1,0,0,1,0,0)"},{opacity:".5"},{filter:"blur(1px)"},{position:"static"}])("desktop preview paint ordering refuses %j", async over => {
+    const f=await fixture(), el=f.node({position:"relative",zIndex:"1"});f.extra.set(".chat-split > .pv-panel, .chat-split > .pv-divider",[el]);expect(f.snapshot().ok).toBe(true);Object.assign(el.style,over);expect(f.snapshot()).toMatchObject({ok:false,reason:"stock_order_unknown"});
+  });
+  it("a display:contents preview cannot leave visible children outside its paint band", async () => {
+    const f=await fixture(),el=f.node({position:"relative",zIndex:"1",display:"contents"});el.children=[f.node()];f.extra.set(".chat-split > .pv-panel, .chat-split > .pv-divider",[el]);expect(f.snapshot().ok).toBe(false);
+  });
+  it("sidebar resize has its own positive band and cannot inherit an unknown sidebar context", async () => {
+    const f=await fixture(),resize=f.node({position:"absolute",zIndex:"5"}),sidebar=f.node({position:"relative"});f.extra.set(".shell .side-resize",[resize]);f.extra.set(".shell > .sidebar, .shell > .u-rail",[sidebar]);expect(f.snapshot().ok).toBe(true);
+    resize.style.zIndex="-1";expect(f.snapshot().ok).toBe(false);resize.style.zIndex="5";sidebar.style.zIndex="-1";expect(f.snapshot().ok).toBe(false);sidebar.style.zIndex="auto";sidebar.style.isolation="isolate";expect(f.snapshot().ok).toBe(false);
   });
   it("a missing/unknown marker is not silently absent coverage, even when hidden", async () => {
     const f = await fixture(); f.composer.kind = ""; f.composer.style.display = "none"; expect(f.snapshot().ok).toBe(false);

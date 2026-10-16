@@ -34,7 +34,7 @@ function ChatCard({ name, card }) {
   const [open, setOpen] = useState(chatCardOpen);
   if (!card) return null;
   const toggle = () => { const next = !open; setOpen(next); try { if (next) localStorage.setItem(CHAT_CARD_KEY, "open"); else localStorage.removeItem(CHAT_CARD_KEY); } catch { /* this page only */ } };
-  return html`<div class=${`chat-card${open ? " open" : ""}`}>
+  return html`<div data-trust="card" class=${`chat-card${open ? " open" : ""}`}>
     <button type="button" class="chat-card-toggle" aria-expanded=${open ? "true" : "false"} onClick=${toggle}>
       <${Icon} name="chevron" size=${14} cls=${open ? "caret" : "caret flipped"} /><span>${t(open ? "card.hide" : "card.show")}</span>
       ${!open && card.tagline ? html`<span class="chat-card-peek">${card.tagline.text}</span>` : null}
@@ -342,7 +342,7 @@ function Thread({ name, th }) {
   return html`<div class="scroller" ref=${scroller}>
     <div class="thread" ref=${list} role="log" aria-live="off" aria-label=${t("chat.conversationWith", name)}></div>
     ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    ${jump.show ? html`<button type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
+    ${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}
   </div>`;
 }

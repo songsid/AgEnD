@@ -233,6 +233,7 @@ describe("media and text show inline in the chat (#1589)", () => {
     for (const c of cards) {
       expect(c.querySelectorAll("*").length).toBeLessThan(20);   // a handful of elements, not 100,000 cells or spans
       expect(c.querySelector(".tc-body .pv-note").textContent).toBe("Too large to format here: shown as plain text.");
+      expect(c.querySelector(".tc-body .pv-note").getAttribute("data-trust")).toBe("thread-control");
     }
     expect(cards.map(c => c.querySelector(".tc-body code").textContent.length)).toEqual([wide.length, dense.length, ticks.length, cols.length]);
   });

@@ -38,7 +38,8 @@ finds expected producers **without requiring a marker**, then checks their exact
 marker. An unexpected marker or a missing/wrong marker is unknown coverage.
 
 - Composer dock and permission prompts; generated reply/poll groups and voter rows.
-- Header, navigation/sidebar, status/operation line, usage, host-rendered widgets,
+- Header, navigation/sidebar and its resize separator, identity card (including its toggle),
+  jump-to-latest, status/operation line, usage, host-rendered widgets,
   Needs-you permissions and pending settings confirmations.
 - Shared menus/dialogs, session/preferences popovers, preview menu/panel/divider,
   command palette, drop overlay, Keep bar and toasts.
@@ -96,6 +97,11 @@ paint rectangles. They are diagnostic probes, not a product frame registry or mo
 code. It compares behind/front protected pixels, verifies uncovered paint and
 click-through, exercises real menu/dialog/Keep/tour/focus/drawer producers, and
 refuses missing markers, root stacking, negative content, isolation and transforms.
+Real opened desktop preview panel/divider ordering is checked too; negative z,
+transform and opacity refuse, while the narrow sheet suppresses fronts. Real
+identity toggles, a scrolled-up jump control and the sidebar separator have front
+paint samples plus missing/wrong-marker controls. Actual truncated HTML and
+wide-CSV fallback notes retain their fixed markers and paint samples.
 A real theme image and host widget exercise the alternate stock layout. Front
 clipping also preserves a translucent permission-card background sample. Behind
 effects may tint translucent stock backgrounds, as expected from a layer below

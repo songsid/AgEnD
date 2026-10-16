@@ -191,7 +191,7 @@ export function createThread(list, scroller, opts) {
       if (!fence) continue;
       ph.textContent = "";
       if (ph.classList.contains("truncated") || !fence.terminated) {
-        const note = doc.createElement("div"); note.className = "pv-note"; note.textContent = tr("chat.pvTruncated"); ph.append(note);
+        const note = doc.createElement("div"); note.className = "pv-note"; note.setAttribute("data-trust", "thread-control"); note.textContent = tr("chat.pvTruncated"); ph.append(note);
         continue;
       }
       buildCard(ph, x, `${msgKey(x)}:f${n}`, { n, code: fence.code }, stoppedKeys);
@@ -239,7 +239,8 @@ export function createThread(list, scroller, opts) {
       // Formatting is built only within TEXT_PREVIEW_NODES: the markup is measured as a string first, never as DOM.
       const plain = () => {
         const pre = el("pre", "tc-pre"), code = el("code", null, src);
-        pre.append(code); body.append(el("div", "pv-note", tr("chat.tcPlain")), pre);
+        const note = el("div", "pv-note", tr("chat.tcPlain")); note.setAttribute("data-trust", "thread-control");
+        pre.append(code); body.append(note, pre);
       };
       if (type === "md") {
         const html = R().renderMarkdown(src);

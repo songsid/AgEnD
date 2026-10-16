@@ -2,16 +2,16 @@
 const SPECS = [
   ["composer", ".shell .p-chat .chat-main > .dock"],
   ["reply", ".shell .thread .rb-row, .shell .thread .poll-voters"],
-  ["navigation", ".shell .side-head, .shell .side-nav, .shell .side-section, .shell .side-foot, .shell .tabs, .shell .skip"],
+  ["navigation", ".shell .side-head, .shell .side-nav, .shell .side-section, .shell .side-foot, .shell .tabs, .shell .skip, .shell .side-resize"],
   ["header", ".shell .panel-head"], ["status", ".shell .main > .conn"], ["usage", ".shell > .u-rail"],
-  ["widget", ".shell .aw, .shell .side-widget"], ["permission", ".shell .n-item, .shell .dock .prompts"],
+  ["widget", ".shell .aw, .shell .side-widget"], ["card", ".shell .p-chat > .chat-card"], ["permission", ".shell .n-item, .shell .dock .prompts"],
   ["menu", ".shell .menu-list[role=menu]"], ["session", ".shell .side-foot .pop[role=dialog]"],
   ["popover", ".shell .prefs-pop > .pop"], ["dialog", ".shell dialog.dlg"], ["lightbox", ".shell dialog.lb"],
   ["tour", "body > #tour.tour[role=dialog]"], ["keep", ".shell > .oc-keep"], ["toast", ".shell > .toasts"],
   ["confirmation", ".shell > .pending-stack"], ["preview", ".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider"],
   ["preview-menu", ".shell .thread details.pv-menu"], ["palette", ".shell .dock .cmd-palette"],
   ["drop", ".shell .p-chat > .drop-overlay"],
-  ["thread-control", ".shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner"],
+  ["thread-control", ".shell .p-chat .jump-latest, .shell .thread .msg-tools, .shell .thread .st-more, .shell .thread .cb-head, .shell .thread .cb-more, .shell .thread .tc-head, .shell .thread .tc-more, .shell .thread .pv-head, .shell .thread .pv-note, .shell .thread .pv-banner"],
   ["link", ".shell .thread .md a"], ["attachment", ".shell .thread .atts"], ["media", ".shell .thread .att-media"],
   ["session-ended", "body > .agend-session-ended[role=alert]"],
 ];
@@ -96,6 +96,22 @@ export function stockEffectTrust(host, { frameRoot = null, ownerCss = "unknown" 
       if (!visible(host, el)) { const children = [...el.querySelectorAll("*")]; if (children.length > 4096 || children.some(child => visible(host, child))) return fail("stock_order_unknown"); continue; }
       const s = host.getComputedStyle(el);
       if (s.position !== "relative" || s.zIndex !== (selector === ".p-chat > .panel-head" ? "2" : "1") || !neutral(s, stockWidgetMask(host, selector, s))) return fail("stock_order_unknown");
+    }
+    // The resize separator has no bounded content parent; prove its own level and neutral sidebar/usage ancestors.
+    for (const el of doc.querySelectorAll(".shell > .sidebar, .shell > .u-rail")) {
+      if (!visible(host, el)) { const children = [...el.querySelectorAll("*")]; if (children.length > 4096 || children.some(child => visible(host, child))) return fail("stock_order_unknown"); continue; }
+      const s = host.getComputedStyle(el);
+      if (!neutral(s) || s.zIndex !== "auto" || !["static", "relative"].includes(s.position)) return fail("stock_order_unknown");
+    }
+    for (const el of doc.querySelectorAll(".shell .side-resize")) if (visible(host, el)) {
+      const s = host.getComputedStyle(el);
+      if (!neutral(s) || s.position !== "absolute" || s.zIndex !== "5") return fail("stock_order_unknown");
+    }
+    // Desktop split preview is a stock level1 content owner too. Narrow preview is a modal sheet, handled below.
+    if (host.innerWidth >= 900) for (const el of doc.querySelectorAll(".chat-split > .pv-panel, .chat-split > .pv-divider")) {
+      if (!visible(host, el)) { const children = [...el.querySelectorAll("*")]; if (children.length > 4096 || children.some(child => visible(host, child))) return fail("stock_order_unknown"); continue; }
+      const s = host.getComputedStyle(el);
+      if (s.position !== "relative" || s.zIndex !== "1" || !neutral(s)) return fail("stock_order_unknown");
     }
     const marked = [...doc.querySelectorAll("[data-trust]")], expected = new Set(), rects = [], budget = { n: 0 };
     if (marked.length > 128) return fail("stock_trust_unknown");

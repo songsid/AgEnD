@@ -177,7 +177,7 @@ function SidebarResize() {
     handle.addEventListener("pointercancel", cancel);
     handle.addEventListener("lostpointercapture", cancel);
   };
-  return html`<div class="side-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sidebar"
+  return html`<div data-trust="navigation" class="side-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sidebar"
     aria-label=${t("app.resizeSidebar")} title=${t("app.resizeSidebarHint")} aria-valuemin=${String(SIDEBAR_W.min)}
     aria-valuemax=${String(clampSidebarWidth(Infinity, mainBudget()))} aria-valuenow=${String(now)}
     onKeyDown=${onKey} onPointerDown=${onDown} ondblclick=${() => setSidebarWidth(null)}></div>`;
