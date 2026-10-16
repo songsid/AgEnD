@@ -127,7 +127,7 @@ export function buildCanvasEffectShim(bootId: string, origins: readonly string[]
     var size=bytes(d.code)+bytes(JSON.stringify(d.params));
     if (Object.keys(d.assets).length !== d.assets.length) return;
     if (!d.assets.every(function (asset) {
-      if (!plain(asset) || Object.keys(asset).sort().join(',') !== 'bytes,mime,name' || typeof asset.name !== 'string' || !/^assets\/[a-zA-Z0-9_-]+\.(png|jpe?g|webp|gif)$/.test(asset.name) || names.has(asset.name)) return false;
+      if (!plain(asset) || Object.keys(asset).sort().join(',') !== 'bytes,mime,name' || typeof asset.name !== 'string' || !/^assets\/[a-z0-9][a-z0-9_-]{0,63}\.(png|jpe?g|webp|gif)$/.test(asset.name) || names.has(asset.name)) return false;
       if (['image/png','image/jpeg','image/webp','image/gif'].indexOf(asset.mime) < 0 || !(asset.bytes instanceof Uint8Array)) return false;
       names.add(asset.name);size+=asset.bytes.byteLength;return true;
     }) || size > MAX) return;
@@ -138,12 +138,13 @@ export function buildCanvasEffectShim(bootId: string, origins: readonly string[]
     expires=now()+10000;deadline=defer(stop,10000);
     try {
       if (typeof Worker !== 'function' || typeof OffscreenCanvas !== 'function' || typeof createImageBitmap !== 'function' || typeof HTMLCanvasElement.prototype.transferControlToOffscreen !== 'function') { stop();return; }
-      var assets=[];
+      var assets=[], pixels=0;
       for (var asset of d.assets) {
         var bitmap=await createImageBitmap(new Blob([asset.bytes],{type:asset.mime}));
         if (!active || now() >= expires) { bitmap.close();stop();return; }
         bitmaps.push(bitmap);
         if (bitmap.width < 1 || bitmap.height < 1 || bitmap.width > 4096 || bitmap.height > 4096 || bitmap.width*bitmap.height > PIXELS) { stop();return; }
+        pixels+=bitmap.width*bitmap.height;if(pixels > PIXELS) { stop();return; }
         assets.push({name:asset.name,bitmap:bitmap});
       }
       if (!active || now() >= expires) { stop();return; }
