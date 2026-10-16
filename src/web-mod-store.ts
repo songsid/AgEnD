@@ -63,6 +63,8 @@ export interface ModRecord {
   name: string; version: string; title: string;
   bytes: number;
   installedBy: string;
+  /** Principal that owns this mod's effect holder. Older records use installedBy. */
+  effectsBy?: string;
   installedAt: number;
   /** The instance the look went to, when it had one. */
   target?: string;
@@ -89,7 +91,7 @@ export interface ModInclude {
   replace?: boolean;
 }
 
-interface Stage { id: string; person: string; mod: CheckedMod; text: string; plan: ModPlan; planHash: string; at: number; effects?: { stageId: string; ids: string[] }; proposal?: string }
+interface Stage { id: string; person: string; mod: CheckedMod; text: string; plan: ModPlan; planHash: string; at: number; effects?: { stageId: string; ids: string[]; owner: string }; proposal?: string }
 /** r4-5b: a mod an agent proposed (propose_web_mod), waiting for a person to review it — one per agent. */
 export interface ModProposal { name: string; version: string; title: string; bytes: number; at: number; id: string }
 type Index = { rev: number; mods: Map<string, ModRecord>; proposals: Map<string, ModProposal> } | "unreadable";
@@ -302,9 +304,13 @@ export class ModStore {
     let effects: Stage["effects"];
     if (mod.effects.length) {
       if (!this.deps.effects) return { ok: false, status: 400, error: "effects_unavailable" };
-      const r = this.deps.effects.stage(mod.effects.map(e => e.files), { kind: "human", id: person }, { holder: modHolder(mod.id) });
+      // The installed mod has one effect-holder principal. Reapplying its immutable bytes must not acquire an
+      // untracked claim for the next person. A mod whose effects were never selected gets its owner when selected.
+      const installed = idx.mods.get(mod.id);
+      const owner = installed?.effects.length ? installed.effectsBy ?? installed.installedBy : person;
+      const r = this.deps.effects.stage(mod.effects.map(e => e.files), { kind: "human", id: owner }, { holder: modHolder(mod.id) });
       if (!r.ok) return { ok: false, status: 409, error: "effects_refused", detail: r.error };
-      effects = { stageId: r.stageId, ids: r.ids };
+      effects = { stageId: r.stageId, ids: r.ids, owner };
     }
     const planHash = sha32(canonicalJson(plan));
     const s: Stage = { id: randomBytes(16).toString("hex"), person, mod, text, plan, planHash, at: this.clock(), ...(effects ? { effects } : {}), ...(from.proposal !== undefined ? { proposal: from.proposal } : {}) };
@@ -349,6 +355,11 @@ export class ModStore {
     const sameName = [...idx.mods].find(([id, r]) => r.name === mod.manifest.name && id !== mod.id);
     if ((sameName?.[0] ?? null) !== (replaces?.id ?? null) || idx.mods.has(mod.id) !== s.plan.mod.installed) {
       return { ok: false, status: 409, error: "plan_changed", detail: "the installed mods changed since this file was checked: import it again" };
+    }
+    const installed = idx.mods.get(mod.id);
+    const effectOwner = installed?.effects.length ? installed.effectsBy ?? installed.installedBy : person;
+    if (want.effects && s.effects?.owner !== effectOwner) {
+      return { ok: false, status: 409, error: "plan_changed", detail: "the effect claim owner changed: import it again" };
     }
     if (replaces && !include.replace) return { ok: false, status: 409, error: "replaces", detail: `version ${replaces.version} of ${mod.manifest.name} is installed: confirm replace` };
     if (!idx.mods.has(mod.id)) {
@@ -430,6 +441,7 @@ export class ModStore {
       mods.set(mod.id, {
         name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes,
         installedBy: prev?.installedBy ?? person, installedAt: prev?.installedAt ?? this.now(),
+        ...(want.effects ? { effectsBy: effectOwner } : prev?.effectsBy ? { effectsBy: prev.effectsBy } : {}),
         ...(target ? { target } : prev?.target ? { target: prev.target } : {}),
         parts: [...new Set([...(prev?.parts ?? []), ...applied])],
         effects: mod.effects.map(e => ({ path: e.path, id: effectIds.get(e.path) ?? prev?.effects.find(x => x.path === e.path)?.id ?? "" })).filter(e => e.id),
@@ -450,7 +462,7 @@ export class ModStore {
       // new library commit is undone (rollback runs in reverse). Released: nothing fallible follows.
       let releasedOld: string[] = [];
       if (replaces && old && old.effects.length && this.deps.effects) {
-        const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.installedBy });
+        const r = this.deps.effects.releaseHolder(modHolder(replaces.id), { kind: "human", id: old.effectsBy ?? old.installedBy });
         if (!r.ok) return rollback(409, "effects_release_refused", r.error);
         releasedOld = r.released;
       }
@@ -475,7 +487,7 @@ export class ModStore {
     let undo: (() => boolean) | null = null;
     if (rec.effects.length) {
       if (!this.deps.effects) return { ok: false, status: 503, error: "effects_unavailable" };
-      const r = this.deps.effects.releaseHolder(modHolder(id), { kind: "human", id: rec.installedBy });
+      const r = this.deps.effects.releaseHolder(modHolder(id), { kind: "human", id: rec.effectsBy ?? rec.installedBy });
       if (!r.ok) return { ok: false, status: 409, error: "effects_release_refused", detail: r.error };
       released = r.released; undo = r.undo;
     }

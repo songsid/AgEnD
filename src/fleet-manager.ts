@@ -195,6 +195,10 @@ import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WebAppearance } from "./web-appearance.js";
+import { WebEffectLibrary } from "./web-effect-library.js";
+import { WebEffectTools, WEB_EFFECT_TOOLS } from "./web-effect-tools.js";
+import { resolveEffectParams } from "./web-effect.js";
+import { cw1EffectChecker } from "./web-mod-bundle.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { WEB_NAME_FALLBACK, safeWebName, validateWebName, webNameInUse, webPersonKey, type WebAccount } from "./web-profile.js";
 import type { WebPerson as WebPersonView } from "./web-api.js";
@@ -1308,12 +1312,69 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1629: every instance's theme, placements, assets and lock (web-themes.json). */
   get themeStore(): ThemeStore {
     // r4.1 Q3 (b): the card's limits are read from fleet.yaml at each upload (a change applies without a restart).
-    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits }));
+    return (this.themeStoreInstance ??= new ThemeStore(this.dataDir, { limits: () => effectiveAppearanceLimits(this.fleetConfig?.web?.appearance).limits, effectsDropped: ids => this.effectLibrary.collectUnreferenced(ids) }));
   }
   /** #1629: the theme tools, a person's reset and lock, and the one appearance rate limiter (shared with effects). */
   get webAppearance(): WebAppearance {
     return (this.webAppearanceService ??= new WebAppearance(this.themeStore, () => this.fleetConfig?.web ?? null,
       () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries the rev */ } }));
+  }
+
+  private effectLibraryInstance?: WebEffectLibrary;
+  /** Lazy, single-owner storage. Register every host reference source before any operation can collect. */
+  get effectLibrary(): WebEffectLibrary {
+    if (!this.effectLibraryInstance) {
+      const library = new WebEffectLibrary(this.dataDir);
+      // Providers are lazy; publish only after all three registrations succeed.
+      library.registerReferenceSource("themes", () => {
+        if (!this.themeStore.readable()) throw new Error("themes_unreadable");
+        return this.themeStore.placedEffects().flatMap(row => row.ids.map(id => ({ id, holder: `instance:${row.name}` })));
+      });
+      library.registerReferenceSource("prefs", () => {
+        const prefs = this.webPrefs.read(OPERATOR);
+        if (prefs.unreadable) throw new Error("prefs_unreadable");
+        return ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"].flatMap(key => {
+          const id = prefs.values[key];
+          if (id === undefined || id === null) return [];
+          if (typeof id !== "string" || !/^[0-9a-f]{32}$/.test(id)) throw new Error("prefs_unreadable");
+          return [{ id, holder: `prefs:${OPERATOR}:${key}` }];
+        });
+      });
+      library.registerReferenceSource("mods", () => {
+        const mods = this.mods.list();
+        if (mods.unreadable) throw new Error("mods_unreadable");
+        return mods.mods.flatMap(mod => mod.effects.map(effect => ({ id: effect.id, holder: `mod:${mod.id}` })));
+      });
+      this.effectLibraryInstance = library;
+    }
+    return this.effectLibraryInstance;
+  }
+
+  private effectToolsService?: WebEffectTools;
+  /** Caller identity is supplied only by the owned IPC connection / verified agent endpoint token. */
+  get effectTools(): WebEffectTools {
+    return (this.effectToolsService ??= new WebEffectTools({
+      library: this.effectLibrary, limiter: this.webAppearance.limiter,
+      authorize: (name, buckets) => !this.isKnownInstance(name) ? { error: "unknown_instance" } : this.webAppearance.authorizeEffect(name, buckets),
+      placed: name => this.themeStore.get(name).placements.effects,
+      place: (name, effects) => {
+        const before = this.themeStore.get(name).placements.effects;
+        const explicit = new Set(effects.filter(e => typeof e !== "string").map(e => e.id));
+        const w = this.themeStore.setPlacements(name, { effects }, "agent", what => {
+          // An unchanged human/private placement may be retained, never exposed or newly acquired by an agent.
+          const r = explicit.has(what.id) ? this.effectLibrary.read(what.id, { kind: "agent", id: name })
+            : this.effectLibrary.readReferenced(what.id, `instance:${name}`);
+          if (!r.ok) return r.error;
+          const params = explicit.has(what.id) ? what.params : before.find(e => e.id === what.id)?.params;
+          return resolveEffectParams(r.entry.manifest, params ?? {}).ok ? null : "effect_params";
+        });
+        return w.ok ? { ok: true, rev: w.rev } : { ok: false, error: w.error };
+      },
+      changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* later status carries placements */ } },
+      // Product preview/profile adapters land with the reviewed viewer. Never fabricate measurements or a card.
+      preview: async () => ({ error: "effects_unavailable", message: "Effect previews are not available in this build." }),
+      profiles: () => ({ records: [], status: "unavailable" }),
+    }));
   }
 
   private appearanceToolsService?: AppearanceTools;
@@ -1338,16 +1399,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private modStore?: ModStore;
   /**
-   * #1629 r4-5: installed mods and each person's staged import. The effect library (Sol's B2) is not here yet: until it
-   * is, a bundle carrying effects is refused (effects_unavailable) and the rest imports as usual.
+   * #1629 r4-5 / B2: installed mods use the same validated library and scoped holder claims as direct uploads.
    */
   get mods(): ModStore {
     return (this.modStore ??= new ModStore(this.dataDir, {
       themes: this.themeStore,
       prefs: this.webPrefs,
       ownerCss: this.ownerCss,
-      effects: null,
-      context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits(), effects: null }),
+      effects: this.effectLibrary,
+      context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits(), effects: cw1EffectChecker() }),
       isKnownInstance: (name) => this.isKnownInstance(name),
       prefsIdentity: OPERATOR,
     }));
@@ -9507,6 +9567,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
     const type = String(msg.type);
+    if (type.startsWith("fleet_") && WEB_EFFECT_TOOLS.has(type.slice(6))) {
+      const ipc = this.instanceIpcClients.get(name), fleetRequestId = msg.fleetRequestId;
+      if (!ipc || typeof fleetRequestId !== "string") return;
+      void this.handleWebThemeHttp(name, type.slice(6), (msg.payload ?? {}) as Record<string, unknown>).then(result => {
+        if (this.instanceIpcClients.get(name) === ipc) ipc.send({ type: "fleet_web_theme_response", fleetRequestId, result });
+      }, err => {
+        if (this.instanceIpcClients.get(name) === ipc) ipc.send({ type: "fleet_web_theme_response", fleetRequestId, error: err instanceof Error ? err.message : "Effect operation failed" });
+      }).catch(err => this.logger.debug({ err }, "Effect tool response could not be written"));
+      return;
+    }
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
     if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
     if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
@@ -9966,6 +10036,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1629: `agend-agent theme …` — the same service as the tools; `instance` is the token's. */
   async handleWebThemeHttp(instance: string, tool: string, args: Record<string, unknown>): Promise<unknown> {
+    if (WEB_EFFECT_TOOLS.has(tool)) {
+      if (!this.isKnownInstance(instance)) return { error: "unknown_instance" };
+      return this.effectTools.handle(instance, tool, args);
+    }
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
     if (tool === "export_web_mod" || tool === "propose_web_mod") return this.agentMods.handle(instance, tool, args);
     return this.webAppearance.handleTool(instance, tool, args);
@@ -10705,7 +10779,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
@@ -17933,7 +18007,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!Object.hasOwn(this.fleetConfig?.instances ?? {}, ch.instanceName)
         && !this.classicChannels.getAll().some((c) => c.instanceName === ch.instanceName)) {
       try { this.webPrefs.forgetInstance(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room from web favorites failed"); }
-      try { this.themeStore.forget(ch.instanceName); this.webAppearance.limiter.forget(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room's web theme failed"); }
+      try { this.themeStore.forget(ch.instanceName); this.webAppearance.limiter.forget(ch.instanceName); this.effectToolsService?.forget(ch.instanceName); } catch (err) { this.logger.warn({ err: (err as Error).message, instanceName: ch.instanceName }, "Dropping a removed room's web theme failed"); }
     }
 
     this.instanceWorldBinding.delete(ch.instanceName);

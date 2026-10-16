@@ -20,6 +20,7 @@ import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-tur
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
+import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, writeModFile, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
@@ -97,6 +98,13 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
   // r4-5b: mods — an export's file is written here, a proposal's file read here (on the agent's side).
   export_web_mod: "fleet_export_web_mod", propose_web_mod: "fleet_propose_web_mod",
+  upload_web_effect: "fleet_upload_web_effect",
+  list_web_effects: "fleet_list_web_effects",
+  preview_web_effect: "fleet_preview_web_effect",
+  profile_web_effect: "fleet_profile_web_effect",
+  apply_web_effect: "fleet_apply_web_effect",
+  remove_web_effect: "fleet_remove_web_effect",
+  delete_web_effect: "fleet_delete_web_effect",
 });
 /** The largest picture any slot may take (a card slot's ceiling; the fleet checks the limit in force): read no more. */
 const WEB_THEME_ASSET_MAX_BYTES = ASSET_UPLOAD_MAX_BYTES;
@@ -9975,6 +9983,23 @@ export class Daemon extends EventEmitter {
             const r = await ask(payload);
             if (r.error) { failed = r.error; return { error: r.error }; }
             return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
+          });
+          reply(failed ? null : answer, failed);
+          return;
+        }
+        if (tool === "upload_web_effect") {
+          const owner = { fence:this.launchFenceEpoch, spawn:this.spawnGeneration, boot:this.bootId, ipc:this.ipcServer };
+          const current = () => !!owner.ipc && owner.ipc === this.ipcServer && owner.fence === this.launchFenceEpoch && owner.spawn === this.spawnGeneration && owner.boot === this.bootId && !this.deliveryWritesStopping && !this.startupAborted;
+          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
+          const read = await readAgentEffect(args.dir, { workspace: this.config.working_directory, stateDir: getAgendHome() });
+          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
+          if (!read.ok) { reply(null, `upload_web_effect: ${read.reason}`); return; }
+          let failed: string | undefined;
+          const answer = await sendEffectInParts(read.files, async payload => {
+            if (!current()) { failed="upload_web_effect: launch no longer current"; return {error:failed}; }
+            const r = await ask(payload);
+            if (r.error) { failed = r.error; return { error:r.error }; }
+            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string,unknown>;
           });
           reply(failed ? null : answer, failed);
           return;

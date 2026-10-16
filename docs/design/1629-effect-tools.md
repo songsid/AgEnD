@@ -1,0 +1,31 @@
+# Canvas Worker effect admission and tools (#1629 B2)
+
+This slice wires stored CW1 effects into the existing instance-owned tool channels and the reviewed mod participant. It does not mount effects in the dashboard. The registry, trusted geometry, host cadence calibration, safety history, human library UI and opt-in viewer remain separate prerequisites.
+
+## Identity and authority
+
+The MCP daemon and `agend-agent effect` expose upload, list, preview, profile, apply, remove and delete. Public schemas are strict: no caller, target, provenance, holder, byte payload or stage id can be supplied. The daemon IPC connection or authenticated `/agent` token supplies the instance. The existing tool-permission map gates both paths; worker/standard/coordinator/full gain these operations, while minimal and General keep their existing profiles.
+
+Uploads read and validate only inside the agent workspace, before crossing into the fleet. State directories, symlink entries and unsupported paths refuse. The agent sends normalized files, never a workspace path, in acknowledged parts smaller than the existing 512 KiB request/message limit. Every part binds its count, order, total bytes, SHA-256 and random upload token to the caller. There is no automatic resend. A new part zero replaces that caller's partial upload. At most 32 active uploads and 64 MiB of actual retained chunks are held, with a 60-second monotonic idle expiry; invalid clocks revoke pending bytes. The daemon rechecks its boot, spawn, launch fence and IPC owner after the real file read and before every part. Replacement IPC connections never receive an old asynchronous answer.
+
+All effect writes reuse `WebAppearance`'s existing switch, human lock and single `AppearanceLimiter`. No extra limiter is created. Upload records quota only after the real library commit; apply/remove record a change only after the theme record succeeds. A refused, invalid or failed write costs nothing. Quotas remain ten retained ids/eight MiB per principal, three uploads/hour, and the shared change spacing/hour budget.
+
+Agents list/read only their own claims and human-shared entries. Apply resolves typed params, stores non-default overrides, and creates an explicit agent placement in the caller's chat, at most two. Re-applying a human placement stamps agent provenance. Retained string entries preserve their original host provenance and params: a human-private retained placement is validated through its exact instance reference without granting its bytes to the agent. Remove changes only that instance's placements; delete removes only an unused own claim.
+
+## Library and mod wiring
+
+One lazy `WebEffectLibrary` registers all reference providers before publication: every instance placement, human preference effect slot and installed mod. Unreadable theme, preference or mod state refuses collection/admission instead of becoming an empty reference list. The existing `cw1EffectChecker` and real library now replace the mod importer's unavailable adapter. A human-reviewed mod retains the route's human provenance and typed overrides. The installed record's optional `effectsBy` tracks the single principal owning its mod holder, independently of `installedBy` (the original installer). Reapplying identical bytes stages under that existing effect owner, so another person acquires no orphan claim. If effects were not initially selected, the first person who selects them becomes their owner. The staged owner is revalidated before commit; a concurrent first selection requires restaging. Old records without the field use `installedBy`. Uninstall and replacement release the effect owner, preserving independent upload holders. Its transaction order and synchronous undo remain the reviewed `ModStore` protocol; this slice does not add another transaction mechanism.
+
+Theme effect removal/reset invokes deferred collection. Claims, retained instance references, installed mods and live stages keep blobs alive. Mod uninstall releases only its holder, and independent direct uploads survive it. The reference map covers the operator's future effect preferences even while their UI is not mounted.
+
+## Viewer seam and current limits
+
+Preview and profile names are registered now so later viewer wiring uses the same ACL and transport. In this intermediate feature-branch build, a readable preview returns `effects_unavailable`; a profile returns `{ records: [], status: "unavailable" }`. No Try card, browser, measurement or healthy verdict is fabricated. List includes that explicit unavailable profile status. A successful apply reports a stored placement, not a running frame. These viewer adapters must be implemented before B2 is declared complete.
+
+The library remains single fleet owner. No startup work, migration, config/default change, fleet restart, live adapter call or browser mount is added. Directory reads and syntax/image-header checks are bounded; the fleet still performs synchronous decoding of a wire envelope up to 12 MiB and CW1 validation of up to eight MiB raw input, yielding at most one MiB normalized per completed upload, and this slice does not claim isolation from same-UID processes or arbitrary filesystem races.
+
+## Evidence, risk and rollback
+
+Tests exercise the actual workspace reader, multipart sender/receiver, daemon tool handler and correlated IPC response, authenticated loopback endpoint, real `agend-agent` child, `FleetManager`, `ThemeStore`, `ModStore` and `WebEffectLibrary`. Fleet/daemon lifecycle entry points are inert; only the dedicated CLI test starts a bounded client process against its private loopback server and private token. No account, fleet, service or live tmux is used. Refused operations and replacement-owner interleavings have positive controls. Reversal evidence is recorded with the PR.
+
+Risks are bounded parsing work, existing single-owner persistence assumptions, and the intentionally unavailable viewer seams. Rollback reverts this integration and tool surface; the earlier library/validator stay intact. Stored blobs/claims remain on disk but are not executed, and prior mod import behavior refuses effect-bearing bundles until the adapter is restored. No persisted data migration or downgrade rewrite is required.

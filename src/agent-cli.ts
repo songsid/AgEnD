@@ -91,9 +91,9 @@ async function main(): Promise<void> {
   // #1629 r4 §1: `appearance` (get) and `appearance preview [light|dark]`.
   // r4-4: `widget set|data <slot> …` and `widget remove [slot]` (data is set_web_widget with values only).
   const op = first === "theme" ? `theme-${given[0] ?? ""}` : first === "appearance" ? (given[0] === "preview" ? "appearance-preview" : given.length ? `appearance-${given[0]}` : "appearance-get")
-    : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`)
+    : first === "effect" ? `effect-${given[0] ?? ""}` : first === "widget" ? (given[0] === "data" ? "widget-set" : `widget-${given[0] ?? ""}`)
     : first === "mod" ? `mod-${given[0] ?? ""}` : first;
-  const rest = first === "theme" || first === "widget" || first === "mod" || (first === "appearance" && given.length) ? given.slice(1) : given;
+  const rest = first === "theme" || first === "widget" || first === "effect" || first === "mod" || (first === "appearance" && given.length) ? given.slice(1) : given;
   const widgetData = first === "widget" && given[0] === "data";
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
@@ -222,6 +222,38 @@ async function main(): Promise<void> {
         console.log(JSON.stringify(answer));
       } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
       return;
+    }
+    case "effect-upload": {
+      const { readAgentEffect, sendEffectInParts } = await import("./web-effect-upload.js");
+      if (rest.length !== 1) die("Usage: agend-agent effect upload <directory>");
+      const read = await readAgentEffect(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR });
+      if (!read.ok) die(`effect upload: ${read.reason}`);
+      try {
+        const answer = await sendEffectInParts(read.files, async payload => {
+          const text = await post(op, payload);
+          try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error:"answer", message:text.slice(0,200) }; }
+        });
+        console.log(JSON.stringify(answer));
+      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
+      return;
+    }
+    case "effect-list":
+      if (rest.length) die("Usage: agend-agent effect list");
+      break;
+    case "effect-preview": case "effect-profile": case "effect-delete":
+      if (rest.length !== 1 || !/^[0-9a-f]{32}$/.test(rest[0]!)) die(`Usage: agend-agent ${op.replace("-"," ")} <id>`);
+      args={id:rest[0]};break;
+    case "effect-remove":
+      if (rest.length > 1 || rest[0] !== undefined && !/^[0-9a-f]{32}$/.test(rest[0])) die("Usage: agend-agent effect remove [id]");
+      args=rest[0]===undefined?{}:{id:rest[0]};break;
+    case "effect-apply": {
+      if (rest.length < 1 || rest.length > 2 || !/^[0-9a-f]{32}$/.test(rest[0]!)) die("Usage: agend-agent effect apply <id> ['<params JSON>']");
+      let params: unknown;
+      if (rest[1] !== undefined) {
+        try { params=JSON.parse(rest[1]); } catch { die("effect apply: params is not JSON"); }
+        if (!params || typeof params !== "object" || Array.isArray(params)) die("effect apply: params must be an object");
+      }
+      args={id:rest[0],...(params!==undefined?{params}:{})};break;
     }
     case "theme-reset":
       break;

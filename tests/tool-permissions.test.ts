@@ -52,6 +52,9 @@ const BEFORE: Record<string, string[]> = {
     "set_web_widget", "remove_web_widget",
     // #1629 r4-5b: mods — its own look as a file, and a proposal for a person (agents never import).
     "export_web_mod", "propose_web_mod",
+    // #1629 B2: the caller-scoped Canvas Worker effect tools.
+    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
+    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // kiro engine move: read-only kiro engine facts.
     "kiro_engine_status",
@@ -224,7 +227,8 @@ describe("no entry path is missing from the table", () => {
 
     for (const type of Object.keys(IPC_TYPE_TOOLS)) {
       const family = type.startsWith("fleet_schedule_") ? "fleet_schedule_"
-        : type.startsWith("fleet_decision_") ? "fleet_decision_" : type;
+        : type.startsWith("fleet_decision_") ? "fleet_decision_"
+        : ["fleet_upload_web_effect", "fleet_list_web_effects", "fleet_preview_web_effect", "fleet_profile_web_effect", "fleet_apply_web_effect", "fleet_remove_web_effect", "fleet_delete_web_effect"].includes(type) ? "WEB_EFFECT_TOOLS.has(type.slice(6))" : type;
       expect(router, `${type} is in the table but the router drops it`).toContain(family);
     }
     expect(IPC_TYPE_TOOLS.fleet_decision_update).toBe("update_decision");

@@ -398,6 +398,9 @@ export async function dispatchAgentOperation(
   if (op === "widget-remove") return ctx.handleWebThemeHttp(instance, "remove_web_widget", args);
   if (op === "mod-export") return ctx.handleWebThemeHttp(instance, "export_web_mod", args);
   if (op === "mod-propose") return ctx.handleWebThemeHttp(instance, "propose_web_mod", args);
+  // CW1 effect ops use the token-resolved instance; internal byte parts, never a workspace path.
+  const effectOps: Readonly<Record<string, string>> = { "effect-upload":"upload_web_effect", "effect-list":"list_web_effects", "effect-preview":"preview_web_effect", "effect-profile":"profile_web_effect", "effect-apply":"apply_web_effect", "effect-remove":"remove_web_effect", "effect-delete":"delete_web_effect" };
+  if (Object.hasOwn(effectOps, op)) return ctx.handleWebThemeHttp(instance, effectOps[op]!, args);
   if (op === "emoji-preview") {
     return ctx.handlePreviewEmojisHttp(instance, args);
   }
