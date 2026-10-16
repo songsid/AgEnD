@@ -1,7 +1,9 @@
 /** The selector displays host state and writes ids/null only. It never fetches Worker code or starts playback. */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { MiniEvent } from "./helpers/mini-dom.js";
+const fx = vi.hoisted(() => ({ entry: null as any }));
+vi.mock("/ui/js/app-effects.js", () => ({ getAppEffects: () => fx.entry }));
 const A = "a".repeat(32), B = "b".repeat(32), E = "e".repeat(16), g = globalThis as any;
 const KEYS = ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"];
 const manifest = { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "snow", title: "Snow", regions: ["sidebar", "header", "page", "box"], layer: "behind", wants: [], box: { anchor: "center", width: 100, height: 100, offset: 0 }, cursor: { hotspot: [0, 0] } };
@@ -11,7 +13,7 @@ const response = (status: number, body: any) => ({ ok: status >= 200 && status <
 let p: AppPage | null = null, calls: Array<{ url: string; init: any }> = [], view: any, rev = 1;
 let override: ((url: string, init: any) => any) | null = null;
 const ticks = async () => { await settle(); await settle(); };
-afterEach(async () => { if (p) { await p.unmount(); p.restore(); p = null; } delete g.fetch; });
+afterEach(async () => { if (p) { await p.unmount(); p.restore(); p = null; } delete g.fetch; fx.entry = null; });
 async function mount(opts: { canWrite?: boolean; slots?: any; lang?: string; fail?: number; operator?: boolean } = {}) {
   p = page({ url: "http://127.0.0.1:19280/settings/appearance" });
   p.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {}, ownerEpoch: E, ownerScope: "person" }));
@@ -34,7 +36,39 @@ async function mount(opts: { canWrite?: boolean; slots?: any; lang?: string; fai
 const $ = (selector: string) => p!.root.querySelector(selector);
 const text = () => p!.root.textContent;
 const change = async (key: string, value: string) => { const el = $(`[data-owner-slot="${key}"]`); el.value = value; el.dispatchEvent(new MiniEvent("change", { bubbles: true })); await ticks(); };
+function runtime() {
+  const listeners = new Set<any>(), ends = new Set<any>(), snapshot: any = { slots: empty(), rows: [{ id: A, slot: "fx.page", phase: "running", verdict: "active", reason: null }] };
+  const entry: any = { dead: false, gates: () => ({ enabled: true, show: true, previewReady: true, optIn: true }), subscribe: (fn: any) => { listeners.add(fn); return () => listeners.delete(fn); }, onEnd: (fn: any) => { ends.add(fn); return () => ends.delete(fn); } };
+  entry.api = { ownerSnapshot: () => snapshot, changedOwner: vi.fn(), pauseOwner: vi.fn((key: string) => { snapshot.rows[0].reason = "paused"; for (const fn of [...listeners]) fn(); return key === "fx.page"; }), resumeOwner: vi.fn((_key: string) => true) }; fx.entry = entry;
+  return { entry, snapshot, listeners, ends, changed() { for (const fn of [...listeners]) fn(); } };
+}
 describe("owner effect selectors", () => {
+  it("rerenders an external authoritative selection after a previous Clear", async () => {
+    const live = runtime(); await mount({ slots: { ...empty(), "fx.page": { id: A, status: "available", manifest } } });
+    $('[data-owner-clear="fx.page"]').click(); await ticks();
+    const module = await import("/assets/owner-effect-prefs.js"); module.ownerEffectsStore.set({ slots: { ...empty(), "fx.header": { id: A, status: "available", manifest } } });
+    live.snapshot.slots = { ...empty(), "fx.header": { id: A, status: "available", manifest } }; live.snapshot.rows = [{ id: A, slot: "fx.header", phase: "running" }]; live.changed(); await ticks();
+    expect($('[data-owner-slot="fx.header"]').value).toBe(A); expect($('[data-owner-pause="fx.header"]')).not.toBeNull(); $('[data-owner-pause="fx.header"]').click(); await ticks(); expect(live.entry.api.pauseOwner).toHaveBeenCalledExactlyOnceWith("fx.header");
+  });
+  it("runtime status and Pause/Resume use the exact slot without writing preferences or creating playback", async () => {
+    const live = runtime(); await mount({ slots: { ...empty(), "fx.page": { id: A, status: "available", manifest } } });
+    expect($('[data-owner-runtime="fx.page"]').textContent).toBe("Running"); calls = [];
+    $('[data-owner-pause="fx.page"]').click(); await ticks(); expect(live.entry.api.pauseOwner).toHaveBeenCalledExactlyOnceWith("fx.page"); expect($('[data-owner-runtime="fx.page"]').textContent).toBe("Paused");
+    $('[data-owner-resume="fx.page"]').click(); await ticks(); expect(live.entry.api.resumeOwner).toHaveBeenCalledExactlyOnceWith("fx.page"); expect(calls).toEqual([]); expect(p!.root.querySelectorAll("iframe,canvas")).toHaveLength(0);
+    live.snapshot.rows[0].reason = "host_budget"; live.changed(); await ticks(); expect(text()).toContain("Resume keeps the three-pauses safety limit.");
+    live.entry.api.resumeOwner.mockReturnValueOnce(false); $('[data-owner-resume="fx.page"]').click(); await ticks(); expect(text()).toContain("This effect cannot resume");
+    await p!.unmount(); expect(live.listeners.size).toBe(0); expect(live.ends.size).toBe(0);
+  });
+  it("a runtime-only unavailable selection retains Clear and never silently edits the saved id", async () => {
+    const live = runtime(); live.snapshot.slots["fx.page"] = { id: A, status: "unavailable" }; await mount({ slots: { ...empty(), "fx.page": { id: A, status: "available", manifest } }, lang: "zh-TW" });
+    expect(text()).toContain("已無法使用"); expect($('[data-owner-clear="fx.page"]')).not.toBeNull(); expect($('[data-owner-pause="fx.page"]')).toBeNull(); expect(calls.some(c => c.init.method === "POST")).toBe(false);
+    $('[data-owner-clear="fx.page"]').click(); await ticks(); expect(JSON.parse(calls.find(c => c.init.method === "POST")!.init.body).set).toEqual({ "fx.page": null });
+  });
+  it("explicit Reload and successful Save invalidate runtime metadata, without trusting the Settings GET as its answer", async () => {
+    const live = runtime(); await mount(); live.entry.api.changedOwner.mockClear();
+    const reload = p!.root.querySelectorAll("button").find((b: any) => b.textContent === "Reload choices"); reload.click(); await ticks(); expect(live.entry.api.changedOwner).toHaveBeenCalledOnce();
+    await change("fx.page", A); expect(live.entry.api.changedOwner).toHaveBeenCalledTimes(2); expect(live.snapshot.slots["fx.page"]).toEqual({ status: "none", id: null });
+  });
   it("filters manifest declarations for four regions plus host cursor without granting Worker access", async () => {
     await mount();
     const { ownerEffectFits: fits } = await import("/ui/js/settings-owner-effects.js");
@@ -42,9 +76,9 @@ describe("owner effect selectors", () => {
     expect(fits({ regions: ["chat"] }, "fx.page")).toBe(false); expect(fits({ regions: ["box"] }, "fx.box")).toBe(false);
     expect(fits({}, "fx.cursor")).toBe(false); expect(fits(manifest, "fx.other")).toBe(false);
   });
-  it("shows five choices, platform scope and deferred playback; saves only exact id and epoch", async () => {
+  it("shows five choices, platform scope and playback gates; saves only exact id and epoch", async () => {
     await mount(); expect(p!.root.querySelectorAll("[data-owner-slot]")).toHaveLength(5);
-    expect(text()).toContain("Discord and Telegram accounts stay separate."); expect(text()).toContain("Saving a choice does not start playback yet.");
+    expect(text()).toContain("Discord and Telegram accounts stay separate."); expect(text()).toContain("Playback requires Effects and preview consent. Cursor playback is not enabled yet.");
     await change("fx.page", A);
     const posts = calls.filter(c => c.init.method === "POST"); expect(posts).toHaveLength(1);
     expect(JSON.parse(posts[0]!.init.body)).toEqual({ set: { "fx.page": A }, ownerEpoch: E });

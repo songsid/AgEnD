@@ -174,7 +174,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
   }
   function ownerSnapshot() {
     return { ...(personal?.snapshot() ?? { error: null, rev: -1, loading: false, slots: {} }),
-      rows: registry?.snapshot().filter(row => personal?.binding(row.key, row.id)) ?? [] };
+      rows: registry?.snapshot().flatMap(row => { const b = personal?.binding(row.key, row.id); return b ? [{ ...row, slot: b.slot }] : []; }) ?? [] };
   }
   async function read(s) {
     if (!sourceAlive(s) || pending || s.error) return;

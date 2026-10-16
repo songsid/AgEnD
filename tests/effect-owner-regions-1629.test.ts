@@ -37,7 +37,7 @@ describe("#1629 host-owned anchored box rectangles", () => {
   });
 });
 describe("personal region target primitive (geometry mocked; native recipe is separate)", () => {
-  it("is not exposed as a product asset before the owner adapter is reviewed", () => expect(isServedAsset("effect-owner-regions.js")).toBe(false));
+  it("serves the reviewed owner adapter target helper through the fixed map", () => expect(isServedAsset("effect-owner-regions.js")).toBe(true));
   it("returns actual protected Chat header and hidden host-owned page/box references; creates no frame/code", () => {
     const h = fixture(); expect(h.api.ok).toBe(true); expect(h.api.resolve("fx.header", null, proof())).toBe(h.header);
     const page = h.api.resolve("fx.page", null, proof()), small = h.api.resolve("fx.box", box(), proof()); expect(page).not.toBe(small);

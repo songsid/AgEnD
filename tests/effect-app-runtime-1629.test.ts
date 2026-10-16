@@ -204,7 +204,7 @@ describe("#1629 optional personal sources share the app pool", () => {
   it("aggregates four personal slots and same-id Chat in one registry with distinct scopes", async () => {
     const h = rig(personal); h.api.sync(); await flush(); const a = h.chat("a"); await flush(); const ds = h.registry.update.mock.calls.at(-1)[0];
     expect(ds.map((d: any) => d.region)).toEqual(["page", "header", "sidebar", "box", "chat"]); expect(new Set(ds.map((d: any) => d.key)).size).toBe(5);
-    expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(a.api.snapshot().rows).toHaveLength(1); expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce();
+    expect(h.api.ownerSnapshot().rows.map((r: any) => r.slot)).toEqual(ownerSlots); expect(a.api.snapshot().rows).toHaveLength(1); expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce();
     for (const row of ds) { expect(await h.options().load(row, new AbortController().signal)).toMatchObject({ id }); }
     expect(h.loader.resourceSettled.mock.calls.slice(0, 4).map((c: any) => c[0])).toEqual(ownerSlots.map(slot => ({ id, slot })));
     expect(h.loader.resourceSettled.mock.calls[4][0]).toEqual({ id, instance: "a" }); expect(await h.options().load({ id }, new AbortController().signal)).toBeNull();

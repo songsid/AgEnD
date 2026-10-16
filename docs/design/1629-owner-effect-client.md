@@ -2,8 +2,7 @@
 
 This adds Settings selectors and synchronization for the five owner slots. It does
 not mount a frame, create a Worker/canvas, fetch effect source, or start playback.
-The selector explicitly says saving does not start playback yet. Stock trust/paint
-and product runtime integration remain separate reviewed work.
+The separate app-owned adapter now plays four personal regions through the shared pool after consent and stock checks; the selector also exposes its slot controls. Cursor and Try remain separate work. This client still does not own a runtime pool.
 
 ## Separate from the host cache
 

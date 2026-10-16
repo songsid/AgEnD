@@ -1193,13 +1193,13 @@ The backend now keeps five owner effect selections (`fx.sidebar`, `fx.header`, `
 the signed-in web identity. Discord and Telegram identities stay separate; accounts are not merged. A web-only
 `agend web --code` sign-in uses a **host-wide operator** bucket shared by everyone signing in as that operator.
 Header tokens cannot read or write these five keys. Existing visible preferences remain host-wide, without migration;
-profile and custom-CSS internal identity rules are unchanged. Settings → Appearance now offers the five selectors; saving does not start playback. Personal-region/cursor playback remains a later step.
+profile and custom-CSS internal identity rules are unchanged. Settings → Appearance offers the five selectors. With effects and preview consent enabled, page/header/sidebar/box choices play across the supported stock panels in the same pool as Chat, with slot-specific Pause/Resume and unavailable/Clear controls. Cursor playback and Try remain separate work.
 
 Unsharing an effect revokes subsequent resource authorization for someone else's personal selection, including its
 cursor image. The saved choice remains as unavailable until cleared, retaining its blob reference. This is stricter
 than chat placements' retained-runtime policy: personal choices follow current sharing, while a chat keeps the exact
 effect placed there. A reference never grants sharing or export authority. Unreadable preferences authorize no
-personal effect and prevent collection. Before playback can be mounted, stock trust/paint ordering must be reviewed;
+personal effect and prevent collection. Playback independently rechecks stock trust/paint ordering;
 agent front effects stay paused while custom CSS is active, loading or unknown (human placements keep their exemption).
 
 Menus, dialogs, Keep/tour notices and focused inputs suppress all foreground effects. Behind effects still require
@@ -1215,4 +1215,4 @@ settings prevent playback or the page is a public link, a placement's static pos
 No poster means no image; safe mode, the show switch and unknown stock ordering refuse poster paint. Public links
 receive no Worker code or playback controls. Their explicit show choice stays in this browser and survives a reload,
 without changing the host default. Explicit Pause/queued effects and failed live reads are not replaced by this fallback.
-Personal regions/cursor and Try previews remain separate work.
+Personal page/header/sidebar/box choices use that same pool; cursor and Try previews remain separate work.

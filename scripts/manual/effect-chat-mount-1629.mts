@@ -60,7 +60,8 @@ const server=createServer(async(req,res)=>{
  if(p==='/ui/owner-css.css'){res.setHeader('Content-Type','text/css');res.end('/* neutral owner CSS; still blocks agent front */');return;}
  if(p!=='/'){
   res.setHeader('Content-Type','application/json');let answer:any={ok:true,instances:[],themes:{},records:[],entries:[]};
-  if(p.startsWith('/ui/effects/')){
+  if(p==='/ui/effects/owner'){answer={rev,slots:Object.fromEntries(['fx.page','fx.header','fx.sidebar','fx.box','fx.cursor'].map(k=>[k,{status:'none',id:null}]))};}
+  else if(p.startsWith('/ui/effects/')){
    assert.ok(['worker','worker-b'].includes(u.searchParams.get('instance')!));assert.equal(u.searchParams.get('ownerEpoch'),epoch);
    if(p==='/ui/effects/placements')answer=service.placements('alice',u.searchParams.get('instance'));
    else if(p.startsWith('/ui/effects/resource/')){resources++;resourceScopes.push(u.searchParams.get('instance')!);answer=service.resource('alice',p.split('/').at(-1),u.searchParams.get('instance'));}

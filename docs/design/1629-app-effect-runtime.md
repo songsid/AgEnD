@@ -1,6 +1,6 @@
 # App-owned effect pool primitive (#1629 B2)
 
-The session-only `app-effects.js` bridge now starts this owner once from the full app’s Chat-store boot, including when Fleet is the initial panel. The actual Chat component contributes its committed lease instead of constructing a private registry/loader. An optional personal contribution model is described in [1629-owner-effect-source.md](1629-owner-effect-source.md); the product bridge does not enable it yet. Actual personal playback, cursor and Try remain separate work. Importing either host module starts nothing.
+The session-only `app-effects.js` bridge now starts this owner once from the full app’s Chat-store boot, including when Fleet is the initial panel. The actual Chat component contributes its committed lease instead of constructing a private registry/loader. An optional personal contribution model is described in [1629-owner-effect-source.md](1629-owner-effect-source.md); the product bridge now connects its fixed stock targets, authoritative preference invalidation and Settings controls. Cursor and Try remain separate work. Importing either host module starts nothing.
 
 ## Ownership
 
