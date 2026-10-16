@@ -42,15 +42,16 @@ import {encodeEffectFiles} from '../../dist/web-effect-upload.js';
 import {createPreviewListener} from '../../dist/web-preview.js';
 const library=new WebEffectLibrary(scratch),themes=new ThemeStore(scratch),profiles=new WebEffectProfiles(scratch);
 let preview:any,css=false,rev=1,resources=0,epoch='e'.repeat(16),profileWrites=0;
-const service=new WebEffectService({library,themes,profiles,known:n=>n==='worker',changed:()=>rev++});
+const service=new WebEffectService({library,themes,profiles,known:n=>['worker','worker-b'].includes(n),changed:()=>rev++});
 library.registerReferenceSource('themes',()=>themes.placedEffects().flatMap(p=>p.ids.map(id=>({id,holder:'instance:'+p.name}))));
-const ids=[];
+const ids=[]; const resourceScopes: string[] = [];
 for(let n=0;n<2;n++){
  const worker=`const c=agend.canvas.getContext('2d');let color='#ff1414';const paint=()=>{c.fillStyle=color;c.fillRect(0,0,agend.canvas.width,agend.canvas.height)};paint();agend.on('env',paint);agend.on('reply',()=>{color='#14ff14';paint()});agend.ready();`;
  const files=new Map([['effect.json',Buffer.from(JSON.stringify({v:1,runtime:'canvas-worker-v1',worker:'worker.js',name:'native-'+n,title:'Native '+n,regions:['chat'],layer:n===0?'front':'behind',wants:['reply','pointer','state','theme']}))],['worker.js',Buffer.from(worker)]]);
  const r=service.upload('alice',encodeEffectFiles(files));assert.equal(typeof r.id,'string');ids.push(r.id);
 }
 assert.equal(themes.setPlacements('worker',{effects:ids.map(id=>({id}))},'agent',()=>null).ok,true);
+assert.equal(themes.setPlacements('worker-b',{effects:ids.map(id=>({id}))},'agent',()=>null).ok,true);
 const server=createServer(async(req,res)=>{
  const u=new URL(req.url||'/','http://localhost'),p=u.pathname;
  if(/^\/assets\/[a-z0-9._-]+$/.test(p)||/^\/ui\/js\/[a-z0-9_-]+\.js$/.test(p)){
@@ -60,9 +61,9 @@ const server=createServer(async(req,res)=>{
  if(p!=='/'){
   res.setHeader('Content-Type','application/json');let answer:any={ok:true,instances:[],themes:{},records:[],entries:[]};
   if(p.startsWith('/ui/effects/')){
-   assert.equal(u.searchParams.get('instance'),'worker');assert.equal(u.searchParams.get('ownerEpoch'),epoch);
-   if(p==='/ui/effects/placements')answer=service.placements('alice','worker');
-   else if(p.startsWith('/ui/effects/resource/')){resources++;answer=service.resource('alice',p.split('/').at(-1),'worker');}
+   assert.ok(['worker','worker-b'].includes(u.searchParams.get('instance')!));assert.equal(u.searchParams.get('ownerEpoch'),epoch);
+   if(p==='/ui/effects/placements')answer=service.placements('alice',u.searchParams.get('instance'));
+   else if(p.startsWith('/ui/effects/resource/')){resources++;resourceScopes.push(u.searchParams.get('instance')!);answer=service.resource('alice',p.split('/').at(-1),u.searchParams.get('instance'));}
    else if(p.startsWith('/ui/effects/profile/')){let body='';for await(const b of req)body+=b;answer=service.report('alice',p.split('/').at(-1),JSON.parse(body));if(!answer.error)profileWrites++;}
   }else if(p==='/auth/session')answer={csrf:'probe-csrf',handle:epoch,tier:'admin'};
   else if(p==='/auth/logout'){return;}// Held to prove synchronous teardown before logout completes.
@@ -78,12 +79,12 @@ const server=createServer(async(req,res)=>{
  const prefs=JSON.stringify({rev,values:{'preview.optIn':true,'fx.show':true},ownerScope:'person',ownerEpoch:epoch});
  res.setHeader('Content-Type','text/html');res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'self' 'nonce-chat-probe'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; frame-src ${previewOrigin}/frame ${previewOrigin}/effect; worker-src 'none'; object-src 'none'; base-uri 'none'`);
  res.end(`<!doctype html><html data-prefs='${prefs}'><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><link rel=stylesheet href=/assets/tokens.css><link rel=stylesheet href=/assets/app.css><body data-mode=full data-dashboard-origin="${origin}" data-preview-origin="${previewOrigin}" data-preview-boot="${'b'.repeat(32)}" data-owner-css-state=off><div id=app class=app-root></div><script src=/assets/agend-auth.js></script><script src=/ui/js/preview.js></script><script type=module nonce=chat-probe>
-import{html,render}from'/assets/app-html.js';import{Shell}from'/assets/app-shell.js';import{appStore}from'/assets/app-store.js';import{navStore}from'/assets/app-nav.js';import{ChatPanel,boot}from'/ui/js/panel-chat.js';import{installOwnerCss,ownerCssLifecycle}from'/assets/owner-css.js';import{setLang}from'/assets/app-i18n.js';import{stockEffectTrust}from'/assets/effect-stock-trust.js';import{savePref,bootPrefs}from'/assets/app-prefs.js';
+import{html,render}from'/assets/app-html.js';import{Shell}from'/assets/app-shell.js';import{appStore}from'/assets/app-store.js';import{navStore}from'/assets/app-nav.js';import{ChatPanel,boot}from'/ui/js/panel-chat.js';import{FleetPanel}from'/ui/js/panel-fleet.js';import{getAppEffects}from'/ui/js/app-effects.js';import{installOwnerCss,ownerCssLifecycle}from'/assets/owner-css.js';import{setLang}from'/assets/app-i18n.js';import{stockEffectTrust}from'/assets/effect-stock-trust.js';import{savePref,bootPrefs}from'/assets/app-prefs.js';
 setLang(new URL(location.href).searchParams.get('lang')||'en',{store:false});localStorage.setItem('agend_tour_seen','1');window.AgendPreview.setOptIn(true);bootPrefs();installOwnerCss();
-appStore.set({ready:true,connection:'live',instances:[{name:'worker',backend:'codex',status:'running',state:'idle',card_v:'probe-card'}],exec:{worker:'idle'},awaiting:{},themesRev:1,prefsRev:1,connections:1});navStore.set({route:{panel:'chat',instance:'worker'},seq:1});
+appStore.set({ready:true,connection:'live',instances:[{name:'worker',backend:'codex',status:'running',state:'idle',card_v:'probe-card'},{name:'worker-b',backend:'codex',status:'running',state:'idle',card_v:'probe-card'}],exec:{worker:'idle','worker-b':'idle'},awaiting:{},themesRev:1,prefsRev:1,connections:1});navStore.set({route:{panel:'fleet'},seq:1});
 const handlers={};const store=boot({stream:{on(k,fn){handlers[k]=fn;return()=>delete handlers[k]}},boot:document.body.dataset,deps:{announce(){},toast(){}}});
-render(html\`<\${Shell} panels=\${new Map([['chat',{Component:ChatPanel}]])} onNewInstance=\${()=>{}} />\`,document.querySelector('#app'));
-window.probe={trust:()=>stockEffectTrust(window,{ownerCss:ownerCssLifecycle.get().state}),off:()=>{savePref('fx.show',false);window.AgendPreview.setOptIn(false)},css:async(on)=>{const r=await fetch('/probe/css?on='+(on?1:0)).then(r=>r.json());appStore.set({prefsRev:r.rev})},cssState:()=>ownerCssLifecycle.get().state,unmount:()=>render(null,document.querySelector('#app')),rev:()=>appStore.set({themesRev:appStore.get().themesRev+1}),reply:()=>{const meta=Object.freeze({source:'sse',receivedAt:performance.now()}),m={boot:'bb',id:50,role:'agent',instance:'worker',sender:'worker',text:'fresh',ts:new Date().toISOString()};handlers.message(m,meta);handlers.agent_reply_live({v:1,boot:'bb',id:50,instance:'worker'},meta)}};
+render(html\`<\${Shell} panels=\${new Map([['chat',{Component:ChatPanel}],['fleet',{Component:FleetPanel}]])} onNewInstance=\${()=>{}} />\`,document.querySelector('#app'));
+const appOwner=getAppEffects();const layer=document.querySelector('.agend-effect-layer');window.probe={sameOwner:()=>appOwner===getAppEffects()&&layer===document.querySelector('.agend-effect-layer')&&[...document.querySelectorAll('iframe.agend-effect-frame')].every(f=>f.parentElement===layer),goto:(name)=>navStore.set({seq:navStore.get().seq+1,route:name?{panel:'chat',instance:name}:{panel:'fleet'}}),trust:()=>stockEffectTrust(window,{ownerCss:ownerCssLifecycle.get().state}),off:()=>{savePref('fx.show',false);window.AgendPreview.setOptIn(false)},css:async(on)=>{const r=await fetch('/probe/css?on='+(on?1:0)).then(r=>r.json());appStore.set({prefsRev:r.rev})},cssState:()=>ownerCssLifecycle.get().state,unmount:()=>render(null,document.querySelector('#app')),rev:()=>appStore.set({themesRev:appStore.get().themesRev+1}),reply:()=>{const meta=Object.freeze({source:'sse',receivedAt:performance.now()}),m={boot:'bb',id:50,role:'agent',instance:'worker',sender:'worker',text:'fresh',ts:new Date().toISOString()};handlers.message(m,meta);handlers.agent_reply_live({v:1,boot:'bb',id:50,instance:'worker'},meta)}};
 </script>`);
 });
 let browser:any,port:number;
@@ -96,9 +97,20 @@ try{
    css=false;const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[],outside=[];
    await context.addInitScript(n=>{Object.defineProperty(navigator,'hardwareConcurrency',{value:n});Object.defineProperty(navigator,'deviceMemory',{value:n})},width===390?4:8);page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',r=>{const u=new URL(r.request().url());if(['blob:','data:'].includes(u.protocol)||u.hostname==='127.0.0.1'&&[String(port),String(preview.settings.port)].includes(u.port))return r.continue();outside.push(u.origin);return r.abort();});
    try{
-    await page.goto('http://127.0.0.1:'+port+'/?lang='+(width===390?'zh-TW':'en'));await page.locator('.composer').waitFor();
-    await page.evaluate(()=>{const e=document.activeElement;if(e instanceof HTMLElement)e.blur()});
+    await page.goto('http://127.0.0.1:'+port+'/?lang='+(width===390?'zh-TW':'en'));await page.locator('.p-fleet').waitFor();
+    assert.equal(await page.evaluate(()=>probe.sameOwner()),true);assert.equal(await page.locator('iframe.agend-effect-frame').count(),0);
+    await page.evaluate(()=>probe.goto('worker'));await page.locator('.composer').waitFor();
+    await page.waitForTimeout(250);await page.evaluate(()=>{const e=document.activeElement;if(e instanceof HTMLElement)e.blur()});
     const expected=width===390?1:2;await page.waitForFunction(n=>document.querySelectorAll('iframe.agend-effect-frame').length===n,expected,{timeout:15000});
+    await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].every(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:15000});
+    // Real route producer handoffs retain exactly the original page owner/layer and share cap limits.
+    for(const name of ['worker-b',null,'worker']){
+      console.log('ROUTE',engine,width,name);
+      await page.evaluate(n=>probe.goto(n),name);
+      if(name){await page.locator('.composer').waitFor();await page.waitForTimeout(250);await page.evaluate(()=>{const e=document.activeElement;if(e instanceof HTMLElement)e.blur()});await page.waitForFunction(n=>document.querySelectorAll('iframe.agend-effect-frame').length===n,expected,{timeout:15000});}
+      else{await page.locator('.p-fleet').waitFor();await page.waitForFunction(()=>document.querySelectorAll('iframe.agend-effect-frame').length===0);}
+      assert.equal(await page.evaluate(()=>probe.sameOwner()),true);
+    }
     await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].every(f=>getComputedStyle(f).visibility==='visible'),undefined,{timeout:15000});
     const firstReports=profileWrites;
     await page.waitForFunction(async initial=>(await fetch('/probe/status').then(r=>r.json())).profileWrites>initial,firstReports,{timeout:16000,polling:500});
@@ -124,7 +136,7 @@ try{
     await page.evaluate(()=>probe.off());await page.waitForFunction(()=>document.querySelectorAll('iframe.agend-effect-frame').length===0);
     const stopped=await page.screenshot();assert.deepEqual(pixel(stopped,before.x,before.y),protectedPixel,'protected composer pixel');
     // A fresh page is the explicit recovery boundary; no old epoch/pending controller is reused.
-    await page.reload();await page.evaluate(()=>{window.AgendPreview.setOptIn(true)});await page.locator('.composer').waitFor();await page.evaluate(()=>{const e=document.activeElement;if(e instanceof HTMLElement)e.blur()});
+    await page.reload();await page.locator('.p-fleet').waitFor();await page.evaluate(()=>{window.AgendPreview.setOptIn(true);probe.goto('worker')});await page.locator('.composer').waitFor();await page.waitForTimeout(250);await page.evaluate(()=>{const e=document.activeElement;if(e instanceof HTMLElement)e.blur()});
     await page.waitForFunction(n=>document.querySelectorAll('iframe.agend-effect-frame').length===n,expected,{timeout:15000});
     await page.evaluate(()=>probe.css(true));await page.waitForFunction(()=>probe.cssState()==='on');
     await page.waitForFunction(()=>[...document.querySelectorAll('iframe.agend-effect-frame')].every(f=>getComputedStyle(f).zIndex!=='20'));
@@ -134,8 +146,8 @@ try{
     await page.evaluate(()=>probe.css(false));await page.waitForFunction(()=>probe.cssState()==='off');await page.waitForFunction(n=>document.querySelectorAll('iframe.agend-effect-frame').length===n,expected,{timeout:15000});
     // Sign-out notifies before its network call. Even a changed route cannot keep a frame alive.
     await page.evaluate(()=>{void window.AgendAuth.signOut()});await page.waitForFunction(()=>document.querySelectorAll('iframe.agend-effect-frame').length===0);
-    assert.deepEqual(outside,[]);assert.deepEqual(errors,[]);rows.push({engine,version:browser.version(),width,status:'pass',actualChatPanel:true,explicitDeviceSignals:true,builtServiceProjection:true,builtPreview:true,cap:expected,ownerCssSuppressesAgentFront:true,plainBilingualSettingLink:true,signOutTeardown:true,freshReplyReachesWorker:true,profileRecorded:true,pauseSurvivesRevision:true,resumeAfterDialog:true,protectedComposerPixel:true,noInlineStyle:true});console.log('PASS',engine,width);
-   }catch(e){let diagnostic;try{diagnostic=await page.evaluate(()=>({body:document.body.dataset,trust:probe.trust(),device:{cores:navigator.hardwareConcurrency,memory:navigator.deviceMemory,offscreen:typeof OffscreenCanvas,worker:typeof Worker},frames:[...document.querySelectorAll('iframe')].map(f=>({visibility:getComputedStyle(f).visibility,z:getComputedStyle(f).zIndex})),text:document.body.innerText.slice(-2000)}))}catch{}rows.push({engine,width,status:'failed',error:e.message,stack:e.stack,errors,outside,diagnostic});console.log('FAIL',engine,width,e.message)}finally{await context.close()}
+    assert.ok(resourceScopes.includes('worker-b'));assert.equal(await page.locator('.agend-effect-layer').count(),0);assert.deepEqual(outside,[]);assert.deepEqual(errors,[]);rows.push({engine,version:browser.version(),width,status:'pass',actualChatPanel:true,appOwnedPool:true,initialFleetHasNoFrames:true,routeHandoffsKeepSameOwner:true,sameIdExactScopes:resourceScopes.includes('worker')&&resourceScopes.includes('worker-b'),explicitDeviceSignals:true,builtServiceProjection:true,builtPreview:true,cap:expected,ownerCssSuppressesAgentFront:true,plainBilingualSettingLink:true,signOutTeardown:true,freshReplyReachesWorker:true,profileRecorded:true,pauseSurvivesRevision:true,resumeAfterDialog:true,protectedComposerPixel:true,noInlineStyle:true});console.log('PASS',engine,width);
+   }catch(e){let diagnostic;try{diagnostic=await page.evaluate(()=>({body:document.body.dataset,trust:probe.trust(),device:{cores:navigator.hardwareConcurrency,memory:navigator.deviceMemory,offscreen:typeof OffscreenCanvas,worker:typeof Worker},frames:[...document.querySelectorAll('iframe')].map(f=>({visibility:getComputedStyle(f).visibility,z:getComputedStyle(f).zIndex})),text:document.body.innerText.slice(-2000)}))}catch{}rows.push({engine,width,status:'failed',error:e.message,stack:e.stack,errors,outside,diagnostic});console.log('FAIL',engine,width,e.stack,JSON.stringify({errors,diagnostic}))}finally{await context.close()}
   }await browser.close();browser=null;
  }
 }finally{

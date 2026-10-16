@@ -2,18 +2,17 @@
 
 This slice connects the reviewed B2 components to the committed Chat view on the
 2.3 feature branch. It does not mount personal sidebar/header/page/box/cursor
-choices, expose public posters, or implement the Try side panel. Those remain
+choices or implement the Try side panel. Static public/anonymous posters are a separately reviewed path; this live bridge does not change them. Those personal/Try paths remain
 separate B2 work. It changes neither the main branch nor the HTML preview shim.
 
 ## Ownership and admission
 
-The real `.chat-main` DOM reference and the current view lease own one registry.
+The app owns one registry/loader for its Window episode, even when Fleet is the initial page. The real `.chat-main` DOM reference and current view lease contribute to that owner; they never construct a second pool.
 The immutable server-rendered `data-prefs` supplies a person/operator scope and
 session epoch; header-token, public-link, anonymous and View-only loads cannot
 construct the runtime. Explicit web-only operator identity remains supported.
 Sign-out/session-end observation is registered before construction, including
-synchronous replay to late observers. Route disposal and pagehide abort reads,
-stop writes, release listeners and remove frames. A BFCache restoration does not
+synchronous replay to late observers. A navigation sequence synchronously detaches the old contribution before lazy panel loading. Route disposal aborts its reads and removes its frames, retaining the app owner and physical reservations; pagehide/session end stops writes, releases global listeners and removes the pool. A BFCache restoration does not
 restart the old runtime: reload the page for a fresh session episode.
 
 Static modules contain host code only; reading them does not authorize an effect.
@@ -29,12 +28,11 @@ Theme revisions remove old descriptors before reading the new authoritative
 placements. A stale result cannot republish them. One pending metadata operation
 coalesces revisions; requests do not poll or retry on their own. An unchanged
 explicit Pause survives a revision. Invalid/unavailable runtime resources stop
-this Chat runtime until a page reload; this conservative rule also applies to a
-transient read failure. No latest-session, general-library or unauthenticated
+that Chat contribution without an automatic retry; this conservative rule also
+applies to a transient read failure. A newly committed route may read again using
+the same app pool. A failed/revoked page owner itself requires reload. No latest-session, general-library or unauthenticated
 fallback supplies code. Physical read/write reservations survive logical abort
-until the underlying operation actually settles. A new Chat mounted before an
-old physical operation settles can therefore be refused; its Effects dialog
-offers Reload page. The adapter does not poll for release or spin up another pool.
+until fetch/body cancellation actually settles. A new Chat waits for the prior metadata operation’s physical settlement before reading; a stuck operation retains that capacity and requires reload. A stale old success/failure cannot enter the new contribution, even for the same content id. The adapter does not poll or spin up another pool.
 
 ## Paint, input and content-free signals
 
