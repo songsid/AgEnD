@@ -76,7 +76,8 @@ export class AgentMods {
     let omitted = 0;
     if (Object.keys(look).length > 1 || rec.placements.effects.length) {
       const effects = rec.placements.effects.flatMap(p => { const e = this.deps.readOwnEffect?.(instance, p.id); if (!e) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
-      parts.theme = { theme: { ...look, v: 1 }, picture: id => { const a = rec.assets.find(x => x.id === id); const b = this.deps.themes.asset(instance, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
+      // A default look whose placed effects are all someone else's has nothing of its own to carry (#1910 review).
+      if (Object.keys(look).length > 1 || effects.length) parts.theme = { theme: { ...look, v: 1 }, picture: id => { const a = rec.assets.find(x => x.id === id); const b = this.deps.themes.asset(instance, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
     // Its own card text: the agent's fields (a person's card fields are theirs, kept elsewhere, and never exported here).
     if (card?.tagline || card?.bio) parts.identity = { ...(card.tagline ? { tagline: card.tagline } : {}), ...(card.bio ? { bio: card.bio } : {}) };
@@ -85,7 +86,7 @@ export class AgentMods {
       if (w && w.by === "agent") (parts.widgets ??= {})[slot] = { spec: w.spec, data: w.data };
     }
     const built = buildModBundle({ name: args.name, version: args.version, title }, parts);
-    if (!built.ok) return { error: built.error, message: built.error === "nothing_to_export" ? "You have no theme, card text or widgets of your own to export." : "A picture your theme names is missing." };
+    if (!built.ok) return { error: built.error, message: built.error === "nothing_to_export" ? "You have no theme, card text or widgets of your own to export." : "A picture your theme names is missing.", ...(omitted ? { effects_omitted: omitted } : {}) };
     const data = Buffer.from(built.text, "utf8");
     const sha256 = createHash("sha256").update(data).digest("hex");
     const omittedNote = omitted ? { effects_omitted: omitted } : {};
