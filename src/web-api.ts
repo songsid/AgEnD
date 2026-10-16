@@ -13,6 +13,8 @@ import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
 import { AGENT_WIDGET_SLOTS, checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
 import { canonicalText } from "./web-theme.js";
+import type { WebEffectService } from "./web-effect-service.js";
+import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -238,6 +240,8 @@ export interface WebApiContext {
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
+  /** #1629 B2: session-only effect library, runtime resources and reported host profiles. */
+  readonly effectService?: WebEffectService;
   /** #1629 r4-5: an instance's card text as shown (a person's fields over the agent's), for a mod's export. */
   modCardText?(name: string): { tagline?: string; bio?: string };
   /** #1629 r4-5c: an effect this person may export (their own claim, or human-shared); null for anyone else's. */
@@ -432,6 +436,59 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
       json(res, 200, { active: restored.active });
     }
   })().catch(fail);
+  return true;
+}
+
+/** #1629 B2: effect routes require a human session; route bodies never supply an actor or reference holder. */
+function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  const reading = method === "GET";
+  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
+  const who = (): { person: string } | { status: number; error: string } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
+    if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
+    if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
+    return { person: webPersonKey(verdict.session.owner) };
+  };
+  const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
+  const service = ctx.effectService; if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
+  const answer = (result: Record<string, unknown>) => json(res, typeof result.error === "string" ? result.error === "not_found" ? 404 : result.error === "profile_rate_limited" ? 429 : 400 : 200, result);
+  const idPath = /^\/ui\/effects\/(resource|profile)\/([0-9a-f]{32})$/.exec(path);
+  const instance = url.searchParams.get("instance") ?? undefined;
+  if (reading) {
+    const image = /^\/ui\/effects\/image\/([0-9a-f]{32})\/(poster|cursor)\.png$/.exec(path);
+    if (image) {
+      const r = service.image(first.person, image[1]!, image[2] as "poster" | "cursor", instance);
+      if (!r.ok) json(res, 404, { error: "not_found" });
+      else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
+      return true;
+    }
+    if (path === "/ui/effects") answer(service.list(first.person));
+    else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance));
+    else if (idPath?.[1] === "resource") answer(service.resource(first.person, idPath[2]!, instance));
+    else if (idPath?.[1] === "profile" && instance === undefined) answer(service.profile(first.person, idPath[2]!));
+    else json(res, 404, { error: "not_found" });
+    return true;
+  }
+  const deletion = /^\/ui\/effects\/([0-9a-f]{32})$/.exec(path);
+  if (method === "DELETE" && deletion) { answer(service.delete(first.person, deletion[1]!)); return true; }
+  if (method !== "POST" || !["/ui/effects/upload", "/ui/effects/apply", "/ui/effects/remove", "/ui/effects/share"].includes(path) && idPath?.[1] !== "profile") { json(res, 404, { error: "not_found" }); return true; }
+  (async () => {
+    let bytes: Buffer;
+    try { bytes = await readBoundedWebBody(req, path === "/ui/effects/upload" ? EFFECT_WIRE_LIMIT : 16 * 1024); }
+    catch { json(res, 413, { error: "effect_body_bound" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who(); if ("status" in now) { json(res, now.status, { error: now.error }); return; }
+    if (now.person !== first.person) { json(res, 409, { error: "effects_person_changed" }); return; }
+    if (path === "/ui/effects/upload") { answer(service.upload(now.person, bytes)); return; }
+    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "effect_json" }); return; }
+    if (path === "/ui/effects/apply") answer(service.apply(now.person, body));
+    else if (path === "/ui/effects/remove") answer(service.remove(now.person, body));
+    else if (path === "/ui/effects/share") answer(service.share(now.person, body));
+    else answer(service.report(now.person, idPath![2]!, body, instance));
+  })().catch(() => { try { json(res, 500, { error: "effect_request_failed" }); } catch { /* response ended */ } });
   return true;
 }
 
@@ -1157,6 +1214,9 @@ export function handleWebRequest(
 
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
+
+  // Canvas effects are absent from the public gateway manifest and independently refused above.
+  if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
   // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.
