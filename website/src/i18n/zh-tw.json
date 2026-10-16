@@ -11,7 +11,7 @@
   "hero": {
     "tagline": "你的 AI 艦隊，",
     "taglineAccent": "一則訊息掌控。",
-    "subtitle": "Agent Engineering Daemon — 從 Telegram 或 Discord 管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作、零維護。",
+    "subtitle": "Agent Engineering Daemon — 從 Telegram、Discord 或瀏覽器管理 AI 編碼 Agent。7 種後端、艦隊模式、Agent 協作、零維護。",
     "cta": "快速開始",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT 授權"
@@ -55,7 +55,7 @@
       {
         "icon": "rocket",
         "name": "Fleet Mode",
-        "desc": "N 個專案，每個都是獨立的 Telegram Forum Topic。獨立 session，crash 自動恢復。"
+        "desc": "N 個專案，每個都是一個 Telegram topic 或 Discord 頻道。獨立 session，crash 自動恢復。"
       },
       {
         "icon": "shuffle",
@@ -70,7 +70,7 @@
       {
         "icon": "smartphone",
         "name": "手機操控",
-        "desc": "從 Telegram inline 按鈕核准工具、重啟 session、管理 fleet。"
+        "desc": "用 Telegram 或 Discord 的按鈕核准工具、重啟 session、管理 fleet。"
       },
       {
         "icon": "shield",
@@ -84,8 +84,8 @@
       },
       {
         "icon": "monitor",
-        "name": "Web View",
-        "desc": "瀏覽器即時串流終端機畫面。可拖曳排序、編輯 profile、依 tag 分組。"
+        "name": "網頁聊天與儀表板",
+        "desc": "在瀏覽器和每個 agent 聊天：/web 登入、傳檔案、預覽 HTML、按 Stop 中止，還有每個終端機的即時 View。"
       },
       {
         "icon": "settings",
@@ -121,6 +121,16 @@
         "icon": "file-text",
         "name": "HTML 匯出",
         "desc": "把 session 匯出成獨立 HTML 檔，方便分享或存檔。"
+      },
+      {
+        "icon": "check-square",
+        "name": "等你處理",
+        "desc": "所有在等你的提示、權限和登入，集中在一個即時更新的清單，General 和網頁上都看得到。"
+      },
+      {
+        "icon": "users",
+        "name": "多組登入",
+        "desc": "讓 agent 改用第二個 Claude、Codex 或 Kiro 訂閱，在聊天裡完成登入，Claude 的用量依帳號分開顯示。"
       }
     ]
   },
@@ -238,7 +248,7 @@
       },
       {
         "q": "支援哪些通訊管道？",
-        "a": "Telegram 和 Discord，兩者皆支援 topic/channel 模式的 fleet 路由，另有 ClassicBot 模式（在任何頻道打 /start 即可掛上一個 agent）以及 Telegram forum topic 模式（一個專案一個 topic）。"
+        "a": "Telegram 和 Discord，另外還有瀏覽器裡的網頁聊天，甚至可以完全不設 bot。Telegram 和 Discord 兩者皆支援 topic/channel 模式的 fleet 路由，另有 ClassicBot 模式（在任何頻道打 /start 即可掛上一個 agent）以及 Telegram forum topic 模式（一個專案一個 topic）。"
       },
       {
         "q": "支援 Discord 嗎？",

@@ -11,15 +11,26 @@
   </p>
 </p>
 
-AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a command center for AI coding agents. One bot, multiple CLI backends, unlimited projects — each running as an independent session with crash recovery and zero babysitting.
+AgEnD (**Agent Engineering Daemon**) turns your Telegram, Discord or browser into a command center for AI coding agents. One bot, multiple CLI backends, unlimited projects — each running as an independent session with crash recovery and zero babysitting.
 
 <p align="center">
-  <code>You → Telegram/Discord → AgEnD → Fleet of AI Agents → Results back to your phone</code>
+  <code>You → Telegram/Discord/Web → AgEnD → Fleet of AI Agents → Results back to you</code>
 </p>
 
 [繁體中文](README.zh-TW.md) · [Documentation](docs/features.md) · [CLI Reference](docs/cli.md) · [2.2 what’s new](docs/release-notes/2.2.0.md)
 
 ---
+
+<p align="center"><strong>Your AI agents, in the chat apps you already use.</strong></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp">
+    <img src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-light.webp" width="880" alt="The AgEnD web dashboard, with made-up demo data: a sidebar of six agents with their status, a chat with the agent Pixel that shows a table of bundle sizes, a code block, a chosen “Ship it” reply button, an attached report and a usage panel with five AI providers. Beside it, an illustration of a phone showing the same conversation, with the Discord and Telegram logos.">
+  </picture>
+</p>
+
+<p align="center"><em>Every agent gets its own chat: in Telegram, in Discord, or in the built-in web dashboard. The phone is an illustration.</em></p>
 
 ## Why AgEnD?
 
@@ -38,7 +49,11 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram forum topic or Discord channel is an isolated agent session.
 
-🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code. Switch or mix freely.
+🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI, Grok Build, Meta Muse Code. Switch or mix freely, or move an agent to another CLI from chat with `/backend`.
+
+💬 **Web Chat & Dashboard** — Send `/web` and sign in with a one-time code, on this computer or from your phone through a temporary public link. Each agent's chat is the same conversation as its topic, with files, image and HTML previews, Stop, reply buttons and polls. A live **View** of every terminal, fleet pages and Settings sit alongside, and a fleet can run from the browser alone. See the [web dashboard guide](docs/web-dashboard.md).
+
+🙋 **Needs You** — Every prompt, permission request, sign-in and stuck agent across your bots in one live list, in General and on the web. Handle it anywhere and it leaves every list.
 
 🤝 **Agent Collaboration** — Agents discover, wake, and message each other via MCP tools. A General Topic routes tasks to the right agent using natural language.
 
@@ -60,8 +75,6 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 🎨 **Configurable Status Emoji** — Every delivery-status emoji can be changed per channel or per instance with `status_emojis`, including Discord server emoji. See [Configuration](docs/configuration.md#channeloptionsstatus_emojis-discord-and-telegram).
 
-🖥️ **Web Dashboard** — Live fleet monitoring in the browser with SSE updates and integrated chat UI.
-
 🔌 **Extensible** — Adapter plugins, webhook notifications, health endpoint, external session support via IPC.
 
 👥 **Teams & Task Board** — Named groups for targeted broadcasting. Shared task board for multi-step work tracking across instances.
@@ -82,7 +95,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 ## Use Cases
 
-AgEnD is an AI personal assistant that lives in Discord and Telegram, running on the AI subscriptions you already have.
+AgEnD is an AI personal assistant that lives in Discord, Telegram and your browser, running on the AI subscriptions you already have.
 
 - **Work** — one channel per project; message from your phone, the assistant works on your machine and reports back. A General channel routes tasks, and assistants delegate to each other.
 - **Everyday life** — DM your assistant to look things up, ask about a photo, or set a reminder.

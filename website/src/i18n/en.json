@@ -11,7 +11,7 @@
   "hero": {
     "tagline": "Your AI fleet,",
     "taglineAccent": "one chat away.",
-    "subtitle": "Agent Engineering Daemon — manage coding agents from Telegram or Discord. 7 backends, fleet mode, agent collaboration, zero babysitting.",
+    "subtitle": "Agent Engineering Daemon — manage coding agents from Telegram, Discord or the browser. 7 backends, fleet mode, agent collaboration, zero babysitting.",
     "cta": "Get Started",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT License"
@@ -55,7 +55,7 @@
       {
         "icon": "rocket",
         "name": "Fleet Mode",
-        "desc": "N projects, each a Telegram Forum Topic. Independent sessions with crash recovery."
+        "desc": "N projects, each a Telegram topic or Discord channel. Independent sessions with crash recovery."
       },
       {
         "icon": "shuffle",
@@ -70,7 +70,7 @@
       {
         "icon": "smartphone",
         "name": "Mobile Control",
-        "desc": "Approve tool use, restart sessions, manage your fleet from Telegram inline buttons."
+        "desc": "Approve tool use, restart sessions, manage your fleet from Telegram or Discord buttons."
       },
       {
         "icon": "shield",
@@ -84,8 +84,8 @@
       },
       {
         "icon": "monitor",
-        "name": "Web View",
-        "desc": "Real-time terminal streaming in the browser. Drag-sort, profiles, tag groups."
+        "name": "Web Chat & Dashboard",
+        "desc": "Chat with each agent from the browser: /web sign-in, files, HTML previews, Stop. Plus a live View of every terminal."
       },
       {
         "icon": "settings",
@@ -121,6 +121,16 @@
         "icon": "file-text",
         "name": "HTML Export",
         "desc": "Export sessions as standalone HTML for sharing or archiving."
+      },
+      {
+        "icon": "check-square",
+        "name": "Needs You",
+        "desc": "Every prompt, permission and sign-in waiting on you, in one live list in General and on the web."
+      },
+      {
+        "icon": "users",
+        "name": "Credential Profiles",
+        "desc": "Run agents on a second Claude, Codex or Kiro subscription, sign it in from chat, and see Claude usage per account."
       }
     ]
   },
@@ -238,7 +248,7 @@
       },
       {
         "q": "Which messaging channels?",
-        "a": "Telegram and Discord. Both support topic/channel-based fleet routing, plus ClassicBot mode — run /start in any channel to attach an agent — and Telegram forum topic mode for one topic per project."
+        "a": "Telegram and Discord, plus a web chat in the browser — a fleet can even run with no bot at all. Telegram and Discord both support topic/channel-based fleet routing, plus ClassicBot mode — run /start in any channel to attach an agent — and Telegram forum topic mode for one topic per project."
       },
       {
         "q": "Does it support Discord?",
