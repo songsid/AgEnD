@@ -5,6 +5,7 @@ import { WEB_EFFECT_ID, resolveEffectParams } from "./web-effect.js";
 import { effectRasterAssets } from "./web-effect-bundle.js";
 import { decodeEffectFiles } from "./web-effect-upload.js";
 import type { WebEffectProfiles } from "./web-effect-profiles.js";
+import { isOwnerEffectKey, OWNER_EFFECT_KEYS, type OwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 
 type Answer = Record<string, unknown>;
 const fail = (error: string): Answer => ({ error });
@@ -14,6 +15,7 @@ export interface EffectServiceDeps {
   library: WebEffectLibrary;
   themes: ThemeStore;
   profiles: WebEffectProfiles;
+  prefs?: WebPrefsStore;
   known(name: string): boolean;
   changed(): void;
   monotonic?: () => number;
@@ -94,6 +96,49 @@ export class WebEffectService {
     if (!this.validPerson(person)) return fail("not_found"); const r = this.deps.library.deleteClaim(id, this.principal(person));
     if (!r.ok) return fail(r.error); this.deps.changed(); return { deleted: id };
   }
+  /** A selection never acquires a claim or borrows chat retention. Null clears need no library read. */
+  validateOwnerSelection(person: string, key: OwnerEffectKey, id: string): string | null {
+    const r = this.readable(person, id);
+    return r.ok && this.ownerCompatible(r.entry, key) ? null : "not_found";
+  }
+  private ownerCompatible(entry: { manifest: import("./web-effect.js").WebEffectManifest; files: ReadonlyMap<string, Uint8Array> }, key: OwnerEffectKey): boolean {
+    if (!isOwnerEffectKey(key)) return false;
+    if (key === "fx.cursor") return !!entry.manifest.cursor && entry.files.has("cursor.png");
+    const region = key.slice(3) as "sidebar" | "header" | "page" | "box";
+    return entry.manifest.regions.includes(region) && (region !== "box" || !!entry.manifest.box);
+  }
+  collectOwnerReplaced(ids: string[]): void { this.deps.library.collectUnreferenced(ids); }
+  ownerSelections(person: string): Answer {
+    if (!this.validPerson(person)) return fail("not_found");
+    const view = this.deps.prefs?.readForViewer(person); if (!view || view.unreadable) return fail("prefs_unreadable");
+    return { rev: view.rev, slots: Object.fromEntries(OWNER_EFFECT_KEYS.map(key => {
+      const id = view.values[key]; if (id === undefined) return [key, { status: "none", id: null }];
+      const r = this.readable(person, id);
+      return [key, r.ok && this.ownerCompatible(r.entry, key) ? { status: "available", id, manifest: r.entry.manifest } : { status: "unavailable", id }];
+    })) };
+  }
+  private ownerSelected(person: string, id: string, slot: unknown) {
+    if (!this.validPerson(person) || typeof slot !== "string" || !isOwnerEffectKey(slot)) return { ok: false as const, error: "not_found" };
+    const view = this.deps.prefs?.readForViewer(person);
+    if (!view || view.unreadable || view.values[slot] !== id) return { ok: false as const, error: "not_found" };
+    const r = this.readable(person, id);
+    return r.ok && this.ownerCompatible(r.entry, slot) ? r : { ok: false as const, error: "not_found" };
+  }
+  /** Personal runtime authorizations always recheck current own/shared ACL. Cursor selection grants no code read. */
+  ownerResource(person: string, id: string, slot: unknown): Answer {
+    if (slot === "fx.cursor") return fail("not_found");
+    const r = this.ownerSelected(person, id, slot); if (!r.ok) return fail("not_found");
+    const params = resolveEffectParams(r.entry.manifest); if (!params.ok) return fail("not_found");
+    return this.resourceAnswer(id, r.entry, params.values);
+  }
+  ownerImage(person: string, id: string, kind: "poster" | "cursor", slot: unknown): { ok: true; bytes: Uint8Array } | { ok: false; error: "not_found" } {
+    const r = this.ownerSelected(person, id, slot), bytes = r.ok ? r.entry.files.get(`${kind}.png`) : undefined;
+    return bytes ? { ok: true, bytes } : { ok: false, error: "not_found" };
+  }
+  private resourceAnswer(id: string, entry: import("./web-effect-bundle.js").CheckedWebEffect, params: Record<string, unknown>): Answer {
+    return { id, manifest: entry.manifest, params, wants: entry.manifest.wants, code: new TextDecoder("utf-8", { fatal: true }).decode(entry.files.get("worker.js")!),
+      assets: effectRasterAssets(entry).map(({ name, mime, bytes }) => ({ name, mime, data_b64: Buffer.from(bytes).toString("base64") })) };
+  }
   /** A runtime resource is not an export grant. An exact currently retained placement is independently required. */
   private retained(id: string, instance: string) {
     if (!this.deps.known(instance) || !WEB_EFFECT_ID.test(id) || !this.deps.themes.readable()) return { ok: false as const, error: "not_found" };
@@ -108,8 +153,7 @@ export class WebEffectService {
     const binding = instance === undefined ? null : this.retained(id, instance);
     const r = binding ?? this.readable(person, id); if (!r.ok) return fail("not_found");
     const defaults = resolveEffectParams(r.entry.manifest); if (!defaults.ok) return fail("not_found");
-    return { id, manifest: r.entry.manifest, params: binding?.ok ? binding.params : defaults.values, wants: r.entry.manifest.wants, code: new TextDecoder("utf-8", { fatal: true }).decode(r.entry.files.get("worker.js")!),
-      assets: effectRasterAssets(r.entry).map(({ name, mime, bytes }) => ({ name, mime, data_b64: Buffer.from(bytes).toString("base64") })) };
+    return this.resourceAnswer(id, r.entry, binding?.ok ? binding.params : defaults.values);
   }
   image(person: string, id: string, kind: "poster" | "cursor", instance?: string): { ok: true; bytes: Uint8Array } | { ok: false; error: "not_found" } {
     if (!this.validPerson(person)) return { ok: false, error: "not_found" };
