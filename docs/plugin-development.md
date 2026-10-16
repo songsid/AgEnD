@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-Build channel adapter plugins for AgEnD. This guide uses the Discord adapter (`@songsid/agend-plugin-discord`) as a reference implementation.
+Build channel adapter plugins for AgEnD. The built-in [Discord adapter](../src/channel/adapters/discord.ts) is a reference implementation; it is not a separately installed Discord plugin.
 
 ## Plugin Architecture
 
@@ -11,9 +11,10 @@ fleet.yaml: channel.type: "slack"
     ↓
 factory.ts tries import():
     1. @songsid/agend-plugin-slack   (scoped official)
-    2. agend-plugin-slack           (community)
-    3. agend-adapter-slack          (legacy)
-    4. slack                        (bare name)
+    2. @suzuke/agend-plugin-slack  (upstream)
+    3. agend-plugin-slack           (community)
+    4. agend-adapter-slack          (legacy)
+    5. slack                        (bare name)
     ↓
 Plugin default export: createAdapter(config, opts) → ChannelAdapter
 ```
@@ -79,13 +80,14 @@ Key points:
 
 ```typescript
 import type { ChannelAdapter } from "@songsid/agend/channel";
+import type { AccessManager } from "@songsid/agend/channel/access-manager";
 import type { ChannelConfig } from "@songsid/agend/types";
 import { MyAppAdapter } from "./myapp-adapter.js";
 
 interface AdapterOpts {
   id: string;
   botToken: string;
-  accessManager: unknown;
+  accessManager: AccessManager;
   inboxDir: string;
 }
 
@@ -175,7 +177,8 @@ Every adapter must implement these methods:
 |--------|---------|
 | `createTopic?(name)` | Create a new topic/channel |
 | `deleteTopic?(topicId)` | Delete a topic/channel |
-| `topicExists?(topicId)` | Check if topic/channel exists |
+| `probeTopicPresence?(topicId)` | Return `present`, positively proven `missing`, or `unknown`; transport/cache/permission ambiguity is never evidence of deletion |
+| `topicProbePolicy?()` | `periodic` (default) or `on-demand`; use on-demand when a probe has visible side effects |
 | `closeForumTopic?(threadId)` | Close a forum topic |
 | `reopenForumTopic?(threadId)` | Reopen a forum topic |
 | `editForumTopic?(threadId, opts)` | Edit topic name/icon |
@@ -195,7 +198,7 @@ Every adapter must implement these methods:
 |-------|------|------|
 | `message` | User sends a message | `InboundMessage` object |
 | `callback_query` | User clicks an inline button | Query data |
-| `topic_closed` | Topic/channel is archived | Topic ID |
+| `topic_closed` | Topic/channel is archived | `{ chatId, threadId }` |
 
 ### 4. Topology
 
@@ -243,7 +246,9 @@ import { MessageQueue } from "@songsid/agend/channel/message-queue";
 
 ```typescript
 this.queue = new MessageQueue({ send, edit, sendFile });
-// Then use this.queue.send() instead of direct API calls
+this.queue.start(); // after the adapter is connected
+this.queue.enqueue(chatId, threadId, msg); // msg is a QueuedMessage
+// On adapter shutdown: this.queue.stop();
 ```
 
 ## Plugin Loading
@@ -251,9 +256,10 @@ this.queue = new MessageQueue({ send, edit, sendFile });
 AgEnD's `factory.ts` resolves plugins in this order:
 
 1. `@songsid/agend-plugin-{type}` — Scoped official plugins
-2. `agend-plugin-{type}` — Community plugins
-3. `agend-adapter-{type}` — Legacy naming convention
-4. `{type}` — Bare package name
+2. `@suzuke/agend-plugin-{type}` — Upstream plugins
+3. `agend-plugin-{type}` — Community plugins
+4. `agend-adapter-{type}` — Legacy naming convention
+5. `{type}` — Bare package name
 
 For each candidate, it tries:
 1. `import(name)` — Local `node_modules`

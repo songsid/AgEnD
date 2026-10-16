@@ -23,11 +23,9 @@ gh repo set-default songsid/AgEnD
 
 Or pass `--repo songsid/AgEnD` on every invocation.
 
-## Rebuild native modules after a Node version change
+## Native-module compatibility
 
-`better-sqlite3` is a native addon compiled against a specific Node ABI. Switching
-Node versions (nvm, a system upgrade) leaves it built for the old one, and **every
-SQLite-backed test fails at once** — well over a hundred — with:
+Current `better-sqlite3` v13 uses Node-API 10 and ships ABI-stable prebuilds for supported platforms. A supported Node version change does not normally require a rebuild. An older ABI-specific addon or incompatible local installation can still make many SQLite-backed tests fail with:
 
 ```
 The module '.../better_sqlite3.node' was compiled against a different Node.js
@@ -39,8 +37,7 @@ NODE_MODULE_VERSION 127.
 npm rebuild better-sqlite3
 ```
 
-Worth recognising on sight: a sudden mass failure across unrelated suites is this,
-not a regression you just introduced.
+Use the error and installed addon/runtime versions to diagnose a native-module mismatch before attributing unrelated test failures to a code regression.
 
 ## Tests
 
@@ -49,7 +46,7 @@ npm test                # vitest run — full unit suite, single pass
 npm run test:integration # serial suites that use real tmux/child-process resources
 npm run test:watch       # vitest watch mode
 npm run test:e2e         # e2e suite (e2e/vitest.config.e2e.ts)
-AGEND_CODEX_E2E=1 npx vitest run --config vitest.config.integration.ts tests/codex-exact-cwd-resume-e2e.test.ts
+AGEND_CODEX_E2E=1 npm run test:codex-e2e -- tests/codex-exact-cwd-resume-e2e.test.ts
                       # opt-in: a real codex 0.155–0.159 resumes a worktree's own session (#984) and holds input while it loads; symlinks your ~/.codex/auth.json, sends no prompt
                       # run it against a new codex release before adding the version to SUPPORTED_CODEX in that file
 npx vitest run tests/some-file.test.ts
