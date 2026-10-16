@@ -212,6 +212,7 @@ import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
 import { cardVersion, resolveCard } from "./web-card.js";
 import { ModStore } from "./web-mod-store.js";
+import { AgentMods } from "./web-mod-agent.js";
 import { downloadStickerImage } from "./channel/sticker-download.js";
 import { WebImageCache, imageMimeForFile, WEB_IMAGE_MAX_AGE_MS, WEB_IMAGE_MAX_BYTES, WEB_IMAGE_RETRY_MS, type CachedImage } from "./web-images.js";
 import { accentColor, avatarFor, ownBotConnections, type AvatarDescriptor } from "./instance-avatar.js";
@@ -1409,6 +1410,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits(), effects: cw1EffectChecker() }),
       isKnownInstance: (name) => this.isKnownInstance(name),
       prefsIdentity: OPERATOR,
+    }));
+  }
+  private agentModsService?: AgentMods;
+  /** #1629 r4-5b: export_web_mod / propose_web_mod — the caller's own look as a file, and a proposal for a person. */
+  get agentMods(): AgentMods {
+    return (this.agentModsService ??= new AgentMods({
+      themes: this.themeStore, mods: this.mods, limiter: this.webAppearance.limiter,
+      webConfig: () => this.fleetConfig?.web ?? null,
+      // The mod store's own: a proposal is checked exactly as the person's import of it will be.
+      context: () => this.mods.checkContext(),
+      notice: (instance, text) => { try { this.emitSseEvent("message", { instance, sender: instance, role: "status", text, ts: new Date().toISOString() }); } catch { /* the page reads it from Settings too */ } },
+      changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame */ } },
     }));
   }
   /** #1629 r4-5: an instance's card text as every viewer sees it (a person's fields over the agent's). */
@@ -9573,7 +9586,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { this.handlePersonaEmoji(name, msg); return; }
     if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme"
       || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance"
-      || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget") {
+      || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget"
+      || type === "fleet_export_web_mod" || type === "fleet_propose_web_mod") {
       this.handleWebTheme(name, msg); return;
     }
   }
@@ -9592,6 +9606,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const args = (msg.payload ?? {}) as Record<string, unknown>;
       const result = tool === "get_web_appearance" || tool === "preview_web_appearance"
         ? this.appearanceTools.handle(instanceName, tool, args)
+        : tool === "export_web_mod" || tool === "propose_web_mod" ? this.agentMods.handle(instanceName, tool, args)
         : this.webAppearance.handleTool(instanceName, tool, args);
       ipc.send({ type: "fleet_web_theme_response", fleetRequestId, result });
     } catch (err) {
@@ -10026,6 +10041,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return this.effectTools.handle(instance, tool, args);
     }
     if (tool === "get_web_appearance" || tool === "preview_web_appearance") return this.appearanceTools.handle(instance, tool, args);
+    if (tool === "export_web_mod" || tool === "propose_web_mod") return this.agentMods.handle(instance, tool, args);
     return this.webAppearance.handleTool(instance, tool, args);
   }
 
@@ -10763,7 +10779,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webFiles.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
-    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
+    try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.effectToolsService?.forget(name); this.mods.forgetInstance(name); this.agentMods.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);

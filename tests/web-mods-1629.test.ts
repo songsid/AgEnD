@@ -488,6 +488,22 @@ describe("effects, replace and uninstall (the library under the mod's own holder
     expect(s.store.bundleText(b.plan.mod.id), "the new file is gone").toBeNull();
     expect(s.store.bundleText(a.plan.mod.id), "the old one stays").not.toBeNull();
   });
+  it("a reviewed proposal whose replace is refused at the release stays proposed (the index is restored whole)", () => {
+    const s = setup({ effects: true });
+    const a = s.store.stage("p", text(fx("1.0.0")));
+    if (!a.ok) throw new Error("stage");
+    s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { effects: true } });
+    const agentFile = (() => { const d = fx("1.1.0", "agend.ready();") as any; delete d.manifest.contents.ownerCss; delete d.files["css/custom.css"]; return text(d); })();
+    const next = B.checkModBundle(agentFile, ctx({ effects: B.cw1EffectChecker() }));
+    if (!next.ok) throw new Error(JSON.stringify(next.problems));
+    expect(s.store.propose("alpha", agentFile, next.mod)).toMatchObject({ ok: true });
+    const b = s.store.stageProposal("p", "alpha");
+    if (!b.ok) throw new Error("stage");
+    s.lib.failRelease = true;
+    expect(s.store.commit("p", { stage: b.stage, plan_hash: b.plan_hash, include: { effects: true, replace: true } })).toMatchObject({ ok: false, error: "effects_release_refused" });
+    expect(s.store.proposals().map(p => p.version)).toEqual(["1.1.0"]);
+    expect(s.store.stageProposal("p", "alpha").ok, "and can be opened again").toBe(true);
+  });
   it("uninstall releases only this mod's holder, removes its file and entry, and leaves what it applied", () => {
     const s = setup({ effects: true });
     const st = s.store.stage("p", text(fx()));
@@ -603,6 +619,19 @@ describe("the routes", () => {
       expect([bad.status, JSON.parse(bad.body).error]).toEqual([400, "title"]);
       const ok = await go("Night");
       expect([ok.status, B.checkModBundle(ok.body, ctx()).ok]).toEqual([200, true]);
+    } finally { await f.stop(); }
+  }, 30_000);
+  it("an agent's proposal over HTTP: listed, opened into a plan as this person's, dismissed (#1906 review)", async () => {
+    const f = await fleet();
+    try {
+      const agentFile = (() => { const d = bundle() as any; delete d.manifest.contents.ownerCss; delete d.files["css/custom.css"]; return text(d); })();
+      expect(f.fm.agentMods.handle("alpha", "propose_web_mod", { data_b64: Buffer.from(agentFile).toString("base64") })).toHaveProperty("proposed");
+      expect(JSON.parse((await raw(f.port, "GET", "/ui/mods", f.session().read)).body).proposals).toMatchObject([{ instance: "alpha", name: "violet" }]);
+      const st = await raw(f.port, "POST", "/ui/mods/proposal/stage", f.session().write, JSON.stringify({ instance: "alpha" }));
+      expect([st.status, JSON.parse(st.body).plan.mod.name]).toEqual([200, "violet"]);
+      expect((await raw(f.port, "POST", "/ui/mods/proposal/dismiss", f.session("read").write, JSON.stringify({ instance: "alpha" }))).status, "read-only").toBe(403);
+      expect((await raw(f.port, "POST", "/ui/mods/proposal/dismiss", f.session().write, JSON.stringify({ instance: "alpha" }))).status).toBe(200);
+      expect(f.fm.mods.proposals()).toEqual([]);
     } finally { await f.stop(); }
   }, 30_000);
   it("a read-only session can't write; the CLI's header token can't reach mods at all; anonymous 401", async () => {

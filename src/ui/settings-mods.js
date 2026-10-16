@@ -197,7 +197,8 @@ export function ModsCard() {
     const r = await call("/ui/mods");
     const b = r.ok && r.body && typeof r.body === "object" ? r.body : null;
     const staged = b && b.staged && typeof b.staged === "object" && typeof b.staged.stage === "string" && b.staged.plan && Array.isArray(b.staged.plan.items) ? b.staged : null;
-    setState(b && Array.isArray(b.mods) ? { mods: b.mods.filter((m) => m && typeof m.id === "string"), staged } : { failed: true });
+    const proposals = b && Array.isArray(b.proposals) ? b.proposals.filter((p) => p && typeof p.instance === "string" && typeof p.title === "string") : [];
+    setState(b && Array.isArray(b.mods) ? { mods: b.mods.filter((m) => m && typeof m.id === "string"), staged, proposals } : { failed: true });
   };
   useEffect(() => { load(); }, []);
   if (!state) return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3><p class="sub">…</p></section>`;
@@ -211,6 +212,16 @@ export function ModsCard() {
     if (file.current) file.current.value = "";
     if (!r.ok) { setError(why(r.body)); return; }
     setState({ ...state, staged: r.body });
+  };
+  const review = async (p) => {
+    const r = await postJson("/ui/mods/proposal/stage", { instance: p.instance });
+    if (!r.ok) { setError(why(r.body)); return; }
+    setState({ ...state, staged: r.body });
+  };
+  const dismiss = async (p) => {
+    const r = await postJson("/ui/mods/proposal/dismiss", { instance: p.instance });
+    if (!r.ok) { toast(why(r.body), false); return; }
+    load();
   };
   const uninstall = async (m) => {
     if (!(await confirmDialog({ message: tn("modUninstallConfirm", m.title), confirmLabel: tn("modUninstall"), danger: true }))) return;
@@ -230,6 +241,10 @@ export function ModsCard() {
       <label class="btn"><${Icon} name="attach" size=${16} /><span>${tn("modChoose")}</span>
         <input ref=${file} type="file" accept=".json,application/json" class="sr-only" disabled=${busy} onChange=${stage} /></label></div>`}
     ${error ? html`<p class="err s-mod-err" role="alert">${error}</p>` : null}
+    ${!state.staged && (state.proposals || []).length ? html`<div class="s-mod-proposals"><h4>${tn("modProposals")}</h4><ul class="s-mod-list">${state.proposals.map((p) => html`<li key=${p.instance}>
+      <span class="grow">${tn("modProposedBy", p.instance)} <strong>${p.title}</strong> <span class="muted">${p.name} ${p.version}</span></span>
+      <button type="button" class="btn btn-sm" onClick=${() => review(p)}>${tn("modReview")}</button>
+      <button type="button" class="btn btn-sm" onClick=${() => dismiss(p)}>${tn("modDismiss")}</button></li>`)}</ul></div>` : null}
     ${state.mods.length ? html`<ul class="s-mod-list">${state.mods.map((m) => html`<li key=${m.id}>
       <span class="grow"><strong>${m.title}</strong> <span class="muted">${m.name} ${m.version}${m.target ? ` · ${tn("modAppliedTo", m.target)}` : ""}</span></span>
       <button type="button" class="btn btn-sm" onClick=${() => fetchFile(m)}>${tn("modDownload")}</button>

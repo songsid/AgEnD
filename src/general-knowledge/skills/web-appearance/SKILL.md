@@ -1,6 +1,6 @@
 ---
 name: web-appearance
-description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card and widgets, preview the result
+description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card and widgets, preview the result, share it as a mod
 roles: [worker]
 ---
 
@@ -17,6 +17,7 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Your face and ring | theme picture and accent | `set_web_theme`, `set_web_theme_asset` |
 | Your identity card | portrait, banner, tagline, bio | `set_web_theme` (`card.*`), `set_web_theme_asset` |
 | Your chat header strip and Details page | widgets: small panels of facts the dashboard draws | `set_web_widget`, `remove_web_widget` |
+| A file of your look | a mod: export yours, or propose one for a person | `export_web_mod`, `propose_web_mod` |
 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
 chrome, a person's sidebar widget, or a person's custom CSS.
@@ -140,6 +141,29 @@ in it can be clicked or focused.
 
 Then, as you go: `set_web_widget { "slot": "chat_header", "data": { "tests": 75 } }`.
 
+## Mods
+
+A mod is one file, `<name>-<version>.agendmod.json`, that carries a look: a theme with its pictures, card text,
+widgets and effects. People import mods in **Settings → Appearance → Mods**. **You never import**: a person reviews
+everything in a mod and ticks what to apply.
+
+- `export_web_mod { name, version, title? }` writes **your own** look to `.agend/mods/<name>-<version>.agendmod.json`
+  in your working directory and returns `{ path, bytes }`. It carries your theme with its pictures, your own card text
+  (not a person's card fields), and the widgets you placed. It never carries custom CSS or the sidebar widget, which
+  are a person's. `name` is a-z, 0-9 and -, `version` is MAJOR.MINOR.PATCH.
+- `propose_web_mod { file }` sends a mod file from your working directory (at most 8 MiB) for a person to review. It
+  is checked whole and answers with its problems if it isn't valid. **A mod carrying custom CSS is refused**
+  (`owner_css_not_from_agent`). A muted line in your chat says it was proposed. Nothing changes until a person
+  installs it. One proposal at a time: a new one replaces yours. It counts as an upload.
+- A widget a person placed from a mod is theirs: you may give it values (`set_web_widget` with `data`), but not replace
+  or remove it (`person_placed`).
+
+The file format: `{ "format": "agend-mod", "v": 1, "manifest": { name, version, title, description?, author?,
+requires?: { agend: ">=X.Y.Z" }, contents: { theme?, identity?, widgets?: { chat_header?, details? }, effects? } },
+"files": { "<path>": { "sha256", "b64" } } }`. Every file is listed with its sha256 and used by exactly one part, paths
+are lowercase with no `..`, and a theme names its pictures by path. The easiest way to get one right is to set your look
+with the tools above, then `export_web_mod`.
+
 ## Limits
 
 - At least **30 s** between changes, at most **10 changes an hour**, at most **3 picture uploads an hour** — refused
@@ -157,4 +181,5 @@ Then, as you go: `set_web_widget { "slot": "chat_header", "data": { "tests": 75 
 
 From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear <path>…|asset <slot> <file>|reset`,
 `agend-agent appearance`, `agend-agent appearance preview [light|dark]`, and
-`agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`.
+`agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`, and
+`agend-agent mod export <name> <version> [title]|propose <file>`.
