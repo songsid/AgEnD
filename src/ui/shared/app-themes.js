@@ -2,7 +2,7 @@
 // (and its avatar ring) only — never the shell, the sidebar chrome or another instance. What the host sends is
 // canonical already; this checks it again (a value that fails is dropped, never passed on) and applies it through the
 // CSSOM (custom properties) and fixed class tokens. No style attribute, no CSS text, no url() built in CSS.
-// Not shown: with "Show agents' themes and effects" off (fx.show, synced), and in safe mode (?safe=1).
+// Not shown: with "Show agents' themes, effects and widgets" off (fx.show, synced), and in safe mode (?safe=1).
 import { appStore, createStore } from "./app-store.js";
 import { onPrefsChanged, prefInForce, savePref } from "./app-prefs.js";
 import { safeMode } from "./owner-css.js";
@@ -10,8 +10,8 @@ import { t } from "./app-i18n.js";
 import { toast } from "./ui-toast.js";
 import { confirmDialog } from "./ui-confirm.js";
 
-/** { rev, themes: { <name>: theme }, locked: [<name>] } as GET /ui/themes said (rev -1: not read yet). */
-export const themesStore = createStore({ rev: -1, themes: {}, locked: [], shown: true });
+/** { rev, themes: { <name>: theme }, locked: [<name>], widgets: { <name>: { <slot>: widget } } } as GET /ui/themes said (rev -1: not read yet). */
+export const themesStore = createStore({ rev: -1, themes: {}, locked: [], widgets: {}, shown: true });
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 
 const COLOR = /^#[0-9a-f]{6}$/;
@@ -113,7 +113,8 @@ async function read(rev) {
       try { const r = await fetch("/ui/themes", { credentials: "same-origin" }); body = r.ok ? await r.json() : null; } catch { body = null; }
       if (!body || typeof body !== "object") break;
       themesStore.set({ rev: typeof body.rev === "number" ? body.rev : want, themes: body.themes && typeof body.themes === "object" ? body.themes : {},
-        locked: Array.isArray(body.locked) ? body.locked.filter((n) => typeof n === "string") : [] });
+        locked: Array.isArray(body.locked) ? body.locked.filter((n) => typeof n === "string") : [],
+        widgets: body.widgets && typeof body.widgets === "object" && !Array.isArray(body.widgets) ? body.widgets : {} });
       if (want === wanted) break;
     }
   } finally { reading = false; }
@@ -148,11 +149,29 @@ async function themeAction(name, what, body) {
   else toast(t(what === "reset" ? "chat.themeResetDone" : body && body.locked ? "chat.themeLocked" : "chat.themeUnlocked", name));
 }
 
-/** The chat's and Details' ⋯ entries for an agent's theme: Lock/Unlock and Reset… — none over the public link. */
+/** A person's removal of an agent's widget from one slot (r4-4). */
+async function removeWidget(name, slot) {
+  let r;
+  try {
+    const res = await fetch(`/ui/themes/${encodeURIComponent(name)}/widget`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slot }) });
+    r = await res.json().catch(() => ({}));
+    if (!res.ok) r = { error: r && r.error ? r.error : `HTTP ${res.status}` };
+  } catch (err) { r = { error: err && err.message ? err.message : "network" }; }
+  if (r && r.error) toast(t("chat.themeFailed", r.error), false);
+  else toast(t("chat.widgetRemoved", name));
+}
+
+/** The chat's and Details' ⋯ entries for an agent's theme: Lock/Unlock, Reset… and its widgets' Remove — none over the public link. */
 export function themeMenuItems(name) {
   if (publicLink()) return [];
   const locked = isThemeLocked(name);
+  const w = themesStore.get().widgets;
+  const placed = w && own(w, name) && w[name] && typeof w[name] === "object" ? w[name] : {};
   return [
+    ...["chat_header", "details"].filter((slot) => own(placed, slot)).map((slot) => ({
+      key: `widget-remove-${slot}`, label: t(slot === "chat_header" ? "chat.widgetRemoveHeader" : "chat.widgetRemoveDetails"), icon: "trash",
+      onSelect: () => removeWidget(name, slot),
+    })),
     { key: "theme-lock", label: t(locked ? "chat.themeUnlock" : "chat.themeLock"), icon: "key", onSelect: () => themeAction(name, "lock", { locked: !locked }) },
     { key: "theme-reset", label: t("chat.themeReset"), icon: "restart", onSelect: async () => {
       if (await confirmDialog({ message: t("chat.themeResetConfirm", name), confirmLabel: t("chat.themeResetGo"), danger: true })) themeAction(name, "reset");

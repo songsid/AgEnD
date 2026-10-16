@@ -1,6 +1,6 @@
 ---
 name: web-appearance
-description: How you look on the AgEnD web dashboard — check it, change your own theme and identity card, preview the result
+description: How you look on the AgEnD web dashboard — check it, change your own theme, identity card and widgets, preview the result
 roles: [worker]
 ---
 
@@ -16,9 +16,10 @@ can shape how you look there — **only your own look, and only on the surfaces 
 | Your chat | theme: colours, accent, bubbles, font, background picture, working label | `set_web_theme`, `set_web_theme_asset` |
 | Your face and ring | theme picture and accent | `set_web_theme`, `set_web_theme_asset` |
 | Your identity card | portrait, banner, tagline, bio | `set_web_theme` (`card.*`), `set_web_theme_asset` |
+| Your chat header strip and Details page | widgets: small panels of facts the dashboard draws | `set_web_widget`, `remove_web_widget` |
 
 None of these tools takes a target: they always act on you. You can't change another instance, the dashboard's own
-chrome, or a person's custom CSS.
+chrome, a person's sidebar widget, or a person's custom CSS.
 
 ## Look first
 
@@ -37,8 +38,10 @@ chrome, or a person's custom CSS.
 - **A person's choices win.** A picture uploaded for you in View beats your theme picture. A person's card field (from
   View's Edit profile) beats yours, field by field — leave it to them. A person can **Lock** your theme (every change
   you try is refused with `locked`) or **Reset** it (your theme, card and pictures go; a lock stays).
-- **Each viewer decides what they see.** Anyone can turn agents' themes off for their own screens, and `?safe=1` loads a
-  page without them; they then see the default look, and your face follows the usual order without your theme
+- A widget **a person placed** in one of your slots takes your values (`data`), but you can't replace or remove it
+  (`person_placed`).
+- **Each viewer decides what they see.** Anyone can turn agents' themes and widgets off for their own screens, and
+  `?safe=1` loads a page without them; they then see the default look, no widgets, and your face follows the usual order without your theme
   picture — a picture a person uploaded for you, else your bot's avatar, your persona emoji or your first letter.
   Don't rely on your theme to say something important.
 - The fleet can turn agent changes off entirely (`web.themes.agent_edit: false`): every change is refused with
@@ -93,10 +96,56 @@ theme stops naming is deleted.
 `card.banner` (asset ids uploaded for those slots). Text is shown as text — never markup or links. A person may set
 their own version of any field; theirs is shown instead of yours.
 
+## Widgets
+
+A widget is a small panel of facts the dashboard draws **with its own components**: you send what to show and the
+values, never HTML, script, links or CSS. It takes your theme's colours and always carries a `✦ <title>` chip. Nothing
+in it can be clicked or focused.
+
+`set_web_widget { slot, spec?, data? }`:
+
+- `slot`: `chat_header` (a strip under your chat header: at most **4** items, of `stat`, `progress`, `text`, `badge`)
+  or `details` (a card on your Details page: at most **8** items, any type). `sidebar` is a person's: `owner_slot`.
+- `spec` places or replaces the widget (a change):
+  `{ v: 1, title: 1..24 characters, items: [item, …] }`, where each item is `{ type, label?, key | bind, … }`:
+
+| Type | Shows | Value | Extra |
+|---|---|---|---|
+| `stat` | a label and a number or short word | number, or 1..24 characters | `unit` (1..8 characters) |
+| `progress` | a bar and its percentage | number, 0..`max` | `max` (default 100) |
+| `text` | one line | 1..120 characters | |
+| `list` | a short list | 1..6 lines of 1..60 characters | |
+| `badge` | a coloured word | 1..24 characters | `tone`, or `tones: { word: tone }` (`ok`, `warn`, `bad`, `info`, `muted`) |
+| `spark` | a sparkline and its last number | 2..48 numbers | |
+
+  `label` (1..24 characters) is required for `stat`, `progress` and `spark`. `key` (`a-z`, `0-9`, `_`) names a value
+  in your `data`. `bind` shows a value the page already has: `state` (`working`, `idle`, `needs`, `stopped`,
+  `crashed`) on `text` or `badge`, `context_pct` on `stat` or `progress`, `cost_usd` on `stat`. Exactly one of the
+  two. A missing value shows `—`.
+- `data` alone updates the placed widget's values: merged, `null` removes a key. Values must fit every item that shows
+  them; a key no item shows is refused. Data has **its own budget**, separate from theme changes: at least **10 s**
+  apart, at most **180 an hour**.
+- The spec is at most 2048 bytes and the data at most 4096.
+
+`remove_web_widget { slot? }` takes your widget out of one slot, or both (a change). `get_web_theme` and
+`get_web_appearance` list your widgets.
+
+```json
+{ "slot": "chat_header", "spec": { "v": 1, "title": "Build", "items": [
+    { "type": "progress", "label": "Tests", "key": "tests" },
+    { "type": "badge", "label": "State", "bind": "state", "tones": { "working": "info", "needs": "warn" } },
+    { "type": "text", "key": "step" } ] },
+  "data": { "tests": 40, "step": "Running unit tests" } }
+```
+
+Then, as you go: `set_web_widget { "slot": "chat_header", "data": { "tests": 75 } }`.
+
 ## Limits
 
 - At least **30 s** between changes, at most **10 changes an hour**, at most **3 picture uploads an hour** — refused
   with `rate_limited` and `retry_after_s`. Only an accepted change counts; a refused or invalid one costs nothing.
+- Widget values (`set_web_widget` with `data` only): at least **10 s** apart, at most **180 an hour**, apart from the
+  above.
 - Plan the whole look, check it in one `set_web_theme`, then preview — don't iterate change by change.
 
 ## A good workflow
@@ -107,4 +156,5 @@ their own version of any field; theirs is shown instead of yours.
 4. `preview_web_appearance` and Read the SVGs for both modes. Check contrast and that your card reads well.
 
 From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear <path>…|asset <slot> <file>|reset`,
-`agend-agent appearance` and `agend-agent appearance preview [light|dark]`.
+`agend-agent appearance`, `agend-agent appearance preview [light|dark]`, and
+`agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`.

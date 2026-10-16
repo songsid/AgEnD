@@ -17,10 +17,13 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, MEDIA_EXT, MEDIA_MIME, type MediaKind, sniffMedia, stripMetadata } from "./web-image-meta.js";
 import { checkTheme, type Theme } from "./web-theme.js";
 import { type AppearanceLimits, effectiveAppearanceLimits } from "./web-appearance-limits.js";
+import { AGENT_WIDGET_SLOTS, type AgentWidgetSlot, checkWidgetData, checkWidgetSpec, type WidgetData, widgetId, type WidgetSpec } from "./web-widget.js";
 
 export type AppearanceActor = "agent" | "human";
 export interface Placement { id: string; by: AppearanceActor; at: number }
-export interface Placements { effects: Placement[]; widgets: { chat_header?: Placement; details?: Placement } }
+/** r4-4 (option A): a widget is a declarative spec and its data (web-widget.ts); `id` is the spec's content hash. */
+export interface WidgetPlacement extends Placement { spec: WidgetSpec; data: WidgetData }
+export interface Placements { effects: Placement[]; widgets: { chat_header?: WidgetPlacement; details?: WidgetPlacement } }
 import { THEME_ASSET_SLOTS, type ThemeAssetSlot } from "./web-asset-parts.js";
 export { THEME_ASSET_SLOTS, type ThemeAssetSlot };
 export interface ThemeAsset { id: string; slot: ThemeAssetSlot; kind: MediaKind; bytes: number }
@@ -220,11 +223,11 @@ export class ThemeStore {
   }
 
   /**
-   * Where effects and widgets are placed (B2's apply/remove tools, r4's widget tools, a person's choices). `validate`
-   * is the caller's synchronous check of each id (kind, scope, wanted events), run before anything is written.
+   * Where effects are placed (B2's apply/remove tools, a person's choices). `validate` is the caller's synchronous
+   * check of each id (kind, scope, wanted events), run before anything is written. Widgets have their own calls below.
    */
-  setPlacements(name: string, patch: { effects?: string[]; widgets?: { chat_header?: string | null; details?: string | null } }, by: AppearanceActor,
-    validate: (what: { kind: "effect" | "widget"; id: string; slot?: "chat_header" | "details" }) => string | null): StoreWrite<{ placements: Placements }> {
+  setPlacements(name: string, patch: { effects?: string[] }, by: AppearanceActor,
+    validate: (what: { kind: "effect"; id: string }) => string | null): StoreWrite<{ placements: Placements }> {
     const prev = this.get(name);
     const placements = clone(prev.placements);
     const at = this.now();
@@ -233,18 +236,66 @@ export class ThemeStore {
       for (const id of patch.effects) { const p = typeof id === "string" && ASSET_ID.test(id) ? validate({ kind: "effect", id }) : "id"; if (p) return { ok: false, status: 400, error: p, detail: String(id).slice(0, 40) }; }
       placements.effects = patch.effects.map(id => prev.placements.effects.find(e => e.id === id) ?? { id, by, at });
     }
-    if (patch.widgets !== undefined) {
-      for (const slot of ["chat_header", "details"] as const) {
-        if (!Object.hasOwn(patch.widgets, slot)) continue;
-        const id = patch.widgets[slot];
-        if (id === null) { delete placements.widgets[slot]; continue; }
-        const p = typeof id === "string" && ASSET_ID.test(id) ? validate({ kind: "widget", id, slot }) : "id";
-        if (p) return { ok: false, status: 400, error: p, detail: String(id).slice(0, 40) };
-        placements.widgets[slot] = prev.placements.widgets[slot]?.id === id ? prev.placements.widgets[slot]! : { id: id!, by, at };
-      }
-    }
     const w = this.commit(name, { ...prev, placements, by, updated: at });
     return w.ok ? { ...w, placements } : w;
+  }
+
+  /**
+   * r4-4: place a widget (a spec and its data, both already checked — web-widget.ts) in one of the instance's own
+   * slots, or replace it. `by` is who placed it; the same spec placed again keeps its first placement's `by` and `at`.
+   */
+  setWidget(name: string, slot: AgentWidgetSlot, spec: WidgetSpec, data: WidgetData, by: AppearanceActor): StoreWrite<{ widget: WidgetPlacement }> {
+    const prev = this.get(name);
+    const placements = clone(prev.placements);
+    const at = this.now();
+    const id = widgetId(spec);
+    const had = prev.placements.widgets[slot];
+    const widget: WidgetPlacement = had?.id === id ? { ...had, data: clone(data) } : { id, by, at, spec: clone(spec), data: clone(data) };
+    placements.widgets[slot] = widget;
+    const w = this.commit(name, { ...prev, placements, by, updated: at });
+    return w.ok ? { ...w, widget: clone(widget) } : w;
+  }
+  /** r4-4: a placed widget's new data (checked against its spec by the caller); who placed it stays. */
+  setWidgetData(name: string, slot: AgentWidgetSlot, data: WidgetData, by: AppearanceActor): StoreWrite<{ widget: WidgetPlacement }> {
+    const prev = this.get(name);
+    const had = prev.placements.widgets[slot];
+    if (!had) return { ok: false, status: 404, error: "no_widget", detail: `nothing is placed in ${slot}` };
+    const placements = clone(prev.placements);
+    const widget: WidgetPlacement = { ...had, data: clone(data) };
+    placements.widgets[slot] = widget;
+    const w = this.commit(name, { ...prev, placements, by, updated: this.now() });
+    return w.ok ? { ...w, widget: clone(widget) } : w;
+  }
+  /** r4-4: take widgets out of these slots (those placed nowhere are skipped); one write. */
+  removeWidgets(name: string, slots: readonly AgentWidgetSlot[], by: AppearanceActor): StoreWrite<{ removed: AgentWidgetSlot[] }> {
+    const prev = this.get(name);
+    const removed = slots.filter(slot => prev.placements.widgets[slot]);
+    if (!removed.length) return { ok: true, rev: this.rev(), removed };
+    const placements = clone(prev.placements);
+    for (const slot of removed) delete placements.widgets[slot];
+    const w = this.commit(name, { ...prev, placements, by, updated: this.now() });
+    return w.ok ? { ...w, removed } : w;
+  }
+  /**
+   * Every instance's placed effects (B2's reference source for the effect library: an effect placed on an instance is
+   * in use, holder "instance:<name>"). Empty when the file can't be read.
+   */
+  placedEffects(): Array<{ name: string; ids: string[] }> {
+    const s = this.load();
+    if (s === "unreadable") return [];
+    return [...s.records].filter(([, r]) => r.placements.effects.length).map(([name, r]) => ({ name, ids: r.placements.effects.map(e => e.id) }));
+  }
+  /** Every instance's placed widgets, for the page (GET /ui/themes): `{ <name>: { <slot>: { spec, data, by } } }`. */
+  widgets(): Record<string, Partial<Record<AgentWidgetSlot, { spec: WidgetSpec; data: WidgetData; by: AppearanceActor }>>> {
+    const out: Record<string, Partial<Record<AgentWidgetSlot, { spec: WidgetSpec; data: WidgetData; by: AppearanceActor }>>> = Object.create(null);
+    const s = this.load();
+    if (s === "unreadable") return out;
+    for (const [name, r] of s.records) {
+      const slots: Partial<Record<AgentWidgetSlot, { spec: WidgetSpec; data: WidgetData; by: AppearanceActor }>> = {};
+      for (const slot of AGENT_WIDGET_SLOTS) { const w = r.placements.widgets[slot]; if (w) slots[slot] = { spec: clone(w.spec), data: clone(w.data), by: w.by }; }
+      if (Object.keys(slots).length) Object.defineProperty(out, name, { value: slots, enumerable: true });
+    }
+    return out;
   }
 
   /** An instance was removed: its record and its pictures go. */
@@ -268,6 +319,14 @@ function sanePlacements(raw: unknown): Placements {
   const r = raw as Partial<Placements> | undefined;
   const ok = (p: unknown): p is Placement => !!p && typeof p === "object" && ASSET_ID.test(String((p as Placement).id)) && ((p as Placement).by === "agent" || (p as Placement).by === "human") && Number.isFinite((p as Placement).at);
   if (r && Array.isArray(r.effects)) out.effects = r.effects.filter(ok).slice(0, 2);
-  if (r && r.widgets && typeof r.widgets === "object") for (const slot of ["chat_header", "details"] as const) if (ok(r.widgets[slot])) out.widgets[slot] = r.widgets[slot];
+  // A stored widget is checked again on load, spec and data: one that no longer passes (a rule tightened) is dropped.
+  if (r && r.widgets && typeof r.widgets === "object") for (const slot of AGENT_WIDGET_SLOTS) {
+    const w: unknown = r.widgets[slot];
+    if (!ok(w)) continue;
+    const { spec: rawSpec, data: rawData } = w as Partial<WidgetPlacement>;
+    const spec = checkWidgetSpec(rawSpec, slot);
+    const data = spec.ok ? checkWidgetData(rawData ?? {}, spec.value) : null;
+    if (spec.ok && data?.ok && widgetId(spec.value) === w.id) out.widgets[slot] = { id: w.id, by: w.by, at: w.at, spec: spec.value, data: data.value };
+  }
   return out;
 }

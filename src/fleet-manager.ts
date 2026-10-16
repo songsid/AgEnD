@@ -1318,7 +1318,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get appearanceTools(): AppearanceTools {
     return (this.appearanceToolsService ??= new AppearanceTools({
       frame: (name) => ((this.getUiStatus() as { instances: FrameEntry[] }).instances.find(i => i.name === name) ?? { name }),
-      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked }; },
+      theme: (name) => { const r = this.themeStore.get(name); return { theme: r.theme, locked: r.locked, widgets: r.placements.widgets }; },
       card: (name) => resolveCard(name, humanCards(this.dataDir).get(name), this.themeStore.get(name).theme.card),
       cardPicture: (name, slot) => cardPicture(this as unknown as { dataDir: string; themeStore: ThemeStore }, name, slot),
       themeAsset: (name, id) => this.themeStore.asset(name, id),
@@ -9478,7 +9478,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (type === "fleet_list_emojis" || type === "fleet_set_persona_emoji" || type === "fleet_preview_emojis"
       || type === "fleet_list_stickers" || type === "fleet_preview_stickers") { this.handlePersonaEmoji(name, msg); return; }
     if (type === "fleet_get_web_theme" || type === "fleet_set_web_theme" || type === "fleet_set_web_theme_asset" || type === "fleet_reset_web_theme"
-      || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance") {
+      || type === "fleet_get_web_appearance" || type === "fleet_preview_web_appearance"
+      || type === "fleet_set_web_widget" || type === "fleet_remove_web_widget") {
       this.handleWebTheme(name, msg); return;
     }
   }

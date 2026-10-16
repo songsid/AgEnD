@@ -125,7 +125,8 @@ describe("resizing the sidebar", () => {
     }
     expect(seen).toEqual(["300px", "480px", "320px"]);
     expect(posts.filter((p) => JSON.stringify(p).includes("sidebar")), "not a synced preference").toEqual([]);
-    expect(Object.keys(prefs.SYNCED).some((k: string) => /side|width/.test(k))).toBe(false);
+    // (#1629 r4-4's widget.sidebar is a synced widget, not a width: the width is this device's agend_sidebar_w.)
+    expect(Object.keys(prefs.SYNCED).some((k: string) => /width/.test(k)) || Object.values(prefs.SYNCED).some((v: any) => v.ls === "agend_sidebar_w")).toBe(false);
   });
 
   it("a phone (the drawer): no kept width applies", async () => {

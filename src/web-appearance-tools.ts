@@ -13,7 +13,7 @@ import type { Theme, ThemeMode } from "./web-theme.js";
 type Picture = { bytes: Buffer; mime: string } | null;
 export interface AppearanceDeps {
   frame(name: string): FrameEntry;
-  theme(name: string): { theme: Theme; locked: boolean };
+  theme(name: string): { theme: Theme; locked: boolean; widgets?: AppearanceInput["widgets"] };
   card(name: string): ResolvedCard;
   /** The resolved card's picture for a slot (the person's, else the agent's). */
   cardPicture(name: string, slot: "portrait" | "banner"): Picture;
@@ -40,7 +40,7 @@ export class AppearanceTools {
     const entry = this.deps.frame(name);
     const t = this.deps.theme(name);
     const answer = this.deps.themeAnswer(name);
-    return { entry, theme: t.theme, card: this.deps.card(name), locked: t.locked, agentEdit: answer.agent_edit !== false, limits: (answer.limits ?? {}) as Record<string, unknown> };
+    return { entry, theme: t.theme, card: this.deps.card(name), locked: t.locked, agentEdit: answer.agent_edit !== false, limits: (answer.limits ?? {}) as Record<string, unknown>, widgets: t.widgets };
   }
   /** The face drawn, as bytes of this instance's: the theme's picture, the person's upload, or its own bot's. */
   private avatar(name: string, input: AppearanceInput): Picture {

@@ -3,12 +3,13 @@
 // (owner-css.js removes the link here), so a stylesheet that hides things can always be fixed from this page.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
-import { useStore } from "/assets/app-store.js";
+import { appStore, useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
 import { setThemesShown, themesStore } from "/assets/app-themes.js";
 import { CARD_SIZES, cardSizeDefault, cardSizeStore, setCardSizeDefault } from "/assets/identity-card.js";
+import { AgentWidget, checkWidget, fleetBinds, setSidebarWidget, sidebarWidgetRaw, sidebarWidgetStore, widgetProblem } from "/assets/agent-widget.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import "./settings-strings.js";
 
@@ -36,7 +37,7 @@ function refusal(body) {
 export function AppearanceSection() {
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   if (publicLink) return html`<section class="card s-appearance"><h3>${tn("cssTitle")}</h3><p class="sub">${tn("cssPublicLink")}</p></section>`;
-  return html`<${ThemesCard} /><${CardSizeCard} /><${OwnerCssCard} /><${DeviceCard} /><${CardLimitsCard} />`;
+  return html`<${ThemesCard} /><${CardSizeCard} /><${SidebarWidgetCard} /><${OwnerCssCard} /><${DeviceCard} /><${CardLimitsCard} />`;
 }
 
 /** #1629 r4.1 Q3 (a): every identity card's size on this person's screens (a card's own control sets it apart). */
@@ -119,6 +120,53 @@ function ThemesCard() {
     <label class="check"><input type="checkbox" checked=${s.shown} disabled=${safeMode()} onChange=${(e) => setThemesShown(e.target.checked)} />
       <span>${tn("themesShow")}</span></label>
     <p class="sub">${safeMode() ? tn("themesSafeMode") : tn("themesShowLead")}</p>
+  </section>`;
+}
+
+/** An example to start from: the fleet's counts, as a person's sidebar widget may show them. */
+export const SIDEBAR_WIDGET_EXAMPLE = {
+  spec: { v: 1, title: "Fleet", items: [
+    { type: "stat", label: "Working", bind: "fleet.working" },
+    { type: "stat", label: "Needs you", bind: "fleet.needs_you" },
+    { type: "stat", label: "Idle", bind: "fleet.idle" },
+    { type: "stat", label: "Stopped", bind: "fleet.stopped" },
+  ] },
+  data: {},
+};
+/**
+ * #1629 r4-4: the person's own sidebar widget — a declarative spec and its values, as JSON; drawn under the instance
+ * list by the page's own components, with the fleet's counts as the only live values. Synced like the other choices.
+ */
+function SidebarWidgetCard() {
+  useStore(sidebarWidgetStore);
+  const app = useStore(appStore);
+  const saved = sidebarWidgetRaw();
+  const [text, setText] = useState(() => (saved ? JSON.stringify(saved, null, 2) : ""));
+  const [error, setError] = useState("");
+  let parsed = null, problem = "";
+  if (text.trim()) {
+    try { parsed = JSON.parse(text); problem = widgetProblem("sidebar", parsed) || ""; } catch { problem = tn("widgetNotJson"); }
+  }
+  const preview = parsed && !problem ? checkWidget("sidebar", parsed) : null;
+  const save = () => {
+    if (!parsed || problem) { setError(problem || tn("widgetNotJson")); return; }
+    setError("");
+    setSidebarWidget(parsed);
+    toast(tn("widgetSaved"));
+  };
+  const remove = () => { setSidebarWidget(null); setText(""); setError(""); toast(tn("widgetRemoved")); };
+  return html`<section class="card s-appearance s-synced s-widget"><h3>${tn("widgetTitle")}</h3>
+    <p class="sub">${tn("widgetLead")}</p>
+    <label class="field"><span class="sr-only">${tn("widgetTitle")}</span>
+      <textarea class="s-widget-text" rows="10" spellcheck=${false} autocapitalize="off" autocomplete="off" value=${text}
+        onInput=${(e) => { setText(e.target.value); setError(""); }}></textarea></label>
+    ${error || problem ? html`<p class="err" role="alert">${error || problem}</p>` : null}
+    ${preview ? html`<div class="s-widget-preview"><${AgentWidget} slot="sidebar" widget=${preview} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} /></div>` : null}
+    <div class="s-widget-actions">
+      <button type="button" class="btn btn-primary" disabled=${!parsed || !!problem} onClick=${save}><${Icon} name="check" size=${16} />${tn("widgetSave")}</button>
+      ${!text.trim() ? html`<button type="button" class="btn" onClick=${() => setText(JSON.stringify(SIDEBAR_WIDGET_EXAMPLE, null, 2))}>${tn("widgetExample")}</button>` : null}
+      ${saved ? html`<button type="button" class="btn" onClick=${remove}>${tn("widgetRemove")}</button>` : null}
+    </div>
   </section>`;
 }
 

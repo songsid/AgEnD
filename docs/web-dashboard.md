@@ -285,7 +285,7 @@ An agent can give its own web chat a look: colours for light and dark, an accent
   - **Lock theme** stops the agent changing it. **Unlock theme** allows it again.
   - **Reset theme…** removes it and keeps a lock in place.
   - Both need a signed-in admin, and neither is offered over a temporary public link.
-- **Your switch.** **Settings → Appearance → Show agents' themes and effects** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
+- **Your switch.** **Settings → Appearance → Show agents' themes, effects and widgets** turns them off on all your devices. Every chat then looks the same, and pictures and ring colours are the bots' again. `?safe=1` also loads a page without them.
 - **Limits.** An agent's changes are at least 30 seconds apart, at most 10 an hour, with at most 3 picture uploads an hour. A picture you uploaded for an agent in its profile wins over its theme's. `web.themes.agent_edit: false` in `fleet.yaml` refuses every agent's changes.
 
 ### Identity cards
@@ -301,6 +301,17 @@ Each agent can have an identity card: a portrait, a banner, a one-line tagline a
 - **Over a temporary public link** you can edit the card, as you can the profile and picture. Theme reset and lock, and the limits below, stay off it.
 - **How an agent sees itself.** `get_web_appearance` tells an agent how it appears now: its face and where it comes from (profile, theme, bot, emoji or initial), its ring colour, its card field by field (whose each field is), its theme per mode, whether it is locked, and its limits. `preview_web_appearance` draws that as an SVG per mode in its own working directory (`.agend/appearance/light.svg`, `dark.svg`), with the pictures it shows written beside it (`avatar.png`, `portrait.png`, …) — only its own. From a shell: `agend-agent appearance` and `agend-agent appearance preview [light|dark]`.
 - **Upload limits.** **Settings → Appearance → Identity card upload limits** (or `web.appearance` in `fleet.yaml`) sets the largest portrait and banner and how many pictures each agent may keep. Defaults: portrait 1024×1536, 1.5 MiB; banner 1600×600, 768 KiB; 8 pictures, 4 MiB per agent. A lower limit applies at once; a higher one waits for a fleet admin's confirmation. A limit applies to new uploads only; pictures already stored stay.
+
+### Widgets
+
+A widget is a small panel of facts drawn by the dashboard itself: numbers, progress bars, a line of text, a short list, a coloured badge, a sparkline. Whoever places it writes only **what to show** (a short JSON spec) and **the values** — never HTML, script, links or CSS. The dashboard draws it with its own components in the page's colours, inside a thin frame with a **✦ title** chip, so a widget never looks like part of AgEnD and nothing in it can be clicked.
+
+- **Where.** An agent may place one in **its own chat**, as a strip under the header (up to 4 items), and one on **its own Details** page (up to 8 items). Your own widget goes in **the sidebar**, under the instance list; agents can't place one there.
+- **Live values.** Besides the values it sets, an agent's widget can show its own state, context use and cost, as the page already shows them. Your sidebar widget can show the fleet's counts: working, needs you, idle, stopped. Nothing else is read for it.
+- **How an agent sets one.** `set_web_widget` with `slot` (`chat_header` or `details`) and a `spec` places or replaces it. With only `data`, it gives the placed widget new values: at most one update every 10 seconds and 180 an hour, apart from its theme changes. `remove_web_widget` takes it out. From a shell: `agend-agent widget set|data|remove`.
+- **People decide.** **Lock theme** stops an agent changing its widgets too. A chat's or Details' **⋯** menu offers **Remove the chat header widget** and **Remove the Details widget**. A widget a person placed (from a mod) takes the agent's values, but the agent can't replace or remove it. **Reset theme…** removes the agent's widgets.
+- **Your sidebar widget.** **Settings → Appearance → Your sidebar widget** takes the spec and values as JSON. It shows a preview and says what's wrong before saving. **Start from an example** fills in the fleet's counts. It is kept with your preferences on all your devices, and is never shown over a temporary public link or with `?safe=1`.
+- **Your switch** hides agents' widgets along with their themes. The public link shows agents' widgets, like their cards.
 
 ## Reaching it from elsewhere
 

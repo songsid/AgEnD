@@ -15,6 +15,7 @@ import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { UsageRail, usageRailStore } from "./header-tools.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
+import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null });
@@ -288,12 +289,20 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
         exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />`}
+    <${SidebarWidget} app=${app} />
     <div class="side-foot">
       ${navLink("settings", settingsPath(), "settings", t("app.settings"))}
       <${SessionMenu} />
     </div>
     <${SidebarResize} />
   </aside>`;
+}
+
+/** #1629 r4-4: the person's own sidebar widget (their synced preference), with the fleet's counts. */
+function SidebarWidget({ app }) {
+  useStore(sidebarWidgetStore);
+  const widget = sidebarWidget();
+  return widget ? html`<div class="side-widget"><${AgentWidget} slot="sidebar" widget=${widget} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} /></div>` : null;
 }
 
 /** The anonymous View reader's list: View's roster read (no status frames without a session), the same component. */
