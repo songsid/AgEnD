@@ -99,7 +99,7 @@ it("expires an upload at the monotonic deadline, and forget revokes it",async()=
  await sendEffectInParts(files("a".repeat(700000)),async args=>{packets.push(args);return {upload:"dummy"};});
  const first=receiver.accept("own",packets[0]!,done);now=60000;
  expect(receiver.accept("own",{...packets[1],part:{...(packets[1]!.part as object),upload:first.upload}},done)).toEqual({error:"effect_upload"});
- now=0;const next=receiver.accept("own",packets[0]!,done);receiver.forget("own");
+ now=60000;const next=receiver.accept("own",packets[0]!,done);receiver.forget("own");
  expect(receiver.accept("own",{...packets[1],part:{...(packets[1]!.part as object),upload:next.upload}},done)).toEqual({error:"effect_upload"});
  expect(done).not.toHaveBeenCalled();
 });
@@ -134,4 +134,16 @@ it("bounds the bytes actually retained across active owners",async()=>{
   tokens[owner]=answer.upload as string;accepted++;
  }
  expect(rejected).toBe(true);expect(accepted*ASSET_PART_BYTES).toBeLessThanOrEqual(EFFECT_UPLOAD_MEMORY);expect(done).not.toHaveBeenCalled();
+});
+
+it.each(["rollback", "negative", "nonfinite", "throw"])("revokes all partial bytes on an unavailable monotonic clock: %s", async fault=>{
+ const {EffectUploads}=await import("../src/web-effect-upload.js");let now=100,throws=false;
+ const receiver=new EffectUploads(()=>{if(throws)throw Error("clock");return now;}),done=vi.fn(()=>({id:"ok"})),packets:Record<string,unknown>[]=[];
+ await sendEffectInParts(files("a".repeat(700000)),async args=>{packets.push(args);return {upload:"dummy"};});
+ const first=receiver.accept("own",packets[0]!,done);expect(first.upload).toEqual(expect.any(String));
+ if(fault==="throw")throws=true;else now=fault==="rollback"?99:fault==="negative"?-1:NaN;
+ expect(receiver.accept("other",packets[0]!,done)).toEqual({error:"clock_unavailable"});
+ throws=false;now=101;
+ expect(receiver.accept("own",{...packets[1],part:{...(packets[1]!.part as object),upload:first.upload}},done)).toEqual({error:"effect_upload"});
+ expect(done).not.toHaveBeenCalled();
 });

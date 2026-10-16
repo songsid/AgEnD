@@ -92,12 +92,15 @@ interface PendingEffectUpload { id:string; count:number; next:number; bytes:numb
 /** Receiving side: caller identity comes from IPC/session, never the part's fields. No filesystem path is accepted. */
 export class EffectUploads {
   private readonly pending=new Map<string,PendingEffectUpload>();
+  private lastClock: number | null = null;
   constructor(private readonly clock:()=>number=()=>performance.now()) {}
   forget(instance:string):void { this.pending.delete(instance); }
   accept(instance:string,args:Record<string,unknown>,complete:(files:ReadonlyMap<string,Uint8Array>)=>Record<string,unknown>):Record<string,unknown> {
     const fail=(error:string)=>{this.pending.delete(instance);return {error};};
-    const now=this.clock();
-    if (!Number.isFinite(now)) return fail("clock_unavailable");
+    let now: number;
+    try { now = this.clock(); } catch { this.pending.clear(); return {error:"clock_unavailable"}; }
+    if (!Number.isFinite(now) || now < 0 || this.lastClock !== null && now < this.lastClock) { this.pending.clear(); return {error:"clock_unavailable"}; }
+    this.lastClock = now;
     for(const [name,p] of this.pending)if(now-p.last>=EFFECT_UPLOAD_IDLE_MS)this.pending.delete(name);
     if(!args || typeof args !== "object" || Array.isArray(args)) return fail("effect_part");
     if(Object.keys(args).sort().join(",")!=="data_b64,part" || typeof args.data_b64!=="string" || args.data_b64.length>Math.ceil(ASSET_PART_BYTES/3)*4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(args.data_b64)) return fail("effect_part");

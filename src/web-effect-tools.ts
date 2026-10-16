@@ -18,6 +18,7 @@ export interface EffectToolDeps {
   profiles(id:string):Answer;
   clock?:()=>number;
 }
+export const WEB_EFFECT_TOOLS: ReadonlySet<string> = new Set(["upload_web_effect","list_web_effects","preview_web_effect","profile_web_effect","apply_web_effect","remove_web_effect","delete_web_effect"]);
 const ID=/^[0-9a-f]{32}$/;
 export class WebEffectTools {
   private readonly uploads:EffectUploads;

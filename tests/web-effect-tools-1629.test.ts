@@ -76,3 +76,24 @@ it("lists/profiles/previews only own or human-shared effects and binds the previ
  expect(f.preview).toHaveBeenCalledTimes(1);
  expect(f.tools.handle("own","list_web_effects",{instance:"other"})).toEqual({error:"effect_args"});
 });
+it("rechecks authority on later parts and never publishes or spends quota after revocation",async()=>{
+ const f=fixture();let calls=0;
+ const answer=await sendEffectInParts(files("a".repeat(700000)),async args=>{
+  if(calls++>0)f.refuse("locked");return f.tools.upload("own",args);
+ });
+ expect(answer).toEqual({error:"locked"});expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});
+ expect(f.limiter.remaining("own").uploads).toBe(3);expect(f.changed).not.toHaveBeenCalled();
+});
+it("aborts a staged upload when the durable claim write fails, without charging",async()=>{
+ const f=fixture(),abort=vi.spyOn(f.lib,"abort");vi.spyOn(f.lib,"commit").mockReturnValue({ok:false,error:"index_failure"});
+ const answer=await sendEffectInParts(files(),async args=>f.tools.upload("own",args));
+ expect(answer).toEqual({error:"index_failure"});expect(abort).toHaveBeenCalledOnce();
+ expect(f.lib.list({kind:"agent",id:"own"})).toMatchObject({entries:[]});expect(f.limiter.remaining("own").uploads).toBe(3);expect(f.changed).not.toHaveBeenCalled();
+});
+it("lists and profiles a human-shared effect without revealing a private one",()=>{
+ const f=fixture(),human={kind:"human" as const,id:"operator"};
+ const claim=(code:string)=>{const s=f.lib.stage(files(code),human);if(!s.ok)throw Error(s.error);const r=f.lib.commit(s.stageId);if(!r.ok)throw Error(r.error);return r.ids[0]!;};
+ const shared=claim("// shared"),secret=claim("// private");expect(f.lib.setShared(shared,human,true).ok).toBe(true);
+ expect(f.tools.list("own")).toMatchObject({effects:[{id:shared}]});expect(f.tools.profile("own",{id:shared})).toEqual({id:shared,records:[]});
+ expect(f.tools.profile("own",{id:secret})).toEqual({error:"not_found"});
+});

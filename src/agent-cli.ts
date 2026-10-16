@@ -13,7 +13,6 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
-import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writePreview } from "./web-asset-parts.js";
 
@@ -224,6 +223,7 @@ async function main(): Promise<void> {
       return;
     }
     case "effect-upload": {
+      const { readAgentEffect, sendEffectInParts } = await import("./web-effect-upload.js");
       if (rest.length !== 1) die("Usage: agend-agent effect upload <directory>");
       const read = await readAgentEffect(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR });
       if (!read.ok) die(`effect upload: ${read.reason}`);
