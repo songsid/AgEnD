@@ -47,3 +47,8 @@ Dedicated Worker CPU/GPU cost is not measurable from ready-only messages. The fu
 ### Review round 2
 
 The browser recipe measures Worker-originated traffic, not just document-created frames. Each available transport must settle before ready without reaching the scratch server; a no-CSP control uses the same probe and must reach that server for every available transport. The Worker constructors are separately absent in the effect realm. These observations cover the tested engine builds, not all future versions or physical Safari. The decoded-pixel sum prevents sixteen independently valid bitmaps from accumulating sixteen per-image budgets; peak decoder allocation and image codec vulnerabilities remain outside this check.
+
+
+## Reserved mention trigger
+
+The `mention` codec/manifest kind remains reserved for compatibility, but the registry and independent final-send gate never emit it in 2.3.0. No text parsing or inferred target is permitted. Provider-confirmed direct-ID, viewer-scoped boolean pulses are deferred to [#1963](https://github.com/songsid/AgEnD/issues/1963). Worker subscriptions may name the reserved kind without receiving events.

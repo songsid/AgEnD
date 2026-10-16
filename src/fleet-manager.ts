@@ -15316,6 +15316,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         buttons: m.buttons,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
+      // #1629: live-only receipt after the recorded agent reply. Never persist/replay it or give it an SSE cursor.
+      if (recorded.role === "agent") broadcastSseEvent(this.sseClients, "agent_reply_live", { v: 1, boot: recorded.boot, id: recorded.id, instance: recorded.instance }, onError);
       return;
     }
     // #1266: a reply's buttons ended — the history shows it too (a later load, the public link's poll).

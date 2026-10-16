@@ -10,7 +10,7 @@ const registries = new WeakMap();
 const plain = o => !!o && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
 const finite = v => typeof v === "number" && Number.isFinite(v);
 const FLAGS = ["safe", "publicLink", "reducedMotion", "saveData", "hidden", "enabled", "show", "previewReady", "optIn", "constrained", "modal"];
-const TYPES = ["state", "reply", "mention", "theme"];
+const TYPES = ["state", "reply", "theme"];
 function unsafeSnapshotDescriptor(d) {
   if (!plain(d) || !plain(d.params ?? {})) return null;
   const params = Object.create(null), keys = Object.keys(d.params ?? {}).sort();

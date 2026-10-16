@@ -52,3 +52,8 @@ The canonical representation is JSON of `{manifest,files}`, with the normalized 
 This module does no filesystem I/O, image decoding, JS execution, principal resolution, quota change or UI mounting. The subsequent library revalidates snapshots before claims and applies principal/quota/reference/transaction rules. Mod import uses effect paths until that library resolves them to ids; parameters are checked before any commit.
 
 Rollback is reverting this feature-branch validator PR; no persisted production data exists yet. Other backends, fleet lifecycle, setup and service/update paths are unaffected.
+
+
+## Reserved mention trigger
+
+The `mention` codec/manifest kind remains reserved for compatibility, but the registry and independent final-send gate never emit it in 2.3.0. No text parsing or inferred target is permitted. Provider-confirmed direct-ID, viewer-scoped boolean pulses are deferred to [#1963](https://github.com/songsid/AgEnD/issues/1963). Worker subscriptions may name the reserved kind without receiving events.

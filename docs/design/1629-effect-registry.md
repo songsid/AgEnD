@@ -44,7 +44,7 @@ The real `EffectBudget` observes host rAF cadence and, where supported, host lon
 
 The profiler degrades before pausing; pause physically removes the factory and releases geometry. Hidden immediately stops event forwarding and hides, with a bounded ten-second removal timer independent of rAF. Hidden/bad intervals reset the five-second probation clock. Returning before the deadline resets the pure profiler's hidden warmup; it does not learn a new baseline from active effects.
 
-`publish` accepts only content-free state/reply/mention/theme signals. Own-instance and wants fences remain at the factory. Owner-region pulses use the currently open chat without exporting another instance's identity. Raw pointer publishing is refused.
+`publish` accepts only content-free state/reply/theme signals. `mention` remains reserved in the codec but is never emitted in 2.3.0 (follow-up #1963). Own-instance and wants fences remain at the factory. Owner-region pulses use the currently open chat without exporting another instance's identity. Raw pointer publishing is refused.
 
 Native pointer listeners read only type, trusted-event flag, client coordinates, buttons and bounded wheel deltas. Unknown/typing focus, designMode, modal, trusted target, outside-region or viewer gates suppress them. One latest local packet per frame/rAF, with the degraded 30 Hz/normal 60 Hz bound; no keys, input text, selection, message bodies, file or URL data enter the API. The host never forwards arbitrary DOM events.
 
