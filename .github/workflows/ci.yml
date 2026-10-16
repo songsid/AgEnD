@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Detect whether this is a docs-only change
+      - name: Detect whether this is a changelog-fragment-only change
         id: check
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -74,8 +74,11 @@ jobs:
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Any file outside docs/, changes/, or a root *.md triggers full CI.
-          if grep -qvE '^(docs|changes)/|^[^/]+\.md$' "$_diff_f"; then
+          # Only changelog fragments skip the suite: the changelog job (always run) checks them. docs/ and the root
+          # *.md files are read by tests (docs/cli.zh-TW.md's command table, the READMEs, docs/web-guide …), so a
+          # change there runs the full suite too — #1929 changed a row a test pins, and merged with the shards skipped
+          # (#1932). The output keeps its name: setup and the shards key on it.
+          if grep -qvE '^changes/' "$_diff_f"; then
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
           else
             echo "docs-only=true" >> "$GITHUB_OUTPUT"

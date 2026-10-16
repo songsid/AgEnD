@@ -16,8 +16,10 @@ the test steps and supported Node/npm versions stay the same.
 | `data-downgrade.yml` | Ubuntu current → published 2.1.12 → current | No extra trigger; Linux-only |
 
 The CI workflow still runs CHANGELOG guards, typecheck/build, four unit shards,
-integration tests and the Node 20 preinstall rollback smoke. Existing docs-only
-step guards remain. macOS is included on all `v*` tags, including prereleases.
+integration tests and the Node 20 preinstall rollback smoke. Only a PR that
+changes nothing but `changes/` fragments skips typecheck/build and the tests (the
+CHANGELOG guards still check it); a change under `docs/` or to a root `*.md` runs
+everything, because tests read those files (#1932). macOS is included on all `v*` tags, including prereleases.
 Weekly CI runs Monday at 03:17 UTC; the npm proof runs at 03:37 UTC. Weekly
 failures need investigation but are not a prerequisite for a PR or branch push.
 

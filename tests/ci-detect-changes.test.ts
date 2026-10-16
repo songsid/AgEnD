@@ -128,12 +128,19 @@ function makeRepo() {
 }
 
 describe("detect-changes: docs-only classification", () => {
-  it("docs/ change only → docs-only=true", () => {
+  // #1932: tests read docs/ and the root READMEs (docs/cli.zh-TW.md's command table, docs/features*, README.md …),
+  // so a change there must run the suite. #1929 changed a docs/cli.zh-TW.md row a test pins and merged red.
+  it.each([
+    ["the docs/cli.zh-TW.md row #1929 changed", { "docs/cli.zh-TW.md": "v2\n" }],
+    ["docs/features.md", { "docs/features.md": "v2\n" }],
+    ["a root README", { "README.md": "v2\n" }],
+    ["docs/ plus a changelog fragment", { "docs/features.md": "v2\n", "changes/9.md": "---\nsection: Fixed\n---\n- x\n" }],
+  ])("%s → docs-only=false (the tests run)", (_n, files) => {
     const r = makeRepo();
-    const base = r.commit("init", { "src/a.ts": "1\n", "docs/features.md": "v1\n" });
+    const base = r.commit("init", { "src/a.ts": "1\n", "docs/features.md": "v1\n", "docs/cli.zh-TW.md": "v1\n", "README.md": "v1\n" });
     r.git("checkout", "-q", "-b", "pr");
-    const head = r.commit("docs", { "docs/features.md": "v2\n" });
-    expect(r.run(base, head).docsOnly).toBe(true);
+    const head = r.commit("docs", files);
+    expect(r.run(base, head).docsOnly).toBe(false);
   });
 
   it("changes/ fragment → docs-only=true", () => {
