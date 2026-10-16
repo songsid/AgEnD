@@ -216,6 +216,18 @@ Visible menus, dialogs, Keep/tour notices and focused inputs suppress all foregr
 does not bypass those host safety gates. Unknown stock layout refuses admission. A trusted foreground plane is
 deferred to #1940; do not keep reapplying an agent front while custom CSS is on, loading or unknown.
 
+### Try contract (integration pending)
+
+The approved Try exception is a physically clipped sample inside its own host panel or sheet. Only an explicit
+click by a signed-in **local admin** may start it; never an agent, public link, header token or automatic action.
+The host owns a visible Trial label and Stop control. Closing the panel/sheet, navigating, window blur, or another
+menu/dialog stops it. Custom CSS must be off (on/loading/unknown denies), and the same caps, profiler and safety
+stops apply. Ordinary foreground effects stay suppressed. A volatile offer lasts at most ten minutes; every read
+rechecks the originating agent's current own/shared access, with the trial bound to the admin's session and epoch.
+There is no saved placement, claim, share or export side effect. The server authority foundation is unmounted:
+the chat card and clipped stage still need separate integration. Do not treat an offer id or ordinary reply button
+as permission to run or fetch an effect, and do not keep retrying an unavailable Try.
+
 
 ## Static Chat fallback
 
