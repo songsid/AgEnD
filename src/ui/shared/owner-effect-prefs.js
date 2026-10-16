@@ -1,6 +1,7 @@
 // #1629: host-authoritative personal choices. No local cache, migration, frame, code fetch or automatic resend.
 import { createStore, appStore } from "./app-store.js";
 import { OWNER_EFFECT_PREF_KEYS } from "./app-prefs.js";
+import { checkEffectOwnerSlots } from "./effect-runtime-loader.js";
 const KEYS = OWNER_EFFECT_PREF_KEYS, ID = /^[a-f0-9]{32}$/, EPOCH = /^[a-f0-9]{16}$/;
 const plain = x => !!x && typeof x === "object" && Object.getPrototypeOf(x) === Object.prototype;
 const own = (x, k) => Object.hasOwn(x, k);
@@ -50,21 +51,8 @@ function finish(op) {
   if (again && eligible() && n !== null && n - failedAt >= 5000) refreshOwnerEffects();
 }
 /** An owner response is closed and bounded. Unavailable means a stored id, not an empty slot or private manifest. */
-export function checkOwnerSlots(body) {
-  if (!plain(body) || Object.keys(body).sort().join(",") !== "rev,slots" || !Number.isSafeInteger(body.rev) || body.rev < 0 || !plain(body.slots) || Object.keys(body.slots).length !== KEYS.length) return null;
-  const slots = {};
-  for (const key of KEYS) {
-    if (!own(body.slots, key) || !plain(body.slots[key])) return null;
-    const row = body.slots[key], fields = Object.keys(row).sort().join(",");
-    if (row.status === "none") { if (row.id !== null || fields !== "id,status") return null; slots[key] = { status: "none", id: null }; }
-    else if (row.status === "unavailable") { if (typeof row.id !== "string" || !ID.test(row.id) || fields !== "id,status") return null; slots[key] = { status: "unavailable", id: row.id }; }
-    else if (row.status === "available") {
-      if (typeof row.id !== "string" || !ID.test(row.id) || fields !== "id,manifest,status" || !plain(row.manifest) || typeof row.manifest.title !== "string" || row.manifest.title.length < 1 || row.manifest.title.length > 40) return null;
-      slots[key] = { status: "available", id: row.id, manifest: row.manifest };
-    } else return null;
-  }
-  return { rev: body.rev, slots };
-}
+export function checkOwnerSlots(body) { return checkEffectOwnerSlots(body); }
+
 async function read(op) {
   const r = await call(op, `/ui/effects/owner?ownerEpoch=${owner.epoch}`);
   if (!current(op)) return false;

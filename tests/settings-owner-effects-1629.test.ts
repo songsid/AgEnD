@@ -4,7 +4,7 @@ import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 import { MiniEvent } from "./helpers/mini-dom.js";
 const A = "a".repeat(32), B = "b".repeat(32), E = "e".repeat(16), g = globalThis as any;
 const KEYS = ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"];
-const manifest = { title: "Snow", regions: ["sidebar", "header", "page", "box"], box: { width: 100, height: 100 }, cursor: "cursor.png" };
+const manifest = { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "snow", title: "Snow", regions: ["sidebar", "header", "page", "box"], layer: "behind", wants: [], box: { anchor: "center", width: 100, height: 100, offset: 0 }, cursor: { hotspot: [0, 0] } };
 const catalog = { canWrite: true, effects: [{ id: A, manifest }] };
 const empty = () => Object.fromEntries(KEYS.map(k => [k, { status: "none", id: null }]));
 const response = (status: number, body: any) => ({ ok: status >= 200 && status < 300, status, json: async () => body });

@@ -84,3 +84,9 @@ all-bucket references remain. Preserve the backend registry, scoped authorizatio
 and retention provider after choices exist. The backend design documents why a
 full binary downgrade with an old writer is not lossless. Nothing here needs a
 service restart, data migration or active-effect rollback.
+
+## Shared owner projection before mounting
+
+Personal owner metadata now uses the same closed CW1 manifest validation as runtime resources, including normalized one-line display text counted in graphemes with its bounded UTF-16 input. The earlier title-only 40-code-unit check refused legitimate combined Unicode titles and did not validate runtime declarations. Settings and future playback share `checkEffectOwnerSlots`; unknown fields/accessors, incompatible regions, missing box geometry/cursor declaration and malformed statuses refuse the whole projection. None/unavailable remain distinct; unavailable keeps its stored ID.
+
+The runtime loader exposes `owner(signal)` for the existing epoch-bound owner endpoint. It shares the one metadata request reservation and 256 KiB bound with Chat placements; it does not create a second loader, pool, authority or retry loop. Its bounded snapshot permits five complete maximum-parameter manifests while retaining the original per-resource tree budget. This is metadata preparation only: no personal region/cursor is mounted and no resource is fetched by adding this method. The existing preference client's operation/lifecycle/write transport is unchanged.

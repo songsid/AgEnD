@@ -12,10 +12,10 @@ const subset = (o, keys) => plain(o) && Object.keys(o).every(k => keys.includes(
 const instanceOK = x => typeof x === "string" && x.length >= 1 && x.length <= 128;
 const enumeration = (x, values, min = 0) => Array.isArray(x) && x.length >= min && x.length <= values.length && new Set(x).size === x.length && x.every(v => values.includes(v));
 /** Copy own data before inspecting it. Refuse accessors/symbols, non-finite values and unbounded trees. */
-function data(value) {
+function data(value, maxNodes = 1024) {
   let nodes = 0;
   function copy(x, depth) {
-    if (++nodes > 1024 || depth > 8) throw Error("shape");
+    if (++nodes > maxNodes || depth > 8) throw Error("shape");
     if (x === null || typeof x === "string" || typeof x === "boolean" || finite(x)) return x;
     const array = Array.isArray(x);
     if (array ? Object.getPrototypeOf(x) !== Array.prototype || x.length > 32 : !plain(x)) throw Error("shape");
@@ -84,6 +84,22 @@ export function checkEffectPlacements(input) {
   }
   return x;
 }
+/** Closed personal metadata. Uses the same CW1 manifest/text contract as resources, with no code or provenance grant. */
+export function checkEffectOwnerSlots(input) {
+  const x = data(input, 4096), keys = [...SLOTS, "fx.cursor"];
+  if (!exact(x, ["rev", "slots"]) || !integer(x.rev, 0, Number.MAX_SAFE_INTEGER) || !exact(x.slots, keys)) return null;
+  for (const key of keys) {
+    const row = x.slots[key];
+    if (!plain(row)) return null;
+    if (row.status === "none") { if (!exact(row, ["status", "id"]) || row.id !== null) return null; }
+    else if (row.status === "unavailable") { if (!exact(row, ["status", "id"]) || typeof row.id !== "string" || !ID.test(row.id)) return null; }
+    else if (row.status === "available") {
+      if (!exact(row, ["status", "id", "manifest"]) || typeof row.id !== "string" || !ID.test(row.id) || !manifest(row.manifest)) return null;
+      if (key === "fx.cursor" ? !row.manifest.cursor : !row.manifest.regions.includes(key.slice(3)) || key === "fx.box" && !row.manifest.box) return null;
+    } else return null;
+  }
+  return x;
+}
 /** Never include host poster/cursor bytes in the Worker asset list. The factory snapshots again. */
 export function checkEffectResource(input, expectedId) {
   const x = data(input); if (!exact(x, ["id", "manifest", "params", "wants", "code", "assets"]) || typeof expectedId !== "string" || !ID.test(expectedId) || x.id !== expectedId || !manifest(x.manifest) || !params(x.manifest, x.params)
@@ -146,6 +162,7 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current } 
     return Promise.race([work, cancelled]);
   }
   return { ok: true,
+    owner(signal) { return run("placements", `/ui/effects/owner?ownerEpoch=${ownerEpoch}`, checkEffectOwnerSlots, signal); },
     placements(instance, signal) { return instanceOK(instance) ? run("placements", `/ui/effects/placements?instance=${encodeURIComponent(instance)}&ownerEpoch=${ownerEpoch}`, checkEffectPlacements, signal) : Promise.resolve(null); },
     resource(input, signal) {
       const spec = data(input);
