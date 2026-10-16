@@ -176,6 +176,14 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     return { ...(personal?.snapshot() ?? { error: null, rev: -1, loading: false, slots: {} }),
       rows: registry?.snapshot().flatMap(row => { const b = personal?.binding(row.key, row.id); return b ? [{ ...row, slot: b.slot }] : []; }) ?? [] };
   }
+  async function cursorImageSettled(selection, signal) {
+    const own = personal?.cursorSelection();
+    if (!alive() || !own || !personal.cursorCurrent(selection) || signal?.aborted) return null;
+    let value; try { value = await loader.cursorImageSettled(own.id, signal); } catch { value = null; }
+    if (!alive() || !personal.cursorCurrent(own) || !personal.cursorCurrent(selection) || signal?.aborted) return null;
+    if (!value) { personal.refuseCursor(own); return null; }
+    return value;
+  }
   async function read(s) {
     if (!sourceAlive(s) || pending || s.error) return;
     const op = { source: s, generation: s.generation, controller: new host.AbortController() }; pending = op; lastMetadata = "chat";
@@ -217,6 +225,7 @@ export function createAppEffectRuntime({ window: host, current, observe, onChang
     sync(); tell(); return sourceAlive(s) ? api : null;
   }
   return { ok: true, sync, attachChat, changedOwner, ownerSnapshot,
+    cursorSelection: () => personal?.cursorSelection() ?? null, cursorImageSettled,
     pauseOwner(slot) { return personal?.pause(slot) === true; },
     resumeOwner(slot) { if (!personal?.unpause(slot)) return false; const b = personal.slotBinding(slot); return bindingAlive(b) && registry.resume(b.key); },
     changedChat() { changedSource(source); }, reply(event) { publishReply(source, event); }, detachChat() { discard(source); sync(); }, snapshot: () => snapshot(source), dispose };

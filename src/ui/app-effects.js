@@ -6,6 +6,7 @@ import { resolvedMode, themesStore } from "/assets/app-themes.js";
 import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
 import { constrainedDevice } from "/assets/effect-policy.js";
 import { createAppEffectRuntime } from "/assets/effect-app-runtime.js";
+import { createEffectCursor } from "/assets/effect-cursor.js";
 import { createOwnerEffectRegions } from "/assets/effect-owner-regions.js";
 import { chatEffectIdentity } from "/assets/effect-chat-runtime.js";
 const owners = new WeakMap();
@@ -16,10 +17,11 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   const existing = owners.get(host);
   if (existing) { if (!existing.dead) existing.bindStore(store); return getAppEffects(host); }
   if (!chatEffectIdentity(host) || typeof host.AgendAuth?.onSessionEnd !== "function" || typeof host.AgendAuth?.sessionEnded !== "function") return null;
-  const doc = host.document, releases = [], ended = new Set(), updates = new Set(); let replyOff = null, replyStore = null, regions = null;
+  const doc = host.document, releases = [], ended = new Set(), updates = new Set(); let replyOff = null, replyStore = null, regions = null, cursor = null, cursorStamp = null;
   const safe = fn => { try { return fn(); } catch { return null; } };
   const hold = off => { if (entry.dead) safe(() => off?.()); else releases.push(off); };
   const entry = { dead: false, api: null,
+    cursorSnapshot: () => cursor?.snapshot() ?? { status: "unavailable", id: null },
     gates: () => context(),
     subscribe(fn) { if (typeof fn !== "function" || entry.dead) return () => {}; updates.add(fn); return () => updates.delete(fn); },
     onEnd(fn) { if (typeof fn !== "function") return () => {}; if (entry.dead) { safe(fn); return () => {}; } ended.add(fn); return () => ended.delete(fn); },
@@ -55,6 +57,13 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse?.matches === true, width: host.innerWidth }),
       modal: !!doc.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: null };
   }
+  const notify = () => { if (!entry.dead) for (const fn of [...updates]) safe(fn); };
+  const cursorDragging = () => doc.body.classList?.contains("side-resizing") === true || !!doc.querySelector(".chat-split.resizing");
+  function syncCursor() {
+    if (entry.dead || !cursor) return;
+    const c = context();
+    cursor.update(entry.api?.cursorSelection?.() ?? null, c.enabled && c.show && c.previewReady && c.optIn && !c.safe && !c.publicLink && !c.reducedMotion && !c.saveData && !c.hidden && !c.modal && !cursorDragging());
+  }
   try {
     if (appStore.get().connection === "ended") { entry.dispose(); return null; }
     preview = host.AgendPreview;
@@ -63,14 +72,20 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     entry.api = (factories.runtime ?? createAppEffectRuntime)({ window: host, current: () => !entry.dead && host.document === doc,
       observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, mode: resolvedMode() }), onDispose: () => entry.dispose(),
       resolveOwnerTarget: (slot, manifest, proof) => !entry.dead ? regions?.resolve?.(slot, manifest.box, proof) ?? null : null,
-      onChange: () => { if (!entry.dead) for (const fn of [...updates]) safe(fn); } });
+      onChange: () => { syncCursor(); notify(); } });
     if (entry.dead || !entry.api.ok) { entry.dispose(); return null; }
     const ownRegions = (factories.regions ?? createOwnerEffectRegions)({ window: host, current: () => !entry.dead && host.document === doc });
     regions = ownRegions?.ok ? ownRegions : null; hold(() => ownRegions?.dispose?.());
     if (entry.dead) return null;
-    const sync = () => { if (!entry.dead) entry.api.sync(); };
+    const ownCursor = safe(() => (factories.cursor ?? createEffectCursor)({ window: host, current: () => !entry.dead && host.document === doc,
+      readImage: (selection, signal) => entry.api?.cursorImageSettled?.(selection, signal) ?? Promise.resolve(null),
+      onChange(value) { const next = JSON.stringify(value); if (next !== cursorStamp) { cursorStamp = next; notify(); } },
+    }));
+    cursor = ownCursor?.ok ? ownCursor : null; hold(() => ownCursor?.dispose?.());
+    if (entry.dead) return null;
+    const sync = () => { if (!entry.dead) { entry.api.sync(); syncCursor(); } };
     let revision = appStore.get().themesRev, prefsRevision = appStore.get().prefsRev, navSeq = navStore.get().seq;
-    hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; entry.api.detachChat(); }));
+    hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; entry.api.detachChat(); syncCursor(); }));
     hold(appStore.subscribe(value => {
       if (entry.dead) return;
       if (value.connection === "ended") { entry.dispose(); return; }
@@ -87,7 +102,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (target?.addEventListener) { target.addEventListener(type, sync); hold(() => target.removeEventListener(type, sync)); }
     }
     if (entry.dead) return null;
-    let modal = context().modal, queuedSurface = false;
+    let modal = context().modal, dragging = cursorDragging(), queuedSurface = false;
     // Panel commits can happen after navigation and contain no Chat lease. Reproject fixed owner targets
     // once after stock DOM changes. Body-level effect roots/frames/rules do not schedule themselves.
     const surfaceChanged = () => {
@@ -96,7 +111,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     };
     const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(records => {
       if (entry.dead) return;
-      const value = context().modal; if (value !== modal) { modal = value; sync(); }
+      const value = context().modal, drag = cursorDragging(); if (value !== modal || drag !== dragging) { modal = value; dragging = drag; sync(); }
       if (Array.isArray(records) && records.some(r => r.target?.closest?.("#app") || r.target === doc.getElementById?.("app"))) surfaceChanged();
     }) : null;
     hold(() => barriers?.disconnect());

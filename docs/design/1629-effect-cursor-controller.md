@@ -1,9 +1,8 @@
-# #1629 static host cursor controller (unmounted)
+# #1629 static host cursor controller foundation
 
-This slice supplies an unmounted controller. The product must still provide the
+This design describes the controller foundation. The later [product adapter](1629-effect-cursor-mount.md) provides the
 exact fifth owner-slot selection, its generation and the existing app/session
-consent gates, and share its one settled loader. No product import or cursor
-preference write is added here. Try remains separate work.
+consent gates, and shares its one settled loader. The controller itself never writes a cursor preference. Try remains separate work.
 
 ## Boundary and stylesheet
 
@@ -11,16 +10,15 @@ Only a decoded static PNG cursor is rendered by host CSS. No author code, Worker
 iframe, editable element or supplied CSS/URL is used. `effectHostStyle` extracts
 the existing geometry helper's fixed same-origin `/assets/app.css` proof; geometry
 keeps its independent clip-path capability requirement. The host-style module is
-served because geometry imports it. The cursor controller itself is not served.
+served because geometry imports it. The later adapter serves the cursor controller when mounting it.
 No constructed stylesheet, inline style or CSP exception is added.
 
 The controller accepts only `{id, generation, hotspot}` as own data properties;
-the id is32 lowercase hex, generation a nonnegative safe integer, and hotspot a
-two-entry dense integer array in0..63. The producer must derive it from the
+the id is 32 lowercase hex, generation a nonnegative safe integer, and hotspot a
+two-entry dense integer array in 0..63. The producer must derive it from the
 session-authorized owner metadata, not Settings data or a manifest supplied by an
 agent. An explicit true host gate is required. The injected image read receives the immutable id/generation/hotspot snapshot, so
-the app can recheck the exact source generation before and after the read. It must
-use the
+the app can recheck the exact source generation before and after the read. It must use the
 shared loader's **settled** cursor operation, not a logically canceled promise.
 
 The target is exactly one connected `#app > .shell` in this document. A generated
@@ -56,7 +54,7 @@ Callbacks can replace a selection or dispose; notification reentry is bounded,
 and a newer selection is not latched as the failed older operation.
 
 This helper has no autonomous animation-frame loop, event polling or authorization
-subscriber: the later app adapter owns those lifecycle/gate updates and immediate
+subscriber: the app adapter owns those lifecycle/gate updates and immediate
 session disposal. It must not pass a stale true gate after session end. The native
 recipe proves this helper with a fixed stock-control fixture and real app.css,
 not a complete authenticated app mount. Linux WebKit is not real Safari.

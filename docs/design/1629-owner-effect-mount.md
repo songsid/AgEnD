@@ -1,6 +1,6 @@
 # Personal effects in the app-owned runtime (#1629 B2)
 
-The session-only app bridge now connects four personal regions to the same pool as Chat. It constructs no second loader, registry, safety provider or profiler. Cursor remains a host-image follow-up and Try needs its own explicit authorization/preview contribution.
+The session-only app bridge now connects four personal regions to the same pool as Chat. It constructs no second loader, registry, safety provider or profiler. The later [host cursor integration](1629-effect-cursor-mount.md) reuses this app episode and metadata lane; Try still needs its own explicit authorization/preview contribution.
 
 ## Targets and lifetime
 
@@ -12,7 +12,7 @@ A coalesced microtask after mutations inside `#app` reprojects late panel commit
 
 Preference revision changes invalidate only the personal source, and theme revisions only Chat placements. Simultaneous changes do both. Explicit Settings Reload, a successful preference Save (including saved-but-refresh-failed), and catalog refresh invalidate runtime metadata independently. Settings GET completion never frees or supplies the runtime's physically held metadata lane. Runtime responses never optimistically rewrite saved choices.
 
-Settings subscribes to the app owner for current per-slot status and local Pause/Resume. A failed runtime resource is shown as unavailable while the saved id stays clearable through the existing authorized preference write. Resume uses the existing safety path and keeps the three-pauses history. Per-platform buckets and the visibly shared web-only operator bucket are unchanged. Cursor has no Worker descriptor or controls in this slice, and is explicitly labelled not yet enabled.
+Settings subscribes to the app owner for current per-slot status and local Pause/Resume. A failed runtime resource is shown as unavailable while the saved id stays clearable through the existing authorized preference write. Resume uses the existing safety path and keeps the three-pauses history. Per-platform buckets and the visibly shared web-only operator bucket are unchanged. Cursor has no Worker descriptor or Pause/Resume controls; the later host cursor integration adds status/Clear separately.
 
 Unshare still takes effect at the next resource authorization; it does not promise to erase already-running code or force a new backend revision/poll. A later authoritative read or retarget can discover unavailable state. The stored reference persists until Clear. Personal dispatch never borrows an instance's retained-runtime permission.
 

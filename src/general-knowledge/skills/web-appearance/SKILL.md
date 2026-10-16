@@ -206,7 +206,7 @@ placed there. A reference is not a sharing or export grant. Do not keep retrying
 
 Owner selectors are available in Settings → Appearance. With effects and preview consent enabled, personal
 page/header/sidebar/box choices play across supported stock pages in the same pool as local signed-in Chat.
-Appearance offers slot Pause/Resume and unavailable/Clear controls. Cursor and Try remain separate work. Before revealing paint, the host must prove stock content
+Appearance offers slot Pause/Resume and unavailable/Clear controls. The personal cursor uses a static PNG on the host shell after the same consent: no Worker/code read or frame slot. It preserves explicit pointer/text/resize cursors, falls back while dragging or on failure, and has status/Clear rather than Worker Pause/Resume. Try remains separate work. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of

@@ -106,7 +106,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "effect-posters.js", "effect-poster-reader.js",
     "effect-app-runtime.js", "effect-owner-source.js", "effect-owner-regions.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
     "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-profiles.js", "effect-profiler.js",
-    "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-host-style.js", "effect-policy.js",
+    "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-host-style.js", "effect-cursor.js", "effect-policy.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
     "owner-css.js",
     // #1629: agents' themes on their own chat surfaces (static code; the themes are read behind the gate).

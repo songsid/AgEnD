@@ -19,7 +19,7 @@ function rig(prepare: (h: any) => void = () => {}) {
     addEventListener: vi.fn((type: string, fn: () => void) => events.set(type, fn)), removeEventListener: vi.fn((type: string) => events.delete(type)),
   };
   const placement = { id, by: "agent", at: 1, manifest: { title: "Effect", regions: ["chat"], layer: "front" }, params: { n: 1 } };
-  const loader = { ok: true, ownerSettled: vi.fn(async (): Promise<any> => ownerBody()), placementsSettled: vi.fn(async () => ({ rev: 1, effects: [placement] })), resourceSettled: vi.fn(async () => ({ id, params: { n: 1 } })), dispose: vi.fn() };
+  const loader = { ok: true, ownerSettled: vi.fn(async (): Promise<any> => ownerBody()), placementsSettled: vi.fn(async () => ({ rev: 1, effects: [placement] })), resourceSettled: vi.fn(async () => ({ id, params: { n: 1 } })), cursorImageSettled: vi.fn(async (): Promise<any> => new Uint8Array([1, 2, 3])), dispose: vi.fn() };
   const registry = { ok: true, frameRoot: { isConnected: true }, update: vi.fn((ds: any[]) => { rows = ds.map(d => ({ ...d, verdict: "active", phase: "running" })); }), snapshot: () => rows, resume: vi.fn(() => true), publish: vi.fn(), dispose: vi.fn() };
   const collectors: any[] = [], collect = () => { const c = { ok: true, add: vi.fn(), report: vi.fn(() => ({ profile: { v: 1, device: "standard" } })), dispose: vi.fn() }; collectors.push(c); return c; };
   const context: any = { safe: false, publicLink: false, reducedMotion: false, saveData: false, hidden: false, enabled: true, show: true, previewReady: true, optIn: true, constrained: false, modal: false, openInstance: "caller-not-authority" };
@@ -266,4 +266,30 @@ describe("#1629 optional personal sources share the app pool", () => {
     const h = rig(personal); let b: any; h.api.sync(); await flush(); h.resolveOwnerTarget.mockImplementationOnce((slot: string) => { b = h.chat("b"); return h.targets[slot]; }); h.api.sync(); await flush();
     expect(b.api.snapshot().rows[0].instance).toBe("b"); expect(h.registry.update.mock.calls.at(-1)[1].openInstance).toBe("b"); expect(h.factories.registry).toHaveBeenCalledOnce(); h.api.dispose();
   });
+});
+
+
+describe("app cursor uses the same fifth-slot metadata and settled loader", () => {
+  const cursor = (h: any, selected = id, rev = 1) => { personal(h); const body: any = ownerBody(selected, rev); body.slots["fx.cursor"] = { id: selected, status: "available", manifest: { ...body.slots["fx.page"].manifest, cursor: { hotspot: [0, 0] } } }; h.loader.ownerSettled.mockResolvedValue(body); };
+  it("dispatches only an exact current generation to the existing binary lane, without Worker resources or extra participants", async () => {
+    const h = rig(h => cursor(h)); h.api.sync(); await flush(); const c = h.api.cursorSelection(), signal = new AbortController().signal; expect(c).not.toBeNull();
+    expect(await h.api.cursorImageSettled({ ...c, generation: c.generation + 1 }, signal)).toBeNull(); expect(h.loader.cursorImageSettled).not.toHaveBeenCalled();
+    expect(await h.api.cursorImageSettled({ ...c, hotspot: [0, 0] }, signal)).toEqual(new Uint8Array([1, 2, 3])); expect(h.loader.cursorImageSettled).toHaveBeenCalledExactlyOnceWith(id, signal); expect(h.loader.resourceSettled).not.toHaveBeenCalled(); expect(h.registry.update.mock.calls.at(-1)[0]).toHaveLength(4); expect(h.factories.loader).toHaveBeenCalledOnce(); expect(h.factories.registry).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+  it.each([null, new Uint8Array([1])])("late same-id cursor %s cannot publish or poison a new generation", async answer => {
+    const h = rig(h => cursor(h)); h.api.sync(); await flush(); const c = h.api.cursorSelection(), pending = held(); h.loader.cursorImageSettled.mockImplementationOnce(() => pending.promise); const read = h.api.cursorImageSettled(c);
+    h.api.changedOwner(); await flush(); const next = h.api.cursorSelection(); expect(next.generation).not.toBe(c.generation); pending.resolve(answer); expect(await read).toBeNull(); expect(h.api.cursorSelection()).toBe(next); expect(h.onOwnerUnavailable).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("binary refusal stays local to cursor and preserves saved id plus four owner frames", async () => {
+    const h = rig(h => cursor(h)); h.api.sync(); await flush(); h.loader.cursorImageSettled.mockResolvedValueOnce(null); expect(await h.api.cursorImageSettled(h.api.cursorSelection())).toBeNull();
+    expect(h.api.ownerSnapshot().slots["fx.cursor"]).toEqual({ status: "unavailable", id }); expect(h.api.ownerSnapshot().rows).toHaveLength(4); expect(h.onOwnerUnavailable).toHaveBeenCalledExactlyOnceWith("fx.cursor", id); expect(h.registry.dispose).not.toHaveBeenCalled(); h.api.dispose();
+  });
+  it("sign-out fences a physically late cursor and disposes the same loader/registry once", async () => {
+    const h = rig(h => cursor(h)); h.api.sync(); await flush(); const pending = held(); h.loader.cursorImageSettled.mockImplementationOnce(() => pending.promise); const read = h.api.cursorImageSettled(h.api.cursorSelection()); h.signOut(); pending.resolve(new Uint8Array([1])); expect(await read).toBeNull(); expect(h.loader.dispose).toHaveBeenCalledOnce(); expect(h.registry.dispose).toHaveBeenCalledOnce(); h.api.dispose();
+  });
+});
+
+it("cursor dispatch never reads an accessor id or an id-only guess", async () => {
+  const h = rig(h => { personal(h); const b: any = ownerBody(); b.slots["fx.cursor"] = { id, status: "available", manifest: { ...b.slots["fx.page"].manifest, cursor: { hotspot: [0, 0] } } }; h.loader.ownerSettled.mockResolvedValue(b); }); h.api.sync(); await flush();
+  const c = h.api.cursorSelection(), get = vi.fn(() => id); expect(await h.api.cursorImageSettled({ get id() { return get(); }, generation: c.generation, hotspot: [0, 0] })).toBeNull(); expect(await h.api.cursorImageSettled({ id })).toBeNull(); expect(get).not.toHaveBeenCalled(); expect(h.loader.cursorImageSettled).not.toHaveBeenCalled(); h.api.dispose();
 });
