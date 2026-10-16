@@ -41,6 +41,10 @@ describe("#1629 real Chat runtime ownership", () => {
     expect(h.api.ok).toBe(false); expect(h.options()).toBeUndefined(); expect(h.loader.placements).not.toHaveBeenCalled();
     h.api.dispose();
   });
+  it.each(["loader", "registry"])("a refused %s primitive without dispose stays a recoverable unavailable pool", kind => {
+    const h = rig({ prepare(parts: any) { parts[kind].ok = false; delete parts[kind].dispose; } });
+    expect(h.api.ok).toBe(false); expect(h.api.snapshot().error).toBe("runtime_unavailable"); expect(() => h.api.dispose()).not.toThrow();
+  });
   it("accepts explicit host operator but never exposes its identity to a frame", async () => {
     const h = rig({ prepare({ values }: any) { values.ownerScope = "operator"; } });
     expect(chatEffectIdentity(h.host)).toEqual({ epoch, scope: "operator" }); h.api.sync(); await flush();

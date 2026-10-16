@@ -20,53 +20,75 @@ export function ChatEffects({ name, lease, element, store, open, onClose }) {
   const cssLife = useStore(ownerCssLifecycle);
   const runtime = useRef(null), [state, setState] = useState(null), [canWrite, setCanWrite] = useState(false), [busy, setBusy] = useState(false);
   useLayoutEffect(() => {
-    let live = true;
-    setBusy(false); onClose(); setCanWrite(false); setState(null);
-    const host = window, preview = host.AgendPreview, releases = [];
-    const current = () => live && lease.current();
-    const media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true }, coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
-    const context = () => {
-      let ready = false; try { ready = preview?.availability().ok === true; } catch { /* unavailable */ }
-      return { safe: safeMode(), publicLink: document.body.dataset.publicLink === "1", reducedMotion: media.matches, saveData: navigator.connection?.saveData === true,
-        hidden: document.visibilityState !== "visible", enabled: typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function", show: prefInForce("fx.show")?.value !== false, previewReady: ready,
-        optIn: prefInForce("preview.optIn")?.value === true && preview?.optedIn() === true && preview?.never() !== true,
-        constrained: constrainedDevice({ memory: navigator.deviceMemory, cores: navigator.hardwareConcurrency, coarse: coarse.matches, width: innerWidth }),
-        modal: !!document.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: name };
+    let live = true, api = null;
+    const releases = [];
+    // Effects are optional: a failed setup must release its partial ownership without breaking Chat.
+    const cleanup = () => {
+      if (!live) return;
+      live = false;
+      try { api?.dispose?.(); } catch { /* continue releasing partial setup */ }
+      for (const off of releases) { try { if (typeof off === "function") off(); } catch { /* release the rest */ } }
+      if (runtime.current === api) runtime.current = null;
     };
-    const api = createChatEffectRuntime({ window: host, name, element: element.current, current,
-      observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, state: chatEffectState(appStore.get(), name), mode: resolvedMode() }),
-      onChange: value => {
+    lease.hold(cleanup);
+    try {
+      setBusy(false); onClose(); setCanWrite(false); setState(null);
+      const host = window, preview = host.AgendPreview;
+      const current = () => live && lease.current();
+      const media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true }, coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
+      const context = () => {
+        let ready = false; try { ready = preview?.availability().ok === true; } catch { /* unavailable */ }
+        return { safe: safeMode(), publicLink: document.body.dataset.publicLink === "1", reducedMotion: media.matches, saveData: host.navigator?.connection?.saveData === true,
+          hidden: document.visibilityState !== "visible", enabled: typeof host.OffscreenCanvas === "function" && typeof host.Worker === "function" && typeof host.MutationObserver === "function" && typeof host.ResizeObserver === "function", show: prefInForce("fx.show")?.value !== false, previewReady: ready,
+          optIn: prefInForce("preview.optIn")?.value === true && preview?.optedIn() === true && preview?.never() !== true,
+          constrained: constrainedDevice({ memory: host.navigator?.deviceMemory, cores: host.navigator?.hardwareConcurrency, coarse: coarse.matches, width: host.innerWidth }),
+          modal: !!document.querySelector("dialog[open],.menu-list,.pop,[role=alertdialog],.oc-keep,.shell.sb-open"), openInstance: name };
+      };
+      api = createChatEffectRuntime({ window: host, name, element: element.current, current,
+        observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, state: chatEffectState(appStore.get(), name), mode: resolvedMode() }),
+        onChange: value => {
+          if (!current()) return;
+          const g = context();
+          setState({ ...value, unavailable: !g.enabled || !g.show || !g.previewReady || !g.optIn || g.safe || g.publicLink || g.reducedMotion || g.saveData });
+        },
+      });
+      runtime.current = api;
+      if (!api.ok) {
+        setState(api.snapshot ? api.snapshot() : { error: null, rows: [], effects: [], unavailable: true });
+        return cleanup; // No identity/unsupported pool: do not install browser/runtime observations.
+      }
+      const sync = () => { if (current() && api.ok) api.sync(); };
+      let revision = appStore.get().themesRev;
+      releases.push(appStore.subscribe(s => {
         if (!current()) return;
-        const g = context();
-        setState({ ...value, unavailable: !g.enabled || !g.show || !g.previewReady || !g.optIn || g.safe || g.publicLink || g.reducedMotion || g.saveData });
-      },
-    });
-    runtime.current = api;
-    if (!api.ok) setState(api.snapshot ? api.snapshot() : { error: null, rows: [], effects: [], unavailable: true });
-    const sync = () => { if (current() && api.ok) api.sync(); };
-    let revision = appStore.get().themesRev;
-    releases.push(appStore.subscribe(s => {
-      if (!current()) return;
-      if (s.connection === "ended") { api.dispose(); setState({ error: "resource_unavailable", rows: [], effects: [] }); return; }
-      if (s.themesRev !== revision) { revision = s.themesRev; api.changed?.(); } else sync();
-    }), ownerCssLifecycle.subscribe(sync), themesStore.subscribe(sync), onPrefsChanged(sync), store.onAgentReply(e => api.reply?.(e)));
-    if (typeof preview?.onChange === "function") releases.push(preview.onChange(sync));
-    if (typeof host.AgendTheme?.onChange === "function") releases.push(host.AgendTheme.onChange(sync));
-    for (const [target, type] of [[media, "change"], [coarse, "change"], [document, "visibilitychange"], [host, "resize"], [host.navigator.connection, "change"]]) {
-      if (target?.addEventListener) { target.addEventListener(type, sync); releases.push(() => target.removeEventListener(type, sync)); }
+        if (s.connection === "ended") { api.dispose(); setState({ error: "resource_unavailable", rows: [], effects: [] }); return; }
+        if (s.themesRev !== revision) { revision = s.themesRev; api.changed?.(); } else sync();
+      }));
+      releases.push(ownerCssLifecycle.subscribe(sync));
+      releases.push(themesStore.subscribe(sync));
+      releases.push(onPrefsChanged(sync));
+      releases.push(store.onAgentReply(e => api.reply?.(e)));
+      if (typeof preview?.onChange === "function") releases.push(preview.onChange(sync));
+      if (typeof host.AgendTheme?.onChange === "function") releases.push(host.AgendTheme.onChange(sync));
+      for (const [target, type] of [[media, "change"], [coarse, "change"], [document, "visibilitychange"], [host, "resize"], [host.navigator?.connection, "change"]]) {
+        if (target?.addEventListener) { target.addEventListener(type, sync); releases.push(() => target.removeEventListener(type, sync)); }
+      }
+      // A BFCache restoration gets a fresh lease when the person reloads. Never resume an old session episode.
+      // Stock proof hides immediately; this updates the stored modal gate when the real portal changes.
+      let modal = context().modal;
+      const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(() => { const value = context().modal; if (value === modal) return; modal = value; sync(); }) : null;
+      releases.push(() => barriers?.disconnect());
+      barriers?.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "open", "hidden", "role"] });
+      const pagehide = () => { api.dispose(); if (current()) setState({ error: "resource_unavailable", rows: [], effects: [] }); };
+      host.addEventListener("pagehide", pagehide); releases.push(() => host.removeEventListener("pagehide", pagehide));
+      host.AgendAuth?.canWrite?.().then(value => { if (current()) setCanWrite(value === true); }).catch(() => {});
+      sync();
+      return cleanup;
+    } catch {
+      cleanup();
+      if (lease.current()) setState({ error: "runtime_unavailable", rows: [], effects: [] });
+      return cleanup;
     }
-    // A BFCache restoration gets a fresh lease when the person reloads. Never resume an old session episode.
-    // Stock proof hides immediately; this updates the stored modal gate when the real portal changes.
-    let modal = context().modal;
-    const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(() => { const value = context().modal; if (value === modal) return; modal = value; sync(); }) : null;
-    barriers?.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "open", "hidden", "role"] });
-    releases.push(() => barriers?.disconnect());
-    const pagehide = () => { api.dispose(); if (current()) setState({ error: "resource_unavailable", rows: [], effects: [] }); };
-    host.addEventListener("pagehide", pagehide); releases.push(() => host.removeEventListener("pagehide", pagehide));
-    host.AgendAuth?.canWrite?.().then(value => { if (current()) setCanWrite(value === true); }).catch(() => {});
-    sync();
-    const cleanup = () => { if (!live) return; live = false; api.dispose(); for (const off of releases) if (typeof off === "function") off(); if (runtime.current === api) runtime.current = null; };
-    lease.hold(cleanup); return cleanup;
   }, [name, lease]);
   const rows = state?.rows ?? [], effects = state?.effects ?? [];
   const css = cssLife.state !== "off" && effects.some(p => p.by !== "human" && p.manifest.layer === "front");

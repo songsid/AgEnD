@@ -66,9 +66,9 @@ export function createChatEffectRuntime({ window: host, name, element, current, 
   const identity = chatEffectIdentity(host), auth = host.AgendAuth;
   const alive = () => !dead && current() === true && element.isConnected === true && !auth.sessionEnded();
   const tell = () => { if (!dead && current()) onChange({ error, rows: registry?.snapshot() ?? [], effects: metadata?.effects ?? [], loading: metadata === null && !error }); };
-  const fail = reason => { if (dead) return; error = reason; generation++; metadata = null; active?.controller.abort(); registry?.dispose(); registry = null; loader?.dispose(); loader = null; writer?.dispose(); tell(); };
+  const fail = reason => { if (dead) return; error = reason; generation++; metadata = null; active?.controller.abort(); registry?.dispose?.(); registry = null; loader?.dispose?.(); loader = null; writer?.dispose(); tell(); };
   function dispose() {
-    if (dead) return; dead = true; generation++; active?.controller.abort(); registry?.dispose(); loader?.dispose(); writer?.dispose(); offAuth?.();
+    if (dead) return; dead = true; generation++; active?.controller.abort(); registry?.dispose?.(); loader?.dispose?.(); writer?.dispose(); offAuth?.();
     for (const value of owners.values()) value.collector.dispose(); owners.clear();
   }
   let offAuth = null;
