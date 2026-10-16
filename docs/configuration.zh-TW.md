@@ -353,7 +353,7 @@ MCP server instructions 提供精簡的身分、回覆與跨 instance 通訊契�
 | Codex | 工作目錄 `AGENTS.md` 中由 AgEnD 管理的 marker 區塊 |
 | Kiro CLI | instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`；kiro-cli 2.21 以前，以及恢復的對話（切換成 instance 自己 agent 的步驟已暫停，#1800），用 steering 檔 `.kiro/steering/agend-<instance>.md`。恢復時 AgEnD 兩個檔都會寫；本來就以 instance 自己 agent 存檔的對話，讀的是 agent 的 `prompt`，不是 steering 檔 |
 | OpenCode | Instance 內的 `fleet-instructions.md`，加入專案 `opencode.json` 的 `instructions` 陣列 |
-| Antigravity | 工作目錄 `.agents/agents.md` 中的 marker 區塊 |
+| Antigravity | 工作目錄 `.agents/AGENTS.md` 中的 marker 區塊 |
 | Grok／Muse | 工作目錄 `AGENTS.md` 中的 marker 區塊 |
 
 完整 marker 區塊的正常更新會保留周圍內容；清理缺少 END marker 的破損區塊時，

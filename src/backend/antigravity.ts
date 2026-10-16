@@ -32,6 +32,37 @@ import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
+/**
+ * Board 0340ec89: the instructions file agy reads, relative to the workspace. agy (verified 1.3.6) loads
+ * `.agents/AGENTS.md`, the root `AGENTS.md` and `GEMINI.md` — not the lowercase `.agents/agents.md` AgEnD wrote before,
+ * which on a case-sensitive filesystem (Linux) it never read (tests/fixtures/agy-1.3.6-audit). The root `AGENTS.md` is
+ * shared with codex, grok and muse instances in the same workspace, so agy keeps its own folder.
+ */
+export const AGY_AGENTS_FILE = join(".agents", "AGENTS.md");
+const AGY_LEGACY_AGENTS_FILE = join(".agents", "agents.md");
+
+/** Whether two paths are one file (same device and inode): on a case-insensitive filesystem the two names are. */
+function sameFile(a: string, b: string): boolean {
+  try { const x = statSync(a), y = statSync(b); return x.ino === y.ino && x.dev === y.dev; } catch { return false; }
+}
+/** The legacy lowercase file, when it is a file of its own (not the new name on a case-insensitive filesystem). */
+export function agyLegacyAgentsFile(workDir: string): string | null {
+  const lower = join(workDir, AGY_LEGACY_AGENTS_FILE);
+  return existsSync(lower) && !sameFile(lower, join(workDir, AGY_AGENTS_FILE)) ? lower : null;
+}
+/**
+ * Before anything writes agy's instructions: a legacy `.agents/agents.md` with no `.agents/AGENTS.md` beside it becomes
+ * that file (renamed whole, so a person's own lines in it are kept — and now read). When both exist the legacy file is
+ * left as it is; each writer then moves only its own AgEnD block out of it. On a case-insensitive filesystem the two
+ * names are one file: nothing to do.
+ */
+export function migrateAgyAgentsFile(workDir: string): void {
+  const lower = agyLegacyAgentsFile(workDir);
+  const upper = join(workDir, AGY_AGENTS_FILE);
+  if (!lower || existsSync(upper)) return;
+  try { renameSync(lower, upper); } catch { /* another instance moved it first, or it went: nothing to move */ }
+}
+
 /** Parse `agy models`, which may emit TSV slug/display pairs or legacy single-column names. */
 /**
  * agy's logged-out startup screen, as the CLI paints it (captured offline from 1.0.10 and 1.3.1):
@@ -193,14 +224,17 @@ export class AntigravityBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
-    // Write .agents/agents.md in the persistent configured workspace.
+    // Write .agents/AGENTS.md in the persistent configured workspace (board 0340ec89: the name agy reads).
     const cwd = this.resolveWorkingDirectory(config.workingDirectory, config.instanceName);
     const agentsDir = join(cwd, ".agents");
     mkdirSync(agentsDir, { recursive: true });
+    migrateAgyAgentsFile(cwd);
+    // This instance's block in a legacy file that stays (a person's own file beside the new one) moves out of it.
+    const legacy = agyLegacyAgentsFile(cwd);
+    if (legacy) { try { if (removeMarker(legacy, config.instanceName)) rmSync(legacy, { force: true }); } catch { /* best effort */ } }
 
     if (config.instructions) {
-      const agentsPath = join(agentsDir, "agents.md");
-      appendWithMarker(agentsPath, config.instanceName, config.instructions);
+      appendWithMarker(join(cwd, AGY_AGENTS_FILE), config.instanceName, config.instructions);
     }
 
     if (config.agentMode === "mcp" && Object.keys(config.mcpServers).length > 0) {
@@ -367,10 +401,13 @@ exec ${shellQuote(process.execPath)} -e ${shellQuote(js)}
   }
 
   cleanup(config: CliBackendConfig): void {
-    const agentsPath = join(config.workingDirectory, ".agents", "agents.md");
-    try {
-      if (removeMarker(agentsPath, config.instanceName)) rmSync(agentsPath, { force: true });
-    } catch { /* best effort */ }
+    // This instance's block, from the file agy reads and from a legacy one that is still a file of its own.
+    for (const agentsPath of [join(config.workingDirectory, AGY_AGENTS_FILE), agyLegacyAgentsFile(config.workingDirectory)]) {
+      if (!agentsPath) continue;
+      try {
+        if (removeMarker(agentsPath, config.instanceName)) rmSync(agentsPath, { force: true });
+      } catch { /* best effort */ }
+    }
     try { unlinkSync(this.mcpWrapperPath); } catch { /* absent */ }
   }
 

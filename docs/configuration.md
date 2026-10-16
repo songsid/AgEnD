@@ -356,7 +356,7 @@ messaging contract. Full fleet guidance — role, workflow, selected decisions a
 | Codex | Managed AgEnD marker block in the workspace's `AGENTS.md` |
 | Kiro CLI | The `prompt` of the instance's own agent, `.kiro/agents/agend-<instance>-<fleet>.json`; the steering file `.kiro/steering/agend-<instance>.md` on kiro-cli < 2.21 and for a resumed conversation (its switch to the instance's agent is suspended, #1800). On a resume AgEnD writes both files. A resumed conversation that was already saved as the instance's own agent reads the agent's `prompt`, not the steering file. |
 | OpenCode | Instance `fleet-instructions.md` appended to the project's `opencode.json` `instructions` array |
-| Antigravity | Managed marker block in workspace `.agents/agents.md` |
+| Antigravity | Managed marker block in workspace `.agents/AGENTS.md` |
 | Grok / Muse | Managed marker block in workspace `AGENTS.md` |
 
 Normal updates of complete managed marker blocks preserve surrounding content.

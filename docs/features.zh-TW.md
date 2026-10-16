@@ -70,7 +70,7 @@ instance 啟動時，daemon 會把剛組好的 fleet 指示，和上次告訴 ag
 
 - 第一次啟動（還沒有任何紀錄）：只記錄指示，不送任何東西。
 - Claude Code 在 resume 時會自己重讀指示，所以永遠不用通知它。
-- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、kiro 的 agent 檔或 steering 檔、`.agents/agents.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
+- 其他後端會收到一行通知，請它重新載入自己的指示檔（`AGENTS.md`、kiro 的 agent 檔或 steering 檔、`.agents/AGENTS.md` 等）。如果沒有訊息在等，這則通知會延到下一則真正的訊息再一起送，免得 agent 平白回一段話；如果已經有投遞在排隊，daemon 會等到閒置，先貼上通知。
 
 不需要任何設定。
 
@@ -781,7 +781,7 @@ instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[mode
 - Claude Code → `CLAUDE.md`
 - Codex、OpenCode、Grok Build、Meta Muse Code → `AGENTS.md`
 - Kiro CLI → `.kiro/steering/project.md`
-- Antigravity CLI → `.agents/agents.md`
+- Antigravity CLI → `.agents/AGENTS.md`
 
 已經存在的檔案不會被動到。
 
@@ -808,7 +808,7 @@ fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。
 - Claude Code：`--append-system-prompt-file`（檔案是 instance 目錄裡的 `fleet-instructions.md`）
 - Kiro CLI：instance 自己的 agent `.kiro/agents/agend-<instance>-<fleet>.json` 的 `prompt`（見[同一個工作目錄裡的 kiro instance](#同一個工作目錄裡的-kiro-instance)）。kiro-cli 2.21 以前，以及恢復的對話（切換成 instance 自己 agent 的步驟已暫停，#1800），改用 steering 檔 `.kiro/steering/agend-<instance>.md`。恢復時 AgEnD 兩個檔都會寫；本來就以 instance 自己 agent 存檔的對話，讀的是 agent 的 `prompt`。
 - Codex、Grok Build、Meta Muse Code：工作目錄裡 `AGENTS.md` 中一段有標記的區塊
-- Antigravity CLI：工作目錄裡 `.agents/agents.md` 中一段有標記的區塊
+- Antigravity CLI：工作目錄裡 `.agents/AGENTS.md` 中一段有標記的區塊
 - OpenCode：instance 目錄裡的 `fleet-instructions.md`，加進工作目錄中 `opencode.json` 的 `instructions` 清單
 
 ## 自動關閉互動提示 (Auto-dismiss interactive prompts)
@@ -888,7 +888,7 @@ instances:
 
 ### Workspace 處理
 
-agy 1.1.0 以後接受位於隱藏路徑（例如 `~/.agend/workspaces/`）底下的工作目錄，所以 instance 和其他後端一樣，就在設定的工作目錄裡執行（以前轉向 `~/agend-workspaces/<instanceName>/` 的做法已經移除）。fleet 指示會以一段有標記的區塊，寫進該目錄裡的 `.agents/agents.md`。
+agy 1.1.0 以後接受位於隱藏路徑（例如 `~/.agend/workspaces/`）底下的工作目錄，所以 instance 和其他後端一樣，就在設定的工作目錄裡執行（以前轉向 `~/agend-workspaces/<instanceName>/` 的做法已經移除）。fleet 指示會以一段有標記的區塊，寫進該目錄裡的 `.agents/AGENTS.md`。
 
 ### 信任提示
 

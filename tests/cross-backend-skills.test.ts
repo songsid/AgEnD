@@ -296,7 +296,7 @@ describe("core-rules steering placement", () => {
     ["claude-code", "CLAUDE.md"],
     ["codex", "AGENTS.md"],
     ["grok", "AGENTS.md"],
-    ["antigravity", ".agents/agents.md"],
+    ["antigravity", ".agents/AGENTS.md"],
   ])("%s embeds core rules into %s as a managed block instead of a bare root file", (backend, filename) => {
     (fm as any).ensureGeneralInstructions(workDir, backend);
     const content = readFileSync(join(workDir, filename), "utf-8");
