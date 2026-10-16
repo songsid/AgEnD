@@ -102,6 +102,9 @@ describe("stock trust/paint prerequisite", () => {
     expect(f.snapshot()).toMatchObject({ ok: true, front: false, agentFront: false, reason: "stock_overlay" });
     popup.style.display = "none"; f.doc.activeElement = { matches: () => true }; expect(f.snapshot().front).toBe(false);
   });
+  it.each(["fullscreenElement", "pictureInPictureElement"])("native %s suppresses every front", async key => {
+    const f = await fixture(); f.doc[key] = f.node(); expect(f.snapshot()).toMatchObject({ ok: true, front: false, agentFront: false, reason: "stock_overlay" });
+  });
   it("session end and a foreign/transformed frame root refuse all admission", async () => {
     const f = await fixture(), root = f.node(); expect(f.snapshot({ frameRoot: root }).ok).toBe(false);
     root.parentElement = f.doc.body; expect(f.snapshot({ frameRoot: root }).ok).toBe(true);

@@ -21,6 +21,10 @@ children and desktop preview. The header owns level2, so its nested menu remains
 above the later scroller's level1 stacking context. Native/top-layer and existing
 mobile overlays retain their existing levels. Menus nested in content cannot
 out-rank front20; a front must be hidden while an overlay is active.
+The existing narrow chat-header widget fade is the sole content-mask exception:
+its exact black-to-transparent 32px gradient only removes paint within that
+already bounded level1 context. Unknown masks, other surfaces and ancestor masks
+remain refused. All three tested engines accept this stock computed form.
 
 The first native menu hit-test caught and corrected a draft equal-level header
 regression before review. The recipe now checks both control paint and actual menu
