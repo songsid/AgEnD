@@ -1117,14 +1117,15 @@ agend update --stable   # Install from @latest, even from a beta or alpha instal
 
 `/update` in chat does the same as `agend update`: an install stays on its channel. An update that would go
 back to an older version (say an alpha asking for @beta) is refused; `--stable`, `--version` or `--force` say
-that is what you want. The "update available" notice follows the same channel. An alpha install is told about
-a newer alpha or a newer stable, never about a beta.
+that is what you want. The "update available" notice follows the same channel. A beta install is told only about
+a newer beta: beta users stay on the beta line after a stable ships. An alpha install is told about a newer alpha
+or a stable of a later minor, never about a beta.
 
 A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
 → `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is
 built, and a stable older than the current `@latest` is refused. When a minor goes stable (2.2.0), point
-`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): alpha installs are not told about a stable
-of their own version.
+`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): an alpha install's `/update` then installs it, and the
+notice says to run `/update`.
 
 ## PSS memory reporting
 
