@@ -3,7 +3,7 @@
 This is an **unmounted paint foundation** for the approved
 [Try policy](1629-effect-trial-authority.md), following the
 [local-admin API](1629-effect-trial-api.md). The real app still does not offer or
-start Try. The shared stage helper is absent from the fixed ASSETS map; the panel module falls under the existing authenticated `/ui/js/` file route but has no product import. The fixed host `EffectTrialPanel` and `effect-trial-stage.js` create no
+start Try. The shared stage helper is now a fixed ASSETS dependency of the common registry; the panel module falls under the existing authenticated `/ui/js/` file route but has no product import. See the [registry seam](1629-effect-trial-registry.md). The fixed host `EffectTrialPanel` and `effect-trial-stage.js` create no
 request, frame, Worker, registry, profiler or pool on their own.
 
 ## Closed local paint receipt

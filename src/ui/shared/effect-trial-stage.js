@@ -28,6 +28,13 @@ function neutral(s) {
 }
 /** Inspect immutable identity only; this is NOT current paint permission or a serialized grant. */
 export function effectTrialStageIdentity(receipt) { return receipts.get(receipt)?.identity ?? null; }
+/** Host-only lifetime observation. Physical removal precedes notification; subscribers never grant paint. */
+export function watchEffectTrialStage(receipt, listener) {
+  const owner = receipts.get(receipt);
+  if (!owner || typeof listener !== "function") return null;
+  owner.listeners.add(listener);
+  return () => owner.listeners.delete(listener);
+}
 /** Missing/forged/old receipts never turn the ordinary stock front flag on. */
 export function effectTrialStage(receipt, expected, stock) {
   try {
@@ -46,12 +53,14 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
   const own = binding(raw);
   if (!own || typeof current !== "function" || typeof ownerCss !== "function" || typeof onStop !== "function" || !host?.document || !panel || !stage || owners.has(stage)) return null;
   let sheet; try { sheet = effectHostStyle(host); if (!sheet || host.CSS?.supports("contain", "paint") !== true || host.CSS.supports("overflow", "clip") !== true) return null; } catch { return null; }
-  const receipt = Object.freeze(Object.create(null)), frames = new Set(); let dead = false;
+  const receipt = Object.freeze(Object.create(null)), frames = new Set(), listeners = new Set(); let dead = false;
   const identity = Object.freeze({ key: own.key, id: own.id, instance: own.instance, generation: own.generation, serial: ++serial });
   const invalidate = reason => {
     if (dead) return; dead = true; receipts.delete(receipt); if (owners.get(stage) === receipt) owners.delete(stage);
     try { host.removeEventListener("blur", blur); } catch { /* no revival */ }
     for (const f of [...frames]) f.remove();
+    const notify = [...listeners]; listeners.clear();
+    for (const fn of notify) { try { fn(reason); } catch { /* one host owner cannot block another cleanup */ } }
     try { onStop(reason); } catch { /* cleanup already won */ }
   };
   const blur = event => { if (event.target === host) invalidate("blur"); };
@@ -123,7 +132,7 @@ export function createEffectTrialStage({ window: host, panel, stage, binding: ra
     } catch { remove(); invalidate("stage_unavailable"); return { ok: false }; }
     return handle;
   }
-  receipts.set(receipt, { identity, project }); owners.set(stage, receipt);
+  receipts.set(receipt, { identity, project, listeners }); owners.set(stage, receipt);
   try { host.addEventListener("blur", blur); } catch { invalidate("unsupported"); return null; }
   return Object.freeze({ receipt, dispose: () => invalidate("stopped"), hide: () => { for (const f of frames) f.hide(); } });
 }

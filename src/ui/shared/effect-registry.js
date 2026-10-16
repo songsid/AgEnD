@@ -4,6 +4,7 @@ import { captureEffectBaseline } from "./effect-baseline.js";
 import { createEffectFrame } from "./effect-frame.js";
 import { createEffectGeometry, hostEffectRect } from "./effect-geometry.js";
 import { effectStockSnapshot, effectStockAllows } from "./effect-stock-snapshot.js";
+import { effectTrialStage, effectTrialStageIdentity, watchEffectTrialStage } from "./effect-trial-stage.js";
 import { EffectBudget } from "./effect-profiler.js";
 
 const registries = new WeakMap();
@@ -20,9 +21,13 @@ function unsafeSnapshotDescriptor(d) {
     if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "boolean" || finite(v) || typeof v === "string" && v.length <= 128)) return null;
     params[k] = v;
   }
-  const out = { key: d.key, id: d.id, region: d.region, layer: d.layer, by: d.by === "human" ? "human" : "agent", order: d.order,
+  const trialIdentity = d.trialStage == null ? null : effectTrialStageIdentity(d.trialStage);
+  if (d.trialStage != null && (!trialIdentity || d.region !== "chat" || trialIdentity.key !== d.key || trialIdentity.id !== d.id || trialIdentity.instance !== d.instance || trialIdentity.generation !== d.generation)) return null;
+  const out = { trialStage: d.trialStage ?? null, generation: trialIdentity?.generation ?? null, key: d.key, id: d.id, region: d.region, layer: d.layer, by: !trialIdentity && d.by === "human" ? "human" : "agent", order: d.order,
     paused: d.paused, visible: d.visible, instance: d.region === "chat" ? d.instance : null, params, element: d.element };
-  out.identity = JSON.stringify([out.id, out.region, out.layer, out.by, out.instance, params]);
+  const identity = [out.id, out.region, out.layer, out.by, out.instance, params];
+  if (trialIdentity) identity.push([trialIdentity.serial, trialIdentity.generation]);
+  out.identity = JSON.stringify(identity);
   return out;
 }
 
@@ -50,6 +55,17 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   const dpr = device => Math.min(device === "constrained" ? 1.5 : 3, Math.max(0.5, host.devicePixelRatio || 1));
   // The provider is synchronous and observational. Reentrant mutation revokes this pool, rather than
   // allowing an old admission to act on newer descriptors or scheduling unbounded callback retries.
+  const readingStages = new Set();
+  // A local receipt may synchronously invalidate and notify its owner. Fence its result by revision;
+  // recursion on the same receipt is unknown, while an independently issued replacement may proceed.
+  const localStage = (d, proof) => {
+    if (!d?.trialStage || dead || blocked || readingStages.has(d.trialStage)) return null;
+    const before = revision; let stage = null; readingStages.add(d.trialStage);
+    try { stage = effectTrialStage(d.trialStage, d, proof); } catch { /* unknown is never permission */ }
+    finally { readingStages.delete(d.trialStage); }
+    return !dead && !blocked && revision === before && stage?.root === d.element ? stage : null;
+  };
+  const permits = (d, proof) => d.trialStage ? !!localStage(d, proof) : effectStockAllows(proof, d);
   const coverage = (d = null) => {
     if (dead || blocked || readingStock) return null;
     const before = revision; let proof = null; readingStock = true;
@@ -57,12 +73,20 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     catch { /* unknown is never permission */ }
     finally { readingStock = false; }
     if (dead || blocked || before !== revision) return null;
-    return d === null || effectStockAllows(proof, d) ? proof : null;
+    return d === null || permits(d, proof) ? proof : null;
   };
+  const position = (d, proof) => d.trialStage ? localStage(d, proof)?.rect ?? null : hostEffectRect(d.element);
+  const syncGeometry = (s, proof) => {
+    const before = revision, rect = position(s.d, proof);
+    if (!rect || !current(s) || before !== revision) return null;
+    const ok = s.d.trialStage ? s.geometry.sync(proof) : s.geometry.sync(rect, proof);
+    return ok && current(s) && before === revision ? rect : null;
+  };
+  const hideGeometry = () => { geometry?.hide(); for (const s of slots.values()) if (s.d.trialStage) s.geometry?.hide(); };
   function reentrantStock() {
     if (!readingStock) return false;
     if (blocked) return true;
-    revision++; blocked = "stock_reentrant"; geometry?.hide(); stopAll(blocked); tell(); return true;
+    revision++; blocked = "stock_reentrant"; hideGeometry(); stopAll(blocked); tell(); return true;
   }
   const current = s => !dead && !blocked && slots.get(s.d.key) === s && s.live;
   const tell = () => { if (dead) return; const state = view(), stamp = JSON.stringify(state); if (stamp === lastView) return; lastView = stamp; try { onChange(state); } catch { /* a display callback cannot admit code */ } };
@@ -79,6 +103,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     if (slots.get(s.d.key) === s) slots.delete(s.d.key);
     if (s.request) { s.request.controller.abort(); if (s.request.timer !== null) host.clearTimeout(s.request.timer); }
     if (!["disposed", "superseded", "hidden", "human_resume", "calibrating", "geometry_changed"].includes(why)) failures.set(s.d.key, { identity: signature(s.d), reason: why });
+    s.stageOff?.(); s.stageOff = null;
     s.frame?.remove(why); s.geometry?.remove();
     if (s.loadOff) s.loadOff();
     if (count) {
@@ -119,7 +144,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   }
   const invalidate = () => {
     if (dead || reentrantStock()) return;
-    geometry?.hide(); for (const s of slots.values()) s.pointer = null;
+    hideGeometry(); for (const s of slots.values()) s.pointer = null;
     if (time() === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; }
     reconcile();
   };
@@ -144,13 +169,24 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     }
     // Hidden frames already owned may survive for <=10 s, but no new frame or load is admitted while hidden.
     const ctx = { ...context, hidden: false };
-    const ds = descriptors.map(d => ({ ...d, paused: !effectStockAllows(stock, d) || d.paused === true || paused.get(d.key) === signature(d) || failures.get(d.key)?.identity === signature(d) }));
+    const ds = [];
+    for (const d of descriptors) {
+      if (dead || proposal !== revision) return;
+      const allowed = permits(d, stock);
+      if (dead || proposal !== revision) return;
+      ds.push({ ...d, paused: !allowed || d.paused === true || paused.get(d.key) === signature(d) || failures.get(d.key)?.identity === signature(d) });
+    }
     const allocation = allocateEffectFrames(ds, ctx); results.clear();
     for (const r of allocation) {
       const d = descriptors.find(d => d.key === r.key);
-      if (r.reason === "paused" && d && d.paused !== true && paused.get(d.key) !== signature(d) && failures.get(d.key)?.identity !== signature(d) && !effectStockAllows(stock, d)) r.reason = stock.front ? "owner_css" : "stock_overlay";
+      if (r.reason === "paused" && d && d.paused !== true && paused.get(d.key) !== signature(d) && failures.get(d.key)?.identity !== signature(d)) {
+        const allowed = permits(d, stock);
+        if (dead || proposal !== revision) return;
+        if (!allowed) r.reason = d.trialStage ? "trial_ended" : stock.front ? "owner_css" : "stock_overlay";
+      }
       results.set(r.key, r);
     }
+    if (dead || proposal !== revision) return;
     const chosen = new Set(allocation.filter(r => r.verdict === "active").map(r => r.key));
     for (const s of [...slots.values()]) {
       const d = descriptors.find(x => x.key === s.d.key);
@@ -159,7 +195,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     }
     if (chosen.size === 0) { if (calibration) { calibration.cancel(); calibration = null; } baseline = null; baselineDevice = null; tell(); return; }
     if (hidden) {
-      geometry.hide();
+      hideGeometry();
       if (calibration) { calibration.cancel(); calibration = null; }
       for (const s of [...slots.values()]) {
         if (!s.frame) retire(s, "hidden");
@@ -196,10 +232,19 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (proposal !== revision) return;
       if (permitted !== true) { results.set(d.key, { verdict: "off", reason: "safety_unknown", queuePos: null }); continue; }
       if (slots.has(d.key) || slots.size >= max || loads.size >= max || !globalAllowed() || context.hidden || !coverage(d) || proposal !== revision || !descriptors.some(x => x.key === d.key && signature(x) === signature(d) && x.element === d.element)) break;
-      const rect = hostEffectRect(d.element);
+      const rect = position(d, coverage(d));
+      if (dead || proposal !== revision) return;
       if (!rect || d.element.ownerDocument !== host.document) { results.set(d.key, { verdict: "off", reason: "geometry_unknown", queuePos: null }); continue; }
-      const s = { d, device: device(), owner: null, live: true, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
+      const s = { d, device: device(), owner: null, live: true, stageOff: null, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
       slots.set(d.key, s);
+      if (d.trialStage) {
+        s.stageOff = watchEffectTrialStage(d.trialStage, () => {
+          if (!current(s)) return;
+          const before = revision; retire(s, "trial_ended");
+          if (!dead && before === revision) { reconcile(); tell(); }
+        });
+        if (!s.stageOff || !current(s)) { retire(s, "trial_ended"); continue; }
+      }
       const request = { controller: new host.AbortController(), slot: s, timer: null, began: time() }; s.request = request; loads.add(request);
       const withinDeadline = () => {
         const n = time();
@@ -229,16 +274,21 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       }).then(resource => {
         if (!acceptCompletion()) return;
         if (!plain(resource) || resource.id !== d.id || !plain(resource.params) || Object.keys(d.params).some(k => resource.params[k] !== d.params[k])) { retire(s, "resource_unknown"); return; }
-        const fresh = hostEffectRect(d.element);
+        let fresh = position(d, coverage(d));
         if (!fresh || receipt(safety.allowed, d.id, s.device) !== true) { retire(s, "safety_unknown"); return; }
         if (!acceptCompletion()) return;
         const token = receipt(safety.begin, { key: d.key, id: d.id, device: s.device });
         if (typeof token !== "string" || token.length < 1 || token.length > 128) { retire(s, "safety_unknown"); return; }
         s.token = token;
         if (!acceptCompletion()) return;
+        // Obtain local geometry BEFORE the factory appends its temporarily unknown iframe. bind() is
+        // the very next local-stage operation and registers that frame before checking its topology.
+        const local = d.trialStage ? localStage(d, coverage(d)) : null;
+        if (d.trialStage && !local || !current(s)) { if (current(s)) retire(s, "admission_revoked"); return; }
+        if (local) fresh = local.rect;
         s.rect = fresh;
         s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
-        const frame = createEffectFrame({ window: host, root, origin, boot, clock: nativeClock,
+        const frame = createEffectFrame({ window: host, root: local?.root ?? root, origin, boot, clock: nativeClock,
           render: { code: resource.code, params: resource.params, assets: resource.assets, wants: resource.wants, instance: d.instance, width: fresh.width, height: fresh.height, dpr: dpr(s.device) },
           onReady() { if (!current(s)) return; if (!globalAllowed() || context.hidden || !coverage(d)) { retire(s, "hidden"); tell(); return; } const n = time(); if (n === null) { blocked = "clock_unavailable"; stopAll(blocked); tell(); return; } s.ready = true; s.readyAt = n; s.healthySince = n; publishEnv(s); schedule(); tell(); },
           onRemove(why) { if (current(s)) { retire(s, why); tell(); } },
@@ -246,12 +296,12 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         s.frame = frame;
         if (!current(s) || !frame.ok || frame.state().removed) { frame.remove?.("stale_mount"); retire(s, "mount_failed"); return; }
         frame.element.id = `agend-effect-${boot}-${++frameSerial}`;
-        s.geometry = geometry.bind(frame.element, { layer: d.layer, by: d.by });
+        s.geometry = local ? local.bind(frame.element, { layer: d.layer }, coverage()) : geometry.bind(frame.element, { layer: d.layer, by: d.by });
         if (!s.geometry.ok) { retire(s, "geometry_unknown"); return; }
         const loaded = () => { if (current(s)) s.budget.loaded(); };
         frame.element.addEventListener("load", loaded); s.loadOff = () => frame.element.removeEventListener("load", loaded);
         const paint = coverage(d);
-        if (!current(s) || !paint || !s.geometry.sync(fresh, paint)) { retire(s, "geometry_unknown"); return; }
+        if (!current(s) || !paint || !syncGeometry(s, paint)) { retire(s, "geometry_unknown"); return; }
         // One non-serializable host receipt per actual admitted frame. Never append it to a Worker event.
         const owner = Object.freeze({ key: d.key, id: d.id, device: s.device, current: () => current(s) && s.owner === owner });
         s.owner = owner;
@@ -266,7 +316,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     schedule(); tell();
   }
   function publishEnv(s, proof = coverage(s.d)) {
-    if (!s.ready || !current(s) || context.hidden || !globalAllowed() || !effectStockAllows(proof, s.d)) return;
+    if (!s.ready || !current(s) || context.hidden || !globalAllowed() || !permits(s.d, proof)) return;
     const e = effectEvent("env", { width: s.rect.width, height: s.rect.height, dpr: dpr(s.device), quality: s.budget.snapshot().quality }, null, time());
     if (e) s.frame.send(e);
   }
@@ -279,10 +329,11 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     for (const s of [...slots.values()]) {
       if (dead || proposal !== revision) return;
       if (!s.frame) continue;
-      if (!effectStockAllows(paint, s.d)) { retire(s, "superseded"); policyChanged = true; continue; }
-      const rect = hostEffectRect(s.d.element);
+      if (!permits(s.d, paint)) { retire(s, "superseded"); policyChanged = true; continue; }
+      if (dead || proposal !== revision) return;
+      const rect = syncGeometry(s, paint);
       if (!current(s)) continue;
-      if (!rect || !s.geometry.sync(rect, paint)) { retire(s, "geometry_unknown"); continue; }
+      if (!rect) { retire(s, "geometry_unknown"); continue; }
       // The host owns the CSS viewport. A bounded env signal lets Worker code redraw its own bitmap if desired.
       const changed = rect.width !== s.rect.width || rect.height !== s.rect.height; s.rect = rect;
       if (changed) publishEnv(s, paint);
@@ -290,7 +341,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       if (s.pointer) {
         const packet = s.pointer; s.pointer = null;
         const n = time(), b = s.budget.snapshot();
-        if (n !== null && n - packet.at <= 100 && effectStockAllows(paint, s.d) && pointerGate(paint) && current(s) && b.forward && (s.lastPointer === null || n - s.lastPointer >= 1000 / b.pointerHz)) {
+        if (n !== null && n - packet.at <= 100 && permits(s.d, paint) && pointerGate(paint) && current(s) && b.forward && (s.lastPointer === null || n - s.lastPointer >= 1000 / b.pointerHz)) {
           const event = effectEvent("pointer", packet.fields, s.d.instance, packet.at);
           if (event && s.frame.send(event)) s.lastPointer = n;
         }
@@ -312,11 +363,15 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     for (const s of [...slots.values()]) {
       if (dead || proposal !== revision) return;
       if (!current(s) || !s.frame || !s.ready) continue;
+      if (s.d.trialStage && !coverage(s.d)) { if (dead || proposal !== revision) return; if (current(s)) retire(s, "trial_ended"); continue; }
+      if (dead || proposal !== revision) return;
       const r = s.budget.gates({ hidden: false, reducedMotion: context.reducedMotion, saveData: context.saveData, show: context.show });
       const state = r.remove ? r : s.readyAt !== null && last - s.readyAt >= 3000 ? s.budget.poll() : r;
       try { onProfile({ key: s.d.key, id: s.d.id, device: s.device, ...state }, s.owner); } catch { /* metrics never authorize a mount */ }
       if (dead || proposal !== revision) return;
       if (!current(s)) continue;
+      if (s.d.trialStage && !coverage(s.d)) { if (dead || proposal !== revision) return; if (current(s)) retire(s, "trial_ended"); continue; }
+      if (dead || proposal !== revision) return;
       if (state.remove) { const key = s.d.id + ":" + s.device; const count = state.reason === "host_budget" && !budgetPauses.has(key); if (count) budgetPauses.add(key); retire(s, state.reason, count); continue; }
       if (state.badWindows > 0) s.healthySince = null; else if (s.healthySince === null) s.healthySince = last;
       if (s.token && s.healthySince !== null && last - s.healthySince >= 5000 && state.badWindows === 0 && state.metrics !== null && !clearMarker(s, "healthy")) { stopAll("safety_unknown"); break; }
@@ -395,7 +450,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
   const api = { ok: true,
     update(ds, ctx) {
       if (dead || reentrantStock()) return view();
-      geometry.hide();
+      hideGeometry();
       revision++;
       if (!Array.isArray(ds) || ds.length > 128 || !plain(ctx)) { descriptors = []; context = null; results.clear(); stopAll("gates_unknown"); return []; }
       descriptors = ds.map(snapshotDescriptor).filter(Boolean);
@@ -410,7 +465,7 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
     /** Called only by the host's explicit human Resume UI. A descriptor update never clears this latch. */
     resume(key) {
       if (dead || reentrantStock() || blocked && !blocked.startsWith("baseline_") || typeof key !== "string") return false;
-      const proposed = revision, d = descriptors.find(d => d.key === key); if (!d || receipt(safety.resume, d.id, device()) !== true || revision !== proposed) return false;
+      const proposed = revision, d = descriptors.find(d => d.key === key); if (!d || d.trialStage && !coverage(d) || revision !== proposed || receipt(safety.resume, d.id, device()) !== true || revision !== proposed) return false;
       revision++;
       if (!stopAll("human_resume")) return false;
       if (blocked && !blocked.startsWith("baseline_")) return false; blocked = null; paused.delete(key); failures.delete(key); baseline = null; serial++; reconcile(); return true;
