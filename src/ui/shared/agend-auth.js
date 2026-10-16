@@ -27,6 +27,20 @@
 
   const nativeFetch = window.fetch.bind(window);
   let sessionPending = null;
+  // Observation only: no server authority, owner/CSRF data or way to restore this page's episode.
+  let ended = null;
+  const endListeners = new Set();
+  function endSession(reason) {
+    if (ended) return;
+    ended = Object.freeze({ reason });
+    const listeners = [...endListeners]; endListeners.clear();
+    for (const fn of listeners) { try { fn(ended); } catch { /* one observer cannot delay another's cleanup */ } }
+  }
+  function onSessionEnd(fn) {
+    if (typeof fn !== "function") return () => {};
+    if (ended) { try { fn(ended); } catch { /* late observers fail closed */ } return () => {}; }
+    endListeners.add(fn); return () => endListeners.delete(fn);
+  }
 
   /**
    * This page's sign-in, read once from GET /auth/session: { csrf, handle } or null (no session, or the read failed —
@@ -36,7 +50,7 @@
   function session() {
     if (!sessionPending) {
       sessionPending = nativeFetch("/auth/session", { credentials: "same-origin", cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => { if (r.status === 401) endSession("unauthorized"); return r.ok ? r.json() : null; })
         .then((j) => (j && typeof j.csrf === "string" ? { csrf: j.csrf, handle: typeof j.handle === "string" ? j.handle : null } : null))
         .catch(() => null)
         .then((value) => { if (!value) sessionPending = null; return value; });
@@ -79,15 +93,19 @@
       }
     }
     const response = await nativeFetch(input, init);
-    if (sameOrigin && response.status === 401 && !target.pathname.startsWith("/auth/")) sessionEndedBanner();
+    if (sameOrigin && response.status === 401 && !target.pathname.startsWith("/auth/")) { endSession("unauthorized"); sessionEndedBanner(); }
     return response;
   };
 
   window.AgendAuth = {
     csrf,
+    /** Host runtimes subscribe before admission. Late subscribers observe the same closed episode immediately. */
+    onSessionEnd,
+    sessionEnded() { return ended !== null; },
     /** #1568: the session handle of this page's sign-in, or null when there is none. */
     sessionHandle() { return session().then((s) => (s && s.handle ? s.handle : null)); },
     async signOut() {
+      endSession("sign_out");
       const value = await csrf();
       const r = await nativeFetch("/auth/logout", { method: "POST", credentials: "same-origin", headers: value ? { "X-Agend-CSRF": value } : {} });
       // A sign-out the server could not make durable is not quietly reported as done: say so before leaving.
