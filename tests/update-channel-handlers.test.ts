@@ -206,6 +206,45 @@ describe("the update notice follows the same channel rule (#1182 review)", () =>
     expect(quiet.posted).toEqual([]);
   });
 
+  // #1926: beta users stay on the beta line after a stable ships — their notice comes from @beta only. With 2.2.0
+  // as @latest and beta.17 as @beta, a beta.16 install used to be told nothing (2.2.0 became the target, and the
+  // same-core guard dropped it).
+  describe("a beta install hears about @beta only (#1926)", () => {
+    it("beta.16 with 2.2.0 out is told about beta.17, with the plain /update text", async () => {
+      const { posted } = await notice("2.2.0-beta.16", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain("v2.2.0-beta.17");
+      expect(posted[0]).toContain("Run: /update");
+      expect(posted[0]).not.toContain("--stable");
+    });
+    it("beta.17 (the newest beta) with 2.2.0 out is silent", async () => {
+      const { posted } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0-beta.17" });
+      expect(posted).toEqual([]);
+    });
+    it("a stable of a higher core (2.2.1) does not reach a beta install either", async () => {
+      const { posted } = await notice("2.2.0-beta.17", { "@songsid/agend": "2.2.1", "@songsid/agend@beta": "2.2.0-beta.17" });
+      expect(posted).toEqual([]);
+    });
+  });
+
+  // #1928 review: once the release points the install's own channel tag at the new stable, /update installs it — the
+  // notice says "Run: /update", not "/update stays on … use --stable".
+  it.each([
+    ["an alpha, after the release points @alpha at 2.2.0", "2.2.0-alpha.4", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0" }],
+    ["a beta, if @beta is pointed at 2.2.0", "2.2.0-beta.17", { "@songsid/agend": "2.2.0", "@songsid/agend@beta": "2.2.0" }],
+  ])("%s: told to run /update, not --stable", async (_n, version, tags) => {
+    const { posted } = await notice(version, tags);
+    expect(posted).toEqual([expect.stringContaining("v2.2.0")]);
+    expect(posted[0]).toContain("Run: /update");
+    expect(posted[0]).not.toContain("--stable");
+  });
+
+  it("an alpha install is not left silent by a same-core stable: it still hears about the newer alpha (#1926)", async () => {
+    const { posted } = await notice("2.2.0-alpha.3", { "@songsid/agend": "2.2.0", "@songsid/agend@alpha": "2.2.0-alpha.4" });
+    expect(posted).toEqual([expect.stringContaining("v2.2.0-alpha.4")]);
+    expect(posted[0]).not.toContain("--stable");
+  });
+
   it("a beta install still looks at @beta and @latest, never @alpha", async () => {
     const tags = { "@songsid/agend": "2.1.11", "@songsid/agend@beta": "2.1.12-beta.5", "@songsid/agend@alpha": "2.2.0-alpha.1" };
     const { posted, views } = await notice("2.1.12-beta.4", tags);

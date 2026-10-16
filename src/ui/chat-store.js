@@ -353,21 +353,21 @@ export function createChatStore(deps) {
   }
   // Board 003648ac: an answer the server marks `sent` leaves by itself; a sent /compact says "compacting…" until the
   // status frame's `compact` (same watch id) says it ended, then leaves when it is done. Everything else — a refusal
-  // (even one worded as text), a list to choose from, an answer to read, a compaction timed out or lost — stays.
+  // (even one worded as text), a list to choose from, an answer to read, a compaction timed out, lost or not made — stays.
   function showCommand(target, card) {
     s.commands[target] = card;
     const later = (ms, fn) => deps.setTimeout(() => { if (s.commands[target] === card) { fn(); changed(target); } }, ms);
     const leave = () => { delete s.commands[target]; };
-    if (card.busy || card.error || card.choices || card.compact === "timeout" || card.compact === "lost") return;
+    if (card.busy || card.error || card.choices || ["timeout", "lost", "not_compacted"].includes(card.compact)) return;
     if (card.compact === "running") later(COMPACT_PAGE_LIMIT_MS, () => showCommand(target, { ...card, compact: "timeout" }));
     else if (card.compact === "done") later(COMPACT_DONE_CLEAR_MS, leave);
     else if (card.compact === "unknown") later(COMPACT_UNKNOWN_CLEAR_MS, leave);
     else if (card.sent === true) later(SENT_CLEAR_MS, leave);
   }
-  /** The status frame's word on a followed /compact: done, timed out, or lost. */
+  /** The status frame's word on a followed /compact: done, not compacted (kiro said so, board 907c7899), timed out, or lost. */
   function noteCompact(name, view) {
     const c = s.commands[name];
-    if (!c || c.compact !== "running" || !view || view.id !== c.watch || !["done", "timeout", "lost"].includes(view.state)) return;
+    if (!c || c.compact !== "running" || !view || view.id !== c.watch || !["done", "not_compacted", "timeout", "lost"].includes(view.state)) return;
     showCommand(name, { ...c, compact: view.state });
     changed(name);
   }

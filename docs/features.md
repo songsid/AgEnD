@@ -890,7 +890,7 @@ Instances sharing the same working directory are serialized within a group to av
 
 ## Kiro instances in one working directory
 
-Each kiro instance has its own kiro agent, `.kiro/agents/agend-<instance>-<fleet>.json` in its working directory, and resumes its own conversation by id, so kiro instances that share a working directory do not resume each other's conversation. The agent holds only this instance's AgEnD MCP server and its instructions. A **new** conversation runs as that agent. AgEnD writes no shared entry for it, and its agent loads no steering (`resources: []`), so it reads only its own instructions. The agent still includes the workspace `.kiro/settings/mcp.json`, though. While another instance in the directory resumes a conversation, that file holds the other instance's AgEnD entry, and the new conversation sees that server too. A **resumed** conversation keeps the agent it was saved under and uses the shared entries while the switch is suspended (#1800, below). So server isolation is not guaranteed in a directory that has resumed kiro instances. The details are in the [design](design/kiro-per-instance-agent.md). It needs kiro-cli 2.21 or newer; an older one runs as before and says so when the instance starts.
+Each kiro instance has its own kiro agent, `.kiro/agents/agend-<instance>-<fleet>.json` in its working directory, and resumes its own conversation by id, so kiro instances that share a working directory do not resume each other's conversation. The agent holds only this instance's AgEnD MCP server and its instructions. A **new** conversation runs as that agent, and AgEnD writes no shared entry for it. Its agent lists no resources (`resources: []`), but kiro still loads every `.kiro/steering/*.md` in the directory for every agent (verified on kiro-cli 2.21.0, 2.28.0 and 2.30.0, on each engine). So a new conversation also reads the steering files there: your own, and the AgEnD steering file of any other instance whose resumed conversation uses it (#1800, below). The agent also includes the workspace `.kiro/settings/mcp.json`. While another instance in the directory resumes a conversation, that file holds the other instance's AgEnD entry, and the new conversation sees that server too. A **resumed** conversation keeps the agent it was saved under and uses the shared entries while the switch is suspended (#1800, below). So server isolation is not guaranteed in a directory that has resumed kiro instances. The details are in the [design](design/kiro-per-instance-agent.md). It needs kiro-cli 2.21 or newer; an older one runs as before and says so when the instance starts.
 
 - **Your own MCP servers stay.** The agent includes the global `~/.kiro/settings/mcp.json` and the workspace `.kiro/settings/mcp.json`. AgEnD writes its own entry there only while a resumed conversation needs it (below).
 - **A resumed conversation keeps its saved agent (#1800).** kiro brings a resumed conversation back as the agent it was saved under. AgEnD used to type `/agent swap <agent>` into the pane to move it onto the instance's own agent. That switch is **suspended**, because an instance lost its AgEnD tools after it and could not `reply`. A resumed conversation now gets this instance's AgEnD server and instructions from the shared `.kiro/settings/mcp.json` entry and the steering file, as before #906, including for instances whose switch was already recorded.
@@ -1117,14 +1117,15 @@ agend update --stable   # Install from @latest, even from a beta or alpha instal
 
 `/update` in chat does the same as `agend update`: an install stays on its channel. An update that would go
 back to an older version (say an alpha asking for @beta) is refused; `--stable`, `--version` or `--force` say
-that is what you want. The "update available" notice follows the same channel. An alpha install is told about
-a newer alpha or a newer stable, never about a beta.
+that is what you want. The "update available" notice follows the same channel. A beta install is told only about
+a newer beta: beta users stay on the beta line after a stable ships. An alpha install is told about a newer alpha
+or a stable of a later minor, never about a beta.
 
 A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
 → `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is
 built, and a stable older than the current `@latest` is refused. When a minor goes stable (2.2.0), point
-`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): alpha installs are not told about a stable
-of their own version.
+`@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): an alpha install's `/update` then installs it, and the
+notice says to run `/update`.
 
 ## PSS memory reporting
 

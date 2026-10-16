@@ -4,9 +4,13 @@
  * - **Only what the CLI writes.** Claude Code appends a `system` `compact_boundary` record to the session's JSONL and
  *   Codex a `compacted` record to its rollout (the same records the Log tab shows as "compacted", log-steps.ts). Only
  *   a record's own top-level fields count: a long record is read whole (≤ WHOLE_LINE_MAX_BYTES, also when it spans
- *   several reads) and parsed, never judged by text in its head; one that can't be read whole stays unknown. Other
- *   backends (kiro included) record nothing AgEnD can attribute to the instance, so their compaction is never called
- *   finished: `begin` answers null.
+ *   several reads) and parsed, never judged by text in its head; one that can't be read whole stays unknown.
+ * - **kiro: its own pane (board 907c7899).** kiro records a compaction nowhere AgEnD can tie to the instance, but its
+ *   classic and TUI V2 layouts say on the pane how it ended (kiro-compact-pane.ts). The daemon reads its pane from just
+ *   before the write and says once how it ended (`compact_pane_result`): done, or not compacted ("too short", or
+ *   stopped). The watch only waits for that, bound to the launch like the others. Other backends (kiro V3 included)
+ *   record nothing AgEnD can attribute to the instance, so their compaction is never called finished: `begin` answers
+ *   null.
  * - **From just before the command's own write.** The daemon queues a paste behind its lock and a wake; just before
  *   it writes this one, it takes the transcript's end (`checkpoint`), and once written it sends that with the launch it
  *   wrote under (`raw_paste_written`). So neither an older boundary nor one written while the command waited counts,
@@ -30,7 +34,7 @@ export const COMPACT_WATCH_TIMEOUT_MS = 10 * 60_000;
 export const COMPACT_WATCH_KEEP_MS = 2 * 60_000;
 
 export type CompactFormat = "claude" | "codex";
-export type CompactState = "running" | "done" | "timeout" | "lost";
+export type CompactState = "running" | "done" | "not_compacted" | "timeout" | "lost";
 export interface CompactWatchView { id: string; state: CompactState }
 /** The transcript's end just before the command was written (the daemon's). */
 export interface CompactCheckpoint { path: string; ino: number; size: number }
@@ -56,6 +60,8 @@ export interface CompactWatchDeps {
   source(name: string): { path: string | null; format: CompactFormat | null };
   /** The launch that runs the instance now (launchIdentity); null: none. */
   owner(name: string): string | null;
+  /** Whether the instance's daemon reads a /compact's end from its own pane (kiro classic or TUI V2, board 907c7899). */
+  paneFollow?(name: string): boolean;
   /** A watch ended (done, lost or timed out): the status frame should go out again. */
   changed(name: string): void;
   now?(): number;
@@ -68,7 +74,11 @@ interface Base {
   /** A long record that may be the one, whose end a later read will find (where it starts). */
   pending: number | null;
 }
-interface Watch { id: string; state: CompactState; deadline: number; endedAt: number | null; timer: unknown; reading: boolean; base: Base | null }
+interface Watch {
+  id: string; state: CompactState; deadline: number; endedAt: number | null; timer: unknown; reading: boolean; base: Base | null;
+  /** Board 907c7899: followed by the daemon on its pane; `paneOwner` is the launch it was written under, once written. */
+  pane: boolean; paneOwner: string | null;
+}
 
 export class CompactWatch {
   private readonly watches = new Map<string, Watch>();
@@ -87,10 +97,12 @@ export class CompactWatch {
    */
   begin(name: string): string | null {
     const src = this.deps.source(name);
-    if (!src.format || !src.path) return null;
+    const pane = !(src.format && src.path) && this.deps.paneFollow?.(name) === true;
+    if (!(src.format && src.path) && !pane) return null;
     this.drop(name);
     const id = randomBytes(8).toString("hex");
-    const w: Watch = { id, state: "running", deadline: this.now() + COMPACT_WATCH_TIMEOUT_MS, endedAt: null, timer: null, reading: false, base: null };
+    const w: Watch = { id, state: "running", deadline: this.now() + COMPACT_WATCH_TIMEOUT_MS, endedAt: null, timer: null, reading: false, base: null,
+      pane, paneOwner: null };
     w.timer = this.every(() => { void this.poll(name, id); }, COMPACT_WATCH_POLL_MS);
     this.watches.set(name, w);
     return id;
@@ -101,16 +113,35 @@ export class CompactWatch {
    * transcript ended just before the write. Both must be this instance's now — the launch running it and the transcript
    * the watch reads — or the watch is lost.
    */
-  pasted(name: string, id: string, written: boolean, report: { owner?: unknown; checkpoint?: unknown } = {}): void {
+  pasted(name: string, id: string, written: boolean, report: { owner?: unknown; checkpoint?: unknown; pane?: unknown } = {}): void {
     const w = this.watches.get(name);
-    if (!w || w.id !== id || w.state !== "running" || w.base) return;
+    if (!w || w.id !== id || w.state !== "running" || w.base || w.paneOwner !== null) return;
     if (!written) { this.finish(name, w, "lost"); return; }
     const owner = this.deps.owner(name);
+    if (w.pane) {
+      // The daemon follows its pane only when it could read it just before the write (`pane: true`).
+      if (owner === null || report.owner !== owner || report.pane !== true) { this.finish(name, w, "lost"); return; }
+      w.paneOwner = owner;
+      return;
+    }
     const src = this.deps.source(name);
     const cp = report.checkpoint as Partial<CompactCheckpoint> | null | undefined;
     const valid = !!cp && typeof cp === "object" && typeof cp.path === "string" && Number.isSafeInteger(cp.ino) && Number.isSafeInteger(cp.size) && (cp.size as number) >= 0;
     if (owner === null || report.owner !== owner || !src.format || !src.path || !valid || cp!.path !== src.path) { this.finish(name, w, "lost"); return; }
     w.base = { format: src.format, path: src.path, ino: cp!.ino as number, offset: cp!.size as number, skipping: false, owner, pending: null };
+  }
+
+  /**
+   * Board 907c7899: the daemon read on its pane how the command with this id ended. It counts only for the pane watch
+   * it was written for, under the launch it was written under and that still runs the instance.
+   */
+  paneResult(name: string, id: string, owner: unknown, outcome: unknown): void {
+    const w = this.watches.get(name);
+    if (!w || !w.pane || w.id !== id || w.state !== "running" || w.paneOwner === null) return;
+    // A word that comes at or after the deadline is too late, whether or not the timer has run yet (#1925 review).
+    if (this.now() >= w.deadline) { this.finish(name, w, "timeout"); return; }
+    if (owner !== w.paneOwner || this.deps.owner(name) !== w.paneOwner) { this.finish(name, w, "lost"); return; }
+    if (outcome === "done" || outcome === "not_compacted") this.finish(name, w, outcome);
   }
 
   /** The command was not handed over after all: forget its watch (nothing was announced for it). */
@@ -137,7 +168,7 @@ export class CompactWatch {
     this.watches.delete(name);
   }
 
-  private finish(name: string, w: Watch, state: "done" | "timeout" | "lost"): void {
+  private finish(name: string, w: Watch, state: Exclude<CompactState, "running">): void {
     if (this.watches.get(name) !== w || w.state !== "running") return;
     if (w.timer !== null) { this.clear(w.timer); w.timer = null; }
     w.state = state;
@@ -162,6 +193,11 @@ export class CompactWatch {
     const w = this.watches.get(name);
     if (!w || w.id !== id || w.state !== "running" || w.reading) return;
     if (this.now() >= w.deadline) { this.finish(name, w, "timeout"); return; }
+    if (w.pane) {
+      // The daemon reads the pane; here only whether the launch it was written under still runs the instance.
+      if (w.paneOwner !== null && this.deps.owner(name) !== w.paneOwner) this.finish(name, w, "lost");
+      return;
+    }
     const base = w.base;
     if (!base) return;                                                     // the command has not reached the pane yet
     w.reading = true;

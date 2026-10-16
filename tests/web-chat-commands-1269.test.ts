@@ -308,6 +308,16 @@ describe("the chat's commands (the real page modules)", () => {
     expect(phase(c)).toContain("Can't follow");
   });
 
+  it("board 907c7899: kiro said it did not compact (too short, or stopped): said, and the card stays", async () => {
+    const c = await chatPage();
+    c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: "a".repeat(16) } } : {});
+    await c.type("/compact"); await c.key("Enter"); await settle();
+    c.stream.emit("status", frame({ id: "a".repeat(16), state: "not_compacted" })); await settle();
+    expect(phase(c)).toBe("kiro did not compact the conversation: it was too short, or the compaction was stopped.");
+    for (const ms of [6000, 8000, 12000, 11 * 60_000]) await c.elapse(ms);
+    expect(phase(c)).toContain("did not compact");
+  });
+
   it("/compact with no word from the fleet at all: the page's own limit says so, and the card stays", async () => {
     const c = await chatPage();
     c.fx.respond = (path: string) => (path === "/ui/command" ? { text: "sent", follow: { kind: "compact", id: "a".repeat(16) } } : {});

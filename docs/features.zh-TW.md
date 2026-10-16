@@ -865,7 +865,7 @@ defaults:
 
 ## 同一個工作目錄裡的 kiro instance
 
-每個 kiro instance 都有自己的 kiro agent（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話，所以共用工作目錄的 kiro instance 不會恢復到彼此的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示：**新的**對話以這個 agent 執行：AgEnD 不會替它寫共用項目，它的 agent 也不載入 steering（`resources: []`），所以只讀自己的指示；不過 agent 仍會納入工作目錄的 `.kiro/settings/mcp.json`，同目錄有其他 instance 恢復對話時，那個檔案裡有它的 AgEnD 項目，新對話也看得到那個 server。切換暫停期間（#1800，見下方），**恢復的**對話維持存檔時的 agent 並使用共用項目。所以在有恢復中 kiro instance 的目錄裡，server 隔離無法保證。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
+每個 kiro instance 都有自己的 kiro agent（工作目錄裡的 `.kiro/agents/agend-<instance>-<fleet>.json`），並用 id 恢復自己的對話，所以共用工作目錄的 kiro instance 不會恢復到彼此的對話。這個 agent 只包含本 instance 的 AgEnD MCP server 和它的指示：**新的**對話以這個 agent 執行，AgEnD 不會替它寫共用項目。它的 agent 沒有列任何 resources（`resources: []`），但 kiro 仍會替每個 agent 載入目錄裡所有的 `.kiro/steering/*.md`（kiro-cli 2.21.0、2.28.0 與 2.30.0 的每個引擎都驗證過），所以新對話也會讀到那裡的 steering 檔案：你自己的，以及其他 instance 在恢復對話時使用的 AgEnD steering 檔案（#1800，見下方）。agent 也會納入工作目錄的 `.kiro/settings/mcp.json`，同目錄有其他 instance 恢復對話時，那個檔案裡有它的 AgEnD 項目，新對話也看得到那個 server。切換暫停期間（#1800，見下方），**恢復的**對話維持存檔時的 agent 並使用共用項目。所以在有恢復中 kiro instance 的目錄裡，server 隔離無法保證。細節見[設計文件](design/kiro-per-instance-agent.md)。需要 kiro-cli 2.21 以上；較舊的版本照舊執行，並在 instance 啟動時說明。
 
 - **你自己的 MCP server 都還在。** agent 會納入全域的 `~/.kiro/settings/mcp.json` 和工作目錄的 `.kiro/settings/mcp.json`；只有在恢復的對話需要時（見下一點），AgEnD 才會把自己的項目寫進去。
 - **恢復的對話維持原本的 agent（#1800）。** kiro 恢復對話時，會回到它當初存檔時的 agent。AgEnD 以前會在 pane 裡輸入 `/agent swap <agent>`，把它切換成 instance 自己的 agent；這個切換已**暫停**，因為有 instance 切換後失去了 AgEnD 的工具、無法 `reply`。現在恢復的對話，會和 #906 之前一樣，從共用的 `.kiro/settings/mcp.json` 項目和 steering 檔取得本 instance 的 AgEnD server 與指示；已記錄過切換的 instance 也一樣。
@@ -1089,9 +1089,9 @@ agend update --beta     # 從 @beta npm dist-tag 安裝
 agend update --stable   # 從 @latest 安裝，即使目前裝的是 beta 或 alpha
 ```
 
-聊天裡的 `/update` 和 `agend update` 相同：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：alpha 安裝只會被告知較新的 alpha 或較新的穩定版，絕不會被告知 beta。
+聊天裡的 `/update` 和 `agend update` 相同：安裝會留在它原本的頻道。會退回較舊版本的更新（例如 alpha 要求 @beta）會被拒絕；要這麼做，請加上 `--stable`、`--version` 或 `--force` 表明意圖。「有新版本」的通知也依循同一個頻道：beta 安裝只會被告知較新的 beta（穩定版推出後，beta 使用者仍留在 beta 線）；alpha 安裝只會被告知較新的 alpha 或更新次版本的穩定版，絕不會被告知 beta。
 
-發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：alpha 安裝不會被告知與自己同版號的穩定版。
+發版就是推送一個 `v*` tag。發布 workflow 嚴格對應：`vX.Y.Z` → `@latest`、`vX.Y.Z-beta.N` → `@beta`、`vX.Y.Z-alpha.N` → `@alpha`。其他任何 tag（`-rc.N`、打錯字）都會在建置任何東西之前讓 job 失敗；比目前 `@latest` 舊的穩定版也會被拒絕。某個次版本轉為穩定版時（2.2.0），也要把 `@alpha` 指向它（`npm dist-tag add @songsid/agend@2.2.0 alpha`）：之後 alpha 安裝的 `/update` 會直接裝上它，通知也會請你執行 `/update`。
 
 ## PSS 記憶體報告 (PSS memory reporting)
 
