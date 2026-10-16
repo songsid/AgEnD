@@ -1216,3 +1216,12 @@ No poster means no image; safe mode, the show switch and unknown stock ordering 
 receive no Worker code or playback controls. Their explicit show choice stays in this browser and survives a reload,
 without changing the host default. Explicit Pause/queued effects and failed live reads are not replaced by this fallback.
 Personal page/header/sidebar/box choices use that same pool. The personal cursor uses a bounded host image in the same app session; Try previews remain separate work.
+
+The approved Try exception is an admin-initiated sample inside a physically clipped host panel or sheet. Only an
+explicit click by a signed-in local admin may start it, with a visible Trial label and Stop control. Public links,
+agents and header tokens cannot start it. Closing the panel, navigating, window blur or another menu/dialog stops
+it. Custom CSS must be off; the usual caps, profiler and safety stops remain, and ordinary foreground effects stay
+suppressed. Offers last at most ten minutes, trials are session/epoch-bound, and each read rechecks the origin
+agent's current own/shared access. No saved placement, claim, share or export is created. Only the volatile server
+authority foundation is present; the card and clipped stage still require integration. See the
+[Try boundary](design/1629-effect-trial-authority.md).
