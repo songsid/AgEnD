@@ -39,3 +39,10 @@ it("stage creation failure reports unavailable and never exposes a fake paint re
 it("throwing onStage disposes before the failure can escape rendering", async () => {
   const f = await mount("en", { onStage: () => { throw Error("callback"); } }); expect(f.api.dispose).toHaveBeenCalledTimes(1); expect(f.onStop).toHaveBeenCalledTimes(1);
 });
+
+it("Close still dismisses an already stopped or automatically retired panel exactly once", async () => {
+  const f = await mount(); p!.document.querySelector(".effect-trial-controls button")!.click(); p!.document.querySelector(".effect-trial-head button")!.click(); p!.document.querySelector(".effect-trial-head button")!.click();
+  expect(f.onStop).toHaveBeenCalledExactlyOnceWith("stopped"); expect(f.onClose).toHaveBeenCalledExactlyOnceWith("stopped"); expect(f.api.dispose).toHaveBeenCalledTimes(1);
+});
+
+it("non-string titles never render a caller-supplied vnode", async () => { await mount("en", { title: h("input", { value: "not allowed" }) }); expect(p!.document.querySelector("input")).toBeNull(); });

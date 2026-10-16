@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { installDom } from "./helpers/mini-dom.js";
 import { isServedAsset } from "../src/auth-api.js";
 const UI = join(process.cwd(), "src/ui"), read = (p: string) => readFileSync(join(UI, p), "utf8");
 async function fixture() {
@@ -38,6 +39,21 @@ describe("stock trust/paint prerequisite", () => {
     for(const cls of ["cb-head","cb-more","tc-head","tc-more","pv-head","pv-banner","pv-note"]) expect(read("chat-thread.js")).toMatch(new RegExp(cls+'.*setAttribute\\("data-trust", "thread-control"\\)'));
     expect(read("chat-tour.js")).toContain('setAttribute("data-trust", "tour")');
     expect(read("shared/agend-auth.js")).toContain('setAttribute("data-trust", "session-ended")');
+  });
+  it("the real closed barrier selector suppresses Trial at desktop width while ordinary preview stays nonmodal", async () => {
+    const f = await fixture(), real = installDom();
+    try {
+      const actual = real.document.createElement("aside"); actual.className = "pv-panel effect-trial-panel";
+      const panel = f.node({ position: "relative", zIndex: "1" }); panel.kind = "preview"; f.marked.push(panel);
+      f.extra.set(".shell .chat-split > .pv-panel, .shell .chat-split > .pv-divider", [panel]);
+      f.extra.set(".chat-split > .pv-panel, .chat-split > .pv-divider", [panel]);
+      const query = f.doc.querySelectorAll;
+      f.doc.querySelectorAll = (selector: string) => selector === f.m.STOCK_EFFECT_BARRIERS ? actual.matches(selector) ? [panel] : [] : query(selector);
+      expect(f.host.innerWidth).toBe(1366); expect(actual.matches(f.m.STOCK_EFFECT_BARRIERS)).toBe(true);
+      expect(f.snapshot()).toMatchObject({ ok: true, front: false, agentFront: false, reason: "stock_overlay" });
+      actual.className = "pv-panel"; expect(actual.matches(f.m.STOCK_EFFECT_BARRIERS)).toBe(false);
+      expect(f.snapshot()).toMatchObject({ ok: true, front: true, agentFront: true, reason: "stock" });
+    } finally { real.restore(); }
   });
   it("stock root/content order admits a bounded plain rect list and distinguishes CSS from modal restrictions", async () => {
     const f = await fixture(); expect(f.snapshot()).toMatchObject({ ok: true, front: true, agentFront: true, reason: "stock" });

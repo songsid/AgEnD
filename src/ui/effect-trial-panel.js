@@ -11,12 +11,13 @@ export function EffectTrialPanel({ window: host = globalThis.window, binding, ti
   const panel = useRef(null), stage = useRef(null), life = useRef(null), latest = useRef(null);
   latest.current = { current, ownerCss, onStage, onStop, onClose };
   const stop = close => {
-    const entry = life.current; if (!entry || entry.dead) return;
-    entry.dead = true; entry.api?.dispose();
+    const entry = life.current; if (!entry || (close ? entry.closed : entry.dead)) return;
+    if (close) entry.closed = true;
+    if (!entry.dead) { entry.dead = true; entry.api?.dispose(); }
     try { (close ? entry.onClose : entry.onStop)?.("stopped"); } catch { /* lease already ended */ }
   };
   useLayoutEffect(() => {
-    const entry = { dead: false, api: null, onStop, onClose }; life.current = entry;
+    const entry = { dead: false, closed: false, api: null, onStop, onClose }; life.current = entry;
     const ended = reason => { if (entry.dead) return; entry.dead = true; try { entry.onStop?.(reason); } catch { /* never revive */ } };
     try {
       entry.api = createEffectTrialStage({ window: host, panel: panel.current, stage: stage.current, binding,

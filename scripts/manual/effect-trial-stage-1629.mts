@@ -89,10 +89,10 @@ try{
       if(fault==='dialog')await page.locator('dialog[open]').waitFor();if(fault==='menu')await page.locator('.menu-list').waitFor();assert.equal(await page.evaluate(()=>(window as any).T.sync()),false,fault);
      }assert.equal(await page.locator('iframe').count(),0,fault);assert.equal(await page.evaluate(()=>(window as any).T.projection()),null,fault);
     }
-    await load();assert.equal(await page.evaluate(()=>(window as any).T.start()),true);await page.waitForFunction(()=>(window as any).R.ready===1);await page.locator('.effect-trial-controls button').click();assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(await page.evaluate(()=>(window as any).R.stops),['stopped']);
+    await load();assert.equal(await page.evaluate(()=>(window as any).T.start()),true);await page.waitForFunction(()=>(window as any).R.ready===1);await page.locator('.effect-trial-controls button').click();assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(await page.evaluate(()=>(window as any).R.stops),['stopped']);await page.locator('.effect-trial-head button').click();assert.deepEqual(await page.evaluate(()=>(window as any).R.stops),['stopped','closed']);
     await load();assert.equal(await page.evaluate(()=>(window as any).T.start()),true);await page.locator('.effect-trial-head button').click();assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(await page.evaluate(()=>(window as any).R.stops),['closed']);
     await load();assert.equal(await page.evaluate(()=>(window as any).T.start()),true);await page.waitForFunction(()=>(window as any).R.ready===1);await page.evaluate(()=>(window as any).T.unmount());assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(await page.evaluate(()=>(window as any).R.stops),['stopped']);
-    assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);rows.push({engine,width,lang,dark,stockSuppressed:true,actualShell:true,actualPanel:true,onePrivateSlotOverlay:true,realFactoryAndBuiltPreview:true,protectedControls:controls,rect:r,physicalOversizeClip:true,faults,stop:true,close:true,unmount:true,errors,outside});
+    assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);rows.push({engine,width,lang,dark,stockSuppressed:true,actualShell:true,actualPanel:true,onePrivateSlotOverlay:true,realFactoryAndBuiltPreview:true,protectedControls:controls,rect:r,physicalOversizeClip:true,faults,stop:true,closeAfterStop:true,close:true,unmount:true,errors,outside});
    }finally{await context.close();}
   }await browser.close();browser=null;
  }
