@@ -1629,7 +1629,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** #1266: the choice, delivered as an ordinary inbound message from whoever made it, and shown in the web chat. */
   private async deliverReplyButtonChoice(
-    set: { instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
+    set: { id: string; instance: string; adapterId: string; chatId: string; threadId: string; messageId: string | null },
     button: { label: string; value: string },
     by: { userId: string; username: string; source: string; humanOrigin?: HumanOrigin },
   ): Promise<boolean> {
@@ -1679,8 +1679,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!accepted) return false;
     reactions.consume();
     this.afterUserInboundDelivered(set.instance, inbound, deliveryEpoch);
+    // The web chat shows the click as its button's label (a chip); `text` stays what the agent was given.
     this.emitSseEvent("message", {
       instance: set.instance, sender: by.username, role: "user", text: content, ts, ...(web ? { messageId } : {}),
+      click: { label: button.label, of: set.id },
     });
     return true;
   }
@@ -15126,13 +15128,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
+        click: m.click,
       });
       broadcastSseEvent(this.sseClients, event, recorded, onError, this.webChatHistory.cursorOf(recorded));
       return;

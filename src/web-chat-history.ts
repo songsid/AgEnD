@@ -99,6 +99,11 @@ export interface WebChatMessage {
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
   buttons?: WebChatButtons;
+  /**
+   * A person's click on a reply button (user messages only): the page shows the button's label as a chip instead of
+   * `text` — the line the agent was given, value and all. `of`: the buttons' set id, to link to the reply (live only).
+   */
+  click?: WebChatClick;
   /** The fleet process generation the id belongs to. */
   boot: string;
   /** Where a web user's message has got (absent: nothing reported yet, or not the web user's). */
@@ -116,6 +121,16 @@ export interface WebChatMessage {
   sender: string;
   text: string;
   ts: string;
+}
+
+export interface WebChatClick { label: string; of?: string }
+const CLICK_LABEL_MAX = 200;
+/** A click as kept: a non-empty label (bounded), and the set id when it is one. Anything else: none. */
+function webChatClick(raw: unknown): WebChatClick | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const c = raw as Record<string, unknown>;
+  if (typeof c.label !== "string" || !c.label.trim()) return undefined;
+  return { label: c.label.slice(0, CLICK_LABEL_MAX), ...(typeof c.of === "string" && /^[0-9a-f]{32}$/.test(c.of) ? { of: c.of } : {}) };
 }
 
 export interface WebChatHistoryOptions {
@@ -143,6 +158,8 @@ export interface StoredWebChatMessage {
   text: string;
   ts: string;
   attachments?: Array<{ id?: string; path?: string; kind: "photo" | "document"; name: string; size: number; mime: string }>;
+  /** The label of a person's button click (what the page shows for it; the buttons themselves are not kept). */
+  click?: { label: string };
 }
 
 /** #1565: what the history needs of the file ledger (web-upload.ts). */
@@ -211,7 +228,7 @@ export class WebChatHistory {
 
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
-    const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts };
+    const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.click ? { click: { label: m.click.label } } : {}) };
     if (m.attachments?.length) {
       row.attachments = m.attachments.map((a) => {
         const base = { kind: a.kind, name: a.name, size: a.size, mime: a.mime };
@@ -295,7 +312,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown }): WebChatMessage {
     const entry: WebChatMessage = {
       boot: this.boot,
       id: this.nextId++,
@@ -310,6 +327,8 @@ export class WebChatHistory {
     };
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
+    const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
+    if (click) entry.click = click;
     let slot = this.byInstance.get(entry.instance);
     if (!slot) { slot = { messages: [], chars: 0 }; this.byInstance.set(entry.instance, slot); }
     slot.messages.push(entry);
@@ -495,6 +514,9 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
   const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  // A click comes back as its label only (the link to its buttons belonged to the process that ended).
+  const click = role === "user" ? webChatClick(r.click) : undefined;
+  if (click) message.click = { label: click.label };
   const files = !Array.isArray(r.attachments) ? [] : r.attachments.slice(0, 20).flatMap((a): RestoredFile[] => {
     if (!a || typeof a !== "object" || Array.isArray(a)) return [];
     const f = a as Record<string, unknown>;
