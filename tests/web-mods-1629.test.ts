@@ -438,9 +438,10 @@ describe("effects, replace and uninstall (the library under the mod's own holder
     const a = s.store.stage("p", text(fx("1.0.0")));
     if (!a.ok) throw new Error("stage");
     s.store.commit("p", { stage: a.stage, plan_hash: a.plan_hash, include: { effects: true } });
-    const next = B.checkModBundle(text(fx("1.1.0", "agend.ready();")), ctx({ effects: B.cw1EffectChecker() }));
-    if (!next.ok) throw new Error("check");
-    expect(s.store.propose("alpha", text(fx("1.1.0", "agend.ready();")), next.mod)).toMatchObject({ ok: true });
+    const agentFile = (() => { const d = fx("1.1.0", "agend.ready();") as any; delete d.manifest.contents.ownerCss; delete d.files["css/custom.css"]; return text(d); })();
+    const next = B.checkModBundle(agentFile, ctx({ effects: B.cw1EffectChecker() }));
+    if (!next.ok) throw new Error(JSON.stringify(next.problems));
+    expect(s.store.propose("alpha", agentFile, next.mod)).toMatchObject({ ok: true });
     const b = s.store.stageProposal("p", "alpha");
     if (!b.ok) throw new Error("stage");
     s.lib.failRelease = true;
