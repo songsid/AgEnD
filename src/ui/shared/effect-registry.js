@@ -165,6 +165,20 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
       const s = { d, device: device(), live: true, ready: false, readyAt: null, frame: null, geometry: null, budget: null, token: null, request: null, loadOff: null, rect: null, pointer: null, lastPointer: null, hiddenSince: null, healthySince: null };
       slots.set(d.key, s);
       const request = { controller: new host.AbortController(), slot: s, timer: null, began: time() }; s.request = request; loads.add(request);
+      const withinDeadline = () => {
+        const n = time();
+        if (n === null || request.began === null || n - request.began >= 10000) { retire(s, n === null || request.began === null ? "clock_unavailable" : "resource_timeout"); return false; }
+        return true;
+      };
+      const acceptCompletion = () => {
+        if (!current(s)) { clearMarker(s, "superseded"); return false; }
+        if (!withinDeadline()) return false;
+        if (request.controller.signal.aborted || !globalAllowed() || context.hidden || !coverage()) {
+          if (current(s)) retire(s, "admission_revoked"); else clearMarker(s, "superseded");
+          return false;
+        }
+        return withinDeadline();
+      };
       const deadline = () => {
         if (!current(s)) return;
         const n = time();
@@ -177,14 +191,15 @@ export function createEffectRegistry({ window: host, origin, boot, load, safety,
         if (!current(s) || request.controller.signal.aborted) return null;
         return load({ key: d.key, id: d.id, params: { ...d.params } }, request.controller.signal);
       }).then(resource => {
-        if (!current(s) || request.controller.signal.aborted || !globalAllowed() || context.hidden || !coverage()) return;
+        if (!acceptCompletion()) return;
         if (!plain(resource) || resource.id !== d.id || !plain(resource.params) || Object.keys(d.params).some(k => resource.params[k] !== d.params[k])) { retire(s, "resource_unknown"); return; }
-        const now = time(), fresh = hostEffectRect(d.element);
-        if (now === null || !fresh || receipt(safety.allowed, d.id, s.device) !== true) { retire(s, "safety_unknown"); return; }
+        const fresh = hostEffectRect(d.element);
+        if (!fresh || receipt(safety.allowed, d.id, s.device) !== true) { retire(s, "safety_unknown"); return; }
+        if (!acceptCompletion()) return;
         const token = receipt(safety.begin, { key: d.key, id: d.id, device: s.device });
         if (typeof token !== "string" || token.length < 1 || token.length > 128) { retire(s, "safety_unknown"); return; }
         s.token = token;
-        if (!current(s) || !globalAllowed() || context.hidden || !coverage()) { clearMarker(s, "superseded"); return; }
+        if (!acceptCompletion()) return;
         s.rect = fresh;
         s.budget = new EffectBudget({ device: s.device, baselineFps: baseline, clock: nativeClock, longTasksSupported });
         const frame = createEffectFrame({ window: host, root, origin, boot, clock: nativeClock,

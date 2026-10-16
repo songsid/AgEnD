@@ -110,6 +110,39 @@ describe("#1629 shared Canvas Worker registry", () => {
     const h = rig(); h.load.mockImplementation(() => new Promise(() => {})); const ds = await h.admit(); expect([...h.timers.values()].some(t => t.delay === 10000)).toBe(true);
     h.timer(10000); expect(h.load.mock.calls[0]![1]!.aborted).toBe(true); h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledTimes(1); expect(h.frames()).toHaveLength(0);
   });
+  it.each([9999, 10000, 10001])("completion at %dms independently checks the deadline even when its timer is delayed", async at => {
+    const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); const ds = await h.admit();
+    h.at(at); resolve({ id: ds[0]!.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush();
+    if (at < 10000) { expect(h.frames()).toHaveLength(1); expect(h.safety.begin).toHaveBeenCalledOnce(); }
+    else {
+      expect(h.frames()).toHaveLength(0); expect(h.safety.begin).not.toHaveBeenCalled(); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "resource_timeout" });
+      h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledTimes(1);
+    }
+  });
+  it.each(["allowed", "begin", "coverage"])("time spent in the %s callback cannot extend a resource's deadline", async stage => {
+    const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); const ds = await h.admit();
+    if (stage === "allowed") h.safety.allowed.mockImplementation(() => { h.at(10000); return true; });
+    else h.safety.begin.mockImplementation(() => { if (stage === "coverage") h.coverage.mockImplementation(() => { h.at(10000); return true; }); else h.at(10000); return "deadline-token"; });
+    h.at(9999); resolve({ id: ds[0]!.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush();
+    expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "resource_timeout" });
+    if (stage !== "allowed") expect(h.safety.finish).toHaveBeenCalledWith("deadline-token", "resource_timeout"); else expect(h.safety.begin).not.toHaveBeenCalled();
+  });
+  it.each(["once", "reentrant", "after-marker", "persistent"])("a %s coverage refusal retires the completing slot instead of leaving immortal loading", async mode => {
+    const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); const ds = await h.admit();
+    let refuse = true;
+    const coverage = () => {
+      if (!refuse) return true;
+      refuse = mode === "persistent";
+      if (mode === "reentrant") { h.api.update(ds, gates()); return true; }
+      return false;
+    };
+    if (mode === "after-marker") h.safety.begin.mockImplementation(() => { h.coverage.mockImplementation(coverage); return "coverage-token"; });
+    else h.coverage.mockImplementation(coverage);
+    resolve({ id: ds[0]!.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush();
+    h.timer(20000); expect(h.frames()).toHaveLength(0); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason: "admission_revoked" });
+    expect(h.load.mock.calls[0]![1]!.aborted).toBe(true); h.api.update(ds, gates()); await flush(); expect(h.load).toHaveBeenCalledTimes(1);
+    if (mode === "after-marker") expect(h.safety.finish).toHaveBeenCalledWith("coverage-token", "admission_revoked"); else expect(h.safety.begin).not.toHaveBeenCalled();
+  });
   it("no second pool is created while disposed physical loads remain unsettled", async () => {
     const h = rig(); let resolve: (v: any) => void = () => {}; h.load.mockImplementation(() => new Promise(r => { resolve = r; })); await h.admit(); h.api.dispose();
     expect(createEffectRegistry({ window: h.host, load: h.load, safety: h.safety, trustComplete: h.coverage })).toMatchObject({ ok: false }); resolve(null); await flush();

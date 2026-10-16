@@ -12,6 +12,8 @@ A descriptor identity or owner/region/element change revokes its old slot synchr
 
 At most the selected pool's physical loader requests can be outstanding. Aborting or timing out a request does not free that reservation until its promise settles. A ten-second monotonic deadline aborts and latches an unknown/hung resource; failed identities do not retry forever through ordinary updates. Disposal keeps the Window reservation while physical requests remain unsettled. The host loader must bound the authenticated fetch/body and honor AbortSignal; the registry never adds a retry or resend policy.
 
+Resource completion independently checks that deadline, including the exact ten-second cutoff, before a marker or frame can be admitted. A delayed deadline timer cannot extend admission; time spent in synchronous safety/coverage callbacks counts too. A still-owned completion refused by coverage or gates is retired into a terminal `admission_revoked` identity, with its owned marker cleared. It cannot retain a requestless loading slot or automatically retry through identical updates. Physical read capacity is released only by promise settlement.
+
 ## Before any frame
 
 - All global gates must be known and allow effects: safe mode, public link, reduced motion, save data, show/enable/preview/opt-in and current chat. Hidden documents never start a new load or frame.
