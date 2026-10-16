@@ -46,6 +46,31 @@ describe("#1629 bounded runtime HTTP projection (unmounted)", () => {
     const m = { ...manifest(), title: "😀".repeat(40), description: "😀".repeat(200) }, parsed = parseWebEffectManifest(m); expect(parsed.ok).toBe(true); if (!parsed.ok) throw Error("fixture");
     expect(checkEffectResource(resource({ manifest: parsed.manifest }), ID)).not.toBeNull(); expect(checkEffectResource(resource({ code: "" }), ID)).not.toBeNull(); expect(checkEffectResource(resource({ code: "\ufeffagend.ready()" }), ID).code).toBe("\ufeffagend.ready()");
   });
+  it.each([
+    ["ZWJ witness", "👨‍👩‍👧".repeat(10), "👨‍👩‍👧".repeat(50)],
+    ["ZWJ boundaries", "👨‍👩‍👧".repeat(40), "👨‍👩‍👧".repeat(200)],
+    ["combining boundaries", "x\u0301".repeat(40), "x\u0301".repeat(200)],
+    ["normalized combining", "e\u0301".repeat(40), "e\u0301".repeat(200)],
+  ])("accepts server-validated %s through both projections and HTTP reads", async (_name, title, description) => {
+    const checked = checkEffectEntry(new Map([["effect.json", new TextEncoder().encode(JSON.stringify({ ...manifest(), title, description }))], ["worker.js", new TextEncoder().encode("agend.ready()")]]));
+    expect(checked.ok).toBe(true); if (!checked.ok) throw Error("server-positive fixture");
+    const input = resource({ id: checked.id, manifest: checked.manifest }), placed = { rev: 1, effects: [{ ...placements().effects[0], id: checked.id, manifest: checked.manifest }] };
+    expect(checkEffectPlacements(placed)).not.toBeNull(); expect(checkEffectResource(input, checked.id)).not.toBeNull();
+    const h = fixture(); h.host.fetch.mockResolvedValueOnce(response(placed)); expect(await h.api.placements("a")).not.toBeNull();
+    h.host.fetch.mockResolvedValueOnce(response(input)); expect(await h.api.resource({ id: checked.id, instance: "a" })).not.toBeNull();
+  });
+  it.each([
+    ["title graphemes", "👨‍👩‍👧".repeat(41), "valid"],
+    ["description graphemes", "valid", "👨‍👩‍👧".repeat(201)],
+    ["title UTF-16 units", "x" + "\u0301".repeat(400), "valid"],
+    ["description UTF-16 units", "valid", "x" + "\u0301".repeat(2000)],
+  ])("refuses oversized %s just like the server", async (_name, title, description) => {
+    const m = { ...manifest(), title, description }; expect(parseWebEffectManifest(m).ok).toBe(false);
+    const placed = { rev: 1, effects: [{ ...placements().effects[0], manifest: m }] }, input = resource({ manifest: m });
+    expect(checkEffectPlacements(placed)).toBeNull(); expect(checkEffectResource(input, ID)).toBeNull();
+    const h = fixture(); h.host.fetch.mockResolvedValueOnce(response(placed)); expect(await h.api.placements("a")).toBeNull();
+    h.host.fetch.mockResolvedValueOnce(response(input)); expect(await h.api.resource({ id: ID, instance: "a" })).toBeNull();
+  });
   it("rejects unknown-key getters without invoking them and refuses sparse/deep trees", () => {
     const input: any = resource(), getter = vi.fn(() => { throw Error("read"); }); Object.defineProperty(input, "extra", { get: getter }); expect(checkEffectResource(input, ID)).toBeNull(); expect(getter).not.toHaveBeenCalled();
     const sparse: any = resource({ assets: Array(1) }); expect(checkEffectResource(sparse, ID)).toBeNull(); let deep: any = {}; for (let n = 0; n < 12; n++) deep = { nested: deep }; expect(checkEffectResource(resource({ manifest: deep }), ID)).toBeNull();

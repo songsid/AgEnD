@@ -56,8 +56,11 @@ symbols, sparse/exotic arrays, excessive nesting/nodes and unknown keys. The hos
 CW1 validator remains authoritative for syntax, identity, raster sanitization
 and the normalized files. The browser independently projects closed runtime
 metadata, region/layer/wants enums, all five parameter schemas/resolved values,
-exact id and persisted by/at. Unicode display lengths match code-point limits;
-these strings are data, never evaluated or interpreted as markup.
+exact id and persisted by/at. Unicode display lengths use the host’s grapheme
+limits (40 title / 200 description), with max×10 UTF-16-unit bounds and
+already-normalized NFC one-line text. These strings are data, never evaluated
+or interpreted as markup. Missing Intl.Segmenter refuses projection; there
+is no code-point fallback.
 
 Worker assets are only canonical-base64 raster assets/ paths, with exact MIME,
 unique names, at most 16 and a combined 1 MiB code/params/decoded-byte limit.

@@ -32,10 +32,24 @@ function data(value) {
   }
   try { return copy(value, 0); } catch { return null; }
 }
+// Same normalized one-line contract as web-effect.ts text()/web-theme.ts canonicalText.
+const FORBIDDEN_TEXT = /(?!\u200d)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const VISIBLE_TEXT = /[^\p{M}\p{C}\p{Z}\u115f\u1160\u3164\uffa0\u2800]/u;
+let graphemes = null;
+function displayText(s, max, min = 1) {
+  if (typeof s !== "string" || s.length > max * 10) return false;
+  if (min === 0 && s === "") return true;
+  if (s.normalize("NFC") !== s || FORBIDDEN_TEXT.test(s) || s.trim() !== s || !VISIBLE_TEXT.test(s)) return false;
+  try {
+    graphemes ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    let count = 0; for (const _part of graphemes.segment(s)) if (++count > max) return false;
+    return count >= min;
+  } catch { return false; }
+}
 function manifest(x) {
   if (!subset(x, ["v", "kind", "runtime", "worker", "name", "title", "description", "poster", "regions", "layer", "box", "cursor", "wants", "params"]) || x.v !== 1 || x.kind !== "effect" || x.runtime !== "canvas-worker-v1" || x.worker !== "worker.js"
-    || typeof x.name !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(x.name) || typeof x.title !== "string" || x.title.length < 1 || x.title.length > 80 || [...x.title].length > 40
-    || x.description !== undefined && (typeof x.description !== "string" || x.description.length > 400 || [...x.description].length > 200) || x.poster !== undefined && x.poster !== "poster.png"
+    || typeof x.name !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(x.name) || !displayText(x.title, 40)
+    || x.description !== undefined && !displayText(x.description, 200, 0) || x.poster !== undefined && x.poster !== "poster.png"
     || !enumeration(x.regions, REGIONS, 1) || !["behind", "front"].includes(x.layer) || !enumeration(x.wants, WANTS)) return false;
   if (x.box !== undefined && (!exact(x.box, ["anchor", "width", "height", "offset"]) || !["top-left", "top-right", "bottom-left", "bottom-right", "center"].includes(x.box.anchor) || !integer(x.box.width, 32, 480) || !integer(x.box.height, 32, 480) || !integer(x.box.offset, 0, 64))) return false;
   if (x.cursor !== undefined && (!exact(x.cursor, ["hotspot"]) || !Array.isArray(x.cursor.hotspot) || x.cursor.hotspot.length !== 2 || !x.cursor.hotspot.every(v => integer(v, 0, 63)))) return false;
