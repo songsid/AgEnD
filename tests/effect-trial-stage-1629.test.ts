@@ -6,7 +6,7 @@ const { createEffectTrialStage, effectTrialStage, effectTrialStageIdentity } = a
 const proof = () => ({ ok: true, front: false, agentFront: false, rects: [] });
 const own = () => ({ key: "trial:a", id: "a".repeat(32), run: "b".repeat(32), instance: "worker", generation: 1 });
 const pages: AppPage[] = [], cleanup: (() => void)[] = [];
-afterEach(async () => { for (const f of cleanup.splice(0)) f(); for (const p of pages.splice(0)) { await p.unmount(); p.restore(); } });
+afterEach(async () => { for (const f of cleanup.splice(0)) f(); for (const p of pages.splice(0).reverse()) { await p.unmount(); p.restore(); } });
 function fixture(options: any = {}) {
   const p = page(); pages.push(p); const doc: any = p.document, host: any = p.window;
   p.root.className = "main";
@@ -23,7 +23,7 @@ function fixture(options: any = {}) {
   let current = () => true, css = () => "off", focused = true, patch: any = {}, framePatch: any = {}, otherPatch = new Map<any, any>(), r = { x: 320, y: 160, width: 399.75, height: 300.5 };
   const bounds = (el: any) => el === stage ? r : el === panel ? { x: 300, y: 100, width: 450, height: 450 } : { x: r.x, y: r.y, width: Number.parseFloat(rules.at(-1)?.declarations.width || "399"), height: Number.parseFloat(rules.at(-1)?.declarations.height || "300") };
   stage.getBoundingClientRect = () => bounds(stage); panel.getBoundingClientRect = () => bounds(panel);
-  Object.assign(host, { innerWidth: 800, innerHeight: 600, CSS: { supports: () => true }, getComputedStyle(el: any) { const matching = rules.filter(rule => el.classList.contains(rule.selectorText.slice(1))); return { ...base(), ...(el === stage ? { ...stageStyle, ...patch } : {}), ...Object.assign({}, ...matching.map(rule => rule.declarations)), ...(el.tagName === "IFRAME" ? framePatch : {}), ...otherPatch.get(el) }; } });
+  Object.assign(host, { innerWidth: 800, innerHeight: 600, CSS: { supports: () => options.supports !== false }, getComputedStyle(el: any) { const matching = rules.filter(rule => el.classList.contains(rule.selectorText.slice(1))); return { ...base(), ...(el === stage ? { ...stageStyle, ...patch } : {}), ...Object.assign({}, ...matching.map(rule => rule.declarations)), ...(el.tagName === "IFRAME" ? framePatch : {}), ...otherPatch.get(el) }; } });
   Object.defineProperty(doc, "visibilityState", { configurable: true, value: "visible" }); doc.hasFocus = () => focused;
   const onStop = vi.fn(), api = createEffectTrialStage({ window: host, panel, stage, binding: options.binding || own(), current: (v: any) => current(), ownerCss: () => css(), onStop });
   if (api) cleanup.push(api.dispose);
@@ -66,5 +66,20 @@ describe("host-only local trial stage, not product admission or a new frame pool
   it("expected binding accessors are refused without invocation", () => { const h = fixture(), value = own(), get = vi.fn(); Object.defineProperty(value, "id", { get }); expect(effectTrialStage(h.api.receipt, value, proof())).toBeNull(); expect(get).not.toHaveBeenCalled(); });
   it("one stage holds only one frame, and rejection removes the extra input", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), first = h.frame(); const one = p.bind(first, { layer: "front" }, proof()); expect(one.ok).toBe(true); const second = h.frame(); expect(p.bind(second, { layer: "front" }, proof()).ok).toBe(false); expect(second.isConnected).toBe(false); expect(first.isConnected).toBe(true); });
   it("layout reentry cannot return a newly stale or detached stage", () => { const h = fixture(), before = h.stage.getBoundingClientRect; h.stage.getBoundingClientRect = () => { h.current(() => false); return before(); }; expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull(); });
+
+  it("constructor refuses unknown clip support or a duplicate owner of the same stage", () => {
+    expect(fixture({ supports: false }).api).toBeNull(); const h = fixture(); expect(createEffectTrialStage({ window: h.host, panel: h.panel, stage: h.stage, binding: own(), current: () => true, ownerCss: () => "off" })).toBeNull();
+  });
+  it("unknown ancestor containment and another visible preview refuse even with a modeled suppressed proof", () => {
+    const h = fixture(); h.otherPatch.set(h.panel, { contain: "paint" }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
+    const second = fixture(), other = second.doc.createElement("aside"); other.className = "pv-panel"; other.getBoundingClientRect = () => ({ x: 0, y: 0, width: 20, height: 20 }); second.doc.body.append(other); expect(effectTrialStage(second.api.receipt, own(), proof())).toBeNull();
+  });
+  it("viewport and total pixel bounds are independent of panel containment", () => {
+    const h = fixture(); h.panel.getBoundingClientRect = () => ({ x: 0, y: 0, width: 1000, height: 1000 }); h.rect({ x: 790, y: 20, width: 20, height: 20 }); expect(effectTrialStage(h.api.receipt, own(), proof())).toBeNull();
+    const second = fixture(); second.host.innerWidth = second.host.innerHeight = 4096; second.panel.getBoundingClientRect = () => ({ x: 0, y: 0, width: 4096, height: 4096 }); second.rect({ x: 0, y: 0, width: 3000, height: 3000 }); expect(effectTrialStage(second.api.receipt, own(), proof())).toBeNull();
+  });
+  it("only an iframe can bind the local stage", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), canvas = h.doc.createElement("canvas"); h.stage.append(canvas); expect(p.bind(canvas, { layer: "front" }, proof()).ok).toBe(false); expect(canvas.isConnected).toBe(false); });
+
+  it("sync refuses an in-bounds frame whose actual size disagrees with the host geometry", () => { const h = fixture(), p = effectTrialStage(h.api.receipt, own(), proof()), f = h.frame(), b = p.bind(f, { layer: "front" }, proof()); f.getBoundingClientRect = () => ({ x: 320, y: 160, width: 398, height: 300 }); expect(b.sync(proof())).toBe(false); expect(f.isConnected).toBe(false); });
 
 });
