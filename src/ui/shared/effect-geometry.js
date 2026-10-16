@@ -1,4 +1,4 @@
-/** #1629: host-only fixed viewport geometry and trust holes through a constructed CSSOM sheet. No inline attributes. */
+/** #1629: host-only fixed viewport geometry and trust holes through the already-loaded, fixed same-origin app stylesheet. No inline attributes. */
 import { effectTrustClip } from "./effect-policy.js";
 let serial = 0;
 // Native CSSOM canonicalizes SVG command whitespace. Compare bounded tokens, never whitespace-stripped digits.
@@ -41,17 +41,23 @@ export function hostEffectRect(element) {
   } catch { return null; }
 }
 export function createEffectGeometry({ window: host, trustRoot } = {}) {
-  let sheet, old;
+  let sheet;
   try {
-    if (!host?.document || !trustRoot || typeof trustRoot.querySelectorAll !== "function" || typeof host.CSSStyleSheet !== "function" || !Array.isArray(host.document.adoptedStyleSheets) || host.CSS?.supports("clip-path", 'path(evenodd, "M0 0H1V1H0Z")') !== true) return { ok: false, reason: "geometry_unsupported" };
-    old = host.document.adoptedStyleSheets;
-    sheet = new host.CSSStyleSheet();
-    host.document.adoptedStyleSheets = [...old, sheet];
-    if (!host.document.adoptedStyleSheets.includes(sheet)) throw Error("sheet unavailable");
+    if (!host?.document || !trustRoot || typeof trustRoot.querySelectorAll !== "function" || host.CSS?.supports("clip-path", 'path(evenodd, "M0 0H1V1H0Z")') !== true) return { ok: false, reason: "geometry_unsupported" };
+    // r4: the existing same-origin link is the only CSS source. No new text source or owner CSS is accepted.
+    const link = host.document.querySelector('link[rel="stylesheet"][href="/assets/app.css"]');
+    const href = new URL("/assets/app.css", host.location.origin).href;
+    if (!link || link.tagName !== "LINK" || link.ownerDocument !== host.document || link.isConnected !== true || link.disabled !== false || !link.sheet || link.sheet.ownerNode !== link || link.sheet.href !== href || link.sheet.disabled !== false) throw Error("app stylesheet unavailable");
+    sheet = link.sheet;
+    if (typeof sheet.insertRule !== "function" || typeof sheet.deleteRule !== "function" || !sheet.cssRules) throw Error("app stylesheet unreadable");
   } catch { return { ok: false, reason: "geometry_unsupported" }; }
   const bound = new Set(); let disposed = false;
   function bind(frame, { layer, by } = {}) {
-    if (disposed || !hostEffectSpace(host, frame) || !["front", "behind"].includes(layer) || !frame.classList) return { ok: false, reason: "geometry_unknown" };
+    if (disposed || !hostEffectSpace(host, frame) || !["front", "behind"].includes(layer) || !frame.classList) {
+      // The caller must also close its factory handle. Never leave its own rejected frame painting.
+      if (frame?.ownerDocument === host.document && typeof frame.remove === "function") frame.remove();
+      return { ok: false, reason: "geometry_unknown" };
+    }
     const token = `agend-effect-geometry-${++serial}`;
     let rule;
     try {
@@ -59,8 +65,12 @@ export function createEffectGeometry({ window: host, trustRoot } = {}) {
       if (!rule?.style) throw Error("rule unavailable");
       for (const [key, value] of Object.entries({ position: "fixed", border: "0px", margin: "0px", padding: "0px", "pointer-events": "none", "z-index": layer === "front" ? "20" : "0", opacity: layer === "front" && by !== "human" ? "0.85" : "1", visibility: "hidden", "background-color": "transparent", "box-sizing": "border-box", "box-shadow": "none", outline: "none", transition: "none", animation: "none", "min-width": "0px", "min-height": "0px", "max-width": "none", "max-height": "none" })) rule.style.setProperty(key, value, "important");
       frame.classList.add(token);
+      // Binding is accepted BEFORE the first sync/ready. Prove its initial hidden state before the caller may yield.
+      if (host.getComputedStyle(frame).visibility !== "hidden") throw Error("initial hiding cascade lost");
     } catch {
-      try { const at = [...sheet.cssRules].indexOf(rule); if (at >= 0) sheet.deleteRule(at); frame.remove(); } catch { /* no readable rule to retain */ }
+      try { const at = [...sheet.cssRules].indexOf(rule); if (at >= 0) sheet.deleteRule(at); } catch { /* cleanup cannot precede physical refusal */ }
+      try { frame.classList.remove(token); } catch { /* the refused frame will not remain in the document */ }
+      frame.remove();
       return { ok: false, reason: "geometry_unknown" };
     }
     let dead = false;
@@ -117,7 +127,7 @@ export function createEffectGeometry({ window: host, trustRoot } = {}) {
     dispose() {
       if (disposed) return; disposed = true;
       for (const h of [...bound]) h.remove();
-      try { host.document.adoptedStyleSheets = host.document.adoptedStyleSheets.filter(s => s !== sheet); } catch { /* all owned frames must already be removed by the registry */ }
+      // The host link and its other rules remain intact. Each binding removed only its own rule.
     },
   };
 }

@@ -30,13 +30,14 @@ function pixel(png,x,y){
 }
 const server=createServer((req,res)=>{
  const path=req.url?.slice(1);
+ if(path==='assets/app.css'){res.setHeader('Content-Type','text/css');res.end('/* fixed host stylesheet fixture */');return;}
  if(['effect-frame.js','effect-policy.js','effect-geometry.js','effect-baseline.js'].includes(path)){res.setHeader('Content-Type','text/javascript');res.end(readFileSync(resolve('src/ui/shared',path)));return;}
  res.setHeader('Content-Type','text/html');res.setHeader('Content-Security-Policy',`default-src 'none'; script-src 'self' 'nonce-geometry-probe'; style-src 'self' 'nonce-geometry-probe'; frame-src http://127.0.0.1:${preview?.settings.port}; connect-src 'none'; img-src 'none'; worker-src 'none'`);
- res.end(`<!doctype html><style nonce=geometry-probe>body{margin:0;background:white}#region{position:absolute;left:20px;top:20px;width:400px;height:200px}button{position:absolute;width:80px;height:40px;border:0;padding:0;background:#0077ff;color:white}#composer{left:80px;top:60px}#reply{left:140px;top:60px}#approval{left:300px;top:60px}#composer.moved{left:220px}iframe.shift{left:111px!important}</style><div id=region></div><button id=composer data-trust=composer></button><button id=reply data-trust=reply-buttons></button><button id=approval data-trust=approval></button><div id=root></div><script type=module nonce=geometry-probe>
+ res.end(`<!doctype html><link rel=stylesheet href=/assets/app.css><style nonce=geometry-probe>body{margin:0;background:white}#region{position:absolute;left:20px;top:20px;width:400px;height:200px}button{position:absolute;width:80px;height:40px;border:0;padding:0;background:#0077ff;color:white}#composer{left:80px;top:60px}#reply{left:140px;top:60px}#approval{left:300px;top:60px}#composer.moved{left:220px}iframe.shift{left:111px!important}body.exposed iframe.agend-effect-frame{visibility:visible!important}</style><div id=region></div><button id=composer data-trust=composer></button><button id=reply data-trust=reply-buttons></button><button id=approval data-trust=approval></button><div id=root></div><script type=module nonce=geometry-probe>
 import {createEffectFrame} from '/effect-frame.js';import {createEffectGeometry,hostEffectRect} from '/effect-geometry.js';import {captureEffectBaseline} from '/effect-baseline.js';
 window.R={ready:0,clicks:[],removed:[]};for(const el of document.querySelectorAll('button'))el.onclick=()=>R.clicks.push(el.id);
 window.calibrate=()=>captureEffectBaseline({window,empty:()=>document.querySelectorAll('iframe').length===0}).promise;
-window.start=()=>{window.G=createEffectGeometry({window,trustRoot:document});if(!G.ok)throw Error(G.reason);window.F=createEffectFrame({window,root:document.querySelector('#root'),origin:'http://127.0.0.1:${preview?.settings.port}',boot:'${boot}',render:{code:"const c=agend.canvas.getContext('2d');c.fillStyle='#ff0000';c.fillRect(0,0,400,200);agend.ready()",params:{},instance:'own',width:400,height:200,dpr:1,assets:[],wants:[]},onReady:()=>R.ready++,onRemove:x=>R.removed.push(x)});window.B=G.bind(F.element,{layer:'front',by:'agent'});return B.ok;};
+window.start=()=>{window.G=createEffectGeometry({window,trustRoot:document});if(!G.ok)throw Error(G.reason);window.F=createEffectFrame({window,root:document.querySelector('#root'),origin:'http://127.0.0.1:${preview?.settings.port}',boot:'${boot}',render:{code:"const c=agend.canvas.getContext('2d');c.fillStyle='#ff0000';c.fillRect(0,0,400,200);agend.ready()",params:{},instance:'own',width:400,height:200,dpr:1,assets:[],wants:[]},onReady:()=>R.ready++,onRemove:x=>R.removed.push(x)});window.B=G.bind(F.element,{layer:'front',by:'agent'});if(!B.ok)F.remove("geometry_refused");return B.ok;};
 window.sync=()=>B.sync(hostEffectRect(document.querySelector('#region')));window.done=true;
 </script>`);
 });
@@ -51,7 +52,7 @@ try{
    await page.goto(`http://127.0.0.1:${port}/`);await page.waitForFunction(()=>window.done);
    const baseline=await page.evaluate(()=>calibrate());assert.equal(baseline.ok,true);assert.ok(baseline.baselineFps>1&&baseline.baselineFps<=1000);
    assert.equal(await page.locator('iframe').count(),0);const before=await page.screenshot({path:join(out,engine+'-before.png')});
-   assert.equal(await page.evaluate(()=>start()),true);await page.waitForFunction(()=>R.ready===1);assert.equal(await page.evaluate(()=>sync()),true);
+   assert.equal(await page.evaluate(()=>start()),true);await page.waitForFunction(()=>R.ready===1);assert.equal(await page.evaluate(()=>getComputedStyle(F.element).visibility),'hidden');const waiting=await page.screenshot();assert.deepEqual(pixel(waiting,100,80),pixel(before,100,80));assert.deepEqual(pixel(waiting,30,30),pixel(before,30,30));assert.equal(await page.evaluate(()=>sync()),true);
    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));const after=await page.screenshot({path:join(out,engine+'-clipped.png')});
    const safe=[[100,80],[160,80],[320,80],[75,80],[225,80],[295,80]];
    for(const [x,y]of safe)assert.deepEqual(pixel(after,x,y),pixel(before,x,y),`protected ${x},${y}`);
@@ -61,10 +62,15 @@ try{
    await page.evaluate(()=>F.element.classList.add('shift'));assert.equal(await page.evaluate(()=>sync()),false);assert.equal(await page.evaluate(()=>getComputedStyle(F.element).visibility),'hidden');
    await page.evaluate(()=>{F.element.classList.remove('shift');document.querySelector('#composer').classList.add('moved');B.hide();});assert.equal(await page.evaluate(()=>sync()),true);
    const moved=await page.screenshot({path:join(out,engine+'-moved.png')});assert.deepEqual(pixel(moved,240,80),[0,119,255]);assert.ok(pixel(moved,100,80)[1]<60);
-   await page.evaluate(()=>{const s=new CSSStyleSheet();s.replaceSync('body{transform:scale(.8)}');document.adoptedStyleSheets=[...document.adoptedStyleSheets,s];});assert.equal(await page.evaluate(()=>sync()),false);assert.equal(await page.evaluate(()=>getComputedStyle(F.element).visibility),'hidden');
+   await page.evaluate(()=>{const s=document.querySelector('link[rel=stylesheet]').sheet;s.insertRule('body{transform:scale(.8)}',s.cssRules.length);});assert.equal(await page.evaluate(()=>sync()),false);assert.equal(await page.evaluate(()=>getComputedStyle(F.element).visibility),'hidden');
    await page.evaluate(()=>{G.dispose();F.remove("geometry_dispose")});assert.equal(await page.locator('iframe').count(),0);assert.equal(await page.locator('[style]').count(),0);
+   // Reproduce the reviewer's initial-cascade witness before any sync or child readiness.
+   await page.goto(`http://127.0.0.1:${port}/`);await page.waitForFunction(()=>window.done);
+   await page.evaluate(()=>document.body.classList.add('exposed'));assert.equal(await page.evaluate(()=>start()),false);
+   await page.waitForTimeout(150);assert.equal(await page.locator('iframe').count(),0);assert.equal(await page.evaluate(()=>R.ready),0);
+   assert.deepEqual(await page.evaluate(()=>R.removed),['geometry_refused']);const refused=await page.screenshot({path:join(out,engine+'-initial-refused.png')});assert.deepEqual(pixel(refused,100,80),[0,119,255]);await page.evaluate(()=>G.dispose());
    assert.deepEqual(errors,[]);assert.deepEqual(outside,[]);
-   receipts.push({engine,version:browser.version(),status:'pass',baselineFps:baseline.baselineFps,protectedPixels:safe.length,redPixel:red,oneLoad:true,clickThrough:true,computedMismatchHidden:true,transformedSpaceHidden:true,inlineAttributes:0,disposedFrames:0});console.log('PASS',engine);
+   receipts.push({engine,version:browser.version(),status:'pass',baselineFps:baseline.baselineFps,protectedPixels:safe.length,redPixel:red,oneLoad:true,acceptedInitiallyHidden:true,strongInitialCascadeRefused:true,clickThrough:true,computedMismatchHidden:true,transformedSpaceHidden:true,inlineAttributes:0,disposedFrames:0});console.log('PASS',engine);
   }catch(error){let observation;try{observation=await page.evaluate(()=>({ready:R.ready,frame:F?.state(),bind:B?.ok,computed:F?.element?{space:getComputedStyle(F.element).transform,clip:getComputedStyle(F.element).clipPath,visibility:getComputedStyle(F.element).visibility}:null}));}catch{}receipts.push({engine,version:browser.version(),status:'failed',error:error.message,stack:error.stack,observation,errors,outside});console.log('FAIL',engine,error.message);}
   finally{await context.close();await browser.close();browser=null;}
  }

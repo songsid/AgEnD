@@ -2,25 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 const { createEffectGeometry, hostEffectRect, hostEffectSpace } = await import(new URL("../src/ui/shared/effect-geometry.js", import.meta.url).href);
 const rect = { x: 10, y: 20, width: 100, height: 80 };
 function fixture(options = {}) {
-  const sheets: any[] = [], doc: any = { adoptedStyleSheets: [] as any[] };
+  const sheets: any[] = [], doc: any = {};
   const html = { ownerDocument: doc, parentElement: null, isConnected: true }; doc.documentElement = html;
-  const host = { document: doc, getComputedStyle: vi.fn(() => ({ transform: "none", perspective: "none", filter: "none", contain: "none", willChange: "auto" } as Record<string, string>)), CSS: { supports: vi.fn(() => true) }, CSSStyleSheet: class {
+  const host = { document: doc, getComputedStyle: vi.fn((_el?: unknown) => ({ transform: "none", perspective: "none", filter: "none", contain: "none", willChange: "auto" } as Record<string, string>)), location: { origin: "https://dashboard.example" }, CSS: { supports: vi.fn(() => true) } };
+  class Sheet {
     cssRules: any[] = [];
     constructor() { sheets.push(this); }
     insertRule(_css: string, index: number) { const values = new Map<string, string>(); this.cssRules.splice(index, 0, { style: { values, setProperty: vi.fn((k: string, v: string, priority: string) => { expect(priority).toBe("important"); values.set(k, v); }), getPropertyValue: (k: string) => values.get(k) ?? "" } }); return index; }
     deleteRule(i: number) { this.cssRules.splice(i, 1); }
-  } };
+  }
+  const sheet: any = new Sheet(), link = { tagName: "LINK", ownerDocument: doc, isConnected: true, disabled: false, sheet };
+  sheet.ownerNode = link; sheet.href = "https://dashboard.example/assets/app.css"; sheet.disabled = false;
+  doc.querySelector = vi.fn(() => link);
   const trusted: any[] = [], root = { querySelectorAll: vi.fn(() => trusted) }, classes = new Set<string>();
   const values = () => sheets[0]?.cssRules[0]?.style.values ?? new Map();
   const frame = { ownerDocument: doc, parentElement: html, isConnected: true, getBoundingClientRect: vi.fn(() => Object.fromEntries(["x", "y", "width", "height"].map(k => [k, parseFloat(values().get(k === "x" ? "left" : k === "y" ? "top" : k))]))), classList: { add: vi.fn((x: string) => classes.add(x)), remove: vi.fn((x: string) => classes.delete(x)) }, remove: vi.fn() };
   host.getComputedStyle.mockImplementation(() => ({ transform: "none", perspective: "none", filter: "none", contain: "none", willChange: "auto", ...Object.fromEntries(["position", "pointerEvents", "visibility", "opacity", "zIndex", "clipPath"].map(k => [k, values().get(k.replace(/[A-Z]/g, c => "-" + c.toLowerCase()))])) }));
   const api = createEffectGeometry({ window: host, trustRoot: root, ...options });
-  return { api, frame, trusted, host, root, sheets, classes, bind(by = "agent", layer = "front") { return api.bind(frame, { by, layer }); }, style: () => sheets[0].cssRules[0].style };
+  return { api, frame, trusted, host, root, sheets, classes, link, bind(by = "agent", layer = "front") { return api.bind(frame, { by, layer }); }, style: () => sheets[0].cssRules[0].style };
 }
 const trust = (r = { x: 20, y: 30, width: 10, height: 10 }) => ({ isConnected: true, getBoundingClientRect: () => r });
 describe("#1629 CSSOM effect placement and trust holes", () => {
-  it("uses a host-generated class and owned stylesheet with no inline attribute", () => {
-    const h = fixture(), binding = h.bind(); expect(binding.ok).toBe(true); expect(h.host.document.adoptedStyleSheets).toEqual([h.sheets[0]]);
+  it("uses a host-generated class in the fixed loaded app stylesheet with no inline attribute", () => {
+    const h = fixture(), binding = h.bind(); expect(binding.ok).toBe(true); expect(h.link.sheet).toBe(h.sheets[0]);
     expect([...h.classes]).toEqual([expect.stringMatching(/^agend-effect-geometry-\d+$/)]); expect(h.style().values.get("visibility")).toBe("hidden");
     expect(h.style().values.get("pointer-events")).toBe("none"); expect(h.style().values.get("opacity")).toBe("0.85"); expect(h.style().values.get("z-index")).toBe("20");
     expect(binding.sync(rect)).toBe(true); expect(h.style().values.get("left")).toBe("10px"); expect(h.style().values.get("width")).toBe("100px"); expect(h.style().values.get("visibility")).toBe("visible");
@@ -59,6 +63,23 @@ describe("#1629 CSSOM effect placement and trust holes", () => {
     const h = fixture(); h.frame.classList.add.mockImplementation(() => { throw Error("class unavailable"); });
     expect(h.bind()).toMatchObject({ ok: false }); expect(h.sheets[0].cssRules).toHaveLength(0); expect(h.frame.remove).toHaveBeenCalledOnce();
   });
+  it("an accepted binding is computed hidden before any sync", () => {
+    const h = fixture(), b = h.bind(); expect(b.ok).toBe(true);
+    expect(h.host.getComputedStyle(h.frame).visibility).toBe("hidden"); expect(h.frame.remove).not.toHaveBeenCalled();
+  });
+  it("a stronger initially visible host rule refuses and physically removes before returning bind", () => {
+    const h = fixture(), original = h.host.getComputedStyle.getMockImplementation()!;
+    h.host.getComputedStyle.mockImplementation(() => ({ ...original(), visibility: "visible" }));
+    expect(h.bind()).toEqual({ ok: false, reason: "geometry_unknown" }); expect(h.frame.remove).toHaveBeenCalledOnce(); expect(h.sheets[0].cssRules).toHaveLength(0);
+  });
+  it("a newly unreadable stylesheet cannot prevent physical bind refusal", () => {
+    const h = fixture(); h.frame.classList.add.mockImplementation(() => { Object.defineProperty(h.sheets[0], "cssRules", { get() { throw Error("unreadable cleanup"); } }); });
+    expect(h.bind()).toEqual({ ok: false, reason: "geometry_unknown" }); expect(h.frame.remove).toHaveBeenCalledOnce();
+  });
+  it("initial own-document geometry refusal removes its frame; the caller still closes the factory handle", () => {
+    const h = fixture(); h.host.getComputedStyle.mockImplementation(() => ({ transform: "scale(.8)", contain: "none", willChange: "auto" }));
+    expect(h.bind().ok).toBe(false); expect(h.frame.remove).toHaveBeenCalledOnce(); expect(h.sheets[0].cssRules).toHaveLength(0);
+  });
   it("a rejected CSS path stays hidden instead of falling back to no clipping", () => {
     const h = fixture(), b = h.bind(); h.style().setProperty.mockImplementation((k: string, v: string) => { if (k !== "clip-path") h.style().values.set(k, v); });
     expect(b.sync(rect)).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden");
@@ -80,21 +101,36 @@ describe("#1629 CSSOM effect placement and trust holes", () => {
     const h = fixture(), b = h.bind(); h.frame.isConnected = false; expect(b.sync(rect)).toBe(false);
     h.frame.isConnected = true; h.frame.ownerDocument = {} as any; expect(b.sync(rect)).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden");
   });
-  it("hiding is immediate and disposal physically removes every frame and only its own stylesheet", () => {
-    const h = fixture(), b = h.bind(), other = {}; h.host.document.adoptedStyleSheets.push(other); b.sync(rect); h.api.hide(); expect(h.style().values.get("visibility")).toBe("hidden");
-    h.api.dispose(); h.api.dispose(); expect(h.frame.remove).toHaveBeenCalledOnce(); expect(h.classes.size).toBe(0); expect(h.sheets[0].cssRules).toHaveLength(0); expect(h.host.document.adoptedStyleSheets).toEqual([other]); expect(b.sync(rect)).toBe(false); expect(h.api.bind(h.frame, { layer: "front" }).ok).toBe(false);
+  it("hiding is immediate and disposal physically removes every frame and only its own rules", () => {
+    const h = fixture(), b = h.bind(), other = {}; h.sheets[0].cssRules.push(other); b.sync(rect); h.api.hide(); expect(h.style().values.get("visibility")).toBe("hidden");
+    h.api.dispose(); h.api.dispose(); expect(h.frame.remove).toHaveBeenCalledOnce(); expect(h.classes.size).toBe(0); expect(h.sheets[0].cssRules).toEqual([other]); expect(h.link.sheet).toBe(h.sheets[0]); expect(b.sync(rect)).toBe(false); expect(h.api.bind(h.frame, { layer: "front" }).ok).toBe(false);
   });
   it.each(["transform", "perspective", "filter", "backdropFilter", "contain", "willChange", "zoom", "contentVisibility", "rotate", "scale", "translate", "offsetPath"])("an unknown %s viewport space refuses before a rule and hides an existing frame", key => {
     const h = fixture(), b = h.bind(); expect(b.sync(rect)).toBe(true);
     h.host.getComputedStyle.mockImplementation(() => ({ transform: "none", perspective: "none", filter: "none", contain: "none", willChange: "auto", [key]: "unknown" }));
-    expect(b.sync(rect)).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden"); expect(h.bind().ok).toBe(false); expect(h.sheets[0].cssRules).toHaveLength(1);
+    expect(hostEffectSpace(h.host, h.frame)).toBe(false); expect(b.sync(rect)).toBe(false); expect(h.style().values.get("visibility")).toBe("hidden"); expect(h.bind().ok).toBe(false); expect(h.sheets[0].cssRules).toHaveLength(1);
   });
   it("unreadable or disconnected viewport axes fail closed", () => {
     const h = fixture(); h.host.getComputedStyle.mockImplementation(() => { throw Error("unknown"); }); expect(hostEffectSpace(h.host, h.frame)).toBe(false);
     expect(hostEffectSpace(h.host, null)).toBe(false);
   });
+  it.each(["missing", "tag", "foreign", "disconnected", "disabled", "sheetDisabled", "owner", "href", "unreadable", "insert", "delete"])("an unproven host app stylesheet %s refuses", fault => {
+    const h = fixture(); h.api.dispose();
+    if (fault === "missing") h.host.document.querySelector.mockReturnValue(null);
+    if (fault === "tag") h.link.tagName = "STYLE";
+    if (fault === "insert") h.link.sheet.insertRule = null;
+    if (fault === "delete") h.link.sheet.deleteRule = null;
+    if (fault === "foreign") h.link.ownerDocument = {};
+    if (fault === "disconnected") h.link.isConnected = false;
+    if (fault === "disabled") h.link.disabled = true;
+    if (fault === "sheetDisabled") h.link.sheet.disabled = true;
+    if (fault === "owner") h.link.sheet.ownerNode = {};
+    if (fault === "href") h.link.sheet.href = "https://other.example/assets/app.css";
+    if (fault === "unreadable") Object.defineProperty(h.link.sheet, "cssRules", { get() { throw Error("not readable"); } });
+    expect(createEffectGeometry({ window: h.host, trustRoot: h.root })).toMatchObject({ ok: false, reason: "geometry_unsupported" });
+  });
   it("CSS capabilities are required before creating a binding", () => {
-    expect(createEffectGeometry().ok).toBe(false); const h = fixture({ window: { document: {}, CSS: { supports: () => false } } }); expect(h.api.ok).toBe(false); expect(h.sheets).toHaveLength(0);
+    expect(createEffectGeometry().ok).toBe(false); const h = fixture({ window: { document: {}, CSS: { supports: () => false } } }); expect(h.api.ok).toBe(false); expect(h.sheets[0].cssRules).toHaveLength(0);
   });
 });
 describe("host rectangle snapshot", () => {
