@@ -1238,3 +1238,14 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
 .s-limit-warnings { margin: var(--s-2) 0; padding-left: var(--s-4); }
 @media (max-width: 479px) { .grid3 { grid-template-columns: minmax(0, 1fr); } }
+
+/* #1629 B2: effect library controls. No runtime layer is created by this card. */
+.s-fx-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
+.s-fx-item { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border); }
+.s-fx-item h4 { margin: 0; }
+.s-fx-poster { display: block; max-width: min(240px, 100%); max-height: 160px; object-fit: contain; border-radius: var(--r-sm); }
+
+.s-fx-chat, .s-fx-params label:not(.check) { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.s-fx-chat { margin: var(--s-2) 0; }
+.s-fx-params { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0; max-width: 100%; }
+.s-fx-target, .s-fx-params input:not([type=checkbox]), .s-fx-params select { min-height: 36px; min-width: 0; max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font: inherit; }
