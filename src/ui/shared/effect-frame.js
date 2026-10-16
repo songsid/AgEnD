@@ -21,7 +21,7 @@ function snapshotRender(raw) {
   if (total > 1048576) return null;
   const assets = [], names = new Set();
   for (const a of raw.assets) {
-    if (!exact(a, ["name", "mime", "bytes"]) || typeof a.name !== "string" || !/^(?:assets\/[a-z0-9][a-z0-9_-]{0,63}\.(?:png|jpe?g|webp|gif)|poster\.png|cursor\.png)$/.test(a.name) || names.has(a.name) || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(a.mime) || !(a.bytes instanceof Uint8Array)) return null;
+    if (!exact(a, ["name", "mime", "bytes"]) || typeof a.name !== "string" || !/^assets\/[a-z0-9][a-z0-9_-]{0,63}\.(?:png|jpe?g|webp|gif)$/.test(a.name) || names.has(a.name) || !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(a.mime) || !(a.bytes instanceof Uint8Array)) return null;
     total += a.bytes.byteLength;
     if (total > 1048576) return null;
     names.add(a.name);

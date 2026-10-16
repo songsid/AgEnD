@@ -50,7 +50,7 @@ describe("#1629 owned parent effect frame", () => {
   });
   it("accepts exactly the frame/null-origin/boot hello and transfers one private port once", () => {
     const h = rig();
-    for (const patch of [{ source: {} }, { origin: "https://preview.example" }, { data: { v: 1, type: "ready", ch: null, boot: "c".repeat(32) } }, { data: { v: 1, type: "ready", ch: null, boot, extra: true } }, { ports: [{}] }]) h.hello(patch);
+    for (const patch of [{ source: {} }, { origin: "https://preview.example" }, { data: { v: 1, type: "ready", ch: null, boot: "c".repeat(32) } }, { data: { v: 1, type: "ready", ch: null, boot, extra: true } }, { ports: [{}] }, { data: { v: 1, type: "ready", ch: "bad", boot } }]) h.hello(patch);
     expect(h.frame.contentWindow.postMessage).not.toHaveBeenCalled(); expect(h.channels).toHaveLength(0); expect(h.ready).not.toHaveBeenCalled(); expect(h.removed).not.toHaveBeenCalled();
     h.hello(); h.hello(); expect(h.channels).toHaveLength(1); expect(h.frame.contentWindow.postMessage).toHaveBeenCalledOnce();
     expect(h.frame.contentWindow.postMessage.mock.calls[0]).toEqual([{ v: 1, type: "render", ch: "01".repeat(16), ...Object.fromEntries(Object.entries(h.raw).filter(([k]) => k !== "wants")) }, "*", [h.channels[0].port2]]);
@@ -110,6 +110,18 @@ describe("#1629 owned parent effect frame", () => {
     expect(h.api.state().removed).toBe(false); expect([...h.timers.values()].map(t => t.delay)).toEqual([1]);
     h.hello(); h.port({ type: "ready" }); expect(h.ready).toHaveBeenCalledOnce();
   });
+  it.each([NaN, Infinity, -1])("refuses an invalid initial clock %s before DOM creation", now => {
+    const h = rig({ clock: () => now }); expect(h.api).toEqual({ ok: false, reason: "clock_unavailable" }); expect(h.host.document.createElement).not.toHaveBeenCalled();
+  });
+  it("refuses a root belonging to another document", () => {
+    const h = rig({ root: { ownerDocument: {}, append: vi.fn() } }); expect(h.api).toEqual({ ok: false, reason: "unsupported" }); expect(h.host.document.createElement).not.toHaveBeenCalled();
+  });
+  it("a port write failure removes the frame and closes both ports", () => {
+    const h = rig(); h.hello(); h.port({ type: "ready" }); h.channels[0].port1.postMessage.mockImplementation(() => { throw Error("closed"); });
+    expect(h.api.send({ v: 1, type: "state", ts: 1, instance: "own", state: "working" })).toBe(false);
+    expect(h.removed.mock.calls).toEqual([["transport"]]); expect(h.frame.remove).toHaveBeenCalledOnce();
+    expect(h.channels[0].port1.close).toHaveBeenCalledOnce(); expect(h.channels[0].port2.close).toHaveBeenCalledOnce();
+  });
   it("fails closed on a monotonic rollback rather than reviving the deadline", () => {
     const h = rig(); h.at(100); h.hello(); h.at(99); h.port({ type: "ready" });
     expect(h.removed.mock.calls).toEqual([["clock_unavailable"]]); expect(h.ready).not.toHaveBeenCalled();
@@ -125,7 +137,11 @@ describe("#1629 owned parent effect frame", () => {
     const callback = rig({ onReady: () => { throw Error("callback"); } }); callback.hello(); callback.port({ type: "ready" }); expect(callback.removed.mock.calls).toEqual([["host_callback"]]);
   });
   it.each([
-    { code: "x".repeat(1048577) }, { params: Object.fromEntries(Array.from({ length: 17 }, (_, i) => ["a" + i, true])) }, { params: { x: {} } }, { assets: Array.from({ length: 17 }, (_, i) => ({ name: "assets/a" + i + ".png", mime: "image/png", bytes: new Uint8Array([1]) })) }, { params: { x: Infinity } }, { params: { x: "x".repeat(129) } }, { params: { Bad: 1 } },
+    { code: "x".repeat(1048577) }, { code: 123 }, { instance: 123 }, { instance: "x".repeat(129) },
+    { code: "x".repeat(600000), assets: [{ name: "assets/a.png", mime: "image/png", bytes: new Uint8Array(600000) }] },
+    { assets: [{ name: "poster.png", mime: "image/png", bytes: new Uint8Array([1]) }] },
+    { assets: [{ name: "cursor.png", mime: "image/png", bytes: new Uint8Array([1]) }] },
+    { assets: Array.from({ length: 2 }, () => ({ name: "assets/a.png", mime: "image/png", bytes: new Uint8Array([1]) })) }, { params: Object.fromEntries(Array.from({ length: 17 }, (_, i) => ["a" + i, true])) }, { params: { x: {} } }, { assets: Array.from({ length: 17 }, (_, i) => ({ name: "assets/a" + i + ".png", mime: "image/png", bytes: new Uint8Array([1]) })) }, { params: { x: Infinity } }, { params: { x: "x".repeat(129) } }, { params: { Bad: 1 } },
     { width: 4097 }, { height: 0 }, { width: 4096, height: 4096 }, { dpr: NaN }, { dpr: 3.01 }, { dpr: 0.49 },
     { wants: ["fleet"] }, { wants: ["state", "state"] }, { wants: new Array(1) }, { assets: new Array(1) }, { instance: "" },
     { assets: [{ name: "../x.png", mime: "image/png", bytes: new Uint8Array() }] }, { assets: [{ name: "assets/a.png", mime: "text/html", bytes: new Uint8Array() }] },

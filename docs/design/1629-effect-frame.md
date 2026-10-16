@@ -25,3 +25,5 @@ The factory itself must never be treated as permission to bypass those gates. It
 The unit tests execute this actual module with inert host window, DOM, ports and deterministic timers. Native scratch controls use the actual built preview listener and this source module in Chromium, Firefox and Linux WebKit; final receipts must distinguish passing cases from excluded harness trials. A form submission may be blocked by sandbox/form-action before a navigation occurs; it is not counted as a second-load witness. Actual valid-document location/meta navigation and normal one-load/physical-removal controls are separate.
 
 These are no real-Safari, physical-IME, full dashboard, registry/cap, trusted-geometry or profiling-integration claims. No live fleet, account, service, default tmux or tunnel is used. Rollback is reverting the unmounted helper, tests/recipe, this note and paired fragments. No persistent state, migration, config or startup work changes.
+
+The render asset list contains only `assets/<safe-name>.<raster extension>`. `poster.png` and `cursor.png` are host-only assets; passing either to this factory refuses the render before any iframe is created.
