@@ -249,7 +249,7 @@ import { buildOrgChart, type OrgChart } from "./web-org.js";
 import { CacheService, WINDOWS, type CacheInstance, type CacheReport, type CacheWindow } from "./cache-service.js";
 import { runWebCommand, type WebChoices, type WebCommandResult } from "./web-commands.js";
 import { CompactWatch, launchIdentity } from "./compact-watch.js";
-import { agyLegacyAgentsFile, migrateAgyAgentsFile } from "./backend/antigravity.js";
+import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
 import {
@@ -15326,7 +15326,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const filePath = join(workDir, filename);
     mkdirSync(dirname(filePath), { recursive: true });
-    if (!existsSync(filePath)) {
+    if (backend === "antigravity" && danglingSymlink(filePath)) {
+      // #1914 review: a person's dangling symlink there is kept and not followed (nothing created where it points).
+      this.logger.warn({ filePath }, "General's agy instructions file is a dangling symlink; left as it is, not written");
+    } else if (!existsSync(filePath)) {
       writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
       this.logger.info({ filePath }, "Created general instance instructions file");
     }
@@ -15427,6 +15430,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const instructionsPath = join(workDir, filename);
+    if (backend === "antigravity" && danglingSymlink(instructionsPath)) return;   // kept, not followed (#1914 review; logged above)
     const body = files.map(f => readFileSync(join(srcSteering, f), "utf-8").trim()).join("\n\n");
     const block = `${FleetManager.STEERING_BLOCK_BEGIN}\n${body}\n${FleetManager.STEERING_BLOCK_END}`;
 

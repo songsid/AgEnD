@@ -5,13 +5,22 @@
  * - A legacy `.agents/agents.md` alone becomes `.agents/AGENTS.md` (renamed whole: a person's lines kept); beside a
  *   person's own `.agents/AGENTS.md` it stays, and only AgEnD's blocks move out of it.
  * - On a case-insensitive filesystem the two names are one file (modelled by a hard link: the same inode): nothing moves.
+ * - #1914 review: the move never replaces what is at the new name — one that appears just before the move (the race),
+ *   a directory, a dangling symlink. A dangling symlink is kept and not written through: the launch says so instead.
  */
+// The race: just before the fs call that moves the legacy file, something appears at the new name.
+const race = vi.hoisted(() => ({ before: null as null | ((src: string) => void) }));
+vi.mock("node:fs", async importOriginal => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const hook = <F extends (...a: any[]) => any>(f: F) => ((...a: Parameters<F>) => { race.before?.(String(a[0])); return f(...a); }) as F;
+  return { ...real, linkSync: hook(real.linkSync), renameSync: hook(real.renameSync) };
+});
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
   return { ...real, execFileSync: () => { throw new Error("no agy here"); }, spawnSync: () => ({ status: 1, stdout: "", stderr: "" }) };
 });
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AGY_AGENTS_FILE, AntigravityBackend, agyLegacyAgentsFile, migrateAgyAgentsFile } from "../src/backend/antigravity.js";
@@ -36,7 +45,7 @@ beforeEach(() => {
   mkdirSync(instanceDir, { recursive: true });
   backend = new AntigravityBackend(instanceDir, join(root, "home"), join(root, "agend"));
 });
-afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { race.before = null; rmSync(root, { recursive: true, force: true }); });
 
 describe("what agy 1.3.6 loads (the saved capture)", () => {
   it("lists .agents/AGENTS.md, AGENTS.md and GEMINI.md after its own /compact — not the lowercase file beside them", () => {
@@ -104,6 +113,41 @@ describe("the instructions file", () => {
     expect(readFileSync(upper(), "utf8")).toBe(block("agy-a", "a"));
   });
 
+  it("race: a file that appears at the new name just before the move is kept, and the legacy file stays", () => {
+    writeFileSync(lower(), `Old rules.\n\n${block("agy-worker", "# Fleet instructions v1")}`);
+    race.before = src => { if (src === lower()) { race.before = null; writeFileSync(upper(), "Theirs, made meanwhile.\n"); } };
+    backend.writeConfig(config());
+    expect(readFileSync(upper(), "utf8").startsWith("Theirs, made meanwhile.\n")).toBe(true);
+    expect(readFileSync(upper(), "utf8")).toContain(block("agy-worker", "# Fleet instructions v2"));
+    expect(readFileSync(lower(), "utf8")).toBe("Old rules.\n");      // only this instance's block left it
+  });
+
+  it("a directory at the new name is kept: the legacy file is not moved onto or into it", () => {
+    writeFileSync(lower(), "Old rules.\n");
+    mkdirSync(upper());
+    migrateAgyAgentsFile(workspace);
+    expect(statSync(upper()).isDirectory()).toBe(true);
+    expect(readFileSync(lower(), "utf8")).toBe("Old rules.\n");
+  });
+
+  it("a dangling symlink at the new name is kept and not written through; the launch warns instead", () => {
+    const away = join(root, "elsewhere", "rules.md");
+    mkdirSync(join(root, "elsewhere"));
+    symlinkSync(away, upper());
+    writeFileSync(lower(), `Old rules.\n\n${block("agy-worker", "# Fleet instructions v1")}`);
+    backend.writeConfig(config());
+    expect(lstatSync(upper()).isSymbolicLink()).toBe(true);
+    expect(existsSync(away)).toBe(false);                               // nothing created where it points
+    expect(readFileSync(lower(), "utf8")).toBe("Old rules.\n");      // not moved over the link
+    expect(backend.consumeLaunchWarning()).toContain(upper());
+    expect(backend.consumeLaunchWarning()).toBeNull();
+    writeFileSync(away, "Now it points somewhere.\n");                 // control: a live link is written through
+    backend.writeConfig(config());
+    expect(lstatSync(upper()).isSymbolicLink()).toBe(true);
+    expect(readFileSync(away, "utf8")).toContain(block("agy-worker", "# Fleet instructions v2"));
+    expect(backend.consumeLaunchWarning()).toBeNull();
+  });
+
   it("cleanup takes this instance's block from both files and leaves a person's text", () => {
     writeFileSync(upper(), `Mine.\n\n${block("agy-worker", "x")}`);
     writeFileSync(lower(), `Old mine.\n\n${block("agy-worker", "y")}`);
@@ -132,6 +176,14 @@ describe("General on agy", () => {
     const text = readFileSync(upper(), "utf8");
     expect(text).toContain("My edited coordinator notes.");
     expect(text).toContain("agend:core-rules");
+  });
+
+  it("a dangling symlink where its file goes is kept, and nothing is created where it points", () => {
+    const away = join(root, "elsewhere.md");
+    symlinkSync(away, upper());
+    (fm() as any).ensureGeneralInstructions(workspace, "antigravity");
+    expect(lstatSync(upper()).isSymbolicLink()).toBe(true);
+    expect(existsSync(away)).toBe(false);
   });
 
   it("beside a person's own new file: the core-rules block leaves the legacy file, their text stays", () => {

@@ -8,6 +8,8 @@ import {
   chmodSync,
   closeSync,
   existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -31,6 +33,7 @@ import {
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
+import { t } from "../locale.js";
 
 /**
  * Board 0340ec89: the instructions file agy reads, relative to the workspace. agy (verified 1.3.6) loads
@@ -52,15 +55,23 @@ export function agyLegacyAgentsFile(workDir: string): string | null {
 }
 /**
  * Before anything writes agy's instructions: a legacy `.agents/agents.md` with no `.agents/AGENTS.md` beside it becomes
- * that file (renamed whole, so a person's own lines in it are kept — and now read). When both exist the legacy file is
- * left as it is; each writer then moves only its own AgEnD block out of it. On a case-insensitive filesystem the two
- * names are one file: nothing to do.
+ * that file (moved whole, so a person's own lines in it are kept — and now read). When anything already sits at the new
+ * name the legacy file is left as it is; each writer then moves only its own AgEnD block out of it. On a case-insensitive
+ * filesystem the two names are one file: nothing to do.
+ *
+ * The move never replaces what is at the new name (#1914 review): link(2) refuses any existing entry there — a file, a
+ * directory, a symlink even a dangling one — and one that appears meanwhile; only after it succeeds does the legacy name
+ * go. Where hard links are not possible the legacy file stays (writers move their blocks out, as when both exist).
  */
 export function migrateAgyAgentsFile(workDir: string): void {
   const lower = agyLegacyAgentsFile(workDir);
-  const upper = join(workDir, AGY_AGENTS_FILE);
-  if (!lower || existsSync(upper)) return;
-  try { renameSync(lower, upper); } catch { /* another instance moved it first, or it went: nothing to move */ }
+  if (!lower) return;
+  try { linkSync(lower, join(workDir, AGY_AGENTS_FILE)); } catch { return; }
+  try { unlinkSync(lower); } catch { /* another instance removed it first */ }
+}
+/** A symlink whose target does not exist: writing through it would create a file wherever it points. */
+export function danglingSymlink(path: string): boolean {
+  try { return lstatSync(path).isSymbolicLink() && !existsSync(path); } catch { return false; }
 }
 
 /** Parse `agy models`, which may emit TSV slug/display pairs or legacy single-column names. */
@@ -179,6 +190,8 @@ export class AntigravityBackend implements CliBackend {
   readonly binaryName = "agy";
   private binaryPath: string;
   private readonly mcpWrapperPath: string;
+  /** Recorded by writeConfig, handed to the operator after the launch is built (consumeLaunchWarning). */
+  private pendingLaunchWarning: string | null = null;
 
   constructor(
     private instanceDir: string,
@@ -192,6 +205,12 @@ export class AntigravityBackend implements CliBackend {
   /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
+  consumeLaunchWarning(): string | null {
+    const warning = this.pendingLaunchWarning;
+    this.pendingLaunchWarning = null;
+    return warning;
+  }
 
   buildCommand(config: CliBackendConfig): string {
     // agy 1.1.17+ has no per-workspace MCP config and no --mcp-config flag. Its
@@ -226,6 +245,7 @@ export class AntigravityBackend implements CliBackend {
   writeConfig(config: CliBackendConfig): void {
     // Write .agents/AGENTS.md in the persistent configured workspace (board 0340ec89: the name agy reads).
     const cwd = this.resolveWorkingDirectory(config.workingDirectory, config.instanceName);
+    this.pendingLaunchWarning = null;
     const agentsDir = join(cwd, ".agents");
     mkdirSync(agentsDir, { recursive: true });
     migrateAgyAgentsFile(cwd);
@@ -234,7 +254,11 @@ export class AntigravityBackend implements CliBackend {
     if (legacy) { try { if (removeMarker(legacy, config.instanceName)) rmSync(legacy, { force: true }); } catch { /* best effort */ } }
 
     if (config.instructions) {
-      appendWithMarker(join(cwd, AGY_AGENTS_FILE), config.instanceName, config.instructions);
+      const target = join(cwd, AGY_AGENTS_FILE);
+      // A person's symlink there is theirs: a live one is written through (its file is what agy reads), a dangling one is
+      // kept and not followed — nothing is created where it points — and the launch says so.
+      if (danglingSymlink(target)) this.pendingLaunchWarning = t("agy.instructions_link_dangling", target);
+      else appendWithMarker(target, config.instanceName, config.instructions);
     }
 
     if (config.agentMode === "mcp" && Object.keys(config.mcpServers).length > 0) {
