@@ -1,5 +1,6 @@
 /** #1629: host-only fixed viewport geometry and trust holes through the already-loaded, fixed same-origin app stylesheet. No inline attributes. */
 import { effectTrustClip } from "./effect-policy.js";
+import { effectStockSnapshot, effectStockAllows } from "./effect-stock-snapshot.js";
 let serial = 0;
 // Native CSSOM canonicalizes SVG command whitespace. Compare bounded tokens, never whitespace-stripped digits.
 function sameClip(expected, written) {
@@ -40,10 +41,10 @@ export function hostEffectRect(element) {
     return width <= 4096 && height <= 4096 && width * height <= 8388608 ? { x, y, width, height } : null;
   } catch { return null; }
 }
-export function createEffectGeometry({ window: host, trustRoot } = {}) {
+export function createEffectGeometry({ window: host } = {}) {
   let sheet;
   try {
-    if (!host?.document || !trustRoot || typeof trustRoot.querySelectorAll !== "function" || host.CSS?.supports("clip-path", 'path(evenodd, "M0 0H1V1H0Z")') !== true) return { ok: false, reason: "geometry_unsupported" };
+    if (!host?.document || host.CSS?.supports("clip-path", 'path(evenodd, "M0 0H1V1H0Z")') !== true) return { ok: false, reason: "geometry_unsupported" };
     // r4: the existing same-origin link is the only CSS source. No new text source or owner CSS is accepted.
     const link = host.document.querySelector('link[rel="stylesheet"][href="/assets/app.css"]');
     const href = new URL("/assets/app.css", host.location.origin).href;
@@ -81,27 +82,19 @@ export function createEffectGeometry({ window: host, trustRoot } = {}) {
       } catch { frame.remove(); }
     };
     const handle = { ok: true, hide,
-      /** Call before revealing, in the same host rAF as geometry observation. */
-      sync(rect) {
-        if (dead || disposed || !hostEffectSpace(host, frame) || !rect || ![rect.x, rect.y, rect.width, rect.height].every(number) || ![rect.x, rect.y, rect.width, rect.height].every(Number.isInteger) || rect.width < 1 || rect.height < 1 || rect.width > 4096 || rect.height > 4096 || rect.width * rect.height > 8388608) { hide(); return false; }
+      /** Same-turn host paint snapshot is mandatory, including behind/human placements. No DOM fallback. */
+      sync(rect, stock) {
         hide();
+        const proof = effectStockSnapshot(stock);
+        if (!effectStockAllows(proof, { layer, by })) return false;
+        if (dead || disposed || !hostEffectSpace(host, frame) || !rect || ![rect.x, rect.y, rect.width, rect.height].every(number) || ![rect.x, rect.y, rect.width, rect.height].every(Number.isInteger) || rect.width < 1 || rect.height < 1 || rect.width > 4096 || rect.height > 4096 || rect.width * rect.height > 8388608) { hide(); return false; }
         let path = "none";
         if (layer === "front" && by !== "human") {
-          try {
-            const nodes = trustRoot.querySelectorAll("[data-trust]");
-            if (nodes.length > 128) return false;
-            const rects = [];
-            for (const el of nodes) {
-              if (el.isConnected !== true) return false;
-              const r = el.getBoundingClientRect();
-              // Copy only numeric DOMRect fields. Native DOMRect prototypes are not policy input.
-              rects.push({ x: r.x, y: r.y, width: r.width, height: r.height });
-            }
-            const clipped = effectTrustClip(rect, rects);
-            if (!clipped.ok) return false;
-            path = clipped.path;
-          } catch { return false; }
+          const clipped = effectTrustClip(rect, proof.rects);
+          if (!clipped.ok) return false;
+          path = clipped.path;
         }
+
         try {
           for (const key of ["x", "y", "width", "height"]) rule.style.setProperty(key === "x" ? "left" : key === "y" ? "top" : key, `${rect[key]}px`, "important");
           rule.style.setProperty("clip-path", path, "important");

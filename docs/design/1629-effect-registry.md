@@ -4,7 +4,7 @@ This is an unmounted integration primitive. No product page imports it, no stati
 
 ## Admission and ownership
 
-`createEffectRegistry` owns one pool per Window. Its host options include the verified preview origin/boot, an authenticated bounded loader, complete-surface predicate, synchronous safety participant and display/profile callbacks. The registry creates its own viewport layer under body; code from a bundle never supplies a DOM node, origin, descriptor identity, ownership or geometry.
+`createEffectRegistry` owns one pool per Window. Its host options include the verified preview origin/boot, an authenticated bounded loader, current stock paint snapshot provider, synchronous safety participant and display/profile callbacks. The registry creates its own viewport layer under body; code from a bundle never supplies a DOM node, origin, descriptor identity, ownership or geometry.
 
 `update(descriptors, context)` takes host snapshots. Each descriptor names a host key, immutable content id, region/layer, host-recorded `by`, order, pause/visibility state, instance binding, typed parameter overrides and host region element. The pure reviewed policy decides scope, priority, 3/1 total and 2/1 front caps. Queued/off/unknown entries have no frame and start no loader. Widgets remain host drawn and consume no effect slot. Unknown provenance keeps agent restrictions.
 
@@ -17,7 +17,7 @@ Resource completion independently checks that deadline, including the exact ten-
 ## Before any frame
 
 - All global gates must be known and allow effects: safe mode, public link, reduced motion, save data, show/enable/preview/opt-in and current chat. Hidden documents never start a new load or frame.
-- `trustComplete()` must prove the **complete host marker inventory and host layering**, including behind effects below host content and front effects below/protected from menus/dialogs. It must not be literal true in a product adapter. The private native fixture supplies a small explicit UI stacking model and its own three markers; that does not establish the product's coverage.
+- `stockSnapshot({ frameRoot })` must prove the **complete host marker inventory and host layering**, including behind effects below host content and front effects below/protected from menus/dialogs. It returns explicit `ok/front/agentFront/rects` evidence, never a literal boolean; see [the current admission contract](1629-effect-stock-admission.md). The private native fixture supplies a small explicit UI stacking model and its own three markers; that does not establish the product's coverage.
 - MutationObserver and ResizeObserver are required. Observe current host roots/trusted elements without disconnect/re-observe feedback. Mutation/scroll/resize hides immediately, then a host rAF recalculates bounded geometry before reveal. Moving CSS geometry is measured each rAF. Unsupported or unknown geometry removes the frame.
 - Capture a visible two-second cadence with zero effect frames. Identical updates/observer notifications retain that one measurement. Device-class change and explicit human Resume remove the pool and measure again. No author, child message or saved profile provides the baseline.
 - Positive synchronous safety receipt before factory creation. Create and bind happen in the same synchronous host task; any refusal immediately closes the factory handle and geometry. Marker cleanup failure removes the pool and refuses further admission.
