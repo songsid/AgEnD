@@ -485,9 +485,11 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     const text = mods.bundleText(fileMatch[1]!);
     const rec = mods.list().mods.find(m => m.id === fileMatch[1]);
     if (text === null || !rec) { json(res, 404, { error: "no_such_mod" }); return true; }
-    // The file is the installed bundle, effects and all: a mod carrying effects downloads only for the person whose
-    // claim holds them (the export ACL — never a way around it). A mod without effects is any admin's to download.
-    if (rec.effects.length && first.person !== (rec.effectsBy ?? rec.installedBy)) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod carries effects another person installed: export your own look instead" }); return true; }
+    // The file is the installed bundle, effects and all — also effects its import left out, which nobody installed.
+    // So the export ACL judges what the file carries, not what was installed: it downloads only when this person may
+    // read every effect in it (their own claim on that content, or a shared one). A file without effects is any admin's.
+    const fx = mods.bundleEffects(fileMatch[1]!);
+    if (fx === "unknown" || (fx ?? []).some(id => !ctx.modPlacedEffect?.(first.person, id))) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod's file carries effects that are not yours to share: export your own look instead" }); return true; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
     res.end(text);
