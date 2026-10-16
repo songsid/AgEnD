@@ -193,12 +193,18 @@ export class ModStore {
     const idx = this.load();
     if (idx === "unreadable") return { ok: false, status: 503, error: "mods_unreadable" };
     const file = this.proposalFile(instance);
+    // The proposal it replaces is kept until the index names the new one: a failed index write puts it back.
+    let before: string | null = null;
+    try { before = readFileSync(file, "utf8"); } catch { /* none */ }
     try { mkdirSync(join(this.dataDir, "web-mods", "proposals"), { recursive: true, mode: 0o700 }); atomicWriteFileSync(file, text, { mode: 0o600 }); }
     catch (err) { return { ok: false, status: 503, error: "mods_write_failed", detail: (err as Error).message }; }
     const proposal: ModProposal = { id: mod.id, name: mod.manifest.name, version: mod.manifest.version, title: mod.manifest.title, bytes: mod.bytes, at: this.now() };
     const proposals = new Map(idx.proposals); proposals.set(instance, proposal);
     const w = this.commitIndex(idx.mods, proposals);
-    if (!w.ok) { if (!idx.proposals.has(instance)) { try { unlinkSync(file); } catch { /* none */ } } return w; }
+    if (!w.ok) {
+      try { if (before === null) unlinkSync(file); else atomicWriteFileSync(file, before, { mode: 0o600 }); } catch { /* best effort */ }
+      return w;
+    }
     return { ok: true, proposal };
   }
   /** Proposals waiting for a person, by agent. */

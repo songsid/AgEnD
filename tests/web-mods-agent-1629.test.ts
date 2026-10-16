@@ -301,15 +301,19 @@ describe("proposals: leftovers and bookkeeping (#1906 review)", () => {
     expect(require("node:fs").readdirSync(dir)).toHaveLength(1);
     s.mods.dismiss("alpha");
     expect(require("node:fs").readdirSync(dir)).toEqual([]);
-    rmSync(join(s.dir, "web-mods.json")); mkdirSync(join(s.dir, "web-mods.json"));
+    // A failed index write: the file just written goes (none before) …
     const t = setup();
-    rmSync(join(t.dir, "web-mods.json"), { force: true }); mkdirSync(join(t.dir, "web-mods.json"));
-    expect(propose(t, bundle())).toMatchObject({ error: "mods_unreadable" });
+    t.mods.proposals();                                                          // the index is read (and empty)
+    mkdirSync(join(t.dir, "web-mods.json"));
+    expect(propose(t, bundle()).error).toBe("mods_write_failed");
+    expect(require("node:fs").readdirSync(join(t.dir, "web-mods", "proposals")), "no file left behind").toEqual([]);
+    // … or the proposal it replaced is put back, and still opens as itself.
     const u = setup();
     propose(u, bundle());
     rmSync(join(u.dir, "web-mods.json")); mkdirSync(join(u.dir, "web-mods.json"));
     expect(propose(u, bundle({ name: "second" })).error).toBe("mods_write_failed");
-    expect(require("node:fs").readdirSync(join(u.dir, "web-mods", "proposals")), "the first proposal's file is kept, nothing new").toHaveLength(1);
+    const [kept] = require("node:fs").readdirSync(join(u.dir, "web-mods", "proposals")) as string[];
+    expect(JSON.parse(readFileSync(join(u.dir, "web-mods", "proposals", kept!), "utf8")).manifest.name, "the first proposal's text, not the failed one").toBe("proposed");
     const v = setup();
     propose(v, bundle());
     v.mods.forgetInstance("alpha");
