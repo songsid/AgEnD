@@ -341,7 +341,7 @@ describe("#1629 current stock admission", () => {
     const a = h.geo().bindings[0], b = h.geo().bindings[1];
     for (const binding of [a, b]) { expect(binding.sync.mock.calls[0][1].rects).toEqual(rects); expect(Object.isFrozen(binding.sync.mock.calls[0][1])).toBe(true); }
     a.sync.mockClear(); b.sync.mockClear(); h.coverage.mockClear(); h.frame(17);
-    expect(h.coverage).toHaveBeenCalledOnce(); for (const frame of h.frames()) expect(frame.send.mock.calls.some(call => call[0].type === "pointer")).toBe(true); expect(a.sync).toHaveBeenCalledOnce(); expect(b.sync).toHaveBeenCalledOnce();
+    expect(h.coverage).toHaveBeenCalledOnce(); for (const frame of h.frames()) expect(frame.send.mock.calls.some((call: any[]) => call[0].type === "pointer")).toBe(true); expect(a.sync).toHaveBeenCalledOnce(); expect(b.sync).toHaveBeenCalledOnce();
     const proof = a.sync.mock.calls[0][1]; expect(proof).toBe(b.sync.mock.calls[0][1]); expect(proof.rects).toEqual(rects); expect(proof.rects).not.toBe(rects); expect(Object.isFrozen(proof.rects[0])).toBe(true);
   });
   it("a CSS denial at held completion clears the request without a marker or frame", async () => {
