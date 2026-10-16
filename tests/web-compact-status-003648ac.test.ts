@@ -292,6 +292,36 @@ describe("following one /compact", () => {
     expect(later.watch.view("w")!.state).toBe("lost");
   });
 
+  it("round-3 P2-2: the transcript moving while a look reads the old one: that look does not end it; the new one starts at its end", async () => {
+    const r = rig();
+    const id = r.start();
+    appendFileSync(r.file, `${CLAUDE_BOUNDARY}\n`);                        // in A, after the checkpoint
+    const b = join(r.dir, "b.jsonl");
+    writeFileSync(b, `${CLAUDE_TURN}\n`);
+    hooks.beforeRead = () => { r.src.path = b; };                          // the source moves to B during A's read
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("running");
+    await r.watch.poll("w", id);                                           // starts at B's end
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("running");
+    appendFileSync(b, `${CLAUDE_BOUNDARY}\n`);
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("done");
+  });
+
+  it("round-3 P2-2: the transcript moving while a long record is read whole: not ended by the old file", async () => {
+    const r = rig();
+    const id = r.start();
+    const long = JSON.stringify({ parentUuid: null, isSidechain: false, type: "system", subtype: "compact_boundary", content: "Conversation compacted",
+      compactMetadata: { preservedMessages: { uuids: Array.from({ length: 12000 }, (_, i) => `uuid-${i}-${"x".repeat(20)}`) } } });
+    appendFileSync(r.file, `${long}\n`);
+    const b = join(r.dir, "b.jsonl");
+    writeFileSync(b, "");
+    hooks.beforeWhole = () => { r.src.path = b; };
+    await r.watch.poll("w", id);
+    expect(r.watch.view("w")!.state).toBe("running");
+  });
+
   it("round-2 P2-1: a compaction that ends between the checkpoint and the notice still counts; one before it does not", async () => {
     const r = rig();
     const id = r.watch.begin("w")!;
@@ -457,6 +487,61 @@ describe("review P2-5: the daemon says when the paste was written", () => {
       expect(order.indexOf("written")).toBeGreaterThan(order.findIndex(o => o.includes("/compact")));
     } finally { d.freezeRuntimeMonitors(); }
     void r;
+  }, 20_000);
+
+  /** A real daemon on an inert pane: queueRawPaste → deliverMessage → writeMessageToPane, nothing replaced. */
+  function realDaemon(hooks: { capture?: () => void; paste?: () => void; enter?: () => void } = {}) {
+    const dir = tmp();
+    mkdirSync(join(dir, "inst"));
+    writeFileSync(join(dir, "inst", "window-id"), "@1");
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: () => logger } as any;
+    const d: any = new Daemon("w3", { working_directory: dir, log_level: "silent", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 } } as any,
+      join(dir, "inst"), false, { getReadyPattern: () => /READY/, getErrorPatterns: () => [], getRuntimeDialogs: () => [] } as any, undefined, logger);
+    const transcript = join(dir, "session.jsonl");
+    writeFileSync(transcript, `${CLAUDE_TURN}\n`);
+    d.logTranscriptPath = () => transcript;
+    const broadcast: any[] = [];
+    d.ipcServer = { broadcast: (m: unknown) => broadcast.push(m), send: () => {} };
+    d.wake = async () => {};
+    const atPaste: number[] = [];
+    d.tmux = {
+      getWindowId: () => "@1", isWindowAlive: async () => true,
+      capturePane: async () => { hooks.capture?.(); return "READY"; },
+      sendSpecialKey: async (k: string) => { if (k === "Enter") hooks.enter?.(); return true; },
+      sendKeys: async () => true, pasteText: async () => true,
+      pasteBuffer: async () => { atPaste.push(statSync(transcript).size); hooks.paste?.(); return true; },
+    };
+    return { d, transcript, broadcast, atPaste };
+  }
+
+  it("round-3 P2-1: the checkpoint is the transcript at the paste itself — after the last capture and fence before it", async () => {
+    let pasted = false;
+    const r: any = realDaemon({
+      capture: () => { if (!pasted) appendFileSync(r.transcript, `${CLAUDE_BOUNDARY}\n`); },   // an earlier compaction lands while it waits
+      paste: () => { pasted = true; },
+    });
+    try {
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await vi.waitFor(() => expect(r.broadcast.some((m: any) => m.type === "raw_paste_written")).toBe(true), { timeout: 15_000 });
+      const note = r.broadcast.find((m: any) => m.type === "raw_paste_written");
+      expect(note.outcome).toBe("written");
+      expect(r.atPaste.length).toBeGreaterThan(0);
+      expect(note.checkpoint.size).toBe(r.atPaste.at(-1));                  // the boundary before the paste is behind it
+      expect(note.checkpoint.size).toBe(statSync(r.transcript).size);
+    } finally { r.d.freezeRuntimeMonitors(); }
+  }, 20_000);
+
+  it("round-3 P2-2: the launch named is the one at the paste, not at the notice — a respawn in between is another launch", async () => {
+    const r: any = realDaemon({ enter: () => { r.d.spawnGeneration += 1; } });
+    try {
+      const before = launchIdentity(r.d.interactionOwner());
+      r.d.handleRawPasteIpcMessage({ type: "raw_paste", content: "/compact", notify_written: ID });
+      await vi.waitFor(() => expect(r.broadcast.some((m: any) => m.type === "raw_paste_written")).toBe(true), { timeout: 15_000 });
+      const note = r.broadcast.find((m: any) => m.type === "raw_paste_written");
+      expect(note.owner).toBe(before);
+      expect(note.owner).not.toBe(launchIdentity(r.d.interactionOwner()));
+    } finally { r.d.freezeRuntimeMonitors(); }
   }, 20_000);
 
   it("never written, or cancelled while waking: 'not_written'; no id, or a malformed one: nothing said", async () => {

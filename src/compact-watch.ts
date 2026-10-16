@@ -146,14 +146,15 @@ export class CompactWatch {
   }
 
   /**
-   * Whether the watch still stands as `base` was set: the same watch and base, running, the same launch, and the
-   * source still this format with a transcript. Another launch or source: lost (said here). Checked after every await.
+   * Whether the watch still stands as `base` was set: the same watch and base, running, the same launch, the source
+   * still this format with a transcript (else lost, said here) — and still this transcript: one that moved meanwhile
+   * stops this look, and the next look starts at the new one's end. Checked after every await and before it ends.
    */
   private standing(name: string, w: Watch, base: Base): boolean {
     if (this.watches.get(name) !== w || w.state !== "running" || w.base !== base) return false;
     const src = this.deps.source(name);
     if (this.deps.owner(name) !== base.owner || src.format !== base.format || !src.path) { this.finish(name, w, "lost"); return false; }
-    return true;
+    return src.path === base.path;
   }
 
   /** One look at the transcript: the watch's timer calls it (tests call it directly). */
@@ -163,14 +164,18 @@ export class CompactWatch {
     if (this.now() >= w.deadline) { this.finish(name, w, "timeout"); return; }
     const base = w.base;
     if (!base) return;                                                     // the command has not reached the pane yet
-    if (!this.standing(name, w, base)) return;
     w.reading = true;
     try {
       const src = this.deps.source(name);
-      if (src.path && src.path !== base.path) {
+      if (this.deps.owner(name) !== base.owner || src.format !== base.format || !src.path) { this.finish(name, w, "lost"); return; }
+      if (src.path !== base.path) {
         // Another transcript of the same launch: only what is written to it from now on.
-        const { size, ino } = await stat(src.path);
-        if (this.standing(name, w, base)) Object.assign(base, { path: src.path, ino, offset: size, skipping: false, pending: null });
+        const moved = src.path;
+        const { size, ino } = await stat(moved);
+        const now = this.deps.source(name);
+        if (this.watches.get(name) !== w || w.state !== "running" || w.base !== base) return;
+        if (this.deps.owner(name) !== base.owner || now.format !== base.format || !now.path) { this.finish(name, w, "lost"); return; }
+        if (now.path === moved) Object.assign(base, { path: moved, ino, offset: size, skipping: false, pending: null });
         return;
       }
       const fh = await open(base.path, "r");

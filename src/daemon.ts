@@ -4045,15 +4045,19 @@ export class Daemon extends EventEmitter {
     };
     // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
     // (taken here, under this launch, before the write) and the launch it was written under ride with the notice — once.
+    // The checkpoint and the launch are taken together, right before the paste (each attempt takes them again); the
+    // notice carries those — never the launch at notice time, which a respawn in between would relabel.
     let told = false;
     let checkpoint: { path: string; ino: number; size: number } | null = null;
+    let owner: string | null = null;
     const tellWritten = (written: boolean) => {
       if (!notifyWritten || told) return;
       told = true;
       this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
-        ...(written ? { owner: launchIdentity(this.interactionOwner()), checkpoint } : {}) });
+        ...(written ? { owner, checkpoint } : {}) });
     };
     const takeCheckpoint = () => {
+      owner = launchIdentity(this.interactionOwner());
       const path = this.logTranscriptPath();
       checkpoint = null;
       if (!path) return;
@@ -7006,7 +7010,7 @@ export class Daemon extends EventEmitter {
       preserveExactBytes?: boolean;
       /** Called under the pane write lock the moment this delivery's write has begun (#1690: our switch's hold). */
       onPaneWritten?: () => void;
-      /** Board 003648ac: just before this message's own pane write (after readiness and residue), each attempt. */
+      /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
       beforePaneWrite?: () => void;
     },
   ): Promise<boolean> {
@@ -7179,8 +7183,6 @@ export class Daemon extends EventEmitter {
         const residue = await this.clearRestoredInputDraft(handingOffToNativeQueue, writeCurrent);
         if (residue === "stale") return stale();
         if (residue !== "clear") return this.failDelivery(verdict, status, "input-residue", residue);
-        // Board 003648ac: the last moment before this message's own write (a retried attempt takes it again).
-        opts?.beforePaneWrite?.();
         const written = await this.writeMessageToPane(
           formatted,
           windowId,
@@ -7192,6 +7194,7 @@ export class Daemon extends EventEmitter {
           opts?.steer === true,
           writeCurrent,
           opts?.humanVerificationId,
+          opts?.beforePaneWrite,
         );
         // #1690: still under the lock — whatever waits on it next must already see what this write started.
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
@@ -8600,6 +8603,8 @@ export class Daemon extends EventEmitter {
     // first side effect. Stale means unwritten: false, with no failure verdict.
     stillCurrent?: () => boolean,
     humanVerificationId?: string,
+    // Board 003648ac: called synchronously right before each paste — after the last await and fence of that attempt.
+    beforePaste?: () => void,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
   ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
     const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
@@ -8728,6 +8733,7 @@ export class Daemon extends EventEmitter {
       // same pane; the write-ahead Enter marker later separates safe pre-Enter
       // recovery from a possibly executed command.
       const pasteGeneration = this.spawnGeneration;
+      beforePaste?.();
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (pasted) this.rememberPaste(formatted, pasteGeneration);
       if (!pasted) {
