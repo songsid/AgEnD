@@ -1,4 +1,4 @@
-/** #1629: host-only personal region targets on the currently proven Chat shell. No selection, code or frame authority. */
+/** #1629: host-only personal region targets on the currently proven stock shell. No selection, code or frame authority. */
 import { createEffectGeometry, hostEffectRect, hostEffectSpace } from "./effect-geometry.js";
 import { effectStockSnapshot } from "./effect-stock-snapshot.js";
 const finite = n => typeof n === "number" && Number.isFinite(n);
@@ -30,21 +30,27 @@ export function createOwnerEffectRegions({ window: host, current, factories = {}
   const dispose = () => { if (dead) return; dead = true; geometry?.dispose?.(); root?.remove(); targets.clear(); };
   const refuse = () => { for (const row of targets.values()) row.binding.hide(); return null; };
   const unavailable = () => ({ ok: false, dispose });
-  const alive = () => { if (dead) return false; const valid = current() === true; return !dead && valid && host.document.body.dataset.mode === "full" && host.document.querySelectorAll(".main > .p-chat").length === 1; };
+  const alive = () => { if (dead) return false; const valid = current() === true; return !dead && valid && host.document.body.dataset.mode === "full"; };
   try {
     if (!host?.document || typeof current !== "function" || typeof host.getComputedStyle !== "function" || !alive()) return unavailable();
     root = host.document.createElement("div"); root.className = "agend-effect-layer"; host.document.body.append(root);
     geometry = (factories.geometry ?? createEffectGeometry)({ window: host }); if (!geometry.ok) { dispose(); return unavailable(); }
   } catch { dispose(); return unavailable(); }
+  function panel() {
+    const nodes = host.document.querySelectorAll(".main > .panel"); if (nodes.length !== 1) return null;
+    const el = nodes[0], kind = el.getAttribute("data-effect-panel");
+    return kind === null ? el.classList.contains("p-chat") ? el : null
+      : ["fleet", "needs", "settings", "view", "log", "details"].includes(kind) && el.classList.contains(`p-${kind}`) ? el : null;
+  }
   function resolve(slot, box, stock) {
     try {
       if (!alive() || !effectStockSnapshot(stock)) return refuse();
-      const size = viewport(host); if (!size) return refuse();
+      const surface = panel(), size = viewport(host); if (!surface || !size) return refuse();
       if (slot === "fx.header" || slot === "fx.sidebar") {
-        const selector = slot === "fx.header" ? ".main > .p-chat > .panel-head[data-trust=header]" : ".shell > .sidebar";
+        const selector = slot === "fx.header" ? ".main > .panel > .panel-head[data-trust=header]" : ".shell > .sidebar";
         const nodes = host.document.querySelectorAll(selector); if (nodes.length !== 1) return null;
         const el = nodes[0], s = host.getComputedStyle(el), rect = hostEffectRect(el);
-        return s.display !== "none" && s.visibility === "visible" && hostEffectSpace(host, el) && rect && rect.x + rect.width > 0 && rect.y + rect.height > 0 && rect.x < size.width && rect.y < size.height ? el : null;
+        return alive() && panel() === surface && s.display !== "none" && s.visibility === "visible" && hostEffectSpace(host, el) && rect && rect.x + rect.width > 0 && rect.y + rect.height > 0 && rect.x < size.width && rect.y < size.height ? el : null;
       }
       if (!["fx.page", "fx.box"].includes(slot)) return null;
       const rect = slot === "fx.page" ? size : ownerEffectBoxRect(box, size); if (!rect) return refuse();
@@ -60,7 +66,7 @@ export function createOwnerEffectRegions({ window: host, current, factories = {}
       if (!row.binding.sync(rect, stock)) { row.binding.remove(); targets.delete(slot); return null; }
       row.binding.hide();
       const actual = hostEffectRect(row.element);
-      if (row.element.isConnected !== true || host.getComputedStyle(row.element).visibility !== "hidden" || !actual || !["x", "y", "width", "height"].every(k => finite(actual[k]) && actual[k] === rect[k])) { row.binding.remove(); targets.delete(slot); return null; }
+      if (!alive() || panel() !== surface || row.element.isConnected !== true || host.getComputedStyle(row.element).visibility !== "hidden" || !actual || !["x", "y", "width", "height"].every(k => finite(actual[k]) && actual[k] === rect[k])) { row.binding.remove(); targets.delete(slot); return null; }
       return row.element;
     } catch { return refuse(); }
   }

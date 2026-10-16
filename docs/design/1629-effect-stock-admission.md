@@ -24,6 +24,6 @@ Descriptor updates and DOM/resize/scroll/focus invalidations hide first. Focus-i
 
 The actual Shell browser recipe now passes the real stock snapshot directly into geometry, removing its previous synthetic query-selector bridge. The independent geometry and registry recipes explicitly construct fixture evidence and remain helper-level tests. No real account/fleet/service or default tmux is involved.
 
-The stock inventory still supports only its reviewed Chat shell route. Product adapters, other routes/regions, owner-CSS UI explanation/link, durable safety/profile lifecycle, session/owner/generation fences and opt-in enforcement remain separate review work. A proof codec cannot establish any of those by itself.
+The stock inventory now covers Chat and the closed Fleet/Needs/Settings/View/Log/Details producers (#1973). The app-owned Chat bridge, owner-CSS explanation, lifecycle and session fences are separately reviewed integration (#1976). Personal regions/playback and Try still require their own adapter review. This proof codec cannot establish identity, consent or any of those integration guarantees by itself.
 
 Conservative checks may make effects unavailable for a faulty host provider. Reverting the primitive/API change and its updated callers together restores the earlier unmounted implementation; there is no durable data migration. Do not mount a product adapter against the old boolean or border-box fallback.
