@@ -1,10 +1,11 @@
 /** Owner choices never enter the shared host cache, and every operation belongs to the boot session. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleAuthRequest, isServedAsset } from "../src/auth-api.js";
+import { parseWebEffectManifest } from "../src/web-effect.js";
 import { installDom, type MiniPage } from "./helpers/mini-dom.js";
 const A = "a".repeat(32), B = "b".repeat(32), E = "e".repeat(16);
 const KEYS = ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"];
-const slots = (id: string | null = A, status = "available") => Object.fromEntries(KEYS.map(key => [key, id === null ? { status: "none", id: null } : status === "available" ? { status, id, manifest: { title: "Canvas" } } : { status, id }]));
+const slots = (id: string | null = A, status = "available") => Object.fromEntries(KEYS.map(key => [key, id === null ? { status: "none", id: null } : status === "available" ? { status, id, manifest: { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "canvas", title: "Canvas", regions: ["sidebar", "header", "page", "box"], layer: "behind", wants: [], box: { anchor: "center", width: 64, height: 64, offset: 0 }, cursor: { hotspot: [0, 0] } } } : { status, id }]));
 const reply = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 const held = () => { let release!: (r: any) => void; const p = new Promise<any>(r => { release = r; }); return { p, release }; };
 const ticks = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
@@ -42,6 +43,13 @@ describe("owner-effect client", () => {
   it.each([{ scope: "none", epoch: null }, { public: true }, { view: true }, { epoch: "wrong" }])("no owner capability on unsupported boot %j", async opts => {
     const m = await boot(opts); stop = m.watchOwnerEffects(); await ticks(); expect(requests).toEqual([]);
     expect(await m.saveOwnerEffects({ "fx.page": A })).toEqual({ ok: false, error: "busy_or_unavailable" });
+  });
+  it.each(["👨‍👩‍👧".repeat(40), "x\u0301".repeat(40)])("actual watched selections accept a server-valid combined title", async title => {
+    const m = await boot(), source = slots();
+    for (const row of Object.values(source) as any[]) { const parsed = parseWebEffectManifest({ ...row.manifest, title }); expect(parsed.ok).toBe(true); if (!parsed.ok) throw Error("fixture"); row.manifest = parsed.manifest; }
+    respond = async () => reply(200, { rev: 1, slots: source }); stop = m.watchOwnerEffects(); await ticks();
+    expect(m.ownerEffectsStore.get().status).toBe("known"); expect(m.ownerEffectsStore.get().slots["fx.page"].manifest.title).toBe(title);
+    expect(m.ownerEffectUrl("fx.page", A)).not.toBeNull(); expect(requests).toHaveLength(1);
   });
   it("explicit operator mode stays available and visibly distinguishable from a platform person", async () => {
     const m = await boot({ scope: "operator" }); stop = m.watchOwnerEffects(); await ticks();
@@ -118,7 +126,7 @@ describe("owner-effect client", () => {
   });
   it("closed response fields and invalid inputs stay unknown without requesting anything", async () => {
     const m = await boot(); expect(m.checkOwnerSlots({ rev: 0, slots: slots(null) })).not.toBeNull();
-    for (const bad of [{ rev: -1, slots: slots() }, { rev: 0, slots: {} }, { rev: 0, slots: { ...slots(), "fx.page": { status: "available", id: A, manifest: { title: "Canvas" }, private: true } } }]) expect(m.checkOwnerSlots(bad)).toBeNull();
+    for (const bad of [{ rev: -1, slots: slots() }, { rev: 0, slots: {} }, { rev: 0, slots: { ...slots(), "fx.page": { status: "available", id: A, manifest: { v: 1, kind: "effect", runtime: "canvas-worker-v1", worker: "worker.js", name: "canvas", title: "Canvas", regions: ["sidebar", "header", "page", "box"], layer: "behind", wants: [], box: { anchor: "center", width: 64, height: 64, offset: 0 }, cursor: { hotspot: [0, 0] } }, private: true } } }]) expect(m.checkOwnerSlots(bad)).toBeNull();
     stop = m.watchOwnerEffects(); await ticks();
     for (const bad of [{ "theme": "dark" }, { "fx.page": "bad" }, {}, []]) expect((await m.saveOwnerEffects(bad)).ok).toBe(false);
     expect(requests).toHaveLength(1);
