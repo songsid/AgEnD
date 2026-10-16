@@ -12,6 +12,7 @@ import { MOD_MAX_BYTES } from "./web-mod-bundle.js";
 import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
 import { AGENT_WIDGET_SLOTS, checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
+import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { WebAppearance } from "./web-appearance.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -468,6 +469,15 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
   };
 
   if (path === "/ui/mods" && method === "GET") { json(res, 200, { ...mods.list(), staged: mods.staged(first.person) }); return true; }
+  // A staged mod's picture (this session's person's stage only): the plan shows the actual pictures before install.
+  const stagedPic = /^\/ui\/mods\/staged\/([0-9a-f]{32})$/.exec(path);
+  if (stagedPic && method === "GET") {
+    const pic = mods.stagedPicture(first.person, stagedPic[1]!);
+    if (!pic) { json(res, 404, { error: "No such image" }); return true; }
+    res.writeHead(200, { "Content-Type": pic.mime, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store", "Content-Security-Policy": "default-src 'none'; sandbox" });
+    res.end(Buffer.from(pic.bytes));
+    return true;
+  }
   const fileMatch = /^\/ui\/mods\/file\/([0-9a-f]{32})$/.exec(path);
   if (fileMatch && method === "GET") {
     const text = mods.bundleText(fileMatch[1]!);
@@ -527,7 +537,9 @@ function exportMod(ctx: WebApiContext, person: string, body: Record<string, unkn
   const meta = { name: body.name, version: body.version, title: body.title };
   if (typeof meta.name !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(meta.name)) return { ok: false, status: 400, error: "name", detail: "a-z, 0-9 and - (1..64)" };
   if (typeof meta.version !== "string" || !/^(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})$/.test(meta.version)) return { ok: false, status: 400, error: "version", detail: "MAJOR.MINOR.PATCH" };
-  if (typeof meta.title !== "string" || !meta.title.trim() || meta.title.length > 60) return { ok: false, status: 400, error: "title", detail: "1..60 characters" };
+  // The importer's own rule (#1897 review): what is exported always imports.
+  const title = canonicalText(meta.title, 1, 60);
+  if (title === null) return { ok: false, status: 400, error: "title", detail: "1..60 characters on one line" };
   const parts: ModExportParts = {};
   const wantsInstance = inc.theme === true || inc.identity === true || (isObj(inc.widgets) && AGENT_WIDGET_SLOTS.some(s => (inc.widgets as Record<string, unknown>)[s] === true));
   let name: string | null = null;
@@ -561,7 +573,7 @@ function exportMod(ctx: WebApiContext, person: string, body: Record<string, unkn
       parts.ownerCss = { text: state.text, assets };
     }
   }
-  const built = buildModBundle({ name: meta.name, version: meta.version, title: meta.title.trim() }, parts);
+  const built = buildModBundle({ name: meta.name, version: meta.version, title }, parts);
   return built.ok ? built : { ok: false, status: built.error === "nothing_to_export" ? 400 : 409, error: built.error };
 }
 

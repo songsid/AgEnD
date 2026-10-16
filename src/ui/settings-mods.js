@@ -4,14 +4,14 @@
 // parts the person ticks are applied, all or nothing. Custom CSS from a file is never ticked by default. Installed
 // mods can be downloaded again or uninstalled (what they applied stays: Reset and the CSS controls work on it).
 // Export builds a file from what is in force now.
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { startOwnerCssTrial } from "/assets/owner-css.js";
-import { AgentWidget, checkWidget, fleetBinds } from "/assets/agent-widget.js";
+import { AgentWidget, checkWidget, fleetBinds, instanceBinds } from "/assets/agent-widget.js";
 import "./settings-strings.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -50,15 +50,45 @@ export function defaultChoice(plan) {
   return c;
 }
 
-function PlanItem({ it, choice, setChoice, binds }) {
+const COLOR = /^#[0-9a-f]{6}$/;
+/** A colour as a swatch (its fill set through the CSSOM — never a style attribute) and its hex code. */
+function Swatch({ color }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => { if (ref.current && ref.current.style && COLOR.test(color)) ref.current.style.setProperty("--sw", color); }, [color]);
+  return html`<span class="s-mod-sw"><span class="s-mod-sw-chip" ref=${ref} aria-hidden="true"></span><code>${color}</code></span>`;
+}
+/** Every field of the checked theme, as it will be applied — nothing left unseen (#1897 review). */
+export function ThemeDetail({ theme, pictures, effects }) {
+  const th = theme || {};
+  const row = (k, v) => html`<div class="s-mod-kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const pal = (mode) => {
+    const p = th.colors && th.colors[mode];
+    return p && Object.keys(p).length ? row(tn(mode === "dark" ? "modColorsDark" : "modColorsLight"), html`<span class="s-mod-sws">${Object.keys(p).map((k) => html`<span key=${k} class="s-mod-sw-item">${k} <${Swatch} color=${p[k]} /></span>`)}</span>`) : null;
+  };
+  const picOf = (id) => (pictures || []).find((p) => p.id === id);
+  const pic = (id, label) => {
+    const p = picOf(id);
+    return p ? row(label, html`<span class="s-mod-pic"><img src=${`/ui/mods/staged/${p.id}`} alt=${label} loading="lazy" /><span class="muted">${p.path} · ${kib(p.bytes)}</span></span>`) : null;
+  };
+  return html`<div class="s-mod-theme">
+    ${th.accent ? row(tn("modAccent"), html`<${Swatch} color=${th.accent} />`) : null}
+    ${pal("light")}${pal("dark")}
+    ${th.bubble ? row(tn("modBubble"), `${th.bubble.radius !== undefined ? `${th.bubble.radius}px` : ""}${th.bubble.radius !== undefined && th.bubble.border ? " · " : ""}${th.bubble.border || ""}`) : null}
+    ${th.font ? row(tn("modFont"), th.font) : null}
+    ${th.workingLabel ? row(tn("modWorkingLabel"), html`<span class="s-mod-text">${th.workingLabel}</span>`) : null}
+    ${th.background ? pic(th.background.image, tn("modBackground")) : null}
+    ${th.background ? row(tn("modBackgroundFit"), `${th.background.fit} · ${Math.round(th.background.opacity * 100)}%`) : null}
+    ${th.avatar ? pic(th.avatar, tn("modAvatar")) : null}
+    ${(effects || []).map((e, i) => html`<div key=${i}>${row(tn("modPlacesEffect"), html`<span><code>${e.effect}</code>${e.id ? html` <span class="muted">${e.id.slice(0, 8)}</span>` : null}${Object.keys(e.params || {}).length ? html` · <code>${JSON.stringify(e.params)}</code>` : null}</span>`)}</div>`)}
+    <details class="s-mod-raw"><summary>${tn("modAllFields")}</summary><pre class="s-mod-css-text">${JSON.stringify(th, null, 2)}</pre></details>
+  </div>`;
+}
+
+function PlanItem({ it, choice, setChoice, binds, fleet }) {
   const tick = (label, on, set) => html`<label class="check s-mod-tick"><input type="checkbox" checked=${on} onChange=${(e) => set(e.target.checked)} /><span>${label}</span></label>`;
   if (it.part === "theme") {
-    const th = it.theme || {};
     return html`<li class="s-mod-item">${tick(tn("modPartTheme"), choice.theme, (v) => setChoice({ ...choice, theme: v }))}
-      <div class="s-mod-detail">${th.accent ? html`<span class="s-mod-swatch-label">${tn("modAccent")} <code>${th.accent}</code></span>` : null}
-        ${th.font ? html`<span>${tn("modFont")} ${th.font}</span>` : null}
-        ${it.pictures.length ? html`<span>${tn("modPictures", it.pictures.length, kib(it.pictures.reduce((n, p) => n + p.bytes, 0)))}</span>` : null}
-        ${it.effects.length ? html`<span>${tn("modPlaces", it.effects.length)}</span>` : null}</div></li>`;
+      <div class="s-mod-detail"><${ThemeDetail} theme=${it.theme} pictures=${it.pictures} effects=${it.effects} /></div></li>`;
   }
   if (it.part === "identity") {
     return html`<li class="s-mod-item">${tick(tn("modPartIdentity"), choice.identity, (v) => setChoice({ ...choice, identity: v }))}
@@ -67,7 +97,7 @@ function PlanItem({ it, choice, setChoice, binds }) {
   if (it.part === "widget") {
     const w = checkWidget(it.slot, { spec: it.spec, data: it.data });
     return html`<li class="s-mod-item">${tick(tn(`modPartWidget_${it.slot}`), !!choice.widgets[it.slot], (v) => setChoice({ ...choice, widgets: { ...choice.widgets, [it.slot]: v } }))}
-      <div class="s-mod-detail s-mod-widget">${w ? html`<${AgentWidget} slot=${it.slot} widget=${w} binds=${binds} />` : null}</div></li>`;
+      <div class="s-mod-detail s-mod-widget">${w ? html`<${AgentWidget} slot=${it.slot} widget=${w} binds=${it.slot === "sidebar" ? fleet : binds} />` : null}</div></li>`;
   }
   if (it.part === "effect") {
     return html`<li class="s-mod-item">${tick(tn("modPartEffect", it.title), choice.effects, (v) => setChoice({ ...choice, effects: v }))}
@@ -95,12 +125,21 @@ function Plan({ staged, onDone }) {
     setBusy(true); setError("");
     const r = await postJson("/ui/mods/commit", { stage: staged.stage, plan_hash: staged.plan_hash, include: choice, ...(toInstance ? { target } : {}) });
     setBusy(false);
-    if (!r.ok) { setError(why(r.body)); return; }
+    // The stage this plan shows is gone or no longer this plan (replaced on another device, expired): read again —
+    // the page then shows whatever is staged now, with its own, fresh choices (keyed by stage).
+    if (!r.ok) { setError(why(r.body)); if (r.status === 404 || (r.body && r.body.error === "plan_changed")) onDone(); return; }
     if (r.body.css) { startOwnerCssTrial(r.body.css.trial, r.body.css.sha, r.body.css.previous); toast(tn("cssTrying")); }
     toast(tn("modInstalled", plan.mod.title));
     onDone();
   };
-  const cancel = async () => { await postJson("/ui/mods/abort", { stage: staged.stage }); onDone(); };
+  const cancel = async () => {
+    const r = await postJson("/ui/mods/abort", { stage: staged.stage });
+    // Not this stage any more (another device staged a file meanwhile): say so, then show what is staged now.
+    if (!r.ok) toast(r.status === 404 ? tn("modStageGone") : why(r.body), false);
+    onDone();
+  };
+  const inst = (app.instances || []).find((i) => i.name === target) || null;
+  const binds = inst ? instanceBinds(inst, app.exec && app.exec[inst.name], app.awaiting && Object.prototype.hasOwnProperty.call(app.awaiting, inst.name) ? app.awaiting[inst.name] : null) : {};
   const m = plan.mod;
   return html`<div class="s-mod-plan" role="group" aria-label=${tn("modPlan")}>
     <h4>${m.title} <span class="muted">${m.name} ${m.version}</span></h4>
@@ -108,7 +147,7 @@ function Plan({ staged, onDone }) {
     ${m.description ? html`<p class="sub s-mod-text">${m.description}</p>` : null}
     <p class="sub">${tn("modSizeId", kib(m.bytes), m.id.slice(0, 8))}${m.installed ? ` · ${tn("modAlready")}` : ""}</p>
     ${m.replaces ? html`<label class="check"><input type="checkbox" checked=${choice.replace} onChange=${(e) => setChoice({ ...choice, replace: e.target.checked })} /><span>${tn("modReplace", m.replaces.version)}</span></label>` : null}
-    <ul class="s-mod-items">${plan.items.map((it, i) => html`<${PlanItem} key=${i} it=${it} choice=${choice} setChoice=${setChoice} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} />`)}</ul>
+    <ul class="s-mod-items">${plan.items.map((it, i) => html`<${PlanItem} key=${i} it=${it} choice=${choice} setChoice=${setChoice} binds=${binds} fleet=${fleetBinds(app.instances, app.exec, app.awaiting)} />`)}</ul>
     ${toInstance ? html`<label class="field"><span>${tn("modTarget")}</span>
       <select value=${target} onChange=${(e) => setTarget(e.target.value)}><option value="">${tn("modTargetPick")}</option>${names.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}</select></label>` : null}
     ${toInstance && !target ? html`<p class="sub">${tn("modTargetNeeded")}</p>` : null}
@@ -187,7 +226,7 @@ export function ModsCard() {
   };
   return html`<section class="card s-appearance s-mods"><h3>${tn("modsTitle")}</h3>
     <p class="sub">${tn("modsLead")}</p>
-    ${state.staged ? html`<${Plan} staged=${state.staged} onDone=${load} />` : html`<div class="s-mod-import">
+    ${state.staged ? html`<${Plan} key=${state.staged.stage} staged=${state.staged} onDone=${load} />` : html`<div class="s-mod-import">
       <label class="btn"><${Icon} name="attach" size=${16} /><span>${tn("modChoose")}</span>
         <input ref=${file} type="file" accept=".json,application/json" class="sr-only" disabled=${busy} onChange=${stage} /></label></div>`}
     ${error ? html`<p class="err s-mod-err" role="alert">${error}</p>` : null}

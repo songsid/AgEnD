@@ -31,6 +31,8 @@ const SHA = /^[0-9a-f]{32}$/;
  */
 export interface OwnerCssPointer {
   ownerCssActive(person: string): string | null;
+  /** r4-5: the trial pointer, read for a transaction's snapshot. */
+  ownerCssTrial?(person: string): string | null;
   setOwnerCss(person: string, change: { active?: string | null; trial?: string | null }): { ok: true } | { ok: false; status: 400 | 503; error: string };
 }
 /**
@@ -52,6 +54,8 @@ export interface OwnerCssState {
   assets: Array<{ id: string; kind: MediaKind; bytes: number }>;
   limits: { maxBytes: number; maxAssets: number; maxAssetBytes: number; versions: number };
 }
+/** r4-5: a person's owner-CSS state as a mod import found it (opaque to callers). */
+export interface OwnerCssSnapshot { index: Index; active: string | null; trial: string | null; texts: Map<string, string> }
 export type OwnerCssResult<T> = ({ ok: true } & T) | { ok: false; status: 400 | 404 | 409 | 413 | 503; error: string; detail?: string };
 
 const hash32 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex").slice(0, 32);
@@ -114,6 +118,31 @@ export class OwnerCssStore {
     void _done;
     this.writeIndex(person, rest);
     return true;
+  }
+
+  /**
+   * r4-5: everything a mod import may change for this person, to put back exactly if the import fails later: the index
+   * (versions, assets, a trial), both pointers, and the text of every kept version (a save may drop the oldest's file).
+   */
+  snapshot(person: string): OwnerCssSnapshot {
+    const index = this.readIndex(person);
+    const texts = new Map<string, string>();
+    for (const v of index.versions) { const t = this.readText(person, v.sha); if (t !== null) texts.set(v.sha, t); }
+    return { index: JSON.parse(JSON.stringify(index)) as Index, active: this.pointer.ownerCssActive(person), trial: this.pointer.ownerCssTrial?.(person) ?? null, texts };
+  }
+  /** Put a snapshot back: texts, index, pointers; versions and assets added since are removed. */
+  restoreSnapshot(person: string, snap: OwnerCssSnapshot): OwnerCssResult<Record<never, never>> {
+    const now = this.readIndex(person);
+    try {
+      for (const [sha, text] of snap.texts) if (this.readText(person, sha) !== text) { mkdirSync(this.dir(person), { recursive: true, mode: 0o700 }); atomicWriteFileSync(join(this.dir(person), `${sha}.css`), text, { mode: 0o600 }); }
+      this.writeIndex(person, snap.index);
+    } catch (err) { return { ok: false, status: 503, error: "owner_css_restore_failed", detail: (err as Error).message }; }
+    const set = this.pointer.setOwnerCss(person, { active: snap.active, trial: snap.trial });
+    if (!set.ok) return set;
+    for (const v of now.versions) if (!snap.texts.has(v.sha)) { try { unlinkSync(join(this.dir(person), `${v.sha}.css`)); } catch { /* none */ } }
+    const kept = new Set(snap.index.assets.map(a => a.id));
+    for (const a of now.assets) if (!kept.has(a.id)) { try { unlinkSync(join(this.dir(person), "assets", `${a.id}.${MEDIA_EXT[a.kind]}`)); } catch { /* none */ } }
+    return { ok: true };
   }
 
   /** The version in force (a kept one), or null — what the page links at load. */
