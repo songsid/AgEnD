@@ -150,6 +150,7 @@ graph LR
 
 ## Requirements
 
+- macOS, or Linux with glibc and systemd. musl Linux such as Alpine, and Linux hosts without systemd, are not supported ([details](docs/upgrade-2.2.md#1-before-you-upgrade)).
 - Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - One of the supported AI coding CLIs (installed and authenticated)

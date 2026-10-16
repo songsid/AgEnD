@@ -8,12 +8,17 @@
 
 **Node。**
 - 在 **Linux（glibc 2.28 以上）和 macOS 11 以上的 x64 或 arm64** 上，AgEnD 2.2 自帶 Node 22.23.3（`@songsid/agend-node-<os>-<cpu>`，會隨 AgEnD 一起安裝），不管 PATH 上是哪個 Node，都用自帶的那個執行。你不需要自己升級 Node。
-- **其他平台**（musl Linux 例如 Alpine、32 位元、其他系統）需要 PATH 上的 Node 是 **22.14 以上**（或 23.6+、24+），版本太舊時會拒絕安裝。
+- **其他平台**（32 位元、其他系統）需要 PATH 上的 Node 是 **22.14 以上**（或 23.6+、24+），版本太舊時會拒絕安裝。
+
+**不支援：musl Linux（例如 Alpine），以及沒有 systemd 的 Linux 主機。** 在這些環境上 AgEnD 也許還裝得起來（PATH 上有 Node 22.14+ 時），但沒有測試過，也不保證能用。
+> **如果你還是要在這些環境上跑**，有兩個已知問題可以這樣處理：
+> - 從 2.1.x 更新後 fleet 沒有重啟，`agend start` 也拒絕啟動（「Failed to start the installed AgEnD service」），因為更新在沒有 systemd 的主機上留下了 systemd unit 檔。刪掉它再啟動：`rm ~/.config/systemd/user/com.agend.fleet.service && agend start`。
+> - 在 Alpine 上 `agend update` 停在「this process's own start time cannot be read」：BusyBox 的 `ps` 沒有 `lstart`。先安裝完整的 `ps`：`apk add procps`。
 
 **從 2.1.12、且主機屬於內建 Node 的平台（Linux glibc 2.28 以上、macOS 11 以上的 x64 或 arm64）升級：** 在聊天室輸入 `/update`，或在主機執行 `agend update`。
 2.1.12 的更新程式會刷新服務設定並重啟 fleet，在這些平台上這樣就夠了。
 
-**從 2.1.0–2.1.11 升級、或從任何 2.1.x 在沒有內建 Node 的平台（musl Linux、32 位元、或 PATH 上的 Node 低於 22.14）升級：** 請按照以下的[手動升級](#2-進階手動升級)流程操作。這些較舊的更新程式和不支援的 Node 情況，正是「先移除後安裝失敗」最容易發生的地方。
+**從 2.1.0–2.1.11 升級、或從任何 2.1.x 在沒有內建 Node 的平台（32 位元、或 PATH 上的 Node 低於 22.14）升級：** 請按照以下的[手動升級](#2-進階手動升級)流程操作。這些較舊的更新程式和不支援的 Node 情況，正是「先移除後安裝失敗」最容易發生的地方。
 
 > **如果 `/update` 或 `agend update` 失敗：**
 > 2.1 的更新程式會*先*移除已安裝的 AgEnD，再安裝新版。之後的安裝只要因為任何原因失敗，就什麼都不剩。正在跑的 fleet 只能撐到下一次重啟或登入，之後服務就無法啟動。如果是 AgEnD 2.2 拒絕安裝，訊息會包含恢復指令；其他情況（網路、npm 錯誤），請自行執行——或是參閱[第 7 節](#7-如果從-21-執行-agend-update-已經失敗)的完整恢復步驟：

@@ -8,12 +8,17 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 
 **Node.**
 - On **Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64**, AgEnD 2.2 brings its own Node 22.23.3 (`@songsid/agend-node-<os>-<cpu>`, installed with it) and runs on that, whatever Node is on your PATH. You do not need to upgrade Node yourself.
-- **Anywhere else** (musl Linux such as Alpine, 32-bit, other systems), AgEnD 2.2 needs Node **22.14 or newer** (or 23.6+, or 24+) on your PATH, and refuses to install on an older one.
+- **Anywhere else** (32-bit, other systems), AgEnD 2.2 needs Node **22.14 or newer** (or 23.6+, or 24+) on your PATH, and refuses to install on an older one.
+
+**Not supported: musl Linux such as Alpine, and Linux hosts without systemd.** AgEnD may still install there (on a PATH Node 22.14+), but it is not tested and not promised to work.
+> **If you run it there anyway**, two known problems have a workaround:
+> - After updating from 2.1.x, the fleet does not restart and `agend start` refuses ("Failed to start the installed AgEnD service"), because the update left a systemd unit file on a host with no systemd. Remove it, then start: `rm ~/.config/systemd/user/com.agend.fleet.service && agend start`.
+> - On Alpine, `agend update` stops with "this process's own start time cannot be read": BusyBox `ps` has no `lstart`. Install the full `ps` first: `apk add procps`.
 
 **Upgrading from 2.1.12 on a built-in-Node platform (Linux glibc 2.28+, macOS 11+, x64 or arm64):** upgrade with `/update` in chat, or `agend update` on the host.
 2.1.12's updater refreshes the service settings and restarts the fleet on these platforms, so this is all you need.
 
-**Upgrading from 2.1.0–2.1.11, or from any 2.1.x on a platform without a built-in Node** (musl Linux, 32-bit, or a PATH Node below 22.14): use the [manual upgrade](#2-advanced-manual-upgrade) procedure below. Those older updaters and unsupported-Node cases are where "remove before install" fails most easily.
+**Upgrading from 2.1.0–2.1.11, or from any 2.1.x on a platform without a built-in Node** (32-bit, or a PATH Node below 22.14): use the [manual upgrade](#2-advanced-manual-upgrade) procedure below. Those older updaters and unsupported-Node cases are where "remove before install" fails most easily.
 
 > **If `/update` or `agend update` fails:**
 > 2.1's updater removes the installed AgEnD *before* installing the new one. If the install fails for any reason, nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. If AgEnD 2.2 rejected the install, its message includes recovery commands. For other failures (network, npm error), run these yourself — or see [section 7](#7-if-agend-update-from-21-already-failed) for the full recovery steps:

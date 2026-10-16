@@ -12,7 +12,7 @@ AgEnD 把你的 AI coding agent 變成系統服務，放進 Telegram 或 Discord
 - 要從 Telegram 或 Discord 聊天：Telegram bot token（跟 [@BotFather](https://t.me/BotFather) 要）或 Discord bot token。沒有 bot 也能只用網頁儀表板，見[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 - 至少一個已安裝並登入的 AI coding CLI — 見[安裝後端](#安裝後端)
 
-支援 macOS 和 Linux。不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
+支援 macOS 和 Linux。不支援 musl Linux（例如 Alpine）與沒有 systemd 的 Linux 主機：AgEnD 也許裝得起來，但沒有測試過，也不保證能用。同樣不支援原生 Windows：請在 WSL 裡執行 AgEnD，[Windows 安裝指南](/AgEnD/zh-tw/install-windows/)會幫你設好。
 
 ## 安裝
 
