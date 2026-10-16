@@ -53,8 +53,10 @@ export interface AppearanceInput {
   locked: boolean;
   agentEdit: boolean;
   limits: Record<string, unknown>;
+  /** r4-4: its placed widgets, by slot. */
+  widgets?: Partial<Record<"chat_header" | "details", { spec: unknown; data: unknown; by: string }>>;
 }
-/** get_web_appearance's answer. Effects and widgets: none can be applied yet (r4-4 waits on the effects runtime). */
+/** get_web_appearance's answer. Effects: none can be applied yet (they wait on the effects runtime). */
 export function appearanceView(i: AppearanceInput): Record<string, unknown> {
   const card: Record<string, unknown> = {};
   for (const k of ["portrait", "banner"] as const) if (i.card[k]) card[k] = { id: i.card[k]!.id, by: i.card[k]!.by, url: i.card[k]!.src };
@@ -69,8 +71,8 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
     working_label: i.theme.workingLabel ?? null,
     background: i.theme.background ? { image: i.theme.background.image, fit: i.theme.background.fit, opacity: i.theme.background.opacity } : null,
     effects: [],
-    widgets: [],
-    shown_when: "A viewer who turned off \"Show agents' themes and effects\", or a page opened with ?safe=1, sees the default look, the bot's face and no card colours.",
+    widgets: (["chat_header", "details"] as const).flatMap(slot => { const w = i.widgets?.[slot]; return w ? [{ slot, by: w.by, spec: w.spec, data: w.data }] : []; }),
+    shown_when: "A viewer who turned off \"Show agents' themes, effects and widgets\", or a page opened with ?safe=1, sees the default look, the bot's face, no card colours and no widgets.",
     locked: i.locked,
     agent_edit: i.agentEdit,
     limits: i.limits,

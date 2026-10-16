@@ -735,14 +735,14 @@ export function handleWebRequest(
   }
 
   // ── #1629: agents' themes — read by every page (the public link included: it views them), changed by a person ──
-  // GET /ui/themes: { rev, themes, locked } when the status frame's themes_rev moves (passive, web-auth.ts).
+  // GET /ui/themes: { rev, themes, locked, widgets } when the status frame's themes_rev moves (passive, web-auth.ts).
   // GET /ui/img/theme/<instance>/<id>: a theme's picture (same headers as #1630's images; the id is the content hash).
-  // POST /ui/themes/<instance>/reset | lock: a person's, from an admin session — never the CLI token, never the public
+  // POST /ui/themes/<instance>/reset | lock | widget (r4-4: { slot } — take an agent's widget out): a person's, from an admin session — never the CLI token, never the public
   // link (absent from its manifest, and refused here too).
   if (method === "GET" && path === "/ui/themes") {
     const store = ctx.themeStore;
     if (!store) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
-    json(res, 200, { rev: store.rev(), themes: store.themes(), locked: store.lockedNames() });
+    json(res, 200, { rev: store.rev(), themes: store.themes(), locked: store.lockedNames(), widgets: store.widgets() });
     return true;
   }
   const themeImage = path.match(/^\/ui\/img\/theme\/([^/]+)\/([0-9a-f]{32})$/);
@@ -759,7 +759,7 @@ export function handleWebRequest(
     res.end(image.bytes);
     return true;
   }
-  const themeWrite = path.match(/^\/ui\/themes\/([^/]+)\/(reset|lock)$/);
+  const themeWrite = path.match(/^\/ui\/themes\/([^/]+)\/(reset|lock|widget)$/);
   if (method === "POST" && themeWrite) {
     const service = ctx.webAppearance;
     if (!service) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
@@ -781,6 +781,7 @@ export function handleWebRequest(
       if (now !== 200) { json(res, now, { error: now === 401 ? WEB_TOKEN_INVALID_MESSAGE : "theme_needs_an_admin_session" }); return; }
       if (!ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return; }
       const r = themeWrite[2] === "reset" ? service.humanReset(name)
+        : themeWrite[2] === "widget" ? service.humanRemoveWidget(name, body.slot)
         : typeof body.locked === "boolean" ? service.humanLock(name, body.locked) : { error: "locked: true or false", status: 400 };
       if (typeof r.error === "string") { json(res, typeof r.status === "number" ? r.status : 503, { error: r.error }); return; }
       json(res, 200, r);

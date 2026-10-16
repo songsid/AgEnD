@@ -52,6 +52,8 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "Your identity card on the web goes inside `set_web_theme`'s `set`: `set_web_theme({ set: { card: { tagline, bio, portrait, banner } } })` (portrait and banner are ids from `set_web_theme_asset` with the slots `portrait` and `banner`). A person's card field wins over yours." },
   { id: "2.3-web-appearance", since: "2.3.0-alpha.1",
     text: "`get_web_appearance` shows how you appear on the web dashboard now (your face and where it comes from, ring, card, theme per mode, lock, limits); `preview_web_appearance` (`modes`) writes an SVG per mode to `.agend/appearance/` in your working directory, with the pictures it shows beside it, and returns their paths (Read the pictures as images)." },
+  { id: "2.3-web-widget", since: "2.3.0-alpha.1",
+    text: "Widgets on the web dashboard: `set_web_widget({ slot: \"chat_header\" | \"details\", spec, data })` places a small panel the dashboard draws itself, under your chat header or on your Details page. The spec is `{ v: 1, title, items: [{ type: stat|progress|text|list|badge|spark, label, key | bind }] }`: no HTML, script or CSS. `bind` shows your own `state`, `context_pct` or `cost_usd`. `set_web_widget({ slot, data })` alone updates the values, at most every 10 s, apart from theme changes. `remove_web_widget` takes it out. See the `web-appearance` skill." },
 ];
 
 /**

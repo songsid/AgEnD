@@ -394,6 +394,8 @@ export async function dispatchAgentOperation(
   if (op === "theme-reset") return ctx.handleWebThemeHttp(instance, "reset_web_theme", {});
   if (op === "appearance-get") return ctx.handleWebThemeHttp(instance, "get_web_appearance", {});
   if (op === "appearance-preview") return ctx.handleWebThemeHttp(instance, "preview_web_appearance", args);
+  if (op === "widget-set") return ctx.handleWebThemeHttp(instance, "set_web_widget", args);
+  if (op === "widget-remove") return ctx.handleWebThemeHttp(instance, "remove_web_widget", args);
   if (op === "emoji-preview") {
     return ctx.handlePreviewEmojisHttp(instance, args);
   }

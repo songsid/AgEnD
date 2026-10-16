@@ -18,6 +18,7 @@ import { HeaderTools } from "/assets/header-tools.js";
 import { Menu } from "/assets/ui-menu.js";
 import { themeMenuItems, themesStore } from "/assets/app-themes.js";
 import { IdentityCard, useCard } from "/assets/identity-card.js";
+import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
 import "./chat-strings.js";
@@ -151,6 +152,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   }
   return html`<div class="panel p-details">
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />${content}</div></div>
+    <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
+      <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}</div></div>
   </div>`;
 }

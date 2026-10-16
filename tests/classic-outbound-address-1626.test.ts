@@ -81,6 +81,7 @@ const samples: Record<string, Record<string, unknown>> = {
   set_description: { description: "test" }, checkout_repo: { source: "/fixture/repo" },
   get_web_theme: {}, set_web_theme: { set: { font: "mono" } }, set_web_theme_asset: { slot: "avatar", file: "a.png" }, reset_web_theme: {},
   get_web_appearance: {}, preview_web_appearance: { modes: ["dark"] },
+  set_web_widget: { slot: "details", data: { prs: 1 } }, remove_web_widget: { slot: "details" },
   release_repo: { path: "/fixture/worktree" }, deploy_template: { template: "test", directory: "/fixture/repo" },
   teardown_deployment: { name: "test" }, list_deployments: {},
 };

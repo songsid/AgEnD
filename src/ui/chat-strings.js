@@ -90,6 +90,7 @@ register("chat", {
     themeResetConfirm: "Reset {0}'s theme to the default? Its colours, picture and working label go; a lock stays.",
     themeResetDone: "{0}'s theme was reset.", themeLocked: "{0}'s theme is locked: the agent can't change it.", themeUnlocked: "{0}'s theme is unlocked.",
     themeFailed: "The theme was not changed ({0}).",
+    widgetRemoveHeader: "Remove the chat header widget", widgetRemoveDetails: "Remove the Details widget", widgetRemoved: "{0}'s widget was removed.",
     configured: "(configured)", fleetDefault: "(fleet default)",
   },
   "zh-TW": {
@@ -177,6 +178,7 @@ register("chat", {
     themeResetConfirm: "要把 {0} 的主題重設為預設嗎？顏色、圖片和處理中文字都會移除；鎖定會保留。",
     themeResetDone: "已重設 {0} 的主題。", themeLocked: "已鎖定 {0} 的主題：agent 無法變更。", themeUnlocked: "已解除 {0} 的主題鎖定。",
     themeFailed: "主題沒有變更（{0}）。",
+    widgetRemoveHeader: "移除聊天標頭的小工具", widgetRemoveDetails: "移除詳細資料頁的小工具", widgetRemoved: "已移除 {0} 的小工具。",
     configured: "（設定值）", fleetDefault: "（fleet 預設）",
   },
 });
