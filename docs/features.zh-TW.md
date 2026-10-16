@@ -219,12 +219,12 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 
 ## 點對點 Agent 協作 (Peer-to-peer agent collaboration)
 
-每個 instance 都是平等的對等節點，可以找到、喚醒、建立其他 instance，也能傳訊息給它們。不需要中央調度器，協作是從每個 agent 手上的工具自然形成的。
+Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕並傳訊；建立、啟動或喚醒 instance 則需要對應的管理工具權限。見[工具權限組](features.zh-TW.md#工具權限組合-tool-profiles)。
 
 **核心 MCP 工具：**
 
 - `list_instances` — 找出所有已設定的 instance（執行中或已停止），附上狀態、工作目錄和最後活動時間
-- `send_to_instance` — 傳訊息給另一個 instance 或外部 session；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
+- `send_to_instance` — 傳訊息給另一個 fleet instance；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
 - `start_instance` — 喚醒已停止的 instance，好讓你傳訊息給它
 - `create_instance` — 建立新 instance 和它的 topic（目錄可省略；省略時自動建立 `~/.agend/workspaces/<name>`）；支援用 `branch` 建立 git worktree 隔離
 - `delete_instance` — 移除 instance 和它的 topic
@@ -261,7 +261,7 @@ agent 可以提供讓人點選、而不必打字的選項（2.2）。同一組�
 - `consumed_at` / `consumed_via`：steer 或交給原生佇列的訊息，早在模型讀到之前就已被 CLI 收進輸入；Claude Code 會在下一個工具結束時或回合結束時才取用。當 CLI 的 transcript（claude-code、codex）顯示這則投遞自己的 marker 被取用，就記下時間，以及它是作為自己的回合（`turn`）還是併入進行中的回合（`mid_turn`）。這也是唯一能把 `uncertain` 變成 `delivered` 的情況；此時尚未寄給寄件者的失敗通知會被撤回。找不到 marker 絕不改變任何紀錄。
 - `waiting_reason`（#1641）：在 `queued` 或 `retry_wait` 的紀錄上，以文字說明目標為什麼沒有接收（「CLI 看起來卡住了。」、已暫停、有對話框、登入失敗），只是單純排在後面時為 null。常駐的目標若有排隊中的工作因為這類原因等了 30 分鐘，會在它的主題通知一次。
 
-instance 只看得到自己送出或收到的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet：回傳「Delivery not found」就代表不是。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
+Instance 可看到自己送出、收到，或經 `forwards` 明確授權的紀錄（身分取自它自己的 socket 或 token，絕不取自參數）。用收到的訊息的 `message_id` 去查，就能確認同伴傳來的訊息真的經過 fleet："Delivery not found" 可能是 ACL 隱藏、紀錄過期，或沒有投遞，不能證明從未投遞。無法驗證時不要行動，請對方明確 forward 可驗證的參照。每種工具權限組合都有 `delivery_status`，連 `minimal` 也有。
 
 `send_to_instance` 和 `delegate_task` 支援選填的 `forwards` 清單，最多 16 個寄件者已能讀取的已投遞訊息 ID。收件者就能用 `delivery_status` 查那些 ID，包括使用者授權收據（`verification_id` / `agend-human-id`）。轉發鏈的每一跳都要明確列在 `forwards`；把 ID 寫在訊息文字裡不授予任何權限。使用者收據分開保存原始身分、adapter、平台與內容，缺乏 owner 綁定的正向證據時維持 uncertain。完整說明見 [cross-instance-messaging.md](cross-instance-messaging.md) 與 [delivery-verification.zh-TW.md](delivery-verification.zh-TW.md)。
 
@@ -339,7 +339,7 @@ daemon 會用分層的環境變數，自動把外部 session 和內部 session �
 
 內部 session 的 `AGEND_INSTANCE_NAME` 由 daemon 注入 tmux 的 shell 環境。外部 session 沒有這個變數，所以會退回 `AGEND_SESSION_NAME`（有設定的話），否則就用工作目錄加上 MCP server 的 PID 自動產生名稱，同一個專案裡的兩個 session 才不會撞名。因此同一份 `.mcp.json` 在內部和外部 session 會得到不同的身分，不會有設定衝突。
 
-外部 session 會出現在 `list_instances` 裡，也可以當作 `send_to_instance` 的目標。
+外部 session 可登錄身分、出現在 `list_instances`，並呼叫允許的 fleet 工具。登錄本身不會建立通往該外部 CLI 目前對話的可驗證收件路徑；不要依賴 `send_to_instance` 在那裡提交回合。
 
 ## 工具權限組合 (Tool profiles)
 
@@ -347,13 +347,13 @@ agent 能做什麼，由每個 instance 的 `tool_set` 決定，而且是由 fle
 
 | 權限組合 | 怎麼取得 | 內容 |
 |---|---|---|
-| `worker` | **預設** | 和人與同伴對話、讀取 fleet 狀態、完成工作。包括 `reply`、`send_to_instance`、`broadcast`、`report_result`、`request_information`、`delegate_task`、`delivery_status`、`task`、`post_decision`、`checkout_repo` / `release_repo`，以及所有唯讀查詢，其中也有 `list_schedules` 和 `list_deployments`，所以看得到有哪些東西，但不能更改。從 2.1.6 起，它也能建立和修改以自己為目標的排程（#896），還能列出、預覽並設定自己的 persona emoji，以及列出和預覽貼圖。共 38 個工具。 |
+| `worker` | **預設** | 和人與同伴對話、讀取 fleet 狀態、完成工作。包括 `reply`、`send_to_instance`、`broadcast`、`report_result`、`request_information`、`delegate_task`、`delivery_status`、`task`、`post_decision`、`checkout_repo` / `release_repo`，以及所有唯讀查詢，其中也有 `list_schedules` 和 `list_deployments`，所以看得到有哪些東西，但不能更改。從 2.1.6 起，它也能建立和修改以自己為目標的排程（#896），還能列出、預覽並設定自己的 persona emoji，以及列出和預覽貼圖。共 39 個工具。 |
 | `coordinator` | `tool_set: coordinator` | worker 有的全部，再加上管理 fleet 的動詞：建立／刪除／替換／啟動／停止／重啟／喚醒 instance、部署和拆除模板、team 的增刪改查、建立和修改排程、`update_instance_config`、`update_fleet_defaults`、`update_decision`。 |
 | `full` | `tool_set: full` | AgEnD 的所有工具。 |
 
-**`coordinator` 和 `full` 目前是同樣的 54 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
+**`coordinator` 和 `full` 目前是同樣的 55 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
 
-`standard`（29 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
+`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
 
 `delegate_task` 刻意設計成 worker 工具。它不建立任何東西、不刪除任何東西，而且目標必須已經存在，所以一般 agent 可以把工作交給同伴，卻不能自己生出一個同伴。
 
@@ -537,7 +537,7 @@ defaults:
 - **Topic 模式**：每個 instance 對應「AgEnD Agents」分類（可用 `options.category_name` 改名）底下的一個文字頻道，另有一個 General 頻道。
 - **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。`/start` 之後預設開啟 collab 模式，只有 @ 這個 bot 才會觸發 agent。
 - **同一個伺服器放多個 bot**：每個 bot 是 `channels[]` 裡獨立的一項；bot 只回應提到自己的訊息，絕不替別的 bot 回答。
-- **斜線指令**：共 28 個，包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
+- **斜線指令**：共 29 個名稱（28 個命令加上 `/web` 別名），包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
 - **按鈕與選單**：權限核准（Allow / Always / Deny）、後端選單、取消，以及 hang / model / effort 選擇器。
 - **Reaction**：對 bot 訊息按的 reaction（包括其他 bot 按的）會轉給 agent；投遞狀態戳記可依 instance 或頻道設定；persona emoji 可以用伺服器 emoji。
 - **附件**：圖片、檔案和音訊都會下載；轉傳的訊息會保留圖片；回覆一張圖片時會把那張圖一起帶上。
@@ -622,11 +622,11 @@ resume 預算、resume 重試和故障短路只針對 kiro（屬於後端能力�
 
 ## agend quickstart
 
-簡化成 4 個問題的設定精靈，專為新使用者設計。它會自動偵測已安裝的後端、透過 `getUpdates` 輪詢自動找出 Telegram 群組 ID，並產生一份帶有合理預設值的精簡 `fleet.yaml`。它取代 9 步驟的 `agend init`，成為建議的入門方式。
+建議的入門精靈會偵測已安裝的 backend，並產生精簡的 `fleet.yaml`。Telegram 從 `/start` 訊息找出群組與使用者；Discord 從伺服器訊息或私訊偵測帳號，請你明確確認，失敗時改為必填且驗證 snowflake 的手動輸入。網頁精靈也必須填有效的管理員 ID。
 
 ## Web Dashboard
 
-Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`，只用來辨認；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
+Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板。其中的 `/ui` 就是**網頁聊天**：選一個 instance，就能在瀏覽器裡跟它對話。這和那個 instance 在 Telegram 或 Discord 上的是同一段對話：從網頁送出的訊息會以 `🌐 web · <你的名字>: …` 出現在 topic，Agent 的回覆兩邊都看得到。用 `/web` 的驗證碼登入時，對 Agent 來說你就是你的 Discord 或 Telegram 帳號（用它的使用者 id，`via web`，只用來辨認；見 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md#agent-看到的是誰1827)）。可以傳檔案和圖片（📎、貼上或拖進來）、按 Stop，也看得到每則訊息送到哪一步；沒有設定任何聊天平台的 fleet，也能只靠儀表板操作。`/view` 是以檢視為主的總覽，`/settings` 是 fleet 設定。
 
 用一次性登入碼登入：傳 `/web`（fleet 管理員），或在主機上執行 `agend web`。要從手機或其他電腦使用，請看[從別的裝置連線](web-dashboard.zh-TW.md#從別的裝置連線)。完整說明在 [web-dashboard.zh-TW.md](web-dashboard.zh-TW.md)。
 
@@ -846,7 +846,7 @@ instances:
     systemPrompt: "file:prompts/role.md"
 ```
 
-相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。2.1.13 之前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。保留一個版本的相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。這個退回機制會在 2.2 移除。
+相對路徑以 **instance 的 `working_directory`** 為基準（#1314）；`~/` 與絕對路徑照原樣使用。這個目錄只是相對路徑的*起點*，不是邊界：`../` 與符號連結可以離開它，就像絕對路徑可以指向 fleet 使用者讀得到的任何檔案一樣。`~name/`（其他使用者的家目錄）不支援，會發出警告並拒絕，絕不會當成名為 `~name` 的目錄來讀。這項變更以前是以 fleet 程序的目前目錄為基準（安裝的服務下是 `~/.agend`，手動執行 `agend fleet start` 時是 shell 所在目錄）。為了相容：相對路徑在 working_directory 下找不到檔案、但舊的 fleet 目錄下有時，仍會改用舊檔案，log 會列出兩個路徑，並在該 instance 的主題通知一次。2.2 目前仍實作這個退回機制；請將檔案移到 instance 的工作目錄以消除警告。
 
 可以用逗號串接多個部分（`"file:a.md, file:b.md"`，中間也可以夾行內文字），各部分之間以空行連接。**只有至少一個部分是 `file:` 參照時**才會以逗號切分，所以像 `"You are Kuro, a careful reviewer"` 這樣的行內提示會維持一段。讀不到、超過 256 KiB，或不是一般檔案（例如 FIFO 或裝置，開啟時不會阻塞）的檔案不會貢獻任何內容；log 會列出它的路徑與錯誤（絕不列出內容），設定驗證也會對找不到檔案的參照發出警告。`workflow: "file:…"` 設定也用同樣的方式讀檔。
 
@@ -906,7 +906,7 @@ instances:
 
 用 `/login muse` 安裝，或在 shell 執行：`mkdir -p "$HOME/.local/bin" && curl -fsSL https://api.meta.ai/muse-launcher.sh -o "$HOME/.local/bin/muse" && chmod +x "$HOME/.local/bin/muse" && MUSE_LAUNCHER_INSTALL=1 "$HOME/.local/bin/muse"`。launcher 會把執行檔放在自己旁邊，所以要先存成 `~/.local/bin/muse`；如果直接 pipe 給 `bash`，它會下載到目前的目錄。安裝後用 `muse login` 登入，`/login` 目前還不支援 muse 的登入。Muse 採取「併入」而不是排隊：turn 進行中傳來的訊息會被納入這一輪，所以 `/steer` 可以使用（已在 muse 1.3.0 驗證）。`/clear` 會開始新的對話。訂閱用量會從 muse 的回應串流轉送到 `/usage`。
 
-`skip_permissions: false` 時，「Would you like to run the following command?」批准提示會被認出來是等人處理的 permission 互動（#1715）：顯示期間暫停投遞、出現在「需要你處理」、AgEnD 絕不代答。背景任務執行中下 `/quit` 時，「Local work is still active」確認選單會被認出來並明確處理（#1716）：顯示期間暫停投遞，stop 以 Escape 取消選單而不代選任何選項，被結束的背景工作也會回報到 instance 的 topic，不會靜默消失。`/model` 從 muse 本機的 provider catalog 讀取模型清單，因此新模型重啟後即可顯示，不需要更新程式（#1796）。
+`skipPermissions: false` 時，「Would you like to run the following command?」批准提示會被認出來是等人處理的 permission 互動（#1715）：顯示期間暫停投遞、出現在「需要你處理」、AgEnD 絕不代答。背景任務執行中下 `/quit` 時，「Local work is still active」確認選單會被認出來並明確處理（#1716）：顯示期間暫停投遞，stop 以 Escape 取消選單而不代選任何選項，被結束的背景工作也會回報到 instance 的 topic，不會靜默消失。`/model` 從 muse 本機的 provider catalog 讀取模型清單，因此新模型重啟後即可顯示，不需要更新程式（#1796）。
 
 ## Grok Build 後端 (Grok Build backend)
 

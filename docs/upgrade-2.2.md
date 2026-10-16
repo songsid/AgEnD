@@ -15,10 +15,13 @@ This page is what to do, in order. For the full list of changes, see the [CHANGE
 > - After updating from 2.1.x, the fleet does not restart and `agend start` refuses ("Failed to start the installed AgEnD service"), because the update left a systemd unit file on a host with no systemd. Remove it, then start: `rm ~/.config/systemd/user/com.agend.fleet.service && agend start`.
 > - On Alpine, `agend update` stops with "this process's own start time cannot be read": BusyBox `ps` has no `lstart`. Install the full `ps` first: `apk add procps`.
 
-**Upgrading from 2.1.12 on a built-in-Node platform (Linux glibc 2.28+, macOS 11+, x64 or arm64):** upgrade with `/update` in chat, or `agend update` on the host.
-2.1.12's updater refreshes the service settings and restarts the fleet on these platforms, so this is all you need.
+**Upgrading from 2.1.12 on a built-in-Node platform (Linux glibc 2.28+, macOS 11+, x64 or arm64):**
+- **While 2.2 is a prerelease:** run `agend update --beta` on the host. Plain `/update` stays on the stable channel and does not select the 2.2 beta.
+- **Once 2.2.0 is published as `latest`:** send `/update` in General, or run `agend update` on the host.
 
-**Upgrading from 2.1.0–2.1.11, or from any 2.1.x on a platform without a built-in Node** (32-bit, or a PATH Node below 22.14): use the [manual upgrade](#2-advanced-manual-upgrade) procedure below. Those older updaters and unsupported-Node cases are where "remove before install" fails most easily.
+A successful 2.1.12 update refreshes the service settings and restarts the fleet; a separate `agend install` is normally unnecessary. The old PATH Node need not be upgraded when the bundled runtime is installed successfully.
+
+**Upgrading from 2.1.0–2.1.11:** use the [manual upgrade](#2-advanced-manual-upgrade) procedure below. On a platform without a bundled runtime, first install a qualifying PATH Node as described above, then use the manual procedure. These older updaters and incompatible-runtime cases are where "remove before install" fails most easily.
 
 > **If `/update` or `agend update` fails:**
 > 2.1's updater removes the installed AgEnD *before* installing the new one. If the install fails for any reason, nothing is left. The running fleet keeps going only until its next restart or login, after which the service cannot start. If AgEnD 2.2 rejected the install, its message includes recovery commands. For other failures (network, npm error), run these yourself — or see [section 7](#7-if-agend-update-from-21-already-failed) for the full recovery steps:
@@ -67,13 +70,13 @@ If `/update` is not available or you prefer a controlled step-by-step upgrade, f
 cp -a "${AGEND_HOME:-$HOME/.agend}" "${AGEND_HOME:-$HOME/.agend}.bak-2.1"
 ```
 
-**2.3 Install 2.2.**
+**2.3 Install 2.2.** Until 2.2.0 is published, use `@beta` instead of `@2.2.0` in this command.
 ```sh
 npm install -g @songsid/agend@2.2.0
 ```
 
 **2.4 Start it again.**
-- **As a service:** run `agend install`. It rewrites the service for 2.2 (the 2.1 service definition is refused by 2.2's restart checks) and starts it.
+- **As a service:** run `agend install`. It rewrites the service for the installed 2.2 runtime and starts it.
 - **By hand:** run `agend fleet start` as you did before.
 
 **2.5 Check** (section 4).
@@ -83,11 +86,11 @@ npm install -g @songsid/agend@2.2.0
 **Once, on the first start:**
 - **Kiro:** a resumed conversation keeps the agent it was saved under and gets AgEnD's server and instructions from the shared `.kiro` files. The in-session `/agent swap` from #906 is suspended (#1800), because an instance lost its AgEnD tools after it. An instance that was already switched gets the shared entries back at its next start; after restarting it, check that it calls `reply`. Once every fleet using a directory has upgraded, delete by hand only a `.kiro/steering/agend-<instance>.md` you can confirm AgEnD wrote before #906 for that same instance and directory. Such a file has no `<!-- agend-agent:… -->` first line and starts with the old `# AgEnD Fleet Context` header naming that instance and that working directory. Keep a tagged one, because a resumed conversation reads it. Leave alone any other file of that name.
   - Upgrading from before 2.1.11 also supports one-time Kiro conversation adoption (#1624), with shared-cwd and claim safeguards; see [adoption and beta.1 recovery](kiro-upgrade-recovery.md).
-- **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/web` to your bot, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
+- **Web sign-in:** everyone signs in again. Old `?token=` links and bookmarks open the sign-in page. Send `/web` in General and press **💻 AgEnD computer: get a code**, or run `agend web --code` on the host, for a one-time code (8 characters, 5 minutes).
 - **General gets one message about web chat** (#1366), once per platform, recorded in `AGEND_HOME/upgrade-notices.json`.
 
 **From now on (policies):**
-- **Web sessions** last 48 h (48 h idle) on this computer's dashboard by default (12 h / 2 h before 2.2.1), and 4 h (30 min idle) through the public link.
+- **Web sessions** last 48 h (48 h idle) on this computer's dashboard by default, and 4 h (30 min idle) through the public link.
 - **ClassicBot:** a `/start` from someone not on an allow list asks General for approval (#1418). An empty or omitted `allowed_users` / `allowed_groups` / `allowed_guilds` no longer means "open". Approve with General's buttons, or add explicit entries. Already-registered rooms keep working.
 - **Sensitive changes in web Settings are proposals** (#1423). A General fleet admin confirms them in chat, or you run `agend settings confirm <id>` on the host. Pending proposals are lost on restart; submit again.
 - **Stopping the fleet may take up to 5 minutes** (#1071), so busy Kiro instances can finish; starting it again takes its own time on top. `agend restart` refuses a service whose loaded stop timeout is shorter than 300 s; AgEnD's own unit is migrated, and a custom timeout you set is kept with a warning.
@@ -100,7 +103,7 @@ agend fleet status       # every instance running
 agend health             # the fleet answers
 ```
 Then:
-- Sign in to the web dashboard (`/web` in chat, or `agend web --code`) and open an instance's chat.
+- Sign in to the web dashboard (`/web` in General → a sign-in button, or `agend web --code`) and open an instance's chat.
 - Send a message to one instance from your chat app and from the web; both should reach it.
 - Open **Needs you** in the web sidebar: anything waiting for you (a sign-in, a confirmation) is listed there.
 - Kiro users: check that each Kiro instance answers (calls `reply`) once after its start. One that was switched before #1800 should be restarted once.
