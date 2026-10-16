@@ -526,3 +526,18 @@ it("creates a missing scratch parent on a fresh checkout",()=>{
   expect(()=>fixture({},parent)).not.toThrow();
   expect(existsSync(parent)).toBe(true);
 });
+
+describe("#1629 execution-bound undo",()=>{
+ it.each(["commit","release"])("refuses prequeued queueMicrotask and Promise callbacks for %s",async operation=>{
+  for(const scheduler of [queueMicrotask,(fn:()=>void)=>{void Promise.resolve().then(fn);}]){
+   const {lib}=fixture(),s=stage(lib,H,"agend.ready()",M1);
+   let receipt: {ok:true;undo:()=>boolean}|{ok:false;error:string}|undefined;
+   if(operation==="release")expect(lib.commit(s.stageId).ok).toBe(true);
+   const later=new Promise<boolean>(resolve=>scheduler(()=>resolve(receipt?.ok?receipt.undo():true)));
+   receipt=operation==="commit"?lib.commit(s.stageId):lib.releaseHolder(M1,H);
+   expect(receipt.ok).toBe(true);
+   expect(await later).toBe(false);
+   expect(lib.read(s.ids[0]!,H).ok).toBe(operation==="commit");
+  }
+ });
+});

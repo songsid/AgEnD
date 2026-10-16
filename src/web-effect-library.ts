@@ -3,6 +3,7 @@ import { randomBytes, createHash } from "node:crypto";
 import { constants, openSync, fstatSync, readSync, closeSync, mkdirSync, mkdtempSync, writeFileSync, fsyncSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { createHook } from "node:async_hooks";
 import { z } from "zod";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { checkEffectEntry, type CheckedWebEffect } from "./web-effect-bundle.js";
@@ -386,12 +387,18 @@ export class WebEffectLibrary {
     this.collectLater(stage.ids); }
   private undo(before: Snapshot, after: Snapshot, ids: string[], refs: EffectReference[]): () => boolean {
     let active = true;
-    queueMicrotask(() => { active = false; });
+    // Expire BEFORE the next async callback, even one queued before this receipt existed.
+    // A queued expiry alone is too late for prequeued microtasks. This temporary hook
+    // disables itself at the first callback (or synchronous undo), with a cleanup microtask.
+    const expire = () => { active = false; boundary.disable(); };
+    const boundary = createHook({ before: expire });
+    boundary.enable();
+    queueMicrotask(expire);
     const relevant = (rows: EffectReference[]) => this.referenceKey(ids, rows);
     return () => {
       if (!active)
         return false;
-      active = false;
+      expire();
       const result = this.transaction(() => {
         const current = this.load();
         if (current.fingerprint !== after.fingerprint || relevant(this.references()) !== relevant(refs))

@@ -56,7 +56,15 @@ export function atomicWriteFileSync(
   let fd: number | undefined;
   try {
     fd = openSync(temp, "wx", mode);
-    writeSync(fd, data, undefined, "utf8");
+    const bytes = Buffer.from(data, "utf8");
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writeSync(fd, bytes, offset, bytes.length - offset, null);
+      if (!Number.isSafeInteger(written) || written <= 0 || written > bytes.length - offset) {
+        throw new Error("Atomic write made no valid progress");
+      }
+      offset += written;
+    }
     fsync(fd);
     closeSync(fd);
     fd = undefined;
