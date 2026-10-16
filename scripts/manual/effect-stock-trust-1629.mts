@@ -119,6 +119,17 @@ try {
       await page.locator('.tc-show').click();await page.waitForFunction(()=>document.querySelectorAll('.thread .pv-note').length>=3);
       const noteKinds=await page.locator('.thread .pv-note').evaluateAll(xs=>xs.map(x=>x.getAttribute('data-trust')));assert.ok(noteKinds.every(x=>x==='thread-control'));
       for(const index of [0,2]){await page.locator('.thread .pv-note').nth(index).scrollIntoViewIfNeeded();const noteBase=await page.screenshot(),np=await page.locator('.thread .pv-note').nth(index).evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)};});assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const noteFront=await page.screenshot();assert.deepEqual(pixel(noteFront,np.x,np.y),pixel(noteBase,np.x,np.y));await page.evaluate(()=>(window as any).stock.removePaint());await page.locator('.thread .pv-note').nth(index).evaluate(x=>x.removeAttribute('data-trust'));assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await page.locator('.thread .pv-note').nth(index).evaluate(x=>x.setAttribute('data-trust','thread-control'));}
+      // Actual inert host offer renderer: text is protected paint, never a Start action or effect execution.
+      await page.evaluate(() => (window as any).stock.store.ingest({boot:'probe',id:900,instance:'worker',role:'status',sender:'agend',text:'Host trial offer',ts:new Date().toISOString(),effectTrial:{v:1,offer:'e'.repeat(32),id:'f'.repeat(32),title:'<b>Host offer</b>',expiresAt:Date.now()+600000}}));
+      const card=page.locator('.thread .effect-trial-offer');await card.waitFor();await card.scrollIntoViewIfNeeded();
+      assert.equal(await card.getAttribute('data-trust'),'thread-control');assert.equal(await card.locator('b,button,a,iframe,canvas,input').count(),0);
+      assert.equal(await card.locator('strong').textContent(),(lang==='zh-TW'?'效果試播':'Effect trial')+': <b>Host offer</b>');
+      const offerBase=await page.screenshot(),offerPoints=await card.evaluate(el=>{const r=el.getBoundingClientRect();return[{x:Math.floor(r.x+3),y:Math.floor(r.y+3)},{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)},{x:Math.floor(r.right-3),y:Math.floor(r.bottom-3)}];});
+      assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const offerFront=await page.screenshot();
+      for(const point of offerPoints)assert.deepEqual(pixel(offerFront,point.x,point.y),pixel(offerBase,point.x,point.y),'offer protected pixel');
+      await page.evaluate(()=>(window as any).stock.removePaint());const beforeOfferClick=actions.length;await card.click();assert.equal(actions.length,beforeOfferClick);
+      for(const marker of [null,'reply']){await card.evaluate((el,value)=>value===null?el.removeAttribute('data-trust'):el.setAttribute('data-trust',value),marker);assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),false);await card.evaluate(el=>el.setAttribute('data-trust','thread-control'));}
+      assert.equal(await page.evaluate(()=>(window as any).stock.snapshot().ok),true);
       await page.evaluate(()=>(window as any).stock.longThread());await page.waitForTimeout(50);await page.locator('.scroller').evaluate(el=>{el.scrollTop=0;el.dispatchEvent(new Event('scroll'));});await page.locator('.jump-latest').waitFor();
       const jumpBase=await page.screenshot();const jp=await page.locator('.jump-latest').evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)};});assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const jumpFront=await page.screenshot();assert.deepEqual(pixel(jumpFront,jp.x,jp.y),pixel(jumpBase,jp.x,jp.y));await page.evaluate(()=>(window as any).stock.removePaint());
       for(const selector of ['.chat-card','.jump-latest',...(width>=900?['.side-resize']:[])])for(const kind of ['', 'wrong']){
@@ -126,7 +137,7 @@ try {
       }
       for(const css of ['on','loading','unknown']){const v=await page.evaluate(c=>(window as any).stock.snapshot(c),css);assert.equal(v.agentFront,false);assert.equal(v.front,true);assert.equal(v.agentReason,'owner_css');}
       assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
-      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,reviewerR2:{identity:true,jump:true,resize:width>=900,preview:true,notes:noteKinds},overlays,controls,errors,resources });
+      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,trialOffer:{protectedPixels:3,inert:true,missingWrongMarker:true},reviewerR2:{identity:true,jump:true,resize:width>=900,preview:true,notes:noteKinds},overlays,controls,errors,resources });
     } finally { await context.close(); }
     }
     await browser.close(); browser = null;

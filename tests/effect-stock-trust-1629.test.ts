@@ -55,6 +55,23 @@ describe("stock trust/paint prerequisite", () => {
       expect(f.snapshot()).toMatchObject({ ok: true, front: true, agentFront: true, reason: "stock" });
     } finally { real.restore(); }
   });
+  it("independently expects the actual inert offer root and protects its descendant paint", async () => {
+    const f = await fixture(), dom = installDom();
+    try {
+      const shell = dom.document.createElement("div"), thread = dom.document.createElement("div"), actual = dom.document.createElement("div");
+      shell.className = "shell"; thread.className = "thread"; actual.className = "effect-trial-offer"; actual.setAttribute("data-trust", "thread-control");
+      shell.append(thread); thread.append(actual); dom.document.body.append(shell);
+      const spec = f.m.STOCK_TRUST_INVENTORY.find((s:any) => s.kind === "thread-control");
+      expect(spec.selector).toContain(".shell .thread .effect-trial-offer"); expect(actual.matches(spec.selector)).toBe(true);
+      expect(read("chat-thread.js")).toContain('class="effect-trial-offer" data-trust="thread-control"');
+      const el = f.node(), child = f.node(); el.r = { x: 300, y: 400, width: 120, height: 60 }; child.r = { x: 310, y: 410, width: 140, height: 20 }; el.children = [child];
+      el.getAttribute = () => actual.getAttribute("data-trust") ?? "";
+      f.extra.set(spec.selector, [el]); f.marked.push(el);
+      expect(f.snapshot()).toMatchObject({ ok: true, front: true, rects: expect.arrayContaining([{ x: 300, y: 400, width: 150, height: 60 }]) });
+      actual.removeAttribute("data-trust"); expect(actual.matches(spec.selector)).toBe(true); expect(f.snapshot()).toMatchObject({ ok: false, reason: "stock_trust_unknown" });
+      actual.setAttribute("data-trust", "reply"); expect(f.snapshot().ok).toBe(false);
+    } finally { dom.restore(); }
+  });
   it("stock root/content order admits a bounded plain rect list and distinguishes CSS from modal restrictions", async () => {
     const f = await fixture(); expect(f.snapshot()).toMatchObject({ ok: true, front: true, agentFront: true, reason: "stock" });
     for (const ownerCss of ["on", "loading", "unknown", undefined]) expect(f.m.stockEffectTrust(f.host, { ownerCss })).toMatchObject({ ok: true, front: true, agentFront: false, agentReason: "owner_css", settingsHref: "/settings/appearance" });
