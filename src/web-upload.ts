@@ -44,16 +44,29 @@ export interface SniffedType {
 
 /** Text files keep a known extension from their name; anything else is stored as .txt. */
 const TEXT_EXTENSIONS = new Set([
-  ".txt", ".md", ".csv", ".tsv", ".json", ".log", ".yaml", ".yml", ".xml", ".html", ".css",
+  ".txt", ".md", ".csv", ".tsv", ".json", ".log", ".yaml", ".yml", ".xml", ".css",
   ".js", ".ts", ".tsx", ".jsx", ".py", ".rb", ".go", ".rs", ".java", ".kt", ".c", ".h", ".cpp", ".sh", ".sql", ".toml", ".ini", ".diff", ".patch",
 ]);
+/** #1900: markup a browser would render or run. Valid text or not, it is stored under its own name and only downloaded. */
+const MARKUP_EXTENSIONS = new Set([".html", ".htm", ".xhtml", ".shtml", ".svg", ".svgz", ".mht", ".mhtml", ".xsl", ".xslt"]);
+/** Extensions of the types read from the bytes above: a file whose bytes are not that type does not keep the name. */
+const SNIFFED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf"]);
+
+/** #1900: any other file, as Discord and Telegram take it — a download (application/octet-stream), never shown. */
+export const OTHER_FILE_MIME = "application/octet-stream";
+
+/** The extension an upload of an unread type is stored under: its own, lower-cased, if short and plain; else .bin. */
+export function storedExtension(name: string): string {
+  const ext = extname(name).toLowerCase();
+  return /^\.[a-z0-9]{1,10}$/.test(ext) && !SNIFFED_EXTENSIONS.has(ext) ? ext : ".bin";
+}
 
 const startsWith = (b: Uint8Array, sig: number[], at = 0) => sig.every((v, i) => b[at + i] === v);
 
 /**
- * The type of an upload, from its bytes. Images by signature (PNG, JPEG, GIF, WebP), PDF by `%PDF-`,
- * text when it is valid UTF-8 with no NUL byte. Everything else is refused — no executable, archive or
- * office format is guessed at.
+ * The type of an upload, from its bytes. Images by signature (PNG, JPEG, GIF, WebP), PDF by `%PDF-`, text when it is
+ * valid UTF-8 with no NUL byte and not markup. #1900: anything else (an archive, an office file, a binary, HTML, SVG …)
+ * is taken too, as a document the dashboard only offers as a download. Null only for an empty file.
  */
 export function sniffUpload(bytes: Uint8Array, name: string): SniffedType | null {
   if (bytes.length === 0) return null;
@@ -62,13 +75,14 @@ export function sniffUpload(bytes: Uint8Array, name: string): SniffedType | null
   if (startsWith(bytes, [0x47, 0x49, 0x46, 0x38])) return { kind: "photo", mime: "image/gif", ext: ".gif" };
   if (startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) && startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)) return { kind: "photo", mime: "image/webp", ext: ".webp" };
   if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) return { kind: "document", mime: "application/pdf", ext: ".pdf" };
-  if (bytes.includes(0)) return null;
+  const other: SniffedType = { kind: "document", mime: OTHER_FILE_MIME, ext: storedExtension(name) };
+  const ext = extname(name).toLowerCase();
+  if (MARKUP_EXTENSIONS.has(ext) || bytes.includes(0)) return other;
   try {
     new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    return null;
+    return other;
   }
-  const ext = extname(name).toLowerCase();
   return { kind: "document", mime: "text/plain; charset=utf-8", ext: TEXT_EXTENSIONS.has(ext) ? ext : ".txt" };
 }
 

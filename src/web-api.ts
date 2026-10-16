@@ -1556,7 +1556,7 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
     const bytes = Buffer.concat(chunks);
     const name = displayName(typeof req.headers["x-agend-filename"] === "string" ? req.headers["x-agend-filename"] : "", "file");
     const type = sniffUpload(bytes, name);
-    if (!type) { json(res, 415, { error: "unsupported file type — images (PNG, JPEG, GIF, WebP), PDF and text files only" }); return; }
+    if (!type) { json(res, 415, { error: "the file is empty" }); return; }
     // The instance is checked again now the whole body is here: it may have been deleted (and its files
     // forgotten) or stopped while the upload streamed in; storing now would bring its id back (#1252 review).
     // Still deliverable means: its IPC is up (a paused one is woken by the send) and it is still registered —

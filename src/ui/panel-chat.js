@@ -434,7 +434,7 @@ function Composer({ name, lease, busy }) {
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <div class="composer">
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
-      <input ref=${fileIn} type="file" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.log,.yaml,.yml"
+      <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
       <textarea id="msgIn" ref=${input} rows="1" value=${value} placeholder=${t("chat.composerPlaceholder", name)} aria-label=${t("chat.composerPlaceholder", name)}
         autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
