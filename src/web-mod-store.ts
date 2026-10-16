@@ -227,6 +227,9 @@ export class ModStore {
     return { ok: true };
   }
 
+  /** The context bundles are checked in (the effect runtime's checker, when the fleet has one): the agent's side uses it too. */
+  checkContext(): ModContext { return this.deps.context(); }
+
   /** Installed mods, for the page. */
   list(): { rev: number; mods: Array<ModRecord & { id: string }>; unreadable?: true } {
     const idx = this.load();

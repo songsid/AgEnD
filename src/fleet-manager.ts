@@ -1358,7 +1358,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return (this.agentModsService ??= new AgentMods({
       themes: this.themeStore, mods: this.mods, limiter: this.webAppearance.limiter,
       webConfig: () => this.fleetConfig?.web ?? null,
-      context: () => ({ agendVersion: agendVersion(), limits: this.themeStore.limits(), effects: null }),
+      // The mod store's own: a proposal is checked exactly as the person's import of it will be.
+      context: () => this.mods.checkContext(),
       notice: (instance, text) => { try { this.emitSseEvent("message", { instance, sender: instance, role: "status", text, ts: new Date().toISOString() }); } catch { /* the page reads it from Settings too */ } },
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame */ } },
     }));
