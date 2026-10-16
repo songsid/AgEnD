@@ -9,16 +9,16 @@ AgEnD 2.2 adds a web app next to Telegram and Discord. You can talk to your agen
 
 - **From 2.1.12 on Linux or macOS:** send `/update` in General, or run `agend update` on the host. The fleet restarts on 2.2, and General gets a short note about what is new. This covers Linux with glibc 2.28 or newer and systemd (WSL included, with systemd on), and macOS 11 or newer, on x64 or arm64.
 - **From 2.1.0–2.1.11, or on any other platform:** follow the [upgrade guide](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md)'s manual steps.
-- **While it runs,** the chat shows each step (download, install, restart). If an update fails, the message says which step failed, why, and where the update log is.
+- **While it runs,** the chat shows each step (download, install, restart), and a failure says which step failed and why. From 2.2 on, a failed update also names the update log.
 
 ## Chat with your agents in the browser
 
 - **Sign in with a one-time code.** Send `/web` in General. Choose **💻 AgEnD computer** to sign in on the machine running AgEnD, or **🌐 Other device** for a phone or another computer through a temporary public link. A code works once, for five minutes. No link carries a password any more.
-- **The same conversation as your topic.** What you write on the web reaches the agent exactly as a Telegram or Discord message would, and the chat platform sees it too. The history is still there after a reload or a fleet restart.
+- **The same conversation as your topic.** What you write on the web reaches the agent exactly as a Telegram or Discord message would. For a fleet topic the chat platform sees it too; a ClassicBot room does when `web_echo: true` is set. The history is still there after a reload or a fleet restart.
 - **A real chat.** It shows Markdown, tables and highlighted code. You can send files of any type, up to 50 MB each and 100 MB per message by default (`web.upload_max_file_mb` / `web.upload_max_total_mb`); images and media preview inline. It shows where each message got to, shows when the agent is working, and has a **Stop** button. It also shows reply buttons and polls the agent offers, and mentions the way Discord and Telegram show them.
-- **HTML previews.** When an agent sends a page, you can open it in a panel beside the chat. Each device has to opt in first, and the preview runs on its own isolated address.
+- **HTML previews.** When an agent sends a page, you can open it in a panel beside the chat. Previews are off until you turn them on; the choice then applies on every device where you are signed in, but never on the public link. The preview runs on its own isolated address.
 - **Works on a phone.** Swipe to open the sidebar; light and dark themes; keyboard and screen-reader support.
-- **No chat platform needed.** A fleet can run from the web dashboard alone. Setup in the browser takes bot tokens, invites a Discord bot, and starts a new connection without a restart.
+- **No chat platform needed.** A fleet can run from the web dashboard alone. Setup in the browser takes bot tokens and invites a Discord bot. Once AgEnD already runs one connection, it adds another without a restart.
 
 See the [web dashboard guide](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md), or the [Web Guide](/AgEnD/docs/web-guide/) on the website.
 
@@ -46,7 +46,7 @@ On Linux (glibc 2.28 or newer) and macOS 11 or newer, x64 or arm64, AgEnD instal
 - **macOS:** an update started from an agent's own pane finishes; it no longer leaves the fleet stopped halfway.
 - **Linux, root fleets with a system unit:** the update now moves the unit to the new release, so the fleet really runs 2.2.
 - **Hosts without a user session bus, or with a custom `AGEND_HOME`:** the service is updated and restarted correctly.
-- **A refused install now says why.** The chat shows AgEnD's own reason instead of npm's bare "code 1".
+- **From 2.2 on, a refused install says why.** An update run by 2.2 or later shows AgEnD's own reason in chat instead of npm's bare "code 1". The hop from 2.1.12 still runs 2.1.12's updater.
 
 ## Safer by default
 

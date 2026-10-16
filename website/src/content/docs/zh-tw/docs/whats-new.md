@@ -9,16 +9,16 @@ AgEnD 2.2 在 Telegram 和 Discord 之外，多了一個網頁 app。你可以�
 
 - **從 2.1.12 在 Linux 或 macOS 上升級：** 在 General 傳 `/update`，或在主機上執行 `agend update`。fleet 會以 2.2 重新啟動，General 會收到一則簡短的新功能說明。適用於有 glibc 2.28 以上與 systemd 的 Linux（包括開啟 systemd 的 WSL），以及 macOS 11 以上，x64 或 arm64。
 - **從 2.1.0–2.1.11 升級，或在其他平台上：** 請依[升級指南](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.zh-TW.md)的手動步驟操作。
-- **升級進行時，** 聊天會顯示每一步（下載、安裝、重新啟動）。升級失敗時，訊息會說明是哪一步失敗、原因，以及更新紀錄放在哪裡。
+- **升級進行時，** 聊天會顯示每一步（下載、安裝、重新啟動），失敗時也會說明是哪一步失敗、原因。從 2.2 起，失敗的訊息還會附上更新紀錄的位置。
 
 ## 在瀏覽器和 agent 聊天
 
 - **用一次性登入碼登入。** 在 General 傳 `/web`。選 **💻 AgEnD 電腦**，可在執行 AgEnD 的那台電腦上登入；選 **🌐 其他裝置**，則透過臨時公開連結，從手機或另一台電腦登入。登入碼只能用一次，五分鐘內有效。連結不再帶任何密碼。
-- **和頻道是同一段對話。** 在網頁上寫的訊息，送到 agent 的方式和 Telegram 或 Discord 訊息完全一樣，聊天平台上也看得到。重新整理頁面或 fleet 重新啟動後，對話紀錄都還在。
+- **和頻道是同一段對話。** 在網頁上寫的訊息，送到 agent 的方式和 Telegram 或 Discord 訊息完全一樣。fleet 頻道的聊天平台上也看得到；ClassicBot 聊天室則要設定 `web_echo: true` 才會同步。重新整理頁面或 fleet 重新啟動後，對話紀錄都還在。
 - **完整的聊天功能。** 支援 Markdown、表格和程式碼標色。可以傳任何類型的檔案，預設每個 50 MB、每則訊息合計 100 MB（`web.upload_max_file_mb` / `web.upload_max_total_mb`）；圖片和影音直接在頁面上預覽。看得到訊息送到哪一步、agent 正在處理，也有 **Stop** 按鈕可以中止。agent 提供的回覆按鈕和投票會照樣顯示，提及（mention）也和 Discord、Telegram 上的樣子一致。
-- **HTML 預覽。** agent 送來網頁時，可以在對話旁邊的面板打開。每台裝置都要先同意開啟，預覽會在獨立隔開的網址上執行。
+- **HTML 預覽。** agent 送來網頁時，可以在對話旁邊的面板打開。預覽預設關閉，開啟一次後，就會套用到所有已登入的裝置，但公開連結例外。預覽會在獨立隔開的網址上執行。
 - **手機也好用。** 滑動開關側邊欄，有淺色和深色主題，也支援鍵盤與螢幕報讀器。
-- **不需要聊天平台也能用。** fleet 可以只靠網頁 dashboard 運作。在瀏覽器裡就能設定：輸入 bot token、邀請 Discord bot，新的連線不必重新啟動就會生效。
+- **不需要聊天平台也能用。** fleet 可以只靠網頁 dashboard 運作。在瀏覽器裡就能設定：輸入 bot token、邀請 Discord bot。AgEnD 已經在跑一個連線時，再新增的連線不必重新啟動就會生效。
 
 詳見[網頁 dashboard 指南](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)，或網站上的[網頁使用說明](/AgEnD/zh-tw/docs/web-guide/)。
 
@@ -46,7 +46,7 @@ AgEnD 2.2 在 Telegram 和 Discord 之外，多了一個網頁 app。你可以�
 - **macOS：** 從 agent 自己的面板啟動的更新能夠完成，不會再讓 fleet 停在一半。
 - **Linux，以 root 執行、使用系統 unit 的 fleet：** 更新現在會把 unit 指向新版本，fleet 真的會跑 2.2。
 - **沒有使用者 session bus、或使用自訂 `AGEND_HOME` 的主機：** 服務都會正確更新並重新啟動。
-- **安裝被拒絕時會說明原因。** 聊天會顯示 AgEnD 自己的原因，而不是只有 npm 的「code 1」。
+- **從 2.2 起，安裝被拒絕時會說明原因。** 由 2.2 或更新版本執行的更新，聊天會顯示 AgEnD 自己的原因，而不是只有 npm 的「code 1」。從 2.1.12 升級的那一次仍由 2.1.12 的更新程式執行。
 
 ## 預設更安全
 
