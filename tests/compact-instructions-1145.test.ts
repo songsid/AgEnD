@@ -120,10 +120,10 @@ describe("sendCompact", () => {
     expect(reply).toContain(t("compact.instructions_ignored", backend));
   });
 
-  it("antigravity: its only reset is /clear, also without the text", async () => {
+  it("antigravity: its own /compact (board 0340ec89: never /clear), also without the text", async () => {
     const { commands, sent } = rig("antigravity");
     const reply = await commands.sendCompact("worker", "Focus on the open decisions");
-    expect(pasted(sent)).toEqual(["/clear"]);
+    expect(pasted(sent)).toEqual(["/compact"]);
     expect(reply).toContain(t("compact.instructions_ignored", "antigravity"));
   });
 

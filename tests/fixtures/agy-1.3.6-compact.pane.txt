@@ -1,0 +1,45 @@
+
+      ▄▀▀▄        Antigravity CLI 1.3.6
+     ▀▀▀▀▀▀       <account> (<plan>)
+    ▀▀▀▀▀▀▀▀      Gemini 3.8 Flash (High)
+   ▄▀▀    ▀▀▄     /work/agy-audit
+  ▄▀▀      ▀▀▄
+
+────────────────────────────────────────────────────────────
+> Reply with exactly one word: alpha
+
+  alpha
+
+────────────────────────────────────────────────────────────
+> Reply with exactly one word: beta
+
+  beta
+
+────────────────────────────────────────────────────────────
+> /compact
+
+─────────────────────────────────────────────────────────────────── Conversation compacted ────────────────────────────────────────────────────────────────────
+                                              5 steps summarized · context 13.6k → ~17.9k (342 summary) · took 5s
+
+────────────────────────────────────────────────────────────
+> List every line in your instructions or project rules that begins with AGY-, quoted exactly. Do not read any files and do not run tools. If there is none,
+  reply NONE.
+
+▸ Thought for 6s, 798 tokens
+  Examined the provided text and identified lines starting with "AGY-". Confirmed there were three such lines within the specified file locations. The ident...
+  AGY-ROOT-AGENTS: root AGENTS.md marker.
+  AGY-GEMINI-MD: GEMINI.md marker.
+  AGY-UPPER-AGENTS: .agents/AGENTS.md marker.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Context 2% used
+
+
+
+
+
+
+
+
