@@ -1420,9 +1420,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       webConfig: () => this.fleetConfig?.web ?? null,
       // The mod store's own: a proposal is checked exactly as the person's import of it will be.
       context: () => this.mods.checkContext(),
+      readOwnEffect: (instance, id) => { const r = this.effectLibrary.read(id, { kind: "agent", id: instance }); return r.ok ? { name: r.entry.manifest.name, files: r.entry.files } : null; },
       notice: (instance, text) => { try { this.emitSseEvent("message", { instance, sender: instance, role: "status", text, ts: new Date().toISOString() }); } catch { /* the page reads it from Settings too */ } },
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame */ } },
     }));
+  }
+  /** #1629 r4-5c: an effect placed on an instance (the library's reference check), for a person's export. */
+  modPlacedEffect(name: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null {
+    const r = this.effectLibrary.readReferenced(id, `instance:${name}`);
+    return r.ok ? { name: r.entry.manifest.name, files: r.entry.files } : null;
   }
   /** #1629 r4-5: an instance's card text as every viewer sees it (a person's fields over the agent's). */
   modCardText(name: string): { tagline?: string; bio?: string } {

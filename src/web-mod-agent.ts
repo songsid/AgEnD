@@ -37,6 +37,11 @@ export interface AgentModsDeps {
   limiter: AppearanceLimiter;
   webConfig: () => { themes?: { agent_edit?: boolean } } | undefined | null;
   context: () => ModContext;
+  /**
+   * r4-5c: an effect as this agent may read it (its own, or one a person shared) — never a person's private effect,
+   * even one placed on its instance: that is not the agent's to carry away. Null: not readable by it (or no library).
+   */
+  readOwnEffect?: (instance: string, id: string) => { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A muted status line in the agent's own web chat (#1672's notice lane). */
   notice: (instance: string, text: string) => void;
   changed: () => void;
@@ -68,8 +73,10 @@ export class AgentMods {
     const rec = this.deps.themes.get(instance);
     const parts: ModExportParts = {};
     const { card, ...look } = rec.theme;
-    if (Object.keys(look).length > 1) {
-      parts.theme = { theme: { ...look, v: 1 }, picture: id => { const a = rec.assets.find(x => x.id === id); const b = this.deps.themes.asset(instance, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; } };
+    let omitted = 0;
+    if (Object.keys(look).length > 1 || rec.placements.effects.length) {
+      const effects = rec.placements.effects.flatMap(p => { const e = this.deps.readOwnEffect?.(instance, p.id); if (!e) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
+      parts.theme = { theme: { ...look, v: 1 }, picture: id => { const a = rec.assets.find(x => x.id === id); const b = this.deps.themes.asset(instance, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
     }
     // Its own card text: the agent's fields (a person's card fields are theirs, kept elsewhere, and never exported here).
     if (card?.tagline || card?.bio) parts.identity = { ...(card.tagline ? { tagline: card.tagline } : {}), ...(card.bio ? { bio: card.bio } : {}) };
@@ -81,11 +88,11 @@ export class AgentMods {
     if (!built.ok) return { error: built.error, message: built.error === "nothing_to_export" ? "You have no theme, card text or widgets of your own to export." : "A picture your theme names is missing." };
     const data = Buffer.from(built.text, "utf8");
     const sha256 = createHash("sha256").update(data).digest("hex");
-    const omitted = rec.placements.effects.length ? { effects_omitted: rec.placements.effects.length } : {};
-    if (data.length <= MOD_INLINE_BYTES) return { files: [{ name: built.filename, data_b64: data.toString("base64") }], ...omitted };
+    const omittedNote = omitted ? { effects_omitted: omitted } : {};
+    if (data.length <= MOD_INLINE_BYTES) return { files: [{ name: built.filename, data_b64: data.toString("base64") }], ...omittedNote };
     const b: Built = { id: randomBytes(8).toString("hex"), name: built.filename, data, sha256, last: now };
     this.built.set(instance, b);                                     // one per instance: a new export replaces it
-    return { transfer: b.id, files: [{ name: b.name, bytes: data.length, sha256, parts: Math.ceil(data.length / ASSET_PART_BYTES) }], ...omitted };
+    return { transfer: b.id, files: [{ name: b.name, bytes: data.length, sha256, parts: Math.ceil(data.length / ASSET_PART_BYTES) }], ...omittedNote };
   }
   private exportPart(instance: string, raw: unknown, now: number): Answer {
     const p = raw as { transfer?: unknown; name?: unknown; index?: unknown } | null;
