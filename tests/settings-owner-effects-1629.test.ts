@@ -1,0 +1,84 @@
+/** The selector displays host state and writes ids/null only. It never fetches Worker code or starts playback. */
+import { afterEach, describe, expect, it } from "vitest";
+import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
+import { MiniEvent } from "./helpers/mini-dom.js";
+const A = "a".repeat(32), B = "b".repeat(32), E = "e".repeat(16), g = globalThis as any;
+const KEYS = ["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"];
+const manifest = { title: "Snow", regions: ["sidebar", "header", "page", "box"], box: { width: 100, height: 100 }, cursor: "cursor.png" };
+const catalog = { canWrite: true, effects: [{ id: A, manifest }] };
+const empty = () => Object.fromEntries(KEYS.map(k => [k, { status: "none", id: null }]));
+const response = (status: number, body: any) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+let p: AppPage | null = null, calls: Array<{ url: string; init: any }> = [], view: any, rev = 1;
+let override: ((url: string, init: any) => any) | null = null;
+const ticks = async () => { await settle(); await settle(); };
+afterEach(async () => { if (p) { await p.unmount(); p.restore(); p = null; } delete g.fetch; });
+async function mount(opts: { canWrite?: boolean; slots?: any; lang?: string; fail?: number; operator?: boolean } = {}) {
+  p = page({ url: "http://127.0.0.1:19280/settings/appearance" });
+  p.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {}, ownerEpoch: E, ownerScope: "person" }));
+  calls = []; rev++; view = opts.slots || empty(); override = null;
+  g.fetch = async (url: string, init: any = {}) => {
+    calls.push({ url, init }); if (override) return override(url, init);
+    if (opts.fail) return response(opts.fail, {});
+    if (init.method === "POST") {
+      const body = JSON.parse(init.body); rev++;
+      for (const [key, id] of Object.entries(body.set)) view[key] = id === null ? { status: "none", id: null } : { status: "available", id, manifest };
+      return response(200, { rev, ownerEpoch: E, ownerScope: "person", values: Object.fromEntries(Object.entries(view).filter(([, v]: any) => v.id !== null).map(([k, v]: any) => [k, v.id])) });
+    }
+    return response(200, { rev, slots: view });
+  };
+  (await import("/assets/app-i18n.js")).setLang(opts.lang || "en", { store: false });
+  const owner = await import("/assets/owner-effect-prefs.js"); owner.ownerEffectsStore.set({ scope: opts.operator ? "operator" : "person", revoked: false });
+  const { OwnerEffects } = await import("/ui/js/settings-owner-effects.js");
+  await p.mount(h(OwnerEffects, { catalog: { ...catalog, canWrite: opts.canWrite !== false } })); await ticks();
+}
+const $ = (selector: string) => p!.root.querySelector(selector);
+const text = () => p!.root.textContent;
+const change = async (key: string, value: string) => { const el = $(`[data-owner-slot="${key}"]`); el.value = value; el.dispatchEvent(new MiniEvent("change", { bubbles: true })); await ticks(); };
+describe("owner effect selectors", () => {
+  it("filters manifest declarations for four regions plus host cursor without granting Worker access", async () => {
+    await mount();
+    const { ownerEffectFits: fits } = await import("/ui/js/settings-owner-effects.js");
+    expect(KEYS.map(k => fits(manifest, k))).toEqual([true, true, true, true, true]);
+    expect(fits({ regions: ["chat"] }, "fx.page")).toBe(false); expect(fits({ regions: ["box"] }, "fx.box")).toBe(false);
+    expect(fits({}, "fx.cursor")).toBe(false); expect(fits(manifest, "fx.other")).toBe(false);
+  });
+  it("shows five choices, platform scope and deferred playback; saves only exact id and epoch", async () => {
+    await mount(); expect(p!.root.querySelectorAll("[data-owner-slot]")).toHaveLength(5);
+    expect(text()).toContain("Discord and Telegram accounts stay separate."); expect(text()).toContain("Saving a choice does not start playback yet.");
+    await change("fx.page", A);
+    const posts = calls.filter(c => c.init.method === "POST"); expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0]!.init.body)).toEqual({ set: { "fx.page": A }, ownerEpoch: E });
+    expect($('[data-owner-slot="fx.page"]').value).toBe(A); expect(text()).toContain("Saved.");
+    expect(calls.every(c => /^\/ui\/(?:prefs$|effects\/owner\?ownerEpoch=)/.test(c.url))).toBe(true);
+    expect(p!.root.querySelectorAll("iframe, canvas")).toHaveLength(0);
+  });
+  it("explicit host operator scope is labelled shared, in both languages", async () => {
+    await mount({ operator: true }); expect(text()).toContain("Host-wide choices: everyone signed in as the host operator shares these slots.");
+    (await import("/assets/app-i18n.js")).setLang("zh-TW", { store: false });
+    (await import("/assets/owner-effect-prefs.js")).ownerEffectsStore.set({ scope: "operator" }); await ticks();
+    expect(text()).toContain("主機共用選擇：所有以主機操作者身分登入的人，都會共用這些欄位。");
+  });
+  it("unavailable choices retain their id, show a clear action and clear only by explicit click", async () => {
+    await mount({ slots: { ...empty(), "fx.page": { status: "unavailable", id: B } }, lang: "zh-TW" });
+    expect(text()).toContain("已無法使用"); expect($('[data-owner-slot="fx.page"]').value).toBe(B);
+    expect(calls.filter(c => c.init.method === "POST")).toHaveLength(0);
+    $('[data-owner-clear="fx.page"]').click(); await ticks();
+    expect(calls.filter(c => c.init.method === "POST")).toHaveLength(1);
+    expect(JSON.parse(calls.find(c => c.init.method === "POST")!.init.body)).toEqual({ set: { "fx.page": null }, ownerEpoch: E });
+    expect($('[data-owner-clear="fx.page"]')).toBeNull(); expect(text()).toContain("已儲存。");
+  });
+  it("read-only selection and Clear are disabled; unknown state offers reload without synthesizing empty choices", async () => {
+    await mount({ canWrite: false, slots: { ...empty(), "fx.page": { status: "unavailable", id: B } } });
+    expect($('[data-owner-slot="fx.page"]').disabled).toBe(true); expect($('[data-owner-clear="fx.page"]').disabled).toBe(true);
+    expect(text()).toContain("Sign in as an admin"); await change("fx.page", A); expect(calls.some(c => c.init.method === "POST")).toBe(false);
+    const owner = await import("/assets/owner-effect-prefs.js"); override = () => response(503, {}); await owner.refreshOwnerEffects(); await ticks();
+    expect(p!.root.querySelectorAll("[data-owner-slot]")).toHaveLength(0); expect(text()).toContain("Choices are unavailable.");
+  });
+  it("claims a write synchronously and discards messages after unmount; no second intent is sent", async () => {
+    await mount(); let release!: (v: any) => void;
+    override = () => new Promise(r => { release = r; });
+    await change("fx.page", A); await change("fx.header", A); expect(calls.filter(c => c.init.method === "POST")).toHaveLength(1);
+    await p!.unmount(); release(response(200, { rev: 2, ownerEpoch: E, ownerScope: "person", values: { "fx.page": A } })); await ticks();
+    expect(p!.root.textContent).toBe(""); expect(calls.filter(c => c.init.method === "POST")).toHaveLength(1);
+  });
+});

@@ -1260,3 +1260,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 /* Header menus must stay above the later scroller stacking context. */
 .panel-head { z-index: 2; }
 @media (min-width: 900px) { .chat-split > .pv-divider, .chat-split > .pv-panel { position: relative; z-index: 1; } }
+/* #1629: owner choices share the existing control font floor. */
+.s-fx-owner{margin-top:var(--s-4);padding-top:var(--s-3);border-top:1px solid var(--border)}
+.s-fx-owner-row{display:flex;align-items:end;flex-wrap:wrap;gap:var(--s-2);margin-top:var(--s-2)}
+.s-fx-owner-row>label{display:flex;flex-direction:column;gap:var(--s-1);min-width:0;flex:1}

@@ -41,12 +41,21 @@ export const SYNCED = {
   // #1629 r4-4: the person's own sidebar widget ({ spec, data }), drawn by the page's own components.
   "widget.sidebar": { ls: "agend_widget_sidebar", ...json },
 };
+// #1629: fixed personal scope. A separate session-bound owner-effect store synchronizes these, never this host cache.
+export const OWNER_EFFECT_PREF_KEYS = Object.freeze(["fx.sidebar", "fx.header", "fx.page", "fx.box", "fx.cursor"]);
+for (const spec of Object.values(SYNCED)) spec.scope = "host";
+for (const key of OWNER_EFFECT_PREF_KEYS) SYNCED[key] = Object.freeze({ scope: "person", ls: null });
+for (const spec of Object.values(SYNCED)) Object.freeze(spec);
+Object.freeze(SYNCED);
+const HOST_KEYS = Object.keys(SYNCED).filter(key => SYNCED[key].scope === "host");
+const hostKey = key => own(SYNCED, key) && SYNCED[key].scope === "host";
+const hostValues = values => Object.fromEntries(HOST_KEYS.filter(key => own(values, key)).map(key => [key, values[key]]));
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
 function readLocal(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function writeLocal(key, s) { try { if (s == null) localStorage.removeItem(key); else localStorage.setItem(key, s); } catch { /* this page only */ } }
-function cache(key, value) { const k = SYNCED[key]; writeLocal(k.ls, value == null ? null : k.toLocal(value)); }
+function cache(key, value) { if (!hostKey(key)) return; const k = SYNCED[key]; writeLocal(k.ls, value == null ? null : k.toLocal(value)); }
 const inStep = () => readLocal(SYNCED_FLAG) === "1";
 
 function pageHost() {
@@ -58,7 +67,7 @@ function pageHost() {
 
 const initial = typeof document !== "undefined" ? pageHost() : null;
 let rev = initial ? initial.rev : null;
-let host = initial ? initial.values : null;
+let host = initial ? hostValues(initial.values) : null;
 const pending = new Map();     // key → value chosen here, not sent yet
 const mine = new Map();        // key → value chosen here whose write is not over (pending or out)
 const inflight = new Map();    // key → writes sent and not answered yet
@@ -70,7 +79,7 @@ const listeners = new Set();
 // the host does not have: the default, on a device in step with the host; this device's own (to upload) otherwise.
 if (host) {
   const step = inStep();
-  for (const key of Object.keys(SYNCED)) {
+  for (const key of HOST_KEYS) {
     if (own(host, key)) cache(key, host[key]);
     else if (step) cache(key, null);
   }
@@ -87,14 +96,14 @@ export function prefsWritable() {
  * in step) — the caller reads this browser's copy.
  */
 export function prefInForce(key) {
-  if (!own(SYNCED, key)) return null;
+  if (!hostKey(key)) return null;
   if (mine.has(key)) return { value: mine.get(key) };
   if (host && own(host, key)) return { value: host[key] };
   if (initial && inStep()) return { value: undefined };
   return null;
 }
 /** The host's value for a key as this page last saw it (undefined: not set there, or not known). */
-export function hostPref(key) { return host && own(host, key) ? host[key] : undefined; }
+export function hostPref(key) { return hostKey(key) && host && own(host, key) ? host[key] : undefined; }
 /** Called with the keys another device changed, after they are cached and applied here. Returns the unsubscribe. */
 export function onPrefsChanged(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
@@ -104,7 +113,7 @@ const isView = (body) => !!body && typeof body.rev === "number" && !!body.values
 function take(body) {
   if (!isView(body) || (rev !== null && body.rev < rev)) return false;
   rev = body.rev;
-  host = body.values;
+  host = hostValues(body.values);
   return true;
 }
 
@@ -113,7 +122,7 @@ function take(body) {
  * (the public link, the anonymous reader): this browser only, as before.
  */
 export function savePref(key, value) {
-  if (!own(SYNCED, key)) return;
+  if (!hostKey(key)) return;
   cache(key, value);
   if (!prefsWritable()) return;
   pending.set(key, value);
@@ -172,8 +181,8 @@ export async function refresh() {
     body = res.ok ? await res.json() : null;
   } catch { body = null; }
   if (!isView(body)) return false;
-  const before = new Map(Object.keys(SYNCED).map((key) => [key, own(host, key) ? SYNCED[key].toLocal(host[key]) : null]));
-  if (take(body)) align(Object.keys(SYNCED), { before });
+  const before = new Map(HOST_KEYS.map((key) => [key, own(host, key) ? SYNCED[key].toLocal(host[key]) : null]));
+  if (take(body)) align(HOST_KEYS, { before });
   return true;
 }
 
@@ -186,6 +195,7 @@ export async function refresh() {
 function align(keys, opts = {}) {
   const changed = new Set();
   for (const key of keys) {
+    if (!hostKey(key)) continue;
     if (pending.has(key) || inflight.has(key)) continue;
     const k = SYNCED[key];
     const want = own(host, key) ? k.toLocal(host[key]) : null;
@@ -223,7 +233,7 @@ function apply(changed) {
  */
 export async function migratePrefs() {
   if (!prefsWritable() || inStep()) return false;
-  for (const key of Object.keys(SYNCED)) {
+  for (const key of HOST_KEYS) {
     if (own(host, key)) continue;
     const local = SYNCED[key].fromLocal(readLocal(SYNCED[key].ls));
     if (local === undefined) continue;

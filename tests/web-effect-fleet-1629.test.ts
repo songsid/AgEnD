@@ -127,6 +127,14 @@ describe("#1629 real Fleet effect tool integration", () => {
     expect(f.fm.effectLibrary.commit(staged.stageId)).toMatchObject({ ok: false, error: "references_unreadable" });
     expect(f.fm.effectLibrary.list({ kind: "human", id: OPERATOR })).toMatchObject({ entries: [] });
   });
+  it("protects durable owner references from every platform bucket, not just the operator", async () => {
+    const f = await fixture(), id = human(f), person = "person:telegram:owner";
+    // The trusted raw fixture pins retention even for a selection that cannot currently run in this region.
+    f.fm.webPrefs.write(person, new Map([["fx.page", id]]));
+    expect(f.fm.effectLibrary.deleteClaim(id, { kind: "human", id: OPERATOR })).toMatchObject({ ok: false, error: "effect_in_use" });
+    f.fm.webPrefs.write(person, new Map([["fx.page", null]]));
+    expect(f.fm.effectLibrary.deleteClaim(id, { kind: "human", id: OPERATOR })).toMatchObject({ ok: true });
+  });
   it("does not publish a library whose reference registration failed", async () => {
     const f = await fixture(), original = WebEffectLibrary.prototype.registerReferenceSource; let calls = 0;
     const spy = vi.spyOn(WebEffectLibrary.prototype, "registerReferenceSource").mockImplementation(function (this: WebEffectLibrary, ...args) { if (++calls === 2) throw Error("registration failed"); return original.apply(this, args); });

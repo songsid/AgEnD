@@ -185,3 +185,23 @@ From a shell: `agend-agent theme get|set key=value…|set --json '<patch>'|clear
 `agend-agent appearance`, `agend-agent appearance preview [light|dark]`, and
 `agend-agent widget set <slot> '<spec json>' ['<data json>']|data <slot> '<data json>'|remove [slot]`, and
 `agend-agent mod export <name> <version> [title]|propose <file>`.
+
+## Owner-level effect selections
+
+The five owner keys `fx.sidebar`, `fx.header`, `fx.page`, `fx.box` and `fx.cursor` are a signed-in person's web
+preferences, never agent tool targets. Platform-bound sessions use separate adapter/user buckets (no account merge).
+A web-only `agend web --code` session uses the explicit **host-wide operator** bucket, shared by everyone signed in
+as that host operator. Header tokens cannot read or write these five keys. Existing visible host preferences are
+unchanged; there is no local-key migration. Profile/custom-CSS internal pointers keep their existing identity rules.
+
+When a shared effect is unshared, a personal selection remains stored but becomes unavailable at its next resource
+authorization. It supplies no further code or cursor image; the person can clear it. Its reference keeps the blob
+from being collected until cleared. This is deliberately stricter than chat placements' retained-runtime reads:
+a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
+placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
+
+Product playback/owner selectors are being connected separately. Before mounting, the host must prove stock content
+ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
+unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
+that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of
+playback.

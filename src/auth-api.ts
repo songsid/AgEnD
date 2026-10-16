@@ -100,6 +100,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "header-tools.js", "usage-dialog.js", "read-stream.js",
     // #1665: the host-kept preferences and their browser cache.
     "app-prefs.js",
+    // #1629: static session-bound owner preference client; every data route remains session-gated.
+    "owner-effect-prefs.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
     "owner-css.js",
     // #1629: agents' themes on their own chat surfaces (static code; the themes are read behind the gate).
