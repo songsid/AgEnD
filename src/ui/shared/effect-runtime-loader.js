@@ -101,6 +101,17 @@ export function checkEffectOwnerSlots(input) {
   }
   return x;
 }
+/** Checked local-admin Start response only; this projection never starts or authorizes a trial. */
+export function checkEffectTrialStart(input, expectedOffer, expectedId) {
+  const x = data(input);
+  if (typeof expectedOffer !== "string" || !ID.test(expectedOffer) || typeof expectedId !== "string" || !ID.test(expectedId)
+    || !exact(x, ["trial", "offer", "remainingMs", "manifest", "params"]) || typeof x.trial !== "string" || !ID.test(x.trial)
+    || !integer(x.remainingMs, 1, 600000) || !exact(x.offer, ["v", "offer", "id", "title", "expiresAt"])
+    || x.offer.v !== 1 || x.offer.offer !== expectedOffer || x.offer.id !== expectedId || !displayText(x.offer.title, 40)
+    || !integer(x.offer.expiresAt, 0, Number.MAX_SAFE_INTEGER) || !manifest(x.manifest) || x.manifest.title !== x.offer.title || !params(x.manifest, x.params)) return null;
+  return x;
+}
+
 /** Never include host poster/cursor bytes in the Worker asset list. The factory snapshots again. */
 export function checkEffectResource(input, expectedId) {
   const x = data(input); if (!exact(x, ["id", "manifest", "params", "wants", "code", "assets"]) || typeof expectedId !== "string" || !ID.test(expectedId) || x.id !== expectedId || !manifest(x.manifest) || !params(x.manifest, x.params)
@@ -195,6 +206,13 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
     const id = spec.id, scope = spec.instance !== undefined ? `instance=${encodeURIComponent(spec.instance)}` : `slot=${encodeURIComponent(spec.slot)}`;
     return run("resource", `/ui/effects/resource/${id}?${scope}&ownerEpoch=${ownerEpoch}`, value => checkEffectResource(value, id), signal, settled);
   }
+  function trialResourceRead(input, signal) {
+    const spec = data(input);
+    if (!exact(spec, ["trial", "id", "instance"]) || typeof spec.trial !== "string" || !ID.test(spec.trial)
+      || typeof spec.id !== "string" || !ID.test(spec.id) || !instanceOK(spec.instance)) return Promise.resolve(null);
+    const id = spec.id;
+    return run("resource", `/ui/effect-trials/${spec.trial}/resource?instance=${encodeURIComponent(spec.instance)}&ownerEpoch=${ownerEpoch}`, value => checkEffectResource(value, id), signal, true);
+  }
   const ownerRead = (signal, settled = false) => run("placements", `/ui/effects/owner?ownerEpoch=${ownerEpoch}`, checkEffectOwnerSlots, signal, settled);
   return { ok: true,
     owner(signal) { return ownerRead(signal); },
@@ -204,6 +222,7 @@ export function createEffectRuntimeLoader({ window: host, ownerEpoch, current, o
     ownerSettled(signal) { return ownerRead(signal, true); },
     placementsSettled(instance, signal) { return placementRead(instance, signal, true); },
     resourceSettled(input, signal) { return resourceRead(input, signal, true); },
+    trialResourceSettled(input, signal) { return trialResourceRead(input, signal); },
     // One binary physical lane in the same loader: no response-derived URL, code, metadata or ACL fallback.
     cursorImageSettled(id, signal) {
       return typeof id === "string" && ID.test(id)
