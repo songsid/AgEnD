@@ -4,7 +4,7 @@ This is the server adapter for the reviewed library, placement store and reporte
 
 ## Identity and boundaries
 
-All `/ui/effects` routes require a signed-in human session. A header token (including an agent endpoint's token) is insufficient. The public gateway manifest contains none of the routes; the handlers independently reject a gateway context. Writes require an admin session plus the existing Origin/CSRF gate. After awaiting a body, the handler repeats authorization and compares the actual session person's `webPersonKey`; no body supplies that person, a holder, provenance, a data directory or a path. Session revocation while the body is in flight publishes nothing.
+All `/ui/effects` routes require a signed-in human session. A header token (including an agent endpoint's token) is insufficient. The public gateway manifest contains none of the routes; the handlers independently reject a gateway context. Appearance/library writes require an admin session plus the existing Origin/CSRF gate. Only bounded diagnostic profile POSTs also accept a signed-in read session (r2 §6). After awaiting a body, the handler repeats authorization and compares both the actual session person's `webPersonKey` and exact session handle; no body supplies that person, a holder, provenance, a data directory or a path. Session revocation while the body is in flight publishes nothing.
 
 Ordinary library list, profile history and unplaced resource reads use `library.read(id, human)` / the same scoped list. Own claims and explicitly human-shared entries are visible; another person's private claim is indistinguishable from an unknown id. Sharing is explicit and only changes the caller's own claim. An upload makes a human direct-upload claim, never a shared claim or a mod holder. A human can remove a chat placement without acquiring its bytes or claims.
 
@@ -36,7 +36,7 @@ Agent `profile_web_effect` becomes a read-only view of real stored reported data
 
 Successful profile reports are limited to one per person/id per 10 seconds, using a monotonic clock. Refused/invalid writes do not spend that slot; 1,024 live report keys are allowed and entries expire after a minute. Clock failure/rollback refuses. This is a bounded diagnostic-ingress budget, not a second agent appearance limiter. Agent appearance writes continue using the existing single shared limiter. Human changes/removals are not charged to an agent's change/upload budget; the library's retained-id/byte quota still applies.
 
-Automatic effect reads **and profile POSTs** are passive for session-idle touching only. POST still requires CSRF and an admin session. Background profiling must not keep a person's otherwise idle session signed in indefinitely.
+Execution-resource/placement reads, retained runtime images and profile POSTs require exactly one matching boot `ownerEpoch`; personal runtime reads keep the same fence. See [the runtime session contract](1629-effect-runtime-auth.md). Automatic effect reads **and profile POSTs** are passive for session-idle touching only. POST still requires CSRF and a human session; only diagnostics accept the read tier. Background profiling must not keep a person's otherwise idle session signed in indefinitely.
 
 ## Risks, verification and rollback
 

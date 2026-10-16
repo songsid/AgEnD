@@ -27,7 +27,7 @@ async function fixture(idleMs?:number){
  const ctx={webToken:token,webSessions:sessions,effectService:service} as unknown as WebApiContext;
  const server=createServer((req,res)=>{if(!handleWebRequest(req,res,new URL(req.url!,"http://localhost"),ctx)){res.writeHead(404);res.end();}});servers.push(server);
  await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const port=(server.address() as {port:number}).port,origin=`http://127.0.0.1:${port}`;
- const session=(id="alice",tier:"admin"|"read"="admin")=>{const made=sessions.create({tier,surface:"local",label:"test",tokenEpoch:tokenEpoch(token),owner:owner(id)});return {id:made.sessionId,cookie:`agend_session=${made.sessionId}`,headers:{cookie:`agend_session=${made.sessionId}`,origin,"x-agend-csrf":csrfTokenFor(made.sessionId)}};};
+ const session=(id="alice",tier:"admin"|"read"="admin")=>{const made=sessions.create({tier,surface:"local",label:"test",tokenEpoch:tokenEpoch(token),owner:owner(id)});return {id:made.sessionId,epoch:made.record.handle,cookie:`agend_session=${made.sessionId}`,headers:{cookie:`agend_session=${made.sessionId}`,origin,"x-agend-csrf":csrfTokenFor(made.sessionId)}};};
  const call=(method:string,path:string,headers:Record<string,string>={},body?:Buffer|string)=>new Promise<{status:number;body:any;headers:Record<string,unknown>} >((resolve,reject)=>{const r=request({host:"127.0.0.1",port,method,path,headers},res=>{const chunks:Buffer[]=[];res.on("data",c=>chunks.push(c));res.on("end",()=>resolve({status:res.statusCode!,headers:res.headers,body:res.headers["content-type"]==="image/png"?Buffer.concat(chunks):JSON.parse(Buffer.concat(chunks).toString())}));});r.on("error",reject);r.setTimeout(5000,()=>r.destroy(Error("scratch HTTP deadline")));r.end(body);});
  return {root,library,themes,profiles,sessions,token,service,ctx,session,call,changed,origin,at:(n:number)=>{wall=n;}};
 }
@@ -36,18 +36,18 @@ describe("#1629 human-only effects routes",()=>{
   const f=await fixture(),a=f.session(),b=f.session("bob");const upload=await f.call("POST","/ui/effects/upload",a.headers,input());expect(upload.status).toBe(200);const id=upload.body.id;
   expect((await f.call("GET","/ui/effects",a.headers)).body).toMatchObject({effects:[{id}]});expect((await f.call("GET","/ui/effects",b.headers)).body).toEqual({effects:[],canWrite:true});
   expect((await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id}))).status).toBe(200);
-  expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own`,b.headers)).body).toMatchObject({id,code:"agend.ready()"});expect((await f.call("GET",`/ui/effects/resource/${id}`,b.headers)).status).toBe(404);
-  expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own`,b.headers,JSON.stringify(profile()))).status).toBe(200);expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own`,b.headers,JSON.stringify(profile()))).status).toBe(429);
+  expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own&ownerEpoch=${b.epoch}`,b.headers)).body).toMatchObject({id,code:"agend.ready()"});expect((await f.call("GET",`/ui/effects/resource/${id}?ownerEpoch=${b.epoch}`,b.headers)).status).toBe(404);
+  expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own&ownerEpoch=${b.epoch}`,b.headers,JSON.stringify(profile()))).status).toBe(200);expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own&ownerEpoch=${b.epoch}`,b.headers,JSON.stringify(profile()))).status).toBe(429);
   expect((await f.call("GET",`/ui/effects/profile/${id}`,b.headers)).status).toBe(404);expect((await f.call("GET",`/ui/effects/profile/${id}`,a.headers)).body).toMatchObject({records:[{source:"reported_host"}]});
   expect(f.library.read(id,{kind:"human",id:webPersonKey(owner("bob"))}).ok).toBe(false);
-  expect((await f.call("POST","/ui/effects/remove",b.headers,JSON.stringify({instance:"own",id}))).status).toBe(200);expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own`,b.headers)).status).toBe(404);
+  expect((await f.call("POST","/ui/effects/remove",b.headers,JSON.stringify({instance:"own",id}))).status).toBe(200);expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own&ownerEpoch=${b.epoch}`,b.headers)).status).toBe(404);
   expect((await f.call("DELETE",`/ui/effects/${id}`,a.headers)).status).toBe(200);
  });
  it("poster responses have private no-store/nosniff/sandbox headers and the same resource ACL",async()=>{
   const f=await fixture(),a=f.session(),b=f.session("bob"),files=new Map<string,Uint8Array>(JSON.parse(input().toString()).map((file:{path:string;data_b64:string})=>[file.path,Buffer.from(file.data_b64,"base64")]));
   files.set("poster.png",Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1sAAAAASUVORK5CYII=","base64"));const uploaded=await f.call("POST","/ui/effects/upload",a.headers,encodeEffectFiles(files)!);expect(uploaded.status).toBe(200);const id=uploaded.body.id;
   const image=await f.call("GET",`/ui/effects/image/${id}/poster.png`,a.headers);expect(image.status).toBe(200);expect(image.headers).toMatchObject({"content-type":"image/png","cache-control":"private, no-store","x-content-type-options":"nosniff","content-security-policy":"default-src 'none'; sandbox"});expect(Buffer.isBuffer(image.body)).toBe(true);
-  expect((await f.call("GET",`/ui/effects/image/${id}/poster.png`,b.headers)).status).toBe(404);await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({id,instance:"own"}));expect((await f.call("GET",`/ui/effects/image/${id}/poster.png?instance=own`,b.headers)).status).toBe(200);expect((await f.call("GET",`/ui/effects/image/${id}/cursor.png?instance=own`,b.headers)).status).toBe(404);
+  expect((await f.call("GET",`/ui/effects/image/${id}/poster.png`,b.headers)).status).toBe(404);await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({id,instance:"own"}));expect((await f.call("GET",`/ui/effects/image/${id}/poster.png?instance=own&ownerEpoch=${b.epoch}`,b.headers)).status).toBe(200);expect((await f.call("GET",`/ui/effects/image/${id}/cursor.png?instance=own&ownerEpoch=${b.epoch}`,b.headers)).status).toBe(404);
  });
  it("anonymous/header-token/read-only/missing-CSRF callers cannot write a human claim",async()=>{
   const f=await fixture(),ro=f.session("reader","read"),a=f.session();
@@ -83,9 +83,9 @@ describe("#1629 human-only effects routes",()=>{
  });
  it("automatic resource reads and profile posts do not keep an idle session alive, while CSRF still applies",async()=>{
   const f=await fixture(1000),a=f.session(),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
-  f.at(500);expect((await f.call("GET",`/ui/effects/resource/${id}`,a.headers)).status).toBe(200);
+  f.at(500);expect((await f.call("GET",`/ui/effects/resource/${id}?ownerEpoch=${a.epoch}`,a.headers)).status).toBe(200);
   expect((await f.call("POST",`/ui/effects/profile/${id}`,{cookie:a.cookie},JSON.stringify(profile()))).status).toBe(401);
-  f.at(800);expect((await f.call("POST",`/ui/effects/profile/${id}`,a.headers,JSON.stringify(profile()))).status).toBe(200);
+  f.at(800);expect((await f.call("POST",`/ui/effects/profile/${id}?ownerEpoch=${a.epoch}`,a.headers,JSON.stringify(profile()))).status).toBe(200);
   f.at(1001);expect((await f.call("GET","/ui/effects",a.headers)).status).toBe(401);
  });
  it("malformed and excessive request bodies refuse without reaching a store",async()=>{
@@ -112,4 +112,82 @@ describe("#1629 human-only effects routes",()=>{
   expect((await f.call("GET",`/ui/effects/profile/${id}`,b.headers)).status).toBe(404);
  });
 
+});
+
+describe("#1629 runtime session epoch", () => {
+ it("runtime resources require one exact session epoch, including a same-person new sign-in", async () => {
+  const f=await fixture(),a=f.session(),same=f.session(),b=f.session("bob"),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
+  await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id}));
+  const resource=vi.spyOn(f.service,"resource");
+  for(const [query,headers] of [["",a.headers],["&ownerEpoch=",a.headers],[`&ownerEpoch=${b.epoch}`,a.headers],[`&ownerEpoch=${a.epoch}`,same.headers],[`&ownerEpoch=${a.epoch}&ownerEpoch=${a.epoch}`,a.headers],[`&ownerEpoch=${a.epoch}&ownerEpoch=${b.epoch}`,a.headers]] as const){
+   const r=await f.call("GET",`/ui/effects/resource/${id}?instance=own${query}`,headers);expect([r.status,r.body]).toEqual([404,{error:"not_found"}]);
+  }
+  expect(resource).not.toHaveBeenCalled();
+  expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own&ownerEpoch=${a.epoch}`,a.headers)).status).toBe(200);
+  expect((await f.call("GET",`/ui/effects/resource/${id}?instance=own&ownerEpoch=${same.epoch}`,same.headers)).status).toBe(200);
+  expect((await f.call("GET",`/ui/effects/resource/${id}?ownerEpoch=${b.epoch}`,b.headers)).status).toBe(404);
+  expect((await f.call("GET",`/ui/effects/resource/${id}?ownerEpoch=${a.epoch}`,a.headers)).status).toBe(200);
+ });
+ it("placements and runtime images are fenced; ordinary scoped library images/history are unchanged",async()=>{
+  const f=await fixture(),a=f.session(),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id,placements=vi.spyOn(f.service,"placements"),image=vi.spyOn(f.service,"image");
+  for(const epoch of ["", "&ownerEpoch=bad", `&ownerEpoch=${a.epoch}&ownerEpoch=${a.epoch}`]){
+   expect((await f.call("GET",`/ui/effects/placements?instance=own${epoch}`,a.headers)).status).toBe(409);
+   expect((await f.call("GET",`/ui/effects/image/${id}/poster.png?instance=own${epoch}`,a.headers)).status).toBe(404);
+  }
+  expect(placements).not.toHaveBeenCalled();expect(image).not.toHaveBeenCalled();
+  expect((await f.call("GET",`/ui/effects/placements?instance=own&ownerEpoch=${a.epoch}`,a.headers)).status).toBe(200);
+  expect((await f.call("GET",`/ui/effects/image/${id}/poster.png`,a.headers)).status).toBe(404);expect(image).toHaveBeenCalledOnce();
+  expect((await f.call("GET",`/ui/effects/profile/${id}`,a.headers)).status).toBe(200);
+ });
+ it.each(["upload","profile"])("a held %s body cannot switch to a new same-person session",async operation=>{
+  const f=await fixture(),a=f.session(),replacement=f.session(),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
+  const path=operation==="upload"?"/ui/effects/upload":`/ui/effects/profile/${id}?ownerEpoch=${a.epoch}`;
+  const bytes=operation==="upload"?input():Buffer.from(JSON.stringify(profile())),spy=operation==="upload"?vi.spyOn(f.service,"upload"):vi.spyOn(f.service,"report");
+  let status=0;const res:any={headersSent:false,destroyed:false,writeHead(n:number){status=n;this.headersSent=true;},end(){},setHeader(){}};
+  const req=Object.assign(new EventEmitter(),{method:"POST",url:path,headers:{...a.headers,host:new URL(f.origin).host},destroy(){},resume(){}});
+  expect(handleWebRequest(req as never,res,new URL(path,f.origin),f.ctx)).toBe(true);expect(status).toBe(0);req.emit("data",bytes.subarray(0,10));
+  // An inert request/auth-continuation model, not a claim that real HTTP mutates its Cookie header mid-body.
+  Object.assign(req.headers,replacement.headers);req.emit("data",bytes.subarray(10));req.emit("end");await Promise.resolve();await Promise.resolve();
+  expect(status).toBe(409);expect(spy).not.toHaveBeenCalled();
+ });
+ it("an expired runtime session cannot borrow another person's still-live epoch",async()=>{
+  const f=await fixture(1000),a=f.session(),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
+  f.at(900);const b=f.session("bob");f.at(1001);
+  expect((await f.call("GET",`/ui/effects/resource/${id}?ownerEpoch=${b.epoch}`,a.headers)).status).toBe(401);
+  expect((await f.call("GET",`/ui/effects/resource/${id}?ownerEpoch=${b.epoch}`,b.headers)).status).toBe(404);
+ });
+});
+
+describe("#1629 signed-in browser diagnostics",()=>{
+ it("a read-tier browser may report a retained chat effect, without acquiring a claim or appearance authority",async()=>{
+  const f=await fixture(),a=f.session(),reader=f.session("reader","read"),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
+  await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id}));f.changed.mockClear();
+  const url=`/ui/effects/profile/${id}?instance=own&ownerEpoch=${reader.epoch}`;
+  expect((await f.call("POST",url,reader.headers,JSON.stringify(profile()))).status).toBe(200);
+  expect((await f.call("POST",url,reader.headers,JSON.stringify(profile()))).status).toBe(429);
+  expect((await f.call("GET",`/ui/effects/profile/${id}`,a.headers)).body).toMatchObject({records:[{source:"reported_host"}]});
+  expect(f.library.read(id,{kind:"human",id:webPersonKey(owner("reader"))}).ok).toBe(false);expect(f.changed).not.toHaveBeenCalled();
+  for(const [method,path,body] of [["POST","/ui/effects/upload",input()],["POST","/ui/effects/apply","{}"],["POST","/ui/effects/remove","{}"],["POST","/ui/effects/share","{}"],["DELETE",`/ui/effects/${id}`,undefined]] as const)expect((await f.call(method,path,reader.headers,body)).status).toBe(403);
+ });
+ it("diagnostics still require exact epoch, visibility, schema, CSRF and a human session",async()=>{
+  const f=await fixture(),a=f.session(),reader=f.session("reader","read"),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id,report=vi.spyOn(f.service,"report");
+  const root=`/ui/effects/profile/${id}`;
+  for(const suffix of ["",`?ownerEpoch=${a.epoch}`,`?ownerEpoch=${reader.epoch}&ownerEpoch=${reader.epoch}`])expect((await f.call("POST",root+suffix,reader.headers,JSON.stringify(profile()))).status).toBe(409);
+  expect(report).not.toHaveBeenCalled();
+  expect((await f.call("POST",root+`?ownerEpoch=${reader.epoch}`,reader.headers,JSON.stringify(profile()))).status).toBe(404);
+  await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id}));
+  const url=root+`?instance=own&ownerEpoch=${reader.epoch}`;
+  expect((await f.call("POST",url,reader.headers,"{}" )).status).toBe(400);
+  expect((await f.call("POST",url,{cookie:reader.cookie},JSON.stringify(profile()))).status).toBe(401);
+  expect((await f.call("POST",url,{"x-agend-token":f.token},JSON.stringify(profile()))).status).toBe(403);
+  expect((await f.call("POST",url,{},JSON.stringify(profile()))).status).toBe(401);
+  expect((await f.call("POST",url,reader.headers,JSON.stringify(profile()))).status).toBe(200);
+ });
+});
+
+it("read-session automatic diagnostics do not extend the session's idle deadline",async()=>{
+ const f=await fixture(1000),a=f.session(),reader=f.session("reader","read"),id=(await f.call("POST","/ui/effects/upload",a.headers,input())).body.id;
+ await f.call("POST","/ui/effects/apply",a.headers,JSON.stringify({instance:"own",id}));f.at(800);
+ expect((await f.call("POST",`/ui/effects/profile/${id}?instance=own&ownerEpoch=${reader.epoch}`,reader.headers,JSON.stringify(profile()))).status).toBe(200);
+ f.at(1001);expect((await f.call("GET","/ui/effects",reader.headers)).status).toBe(401);
 });

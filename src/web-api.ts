@@ -444,12 +444,14 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
+  // Reports are bounded untrusted diagnostics, not an appearance or admission write (r2 §6).
+  const profilePost = method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path);
   if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
   const who = (): { person: string; canWrite: boolean; epoch: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
     if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
-    if (!reading && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
+    if (!reading && !profilePost && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
     return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin", epoch: verdict.session.handle };
   };
   const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -459,8 +461,10 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   const idPath = /^\/ui\/effects\/(resource|profile)\/([0-9a-f]{32})$/.exec(path);
   const instance = url.searchParams.get("instance") ?? undefined, slot = url.searchParams.get("slot");
   if (slot !== null && instance !== undefined) { json(res, 404, { error: "not_found" }); return true; }
-  if (reading && (slot !== null || path === "/ui/effects/owner") && url.searchParams.get("ownerEpoch") !== first.epoch) {
-    json(res, slot !== null ? 404 : 409, { error: slot !== null ? "not_found" : "effects_person_changed" }); return true;
+  const runtimeRead = reading && (slot !== null || path === "/ui/effects/owner" || path === "/ui/effects/placements" || idPath?.[1] === "resource" || instance !== undefined && /^\/ui\/effects\/image\//.test(path));
+  if ((runtimeRead || profilePost) && (url.searchParams.getAll("ownerEpoch").length !== 1 || url.searchParams.get("ownerEpoch") !== first.epoch)) {
+    const privateResource = reading && (slot !== null || idPath?.[1] === "resource" || /^\/ui\/effects\/image\//.test(path));
+    json(res, privateResource ? 404 : 409, { error: privateResource ? "not_found" : "effects_person_changed" }); return true;
   }
   if (reading) {
     const image = /^\/ui\/effects\/image\/([0-9a-f]{32})\/(poster|cursor)\.png$/.exec(path);
@@ -487,7 +491,7 @@ function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
     catch { json(res, 413, { error: "effect_body_bound" }); return; }
     if (!permitWebContinuation(req, res, ctx)) return;
     const now = who(); if ("status" in now) { json(res, now.status, { error: now.error }); return; }
-    if (now.person !== first.person) { json(res, 409, { error: "effects_person_changed" }); return; }
+    if (now.person !== first.person || now.epoch !== first.epoch) { json(res, 409, { error: "effects_person_changed" }); return; }
     if (path === "/ui/effects/upload") { answer(service.upload(now.person, bytes)); return; }
     let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "effect_json" }); return; }
     if (path === "/ui/effects/apply") answer(service.apply(now.person, body));
