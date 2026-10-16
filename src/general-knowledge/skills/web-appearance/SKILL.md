@@ -148,9 +148,11 @@ widgets and effects. People import mods in **Settings → Appearance → Mods**.
 everything in a mod and ticks what to apply.
 
 - `export_web_mod { name, version, title? }` writes **your own** look to `.agend/mods/<name>-<version>.agendmod.json`
-  in your working directory and returns `{ path, bytes }`. It carries your theme with its pictures, your own card text
-  (not a person's card fields), and the widgets you placed. It never carries custom CSS or the sidebar widget, which
-  are a person's. `name` is a-z, 0-9 and -, `version` is MAJOR.MINOR.PATCH.
+  in your working directory and returns `{ path, bytes }`. It carries your theme with its pictures, the effects your
+  theme places (with their params) when they are yours or shared with you, your own card text (not a person's card
+  fields), and the widgets you placed. A person's private effect placed on you stays out (`effects_omitted` counts it).
+  It never carries custom CSS or the sidebar widget, which are a person's. `name` is a-z, 0-9 and -, `version` is
+  MAJOR.MINOR.PATCH.
 - `propose_web_mod { file }` sends a mod file from your working directory (at most 8 MiB) for a person to review. It
   is checked whole and answers with its problems if it isn't valid. **A mod carrying custom CSS is refused**
   (`owner_css_not_from_agent`). A muted line in your chat says it was proposed. Nothing changes until a person
