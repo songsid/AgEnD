@@ -27,6 +27,8 @@ export interface InstallLockRecord {
    * Absent from every 2.2 beta's lock and on macOS: those are judged by `processStart`, within a tolerance.
    */
   startTicks?: string;
+  /** #1947: the boot those ticks count from (/proc/sys/kernel/random/boot_id); present exactly when startTicks is. */
+  bootId?: string;
   prefix: string;
   targetSpec: string;
   agendHome: string;
@@ -40,6 +42,8 @@ export interface InstallLockDeps {
   processStart(pid: number): string | null;
   /** #1947: /proc/<pid>/stat start ticks (Linux), or null; omitted: none recorded and the lstart text decides. */
   startTicks?(pid: number): string | null;
+  /** #1947: this boot's id, or null; omitted with startTicks. */
+  bootId?(): string | null;
   /** Does the pid exist (false only for a definite "no such process")? Default: process.kill(pid, 0). */
   exists?(pid: number): boolean;
   /** Test seams (another updater's turn): after a lock was judged stale; after it was moved aside. */
@@ -62,7 +66,8 @@ export function parseInstallLock(text: string): InstallLockRecord | null {
   return r && Number.isSafeInteger(r.pid) && (r.pid as number) > 0 && typeof r.processStart === "string" && r.processStart
     && typeof r.prefix === "string" && typeof r.token === "string" && /^[0-9a-f]{32,}$/.test(r.token)
     && typeof r.targetSpec === "string" && typeof r.agendHome === "string" && typeof r.createdAt === "string"
-    && (r.startTicks === undefined || (typeof r.startTicks === "string" && /^\d+$/.test(r.startTicks)))
+    && ((r.startTicks === undefined && r.bootId === undefined)
+      || (typeof r.startTicks === "string" && /^\d+$/.test(r.startTicks) && typeof r.bootId === "string" && /^[0-9a-f-]{36}$/.test(r.bootId)))
     ? r as InstallLockRecord : null;
 }
 
@@ -74,13 +79,18 @@ const pidExists = (pid: number): boolean => {
  * The recorded holder: "live" (that very process), "stale" (PROVEN gone: no such pid, or the pid now belongs to a
  * process that started at another time), or "unknown" (it exists, but its start time cannot be read) — which blocks.
  */
-export function holderState(record: { pid: number; processStart: string; startTicks?: string }, deps: Pick<InstallLockDeps, "processStart" | "exists" | "startTicks">): "live" | "stale" | "unknown" {
+export function holderState(record: { pid: number; processStart: string; startTicks?: string; bootId?: string }, deps: Pick<InstallLockDeps, "processStart" | "exists" | "startTicks" | "bootId">): "live" | "stale" | "unknown" {
   if (!(deps.exists ?? pidExists)(record.pid)) return "stale";
-  // #1947: recorded start ticks decide exactly (a clock step cannot move them); otherwise the lstart text, within a
-  // tolerance — the same rule as the postinstall (launcher/install-admission.cjs holderState).
-  if (record.startTicks !== undefined && deps.startTicks) {
-    const ticks = deps.startTicks(record.pid);
-    if (ticks !== null) return ticks === record.startTicks ? "live" : "stale";
+  // #1947: a lock with start ticks is judged by them and its boot, never by the wall clock (another boot → stale; the
+  // same ticks → live; unreadable → unknown); otherwise the lstart text, within a tolerance. The postinstall's rule
+  // (launcher/install-admission.cjs holderState).
+  if (record.startTicks !== undefined) {
+    const boot = deps.bootId?.() ?? null;
+    if (boot === null) return "unknown";
+    if (boot !== record.bootId) return "stale";
+    const ticks = deps.startTicks?.(record.pid) ?? null;
+    if (ticks === null) return "unknown";
+    return ticks === record.startTicks ? "live" : "stale";
   }
   const seen = deps.processStart(record.pid);
   if (seen === null) return "unknown";
@@ -106,8 +116,9 @@ export function acquireInstallLock(prefix: string, target: { spec: string; agend
   const ownStart = deps.processStart(deps.pid);
   if (!ownStart) return { ok: false, path, reason: "this process's own start time cannot be read, so its lock could not be told from a stale one" };
   const ownTicks = deps.startTicks?.(deps.pid) ?? null;
+  const ownBoot = deps.bootId?.() ?? null;
   const record: InstallLockRecord = {
-    pid: deps.pid, processStart: ownStart, ...(ownTicks !== null ? { startTicks: ownTicks } : {}), prefix: canonical,
+    pid: deps.pid, processStart: ownStart, ...(ownTicks !== null && ownBoot !== null ? { startTicks: ownTicks, bootId: ownBoot } : {}), prefix: canonical,
     targetSpec: target.spec, agendHome: target.agendHome, token: deps.newToken(), createdAt: deps.now().toISOString(),
   };
   const serialized = JSON.stringify(record) + "\n";
