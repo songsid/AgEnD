@@ -106,6 +106,40 @@ describe("agy grouped quota summary (#1898)", () => {
     ]);
   });
 
+  // Prism's witnesses on r1 (synthetic; the live ids and window values are not known).
+  it.each(["5-hour", "5_hour", "5 hours", "5h"])("reads a five-hour limit written %j next to the weekly one", (form) => {
+    const metrics = agyPoolMetrics(agyQuotaBuckets({ groups: [{ displayName: "Gemini Models", buckets: [
+      { bucketId: "q-a", window: form, displayName: `${form} limit`, remainingFraction: 0.25 },
+      { bucketId: "q-b", window: "weekly", displayName: "Weekly Limit", remainingFraction: 0.75 },
+    ] }] }));
+    expect(metrics.map(m => [m.label, m.used])).toEqual([["Gemini (session)", 75], ["Gemini (weekly)", 25]]);
+  });
+
+  it("reads the five-hour limit from the display name alone when window and id say nothing", () => {
+    const metrics = agyPoolMetrics(agyQuotaBuckets({ groups: [{ displayName: "Gemini Models", buckets: [
+      { bucketId: "q-a", displayName: "5-hour limit", remainingFraction: 0.25 },
+      { bucketId: "q-b", displayName: "Weekly Limit", remainingFraction: 0.75 },
+    ] }] }));
+    expect(metrics.map(m => m.label)).toEqual(["Gemini (session)", "Gemini (weekly)"]);
+  });
+
+  it("a bucket's stated window wins over a word in an opaque id", () => {
+    const metrics = agyPoolMetrics(agyQuotaBuckets({ groups: [{ displayName: "Gemini Models", buckets: [
+      { bucketId: "opaque-session-quota", window: "WEEKLY", displayName: "Weekly Limit", remainingFraction: 0.75 },
+      { bucketId: "q-a", window: "5h", displayName: "Five Hour Limit", remainingFraction: 0.25 },
+    ] }] }));
+    expect(metrics.map(m => [m.label, m.used, m.note])).toEqual([["Gemini (session)", 75, undefined], ["Gemini (weekly)", 25, undefined]]);
+  });
+
+  it("a per-model id or name with a 5 or 7 in it is no limit", () => {
+    const metrics = agyPoolMetrics([
+      { bucketId: "gemini-2.5-high", displayName: "Gemini 2.5 High", remainingFraction: 0.5 },
+      { bucketId: "claude-opus-4-5-haiku", remainingFraction: 0.5 },
+      { bucketId: "gpt-5-high", remainingFraction: 0.5 },
+    ]);
+    expect(metrics.map(m => m.label)).toEqual(["Gemini", "Claude & others"]);
+  });
+
   it("names an unknown group by its own display name", () => {
     const metrics = agyPoolMetrics(agyQuotaBuckets({ groups: [{ displayName: "Imagen", buckets: [{ bucketId: "x", window: "weekly", remainingFraction: 0.5 }] }] }));
     expect(metrics).toMatchObject([{ label: "Imagen (weekly)", used: 50 }]);

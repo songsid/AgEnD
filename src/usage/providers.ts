@@ -670,10 +670,20 @@ function agyPool(b: AgyBucket, id: string): string {
 function agyWindow(b: AgyBucket, id: string): AgyWindow | null {
   const pooled = AGY_POOLED[id];
   if (pooled) return pooled.window;
-  // A bucket's display name only counts inside a named group: a per-model name ("Gemini 2.5 High") is no limit.
-  const text = [b.window, id, b.group ? b.displayName : undefined].filter(Boolean).join(" ");
-  if (/(^|[^0-9.])5\s*h(ours?)?\b|five[\s_-]*hours?|session/i.test(text)) return "session";
-  if (/week|\b7\s*d(ays?)?\b/i.test(text)) return "weekly";
+  // One source at a time, the most specific first: the bucket's own window, then its id, then — only inside a named
+  // group, where a per-model name ("Gemini 2.5 High") cannot occur — its display name. A word that merely appears in an
+  // opaque id never overrides a window the bucket states.
+  for (const text of [b.window, id, b.group ? b.displayName : undefined]) {
+    const window = text ? agyWindowOf(text) : null;
+    if (window) return window;
+  }
+  return null;
+}
+
+/** "5h", "5 h", "5-hour", "5_hours", "Five Hour Limit", "session" → session; "weekly", "7d", "7 days" → weekly. */
+function agyWindowOf(text: string): AgyWindow | null {
+  if (/(^|[^0-9.])5[\s_-]*h(ours?|rs?)?\b|five[\s_-]*h(ours?|rs?)\b|\bsession\b/i.test(text)) return "session";
+  if (/week|(^|[^0-9.])7[\s_-]*d(ays?)?\b|seven[\s_-]*days?\b/i.test(text)) return "weekly";
   return null;
 }
 
