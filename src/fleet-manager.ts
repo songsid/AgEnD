@@ -209,7 +209,8 @@ import { ReplyButtonsController, type ReplyButtonsView } from "./reply-buttons-c
 import { parsePoll, type PollRender } from "./reply-polls.js";
 import { publicAttachment, sweepOrphanedUploads, WebFileLedger } from "./web-upload.js";
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
-import { cardPicture, handleViewRequest, humanCards, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { cardPicture, handleViewRequest, humanCards, identityColors, isViewPath, profileIdentities, resolveInstanceIdentity } from "./view-api.js";
+import { autoIdentityColor } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
 import { cardVersion, resolveCard } from "./web-card.js";
@@ -1396,6 +1397,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** A fleet.yaml instance (own key) or a ClassicBot room, now (#1629: a person's reset/lock names one). */
+  /** #1958: a profile, card or colour write (view-api.ts) landed: every open page gets a fresh status frame. */
+  identityChanged(): void {
+    try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* the next frame carries it */ }
+  }
+
   isKnownInstance(name: string): boolean {
     return Object.hasOwn(this.fleetConfig?.instances ?? {}, name) || (this.classicChannels?.getAll() ?? []).some((ch) => ch.instanceName === name);
   }
@@ -11059,7 +11065,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * One instance's avatar and ring for the status frame. Synchronous: what is cached now; fetches run behind. The bot
    * is its own, else the one it speaks through (#1867) — one cache entry per bot, so a shared bot is fetched once.
    */
-  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string } {
+  private webIdentityImage(name: string, displayName: string | null, profileAvatar: string | null | undefined, bots: { own: Map<string, string>; speaking: Map<string, string> }): { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string } {
     let profileVersion: string | null = null;
     if (profileAvatar && imageMimeForFile(profileAvatar)) {
       try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileAvatar))).mtimeMs).toString(36); } catch { /* removed */ }
@@ -11072,9 +11078,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const avatar = avatarFor({ name, displayName, profileVersion, bot: bot && connection ? { connection, version: bot.version } : null,
       personaEmoji: (cfg?.status_emojis as Record<string, unknown> | undefined)?.delivered });
     // The ring belongs to an own bot's face: only when that is what is shown (a shared bot's would ring everyone alike).
-    const accent = !profileVersion && bot && ownConnection && owner
+    // #1958: the own bot's colour is also the identity colour's role tier — whatever face is shown (never a shared bot's).
+    const roleColor = ownConnection && owner
       ? this.webAccent(ownConnection, owner, cfg ? (cfg.topic_id == null ? undefined : String(cfg.topic_id)) : this.classicChannels?.getChannelIdByInstance(name))
       : null;
+    const accent = !profileVersion && bot && ownConnection && owner ? roleColor : null;
     // #1629 (first design §5, r2 (d)): the agent's theme may name its own picture and ring colour. Both come below a
     // person's upload (never when there is one) and ride beside the theme-free face: a viewer who turned agents'
     // themes off (fx.show), or a safe-mode load, shows `avatar` and `accent` as before.
@@ -11082,7 +11090,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { theme = this.themeStore.get(name).theme; } catch { /* unreadable themes: none */ }
     const themeAvatar: AvatarDescriptor | undefined = !profileVersion && theme.avatar ? { kind: "image", src: `/ui/img/theme/${encodeURIComponent(name)}/${theme.avatar}` } : undefined;
     const themeAccent = !profileVersion && theme.accent ? theme.accent : undefined;
-    return { avatar, ...(accent ? { accent } : {}), ...(themeAvatar ? { themeAvatar } : {}), ...(themeAccent ? { themeAccent } : {}) };
+    return { avatar, ...(accent ? { accent } : {}), ...(themeAvatar ? { themeAvatar } : {}), ...(themeAccent ? { themeAccent } : {}),
+      ...(roleColor ? { roleColor } : {}), ...(theme.accent ? { agentColor: theme.accent } : {}) };
   }
   /**
    * GET /ui/img/bot|avatar/<key>: what is cached, never a fetch. Only a connection some instance or room speaks
@@ -20609,6 +20618,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const profiles = profileIdentities(this.dataDir);
     // #1629 r4 §1: the identity card's version per instance (the page reads the card when it moves).
     const cards = humanCards(this.dataDir);
+    const colors = identityColors(this.dataDir);
     // #1630: decorative — whatever goes wrong deciding an avatar never costs the frame (every instance gets its first character).
     let bots = { own: new Map<string, string>(), speaking: new Map<string, string>() };
     try { bots = this.webBots(); } catch (err) { this.logger.debug({ err }, "bots unreadable (getUiStatus)"); }
@@ -20649,7 +20659,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
       const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
       const identity = resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic: classicRooms.get(name), profile: profiles.get(name) });
-      let image: { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string };
+      let image: { avatar: AvatarDescriptor; accent?: string; themeAvatar?: AvatarDescriptor; themeAccent?: string; roleColor?: string; agentColor?: string };
       try { image = this.webIdentityImage(name, identity.display_name, profiles.get(name)?.avatar_path, bots); }
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
@@ -20661,6 +20671,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         ...(image.themeAvatar ? { theme_avatar: image.themeAvatar } : {}),
         ...(image.themeAccent ? { theme_accent: image.themeAccent } : {}),
         ...(() => { try { const v = cardVersion(resolveCard(name, cards.get(name), this.themeStore.get(name).theme.card)); return v ? { card_v: v } : {}; } catch { return {}; } })(),
+        // #1958: the identity colour's tiers (the page resolves them: the agent's only while it shows agents' themes).
+        color: { ...(colors.get(name) ? { person: colors.get(name) } : {}), ...(image.agentColor ? { agent: image.agentColor } : {}),
+          ...(image.roleColor ? { role: image.roleColor } : {}), auto: autoIdentityColor(name) },
         description: identity.description || undefined,
         role: identity.role || undefined,
         tags: identity.tags,

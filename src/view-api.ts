@@ -46,6 +46,7 @@ import { getTmuxSocketName } from "./paths.js";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
 import { CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard } from "./web-card.js";
+import { canonicalIdentityColor, IdentityColorStore } from "./web-identity-color.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import type { ThemeCard } from "./web-theme.js";
 
@@ -71,6 +72,8 @@ export interface ViewApiContext {
   previewForUi?: AppShellContext["previewForUi"];
   /** #1629 r4 §1: the agent's side of the identity card (theme.card) and its pictures. */
   readonly themeStore?: { get(name: string): { theme: { card?: ThemeCard } }; asset(name: string, id: string): { bytes: Buffer; mime: string } | null };
+  /** #1958: a profile, card or colour write landed — every open page repaints (a status frame), not only the writer's. */
+  identityChanged?(): void;
 }
 
 interface ProfileRow {
@@ -123,6 +126,16 @@ let _cards: { dir: string; store: HumanCardStore } | null = null;
 function cardStore(ctx: { dataDir: string }): HumanCardStore {
   if (_cards?.dir !== ctx.dataDir) _cards = { dir: ctx.dataDir, store: new HumanCardStore(ctx.dataDir, () => profileDb(ctx.dataDir)) };
   return _cards.store;
+}
+/** #1958: the people's identity colours, in profiles.db's own table (instance_color). */
+let _colors: { dir: string; store: IdentityColorStore } | null = null;
+function colorStore(ctx: { dataDir: string }): IdentityColorStore {
+  if (_colors?.dir !== ctx.dataDir) _colors = { dir: ctx.dataDir, store: new IdentityColorStore(() => profileDb(ctx.dataDir)) };
+  return _colors.store;
+}
+/** Every person-picked colour, for a status read (never creates profiles.db or its table). */
+export function identityColors(dataDir: string): ReturnType<typeof IdentityColorStore.all> {
+  return IdentityColorStore.all(dataDir, () => profileDb(dataDir));
 }
 /** The card picture drawn for `slot`: the person's, else the agent's (the same rule as the card's JSON). */
 export function cardPicture(ctx: { dataDir: string; themeStore?: ViewApiContext["themeStore"] }, name: string, slot: CardSlot): { bytes: Buffer; mime: string } | null {
@@ -429,7 +442,8 @@ export function handleViewRequest(
       const db = profileDb(ctx.dataDir);
       const row = (db.prepare("SELECT * FROM instance_profile WHERE instance_name = ?").get(name) as ProfileRow | undefined)
         ?? { instance_name: name, display_name: null, avatar_path: null, role: null, description: null, updated_at: 0 };
-      json(res, 200, row);
+      // #1958: the person's colour pick (null: none — the agent's, the bot's or the automatic one shows).
+      json(res, 200, { ...row, color: colorStore(ctx).get(name) });
       return true;
     }
 
@@ -454,11 +468,23 @@ export function handleViewRequest(
         const cardText: { tagline?: unknown; bio?: unknown } = {};
         if (Object.hasOwn(body, "card_tagline")) cardText.tagline = body.card_tagline;
         if (Object.hasOwn(body, "card_bio")) cardText.bio = body.card_bio;
+        // #1958: the identity colour (a preset or #rrggbb; null or "" resets it), checked before anything is written.
+        const color = Object.hasOwn(body, "color") ? body.color : undefined;
+        if (color !== undefined && color !== null && !(typeof color === "string" && !color.trim()) && !canonicalIdentityColor(color)) {
+          json(res, 400, { error: "color", detail: "a preset id or a hex colour #rrggbb" });
+          return;
+        }
         if (cardText.tagline !== undefined || cardText.bio !== undefined) {
           const cw = cardStore(ctx).setText(name, cardText);
           if (!cw.ok) { json(res, cw.status, { error: cw.error, ...(cw.detail ? { detail: cw.detail } : {}) }); return; }
         }
-        if (!set.length) { json(res, 200, { ok: true }); return; }
+        if (color !== undefined) {
+          const w = colorStore(ctx).set(name, color);
+          if (!w.ok) { json(res, w.status, { error: w.error, ...(w.detail ? { detail: w.detail } : {}) }); return; }
+        }
+        const wrote = cardText.tagline !== undefined || cardText.bio !== undefined || color !== undefined || set.length > 0;
+        const done = () => { if (wrote) { try { ctx.identityChanged?.(); } catch { /* the next status frame carries it */ } } json(res, 200, { ok: true }); };
+        if (!set.length) { done(); return; }
         const db = profileDb(ctx.dataDir);
         // Column names come only from the fixed list above; avatar_path is the avatar route's — never touched here.
         const cols = set.map(([k]) => k);
@@ -466,7 +492,7 @@ export function handleViewRequest(
           VALUES (@n, ${cols.map(c => `@${c}`).join(", ")}, @t)
           ON CONFLICT(instance_name) DO UPDATE SET ${cols.map(c => `${c} = excluded.${c}`).join(", ")}, updated_at = excluded.updated_at`)
           .run({ n: name, t: Date.now(), ...Object.fromEntries(set) });
-        json(res, 200, { ok: true });
+        done();
       }).catch(err => json(res, 400, { error: (err as Error).message }));
       return true;
     }
