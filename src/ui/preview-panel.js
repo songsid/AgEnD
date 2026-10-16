@@ -250,9 +250,9 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     if (want && pending.current === want && panelStore.get().run === want) start();
   };
   const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
-  return html`<div class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
+  return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
       aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
-    <aside class="pv-panel" ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
+    <aside data-trust="preview" class="pv-panel" ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
       <div class="pv-panel-head">
         <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
         <div class="pv-panel-title"><strong>${t("chat.pvPanel")}</strong>

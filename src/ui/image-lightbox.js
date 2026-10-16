@@ -90,7 +90,7 @@ function ImageLightbox({ items, index, opener, onClose }) {
     return () => { d.removeEventListener("cancel", onCancel); d.removeEventListener("close", onNativeClose); d.removeEventListener("click", onClick); d.removeEventListener("keydown", onKey); };
   }, [onClose, many, items.length]);
   const label = item.name ? t("chat.lbLabel", item.name) : t("chat.lbLabelNoName");
-  return html`<dialog ref=${ref} class="lb" role="dialog" aria-modal="true" aria-label=${label}>
+  return html`<dialog data-trust="lightbox" ref=${ref} class="lb" role="dialog" aria-modal="true" aria-label=${label}>
     <div class="lb-bar">
       <span class="lb-name" title=${item.name}>${item.name}</span>
       ${many ? html`<span class="lb-count">${t("chat.lbCount", at + 1, items.length)}</span>` : null}

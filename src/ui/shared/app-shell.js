@@ -177,7 +177,7 @@ function SidebarResize() {
     handle.addEventListener("pointercancel", cancel);
     handle.addEventListener("lostpointercapture", cancel);
   };
-  return html`<div class="side-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sidebar"
+  return html`<div data-trust="navigation" class="side-resize" role="separator" aria-orientation="vertical" tabindex="0" aria-controls="sidebar"
     aria-label=${t("app.resizeSidebar")} title=${t("app.resizeSidebarHint")} aria-valuemin=${String(SIDEBAR_W.min)}
     aria-valuemax=${String(clampSidebarWidth(Infinity, mainBudget()))} aria-valuenow=${String(now)}
     onKeyDown=${onKey} onPointerDown=${onDown} ondblclick=${() => setSidebarWidth(null)}></div>`;
@@ -257,13 +257,13 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
   if (viewOnly) {
     return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
-      <div class="side-head">
+      <div class="side-head" data-trust="navigation">
         <a class="brand" href="/view" onClick=${closeDrawer}>${t("app.brand")}</a>
         <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
       </div>
-      <nav class="side-nav" aria-label=${t("app.menu")}>${navLink("view", "/view", "view", t("app.view"))}</nav>
+      <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>${navLink("view", "/view", "view", t("app.view"))}</nav>
       ${shell.side ? html`<${shell.side.Component} />` : html`<${ViewOnlyNav} route=${route} />`}
-      <div class="side-foot">
+      <div class="side-foot" data-trust="navigation">
         <a class="side-row" href=${signInHref()}><${Icon} name="user" /><span>${t("app.signIn")}</span></a>
         <${PrefsPopover} />
       </div>
@@ -276,12 +276,12 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const overview = html`<a class=${`side-row side-overview${onFleet ? " active" : ""}`} href=${fleetPath("org")}
     aria-current=${onFleet ? "page" : undefined} onClick=${closeDrawer}><${Icon} name="org" /><span class="grow">${t("app.fleetOverview")}</span></a>`;
   return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
-    <div class="side-head">
+    <div class="side-head" data-trust="navigation">
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
       <button type="button" class="icon-btn" onClick=${onNewInstance} aria-label=${t("app.newInstance")} title=${t("app.newInstance")}><${Icon} name="plus" /></button>
     </div>
-    <nav class="side-nav" aria-label=${t("app.menu")}>
+    <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
       ${navLink("fleet", openInstance ? detailsPath(openInstance) : "/ui/fleet", "fleet", t("app.fleet"))}
@@ -290,7 +290,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
         exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />`}
     <${SidebarWidget} app=${app} />
-    <div class="side-foot">
+    <div class="side-foot" data-trust="navigation">
       ${navLink("settings", settingsPath(), "settings", t("app.settings"))}
       <${SessionMenu} />
     </div>
@@ -302,7 +302,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
 function SidebarWidget({ app }) {
   useStore(sidebarWidgetStore);
   const widget = sidebarWidget();
-  return widget ? html`<div class="side-widget"><${AgentWidget} slot="sidebar" widget=${widget} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} /></div>` : null;
+  return widget ? html`<div class="side-widget" data-trust="widget"><${AgentWidget} slot="sidebar" widget=${widget} binds=${fleetBinds(app.instances, app.exec, app.awaiting)} /></div>` : null;
 }
 
 /** The anonymous View reader's list: View's roster read (no status frames without a session), the same component. */
@@ -338,7 +338,7 @@ export function DevicePrefs({ labels = false } = {}) {
 function PrefsPopover() {
   return html`<details class="prefs-pop">
     <summary class="icon-btn" aria-label=${t("app.devicePrefs")} title=${t("app.devicePrefs")}><${Icon} name="sun" /></summary>
-    <div class="pop" role="group" aria-label=${t("app.devicePrefs")}><${DevicePrefs} labels=${true} /></div>
+    <div data-trust="popover" class="pop" role="group" aria-label=${t("app.devicePrefs")}><${DevicePrefs} labels=${true} /></div>
   </details>`;
 }
 
@@ -348,7 +348,7 @@ function PrefsPopover() {
  */
 export function PanelHeader({ title, sub, children, headingRef, nav }) {
   const shell = useStore(shellStore);
-  return html`<header class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
+  return html`<header data-trust="header" class=${`panel-head${shell.collapsed ? " collapsed" : ""}`}>
     <button type="button" id="sbOpen" class="icon-btn sb-open" onClick=${() => (narrow() ? openDrawer() : toggleSidebar())}
       aria-label=${narrow() ? t("app.openMenu") : t("app.expand")} title=${narrow() ? t("app.openMenu") : t("app.expand")} aria-controls="sidebar" aria-expanded=${shell.drawer ? "true" : "false"}><${Icon} name="menu" /></button>
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1">${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
@@ -378,12 +378,12 @@ function BottomTabs({ route, viewOnly }) {
   try { lastView = localStorage.getItem("agend_last_view"); } catch { /* none */ }
   const viewHref = route && (route.panel === "view" || route.panel === "log" || route.panel === "details") && route.instance ? viewPath(route.instance) : viewPath(lastView);
   if (viewOnly) {
-    return html`<nav class="tabs" aria-label=${t("app.menu")}>
+    return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
       ${tab(viewHref, "view", t("app.view"), route && route.panel === "view")}
       ${tab(signInHref(), "user", t("app.signIn"), false)}
     </nav>`;
   }
-  return html`<nav class="tabs" aria-label=${t("app.menu")}>
+  return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), route && route.panel === "chat", anyAwaiting)}
     ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length, t("app.needsCount", (app.needs || []).length))}
     ${tab(open ? detailsPath(open) : "/ui/fleet", "fleet", t("app.fleet"), route && (route.panel === "fleet" || route.panel === "details"))}
@@ -396,7 +396,7 @@ function ConnectionLine() {
   const { connection, hydration, retryHydration } = useStore(appStore);
   // A late catch-up that is not done: the chat may be missing what was open before it loaded (#1425 review).
   if (hydration === "retrying" || hydration === "failed") {
-    return html`<div class="conn" role="status">${hydration === "failed" ? t("app.hydrateFailed") : t("app.hydrating")}
+    return html`<div data-trust="status" class="conn" role="status">${hydration === "failed" ? t("app.hydrateFailed") : t("app.hydrating")}
       ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}</div>`;
   }
   if (connection === "reconnecting") return html`<${Reconnecting} />`;
@@ -410,7 +410,7 @@ function Reconnecting() {
   const { retryAt } = useStore(appStore);
   useTick(true);
   const s = typeof retryAt === "number" ? Math.max(0, Math.ceil((retryAt - NOW()) / 1000)) : 0;
-  return html`<div class="conn reconnecting" role="status">${s > 0 ? t("app.connReconnectingIn", s) : t("app.connReconnecting")}</div>`;
+  return html`<div data-trust="status" class="conn reconnecting" role="status">${s > 0 ? t("app.connReconnectingIn", s) : t("app.connReconnecting")}</div>`;
 }
 
 const NOW = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -435,7 +435,7 @@ export function PendingChanges({ inline = false } = {}) {
   const list = pendingChanges || [];
   useTick(list.some(p => p.state === "pending"));
   if (!list.length) return null;
-  return html`<div class=${`pending-stack${inline ? " inline" : ""}`} role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} class=${`pending-card ${p.state}`} role="status">
+  return html`<div data-trust="confirmation" class=${`pending-stack${inline ? " inline" : ""}`} role="region" aria-label=${t("app.pendingTitle")}>${list.map(p => html`<section key=${p.id} class=${`pending-card ${p.state}`} role="status">
     <div class="pending-head"><${Icon} name=${p.state === "applied" ? "check" : p.state === "pending" || p.state === "applying" ? "clock" : "alert"} size=${16} />
       <strong>${t(`app.pending_${p.state}`)}</strong>
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
@@ -460,7 +460,7 @@ function OperationLine({ route }) {
     : op.phase === "posting" || op.phase === "watching" ? t("app.opApplying")
     : op.phase === "failed" ? t("app.opFailed") : restart ? t("app.opRestart") : failedRows ? t("app.opPartial") : t("app.opDone");
   const busy = op.phase === "writing" || op.phase === "posting" || op.phase === "watching";
-  return html`<div class=${`conn op-line${busy ? "" : op.phase === "failed" || restart || failedRows ? " bad" : " ok"}`} role="status">
+  return html`<div data-trust="status" class=${`conn op-line${busy ? "" : op.phase === "failed" || restart || failedRows ? " bad" : " ok"}`} role="status">
     <span>${text}</span> <a class="btn btn-sm" href=${settingsPath()}>${t("app.openSettings")}</a></div>`;
 }
 
@@ -509,7 +509,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   }, []);
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : ""].filter(Boolean).join(" ");
   return html`<div class=${cls}>
-    <a class="skip" href="#main">${t("app.skip")}</a>
+    <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
     <${Sidebar} route=${nav.route} onNewInstance=${onNewInstance} viewOnly=${viewOnly} />
     <div class="scrim" onClick=${closeDrawer} aria-hidden="true"></div>
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>

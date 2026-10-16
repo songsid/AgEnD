@@ -86,6 +86,7 @@ describe("which blocks can go to the panel", () => {
   it("a truncated block gets no Open in panel (as it gets no Preview)", async () => {
     const { doc } = await chat([agent(1, "```html\n<b>cut")]);
     expect(doc.querySelectorAll(".pv-open").length).toBe(0);
+    expect(doc.querySelector(".html-card.truncated .pv-note").getAttribute("data-trust")).toBe("thread-control");
   });
 });
 

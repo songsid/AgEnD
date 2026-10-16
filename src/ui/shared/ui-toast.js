@@ -14,5 +14,5 @@ export function toast(text, ok = true) {
 export function Toasts() {
   const [list, setList] = useState(toasts.get());
   useEffect(() => toasts.subscribe(setList), []);
-  return html`<div class="toasts" role="status" aria-live="polite">${list.map(x => html`<div key=${x.id} class=${`toast ${x.ok ? "ok" : "err"}`}>${x.text}</div>`)}</div>`;
+  return html`<div data-trust="toast" class="toasts" role="status" aria-live="polite">${list.map(x => html`<div key=${x.id} class=${`toast ${x.ok ? "ok" : "err"}`}>${x.text}</div>`)}</div>`;
 }

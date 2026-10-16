@@ -585,7 +585,7 @@ describe("chat-render.js: file helpers", () => {
   it("attachmentsHtml: only fleet-issued ids become URLs, names are text, images inline, others downloads", () => {
     const id = "a".repeat(32);
     expect(R.attachmentsHtml([{ id, kind: "photo", name: '"><img src=x onerror=alert(1)>', size: 1 }]))
-      .toBe(`<div class="atts"><a class="att-img" href="/ui/file/${id}" target="_blank" rel="noopener noreferrer"><img src="/ui/file/${id}" alt="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;" loading="lazy"></a></div>`);
+      .toBe(`<div data-trust="attachment" class="atts"><a class="att-img" href="/ui/file/${id}" target="_blank" rel="noopener noreferrer"><img src="/ui/file/${id}" alt="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;" loading="lazy"></a></div>`);
     expect(R.attachmentsHtml([{ id, kind: "document", name: "r.pdf", size: 2048 }])).toContain(`download="r.pdf">📎 r.pdf <span class="att-size">2.0 KB</span>`);
     expect(R.attachmentsHtml([{ id: "javascript:alert(1)", kind: "photo", name: "x" }, { id: "../etc", kind: "document", name: "y" }])).toBe("");
     expect(R.attachmentsHtml(undefined)).toBe("");

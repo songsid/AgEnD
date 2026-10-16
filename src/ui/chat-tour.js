@@ -58,7 +58,7 @@ function show(i) {
   if (spot) spot.classList.add("tour-spot");
   let card = byId("tour");
   if (!card) {
-    card = document.createElement("section"); card.id = "tour"; card.className = "tour";
+    card = document.createElement("section"); card.id = "tour"; card.className = "tour"; card.setAttribute("data-trust", "tour");
     card.setAttribute("role", "dialog"); card.setAttribute("aria-labelledby", "tourTitle");
     card.addEventListener("click", onCardClick);
     document.body.appendChild(card);

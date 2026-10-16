@@ -169,7 +169,7 @@ export function OwnerCssKeepBar() {
   }, [trial]);
   if (!trial) return null;
   const left = Math.max(0, Math.ceil((trial.deadline - performance.now()) / 1000));
-  return html`<div class="oc-keep" role="alertdialog" aria-live="assertive" aria-label=${t("app.ownerCssKeep")} data-trust="">
+  return html`<div class="oc-keep" role="alertdialog" aria-live="assertive" aria-label=${t("app.ownerCssKeep")} data-trust="keep">
     <span class="oc-keep-text"><span class="oc-keep-q">${t("app.ownerCssKeep")}</span><span class="oc-keep-left">${t("app.ownerCssKeepLeft", left)}</span></span>
     <button type="button" class="btn btn-primary btn-sm" onClick=${() => { keepOwnerCss(); }}>${t("app.ownerCssKeepYes")}</button>
     <button type="button" class="btn btn-sm" onClick=${() => { revertOwnerCss(); }}>${t("app.ownerCssKeepNo")}</button>

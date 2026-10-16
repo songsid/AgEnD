@@ -74,7 +74,7 @@ export function createThread(list, scroller, opts) {
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
-    const tools = u ? "" : `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
+    const tools = u ? "" : `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
     return `<div class="msg ${u ? "user" : "agent"}"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div><div class="body"><div class="md">${R().renderMarkdown(x.text, { htmlCards: x.role === "agent", emojis: opts.emojis, mentions: opts.mentions })}</div>${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK() })}${buttons}</div>${tools}</div>`;
   }
@@ -88,9 +88,9 @@ export function createThread(list, scroller, opts) {
     const lines = R().lineCount(text);
     const manyLines = lines > STATUS_FOLD_LINES;
     const more = manyLines || text.length > STATUS_FOLD_CHARS
-      ? `<button type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
+      ? `<button data-trust="thread-control" type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
       : "";
-    const tools = `<div class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
+    const tools = `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${escAttr(text)}</div>${more}</div>${tools}</div>`;
   }
   /**
@@ -107,7 +107,7 @@ export function createThread(list, scroller, opts) {
       return `<button type="button" class="btn btn-sm rb-btn${chosen ? " chosen" : ""}" data-act="replyButton" data-arg="${escAttr(`${b.id}:${i}`)}"${off ? " disabled" : ""}>${escAttr(chosen ? `✓ ${label}` : label)}</button>`;
     }).join("");
     const note = b.state === "chosen" ? trf("chat.rbChosen", b.by || "") : b.state === "expired" ? tr("chat.rbExpired") : "";
-    return `<div class="rb-row" role="group" aria-label="${escAttr(tr("chat.rbGroup"))}">${items}${note ? `<span class="rb-note">${escAttr(note)}</span>` : ""}</div>`;
+    return `<div data-trust="reply" class="rb-row" role="group" aria-label="${escAttr(tr("chat.rbGroup"))}">${items}${note ? `<span class="rb-note">${escAttr(note)}</span>` : ""}</div>`;
   }
   /**
    * #1823: a poll. Anyone here may click while it is open; the page marks its own vote (opts.pollMine), which no one else
@@ -128,9 +128,9 @@ export function createThread(list, scroller, opts) {
       ? escAttr(trf("chat.pollClosed", p.answered))
       : `${escAttr(trf("chat.pollAnswered", p.answered))} · ⏳ <span class="poll-left" data-deadline="${escAttr(p.deadline)}" title="${escAttr(tr("chat.pollLeft"))}"></span>`;
     const voters = closed && Array.isArray(p.voters)
-      ? `<ul class="poll-voters" aria-label="${escAttr(tr("chat.pollVoters"))}">${b.labels.map((label, i) => `<li>${escAttr(`${label}: ${(p.voters[i] || []).join(", ") || "—"}`)}</li>`).join("")}</ul>`
+      ? `<ul data-trust="reply" class="poll-voters" aria-label="${escAttr(tr("chat.pollVoters"))}">${b.labels.map((label, i) => `<li>${escAttr(`${label}: ${(p.voters[i] || []).join(", ") || "—"}`)}</li>`).join("")}</ul>`
       : "";
-    return `<div class="rb-row poll" role="group" aria-label="${escAttr(tr("chat.pollGroup"))}">${items}<span class="rb-note">${status}</span></div>${voters}`;
+    return `<div data-trust="reply" class="rb-row poll" role="group" aria-label="${escAttr(tr("chat.pollGroup"))}">${items}<span class="rb-note">${status}</span></div>${voters}`;
   }
   /** #1823: the time left on this node's open polls, now. */
   function pollLeft(node) {
@@ -164,7 +164,7 @@ export function createThread(list, scroller, opts) {
     const doc = list.ownerDocument;
     for (const pre of root.querySelectorAll(".md pre")) {
       const box = doc.createElement("div"); box.className = "codeblock";
-      const head = doc.createElement("div"); head.className = "cb-head";
+      const head = doc.createElement("div"); head.className = "cb-head"; head.setAttribute("data-trust", "thread-control");
       const lang = doc.createElement("span"); lang.className = "cb-lang"; lang.textContent = pre.dataset.lang || "text";
       const wrap = doc.createElement("button"); wrap.type = "button"; wrap.className = "chip-btn"; wrap.dataset.act = "toggleWrap"; wrap.textContent = tr("chat.wrap");
       const copy = doc.createElement("button"); copy.type = "button"; copy.className = "chip-btn"; copy.dataset.act = "copyCode"; copy.textContent = tr("chat.copy");
@@ -173,7 +173,7 @@ export function createThread(list, scroller, opts) {
       const lines = R().lineCount(pre.textContent);
       if (lines > R().CODE_FOLD_LINES) {
         box.classList.add("folded");
-        const more = doc.createElement("button"); more.type = "button"; more.className = "cb-more"; more.dataset.act = "toggleFold";
+        const more = doc.createElement("button"); more.type = "button"; more.className = "cb-more"; more.setAttribute("data-trust", "thread-control"); more.dataset.act = "toggleFold";
         more.dataset.lines = String(lines); more.textContent = trf("chat.showAll", lines);
         box.append(more);
       }
@@ -191,7 +191,7 @@ export function createThread(list, scroller, opts) {
       if (!fence) continue;
       ph.textContent = "";
       if (ph.classList.contains("truncated") || !fence.terminated) {
-        const note = doc.createElement("div"); note.className = "pv-note"; note.textContent = tr("chat.pvTruncated"); ph.append(note);
+        const note = doc.createElement("div"); note.className = "pv-note"; note.setAttribute("data-trust", "thread-control"); note.textContent = tr("chat.pvTruncated"); ph.append(note);
         continue;
       }
       buildCard(ph, x, `${msgKey(x)}:f${n}`, { n, code: fence.code }, stoppedKeys);
@@ -221,12 +221,12 @@ export function createThread(list, scroller, opts) {
     const doc = list.ownerDocument;
     const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     ph.textContent = "";
-    const head = el("div", "tc-head");
+    const head = el("div", "tc-head"); head.setAttribute("data-trust", "thread-control");
     const label = el("span", "tc-label", att.name);
     const show = el("button", "btn btn-sm tc-show", tr("chat.tcShow")); show.type = "button";
     const dl = el("a", "btn btn-sm tc-dl", tr("chat.tcDownload")); dl.href = `/ui/file/${att.id}`; dl.setAttribute("download", att.name);
     head.append(label, show, dl);
-    const note = el("div", "pv-note");
+    const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     const body = el("div", "tc-body"); body.hidden = true;
     ph.append(head, note, body);
     let text = null, reading = false, all = false;
@@ -239,7 +239,8 @@ export function createThread(list, scroller, opts) {
       // Formatting is built only within TEXT_PREVIEW_NODES: the markup is measured as a string first, never as DOM.
       const plain = () => {
         const pre = el("pre", "tc-pre"), code = el("code", null, src);
-        pre.append(code); body.append(el("div", "pv-note", tr("chat.tcPlain")), pre);
+        const note = el("div", "pv-note", tr("chat.tcPlain")); note.setAttribute("data-trust", "thread-control");
+        pre.append(code); body.append(note, pre);
       };
       if (type === "md") {
         const html = R().renderMarkdown(src);
@@ -259,7 +260,7 @@ export function createThread(list, scroller, opts) {
         }
       }
       if (cut) {
-        const more = el("button", "btn btn-sm tc-more", trf("chat.tcShowAll", lines.length)); more.type = "button";
+        const more = el("button", "btn btn-sm tc-more", trf("chat.tcShowAll", lines.length)); more.setAttribute("data-trust", "thread-control"); more.type = "button";
         more.onclick = () => { all = true; draw(); };
         body.append(more);
       }
@@ -320,7 +321,7 @@ export function createThread(list, scroller, opts) {
     const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     const att = source.att || null;
     let code = att ? null : source.code;
-    const head = el("div", "pv-head");
+    const head = el("div", "pv-head"); head.setAttribute("data-trust", "thread-control");
     const label = el("span", "pv-label", att ? `${tr("chat.pvHtml")} · ${att.name}` : tr("chat.pvHtml"));
     const run = el("button", "btn btn-sm pv-run", tr("chat.pvPreview")); run.type = "button";
     const stopB = el("button", "btn btn-sm pv-stop", tr("chat.pvStop")); stopB.type = "button"; stopB.hidden = true;
@@ -330,15 +331,15 @@ export function createThread(list, scroller, opts) {
     const panel = opts.panel || null;
     const toPanel = panel ? el("button", "btn btn-sm btn-ghost pv-open", tr("chat.pvOpenPanel")) : null;
     if (toPanel) toPanel.type = "button";
-    const menu = el("details", "pv-menu");
+    const menu = el("details", "pv-menu"); menu.setAttribute("data-trust", "preview-menu");
     const sum = el("summary", null, "⋯"); sum.title = tr("chat.pvMenu"); sum.setAttribute("aria-label", tr("chat.pvMenu"));
     const optB = el("button", "chip-btn pv-opt"); optB.type = "button";
     const neverB = el("button", "chip-btn pv-never"); neverB.type = "button";
     menu.append(sum, optB, neverB);
     head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
-    const note = el("div", "pv-note");
+    const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     // #1568: the banner, with its "I understand" (hidden until the next sign-in; the frame's border stays).
-    const banner = el("div", "pv-banner"); banner.hidden = true;
+    const banner = el("div", "pv-banner"); banner.setAttribute("data-trust", "thread-control"); banner.hidden = true;
     const ack = el("button", "btn btn-sm btn-ghost pv-ack", P().bannerAckLabel()); ack.type = "button"; ack.title = P().bannerAckTitle();
     banner.append(el("span", "pv-banner-text", P().banner()), ack);
     const holder = el("div", "pv-holder");
