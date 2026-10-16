@@ -1166,6 +1166,11 @@ export class KiroBackend implements CliBackend {
     this.addLaunchWarning(warning);
   }
 
+  /** Board 907c7899: classic and TUI V2 say on the pane how a /compact ended (verified 2.30.0); V3 is not read. */
+  compactPaneUi(): "legacy" | "tui" | null {
+    return this.activeUi === "v3" ? null : this.activeUi;
+  }
+
   consumeLaunchWarning(): string | null {
     const warning = this.launchWarning;
     this.launchWarning = null;

@@ -3221,6 +3221,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const daemon = this.lifecycle.daemons.get(name);
         try { return daemon ? launchIdentity(daemon.getInteractionSnapshot().owner) : null; } catch { return null; }
       },
+      paneFollow: (name) => {
+        try { return this.lifecycle.daemons.get(name)?.compactPaneUi() != null; } catch { return false; }
+      },
       changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
   }
@@ -7583,7 +7586,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
         } else if (msg.type === "raw_paste_written") {
           // Board 003648ac: a web /compact's paste reached the pane (or never will): its watch starts, or ends as lost.
-          if (typeof msg.id === "string") this.compactWatchService?.pasted(name, msg.id, msg.outcome === "written", { owner: msg.owner, checkpoint: msg.checkpoint });
+          if (typeof msg.id === "string") this.compactWatchService?.pasted(name, msg.id, msg.outcome === "written", { owner: msg.owner, checkpoint: msg.checkpoint, pane: msg.pane });
+        } else if (msg.type === "compact_pane_result") {
+          // Board 907c7899: kiro's pane said how that /compact ended.
+          if (typeof msg.id === "string") this.compactWatchService?.paneResult(name, msg.id, msg.owner, msg.outcome);
         } else if (msg.type === "runtime_switch_result") {
           // #1690: what our own runtime /model came to (the daemon answered claude's "Switch model?" or saw the result).
           const waiter = typeof msg.id === "string" ? this.runtimeSwitchWaiters.get(msg.id) : undefined;

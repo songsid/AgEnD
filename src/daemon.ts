@@ -2,7 +2,8 @@ import type { PaneContextSource } from "./pane-context-cache.js";
 import { AGENT_WHATS_NEW, agendVersion, planWhatsNew, readWhatsNewRecord, recordWhatsNew, whatsNewNotice } from "./agent-whats-new.js";
 import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
-import { launchIdentity } from "./compact-watch.js";
+import { COMPACT_WATCH_TIMEOUT_MS, launchIdentity } from "./compact-watch.js";
+import { KIRO_COMPACT_PANE_LINES, KiroCompactPaneFollower } from "./kiro-compact-pane.js";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { ensureInstanceDir } from "./private-dir.js";
@@ -179,6 +180,8 @@ export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 /** Coalesce one cosmetic-redraw burst before comparing the visible pane. */
 export const PERIODIC_REDRAW_PROBE_MS = 25;
+/** Board 907c7899: how often a kiro /compact's pane is read (TUI V2's "too short" shows for about ten seconds). */
+const KIRO_COMPACT_PANE_POLL_MS = 1_000;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
 export const STRUCTURED_IDLE_PROBE_MS = 500;
 /**
@@ -4019,6 +4022,32 @@ export class Daemon extends EventEmitter {
     this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
   }
 
+  /** Board 907c7899: the layout a web /compact's end can be read from on this pane (kiro classic or TUI V2), or null. */
+  compactPaneUi(): "legacy" | "tui" | null {
+    return this.backend?.compactPaneUi?.() ?? null;
+  }
+
+  /**
+   * Board 907c7899: follow a /compact written to this pane until the pane says how it ended, then say so once
+   * (`compact_pane_result`). Bound to the launch it was written under: another launch, or no pane, ends the look
+   * silently (the fleet's watch sees the launch change and calls it lost); the fleet's deadline is the same.
+   */
+  private async followCompactPane(id: string, owner: string | null, follower: KiroCompactPaneFollower): Promise<void> {
+    const tmux = this.tmux;
+    if (!tmux || owner === null) return;
+    const standing = () => this.tmux === tmux && launchIdentity(this.interactionOwner()) === owner;
+    const deadline = Date.now() + COMPACT_WATCH_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise<void>(resolve => { setTimeout(resolve, KIRO_COMPACT_PANE_POLL_MS).unref?.(); });
+      if (!standing()) return;
+      let pane: string;
+      try { pane = await tmux.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES); } catch { continue; }
+      if (!standing()) return;
+      const outcome = follower.look(pane);
+      if (outcome) { this.ipcServer?.broadcast({ type: "compact_pane_result", id, owner, outcome }); return; }
+    }
+  }
+
   private captureDeliveryEpoch(value: unknown): number {
     const epoch = typeof value === "number" && Number.isSafeInteger(value) && value >= 0
       ? value
@@ -4050,11 +4079,14 @@ export class Daemon extends EventEmitter {
     let told = false;
     let checkpoint: { path: string; ino: number; size: number } | null = null;
     let owner: string | null = null;
+    // Board 907c7899: kiro says how a /compact ended only on its own pane; read from the pane just before this write.
+    let paneFollower: KiroCompactPaneFollower | null = null;
     const tellWritten = (written: boolean) => {
       if (!notifyWritten || told) return;
       told = true;
       this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
-        ...(written ? { owner, checkpoint } : {}) });
+        ...(written ? { owner, checkpoint, ...(paneFollower ? { pane: true } : {}) } : {}) });
+      if (written && paneFollower) void this.followCompactPane(notifyWritten, owner, paneFollower);
     };
     const takeCheckpoint = () => {
       owner = launchIdentity(this.interactionOwner());
@@ -4085,6 +4117,12 @@ export class Daemon extends EventEmitter {
           reportSwitch({ outcome: "not_sent" });   // #1690: cancelled before anything was typed — said at once, nothing saved
           tellWritten(false);
           return;
+        }
+        if (notifyWritten) {
+          // Under the paste lock: no other input reaches the pane between this look and the write.
+          const ui = this.backend?.compactPaneUi?.() ?? null;
+          const before = ui ? await this.tmux?.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES).catch(() => null) : null;
+          paneFollower = ui && typeof before === "string" ? new KiroCompactPaneFollower(ui, before) : null;
         }
         const delivered = await this.deliverMessage(rawText, undefined, {
           deliveryEpoch,
