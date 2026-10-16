@@ -263,10 +263,16 @@ describe("no agent path reaches it", () => {
         "web-mod-bundle.ts", "web-mod-store.ts", "web-mod-export.ts",
         // web-mod-agent.ts (r4-5b): an agent's mod path names it only to refuse it (owner_css_not_from_agent), and its
         // export never carries it — both tested in web-mods-agent-1629.
-        "web-mod-agent.ts"].includes(f)) continue;
+        "web-mod-agent.ts",
+        // Try's unmounted authority only checks the host-supplied CSS lifecycle enum to deny a trial.
+        // It neither imports the CSS store nor exposes its management routes (pinned below).
+        "web-effect-trials.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);
+    const trials = readFileSync(join(src, "web-effect-trials.ts"), "utf8");
+    expect(trials).toContain('requireCss ? d.ownerCss !== "off"');
+    expect(trials).not.toMatch(/from\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss/);
     const fm = readFileSync(join(src, "fleet-manager.ts"), "utf8");
     // Field, getter, construction — and (r4-5) handing it to the mod store, whose only door is the /ui/mods routes.
     expect(fm.match(/ownerCss/g)?.length, "fleet-manager only holds the store for the web context").toBe(5);
