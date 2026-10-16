@@ -137,7 +137,7 @@ describe("#1629 owned parent effect frame", () => {
     const callback = rig({ onReady: () => { throw Error("callback"); } }); callback.hello(); callback.port({ type: "ready" }); expect(callback.removed.mock.calls).toEqual([["host_callback"]]);
   });
   it.each([
-    { code: "x".repeat(1048577) }, { code: 123 }, { instance: 123 }, { instance: "x".repeat(129) },
+    { code: "x".repeat(1048577) }, { code: "x".repeat(1048577), assets: [] }, { code: 123 }, { instance: 123 }, { instance: "x".repeat(129) },
     { code: "x".repeat(600000), assets: [{ name: "assets/a.png", mime: "image/png", bytes: new Uint8Array(600000) }] },
     { assets: [{ name: "poster.png", mime: "image/png", bytes: new Uint8Array([1]) }] },
     { assets: [{ name: "cursor.png", mime: "image/png", bytes: new Uint8Array([1]) }] },
