@@ -531,7 +531,7 @@ describe("#1629 local Trial admission in the SAME registry (stage protocol model
     expect(f.options.root).toBe(t.e.root); expect(f.options.render).toMatchObject({ width: 99, height: 78, instance: "own" });
     expect(t.e.bind).toHaveBeenCalledWith(f.element, { layer: "front" }, expect.objectContaining({ front: false })); expect(h.geo().bind).not.toHaveBeenCalled();
     expect(h.cals()).toHaveLength(1); expect(h.load).toHaveBeenCalledExactlyOnceWith({ key: "trial", id: t.d.id, params: {} }, expect.any(AbortSignal));
-    f.ready(); expect(h.api.publish("reply", {}, "own")).toBe(1); expect(h.api.publish("mention", {}, "own")).toBe(0);
+    f.ready(); h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0]).toMatchObject({ width: 99, height: 78 }); expect(h.api.publish("reply", {}, "own")).toBe(1); expect(h.api.publish("mention", {}, "own")).toBe(0);
     expect(h.api.snapshot()[0]).not.toHaveProperty("trialStage"); expect(f.options.render).not.toHaveProperty("trialStage"); expect(h.mount.mock.calls[0]![0]).not.toHaveProperty("trialStage");
   });
   it.each([false, true])("constrained=%s spends the common pool, preserves declared layer and queues without a read", async constrained => {

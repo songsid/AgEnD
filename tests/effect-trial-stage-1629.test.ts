@@ -86,6 +86,7 @@ describe("host-only local trial stage, not product admission or a new frame pool
     expect(allocateEffectFrames(ds, { ...ctx, constrained: true }).filter((r: any) => r.verdict === "active")).toHaveLength(1);
     expect(allocateEffectFrames([{ ...ds[0], region: "page" }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     expect(allocateEffectFrames([{ ...ds[0], trialStage: { ...ds[0].trialStage } }], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
+    expect(allocateEffectFrames([{ ...ds[0], trialStage: {} }], { ...ctx, modal: false })[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     items[0].h.api.dispose(); expect(allocateEffectFrames([ds[0]], ctx)[0]).toMatchObject({ verdict: "off", reason: "trial_unknown" });
     for (const patch of [{ safe: true }, { publicLink: true }, { reducedMotion: true }, { saveData: true }, { enabled: false }, { show: false }, { previewReady: false }, { optIn: false }, { hidden: true }]) expect(allocateEffectFrames([ds[1]], { ...ctx, ...patch })[0].verdict).toBe("off");
   });
