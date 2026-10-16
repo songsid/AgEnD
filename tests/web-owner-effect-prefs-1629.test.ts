@@ -154,8 +154,8 @@ describe("session-scoped preferences and runtime resources", () => {
     expect((await f.call("GET", resource, a.headers)).json).toMatchObject({ code: "agend.ready()" });
     f.service.share(b.person, { id, shared: false });
     expect((await f.call("GET", resource, a.headers)).status).toBe(404);
-    expect((await f.call("GET", `/ui/effects/resource/${id}`, a.headers)).status).toBe(404);
-    expect((await f.call("GET", `/ui/effects/resource/${id}?instance=worker`, a.headers)).status).toBe(200);
+    expect((await f.call("GET", `/ui/effects/resource/${id}?ownerEpoch=${a.record.handle}`, a.headers)).status).toBe(404);
+    expect((await f.call("GET", `/ui/effects/resource/${id}?instance=worker&ownerEpoch=${a.record.handle}`, a.headers)).status).toBe(200);
     expect((await f.call("GET", `/ui/effects/owner?ownerEpoch=${a.record.handle}`, a.headers)).json.slots["fx.page"]).toEqual({ id, status: "unavailable" });
     expect(f.prefs.ownerEffectReferences()).toContainEqual({ id, holder: ownerEffectHolder(a.person, "fx.page") });
     expect(f.service.delete(b.person, id)).toEqual({ error: "effect_in_use" });
