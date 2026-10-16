@@ -1,6 +1,6 @@
 # Optional personal contribution model (#1629 B2)
 
-This slice adds an optional personal source to the existing app-owned pool. It does **not** enable personal playback in the product: `app-effects.js` supplies no `resolveOwnerTarget`. The new static helper starts no I/O, timer, DOM creation or playback merely by being imported. Cursor, the actual target adapter, personal controls and Try remain separate work.
+This model adds an optional personal source to the existing app-owned pool. The reviewed product bridge now supplies its fixed stock target adapter; see [1629-owner-effect-mount.md](1629-owner-effect-mount.md). The helper still starts no I/O, timer, DOM creation or playback merely by being imported. Cursor and Try remain separate work.
 
 ## Shared ownership
 
@@ -20,6 +20,6 @@ Profile collectors require a current exact binding and registry receipt. Persona
 
 ## Evidence and limits
 
-Source-model tests inject geometry and I/O. App aggregation tests use a fake registry and loader, plus one real-loader late-body cancellation control. The existing real registry suite pins its root lifetime and caps separately. These are not native personal mount or pixel claims. Actual source invalidation from route commits, target resize, preference changes and unavailable/Clear UX must be supplied and tested by the next product adapter. No agent foreground exception, trusted paint plane or CSS-policy relaxation is introduced.
+Source-model tests inject geometry and I/O. App aggregation tests use a fake registry and loader, plus one real-loader late-body cancellation control. The existing real registry suite pins its root lifetime and caps separately. These are not native personal mount or pixel claims. The separate product adapter supplies source invalidation and unavailable/Clear UX, with its own actual-shell native recipe. No agent foreground exception, trusted paint plane or CSS-policy relaxation is introduced.
 
-Rollback removes the optional source branch, its helper and asset entry together. The product bridge already runs without the resolver, and stored preferences, claims and profiles need no migration.
+Rollback removes the optional source branch, its helper and asset entry together. The core can run without the resolver, and stored preferences, claims and profiles need no migration.

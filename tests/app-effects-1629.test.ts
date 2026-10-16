@@ -27,13 +27,42 @@ async function rig(prepare: (h: any) => void = () => {}) {
     OffscreenCanvas: function () {}, Worker: function () {}, ResizeObserver: function () {}, MutationObserver: vi.fn(function (fn: any) { observer.fn = fn; return observer; }), matchMedia: (q: string) => q.includes("coarse") ? coarse : media });
   const replies = new Set<any>(), store = { onAgentReply: vi.fn((fn: any) => { replies.add(fn); return () => replies.delete(fn); }) };
   let options: any;
-  const parts: any[] = [], api: any = { ok: true, sync: vi.fn(), detachChat: vi.fn(), changedChat: vi.fn(), reply: vi.fn(), dispose: vi.fn(() => options.onDispose()), attachChat: vi.fn((o: any) => { parts.push(o); return { ok: true, dispose: vi.fn() }; }) };
-  const runtime = vi.fn((o: any) => { options = o; return api; });
-  const h: any = { host, doc, media, coarse, preview, observer, replies, store, parts, api, runtime, options: () => options, startAppEffects, getAppEffects };
-  prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime } }); return h;
+  const parts: any[] = [], api: any = { ok: true, sync: vi.fn(), detachChat: vi.fn(), changedChat: vi.fn(), changedOwner: vi.fn(), reply: vi.fn(), dispose: vi.fn(() => options.onDispose()), attachChat: vi.fn((o: any) => { parts.push(o); return { ok: true, dispose: vi.fn() }; }) };
+  const runtime = vi.fn((o: any) => { options = o; return api; }), regions = { ok: true, resolve: vi.fn(() => ({})), dispose: vi.fn() }, regionFactory = vi.fn(() => regions);
+  const h: any = { host, doc, media, coarse, preview, observer, replies, store, parts, api, runtime, regions, regionFactory, options: () => options, startAppEffects, getAppEffects };
+  prepare(h); h.entry = startAppEffects({ window: host, store, factories: { runtime, regions: regionFactory } }); return h;
 }
-beforeEach(() => { vi.resetModules(); env.app.reset({ themesRev: 1, connection: "live" }); env.nav.reset({ seq: 1, route: { panel: "fleet" } }); env.css.reset({ state: "off" }); env.themes.reset({}); env.prefs.clear(); env.values = { "fx.show": true, "preview.optIn": true }; env.safe = false; env.mode = "light"; });
+beforeEach(() => { vi.resetModules(); env.app.reset({ themesRev: 1, prefsRev: 1, connection: "live" }); env.nav.reset({ seq: 1, route: { panel: "fleet" } }); env.css.reset({ state: "off" }); env.themes.reset({}); env.prefs.clear(); env.values = { "fx.show": true, "preview.optIn": true }; env.safe = false; env.mode = "light"; });
 describe("#1629 app lifetime effect bridge", () => {
+  it("termination during target construction immediately releases its late returned helper", async () => {
+    const h = await rig(h => h.regionFactory.mockImplementation(() => { h.options().onDispose(); return h.regions; }));
+    expect(h.entry).toBeNull(); expect(h.regions.dispose).toHaveBeenCalledOnce(); expect(h.observer.observe).not.toHaveBeenCalled(); expect(env.app.listeners.size).toBe(0);
+  });
+  it("passes only a fixed stock-region resolver, mapping box declaration without inventing scope", async () => {
+    const h = await rig(), proof = { ok: true }, box = { width: 100 };
+    expect(h.regionFactory).toHaveBeenCalledOnce(); expect(h.options().resolveOwnerTarget("fx.box", { box }, proof)).not.toBeNull();
+    expect(h.regions.resolve).toHaveBeenCalledExactlyOnceWith("fx.box", box, proof); h.entry.dispose(); expect(h.regions.dispose).toHaveBeenCalledOnce();
+    expect(h.options().resolveOwnerTarget("fx.box", { box }, proof)).toBeNull();
+  });
+  it("preference revisions invalidate only owner metadata, including a simultaneous Chat revision", async () => {
+    const h = await rig(); env.app.set({ prefsRev: 2 }); expect(h.api.changedOwner).toHaveBeenCalledOnce(); expect(h.api.changedChat).not.toHaveBeenCalled();
+    env.app.set({ prefsRev: 3, themesRev: 2 }); expect(h.api.changedOwner).toHaveBeenCalledTimes(2); expect(h.api.changedChat).toHaveBeenCalledOnce();
+    env.app.set({ prefsRev: 3, connection: "live" }); expect(h.api.changedOwner).toHaveBeenCalledTimes(2); h.entry.dispose();
+  });
+  it("late stock panel commits reproject once, but body effect-root mutations do not self-schedule", async () => {
+    const h = await rig(); h.api.sync.mockClear(); const inside = { closest: (q: string) => q === "#app" ? {} : null }, outside = { closest: () => null };
+    h.observer.fn([{ target: inside }]); h.observer.fn([{ target: inside }]); expect(h.api.sync).not.toHaveBeenCalled(); await Promise.resolve(); expect(h.api.sync).toHaveBeenCalledOnce();
+    h.observer.fn([{ target: outside }]); await Promise.resolve(); expect(h.api.sync).toHaveBeenCalledOnce();
+    h.observer.fn([{ target: inside }]); h.entry.dispose(); await Promise.resolve(); expect(h.api.sync).toHaveBeenCalledOnce();
+  });
+  it("owner update subscriptions isolate throws, unsubscribe and end without granting new ownership", async () => {
+    const h = await rig(), first = vi.fn(), last = vi.fn(); h.entry.subscribe(() => { throw Error("UI"); }); const off = h.entry.subscribe(first); h.entry.subscribe(last);
+    h.options().onChange(); expect(first).toHaveBeenCalledOnce(); expect(last).toHaveBeenCalledOnce(); off(); h.options().onChange(); expect(first).toHaveBeenCalledOnce(); expect(last).toHaveBeenCalledTimes(2);
+    h.entry.dispose(); h.options().onChange(); expect(last).toHaveBeenCalledTimes(2);
+  });
+  it("unavailable personal target construction leaves the Chat pool available and releases the partial helper", async () => {
+    const h = await rig(h => { h.regions.ok = false; }); expect(h.entry).not.toBeNull(); expect(h.options().resolveOwnerTarget("fx.page", {}, {})).toBeNull(); expect(h.api.dispose).not.toHaveBeenCalled(); h.entry.dispose(); expect(h.regions.dispose).toHaveBeenCalledOnce();
+  });
   it("boots on Fleet once, keeps one reply subscription/pool across Chat A→B→Fleet, and fences old route predicates", async () => {
     const h = await rig(); expect(h.entry).not.toBeNull(); expect(h.runtime).toHaveBeenCalledOnce(); expect(h.replies.size).toBe(1);
     expect(h.entry.attachChat({ name: "a", current: () => true })).toBeNull();
@@ -43,7 +72,7 @@ describe("#1629 app lifetime effect bridge", () => {
     h.entry.attachChat({ name: "b", element: {}, current: () => true }); env.nav.set({ seq: 4, route: { panel: "fleet" } }); expect(h.parts[1].current()).toBe(false);
     expect(h.startAppEffects({ window: h.host, store: h.store, factories: { runtime: h.runtime } })).toBe(h.entry); expect(h.runtime).toHaveBeenCalledOnce(); expect(h.store.onAgentReply).toHaveBeenCalledOnce(); expect(h.api.dispose).not.toHaveBeenCalled(); h.entry.dispose();
   });
-  it("only themesRev invalidates metadata; existing status/theme/prefs/preview activity only syncs gates", async () => {
+  it("theme revision invalidates Chat metadata; other activity only syncs gates", async () => {
     const h = await rig(); h.api.sync.mockClear(); env.app.set({ connection: "live" }); env.app.set({ themesRev: 2 }); env.css.set({ state: "on" }); env.themes.set({ mode: "dark" }); for (const fn of env.prefs) fn(); h.host.emit("resize");
     expect(h.api.changedChat).toHaveBeenCalledOnce(); expect(h.api.sync).toHaveBeenCalledTimes(5); expect(h.options().observe()).toMatchObject({ ownerCss: "on", mode: "light" }); h.entry.dispose();
   });

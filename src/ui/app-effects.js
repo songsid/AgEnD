@@ -6,6 +6,7 @@ import { resolvedMode, themesStore } from "/assets/app-themes.js";
 import { ownerCssLifecycle, safeMode } from "/assets/owner-css.js";
 import { constrainedDevice } from "/assets/effect-policy.js";
 import { createAppEffectRuntime } from "/assets/effect-app-runtime.js";
+import { createOwnerEffectRegions } from "/assets/effect-owner-regions.js";
 import { chatEffectIdentity } from "/assets/effect-chat-runtime.js";
 const owners = new WeakMap();
 export function getAppEffects(host = window) { const value = owners.get(host); return value && !value.dead && value.api?.ok ? value : null; }
@@ -15,11 +16,12 @@ export function startAppEffects({ store, window: host = window, factories = {} }
   const existing = owners.get(host);
   if (existing) { if (!existing.dead) existing.bindStore(store); return getAppEffects(host); }
   if (!chatEffectIdentity(host) || typeof host.AgendAuth?.onSessionEnd !== "function" || typeof host.AgendAuth?.sessionEnded !== "function") return null;
-  const doc = host.document, releases = [], ended = new Set(); let replyOff = null, replyStore = null;
+  const doc = host.document, releases = [], ended = new Set(), updates = new Set(); let replyOff = null, replyStore = null, regions = null;
   const safe = fn => { try { return fn(); } catch { return null; } };
   const hold = off => { if (entry.dead) safe(() => off?.()); else releases.push(off); };
   const entry = { dead: false, api: null,
     gates: () => context(),
+    subscribe(fn) { if (typeof fn !== "function" || entry.dead) return () => {}; updates.add(fn); return () => updates.delete(fn); },
     onEnd(fn) { if (typeof fn !== "function") return () => {}; if (entry.dead) { safe(fn); return () => {}; } ended.add(fn); return () => ended.delete(fn); },
     bindStore(value) {
       if (entry.dead || value === replyStore) return;
@@ -39,7 +41,7 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (entry.dead) return; entry.dead = true;
       safe(() => entry.api?.dispose()); safe(() => replyOff?.()); replyOff = null; replyStore = null;
       for (const off of releases.splice(0)) safe(off);
-      const listeners = [...ended]; ended.clear(); for (const fn of listeners) safe(fn);
+      updates.clear(); const listeners = [...ended]; ended.clear(); for (const fn of listeners) safe(fn);
     },
   };
   owners.set(host, entry); // Reentrant setup never constructs another owner.
@@ -59,15 +61,24 @@ export function startAppEffects({ store, window: host = window, factories = {} }
     media = host.matchMedia?.("(prefers-reduced-motion: reduce)") ?? { matches: true };
     coarse = host.matchMedia?.("(pointer: coarse)") ?? { matches: false };
     entry.api = (factories.runtime ?? createAppEffectRuntime)({ window: host, current: () => !entry.dead && host.document === doc,
-      observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, mode: resolvedMode() }), onDispose: () => entry.dispose() });
+      observe: () => ({ context: context(), ownerCss: ownerCssLifecycle.get().state, mode: resolvedMode() }), onDispose: () => entry.dispose(),
+      resolveOwnerTarget: (slot, manifest, proof) => !entry.dead ? regions?.resolve?.(slot, manifest.box, proof) ?? null : null,
+      onChange: () => { if (!entry.dead) for (const fn of [...updates]) safe(fn); } });
     if (entry.dead || !entry.api.ok) { entry.dispose(); return null; }
+    const ownRegions = (factories.regions ?? createOwnerEffectRegions)({ window: host, current: () => !entry.dead && host.document === doc });
+    regions = ownRegions?.ok ? ownRegions : null; hold(() => ownRegions?.dispose?.());
+    if (entry.dead) return null;
     const sync = () => { if (!entry.dead) entry.api.sync(); };
-    let revision = appStore.get().themesRev, navSeq = navStore.get().seq;
+    let revision = appStore.get().themesRev, prefsRevision = appStore.get().prefsRev, navSeq = navStore.get().seq;
     hold(navStore.subscribe(value => { if (entry.dead || value.seq === navSeq) return; navSeq = value.seq; entry.api.detachChat(); }));
     hold(appStore.subscribe(value => {
       if (entry.dead) return;
       if (value.connection === "ended") { entry.dispose(); return; }
-      if (value.themesRev !== revision) { revision = value.themesRev; entry.api.changedChat(); } else sync();
+      const chatChanged = value.themesRev !== revision, ownerChanged = value.prefsRev !== prefsRevision;
+      revision = value.themesRev; prefsRevision = value.prefsRev;
+      if (chatChanged) entry.api.changedChat();
+      if (ownerChanged) entry.api.changedOwner();
+      if (!chatChanged && !ownerChanged) sync();
     }));
     hold(ownerCssLifecycle.subscribe(sync)); hold(themesStore.subscribe(sync)); hold(onPrefsChanged(sync));
     if (typeof preview?.onChange === "function") hold(preview.onChange(sync));
@@ -76,8 +87,18 @@ export function startAppEffects({ store, window: host = window, factories = {} }
       if (target?.addEventListener) { target.addEventListener(type, sync); hold(() => target.removeEventListener(type, sync)); }
     }
     if (entry.dead) return null;
-    let modal = context().modal;
-    const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(() => { if (entry.dead) return; const value = context().modal; if (value === modal) return; modal = value; sync(); }) : null;
+    let modal = context().modal, queuedSurface = false;
+    // Panel commits can happen after navigation and contain no Chat lease. Reproject fixed owner targets
+    // once after stock DOM changes. Body-level effect roots/frames/rules do not schedule themselves.
+    const surfaceChanged = () => {
+      if (entry.dead || queuedSurface) return; queuedSurface = true;
+      Promise.resolve().then(() => { queuedSurface = false; sync(); });
+    };
+    const barriers = typeof host.MutationObserver === "function" ? new host.MutationObserver(records => {
+      if (entry.dead) return;
+      const value = context().modal; if (value !== modal) { modal = value; sync(); }
+      if (Array.isArray(records) && records.some(r => r.target?.closest?.("#app") || r.target === doc.getElementById?.("app"))) surfaceChanged();
+    }) : null;
     hold(() => barriers?.disconnect());
     if (entry.dead) return null;
     barriers?.observe(doc.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "open", "hidden", "role"] });

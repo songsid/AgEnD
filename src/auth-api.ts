@@ -104,7 +104,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "owner-effect-prefs.js",
     // #1629: static host runtime closure; effect data stays behind session/epoch routes.
     "effect-posters.js", "effect-poster-reader.js",
-    "effect-app-runtime.js", "effect-owner-source.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
+    "effect-app-runtime.js", "effect-owner-source.js", "effect-owner-regions.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
     "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-profiles.js", "effect-profiler.js",
     "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-policy.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).

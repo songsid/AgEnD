@@ -204,9 +204,9 @@ from being collected until cleared. This is deliberately stricter than chat plac
 a personal choice keeps following its person's current own/shared access, while a chat preserves the exact effect
 placed there. A reference is not a sharing or export grant. Do not keep retrying a denied personal selection.
 
-Owner selectors are available in Settings → Appearance; saving a personal choice does not start playback.
-Local signed-in Chat can play its placed effects after preview opt-in; personal regions/cursor and Try are still
-being connected separately. Before revealing paint, the host must prove stock content
+Owner selectors are available in Settings → Appearance. With effects and preview consent enabled, personal
+page/header/sidebar/box choices play across supported stock pages in the same pool as local signed-in Chat.
+Appearance offers slot Pause/Resume and unavailable/Clear controls. Cursor and Try remain separate work. Before revealing paint, the host must prove stock content
 ordering and trust paint coverage. Agent front effects must remain paused when custom CSS is active, loading or
 unknown; a person sees the reason and can open the causing setting. Human placements retain their exemption from
 that agent restriction, and behind effects still require proven ordering. Saving a placement alone is not proof of
