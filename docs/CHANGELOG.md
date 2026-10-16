@@ -31,8 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   **server-side session** (an opaque random id the server can expire, list and
   revoke — not the old cookie that was `sha256(web.token)`, identical on every
   device and valid until rotation). **Everyone signs in once after upgrading:**
-  the old cookie is no longer accepted. Sessions end after a set time from sign-in
-  and after a set idle time (48 hours each by default, see #1670; `web.session.*` sets them), survive a fleet restart, and every write from a page now
+  the old cookie is no longer accepted. Sessions end a set time after sign-in or
+  after a set idle time, whichever comes first (on the dashboard reached directly, 48 hours each by default and set
+  by `web.session.local.*`; a public-link session lasts 4 hours, 30 minutes idle; see #1670), survive a fleet restart, and every write from a page now
   also needs a per-session `X-Agend-CSRF` header and a matching `Origin`.
   `/dashboard revoke` (on Discord: `/dashboard` with `action: revoke`) signs every browser out; `agend web --code` prints a code on
   the host; `agend web-token rotate` still kills every session at once. The
@@ -50,7 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **The AgEnD runtime requires Node.js ^22.14.0 || ^23.6.0 || >=24** for better-sqlite3 v13’s Node-API 10. Supported bundled-runtime platforms normally do not need a PATH Node upgrade: AgEnD uses its private Node. Without an available bundled runtime, prepare a qualifying system Node before installing. Follow the 2.2 upgrade guide for your source version; older updaters have an unlink-first failure window.
 - **`better-sqlite3` upgraded to v13 (N-API, `^13.0.3`).** The native SQLite binding now ships prebuilt N-API binaries for every supported platform inside the npm package; no separate GitHub download occurs at install time, and no compiler is needed. The prebuilds are ABI-stable across Node versions, so macOS installs no longer require Xcode Command Line Tools.
 - Web Apply for sensitive Settings is now a proposal, not a completed write (#1423). Local and public sessions need a General fleet admin or `agend settings confirm <id>` on the host. Header-token automation cannot authorize sensitive edits. Handle `202 pending_confirmation`, retain the same idempotency key for lost-response retries, and wait for the terminal outcome. Secret fields must be re-entered after rejection/expiry. Pending requests are memory-only and must be resubmitted after restart. First-time Setup requires host confirmation and an explicit Start action; no confirmed chat route means host confirmation, never auto-apply.
-- **From 2.1.0–2.1.11, or on a host without a built-in Node, upgrade with `npm install -g @songsid/agend@<2.2 version>`, then `agend install` — not with `agend update` or `/update` (#1487).** From 2.1.12 on Linux (glibc 2.28+) or macOS 11+, x64 or arm64, `/update` or `agend update` is enough once 2.2.0 is the stable release; see [Upgrading to 2.2](upgrade-2.2.md).
+- **From 2.1.0–2.1.11, or on a platform without a bundled runtime, upgrade with `npm install -g @songsid/agend@<2.2 version>`, then `agend install` — not with `agend update` or `/update` (#1487).** From 2.1.12 on Linux (glibc 2.28+) or macOS 11+, x64 or arm64, `/update` or `agend update` is enough once 2.2.0 is the stable release; see [Upgrading to 2.2](upgrade-2.2.md).
   - 2.1's updater removes the installed AgEnD *before* it installs the new one. If that install fails for any reason (AgEnD 2.2 refusing your host, a network, registry or proxy problem), nothing is left: no `agend` command. The running fleet lasts only until its next restart or login, and then the service cannot start. This was reproduced on a real Mac, where launchd reports `EX_CONFIG`.
   - A direct `npm install -g` has no removal step; a refused install keeps your current version.
   - **If it already happened:** run `npm install -g @songsid/agend@2.1.12` (or the 2.2 version, once your host can install it), then `agend install`. Your data directory is untouched.
