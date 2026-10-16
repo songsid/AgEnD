@@ -196,6 +196,8 @@ import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { WebAppearance } from "./web-appearance.js";
 import { WebEffectLibrary } from "./web-effect-library.js";
+import { WebEffectService } from "./web-effect-service.js";
+import { WebEffectProfiles } from "./web-effect-profiles.js";
 import { WebEffectTools, WEB_EFFECT_TOOLS } from "./web-effect-tools.js";
 import { resolveEffectParams } from "./web-effect.js";
 import { cw1EffectChecker } from "./web-mod-bundle.js";
@@ -1350,6 +1352,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.effectLibraryInstance;
   }
 
+  private effectProfilesInstance?: WebEffectProfiles;
+  get effectProfiles(): WebEffectProfiles { return (this.effectProfilesInstance ??= new WebEffectProfiles(this.dataDir)); }
+  private effectServiceInstance?: WebEffectService;
+  get effectService(): WebEffectService {
+    return (this.effectServiceInstance ??= new WebEffectService({ library: this.effectLibrary, themes: this.themeStore, profiles: this.effectProfiles,
+      known: name => this.isKnownInstance(name), changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* next status carries revision */ } } }));
+  }
+
   private effectToolsService?: WebEffectTools;
   /** Caller identity is supplied only by the owned IPC connection / verified agent endpoint token. */
   get effectTools(): WebEffectTools {
@@ -1373,7 +1383,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: () => { try { this.emitSseEvent("status", this.getUiStatus()); } catch { /* later status carries placements */ } },
       // Product preview/profile adapters land with the reviewed viewer. Never fabricate measurements or a card.
       preview: async () => ({ error: "effects_unavailable", message: "Effect previews are not available in this build." }),
-      profiles: () => ({ records: [], status: "unavailable" }),
+      profiles: id => this.effectProfiles.read(id),
+      profileSummary: id => this.effectService.profileSummary(id),
     }));
   }
 

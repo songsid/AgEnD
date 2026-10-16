@@ -399,8 +399,10 @@ const PASSIVE_GET_CARD = /^\/api\/card\/[^/]+(?:\/(?:portrait|banner))?$/;
 const PASSIVE_APPLY_STATUS = /^\/api\/settings\/(?:apply\/[A-Za-z0-9-]+|(?:provider-secrets|secrets)\/[^/]+\/apply\/[A-Za-z0-9_-]+|connections\/[^/]+\/(?:secret|binding)\/apply\/[A-Za-z0-9_-]+)$/;
 
 export function isPassiveWebRead(method: string | undefined, path: string): boolean {
+  // #1629: automatic diagnostic reports are not human activity. This affects touch only: POST still needs CSRF/admin.
+  if (method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path)) return true;
   if ((method ?? "GET") !== "GET") return false;
-  return PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path) || PASSIVE_GET_CARD.test(path)
+  return /^\/ui\/effects(?:\/(?:placements|(?:resource|profile)\/[0-9a-f]{32}|image\/[0-9a-f]{32}\/(?:poster|cursor)\.png))?$/.test(path) || PASSIVE_GET_PATHS.has(path) || PASSIVE_GET_PANE.test(path) || PASSIVE_GET_IMAGES.test(path) || PASSIVE_GET_OWNER_CSS.test(path) || PASSIVE_GET_THEMES.test(path) || PASSIVE_GET_CARD.test(path)
     || /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)
     // #1490: a page polls an Apply job (and a secret or binding apply) for up to ten minutes while the person waits;
     // that polling is not their activity and must not slide the session's idle expiry (#1373).

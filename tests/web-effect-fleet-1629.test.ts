@@ -99,13 +99,22 @@ describe("#1629 real Fleet effect tool integration", () => {
     f.fm.themeStore.setPlacements("own", { effects: [{ id }] }, "human", () => null);
     expect(await f.op("own", "effect-apply", { id })).toMatchObject({ id }); expect(f.fm.themeStore.get("own").placements.effects[0].by).toBe("agent");
   });
-  it("refuses unknown callers, malformed payloads and private previews; never fabricates a card/profile", async () => {
+  it("agent profiles read real reported data but cannot write it, and listing uses only latest summaries", async () => {
+    const f=await fixture(),id=await upload(f);expect(await f.op("own","effect-apply",{id})).toMatchObject({id});
+    const profile={v:1,device:"standard",verdict:"ok",reason:null,samples:1,fps_p50:60,fps_p10:60,fps_floor:54,long_task_p95:null,long_task_samples:0,attributed_long_task_p95:null,attributed_samples:0,attribution:"unknown",load_ms:null};
+    expect(f.fm.effectService.report(OPERATOR,id,profile,"own")).toEqual({ok:true});expect(await f.op("own","effect-profile",{id})).toMatchObject({ok:true,status:"reported",records:[{source:"reported_host",fps_p50:60}]});
+    expect(await f.op("other","effect-profile",{id})).toEqual({error:"not_found"});expect(await f.op("own","effect-profile",{id,profile})).toEqual({error:"not_found"});
+    expect(f.fm.effectProfiles.record(id,{...profile,device:"constrained"}).ok).toBe(true);expect(f.fm.effectProfiles.record(id,profile).ok).toBe(true);
+    expect(await f.op("own","effect-list")).toMatchObject({effects:[{id,latest_profile:{status:"reported",records:[{device:"standard"},{device:"constrained"}]}}]});
+    const list=await f.op("own","effect-list");expect(list.effects[0].latest_profile.records).toHaveLength(2);expect((await f.op("own","effect-profile",{id})).records).toHaveLength(3);
+  });
+  it("refuses unknown callers, malformed payloads and private previews; never fabricates a card or an unmeasured healthy profile", async () => {
     const f = await fixture(), id = await upload(f);
     expect(await f.fm.handleWebThemeHttp("missing", "list_web_effects", {})).toEqual({ error: "unknown_instance" });
     expect(await f.op("own", "effect-list", { instance: "other" })).toMatchObject({ error: "effect_args" });
     expect(await f.op("other", "effect-preview", { id })).toEqual({ error: "not_found" });
     expect(await f.op("own", "effect-preview", { id })).toMatchObject({ error: "effects_unavailable" });
-    expect(await f.op("own", "effect-profile", { id })).toEqual({ records: [], status: "unavailable" });
+    expect(await f.op("own", "effect-profile", { id })).toEqual({ ok: true, records: [], status: "unmeasured" });
     expect(f.events.mock.calls.some(c => c[0] === "message")).toBe(false);
   });
   it.each(["web-themes.json", "web-prefs.json", "web-mods.json"])("refuses unknown references from %s instead of publishing new claims", async file => {
