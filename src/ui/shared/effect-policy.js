@@ -1,4 +1,5 @@
 /** #1629 r3: pure host policy. No frame creation, DOM reads, content reads or network. */
+import { effectTrialStageIdentity } from "./effect-trial-stage.js";
 const OWN = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const plain = o => !!o && (Object.getPrototypeOf(o) === Object.prototype || Object.getPrototypeOf(o) === null);
 const finite = v => typeof v === "number" && Number.isFinite(v);
@@ -79,13 +80,16 @@ export function allocateEffectFrames(descriptors, context) {
     const d = descriptors[i], r = result[i];
     if (!plain(d) || typeof d.key !== "string" || d.key.length < 1 || d.key.length > 256 || duplicate.has(d.key) || !/^[0-9a-f]{32}$/.test(d.id) || !["chat", "page", "header", "sidebar", "box"].includes(d.region) || !["front", "behind"].includes(d.layer) || !Number.isSafeInteger(d.order) || d.order < 0 || typeof d.paused !== "boolean") continue;
     // Missing/unknown provenance always receives the agent restrictions.
-    const owner = d.by === "human";
+    const trialIdentity = d.trialStage === undefined || d.trialStage === null ? null : effectTrialStageIdentity(d.trialStage);
+    const trial = !!trialIdentity && d.region === "chat" && trialIdentity.key === d.key && trialIdentity.id === d.id && trialIdentity.instance === d.instance && trialIdentity.generation === d.generation;
+    if (d.trialStage != null && !trial) { r.reason = "trial_unknown"; continue; }
+    const owner = !trial && d.by === "human";
     if (!owner && d.region !== "chat") { r.reason = "scope"; continue; }
     if (d.region === "chat" && (!instanceName(d.instance) || d.instance !== context.openInstance)) { r.reason = "closed_chat"; continue; }
     if (global) { r.reason = global; continue; }
     if (d.paused === true) { r.reason = "paused"; continue; }
     if (d.visible !== true) { r.reason = "offscreen"; continue; }
-    if (d.layer === "front" && context.modal === true) { r.reason = "modal"; continue; }
+    if (d.layer === "front" && context.modal === true && !trial) { r.reason = "modal"; continue; }
     candidates.push({ i, d, priority: owner && OWN(OWNER_ORDER, d.region) ? OWNER_ORDER[d.region] : 4 });
   }
   candidates.sort((a, b) => a.priority - b.priority || a.d.order - b.d.order || a.i - b.i);

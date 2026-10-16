@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-const M = vi.hoisted(() => ({ calibrations: [] as any[], frames: [] as any[], geometries: [] as any[], APIs: [] as any[] }));
+const M = vi.hoisted(() => ({ calibrations: [] as any[], frames: [] as any[], geometries: [] as any[], APIs: [] as any[], trials: new WeakMap<object, any>(), trialSerial: 0 }));
+// Protocol mock only; real receipt issuance/topology and native paint are separate suites/recipe.
+vi.mock("../src/ui/shared/effect-trial-stage.js", () => ({
+  effectTrialStageIdentity: (receipt: object) => { const e = M.trials.get(receipt); return e && !e.dead ? e.identity : null; },
+  effectTrialStage: (receipt: object, expected: any, stock: any) => {
+    const e = M.trials.get(receipt); if (!e || e.dead) return null;
+    e.calls++; e.onProject?.();
+    if (e.dead || !e.valid || stock?.front !== false || ["key", "id", "instance", "generation"].some(k => expected[k] !== e.identity[k]) || e.root.children.some((f: any) => !e.bound.has(f))) return null;
+    return { root: e.root, rect: { ...e.rect }, identity: e.identity, bind: e.bind };
+  },
+  watchEffectTrialStage(receipt: object, fn: any) { const e = M.trials.get(receipt); if (!e || e.dead) return null; e.listeners.add(fn); return () => e.listeners.delete(fn); },
+}));
 vi.mock("../src/ui/shared/effect-baseline.js", () => ({ captureEffectBaseline(options: any) {
   let resolve: (v: any) => void = () => {}; const promise = new Promise(r => { resolve = r; });
   const job = { options, promise, resolve, cancel: vi.fn(() => resolve({ ok: false, reason: "baseline_cancelled" })) }; M.calibrations.push(job); return job;
@@ -58,6 +69,18 @@ function rig(options: any = {}) {
     async admit(ds = descriptors(), ctx = gates()) { api.update(ds, ctx); const c = M.calibrations.filter(c => c.options.window === host).at(-1); if (c) c.resolve({ ok: true, baselineFps: 60 }); await flush(); return ds; },
   };
 }
+function trial(h: ReturnType<typeof rig>, patch: any = {}) {
+  const d: any = h.descriptors(1, { key: "trial", id: id(88), layer: "front", generation: 1, ...patch })[0];
+  const receipt = Object.freeze({}); d.trialStage = receipt;
+  const e: any = { root: d.element, rect: { x: 10.5, y: 20, width: 99, height: 78 }, identity: Object.freeze({ key: d.key, id: d.id, instance: d.instance, generation: d.generation, serial: ++M.trialSerial }), valid: true, dead: false, calls: 0, onProject: null, listeners: new Set<any>(), bound: new Set<any>(), bindings: [] };
+  e.bind = vi.fn((frame: any, placement: any, stock: any) => {
+    e.bound.add(frame);
+    const b = { ok: true, element: frame, placement, sync: vi.fn(() => e.valid && !e.dead), hide: vi.fn(), remove: vi.fn(() => { e.bound.delete(frame); frame.remove(); }) }; e.bindings.push(b); return b;
+  });
+  e.end = () => { if (e.dead) return; e.dead = true; for (const b of e.bindings) b.remove(); const notify = [...e.listeners]; e.listeners.clear(); for (const fn of notify) fn("stopped"); };
+  M.trials.set(receipt, e); return { d, e };
+}
+
 afterEach(() => { for (const a of M.APIs) a.dispose?.(); M.APIs.length = 0; M.frames.length = 0; M.calibrations.length = 0; M.geometries.length = 0; });
 describe("#1629 shared Canvas Worker registry", () => {
   it("exposes exactly its connected host root read-only, and nothing after disposal", () => {
@@ -480,6 +503,13 @@ describe("transient stock restrictions", () => {
     h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush();
     expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1); expect(h.safety.resume).not.toHaveBeenCalled();
   });
+  it.each(["owner_css", "stock_overlay"])("heartbeat-first %s does not introduce a trial latch for an ordinary placement", async reason => {
+    const h = rig(), ds = await h.admit(h.descriptors(1, { layer: "front" })), f = h.frames()[0]; f.ready();
+    h.coverage.mockReturnValue(stock({ agentFront: false, front: reason === "owner_css" })); h.timer(1000); h.frame(1017);
+    expect(f.state().removed).toBe(true); expect(h.api.snapshot()[0]).toMatchObject({ phase: null, reason });
+    h.coverage.mockReturnValue(stock()); h.api.update(ds, gates()); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.safety.resume).not.toHaveBeenCalled();
+  });
+
 });
 
 
@@ -492,4 +522,70 @@ describe("stock focus wake-up", () => {
     expect(h.cals()).toHaveLength(2); h.cals()[1].resolve({ ok: true, baselineFps: 60 }); await flush();
     expect(h.frames().filter(f => !f.state().removed)).toHaveLength(1); expect(h.load).toHaveBeenCalledTimes(2);
   });
+});
+
+describe("#1629 local Trial admission in the SAME registry (stage protocol modeled)", () => {
+  it("admits an exact local stage while ordinary foreground stays suppressed, without a second baseline/load/pool", async () => {
+    const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    await h.admit([t.d], gates({ modal: true })); const f = h.frames()[0]; expect(f).toBeDefined();
+    expect(f.options.root).toBe(t.e.root); expect(f.options.render).toMatchObject({ width: 99, height: 78, instance: "own" });
+    expect(t.e.bind).toHaveBeenCalledWith(f.element, { layer: "front" }, expect.objectContaining({ front: false })); expect(h.geo().bind).not.toHaveBeenCalled();
+    expect(h.cals()).toHaveLength(1); expect(h.load).toHaveBeenCalledExactlyOnceWith({ key: "trial", id: t.d.id, params: {} }, expect.any(AbortSignal));
+    f.ready(); h.frame(100); expect(f.send.mock.calls.filter(([e]: any) => e.type === "env").at(-1)![0]).toMatchObject({ width: 99, height: 78 }); expect(h.api.publish("reply", {}, "own")).toBe(1); expect(h.api.publish("mention", {}, "own")).toBe(0);
+    expect(h.api.snapshot()[0]).not.toHaveProperty("trialStage"); expect(f.options.render).not.toHaveProperty("trialStage"); expect(h.mount.mock.calls[0]![0]).not.toHaveProperty("trialStage");
+  });
+  it.each([false, true])("constrained=%s spends the common pool, preserves declared layer and queues without a read", async constrained => {
+    const h = rig(), t = trial(h), ds = h.descriptors(4); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    await h.admit([t.d, ...ds], gates({ constrained, modal: true })); expect(h.frames()).toHaveLength(constrained ? 1 : 3); expect(h.load).toHaveBeenCalledTimes(constrained ? 1 : 3); expect(t.e.bindings[0].placement.layer).toBe("front");
+    expect(h.api.snapshot().filter((r: any) => r.verdict === "queued")).toHaveLength(constrained ? 4 : 2);
+  });
+  it.each(["forged", "key", "id", "generation", "instance", "root"])("%s cannot borrow a local stage exception", async fault => {
+    const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    if (fault === "forged") t.d.trialStage = {}; else if (fault === "root") { t.d.element = h.node(); t.d.element.isConnected = true; } else t.d[fault] = fault === "generation" ? 2 : "other";
+    await h.admit([t.d], gates({ modal: true })); expect(h.load).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0);
+  });
+  it("forged human provenance does not grant owner region priority or clear ordinary foreground suppression", async () => {
+    const h = rig(), t = trial(h, { by: "human" }), ordinary = h.descriptors(1, { layer: "front", by: "human", region: "page" })[0]; h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    await h.admit([ordinary, t.d], gates({ modal: true })); expect(h.load).toHaveBeenCalledOnce(); expect(h.load.mock.calls[0]![0].key).toBe("trial");
+  });
+  it("stage termination synchronously closes factory ownership and its exact safety token, including paused RAF", async () => {
+    const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); await h.admit([t.d], gates({ modal: true }));
+    const frame = h.frames()[0], owner = h.mount.mock.calls[0]![0]; frame.ready(); t.e.end();
+    expect(frame.state().removed).toBe(true); expect(owner.current()).toBe(false); expect(h.safety.finish).toHaveBeenCalledExactlyOnceWith("token-1", "trial_ended"); expect(h.retire).toHaveBeenCalledExactlyOnceWith(owner, "trial_ended");
+    expect(h.api.resume(t.d.key)).toBe(false); expect(h.safety.resume).not.toHaveBeenCalled(); h.api.dispose(); expect(h.safety.finish).toHaveBeenCalledTimes(1);
+  });
+  it("a terminated held load keeps physical capacity until settlement and never opens a marker", async () => {
+    const h = rig(), t = trial(h); let resolve: any; h.load.mockImplementation(() => new Promise(r => resolve = r)); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    await h.admit([t.d], gates({ constrained: true, modal: true })); t.e.end(); const other = h.descriptors(); h.api.update(other, gates({ constrained: true })); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledOnce(); expect(h.safety.begin).not.toHaveBeenCalled();
+    resolve({ id: t.d.id, code: "agend.ready()", params: {}, assets: [], wants: [] }); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames()).toHaveLength(0);
+  });
+  it.each(["completion", "marker", "ready", "raf", "heartbeat", "profile", "send"])("stage loss at %s refuses further work", async via => {
+    const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false }));
+    if (via === "completion") h.load.mockImplementationOnce(async (d: any) => { t.e.valid = false; return { id: d.id, params: {}, assets: [], code: "agend.ready()", wants: [] }; });
+    if (via === "marker") h.safety.begin.mockImplementationOnce(() => { t.e.valid = false; return "token-1"; });
+    await h.admit([t.d], gates({ modal: true }));
+    if (["completion", "marker"].includes(via)) { expect(h.frames()).toHaveLength(0); if (via === "marker") expect(h.safety.finish).toHaveBeenCalledOnce(); return; }
+    const f = h.frames()[0]; if (via !== "ready") f.ready();
+    if (via === "profile") h.profile.mockImplementationOnce(() => { t.e.valid = false; }); else t.e.valid = false;
+    if (via === "ready") f.ready(); if (via === "raf") h.frame(100); if (["heartbeat", "profile"].includes(via)) h.timer(1000); if (via === "send") { f.send.mockClear(); expect(h.api.publish("reply", {}, "own")).toBe(0); expect(f.send).not.toHaveBeenCalled(); }
+    if (via !== "send") expect(f.state().removed).toBe(true); if (via === "heartbeat") expect(h.profile).not.toHaveBeenCalled();
+  });
+  it("a current predicate replacement preserves B and prevents A from writing stale results", async () => {
+    const h = rig(), a = trial(h), b = trial(h, { key: "trial-b", id: id(89) }); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); let replaced = false;
+    a.e.onProject = () => { if (!replaced) { replaced = true; h.api.update([b.d], gates({ modal: true })); } };
+    await h.admit([a.d], gates({ modal: true })); expect(h.api.snapshot()).toHaveLength(1); expect(h.api.snapshot()[0].key).toBe(b.d.key); expect(h.load.mock.calls.every(([d]: any) => d.key === b.d.key)).toBe(true);
+  });
+  it("hiding and disposal cover local bindings and unregister their watchers", async () => {
+    const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); await h.admit([t.d], gates({ modal: true })); h.api.update([t.d], gates({ modal: true })); expect(t.e.bindings[0].hide).toHaveBeenCalled(); h.api.dispose(); expect(t.e.listeners.size).toBe(0); expect(h.frames()[0].state().removed).toBe(true);
+  });
+  it("a new issued serial clears only the old run's failure identity, never the content safety gate", async () => {
+    const h = rig(), a = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); await h.admit([a.d], gates({ modal: true })); a.e.end();
+    const b = trial(h); h.api.update([b.d], gates({ modal: true })); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledTimes(2); expect(h.frames().at(-1).state().removed).toBe(false);
+    h.safety.allowed.mockReturnValue(false); h.api.revalidateSafety(); expect(h.frames().at(-1).state().removed).toBe(true); expect(h.api.resume(b.d.key)).toBe(true); h.cals().at(-1).resolve({ ok: true, baselineFps: 60 }); await flush(); expect(h.load).toHaveBeenCalledTimes(2);
+  });
+  it("same-receipt predicate recursion is bounded and cannot allocate a replacement from stale evidence", async () => {
+    const h = rig(), t = trial(h); h.coverage.mockReturnValue(stock({ front: false, agentFront: false })); t.e.onProject = () => h.api.update([t.d], gates({ modal: true }));
+    await h.admit([t.d], gates({ modal: true })); expect(t.e.calls).toBeLessThan(5); expect(h.load).not.toHaveBeenCalled(); expect(h.frames()).toHaveLength(0);
+  });
+
 });
