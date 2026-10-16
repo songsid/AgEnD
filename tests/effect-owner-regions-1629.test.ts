@@ -6,9 +6,9 @@ const proof = () => ({ ok: true, front: false, agentFront: false, rects: [] }), 
 const domRect = (x: number, y: number, width: number, height: number) => ({ x, y, width, height, top: y, left: x, right: x + width, bottom: y + height });
 const pages: AppPage[] = [], cleanups: (() => void)[] = [];
 afterEach(async () => { for (const off of cleanups.splice(0)) off(); for (const p of pages.splice(0)) { await p.unmount(); p.restore(); } });
-function fixture() {
+function fixture(initialPanel = true) {
   const p = page(); pages.push(p); const host: any = p.window; let live = true, onCurrent = () => live;
-  p.document.body.dataset.mode = "full"; p.root.className = "main"; const chat = p.document.createElement("section"); chat.className = "p-chat"; p.root.append(chat);
+  p.document.body.dataset.mode = "full"; p.root.className = "main"; const chat = p.document.createElement("section"); chat.className = "panel p-chat"; if (initialPanel) p.root.append(chat);
   const header = p.document.createElement("header"); header.className = "panel-head"; header.setAttribute("data-trust", "header"); chat.append(header);
   Object.assign(host, { innerWidth: 800, innerHeight: 600, getComputedStyle: (el: any) => ({ display: "block", visibility: el.hiddenState ? "hidden" : "visible", transform: "none", perspective: "none", filter: "none", contain: "none", willChange: "auto" }) });
   header.getBoundingClientRect = () => domRect(0, 0, 800, 50);
@@ -46,6 +46,28 @@ describe("personal region target primitive (geometry mocked; native recipe is se
     expect(page.getAttribute("aria-hidden")).toBe("true"); expect(h.p.document.querySelector("iframe,canvas,input")).toBeNull();
     expect(h.api.resolve("fx.page", null, proof())).toBe(page); expect(h.bindings).toHaveLength(2);
     h.api.dispose(); expect(page.isConnected).toBe(false); expect(small.isConnected).toBe(false); expect(h.header.isConnected).toBe(true);
+  });
+  it.each(["fleet", "needs", "settings", "view", "log", "details"])("uses only the exact protected %s panel header and hidden page/box references", kind => {
+    const h = fixture(); h.chat.className = `panel p-${kind}`; h.chat.setAttribute("data-effect-panel", kind);
+    expect(h.api.resolve("fx.header", null, proof())).toBe(h.header); expect(h.api.resolve("fx.page", null, proof()).hiddenState).toBe(true); expect(h.api.resolve("fx.box", box(), proof()).hiddenState).toBe(true);
+    expect(h.p.document.querySelector("iframe,canvas,input")).toBeNull();
+  });
+  it("can own empty references before the first panel commits, but resolves nothing until a closed panel and proof exist", () => {
+    const h = fixture(false); expect(h.api.ok).toBe(true); expect(h.api.resolve("fx.page", null, proof())).toBeNull(); expect(h.bindings).toEqual([]);
+    h.p.root.append(h.chat); expect(h.api.resolve("fx.page", null, proof()).hiddenState).toBe(true);
+  });
+  it.each(["unmarked", "unknown-kind", "mismatch", "duplicate", "nested-header"])("%s is not a global stock target even with a modeled positive proof", fault => {
+    const h = fixture(); h.api.resolve("fx.page", null, proof());
+    if (fault === "unmarked") h.chat.className = "panel p-fleet";
+    if (fault === "unknown-kind") { h.chat.className = "panel p-other"; h.chat.setAttribute("data-effect-panel", "other"); }
+    if (fault === "mismatch") h.chat.setAttribute("data-effect-panel", "fleet");
+    if (fault === "duplicate") { const p = h.p.document.createElement("section"); p.className = "panel p-chat"; h.p.root.append(p); }
+    if (fault === "nested-header") { const wrap = h.p.document.createElement("div"); h.chat.append(wrap); wrap.append(h.header); }
+    expect(h.api.resolve("fx.header", null, proof())).toBeNull();
+    if (fault !== "nested-header") { expect(h.api.resolve("fx.page", null, proof())).toBeNull(); expect(h.bindings[0].element.hiddenState).toBe(true); }
+  });
+  it("a synchronous header layout callback cannot return a target after changing its route or ending its owner", () => {
+    const h = fixture(); h.header.getBoundingClientRect = () => { h.stale(); return domRect(0, 0, 800, 50); }; expect(h.api.resolve("fx.header", null, proof())).toBeNull();
   });
   it.each(["missing-marker", "duplicate", "hidden", "offscreen", "foreign", "transformed"])("actual header %s is unavailable", fault => {
     const h = fixture();
