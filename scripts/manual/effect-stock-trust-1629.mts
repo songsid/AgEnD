@@ -74,13 +74,14 @@ try {
       assert.deepEqual(errors, []); assert.equal(snapshot.ok, true, JSON.stringify({snapshot,diagnostics})); assert.equal(snapshot.agentFront, true);
       const baseline = await page.screenshot({ path: join(out, `${engine}-${width}-stock.png`) });
       const points = await page.evaluate(() => ['.composer-box','.rb-btn','.prompts .btn'].map(q=>{const r=document.querySelector(q).getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2),q};}));
+      const permissionPaint=await page.locator('.prompt').evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+8),y:Math.floor(r.y+r.height/2)};});
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('behind')),true);
       const behind=await page.screenshot({path:join(out,`${engine}-${width}-behind.png`)});
       for(const p of points)assert.deepEqual(pixel(behind,p.x,p.y),pixel(baseline,p.x,p.y),'behind '+p.q);
       const free=await page.evaluate(()=>{const r=document.querySelector('.chat-main > .scroller').getBoundingClientRect();return{x:Math.floor(r.x+8),y:Math.floor(r.y+r.height/2)};});
       assert.notDeepEqual(pixel(behind,free.x,free.y),pixel(baseline,free.x,free.y),'behind must actually paint');
       assert.equal(await page.evaluate(()=>(window as any).stock.paint('front')),true);const front=await page.screenshot({path:join(out,`${engine}-${width}-front.png`)});
-      for(const p of points)assert.deepEqual(pixel(front,p.x,p.y),pixel(baseline,p.x,p.y),'front '+p.q);
+      for(const p of [...points,permissionPaint])assert.deepEqual(pixel(front,p.x,p.y),pixel(baseline,p.x,p.y),'front '+JSON.stringify(p));
       assert.notDeepEqual(pixel(front,free.x,free.y),pixel(baseline,free.x,free.y),'front must actually paint');
       const clicks=actions.filter(p=>p==='/ui/reply-button').length;await Promise.all([page.waitForResponse(r=>r.url().endsWith('/ui/reply-button')),page.locator('.rb-btn').first().click()]);await page.waitForFunction(()=>!document.querySelector<HTMLButtonElement>('.rb-btn')?.disabled);assert.equal(actions.filter(p=>p==='/ui/reply-button').length,clicks+1);
       await page.evaluate(()=>(window as any).stock.removePaint());
@@ -102,7 +103,7 @@ try {
       const themed=await page.evaluate(()=>(window as any).stock.snapshot());if(!themed.ok){const styles=await page.evaluate(()=>[...document.querySelectorAll('html,body,#app,.shell,.main,.p-chat,.chat-split,.chat-main,.conn,.panel-head,.chat-card,.aw-chat_header,.scroller,.dock,.side-head,.side-nav,.side-section,.side-widget,.side-foot,.u-rail-head,.u-rail-body')].map(el=>{const s=getComputedStyle(el);return{tag:el.tagName,cls:el.className,rects:el.getClientRects().length,style:Object.fromEntries(['position','display','zIndex','opacity','isolation','mixBlendMode','contain','willChange','contentVisibility','zoom','transform','perspective','filter','backdropFilter','rotate','scale','translate','offsetPath','clipPath','maskImage'].map(k=>[k,s[k]]))};}));writeFileSync(join(out,engine+'-'+width+'-unknown.json'),JSON.stringify(styles,null,2));}assert.equal(themed.ok,true,JSON.stringify(themed));await page.locator('.aw-chat_header[data-trust="widget"]').waitFor();const themeBase=await page.screenshot();const themePoint=await page.locator('.composer-box').evaluate(el=>{const r=el.getBoundingClientRect();return{x:Math.floor(r.x+r.width/2),y:Math.floor(r.y+r.height/2)};});assert.equal(await page.evaluate(()=>(window as any).stock.paint('behind')),true);const themePaint=await page.screenshot({path:join(out,`${engine}-${width}-theme-behind.png`)});assert.deepEqual(pixel(themePaint,themePoint.x,themePoint.y),pixel(themeBase,themePoint.x,themePoint.y));await page.evaluate(()=>(window as any).stock.removePaint());
       for(const css of ['on','loading','unknown']){const v=await page.evaluate(c=>(window as any).stock.snapshot(c),css);assert.equal(v.agentFront,false);assert.equal(v.front,true);assert.equal(v.agentReason,'owner_css');}
       assert.equal(await page.locator('iframe').count(),0);assert.deepEqual(errors,[]);
-      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,painted:true,themeImage:true,overlays,controls,errors,resources });
+      rows.push({ engine,width,lang,dark,snapshot,diagnostics,points,free,permissionBackground:{stock:pixel(baseline,permissionPaint.x,permissionPaint.y),behind:pixel(behind,permissionPaint.x,permissionPaint.y),front:pixel(front,permissionPaint.x,permissionPaint.y)},painted:true,themeImage:true,overlays,controls,errors,resources });
     } finally { await context.close(); }
     }
     await browser.close(); browser = null;

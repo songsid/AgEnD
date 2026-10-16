@@ -96,7 +96,11 @@ paint rectangles. They are diagnostic probes, not a product frame registry or mo
 code. It compares behind/front protected pixels, verifies uncovered paint and
 click-through, exercises real menu/dialog/Keep/tour/focus/drawer producers, and
 refuses missing markers, root stacking, negative content, isolation and transforms.
-A real theme image and host widget exercise the alternate stock layout.
+A real theme image and host widget exercise the alternate stock layout. Front
+clipping also preserves a translucent permission-card background sample. Behind
+effects may tint translucent stock backgrounds, as expected from a layer below
+them; opaque controls retain their pixels. This is not blanket pixel invariance
+for every background.
 
 The browser container has no network, no real account/fleet/tmux/service, and no
 /tmp bind. Chromium/Firefox/Linux WebKit are distinct engine checks; Linux WebKit
