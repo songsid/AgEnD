@@ -239,14 +239,14 @@ export function SettingsPanel({ route, navKey }) {
   const open = dialog && dialog.key === navKey ? dialog : null;
   const close = () => setDialog(null);
   const searchable = section === "agents" || section === "bots" || section === "classic";
-  return html`<div class="panel p-settings">
+  return html`<div data-effect-panel="settings" class="panel p-settings">
     <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx} onClick=${() => setDialog({ kind: "wizard", key: navKey })}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
-    <nav class="seg" aria-label=${tn("title")}>${SETTINGS_SECTIONS.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
+    <nav data-trust="panel-navigation" class="seg" aria-label=${tn("title")}>${SETTINGS_SECTIONS.map((k) => html`<a key=${k} href=${settingsPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
       aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</nav>
-    <div class="panel-body"><div class="col">
+    <div data-trust="panel-content" class="panel-body"><div class="col">
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
@@ -918,7 +918,7 @@ function Developer({ ctx }) {
 /** Staged, not applied: the count, what it will cost, Discard and Apply. */
 function PendingBar({ staged, busy, onApply, onDiscard }) {
   const kinds = [...new Set([...staged.values()].map((c) => c.impact))];
-  return html`<div class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
+  return html`<div data-trust="panel-controls" class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
     <strong>${tn("changesPending", staged.size)}</strong>
     <span class="note">${kinds.map(impactText).join(" · ")}</span>
     <span class="grow"></span>

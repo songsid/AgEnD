@@ -182,15 +182,15 @@ export function ViewPanel({ route, navKey }) {
     <button type="button" class="icon-btn" onClick=${() => setDialog("help")} aria-label=${tn("helpButton")} title=${tn("helpButton")}><${Icon} name="info" /></button>`;
 
   let body;
-  if (v.error && !v.roster.length) body = html`<div class="panel-body center"><${ErrorState} message=${tn("rosterFailedShort")} onRetry=${() => navigate(location.pathname, { replace: true })} /></div>`;
-  else if (!v.loaded) body = html`<div class="panel-body"><${Skeleton} lines=${6} /></div>`;
-  else if (!v.roster.length) body = html`<div class="panel-body center"><${Empty} icon="view" title=${tn("noInstances")} /></div>`;
-  else if (!name) body = html`<div class="panel-body"><${Skeleton} lines=${6} /></div>`;
-  else if (!it) body = html`<div class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
+  if (v.error && !v.roster.length) body = html`<div data-trust="panel-content" class="panel-body center"><${ErrorState} message=${tn("rosterFailedShort")} onRetry=${() => navigate(location.pathname, { replace: true })} /></div>`;
+  else if (!v.loaded) body = html`<div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div>`;
+  else if (!v.roster.length) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="view" title=${tn("noInstances")} /></div>`;
+  else if (!name) body = html`<div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div>`;
+  else if (!it) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
   else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} />
     <${Card} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
-  return html`<div class="panel p-view">
+  return html`<div data-effect-panel="view" class="panel p-view">
     <${PanelHeader} title=${it ? (it.display_name || it.instance_name) : tn("title")}
       sub=${it ? html`<span class="status"><span class=${`dot ${it.status === "running" ? "ok" : it.status === "crashed" ? "bad" : "off"}`} aria-hidden="true"></span>${tn(STATUS_KEYS[it.status] || "statusUnknown")}</span>` : null}
       nav=${it && !viewOnly ? html`<${InstanceSwitch} name=${name} current="view" />` : null}>${actions}</${PanelHeader}>
@@ -268,7 +268,7 @@ function Terminal({ name, lease, density }) {
       lease.hold(() => ro.disconnect());
     }
   }, [lease, name]);
-  return html`<div class="v-term" ref=${term}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>`;
+  return html`<div data-trust="panel-content" class="v-term" ref=${term}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>`;
 }
 
 // The advance of one monospace cell as a fraction of font-size, measured once on this page.
@@ -300,7 +300,7 @@ function Card({ it, viewOnly, onEdit }) {
   const toggle = () => { const next = !open; setOpen(next); store("agend_view_card_expanded", next ? "1" : "0"); };
   // #1629 r4 §1: the identity card, above the profile row while it is expanded.
   const card = useCard(it.instance_name, it.card_v);
-  return html`${open && card ? html`<div class="v-id"><${IdentityCard} name=${it.instance_name} card=${card} /></div>` : null}<section class=${`v-card${open ? " open" : ""}`} aria-label=${it.display_name || it.instance_name}>
+  return html`${open && card ? html`<div data-trust="panel-content" class="v-id"><${IdentityCard} name=${it.instance_name} card=${card} /></div>` : null}<section data-trust="panel-content" class=${`v-card${open ? " open" : ""}`} aria-label=${it.display_name || it.instance_name}>
     <div class="v-avatar">${it.has_avatar ? html`<img ref=${avatar} alt="" />` : html`<span class="v-initial" aria-hidden="true">${initial}</span>`}</div>
     <div class="v-card-body">
       <div class="v-card-line"><strong>${it.display_name || it.instance_name}</strong>${it.role ? html`<span class="v-role">${it.role}</span>` : null}</div>

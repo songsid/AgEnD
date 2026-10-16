@@ -1,10 +1,10 @@
 # Stock shell paint prerequisite (#1629 B2)
 
 This foundation annotates the **real** stock component producers, defines paint
-bands in the real app stylesheet, and supplies an unmounted closed inventory/paint
-snapshot. It does not import that snapshot into the app, serve it as a public asset,
-create effect frames/Workers, or enable playback. A later reviewed adapter must
-consume it before any effect is admitted or revealed.
+bands in the real app stylesheet, and supplies the closed inventory/paint snapshot consumed by the reviewed Chat
+adapter. The full-app extension below broadens the proof primitive, without
+starting any personal or non-Chat playback. Admission still requires the
+separately reviewed identity, consent, registry and resource gates.
 
 ## Ordering
 
@@ -67,7 +67,7 @@ with visible descendants cannot silently lose its level1 band.
 Only a positively known `ownerCss: "off"` allows an **agent** front. Active,
 loading or unknown custom CSS leaves that placement paused; human front placements
 keep their exemption from this agent restriction. The snapshot returns a closed
-reason and `/ui/settings/appearance`, for the subsequent runtime status UI to show:
+reason and `/settings/appearance`, for the subsequent runtime status UI to show:
 
 - EN: **Agent foreground effects are paused while your custom CSS is on or unavailable.**
 - zh-TW: **自訂 CSS 已開啟或狀態不明，agent 的前景效果暫停。**
@@ -76,17 +76,17 @@ reason and `/ui/settings/appearance`, for the subsequent runtime status UI to sh
 Behind effects still require proven ordering. Human placements do not bypass
 geometry, global modal, frame caps, safe mode, consent or performance gates. The
 future adapter must derive CSS state from the host's actual owner-CSS lifecycle;
-an author or manifest cannot supply it. Unknown route geometry is refused; this
-initial snapshot supports the real open-instance Chat route, not other panels.
+an author or manifest cannot supply it. Unknown route geometry is refused. Chat retains its granular proof; the full-app
+extension below adds a closed proof for the other stock producers.
 A trusted foreground/paint-containment plane is deferred in #1940.
 
-## Required adapter protocol (not wired here)
+## Required adapter protocol
 
 Hide owned fronts synchronously on invalidation, before recomputing geometry;
 re-observe this snapshot in the same host rAF before reveal. Feed its paint bounds
 into the geometry clipping seam, rather than going back to raw border boxes. The
-existing registry invalidation already hides geometry, but this foundation does
-not claim a connected runtime adapter or automatic overlay enforcement.
+existing registry invalidation already hides geometry, and the reviewed Chat adapter follows that protocol. Broadening the snapshot
+does not itself create a non-Chat runtime owner.
 
 ## Evidence and limits
 
@@ -118,3 +118,15 @@ Rollback: revert annotations, stock bands and this unimported helper together;
 there is no data migration or active effect to stop. Existing custom CSS may rely
 on prior stacking; agent fronts are blocked whenever it is on/loading/unknown.
 Any unknown template/layout remains unavailable rather than losing coverage.
+
+## Closed full-app extension
+
+The six non-Chat producers (Fleet, Needs, Settings, View, Log and Details) now stamp a fixed `data-effect-panel`. Exactly one `.main > .panel` must have its expected class and direct-child topology. A missing producer, extra class, unexpected direct element/text, duplicate parent or generic Outlet loading/error panel refuses. Known producer loading/not-found states retain their bounded stock body. View accepts either its loading/error/empty body or its ready terminal/card with an optional expanded identity block; mixtures refuse.
+
+New independent expected selectors require `panel-navigation`, `panel-content` and `panel-controls` markers even when the marker is missing. They protect Fleet/Settings segments, all six bounded panel bodies, Log filters, View terminal/profile/identity and the sticky Settings Apply bar. The real stylesheet puts these bounded surfaces at level1, keeps headers at level2 and leaves panel/app structural ancestors neutral. Only the known Apply bar may stay sticky. Inline Settings confirmations are also in the closed inventory. Menus/dialogs still suppress all fronts; owner CSS still denies agent fronts independently of route proof.
+
+Protection conservatively unions all descendants of each bounded parent, so agent fronts may have very little visible area on these pages. The 128-root/4096-observation limits remain unchanged; a large log/settings/organization view may refuse playback rather than silently skip protected nodes. Structural proof is not authorization: it does not grant anonymous View, public-link or header-token users a personal identity, and does not alter Settings' owner-CSS recovery exclusion.
+
+`scripts/manual/effect-stock-routes-1629.mts` renders the real Shell and all six real producers with inert local HTTP fixtures. Chromium/Firefox/Linux WebKit at 1366/390 verify every Fleet tab and Settings section, View expanded/loading/error/empty/not-found states, Log filters/loading/not-found, Needs permissions, Details ready/loading/not-found, a real locally staged sticky Apply bar and inline confirmation. Protected controls have front paint samples; missing markers, negative bands, transforms, unknown children and the real generic Outlet fallback refuse. No author effect, iframe or Worker runs. Fixture failures from an incomplete Appearance API response and unsettled stock hover transitions are retained separately; the recipe supplies the real response shape and lets transitions settle, without changing production checks.
+
+Rollback this extension's producer markers, CSS bands and proof together. Before reverting it after a future personal mount, disable that mount first. No stored format, authorization, network policy, effect bundle or frame cap changes here.

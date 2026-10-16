@@ -30,10 +30,10 @@ export function DetailsPanel({ route, navKey }) {
   const name = route.instance;
   const inst = app.instances.find((i) => i.name === name) || null;
   useEffect(() => { setTitle(`${name} · ${t("app.details")}`); }, [name, navKey]);
-  if (!app.ready) return html`<div class="panel p-details"><${PanelHeader} title=${name} /><div class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
+  if (!app.ready) return html`<div data-effect-panel="details" class="panel p-details"><${PanelHeader} title=${name} /><div data-trust="panel-content" class="panel-body"><${Skeleton} lines=${6} /></div></div>`;
   if (!inst) {
-    return html`<div class="panel p-details"><${PanelHeader} title=${name} />
-      <div class="panel-body center"><${Empty} icon="alert" title=${t("chat.notFound", name)} hint=${t("chat.notFoundHint")}
+    return html`<div data-effect-panel="details" class="panel p-details"><${PanelHeader} title=${name} />
+      <div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${t("chat.notFound", name)} hint=${t("chat.notFoundHint")}
         action=${html`<button type="button" class="btn only-narrow" onClick=${openDrawer}>${t("chat.backToList")}</button>`} /></div></div>`;
   }
   return html`<${DetailsView} key=${name} name=${name} inst=${inst} navKey=${navKey} exec=${app.exec[name]}
@@ -150,9 +150,9 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         <span class="mono muted">${a.timestamp ? new Date(`${a.timestamp.replace(" ", "T")}Z`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
         <span class="ev">${a.event}</span> ${a.summary || ""}</div>`) : html`<p class="note">${t("chat.dNoActivity")}</p>`}</section>`;
   }
-  return html`<div class="panel p-details">
+  return html`<div data-effect-panel="details" class="panel p-details">
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <div class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
+    <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
       <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}</div></div>
   </div>`;
 }

@@ -26,7 +26,7 @@ async function fixture() {
 describe("stock trust/paint prerequisite", () => {
   it("serves the closed stock proof; categories include the actual portal exceptions", async () => {
     const { m } = await fixture(); expect(isServedAsset("effect-stock-trust.js")).toBe(true);
-    expect(m.STOCK_TRUST_INVENTORY.map((s: any) => s.kind)).toEqual(["composer", "reply", "navigation", "header", "status", "usage", "widget", "card", "permission", "menu", "session", "popover", "dialog", "lightbox", "tour", "keep", "toast", "confirmation", "preview", "preview-menu", "palette", "drop", "thread-control", "link", "attachment", "media", "session-ended"]);
+    expect(m.STOCK_TRUST_INVENTORY.map((s: any) => s.kind)).toEqual(["composer", "reply", "navigation", "header", "status", "usage", "widget", "card", "permission", "menu", "session", "popover", "dialog", "lightbox", "tour", "keep", "toast", "confirmation", "preview", "preview-menu", "palette", "drop", "thread-control", "link", "attachment", "media", "panel-navigation", "panel-content", "panel-controls", "session-ended"]);
     expect(Object.isFrozen(m.STOCK_TRUST_INVENTORY)).toBe(true);
     expect(read("shared/app.js")).not.toContain("effect-stock-trust");
   });

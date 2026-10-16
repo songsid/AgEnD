@@ -1267,3 +1267,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 
 /* #1629: host-created static poster IMG; geometry and visibility belong to the trusted CSSOM binding. */
 .agend-effect-poster { object-fit: cover !important; object-position: center !important; user-select: none; }
+
+/* #1629: full-app bounded stock surfaces. Panel roots stay neutral; effects never raise the whole app. */
+.p-fleet > .seg, .p-settings > .seg,
+.p-fleet > .panel-body, .p-needs > .panel-body, .p-settings > .panel-body,
+.p-log > .panel-body, .p-details > .panel-body, .p-view > .panel-body,
+.p-log > .log-bar, .p-view > .v-term, .p-view > .v-id, .p-view > .v-card { position: relative; z-index: 1; }
+/* Keep the existing Apply bar's sticky behavior, in its own bounded stock band. */
+.p-settings > .s-pending { z-index: 1; }
