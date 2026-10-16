@@ -12,7 +12,7 @@ AgEnD runs your AI coding agents as a system service and puts them in your Teleg
 - To chat from Telegram or Discord: a Telegram bot token from [@BotFather](https://t.me/BotFather), or a Discord bot token. Without a bot, the fleet runs from the web dashboard alone: see the [Web Guide](/AgEnD/docs/web-guide/).
 - At least one AI coding CLI, installed and logged in — see [Backends](#install-a-backend)
 
-macOS and Linux are supported. Native Windows is not: run AgEnD inside WSL, which the [Windows installation guide](/AgEnD/install-windows/) sets up for you.
+macOS and Linux are supported. musl Linux such as Alpine, and Linux hosts without systemd, are not: AgEnD may install there, but it is not tested or promised to work. Native Windows is not supported either: run AgEnD inside WSL, which the [Windows installation guide](/AgEnD/install-windows/) sets up for you.
 
 ## Install
 

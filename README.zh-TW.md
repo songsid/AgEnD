@@ -150,6 +150,7 @@ graph LR
 
 ## 系統需求
 
+- macOS，或有 glibc 與 systemd 的 Linux。不支援 musl Linux（例如 Alpine）與沒有 systemd 的 Linux 主機（[說明](docs/upgrade-2.2.zh-TW.md#1-升級前)）。
 - Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - 以下任一 AI coding CLI（需安裝並完成認證）
