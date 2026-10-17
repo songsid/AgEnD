@@ -80,6 +80,8 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
   const card: Record<string, unknown> = {};
   for (const k of ["portrait", "banner"] as const) if (i.card[k]) card[k] = { id: i.card[k]!.id, by: i.card[k]!.by, url: i.card[k]!.src };
   for (const k of ["tagline", "bio"] as const) if (i.card[k]) card[k] = { text: i.card[k]!.text, by: i.card[k]!.by };
+  // #2086: which part of a cropped banner stays in view (0 top … 100 bottom; absent: the centre), and whose choice.
+  if (i.card.banner_focus) card.banner_focus = { value: i.card.banner_focus.value, by: i.card.banner_focus.by };
   return {
     name: i.entry.name,
     display_name: i.entry.display_name ?? null,
@@ -154,6 +156,21 @@ export function fitLines(text: string, maxPx: number, size: number, maxLines: nu
 }
 export const PREVIEW_BANNER = { aspect: 3, min: 140, max: 240 } as const;
 const BANNER_H = Math.min(PREVIEW_BANNER.max, Math.max(PREVIEW_BANNER.min, Math.round(W / PREVIEW_BANNER.aspect)));
+/**
+ * #2086: the banner as the page crops it at its focus (object-fit: cover; object-position: 50% <focus>%): a nested SVG
+ * whose viewBox is exactly the part shown. Without the picture's size, the nearest of top / middle / bottom.
+ */
+function bannerAt(name: string | null, y: number, focus: number, size: { width: number; height: number } | null): string {
+  if (!name || !PREVIEW_FILE.test(name) || name.endsWith(".svg")) return "";
+  if (!size || size.width < 1 || size.height < 1) {
+    const yAlign = focus < 34 ? "YMin" : focus > 66 ? "YMax" : "YMid";
+    return `<image href="${name}" x="0" y="${y}" width="${W}" height="${BANNER_H}" preserveAspectRatio="xMid${yAlign} slice"/>`;
+  }
+  const s = Math.max(W / size.width, BANNER_H / size.height);
+  const vw = W / s, vh = BANNER_H / s;
+  const r = (n: number) => Math.round(n * 100) / 100;
+  return `<svg x="0" y="${y}" width="${W}" height="${BANNER_H}" viewBox="${r((size.width - vw) / 2)} ${r((size.height - vh) * focus / 100)} ${r(vw)} ${r(vh)}" preserveAspectRatio="none"><image href="${name}" width="${size.width}" height="${size.height}"/></svg>`;
+}
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const FONT: Record<string, string> = { inter: "sans-serif", system: "sans-serif", mono: "monospace" };
 
@@ -171,7 +188,7 @@ export const PREVIEW_FILE = /^(?:(?:light|dark)\.svg|(?:avatar|portrait|banner|b
 const COLOR = /^#[0-9a-f]{6}$/;
 
 /** One mode's SVG. Every picture is one of `pics` (this instance's), inline; nothing else is referenced. */
-export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPictures): string {
+export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPictures, bannerSize?: { width: number; height: number } | null): string {
   const raw = effectiveTheme(i.theme)[mode];
   // Colours go into attributes: each is checked again here (a file someone may open in a browser), else the default's.
   const t = { ...raw };
@@ -184,7 +201,7 @@ export function previewSvg(i: AppearanceInput, mode: ThemeMode, pics: PreviewPic
   // The card, as Details draws it at M.
   const hasCard = Object.keys(i.card).length > 0;
   if (hasCard) {
-    if (i.card.banner) { out.push(img(pics.banner, 0, y, W, BANNER_H)); y += BANNER_H; }
+    if (i.card.banner) { out.push(bannerAt(pics.banner, y, i.card.banner_focus?.value ?? 50, bannerSize ?? null)); y += BANNER_H; }
     const top = y + PAD;
     let textX = PAD;
     if (i.card.portrait && pics.portrait) { out.push(img(pics.portrait, PAD, top, PORTRAIT_H * 0.75, PORTRAIT_H)); textX = PAD + PORTRAIT_H * 0.75 + PAD; }

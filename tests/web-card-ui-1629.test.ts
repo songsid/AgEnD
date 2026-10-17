@@ -185,8 +185,13 @@ describe("checkCard", () => {
     }
     expect(card.checkCard("a", [])).toBeNull();
   });
-  it("the card module writes no markup and no style attribute", () => {
+  it("the card module writes no markup and no style attribute; the CSSOM sets only the banner focus and its preview's bands", () => {
     const src = readFileSync(join(process.cwd(), "src/ui/shared/identity-card.js"), "utf8");
-    expect([/innerHTML|outerHTML|insertAdjacentHTML|dangerously/.test(src), /\bstyle=/.test(src), /\.style\b/.test(src)]).toEqual([false, false, false]);
+    expect([/innerHTML|outerHTML|insertAdjacentHTML|dangerously/.test(src), /\bstyle=/.test(src)]).toEqual([false, false]);
+    // #2086: a position is not a size — `--id-focus` on the banner box; the Edit profile bands' left / top / width / height
+    // (one fixed list), and nothing else through the CSSOM.
+    expect([...src.matchAll(/\.style\.setProperty\(("[^"]+"|k)/g)].map((m) => m[1]).sort()).toEqual(['"--id-focus"', "k"]);
+    expect(src).toContain('for (const k of ["left", "top", "width", "height"]) el.style.setProperty(k,');
+    expect(src.replace(/\.style\.setProperty\(("--id-focus"|k)/g, "").replace(/el\.style\b/g, "")).not.toMatch(/\.style\b/);
   });
 });

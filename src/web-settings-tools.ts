@@ -34,6 +34,9 @@ export interface WebSettingsDeps {
   /** A person's colour for one instance, as the Colour dialog reads it; and its write (the page's /api/profile path). */
   colour(instance: string): { color: string | null; show: string[] | null };
   setColour(instance: string, patch: { color?: unknown; show?: unknown }): { ok: true } | { ok: false; status: number; error: string; detail?: string };
+  /** #2086: a person's banner focus for one instance (0 top … 100 bottom; null: none), and its write (Edit profile's). */
+  bannerFocus(instance: string): number | null;
+  setBannerFocus(instance: string, focus: unknown): { ok: true } | { ok: false; status: number; error: string; detail?: string };
   /** The effects placed on each chat (the page's Effects card). */
   placements(instance: string): Array<{ id: string; params?: Record<string, unknown> }>;
   /** Every page re-reads after a change (the routes' `announce`). */
@@ -116,6 +119,7 @@ export class WebSettingsTools {
     switch (change.what) {
       case "host": return this.host(change.set);
       case "agent_colour": return this.agentColour(change);
+      case "banner_focus": return this.bannerFocus(change);
       case "custom_css": return this.css(person, change);
       case "mod": return this.mod(person, change);
       case "effect": return this.effect(person, change);
@@ -150,6 +154,14 @@ export class WebSettingsTools {
       patch[spec.key] = v === null ? null : spec.store(v);
     }
     return this.writePrefs(OPERATOR, patch);
+  }
+
+  /** #2086: which part of an agent's cropped banner stays in view — the person's choice, as Edit profile sets it. */
+  private bannerFocus(c: Record<string, unknown>): Result {
+    if (typeof c.instance !== "string" || !this.deps.instances().includes(c.instance)) return failed("unknown_instance");
+    if (!Object.hasOwn(c, "focus")) return failed("banner_focus", "focus: 0 (top) … 100 (bottom), or null to follow the agent's");
+    const w = this.deps.setBannerFocus(c.instance, c.focus);
+    return w.ok ? { ok: true, instance: c.instance, focus: this.deps.bannerFocus(c.instance) } : failed(w.error, w.detail);
   }
 
   private agentColour(c: Record<string, unknown>): Result {

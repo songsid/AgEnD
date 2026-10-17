@@ -214,7 +214,7 @@ export const SetPersonaEmojiArgs = z.object({
 export const GetWebThemeArgs = z.object({});
 export const SetWebThemeArgs = z.object({
   set: z.record(z.string(), z.unknown()).optional()
-    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters), card.{portrait, banner} (asset ids uploaded for those slots), card.tagline (1..60 characters, one line), card.bio (1..280 characters, at most 3 line breaks)"),
+    .describe("Theme fields to set, merged into your current theme: colors.light|dark.{bg,surface,text,text2,accent,userBubble,agentBubble} as #rrggbb, accent, bubble.{radius 0..24, border none|thin|accent}, font inter|system|mono, background {image: asset id, fit cover|contain, opacity 0.05..1}, avatar (asset id), workingLabel (1..24 characters), card.{portrait, banner} (asset ids uploaded for those slots), card.tagline (1..60 characters, one line), card.bio (1..280 characters, at most 3 line breaks), card.bannerFocus (0 top … 100 bottom: which part of your banner stays in view when it is cropped; 50 the centre)"),
   clear: z.array(z.string().max(64)).max(32).optional().describe("Dotted paths to remove, e.g. [\"colors.dark.bg\", \"workingLabel\"]"),
 });
 export const SetWebThemeAssetArgs = z.object({
@@ -345,6 +345,10 @@ export const SetWebSettingsArgs = z.object({
         sidebar_widget: z.object({ spec: z.record(z.string(), z.unknown()), data: z.record(z.string(), z.unknown()) }).strict().nullable().optional()
           .describe("The sidebar widget: { spec, data }, the same spec as set_web_widget's, binds fleet.working / needs_you / idle / stopped (null removes it)"),
       }).strict(),
+    }).strict(),
+    z.object({
+      what: z.literal("banner_focus"), instance: NonEmptyString,
+      focus: z.number().int().min(0).max(100).nullable().describe("Which part of that agent's cropped banner stays in view: 0 top … 100 bottom (50 the centre); null follows the agent's own"),
     }).strict(),
     z.object({
       what: z.literal("agent_colour"), instance: NonEmptyString,

@@ -13,6 +13,8 @@ register("card", {
     byAgent: "set by the agent",
     show: "Show card",
     hide: "Hide card",
+    bannerSafe: "Every screen",
+    bannerPhone: "Phone · M card",
   },
   "zh-TW": {
     label: "{0} 的身分卡",
@@ -24,5 +26,7 @@ register("card", {
     byAgent: "由 agent 設定",
     show: "顯示卡片",
     hide: "隱藏卡片",
+    bannerSafe: "所有螢幕",
+    bannerPhone: "手機 · 中卡片",
   },
 });

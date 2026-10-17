@@ -605,6 +605,36 @@ describe("within one navigation, an older answer never lands over a newer one; a
         expect([cardSet.disabled, cardSet.querySelector("input").value]).toEqual([false, ""]);
       } finally { await s.done(); }
     });
+    it("#2089 review: Banner focus — the slider starts at the agent's focus; Follow returns to it; a person's override followed away saves null", async () => {
+      const B = "b".repeat(32);
+      const banner = { banner: { id: B, by: "agent", src: `/api/card/alpha/banner?v=${B}` } };
+      const range = (dlg: any) => dlg.querySelector(".bf-field input[type=range]");
+      const follow = (dlg: any) => dlg.querySelectorAll(".btn").find((b: any) => b.textContent === "Follow the agent's");
+      const sent = (s: Awaited<ReturnType<typeof setup>>) => { const c = s.calls.find(x => x.url === "/api/profile/alpha"); return c ? JSON.parse(c.init.body) : null; };
+      // The agent's focus is 70; no person's yet.
+      let s = await setup({ other: (u: string) => (u === "/api/card/alpha" ? json({ ...CARD, ...banner, banner_focus: { value: 70, by: "agent" }, banner_focus_agent: 70 }) : json({ ok: true })) });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        expect(range(dlg).value).toBe("70");
+        range(dlg).value = "20"; fire(range(dlg), "input"); await settle(2);
+        follow(dlg).click(); await settle(2);
+        expect(range(dlg).value, "Follow shows the agent's, not 50").toBe("70");
+        await save(dlg);
+        expect(Object.hasOwn(sent(s) ?? {}, "card_banner_focus"), "nothing to change: the card keeps the agent's").toBe(false);
+      } finally { await s.done(); }
+      // A person's focus 20 over the agent's 70: Follow → 70 on the slider, and the save clears theirs.
+      s = await setup({ other: (u: string) => (u === "/api/card/alpha" ? json({ ...CARD, ...banner, banner_focus: { value: 20, by: "human" }, banner_focus_agent: 70 }) : json({ ok: true })) });
+      try {
+        await s.mount("alpha", "view:alpha|1|en"); await settle(6);
+        const dlg = await openEditor(s);
+        expect(range(dlg).value).toBe("20");
+        follow(dlg).click(); await settle(2);
+        expect(range(dlg).value).toBe("70");
+        await save(dlg);
+        expect(sent(s).card_banner_focus).toBeNull();
+      } finally { await s.done(); }
+    });
     it("Clear card: one DELETE of the person's card after the profile write, and no card field with it", async () => {
       const s = await setup({ other: withCard });
       try {

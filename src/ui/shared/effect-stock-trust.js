@@ -95,14 +95,35 @@ function outset(style) {
   }
   return pad <= 256 ? Math.ceil(pad) : null;
 }
+/**
+ * #2086: the identity card's banner fill (a blurred copy beside a centred banner) — the one filter stock admits. Only
+ * this exact value, on exactly `.id-banner-box > img.id-banner-fill`, absolutely positioned in that box (so the box is
+ * its containing block — #2089 review: a fixed fill is the viewport's, and no box clips it), and the box positioned and
+ * clipping on both axes; its paint is then that box's rectangle (the blur and its scale never leave it). The box must
+ * also be a real block box that the browser reports as the fill's offset parent (#2089 review r3: `display: contents`
+ * keeps the computed position and overflow but generates no box, so an outer ancestor would place the fill, and an inline
+ * box clips differently). Anything else with a filter refuses.
+ */
+export const STOCK_BANNER_FILL_FILTER = "blur(24px) saturate(0.75) brightness(0.7)";
+function stockBannerFill(host, el) {
+  const box = el.parentElement;
+  if (typeof el.matches !== "function" || !el.matches(".id-banner-box > img.id-banner-fill") || !box) return null;
+  const s = host.getComputedStyle(el), b = host.getComputedStyle(box);
+  if (s.filter !== STOCK_BANNER_FILL_FILTER || !none(s.backdropFilter) || !none(b.filter) || !none(b.backdropFilter)) return null;
+  if (!["hidden", "clip"].includes(b.overflowX) || !["hidden", "clip"].includes(b.overflowY)) return null;
+  if (s.position !== "absolute" || !["relative", "absolute"].includes(b.position)) return null;
+  if (b.display !== "block" || el.offsetParent !== box) return null;
+  return rect(box);
+}
 function protectedPaint(host, root, budget) {
   const nodes = [root, ...root.querySelectorAll("*")]; budget.n += nodes.length;
   if (budget.n > 4096) return null;
   let union = null;
   for (const el of nodes) {
     if (!visible(host, el)) continue;
-    const style = host.getComputedStyle(el), r = rect(el), pad = outset(style);
-    if (!r || pad === null || !none(style.filter) || !none(style.backdropFilter)) return null;
+    const style = host.getComputedStyle(el), pad = outset(style);
+    const r = none(style.filter) ? rect(el) : stockBannerFill(host, el);
+    if (!r || pad === null || !none(style.backdropFilter)) return null;
     const a = { x: r.x - pad, y: r.y - pad, width: r.width + pad * 2, height: r.height + pad * 2 };
     if (!union) union = a;
     else { const x = Math.min(union.x, a.x), y = Math.min(union.y, a.y); union = { x, y, width: Math.max(union.x + union.width, a.x + a.width) - x, height: Math.max(union.y + union.height, a.y + a.height) - y }; }

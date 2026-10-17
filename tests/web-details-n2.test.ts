@@ -319,7 +319,8 @@ describe("#1629 r4 §1: the identity card", () => {
   it("#2038: the banner's height follows the card's width (an aspect per size) between a floor and a ceiling — never half the size token", async () => {
     const css = (await import("node:fs")).readFileSync(new URL("../src/ui/shared/app.css", import.meta.url), "utf8");
     const rule = (sel: string) => { const i = css.indexOf(`${sel} {`); expect(i, sel).toBeGreaterThanOrEqual(0); return css.slice(i, css.indexOf("}", i)); };
-    expect(rule(".id-banner")).toContain("aspect-ratio: var(--id-ar); min-height: var(--id-bmin); max-height: var(--id-bmax); object-fit: cover;");
+    // #2089: the floor and the ceiling yield to the box's width ÷ 2.25 on a narrow column (never narrower than 9 : 4).
+    expect(rule(".id-banner")).toContain("aspect-ratio: var(--id-ar);\n  min-height: min(var(--id-bmin), calc(100cqw / 2.25)); max-height: min(var(--id-bmax), calc(100cqw / 2.25)); object-fit: cover;");
     expect(css).not.toContain("calc(var(--id-h) / 2)");
     // Every size, the chat header's and a phone's, sets a floor below its ceiling, and the chat's floor is at least 96 px.
     const px = (sel: string, v: string, from = 0) => { const i = css.indexOf(`${sel} {`, from); const m = new RegExp(`--${v}: (\\d+)px`).exec(css.slice(i, css.indexOf("}", i))); return m ? Number(m[1]) : null; };

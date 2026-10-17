@@ -3,7 +3,7 @@
  * own (`theme.card`, web-theme.ts); a person sets theirs in View's Edit profile, and **the person's wins field by
  * field**. This module keeps the person's side and resolves the two.
  *
- *   profiles.db `instance_card`           (instance_name, tagline, bio, portrait, banner, updated_at)
+ *   profiles.db `instance_card`           (instance_name, tagline, bio, portrait, banner, updated_at, banner_focus)
  *   <dataDir>/cards/<hash>/<slot>-<id>.<ext>   the person's pictures, metadata stripped, id = sha of the kept bytes
  *
  * Its own table (never new columns on instance_profile), so an older AgEnD reading profiles.db sees what it knew.
@@ -19,7 +19,16 @@ import { canonicalBio, canonicalTagline, TAGLINE_MAX_GRAPHEMES, BIO_MAX_GRAPHEME
 
 export type CardSlot = "portrait" | "banner";
 export const CARD_SLOTS: readonly CardSlot[] = ["portrait", "banner"];
-export interface HumanCard { tagline: string | null; bio: string | null; portrait: string | null; banner: string | null; updated_at: number }
+export interface HumanCard { tagline: string | null; bio: string | null; portrait: string | null; banner: string | null; updated_at: number; banner_focus?: number | null }
+
+/**
+ * #2086: the banner's vertical focus — which part of a cropped banner stays in view, 0 (top) … 100 (bottom); 50 is the
+ * centre and the default. A whole number; anything else is not one.
+ */
+export const BANNER_FOCUS_DEFAULT = 50;
+export function bannerFocusOk(v: unknown): number | null {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 100 ? v : null;
+}
 export type CardWrite = { ok: true; id?: string } | { ok: false; status: 400 | 413 | 503; error: string; detail?: string };
 
 const CARD_KINDS: ReadonlySet<MediaKind> = new Set(["png", "jpeg", "webp"]);
@@ -39,19 +48,22 @@ function table(db: Database.Database): Database.Database {
       banner TEXT,
       updated_at INTEGER
     );`);
+    // #2086: the banner's focus, added to a table made before it (a column an older AgEnD never names, so never sees).
+    const cols = db.prepare("PRAGMA table_info(instance_card)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "banner_focus")) db.exec("ALTER TABLE instance_card ADD COLUMN banner_focus INTEGER");
     // Prism #2003 P2-2: ready only when made outside a transaction — a rollback takes the table away, never the mark.
     if (!db.inTransaction) ready.add(db);
   }
   return db;
 }
-const EMPTY: HumanCard = { tagline: null, bio: null, portrait: null, banner: null, updated_at: 0 };
+const EMPTY: HumanCard = { tagline: null, bio: null, portrait: null, banner: null, updated_at: 0, banner_focus: null };
 
 export class HumanCardStore {
   constructor(private readonly dataDir: string, private readonly openDb: () => Database.Database, private readonly now: () => number = () => Date.now()) {}
   private dir(name: string): string { return join(this.dataDir, "cards", hash32(`instance\0${name}`)); }
 
   get(name: string): HumanCard {
-    const row = table(this.openDb()).prepare("SELECT tagline, bio, portrait, banner, updated_at FROM instance_card WHERE instance_name = ?").get(name) as HumanCard | undefined;
+    const row = table(this.openDb()).prepare("SELECT tagline, bio, portrait, banner, updated_at, banner_focus FROM instance_card WHERE instance_name = ?").get(name) as HumanCard | undefined;
     return row ? { ...EMPTY, ...row } : { ...EMPTY };
   }
   /** Every person-set card, for a status read: only when profiles.db exists and has the table — a read creates nothing. */
@@ -60,8 +72,10 @@ export class HumanCardStore {
     try {
       const db = openDb();
       if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'instance_card'").get()) return new Map();
-      const rows = db.prepare("SELECT instance_name, tagline, bio, portrait, banner, updated_at FROM instance_card").all() as Array<HumanCard & { instance_name: string }>;
-      return new Map(rows.map(r => [r.instance_name, { tagline: r.tagline, bio: r.bio, portrait: r.portrait, banner: r.banner, updated_at: r.updated_at }]));
+      // #2086: a table made before the focus has no such column (a read never alters it): read it as unset.
+      const focus = (db.prepare("PRAGMA table_info(instance_card)").all() as Array<{ name: string }>).some((c) => c.name === "banner_focus");
+      const rows = db.prepare(`SELECT instance_name, tagline, bio, portrait, banner, updated_at${focus ? ", banner_focus" : ""} FROM instance_card`).all() as Array<HumanCard & { instance_name: string }>;
+      return new Map(rows.map(r => [r.instance_name, { tagline: r.tagline, bio: r.bio, portrait: r.portrait, banner: r.banner, updated_at: r.updated_at, banner_focus: r.banner_focus ?? null }]));
     } catch { return new Map(); }
   }
 
@@ -90,6 +104,17 @@ export class HumanCardStore {
         VALUES (@n, ${cols.map(c => `@${c}`).join(", ")}, @t)
         ON CONFLICT(instance_name) DO UPDATE SET ${cols.map(c => `${c} = excluded.${c}`).join(", ")}, updated_at = excluded.updated_at`)
         .run({ n: name, t: this.now(), ...Object.fromEntries(set) });
+    } catch (err) { return { ok: false, status: 503, error: "card_write_failed", detail: (err as Error).message }; }
+    return { ok: true };
+  }
+
+  /** #2086: the person's banner focus (0–100), or null to follow the agent's (else the centre). */
+  setBannerFocus(name: string, focus: unknown): CardWrite {
+    const v = focus === null ? null : bannerFocusOk(focus);
+    if (focus !== null && v === null) return { ok: false, status: 400, error: "card_banner_focus", detail: "a whole number from 0 (top) to 100 (bottom), or null" };
+    try {
+      table(this.openDb()).prepare(`INSERT INTO instance_card (instance_name, banner_focus, updated_at) VALUES (@n, @f, @t)
+        ON CONFLICT(instance_name) DO UPDATE SET banner_focus = @f, updated_at = @t`).run({ n: name, f: v, t: this.now() });
     } catch (err) { return { ok: false, status: 503, error: "card_write_failed", detail: (err as Error).message }; }
     return { ok: true };
   }
@@ -155,6 +180,8 @@ export interface ResolvedCard {
   banner?: { id: string; by: "human" | "agent"; src: string };
   tagline?: { text: string; by: "human" | "agent" };
   bio?: { text: string; by: "human" | "agent" };
+  /** #2086: the banner's focus (0–100), when someone set one (absent: the centre). */
+  banner_focus?: { value: number; by: "human" | "agent" };
 }
 /** The id a stored picture file name carries. */
 export function cardFileId(file: string | null): string | null {
@@ -175,10 +202,13 @@ export function resolveCard(name: string, human: HumanCard | undefined, agent: T
   }
   if (human?.tagline) out.tagline = { text: human.tagline, by: "human" }; else if (agent?.tagline) out.tagline = { text: agent.tagline, by: "agent" };
   if (human?.bio) out.bio = { text: human.bio, by: "human" }; else if (agent?.bio) out.bio = { text: agent.bio, by: "agent" };
+  const hf = bannerFocusOk(human?.banner_focus), af = bannerFocusOk(agent?.bannerFocus);
+  if (hf !== null) out.banner_focus = { value: hf, by: "human" }; else if (af !== null) out.banner_focus = { value: af, by: "agent" };
   return out;
 }
 /** A short version of what is drawn (the status frame's card_v): the page reads the card again when it moves. */
 export function cardVersion(card: ResolvedCard): string | null {
   if (!Object.keys(card).length) return null;
-  return hash32(JSON.stringify([card.portrait?.id, card.portrait?.by, card.banner?.id, card.banner?.by, card.tagline?.text, card.tagline?.by, card.bio?.text, card.bio?.by])).slice(0, 12);
+  return hash32(JSON.stringify([card.portrait?.id, card.portrait?.by, card.banner?.id, card.banner?.by, card.tagline?.text, card.tagline?.by, card.bio?.text, card.bio?.by,
+    ...(card.banner_focus ? [card.banner_focus.value, card.banner_focus.by] : [])])).slice(0, 12);
 }

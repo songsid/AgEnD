@@ -45,7 +45,7 @@ import { getTmuxSession } from "./config.js";
 import { getTmuxSocketName } from "./paths.js";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
-import { CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard } from "./web-card.js";
+import { bannerFocusOk, CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard } from "./web-card.js";
 import { IdentityColorStore } from "./web-identity-color.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import type { ThemeCard } from "./web-theme.js";
@@ -156,6 +156,14 @@ export function setPersonIdentityColour(dataDir: string, name: string, identity:
     return { ok: false, status: 503, error: "profile_write_failed", detail: (err as Error).message };
   }
   return { ok: true };
+}
+/** #2086: the banner focus a person set for one instance (null: none; the agent's, else the centre, is drawn). */
+export function personBannerFocus(dataDir: string, name: string): number | null {
+  return bannerFocusOk(cardStore({ dataDir }).get(name).banner_focus);
+}
+/** #2086: a person's banner focus — exactly POST /api/profile's card_banner_focus (the store's check; its own write). */
+export function setPersonBannerFocus(dataDir: string, name: string, focus: unknown): { ok: true } | { ok: false; status: number; error: string; detail?: string } {
+  return cardStore({ dataDir }).setBannerFocus(name, focus);
 }
 /** Every person-picked colour, for a status read (never creates profiles.db or its table). */
 export function identityColors(dataDir: string): ReturnType<typeof IdentityColorStore.all> {
@@ -493,6 +501,9 @@ export function handleViewRequest(
         const cardText: { tagline?: unknown; bio?: unknown } = {};
         if (Object.hasOwn(body, "card_tagline")) cardText.tagline = body.card_tagline;
         if (Object.hasOwn(body, "card_bio")) cardText.bio = body.card_bio;
+        // #2086: the banner's focus (0 top … 100 bottom; null follows the agent's, else the centre) — checked first too.
+        const focus = Object.hasOwn(body, "card_banner_focus") ? body.card_banner_focus : undefined;
+        if (focus !== undefined && focus !== null && bannerFocusOk(focus) === null) { json(res, 400, { error: "card_banner_focus", detail: "a whole number from 0 (top) to 100 (bottom), or null" }); return; }
         // #1958: the identity colour (a preset or #rrggbb; null or "" resets it) and where it shows (color_show: a list
         // of name / bar / ring, [] for nowhere; null resets it) — checked before anything is written.
         const identity: { color?: unknown; show?: unknown } = {};
@@ -502,19 +513,20 @@ export function handleViewRequest(
         if (!idCheck.ok) { json(res, idCheck.status, { error: idCheck.error, detail: idCheck.detail }); return; }
         const texts = cardText.tagline !== undefined || cardText.bio !== undefined;
         const ids = identity.color !== undefined || identity.show !== undefined;
-        if (!texts && !ids && !set.length) { json(res, 200, { ok: true }); return; }
+        if (!texts && !ids && focus === undefined && !set.length) { json(res, 200, { ok: true }); return; }
         // Fable #1966 P3: the card text, the identity choice and the profile row in one transaction (all profiles.db):
         // a write that fails takes the others back with it, so the answer is never "failed" with part of it applied.
         const db = profileDb(ctx.dataDir);
         // Prism #2003 P2-2: the stores' tables are made before the transaction, so a rollback never leaves this cached
         // handle believing in tables it does not have.
-        if (texts) cardStore(ctx).get(name);
+        if (texts || focus !== undefined) cardStore(ctx).get(name);
         if (ids) colorStore(ctx).get(name);
         let refused: { status: number; error: string; detail?: string } | null = null;
         const rollback = new Error("rollback");
         try {
           db.transaction(() => {
             if (texts) { const cw = cardStore(ctx).setText(name, cardText); if (!cw.ok) { refused = cw; throw rollback; } }
+            if (focus !== undefined) { const fw = cardStore(ctx).setBannerFocus(name, focus); if (!fw.ok) { refused = fw; throw rollback; } }
             if (ids) { const w = colorStore(ctx).set(name, identity); if (!w.ok) { refused = w; throw rollback; } }
             if (set.length) {
               // Column names come only from the fixed list above; avatar_path is the avatar route's — never touched here.
@@ -552,7 +564,9 @@ export function handleViewRequest(
       // The limits in force ride along, so View's editor can fit a picture before it is sent (r4.1 Q3 (b)).
       const limits = effectiveAppearanceLimits(ctx.fleetConfig?.web?.appearance).limits;
       const slot = (l: { maxWidth: number; maxHeight: number; maxBytes: number }) => ({ max_width: l.maxWidth, max_height: l.maxHeight, max_bytes: l.maxBytes });
-      json(res, 200, { ...resolveCard(name, store.get(name), ctx.themeStore?.get(name).theme.card), limits: { portrait: slot(limits.portrait), banner: slot(limits.banner) } });
+      // #2089 review: the agent's own banner focus too (not only the one drawn), so Edit profile's "Follow the agent's" shows it.
+      const agentCard = ctx.themeStore?.get(name).theme.card, agentFocus = bannerFocusOk(agentCard?.bannerFocus);
+      json(res, 200, { ...resolveCard(name, store.get(name), agentCard), ...(agentFocus !== null ? { banner_focus_agent: agentFocus } : {}), limits: { portrait: slot(limits.portrait), banner: slot(limits.banner) } });
       return true;
     }
     if (method === "GET" && slot) {

@@ -31,7 +31,8 @@ export interface Theme {
   identity?: ThemeIdentity;
 }
 export interface ThemeIdentity { color?: IdentityColor; show?: Placement[] }
-export interface ThemeCard { portrait?: AssetId; banner?: AssetId; tagline?: string; bio?: string }
+/** #2086: `bannerFocus` — which part of a cropped banner stays in view, 0 (top) … 100 (bottom); absent: the centre. */
+export interface ThemeCard { portrait?: AssetId; banner?: AssetId; tagline?: string; bio?: string; bannerFocus?: number }
 export interface ThemeProblem { path: string; problem: string }
 
 export const THEME_MAX_BYTES = 4096;
@@ -216,7 +217,7 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
     if (!isObj(c)) bad("card", "must be an object");
     else {
       const card: ThemeCard = {};
-      for (const k of Object.keys(c)) if (!["portrait", "banner", "tagline", "bio"].includes(k)) bad(`card.${k}`, "unknown key");
+      for (const k of Object.keys(c)) if (!["portrait", "banner", "tagline", "bio", "bannerFocus"].includes(k)) bad(`card.${k}`, "unknown key");
       for (const slot of ["portrait", "banner"] as const) {
         const id = c[slot];
         if (id === undefined) continue;
@@ -232,6 +233,10 @@ export function checkTheme(input: unknown, ctx: ThemeContext): { ok: true; theme
       if (c.bio !== undefined) {
         const b = canonicalBio(c.bio);
         if (b === null) bad("card.bio", `1..${BIO_MAX_GRAPHEMES} characters, at most ${BIO_MAX_BREAKS} line breaks, no control or direction characters`); else card.bio = b;
+      }
+      if (c.bannerFocus !== undefined) {
+        const f = c.bannerFocus;
+        if (typeof f !== "number" || !Number.isInteger(f) || f < 0 || f > 100) bad("card.bannerFocus", "a whole number from 0 (top) to 100 (bottom)"); else card.bannerFocus = f;
       }
       if (Object.keys(card).length) out.card = card;
     }
@@ -286,6 +291,7 @@ export function canonicalTheme(t: Theme): Theme {
   if (t.card) {
     const c: ThemeCard = {};
     for (const k of ["portrait", "banner", "tagline", "bio"] as const) if (t.card[k]) c[k] = t.card[k];
+    if (typeof t.card.bannerFocus === "number") c.bannerFocus = t.card.bannerFocus;      // #2086: 0 (the top) is a value
     if (Object.keys(c).length) out.card = c;
   }
   if (t.identity && (t.identity.color || t.identity.show)) {

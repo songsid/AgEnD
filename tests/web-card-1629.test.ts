@@ -290,7 +290,7 @@ describe("a person's card wins, field by field", () => {
     writeFileSync(join(cardDir, "portrait-unrelated.png"), "keep");                           // not a file the row names
     store.setText("a", { tagline: "Mine" });
     expect(store.clear("a")).toEqual({ ok: true });
-    expect([store.get("a"), readdirSync(cardDir)]).toEqual([{ tagline: null, bio: null, portrait: null, banner: null, updated_at: 0 }, ["portrait-unrelated.png"]]);
+    expect([store.get("a"), readdirSync(cardDir)]).toEqual([{ tagline: null, bio: null, portrait: null, banner: null, updated_at: 0, banner_focus: null }, ["portrait-unrelated.png"]]);
   });
   it("resolved per field: the person's where set, else the agent's — each marked whose", () => {
     const agent = { portrait: "a".repeat(32), banner: "b".repeat(32), tagline: "Agent's", bio: "Agent's bio" };

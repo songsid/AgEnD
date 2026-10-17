@@ -152,7 +152,8 @@ describe("preview_web_appearance", () => {
     const card = css.slice(css.indexOf(".id-card {"), css.indexOf("}", css.indexOf(".id-card {")));
     const [, a, b] = /--id-ar: (\d+) \/ (\d+);/.exec(card)!, lo = Number(/--id-bmin: (\d+)px/.exec(card)![1]), hi = Number(/--id-bmax: (\d+)px/.exec(card)![1]);
     expect({ aspect: Number(a) / Number(b), min: lo, max: hi }).toEqual(PREVIEW_BANNER);
-    const banner = /<image href="banner\.png" x="0" y="(\d+)" width="720" height="(\d+)"/.exec(svgOf(r, "light"))!;
+    // #2086: drawn through a nested SVG whose viewBox is the part the page shows at the banner's focus.
+    const banner = /<svg x="0" y="(\d+)" width="720" height="(\d+)" viewBox="[\d. ]+" preserveAspectRatio="none"><image href="banner\.png"/.exec(svgOf(r, "light"))!;
     expect(Number(banner[2])).toBe(Math.min(hi, Math.max(lo, Math.round(720 * Number(b) / Number(a)))));
     expect(Number(banner[2])).toBe(240);
   });

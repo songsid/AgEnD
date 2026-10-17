@@ -1338,13 +1338,39 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
    #2038: the banner's height follows the card's width — S 4:1, M 3:1, L 2.25:1 — between a floor and a ceiling per size,
    so it is never a strip across a wide chat and never a wall on a phone; the picture fills it, cropped about its middle.
    The chat header's card (card-c) follows the same size choice (card-c bs-<size>). */
-.id-card { --id-h: 240px; --id-ar: 3 / 1; --id-bmin: 140px; --id-bmax: 240px; margin: 0 0 var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.id-card { --id-feather: linear-gradient(to right, transparent 0, #000 7%, #000 93%, transparent 100%); --id-h: 240px; --id-ar: 3 / 1; --id-bmin: 140px; --id-bmax: 240px; margin: 0 0 var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
 .id-card.card-s { --id-h: 160px; --id-ar: 4 / 1; --id-bmin: 100px; --id-bmax: 160px; }
 .id-card.card-l { --id-h: 360px; --id-ar: 9 / 4; --id-bmin: 200px; --id-bmax: 360px; }
 .id-card.card-c { --id-h: 96px; --id-bmin: 120px; --id-bmax: 200px; margin: 0; border: 0; border-radius: 0; background: none; }
 .id-card.card-c.bs-s { --id-ar: 4 / 1; --id-bmin: 96px; --id-bmax: 150px; }
 .id-card.card-c.bs-l { --id-ar: 9 / 4; --id-bmin: 150px; --id-bmax: 220px; }
-.id-banner { display: block; width: 100%; height: auto; aspect-ratio: var(--id-ar); min-height: var(--id-bmin); max-height: var(--id-bmax); object-fit: cover; object-position: 50% 50%; }
+/* #2086: the banner at its focus (--id-focus, set per card), never wider than 5 : 1 — its width is capped at five times its
+   size's tallest height, so the band shown everywhere is (picture aspect ÷ 5) of its height. Beyond that it is centred
+   over a blurred copy of itself. */
+.id-banner-box { position: relative; overflow: hidden; container: idbanner / inline-size; }
+/* #2089 review: and never narrower than 9 : 4 — its height never more than its box's width ÷ 2.25 (a size's floor yields
+   to it on a narrow column: a wide sidebar, the usage rail), so the promised safe area holds on every layout. */
+.id-banner { position: relative; display: block; width: 100%; max-width: calc(var(--id-bmax) * 5); margin-inline: auto; height: auto; aspect-ratio: var(--id-ar);
+  min-height: min(var(--id-bmin), calc(100cqw / 2.25)); max-height: min(var(--id-bmax), calc(100cqw / 2.25)); object-fit: cover; object-position: 50% var(--id-focus, 50%); }
+/* #2086: Edit profile's banner focus — the picture whole, the band every screen shows (dashed, outside it shaded) and a phone's. */
+.bf-wrap { position: relative; max-width: 440px; overflow: hidden; border-radius: var(--r-sm); }
+.bf-pic { display: block; width: 100%; height: auto; }
+.bf-band { position: absolute; pointer-events: none; box-sizing: border-box; }
+.bf-band span { position: absolute; right: 4px; top: 2px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+.bf-safe { border: 2px dashed #fff; box-shadow: 0 0 0 999px rgba(0, 0, 0, .45); }
+/* The phone's band over the shade, in its own colour (its label at its own top-left, never in the shaded part). */
+.bf-phone { z-index: 1; border: 2px solid #ffd54a; }
+.bf-phone span { right: auto; left: 8px; top: 5px; color: #ffd54a; }
+.bf-field input[type=range] { width: 100%; max-width: 440px; }
+.id-banner-fill { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% var(--id-focus, 50%); filter: blur(24px) saturate(0.75) brightness(0.7); transform: scale(1.4); opacity: .9; pointer-events: none; }
+/* Wider than the banner's cap (5 × the size's tallest height): its sides feather into the fill, so the sharp centre
+   leads without a seam. One threshold per size (a container query cannot read a custom property). */
+@container idbanner (min-width: 750px) { .id-card.card-c.bs-s .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }
+@container idbanner (min-width: 800px) { .id-card.card-s .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }
+@container idbanner (min-width: 1000px) { .id-card.card-c:not(.bs-s):not(.bs-l) .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }
+@container idbanner (min-width: 1100px) { .id-card.card-c.bs-l .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }
+@container idbanner (min-width: 1200px) { .id-card:not(.card-s):not(.card-l):not(.card-c) .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }
+@container idbanner (min-width: 1800px) { .id-card.card-l .id-banner { -webkit-mask-image: var(--id-feather); mask-image: var(--id-feather); } }
 .id-row { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3) var(--s-4); }
 .id-portrait { display: block; flex-shrink: 0; height: var(--id-h); width: auto; max-width: min(calc(var(--id-h) * 0.75), 100%); object-fit: cover; border-radius: var(--r-sm); }
 .id-text { flex: 1; min-width: 0; }
