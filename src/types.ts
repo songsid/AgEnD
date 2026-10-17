@@ -409,6 +409,28 @@ export interface WebConfig {
    * (and warned about); a change applies to new uploads only.
    */
   appearance?: import("./web-appearance-limits.js").AppearanceLimitsConfig;
+  /**
+   * #1920: guest web sign-in — a non-admin signed in as their own Discord or Telegram account, seeing only the instances
+   * they already use in chat (derived on every request). Default off.
+   */
+  guests?: WebGuestsConfig;
+}
+
+/** #1920: fleet.yaml `web.guests`. */
+export interface WebGuestsConfig {
+  /** Guest sign-in at all (default false). Turning it off ends every guest session. */
+  enabled?: boolean;
+  /** Guests may chat (default true); false: read-only. */
+  chat?: boolean;
+  /**
+   * An `open` connection's guests reach nothing until an admin names instances here, per connection id (the user's
+   * decision: least privilege, since an open group has no list of people).
+   */
+  open_instances?: Record<string, string[]>;
+  /** An admin's narrowing, per `<connection id>:<user id>`: intersected with the derived scope, never widening it. */
+  narrow?: Record<string, string[]>;
+  /** A guest session's limits: absolute 1–24 h (default 12), idle 15–720 min (default 120). */
+  session?: { absolute_hours?: number; idle_minutes?: number };
 }
 
 /** `login:` section — remote /login behaviour. */

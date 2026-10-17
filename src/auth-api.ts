@@ -372,7 +372,7 @@ export function handleAuthRequest(
         created: session.created,
         expiresAt: session.absoluteExpiry,
         idleExpiresAt: session.idleExpiry,
-        idleMs: sessions.idleWindowMs(session.surface),
+        idleMs: sessions.idleWindowMs(session.surface, session.tier),
       });
       return true;
     }

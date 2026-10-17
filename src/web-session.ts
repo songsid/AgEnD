@@ -70,8 +70,27 @@ export function localSessionPolicy(cfg: { absolute_hours?: unknown; idle_hours?:
   return { absoluteMs, idleMs: Math.min(ms(cfg?.idle_hours, def.idleMs), absoluteMs) };
 }
 
-/** More than this and the least recently used one is dropped. */
+/**
+ * #1920 §5.4: a guest's session — shorter than an admin's, never longer than the surface's own policy (on the public
+ * link the link's 4 h / 30 min wins). `web.guests.session`: absolute 1–24 h, idle 15 min–12 h.
+ */
+export const GUEST_SESSION_POLICY: SessionPolicy = { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR };
+export const GUEST_SESSION_BOUNDS = { absoluteHours: { min: 1, max: 24 }, idleMinutes: { min: 15, max: 720 } } as const;
+
+/** The guest policy `web.guests.session` asks for, or the default for what it leaves out; defensive as localSessionPolicy. */
+export function guestSessionPolicy(cfg: { absolute_hours?: unknown; idle_minutes?: unknown } | undefined): SessionPolicy {
+  const { absoluteHours: a, idleMinutes: i } = GUEST_SESSION_BOUNDS;
+  const ms = (v: unknown, min: number, max: number, unit: number, fallback: number): number =>
+    typeof v !== "number" || !Number.isFinite(v) || v > max ? fallback : Math.max(v, min) * unit;
+  const absoluteMs = ms(cfg?.absolute_hours, a.min, a.max, HOUR, GUEST_SESSION_POLICY.absoluteMs);
+  return { absoluteMs, idleMs: Math.min(ms(cfg?.idle_minutes, i.min, i.max, MINUTE, GUEST_SESSION_POLICY.idleMs), absoluteMs) };
+}
+
+/** More than this and the least recently used one is dropped (#1920: admins' and read sessions; guests count apart). */
 export const MAX_WEB_SESSIONS = 8;
+/** #1920: guests never push an admin out — their own caps, the least recently used of their kind dropped first. */
+export const MAX_GUEST_SESSIONS = 64;
+export const MAX_GUEST_SESSIONS_PER_ACCOUNT = 4;
 
 /** `lastSeen` is only written to disk this often; creation and revocation always write. */
 export const SESSION_PERSIST_DEBOUNCE_MS = 60 * 1000;
@@ -192,6 +211,8 @@ export interface WebSessionStoreOptions {
    * can change while the fleet runs). Takes precedence over `policy.local`.
    */
   readonly localPolicy?: () => SessionPolicy;
+  /** #1920: a guest's policy, read at every check (`web.guests.session`); never longer than the surface's. */
+  readonly guestPolicy?: () => SessionPolicy;
   readonly maxSessions?: number;
   readonly onWarn?: (message: string) => void;
 }
@@ -221,12 +242,16 @@ function isRecord(value: unknown): value is SessionRecord {
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
 
+/** One account, as a map key (adapter ids and user ids never hold a newline). */
+const accountKey = (o: { adapterId: string; userId: string }): string => `${o.adapterId}\n${o.userId}`;
+
 export class WebSessionStore {
   private readonly pending = new Set<string>();
   private readonly byHash = new Map<string, SessionRecord>();
   private readonly now: () => number;
   private readonly policy: Record<SessionSurface, SessionPolicy>;
   private readonly localPolicy: (() => SessionPolicy) | null;
+  private readonly guestPolicy: () => SessionPolicy;
   private readonly maxSessions: number;
   private readonly path: string | null;
   private readonly warn: (message: string) => void;
@@ -243,6 +268,7 @@ export class WebSessionStore {
       gateway: opts.policy?.gateway ?? DEFAULT_SESSION_POLICY.gateway,
     };
     this.localPolicy = opts.localPolicy ?? null;
+    this.guestPolicy = opts.guestPolicy ?? (() => GUEST_SESSION_POLICY);
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
@@ -253,11 +279,18 @@ export class WebSessionStore {
   get size(): number { return this.byHash.size; }
 
   /** How long a session on this surface may sit unused before it ends. For showing people, not for deciding. */
-  idleWindowMs(surface: SessionSurface): number { return this.policyFor(surface).idleMs; }
+  idleWindowMs(surface: SessionSurface, tier: SessionTier = "admin"): number { return this.policyFor(surface, tier).idleMs; }
 
-  /** The policy in force for a surface now (#1620: the local one as configured at this moment; the gateway's fixed). */
-  private policyFor(surface: SessionSurface): SessionPolicy {
-    return surface === "local" && this.localPolicy ? this.localPolicy() : this.policy[surface];
+  /**
+   * The policy in force for a surface now (#1620: the local one as configured at this moment; the gateway's fixed).
+   * #1920: a guest's is its own policy, never longer than the surface's.
+   */
+  private policyFor(surface: SessionSurface, tier: SessionTier): SessionPolicy {
+    const base = surface === "local" && this.localPolicy ? this.localPolicy() : this.policy[surface];
+    if (tier !== "guest") return base;
+    const guest = this.guestPolicy();
+    const absoluteMs = Math.min(base.absoluteMs, guest.absoluteMs);
+    return { absoluteMs, idleMs: Math.min(base.idleMs, guest.idleMs, absoluteMs) };
   }
 
   /**
@@ -268,7 +301,7 @@ export class WebSessionStore {
    * up to that absolute limit. New sessions get the new windows whole.
    */
   private limit(record: SessionRecord): void {
-    const p = this.policyFor(record.surface);
+    const p = this.policyFor(record.surface, record.tier);
     const absoluteExpiry = Math.min(record.absoluteExpiry, record.created + p.absoluteMs);
     const idleExpiry = Math.min(record.idleExpiry, record.lastSeen + p.idleMs, absoluteExpiry);
     if (absoluteExpiry !== record.absoluteExpiry || idleExpiry !== record.idleExpiry) {
@@ -288,7 +321,7 @@ export class WebSessionStore {
     const now = this.now();
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
-    const policy = this.policyFor(input.surface);
+    const policy = this.policyFor(input.surface, input.tier);
     const absoluteExpiry = now + policy.absoluteMs;
     const record: SessionRecord = {
       handle: randomBytes(8).toString("hex"),
@@ -306,7 +339,7 @@ export class WebSessionStore {
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);
-    while (this.byHash.size > this.maxSessions) this.evictLeastRecentlyUsed();
+    this.enforceCaps();
     this.persistNow();
     return { sessionId, record };
   }
@@ -337,7 +370,7 @@ export class WebSessionStore {
     }
     if (opts.touch !== false) {
       record.lastSeen = now;
-      record.idleExpiry = Math.min(now + this.policyFor(record.surface).idleMs, record.absoluteExpiry);
+      record.idleExpiry = Math.min(now + this.policyFor(record.surface, record.tier).idleMs, record.absoluteExpiry);
       this.dirty = true;
       this.persistIfDue(now);
     }
@@ -444,10 +477,33 @@ export class WebSessionStore {
     if (removed) this.dirty = true;
   }
 
-  private evictLeastRecentlyUsed(): void {
+  /**
+   * The caps: admins' and read sessions together; guests apart (#1920) — per account, then all guests — so a guest
+   * signing in never drops an admin's session, and one account cannot fill the guests' room.
+   */
+  private enforceCaps(): void {
+    const notGuest = (r: SessionRecord) => r.tier !== "guest";
+    while (this.count(notGuest) > this.maxSessions) this.evictLeastRecentlyUsed(notGuest);
+    const accounts = new Set<string>();
+    for (const r of this.byHash.values()) if (r.tier === "guest") accounts.add(accountKey(r.owner!));
+    for (const key of accounts) {
+      const mine = (r: SessionRecord) => r.tier === "guest" && accountKey(r.owner!) === key;
+      while (this.count(mine) > MAX_GUEST_SESSIONS_PER_ACCOUNT) this.evictLeastRecentlyUsed(mine);
+    }
+    const guest = (r: SessionRecord) => r.tier === "guest";
+    while (this.count(guest) > MAX_GUEST_SESSIONS) this.evictLeastRecentlyUsed(guest);
+  }
+
+  private count(which: (r: SessionRecord) => boolean): number {
+    let n = 0;
+    for (const record of this.byHash.values()) if (which(record)) n++;
+    return n;
+  }
+
+  private evictLeastRecentlyUsed(which: (r: SessionRecord) => boolean): void {
     let oldest: SessionRecord | null = null;
     for (const record of this.byHash.values()) {
-      if (!oldest || record.lastSeen < oldest.lastSeen) oldest = record;
+      if (which(record) && (!oldest || record.lastSeen < oldest.lastSeen)) oldest = record;
     }
     if (oldest) { this.byHash.delete(oldest.idHash); this.pending.delete(oldest.idHash); }
   }
@@ -538,7 +594,7 @@ export class WebSessionStore {
       if (now >= record.absoluteExpiry || now >= record.idleExpiry) continue;
       this.byHash.set(record.idHash, record);
     }
-    while (this.byHash.size > this.maxSessions) this.evictLeastRecentlyUsed();
+    this.enforceCaps();
     this.persisted = new Set([...this.byHash.keys()].filter(hash => !this.pending.has(hash)));
   }
 }

@@ -151,14 +151,29 @@ describe("the gate, live: a guest scoped to `a`", () => {
     const scope = vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
     const guest = session("guest", ALICE);
     expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status).toBe(200);
-    scope.mockReturnValue(new Set());
+    scope.mockReturnValue(new Set(["b"]));
     expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status).toBe(404);
     expect(scope.mock.calls.every(([owner]) => sameAccount(owner as typeof ALICE, ALICE))).toBe(true);
   });
-  it("until phase 2 derives one, a guest's scope is empty: nothing per instance", async () => {
+  it("#1920 §3.5: a scope that became empty ends the session — 401, and it stays gone when the scope comes back", async () => {
+    const scope = vi.spyOn(fm, "guestScope").mockReturnValue(new Set());
     const guest = session("guest", ALICE);
+    const first = await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) });
+    expect([first.status, JSON.parse(first.body).error]).toEqual([401, "guest_scope_empty"]);
+    scope.mockReturnValue(new Set(["a"]));
+    expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status, "revoked, not paused").toBe(401);
+  });
+  it("#2082 review: /auth/session tells a guest its own idle window (2 h), not an admin's", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+    const g = JSON.parse((await raw(port, "GET", "/auth/session", { cookie: cookieOf(session("guest", ALICE)) })).body);
+    const a = JSON.parse((await raw(port, "GET", "/auth/session", { cookie: cookieOf(session("admin")) })).body);
+    expect([g.tier, g.idleMs, a.idleMs]).toEqual(["guest", 2 * 3_600_000, 48 * 3_600_000]);
+  });
+  it("guest sign-in off (the default): a guest's scope is empty, so its session ends", async () => {
+    const guest = session("guest", ALICE);
+    expect(fm.fleetConfig.web?.guests?.enabled).not.toBe(true);
     expect(fm.guestScope(ALICE).size).toBe(0);
-    expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status).toBe(404);
+    expect((await raw(port, "GET", "/api/profile/a", { cookie: cookieOf(guest) })).status).toBe(401);
   });
   it("/view's terminal, roster and page are not a guest's (view_access: session)", async () => {
     const guest = session("guest", ALICE);

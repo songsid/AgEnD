@@ -1517,7 +1517,7 @@ describe("FleetManager", () => {
     expect(choices.some(choice => choice.id === "mock")).toBe(false);
   });
 
-  it("marks backend menu labels from the fleet process PATH", async () => {
+  it("marks backend menu labels from the published availability snapshot (#2072)", async () => {
     const originalPath = process.env.PATH;
     const binDir = join(tmpDir, "test-bin");
     mkdirSync(binDir);
@@ -1528,6 +1528,9 @@ describe("FleetManager", () => {
     try {
       writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
+      // #2072: the menu reads the snapshot; these probes stand in for the host (no real CLI on this machine leaks in).
+      (fm as any).availabilityProbes = { resolve: async (b: string) => (b === "codex" ? join(binDir, "codex") : null), version: async () => null, auth: async () => "unknown", signature: async () => null };
+      await fm.backendAvailability.refresh();
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("telegram");
       fm.classicChannels = classicChannels;
@@ -1572,6 +1575,8 @@ describe("FleetManager", () => {
     try {
       writeFileSync(join(tmpDir, "classicBot.yaml"), 'defaults:\n  admin_users: ["owner", "user-1"]\n');
       const fm = new FleetManager(tmpDir);
+      (fm as any).availabilityProbes = { resolve: async () => null, version: async () => null, auth: async () => "unknown", signature: async () => null };
+      await fm.backendAvailability.refresh();
       const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
       classicChannels.setPrimaryAdapterId("discord");
       fm.classicChannels = classicChannels;

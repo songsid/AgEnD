@@ -322,7 +322,15 @@ export async function runProviderProbe(
   }
 }
 
-export function detectWizardBackends(): string[] {
+/**
+ * #2072: a running fleet answers from its published availability snapshot (no `which` on its loop). The setup host,
+ * before any fleet exists, still asks directly — nothing else is running on its loop yet.
+ */
+export function detectWizardBackends(ctx?: Pick<QuickstartApiContext, "backendAvailabilityRows">): string[] {
+  if (ctx?.backendAvailabilityRows) {
+    const rows = new Map(ctx.backendAvailabilityRows().map(r => [r.backend, r]));
+    return WIZARD_BACKENDS.map(b => b.name).filter(n => { const r = rows.get(n); return !!r && r.state !== "not_installed" && r.state !== "unknown"; });
+  }
   return detectInstalledBackends(WIZARD_BACKENDS);
 }
 
@@ -375,6 +383,8 @@ export interface QuickstartApiContext {
   settingsCommitted?(execution?: SettingsExecution): void;
   /** Only a running fleet can answer this; without one, nothing is polling. */
   isBotTokenInUse?(token: string): boolean;
+  /** #2072: a running fleet's published backend availability (structural: this host imports no fleet module). */
+  backendAvailabilityRows?(): Array<{ backend: string; state: string }>;
 }
 
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -439,7 +449,7 @@ export function handleQuickstartRequest(
 
   if (method === "GET" && path === "/api/settings/quickstart/environment") {
     json(res, 200, {
-      backends: detectWizardBackends(),
+      backends: detectWizardBackends(ctx),
       has_fleet: !!cfg && Object.keys(cfg.instances ?? {}).length > 0,
       channels: wizardChannels(cfg),
       agents: Object.entries(cfg?.instances ?? {}).map(([name, inst]) => ({
@@ -492,7 +502,7 @@ export function handleQuickstartRequest(
       catch (err) { if (err instanceof EnvFileUnreadableError) return json(res, 503, { error: err.message }); throw err; }
       const taken = takenTokenEnvNames({ channelEnvs: channels.map(c => c.token_env), envFile, processEnv: Object.keys(process.env) });
       json(res, 200, withTopicRelease(planQuickstart(withExistingAgent(body, cfg), {
-        backends: body.connection_only ? [] : detectWizardBackends(),
+        backends: body.connection_only ? [] : detectWizardBackends(ctx),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
         channels,
         taken_env: taken,
@@ -517,7 +527,7 @@ export function handleQuickstartRequest(
       const conflict = newConnectionConflict(body, { channels: summary }) ?? agentConflict(body, cfg);
       if (conflict) return json(res, 409, { error: conflict });
       const plan = planQuickstart(withExistingAgent(body, cfg), {
-        backends: detectWizardBackends(),
+        backends: detectWizardBackends(ctx),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
         channels: summary,
       });
